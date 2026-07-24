@@ -5,6 +5,12 @@ import App from './App';
 // outranks them on shared selectors. Used by ported components
 // (Markdown stack, ThinkingBlock) that ship in utility classes.
 import './cowork/styles/tailwind.css';
+// KaTeX stylesheet for math formula rendering (remark-math + rehype-katex
+// in the Markdown stack). Bundled locally by Vite — cowork's CSP forbids
+// CDN scripts, so the MathJax-from-CDN approach used by mindshub_frontend
+// isn't an option here. Imported before globals.css so our spacing tweaks
+// (see the `.katex-display` rules there) win on shared selectors.
+import 'katex/dist/katex.min.css';
 // Load cowork's token system globally — the arcade onboarding screens
 // rely on it for the bundled fonts (JetBrains Mono) and the terminal
 // page for its theme tokens. Antontron's own styles.css aliases its

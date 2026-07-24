@@ -7,7 +7,7 @@
 
 import { useEffect, useState } from 'react';
 import Ico from '../components/Icons';
-import { Badge } from '../components/ui';
+import { Badge, Button } from '../components/ui';
 import {
   fetchChannelBindings,
   createChannelBinding,
@@ -128,9 +128,9 @@ export default function ChannelBindings({ plugins = [], channelType = null }) {
             ...projects.map((p) => ({ value: p.id, label: p.name })),
           ]}
         />
-        <button type="button" className="channels-btn channels-btn-primary" onClick={addRow}>
+        <Button variant="primary" onClick={addRow}>
           {Ico.plus(15)}<span>Add</span>
-        </button>
+        </Button>
       </div>
 
       {loading ? (
@@ -188,11 +188,11 @@ export default function ChannelBindings({ plugins = [], channelType = null }) {
                   </td>
                   <td className="channels-route-actions">
                     {dirty ? (
-                      <button type="button" className="channels-btn channels-btn-primary channels-btn-sm" onClick={() => saveRow(b)}>Save</button>
+                      <Button variant="primary" size="sm" onClick={() => saveRow(b)}>Save</Button>
                     ) : null}
-                    <button type="button" className="channels-btn channels-btn-ghost channels-btn-sm" onClick={() => removeRow(b)} title="Remove route">
+                    <Button variant="danger" size="sm" icon onClick={() => removeRow(b)} title="Remove route" aria-label="Remove route">
                       {Ico.power(14)}
-                    </button>
+                    </Button>
                   </td>
                 </tr>
               );

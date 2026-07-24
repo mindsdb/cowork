@@ -9,9 +9,9 @@ describe('Button', () => {
     expect(screen.getByRole('button', { name: 'Save' })).toHaveAttribute('type', 'button');
   });
 
-  it('composes classes from variant/size/flags; md+default add no extra tokens', () => {
+  it('composes classes from variant/size/flags; md adds no size token, default variant is explicit', () => {
     render(<Button>Plain</Button>);
-    expect(screen.getByRole('button', { name: 'Plain' })).toHaveClass('btn', { exact: true });
+    expect(screen.getByRole('button', { name: 'Plain' })).toHaveClass('btn', 'default', { exact: true });
 
     render(
       <Button variant="danger" size="sm" icon block className="extra" aria-label="Del">
@@ -26,12 +26,12 @@ describe('Button', () => {
 
   it('falls back to default variant/size on unknown values instead of leaking junk classes', () => {
     render(<Button variant="sparkly" size="xxl">Odd</Button>);
-    expect(screen.getByRole('button', { name: 'Odd' })).toHaveClass('btn', { exact: true });
+    expect(screen.getByRole('button', { name: 'Odd' })).toHaveClass('btn', 'default', { exact: true });
   });
 
-  it('renders the solid variant (filled page CTA) with its class', () => {
-    render(<Button variant="solid">Publish</Button>);
-    expect(screen.getByRole('button', { name: 'Publish' })).toHaveClass('btn', 'solid', { exact: true });
+  it('renders danger-solid (escalated destructive) as one variant class, not a compound', () => {
+    render(<Button variant="danger-solid">Delete permanently</Button>);
+    expect(screen.getByRole('button', { name: 'Delete permanently' })).toHaveClass('btn', 'danger-solid', { exact: true });
   });
 
   it('forwards rest props: click handlers fire, disabled blocks them', async () => {

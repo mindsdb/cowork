@@ -1,0 +1,12 @@
+deployment:
+  ingress:
+    enabled: true
+    name: cowork-frontend
+    pathType: Prefix
+    hosts:
+      - host: cowork.dev.mindshub.ai
+        enableMultiPath: true
+        paths:
+          - path: /
+            serviceName: cowork-frontend
+            servicePort: 80

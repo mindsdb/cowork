@@ -23,6 +23,13 @@ theming, and behaviour get fixed in one place instead of per call-site.
 - `<Input>` / `<Textarea>`, `<Modal>` (+ `ModalHeader/Body/Footer`), `<Menu>` — see each
   file's header comment for the full prop list and usage examples.
 
-The bespoke button systems (`channels-btn`, `dispatch-btn`, `customize-*btn`, `icon-btn`)
-are intentionally **not** part of this set — they carry their own design languages and
-were left as-is during the migration.
+The bespoke button systems (`channels-btn`, `dispatch-btn`, `customize-*btn`) were folded
+into `<Button>` during the ENG-936 button sweep; their CSS classes in `globals.css` are now
+orphaned and can be dropped in the design-system styling follow-up. `icon-btn` survives on a
+few window-chrome affordances (sidebar collapse/search, the floating hamburger) where a
+custom animation or Electron drag-region is essential; genuine icon actions elsewhere use
+`<Button icon>`.
+
+Structural affordances are **not** buttons in this sense and stay as raw elements: menu items
+(use `Menu`), list/nav rows, tabs and toggles (use `ToggleGroup`), the composer send control,
+and modal/panel close-`×` chrome.

@@ -137,6 +137,9 @@ export default function App() {
       // readSettings() is best-effort there, so a hosted-web /settings/raw 403
       // (ENG-817) can't abort the gate and strand a configured instance on the
       // auth screen; config_ready (health) drives the real decision.
+      // hasLocalTermsConsent() is internally try/caught (returns false on any
+      // localStorage error), so calling it outside resolveBootTarget's guard is
+      // safe — it can't throw and escape init() (ENG-848 review note).
       const target: Page = await resolveBootTarget(host, hasLocalTermsConsent());
       // Keep the welcome orb up briefly so it doesn't flash on fast boots.
       const elapsed = Date.now() - started;

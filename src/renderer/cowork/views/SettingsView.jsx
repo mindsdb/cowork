@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, createContext, useContext, Children } from 'react';
 import { useId } from 'react';
 import Ico from '../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchHealth } from '../api';
@@ -63,13 +63,25 @@ export function patchSavedJson(prevJson, key, value) {
 }
 
 function Section({ title, subtitle, notice, children }) {
+  const { mobile } = useContext(SettingsLayoutContext);
+  // A section whose sole control is a Switch or ToggleGroup is compact enough
+  // to keep the desktop "title left / control right" row on wider mobile
+  // widths instead of stacking (ENG-990). Full-width controls — text inputs,
+  // selects, color pickers, the generic field wrapper — stay stacked. The
+  // row only re-forms above ~440px (see the media query); the narrowest
+  // phones still stack everything.
+  const kids = Children.toArray(children);
+  const compact = kids.length === 1 && (kids[0]?.type === Switch || kids[0]?.type === ToggleGroup);
   return (
-    <div className="settings-section" style={{
+    <div className={`settings-section${compact ? ' settings-section--inline' : ''}`} style={{
       display: 'grid', gridTemplateColumns: '1fr 320px', gap: 0,
       padding: '16px 0',
       alignItems: 'flex-start',
     }}>
-      <div style={{ paddingRight: 24 }}>
+      {/* On mobile the grid collapses to one column (see the settings media
+          query), so the inter-column gutters (paddingRight/Left: 24) would
+          just indent the stacked label + control for no reason — drop them. */}
+      <div style={{ paddingRight: mobile ? 0 : 24 }}>
         <h3 style={{
           margin: 0, padding: 0,
           fontSize: 14, fontWeight: 600, color: 'var(--text-strong)',
@@ -78,7 +90,7 @@ function Section({ title, subtitle, notice, children }) {
         {subtitle && <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginTop: 4 }}>{subtitle}</div>}
         {notice && <div style={{ marginTop: 8 }}>{notice}</div>}
       </div>
-      <div style={{ paddingLeft: 24 }}>{children}</div>
+      <div style={{ paddingLeft: mobile ? 0 : 24 }}>{children}</div>
     </div>
   );
 }
@@ -86,9 +98,28 @@ function Section({ title, subtitle, notice, children }) {
 // Collapsible group of sections. Defaults to open; click the header to
 // toggle. Uses the theme tokens so it reads well in light + dark.
 function CollapsibleGroup({ title, defaultOpen = true, children }) {
+  const { mobile } = useContext(SettingsLayoutContext);
   const [open, setOpen] = useState(defaultOpen);
   const panelId = useId();
   const headingId = useId();
+  // Mobile (ENG-990): flat and non-collapsible. The master-detail screen
+  // already isolates one section, so a second collapse level just adds
+  // confusion — render the group title as a plain header with its content
+  // always visible, separated from the next group by spacing.
+  if (mobile) {
+    return (
+      <div style={{ marginBottom: 6 }}>
+        <h2 style={{
+          margin: 0, padding: '12px 2px 8px',
+          fontFamily: 'var(--font-sans)', fontSize: 12.5, fontWeight: 600,
+          letterSpacing: '0.04em', textTransform: 'uppercase',
+          color: 'var(--text-muted)',
+        }}>{title}</h2>
+        <div style={{ padding: '0 2px 4px' }}>{children}</div>
+      </div>
+    );
+  }
+
   return (
     <div style={{
       border: '1px solid var(--border-subtle)',
@@ -134,7 +165,50 @@ function CollapsibleGroup({ title, defaultOpen = true, children }) {
 // Shared layout shell for every settings section: scrollable content area
 // on top, optional sticky footer with action buttons on the bottom.
 // Pass `footer` as JSX — buttons, status text, whatever the section needs.
-function SettingsSectionPanel({ children, footer }) {
+// Layout mode for the settings surface. Desktop (default) renders the
+// two-column nav + scrolling panel inside a modal; mobile (ENG-990) renders
+// a full page with accordion navigation, where each section flows naturally
+// so the whole page scrolls. SettingsSectionPanel reads this to drop its
+// flex-fill / internal scroll / sticky footer on mobile.
+const SettingsLayoutContext = createContext({ mobile: false });
+
+function SettingsSectionPanel({ children, footer, autoSaved = false }) {
+  const { mobile } = useContext(SettingsLayoutContext);
+  if (mobile) {
+    // Natural flow so the whole detail page scrolls (no internal scroll or
+    // width cap). A sticky full-bleed bottom bar carries the action: the Save
+    // footer when the section has one (always reachable on a long page instead
+    // of buried at the end), or a quiet "saves automatically" note when it
+    // doesn't — so an auto-save section (Appearance) doesn't read as "no way
+    // to save" next to sections with a Save button (ENG-990 QA).
+    const barStyle = {
+      position: 'sticky',
+      bottom: 0,
+      zIndex: 1,
+      display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+      // Bleed past the .settings-detail 14px gutter to the screen edges.
+      margin: '16px -14px 0',
+      padding: '12px 14px calc(12px + env(safe-area-inset-bottom, 0))',
+      borderTop: '1px solid var(--border-subtle)',
+      // Opaque so scrolling content is masked behind the bar.
+      background: 'var(--bg)',
+    };
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+        <div>{children}</div>
+        {footer ? (
+          <div style={{ ...barStyle, gap: 10 }}>{footer}</div>
+        ) : autoSaved ? (
+          <div style={{ ...barStyle, color: 'var(--text-muted)', fontSize: 12.5 }}>
+            <span aria-hidden="true" style={{ display: 'inline-flex', color: 'var(--ok, #3aa876)' }}>
+              {Ico.check ? Ico.check(13) : '✓'}
+            </span>
+            <span>Changes are saved automatically.</span>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
       <div
@@ -652,6 +726,11 @@ export default function SettingsView({
   isSsoConnected = false,
   ssoError = '',
   onSsoSignIn,
+  // Mobile (ENG-990): render as a full page with master-detail navigation
+  // instead of the desktop two-column layout. onClose closes the surface
+  // from the section list (the top-bar back control drills out to it first).
+  mobile = false,
+  onClose,
 }) {
   const [saved, setSaved] = useState(false);
   const [validation, setValidation] = useState(null);
@@ -676,6 +755,11 @@ export default function SettingsView({
   const [diagBusy, setDiagBusy] = useState(false);
   // Account section — decoded from the JWT, null until loaded
   const [accountUser, setAccountUser] = useState(null);
+  // Mobile master-detail (ENG-990/ENG-991): the open section is the shared
+  // `section` prop, not a separate local state — so a deep-link
+  // (onOpenSettings('backend')) lands on that section AND the section-keyed
+  // load effects below fire on mobile too. `section == null` is the list; a
+  // row tap calls onSectionChange(id), the back control onSectionChange(null).
 
   useEffect(() => { getVersionInfo().then(setVersionInfo).catch(() => { }); }, []);
   // Backend (server + agent) versions come from /health, which is only
@@ -807,6 +891,9 @@ export default function SettingsView({
       setSetting('planningProvider', normalizedType);
       setSetting('planningModel', nextModel);
       setSetting('defaultModel', nextModel);
+    } else if (role === 'router') {
+      setSetting('routerProvider', normalizedType);
+      setSetting('routerModel', nextModel);
     } else {
       setSetting('codingProvider', normalizedType);
       setSetting('codingModel', nextModel);
@@ -923,11 +1010,12 @@ export default function SettingsView({
     // Role settings referencing the removed provider get re-pointed
     // at MindsHub with its recommended pair for the role.
     const adjustedOverrides = {};
-    for (const role of ['planning', 'coding']) {
+    for (const role of ['planning', 'coding', 'router']) {
       const o = roleOverride(role);
       if (roleProviderType(role) === type) {
-        const pair = recommendedPair['minds-cloud'] || ['', ''];
-        const fallback = pair[role === 'planning' ? 0 : 1] || (recommendedModels['minds-cloud']?.[0] || '');
+        const pair = recommendedPair['minds-cloud'] || ['', '', ''];
+        const roleIdx = role === 'planning' ? 0 : role === 'router' ? 2 : 1;
+        const fallback = pair[roleIdx] || pair[1] || (recommendedModels['minds-cloud']?.[0] || '');
         adjustedOverrides[role] = { providerType: 'minds-cloud', model: fallback };
         setRoleDriver(role, 'minds-cloud', fallback);
       } else {
@@ -998,6 +1086,10 @@ export default function SettingsView({
     if ((providerValueToType(s.codingProvider) || 'minds-cloud') !== type) {
       next.codingProvider = type;
       next.codingModel = pair[1] || '';
+    }
+    if ((providerValueToType(s.routerProvider) || 'minds-cloud') !== type) {
+      next.routerProvider = type;
+      next.routerModel = pair[2] || pair[1] || '';
     }
     return next;
   };
@@ -1299,18 +1391,16 @@ export default function SettingsView({
                 // Otherwise the middle column shows the status pill and an Edit button appears.
                 const ssoMindsHub = p.type === 'minds-cloud' && isSsoConnected;
                 const showKeyInput = ssoMindsHub || !configured || status === 'untested' || status === 'fail' || editingProviders.has(p.type);
-                const iconBtnStyle = {
-                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                  width: 30, height: 30, borderRadius: 8,
-                  background: 'transparent',
-                  border: '1px solid var(--border-subtle)',
-                  cursor: 'pointer',
-                };
                 return (
                   <div key={p.type} className="settings-provider-row" style={{
-                    display: 'grid',
-                    gridTemplateColumns: '1fr 380px auto',
-                    gap: 24,
+                    // Desktop: name | key/status | actions in a 3-col grid.
+                    // Mobile: a compact left-aligned column — the grid stacked
+                    // but kept the status pill + a 30px-wide button column
+                    // right-aligned, floating them into a lot of dead space.
+                    display: mobile ? 'flex' : 'grid',
+                    flexDirection: mobile ? 'column' : undefined,
+                    gridTemplateColumns: mobile ? undefined : '1fr 380px auto',
+                    gap: mobile ? 10 : 24,
                     padding: '16px 0',
                     alignItems: 'flex-start',
                   }}>
@@ -1331,7 +1421,7 @@ export default function SettingsView({
                     {showKeyInput ? (
                       <div style={{ display: 'grid', gap: 6 }}>
                         {ssoMindsHub ? (
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '5px 0' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: mobile ? 'flex-start' : 'flex-end', padding: '5px 0' }}>
                             {statusPill}
                           </div>
                         ) : (
@@ -1388,7 +1478,7 @@ export default function SettingsView({
                       </div>
                     ) : (
                       // Status pill replaces the key input after a test result
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '5px 0', gap: 10 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: mobile ? 'flex-start' : 'flex-end', padding: '5px 0', gap: 10 }}>
                         {status === 'fail' && friendlyError && (
                           <span style={{ fontSize: 11.5, color: '#E07060' }}>{friendlyError}</span>
                         )}
@@ -1396,23 +1486,26 @@ export default function SettingsView({
                       </div>
                     )}
 
-                    {/* Right: trash + edit buttons */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: 30 }}>
+                    {/* Right (desktop) / inline row (mobile): trash + edit */}
+                    <div style={{ display: 'flex', flexDirection: mobile ? 'row' : 'column', gap: 6, width: mobile ? 'auto' : 30 }}>
                       {!PROTECTED_PROVIDER_TYPES.has(p.type) && (
-                        <button
-                          type="button"
+                        <Button
+                          variant="danger"
+                          icon
+                          size="sm"
                           onClick={() => removeProvider(p.type)}
                           title="Remove this provider"
-                          style={{ ...iconBtnStyle, color: '#E07060' }}
-                        >{Ico.trash(13)}</button>
+                          aria-label="Remove this provider"
+                        >{Ico.trash(13)}</Button>
                       )}
                       {!showKeyInput && (
-                        <button
-                          type="button"
+                        <Button
+                          icon
+                          size="sm"
                           onClick={() => setEditingProviders((prev) => new Set([...prev, p.type]))}
                           title="Edit API key"
-                          style={{ ...iconBtnStyle, color: 'var(--ink-3)' }}
-                        >{Ico.edit(13)}</button>
+                          aria-label="Edit API key"
+                        >{Ico.edit(13)}</Button>
                       )}
                     </div>
                   </div>
@@ -1463,18 +1556,15 @@ export default function SettingsView({
                       style={{ fontSize: 12.5, padding: '4px 10px', fontWeight: 400 }}
                     >{typeLabels[t] || t}</Button>
                   ))}
-                  <button
-                    type="button"
+                  <Button
+                    variant="subtle"
+                    icon
+                    size="sm"
                     onClick={() => setAddPickerOpen(false)}
                     title="Hide the provider picker."
                     aria-label="Close provider picker"
-                    style={{
-                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                      width: 26, height: 26, marginLeft: 4, borderRadius: 6,
-                      background: 'transparent', border: 0,
-                      color: 'var(--text-muted)', cursor: 'pointer',
-                    }}
-                  >{Ico.close(13)}</button>
+                    style={{ marginLeft: 4 }}
+                  >{Ico.close(13)}</Button>
                 </div>
               </div>
             </CollapsibleGroup>
@@ -1508,8 +1598,12 @@ export default function SettingsView({
                     ? rawType
                     : defaultModeProviderType;
                   const providerWasRepointed = curType !== rawType;
-                  const fallbackPair = recommendedPair[curType] || ['', ''];
-                  const fallbackModel = fallbackPair[role === 'planning' ? 0 : 1] || '';
+                  // Role slot in the per-provider default tuple
+                  // [planning, coding, router]. Router falls back to the coding
+                  // default when the backend hasn't sent a 3rd slot yet.
+                  const roleIdx = role === 'planning' ? 0 : role === 'router' ? 2 : 1;
+                  const fallbackPair = recommendedPair[curType] || ['', '', ''];
+                  const fallbackModel = fallbackPair[roleIdx] || fallbackPair[1] || '';
                   const curModel = providerWasRepointed ? fallbackModel : roleModelValue(role, fallbackModel);
                   const provider = providers.find((p) => p.type === curType);
                   const modelList = recommendedModels[curType] || [];
@@ -1538,15 +1632,19 @@ export default function SettingsView({
                   // (settings.modelEfforts, sourced from MindsHub /v1/models + the
                   // static direct-provider catalog). Suppressed for the Hermes
                   // harness, which has no effort knob.
-                  const effortKey = role === 'planning' ? 'planningReasoningEffort' : 'codingReasoningEffort';
+                  // Router has no reasoning-effort knob — it's a single cheap
+                  // gating call, not a reasoning role.
+                  const effortKey = role === 'planning' ? 'planningReasoningEffort'
+                    : role === 'coding' ? 'codingReasoningEffort'
+                    : null;
                   const harnessSupportsEffort = (settings.harness || 'anton') !== 'hermes';
                   const effortEntry = (settings.modelEfforts || {})[curModel];
                   const effortOptions = effortEntry?.efforts || [];
-                  const savedEffort = settings[effortKey];
+                  const savedEffort = effortKey ? settings[effortKey] : '';
                   const effortValue = effortOptions.includes(savedEffort)
                     ? savedEffort
                     : (effortEntry?.default || effortOptions[0] || '');
-                  const showEffort = harnessSupportsEffort && effortOptions.length > 0;
+                  const showEffort = !!effortKey && harnessSupportsEffort && effortOptions.length > 0;
 
                   const writeOverride = (next) => {
                     const providerType = providerValueToType(next.providerType || curType) || 'minds-cloud';
@@ -1558,7 +1656,7 @@ export default function SettingsView({
                     setSetting('modelMode', 'custom');
                     // Effort is model-specific — drop any stale level so we never
                     // send an effort the newly-selected model doesn't accept.
-                    setSetting(effortKey, '');
+                    if (effortKey) setSetting(effortKey, '');
                   };
 
                   // Plain bold field label. Note: no dotted underline — that reads as
@@ -1583,7 +1681,11 @@ export default function SettingsView({
                   ) : null;
 
                   return (
-                    <Section title={label} subtitle={`Used for ${role === 'planning' ? 'reasoning, orchestration, and responses' : 'scratchpad code generation'}.`} notice={noCreditsNotice}>
+                    <Section title={label} subtitle={`Used for ${
+                      role === 'planning' ? 'reasoning, orchestration, and responses'
+                        : role === 'router' ? 'fast respond-or-delegate gating on each turn, and history summarization'
+                        : 'scratchpad code generation'
+                    }.`} notice={noCreditsNotice}>
                       <div style={{ display: 'grid', gap: 6 }}>
                         {multipleProviders && (
                           <label style={{ display: 'grid', gap: 4 }}>
@@ -1591,8 +1693,8 @@ export default function SettingsView({
                             <Select
                               value={curType}
                               onValueChange={(t) => {
-                                const pair = recommendedPair[t] || ['', ''];
-                                const newModel = pair[role === 'planning' ? 0 : 1] || (recommendedModels[t]?.[0] || '');
+                                const pair = recommendedPair[t] || ['', '', ''];
+                                const newModel = pair[roleIdx] || pair[1] || (recommendedModels[t]?.[0] || '');
                                 setModelInputMode((m) => ({ ...m, [role]: false }));
                                 writeOverride({ providerType: t, model: newModel });
                               }}
@@ -1679,6 +1781,7 @@ export default function SettingsView({
                 return (
                   <>
                     {RoleRow({ role: 'planning', label: 'Planning model' })}
+                    {RoleRow({ role: 'router', label: 'Routing and summarization model' })}
                     {RoleRow({ role: 'coding', label: 'Coding model' })}
                   </>
                 );
@@ -1851,7 +1954,9 @@ export default function SettingsView({
     // No Save footer here — every control on this page auto-saves itself
     // (see autoSaveSetting/AutoSaveTag below); a page-wide Save button would
     // be dead weight that always reads "Saved" and never does anything.
-    <SettingsSectionPanel>
+    // `autoSaved` surfaces a quiet "saves automatically" note on mobile so the
+    // page doesn't read as "no way to save" next to Save-button sections.
+    <SettingsSectionPanel autoSaved>
       <CollapsibleGroup title="Appearance">
         <Section title="Style" subtitle="Normal, 8-Bit, or design your own with Custom. Combines with light and dark.">
           <ToggleGroup
@@ -2038,13 +2143,13 @@ export default function SettingsView({
               {settings.navLogo ? 'Change logo' : 'Upload logo'}
             </Button>
             {settings.navLogo && (
-              <button
-                type="button"
+              <Button
+                variant="danger"
                 onClick={() => { autoSaveSetting('navLogo', ''); setLogoError(null); }}
-                style={{ background: 'none', border: 0, color: 'var(--ink-4)', cursor: 'pointer', fontSize: 12.5, fontFamily: 'var(--font-body)' }}
               >
+                {Ico.trash(13)}
                 Remove
-              </button>
+              </Button>
             )}
             <input
               ref={logoInputRef}
@@ -2189,17 +2294,16 @@ export default function SettingsView({
                         <span style={{ color: 'var(--text-muted)', marginRight: 6, display: 'inline-block', minWidth: 64 }}>{k}</span>{v}
                       </span>
                     ))}
-                    <button
-                      type="button"
+                    <Button
                       onClick={() => {
                         navigator.clipboard?.writeText(copyText);
                         setVersionCopied(true);
                         setTimeout(() => setVersionCopied(false), 1500);
                       }}
-                      style={{ alignSelf: 'flex-start', marginTop: 4, background: 'none', border: '1px solid var(--border-subtle)', borderRadius: 6, padding: '2px 8px', cursor: 'pointer', color: 'var(--text-strong)', fontSize: 11 }}
+                      style={{ alignSelf: 'flex-start', marginTop: 4 }}
                     >
                       {versionCopied ? 'Copied' : 'Copy'}
-                    </button>
+                    </Button>
                   </div>
                 )}
               </div>
@@ -2257,19 +2361,18 @@ export default function SettingsView({
 
     const backendFooter = (
       <>
-        <button type="button" onClick={refreshDiag} title="Refresh diagnostics"
-          style={{ cursor: 'pointer', background: 'transparent', border: '1px solid var(--line)', color: 'var(--ink-2)', padding: '7px 14px', borderRadius: 7, fontFamily: 'inherit', fontSize: 12.5, fontWeight: 500 }}
-        >Refresh</button>
+        <Button onClick={refreshDiag} title="Refresh diagnostics">
+          {Ico.refresh(14)}Refresh
+        </Button>
         {(onStartServer || onStopServer) && state !== 'offline' && (
-          <button type="button" onClick={handleBackendStop} disabled={diagBusy || serverBusy || !onStopServer}
-            style={{ cursor: (diagBusy || serverBusy) ? 'progress' : 'pointer', background: 'transparent', border: '1px solid var(--line)', color: 'var(--ink-2)', padding: '7px 14px', borderRadius: 7, fontFamily: 'inherit', fontSize: 12.5, fontWeight: 500, opacity: (diagBusy || serverBusy) ? 0.7 : 1 }}
-          >{(diagBusy && serverBusyKind === 'stopping') ? 'Stopping…' : 'Stop backend'}</button>
+          <Button onClick={handleBackendStop} disabled={diagBusy || serverBusy || !onStopServer}>
+            {(diagBusy && serverBusyKind === 'stopping') ? 'Stopping…' : 'Stop backend'}
+          </Button>
         )}
         {(onStartServer || onStopServer) && (
-          <button type="button" onClick={state === 'offline' ? handleBackendStart : handleBackendRestart}
+          <Button variant="primary" onClick={state === 'offline' ? handleBackendStart : handleBackendRestart}
             disabled={diagBusy || serverBusy || (state === 'offline' ? !onStartServer : !(onStartServer && onStopServer))}
-            style={{ cursor: (diagBusy || serverBusy) ? 'progress' : 'pointer', background: 'var(--accent)', border: '1px solid var(--accent)', color: '#fff', padding: '7px 14px', borderRadius: 7, fontFamily: 'inherit', fontSize: 12.5, fontWeight: 600, opacity: (diagBusy || serverBusy) ? 0.7 : 1 }}
-          >{diagBusy ? (state === 'offline' ? 'Starting…' : 'Restarting…') : (state === 'offline' ? 'Start backend' : 'Restart backend')}</button>
+          >{diagBusy ? (state === 'offline' ? 'Starting…' : 'Restarting…') : (state === 'offline' ? 'Start backend' : 'Restart backend')}</Button>
         )}
       </>
     );
@@ -2532,29 +2635,14 @@ export default function SettingsView({
         )}
 
         {/* CTA */}
-        <button
-          type="button"
-          onClick={onSsoSignIn}
-          style={{
-            display: 'inline-flex', alignItems: 'center', gap: 8,
-            padding: '10px 20px', borderRadius: 9, border: 'none',
-            background: 'var(--accent, #5d9287)',
-            color: '#fff',
-            fontSize: 14, fontWeight: 650, fontFamily: 'inherit',
-            cursor: 'pointer',
-            boxShadow: '0 2px 12px color-mix(in srgb, var(--accent, #5d9287) 40%, transparent)',
-            transition: 'opacity 120ms ease, box-shadow 120ms ease',
-          }}
-          onMouseOver={(e) => { e.currentTarget.style.opacity = '0.88'; }}
-          onMouseOut={(e) => { e.currentTarget.style.opacity = '1'; }}
-        >
+        <Button variant="primary" onClick={onSsoSignIn}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
             <polyline points="10 17 15 12 10 7" />
             <line x1="15" y1="12" x2="3" y2="12" />
           </svg>
           Sign in / Sign up to MindsHub
-        </button>
+        </Button>
       </div>
     );
 
@@ -2578,22 +2666,107 @@ export default function SettingsView({
         {accountUser && <div style={{ ...CARD, padding: '0 18px 8px' }}>
           <Section title="Sign out" subtitle="Disconnect from MindsHub and remove every stored credential on this device. Cowork will return to the onboarding flow on the next launch.">
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <button type="button" onClick={() => setLogoutConfirmOpen(true)} disabled={loggingOut} title="Sign out and clear stored credentials"
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '8px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600, color: '#E07060', background: 'rgba(224,112,96,0.08)', border: '1px solid rgba(224,112,96,0.35)', cursor: loggingOut ? 'progress' : 'pointer', fontFamily: 'inherit', opacity: loggingOut ? 0.7 : 1 }}
-              >
+              <Button variant="danger" onClick={() => setLogoutConfirmOpen(true)} disabled={loggingOut} title="Sign out and clear stored credentials">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
                   <polyline points="16 17 21 12 16 7" />
                   <line x1="21" y1="12" x2="9" y2="12" />
                 </svg>
                 {loggingOut ? 'Signing out…' : 'Sign out'}
-              </button>
+              </Button>
             </div>
           </Section>
         </div>}
       </SettingsSectionPanel>
     );
   };
+
+  const logoutConfirm = (
+    <ConfirmModal
+      open={logoutConfirmOpen}
+      title="Sign out of Cowork?"
+      message="This clears your stored API keys and disconnects from MindsHub. You'll need to sign in again to keep using Cowork."
+      confirmLabel="Sign out"
+      cancelLabel="Cancel"
+      destructive
+      busy={loggingOut}
+      busyLabel="Signing out…"
+      onConfirm={handleLogout}
+      onClose={() => setLogoutConfirmOpen(false)}
+    />
+  );
+
+  // Mobile (ENG-990): master-detail. The surface is a list of the six
+  // sections; tapping one drills into a focused full-screen page for just
+  // that section (sub-groups render flat — see CollapsibleGroup — so there's
+  // no nested collapsing). The top-bar back control returns to the list; from
+  // the list it closes Settings (onClose). Only the open section mounts, so
+  // its effects/dropdowns don't all run at once.
+  if (mobile) {
+    const renderers = {
+      agent: renderAgentSection,
+      appearance: renderAppearanceSection,
+      channels: renderChannelsSection,
+      updates: renderUpdatesSection,
+      backend: renderBackendSection,
+      account: renderAccountSection,
+    };
+    const activeItem = NAV_ITEMS.find((i) => i.id === section) || null;
+    const inDetail = Boolean(activeItem);
+    return (
+      <SettingsLayoutContext.Provider value={{ mobile: true }}>
+        <header className="settings-mobile__top">
+          <button
+            type="button"
+            className="settings-mobile__back"
+            aria-label={inDetail ? 'Back to settings' : 'Close settings'}
+            onClick={() => (inDetail ? onSectionChange?.(null) : onClose?.())}
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
+          </button>
+          <div className="settings-mobile__title" id="settings-mobile-title">
+            {activeItem ? activeItem.label : 'Settings'}
+          </div>
+          <span className="settings-mobile__spacer" aria-hidden="true" />
+        </header>
+        <div className="settings-mobile__body scroll-clean">
+          {inDetail ? (
+            <div className="settings-detail">
+              {renderers[section]?.()}
+            </div>
+          ) : (
+            <nav className="settings-list" role="navigation" aria-label="Settings sections">
+              {NAV_ITEMS.map((item) => {
+                const disabled = !serverOnline && item.id !== 'backend';
+                const icon = Ico[item.icon] ? Ico[item.icon](18) : null;
+                return (
+                  <div className="mshell-accordion" key={item.id}>
+                    <button
+                      type="button"
+                      className="mshell-accordion__head"
+                      aria-disabled={disabled || undefined}
+                      disabled={disabled}
+                      onClick={() => onSectionChange?.(item.id)}
+                      style={disabled ? { opacity: 0.4, cursor: 'default' } : undefined}
+                    >
+                      {icon && (
+                        <span aria-hidden="true" style={{ display: 'inline-flex', flexShrink: 0, color: 'var(--text-muted)' }}>
+                          {icon}
+                        </span>
+                      )}
+                      <span className="mshell-accordion__label">{item.label}</span>
+                      <span className="mshell-accordion__chev">{Ico.chevronRight(16)}</span>
+                    </button>
+                  </div>
+                );
+              })}
+            </nav>
+          )}
+        </div>
+        {logoutConfirm}
+      </SettingsLayoutContext.Provider>
+    );
+  }
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'row', minHeight: 0 }}>
@@ -2606,18 +2779,7 @@ export default function SettingsView({
       {section === 'backend' && renderBackendSection()}
       {section === 'account' && renderAccountSection()}
 
-      <ConfirmModal
-        open={logoutConfirmOpen}
-        title="Sign out of Cowork?"
-        message="This clears your stored API keys and disconnects from MindsHub. You'll need to sign in again to keep using Cowork."
-        confirmLabel="Sign out"
-        cancelLabel="Cancel"
-        destructive
-        busy={loggingOut}
-        busyLabel="Signing out…"
-        onConfirm={handleLogout}
-        onClose={() => setLogoutConfirmOpen(false)}
-      />
+      {logoutConfirm}
     </div>
   );
 }

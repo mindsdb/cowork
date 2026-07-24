@@ -420,6 +420,9 @@ function ConnectView({ data, setData, setStatus }) {
       const latest = await fetchDatasources();
       setData(latest);
       setStatus(`Removed ${conn.engine}/${conn.name}.`);
+      // Project files' Context card holds its own Google Drive file list —
+      // see the matching dispatch in CustomizeView.handleDelete.
+      window.dispatchEvent(new CustomEvent('anton:connections-changed'));
     } catch (err) {
       setStatus(err.message || 'Could not remove datasource connection.');
     }

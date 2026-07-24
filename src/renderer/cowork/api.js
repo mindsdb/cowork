@@ -20,14 +20,24 @@ const API_ORIGIN = host.getApiOrigin();
 export const BASE = `${API_ORIGIN}/api/v1`;
 const ROOT_BASE = `${API_ORIGIN}`;
 
-// Thin wrapper around fetch() for server calls. In the desktop app the Electron
-// main process injects the bearer token (when the server runs with
-// COWORK_REQUIRE_AUTH=true) into every request to the loopback API via a
-// session webRequest hook — see src/main/index.ts. The token never reaches the
-// renderer, and browser-initiated loads (images, iframes, downloads) are
-// covered too, so there's nothing to attach here. In web mode the SPA is
-// same-origin with the server and relies on the session cookie.
-async function authFetch(url, options = {}) {
+// Thin wrapper around fetch() for server calls.
+//
+// Web: attach the Keycloak access token as `Authorization: Bearer` so the
+// ingress auth subrequest (auth-service /v1/authenticate) can validate the
+// caller, mirroring the MindsHub console (mindshub_frontend). host.getAccessToken
+// refreshes the token as needed.
+//
+// Electron: the main process injects the loopback server's bearer token (when
+// COWORK_REQUIRE_AUTH=true) into every request via a session webRequest hook
+// (src/main/index.ts). That token never reaches the renderer and is NOT the
+// Keycloak token, so nothing is attached here.
+export async function authFetch(url, options = {}) {
+  if (host.isWeb) {
+    const token = await host.getAccessToken();
+    if (token) {
+      options = { ...options, headers: { ...(options.headers || {}), Authorization: `Bearer ${token}` } };
+    }
+  }
   return fetch(url, options);
 }
 
@@ -1166,7 +1176,7 @@ export async function saveSkill(payload, isEdit = false) {
 export async function uploadSkillFile(file) {
   const form = new FormData();
   form.append('file', file, file.name);
-  const res = await fetch(BASE + '/skills/upload', { method: 'POST', body: form });
+  const res = await authFetch(BASE + '/skills/upload', { method: 'POST', body: form });
   if (!res.ok) throw await responseError(res, `Upload failed (${res.status})`);
   return res.json();
 }

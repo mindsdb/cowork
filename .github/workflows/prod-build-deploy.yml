@@ -1,0 +1,103 @@
+# Builds and pushes the production-tagged cowork web SPA image on push to main.
+# The static-env deploy step is left commented (as in cowork-server): static
+# rollout is handled outside this workflow.
+#
+# NOTE: unlike cowork-server (whose prod build is currently commented out), this
+# activates build+scan so a production-<sha> image exists for the argocd-envs
+# parent chart's `tags.cowork: production` fallback and for static prod rollout.
+#
+# Unit tests run via cowork's own tests-unit.yml (on: push main). The SPA is
+# env-agnostic (URLs derived from page origin at runtime), so one image serves
+# every environment with no VITE build args.
+
+name: Prod - Build and Deploy on push to main
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+# Cancel any existing runs of this workflow on the same branch/pr
+# We always want to build/deploy/test a new commit over an older one
+concurrency:
+  group: ${{ github.workflow_ref }}
+  cancel-in-progress: true
+
+jobs:
+
+  build:
+    runs-on: mdb-dev
+    outputs:
+      image: ${{ steps.build.outputs.image }}
+    env:
+      AWS_REGION: us-east-1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mindsdb/github-actions/setup-env@main
+      - id: build
+        uses: mindsdb/github-actions/build-push-ecr@main
+        with:
+          module-name: ${{ env.CI_REPOSITORY_SLUG }}
+          extra-build-args: '-f Dockerfile.frontend'
+          build-for-environment: production
+
+  scan:
+    runs-on: mdb-dev
+    needs: [ build ]
+    name: Scan Minds Image
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mindsdb/github-actions/snyk-docker-scan@main
+        with:
+          image: ${{ needs.build.outputs.image }}
+          snyk-token: ${{ secrets.SNYK_TOKEN }}
+
+  # deploy:
+  #   runs-on: mdb-prod
+  #   needs: [build, scan]
+  #   environment:
+  #     name: prod
+  #     url: ${{ vars.MDB_ENV_URL }}
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: mindsdb/github-actions/setup-env@main
+  #     - name: Notify of deployment starting
+  #       id: slack
+  #       uses: mindsdb/github-actions/slack-deploy-msg@main
+  #       with:
+  #         channel-id: ${{ secrets.SLACK_DEPLOYMENTS_CHANNEL_ID }}
+  #         status: "started"
+  #         color: "#0099CC"
+  #         env-name: "prod"
+  #         env-url: ${{ vars.MDB_ENV_URL }}
+  #         slack-token: ${{ secrets.GH_ACTIONS_SLACK_BOT_TOKEN }}
+  #     - uses: DevOps-Nirvana/aws-helm-multi-deploy-nodocker@v6
+  #       with:
+  #         environment-slug: prod
+  #         k8s-namespace: prod
+  #         image-tag: production-${{ env.SLUG }}
+  #         timeout: 600s
+  #         wait: "true"  # Wait till the deployment is finished
+  #     - name: Wait for Deployment to be ready
+  #       run: |
+  #         export NAMESPACE=prod
+  #         kubectl -n $NAMESPACE wait --for=condition=ready --timeout=10m pod -l app=cowork-frontend
+  #     - name: Notify of deployment finish
+  #       uses: mindsdb/github-actions/slack-deploy-msg@main
+  #       if: always()
+  #       with:
+  #         channel-id: ${{ secrets.SLACK_DEPLOYMENTS_CHANNEL_ID }}
+  #         status: "${{ job.status == 'success' && 'finished' || 'failed' }}"
+  #         color: "${{ job.status == 'success' && '#00C851' || '#FF4444' }}"
+  #         env-name: "prod"
+  #         env-url: ${{ vars.MDB_ENV_URL }}
+  #         slack-token: ${{ secrets.GH_ACTIONS_SLACK_BOT_TOKEN }}
+  #         update-message-id: ${{ steps.slack.outputs.ts }}

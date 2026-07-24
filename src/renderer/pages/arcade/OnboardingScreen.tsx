@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { host } from '../../platform/host';
-import { BASE, fetchRecommendedModels } from '../../cowork/api';
+import { BASE, authFetch, fetchRecommendedModels } from '../../cowork/api';
 import { recommendedModelOptions, type ProviderModel } from '../../cowork/lib/settingsTransform';
 import { MINDS_API_BASE, MINDS_REGISTER_URL } from '../../lib/mindsUrls';
 import { syncSettingsToDb, syncModelsToDb, modelLinesFrom } from '../../lib/syncSettings';
@@ -51,7 +51,7 @@ async function mindsProbeModel(): Promise<string> {
 /** Persist the cartridge choice as the `harness` setting (best-effort). */
 async function syncHarness(harnessId: string): Promise<void> {
   try {
-    await fetch(`${BASE}/settings/harness`, {
+    await authFetch(`${BASE}/settings/harness`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ value: harnessId }),
@@ -103,9 +103,23 @@ export async function persistOnboarding(
       };
     }
     // syncModels writes the model keys the bulk DB sync intentionally skips
-    // (ENG-739); harness records the chosen cartridge. Both best-effort.
-    await deps.syncModels(lines);
-    await deps.syncHarness();
+    // (ENG-739); harness records the chosen cartridge. Both are best-effort:
+    // the config has ALREADY persisted authoritatively (dbOk), so a flaky
+    // model/harness sync must NOT bounce the user to the error screen over a
+    // saved config (ENG-848). Each gets its own catch so one failing can't
+    // skip the other (#435 review). Logged because a dropped model write does
+    // NOT self-heal (model keys ride neither the bulk re-sync nor the startup
+    // migration — ENG-739/922).
+    try {
+      await deps.syncModels(lines);
+    } catch (e) {
+      console.error('[onboarding] best-effort model sync failed', e);
+    }
+    try {
+      await deps.syncHarness();
+    } catch (e) {
+      console.error('[onboarding] best-effort harness sync failed', e);
+    }
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error && e.message ? e.message : GENERIC };

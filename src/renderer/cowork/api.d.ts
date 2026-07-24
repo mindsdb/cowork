@@ -4,6 +4,12 @@
 
 export const BASE: string;
 
+/**
+ * fetch() wrapper that attaches the Keycloak Bearer token in web mode (Electron
+ * injects the loopback token in main). Use for any direct call to the server.
+ */
+export function authFetch(url: string, options?: RequestInit): Promise<Response>;
+
 /** Per-provider recommended (planning, coding) model id pair. */
 export interface RecommendedModels {
   /** Per-provider model-id lists for the picker (server-owned). */

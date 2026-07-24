@@ -219,19 +219,7 @@ function RunRow({ run, onOpen }) {
         whiteSpace: 'nowrap',
       }}>{formatDuration(run.durationMs)}</span>
       {run.conversationId ? (
-        <button
-          type="button"
-          onClick={() => onOpen?.(run)}
-          style={{
-            background: 'transparent', border: '1px solid var(--line)',
-            color: 'var(--ink-2)',
-            padding: '4px 9px', borderRadius: 6,
-            fontFamily: FONT_BODY, fontSize: 11.5, fontWeight: 500,
-            cursor: 'pointer',
-          }}
-          onMouseOver={(e) => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--ink)'; }}
-          onMouseOut={(e)  => { e.currentTarget.style.borderColor = 'var(--line)'; e.currentTarget.style.color = 'var(--ink-2)'; }}
-        >Open task</button>
+        <Button onClick={() => onOpen?.(run)}>Open task</Button>
       ) : <span />}
     </div>
   );
@@ -368,22 +356,12 @@ export default function ScheduleDetailView({
                   else      await onPause?.(task.id);
                 })}
               />
-              <button
-                type="button"
+              <Button
                 onClick={() => setEditOpen(true)}
                 disabled={busy}
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 6,
-                  padding: '7px 12px', borderRadius: 7,
-                  background: 'transparent',
-                  border: '1px solid var(--line)',
-                  color: 'var(--ink-2)',
-                  fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 500,
-                  cursor: busy ? 'not-allowed' : 'pointer',
-                }}
               >
                 {Ico.edit ? Ico.edit(13) : null} Edit
-              </button>
+              </Button>
               <Button
                 variant="primary"
                 onClick={() => withBusy(() => onRunNow?.(task.id))}

@@ -246,9 +246,17 @@ export async function getVersionInfo(): Promise<VersionInfo> {
 // React pages are shell-agnostic once they go through `host.*`.
 
 async function fetchJson(path: string, init?: RequestInit): Promise<any> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(init?.headers as Record<string, string> || {}) };
+  // Web: attach the Keycloak token as a Bearer header so the ingress auth
+  // subrequest validates the caller (mirrors cowork/api.js authFetch). Electron
+  // injects the loopback token in main, so nothing is added there.
+  if (isWeb) {
+    const token = await getAccessToken();
+    if (token) headers.Authorization = `Bearer ${token}`;
+  }
   const res = await fetch(`${getApiOrigin()}${path}`, {
     ...init,
-    headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
+    headers,
   });
   if (!res.ok) {
     let detail = `HTTP ${res.status}`;

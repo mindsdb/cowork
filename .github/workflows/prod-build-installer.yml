@@ -23,6 +23,10 @@ jobs:
       build_kind: prod
       minds_api_url: https://api.mindshub.ai
       app_version: ${{ inputs.tag }}
+      # Prod installs cowork-server from PyPI (immutable, versioned,
+      # yankable) instead of floating on git main HEAD; also removes the
+      # git/Xcode CLT requirement from first-run on a stock Mac.
+      server_channel: pypi
     secrets: inherit
 
   upload-macos:
@@ -39,6 +43,8 @@ jobs:
       build_kind: prod
       minds_api_url: https://api.mindshub.ai
       app_version: ${{ inputs.tag }}
+      # Same channel decision as build-macos above.
+      server_channel: pypi
     secrets: inherit
 
   upload-windows:

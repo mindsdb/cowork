@@ -1,0 +1,63 @@
+# Shared .dockerignore for the cowork repo. Build context is the cowork repo
+# root, so both images (Dockerfile = all-in-one SPA+server; Dockerfile.frontend
+# = static SPA on nginx) use this single file. **/ globs also cover nested
+# subdirectories.
+
+# Build artifacts: produced inside the image.
+**/node_modules/
+**/dist/
+**/out/
+**/release/
+**/build/
+
+# Editor / OS / agent junk.
+**/.DS_Store
+**/Thumbs.db
+**/.vscode/
+**/.idea/
+**/.cursor/
+**/.claude/
+**/*.swp
+
+# Source-control internals: not needed for builds, and shipping .git leaks
+# commit history.
+**/.git/
+**/.gitignore
+**/.gitattributes
+**/.github/
+
+# Environment / secrets: never bake into images. The negation keeps the
+# .env.example template available for docs/setup scripts.
+**/.env
+**/.env.*
+!**/.env.example
+**/*.pem
+**/*.key
+**/*.p12
+**/*.pfx
+
+# Python caches and local virtualenvs (relevant to the all-in-one build).
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/.pytest_cache/
+**/.pytest-workspace/
+**/.mypy_cache/
+**/.ruff_cache/
+**/.venv/
+**/venv/
+**/scratchpad-venvs/
+**/htmlcov/
+**/.coverage
+**/.coverage.*
+
+# Runtime state directories: host data that must not be baked in.
+**/.anton/
+**/.cowork/
+
+# Logs.
+**/*.log
+**/logs/
+
+# Documentation drafts and the throwaway port-audit.
+**/docs/web-port-audit.md

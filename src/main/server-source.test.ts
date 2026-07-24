@@ -5,6 +5,7 @@ import {
   getAntonRef,
   getInstallSpec,
   getAppDisplayVersion,
+  getMinServerVersion,
   COWORK_SERVER_MIN_VERSION,
 } from './server-source';
 import { withEnv } from '../../tests/helpers/env';
@@ -55,6 +56,59 @@ describe('getChannel', () => {
   it('falls back to git on a garbage value', () => {
     withEnv({ COWORK_SERVER_CHANNEL: 'not-a-channel' }, () => {
       expect(getChannel()).toBe('git');
+    });
+  });
+
+  describe('build-kind fallback (no env, no baked channel)', () => {
+    afterEach(() => {
+      vi.mocked(buildKind).mockReset();
+      vi.mocked(buildKind).mockReturnValue('dev');
+    });
+
+    it('prod builds default to pypi so first-run never needs git/Xcode CLT', () => {
+      vi.mocked(buildKind).mockReturnValue('prod');
+      expect(getChannel()).toBe('pypi');
+    });
+
+    it('preview/stable stay on git (they float on the staging branch)', () => {
+      vi.mocked(buildKind).mockReturnValue('preview');
+      expect(getChannel()).toBe('git');
+      vi.mocked(buildKind).mockReturnValue('stable');
+      expect(getChannel()).toBe('git');
+    });
+
+    it('an explicit env channel beats the prod fallback', () => {
+      vi.mocked(buildKind).mockReturnValue('prod');
+      withEnv({ COWORK_SERVER_CHANNEL: 'git' }, () => {
+        expect(getChannel()).toBe('git');
+      });
+    });
+
+    it('a buildKind failure resolves to the git default', () => {
+      vi.mocked(buildKind).mockImplementation(() => {
+        throw new Error('no electron app');
+      });
+      expect(getChannel()).toBe('git');
+    });
+  });
+});
+
+describe('getMinServerVersion', () => {
+  // build-channel.gen doesn't exist in the test env, so the baked-floor
+  // branch resolves to '' and the static fallback is the true default.
+  it('falls back to the static floor when nothing is baked or set', () => {
+    expect(getMinServerVersion()).toBe(COWORK_SERVER_MIN_VERSION);
+  });
+
+  it('honors the COWORK_SERVER_MIN_VERSION env override', () => {
+    withEnv({ COWORK_SERVER_MIN_VERSION: '0.26.7.20.1' }, () => {
+      expect(getMinServerVersion()).toBe('0.26.7.20.1');
+    });
+  });
+
+  it('treats a whitespace-only value as unset', () => {
+    withEnv({ COWORK_SERVER_MIN_VERSION: '   ' }, () => {
+      expect(getMinServerVersion()).toBe(COWORK_SERVER_MIN_VERSION);
     });
   });
 });
@@ -195,6 +249,33 @@ describe('getInstallSpec', () => {
       const spec = getInstallSpec();
       expect(spec.channel).toBe('pypi');
       expect(spec.overrides).toEqual([]);
+    });
+  });
+
+  it('pypi channel floors at the resolved min version (release-baked floor)', () => {
+    withEnv({ COWORK_SERVER_CHANNEL: 'pypi', COWORK_SERVER_MIN_VERSION: '0.26.7.20.1' }, () => {
+      const spec = getInstallSpec();
+      expect(spec.package).toBe('cowork-server>=0.26.7.20.1');
+    });
+  });
+
+  it('explicit refs yield a git spec even on the pypi channel (source-aware updater)', () => {
+    // The updater passes explicit refs only when the INSTALLED tool venv is
+    // a git install (update, rollback, repair). On a pypi-channel build
+    // those must still produce a git spec — a pypi short-circuit here would
+    // migrate git installs to the wheel and break rollback pinning.
+    withEnv({ COWORK_SERVER_CHANNEL: 'pypi' }, () => {
+      const spec = getInstallSpec({ coworkRef: 'abc1234' });
+      expect(spec.channel).toBe('git');
+      expect(spec.package).toBe('git+https://github.com/mindsdb/cowork-server.git@abc1234');
+    });
+  });
+
+  it('explicit anton ref alone also forces the git path with an override', () => {
+    withEnv({ COWORK_SERVER_CHANNEL: 'pypi' }, () => {
+      const spec = getInstallSpec({ antonRef: 'def5678' });
+      expect(spec.channel).toBe('git');
+      expect(spec.overrides).toEqual(['anton-agent @ git+https://github.com/mindsdb/anton.git@def5678']);
     });
   });
 

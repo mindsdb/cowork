@@ -450,6 +450,18 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
     reloadDriveFiles();
   }, [reloadDriveFiles, refreshKey]);
 
+  // Disconnecting a Google Drive connection elsewhere (Connected Apps and
+  // Data, or the in-chat "Modify connection" bubble) removes its
+  // _picked_files grant along with the whole vault record, but nothing here
+  // was listening for that — the card only refetches on mount/project-switch/
+  // refreshKey, none of which disconnect touches. Mirrors the existing
+  // `anton:projects-changed` event idiom (see App.jsx) rather than prop-
+  // drilling connection state down through ChatView/ProjectsView.
+  useEffect(() => {
+    window.addEventListener('anton:connections-changed', reloadDriveFiles);
+    return () => window.removeEventListener('anton:connections-changed', reloadDriveFiles);
+  }, [reloadDriveFiles]);
+
   const sessionRelevant = conversationId
     && !String(conversationId).startsWith('tmp-')
     && !!project?.name;
