@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { host } from '../../platform/host';
-import { BASE, fetchRecommendedModels } from '../../cowork/api';
+import { BASE, authFetch, fetchRecommendedModels } from '../../cowork/api';
 import { recommendedModelOptions, type ProviderModel } from '../../cowork/lib/settingsTransform';
 import { MINDS_API_BASE, MINDS_REGISTER_URL } from '../../lib/mindsUrls';
 import { syncSettingsToDb, syncModelsToDb, modelLinesFrom } from '../../lib/syncSettings';
@@ -51,7 +51,7 @@ async function mindsProbeModel(): Promise<string> {
 /** Persist the cartridge choice as the `harness` setting (best-effort). */
 async function syncHarness(harnessId: string): Promise<void> {
   try {
-    await fetch(`${BASE}/settings/harness`, {
+    await authFetch(`${BASE}/settings/harness`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ value: harnessId }),

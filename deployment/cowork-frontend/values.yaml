@@ -1,0 +1,61 @@
+# Default values for deployment, this is necessary because we're using a unified helm subchart
+deployment:
+  # This is the name of the deployment, this is used in a _lot_ of places in the helm charts so lets just specify it
+  name: cowork-frontend
+
+  replicaCount: 2
+
+  image:
+    # ECR repo name is the GitHub repo slug (mindsdb-cowork), matching the
+    # build-push-ecr default. The cowork repo builds only the web SPA image to
+    # ECR (the all-in-one ./Dockerfile is never pushed), so no -frontend suffix
+    # is needed and this stays consistent with the tags.cowork deploy key.
+    repository: 168681354662.dkr.ecr.us-east-1.amazonaws.com/mindsdb-cowork
+    # No command/args: the image runs nginx via its own entrypoint. The SPA is
+    # fully static; VITE_ vars are baked at build time (or derived same-origin at
+    # runtime), so there is nothing to configure per environment here.
+
+  # Static SPA served by nginx-unprivileged, which listens on 8080. The Service
+  # exposes port 80 (per-env ingress paths target servicePort 80) and forwards
+  # to this container port.
+  service:
+    targetPort: 8080
+
+  # /healthz is a cheap nginx location (no filesystem hit) defined in
+  # scripts/nginx-frontend.conf; both probes point at it.
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 6
+    path: /healthz
+
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 4
+    failureThreshold: 3
+    path: /healthz
+
+  # Static file serving by nginx is very light; sized low. Limits are HARD
+  # limits; Requests are "soft" and drive HPA aggressiveness when enabled.
+  resources:
+    limits:
+      cpu: 200m
+      memory: 128Mi
+    requests:
+      cpu: 50m
+      memory: 128Mi
+
+  autoscaling:
+    enabled: false
+
+  # Public static assets: no CORS or ingress auth subrequest. The SPA
+  # authenticates client-side (Keycloak) or behind the cloud auth gate; API
+  # calls go same-origin to /api/v1, owned by the cowork-server ingress.
+  # Per-env values files set the host.
+  ingress:
+    enabled: true
+    name: cowork-frontend

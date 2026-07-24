@@ -1,12 +1,12 @@
 # Cowork web image — cowork-server backend + cowork SPA on the same port.
 #
 # Build:
-#     docker build -f cowork/Dockerfile -t cowork:dev .
+#     docker build -f Dockerfile -t cowork:dev .
 #     # Pin a specific version:
-#     docker build -f cowork/Dockerfile -t cowork:dev \
+#     docker build -f Dockerfile -t cowork:dev \
 #       --build-arg COWORK_SERVER_VERSION=0.2.25.6.20.1 .
 #     # Install cowork-server from a git ref instead of PyPI (staging builds):
-#     docker build -f cowork/Dockerfile -t cowork:dev \
+#     docker build -f Dockerfile -t cowork:dev \
 #       --build-arg COWORK_SERVER_REF=staging .
 #
 # Run:
@@ -32,11 +32,11 @@ ARG COWORK_SERVER_VERSION=
 FROM node:22-slim AS spa-builder
 WORKDIR /build
 # Lockfile-only install first → cached layer when only source changes.
-COPY cowork/package.json cowork/package-lock.json ./
+COPY package.json package-lock.json ./
 # --ignore-scripts skips postinstall hooks (e.g. node-gyp rebuilds for
 # native modules) — the web SPA has no native dependencies.
 RUN npm ci --ignore-scripts
-COPY cowork/ ./
+COPY . ./
 RUN npm run build:web
 # Output lives at /build/dist/renderer-web/
 
@@ -59,7 +59,7 @@ COPY --from=ghcr.io/astral-sh/uv:0.7 /uv /usr/local/bin/uv
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy
 
-COPY cowork/scripts/install-cowork-server.sh /tmp/install-cowork-server.sh
+COPY scripts/install-cowork-server.sh /tmp/install-cowork-server.sh
 ARG COWORK_SERVER_VERSION
 ARG COWORK_SERVER_REF=
 ENV COWORK_SERVER_VERSION=${COWORK_SERVER_VERSION} \
@@ -101,7 +101,7 @@ WORKDIR /app
 
 # App payload — SPA bundle from the builder + the SPA wrapper entrypoint.
 COPY --chown=anton:anton --from=spa-builder /build/dist/renderer-web/ /app/dist/renderer-web/
-COPY --chown=anton:anton cowork/scripts/spa_wrapper.py /app/spa_wrapper.py
+COPY --chown=anton:anton scripts/spa_wrapper.py /app/spa_wrapper.py
 
 # Persistent state lives under /home/anton/.cowork — operators bind-mount
 # this to keep database/vault/settings across container restarts.
