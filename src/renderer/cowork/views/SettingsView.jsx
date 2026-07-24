@@ -745,12 +745,12 @@ export default function SettingsView({
   // Per-role "refetching model list on dropdown open" flag — drives the
   // trigger's spinner so a still-open dropdown showing possibly-stale
   // locked/unlocked state doesn't read as done loading.
-  const [modelRefreshing, setModelRefreshing] = useState({ planning: false, coding: false });
+  const [modelRefreshing, setModelRefreshing] = useState({ planning: false, coding: false, router: false });
   // Per-role controlled open state for the model Select. The popup only
   // opens once the refresh below resolves, so it never shows a stale
   // locked/unlocked list even for a moment (stale-while-revalidate was
   // rejected in favor of hide-until-fetched for this control).
-  const [modelDropdownOpen, setModelDropdownOpen] = useState({ planning: false, coding: false });
+  const [modelDropdownOpen, setModelDropdownOpen] = useState({ planning: false, coding: false, router: false });
   const [versionInfo, setVersionInfo] = useState({ app: '', ui: null, source: 'web' });
   const [serverVersion, setServerVersion] = useState('');
   const [antonVersion, setAntonVersion] = useState('');
