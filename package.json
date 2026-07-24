@@ -26,6 +26,7 @@
     "typecheck:renderer": "tsc --noEmit",
     "typecheck:test": "tsc -p tsconfig.test.json",
     "check:cowork-purity": "node scripts/check-cowork-purity.mjs",
+    "check:design-system": "node scripts/check-design-system.mjs",
     "test:e2e": "playwright test",
     "build:web": "BUILD_TARGET=web vite build src/renderer",
     "dev:web": "node scripts/dev-web.mjs",

@@ -35,6 +35,8 @@ jobs:
         run: npm run typecheck
       - name: Cowork purity guard (no direct bridge access)
         run: npm run check:cowork-purity
+      - name: Design-system guardrail (ratchet — no new raw elements/colors)
+        run: npm run check:design-system
       - name: Unit + component tests + coverage
         run: npm run test:coverage
       - name: Coverage summary
