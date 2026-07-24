@@ -4,8 +4,8 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { IPC } from '../shared/ipc-channels';
 import { sendEvent } from './analytics';
-import { getInstallSpec, COWORK_SERVER_MIN_VERSION } from './server-source';
-import { meetsMinVersion } from './update-logic';
+import { getChannel, getInstallSpec, getMinServerVersion } from './server-source';
+import { installerStepPlan, meetsMinVersion } from './update-logic';
 import { withServerMaintenance } from './server-process';
 import {
   PYTHON_RANGE,
@@ -29,7 +29,7 @@ interface InstallerOptions {
 
 function getSteps(): InstallStep[] {
   const steps: InstallStep[] = [];
-  if (process.platform === 'darwin') {
+  if (installerStepPlan(process.platform, getChannel()).needsXcodeStep) {
     steps.push({ id: 'xcode', label: 'Xcode Command Line Tools', status: 'pending' });
   }
   steps.push(
@@ -235,9 +235,10 @@ export async function checkCoworkServerInstalled(): Promise<boolean> {
     console.log('[installer] cowork-server version could not be determined, reinstall needed');
     return false;
   }
-  if (!meetsMinVersion(installedVersion, COWORK_SERVER_MIN_VERSION)) {
+  const minVersion = getMinServerVersion();
+  if (!meetsMinVersion(installedVersion, minVersion)) {
     console.log(
-      `[installer] cowork-server ${installedVersion} is below minimum ${COWORK_SERVER_MIN_VERSION}, needs upgrade`,
+      `[installer] cowork-server ${installedVersion} is below minimum ${minVersion}, needs upgrade`,
     );
     return false;
   }
@@ -287,8 +288,12 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
   try {
     if (abortIfRequested()) return false;
 
-    // Step 0 (macOS only): Xcode Command Line Tools
-    if (process.platform === 'darwin') {
+    const plan = installerStepPlan(process.platform, getChannel());
+
+    // Step 0 (macOS, git channel only): Xcode Command Line Tools. PyPI
+    // installs are wheel-only and never invoke git, so a stock Mac skips
+    // this entirely.
+    if (plan.needsXcodeStep) {
       setStep('xcode', 'running');
       sendLog(win, '--- Checking for Xcode Command Line Tools ---\n');
       const hasXcode = await xcodeCliInstalled();
@@ -321,15 +326,31 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
 
     if (abortIfRequested()) return false;
 
-    // Step 1: Check git
+    // Step 1: Check git. Required for git-channel installs (uv shells out
+    // to it); on the pypi channel it is only a runtime nice-to-have for
+    // agent tasks, so a missing git degrades to a warning.
     setStep('git', 'running');
     sendLog(win, '--- Checking for git ---\n');
+    let gitStatus: InstallStep['status'] = 'done';
     const hasGit = await commandExists('git');
     if (!hasGit) {
-      if (process.platform === 'darwin') {
+      if (!plan.gitRequired) {
+        sendLog(win, 'git not found. Not required for this install; agent features that use git will be limited until it is installed.\n');
+        gitStatus = 'warning';
+      } else if (process.platform === 'darwin') {
         setStep('git', 'error');
         sendLog(win, '\nERROR: git is not installed.\n');
         sendLog(win, 'Install it with: xcode-select --install\n');
+        sendInstallError(win, 'git is required but not found.');
+        return false;
+      } else if (process.platform !== 'win32') {
+        // Linux/other: no winget here, and auto-installing via the right
+        // package manager is guesswork — tell the user what to run.
+        setStep('git', 'error');
+        sendLog(win, '\nERROR: git is not installed.\n');
+        sendLog(win, 'Install it with your package manager, e.g.:\n');
+        sendLog(win, '  Debian/Ubuntu: sudo apt install git\n');
+        sendLog(win, '  Fedora:        sudo dnf install git\n');
         sendInstallError(win, 'git is required but not found.');
         return false;
       } else {
@@ -377,7 +398,7 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
     } else {
       sendLog(win, 'git found.\n');
     }
-    setStep('git', 'done');
+    setStep('git', gitStatus);
 
     // Step 2: Check/install uv
     if (abortIfRequested()) return false;
@@ -431,14 +452,36 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
     // Step 3: Install cowork-server
     if (abortIfRequested()) return false;
     setStep('cowork-server', 'running');
-    sendLog(win, `\n--- Installing cowork-server v${COWORK_SERVER_MIN_VERSION}+ ---\n`);
+    sendLog(win, `\n--- Installing cowork-server v${getMinServerVersion()}+ ---\n`);
 
     const uvBin = findUv() || 'uv';
     const spec = getInstallSpec();
     sendLog(win, `Source: ${spec.channel} — ${spec.package}${spec.overrides.length ? ` (override: ${spec.overrides.join(', ')})` : ''}\n`);
+
+    // PyPI installs resolve the exact target version up front (stream-aware:
+    // prod = latest stable, staging = latest rc) plus the direct anton pin
+    // its wheel requires — an rc wheel's transitive `anton-agent==<rc>` pin
+    // is unresolvable unless restated as a direct requirement. Falls back to
+    // the floor spec when PyPI is unreachable (prod-equivalent behavior; a
+    // staging machine then converges onto the rc stream at the next update
+    // poll).
+    let packageSpec = spec.package;
+    let withArgs: string[] = [];
+    if (spec.channel === 'pypi') {
+      const { resolvePypiInstallTarget } = await import('./server-updater');
+      const target = await resolvePypiInstallTarget();
+      if (target) {
+        packageSpec = `cowork-server==${target.version}`;
+        withArgs = target.withArgs;
+        sendLog(win, `Resolved cowork-server ${target.version}${withArgs.length ? ` (+ ${withArgs[1]})` : ''} from PyPI\n`);
+      } else {
+        sendLog(win, 'Could not reach PyPI to resolve the latest version; installing by version floor.\n');
+      }
+    }
     const installArgs = [
       'tool', 'install',
-      spec.package,
+      packageSpec,
+      ...withArgs,
       '--force', '--reinstall',
       '--python', PYTHON_RANGE,
     ];
@@ -453,6 +496,11 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
      */
     const uvEnv: NodeJS.ProcessEnv = {
       UV_PYTHON_PREFERENCE: 'only-managed',
+      // No prerelease flag anywhere: rc reachability comes only from exact
+      // specifiers (`cowork-server==<rc>` and the restated
+      // `--with anton-agent==<rc>` above). A resolution-wide
+      // UV_PRERELEASE=allow would let TRANSITIVE deps (fastapi, pydantic…)
+      // resolve to alphas/betas prod never sees.
       ...writeUvOverrides(spec.overrides),
     };
     sendLog(win, 'Python: uv-managed (UV_PYTHON_PREFERENCE=only-managed)\n');

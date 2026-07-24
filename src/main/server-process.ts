@@ -526,6 +526,9 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       ...loadBundledServerCredentials(),
       PATH: getEnvPath(),
       PYTHONUNBUFFERED: '1',
+      // Both port names: COWORK_SERVER_PORT for every shipped server and
+      // COWORK_LISTEN_PORT (the server's newer primary alias) so a future
+      // alias cleanup server-side can never strand this app again.
       // Force Python UTF-8 mode so cowork-server (and the anton scratchpad it
       // spawns) never fall back to the host code page — e.g. GBK/cp936 on
       // Chinese Windows, which crashes on non-ASCII file reads / output
@@ -535,6 +538,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       // explicit operator override if one is already set.
       PYTHONUTF8: process.env.PYTHONUTF8 || '1',
       COWORK_SERVER_PORT: String(serverPort),
+      COWORK_LISTEN_PORT: String(serverPort),
       COWORK_SERVER_HOST: SERVER_HOST,
       // The server builds OAuth redirect URIs from server_origin, which
       // otherwise defaults to the fixed :26866. Since ENG-439 the packaged

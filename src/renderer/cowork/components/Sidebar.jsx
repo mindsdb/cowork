@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import Ico from './Icons';
-import { Spinner, Kbd, Badge } from './ui';
+import { Spinner, Kbd, Badge, Input, Button } from './ui';
 import { TaskMenu } from './TaskMenu';
 import RecentsModal from './RecentsModal';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
@@ -37,8 +37,27 @@ function NavItem({ icon, label, active, onClick, badge, comingSoon }) {
 function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelete, onMoveToProject, showTimestamp = true, isActive = false, selected = false, agentLabel }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [anchorRect, setAnchorRect] = useState(null);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
   const triggerRef = useRef(null);
+  // One-shot latch: Enter commits once (the trailing unmount-blur is a
+  // no-op), and Escape arms it so the same blur can't commit the cancel.
+  const renameDone = useRef(false);
   const { revealed: showKebab, hoverProps } = useRevealOnHover(menuOpen);
+
+  const startRename = () => {
+    setDraft(task.title || '');
+    renameDone.current = false;
+    setEditing(true);
+  };
+  const submitRename = () => {
+    if (renameDone.current) return;
+    renameDone.current = true;
+    setEditing(false);
+    const next = draft.trim();
+    if (!next || next === (task.title || '').trim()) return;
+    onRename?.(task.id, next);
+  };
 
   const openMenu = (e) => {
     e.stopPropagation();
@@ -61,6 +80,31 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
       style={{ position: 'relative', display: 'flex' }}
       {...hoverProps}
     >
+      {editing ? (
+        <Input
+          size="sm"
+          value={draft}
+          onChange={setDraft}
+          aria-label="Rename task"
+          autoFocus
+          onFocus={(e) => { try { e.target.select(); } catch {} }}
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => {
+            e.stopPropagation();
+            if (e.key === 'Enter') { e.preventDefault(); submitRename(); }
+            else if (e.key === 'Escape') {
+              e.preventDefault();
+              renameDone.current = true;
+              setEditing(false);
+            }
+          }}
+          onBlur={submitRename}
+          spellCheck={false}
+          autoCapitalize="none"
+          autoCorrect="off"
+          style={{ flex: 1, minWidth: 0 }}
+        />
+      ) : (
       <button className={`recent-item${selected ? ' is-selected' : ''}`} onClick={onClick} aria-label={task.title} style={{ flex: 1, minWidth: 0 }}>
         <span className="recent-row__title" style={{
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
@@ -145,6 +189,7 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
           </span>
         </span>
       </button>
+      )}
 
       <TaskMenu
         task={task}
@@ -155,10 +200,8 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
         onClose={() => setMenuOpen(false)}
         onPin={() => onPin?.(task)}
         onUnpin={() => onUnpin?.(task.id)}
-        onRename={() => {
-          const next = window.prompt('Rename task', task.title || '');
-          if (next != null) onRename?.(task.id, next);
-        }}
+        hideRename={!onRename}
+        onRename={startRename}
         onDelete={() => onDelete?.(task.id)}
         hideMoveToProject={!onMoveToProject}
         onMoveToProject={() => onMoveToProject?.(task)}
@@ -518,17 +561,20 @@ export default function Sidebar({
               `${collapsed ? '0ms' : '80ms'}`,
         }}
       >
-        {/* New task CTA — outlined neon button */}
+        {/* New task CTA — the tinted (accent-wash) variant, full width. */}
         <div className="anton-sidebar__cta-wrap">
-          <button
-            className="btn-new-task"
+          <Button
+            variant="tinted"
+            block
+            size="lg"
             onClick={onNewTask}
             title={`New task  (${shortcut('N')})`}
+            style={{ gap: 10 }}
           >
-            <span style={{ display: 'inline-flex' }}>{Ico.plus(14)}</span>
-            <span className="btn-new-task__label">New task</span>
+            {Ico.plus(14)}
+            <span style={{ flex: 1, textAlign: 'left', fontWeight: 600 }}>New task</span>
             <Kbd>{shortcut('N')}</Kbd>
-          </button>
+          </Button>
         </div>
 
         {/* Primary nav */}

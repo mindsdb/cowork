@@ -491,11 +491,10 @@ body[data-theme="dark"] .legal-viewer-overlay {
 }
 
 /* ─── Buttons ──────────────────────────────────────────────────────────
-   .btn-primary, .btn-secondary, .btn-ghost are now defined in
-   cowork/styles/globals.css as token-driven aliases of the canonical
-   .btn / .btn.primary / .btn.subtle classes. The legacy hex-based
-   versions that used to live here have been removed so the guideline
-   look applies uniformly across onboarding + cowork. */
+   The token-driven `.btn` system lives in cowork/styles/globals.css and
+   is shared across onboarding + cowork; the legacy hex-based button
+   styles that used to live here were removed so the brandbook look
+   applies uniformly. */
 /* (button styling intentionally moved to globals.css) */
 
 /* ═══════════════════════════════════════════

@@ -150,7 +150,7 @@ export default function ScheduledView({
         title="Scheduled Tasks"
         subtitle={`Local scheduled ${agentLabel} tasks run while MindsHub Cowork is open. Runs that slip while the app is closed are skipped — ${agentLabel} resumes from the next scheduled occurrence.`}
         actions={
-          <Button variant="solid" onClick={openCreate}>
+          <Button variant="primary" onClick={openCreate}>
             {Ico.plus(14)} Schedule task
           </Button>
         }
@@ -213,7 +213,7 @@ export default function ScheduledView({
           title="No scheduled tasks yet"
           description={`Create a recurring ${agentLabel} task — a Monday digest, an hourly log sweep, a daily KPI snapshot. ${agentLabel} runs them while the desktop app is open.`}
           action={
-            <Button variant="solid" onClick={openCreate}>
+            <Button variant="primary" onClick={openCreate}>
               {Ico.plus(14)} Schedule your first task
             </Button>
           }
@@ -501,21 +501,10 @@ function formatAbsolute(iso) {
 
 function RowAction({ icon, label, onClick, busy }) {
   return (
-    <button
-      type="button"
+    <Button
       onClick={onClick}
       disabled={busy}
       title={label}
-      style={{
-        display: 'inline-flex', alignItems: 'center', gap: 4,
-        padding: '4px 8px', borderRadius: 6,
-        background: 'var(--surface)',
-        border: '1px solid var(--line)',
-        color: 'var(--ink-2)',
-        fontFamily: FONT_BODY, fontSize: 11.5, fontWeight: 500,
-        cursor: busy ? 'not-allowed' : 'pointer',
-        opacity: busy ? 0.6 : 1,
-      }}
-    >{icon}{label}</button>
+    >{icon}{label}</Button>
   );
 }

@@ -8,7 +8,9 @@
 import { Children, cloneElement, isValidElement, useEffect, useMemo, useRef } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
+import rehypeKatex from 'rehype-katex';
 
 import { MarkdownCode } from './MarkdownCode';
 import {
@@ -208,6 +210,108 @@ function _normalizeFormFences(text) {
   );
 }
 
+// Regions we must never rewrite: fenced code blocks (``` or ~~~) and inline
+// code spans. A message that *documents* LaTeX ("write `$x$` for inline
+// math") has to show its delimiters verbatim, not render them. We stash these
+// behind placeholders (see below) rather than splitting on them, so the
+// conversion still sees each line's real context. This misses a few CommonMark
+// corners on purpose — 4+ backtick fences, multi-backtick spans, an
+// unterminated fence mid-stream — since covering them fully would mean
+// re-implementing the parser; the realistic cases are handled.
+const _MD_CODE_REGION = /(```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]*`)/g;
+
+const _isBlankRun = (s) => /^\s*$/.test(s);
+
+// Math comes from model/user-authored chat text, so keep KaTeX's unsafe HTML
+// extensions disabled and bound the amount of layout/macro work one formula
+// can request. These match KaTeX's secure defaults where one exists, but are
+// explicit here so a dependency default change cannot silently widen the
+// renderer's trust boundary.
+//
+// errorColor: broken/half-streamed TeX renders in this colour instead of
+// KaTeX's harsh #cc0000 default, so a partial formula mid-stream doesn't read
+// as alarming. It MUST be set here, not in CSS — KaTeX writes the error span's
+// colour as an inline `style` attribute (and the span isn't nested under
+// `.katex`), so an external stylesheet rule can neither match it nor outrank
+// the inline style. rehype-katex threads this through to both its KaTeX call
+// and its own fallback span, so one option covers every error path. Plain
+// `var(--danger)` with no comma fallback: `--danger` is defined in every theme
+// scope so the fallback is dead weight, and the comma form `var(x, y)` is
+// rejected by happy-dom's CSS parser (breaking the test that guards this).
+const _KATEX_OPTIONS = Object.freeze({
+  trust: false,
+  maxSize: 50,
+  maxExpand: 1000,
+  errorColor: 'var(--danger)',
+});
+
+// Our models emit math in a few delimiter styles — `\( … \)` and `$ … $`
+// inline, `\[ … \]` and `$$ … $$` display. remark-math only parses the `$`
+// family, and CommonMark eats the backslash in `\(` / `\[` before we ever
+// reach an AST, so these have to be rewritten in the raw text (see ENG-989).
+// Everything becomes the double-dollar form remark-math parses:
+//
+//   inline   \(x\)              →  $$x$$
+//   display  \[x\]  (own line)  →  \n\n$$\nx\n$$\n\n   (block → display math)
+//   display  \[x\]  (in a line) →  $$x$$   (inline → stays in its blockquote /
+//                                           list item instead of breaking out)
+//   inline   $x$                →  $$x$$   (currency-guarded)
+//
+// `\(…\)` / `\[…\]` are unambiguous, so they always convert. A single `$…$`
+// is not (currency!), so remark-math's own single-`$` parsing stays disabled
+// and we detect it here with pandoc's rule: the opening `$` isn't followed by
+// a digit or space, the closing `$` isn't followed by a digit, and neither
+// `$` belongs to a `$$` pair. So "$s=\sigma+it$" renders while "a $1 million
+// prize", "from $5 to $10", and "$5;($x$ …)" keep their literal dollars.
+// Leading-digit inline like "$2\pi$" stays literal on purpose — write
+// "\(2\pi\)" for that, which is unambiguous.
+export function _normalizeMathDelimiters(text) {
+  if (!text || typeof text !== 'string') return text;
+  // Fast path: nothing to do without a `\(`, `\[`, or a `$`.
+  if (
+    text.indexOf('\\(') === -1 &&
+    text.indexOf('\\[') === -1 &&
+    text.indexOf('$') === -1
+  ) {
+    return text;
+  }
+  // Stash code regions behind NUL-delimited placeholders so the conversion
+  // runs against the *whole* string — preserving each line's real context
+  // (blockquote `>` / list-item prefixes) that a naive split would fragment
+  // (e.g. "> `x` \[y\]") — while never rewriting code. Placeholders carry no
+  // math delimiter and no newline, so they pass through untouched; the code
+  // is restored verbatim afterwards. NUL can't occur in chat text and never
+  // escapes this function.
+  const code = [];
+  const stashed = text.replace(_MD_CODE_REGION, (m) => {
+    const token = `\u0000${code.length}\u0000`;
+    code.push(m);
+    return token;
+  });
+  const converted = _convertMathDelimiters(stashed);
+  return converted.replace(/\u0000(\d+)\u0000/g, (_m, i) => code[Number(i)]);
+}
+
+function _convertMathDelimiters(text) {
+  return text
+    // Display \[ … \]. Only inject a block ($$ on its own lines) when the
+    // delimiters already sit on their own line; otherwise the blank lines
+    // would pull the math out of an enclosing blockquote / list item, so keep
+    // it inline (it renders in place, just not centered).
+    .replace(/\\\[([\s\S]+?)\\\]/g, (m, body, offset, whole) => {
+      const lineStart = whole.lastIndexOf('\n', offset - 1) + 1;
+      const before = whole.slice(lineStart, offset);
+      const after = whole.slice(offset + m.length).split('\n', 1)[0];
+      const standalone = _isBlankRun(before) && _isBlankRun(after);
+      return standalone ? `\n\n$$\n${body.trim()}\n$$\n\n` : `$$${body.trim()}$$`;
+    })
+    // Inline \( … \) → $$…$$ (single line → inline math).
+    .replace(/\\\(([\s\S]+?)\\\)/g, (_m, body) => `$$${body.trim()}$$`)
+    // Native single-$ inline math, pandoc-guarded (see the block comment).
+    // Lookarounds keep `$$` display pairs and currency dollars untouched.
+    .replace(/(?<!\$)\$(?!\$)(?![\d\s])([^$\n]*?\S)\$(?!\$)(?!\d)/g, (_m, body) => `$$${body.trim()}$$`);
+}
+
 // Engram metadata in lessons.md / rules.md / profile.md is encoded
 // as inline HTML comments at the end of each bullet, e.g.
 //   `- CoinGecko rate-limits at 50 req/min <!-- topic:api ts:2026-02-27 -->`.
@@ -337,7 +441,10 @@ export function MarkdownContent({
       const source = variant === 'user' ? _dedentUserText(text) : text;
       const merged = isAssistant ? _mergeInlineCodeLines(source) : source;
       const formNormalized = enableForms ? _normalizeFormFences(merged) : merged;
-      return _renderEngramComments(formNormalized);
+      const withEngrams = _renderEngramComments(formNormalized);
+      // Applied to every variant so a formula pasted into the composer
+      // renders too — not just assistant output.
+      return _normalizeMathDelimiters(withEngrams);
     },
     [text, enableForms, isAssistant, variant],
   );
@@ -348,7 +455,11 @@ export function MarkdownContent({
   // share one Set instead of each allocating their own inside useMemo.
   const skillNames = useSkillNames();
   const remarkPlugins = useMemo(
-    () => [remarkGfm, [remarkSkillMentions, skillNames]],
+    // singleDollarTextMath:false — remark-math never parses a lone `$`, so
+    // plain-prose currency ("$5 and $10") is safe. _normalizeMathDelimiters
+    // does the delimiter work instead: it rewrites \(…\), \[…\], and genuine
+    // (pandoc-guarded) $…$ inline math into the `$$…$$` form parsed here.
+    () => [remarkGfm, [remarkMath, { singleDollarTextMath: false }], [remarkSkillMentions, skillNames]],
     [skillNames],
   );
 
@@ -563,7 +674,15 @@ export function MarkdownContent({
     <div ref={rootRef} className={`${sz.root}${streaming ? ' is-streaming' : ''}`}>
       <Markdown
         remarkPlugins={remarkPlugins}
-        rehypePlugins={[[rehypeSanitize, sanitizeSchema]]}
+        // rehypeKatex runs AFTER rehypeSanitize: sanitize keeps the
+        // `<code class="language-math">` wrappers (code+className is already
+        // allowlisted), then KaTeX replaces them with its rendered markup.
+        // That generated markup is trusted (built from a text-only TeX
+        // source) so it deliberately isn't re-sanitized.
+        rehypePlugins={[
+          [rehypeSanitize, sanitizeSchema],
+          [rehypeKatex, _KATEX_OPTIONS],
+        ]}
         components={components}
       >
         {normalized || ''}

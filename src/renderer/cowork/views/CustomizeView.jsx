@@ -31,7 +31,7 @@ const FONT_MONO    = "var(--font-mono)";
 function ConnectButton({ onClick, large = false }) {
   return (
     <Button
-      variant="solid"
+      variant="primary"
       onClick={onClick}
       style={large ? { fontSize: 13.5 } : undefined}
     >
@@ -198,23 +198,15 @@ function ConnectionCard({ connection, onDelete, onModify }) {
         }}>
           {updated ? `updated ${updated}` : 'connected'}
         </span>
-        <button
-          type="button"
+        <Button
+          variant="danger"
+          size="sm"
           onClick={handleRemove}
           disabled={busy}
           title="Disconnect"
-          style={{
-            background: 'transparent',
-            border: '1px solid color-mix(in srgb, var(--danger) 30%, transparent)',
-            color: 'var(--danger)',
-            padding: '4px 10px', borderRadius: 7,
-            fontFamily: FONT_BODY, fontSize: 11.5, fontWeight: 500,
-            cursor: busy ? 'progress' : 'pointer',
-            opacity: busy ? 0.6 : 1,
-          }}
         >
           {busy ? 'Removing…' : 'Disconnect'}
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -520,37 +512,18 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
                         <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>
                           Opened in your browser — pick your files there, then come back. Confirming access can take a few seconds after you return.
                         </span>
-                        <button
-                          type="button"
-                          onClick={handleCancelPicker}
-                          style={{
-                            background: 'transparent',
-                            border: '1px solid var(--line)',
-                            color: 'var(--ink-3)',
-                            padding: '5px 10px', borderRadius: 7,
-                            fontFamily: FONT_BODY, fontSize: 12, fontWeight: 500,
-                            cursor: 'pointer',
-                          }}
-                        >
+                        <Button variant="subtle" size="sm" onClick={handleCancelPicker}>
                           Cancel
-                        </button>
+                        </Button>
                       </div>
                     ) : (
-                      <button
-                        type="button"
+                      <Button
+                        size="sm"
                         onClick={handlePickFiles}
-                        style={{
-                          alignSelf: 'flex-start',
-                          background: 'var(--surface-2)',
-                          border: '1px solid var(--line)',
-                          color: 'var(--ink)',
-                          padding: '7px 12px', borderRadius: 7,
-                          fontFamily: FONT_BODY, fontSize: 12, fontWeight: 500,
-                          cursor: 'pointer',
-                        }}
+                        style={{ alignSelf: 'flex-start' }}
                       >
                         Select files from Google Drive
-                      </button>
+                      </Button>
                     )}
                     {pickerState.status === 'error' && (
                       <div style={{ fontSize: 12, color: 'var(--danger)' }}>{pickerState.reason}</div>
@@ -639,25 +612,18 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
               Reconnect
             </Button>
           )}
-          <button
-            type="button"
+          <Button
+            variant="danger"
+            block
             onClick={() => {
               if (!window.confirm(`Disconnect ${connection.engine}/${connection.name}?`)) return;
               onDisconnect?.(connection, saved);
               onClose();
             }}
-            style={{
-              width: '100%',
-              background: 'transparent',
-              border: '1px solid color-mix(in srgb, var(--danger) 35%, transparent)',
-              color: 'var(--danger)',
-              padding: '8px 12px', borderRadius: 7,
-              fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500,
-              cursor: 'pointer',
-            }}
           >
+            {Ico.trash(14)}
             Remove
-          </button>
+          </Button>
         </div>
       </div>
     </>
@@ -774,6 +740,10 @@ export default function CustomizeView({
           const next = Array.isArray(fresh?.connections) ? fresh.connections : [];
           setList(next);
           onConnectionsSyncedRef.current?.(next);
+          // Project files' Context card holds its own Google Drive file
+          // list and has no other way to learn a connection just vanished
+          // (and with it, that connection's _picked_files grant).
+          window.dispatchEvent(new CustomEvent('anton:connections-changed'));
           return;
         }
       }
@@ -782,6 +752,7 @@ export default function CustomizeView({
       const next = Array.isArray(fresh?.connections) ? fresh.connections : [];
       setList(next);
       onConnectionsSyncedRef.current?.(next);
+      window.dispatchEvent(new CustomEvent('anton:connections-changed'));
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error('[connectors] delete failed', e);

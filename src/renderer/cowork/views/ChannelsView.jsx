@@ -12,7 +12,7 @@
 
 import { useEffect, useState } from 'react';
 import Ico from '../components/Icons';
-import { Badge } from '../components/ui';
+import { Badge, Button } from '../components/ui';
 import ChannelBindings from './ChannelBindings';
 import {
   fetchChannelPlugins,
@@ -236,13 +236,13 @@ function ChannelCard({ plugin, status, onChanged }) {
       {notice ? <p className="channels-notice">{notice}</p> : null}
 
       <div className="channels-actions">
-        <button type="button" className="channels-btn channels-btn-primary" onClick={connect} disabled={busy}>
+        <Button variant="primary" onClick={connect} disabled={busy}>
           {Ico.power(15)}<span>{configured ? 'Save & reconnect' : 'Connect'}</span>
-        </button>
+        </Button>
         {configured ? (
-          <button type="button" className="channels-btn channels-btn-ghost" onClick={disconnect} disabled={busy}>
+          <Button variant="danger" onClick={disconnect} disabled={busy}>
             Disconnect
-          </button>
+          </Button>
         ) : null}
       </div>
     </section>
@@ -271,9 +271,9 @@ export default function ChannelsView() {
     <div className="channels-view">
       <header className="channels-top">
         <span>Channels</span>
-        <button type="button" className="channels-btn channels-btn-ghost" onClick={refresh} title="Refresh">
+        <Button variant="subtle" icon onClick={refresh} title="Refresh" aria-label="Refresh">
           {Ico.refresh(15)}
-        </button>
+        </Button>
       </header>
       <div className="channels-lede">
         <p className="channels-intro">

@@ -10,7 +10,7 @@
 
 import { useState } from 'react';
 import Ico from '../Icons';
-import { Card } from '../ui';
+import { Card, Button } from '../ui';
 import { relativeTime } from '../../lib/formatTime';
 import { ScheduleStatusBadge } from './ScheduleStatusBadge';
 
@@ -247,34 +247,9 @@ export default function ScheduleCard({
 
 function ActionButton({ icon, label, onClick, busy }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={busy}
-      style={{
-        display: 'inline-flex', alignItems: 'center', gap: 5,
-        padding: '5px 9px', borderRadius: 6,
-        background: 'var(--surface-2)',
-        border: '1px solid var(--line)',
-        color: 'var(--ink-2)',
-        fontFamily: FONT_BODY, fontSize: 11.5, fontWeight: 500,
-        cursor: busy ? 'not-allowed' : 'pointer',
-        opacity: busy ? 0.6 : 1,
-        transition: 'background 120ms ease, color 120ms ease, border-color 120ms ease',
-      }}
-      onMouseOver={(e) => {
-        e.currentTarget.style.background = 'var(--surface)';
-        e.currentTarget.style.borderColor = 'var(--accent)';
-        e.currentTarget.style.color = 'var(--ink)';
-      }}
-      onMouseOut={(e) => {
-        e.currentTarget.style.background = 'var(--surface-2)';
-        e.currentTarget.style.borderColor = 'var(--line)';
-        e.currentTarget.style.color = 'var(--ink-2)';
-      }}
-    >
-      <span style={{ display: 'inline-flex', color: 'currentColor' }}>{icon}</span>
+    <Button onClick={onClick} disabled={busy}>
+      {icon}
       {label}
-    </button>
+    </Button>
   );
 }

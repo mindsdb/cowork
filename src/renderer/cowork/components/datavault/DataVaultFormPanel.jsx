@@ -16,6 +16,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
+import { Button } from '../ui';
 import { DataVaultForm } from './DataVaultForm';
 import {
   clearForm, getForm, patchForm, subscribe,
@@ -719,8 +720,8 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
                 </div>
               )}
             </div>
-            <button
-              type="button"
+            <Button
+              variant="primary"
               onClick={() => {
                 const fieldsPatch = {};
                 if (Array.isArray(spec.fields)) {
@@ -750,19 +751,10 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
                   ...(Object.keys(methodsPatch).length ? { methods: methodsPatch } : {}),
                 });
               }}
-              style={{
-                alignSelf: 'flex-start',
-                padding: '6px 14px', borderRadius: 7,
-                background: 'var(--accent)', border: 0,
-                color: '#fff', fontSize: 13, fontWeight: 600,
-                cursor: 'pointer', fontFamily: FONT_BODY,
-                transition: 'opacity 140ms ease',
-              }}
-              onMouseOver={(e) => { e.currentTarget.style.opacity = '0.85'; }}
-              onMouseOut={(e) => { e.currentTarget.style.opacity = '1'; }}
+              style={{ alignSelf: 'flex-start' }}
             >
               Try again
-            </button>
+            </Button>
           </div>
         ) : (
           /* Normal / success / parse-error state — render the form as usual. */

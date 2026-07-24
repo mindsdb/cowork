@@ -16,21 +16,87 @@ import { parseCalVer, compareCalVer, newestCalVer } from '../shared/version';
 // Version comparison
 // ---------------------------------------------------------------------------
 
-/** Compare simple X.Y.Z versions. <0 if a<b, 0 if equal, >0 if a>b.
- *  (No pre-release handling — server releases are plain semver triples.) */
+// A CalVer segment carrying a PEP 440 rc suffix, e.g. the "1rc2" in
+// 0.26.7.23.1rc2 (the staging pre-release track). Only this exact shape is
+// ordered specially; every other non-numeric segment keeps the historical
+// NaN comparison semantics (load-bearing for '.devN' git-install versions —
+// see parseInstalledVersion).
+const RC_SEGMENT = /^(\d+)rc(\d+)$/;
+
+/** Compare dotted versions. <0 if a<b, 0 if equal, >0 if a>b.
+ *  Plain numeric segments compare numerically; an `NrcM` segment sorts
+ *  before its own base release (X.1rc2 < X.1) and rc numbers order among
+ *  themselves, mirroring PEP 440 for the staging rc stream. */
 export function compareVersions(a: string, b: string): number {
-  const pa = a.split('.').map(Number);
-  const pb = b.split('.').map(Number);
+  const pa = a.split('.');
+  const pb = b.split('.');
   for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const diff = (pa[i] ?? 0) - (pb[i] ?? 0);
+    const ra = pa[i] ?? '0';
+    const rb = pb[i] ?? '0';
+    const ma = RC_SEGMENT.exec(ra);
+    const mb = RC_SEGMENT.exec(rb);
+    if (ma || mb) {
+      const baseDiff = Number(ma ? ma[1] : ra) - Number(mb ? mb[1] : rb);
+      if (baseDiff !== 0) return baseDiff;
+      if (ma && mb) {
+        const rcDiff = Number(ma[2]) - Number(mb[2]);
+        if (rcDiff !== 0) return rcDiff;
+        continue;
+      }
+      // Equal base, one side is the release: the rc precedes it.
+      return ma ? -1 : 1;
+    }
+    const diff = Number(ra) - Number(rb);
     if (diff !== 0) return diff;
   }
   return 0;
 }
 
+// Versions eligible for "latest on PyPI" selection: plain dotted CalVer with
+// an optional trailing rc suffix. Anything else (dev builds, local versions,
+// epochs) is not something the desktop should auto-update onto.
+const SANE_PYPI_VERSION = /^\d+(\.\d+)*(rc\d+)?$/;
+
+/** Pick the newest installable version from a PyPI project JSON.
+ *  Stable path (prod builds): trust `info.version`, which PyPI computes
+ *  excluding pre-releases. Pre-release path (staging/preview builds): scan
+ *  the `releases` map for the PEP 440 maximum across stable AND rc versions,
+ *  skipping fully-yanked or empty releases and unparseable version strings. */
+export function selectLatestPypiVersion(input: {
+  infoVersion: string | null;
+  releases: Record<string, Array<{ yanked?: boolean }>> | null | undefined;
+  includePrereleases: boolean;
+}): string | null {
+  if (!input.includePrereleases) return input.infoVersion || null;
+  const candidates = Object.entries(input.releases ?? {})
+    .filter(([version, files]) =>
+      SANE_PYPI_VERSION.test(version) &&
+      Array.isArray(files) && files.length > 0 &&
+      files.some((f) => !f?.yanked))
+    .map(([version]) => version);
+  if (candidates.length === 0) return input.infoVersion || null;
+  return candidates.reduce((best, v) => (compareVersions(v, best) > 0 ? v : best));
+}
+
 /** Installer gate: does the installed version satisfy the minimum floor? */
 export function meetsMinVersion(installed: string, min: string): boolean {
   return compareVersions(installed, min) >= 0;
+}
+
+/** Extract the exact anton-agent pin from a wheel's Requires-Dist list.
+ *  Staging rc wheels pin `anton-agent==<rc>`; the desktop must re-state that
+ *  pin as a DIRECT requirement (`uv tool install ... --with anton-agent==X`)
+ *  because uv honors pre-release markers only in direct requirements — left
+ *  transitive, an rc pin makes the whole resolution fail. Returns null for
+ *  loose constraints (stable wheels), where no direct restatement is needed. */
+export function parseAntonPin(requiresDist: unknown): string | null {
+  if (!Array.isArray(requiresDist)) return null;
+  for (const entry of requiresDist) {
+    if (typeof entry !== 'string') continue;
+    const match = entry.match(/^anton-agent\s*==\s*([A-Za-z0-9.!+]+)/);
+    if (match) return match[1];
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -47,7 +113,12 @@ export function parseInstalledVersion(stdout: string): string | null {
   // eslint-disable-next-line no-control-regex
   const clean = stdout.replace(/\x1b\[[0-9;]*m/g, '');
   for (const line of clean.split('\n')) {
-    const match = line.match(/^cowork-server\s+v?([\d.]+)/);
+    // Dotted release with an optional rc suffix (the staging pre-release
+    // stream). A bare [\d.]+ here once truncated 'X.2rc1' to the phantom
+    // release 'X.2', which both froze rc→rc updates (the phantom compares
+    // above every same-base rc) and made rollback pin a version that does
+    // not exist on PyPI. Local/dev tails ('.dev40+g…') are dropped.
+    const match = line.match(/^cowork-server\s+v?(\d+(?:\.\d+)*(?:rc\d+)?)/);
     if (match) return match[1];
   }
   return null;
@@ -328,4 +399,23 @@ export function parseUiManifest(jsonText: string): UIManifest | null {
   } catch {
     return null;
   }
+}
+
+export interface InstallerStepPlan {
+  /** macOS needs the Xcode CLT step only for git-channel installs: uv shells
+   *  out to real git there, and Apple's /usr/bin/git shim demands the CLT.
+   *  Wheel installs never touch git, so a stock Mac installs clean. */
+  needsXcodeStep: boolean;
+  /** Whether a missing git aborts the install. Required on the git channel
+   *  (uv cannot fetch git sources without it); on pypi it degrades to a
+   *  warning — git is only a runtime nice-to-have for agent tasks. */
+  gitRequired: boolean;
+}
+
+export function installerStepPlan(platform: string, channel: 'git' | 'pypi'): InstallerStepPlan {
+  const fromGit = channel === 'git';
+  return {
+    needsXcodeStep: platform === 'darwin' && fromGit,
+    gitRequired: fromGit,
+  };
 }

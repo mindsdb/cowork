@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Ico from './Icons';
+import NewProjectModal from './project/NewProjectModal';
 import {
   parseFences,
   fenceCtxAtParsed,
@@ -96,10 +98,12 @@ export default function Composer({
   // of the same text still re-fill the input.
   prefill = null,
   // Optional — when supplied, the project menu shows a "+ New project"
-  // row that swaps into an inline input on click. Receives `{ name }`
-  // and is expected to resolve to the created project record; we then
-  // call `onProjectChange` with it so the new project is pre-selected
-  // for the task being composed. When omitted, the row is hidden.
+  // row (opens the "Start a new project" modal; with search text and
+  // no match it creates inline). Receives `{ name }` (plus
+  // `_alreadyCreated` from the modal path) and is expected to resolve
+  // to the created project record; we then call `onProjectChange`
+  // with it so the new project is pre-selected for the task being
+  // composed. When omitted, the row is hidden.
   onCreateProject = null,
 }) {
   const [value, setValue] = useState('');
@@ -115,6 +119,7 @@ export default function Composer({
   const [projectSearch, setProjectSearch] = useState('');
   const [projectMenuBusy, setProjectMenuBusy] = useState(false);
   const [projectMenuError, setProjectMenuError] = useState('');
+  const [newProjectOpen, setNewProjectOpen] = useState(false);
   const projectSearchRef = useRef(null);
   const projectPillRef = useRef(null);
   const projectMenuRef = useRef(null);
@@ -1179,8 +1184,9 @@ export default function Composer({
                         the previous "footer only when no match"
                         rule hid). Label adapts to the search state:
                           - empty            → "New project"
-                                                (focuses the search
-                                                 input on click).
+                                                (opens the full
+                                                 "Start a new project"
+                                                 modal).
                           - typed, no match  → "Create '<text>'"
                                                 (calls create).
                           - typed, exact     → hidden (no duplicates).
@@ -1195,7 +1201,8 @@ export default function Composer({
                             if (_canCreateFromSearch) {
                               createProjectFromSearch();
                             } else {
-                              projectSearchRef.current?.focus();
+                              setOpenMenu(null);
+                              setNewProjectOpen(true);
                             }
                           }}
                           style={{ color: 'var(--primary-700)' }}
@@ -1257,6 +1264,29 @@ export default function Composer({
             </button>
           ))}
         </div>
+      )}
+
+      {/* Portaled to <body>: the composer sits inside the boot-fadein
+          wrapper whose persistent transform would otherwise make this
+          fixed-position overlay anchor to the card, not the viewport. */}
+      {newProjectOpen && createPortal(
+        <NewProjectModal
+          open={newProjectOpen}
+          onClose={() => setNewProjectOpen(false)}
+          onCreated={async (result) => {
+            const name = result?.name;
+            if (!name) return;
+            let created = { name };
+            try {
+              created = (await onCreateProject?.({ name, _alreadyCreated: true })) || created;
+            } catch {
+              // Project exists on the server; only the list refresh
+              // failed — still select it by name.
+            }
+            onProjectChange?.(created);
+          }}
+        />,
+        document.body,
       )}
     </div>
   );

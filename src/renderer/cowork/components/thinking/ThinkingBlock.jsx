@@ -8,7 +8,7 @@
 //   active + collapsed  →  [orb] <current step label>            (shimmer)
 //   active + expanded   →  [orb] Working for 6s                  (live timer;
 //                          the current step sits at the END of the list below)
-//   finished            →  Worked for 3m 9s  ⌄                   (chevron on hover)
+//   finished            →  Worked for 3m 9s  ⌄                   (chevron always visible)
 //   finished, no timing →  Thought process   ⌄                   (e.g. reopened
 //                          conversations where the duration wasn't recoverable)
 //
@@ -134,8 +134,7 @@ export function ThinkingBlock({
             <span
               className={clsx(
                 'inline-flex flex-none items-center self-center text-ink-4',
-                'opacity-0 transition-[opacity,transform] duration-200',
-                'group-hover:opacity-100 group-focus-visible:opacity-100',
+                'transition-transform duration-200',
                 isExpanded && 'rotate-180'
               )}
             >
