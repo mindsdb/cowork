@@ -166,4 +166,22 @@ describe('MarkdownContent math rendering (end-to-end pipeline)', () => {
     expect(container.querySelector('mspace')?.getAttribute('width')).toBe('50em');
     expect(container.querySelector('mspace')?.getAttribute('height')).toBe('50em');
   });
+
+  it('recolors broken/unparseable TeX to the danger token, not KaTeX #cc0000', () => {
+    // Unbalanced braces are a hard KaTeX parse error → rehype-katex emits a
+    // `.katex-error` span. KaTeX writes the colour as an INLINE style (and the
+    // span is not nested under `.katex`), so the only way to override its harsh
+    // #cc0000 default is the `errorColor` option — a CSS rule cannot reach it.
+    // Guard that here since nothing else pins the colour. (happy-dom drops the
+    // comma-fallback `var(x, y)` form, which is why errorColor is plain
+    // `var(--danger)`.)
+    const { container } = render(
+      <MarkdownContent text={'\\(\\frac{1}{\\)'} complete />,
+    );
+    const err = container.querySelector('.katex-error');
+    expect(err).not.toBeNull();
+    const style = err.getAttribute('style') || '';
+    expect(style).toContain('var(--danger)');
+    expect(style).not.toContain('cc0000');
+  });
 });

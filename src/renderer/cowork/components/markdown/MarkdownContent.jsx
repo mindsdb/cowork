@@ -227,10 +227,22 @@ const _isBlankRun = (s) => /^\s*$/.test(s);
 // can request. These match KaTeX's secure defaults where one exists, but are
 // explicit here so a dependency default change cannot silently widen the
 // renderer's trust boundary.
+//
+// errorColor: broken/half-streamed TeX renders in this colour instead of
+// KaTeX's harsh #cc0000 default, so a partial formula mid-stream doesn't read
+// as alarming. It MUST be set here, not in CSS — KaTeX writes the error span's
+// colour as an inline `style` attribute (and the span isn't nested under
+// `.katex`), so an external stylesheet rule can neither match it nor outrank
+// the inline style. rehype-katex threads this through to both its KaTeX call
+// and its own fallback span, so one option covers every error path. Plain
+// `var(--danger)` with no comma fallback: `--danger` is defined in every theme
+// scope so the fallback is dead weight, and the comma form `var(x, y)` is
+// rejected by happy-dom's CSS parser (breaking the test that guards this).
 const _KATEX_OPTIONS = Object.freeze({
   trust: false,
   maxSize: 50,
   maxExpand: 1000,
+  errorColor: 'var(--danger)',
 });
 
 // Our models emit math in a few delimiter styles — `\( … \)` and `$ … $`
