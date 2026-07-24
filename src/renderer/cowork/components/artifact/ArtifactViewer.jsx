@@ -415,7 +415,7 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
     const baseVersion = artifact?.mtime ?? (openNonceRef.current += 1);
     const cacheVersion = `${baseVersion}.${reloadNonce}`;
     mountArtifactPreview(actionPath)
-      .then(async ({ kind, url, artifactDir, port, proxyUrl, publishedUrl: serverPublishedUrl, backendRunning, launchError }) => {
+      .then(async ({ kind, url, artifactDir, port, proxyUrl, backendRunning, launchError }) => {
         if (kind === 'proxy') {
           if (!artifactDir) throw new Error('Preview mount returned no artifact dir');
           if (backendRunning === false) {
@@ -453,10 +453,14 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
         setPreviewUrl(commentsEnabled
           ? _withCommentFlag(_withVersion(url, cacheVersion))
           : _withVersion(url, cacheVersion));
-        // Adopt the server's known published URL when the artifact object
-        // (e.g. a chat-bubble preview) didn't carry one. Don't blank a
-        // locally-known value when the server returns "".
-        if (serverPublishedUrl && !pub.publishedUrl) onChange?.({ ...artifact, publishedUrl: serverPublishedUrl });
+        // NOTE (ENG-931): we deliberately do NOT adopt the server's published
+        // URL here anymore. usePublish's open refresh() already pulls the
+        // authoritative published/access state from /artifacts/status for every
+        // artifact type (including chat-bubble stubs). The old adoption fired
+        // onChange({ ...artifact, publishedUrl }) from this async callback's
+        // STALE closure (stale `artifact` lacking accessMode/accessEmails, and a
+        // stale `!pub.publishedUrl` guard), which raced with refresh() and
+        // clobbered the just-loaded restricted access list back to "public".
       })
       .catch((e) => { if (!cancelled) setErr(e?.message || 'Could not load artifact'); })
       .finally(() => { if (!cancelled) setLoading(false); });
