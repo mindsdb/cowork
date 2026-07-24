@@ -996,12 +996,9 @@ let _settingsLock = Promise.resolve();
    the `reasoning_efforts`/`default_reasoning_effort` it advertises) and merges a
    static effort catalog for direct providers. Returns null on any failure so the
    caller keeps the static lists baked into transformSettingsRows. */
-export async function fetchRecommendedModels({ refresh = false } = {}) {
+export async function fetchRecommendedModels() {
   try {
-    // `refresh` bypasses the server's fetch_minds_models cache (up to a
-    // 5-minute TTL) — pass it when re-checking after window refocus so a
-    // wallet top-up isn't masked by the cached `enabled` map.
-    const data = await req(`/settings/recommended-models${refresh ? '?refresh=true' : ''}`);
+    const data = await req('/settings/recommended-models');
     if (data && typeof data === 'object') return data;
   } catch { /* fall back to static lists */ }
   return null;
