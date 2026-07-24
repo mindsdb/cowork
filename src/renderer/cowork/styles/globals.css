@@ -1055,10 +1055,12 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
   min-width: 0;
 }
 
-.customize-serif {
-  font-family: "Times New Roman", Georgia, serif;
-  font-weight: 500;
-  letter-spacing: -0.02em;
+.customize-heading {
+  /* Was a Times New Roman serif — the one heading off the Inter system.
+     Now on the display font so it reads as part of the app (ENG-1038). */
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.01em;
   color: var(--ink);
 }
 
