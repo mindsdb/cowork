@@ -133,7 +133,7 @@ function activitySummaryFor(project, tasks) {
 // type, height, padding and accent-glow consistent across pages.
 function NewProjectButton({ onClick }) {
   return (
-    <Button variant="solid" className="proj-new-action" onClick={onClick}>
+    <Button variant="primary" className="proj-new-action" onClick={onClick}>
       {Ico.plus(14)} New project
     </Button>
   );

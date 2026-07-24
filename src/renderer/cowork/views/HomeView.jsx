@@ -183,12 +183,7 @@ function ActiveList({ tasks, onSelect, onClear }) {
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8, padding: '0 4px' }}>
         <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--frost-700)', letterSpacing: '0.02em' }}>Active</div>
         <div style={{ flex: 1 }} />
-        <button
-          onClick={onClear}
-          style={{ border: 0, background: 'transparent', cursor: 'pointer', fontSize: 12, color: 'var(--frost-600)' }}
-          onMouseOver={(e) => (e.currentTarget.style.color = 'var(--text-strong)')}
-          onMouseOut={(e) => (e.currentTarget.style.color = 'var(--frost-600)')}
-        >Clear active</button>
+        <Button variant="subtle" onClick={onClear}>Clear active</Button>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         {tasks.map((t) => (

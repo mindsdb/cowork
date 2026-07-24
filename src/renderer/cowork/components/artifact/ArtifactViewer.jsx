@@ -21,7 +21,7 @@ import {
 import { downloadArtifactFile } from '../../lib/artifactDownload';
 import { isPublishableArtifact, BACKEND_ARTIFACT_TYPES, publishBlockedReason } from '../../lib/artifactKinds';
 import { Modal } from '../ui/Modal';
-import { Menu, Tooltip, Spinner } from '../ui';
+import { Button, Menu, Tooltip, Spinner } from '../ui';
 import { ConfirmModal } from '../ConfirmModal';
 import { host } from '../../../platform/host';
 import { MarkdownContent } from '../markdown/MarkdownContent';
@@ -776,17 +776,10 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
                       ? `Showing first ${csvPreview.shownRows.toLocaleString()} of ${csvPreview.totalRows.toLocaleString()} rows.`
                       : 'Preview is truncated.'}
                   </span>
-                  <button
-                    type="button"
-                    onClick={host.isWeb ? onDownload : onOpenOS}
-                    style={{
-                      cursor: 'pointer', background: 'transparent', border: '1px solid var(--line)',
-                      color: 'var(--accent)', padding: '5px 11px', borderRadius: 6,
-                      fontSize: 12, fontWeight: 600, fontFamily: FONT_BODY,
-                    }}
-                  >
+                  <Button onClick={host.isWeb ? onDownload : onOpenOS}>
+                    {host.isWeb ? Ico.download(13) : Ico.externalLink(13)}
                     {host.isWeb ? 'Download full file' : 'Open full file in OS'}
-                  </button>
+                  </Button>
                 </div>
               )}
             </div>

@@ -6,6 +6,7 @@
 
 import { useEffect, useState } from 'react';
 import Ico from './Icons';
+import { Button } from './ui';
 import { host } from '../../platform/host';
 
 const FONT_BODY = "var(--font-body, 'Inter', system-ui, sans-serif)";
@@ -352,17 +353,10 @@ export default function ServerOfflineHelpModal({
           borderTop: '1px solid var(--line)',
           background: 'var(--surface)',
         }}>
-          <button
-            type="button"
+          <Button
+            variant="subtle"
             onClick={onClose}
-            style={{
-              cursor: 'pointer',
-              background: 'transparent', border: '1px solid var(--line)',
-              color: 'var(--ink-2)',
-              padding: '7px 14px', borderRadius: 7,
-              fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 500,
-            }}
-          >Close</button>
+          >Close</Button>
           {/* Action buttons — split by intent so the user can stop
               the backend without it immediately restarting:
                 * online   → [Stop] [Restart]   (Restart = stop + start)
@@ -374,61 +368,33 @@ export default function ServerOfflineHelpModal({
           {(onStart || onStop) ? (
             <>
               {state !== 'offline' && (
-                <button
-                  type="button"
+                <Button
                   onClick={handleStop}
                   disabled={busy || serverBusy || !onStop}
-                  style={{
-                    cursor: (busy || serverBusy) ? 'progress' : 'pointer',
-                    background: 'transparent',
-                    border: '1px solid var(--line)',
-                    color: 'var(--ink-2)',
-                    padding: '7px 14px', borderRadius: 7,
-                    fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 500,
-                    opacity: (busy || serverBusy) ? 0.7 : 1,
-                  }}
                 >
                   {(busy && serverBusyKind === 'stopping') ? 'Stopping…' : 'Stop backend'}
-                </button>
+                </Button>
               )}
-              <button
-                type="button"
+              <Button
+                variant="primary"
                 onClick={state === 'offline' ? handleStart : handleRestart}
                 disabled={busy || serverBusy || (state === 'offline' ? !onStart : !(onStart && onStop))}
-                style={{
-                  cursor: (busy || serverBusy) ? 'progress' : 'pointer',
-                  background: 'var(--accent)',
-                  border: '1px solid var(--accent)',
-                  color: '#fff',
-                  padding: '7px 14px', borderRadius: 7,
-                  fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 600,
-                  opacity: (busy || serverBusy) ? 0.7 : 1,
-                }}
               >
                 {busy
                   ? (state === 'offline' ? 'Starting…' : 'Restarting…')
                   : (state === 'offline' ? 'Start backend' : 'Restart backend')}
-              </button>
+              </Button>
             </>
           ) : (
-            <button
-              type="button"
+            <Button
+              variant="primary"
               onClick={handleRetry}
               disabled={busy || serverBusy}
-              style={{
-                cursor: (busy || serverBusy) ? 'progress' : 'pointer',
-                background: 'var(--accent)',
-                border: '1px solid var(--accent)',
-                color: '#fff',
-                padding: '7px 14px', borderRadius: 7,
-                fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 600,
-                opacity: (busy || serverBusy) ? 0.7 : 1,
-              }}
             >
               {busy
                 ? (state === 'offline' ? 'Starting…' : 'Restarting…')
                 : (state === 'offline' ? 'Start backend' : 'Restart backend')}
-            </button>
+            </Button>
           )}
         </div>
       </div>

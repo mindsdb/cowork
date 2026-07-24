@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import Ico from './Icons';
-import { Spinner, Kbd, Badge, Input } from './ui';
+import { Spinner, Kbd, Badge, Input, Button } from './ui';
 import { TaskMenu } from './TaskMenu';
 import RecentsModal from './RecentsModal';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
@@ -561,17 +561,20 @@ export default function Sidebar({
               `${collapsed ? '0ms' : '80ms'}`,
         }}
       >
-        {/* New task CTA — outlined neon button */}
+        {/* New task CTA — the tinted (accent-wash) variant, full width. */}
         <div className="anton-sidebar__cta-wrap">
-          <button
-            className="btn-new-task"
+          <Button
+            variant="tinted"
+            block
+            size="lg"
             onClick={onNewTask}
             title={`New task  (${shortcut('N')})`}
+            style={{ gap: 10 }}
           >
-            <span style={{ display: 'inline-flex' }}>{Ico.plus(14)}</span>
-            <span className="btn-new-task__label">New task</span>
+            {Ico.plus(14)}
+            <span style={{ flex: 1, textAlign: 'left', fontWeight: 600 }}>New task</span>
             <Kbd>{shortcut('N')}</Kbd>
-          </button>
+          </Button>
         </div>
 
         {/* Primary nav */}
