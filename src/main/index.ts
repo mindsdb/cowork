@@ -359,8 +359,8 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
-    minWidth: 800,
-    minHeight: 500,
+    minWidth: 520,
+    minHeight: 440,
     icon,
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     // Embed the macOS traffic lights inside the sidebar header. Coordinates

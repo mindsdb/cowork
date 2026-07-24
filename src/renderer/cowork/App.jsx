@@ -1127,6 +1127,17 @@ function AppCore() {
   // means the collapse affordance is hidden in those views too.
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const { isMobile, isNarrow } = useBreakpoint();
+  // Narrow band (640–900): the docked sidebar becomes an off-canvas popout
+  // opened by the floating hamburger. Docked ≥900; MobileShell owns <640.
+  const [navPopoutOpen, setNavPopoutOpen] = useState(false);
+  // Close the popout on Escape (no-op outside the narrow band, where it stays
+  // closed). Backdrop-click and navigation close it too (below).
+  useEffect(() => {
+    if (!navPopoutOpen) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape') setNavPopoutOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [navPopoutOpen]);
 
   // iOS Safari (and Android Chrome) auto-zoom the page in when a text
   // input with font-size < 16px gets focus, and don't zoom back out
@@ -1891,6 +1902,7 @@ function AppCore() {
   }, [markInFlight, markInFlightDone, handleStreamError]);
 
   const selectTask = (id) => {
+    if (isNarrow) setNavPopoutOpen(false);
     const task = tasks.find((t) => t.id === id);
     if (task) {
       // Record the visit for recents ordering, but never auto-pin.
@@ -1962,6 +1974,7 @@ function AppCore() {
   };
 
   const newTask = () => {
+    if (isNarrow) setNavPopoutOpen(false);
     setActiveTaskId(null);
     setComposerAttachments([]);
     setComposerPrefill(null);
@@ -2437,6 +2450,7 @@ function AppCore() {
   };
 
   const navigate = (key) => {
+    if (isNarrow) setNavPopoutOpen(false);
     if (key === 'settings' || key.startsWith('settings:')) {
       // Targeted (settings:backend) opens that section; a bare `settings`
       // opens the mobile section list (null) / desktop's last section.
@@ -3627,7 +3641,7 @@ function AppCore() {
   // no traffic lights so it only needs to clear the hamburger. Exposed as
   // `--titlebar-safe-left` on <main> and consumed by PageHeader / view
   // headers, replacing the per-view padding guesses.
-  const contentLeftExposed = sidebarCollapsedEffective;
+  const contentLeftExposed = isNarrow || sidebarCollapsedEffective;
   const titlebarSafeLeft = contentLeftExposed ? (host.isWeb ? 60 : 130) : 0;
 
   const modelOptions = selectedModel && !models.some((m) => m.id === selectedModel.id)
@@ -3697,8 +3711,37 @@ function AppCore() {
         layout so Sidebar participates as a direct flex child. Suppressed on
         isMobile — MobileShell replaces it with a mobile drawer below 640.
       */}
+      {/* Narrow-band popout backdrop — dims content behind the slid-in
+          sidebar. Same 320ms curve as the drawer so the two read as one
+          motion (the old overlay used mismatched 280/380ms durations). */}
+      {isNarrow && !isMobile && (
+        <div
+          onClick={() => setNavPopoutOpen(false)}
+          aria-hidden="true"
+          style={{
+            position: 'fixed', inset: 0, zIndex: 100,
+            background: 'rgba(0,0,0,0.35)',
+            backdropFilter: 'blur(2px)',
+            WebkitAppRegion: 'no-drag',
+            opacity: navPopoutOpen ? 1 : 0,
+            pointerEvents: navPopoutOpen ? 'auto' : 'none',
+            transition: 'opacity 320ms cubic-bezier(0.32, 0.72, 0, 1)',
+          }}
+        />
+      )}
+
       {!isMobile && (
-      <div style={{ display: 'contents' }}>
+      <div
+        style={isNarrow ? {
+          // Popout: off-canvas fixed drawer, slid in on navPopoutOpen. Same
+          // 320ms curve as the scrim above. Docked (display:contents) ≥900.
+          position: 'fixed', top: 9, bottom: 9, left: 9, zIndex: 101,
+          transform: navPopoutOpen ? 'translateX(0)' : 'translateX(calc(-100% - 18px))',
+          transition: 'transform 320ms cubic-bezier(0.32, 0.72, 0, 1)',
+          willChange: 'transform',
+          WebkitAppRegion: 'no-drag',
+        } : { display: 'contents' }}
+      >
         <Sidebar
           tasks={tasks}
           pins={pins}
@@ -3739,9 +3782,11 @@ function AppCore() {
           onOpenSearch={() => setSearchOpen(true)}
           collapsed={sidebarCollapsedEffective}
           onToggleCollapsed={
-            sidebarCollapsibleRoutes.has(route)
-              ? () => setSidebarCollapsed((c) => !c)
-              : undefined
+            isNarrow
+              ? () => setNavPopoutOpen(false)
+              : (sidebarCollapsibleRoutes.has(route)
+                  ? () => setSidebarCollapsed((c) => !c)
+                  : undefined)
           }
           onPinTask={handlePinTask}
           onUnpinTask={handleUnpinTask}
@@ -3752,6 +3797,7 @@ function AppCore() {
           schedules={scheduled}
           scheduleRunsIndex={scheduleRunsIndex}
           onOpenSchedule={(scheduleId) => {
+            if (isNarrow) setNavPopoutOpen(false);
             setSelectedScheduleId(scheduleId);
             setRoute('schedule-detail');
           }}
@@ -3818,8 +3864,8 @@ function AppCore() {
         isMobile={isMobile}
         mainBg={mainBg}
         titlebarSafeLeft={titlebarSafeLeft}
-        showFloatingHamburger={sidebarCollapsedEffective}
-        onOpenSidebar={() => setSidebarCollapsed(false)}
+        showFloatingHamburger={isNarrow ? !navPopoutOpen : sidebarCollapsedEffective}
+        onOpenSidebar={isNarrow ? () => setNavPopoutOpen(true) : () => setSidebarCollapsed(false)}
         mobileShellProps={mobileShellProps}
       >
         {route === 'home' && (
