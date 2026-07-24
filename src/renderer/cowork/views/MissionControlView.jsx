@@ -21,6 +21,7 @@ import ApprovalCard from '../components/ApprovalCard';
 import { Button, CardRow, Spinner } from '../components/ui';
 import Badge from '../components/ui/Badge';
 import { useBoard } from '../components/board/useBoard';
+import { useBreakpoint } from '../hooks/useBreakpoint';
 import { ensureOnboarding, fetchSession, openArtifact } from '../api';
 import { relativeAge, relativeTime } from '../lib/formatTime';
 import { host } from '../../platform/host';
@@ -316,6 +317,17 @@ export default function MissionControlView({
   onCreateProject,
 }) {
   const { needsYou, running, scheduled, shipped, expired, metrics, loading } = useBoard({ tasks });
+  // Column count is an explicit layout decision, not auto-fit guesswork:
+  // 4 across when the window can hold them (the mock's shape), 2 in between,
+  // 1 on mobile. ≥1150px window ≈ ≥215px per column with the sidebar open.
+  const { isMobile } = useBreakpoint();
+  const [wide, setWide] = useState(() => typeof window !== 'undefined' && window.innerWidth >= 1150);
+  useEffect(() => {
+    const onResize = () => setWide(window.innerWidth >= 1150);
+    window.addEventListener('resize', onResize, { passive: true });
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  const columnCount = isMobile ? 1 : wide ? 4 : 2;
   // Which running conversation (if any) the Peek slide-over is showing.
   const [peekId, setPeekId] = useState(null);
 
@@ -447,7 +459,7 @@ export default function MissionControlView({
         <div style={{
           padding: '0 32px 32px',
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))',
+          gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))`,
           gap: 20,
           alignItems: 'start',
         }}>
