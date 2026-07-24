@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import { PageHeader, FilterRow, SearchInput, SortPill } from '../components/collection';
-import { Menu, Button, Card, Select } from '../components/ui';
+import { Menu, Button, Card, Select, Eyebrow } from '../components/ui';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
 import { Crumb, CrumbSep, CrumbCurrent } from '../components/ui/Crumb';
 import { useToastManager } from '../components/ui/Toast';
@@ -62,7 +62,9 @@ function SkillGridCard({ skill, onClick }) {
           )}
         </div>
         <span style={{
-          fontFamily: 'var(--font-body)', fontSize: 14, lineHeight: '24px',
+          // Matches the page-header subtitle (13.5 / 1.5) so the card copy
+          // reads as the same "muted body" voice, not a looser 14/24 block.
+          fontFamily: 'var(--font-body)', fontSize: 13.5, lineHeight: 1.5,
           color: 'var(--ink-3)',
           display: '-webkit-box',
           WebkitLineClamp: 2,
@@ -478,9 +480,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
 
           {/* Scope */}
           <div style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 11.5, fontWeight: 500, color: 'var(--ink-3)', marginBottom: 4, fontFamily: 'var(--font-mono)', letterSpacing: '0.04em' }}>
-              Scope
-            </div>
+            <Eyebrow>Scope</Eyebrow>
             <p style={{ margin: 0, fontSize: 13.5, color: 'var(--ink)', lineHeight: 1.5, userSelect: 'text' }}>
               {selected.projects?.[0]}
             </p>
@@ -489,9 +489,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
           {/* Description */}
           {selected.description && (
             <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 11.5, fontWeight: 500, color: 'var(--ink-3)', marginBottom: 4, fontFamily: 'var(--font-mono)', letterSpacing: '0.04em' }}>
-                Description
-              </div>
+              <Eyebrow>Description</Eyebrow>
               <p style={{ margin: 0, fontSize: 13.5, color: 'var(--ink)', lineHeight: 1.5, userSelect: 'text' }}>
                 {selected.description}
               </p>
