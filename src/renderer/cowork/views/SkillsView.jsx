@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import { PageHeader, FilterRow, SearchInput, SortPill } from '../components/collection';
-import { Menu, Button, Card, Select, Eyebrow } from '../components/ui';
+import { Menu, Button, Card, Select } from '../components/ui';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
 import { Crumb, CrumbSep, CrumbCurrent } from '../components/ui/Crumb';
 import { useToastManager } from '../components/ui/Toast';
@@ -480,7 +480,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
 
           {/* Scope */}
           <div style={{ marginBottom: 16 }}>
-            <Eyebrow>Scope</Eyebrow>
+            <h3 className="s-h3" style={{ margin: '0 0 4px' }}>Scope</h3>
             <p style={{ margin: 0, fontSize: 13.5, color: 'var(--ink)', lineHeight: 1.5, userSelect: 'text' }}>
               {selected.projects?.[0]}
             </p>
@@ -489,7 +489,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
           {/* Description */}
           {selected.description && (
             <div style={{ marginBottom: 16 }}>
-              <Eyebrow>Description</Eyebrow>
+              <h3 className="s-h3" style={{ margin: '0 0 4px' }}>Description</h3>
               <p style={{ margin: 0, fontSize: 13.5, color: 'var(--ink)', lineHeight: 1.5, userSelect: 'text' }}>
                 {selected.description}
               </p>
