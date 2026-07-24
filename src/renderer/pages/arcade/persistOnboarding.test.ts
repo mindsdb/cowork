@@ -57,6 +57,9 @@ describe('persistOnboarding', () => {
   it('still succeeds when syncModels throws after the DB write lands', async () => {
     const d = makeDeps({ syncModels: vi.fn(async () => { throw new Error('model sync flaked'); }) });
     await expect(persistOnboarding(d, ['ANTON_X=1'])).resolves.toEqual({ ok: true });
+    // The two best-effort syncs are independent (#435 review): a throwing
+    // syncModels must not skip the harness write.
+    expect(d.syncHarness).toHaveBeenCalled();
   });
 
   it('still succeeds when syncHarness throws after the DB write lands', async () => {
