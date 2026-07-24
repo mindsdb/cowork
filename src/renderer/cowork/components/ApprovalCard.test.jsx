@@ -77,3 +77,12 @@ describe('ApprovalCard', () => {
     expect(screen.getByText('Send it')).toBeTruthy(); // still pending, still clickable
   });
 });
+
+it('shows the receipt note after a successful resolve (See you at 9:00.)', async () => {
+  resolveApproval.mockImplementation(async () => ({
+    approval: { ...pendingAction, status: 'approved', receipt: { executed: true, summary: 'See you at 9:00.' } },
+  }));
+  render(<ApprovalCard approval={pendingAction} />);
+  fireEvent.click(screen.getByText('Send it'));
+  await screen.findByText('See you at 9:00.');
+});

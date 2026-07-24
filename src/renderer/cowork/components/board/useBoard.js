@@ -4,6 +4,7 @@ import {
   fetchSchedules,
   fetchResolvedApprovals,
   fetchExpiredApprovals,
+  fetchApprovalMetrics,
 } from '../../api';
 import { usePendingApprovals } from '../usePendingApprovals';
 
@@ -64,20 +65,25 @@ export function useBoard({ tasks = [] } = {}) {
   const [shippedRaw, setShippedRaw] = useState([]);
   const [expired, setExpired] = useState([]);
   const [metrics, setMetrics] = useState(null);
+  const [serverDown, setServerDown] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
-    const [inFlight, scheds, resolved, expiredList] = await Promise.all([
+    const results = await Promise.allSettled([
       fetchInFlightList(),
       fetchSchedules(),
       fetchResolvedApprovals(),
       fetchExpiredApprovals(),
     ]);
+    const [inFlight, scheds, resolved, expiredList] = results.map((r) => (r.status === 'fulfilled' ? r.value : null));
     setRunningRaw(Array.isArray(inFlight) ? inFlight : []);
     setScheduled(Array.isArray(scheds?.schedules) ? scheds.schedules : []);
     setShippedRaw(Array.isArray(resolved) ? resolved : []);
     setExpired(Array.isArray(expiredList) ? expiredList : []);
     setLoading(false);
+    // A blind board must not read as a calm day: when EVERY feed rejected,
+    // the server is down — the view says so instead of showing empty columns.
+    setServerDown(results.every((r) => r.status === 'rejected'));
     try {
       // Ambient reliability readout (M4) — never blocks the board.
       setMetrics(await fetchApprovalMetrics());
@@ -98,5 +104,5 @@ export function useBoard({ tasks = [] } = {}) {
   const running = useMemo(() => enrichRunning(runningRaw, tasks), [runningRaw, tasks]);
   const shipped = useMemo(() => groupShipped(shippedRaw), [shippedRaw]);
 
-  return { needsYou, running, scheduled, shipped, expired, metrics, loading, refresh };
+  return { needsYou, running, scheduled, shipped, expired, metrics, loading, serverDown, refresh };
 }

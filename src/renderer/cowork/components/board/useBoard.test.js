@@ -10,6 +10,7 @@ const api = vi.hoisted(() => ({
   fetchSchedules: vi.fn(async () => ({ schedules: [] })),
   fetchResolvedApprovals: vi.fn(async () => []),
   fetchExpiredApprovals: vi.fn(async () => []),
+  fetchApprovalMetrics: vi.fn(async () => null),
 }));
 vi.mock('../../api', () => api);
 
@@ -142,4 +143,14 @@ describe('useBoard', () => {
       vi.useRealTimers();
     }
   });
+});
+
+it('flags serverDown when every feed rejects instead of reading as calm', async () => {
+  api.fetchInFlightList.mockRejectedValue(new Error('down'));
+  api.fetchSchedules.mockRejectedValue(new Error('down'));
+  api.fetchResolvedApprovals.mockRejectedValue(new Error('down'));
+  api.fetchExpiredApprovals.mockRejectedValue(new Error('down'));
+  api.fetchApprovalMetrics.mockRejectedValue(new Error('down'));
+  const { result } = renderHook(() => useBoard({ tasks: [] }));
+  await waitFor(() => expect(result.current.serverDown).toBe(true));
 });

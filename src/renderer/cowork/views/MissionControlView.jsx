@@ -316,7 +316,7 @@ export default function MissionControlView({
   onUpdateConnectorMute,
   onCreateProject,
 }) {
-  const { needsYou, running, scheduled, shipped, expired, metrics, loading } = useBoard({ tasks });
+  const { needsYou, running, scheduled, shipped, expired, metrics, loading, serverDown } = useBoard({ tasks });
   // Column count is an explicit layout decision, not auto-fit guesswork:
   // 4 across when the window can hold them (the mock's shape), 2 in between,
   // 1 on mobile. ≥1150px window ≈ ≥215px per column with the sidebar open.
@@ -366,11 +366,15 @@ export default function MissionControlView({
 
   const n = needsYou.length;
   const todayStamp = new Date().toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }).toUpperCase();
-  const headline = n === 0
-    ? `Nothing needs you. ${agentLabel} has the rest.`
-    : n === 1
-      ? `1 thing needs you. ${agentLabel} has the rest.`
-      : `${n} things need you. ${agentLabel} has the rest.`;
+  // serverDown: the headline must not claim "nothing needs you" — that's a
+  // false reassurance exactly where the product stakes its credibility.
+  const headline = serverDown
+    ? 'The board is blind, not calm.'
+    : n === 0
+      ? `Nothing needs you. ${agentLabel} has the rest.`
+      : n === 1
+        ? `1 thing needs you. ${agentLabel} has the rest.`
+        : `${n} things need you. ${agentLabel} has the rest.`;
 
   const shippedCount = shipped.today.length + shipped.older.length;
   // A paused schedule isn't "scheduled" in any sense the user means — the
@@ -413,7 +417,7 @@ export default function MissionControlView({
           {/* The claim, measured (M4): quiet readout under the headline —
               shipped vs needs-you, edit/skip quality, median resolve time.
               Hidden when the server has no metrics (old build / down). */}
-          {metrics && (metrics.shipped > 0 || metrics.needsYou > 0) && (
+          {metrics && !serverDown && (metrics.shipped > 0 || metrics.needsYou > 0) && (
             <div style={{ marginTop: 6, fontSize: 12, color: 'var(--ink-4)', display: 'flex', gap: 12, flexWrap: 'wrap' }} data-testid="metrics-row">
               <span>{metrics.shipped} shipped · {metrics.needsYou} needed you{metrics.autonomyRatio != null ? ` (${Math.round(metrics.autonomyRatio * 100)}% autonomous)` : ''}</span>
               {(metrics.editRate > 0 || metrics.skipRate > 0) && (
@@ -454,6 +458,22 @@ export default function MissionControlView({
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: 48, color: 'var(--ink-4)' }}>
           <Spinner />
+        </div>
+      ) : serverDown ? (
+        // A blind board must never read as a calm day (review).
+        <div style={{
+          margin: '0 32px', padding: '18px 20px', borderRadius: 12,
+          border: '1px solid color-mix(in srgb, var(--warn) 35%, transparent)',
+          background: 'color-mix(in srgb, var(--warn-bg, transparent) 60%, transparent)',
+          display: 'flex', alignItems: 'center', gap: 12,
+        }} data-testid="server-down">
+          <span aria-hidden style={{ display: 'inline-flex', color: 'var(--warn)' }}>{Ico.warning(16)}</span>
+          <div>
+            <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--ink)' }}>Can't reach the server</div>
+            <div style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 2 }}>
+              The board is blind, not calm — approvals, runs, and receipts are all unreachable right now.
+            </div>
+          </div>
         </div>
       ) : (
         <div style={{

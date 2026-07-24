@@ -443,3 +443,14 @@ describe('Mission Control — first-run effects (O2/O3)', () => {
     expect(notify).not.toHaveBeenCalled();
   });
 });
+
+describe('Mission Control — down server', () => {
+  it('says blind-not-calm instead of rendering empty columns', () => {
+    useBoard.mockReturnValue(board({ serverDown: true }));
+    render(<MissionControlView />);
+    expect(screen.getByTestId('server-down')).toBeInTheDocument();
+    expect(screen.getByText("Can't reach the server")).toBeInTheDocument();
+    expect(screen.getByText('The board is blind, not calm.')).toBeInTheDocument();
+    expect(screen.queryByText('Nothing needs you. Anton has the rest.')).toBeNull();
+  });
+});

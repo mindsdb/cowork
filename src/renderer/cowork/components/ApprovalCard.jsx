@@ -39,7 +39,10 @@ export default function ApprovalCard({ approval, onOpenTab }) {
     setError(null);
     try {
       const res = await resolveApproval(approval.id, resolution, editedDraft);
-      setResolved({ status: res.approval?.status || resolution });
+      setResolved({
+        status: res.approval?.status || resolution,
+        receipt: res.approval?.receipt || null,
+      });
     } catch (e) {
       setError(e?.message || 'Could not resolve — try again');
     } finally {
