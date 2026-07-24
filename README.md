@@ -92,6 +92,59 @@ To set it, add `DEV_MODE=full` (or `live`) to `~/.anton/.env`. Remove the line t
 
 > **Tip**: If you build the app and it looks outdated, the OTA cache may be serving an older published bundle. Either set `DEV_MODE=full` to bypass it, or clear the cache: `rm -rf ~/Library/Application\ Support/anton/ui-cache/current`
 
+### Fresh-install reset (macOS)
+
+To test first-run onboarding you need a true fresh-install state. App state lives in six places: the cowork homes (`~/.cowork` plus per-build-kind variants), the legacy `~/.anton` home, the Electron userData dir, the log dir, the uv-managed tool installs, and the macOS Keychain (connector OAuth tokens). This zsh function wipes them all — drop it in `~/.zshrc`:
+
+```zsh
+# Reset MindsHub Cowork to a fresh-install state: kills the app, wipes
+# per-user state (API keys, chat history, .env, DB, OTA cache, keychain
+# tokens), and uninstalls the uv-managed packages so the .app runs full
+# onboarding on next launch.
+# Usage: anton-reset [--deep]   (--deep also removes uv itself + shims)
+anton-reset() {
+  local deep=0
+  [[ "$1" == "--deep" ]] && deep=1
+
+  echo "About to wipe Cowork state for $(whoami) (HOME: $HOME)"
+  (( deep )) && echo "Deep mode: also removes uv and ~/.local/share/uv"
+  read -q "?Proceed? [y/N] " || { echo; echo "Aborted."; return 1; }
+  echo
+
+  # Stop the app (current product name, plus older builds)
+  killall "MindsHub Cowork" 2>/dev/null
+  killall Anton 2>/dev/null
+  sleep 1
+
+  # Per-user runtime state — all build kinds (prod uses ~/.cowork;
+  # dev/preview/stable use suffixed homes)
+  rm -rf "$HOME/Library/Application Support/anton" \
+         "$HOME/Library/Logs/anton" \
+         "$HOME/.anton" \
+         "$HOME/.cowork" "$HOME/.cowork-dev" "$HOME/.cowork-preview" "$HOME/.cowork-stable"
+  rm -f  "$HOME/Library/Preferences/com.anton.app.plist"
+
+  # Connector OAuth tokens live in the macOS Keychain, not on disk
+  while security delete-generic-password -s cowork-oauth >/dev/null 2>&1; do :; done
+
+  # uv-installed packages (the installer re-installs these on next run)
+  uv tool uninstall anton anton-agent cowork-server 2>/dev/null
+
+  # Deep clean: force the installer to bootstrap uv itself too
+  if (( deep )); then
+    rm -f  "$HOME/.local/bin/uv" "$HOME/.local/bin/uvx" "$HOME/.local/bin/anton"
+    rm -rf "$HOME/.local/share/uv" "$HOME/.cache/uv"
+  fi
+
+  # Verify the key file is actually gone (the critical check)
+  if [[ -e "$HOME/.anton/.env" || -e "$HOME/.cowork/.env" ]]; then
+    echo "STILL THERE: a .env survived the wipe"
+    return 1
+  fi
+  echo "GONE: all Cowork state removed. Relaunch the .app for fresh onboarding."
+}
+```
+
 ---
 
 ## Web Build
@@ -171,7 +224,7 @@ unset (the Electron path), behavior is byte-identical to before.
 src/
   main/                  # Electron main process (Node.js)
     index.ts             # Window creation, IPC handlers, menu
-    installer.ts         # First-run installer for cowork-server (uv + git + Xcode CLT)
+    installer.ts         # First-run installer for cowork-server (uv; plus git + Xcode CLT on git-channel builds only)
     server-process.ts    # FastAPI sidecar lifecycle (start/stop/health)
     server-updater.ts    # OTA server update (PyPI check, upgrade, rollback)
     ui-updater.ts        # OTA UI update system (fetch, verify, cache, rollback)

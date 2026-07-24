@@ -31,7 +31,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
-import { Badge, Checkbox, Select } from '../ui';
+import { Badge, Button, Checkbox, Select } from '../ui';
 import {
   setFormState,
   setSelectedMethod,
@@ -361,20 +361,11 @@ export function DataVaultForm({ spec, busy = false, onAction, onMethodChange, co
                 { id: 'view_connectors', label: 'View connectors →', kind: 'primary' },
               ]
           ).map((a) => (
-            <button
+            <Button
               key={a.id}
-              type="button"
+              variant={a.kind === 'primary' ? 'primary' : 'subtle'}
               onClick={() => onAction?.({ id: a.id, kind: a.kind || 'cancel' })}
-              className={a.kind === 'primary' ? 'btn-primary' : undefined}
-              style={a.kind === 'primary' ? undefined : {
-                background: 'transparent',
-                border: '1px solid var(--line)',
-                color: 'var(--ink-2)',
-                padding: '7px 12px', borderRadius: 7,
-                fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 500,
-                cursor: 'pointer',
-              }}
-            >{a.label}</button>
+            >{a.label}</Button>
           ))}
         </div>
       </div>
@@ -674,9 +665,13 @@ export function DataVaultForm({ spec, busy = false, onAction, onMethodChange, co
             ? 'Save changes'
             : a.label;
           return (
-            <button
+            <Button
               key={a.id}
-              type="button"
+              variant={
+                a.kind === 'primary' ? 'primary'
+                  : a.kind === 'cancel' ? 'subtle'
+                  : 'default'
+              }
               onClick={() => {
                 // Field-level skip via an action button (vs the per-field
                 // skip control). Useful when the spec wants a one-shot
@@ -688,28 +683,14 @@ export function DataVaultForm({ spec, busy = false, onAction, onMethodChange, co
                 dispatch(a);
               }}
               disabled={busy && a.kind !== 'cancel'}
-              // `is-busy` paints a gentle accent pulse while the
-              // probe is in flight (see globals.css `.btn-primary.is-busy`).
-              // Overrides the default disabled-dim so the button
-              // reads as "working" rather than "dead."
-              className={
-                a.kind === 'primary'
-                  ? `btn-primary${busy ? ' is-busy' : ''}`
-                  : undefined
-              }
-              style={a.kind === 'primary' ? undefined : {
-                background: 'transparent',
-                border: '1px solid var(--line)',
-                color: a.kind === 'cancel' ? 'var(--ink-3)' : 'var(--ink-2)',
-                padding: '7px 12px',
-                borderRadius: 7,
-                fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 500,
-                cursor: busy ? 'progress' : 'pointer',
-                opacity: busy ? 0.6 : 1,
-              }}
+              // `is-busy` paints a gentle accent pulse while the probe is
+              // in flight (globals.css `.btn.primary.is-busy`). Overrides
+              // the default disabled-dim so the button reads as "working"
+              // rather than "dead."
+              className={a.kind === 'primary' && busy ? 'is-busy' : undefined}
             >
               {a.kind === 'primary' && busy ? 'Working…' : label}
-            </button>
+            </Button>
           );
         })}
         </div>

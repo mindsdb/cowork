@@ -96,22 +96,12 @@ function FileAccessButton({ projectPath, projectName, filePath, rawUrl }) {
   return (
     <div style={{ display: 'inline-flex', gap: 4 }}>
       {hasProjectFile && (
-        <button
-          type="button"
+        <Button
           onClick={() => abs && host.showItemInFolder(abs)}
           title="Reveal in Finder"
-          style={{
-            cursor: 'pointer',
-            background: 'transparent', border: '1px solid var(--line)',
-            color: 'var(--ink-2)',
-            padding: '6px 12px', borderRadius: 6,
-            fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 500,
-            display: 'inline-flex', alignItems: 'center', gap: 6,
-          }}
-        >{Ico.folder ? Ico.folder(13) : '📁'} Reveal</button>
+        >{Ico.folder ? Ico.folder(13) : '📁'} Reveal</Button>
       )}
-      <button
-        type="button"
+      <Button
         onClick={() => {
           // Prefer the raw URL (attachments + anything that passed one)
           // via the OS shell; fall back to opening the local project
@@ -120,15 +110,7 @@ function FileAccessButton({ projectPath, projectName, filePath, rawUrl }) {
           else if (abs) host.openPath(abs);
         }}
         title="Open in default app"
-        style={{
-          cursor: 'pointer',
-          background: 'transparent', border: '1px solid var(--line)',
-          color: 'var(--ink-2)',
-          padding: '6px 12px', borderRadius: 6,
-          fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 500,
-          display: 'inline-flex', alignItems: 'center', gap: 6,
-        }}
-      >{Ico.externalLink ? Ico.externalLink(13) : '↗'} Open</button>
+      >{Ico.externalLink ? Ico.externalLink(13) : '↗'} Open</Button>
     </div>
   );
 }
@@ -487,19 +469,10 @@ export default function ContextFileModal({
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             {mode === 'text' && !editing && !loading && (
-              <button
-                type="button"
-                className="hover-tint hover-tint-text"
+              <Button
                 onClick={() => setEditing(true)}
                 title="Edit"
-                style={{
-                  cursor: 'pointer',
-                  background: 'transparent', border: '1px solid var(--line)',
-                  color: 'var(--ink-2)',
-                  padding: '6px 12px', borderRadius: 6,
-                  fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 500,
-                }}
-              >Edit</button>
+              >Edit</Button>
             )}
             {/* HTML / image / binary modes all expose a "Reveal" /
                 "Open" / "Download" affordance in the header so the user
@@ -668,26 +641,17 @@ export default function ContextFileModal({
         }}>
           <div>
             {canDelete && !editing && !loading && (
-              <button
-                type="button"
+              <Button
+                variant="danger"
                 onClick={handleDelete}
                 disabled={busy}
-                className="hover-tint"
-                style={{
-                  cursor: busy ? 'not-allowed' : 'pointer',
-                  background: 'transparent', border: 0,
-                  color: 'var(--danger)',
-                  padding: '7px 14px', borderRadius: 7,
-                  fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 500,
-                  opacity: busy ? 0.5 : 1,
-                }}
-              >Delete</button>
+              >{Ico.trash ? Ico.trash(13) : null}Delete</Button>
             )}
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             {editing && (
-              <button
-                type="button"
+              <Button
+                variant="subtle"
                 onClick={() => {
                   // Cancel edit — restore the persisted content. If
                   // anton.md is still empty after cancel, kick the
@@ -696,15 +660,7 @@ export default function ContextFileModal({
                   setEditing(false);
                 }}
                 disabled={busy}
-                className="hover-tint hover-tint-text"
-                style={{
-                  cursor: busy ? 'not-allowed' : 'pointer',
-                  background: 'transparent', border: 0,
-                  color: 'var(--ink-3)',
-                  padding: '7px 14px', borderRadius: 7,
-                  fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500,
-                }}
-              >Cancel</button>
+              >Cancel</Button>
             )}
             {editing && (
               <Button
@@ -716,18 +672,10 @@ export default function ContextFileModal({
               </Button>
             )}
             {!editing && !loading && (
-              <button
-                type="button"
+              <Button
+                variant="subtle"
                 onClick={() => onClose?.()}
-                className="hover-tint hover-tint-text"
-                style={{
-                  cursor: 'pointer',
-                  background: 'transparent', border: 0,
-                  color: 'var(--ink-3)',
-                  padding: '7px 14px', borderRadius: 7,
-                  fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500,
-                }}
-              >Close</button>
+              >Close</Button>
             )}
           </div>
         </div>

@@ -10,12 +10,16 @@
 // Resolution order:
 //   process.env.MINDS_API_HOST  — explicit runtime override (dev / tests)
 //   BUILD_MINDS_API_URL         — baked at build time (packaged apps)
-//   'https://api.mindshub.ai'   — prod fallback
+//   build-kind fallback         — dev→dev, preview/stable→staging, else prod
 //
 // URL pattern:
 //   prod:    api.mindshub.ai    / auth.mindshub.ai    / console.mindshub.ai
 //   staging: api.staging.mindshub.ai / auth.staging.mindshub.ai / console.staging.mindshub.ai
-//   dev:     api.dev.mindshub.ai     / auth.dev.mindshub.ai     / console.dev.mindshub.ai
+
+// buildKind is imported eagerly (not lazy-required) so vitest can intercept it
+// via vi.mock — a static ESM import is mockable, a dynamic require inside a
+// function is not (see server-source.ts for the same reasoning).
+import { buildKind } from './cowork-home';
 
 function bakedApiUrl(): string {
   try {
@@ -38,8 +42,27 @@ function toOrigin(u: string): string {
   }
 }
 
+// Fallback host when nothing is explicitly set or baked. Local dev
+// (unpackaged → build kind "dev") must NOT default to production: a bare
+// `npm run dev` would otherwise authenticate against prod Keycloak and hit
+// prod MindsHub. Packaged builds bake their host, so this only decides the
+// unbaked case; prod-kind (or any unknown/failed kind) stays on prod, which
+// keeps the packaged-prod invariant (a build with nothing baked resolves to
+// production).
+function _fallbackApiHost(): string {
+  try {
+    const kind = buildKind();
+    if (kind === 'dev') return 'https://api.staging.mindshub.ai';
+    if (kind === 'preview' || kind === 'stable') return 'https://api.staging.mindshub.ai';
+  } catch {
+    // buildKind may reach for electron `app` outside a packaged process; any
+    // failure falls through to the production default.
+  }
+  return 'https://api.mindshub.ai';
+}
+
 const API_HOST = toOrigin(
-  process.env.MINDS_API_HOST || bakedApiUrl() || 'https://api.mindshub.ai',
+  process.env.MINDS_API_HOST || bakedApiUrl() || _fallbackApiHost(),
 );
 
 export const MINDS_API_HOST = API_HOST;

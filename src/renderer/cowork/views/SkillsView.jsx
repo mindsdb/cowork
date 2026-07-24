@@ -237,6 +237,7 @@ function SkillModal({ open, onClose, onSaved, onError, initial = null, projects 
       <ModalFooter>
         <Button variant="subtle" onClick={handleClose}>Cancel</Button>
         <Button variant="primary" disabled={!canSubmit} onClick={submit}>
+          {!isEdit && !busy && Ico.plus(14)}
           {busy ? 'Saving…' : isEdit ? 'Save' : 'Create'}
         </Button>
       </ModalFooter>
@@ -305,13 +306,12 @@ function UploadSkillModal({ open, onClose, onSaved, onError }) {
                 <span style={{ fontSize: 12, fontFamily: 'var(--font-body)', color: 'var(--ink-4)' }}>
                   {(file.size / 1024).toFixed(1)} KB
                 </span>
-                <button
-                  type="button"
+                <Button
+                  variant="subtle"
                   onClick={(e) => { e.stopPropagation(); setFile(null); }}
-                  style={{ background: 'none', border: 0, color: 'var(--ink-4)', cursor: 'pointer', fontSize: 12, fontFamily: 'var(--font-body)' }}
                 >
                   Remove
-                </button>
+                </Button>
               </>
             ) : (
               <>
@@ -345,6 +345,7 @@ function UploadSkillModal({ open, onClose, onSaved, onError }) {
         <Button variant="subtle" onClick={onClose}>Cancel</Button>
         {file && (
           <Button variant="primary" disabled={busy} onClick={upload}>
+            {!busy && Ico.upload(14)}
             {busy ? 'Uploading…' : 'Upload'}
           </Button>
         )}
@@ -363,7 +364,7 @@ function CreateSkillDropdown({ onWrite, onUpload, onCowork }) {
   ];
   const trigger = (
     <Button
-      variant="solid"
+      variant="primary"
       style={{ display: 'inline-flex', alignItems: 'center', gap: 8, paddingRight: 10 }}
     >
       {Ico.plus(14)}

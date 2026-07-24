@@ -34,6 +34,12 @@ export const SETTINGS_KEY_MAP = {
   coding_provider: 'codingProvider',
   coding_model: 'codingModel',
   coding_reasoning_effort: 'codingReasoningEffort',
+  // Router (anton's "thalamus" role) — the cheap front-model that gates each
+  // turn respond-vs-delegate AND runs history summarization. Selectable so
+  // users can point routing+summarization at a cheap model (defaults per
+  // provider: MindsHub→kimi, else smallest).
+  router_provider: 'routerProvider',
+  router_model: 'routerModel',
   openai_base_url: 'openaiBaseUrl',
   model_mode: 'modelMode',
   model_overrides: 'modelOverrides',
@@ -78,7 +84,7 @@ const PROVIDER_TO_SERVER = {
   'minds-cloud': 'minds_cloud',
 };
 
-const PROVIDER_FIELDS = new Set(['planningProvider', 'codingProvider']);
+const PROVIDER_FIELDS = new Set(['planningProvider', 'codingProvider', 'routerProvider']);
 
 export function providerValueToType(value) {
   if (!value) return '';
@@ -108,12 +114,15 @@ export function providerTypeToServerValue(value) {
 export function effectiveRoleModel(settings, role) {
   const s = settings || {};
   if (role === 'planning') return s.planningModel ?? s.defaultModel ?? '';
+  if (role === 'router') return s.routerModel ?? '';
   return s.codingModel ?? '';
 }
 
 export function effectiveRoleProvider(settings, role) {
   const s = settings || {};
-  const raw = role === 'planning' ? s.planningProvider : s.codingProvider;
+  const raw = role === 'planning' ? s.planningProvider
+    : role === 'router' ? s.routerProvider
+    : s.codingProvider;
   return providerValueToType(raw) || 'minds-cloud';
 }
 
@@ -139,9 +148,12 @@ export const STATIC_SETTINGS = {
   recommendedModels: {
     'minds-cloud': [], anthropic: [], openai: [], gemini: [], 'openai-compatible': [],
   },
-  // Per-provider (planning, coding) default pair (filled at runtime).
+  // Per-provider default model tuple (filled at runtime by the backend
+  // overlay). Historically [planning, coding]; extended to
+  // [planning, coding, router]. A missing 3rd slot falls back to the coding
+  // default in the UI, so an un-upgraded backend still works.
   recommendedPair: {
-    'minds-cloud': ['', ''], anthropic: ['', ''], openai: ['', ''], gemini: ['', ''], 'openai-compatible': ['', ''],
+    'minds-cloud': ['', '', ''], anthropic: ['', '', ''], openai: ['', '', ''], gemini: ['', '', ''], 'openai-compatible': ['', '', ''],
   },
 };
 

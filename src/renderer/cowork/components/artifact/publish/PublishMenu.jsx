@@ -19,7 +19,7 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Popover } from '@base-ui/react/popover';
 import Ico from '../../Icons';
-import { Spinner } from '../../ui';
+import { Button, Spinner } from '../../ui';
 import { copyText } from '../../../lib/clipboard';
 import {
   AccessChooser,
@@ -95,20 +95,11 @@ function LinkButton({ onClick, children }) {
 
 // Footer action buttons. `primary` = accent fill, otherwise neutral.
 function FooterButton({ onClick, disabled, primary, busy, busyLabel, title, children }) {
-  const base = {
-    cursor: disabled ? 'not-allowed' : 'pointer',
-    padding: '7px 14px', borderRadius: 8, fontFamily: FONT_BODY, fontWeight: 600, fontSize: 13, lineHeight: 1,
-    display: 'inline-flex', alignItems: 'center', gap: 6, transition: 'opacity 120ms ease',
-    opacity: disabled ? 0.5 : 1,
-  };
-  const skin = primary
-    ? { background: 'var(--accent)', border: '1px solid var(--accent)', color: '#fff' }
-    : { background: 'var(--surface-2)', border: '1px solid var(--line)', color: 'var(--ink-2)' };
   return (
-    <button type="button" onClick={onClick} disabled={disabled} title={title} style={{ ...base, ...skin }}>
+    <Button variant={primary ? 'primary' : 'default'} onClick={onClick} disabled={disabled} title={title}>
       {busy && <Spinner style={{ color: 'currentColor' }} />}
       {busy ? busyLabel : children}
-    </button>
+    </Button>
   );
 }
 
@@ -225,15 +216,10 @@ function VersionList({ versions, activatingMd5, busy, onActivate }) {
                 <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)' }} /> Live
               </span>
             ) : (
-              <button type="button" onClick={() => onActivate(v.md5)} disabled={busy} style={{
-                flexShrink: 0, cursor: busy ? 'not-allowed' : 'pointer',
-                background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 7, padding: '5px 10px',
-                fontFamily: FONT_BODY, fontWeight: 600, fontSize: 12, color: 'var(--ink-2)',
-                display: 'inline-flex', alignItems: 'center', gap: 5, opacity: busy && !acting ? 0.5 : 1,
-              }}>
+              <Button onClick={() => onActivate(v.md5)} disabled={busy} style={{ flexShrink: 0 }}>
                 {acting && <Spinner style={{ color: 'currentColor' }} />}
                 {acting ? 'Rolling back…' : 'Make live'}
-              </button>
+              </Button>
             )}
           </div>
         );

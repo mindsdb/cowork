@@ -92,7 +92,9 @@ export async function start({ readyTimeoutMs = 15000 } = {}) {
     ...process.env,
     PATH: getEnvPath(),
     PYTHONUNBUFFERED: '1',
+    // Both port names — see server-process.ts spawn env for why.
     COWORK_SERVER_PORT: String(DEFAULT_PORT),
+    COWORK_LISTEN_PORT: String(DEFAULT_PORT),
     COWORK_SERVER_HOST: SERVER_HOST,
   };
 
