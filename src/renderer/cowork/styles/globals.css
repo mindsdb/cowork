@@ -2903,19 +2903,19 @@ body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surfac
 
 /* New task CTA wrapper — the button itself is the tinted variant,
    full width (<Button variant="tinted" block size="lg">). */
-.anton-sidebar__cta-wrap { padding: 6px 10px 14px; }
+.anton-sidebar__cta-wrap { padding: 8px 10px 10px; }
 
 /* Override existing .nav-item rules to follow the guideline shape */
 .app-sidebar .nav-item {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 10px;
-  /* Uniform, roomier rows (ENG-640): a fixed min-height keeps every row
-     the same height whether or not it carries a count badge (the badge
-     was stretching auto-height rows unevenly), and gives the rail a
-     considered rhythm. */
-  min-height: 34px;
+  gap: 9px;
+  /* Uniform, dense rows: a fixed min-height keeps every row the same height
+     whether or not it carries a count badge (the badge was stretching
+     auto-height rows unevenly). Tightened 34→30 (ENG-1038) for a denser,
+     more structured rail. */
+  min-height: 30px;
   padding: 0 10px;
   border-radius: var(--r-lg);
   color: var(--ink-2);
@@ -2948,11 +2948,13 @@ body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surfac
 .app-sidebar .section-label {
   font-family: var(--font-sans);
   font-size: var(--text-2xs);
-  letter-spacing: 0.16em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--ink-4);
   font-weight: 600;
-  padding: 18px 14px 6px;
+  /* Tighter top gap so each group reads as attached to its heading, and a
+     10px left edge lined up with the nav-list gutter for structure. */
+  padding: 12px 10px 6px;
   margin: 0;
 }
 
@@ -3002,8 +3004,8 @@ body[data-theme="dark"] .app-sidebar .sidebar-empty {
   justify-content: space-between;
   gap: 8px;
   /* Match .nav-item exactly so nav rows and task/pinned rows read as one
-     consistent list (they were 32 vs 34 — a 2px mismatch that looked off). */
-  min-height: 34px;
+     consistent list, matched to the nav rows (ENG-1038: both tightened to 30). */
+  min-height: 30px;
   padding: 0 10px;
   border-radius: var(--r-8);
   font-family: var(--font-sans);
