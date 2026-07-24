@@ -4494,20 +4494,10 @@ body[data-theme="dark"] .mshell__drawer-title {
    navigation instead of the desktop two-column modal. Mirrors the
    MobileShell chrome (fixed inset, 52px top bar, safe-area insets) and
    layers at the same z as the modal it replaces so it covers the shell. */
-.settings-mobile {
-  position: fixed;
-  inset: 0;
-  z-index: 80;
-  display: flex;
-  flex-direction: column;
-  background: var(--bg);
-  color: var(--text-default);
-  font-family: var(--font-sans);
-  padding-top: env(safe-area-inset-top, 0);
-  padding-bottom: env(safe-area-inset-bottom, 0);
-  padding-left: env(safe-area-inset-left, 0);
-  padding-right: env(safe-area-inset-right, 0);
-}
+/* The full-page surface itself is a fullBleed <Modal> (App.jsx) — it carries
+   the fixed inset-0 frame, safe-area insets, and z-layer, plus the dialog
+   focus trap / scroll lock. These children style the top bar + scroll body
+   that SettingsView renders inside it. */
 .settings-mobile__top {
   flex: 0 0 auto;
   height: 52px;

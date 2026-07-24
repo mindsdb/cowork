@@ -755,14 +755,11 @@ export default function SettingsView({
   const [diagBusy, setDiagBusy] = useState(false);
   // Account section — decoded from the JWT, null until loaded
   const [accountUser, setAccountUser] = useState(null);
-  // Mobile accordion: which section is expanded (null = all collapsed). Kept
-  // local so collapsing everything on mobile never leaves the shared desktop
-  // `section` empty; seeded from `section` and re-synced when a deep-link
-  // (onOpenSettings('backend')) changes it while the page is open.
-  // Mobile master-detail (ENG-990): which section's detail page is open
-  // (null = the section list). Starts at the list on each open — the mobile
-  // surface remounts when Settings opens, so this resets naturally.
-  const [detailSection, setDetailSection] = useState(null);
+  // Mobile master-detail (ENG-990/ENG-991): the open section is the shared
+  // `section` prop, not a separate local state — so a deep-link
+  // (onOpenSettings('backend')) lands on that section AND the section-keyed
+  // load effects below fire on mobile too. `section == null` is the list; a
+  // row tap calls onSectionChange(id), the back control onSectionChange(null).
 
   useEffect(() => { getVersionInfo().then(setVersionInfo).catch(() => { }); }, []);
   // Backend (server + agent) versions come from /health, which is only
@@ -2719,7 +2716,7 @@ export default function SettingsView({
       backend: renderBackendSection,
       account: renderAccountSection,
     };
-    const activeItem = NAV_ITEMS.find((i) => i.id === detailSection) || null;
+    const activeItem = NAV_ITEMS.find((i) => i.id === section) || null;
     const inDetail = Boolean(activeItem);
     return (
       <SettingsLayoutContext.Provider value={{ mobile: true }}>
@@ -2728,7 +2725,7 @@ export default function SettingsView({
             type="button"
             className="settings-mobile__back"
             aria-label={inDetail ? 'Back to settings' : 'Close settings'}
-            onClick={() => (inDetail ? setDetailSection(null) : onClose?.())}
+            onClick={() => (inDetail ? onSectionChange?.(null) : onClose?.())}
           >
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
           </button>
@@ -2740,7 +2737,7 @@ export default function SettingsView({
         <div className="settings-mobile__body scroll-clean">
           {inDetail ? (
             <div className="settings-detail">
-              {renderers[detailSection]?.()}
+              {renderers[section]?.()}
             </div>
           ) : (
             <nav className="settings-list" role="navigation" aria-label="Settings sections">
@@ -2754,7 +2751,7 @@ export default function SettingsView({
                       className="mshell-accordion__head"
                       aria-disabled={disabled || undefined}
                       disabled={disabled}
-                      onClick={() => setDetailSection(item.id)}
+                      onClick={() => onSectionChange?.(item.id)}
                       style={disabled ? { opacity: 0.4, cursor: 'default' } : undefined}
                     >
                       {icon && (

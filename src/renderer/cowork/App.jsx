@@ -792,7 +792,9 @@ function AppCore() {
   const [composerPrefill, setComposerPrefill] = useState(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsSection, setSettingsSection] = useState('agent');
+  // null = no section selected: the mobile master-detail shows its section
+  // list; desktop (no list) falls back to 'agent' where it's read.
+  const [settingsSection, setSettingsSection] = useState(null);
   const [ssoConnected, setSsoConnected] = useState(false);
   // Last sign-in failure, painted on the Settings account card. Cleared
   // on retry and on any authenticated push from main (ENG-761).
@@ -1530,6 +1532,9 @@ function AppCore() {
     if (host.isWeb) return;
     if (health.config_ready === false) {
       bootConfigRedirectFiredRef.current = true;
+      // Missing provider → land straight on the Agent (provider) section, on
+      // desktop and in the mobile master-detail alike.
+      setSettingsSection('agent');
       setSettingsOpen(true);
     }
   }, [serverOnline, health.config_ready]);
@@ -2354,7 +2359,11 @@ function AppCore() {
   const navigate = (key) => {
     if (key === 'settings' || key.startsWith('settings:')) {
       const section = key.includes(':') ? key.split(':')[1] : null;
+      // Targeted (settings:backend) opens that section; a bare `settings`
+      // opens the section list on mobile (null) but keeps the last section on
+      // desktop, which has no list.
       if (section) setSettingsSection(section);
+      else if (isMobile) setSettingsSection(null);
       setSettingsOpen(true);
       return;
     }
@@ -3774,7 +3783,7 @@ function AppCore() {
             onCreateProject={(args) => handleCreateProject({ ...args, _inline: true })}
             configReady={health.config_ready ?? settings.configReady}
             configError={health.config_error ?? settings.configError}
-            onOpenSettings={(section) => { if (section) setSettingsSection(section); setSettingsOpen(true); }}
+            onOpenSettings={(section) => { if (section) setSettingsSection(section); else if (isMobile) setSettingsSection(null); setSettingsOpen(true); }}
             serverOnline={serverOnline}
             agentLabel={agentLabel}
             onShowServerHelp={() => { setSettingsSection('backend'); setSettingsOpen(true); }}
@@ -3787,7 +3796,7 @@ function AppCore() {
           <ChatView
             task={currentTask}
             onSend={handleSendInTask}
-            onOpenSettings={(section) => { if (section) setSettingsSection(section); setSettingsOpen(true); }}
+            onOpenSettings={(section) => { if (section) setSettingsSection(section); else if (isMobile) setSettingsSection(null); setSettingsOpen(true); }}
             queuedMessages={messageQueue[currentTask?.id] || []}
             onRemoveFromQueue={(itemId) => removeFromQueue(currentTask?.id, itemId)}
             onBack={() => {
@@ -3986,7 +3995,7 @@ function AppCore() {
             connectors={connectors}
             onConnectionsSynced={(next) =>
               setConnectors(Array.isArray(next) ? next : [])}
-            onOpenSettings={(section) => { if (section) setSettingsSection(section); setSettingsOpen(true); }}
+            onOpenSettings={(section) => { if (section) setSettingsSection(section); else if (isMobile) setSettingsSection(null); setSettingsOpen(true); }}
             onConnectNew={handleStartConnectChat}
             onReconnect={(spec) => handleConnectorPicked(spec)}
             agentLabel={agentLabel}
@@ -3997,31 +4006,36 @@ function AppCore() {
         {/* Mobile (ENG-990): Settings is a full page with accordion nav, not
             a modal. Gated on isMobile; desktop keeps the two-column modal. */}
         {isMobile ? (
-          settingsOpen && (
-            // Full-page master-detail surface. SettingsView owns its top bar
-            // (contextual back / title) and scroll body — see its mobile
-            // branch. onClose closes the whole surface from the section list.
-            <div className="settings-mobile" role="dialog" aria-modal="true" aria-labelledby="settings-mobile-title">
-              <SettingsView
-                mobile
-                onClose={() => setSettingsOpen(false)}
-                settings={settings} setSetting={setSetting} onSave={saveSettings}
-                theme={theme} onThemeChange={setTheme}
-                skin={skin} onSkinChange={setSkin}
-                customTheme={customTheme} onCustomThemeChange={setCustomTheme}
-                agentLabel={agentLabel}
-                section={settingsSection}
-                onSectionChange={setSettingsSection}
-                serverOnline={serverOnline}
-                serverBusy={serverBusy}
-                serverBusyKind={serverBusyKind}
-                onStartServer={handleServerStart}
-                onStopServer={handleServerStop}
-                isSsoConnected={ssoConnected}
-                ssoError={ssoError}
-              />
-            </div>
-          )
+          // Full-page master-detail surface. A fullBleed Modal (Base UI dialog)
+          // brings the focus trap + restore, scroll lock, and Esc dismissal a
+          // hand-rolled <div> can't; SettingsView owns its top bar (contextual
+          // back / title) and scroll body. onClose closes it from the list.
+          <Modal
+            open={settingsOpen}
+            onClose={() => setSettingsOpen(false)}
+            fullBleed
+            labelledBy="settings-mobile-title"
+          >
+            <SettingsView
+              mobile
+              onClose={() => setSettingsOpen(false)}
+              settings={settings} setSetting={setSetting} onSave={saveSettings}
+              theme={theme} onThemeChange={setTheme}
+              skin={skin} onSkinChange={setSkin}
+              customTheme={customTheme} onCustomThemeChange={setCustomTheme}
+              agentLabel={agentLabel}
+              section={settingsSection}
+              onSectionChange={setSettingsSection}
+              serverOnline={serverOnline}
+              serverBusy={serverBusy}
+              serverBusyKind={serverBusyKind}
+              onStartServer={handleServerStart}
+              onStopServer={handleServerStop}
+              isSsoConnected={ssoConnected}
+              ssoError={ssoError}
+              onSsoSignIn={!ssoConnected && host.isElectron ? async () => { setSettingsOpen(false); await handleSsoSignIn(); } : undefined}
+            />
+          </Modal>
         ) : (
           <Modal open={settingsOpen} onClose={() => setSettingsOpen(false)} size="lg" height="min(820px, 88vh)" labelledBy="settings-modal-title">
             <ModalHeader
@@ -4055,7 +4069,7 @@ function AppCore() {
                 skin={skin} onSkinChange={setSkin}
                 customTheme={customTheme} onCustomThemeChange={setCustomTheme}
                 agentLabel={agentLabel}
-                section={settingsSection}
+                section={settingsSection || 'agent'}
                 onSectionChange={setSettingsSection}
                 serverOnline={serverOnline}
                 serverBusy={serverBusy}

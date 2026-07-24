@@ -91,6 +91,11 @@ export function Modal({
   width,
   height,
   maxHeight,
+  // Full-viewport bare surface (mobile full-page): fills the screen with no
+  // card chrome (border/radius/shadow) and respects safe-area insets. Still a
+  // real Base UI dialog, so it keeps the focus trap + restore, scroll lock,
+  // and Esc dismissal a hand-rolled full-screen <div> would drop.
+  fullBleed = false,
   children,
 }) {
   const sz = SIZES[size] || SIZES.md;
@@ -139,12 +144,24 @@ export function Modal({
             aria-labelledby={labelledBy || undefined}
             aria-label={ariaLabel || undefined}
             style={{
-              width: width || sz.width,
-              ...(height ? { height } : { maxHeight: maxHeight || sz.maxHeight }),
-              background: 'var(--surface)',
-              border: '1px solid var(--line)',
-              borderRadius: 14,
-              boxShadow: 'var(--sh-modal)',
+              ...(fullBleed
+                ? {
+                    width: '100vw', height: '100dvh',
+                    background: 'var(--bg)',
+                    border: 'none', borderRadius: 0, boxShadow: 'none',
+                    paddingTop: 'env(safe-area-inset-top, 0)',
+                    paddingBottom: 'env(safe-area-inset-bottom, 0)',
+                    paddingLeft: 'env(safe-area-inset-left, 0)',
+                    paddingRight: 'env(safe-area-inset-right, 0)',
+                  }
+                : {
+                    width: width || sz.width,
+                    ...(height ? { height } : { maxHeight: maxHeight || sz.maxHeight }),
+                    background: 'var(--surface)',
+                    border: '1px solid var(--line)',
+                    borderRadius: 14,
+                    boxShadow: 'var(--sh-modal)',
+                  }),
               display: 'flex', flexDirection: 'column',
               overflow: 'hidden',
               outline: 'none',
