@@ -70,9 +70,19 @@ describe('dom tools script builders', () => {
     const script = domSnapshotScript();
     // Whitespace-only innerText must not shadow the aria-label: candidates
     // are trimmed BEFORE the chain falls through.
-    expect(script).toContain('const firstLabel = (...cands)');
+    expect(script).toContain('function firstLabel(...cands)');
     expect(script).toContain("firstLabel(el.innerText, (isPassword ? '' : el.value), el.getAttribute('aria-label')");
     expect(script).toContain('entry.ariaLabel =');
+  });
+
+  it('snapshot resolves aria-labelledby and keeps title as the last fallback', () => {
+    const script = domSnapshotScript();
+    // aria-labelledby: first id → referenced element's text.
+    expect(script).toContain("el.getAttribute('aria-labelledby')");
+    expect(script).toContain('document.getElementById');
+    expect(script).toContain('textContent');
+    // Chain order: … aria-label → labelledby → placeholder → title (last).
+    expect(script).toContain("labelledBy(el), el.getAttribute('placeholder'), el.getAttribute('title')");
   });
 
   it('domClickScript looks the element up by clamped index and clicks', () => {
@@ -206,6 +216,17 @@ describe('inspect script builders', () => {
     expect(script).toContain("control.getAttribute('type')");
   });
 
+  it('domInspectPointScript distinguishes concealed / non-interactive / control', () => {
+    const script = domInspectPointScript(1, 2);
+    // Iframe or shadow host we can't see into → concealed (fail closed).
+    expect(script).toContain("el.tagName.toLowerCase() === 'iframe'");
+    expect(script).toContain('el.shadowRoot');
+    expect(script).toContain('{ concealed: true }');
+    // Present-but-non-interactive vs an actual control.
+    expect(script).toContain('interactive: false');
+    expect(script).toContain('interactive: true');
+  });
+
   it('domInspectActiveScript covers focused controls and contenteditable compose', () => {
     const script = domInspectActiveScript();
     expect(script).toContain('document.activeElement');
@@ -238,6 +259,20 @@ describe('inspectResult', () => {
     expect(inspectResult(false)).toEqual({ found: false });
     expect(inspectResult('stale')).toEqual({ found: false });
     expect(inspectResult({ text: 'no tag' })).toEqual({ found: false });
+  });
+
+  it('maps concealed points to {found:false, concealed:true} (fail closed)', () => {
+    expect(inspectResult({ concealed: true })).toEqual({ found: false, concealed: true });
+  });
+
+  it('passes the interactive flag through and still classifies the control', () => {
+    // Present but non-interactive (a Sheets cell) — the gate proceeds.
+    expect(inspectResult({ tag: 'div', role: null, text: 'A1', interactive: false })).toEqual({
+      found: true, consequential: false, tag: 'div', role: null, text: 'A1', interactive: false,
+    });
+    expect(inspectResult({ tag: 'button', role: null, text: 'Send', interactive: true })).toEqual({
+      found: true, consequential: true, tag: 'button', role: null, text: 'Send', interactive: true,
+    });
   });
 
   it('adds found + a machine-readable consequential flag to control info', () => {

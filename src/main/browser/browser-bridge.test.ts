@@ -294,14 +294,32 @@ describe('bridge DOM endpoints', () => {
 
   it('POST /inspect-point classifies the control at the point', async () => {
     actions.runScript = vi.fn(async () => ({
-      tag: 'button', role: null, text: 'Delete', bbox: { x: 1, y: 2, w: 3, h: 4 },
+      tag: 'button', role: null, text: 'Delete', bbox: { x: 1, y: 2, w: 3, h: 4 }, interactive: true,
     }));
     const res = await request(handle!.port, {
       path: '/inspect-point', token: handle!.token, body: { x: 10, y: 20 },
     });
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ found: true, consequential: true, tag: 'button', text: 'Delete' });
+    expect(res.body).toMatchObject({ found: true, interactive: true, consequential: true, tag: 'button', text: 'Delete' });
     expect(actions.runScript).toHaveBeenCalledWith(undefined, expect.stringContaining('elementFromPoint(10, 20)'));
+  });
+
+  it('POST /inspect-point reports a non-interactive element as found + interactive:false', async () => {
+    // A Sheets cell: present, but not a control — the gate proceeds.
+    actions.runScript = vi.fn(async () => ({ tag: 'div', role: null, text: 'A1', interactive: false }));
+    const res = await request(handle!.port, {
+      path: '/inspect-point', token: handle!.token, body: { x: 10, y: 20 },
+    });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ found: true, interactive: false, consequential: false, tag: 'div' });
+  });
+
+  it('POST /inspect-point fails closed on a concealed point (iframe/shadow host)', async () => {
+    actions.runScript = vi.fn(async () => ({ concealed: true }));
+    const res = await request(handle!.port, {
+      path: '/inspect-point', token: handle!.token, body: { x: 10, y: 20 },
+    });
+    expect(res.body).toEqual({ found: false, concealed: true });
   });
 
   it('POST /inspect-point 400s without coordinates and reports found:false on a miss', async () => {
@@ -318,6 +336,21 @@ describe('bridge DOM endpoints', () => {
     actions.runScript = vi.fn(async () => ({ tag: 'input', role: null, text: '', inputType: 'submit' }));
     const res = await request(handle!.port, { path: '/inspect-active', token: handle!.token, body: {} });
     expect(res.body).toMatchObject({ found: true, consequential: true, inputType: 'submit' });
+  });
+
+  it('POST /inspect-active reports a focused button (space-key activation path)', async () => {
+    actions.runScript = vi.fn(async () => ({
+      tag: 'button', role: null, text: 'Send', bbox: { x: 0, y: 0, w: 10, h: 10 },
+    }));
+    const res = await request(handle!.port, { path: '/inspect-active', token: handle!.token, body: {} });
+    expect(res.body).toMatchObject({ found: true, tag: 'button', role: null, text: 'Send', consequential: true });
+  });
+
+  it('POST /inspect-active reports a typeless in-form button as submit', async () => {
+    // Space/Enter on this button submits the form — the gate must see it.
+    actions.runScript = vi.fn(async () => ({ tag: 'button', role: null, text: 'Save', inputType: 'submit' }));
+    const res = await request(handle!.port, { path: '/inspect-active', token: handle!.token, body: {} });
+    expect(res.body).toMatchObject({ found: true, tag: 'button', inputType: 'submit', consequential: true });
   });
 
   it('POST /inspect-active reports a focused text input as found and safe', async () => {

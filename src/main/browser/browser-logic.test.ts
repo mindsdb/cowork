@@ -523,6 +523,21 @@ describe('classifyControl', () => {
     expect(classifyControl({ tag: 'button', text: 'place\u00ad order' })).toBe('consequential'); // soft hyphen
   });
 
+  it('matches the high-traffic intl terms, CJK without word boundaries', () => {
+    expect(classifyControl({ tag: 'button', text: 'Resend' })).toBe('consequential');
+    expect(classifyControl({ tag: 'button', text: 'Unsend' })).toBe('consequential');
+    expect(classifyControl({ tag: 'button', text: 'Enviar mensaje' })).toBe('consequential');
+    expect(classifyControl({ tag: 'button', text: 'Envoyer' })).toBe('consequential');
+    expect(classifyControl({ tag: 'button', text: 'Senden' })).toBe('consequential');
+    expect(classifyControl({ tag: 'button', text: 'Löschen' })).toBe('consequential');
+    // CJK terms match as substrings — \b only guards ASCII word chars.
+    expect(classifyControl({ tag: 'button', text: '送信' })).toBe('consequential');
+    expect(classifyControl({ tag: 'button', text: '送信する' })).toBe('consequential');
+    expect(classifyControl({ tag: 'button', text: '删除' })).toBe('consequential');
+    // …while ASCII terms keep their boundaries ('send' ≠ 'Sender').
+    expect(classifyControl({ tag: 'button', text: 'Sender info' })).toBe('safe');
+  });
+
   it('leaves safe controls and word-boundary near-misses alone', () => {
     for (const text of [
       'Search',

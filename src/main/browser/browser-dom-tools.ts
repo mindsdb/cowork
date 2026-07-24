@@ -36,6 +36,22 @@ function stashRef(stash: string): string {
   return `window[${JSON.stringify(stash || DEFAULT_STASH)}]`;
 }
 
+/** Page-side label helpers, interpolated into the snapshot walker AND the
+ *  inspect scripts (one implementation — they'd drift otherwise): firstLabel
+ *  trims each candidate BEFORE falling through (whitespace innerText must
+ *  not shadow the aria-label); labelledBy resolves aria-labelledby (first
+ *  id) to the referenced element's text. */
+const LABEL_HELPERS = `function firstLabel(...cands) {
+  for (const c of cands) { const t = (c || '').trim(); if (t) return t; }
+  return '';
+}
+function labelledBy(el) {
+  const ids = (el.getAttribute('aria-labelledby') || '').trim();
+  if (!ids) return '';
+  const ref = document.getElementById(ids.split(/\\s+/)[0]);
+  return ref ? (ref.textContent || '').trim() : '';
+}`;
+
 /** Interactive-element snapshot: a, button, input, textarea, select,
  *  [role=button/link], [onclick], summary — visible only (non-zero box
  *  intersecting the viewport, not display:none / visibility:hidden).
@@ -54,12 +70,7 @@ export function domSnapshotScript(
   const refs = [];
   const vw = window.innerWidth, vh = window.innerHeight;
   const INTERACTIVE = new Set(['a','button','input','textarea','select','summary']);
-  // First non-empty label, each candidate trimmed BEFORE falling through —
-  // whitespace-only innerText must not shadow the aria-label.
-  const firstLabel = (...cands) => {
-    for (const c of cands) { const t = (c || '').trim(); if (t) return t; }
-    return '';
-  };
+  ${LABEL_HELPERS}
   const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT, {
     acceptNode: (n) => n.matches('a,button,input,textarea,select,[role],[onclick],summary')
       ? NodeFilter.FILTER_ACCEPT
@@ -84,7 +95,7 @@ export function domSnapshotScript(
     // Password fields: never serialize the value — labels only.
     const isPassword = tag === 'input' && el.type === 'password';
     const text = firstLabel(el.innerText, (isPassword ? '' : el.value), el.getAttribute('aria-label'),
-      el.getAttribute('placeholder'), el.getAttribute('title')).slice(0, 120);
+      labelledBy(el), el.getAttribute('placeholder'), el.getAttribute('title')).slice(0, 120);
     const entry = { index, tag, role, text,
       bbox: { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) } };
     if (tag === 'a' && el.href) entry.href = el.href;
@@ -145,15 +156,19 @@ export function annotateSnapshot(result: unknown): unknown {
 }
 
 /** Shared /inspect-* result shaping: garbage page results → {found:false};
- *  otherwise the raw control info + `found: true` + a machine-readable
- *  `consequential` flag, classified main-side via classifyControl (the page
- *  scripts can't import the word list). `submitCandidates` from the page
+ *  {concealed:true} (iframe/shadow host the point script can't see into) →
+ *  {found:false, concealed:true} — the gate fails closed on those. Otherwise
+ *  the raw control info + `found: true` + a machine-readable `consequential`
+ *  flag, classified main-side via classifyControl (the page scripts can't
+ *  import the word list); `interactive` rides through from the point script
+ *  (present-but-non-interactive → proceed). `submitCandidates` from the page
  *  (compose container / form association) are ALL classified and the worst
  *  folded in: the first consequential candidate becomes `submit` (attach/
  *  emoji buttons sit before Send in Slack/Discord composers), and
  *  `implicitSubmit: true` (single-text-input forms) forces consequential. */
 export function inspectResult(info: unknown): unknown {
   if (!info || typeof info !== 'object') return { found: false };
+  if ((info as { concealed?: unknown }).concealed === true) return { found: false, concealed: true };
   const control = info as ControlLike;
   if (typeof control.tag !== 'string') return { found: false };
   const out: Record<string, unknown> = { ...(info as Record<string, unknown>), found: true };
@@ -298,19 +313,14 @@ const INTERACTIVE_SELECTOR = 'a,button,input,textarea,select,summary,[role=butto
 
 /** Page-side control serializer, interpolated into both inspect scripts —
  *  identical shape to the snapshot walker's entries minus the stash index. */
-const INFO_OF = `function firstLabel(...cands) {
-  for (const c of cands) { const t = (c || '').trim(); if (t) return t; }
-  return '';
-}
+const INFO_OF = `${LABEL_HELPERS}
 function infoOf(control) {
   const tag = control.tagName.toLowerCase();
   const role = control.getAttribute('role');
   // Password fields: never serialize the value — labels only.
   const isPassword = tag === 'input' && control.type === 'password';
-  // Trim each candidate BEFORE falling through — whitespace-only innerText
-  // must not shadow the aria-label.
   const text = firstLabel(control.innerText, (isPassword ? '' : control.value), control.getAttribute('aria-label'),
-    control.getAttribute('placeholder'), control.getAttribute('title')).slice(0, 120);
+    labelledBy(control), control.getAttribute('placeholder'), control.getAttribute('title')).slice(0, 120);
   const r = control.getBoundingClientRect();
   const info = { tag, role, text,
     bbox: { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) } };
@@ -334,8 +344,11 @@ function infoOf(control) {
 const SUBMIT_SELECTOR = 'input[type="submit"],input[type="image"],button:not([type]),button[type="submit"]';
 
 /** The control at viewport point (x, y): elementFromPoint, then up to the
- *  nearest interactive control. Raw info, or false when nothing interactive
- *  is there — the bridge shapes the response via inspectResult. */
+ *  nearest interactive control. Distinguishes the three cases the gate
+ *  treats differently: { concealed: true } for a frame/shadow host we can't
+ *  see into (fail closed), { interactive: false } for a present-but-non-
+ *  interactive element like a Sheets cell (proceed), and the control itself
+ *  with { interactive: true }. Raw info — the bridge shapes the response. */
 export function domInspectPointScript(x: number, y: number): string {
   const px = clampInt(x, 0, 100000);
   const py = clampInt(y, 0, 100000);
@@ -343,10 +356,13 @@ export function domInspectPointScript(x: number, y: number): string {
   ${INFO_OF}
   const el = document.elementFromPoint(${px}, ${py});
   if (!el || !el.closest) return false;
+  // Concealed: an iframe or shadow host we can't see into — fail closed.
+  if (el.tagName.toLowerCase() === 'iframe' || el.shadowRoot) return { concealed: true };
   const control = el.closest(${JSON.stringify(INTERACTIVE_SELECTOR)});
-  if (!control) return false;
+  // Present but not a control (a cell, plain text) — the gate proceeds.
+  if (!control) return { ...infoOf(el), interactive: false };
   if (control.tagName.toLowerCase() === 'input' && control.type === 'hidden') return false;
-  return infoOf(control);
+  return { ...infoOf(control), interactive: true };
 })()`;
 }
 
@@ -389,7 +405,7 @@ export function domInspectActiveScript(): string {
   // control label (and would false-positive the consequential word list).
   const root = (ae.closest && ae.closest('[contenteditable]:not([contenteditable="false"])')) || ae;
   const role = root.getAttribute('role');
-  const text = firstLabel(root.getAttribute('aria-label'), root.getAttribute('placeholder'),
+  const text = firstLabel(root.getAttribute('aria-label'), labelledBy(root), root.getAttribute('placeholder'),
     root.getAttribute('title')).slice(0, 120);
   // Associated submit controls: the same form's submits, else ALL button-ish
   // controls at the first enclosing level that has any (walk up <= 3) — the

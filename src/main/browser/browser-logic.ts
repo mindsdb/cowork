@@ -484,13 +484,17 @@ export function sanitizeApps(raw: unknown): BrowserApp[] {
 // ---------------------------------------------------------------------------
 
 /** Words whose activation is hard to undo: messages sent, money moved, data
- *  destroyed, things published. English-only v1 — feed misses back into this
- *  list rather than special-casing call sites. 'schedule send' but not bare
- *  'schedule' (every calendar app's nav button — too noisy for a marker);
- *  'order now' but not bare 'order' ('Order history' is navigation). */
+ *  destroyed, things published. English-primary plus a small high-traffic
+ *  intl set — feed misses back into this list rather than special-casing
+ *  call sites. 'schedule send' but not bare 'schedule' (every calendar app's
+ *  nav button — too noisy for a marker); 'order now' but not bare 'order'
+ *  ('Order history' is navigation). Known limitation: icon-only controls
+ *  with no text/aria/title have no label to match. */
 export const CONSEQUENTIAL_TERMS = [
   'send',
   'send now',
+  'resend',
+  'unsend',
   'delete',
   'remove',
   'unsubscribe',
@@ -510,6 +514,13 @@ export const CONSEQUENTIAL_TERMS = [
   'transfer',
   'submit',
   'schedule send',
+  // High-traffic intl: send (es/fr/de), delete (de), send/delete (ja/zh).
+  'enviar',
+  'envoyer',
+  'senden',
+  'löschen',
+  '送信',
+  '删除',
 ] as const;
 
 /** The snapshot-element fields classification reads (a subset of SnapshotEl
@@ -525,8 +536,16 @@ export interface ControlLike {
 
 const escapeRe = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+/** \b only guards ASCII word chars — CJK terms (送信, 删除) need bare edges
+ *  (substring semantics) or they'd never match; ASCII terms keep \b on both
+ *  sides so 'send' still can't match 'Sender'. */
+const ASCII_WORD = /[A-Za-z0-9_]/;
+
+const termPattern = (term: string): string =>
+  `${ASCII_WORD.test(term[0]) ? '\\b' : ''}${escapeRe(term)}${ASCII_WORD.test(term[term.length - 1]) ? '\\b' : ''}`;
+
 const CONSEQUENTIAL_RE = new RegExp(
-  `\\b(?:${CONSEQUENTIAL_TERMS.map(escapeRe).join('|')})\\b`,
+  `(?:${CONSEQUENTIAL_TERMS.map(termPattern).join('|')})`,
   'i',
 );
 
