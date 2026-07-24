@@ -2356,15 +2356,22 @@ function AppCore() {
     }
   };
 
+  // Open the Settings surface. A named section drills straight to it (desktop
+  // and the mobile master-detail alike). A bare open leaves desktop on its
+  // last section (it has no list) but resets the mobile surface to its section
+  // list — hence the isMobile-gated null. Single home for this rule so the
+  // call sites don't each re-spell it.
+  const openSettings = (section = null) => {
+    if (section) setSettingsSection(section);
+    else if (isMobile) setSettingsSection(null);
+    setSettingsOpen(true);
+  };
+
   const navigate = (key) => {
     if (key === 'settings' || key.startsWith('settings:')) {
-      const section = key.includes(':') ? key.split(':')[1] : null;
       // Targeted (settings:backend) opens that section; a bare `settings`
-      // opens the section list on mobile (null) but keeps the last section on
-      // desktop, which has no list.
-      if (section) setSettingsSection(section);
-      else if (isMobile) setSettingsSection(null);
-      setSettingsOpen(true);
+      // opens the mobile section list (null) / desktop's last section.
+      openSettings(key.includes(':') ? key.split(':')[1] : null);
       return;
     }
     if (isNarrow) setMobileSidebarOpen(false);
@@ -3708,7 +3715,7 @@ function AppCore() {
           navLogo={settings.navLogo || null}
           updateAvailable={updateStatus?.phase === 'available' ? { version: updateStatus.version } : null}
           onApplyUpdate={handleApplyUpdate}
-          onShowServerHelp={() => { setSettingsSection('backend'); setSettingsOpen(true); }}
+          onShowServerHelp={() => openSettings('backend')}
           onToggleServer={async () => {
             if (serverBusy) return;
             // Decide intent from main's actual state, not renderer state.
@@ -3783,10 +3790,10 @@ function AppCore() {
             onCreateProject={(args) => handleCreateProject({ ...args, _inline: true })}
             configReady={health.config_ready ?? settings.configReady}
             configError={health.config_error ?? settings.configError}
-            onOpenSettings={(section) => { if (section) setSettingsSection(section); else if (isMobile) setSettingsSection(null); setSettingsOpen(true); }}
+            onOpenSettings={openSettings}
             serverOnline={serverOnline}
             agentLabel={agentLabel}
-            onShowServerHelp={() => { setSettingsSection('backend'); setSettingsOpen(true); }}
+            onShowServerHelp={() => openSettings('backend')}
             skipIntro={bootIntroDone}
             prefill={composerPrefill}
           />
@@ -3796,7 +3803,7 @@ function AppCore() {
           <ChatView
             task={currentTask}
             onSend={handleSendInTask}
-            onOpenSettings={(section) => { if (section) setSettingsSection(section); else if (isMobile) setSettingsSection(null); setSettingsOpen(true); }}
+            onOpenSettings={openSettings}
             queuedMessages={messageQueue[currentTask?.id] || []}
             onRemoveFromQueue={(itemId) => removeFromQueue(currentTask?.id, itemId)}
             onBack={() => {
@@ -3995,7 +4002,7 @@ function AppCore() {
             connectors={connectors}
             onConnectionsSynced={(next) =>
               setConnectors(Array.isArray(next) ? next : [])}
-            onOpenSettings={(section) => { if (section) setSettingsSection(section); else if (isMobile) setSettingsSection(null); setSettingsOpen(true); }}
+            onOpenSettings={openSettings}
             onConnectNew={handleStartConnectChat}
             onReconnect={(spec) => handleConnectorPicked(spec)}
             agentLabel={agentLabel}
