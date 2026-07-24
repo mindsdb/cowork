@@ -15,7 +15,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
-import { Button } from '../ui';
+import { Button, Input, Textarea } from '../ui';
 import {
   createProject,
   uploadProjectFiles,
@@ -238,11 +238,10 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
               fontFamily: FONT_MONO, fontSize: 11, letterSpacing: '0.06em',
               textTransform: 'uppercase', color: 'var(--ink-4)', fontWeight: 600,
             }}>Project name</span>
-            <input
+            <Input
               ref={nameRef}
-              type="text"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(v) => setName(v)}
               placeholder="acme-engineering"
               spellCheck={false}
               autoCapitalize="none"
@@ -267,9 +266,9 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
               fontFamily: FONT_MONO, fontSize: 11, letterSpacing: '0.06em',
               textTransform: 'uppercase', color: 'var(--ink-4)', fontWeight: 600,
             }}>Instructions <span style={{ textTransform: 'none', letterSpacing: 0, color: 'var(--ink-4)', fontFamily: FONT_BODY, fontWeight: 400 }}>(optional)</span></span>
-            <textarea
+            <Textarea
               value={instructions}
-              onChange={(e) => setInstructions(e.target.value)}
+              onChange={(v) => setInstructions(v)}
               placeholder="Tell the agent how to work in this project — codebase conventions, output preferences, things to avoid…"
               rows={5}
               disabled={busy}

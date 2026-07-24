@@ -16,7 +16,7 @@
 import { RadioGroup } from '@base-ui/react/radio-group';
 import { Radio } from '@base-ui/react/radio';
 import Ico from '../../Icons';
-import { Checkbox } from '../../ui';
+import { Checkbox, Textarea } from '../../ui';
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
 const FONT_MONO = "var(--font-mono)";
@@ -182,9 +182,9 @@ export function AccessChooser({
 
       {draft.mode === 'restricted' && (
         <div style={{ marginTop: 8 }}>
-          <textarea
+          <Textarea
             value={draft.emailsText}
-            onChange={(e) => set({ emailsText: e.target.value })}
+            onChange={(v) => set({ emailsText: v })}
             autoFocus
             rows={3}
             placeholder="alice@acme.com, bob@acme.com"

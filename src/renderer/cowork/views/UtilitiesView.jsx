@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import Ico from '../components/Icons';
-import { Message, Button, Card, EmptyState as UiEmptyState, Select } from '../components/ui';
+import { Message, Button, Card, EmptyState as UiEmptyState, Select, Input, Textarea } from '../components/ui';
 import { PageHeader as CollectionPageHeader } from '../components/collection';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import {
@@ -459,7 +459,7 @@ function ConnectView({ data, setData, setStatus }) {
             options={(engineDef.authMethods || []).map((method) => ({ value: method.name, label: method.display }))}
           />
         )}
-        <input aria-label="Connection name (optional)" value={name} onChange={(e) => setName(e.target.value)} placeholder="connection name (optional)" style={inputStyle} />
+        <Input aria-label="Connection name (optional)" value={name} onChange={(v) => setName(v)} placeholder="connection name (optional)" style={inputStyle} />
         {fields.length > 0 && (
           <div style={{ fontSize: 11.5, color: 'var(--frost-600)' }}>
             Required: {fields.filter((field) => field.required).map((field) => field.name).join(', ') || 'none'}
@@ -471,18 +471,18 @@ function ConnectView({ data, setData, setStatus }) {
               {fieldLabel(field.name)}{field.required ? ' *' : ''}
             </span>
             {shouldUseTextarea(field) ? (
-              <textarea
+              <Textarea
                 value={credentialValues[field.name] ?? ''}
-                onChange={(event) => updateCredential(field, event.target.value)}
+                onChange={(v) => updateCredential(field, v)}
                 rows={4}
                 placeholder={field.description || field.default || ''}
                 spellCheck={false}
                 style={{ ...inputStyle, height: 'auto', padding: 10, fontFamily: 'var(--font-mono)', userSelect: 'text' }}
               />
             ) : (
-              <input
+              <Input
                 value={credentialValues[field.name] ?? ''}
-                onChange={(event) => updateCredential(field, event.target.value)}
+                onChange={(v) => updateCredential(field, v)}
                 type={field.secret ? 'password' : 'text'}
                 placeholder={field.description || field.default || ''}
                 style={inputStyle}

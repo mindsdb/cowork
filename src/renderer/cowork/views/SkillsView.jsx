@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import { PageHeader, FilterRow, SearchInput, SortPill } from '../components/collection';
-import { Menu, Button, Card, Select } from '../components/ui';
+import { Menu, Button, Card, Select, Input, Textarea } from '../components/ui';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
 import { Crumb, CrumbSep, CrumbCurrent } from '../components/ui/Crumb';
 import { useToastManager } from '../components/ui/Toast';
@@ -189,10 +189,10 @@ function SkillModal({ open, onClose, onSaved, onError, initial = null, projects 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div>
             <FieldLabel>Label</FieldLabel>
-            <input
+            <Input
               aria-label="Label"
               value={draft.label}
-              onChange={(e) => setField('label', e.target.value)}
+              onChange={(v) => setField('label', v)}
               placeholder="weekly-status-report"
               readOnly={isEdit}
               style={{ ...fieldStyle, height: 34, resize: 'none', ...(isEdit && { opacity: 0.5, cursor: 'default' }) }}
@@ -214,20 +214,20 @@ function SkillModal({ open, onClose, onSaved, onError, initial = null, projects 
           </div>
           <div>
             <FieldLabel>Description</FieldLabel>
-            <textarea
+            <Textarea
               aria-label="Description"
               value={draft.description}
-              onChange={(e) => setField('description', e.target.value)}
+              onChange={(v) => setField('description', v)}
               placeholder="Generate weekly status reports from recent work. Use when asked for updates or progress summaries."
               style={{ ...fieldStyle, height: 80 }}
             />
           </div>
           <div>
             <FieldLabel>Instructions</FieldLabel>
-            <textarea
+            <Textarea
               aria-label="Instructions"
               value={draft.declarative}
-              onChange={(e) => setField('declarative', e.target.value)}
+              onChange={(v) => setField('declarative', v)}
               placeholder="Summarize my recent work in three sections: wins, blockers, and next steps. Keep the tone professional but not stiff..."
               style={{ ...fieldStyle, height: 198, fontFamily: 'var(--font-mono)', fontSize: 12.5 }}
             />
