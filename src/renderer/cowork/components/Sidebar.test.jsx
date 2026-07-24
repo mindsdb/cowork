@@ -199,14 +199,14 @@ describe('Sidebar — Mission Control nav item (approvals badge)', () => {
   });
 });
 
-describe('Sidebar — absorption (M3): Scheduled/Artifacts demote when the board is home', () => {
-  it('hides Scheduled Tasks and Live Artifacts nav items when missionControl is on', () => {
+describe('Sidebar — Scheduled/Artifacts nav stays alongside the board', () => {
+  it('shows Scheduled Tasks and Live Artifacts nav items with missionControl on', () => {
     render(<Sidebar {...baseProps} missionControl />);
-    expect(screen.queryByRole('button', { name: 'Scheduled Tasks' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Live Artifacts' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Scheduled Tasks' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Live Artifacts' })).toBeTruthy();
   });
 
-  it('shows them in the old world (flag off)', () => {
+  it('shows them in the old world too (flag off)', () => {
     render(<Sidebar {...baseProps} missionControl={false} />);
     expect(screen.getByRole('button', { name: 'Scheduled Tasks' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Live Artifacts' })).toBeTruthy();

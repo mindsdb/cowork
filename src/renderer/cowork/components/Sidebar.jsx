@@ -582,15 +582,11 @@ export default function Sidebar({
             />
           )}
           <NavItem icon={Ico.folder(15)}  label="Projects"        onClick={() => onNavigate('projects')}  active={activeRoute === 'projects'}  badge={showCounters ? (projectsCount  || null) : null} />
-          {/* Scheduled + Artifacts are drill-downs from the board's columns
-              when Mission Control is on (M3) — the routes stay; the nav
-              items only exist in the old world. */}
-          {!missionControl && (
-            <>
-              <NavItem icon={Ico.clock(15)}   label="Scheduled Tasks" onClick={() => onNavigate('scheduled')} active={activeRoute === 'scheduled'} badge={showCounters ? (scheduledCount || null) : null} />
-              <NavItem icon={Ico.sparkle(15)} label="Live Artifacts"  onClick={() => onNavigate('artifacts')} active={activeRoute === 'artifacts'} badge={showCounters ? (artifactsCount || null) : null} />
-            </>
-          )}
+          {/* Scheduled + Artifacts are ALSO drill-downs from the board's
+              columns when Mission Control is on — but the nav items stay
+              (user feedback: the board demote went too far). */}
+          <NavItem icon={Ico.clock(15)}   label="Scheduled Tasks" onClick={() => onNavigate('scheduled')} active={activeRoute === 'scheduled'} badge={showCounters ? (scheduledCount || null) : null} />
+          <NavItem icon={Ico.sparkle(15)} label="Live Artifacts"  onClick={() => onNavigate('artifacts')} active={activeRoute === 'artifacts'} badge={showCounters ? (artifactsCount || null) : null} />
           {/* Embedded browser — native tabs + agent dock. Electron-only:
               the web shell has no WebContentsView bridge (mirror of the
               web-only Channels gate below). Badge = live tab count. */}
@@ -996,12 +992,8 @@ function CollapsedRail({ onExpand, onOpenApp, onNavigate, activeRoute, onNewTask
         <RailButton icon={Ico.grid(14)} label="Mission Control" active={activeRoute === 'mission-control'} onClick={() => onNavigate('mission-control')} />
       )}
       <RailButton icon={Ico.folder(14)} label="Projects" active={activeRoute === 'projects'} onClick={() => onNavigate('projects')} />
-      {!missionControl && (
-        <>
-          <RailButton icon={Ico.clock(14)} label="Scheduled Tasks" active={activeRoute === 'scheduled'} onClick={() => onNavigate('scheduled')} />
-          <RailButton icon={Ico.sparkle(14)} label="Live Artifacts" active={activeRoute === 'artifacts'} onClick={() => onNavigate('artifacts')} />
-        </>
-      )}
+      <RailButton icon={Ico.clock(14)} label="Scheduled Tasks" active={activeRoute === 'scheduled'} onClick={() => onNavigate('scheduled')} />
+      <RailButton icon={Ico.sparkle(14)} label="Live Artifacts" active={activeRoute === 'artifacts'} onClick={() => onNavigate('artifacts')} />
       {/* Browser + web apps are Electron-only (the web shell has no
           WebContentsView bridge) — gated exactly like the expanded
           sidebar's NavItem/SidebarApps above (Codex review on #479). */}
