@@ -43,6 +43,7 @@ jobs:
             'GOOGLE_ANALYTICS_CLIENT_ID', 'GOOGLE_ANALYTICS_CLIENT_SECRET',
             'GOOGLE_PICKER_API_KEY',
             'LINEAR_CLIENT_ID', 'LINEAR_CLIENT_SECRET',
+            'GITHUB_CLIENT_ID', 'GITHUB_CLIENT_SECRET',
           ]
           with open('server-credentials.json', 'w') as f:
               json.dump({k: '' for k in keys}, f)
