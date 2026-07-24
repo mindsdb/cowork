@@ -89,6 +89,8 @@ describe('same-origin API base derivation (VITE_MINDS_API_URL unset)', () => {
   });
 
   it('falls back to prod on an unrecognised (non-cowork) remote host', async () => {
+    // A built/deployed renderer (DEV=false) on a host we cannot map: prod.
+    vi.stubEnv('DEV', false);
     vi.stubEnv('VITE_KEYCLOAK_URL', '');
     vi.stubEnv('VITE_MINDS_API_URL', '');
     setUrl('https://app.example.com/');
@@ -96,15 +98,20 @@ describe('same-origin API base derivation (VITE_MINDS_API_URL unset)', () => {
     expect(MINDS_API_BASE).toBe('https://api.mindshub.ai');
   });
 
-  it('falls back to prod on localhost dev (no sibling api host)', async () => {
+  it('targets staging on localhost `vite dev` (no sibling api host, DEV=true)', async () => {
+    // vite dev (DEV=true) with no baked URL and no cowork sibling host to
+    // derive from falls through to the staging default, never prod.
+    vi.stubEnv('DEV', true);
     vi.stubEnv('VITE_KEYCLOAK_URL', '');
     vi.stubEnv('VITE_MINDS_API_URL', '');
     setUrl('http://localhost:5173/');
     const { MINDS_API_BASE } = await importUrls();
-    expect(MINDS_API_BASE).toBe('https://api.mindshub.ai');
+    expect(MINDS_API_BASE).toBe('https://api.staging.mindshub.ai');
   });
 
   it('falls back to prod under Electron file:// (no meaningful origin)', async () => {
+    // Packaged desktop app is a prod build (DEV=false); no origin to derive.
+    vi.stubEnv('DEV', false);
     vi.stubEnv('VITE_KEYCLOAK_URL', '');
     vi.stubEnv('VITE_MINDS_API_URL', '');
     setUrl('file:///Applications/Cowork.app/Contents/Resources/index-web.html');

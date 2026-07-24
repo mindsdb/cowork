@@ -31,7 +31,12 @@ function deriveMindsApiBaseFromOrigin(): string | null {
 }
 
 export const MINDS_API_BASE =
-  import.meta.env.VITE_MINDS_API_URL || deriveMindsApiBaseFromOrigin() || 'https://api.mindshub.ai';
+  import.meta.env.VITE_MINDS_API_URL
+  || deriveMindsApiBaseFromOrigin()
+  // `vite dev` with no baked VITE_MINDS_API_URL targets staging, not prod, so a
+  // bare `npm run dev` never authenticates against production. Built renderers
+  // carry a baked URL, so this ternary only affects local dev.
+  || (import.meta.env.DEV ? 'https://api.staging.mindshub.ai' : 'https://api.mindshub.ai');
 
 // Rewrite the leading `api` service token of the resolved MindsHub API base to
 // another role, handling both host shapes: `://api.` (static) and `://api-`
