@@ -3624,6 +3624,19 @@ function AppCore() {
   const appStyle = { width: '100vw', height: '100vh', background: 'transparent' };
 
   const mainBg = 'transparent';
+
+  // One shell-owned inset the content header uses to clear the macOS
+  // traffic lights and the floating open-sidebar button, active only in
+  // the modes where the docked sidebar/rail isn't covering that corner
+  // (narrow overlay, or a collapsed sidebar on the chat route). Web has
+  // no traffic lights, so it only needs to clear the hamburger. Exposed
+  // as `--titlebar-safe-left` on <main> below and consumed by PageHeader
+  // / view headers, replacing the per-view padding guesses — previously
+  // only ChatView compensated, so every other view collided at narrow
+  // widths.
+  const contentLeftExposed = isNarrow || sidebarCollapsedEffective;
+  const titlebarSafeLeft = contentLeftExposed ? (host.isWeb ? 60 : 130) : 0;
+
   const modelOptions = selectedModel && !models.some((m) => m.id === selectedModel.id)
     ? [selectedModel, ...models]
     : models;
@@ -3832,6 +3845,10 @@ function AppCore() {
         flex: 1, minWidth: 0, minHeight: 0,
         display: 'flex', flexDirection: 'column',
         background: mainBg,
+        // Left inset any view header reads (via var(--titlebar-safe-left))
+        // to clear the traffic lights + floating hamburger when the
+        // sidebar isn't docked over that corner. 0 when it is.
+        '--titlebar-safe-left': `${titlebarSafeLeft}px`,
         // Opt the whole content column out of the window drag region.
         // Without this, the empty canvas inherits the root's
         // `-webkit-app-region: drag` (App container), and Electron then
@@ -3926,7 +3943,6 @@ function AppCore() {
               setRoute('projects');
             }}
             projects={projects}
-            sidebarCollapsed={isNarrow || sidebarCollapsedEffective}
             agentLabel={agentLabel}
           />
         )}
