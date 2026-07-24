@@ -7,7 +7,7 @@ import { pickConnectWelcome } from './lib/connectWelcomes';
 // provider setup. The cowork app is mounted by CoworkApp.tsx only after
 // those gates pass, so AppCore renders unconditionally here.
 import Sidebar from './components/Sidebar';
-import MobileShell from './components/MobileShell';
+import AppShell from './components/AppShell';
 import { ConfirmModal } from './components/ConfirmModal';
 import { Modal, ModalHeader, ModalBody } from './components/ui/Modal';
 import { ToastProvider, useToastManager } from './components/ui/Toast';
@@ -3634,6 +3634,52 @@ function AppCore() {
     ? [selectedModel, ...models]
     : models;
 
+  // Props for the mobile drawer (MobileShell), which AppShell renders below
+  // the phone breakpoint. Kept here (not in AppShell) because every handler
+  // closes over App's navigation state.
+  const mobileShellProps = {
+    route,
+    currentTask,
+    selectedProject,
+    tasks,
+    projects,
+    scheduled,
+    artifacts,
+    onNavigate: navigate,
+    onSelectTask: selectTask,
+    onSelectProject: (p) => {
+      // Drawer → project tap with tasks: show the project's task list
+      // (ProjectsView in detail mode). MobileShell only dispatches here when
+      // there ARE tasks; the empty-project case routes through
+      // onNewTaskInProject instead.
+      if (p) setSelectedProject(p);
+      setRoute('projects');
+    },
+    onNewTaskInProject: (p) => {
+      // Empty project → drop into the composer with the project preselected.
+      if (p) setSelectedProject(p);
+      setActiveTaskId(null);
+      setRoute('home');
+    },
+    onOpenSchedule: (scheduleId) => {
+      setSelectedScheduleId(scheduleId);
+      setRoute('schedule-detail');
+    },
+    onNewTask: newTask,
+    onNewProject: () => {
+      // Mobile FAB → "New project". The modal lives inside ProjectsView, so
+      // navigate there (on the grid, not detail), then dispatch the event
+      // ProjectsView listens for once mounted.
+      setSelectedProject(null);
+      setRoute('projects');
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('anton:open-new-project'));
+      }, 60);
+    },
+    navTitle: settings.navTitle || null,
+    navLogo: settings.navLogo || null,
+  };
+
   return (
     <div style={{
       ...appStyle, ...accentCss,
@@ -3645,36 +3691,6 @@ function AppCore() {
       // intercept drag on their own surface.
       WebkitAppRegion: 'drag',
     }}>
-      {/*
-        Floating hamburger — reopens the sidebar after it's been collapsed.
-        Collapse is chat-route-only and desktop-only (sidebarCollapsedEffective),
-        so this only appears there; the tablet band keeps a docked sidebar and
-        never collapses. Suppressed on isMobile — MobileShell has its own.
-      */}
-      {!isMobile && (
-      <button
-        onClick={() => setSidebarCollapsed(false)}
-        title="Open sidebar"
-        className="icon-btn"
-        style={{
-          position: 'absolute',
-          // On Electron, left: 97 clears the macOS traffic lights (which end ~x:80).
-          // On web there are no traffic lights so left: 18 sits flush with the app edge.
-          top: 18, left: host.isWeb ? 18 : 97,
-          zIndex: 10,
-          WebkitAppRegion: 'no-drag',
-          opacity: sidebarCollapsedEffective ? 1 : 0,
-          transform: sidebarCollapsedEffective ? 'translateX(0)' : 'translateX(-8px)',
-          pointerEvents: sidebarCollapsedEffective ? 'auto' : 'none',
-          transition:
-            'opacity 280ms cubic-bezier(0.32, 0.72, 0, 1) 120ms, ' +
-            'transform 360ms cubic-bezier(0.32, 0.72, 0, 1) 80ms',
-        }}
-      >
-        {Ico.sidebarExpandRight(15)}
-      </button>
-      )}
-
       {/*
         Sidebar — a docked flex item across the whole desktop + tablet range
         (≥640). `display: contents` makes the wrapper transparent to the flex
@@ -3798,25 +3814,14 @@ function AppCore() {
       </div>
       )}
 
-      {(() => {
-      const mainEl = (
-      <main style={{
-        flex: 1, minWidth: 0, minHeight: 0,
-        display: 'flex', flexDirection: 'column',
-        background: mainBg,
-        // Left inset any view header reads (via var(--titlebar-safe-left))
-        // to clear the traffic lights + floating hamburger when the
-        // sidebar isn't docked over that corner. 0 when it is.
-        '--titlebar-safe-left': `${titlebarSafeLeft}px`,
-        // Opt the whole content column out of the window drag region.
-        // Without this, the empty canvas inherits the root's
-        // `-webkit-app-region: drag` (App container), and Electron then
-        // swallows mouse events over it — so clicking the canvas never
-        // reaches any outside-click handler and dropdowns can't dismiss
-        // (desktop only; the web build has no drag regions). The window
-        // still drags via the sidebar header and the window's top strip.
-        WebkitAppRegion: 'no-drag',
-      }}>
+      <AppShell
+        isMobile={isMobile}
+        mainBg={mainBg}
+        titlebarSafeLeft={titlebarSafeLeft}
+        showFloatingHamburger={sidebarCollapsedEffective}
+        onOpenSidebar={() => setSidebarCollapsed(false)}
+        mobileShellProps={mobileShellProps}
+      >
         {route === 'home' && (
           <HomeView
             greeting={settings.greeting}
@@ -4162,63 +4167,7 @@ function AppCore() {
             agentLabel={agentLabel}
           />
         )}
-      </main>
-      );
-      return isMobile ? (
-        <MobileShell
-          route={route}
-          currentTask={currentTask}
-          selectedProject={selectedProject}
-          tasks={tasks}
-          projects={projects}
-          scheduled={scheduled}
-          artifacts={artifacts}
-          onNavigate={navigate}
-          onSelectTask={selectTask}
-          onSelectProject={(p) => {
-            // Drawer → project tap with tasks: show the project's task
-            // list (ProjectsView in detail mode). MobileShell only
-            // dispatches here when there ARE tasks; the empty-project
-            // case routes through onNewTaskInProject instead. On a
-            // mobile viewport, project-detail's rail (Working folder,
-            // Context, Scheduled) stacks below the task list — see
-            // the @media block in globals.css.
-            if (p) setSelectedProject(p);
-            setRoute('projects');
-          }}
-          onNewTaskInProject={(p) => {
-            // Empty project → drop the user into the composer with
-            // this project preselected. HomeView's first send creates
-            // the task on the server with projectName attached.
-            if (p) setSelectedProject(p);
-            setActiveTaskId(null);
-            setRoute('home');
-          }}
-          onOpenSchedule={(scheduleId) => {
-            setSelectedScheduleId(scheduleId);
-            setRoute('schedule-detail');
-          }}
-          onNewTask={newTask}
-          onNewProject={() => {
-            // Mobile FAB → "New project". The modal lives inside
-            // ProjectsView, so navigate there first (clearing any
-            // selected project so we land on the grid, not detail),
-            // then dispatch the event ProjectsView listens for. The
-            // small delay lets React commit ProjectsView's mount
-            // before the listener attaches.
-            setSelectedProject(null);
-            setRoute('projects');
-            setTimeout(() => {
-              window.dispatchEvent(new CustomEvent('anton:open-new-project'));
-            }, 60);
-          }}
-          navTitle={settings.navTitle || null}
-          navLogo={settings.navLogo || null}
-        >
-          {mainEl}
-        </MobileShell>
-      ) : mainEl;
-      })()}
+      </AppShell>
       <SearchModal
         open={searchOpen}
         onClose={() => setSearchOpen(false)}
