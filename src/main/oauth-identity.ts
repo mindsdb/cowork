@@ -28,6 +28,22 @@ async function fetchLinearIdentity(accessToken: string): Promise<{ email: string
   return { email: data.data?.viewer?.email || '' };
 }
 
+async function fetchGithubIdentity(accessToken: string): Promise<{ email: string }> {
+  const res = await fetch('https://api.github.com/user', {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      Accept: 'application/vnd.github+json',
+    },
+  });
+  if (!res.ok) return { email: '' };
+  const data = await res.json() as { email?: string; login?: string };
+  // GitHub's email is frequently null (this app only requests `read:user`, not
+  // `user:email`, and even then a user can keep it private) — `login` is
+  // always present and unique, so it's the fallback identity, matching the
+  // server-side _fetch_userinfo_github fallback.
+  return { email: data.email || data.login || '' };
+}
+
 const FETCHERS: Record<string, (accessToken: string) => Promise<{ email: string }>> = {
   google_drive: fetchGoogleIdentity,
   google_calendar: fetchGoogleIdentity,
@@ -35,6 +51,7 @@ const FETCHERS: Record<string, (accessToken: string) => Promise<{ email: string 
   google_ads: fetchGoogleIdentity,
   google_analytics_4: fetchGoogleIdentity,
   linear: fetchLinearIdentity,
+  github: fetchGithubIdentity,
 };
 
 export async function fetchAccountEmail(engine: string, accessToken: string): Promise<string> {

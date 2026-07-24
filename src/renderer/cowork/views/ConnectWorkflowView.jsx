@@ -910,7 +910,6 @@ export default function ConnectWorkflowView({ onClose }) {
         status: connected ? 'connected' : 'planned',
       };
     }
-    lib.github = { ...CONNECTOR_LIBRARY.github, chip: undefined, status: 'planned' };
     lib.miro = { ...CONNECTOR_LIBRARY.miro, chip: undefined, status: 'planned' };
     return lib;
   }, [catalog]);
