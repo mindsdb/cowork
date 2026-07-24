@@ -4,7 +4,7 @@
 
 export { default as Button } from './Button.tsx';
 export { default as Input, Textarea } from './Input.tsx';
-export { default as Card, CardRow, Bubble } from './Card.jsx';
+export { default as Card, CardRow, Bubble } from './Card.tsx';
 export { default as Eyebrow } from './Eyebrow.jsx';
 export { default as Badge } from './Badge.tsx';
 export { default as Message } from './Message.jsx';
