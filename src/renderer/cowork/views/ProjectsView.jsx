@@ -742,10 +742,13 @@ function ProjectDetail({
           {Ico.panelExpandLeft(15)}
         </button>
 
-        {/* Header — Projects › [project] crumb */}
+        {/* Header — Projects › [project] crumb. Left padding honours the
+            shell's --titlebar-safe-left so the crumb clears the traffic
+            lights when the sidebar isn't docked (0 → normal 28px). */}
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '14px 28px',
+          paddingTop: 14, paddingBottom: 14, paddingRight: 28,
+          paddingLeft: 'max(28px, var(--titlebar-safe-left, 0px))',
           borderBottom: '1px solid var(--line)',
           background: 'transparent',
           flexShrink: 0,

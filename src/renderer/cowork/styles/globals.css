@@ -2124,19 +2124,11 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
 .bar { height: 4px; background: var(--stone-150); border-radius: var(--r-pill); overflow: hidden; }
 .bar > span { display: block; height: 100%; background: var(--primary-500); border-radius: var(--r-pill); transition: width .4s ease; }
 
-/* ─── Page header ────────────────────────────────────────────────────────── */
-.page-header {
-  display: flex; align-items: flex-end; gap: 16px;
-  padding: 28px 32px 16px;
-  border-bottom: 1px solid var(--border-0);
-}
-.page-title {
-  /* On the .s-h1 rung of the Inter ladder (28/600/-0.007em) so page titles
-     match the rest of the app's headings. */
-  font-family: var(--font-display);
-  font-size: 28px; font-weight: 600; letter-spacing: -0.007em;
-  color: var(--text-strong); margin: 0;
-}
+/* ─── Page header ──────────────────────────────────────────────────────────
+   Page headers now render via components/collection/PageHeader (title + trail
+   shapes, with the shell's titlebar-safe inset baked in). The old
+   .page-header / .page-title classes were retired in the ENG-1038 header
+   consolidation. */
 
 /* ─── Coming soon tooltip ────────────────────────────────────────────────── */
 [data-coming-soon] {
@@ -4787,9 +4779,6 @@ body[data-theme="dark"] .mshell__drawer-title {
      one row, and the Health card puts three metric tiles inline
      with the description. Both go to two-row stacked layouts on a
      phone. Outer gutters tighten too. */
-  .sched-crumb {
-    padding: 12px 14px 6px !important;
-  }
   .sched-body {
     padding: 4px 14px calc(96px + env(safe-area-inset-bottom, 0)) !important;
   }

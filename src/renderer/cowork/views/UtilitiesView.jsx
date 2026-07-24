@@ -24,17 +24,6 @@ const TITLES = {
   publish: ['Share', 'HTML artifacts the agent can share with Minds credentials.'],
 };
 
-function PageHeader({ title, subtitle }) {
-  return (
-    <div className="page-header">
-      <div style={{ flex: 1 }}>
-        <h1 className="page-title">{title}</h1>
-        {subtitle && <div style={{ fontSize: 13, color: 'var(--frost-600)', marginTop: 4 }}>{subtitle}</div>}
-      </div>
-    </div>
-  );
-}
-
 function EmptyState({ children }) {
   return <div style={{ padding: 32, color: 'var(--frost-600)', fontSize: 13 }}>{children}</div>;
 }
@@ -98,7 +87,7 @@ export default function UtilitiesView({ kind, project, onRefreshArtifacts }) {
     <div className="scroll-clean" style={wrapperStyle}>
       {/* MemoryView renders its own header. For the legacy kinds we
           keep the plain header here. */}
-      {!isMemoryKind && <PageHeader title={title} subtitle={subtitle} />}
+      {!isMemoryKind && <CollectionPageHeader title={title} subtitle={subtitle} />}
       {status && <Message role="status" aria-live="polite" style={{ margin: '16px 28px 0', fontSize: 12.5 }}>{status}</Message>}
       {!data ? <EmptyState>Loading…</EmptyState> : null}
       {data && kind === 'memory' && (
