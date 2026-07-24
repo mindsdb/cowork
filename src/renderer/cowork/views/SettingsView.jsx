@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, createContext, useContext, Children } from 'react';
 import { useId } from 'react';
 import Ico from '../components/Icons';
-import { validateSettings, revealSettingKey, testProviders, fetchHealth } from '../api';
+import { validateSettings, revealSettingKey, testProviders, fetchHealth, fetchRecommendedModels } from '../api';
 import { providerTypeToKeyField, providerValueToType, resolveModelPickerValue, buildModelOptions, effectiveRoleModel, effectiveRoleProvider } from '../lib/settingsTransform';
 import { trackHarnessSwapped, resetDeviceIdentity } from '../lib/analytics';
 import { ConfirmModal } from '../components/ConfirmModal';
@@ -742,6 +742,15 @@ export default function SettingsView({
   // Per-role "use a typed model id" flag. Sticky so picking Other…
   // keeps the text input visible even when the typed value is empty.
   const [modelInputMode, setModelInputMode] = useState({ planning: false, coding: false });
+  // Per-role "refetching model list on dropdown open" flag — drives the
+  // trigger's spinner so a still-open dropdown showing possibly-stale
+  // locked/unlocked state doesn't read as done loading.
+  const [modelRefreshing, setModelRefreshing] = useState({ planning: false, coding: false });
+  // Per-role controlled open state for the model Select. The popup only
+  // opens once the refresh below resolves, so it never shows a stale
+  // locked/unlocked list even for a moment (stale-while-revalidate was
+  // rejected in favor of hide-until-fetched for this control).
+  const [modelDropdownOpen, setModelDropdownOpen] = useState({ planning: false, coding: false });
   const [versionInfo, setVersionInfo] = useState({ app: '', ui: null, source: 'web' });
   const [serverVersion, setServerVersion] = useState('');
   const [antonVersion, setAntonVersion] = useState('');
@@ -1729,6 +1738,37 @@ export default function SettingsView({
                                       writeOverride({ providerType: curType, model: next });
                                     }
                                   }}
+                                  open={modelDropdownOpen[role]}
+                                  onOpenChange={(isOpen) => {
+                                    if (!isOpen) {
+                                      setModelDropdownOpen((m) => ({ ...m, [role]: false }));
+                                      return;
+                                    }
+                                    // Controlled `open` stays false through the fetch — the popup
+                                    // only opens once fresh data has landed, so locked/unlocked
+                                    // state (modelEnabled) is never shown stale, not even briefly.
+                                    // Catches a wallet top-up completed in an external tab without
+                                    // guessing at focus/section-change as a proxy for "about to
+                                    // look at this." `refresh: true` bypasses the server's
+                                    // 5-minute MindsHub cache; only the model fields are merged,
+                                    // so it can't clobber an in-progress unsaved pick. Ignores a
+                                    // repeat open request while one is already in flight.
+                                    if (modelRefreshing[role]) return;
+                                    setModelRefreshing((m) => ({ ...m, [role]: true }));
+                                    fetchRecommendedModels({ refresh: true }).then((data) => {
+                                      if (!data) return;
+                                      setSetting('recommendedModels', data.recommendedModels);
+                                      setSetting('recommendedPair', data.recommendedPair);
+                                      setSetting('modelEfforts', data.modelEfforts);
+                                      setSetting('modelEnabled', data.modelEnabled);
+                                    }).catch(() => { }).finally(() => {
+                                      // Opens regardless of fetch success — a network failure
+                                      // must not leave this dropdown permanently unopenable.
+                                      setModelRefreshing((m) => ({ ...m, [role]: false }));
+                                      setModelDropdownOpen((m) => ({ ...m, [role]: true }));
+                                    });
+                                  }}
+                                  loading={modelRefreshing[role]}
                                   title={`Pick the model used for ${role}. Choose Other… to type a custom model id.`}
                                   options={modelOptions}
                                 />
