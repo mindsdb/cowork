@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, createContext, useContext, Children } from 'react';
 import { useId } from 'react';
 import Ico from '../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchHealth } from '../api';
@@ -63,13 +63,25 @@ export function patchSavedJson(prevJson, key, value) {
 }
 
 function Section({ title, subtitle, notice, children }) {
+  const { mobile } = useContext(SettingsLayoutContext);
+  // A section whose sole control is a Switch or ToggleGroup is compact enough
+  // to keep the desktop "title left / control right" row on wider mobile
+  // widths instead of stacking (ENG-990). Full-width controls — text inputs,
+  // selects, color pickers, the generic field wrapper — stay stacked. The
+  // row only re-forms above ~440px (see the media query); the narrowest
+  // phones still stack everything.
+  const kids = Children.toArray(children);
+  const compact = kids.length === 1 && (kids[0]?.type === Switch || kids[0]?.type === ToggleGroup);
   return (
-    <div className="settings-section" style={{
+    <div className={`settings-section${compact ? ' settings-section--inline' : ''}`} style={{
       display: 'grid', gridTemplateColumns: '1fr 320px', gap: 0,
       padding: '16px 0',
       alignItems: 'flex-start',
     }}>
-      <div style={{ paddingRight: 24 }}>
+      {/* On mobile the grid collapses to one column (see the settings media
+          query), so the inter-column gutters (paddingRight/Left: 24) would
+          just indent the stacked label + control for no reason — drop them. */}
+      <div style={{ paddingRight: mobile ? 0 : 24 }}>
         <h3 style={{
           margin: 0, padding: 0,
           fontSize: 14, fontWeight: 600, color: 'var(--text-strong)',
@@ -78,7 +90,7 @@ function Section({ title, subtitle, notice, children }) {
         {subtitle && <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginTop: 4 }}>{subtitle}</div>}
         {notice && <div style={{ marginTop: 8 }}>{notice}</div>}
       </div>
-      <div style={{ paddingLeft: 24 }}>{children}</div>
+      <div style={{ paddingLeft: mobile ? 0 : 24 }}>{children}</div>
     </div>
   );
 }
@@ -86,9 +98,28 @@ function Section({ title, subtitle, notice, children }) {
 // Collapsible group of sections. Defaults to open; click the header to
 // toggle. Uses the theme tokens so it reads well in light + dark.
 function CollapsibleGroup({ title, defaultOpen = true, children }) {
+  const { mobile } = useContext(SettingsLayoutContext);
   const [open, setOpen] = useState(defaultOpen);
   const panelId = useId();
   const headingId = useId();
+  // Mobile (ENG-990): flat and non-collapsible. The master-detail screen
+  // already isolates one section, so a second collapse level just adds
+  // confusion — render the group title as a plain header with its content
+  // always visible, separated from the next group by spacing.
+  if (mobile) {
+    return (
+      <div style={{ marginBottom: 6 }}>
+        <h2 style={{
+          margin: 0, padding: '12px 2px 8px',
+          fontFamily: 'var(--font-sans)', fontSize: 12.5, fontWeight: 600,
+          letterSpacing: '0.04em', textTransform: 'uppercase',
+          color: 'var(--text-muted)',
+        }}>{title}</h2>
+        <div style={{ padding: '0 2px 4px' }}>{children}</div>
+      </div>
+    );
+  }
+
   return (
     <div style={{
       border: '1px solid var(--border-subtle)',
@@ -134,7 +165,50 @@ function CollapsibleGroup({ title, defaultOpen = true, children }) {
 // Shared layout shell for every settings section: scrollable content area
 // on top, optional sticky footer with action buttons on the bottom.
 // Pass `footer` as JSX — buttons, status text, whatever the section needs.
-function SettingsSectionPanel({ children, footer }) {
+// Layout mode for the settings surface. Desktop (default) renders the
+// two-column nav + scrolling panel inside a modal; mobile (ENG-990) renders
+// a full page with accordion navigation, where each section flows naturally
+// so the whole page scrolls. SettingsSectionPanel reads this to drop its
+// flex-fill / internal scroll / sticky footer on mobile.
+const SettingsLayoutContext = createContext({ mobile: false });
+
+function SettingsSectionPanel({ children, footer, autoSaved = false }) {
+  const { mobile } = useContext(SettingsLayoutContext);
+  if (mobile) {
+    // Natural flow so the whole detail page scrolls (no internal scroll or
+    // width cap). A sticky full-bleed bottom bar carries the action: the Save
+    // footer when the section has one (always reachable on a long page instead
+    // of buried at the end), or a quiet "saves automatically" note when it
+    // doesn't — so an auto-save section (Appearance) doesn't read as "no way
+    // to save" next to sections with a Save button (ENG-990 QA).
+    const barStyle = {
+      position: 'sticky',
+      bottom: 0,
+      zIndex: 1,
+      display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+      // Bleed past the .settings-detail 14px gutter to the screen edges.
+      margin: '16px -14px 0',
+      padding: '12px 14px calc(12px + env(safe-area-inset-bottom, 0))',
+      borderTop: '1px solid var(--border-subtle)',
+      // Opaque so scrolling content is masked behind the bar.
+      background: 'var(--bg)',
+    };
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+        <div>{children}</div>
+        {footer ? (
+          <div style={{ ...barStyle, gap: 10 }}>{footer}</div>
+        ) : autoSaved ? (
+          <div style={{ ...barStyle, color: 'var(--text-muted)', fontSize: 12.5 }}>
+            <span aria-hidden="true" style={{ display: 'inline-flex', color: 'var(--ok, #3aa876)' }}>
+              {Ico.check ? Ico.check(13) : '✓'}
+            </span>
+            <span>Changes are saved automatically.</span>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
       <div
@@ -652,6 +726,11 @@ export default function SettingsView({
   isSsoConnected = false,
   ssoError = '',
   onSsoSignIn,
+  // Mobile (ENG-990): render as a full page with master-detail navigation
+  // instead of the desktop two-column layout. onClose closes the surface
+  // from the section list (the top-bar back control drills out to it first).
+  mobile = false,
+  onClose,
 }) {
   const [saved, setSaved] = useState(false);
   const [validation, setValidation] = useState(null);
@@ -676,6 +755,11 @@ export default function SettingsView({
   const [diagBusy, setDiagBusy] = useState(false);
   // Account section — decoded from the JWT, null until loaded
   const [accountUser, setAccountUser] = useState(null);
+  // Mobile master-detail (ENG-990/ENG-991): the open section is the shared
+  // `section` prop, not a separate local state — so a deep-link
+  // (onOpenSettings('backend')) lands on that section AND the section-keyed
+  // load effects below fire on mobile too. `section == null` is the list; a
+  // row tap calls onSectionChange(id), the back control onSectionChange(null).
 
   useEffect(() => { getVersionInfo().then(setVersionInfo).catch(() => { }); }, []);
   // Backend (server + agent) versions come from /health, which is only
@@ -1301,9 +1385,14 @@ export default function SettingsView({
                 const showKeyInput = ssoMindsHub || !configured || status === 'untested' || status === 'fail' || editingProviders.has(p.type);
                 return (
                   <div key={p.type} className="settings-provider-row" style={{
-                    display: 'grid',
-                    gridTemplateColumns: '1fr 380px auto',
-                    gap: 24,
+                    // Desktop: name | key/status | actions in a 3-col grid.
+                    // Mobile: a compact left-aligned column — the grid stacked
+                    // but kept the status pill + a 30px-wide button column
+                    // right-aligned, floating them into a lot of dead space.
+                    display: mobile ? 'flex' : 'grid',
+                    flexDirection: mobile ? 'column' : undefined,
+                    gridTemplateColumns: mobile ? undefined : '1fr 380px auto',
+                    gap: mobile ? 10 : 24,
                     padding: '16px 0',
                     alignItems: 'flex-start',
                   }}>
@@ -1324,7 +1413,7 @@ export default function SettingsView({
                     {showKeyInput ? (
                       <div style={{ display: 'grid', gap: 6 }}>
                         {ssoMindsHub ? (
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '5px 0' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: mobile ? 'flex-start' : 'flex-end', padding: '5px 0' }}>
                             {statusPill}
                           </div>
                         ) : (
@@ -1381,7 +1470,7 @@ export default function SettingsView({
                       </div>
                     ) : (
                       // Status pill replaces the key input after a test result
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '5px 0', gap: 10 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: mobile ? 'flex-start' : 'flex-end', padding: '5px 0', gap: 10 }}>
                         {status === 'fail' && friendlyError && (
                           <span style={{ fontSize: 11.5, color: '#E07060' }}>{friendlyError}</span>
                         )}
@@ -1389,8 +1478,8 @@ export default function SettingsView({
                       </div>
                     )}
 
-                    {/* Right: trash + edit buttons */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: 30 }}>
+                    {/* Right (desktop) / inline row (mobile): trash + edit */}
+                    <div style={{ display: 'flex', flexDirection: mobile ? 'row' : 'column', gap: 6, width: mobile ? 'auto' : 30 }}>
                       {!PROTECTED_PROVIDER_TYPES.has(p.type) && (
                         <Button
                           variant="danger"
@@ -1844,7 +1933,9 @@ export default function SettingsView({
     // No Save footer here — every control on this page auto-saves itself
     // (see autoSaveSetting/AutoSaveTag below); a page-wide Save button would
     // be dead weight that always reads "Saved" and never does anything.
-    <SettingsSectionPanel>
+    // `autoSaved` surfaces a quiet "saves automatically" note on mobile so the
+    // page doesn't read as "no way to save" next to Save-button sections.
+    <SettingsSectionPanel autoSaved>
       <CollapsibleGroup title="Appearance">
         <Section title="Style" subtitle="Normal, 8-Bit, or design your own with Custom. Combines with light and dark.">
           <ToggleGroup
@@ -2569,6 +2660,93 @@ export default function SettingsView({
     );
   };
 
+  const logoutConfirm = (
+    <ConfirmModal
+      open={logoutConfirmOpen}
+      title="Sign out of Cowork?"
+      message="This clears your stored API keys and disconnects from MindsHub. You'll need to sign in again to keep using Cowork."
+      confirmLabel="Sign out"
+      cancelLabel="Cancel"
+      destructive
+      busy={loggingOut}
+      busyLabel="Signing out…"
+      onConfirm={handleLogout}
+      onClose={() => setLogoutConfirmOpen(false)}
+    />
+  );
+
+  // Mobile (ENG-990): master-detail. The surface is a list of the six
+  // sections; tapping one drills into a focused full-screen page for just
+  // that section (sub-groups render flat — see CollapsibleGroup — so there's
+  // no nested collapsing). The top-bar back control returns to the list; from
+  // the list it closes Settings (onClose). Only the open section mounts, so
+  // its effects/dropdowns don't all run at once.
+  if (mobile) {
+    const renderers = {
+      agent: renderAgentSection,
+      appearance: renderAppearanceSection,
+      channels: renderChannelsSection,
+      updates: renderUpdatesSection,
+      backend: renderBackendSection,
+      account: renderAccountSection,
+    };
+    const activeItem = NAV_ITEMS.find((i) => i.id === section) || null;
+    const inDetail = Boolean(activeItem);
+    return (
+      <SettingsLayoutContext.Provider value={{ mobile: true }}>
+        <header className="settings-mobile__top">
+          <button
+            type="button"
+            className="settings-mobile__back"
+            aria-label={inDetail ? 'Back to settings' : 'Close settings'}
+            onClick={() => (inDetail ? onSectionChange?.(null) : onClose?.())}
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
+          </button>
+          <div className="settings-mobile__title" id="settings-mobile-title">
+            {activeItem ? activeItem.label : 'Settings'}
+          </div>
+          <span className="settings-mobile__spacer" aria-hidden="true" />
+        </header>
+        <div className="settings-mobile__body scroll-clean">
+          {inDetail ? (
+            <div className="settings-detail">
+              {renderers[section]?.()}
+            </div>
+          ) : (
+            <nav className="settings-list" role="navigation" aria-label="Settings sections">
+              {NAV_ITEMS.map((item) => {
+                const disabled = !serverOnline && item.id !== 'backend';
+                const icon = Ico[item.icon] ? Ico[item.icon](18) : null;
+                return (
+                  <div className="mshell-accordion" key={item.id}>
+                    <button
+                      type="button"
+                      className="mshell-accordion__head"
+                      aria-disabled={disabled || undefined}
+                      disabled={disabled}
+                      onClick={() => onSectionChange?.(item.id)}
+                      style={disabled ? { opacity: 0.4, cursor: 'default' } : undefined}
+                    >
+                      {icon && (
+                        <span aria-hidden="true" style={{ display: 'inline-flex', flexShrink: 0, color: 'var(--text-muted)' }}>
+                          {icon}
+                        </span>
+                      )}
+                      <span className="mshell-accordion__label">{item.label}</span>
+                      <span className="mshell-accordion__chev">{Ico.chevronRight(16)}</span>
+                    </button>
+                  </div>
+                );
+              })}
+            </nav>
+          )}
+        </div>
+        {logoutConfirm}
+      </SettingsLayoutContext.Provider>
+    );
+  }
+
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'row', minHeight: 0 }}>
       <SettingsNav section={section} onSectionChange={onSectionChange} serverOnline={serverOnline} />
@@ -2580,18 +2758,7 @@ export default function SettingsView({
       {section === 'backend' && renderBackendSection()}
       {section === 'account' && renderAccountSection()}
 
-      <ConfirmModal
-        open={logoutConfirmOpen}
-        title="Sign out of Cowork?"
-        message="This clears your stored API keys and disconnects from MindsHub. You'll need to sign in again to keep using Cowork."
-        confirmLabel="Sign out"
-        cancelLabel="Cancel"
-        destructive
-        busy={loggingOut}
-        busyLabel="Signing out…"
-        onConfirm={handleLogout}
-        onClose={() => setLogoutConfirmOpen(false)}
-      />
+      {logoutConfirm}
     </div>
   );
 }

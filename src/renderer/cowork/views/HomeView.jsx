@@ -485,27 +485,17 @@ export default function HomeView({
           animation: 'boot-fadein 500ms ease-out both',
         }}>
           {blocked ? (
-            <div style={{
-              width: '100%', maxWidth: 640,
-              background: 'var(--surface-0)',
-              border: '1px solid var(--border-01)',
-              borderRadius: 12,
-              boxShadow: 'var(--shadow-sm)',
-              padding: 18,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 14,
-            }}>
+            <div className="home-connect-card">
               <span style={{
                 width: 36, height: 36, borderRadius: 9,
                 display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                 background: 'var(--primary-50)', color: 'var(--primary-700)', flexShrink: 0,
               }}>{Ico.key(18)}</span>
-              <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="home-connect-card__body">
                 <div style={{ fontSize: 14, fontWeight: 650, color: 'var(--text-strong)' }}>Connect a provider to start chatting</div>
                 <div style={{ fontSize: 12.5, color: 'var(--frost-700)', marginTop: 3 }}>Subscribe with MindsHub for managed access, or bring your own provider key (Anthropic, OpenAI, or any OpenAI-compatible endpoint) in Settings.</div>
               </div>
-              <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+              <div className="home-connect-card__actions">
                 <Button
                   variant="primary"
                   onClick={() => host.openExternal(MINDS_BILLING_URL)}

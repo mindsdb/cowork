@@ -486,6 +486,28 @@ a[href],
   background-size: 18px 18px;
 }
 
+/* Home "connect a provider" card (ENG-991): one row on desktop; stacks to a
+   column under the mobile breakpoint so the text + buttons aren't crushed
+   onto a single line on narrow viewports. */
+.home-connect-card {
+  width: 100%;
+  max-width: 640px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px;
+  background: var(--surface-0);
+  border: 1px solid var(--border-01);
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm);
+}
+.home-connect-card__body { flex: 1; min-width: 0; }
+.home-connect-card__actions { display: flex; gap: 8px; flex-shrink: 0; }
+@media (max-width: 639.98px) {
+  .home-connect-card { flex-direction: column; align-items: stretch; gap: 12px; }
+  .home-connect-card__actions > * { flex: 1; }
+}
+
 /* ─── Animations ─────────────────────────────────────────────────────────── */
 @keyframes fadein-up {
   from { opacity: 0; transform: translateY(6px); }
@@ -4137,8 +4159,8 @@ body[data-theme="dark"] .chat-floating-composer .composer-wrap {
 .mshell__hamburger:active { background: var(--surface-2); }
 .mshell__hamburger span {
   display: block;
-  width: 20px;
-  height: 2px;
+  width: 17px;
+  height: 1.5px;
   background: var(--text-default);
   border-radius: var(--r-2);
   transform-origin: center;
@@ -4148,16 +4170,16 @@ body[data-theme="dark"] .chat-floating-composer .composer-wrap {
     width 320ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 .mshell__hamburger.is-open span:nth-child(1) {
-  transform: translateY(7px) rotate(45deg);
-  width: 22px;
+  transform: translateY(6.5px) rotate(45deg);
+  width: 18px;
 }
 .mshell__hamburger.is-open span:nth-child(2) {
   opacity: 0;
   transform: scaleX(0);
 }
 .mshell__hamburger.is-open span:nth-child(3) {
-  transform: translateY(-7px) rotate(-45deg);
-  width: 22px;
+  transform: translateY(-6.5px) rotate(-45deg);
+  width: 18px;
 }
 
 .mshell__body {
@@ -4226,9 +4248,9 @@ body[data-theme="dark"] .chat-floating-composer .composer-wrap {
 }
 .mshell__drawer-title {
   font-family: var(--font-display);
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
   font-weight: 500;
-  letter-spacing: 0.22em;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--nav-title-color, var(--ink));
 }
@@ -4290,7 +4312,7 @@ body[data-theme="dark"] .mshell__drawer-title {
   gap: 2px;
 }
 .mshell-row__primary {
-  font-size: var(--text-md);
+  font-size: var(--text-base);
   font-weight: 500;
   color: var(--text-strong);
   overflow: hidden;
@@ -4334,7 +4356,7 @@ body[data-theme="dark"] .mshell__drawer-title {
 .mshell-accordion__label {
   flex: 1;
   text-align: left;
-  font-size: var(--text-md);
+  font-size: var(--text-base);
   font-weight: 600;
 }
 .mshell-accordion__count {
@@ -4382,6 +4404,69 @@ body[data-theme="dark"] .mshell__drawer-title {
   background: var(--border-subtle);
   margin: 10px 12px;
 }
+
+/* ── Mobile Settings full page (ENG-990) ─────────────────────────────────
+   On mobile, Settings renders as a full-page surface with accordion
+   navigation instead of the desktop two-column modal. Mirrors the
+   MobileShell chrome (fixed inset, 52px top bar, safe-area insets) and
+   layers at the same z as the modal it replaces so it covers the shell. */
+/* The full-page surface itself is a fullBleed <Modal> (App.jsx) — it carries
+   the fixed inset-0 frame, safe-area insets, and z-layer, plus the dialog
+   focus trap / scroll lock. These children style the top bar + scroll body
+   that SettingsView renders inside it. */
+.settings-mobile__top {
+  flex: 0 0 auto;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border-subtle);
+  position: relative;
+  z-index: 2;
+}
+.settings-mobile__back {
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--text-strong);
+  border-radius: var(--r-12);
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 140ms ease;
+}
+.settings-mobile__back:active { background: var(--surface-2); }
+.settings-mobile__title {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  font-size: var(--text-md);
+  font-weight: 600;
+  color: var(--text-strong);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 4px;
+}
+.settings-mobile__spacer { display: inline-block; width: 40px; height: 40px; }
+.settings-mobile__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  background: var(--bg);
+}
+/* Master-detail (ENG-990). The section list uses the full-width mshell
+   accordion rows (border dividers); the detail page renders the section's
+   content in natural flow (SettingsSectionPanel drops its internal scroll on
+   mobile) with a comfortable gutter and safe-area-aware bottom padding. */
+.settings-list { padding: 4px 0 24px; }
+.settings-detail { padding: 6px 14px calc(24px + env(safe-area-inset-bottom, 0)); }
 
 /* FAB — anchored bottom-right inside the mobile body. Sits above the
    home-indicator on iOS via env(safe-area-inset-bottom). */
@@ -4512,6 +4597,21 @@ body[data-theme="dark"] .mshell__drawer-title {
 .settings-hide-mobile .settings-section + .settings-section,
 .settings-provider-row + .settings-provider-row {
   border-top: 1px solid var(--border-subtle);
+}
+
+/* Wider mobile (large phone / small tablet): a section whose sole control is
+   a Switch or ToggleGroup re-forms the desktop "title | control" row instead
+   of stacking (ENG-990). Higher specificity than the stack rule below, so it
+   wins in the 440–639px overlap; under 440px only the stack rule matches, so
+   the narrowest phones still stack everything. */
+@media (min-width: 440px) and (max-width: 639.98px) {
+  .settings-section.settings-section--inline {
+    grid-template-columns: 1fr auto !important;
+    gap: 16px !important;
+  }
+  .settings-section.settings-section--inline > :last-child {
+    justify-self: end;
+  }
 }
 
 @media (max-width: 639.98px) {
@@ -5126,42 +5226,26 @@ body[data-theme="light"] .anton-code-block .hljs-variable,
 body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169); }
 
 /* ─── iOS auto-zoom suppression (mobile only) ─────────────────────────
-   iOS Safari (and a few Android browsers) auto-zoom the page when a
-   text input with computed font-size < 16px receives focus. The
-   viewport-meta toggle in App.jsx (focusin → maximum-scale=1) catches
-   most cases but races with the zoom commit on programmatic focus
-   (menu opens, then focuses input via rAF) and on the FIRST input
-   tapped after a route change — exactly the cases the user hit on
-   the "+ New project" menu input and the chat reply composer.
-   Bumping computed font-size to ≥16px on the mobile breakpoint stops
-   the zoom from firing in the first place, which is the robust fix.
+   iOS Safari auto-zooms when a text input with computed font-size < 16px
+   receives focus. The PRIMARY guard is the viewport-meta toggle in App.jsx
+   (focusin → maximum-scale=1), which stops the zoom WITHOUT resizing text —
+   so inputs keep their designed size on mobile.
 
-   `!important` is required because several inputs ship inline
-   `style={{ fontSize: 13 }}` (menu inputs, modal inputs) and inline
-   styles outrank normal CSS rules. Scoped to the mobile breakpoint so
-   desktop visual metrics stay exactly as designed. The composer uses
-   `--composer-font-size` (set in .composer-input-shell) so the
-   textarea + highlight overlay both pick this up via the var. */
+   We deliberately do NOT bump every input to 16px here: that made form fields
+   render oversized next to the rest of the UI (ENG-990 QA). The one exception
+   is the chat composer — designed at 16px and the most zoom-prone, high-
+   frequency surface — pinned below via its font-size var.
+
+   Trade-off: the meta toggle races on *programmatic* focus (a menu that opens
+   then focuses an input via rAF) and on the first input after a route change,
+   so those specific inputs can still briefly zoom on real iOS. Accepted in
+   favour of consistent sizing; if it bites, add a targeted 16px opt-in on
+   just those inputs rather than a blanket bump. */
 @media (max-width: 640px) {
   /* Main composer + chat-floating composer — both consume
-     --composer-font-size from .composer-input-shell. Bumping the var
-     keeps the textarea and its source-mode overlay in lockstep. */
+     --composer-font-size from .composer-input-shell, which keeps the textarea
+     and its source-mode overlay in lockstep. */
   .composer-input-shell { --composer-font-size: 16px !important; }
-
-  /* Ad-hoc text inputs scattered across modals + menus (new project
-     row in the project picker, NewProjectModal name/instructions,
-     settings inputs, search). `:where()` keeps specificity at 0 so
-     existing styles still cascade, but the `!important` on the
-     declaration overrides inline font-size:13/13.5/14. */
-  input:where(
-    [type="text"], [type="search"], [type="email"], [type="url"],
-    [type="tel"], [type="password"], [type="number"], :not([type])
-  ),
-  textarea,
-  select,
-  [contenteditable="true"] {
-    font-size: max(16px, 1em) !important;
-  }
 }
 
 
