@@ -48,6 +48,7 @@ import { useMemo } from 'react';
 import { Select as BaseSelect } from '@base-ui/react/select';
 import { cva } from 'class-variance-authority';
 import { cn } from '../../lib/cn';
+import Spinner from './Spinner.jsx';
 
 const triggerVariants = cva(
   [
@@ -158,6 +159,11 @@ function renderOptions(options) {
 export function Select({
   value,
   onValueChange,
+  // Omit to stay uncontrolled (existing behavior for every other call site).
+  // Pass it to gate opening — e.g. a caller that wants to refetch `options`
+  // before the popup ever shows, instead of opening immediately on stale data.
+  open,
+  onOpenChange,
   options = [],
   placeholder = 'Select…',
   // "field" = full-width bordered control (form fields).
@@ -165,6 +171,10 @@ export function Select({
   variant = 'field',
   size = 'md',
   disabled = false,
+  // Swaps the chevron for a spinner — for a caller re-fetching `options`
+  // (e.g. on open) so the trigger reflects "still loading" instead of
+  // silently showing possibly-stale data for the fetch's duration.
+  loading = false,
   // Sets aria-invalid + a danger-tinted ring on the trigger.
   invalid = false,
   // Pill-variant prefix, e.g. "Sort by". Falls back to `ariaLabel` when
@@ -190,6 +200,8 @@ export function Select({
       value={value}
       items={itemsForLabels}
       onValueChange={(next) => onValueChange?.(next)}
+      open={open}
+      onOpenChange={onOpenChange}
       disabled={disabled}
       id={id}
       name={name}
@@ -206,7 +218,9 @@ export function Select({
           <span className="text-ink-4 text-[11.5px]">{label || ariaLabel}:</span>
         )}
         <BaseSelect.Value placeholder={placeholder} className="truncate" />
-        <BaseSelect.Icon className="inline-flex shrink-0 text-ink-3">{CHEVRON_DOWN}</BaseSelect.Icon>
+        <BaseSelect.Icon className="inline-flex shrink-0 text-ink-3">
+          {loading ? <Spinner style={{ color: 'currentColor' }} /> : CHEVRON_DOWN}
+        </BaseSelect.Icon>
       </BaseSelect.Trigger>
       <BaseSelect.Portal>
         <BaseSelect.Backdrop className="fixed inset-0" />
