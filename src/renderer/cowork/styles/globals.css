@@ -486,6 +486,28 @@ a[href],
   background-size: 18px 18px;
 }
 
+/* Home "connect a provider" card (ENG-991): one row on desktop; stacks to a
+   column under the mobile breakpoint so the text + buttons aren't crushed
+   onto a single line on narrow viewports. */
+.home-connect-card {
+  width: 100%;
+  max-width: 640px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px;
+  background: var(--surface-0);
+  border: 1px solid var(--border-01);
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm);
+}
+.home-connect-card__body { flex: 1; min-width: 0; }
+.home-connect-card__actions { display: flex; gap: 8px; flex-shrink: 0; }
+@media (max-width: 639.98px) {
+  .home-connect-card { flex-direction: column; align-items: stretch; gap: 12px; }
+  .home-connect-card__actions > * { flex: 1; }
+}
+
 /* ─── Animations ─────────────────────────────────────────────────────────── */
 @keyframes fadein-up {
   from { opacity: 0; transform: translateY(6px); }
