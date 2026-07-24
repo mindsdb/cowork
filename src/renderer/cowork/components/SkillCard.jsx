@@ -67,6 +67,11 @@ export default function SkillCard({ skill, projectName }) {
   const { skills } = useSkills();
 
   const name = skill.name || skill.slug || 'Skill';
+  const slug = skill.slug || skill.label;
+  // A draft is NOT in the skills store until the user Saves it — the agent may
+  // narrate "saved" while the card is still just a draft (ENG-645 RC #2). Show
+  // the truth: saved this session, or already in the store, else an unsaved draft.
+  const isSaved = saved || (Array.isArray(skills) && skills.some((s) => s.id === slug));
 
   const handleDownload = (e) => {
     e.stopPropagation();
@@ -81,7 +86,6 @@ export default function SkillCard({ skill, projectName }) {
     setSaving(true);
     setStatus(null);
 
-    const slug = skill.slug || skill.label;
     // `declarative` is the API's instructions alias (matches SkillsView's save);
     // `label` is the slug identity used for both create and the PUT URL.
     const payload = {
@@ -157,7 +161,7 @@ export default function SkillCard({ skill, projectName }) {
                 <span style={{ color: status.kind === 'error' ? 'var(--danger)' : 'var(--success, #1F8F5F)' }}>
                   {status.text}
                 </span>
-              ) : 'Skill'}
+              ) : isSaved ? 'Saved' : 'Draft · not saved'}
             </div>
           </div>
 
