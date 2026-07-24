@@ -210,11 +210,11 @@ export default function ScheduleTaskModal({
               />
             </Field>
             <Field label="Next run">
-              <input
+              <Input
                 type="datetime-local"
                 value={form.nextRunAt}
                 min={toLocalInput(new Date().toISOString())}
-                onChange={(e) => update('nextRunAt', e.target.value)}
+                onChange={(v) => update('nextRunAt', v)}
                 style={fieldInput}
               />
             </Field>

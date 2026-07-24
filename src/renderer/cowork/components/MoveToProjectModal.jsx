@@ -6,7 +6,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from './ui/Modal';
-import { Button, Checkbox } from './ui';
+import { Button, Checkbox, Input } from './ui';
 
 export default function MoveToProjectModal({ open, task, projects = [], onClose, onConfirm }) {
   const [query, setQuery] = useState('');
@@ -74,10 +74,10 @@ export default function MoveToProjectModal({ open, task, projects = [], onClose,
         onClose={onClose}
       />
       <ModalBody>
-        <input
+        <Input
           ref={inputRef}
           value={query}
-          onChange={(e) => { setQuery(e.target.value); setSelected(null); }}
+          onChange={(v) => { setQuery(v); setSelected(null); }}
           onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
           placeholder="Search projects or type a new name…"
           style={{
