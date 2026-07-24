@@ -22,11 +22,16 @@
 //   toastManager.update('oauth-x', { title: 'Reconnected.', type: 'success', timeout: 5000 });
 //
 // type: 'success' | 'danger' | 'warning' | undefined (neutral).
+//
+// Styling follows the authoring convention (cn + Tailwind + data-attribute
+// variants). No cva here on purpose: the type variants are driven by Base
+// UI's `data-type` attribute on the toast, not a component prop.
 
 // NOTE: @base-ui/react/toast only exports the `Toast` namespace at
 // runtime (`export * as Toast from ...`) — `useToastManager` is a member
 // of that namespace, not a separate top-level export, even though its
 // .d.ts is listed alongside the others (`export type *` is type-only).
+import type { ReactNode } from 'react';
 import { Toast as BaseToast } from '@base-ui/react/toast';
 import { cn } from '../../lib/cn';
 
@@ -60,7 +65,7 @@ const CLOSE_X = (
   </svg>
 );
 
-const TYPE_ICON = { success: CHECK, warning: WARNING_TRIANGLE, danger: ALERT_CIRCLE };
+const TYPE_ICON: Record<string, ReactNode> = { success: CHECK, warning: WARNING_TRIANGLE, danger: ALERT_CIRCLE };
 
 // Mount once, near the app root. Renders the portal + viewport that every
 // `useToastManager().add(...)` call from any descendant surfaces into.
@@ -73,7 +78,13 @@ const TYPE_ICON = { success: CHECK, warning: WARNING_TRIANGLE, danger: ALERT_CIR
 // could otherwise leave an OAuth error visible but without a working dismiss
 // button. The pre-Base-UI stacks were unlimited, so preserve that behavior at
 // the app provider while still allowing a caller to opt into a finite limit.
-export function ToastProvider({ children, limit = Number.POSITIVE_INFINITY }) {
+export function ToastProvider({
+  children,
+  limit = Number.POSITIVE_INFINITY,
+}: {
+  children?: ReactNode;
+  limit?: number;
+}) {
   return (
     <BaseToast.Provider limit={limit}>
       {children}
@@ -91,8 +102,10 @@ function ToastList() {
   return toasts.map((toast) => <ToastBubble key={toast.id} toast={toast} />);
 }
 
-function ToastBubble({ toast }) {
-  const icon = TYPE_ICON[toast.type];
+// The Base UI toast object carries app-defined fields (title/description/type)
+// under a broad generic; typed `any` here rather than fighting those generics.
+function ToastBubble({ toast }: { toast: any }) {
+  const icon = toast.type ? TYPE_ICON[toast.type] : undefined;
   return (
     <BaseToast.Root
       toast={toast}
