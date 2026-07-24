@@ -1050,6 +1050,12 @@ export async function fetchSettings() {
          * enabled:false, so the picker shows them greyed with an "add credits"
          * prompt. Absent id ⇒ available (backwards compatible). */
         result.modelEnabled = rec.modelEnabled || {};
+        /* Display-only: MindsHub's human-readable label per model id, for the
+         * picker's option text. The id/alias stays the value used for
+         * selection/storage/resolution everywhere else — a model missing here
+         * (or every provider but minds-cloud, which never supplies one) falls
+         * back to modelLabel()'s id-derived label at the render site. */
+        result.modelLabels = rec.modelLabels || {};
       }
       _lastFetchedSettings = result;
       return result;

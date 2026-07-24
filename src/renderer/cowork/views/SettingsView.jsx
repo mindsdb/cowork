@@ -1723,7 +1723,7 @@ export default function SettingsView({
                             // longer wedges the control into a no-op "Saved" (ENG-739).
                             const { showStalePin, inputMode, selectValue } =
                               resolveModelPickerValue(curModel, modelList, allowOther, modelInputMode[role]);
-                            const modelOptions = buildModelOptions(curModel, modelList, allowOther, showStalePin, modelEnabled);
+                            const modelOptions = buildModelOptions(curModel, modelList, allowOther, showStalePin, modelEnabled, settings.modelLabels || {});
                             return (
                               <label style={{ display: 'grid', gap: 4 }}>
                                 {fieldLabel('Model')}
@@ -1761,6 +1761,7 @@ export default function SettingsView({
                                       setSetting('recommendedPair', data.recommendedPair);
                                       setSetting('modelEfforts', data.modelEfforts);
                                       setSetting('modelEnabled', data.modelEnabled);
+                                      setSetting('modelLabels', data.modelLabels);
                                     }).catch(() => { }).finally(() => {
                                       // Opens regardless of fetch success — a network failure
                                       // must not leave this dropdown permanently unopenable.

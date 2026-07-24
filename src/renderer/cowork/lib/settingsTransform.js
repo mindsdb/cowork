@@ -261,10 +261,16 @@ export function resolveModelPickerValue(curModel, modelList, allowOther, forceCu
  * @param {boolean} showStalePin from resolveModelPickerValue
  * @param {Record<string, boolean>} modelEnabled per-model availability map
  *   (settings.modelEnabled); a model mapped to `false` renders locked.
+ * @param {Record<string, string>} modelLabels per-model display label
+ *   (settings.modelLabels, MindsHub-supplied). Display-only — the id/alias
+ *   passed as `value` is still what's saved/resolved everywhere else. A
+ *   model missing here (every direct provider; a minds-cloud model with no
+ *   label) falls back to modelLabel()'s id-derived label.
  */
-export function buildModelOptions(curModel, modelList, allowOther, showStalePin, modelEnabled = {}) {
+export function buildModelOptions(curModel, modelList, allowOther, showStalePin, modelEnabled = {}, modelLabels = {}) {
   const list = Array.isArray(modelList) ? modelList : [];
   const isLocked = (m) => modelEnabled[m] === false;
+  const labelFor = (m) => modelLabels[m] || modelLabel(m);
   return [
     ...(showStalePin
       // Labeled "legacy — re-select" (not "current") so it reads as an
@@ -274,7 +280,7 @@ export function buildModelOptions(curModel, modelList, allowOther, showStalePin,
       // review).
       ? [{
           value: '__stale__',
-          label: `${modelLabel(curModel.replace(/^latest:/, ''))} (legacy — re-select a model)`,
+          label: `${labelFor(curModel.replace(/^latest:/, ''))} (legacy — re-select a model)`,
           disabled: true,
         }]
       : []),
@@ -282,7 +288,7 @@ export function buildModelOptions(curModel, modelList, allowOther, showStalePin,
     // wallet can't currently pay for — prompt to add credits, not upgrade.
     ...list.map((m) => ({
       value: m,
-      label: `${modelLabel(m)}${isLocked(m) ? ' — Add credits to unlock' : ''}`,
+      label: `${labelFor(m)}${isLocked(m) ? ' — Add credits to unlock' : ''}`,
       disabled: isLocked(m),
     })),
     ...(allowOther ? [{ value: '__custom__', label: 'Other…' }] : []),
