@@ -1,41 +1,28 @@
 import { Fragment } from 'react';
+import { cn } from '../../lib/cn';
 import { Crumb, CrumbSep, CrumbCurrent } from '../ui/Crumb';
 
-// The one page-header for every main view. It has two shapes so depth
-// and placement read the same everywhere:
+// The one page-header for every main view. Two shapes so depth and placement
+// read the same everywhere:
 //
-//   • title    — top-level collection pages (Projects, Live Artifacts,
-//                Connect Apps and Data, Scheduled, Tasks, Skills). A
-//                display-font title, optional eyebrow + subtitle, and a
-//                right-aligned `actions` slot on the title baseline.
-//   • trail    — drill-down surfaces (a schedule, a project, a skill).
-//                Pass `crumbs` (link array) and/or `current` (the "you
-//                are here" leaf), or `onBack` for a "← label" link. A
-//                compact bar with the same 13px Crumb typography the
-//                chat header uses.
+//   • title    top-level collection pages (Projects, Live Artifacts, Connect
+//              Apps and Data, Scheduled, Tasks, Skills) — a display-font title,
+//              optional eyebrow + subtitle, and a right-aligned `actions` slot.
+//   • trail    drill-down surfaces (a schedule, a project, a skill) — pass
+//              `crumbs` and/or `current`, or `onBack` for a "← label" link.
 //
 // Both shapes own the titlebar-safe inset: paddingLeft honours
-// --titlebar-safe-left (set on <main> by the shell) so the header clears
-// the macOS traffic lights + the floating open-sidebar button whenever
-// the sidebar isn't docked over that corner, and max() falls back to the
-// normal padding otherwise. No view hard-codes a clearance value.
+// --titlebar-safe-left (set on <main> by the shell) so the header clears the
+// macOS traffic lights + the floating open-sidebar button when the sidebar
+// isn't docked over that corner, falling back to the normal padding via max().
 //
-// Views should NOT add their own spacer between the title shape and the
-// FilterRow; the 20px is baked in so every page shares the same gap.
-//
-// API:
-//   <PageHeader title="Projects" subtitle="…" eyebrow="DATABASES"
-//               actions={<button…>+ New</button>} subtitleBottom={20} />
-//   <PageHeader crumbs={[{ label: 'Scheduled Tasks', onClick: onBack }]}
-//               current="Daily digest" />
-
-const FONT_BODY = 'var(--font-body)';
-const FONT_MONO = 'var(--font-mono)';
-
-// Left inset shared by both shapes. Their base horizontal padding
-// differs (title 32, trail 28), so each passes its own base into max().
-const safeLeft = (base) => `max(${base}px, var(--titlebar-safe-left, 0px))`;
-
+// Styling note: this is on the target stack (Tailwind utilities + `cn`, token
+// colours from tailwind.config), not inline styles. `border-solid` is explicit
+// because the app disables Tailwind's preflight, so `border-b` alone would set
+// width with no style. The one value that stays inline is `subtitleBottom`,
+// which is a caller-supplied dynamic number. cva isn't used here — the two
+// shapes are structural, not style-variants-on-one-element; cva stays for the
+// ui/ primitives (Button, Badge, …) where it fits.
 export function PageHeader({
   // title shape
   title, subtitle, eyebrow, subtitleBottom,
@@ -49,17 +36,14 @@ export function PageHeader({
   if (isTrail) {
     const leadingSep = onBack || (crumbs && crumbs.length > 0);
     return (
-      <header style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        gap: 12, flexShrink: 0, minWidth: 0,
-        paddingTop: 14, paddingBottom: 14, paddingRight: 28,
-        paddingLeft: safeLeft(28),
-        borderBottom: bordered ? '1px solid var(--line)' : 'none',
-      }}>
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 8,
-          minWidth: 0, flex: '1 1 0', overflow: 'hidden',
-        }}>
+      <header
+        className={cn(
+          'flex items-center justify-between gap-3 shrink-0 min-w-0',
+          'py-3.5 pr-7 pl-[max(28px,var(--titlebar-safe-left,0px))]',
+          bordered && 'border-b border-solid border-line',
+        )}
+      >
+        <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
           {onBack && (
             <Crumb label={`← ${backLabel}`} onClick={onBack} title={backLabel} />
           )}
@@ -77,44 +61,29 @@ export function PageHeader({
           )}
         </div>
         {actions && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-            {actions}
-          </div>
+          <div className="flex items-center gap-2 shrink-0">{actions}</div>
         )}
       </header>
     );
   }
 
   return (
-    <div style={{
-      paddingTop: 28, paddingRight: 32, paddingBottom: 20,
-      paddingLeft: safeLeft(32),
-      display: 'flex', flexDirection: 'column', gap: 18,
-    }}>
-      <div style={{
-        display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
-        gap: 24, minWidth: 0,
-      }}>
-        <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+    <div className="flex flex-col gap-[18px] pt-7 pr-8 pb-5 pl-[max(32px,var(--titlebar-safe-left,0px))]">
+      <div className="flex items-start justify-between gap-6 min-w-0">
+        <div className="min-w-0 flex flex-col gap-1">
           {eyebrow && (
-            <div style={{
-              fontFamily: FONT_MONO, fontSize: 10.5, letterSpacing: '0.14em',
-              textTransform: 'uppercase', color: 'var(--ink-4)', fontWeight: 600,
-              marginBottom: 2,
-            }}>{eyebrow}</div>
+            <div className="mb-0.5 font-[family-name:var(--font-mono)] text-[10.5px] font-semibold uppercase tracking-[0.14em] text-ink-4">
+              {eyebrow}
+            </div>
           )}
-          <h1 className="s-h1" style={{
-            margin: 0,
-            color: 'var(--ink)',
-          }}>{title}</h1>
+          <h1 className="s-h1 m-0 text-ink">{title}</h1>
           {subtitle && (
-            <p style={{
-              margin: 0,
-              marginBottom: subtitleBottom || 0,
-              fontFamily: FONT_BODY, fontSize: 13.5,
-              color: 'var(--ink-3)', lineHeight: 1.5,
-              maxWidth: '64ch',
-            }}>{subtitle}</p>
+            <p
+              className="m-0 max-w-[64ch] text-[13.5px] leading-[1.5] text-ink-3"
+              style={{ marginBottom: subtitleBottom || 0 }}
+            >
+              {subtitle}
+            </p>
           )}
         </div>
         {actions}
