@@ -4732,6 +4732,32 @@ body[data-theme="dark"] .mshell__drawer-title {
   overflow-wrap: anywhere;
 }
 
+/* ─── KaTeX math (remark-math + rehype-katex, ENG-989) ─────────────────
+   KaTeX inherits `color` from the surrounding text, so inline + display
+   math pick up the active theme's ink token automatically — no per-theme
+   overrides needed. We only adjust rhythm + overflow here. */
+.markdown-content .katex {
+  /* Match the body text size; KaTeX defaults to 1.21em which reads
+     oversized against our chat column. */
+  font-size: 1.05em;
+}
+.markdown-content .katex-display {
+  /* Long equations scroll within the column instead of forcing the whole
+     chat turn to overflow horizontally. overflow-y hidden avoids a stray
+     vertical scrollbar from KaTeX's strut boxes. */
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* Tighter than KaTeX's default 1em top/bottom so display math sits in
+     the same vertical rhythm as our paragraphs. */
+  margin: 0.75em 0;
+  padding-bottom: 2px;
+}
+/* Error colour for broken/half-streamed TeX is set via KaTeX's `errorColor`
+   option (see _KATEX_OPTIONS in MarkdownContent.jsx), not here: KaTeX writes
+   it as an inline style (color: var(--danger)) on a span that isn't nested
+   under `.katex`, so a CSS rule could neither match it nor beat the inline
+   style. */
+
 /* ─── User message turn ────────────────────────────────────────────────
    Refactored out of inline-style sprawl in ChatView.UserTurn. Layout
    wrapper + bubble + hover-revealed action toolbar + attachment chip +
