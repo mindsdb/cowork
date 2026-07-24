@@ -7,7 +7,7 @@
 
 import { useEffect, useState } from 'react';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
-import { Button, Select, Input, Textarea } from '../ui';
+import { Button, Select, Input, Textarea, Checkbox } from '../ui';
 import Ico from '../Icons';
 
 const FONT_BODY = 'var(--font-body)';
@@ -240,10 +240,10 @@ export default function ScheduleTaskModal({
               fontFamily: FONT_BODY, fontSize: 13.5, color: 'var(--ink)',
               cursor: 'pointer',
             }}>
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={form.enabled}
-                onChange={(e) => update('enabled', e.target.checked)}
+                onCheckedChange={(v) => update('enabled', v)}
+                aria-label="Schedule enabled"
               />
               {form.enabled ? 'Enabled' : 'Paused'}
             </label>
