@@ -1186,8 +1186,6 @@ function AppCore() {
     };
   }, [isMobile]);
 
-  // On narrow screens (< 900px), sidebar is a slide-over overlay — track open state separately.
-  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   // Routes where the user can collapse the sidebar. Currently:
   // chat task only.
   const sidebarCollapsibleRoutes = useMemo(() => new Set(['task']), []);
@@ -1893,7 +1891,6 @@ function AppCore() {
   }, [markInFlight, markInFlightDone, handleStreamError]);
 
   const selectTask = (id) => {
-    if (isNarrow) setMobileSidebarOpen(false);
     const task = tasks.find((t) => t.id === id);
     if (task) {
       // Record the visit for recents ordering, but never auto-pin.
@@ -1965,7 +1962,6 @@ function AppCore() {
   };
 
   const newTask = () => {
-    if (isNarrow) setMobileSidebarOpen(false);
     setActiveTaskId(null);
     setComposerAttachments([]);
     setComposerPrefill(null);
@@ -2447,7 +2443,6 @@ function AppCore() {
       openSettings(key.includes(':') ? key.split(':')[1] : null);
       return;
     }
-    if (isNarrow) setMobileSidebarOpen(false);
     if (key === 'artifacts') {
       fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
     }
@@ -3626,15 +3621,13 @@ function AppCore() {
   const mainBg = 'transparent';
 
   // One shell-owned inset the content header uses to clear the macOS
-  // traffic lights and the floating open-sidebar button, active only in
-  // the modes where the docked sidebar/rail isn't covering that corner
-  // (narrow overlay, or a collapsed sidebar on the chat route). Web has
-  // no traffic lights, so it only needs to clear the hamburger. Exposed
-  // as `--titlebar-safe-left` on <main> below and consumed by PageHeader
-  // / view headers, replacing the per-view padding guesses — previously
-  // only ChatView compensated, so every other view collided at narrow
-  // widths.
-  const contentLeftExposed = isNarrow || sidebarCollapsedEffective;
+  // traffic lights and the floating open-sidebar button. Only a collapsed
+  // sidebar on the chat route exposes that corner now — the tablet band
+  // (640–900) keeps a full docked sidebar, which covers it — and web has
+  // no traffic lights so it only needs to clear the hamburger. Exposed as
+  // `--titlebar-safe-left` on <main> and consumed by PageHeader / view
+  // headers, replacing the per-view padding guesses.
+  const contentLeftExposed = sidebarCollapsedEffective;
   const titlebarSafeLeft = contentLeftExposed ? (host.isWeb ? 60 : 130) : 0;
 
   const modelOptions = selectedModel && !models.some((m) => m.id === selectedModel.id)
@@ -3652,31 +3645,15 @@ function AppCore() {
       // intercept drag on their own surface.
       WebkitAppRegion: 'drag',
     }}>
-      {/* Mobile backdrop — dims content behind the open drawer. Suppressed
-          on isMobile widths where MobileShell renders its own scrim. */}
-      {isNarrow && !isMobile && (
-        <div
-          onClick={() => setMobileSidebarOpen(false)}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 100,
-            background: 'rgba(0,0,0,0.35)',
-            backdropFilter: 'blur(2px)',
-            WebkitAppRegion: 'no-drag',
-            opacity: mobileSidebarOpen ? 1 : 0,
-            pointerEvents: mobileSidebarOpen ? 'auto' : 'none',
-            transition: 'opacity 280ms cubic-bezier(0.32, 0.72, 0, 1)',
-          }}
-        />
-      )}
-
       {/*
-        Floating hamburger — on desktop: visible when sidebar is collapsed
-        (chat route only). On narrow desktop: opens the slide-over sidebar.
-        Suppressed entirely on isMobile — MobileShell has its own hamburger.
+        Floating hamburger — reopens the sidebar after it's been collapsed.
+        Collapse is chat-route-only and desktop-only (sidebarCollapsedEffective),
+        so this only appears there; the tablet band keeps a docked sidebar and
+        never collapses. Suppressed on isMobile — MobileShell has its own.
       */}
       {!isMobile && (
       <button
-        onClick={() => isNarrow ? setMobileSidebarOpen(true) : setSidebarCollapsed(false)}
+        onClick={() => setSidebarCollapsed(false)}
         title="Open sidebar"
         className="icon-btn"
         style={{
@@ -3686,13 +3663,9 @@ function AppCore() {
           top: 18, left: host.isWeb ? 18 : 97,
           zIndex: 10,
           WebkitAppRegion: 'no-drag',
-          opacity: isNarrow
-            ? (mobileSidebarOpen ? 0 : 1)
-            : (sidebarCollapsedEffective ? 1 : 0),
-          transform: (isNarrow ? !mobileSidebarOpen : sidebarCollapsedEffective)
-            ? 'translateX(0)' : 'translateX(-8px)',
-          pointerEvents: (isNarrow ? !mobileSidebarOpen : sidebarCollapsedEffective)
-            ? 'auto' : 'none',
+          opacity: sidebarCollapsedEffective ? 1 : 0,
+          transform: sidebarCollapsedEffective ? 'translateX(0)' : 'translateX(-8px)',
+          pointerEvents: sidebarCollapsedEffective ? 'auto' : 'none',
           transition:
             'opacity 280ms cubic-bezier(0.32, 0.72, 0, 1) 120ms, ' +
             'transform 360ms cubic-bezier(0.32, 0.72, 0, 1) 80ms',
@@ -3703,24 +3676,13 @@ function AppCore() {
       )}
 
       {/*
-        Sidebar — on narrow desktop it's a fixed overlay drawer; on desktop
-        it's a normal flex item. `display: contents` makes the wrapper
-        transparent to the flex layout so Sidebar participates as a direct
-        flex child. Suppressed entirely on isMobile — MobileShell replaces
-        the desktop sidebar with a mobile-native drawer.
+        Sidebar — a docked flex item across the whole desktop + tablet range
+        (≥640). `display: contents` makes the wrapper transparent to the flex
+        layout so Sidebar participates as a direct flex child. Suppressed on
+        isMobile — MobileShell replaces it with a mobile drawer below 640.
       */}
       {!isMobile && (
-      <div
-        className={isNarrow ? 'sidebar-overlay-wrap' : undefined}
-        style={isNarrow ? {
-          position: 'fixed',
-          top: 9, bottom: 9, left: 9,
-          zIndex: 101,
-          transform: mobileSidebarOpen ? 'translateX(0)' : 'translateX(calc(-100% - 18px))',
-          transition: 'transform 380ms cubic-bezier(0.22, 1, 0.36, 1)',
-          WebkitAppRegion: 'no-drag',
-        } : { display: 'contents' }}
-      >
+      <div style={{ display: 'contents' }}>
         <Sidebar
           tasks={tasks}
           pins={pins}
@@ -3761,11 +3723,9 @@ function AppCore() {
           onOpenSearch={() => setSearchOpen(true)}
           collapsed={sidebarCollapsedEffective}
           onToggleCollapsed={
-            isNarrow
-              ? () => setMobileSidebarOpen(false)
-              : (sidebarCollapsibleRoutes.has(route)
-                  ? () => setSidebarCollapsed((c) => !c)
-                  : undefined)
+            sidebarCollapsibleRoutes.has(route)
+              ? () => setSidebarCollapsed((c) => !c)
+              : undefined
           }
           onPinTask={handlePinTask}
           onUnpinTask={handleUnpinTask}
@@ -3776,7 +3736,6 @@ function AppCore() {
           schedules={scheduled}
           scheduleRunsIndex={scheduleRunsIndex}
           onOpenSchedule={(scheduleId) => {
-            if (isNarrow) setMobileSidebarOpen(false);
             setSelectedScheduleId(scheduleId);
             setRoute('schedule-detail');
           }}
