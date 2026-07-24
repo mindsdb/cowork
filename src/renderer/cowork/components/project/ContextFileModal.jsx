@@ -30,6 +30,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
 import { Button } from '../ui';
+import { Modal } from '../ui/Modal';
 import {
   readProjectFile,
   writeProjectFile,
@@ -359,13 +360,7 @@ export default function ContextFileModal({
     return () => { cancelled = true; };
   }, [open, filePath, projectName, initialContent, isAnton, loader, genericMode, startInEditMode, isImage, rawUrl]);
 
-  // Esc closes when not busy.
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e) => { if (e.key === 'Escape' && !busy) onClose?.(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, busy, onClose]);
+  // Esc + backdrop dismissal are handled by <Modal> (suppressed while busy).
 
   // Focus the textarea when entering edit mode.
   useEffect(() => {
@@ -373,8 +368,6 @@ export default function ContextFileModal({
     const id = requestAnimationFrame(() => textareaRef.current?.focus());
     return () => cancelAnimationFrame(id);
   }, [editing]);
-
-  if (!open) return null;
 
   const save = async () => {
     setBusy(true);
@@ -421,35 +414,18 @@ export default function ContextFileModal({
   };
 
   return (
-    <div
-      onMouseDown={(e) => { if (e.target === e.currentTarget && !busy) onClose?.(); }}
-      style={{
-        position: 'fixed', inset: 0, zIndex: 92,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: 'rgba(0,0,0,0.45)',
-        backdropFilter: 'blur(2px)',
-        WebkitBackdropFilter: 'blur(2px)',
-        WebkitAppRegion: 'no-drag',
-      }}
+    <Modal
+      open={open}
+      onClose={onClose}
+      size="md"
+      width="min(720px, 92vw)"
+      // FIXED height — toggling view↔edit must feel like the same modal
+      // (textarea + preview both flex:1 to fill it, no jump-on-cancel).
+      height="min(720px, 88vh)"
+      ariaLabel={headerTitle}
+      closeOnBackdrop={!busy}
+      closeOnEsc={!busy}
     >
-      <div
-        onMouseDown={(e) => e.stopPropagation()}
-        style={{
-          width: 'min(720px, 92vw)',
-          // FIXED height — not maxHeight. Toggling between view and
-          // edit must feel like the same modal, just with the body
-          // swapped, so the container size has to stay constant. The
-          // textarea + preview inside both `flex: 1` to fill this
-          // height identically (no jump-on-cancel).
-          height: 'min(720px, 88vh)',
-          background: 'var(--surface)',
-          border: '1px solid var(--line)',
-          borderRadius: 14,
-          boxShadow: 'var(--sh-modal)',
-          display: 'flex', flexDirection: 'column', overflow: 'hidden',
-          fontFamily: FONT_BODY,
-        }}
-      >
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           padding: '14px 18px',
@@ -679,7 +655,6 @@ export default function ContextFileModal({
             )}
           </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
