@@ -79,13 +79,17 @@ export default function ApprovalCard({ approval, onOpenTab }) {
             }}>
               {title}
             </div>
-            <div style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 2 }} aria-live="polite">
-              {receiptError ? String(approval.receipt.error) : isAuth ? 'Hand this to yourself — Anton never touches logins' : 'Waiting for your review'}
-            </div>
           </div>
+        </div>
 
+        {/* Status lives on the meta line — a narrow column must never let
+            the badge squeeze the title to "Wa n…" (review). */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, fontSize: 12, color: 'var(--ink-3)' }} aria-live="polite">
           {meta && !pending && <Badge variant={meta.variant} size="sm">{meta.label}</Badge>}
           {pending && <Badge variant="accent" size="sm">Needs you</Badge>}
+          <span style={{ minWidth: 0 }}>
+            {receiptError ? String(approval.receipt.error) : isAuth ? 'Hand this to yourself — Anton never touches logins' : 'Waiting for your review'}
+          </span>
         </div>
 
         {draft && (
