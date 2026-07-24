@@ -77,3 +77,27 @@ jobs:
     with:
       version: ${{ needs.auto-release.outputs.version }}
     secrets: inherit
+
+  notify-failure:
+    # Alert the eng channel if ANY job in the release pipeline fails (tag,
+    # installer build, or UI publish).
+    needs: [auto-release, build-deploy-prod, publish-ui]
+    if: failure()
+    uses: mindsdb/github-actions/.github/workflows/notify-main-failure.yml@main
+    with:
+      env-name: "release"
+      runs-on: ubuntu-latest
+    secrets: inherit
+
+
+  notify-recovery:
+    # Post a green "recovered" message when the pipeline goes green after a
+    # failing run (the reusable no-ops on a normal green run).
+    needs: [auto-release, build-deploy-prod, publish-ui]
+    if: success()
+    uses: mindsdb/github-actions/.github/workflows/notify-main-failure.yml@main
+    with:
+      env-name: "release"
+      status: recovered
+      runs-on: ubuntu-latest
+    secrets: inherit

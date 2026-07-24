@@ -58,3 +58,26 @@ jobs:
       platform: windows
       build_kind: stable
       artifact_name: ${{ needs.build-windows.outputs.artifact_name }}
+
+  notify-failure:
+    # Alert the eng channel if ANY job in the staging installer pipeline fails.
+    needs: [build-macos, upload-macos, build-windows, upload-windows]
+    if: failure()
+    uses: mindsdb/github-actions/.github/workflows/notify-main-failure.yml@main
+    with:
+      env-name: "staging installer build"
+      runs-on: ubuntu-latest
+    secrets: inherit
+
+
+  notify-recovery:
+    # Post a green "recovered" message when the pipeline goes green after a
+    # failing run (the reusable no-ops on a normal green run).
+    needs: [build-macos, upload-macos, build-windows, upload-windows]
+    if: success()
+    uses: mindsdb/github-actions/.github/workflows/notify-main-failure.yml@main
+    with:
+      env-name: "staging installer build"
+      status: recovered
+      runs-on: ubuntu-latest
+    secrets: inherit
