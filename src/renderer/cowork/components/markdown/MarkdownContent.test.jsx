@@ -145,4 +145,25 @@ describe('MarkdownContent math rendering (end-to-end pipeline)', () => {
     expect(container.querySelector('.katex')).toBeNull();
     expect(container.textContent).toContain('$5 and then $10');
   });
+
+  it('keeps KaTeX HTML extensions disabled for untrusted chat text', () => {
+    const { container } = render(
+      <MarkdownContent text={'\\(\\htmlClass{injected}{x}\\)'} complete />,
+    );
+    expect(container.querySelector('.katex')).not.toBeNull();
+    expect(container.querySelector('.injected')).toBeNull();
+  });
+
+  it('caps user-controlled KaTeX dimensions', () => {
+    const { container } = render(
+      <MarkdownContent text={'\\(\\rule{500em}{500em}\\)'} complete />,
+    );
+    const styles = [...container.querySelectorAll('[style]')]
+      .map((node) => node.getAttribute('style'))
+      .join(' ');
+    expect(styles).not.toContain('500em');
+    expect(styles).toContain('50em');
+    expect(container.querySelector('mspace')?.getAttribute('width')).toBe('50em');
+    expect(container.querySelector('mspace')?.getAttribute('height')).toBe('50em');
+  });
 });

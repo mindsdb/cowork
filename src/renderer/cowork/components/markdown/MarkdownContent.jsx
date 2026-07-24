@@ -222,6 +222,17 @@ const _MD_CODE_REGION = /(```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]*`)/g;
 
 const _isBlankRun = (s) => /^\s*$/.test(s);
 
+// Math comes from model/user-authored chat text, so keep KaTeX's unsafe HTML
+// extensions disabled and bound the amount of layout/macro work one formula
+// can request. These match KaTeX's secure defaults where one exists, but are
+// explicit here so a dependency default change cannot silently widen the
+// renderer's trust boundary.
+const _KATEX_OPTIONS = Object.freeze({
+  trust: false,
+  maxSize: 50,
+  maxExpand: 1000,
+});
+
 // Our models emit math in a few delimiter styles — `\( … \)` and `$ … $`
 // inline, `\[ … \]` and `$$ … $$` display. remark-math only parses the `$`
 // family, and CommonMark eats the backslash in `\(` / `\[` before we ever
@@ -656,7 +667,10 @@ export function MarkdownContent({
         // allowlisted), then KaTeX replaces them with its rendered markup.
         // That generated markup is trusted (built from a text-only TeX
         // source) so it deliberately isn't re-sanitized.
-        rehypePlugins={[[rehypeSanitize, sanitizeSchema], rehypeKatex]}
+        rehypePlugins={[
+          [rehypeSanitize, sanitizeSchema],
+          [rehypeKatex, _KATEX_OPTIONS],
+        ]}
         components={components}
       >
         {normalized || ''}
