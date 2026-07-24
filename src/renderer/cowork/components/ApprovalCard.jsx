@@ -73,7 +73,10 @@ export default function ApprovalCard({ approval, onOpenTab }) {
           </div>
 
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="s-h3" style={{ color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <div className="s-h3" style={{
+              color: 'var(--ink)', overflow: 'hidden', wordBreak: 'break-word',
+              display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2,
+            }}>
               {title}
             </div>
             <div style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 2 }} aria-live="polite">
