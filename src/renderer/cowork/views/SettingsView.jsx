@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, createContext, useContext, Children } from
 import { useId } from 'react';
 import Ico from '../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchHealth, fetchRecommendedModels } from '../api';
-import { providerTypeToKeyField, providerValueToType, resolveModelPickerValue, buildModelOptions, effectiveRoleModel, effectiveRoleProvider } from '../lib/settingsTransform';
+import { providerTypeToKeyField, providerValueToType, resolveModelPickerValue, buildModelOptions, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels } from '../lib/settingsTransform';
 import { trackHarnessSwapped, resetDeviceIdentity } from '../lib/analytics';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
@@ -552,6 +552,11 @@ const GET_KEY_URL = {
 
 const PROTECTED_PROVIDER_TYPES = new Set(['minds-cloud']);
 
+// How long data from the model dropdown's on-open refresh counts as fresh.
+// Re-opening inside this window skips the round trip and opens immediately;
+// it only has to be short next to the 5-minute cache it stands in for.
+const MODEL_REFRESH_TTL_MS = 5000;
+
 function makeEmptyProvider(type) {
   const base = { type, apiKey: '', isDefault: false };
   if (type === 'openai-compatible') base.baseUrl = '';
@@ -751,6 +756,12 @@ export default function SettingsView({
   // locked/unlocked list even for a moment (stale-while-revalidate was
   // rejected in favor of hide-until-fetched for this control).
   const [modelDropdownOpen, setModelDropdownOpen] = useState({ planning: false, coding: false, router: false });
+  // Per-role bookkeeping for the refresh above. `token` identifies the live
+  // open request, so a response landing after the user dismissed the control
+  // can't re-open it; `refreshedAt` is when fresh data last landed, so
+  // re-opening doesn't re-pay a round trip that just completed.
+  const modelOpenState = useRef({});
+  const modelOpenFor = (role) => (modelOpenState.current[role] ||= { token: 0, refreshedAt: 0 });
   const [versionInfo, setVersionInfo] = useState({ app: '', ui: null, source: 'web' });
   const [serverVersion, setServerVersion] = useState('');
   const [antonVersion, setAntonVersion] = useState('');
@@ -1740,7 +1751,12 @@ export default function SettingsView({
                                   }}
                                   open={modelDropdownOpen[role]}
                                   onOpenChange={(isOpen) => {
+                                    const openState = modelOpenFor(role);
                                     if (!isOpen) {
+                                      // Also supersedes an open still waiting on its fetch, so a
+                                      // response that lands after the user dismissed the control
+                                      // can't re-open it.
+                                      openState.token += 1;
                                       setModelDropdownOpen((m) => ({ ...m, [role]: false }));
                                       return;
                                     }
@@ -1754,18 +1770,34 @@ export default function SettingsView({
                                     // so it can't clobber an in-progress unsaved pick. Ignores a
                                     // repeat open request while one is already in flight.
                                     if (modelRefreshing[role]) return;
+                                    // A refresh that just landed is still good: open now instead
+                                    // of making a re-open wait on the same round trip again.
+                                    if (performance.now() - openState.refreshedAt < MODEL_REFRESH_TTL_MS) {
+                                      setModelDropdownOpen((m) => ({ ...m, [role]: true }));
+                                      return;
+                                    }
+                                    const token = (openState.token += 1);
                                     setModelRefreshing((m) => ({ ...m, [role]: true }));
                                     fetchRecommendedModels({ refresh: true }).then((data) => {
-                                      if (!data) return;
-                                      setSetting('recommendedModels', data.recommendedModels);
-                                      setSetting('recommendedPair', data.recommendedPair);
-                                      setSetting('modelEfforts', data.modelEfforts);
-                                      setSetting('modelEnabled', data.modelEnabled);
-                                      setSetting('modelLabels', data.modelLabels);
+                                      // Same merge rule as the mount-time load: an empty list or
+                                      // map in the response leaves what we have alone. The
+                                      // endpoint answers 200 with empty buckets when the MindsHub
+                                      // fetch itself failed, and assigning those straight through
+                                      // would empty the dropdown the user just clicked (for every
+                                      // role — the keys are shared) until the app restarts.
+                                      const merged = mergeRecommendedModels(settings, data);
+                                      if (!merged) return;
+                                      for (const [key, value] of Object.entries(merged)) setSetting(key, value);
+                                      openState.refreshedAt = performance.now();
                                     }).catch(() => { }).finally(() => {
-                                      // Opens regardless of fetch success — a network failure
-                                      // must not leave this dropdown permanently unopenable.
                                       setModelRefreshing((m) => ({ ...m, [role]: false }));
+                                      // Opens regardless of fetch success — a network failure must
+                                      // not leave this dropdown permanently unopenable. Skipped
+                                      // only when this open was superseded (the user dismissed the
+                                      // control while the fetch was out), never on a timer: a slow
+                                      // MindsHub must still end in an open dropdown, so opening
+                                      // late is the failure we accept here.
+                                      if (openState.token !== token) return;
                                       setModelDropdownOpen((m) => ({ ...m, [role]: true }));
                                     });
                                   }}

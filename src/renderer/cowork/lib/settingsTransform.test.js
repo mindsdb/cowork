@@ -5,6 +5,8 @@ import {
   diffSettingsForWrite,
   effectiveRoleModel,
   effectiveRoleProvider,
+  recommendedModelOptions,
+  mergeRecommendedModels,
 } from './settingsTransform';
 
 // The minds-cloud recommended list holds bare aliases — never `latest:`-prefixed.
@@ -178,6 +180,136 @@ describe('buildModelOptions', () => {
     const listed = resolveModelPickerValue('mindshub_air', MINDS_LIST, false);
     const listedOptions = buildModelOptions('mindshub_air', MINDS_LIST, false, listed.showStalePin);
     expect(listedOptions.map((o) => o.value)).toContain(listed.selectValue);
+  });
+
+  // ─── ENG-1049: the picker showed ids derived into names ("Mindshub Air")
+  // instead of the policy's own labels ("MindsHub Air"). The label is
+  // display-only — `value` stays the alias everything else is keyed on.
+  it('prefers MindsHub\'s label over the id-derived one, keeping the id as the value', () => {
+    const labels = { mindshub_air: 'MindsHub Air', opus: 'Claude Opus 5' };
+    const options = buildModelOptions('sonnet', MINDS_LIST, false, false, {}, labels);
+    const byValue = Object.fromEntries(options.map((o) => [o.value, o]));
+    expect(byValue.mindshub_air.label).toBe('MindsHub Air');
+    expect(byValue.opus.label).toBe('Claude Opus 5');
+    // No label published for this one, so the derived form still shows.
+    expect(byValue.sonnet.label).toBe('sonnet');
+  });
+
+  it('keeps the locked suffix on a labelled model', () => {
+    const options = buildModelOptions('sonnet', MINDS_LIST, false, false, { opus: false }, { opus: 'Claude Opus 5' });
+    const opus = options.find((o) => o.value === 'opus');
+    expect(opus).toEqual({ value: 'opus', label: 'Claude Opus 5 — Add credits to unlock', disabled: true });
+  });
+
+  it('labels the legacy placeholder from the label map too', () => {
+    const options = buildModelOptions('latest:sonnet', MINDS_LIST, false, true, {}, { sonnet: 'Claude Sonnet 5' });
+    expect(options[0].label).toBe('Claude Sonnet 5 (legacy — re-select a model)');
+  });
+});
+
+// ─── recommendedModelOptions — the composer's model dropdown. Same label
+// rule as the Settings picker, or the two disagree about a model's name.
+describe('recommendedModelOptions', () => {
+  const rec = { 'minds-cloud': ['mindshub_air', 'sonnet'] };
+
+  it('uses MindsHub\'s label when there is one, the derived label otherwise', () => {
+    const options = recommendedModelOptions(rec, 'minds-cloud', { mindshub_air: 'MindsHub Air' });
+    expect(options).toEqual([
+      { id: 'mindshub_air', label: 'MindsHub Air' },
+      { id: 'sonnet', label: 'sonnet' },
+    ]);
+  });
+
+  it('falls back to derived labels with no label map at all', () => {
+    expect(recommendedModelOptions(rec, 'minds-cloud')).toEqual([
+      { id: 'mindshub_air', label: 'mindshub_air' },
+      { id: 'sonnet', label: 'sonnet' },
+    ]);
+  });
+
+  it('returns [] for a provider with no list', () => {
+    expect(recommendedModelOptions(rec, 'anthropic')).toEqual([]);
+    expect(recommendedModelOptions(undefined, 'minds-cloud')).toEqual([]);
+  });
+});
+
+// ─── mergeRecommendedModels — the one rule for folding a
+// /settings/recommended-models response into settings. Used by the mount-time
+// load and by the picker's on-open refresh, which is the whole point: the
+// refresh used to assign the response straight through, so a failed MindsHub
+// fetch (still a 200, with empty buckets) emptied the dropdown until restart.
+describe('mergeRecommendedModels', () => {
+  const held = {
+    recommendedModels: { 'minds-cloud': ['mindshub_air', 'sonnet'], anthropic: ['claude-opus-5'] },
+    recommendedPair: { 'minds-cloud': ['sonnet', 'haiku', 'kimi'] },
+    modelEfforts: { sonnet: { efforts: ['low', 'high'], default: 'high' } },
+    modelEnabled: { mindshub_air: true, sonnet: false },
+    modelLabels: { mindshub_air: 'MindsHub Air' },
+  };
+
+  it('takes the live values when the server has them', () => {
+    const merged = mergeRecommendedModels(held, {
+      recommendedModels: { 'minds-cloud': ['mindshub_air', 'sonnet', 'opus'] },
+      recommendedPair: {},
+      modelEfforts: {},
+      modelEnabled: { mindshub_air: true, sonnet: true, opus: true },
+      modelLabels: { opus: 'Claude Opus 5' },
+    });
+    expect(merged.recommendedModels['minds-cloud']).toEqual(['mindshub_air', 'sonnet', 'opus']);
+    // A top-up unlocking paid models is exactly what the refresh is for.
+    expect(merged.modelEnabled).toEqual({ mindshub_air: true, sonnet: true, opus: true });
+    expect(merged.modelLabels).toEqual({ opus: 'Claude Opus 5' });
+    // Buckets the response left empty keep what we already had.
+    expect(merged.recommendedPair).toEqual(held.recommendedPair);
+    expect(merged.modelEfforts).toEqual(held.modelEfforts);
+  });
+
+  it('keeps the model list when the MindsHub fetch failed behind a 200', () => {
+    // What cowork-server answers when its own /v1/models call fails:
+    // RECOMMENDED_MODELS['minds-cloud'] is an empty placeholder, and the live
+    // overlay is skipped. Assigning this through emptied the picker.
+    const merged = mergeRecommendedModels(held, {
+      recommendedModels: { 'minds-cloud': [], anthropic: [], openai: [] },
+      recommendedPair: { 'minds-cloud': ['sonnet', 'haiku', 'kimi'] },
+      modelEfforts: {},
+      modelEnabled: {},
+      modelLabels: {},
+    });
+    expect(merged.recommendedModels['minds-cloud']).toEqual(['mindshub_air', 'sonnet']);
+    expect(merged.recommendedModels.anthropic).toEqual(['claude-opus-5']);
+    // An empty enabled map reads as "everything available" and would silently
+    // unlock paid models; cowork-server refuses to persist one for the same reason.
+    expect(merged.modelEnabled).toEqual(held.modelEnabled);
+    expect(merged.modelLabels).toEqual(held.modelLabels);
+    expect(merged.modelEfforts).toEqual(held.modelEfforts);
+  });
+
+  it('returns null when the request itself failed, so the caller changes nothing', () => {
+    expect(mergeRecommendedModels(held, null)).toBeNull();
+    expect(mergeRecommendedModels(held, undefined)).toBeNull();
+  });
+
+  it('populates from empty on first load', () => {
+    const merged = mergeRecommendedModels(
+      { recommendedModels: { 'minds-cloud': [] }, recommendedPair: {} },
+      {
+        recommendedModels: { 'minds-cloud': ['mindshub_air'] },
+        recommendedPair: { 'minds-cloud': ['sonnet', 'haiku', 'kimi'] },
+        modelEnabled: { mindshub_air: true },
+        modelLabels: { mindshub_air: 'MindsHub Air' },
+      },
+    );
+    expect(merged.recommendedModels['minds-cloud']).toEqual(['mindshub_air']);
+    expect(merged.modelEnabled).toEqual({ mindshub_air: true });
+    expect(merged.modelLabels).toEqual({ mindshub_air: 'MindsHub Air' });
+    // Absent from the response entirely, not just empty.
+    expect(merged.modelEfforts).toEqual({});
+  });
+
+  it('tolerates missing settings keys', () => {
+    const merged = mergeRecommendedModels({}, { recommendedModels: { 'minds-cloud': ['sonnet'] } });
+    expect(merged.recommendedModels).toEqual({ 'minds-cloud': ['sonnet'] });
+    expect(merged.modelEnabled).toEqual({});
   });
 });
 

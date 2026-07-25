@@ -1095,13 +1095,14 @@ function AppCore() {
   // a TDZ ReferenceError at first render.
   // Composer model options for the active (planning) provider. Sourced from
   // the backend-overlaid recommendedModels map (single source of truth in
-  // cowork-server) — labels derived from ids, never hardcoded. Empty until
+  // cowork-server) — names come from MindsHub's own label for the model where
+  // it publishes one, else derived from the id, never hardcoded. Empty until
   // settings load; the composer then shows just the configured model.
   const models = useMemo(() => {
     const providerType = providerValueToType(settings.planningProvider) || 'minds-cloud';
-    return recommendedModelOptions(settings.recommendedModels, providerType)
+    return recommendedModelOptions(settings.recommendedModels, providerType, settings.modelLabels)
       .map((o) => ({ id: o.id, name: o.label, desc: '' }));
-  }, [settings.recommendedModels, settings.planningProvider]);
+  }, [settings.recommendedModels, settings.planningProvider, settings.modelLabels]);
   // The user's preferred collapsed state for the sidebar. Effective
   // collapsed-ness is derived below — we only honor this value while
   // viewing a chat task; every other surface (home, projects,
