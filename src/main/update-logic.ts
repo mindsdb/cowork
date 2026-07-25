@@ -406,9 +406,13 @@ export interface InstallerStepPlan {
    *  out to real git there, and Apple's /usr/bin/git shim demands the CLT.
    *  Wheel installs never touch git, so a stock Mac installs clean. */
   needsXcodeStep: boolean;
-  /** Whether a missing git aborts the install. Required on the git channel
-   *  (uv cannot fetch git sources without it); on pypi it degrades to a
-   *  warning — git is only a runtime nice-to-have for agent tasks. */
+  /** Whether the installer includes a git step at all. Only the git channel
+   *  needs git (uv shells out to fetch a git+https source); a pypi install is
+   *  wheels-only, so the git check is omitted entirely rather than shown as a
+   *  passing/warning row a user reads as a scary near-miss. */
+  showGitStep: boolean;
+  /** Whether a missing git aborts the install. Consulted only when the git
+   *  step is shown (git channel); uv cannot fetch git sources without it. */
   gitRequired: boolean;
 }
 
@@ -416,6 +420,7 @@ export function installerStepPlan(platform: string, channel: 'git' | 'pypi'): In
   const fromGit = channel === 'git';
   return {
     needsXcodeStep: platform === 'darwin' && fromGit,
+    showGitStep: fromGit,
     gitRequired: fromGit,
   };
 }
