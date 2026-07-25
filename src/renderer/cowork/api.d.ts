@@ -17,6 +17,10 @@ export interface RecommendedModels {
   recommendedPair?: Record<string, [string, string] | string[]>;
   /** Per-model effort capability: id → { efforts, default }. */
   modelEfforts?: Record<string, { efforts: string[]; default: string }>;
+  /** Per-model availability; a model mapped to false renders locked. */
+  modelEnabled?: Record<string, boolean>;
+  /** MindsHub's display label per model id. Absent ⇒ derive from the id. */
+  modelLabels?: Record<string, string>;
   [key: string]: unknown;
 }
 

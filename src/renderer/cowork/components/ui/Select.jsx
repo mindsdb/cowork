@@ -159,10 +159,9 @@ function renderOptions(options) {
 export function Select({
   value,
   onValueChange,
-  // Omit to stay uncontrolled (existing behavior for every other call site).
-  // Pass it to gate opening — e.g. a caller that wants to refetch `options`
-  // before the popup ever shows, instead of opening immediately on stale data.
-  open,
+  // Fires on open and on close. For a caller that wants to refresh `options`
+  // when the popup opens; the popup opens straight away either way, so the
+  // new options land in place rather than gating the open on a fetch.
   onOpenChange,
   options = [],
   placeholder = 'Select…',
@@ -200,7 +199,6 @@ export function Select({
       value={value}
       items={itemsForLabels}
       onValueChange={(next) => onValueChange?.(next)}
-      open={open}
       onOpenChange={onOpenChange}
       disabled={disabled}
       id={id}
@@ -210,6 +208,10 @@ export function Select({
         className={cn(triggerVariants({ variant, size }), className)}
         aria-label={ariaLabel || label}
         aria-invalid={invalid || undefined}
+        // The spinner that replaces the chevron is aria-hidden, so without
+        // this a screen-reader user gets no signal that a click is being
+        // worked on and the popup just hasn't opened yet.
+        aria-busy={loading || undefined}
         title={title}
         style={{ width, minWidth, ...style }}
         {...rest}
