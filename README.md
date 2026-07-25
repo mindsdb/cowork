@@ -349,7 +349,7 @@ The React UI updates via a separate public repo: [`mindsdb/antontron-releases`](
 
 How it works:
 
-1. Code is merged to `main` — **every** push to `main` runs the auto-release workflow (`release.yml`), which computes a CalVer version (e.g. `2.26.7.16.1`), tags it, builds the prod installer, and calls `publish-ui` with that exact version, so the UI bundle and the prod app installer always publish the **same** version
+1. Code is merged to `main` — **every** push to `main` runs the auto-release workflow (`release.yml`), which computes a CalVer version (e.g. `2.26.7.16.1`) via the shared `calver-release.yml` reusable in [mindsdb/github-actions](https://github.com/mindsdb/github-actions), tags it, builds the prod installer, and calls `publish-ui` with that exact version, so the UI bundle and the prod app installer always publish the **same** version
 2. The `publish-ui` workflow builds the renderer (with the version baked into `__APP_VERSION__`) and creates a `.tar.gz` bundle with a SHA-256 checksum
 3. Using a `RELEASES_TOKEN`, it pushes the bundle as a GitHub Release and updates `latest.json` on GitHub Pages — both on the public `antontron-releases` repo
 4. The app checks `latest.json` at launch and every 4 hours (static file, no auth, no API rate limits)

@@ -28,12 +28,15 @@ interface InstallerOptions {
 }
 
 function getSteps(): InstallStep[] {
+  const plan = installerStepPlan(process.platform, getChannel());
   const steps: InstallStep[] = [];
-  if (installerStepPlan(process.platform, getChannel()).needsXcodeStep) {
+  if (plan.needsXcodeStep) {
     steps.push({ id: 'xcode', label: 'Xcode Command Line Tools', status: 'pending' });
   }
+  if (plan.showGitStep) {
+    steps.push({ id: 'git', label: 'Check / install git', status: 'pending' });
+  }
   steps.push(
-    { id: 'git', label: 'Check / install git', status: 'pending' },
     { id: 'uv', label: 'Install uv (Python package manager)', status: 'pending' },
     { id: 'cowork-server', label: 'Install cowork-server', status: 'pending' },
     { id: 'verify', label: 'Verify installation', status: 'pending' },
@@ -326,79 +329,83 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
 
     if (abortIfRequested()) return false;
 
-    // Step 1: Check git. Required for git-channel installs (uv shells out
-    // to it); on the pypi channel it is only a runtime nice-to-have for
-    // agent tasks, so a missing git degrades to a warning.
-    setStep('git', 'running');
-    sendLog(win, '--- Checking for git ---\n');
-    let gitStatus: InstallStep['status'] = 'done';
-    const hasGit = await commandExists('git');
-    if (!hasGit) {
-      if (!plan.gitRequired) {
-        sendLog(win, 'git not found. Not required for this install; agent features that use git will be limited until it is installed.\n');
-        gitStatus = 'warning';
-      } else if (process.platform === 'darwin') {
-        setStep('git', 'error');
-        sendLog(win, '\nERROR: git is not installed.\n');
-        sendLog(win, 'Install it with: xcode-select --install\n');
-        sendInstallError(win, 'git is required but not found.');
-        return false;
-      } else if (process.platform !== 'win32') {
-        // Linux/other: no winget here, and auto-installing via the right
-        // package manager is guesswork — tell the user what to run.
-        setStep('git', 'error');
-        sendLog(win, '\nERROR: git is not installed.\n');
-        sendLog(win, 'Install it with your package manager, e.g.:\n');
-        sendLog(win, '  Debian/Ubuntu: sudo apt install git\n');
-        sendLog(win, '  Fedora:        sudo dnf install git\n');
-        sendInstallError(win, 'git is required but not found.');
-        return false;
+    // Step 1: Check git. Only shown on the git channel, where uv shells out
+    // to fetch a git+https source. A pypi install is wheels-only, so the git
+    // step is skipped entirely (no "Checking for git" row/log) — git is at
+    // most a runtime nice-to-have for agent tasks there, not an install
+    // prerequisite worth surfacing.
+    if (plan.showGitStep) {
+      setStep('git', 'running');
+      sendLog(win, '--- Checking for git ---\n');
+      let gitStatus: InstallStep['status'] = 'done';
+      const hasGit = await commandExists('git');
+      if (!hasGit) {
+        if (!plan.gitRequired) {
+          sendLog(win, 'git not found. Not required for this install; agent features that use git will be limited until it is installed.\n');
+          gitStatus = 'warning';
+        } else if (process.platform === 'darwin') {
+          setStep('git', 'error');
+          sendLog(win, '\nERROR: git is not installed.\n');
+          sendLog(win, 'Install it with: xcode-select --install\n');
+          sendInstallError(win, 'git is required but not found.');
+          return false;
+        } else if (process.platform !== 'win32') {
+          // Linux/other: no winget here, and auto-installing via the right
+          // package manager is guesswork — tell the user what to run.
+          setStep('git', 'error');
+          sendLog(win, '\nERROR: git is not installed.\n');
+          sendLog(win, 'Install it with your package manager, e.g.:\n');
+          sendLog(win, '  Debian/Ubuntu: sudo apt install git\n');
+          sendLog(win, '  Fedora:        sudo dnf install git\n');
+          sendInstallError(win, 'git is required but not found.');
+          return false;
+        } else {
+          sendLog(win, 'git not found. Installing via winget...\n');
+          const result = await runCommand(
+            'winget',
+            ['install', '--id', 'Git.Git', '-e', '--source', 'winget', '--accept-package-agreements', '--accept-source-agreements'],
+            win,
+            { shouldAbort }
+          );
+          if (abortIfRequested()) return false;
+          if (result.code !== 0) {
+            setStep('git', 'error');
+            sendLog(win, '\nERROR: Failed to install git via winget.\n');
+            sendLog(win, 'Install it manually from: https://git-scm.com/downloads/win\n');
+            sendInstallError(win, 'Failed to install git.');
+            return false;
+          }
+          // winget can install git machine-wide (C:\Program Files\Git\cmd) or
+          // per-user (%LOCALAPPDATA%\Programs\Git\cmd) depending on elevation.
+          // Probe both since winget updates the registry PATH but not the running
+          // process's inherited env — we must inject the real path ourselves.
+          const gitCandidates = [
+            'C:\\Program Files\\Git\\cmd',
+            path.join(process.env.LOCALAPPDATA ?? '', 'Programs', 'Git', 'cmd'),
+          ];
+          const gitCmdPath = gitCandidates.find(p => fileExists(path.join(p, 'git.exe')));
+          if (!gitCmdPath) {
+            setStep('git', 'error');
+            sendLog(win, '\nERROR: git was installed but its path could not be located.\n');
+            sendInstallError(win, 'git installed but path not found.');
+            return false;
+          }
+          if (!process.env.PATH?.includes(gitCmdPath)) {
+            process.env.PATH = `${gitCmdPath}${path.delimiter}${process.env.PATH ?? ''}`;
+          }
+          if (!(await commandExists('git'))) {
+            setStep('git', 'error');
+            sendLog(win, '\nERROR: git was installed but is still not resolvable on PATH.\n');
+            sendInstallError(win, 'git not resolvable after install.');
+            return false;
+          }
+          sendLog(win, 'git installed successfully.\n');
+        }
       } else {
-        sendLog(win, 'git not found. Installing via winget...\n');
-        const result = await runCommand(
-          'winget',
-          ['install', '--id', 'Git.Git', '-e', '--source', 'winget', '--accept-package-agreements', '--accept-source-agreements'],
-          win,
-          { shouldAbort }
-        );
-        if (abortIfRequested()) return false;
-        if (result.code !== 0) {
-          setStep('git', 'error');
-          sendLog(win, '\nERROR: Failed to install git via winget.\n');
-          sendLog(win, 'Install it manually from: https://git-scm.com/downloads/win\n');
-          sendInstallError(win, 'Failed to install git.');
-          return false;
-        }
-        // winget can install git machine-wide (C:\Program Files\Git\cmd) or
-        // per-user (%LOCALAPPDATA%\Programs\Git\cmd) depending on elevation.
-        // Probe both since winget updates the registry PATH but not the running
-        // process's inherited env — we must inject the real path ourselves.
-        const gitCandidates = [
-          'C:\\Program Files\\Git\\cmd',
-          path.join(process.env.LOCALAPPDATA ?? '', 'Programs', 'Git', 'cmd'),
-        ];
-        const gitCmdPath = gitCandidates.find(p => fileExists(path.join(p, 'git.exe')));
-        if (!gitCmdPath) {
-          setStep('git', 'error');
-          sendLog(win, '\nERROR: git was installed but its path could not be located.\n');
-          sendInstallError(win, 'git installed but path not found.');
-          return false;
-        }
-        if (!process.env.PATH?.includes(gitCmdPath)) {
-          process.env.PATH = `${gitCmdPath}${path.delimiter}${process.env.PATH ?? ''}`;
-        }
-        if (!(await commandExists('git'))) {
-          setStep('git', 'error');
-          sendLog(win, '\nERROR: git was installed but is still not resolvable on PATH.\n');
-          sendInstallError(win, 'git not resolvable after install.');
-          return false;
-        }
-        sendLog(win, 'git installed successfully.\n');
+        sendLog(win, 'git found.\n');
       }
-    } else {
-      sendLog(win, 'git found.\n');
+      setStep('git', gitStatus);
     }
-    setStep('git', gitStatus);
 
     // Step 2: Check/install uv
     if (abortIfRequested()) return false;

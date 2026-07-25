@@ -73,3 +73,21 @@ jobs:
         with:
           command: npm ci
       - run: npm run build:renderer
+
+  notify:
+    # Alert the eng channel if unit tests or the renderer build fail on a direct
+    # push to main/staging. PR runs are skipped — the author sees those directly.
+    # One job covers both outcomes: a `uses:` job cannot branch on status, so
+    # the aggregate result picks the failed or recovered message, and a
+    # cancelled run stays silent.
+    needs: [test, build]
+    if: ${{ !cancelled() && !contains(needs.*.result, 'cancelled') && github.event_name == 'push' }}
+    permissions:
+      contents: read
+      actions: read  # the prior-run lookup behind the recovery message
+    uses: mindsdb/github-actions/.github/workflows/notify-main-failure.yml@main
+    with:
+      env-name: "unit tests"
+      status: ${{ contains(needs.*.result, 'failure') && 'failed' || 'recovered' }}
+      runs-on: ubuntu-latest
+    secrets: inherit
