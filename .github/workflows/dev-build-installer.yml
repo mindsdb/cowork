@@ -20,10 +20,11 @@ jobs:
     uses: ./.github/workflows/build-macos-pkg.yml
     with:
       build_kind: preview
-      # Preview builds test in-flight work, which lands on staging — so pull
-      # cowork-server + anton from staging, not the released main. Without this
-      # a preview build off a PR installs the server from main and can't
-      # validate a PR that needs a matching in-flight server change.
+      # Channel is derived from build_kind in build-macos-pkg.yml (preview →
+      # PyPI rc stream, no git). server_ref is kept for machines that already
+      # carry a GIT install of cowork-server (the updater is source-aware); a
+      # dev who needs a specific backend branch overrides with
+      # COWORK_SERVER_CHANNEL=git + COWORK_SERVER_REF at launch.
       server_ref: staging
     secrets: inherit
 
@@ -42,7 +43,8 @@ jobs:
     uses: ./.github/workflows/build-windows-installer.yml
     with:
       build_kind: preview
-      # See build-macos above — preview pulls the server from staging.
+      # See build-macos above: channel derived from build_kind (preview →
+      # PyPI rc stream, no git). server_ref kept for existing git installs.
       server_ref: staging
     secrets: inherit
 
