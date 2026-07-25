@@ -7,7 +7,7 @@
 import { initialStreamState, reduceStream, iterateSSE } from './lib/responseStreamAdapter';
 import { host } from '../platform/host';
 import { relativeAge } from './lib/formatTime';
-import { transformSettingsRows, diffSettingsForWrite } from './lib/settingsTransform';
+import { transformSettingsRows, diffSettingsForWrite, mergeRecommendedModels } from './lib/settingsTransform';
 import {
   buildMemoryDeletePayload,
   buildMemoryWritePayload,
@@ -1006,9 +1006,14 @@ let _settingsLock = Promise.resolve();
    the `reasoning_efforts`/`default_reasoning_effort` it advertises) and merges a
    static effort catalog for direct providers. Returns null on any failure so the
    caller keeps the static lists baked into transformSettingsRows. */
-export async function fetchRecommendedModels() {
+export async function fetchRecommendedModels({ refresh = false } = {}) {
   try {
-    const data = await req('/settings/recommended-models');
+    // `refresh` bypasses the server's fetch_minds_models cache (up to a
+    // 5-minute TTL) — the model dropdown passes it on open so a wallet top-up
+    // isn't masked by the cached `enabled` map. A cached *failure* is still
+    // honored server-side, so this can't cost every open an HTTP timeout while
+    // MindsHub is down.
+    const data = await req(`/settings/recommended-models${refresh ? '?refresh=true' : ''}`);
     if (data && typeof data === 'object') return data;
   } catch { /* fall back to static lists */ }
   return null;
@@ -1027,27 +1032,15 @@ export async function fetchSettings() {
       } catch { /* leave defaults */ }
       /* Overlay the live model list + effort capability. modelEfforts is the
          single source of truth for the effort picker — a model accepts effort
-         iff it has an entry here. Only non-empty server lists override the static
-         fallback, so an unconfigured provider (e.g. minds-cloud with no key →
-         server returns []) doesn't wipe the baked-in picks. */
-      const rec = await fetchRecommendedModels();
-      if (rec) {
-        const overlayLists = (base, live) => {
-          const merged = { ...base };
-          for (const [k, v] of Object.entries(live || {})) {
-            if (Array.isArray(v) && v.length) merged[k] = v;
-          }
-          return merged;
-        };
-        result.recommendedModels = overlayLists(result.recommendedModels, rec.recommendedModels);
-        result.recommendedPair = overlayLists(result.recommendedPair, rec.recommendedPair);
-        result.modelEfforts = rec.modelEfforts || {};
-        /* Per-model availability: MindsHub marks models the org's wallet can't
-         * currently pay for (or whose free allowance is spent) as
-         * enabled:false, so the picker shows them greyed with an "add credits"
-         * prompt. Absent id ⇒ available (backwards compatible). */
-        result.modelEnabled = rec.modelEnabled || {};
-      }
+         iff it has an entry here. modelEnabled marks the models MindsHub's
+         wallet can't currently pay for so the picker greys them with an "add
+         credits" prompt (absent id ⇒ available), and modelLabels carries the
+         policy's display name per id (absent ⇒ id-derived at the render site).
+         mergeRecommendedModels owns the don't-let-an-empty-response-wipe-what-
+         we-have rule; SettingsView's on-open refresh goes through the same
+         function. */
+      const merged = mergeRecommendedModels(result, await fetchRecommendedModels());
+      if (merged) Object.assign(result, merged);
       _lastFetchedSettings = result;
       return result;
     } catch {

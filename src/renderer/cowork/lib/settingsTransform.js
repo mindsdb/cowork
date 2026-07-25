@@ -195,12 +195,72 @@ export function modelLabel(id) {
 }
 
 /**
+ * The display name for a model id: MindsHub's policy-supplied label when we
+ * have one, else the id-derived form above. One rule, used by every picker, so
+ * the composer and the Settings dropdown can't disagree about a model's name.
+ *
+ * `modelLabels` only ever covers minds-cloud (direct providers don't publish
+ * labels), so the fallback is the normal case, not an error path.
+ */
+export function displayModelLabel(id, modelLabels = {}) {
+  return (modelLabels && modelLabels[id]) || modelLabel(id);
+}
+
+/**
  * Map a provider's runtime model-id list to `{id, label}` options for
  * dropdowns. `recommendedModels` is the backend-overlaid map from settings.
  */
-export function recommendedModelOptions(recommendedModels, providerType) {
+export function recommendedModelOptions(recommendedModels, providerType, modelLabels = {}) {
   const ids = (recommendedModels && recommendedModels[providerType]) || [];
-  return ids.map((id) => ({ id, label: modelLabel(id) }));
+  return ids.map((id) => ({ id, label: displayModelLabel(id, modelLabels) }));
+}
+
+/**
+ * Merge a `/settings/recommended-models` response into the settings we already
+ * hold, returning just the keys it owns. Used by both the mount-time load and
+ * the picker's on-open refresh so there is one rule for this, not two.
+ *
+ * Nothing empty from the server ever overwrites something we have:
+ *
+ *   - a per-provider list is replaced only when the live one is non-empty. An
+ *     unconfigured provider comes back `[]` (`RECOMMENDED_MODELS['minds-cloud']`
+ *     is an empty placeholder server-side), and so does a *failed* MindsHub
+ *     fetch — the endpoint still answers 200. Overwriting on that empties the
+ *     picker until the app restarts.
+ *   - the id-keyed maps are replaced only when the live one is non-empty, for
+ *     the same reason. An empty `modelEnabled` reads as "everything is
+ *     available" and would silently unlock paid models; cowork-server refuses
+ *     to persist an empty map for exactly this reason.
+ *
+ * The cost of that is a stale entry outliving a model's removal from the
+ * policy, which self-corrects on the next successful fetch. Losing the list
+ * does not self-correct, so this is the right way round.
+ *
+ * @param {object} prev current settings (or the freshly transformed rows)
+ * @param {object|null} rec the endpoint's response, or null when it failed
+ * @returns {object|null} the subset of settings keys to apply, null if nothing
+ *   is usable (caller leaves what it has alone)
+ */
+export function mergeRecommendedModels(prev, rec) {
+  if (!rec || typeof rec !== 'object') return null;
+  const base = prev || {};
+  const overlayLists = (current, live) => {
+    const merged = { ...current };
+    for (const [k, v] of Object.entries(live || {})) {
+      if (Array.isArray(v) && v.length) merged[k] = v;
+    }
+    return merged;
+  };
+  const overlayMap = (current, live) => (
+    live && typeof live === 'object' && Object.keys(live).length ? live : (current || {})
+  );
+  return {
+    recommendedModels: overlayLists(base.recommendedModels, rec.recommendedModels),
+    recommendedPair: overlayLists(base.recommendedPair, rec.recommendedPair),
+    modelEfforts: overlayMap(base.modelEfforts, rec.modelEfforts),
+    modelEnabled: overlayMap(base.modelEnabled, rec.modelEnabled),
+    modelLabels: overlayMap(base.modelLabels, rec.modelLabels),
+  };
 }
 
 // ─── Model picker select-value resolution ───────────────────────────
@@ -261,10 +321,16 @@ export function resolveModelPickerValue(curModel, modelList, allowOther, forceCu
  * @param {boolean} showStalePin from resolveModelPickerValue
  * @param {Record<string, boolean>} modelEnabled per-model availability map
  *   (settings.modelEnabled); a model mapped to `false` renders locked.
+ * @param {Record<string, string>} modelLabels per-model display label
+ *   (settings.modelLabels, MindsHub-supplied). Display-only — the id/alias
+ *   passed as `value` is still what's saved/resolved everywhere else. A
+ *   model missing here (every direct provider; a minds-cloud model with no
+ *   label) falls back to modelLabel()'s id-derived label.
  */
-export function buildModelOptions(curModel, modelList, allowOther, showStalePin, modelEnabled = {}) {
+export function buildModelOptions(curModel, modelList, allowOther, showStalePin, modelEnabled = {}, modelLabels = {}) {
   const list = Array.isArray(modelList) ? modelList : [];
   const isLocked = (m) => modelEnabled[m] === false;
+  const labelFor = (m) => displayModelLabel(m, modelLabels);
   return [
     ...(showStalePin
       // Labeled "legacy — re-select" (not "current") so it reads as an
@@ -274,7 +340,7 @@ export function buildModelOptions(curModel, modelList, allowOther, showStalePin,
       // review).
       ? [{
           value: '__stale__',
-          label: `${modelLabel(curModel.replace(/^latest:/, ''))} (legacy — re-select a model)`,
+          label: `${labelFor(curModel.replace(/^latest:/, ''))} (legacy — re-select a model)`,
           disabled: true,
         }]
       : []),
@@ -282,7 +348,7 @@ export function buildModelOptions(curModel, modelList, allowOther, showStalePin,
     // wallet can't currently pay for — prompt to add credits, not upgrade.
     ...list.map((m) => ({
       value: m,
-      label: `${modelLabel(m)}${isLocked(m) ? ' — Add credits to unlock' : ''}`,
+      label: `${labelFor(m)}${isLocked(m) ? ' — Add credits to unlock' : ''}`,
       disabled: isLocked(m),
     })),
     ...(allowOther ? [{ value: '__custom__', label: 'Other…' }] : []),

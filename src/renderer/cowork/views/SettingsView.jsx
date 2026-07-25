@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, createContext, useContext, Children } from 'react';
 import { useId } from 'react';
 import Ico from '../components/Icons';
-import { validateSettings, revealSettingKey, testProviders, fetchHealth } from '../api';
-import { providerTypeToKeyField, providerValueToType, resolveModelPickerValue, buildModelOptions, effectiveRoleModel, effectiveRoleProvider } from '../lib/settingsTransform';
+import { validateSettings, revealSettingKey, testProviders, fetchHealth, fetchRecommendedModels } from '../api';
+import { providerTypeToKeyField, providerValueToType, resolveModelPickerValue, buildModelOptions, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels } from '../lib/settingsTransform';
 import { trackHarnessSwapped, resetDeviceIdentity } from '../lib/analytics';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
@@ -552,6 +552,11 @@ const GET_KEY_URL = {
 
 const PROTECTED_PROVIDER_TYPES = new Set(['minds-cloud']);
 
+// How long data from the model dropdown's on-open refresh counts as fresh.
+// Re-opening inside this window skips the round trip and opens immediately;
+// it only has to be short next to the 5-minute cache it stands in for.
+const MODEL_REFRESH_TTL_MS = 5000;
+
 function makeEmptyProvider(type) {
   const base = { type, apiKey: '', isDefault: false };
   if (type === 'openai-compatible') base.baseUrl = '';
@@ -742,6 +747,14 @@ export default function SettingsView({
   // Per-role "use a typed model id" flag. Sticky so picking Other…
   // keeps the text input visible even when the typed value is empty.
   const [modelInputMode, setModelInputMode] = useState({ planning: false, coding: false });
+  // Per-role "refetching model list on dropdown open" flag — drives the
+  // trigger's spinner so a still-open dropdown showing possibly-stale
+  // locked/unlocked state doesn't read as done loading.
+  const [modelRefreshing, setModelRefreshing] = useState({ planning: false, coding: false, router: false });
+  // Per-role note of when the refresh above last landed fresh data, so
+  // re-opening the dropdown doesn't re-pay a round trip that just completed.
+  const modelOpenState = useRef({});
+  const modelOpenFor = (role) => (modelOpenState.current[role] ||= { refreshedAt: 0 });
   const [versionInfo, setVersionInfo] = useState({ app: '', ui: null, source: 'web' });
   const [serverVersion, setServerVersion] = useState('');
   const [antonVersion, setAntonVersion] = useState('');
@@ -1714,7 +1727,7 @@ export default function SettingsView({
                             // longer wedges the control into a no-op "Saved" (ENG-739).
                             const { showStalePin, inputMode, selectValue } =
                               resolveModelPickerValue(curModel, modelList, allowOther, modelInputMode[role]);
-                            const modelOptions = buildModelOptions(curModel, modelList, allowOther, showStalePin, modelEnabled);
+                            const modelOptions = buildModelOptions(curModel, modelList, allowOther, showStalePin, modelEnabled, settings.modelLabels || {});
                             return (
                               <label style={{ display: 'grid', gap: 4 }}>
                                 {fieldLabel('Model')}
@@ -1729,6 +1742,40 @@ export default function SettingsView({
                                       writeOverride({ providerType: curType, model: next });
                                     }
                                   }}
+                                  onOpenChange={(isOpen) => {
+                                    // Opening re-checks the wallet, so a top-up made in an
+                                    // external tab unlocks its models here without an app restart.
+                                    // The popup opens immediately on the list we already hold and
+                                    // reconciles in place when the response lands, rather than
+                                    // withholding itself until then: the trigger is a click target,
+                                    // and a click that produces nothing for the length of a network
+                                    // round trip reads as a broken control. Briefly showing a
+                                    // model as locked that a top-up has just unlocked is safe —
+                                    // this list is an affordance, not the authority. Auth decides
+                                    // at request time, so a stale row can mislead for a moment but
+                                    // can never let a turn through that shouldn't run.
+                                    if (!isOpen) return;
+                                    const openState = modelOpenFor(role);
+                                    if (modelRefreshing[role]) return;
+                                    // Don't re-pay the round trip for a re-open moments later.
+                                    if (performance.now() - openState.refreshedAt < MODEL_REFRESH_TTL_MS) return;
+                                    setModelRefreshing((m) => ({ ...m, [role]: true }));
+                                    fetchRecommendedModels({ refresh: true }).then((data) => {
+                                      // Same merge rule as the mount-time load: an empty list or
+                                      // map in the response leaves what we have alone. The
+                                      // endpoint answers 200 with empty buckets when the MindsHub
+                                      // fetch itself failed, and assigning those straight through
+                                      // would empty the dropdown the user just clicked (for every
+                                      // role — the keys are shared) until the app restarts.
+                                      const merged = mergeRecommendedModels(settings, data);
+                                      if (!merged) return;
+                                      for (const [key, value] of Object.entries(merged)) setSetting(key, value);
+                                      openState.refreshedAt = performance.now();
+                                    }).catch(() => { }).finally(() => {
+                                      setModelRefreshing((m) => ({ ...m, [role]: false }));
+                                    });
+                                  }}
+                                  loading={modelRefreshing[role]}
                                   title={`Pick the model used for ${role}. Choose Other… to type a custom model id.`}
                                   options={modelOptions}
                                 />
