@@ -49,16 +49,25 @@ export const COWORK_SERVER_MIN_VERSION = '0.1.10';
 
 export type Channel = 'git' | 'pypi';
 
-// Channel fallback keyed off the build kind: a prod build with no explicit
-// channel (env or baked) installs from PyPI — an immutable, versioned,
-// yankable artifact — instead of floating on git main HEAD, and never needs
-// git (or the Xcode CLT on macOS). Dev/preview/stable keep git: dev iterates
-// on branches, preview/stable float on staging, which has no PyPI releases.
+// Channel fallback keyed off the build kind: every PACKAGED kind installs
+// cowork-server from PyPI — an immutable, versioned, yankable artifact that
+// never needs git (or the Xcode CLT on macOS). prod follows the stable
+// stream; preview/stable follow the rc pre-release stream (staging now
+// publishes rc wheels, so the old "staging has no PyPI releases" reason is
+// gone). Only unpackaged dev (buildKind 'dev') stays on git, and it runs
+// cowork-server from the sibling source dir via `uv run` anyway, so the
+// install channel never applies there.
+//
+// A developer who needs a SPECIFIC backend branch on a packaged preview
+// build still overrides via env (COWORK_SERVER_CHANNEL=git + COWORK_SERVER_REF
+// win over this fallback in getChannel/getInstallSpec).
+//
 // Same defensive shape as _refForBuildKind: any failure resolves to '' so
 // the caller falls through to 'git'.
 function _channelForBuildKind(): string {
   try {
-    return buildKind() === 'prod' ? 'pypi' : '';
+    const kind = buildKind();
+    return kind === 'prod' || kind === 'preview' || kind === 'stable' ? 'pypi' : '';
   } catch {
     return '';
   }
