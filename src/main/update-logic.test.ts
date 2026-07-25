@@ -582,21 +582,21 @@ describe('parseAntonPin', () => {
 });
 
 describe('installerStepPlan', () => {
-  it('git channel on macOS needs the Xcode CLT step and hard-requires git', () => {
-    expect(installerStepPlan('darwin', 'git')).toEqual({ needsXcodeStep: true, gitRequired: true });
+  it('git channel on macOS needs the Xcode CLT step, shows git, and hard-requires it', () => {
+    expect(installerStepPlan('darwin', 'git')).toEqual({ needsXcodeStep: true, showGitStep: true, gitRequired: true });
   });
 
-  it('pypi channel on macOS skips Xcode entirely and treats git as optional', () => {
-    expect(installerStepPlan('darwin', 'pypi')).toEqual({ needsXcodeStep: false, gitRequired: false });
+  it('pypi channel on macOS skips Xcode AND omits the git step entirely (uv only)', () => {
+    expect(installerStepPlan('darwin', 'pypi')).toEqual({ needsXcodeStep: false, showGitStep: false, gitRequired: false });
   });
 
-  it('never plans an Xcode step off macOS, but git stays required on the git channel', () => {
-    expect(installerStepPlan('win32', 'git')).toEqual({ needsXcodeStep: false, gitRequired: true });
-    expect(installerStepPlan('linux', 'git')).toEqual({ needsXcodeStep: false, gitRequired: true });
+  it('never plans an Xcode step off macOS, but git is shown + required on the git channel', () => {
+    expect(installerStepPlan('win32', 'git')).toEqual({ needsXcodeStep: false, showGitStep: true, gitRequired: true });
+    expect(installerStepPlan('linux', 'git')).toEqual({ needsXcodeStep: false, showGitStep: true, gitRequired: true });
   });
 
-  it('pypi channel makes git optional on every platform', () => {
-    expect(installerStepPlan('win32', 'pypi')).toEqual({ needsXcodeStep: false, gitRequired: false });
-    expect(installerStepPlan('linux', 'pypi')).toEqual({ needsXcodeStep: false, gitRequired: false });
+  it('pypi channel omits the git step on every platform (git is never shown or required)', () => {
+    expect(installerStepPlan('win32', 'pypi')).toEqual({ needsXcodeStep: false, showGitStep: false, gitRequired: false });
+    expect(installerStepPlan('linux', 'pypi')).toEqual({ needsXcodeStep: false, showGitStep: false, gitRequired: false });
   });
 });

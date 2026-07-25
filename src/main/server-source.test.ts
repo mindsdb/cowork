@@ -70,15 +70,20 @@ describe('getChannel', () => {
       expect(getChannel()).toBe('pypi');
     });
 
-    it('preview/stable stay on git (they float on the staging branch)', () => {
+    it('preview and stable builds default to pypi too (rc stream, no git)', () => {
       vi.mocked(buildKind).mockReturnValue('preview');
-      expect(getChannel()).toBe('git');
+      expect(getChannel()).toBe('pypi');
       vi.mocked(buildKind).mockReturnValue('stable');
+      expect(getChannel()).toBe('pypi');
+    });
+
+    it('unpackaged dev stays on git (runs cowork-server from source anyway)', () => {
+      vi.mocked(buildKind).mockReturnValue('dev');
       expect(getChannel()).toBe('git');
     });
 
-    it('an explicit env channel beats the prod fallback', () => {
-      vi.mocked(buildKind).mockReturnValue('prod');
+    it('an explicit env channel beats the build-kind pypi fallback', () => {
+      vi.mocked(buildKind).mockReturnValue('preview');
       withEnv({ COWORK_SERVER_CHANNEL: 'git' }, () => {
         expect(getChannel()).toBe('git');
       });
@@ -211,17 +216,31 @@ describe('getInstallSpec', () => {
     });
   });
 
-  it('a stable build with no env pins ONLY cowork-server to @staging, anton defers to the pin', () => {
-    // The build-kind fallback flows through getInstallSpec for the cowork-server
+  it('a stable build defaults to the pypi channel (rc stream, no git)', () => {
+    vi.mocked(buildKind).mockReturnValue('stable');
+    try {
+      const spec = getInstallSpec();
+      expect(spec.channel).toBe('pypi');
+      expect(spec.package).toBe('cowork-server>=0.1.10');
+    } finally {
+      vi.mocked(buildKind).mockReturnValue('dev');
+    }
+  });
+
+  it('a stable build FORCED onto git pins ONLY cowork-server to @staging, anton defers to the pin', () => {
+    // With COWORK_SERVER_CHANNEL=git (a dev overriding the pypi default), the
+    // build-kind ref fallback flows through getInstallSpec for the cowork-server
     // ref, but getAntonRef() stays on 'main' — so NO anton override is emitted
     // and cowork-server's own [tool.uv.sources] pin decides anton. Regression
     // guard: a fallback on the anton ref would replace that pin with
     // anton@staging-HEAD, which can mismatch what cowork-server@staging expects.
     vi.mocked(buildKind).mockReturnValue('stable');
     try {
-      const spec = getInstallSpec();
-      expect(spec.package).toBe('git+https://github.com/mindsdb/cowork-server.git@staging');
-      expect(spec.overrides).toEqual([]);
+      withEnv({ COWORK_SERVER_CHANNEL: 'git' }, () => {
+        const spec = getInstallSpec();
+        expect(spec.package).toBe('git+https://github.com/mindsdb/cowork-server.git@staging');
+        expect(spec.overrides).toEqual([]);
+      });
     } finally {
       vi.mocked(buildKind).mockReturnValue('dev');
     }
