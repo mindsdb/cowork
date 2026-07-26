@@ -29,6 +29,7 @@ import ServerOfflineHelpModal from './components/ServerOfflineHelpModal';
 import { setForm as setDataVaultForm, getForm as getDataVaultForm, clearForm as clearDataVaultForm, patchForm as patchDataVaultForm, getFormState as getDataVaultFormState, setFormState as setDataVaultFormState, getSelectedMethod as getDataVaultSelectedMethod, setSelectedMethod as setDataVaultSelectedMethod, subscribe as subscribeDataVaultForm } from './components/datavault/formStore';
 import { extractFormSpec } from './components/datavault/parseFormSpec';
 import { host, getAccessToken } from '../platform/host';
+import { SERVER_START_CAP_MS } from '../../shared/server-status';
 import { loadSkin, persistSkin, nextSkin, skinLabel } from '../lib/skins';
 import { loadCustomTheme, persistCustomTheme, applyCustomTheme } from '../lib/customTheme';
 import { applyNavTitleColor } from '../lib/navBranding';
@@ -1591,41 +1592,42 @@ function AppCore() {
   // listening in the background.
   //
   // Fix: keep ticking until either `info.running` flips true OR a
-  // hard ceiling elapses (45s — same upper bound as `startServer`'s
-  // health-probe timeout). After the ceiling we stop and trust the
+  // hard ceiling elapses. After the ceiling we stop and trust the
   // status pill / sidebar toggle to recover by user action.
+  //
+  // The ceiling has to outlast main's start budget, or this loop declares
+  // the backend offline while main is still legitimately waiting for it —
+  // the user sees the failure panel for a start that goes on to succeed.
+  // Derived from the shared cap rather than a second hand-picked number so
+  // the two cannot drift apart.
   useEffect(() => {
     if (host.isWeb) return; // No server lifecycle to poll in the hosted web shell.
     let cancelled = false;
     let timer = null;
     const startedAt = Date.now();
-    const POLL_CEILING_MS = 45_000;
+    const POLL_CEILING_MS = SERVER_START_CAP_MS + 60_000;
 
+    // Exactly one timer per tick. An earlier version scheduled inside the
+    // starting/not-running branch AND again below it, overwriting `timer` and
+    // leaking the first — so the poll rate doubled every tick. A warm start
+    // resolved in two ticks and hid it; a slow start would have turned it into
+    // thousands of concurrent polls.
     const tick = async () => {
       try {
         const info = await host.serverInfo();
         if (cancelled || !info) return;
-        if (typeof info.running === 'boolean') setServerOnline(info.running);
         const running = info.running === true;
         const starting = info.starting === true;
-        if (starting) {
-          setServerBusyKind('starting');
-          setServerBusy(true);
-          timer = setTimeout(tick, 600);
-        } else if (!info.running) {
-          // Server isn't starting yet (e.g. checkInstallStatus still
-          // resolving) — keep polling so we catch it when it comes up.
-          setServerBusy(false);
-          timer = setTimeout(tick, 1000);
-        } else {
-          setServerBusy(false);
-        }
-        // Keep polling until we see `running=true`, OR until the
-        // ceiling elapses. Polling while `running=false` covers the
-        // window where main is still resolving `checkInstallStatus`
-        // before kicking off `startServer`.
-        if (!running && Date.now() - startedAt < POLL_CEILING_MS) {
-          timer = setTimeout(tick, 600);
+        if (typeof info.running === 'boolean') setServerOnline(running);
+        if (starting) setServerBusyKind('starting');
+        setServerBusy(starting);
+        if (running) return; // settled
+        // Keep polling while main says it's still starting (main owns the
+        // hard cap, so this can't run forever), and otherwise until the
+        // ceiling — which covers the window where main is still resolving
+        // `checkInstallStatus` before kicking off `startServer`.
+        if (starting || Date.now() - startedAt < POLL_CEILING_MS) {
+          timer = setTimeout(tick, starting ? 600 : 1000);
         }
       } catch {
         // Polling errors (IPC blip, restart) shouldn't kill the

@@ -35,9 +35,12 @@ interface AntonTronAPI {
     starting: boolean;
     port: number;
     lastError: string | null;
+    lastErrorKind: 'spawn-error' | 'exited' | 'timeout' | 'not-installed' | null;
+    portHolderPid: number | null;
     lastExitCode: number | null;
     lastStartAt: number | null;
     recentLog: string;
+    lastStopIntentional: boolean | null;
   }>;
   oauthConnect: (opts:
     | { engine: string; name?: string }

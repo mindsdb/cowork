@@ -13,6 +13,7 @@ import { SKINS, normalizeSkin } from '../../lib/skins';
 import { MINDS_API_BASE, MINDS_API_KEY_URL, MINDS_CONSOLE_URL, MINDS_REGISTER_URL, MINDS_BILLING_URL } from '../../lib/mindsUrls';
 import { getVersionInfo, isElectron, getAccessToken } from '../../platform/host';
 import { unifiedVersion, SKEW_WARN_DAYS } from '../../../shared/version';
+import { backendFailureCopy, exitCodeLabel } from '../../../shared/server-status';
 import ChannelsView from './ChannelsView';
 
 function decodeJwtPayload(token) {
@@ -2383,10 +2384,20 @@ export default function SettingsView({
     const error = diag?.lastError;
     const log = (diag?.recentLog || '').trim();
     const port = diag?.port;
-    const exitCode = diag?.lastExitCode;
+    const errorKind = diag?.lastErrorKind ?? null;
     const startedAt = diag?.lastStartAt
       ? new Date(diag.lastStartAt).toLocaleTimeString()
       : null;
+    // "never started" is wrong for a backend that was still importing when we
+    // stopped waiting for it, which is the most common failure on a slow
+    // machine's first launch.
+    const exitLabel = exitCodeLabel({ kind: errorKind, exitCode: diag?.lastExitCode ?? null });
+    const failureCopy = backendFailureCopy({
+      kind: errorKind,
+      hasLog: log.length > 0,
+      port: port ?? null,
+      portHolderPid: diag?.portHolderPid ?? null,
+    });
 
     const state = serverBusy
       ? (serverBusyKind === 'stopping' ? 'stopping' : 'starting')
@@ -2472,7 +2483,7 @@ export default function SettingsView({
               {state === 'offline' && (
                 <div style={{ padding: '6px 10px', borderRadius: 6, background: 'var(--surface-2)', border: '1px solid var(--line)' }}>
                   <span style={{ color: 'var(--ink-4)', textTransform: 'uppercase', letterSpacing: '0.06em', fontSize: 9.5, marginRight: 6 }}>Exit</span>
-                  <span style={{ color: 'var(--ink)' }}>{exitCode ?? '—'}</span>
+                  <span style={{ color: 'var(--ink)' }}>{exitLabel}</span>
                 </div>
               )}
               {startedAt && (
@@ -2520,9 +2531,15 @@ export default function SettingsView({
             </div>
           </div>
 
-          {state === 'offline' && (
+          {/* What actually happened + what to do about it. Driven by the
+              failure kind, so the panel never asks for a log in the state
+              where no log can exist. */}
+          {state === 'offline' && offlineKind === 'failed' && (
             <div style={{ fontSize: 12, color: 'var(--ink-3)', lineHeight: 1.5 }}>
-              Common causes: a stale process holding port {port ?? 26866}, a missing Python interpreter (re-run the installer), or a crash in a route handler. Restart the backend below — if it keeps failing, copy the log and share it for support.
+              <div style={{ color: 'var(--ink-2)', fontWeight: 600, marginBottom: 4 }}>{failureCopy.headline}</div>
+              <ul style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                {failureCopy.hints.map((hint) => <li key={hint}>{hint}</li>)}
+              </ul>
             </div>
           )}
 

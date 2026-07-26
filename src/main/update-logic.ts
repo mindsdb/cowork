@@ -11,6 +11,7 @@
 // Pure CalVer helpers from the shared version module (no I/O) — used by the
 // OTA cache-freshness / update-newer decisions below.
 import { parseCalVer, compareCalVer, newestCalVer } from '../shared/version';
+import type { ServerStartErrorKind } from '../shared/server-status';
 
 // ---------------------------------------------------------------------------
 // Version comparison
@@ -423,4 +424,72 @@ export function installerStepPlan(platform: string, channel: 'git' | 'pypi'): In
     showGitStep: fromGit,
     gitRequired: fromGit,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Sidecar start: how long to keep waiting, and what to say when we stop
+// ---------------------------------------------------------------------------
+
+export type StartWaitStep =
+  | { action: 'ready' }
+  | { action: 'poll' }
+  | { action: 'fail'; kind: Exclude<ServerStartErrorKind, 'not-installed'> };
+
+/** One iteration of the start wait: is the sidecar up, should we keep waiting,
+ *  or is it over?
+ *
+ *  This replaces a flat "give up after N ms" timer, which was wrong in both
+ *  directions: a slow-but-healthy machine got killed mid-import, and a sidecar
+ *  that died in the first second still made the user wait out the whole timer
+ *  to be told nothing useful. Waiting on liveness instead means a slow start
+ *  succeeds and a dead one is reported the moment it dies.
+ *
+ *  Health is evaluated BEFORE liveness on purpose. On Windows the thing we
+ *  spawn is a launcher that hands off to a python child, so the process we hold
+ *  can legitimately exit while the server it started is coming up fine. Asking
+ *  "did it answer /health" first means that handoff reads as success, not as a
+ *  process that died. */
+export function decideStartWait(input: {
+  healthy: boolean;
+  spawnError: string | null;
+  exited: boolean;
+  elapsedMs: number;
+  capMs: number;
+}): StartWaitStep {
+  if (input.healthy) return { action: 'ready' };
+  if (input.spawnError) return { action: 'fail', kind: 'spawn-error' };
+  if (input.exited) return { action: 'fail', kind: 'exited' };
+  if (input.elapsedMs >= input.capMs) return { action: 'fail', kind: 'timeout' };
+  return { action: 'poll' };
+}
+
+/** Sub-10s durations keep a decimal — the whole point of the early-exit path is
+ *  that it reports in a couple of seconds, and "0s" would hide that. */
+function formatElapsed(ms: number): string {
+  const seconds = ms / 1000;
+  return seconds < 10 ? `${seconds.toFixed(1)}s` : `${Math.round(seconds)}s`;
+}
+
+/** The one-line failure the diagnostics panel shows.
+ *
+ *  Each kind gets its own sentence. They all used to collapse into "Server did
+ *  not respond on /health within 15000ms", which described the app's timer
+ *  rather than anything that happened to the backend, and read identically
+ *  whether the process had crashed instantly or was importing normally. */
+export function startFailureMessage(input: {
+  kind: Exclude<ServerStartErrorKind, 'not-installed'>;
+  exitCode: number | null;
+  spawnError: string | null;
+  elapsedMs: number;
+}): string {
+  switch (input.kind) {
+    case 'spawn-error':
+      return `The backend could not be launched: ${input.spawnError || 'unknown spawn error'}.`;
+    case 'exited': {
+      const code = typeof input.exitCode === 'number' ? `code ${input.exitCode}` : 'no exit code';
+      return `The backend exited while starting up (${code}) after ${formatElapsed(input.elapsedMs)}.`;
+    }
+    case 'timeout':
+      return `The backend was still starting after ${formatElapsed(input.elapsedMs)} and never answered /health.`;
+  }
 }

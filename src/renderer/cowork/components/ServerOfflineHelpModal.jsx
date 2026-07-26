@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react';
 import Ico from './Icons';
 import { Button } from './ui';
 import { host } from '../../platform/host';
+import { backendFailureCopy, exitCodeLabel } from '../../../shared/server-status';
 
 const FONT_BODY = "var(--font-body, 'Inter', system-ui, sans-serif)";
 const FONT_MONO = "var(--font-mono, 'JetBrains Mono', monospace)";
@@ -63,10 +64,20 @@ export default function ServerOfflineHelpModal({
   const error = diag?.lastError;
   const log = (diag?.recentLog || '').trim();
   const port = diag?.port;
-  const exitCode = diag?.lastExitCode;
+  const errorKind = diag?.lastErrorKind ?? null;
   const startedAt = diag?.lastStartAt
     ? new Date(diag.lastStartAt).toLocaleTimeString()
     : null;
+  // "never started" is wrong for a backend that was still importing when we
+  // stopped waiting for it, which is the most common failure on a slow
+  // machine's first launch.
+  const exitLabel = exitCodeLabel({ kind: errorKind, exitCode: diag?.lastExitCode ?? null });
+  const failureCopy = backendFailureCopy({
+    kind: errorKind,
+    hasLog: log.length > 0,
+    port: port ?? null,
+    portHolderPid: diag?.portHolderPid ?? null,
+  });
 
   // Live state → title + header colour + subtitle. The same modal is
   // used in every state — clicking the status pill while the backend
@@ -279,7 +290,7 @@ export default function ServerOfflineHelpModal({
                 background: 'var(--surface-2)', border: '1px solid var(--line)',
               }}>
                 <div style={{ color: 'var(--ink-4)', textTransform: 'uppercase', letterSpacing: '0.06em', fontSize: 10 }}>Exit code</div>
-                <div style={{ color: 'var(--ink)', marginTop: 2 }}>{exitCode ?? 'never started'}</div>
+                <div style={{ color: 'var(--ink)', marginTop: 2 }}>{exitLabel}</div>
               </div>
             )}
             <div style={{
@@ -337,11 +348,17 @@ export default function ServerOfflineHelpModal({
             }}>{log || '(no log captured yet)'}</pre>
           </div>
 
-          {state === 'offline' && (
+          {/* What actually happened + what to do about it. Driven by the
+              failure kind, so the panel never asks for a log in the state
+              where no log can exist. */}
+          {state === 'offline' && offlineKind === 'failed' && (
             <div style={{
               fontSize: 12, color: 'var(--ink-3)', lineHeight: 1.5,
             }}>
-              Common causes: a stale process holding port {port ?? 26866}, a missing Python interpreter (re-run the installer), or a crash in a route handler. Restart the backend below — if it keeps failing, copy the log and share it for support.
+              <div style={{ color: 'var(--ink-2)', fontWeight: 600, marginBottom: 4 }}>{failureCopy.headline}</div>
+              <ul style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                {failureCopy.hints.map((hint) => <li key={hint}>{hint}</li>)}
+              </ul>
             </div>
           )}
         </div>
