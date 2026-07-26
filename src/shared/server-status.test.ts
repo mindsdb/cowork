@@ -1,15 +1,17 @@
 import { describe, it, expect } from 'vitest';
 import {
   SERVER_START_CAP_MS,
-  SERVER_START_DEV_CAP_MS,
   backendFailureCopy,
   exitCodeLabel,
 } from './server-status';
 
-describe('start caps', () => {
-  it('gives a dev source tree more room than a packaged install', () => {
-    // A dev boot may build a whole .venv; a packaged one only imports.
-    expect(SERVER_START_DEV_CAP_MS).toBeGreaterThan(SERVER_START_CAP_MS);
+describe('start cap', () => {
+  it('is one number, big enough for the slowest case any build can hit', () => {
+    // Deliberately not split by build kind: a dev-only allowance means a start
+    // that passes locally can still be killed in a packaged build, so the
+    // failure only ever reproduces on a customer's machine. A dev boot may
+    // build a whole .venv on a cold cache, so that is the case it is sized for.
+    expect(SERVER_START_CAP_MS).toBeGreaterThanOrEqual(180_000);
   });
 });
 
@@ -25,14 +27,32 @@ describe('exitCodeLabel', () => {
     expect(exitCodeLabel({ kind: 'timeout', exitCode: null })).toBe('still starting');
   });
 
-  it('says "unknown" when the process died without reporting a code', () => {
+  it('keeps saying "still starting" even though our own reap left an exit code', () => {
+    // taskkill /F makes the child exit 1. That code is ours, not the backend's,
+    // so reporting it as "the exit code" would be the same lie in a new costume.
+    expect(exitCodeLabel({ kind: 'timeout', exitCode: 1 })).toBe('still starting');
+  });
+
+  it('says "stopped" for a backend the user deliberately stopped', () => {
+    // A signal kill leaves no exit code, so this used to read "never started"
+    // for a backend that had been running perfectly.
+    expect(exitCodeLabel({ kind: null, exitCode: null, stopIntentional: true })).toBe('stopped');
+  });
+
+  it('prefers the real code over the stop attribution', () => {
+    expect(exitCodeLabel({ kind: null, exitCode: 0, stopIntentional: true })).toBe('0');
+  });
+
+  it('says "unknown" when the process died on its own without reporting a code', () => {
     expect(exitCodeLabel({ kind: 'exited', exitCode: null })).toBe('unknown');
+    expect(exitCodeLabel({ kind: null, exitCode: null, stopIntentional: false })).toBe('unknown');
   });
 
   it('says "never started" only when nothing ever ran', () => {
     expect(exitCodeLabel({ kind: 'spawn-error', exitCode: null })).toBe('never started');
     expect(exitCodeLabel({ kind: 'not-installed', exitCode: null })).toBe('never started');
     expect(exitCodeLabel({ kind: null, exitCode: null })).toBe('never started');
+    expect(exitCodeLabel({ kind: null, exitCode: null, stopIntentional: null })).toBe('never started');
   });
 });
 
@@ -51,6 +71,25 @@ describe('backendFailureCopy', () => {
     const copy = backendFailureCopy({ ...base, kind: 'timeout', hasLog: false });
     expect(copy.hints.some((h) => /copy the log/i.test(h))).toBe(false);
     expect(copy.hints.some((h) => /no log to send/.test(h))).toBe(true);
+  });
+
+  it('does not tell the user the backend died when it is still alive', () => {
+    // One "it died before printing anything" sentence for every kind
+    // contradicted the headline directly above it: a timed-out backend is
+    // alive and still importing, and nothing ran at all in the other two.
+    for (const kind of ['timeout', 'spawn-error', 'not-installed'] as const) {
+      const copy = backendFailureCopy({ ...base, kind, hasLog: false });
+      expect(copy.hints.some((h) => /died/.test(h))).toBe(false);
+      expect(copy.hints.some((h) => /no log to send/.test(h))).toBe(true);
+    }
+    // Only the one kind where it is true says it.
+    const exited = backendFailureCopy({ ...base, kind: 'exited', hasLog: false });
+    expect(exited.hints.some((h) => /died before it printed anything/.test(h))).toBe(true);
+  });
+
+  it('says nothing has been captured yet when there is no failure at all', () => {
+    const copy = backendFailureCopy({ ...base, kind: null, hasLog: false });
+    expect(copy.hints.some((h) => /No log has been captured yet/.test(h))).toBe(true);
   });
 
   it('asks for the log when one exists', () => {

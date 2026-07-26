@@ -22,7 +22,6 @@ import { decideStartWait, startFailureMessage } from './update-logic';
 import { getEnvPath, findUv, getCoworkServerBinary } from './uv-paths';
 import {
   SERVER_START_CAP_MS,
-  SERVER_START_DEV_CAP_MS,
   type ServerStartErrorKind,
 } from '../shared/server-status';
 
@@ -223,11 +222,25 @@ function writeLog(text: string): void {
 // isServerRunning() says nothing is up, and only a fresh app launch recovers
 // via the adopt path. `taskkill /T` walks the tree, which is the whole point.
 //
-// /F (force) is used for the graceful phase too. A console-mode sidecar has no
-// message loop to answer the polite form, so trying it first would only add a
-// multi-second stall to every Stop on Windows; the pre-existing behaviour there
-// (TerminateProcess on the launcher) was never graceful either. The SQLite
-// state survives it the same way it survives a power cut.
+// /F (force) is used for the graceful phase too, because on Windows there is
+// no polite form to try. Not because the sidecar can't answer one — uvicorn
+// installs a SIGBREAK handler on win32 — but because nothing can deliver it as
+// the child is spawned: `detached` is false on Windows so it never gets
+// CREATE_NEW_PROCESS_GROUP, Electron main is a GUI process with no console to
+// raise the event from, and the packaged target is a shim that would have to
+// re-raise it into python anyway. Attempting it would cost a stall on every
+// Stop and change nothing. The pre-existing behaviour here (TerminateProcess
+// on the launcher) was never graceful either; this only widens it to the tree.
+//
+// What that costs, honestly: the DB is fine either way (SQLite runs its default
+// rollback journal, and a TerminateProcess is gentler than the power cut it is
+// already safe against). What is lost is the work the sidecar does in Python on
+// the way down — an in-flight turn is written by a single persist() reached
+// only from its own terminal handlers, so a hard kill mid-turn drops it. That
+// gap is not specific to Windows and not created here: POSIX runs uvicorn with
+// no graceful-shutdown timeout, so it waits unbounded on the open stream and
+// takes the SIGKILL below instead. Closing it needs a cancel-then-stop
+// handshake over loopback, which is its own change.
 function killTree(proc: ChildProcess, signal: NodeJS.Signals): void {
   if (process.platform === 'win32') {
     const pid = proc.pid;
@@ -252,24 +265,28 @@ function findPortHolders(port: number): Promise<number[]> {
   if (process.platform === 'win32') {
     // lsof isn't available; parse `netstat -ano`.
     //
-    // The state column ("LISTENING") is localized — it reads ABHÖREN on a
-    // German Windows, LISTA on a Spanish one — so matching that word made the
-    // whole orphan reap a silent no-op outside English installs, on exactly the
-    // machines this matters for. The foreign-address column is not localized:
-    // a listening socket is the only TCP row with an all-zero peer, so that is
-    // what we match instead.
+    // Nothing about the state column can be trusted. The word is localized
+    // (ABHÖREN on a German Windows, ESCUCHANDO on a Spanish one), so matching
+    // "LISTENING" made the whole orphan reap a silent no-op outside English
+    // installs — on exactly the machines this matters for. Worse, some locales
+    // render it as TWO words (Italian "IN ASCOLTO", French "À L'ÉCOUTE"), which
+    // shifts every later column, so a fixed PID index is wrong there too.
+    //
+    // Two things that are NOT localized carry the whole match instead: the
+    // foreign-address column, where a listening socket is the only TCP row with
+    // an all-zero peer, and the PID, which is always the last column.
     return new Promise<number[]>((resolve) => {
       execFile('netstat', ['-ano'], { timeout: 4000 }, (err, stdout) => {
         if (err || !stdout) { resolve([]); return; }
         const pids = new Set<number>();
         for (const line of stdout.split(/\r?\n/)) {
-          // columns: proto  local-addr  foreign-addr  state  pid
+          // columns: proto  local-addr  foreign-addr  state…  pid
           const cols = line.trim().split(/\s+/);
           if (cols.length < 5) continue; // UDP rows have no state column
           if (!/^TCP/i.test(cols[0])) continue;
           if (!cols[1].endsWith(`:${port}`)) continue;
-          if (cols[2] !== '0.0.0.0:0' && cols[2] !== '[::]:0' && cols[2] !== '*:*') continue;
-          const pid = Number(cols[4]);
+          if (cols[2] !== '0.0.0.0:0' && cols[2] !== '[::]:0') continue;
+          const pid = Number(cols[cols.length - 1]);
           if (pid > 0) pids.add(pid);
         }
         resolve([...pids]);
@@ -501,12 +518,12 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
 
   // Hard cap on the wait — not an expected duration. The wait itself tracks
   // the child's liveness, so this only bounds a process that is still alive
-  // and still starting. Dev mode runs `uv run` against the sibling source dir,
-  // and the FIRST boot builds a fresh .venv — resolving and downloading the
-  // dependency tree can take a couple of minutes on a cold cache.
+  // and still starting. One cap for every build: a dev-only allowance would
+  // mean a start that passes locally can still be killed in a packaged build,
+  // so the failure would only ever reproduce on a customer's machine.
   const devServerDir = getDevServerDir();
   const isDevSource = Boolean(devServerDir && fs.existsSync(path.join(devServerDir, 'pyproject.toml')));
-  const startCapMs = opts.readyTimeoutMs ?? (isDevSource ? SERVER_START_DEV_CAP_MS : SERVER_START_CAP_MS);
+  const startCapMs = opts.readyTimeoutMs ?? SERVER_START_CAP_MS;
 
   lastStartAt = Date.now();
   // The repair classifier must only inspect output from this attempt. A prior
@@ -714,7 +731,12 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       // bind-collide and fail the same way — making the "stop +
       // start" cycle look broken from the user's side. SIGTERM with
       // a SIGKILL fallback so a hung uvicorn boot can't outlive us.
-      if (!childExited) {
+      //
+      // Skipped when the spawn itself failed: there is no process to reap, and
+      // Node never emits 'exit' for one that never existed, so the wait below
+      // would spend its full 2s on an event that cannot arrive — on the one
+      // failure path whose entire point is that it reports immediately.
+      if (!childExited && !spawnError) {
         killTree(child, 'SIGTERM');
         const exited = new Promise<void>((resolve) => {
           child.once('exit', () => resolve());
@@ -742,6 +764,11 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     // same way as a server we adopted, so isServerRunning() doesn't call a
     // healthy backend dead and stopServer() still reaps it by port.
     if (childExited) _adoptedExternal = true;
+    // How long the start actually took. Only failures used to say anything,
+    // which meant a slow-but-successful boot — the case this budget exists for
+    // — left no trace at all, and a support log could not distinguish "came up
+    // in 2s" from "came up in 80s and nearly missed the cap".
+    console.log(`[server] healthy on port ${serverPort} after ${Date.now() - waitStartedAt}ms`);
     // Successful start — clear the previous failure note but keep
     // the rolling stderr in case downstream code wants to inspect.
     lastStartError = null;
@@ -764,7 +791,12 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
 // surfacing as a 15s /health timeout instead of an obvious failure.
 //
 // Three phases:
-//   1. SIGTERM, wait up to 3s for graceful shutdown.
+//   1. SIGTERM, wait up to 6s for graceful shutdown. Sized to outlast the
+//      sidecar's own shutdown work rather than picked round: its channel
+//      drain alone budgets 3s, so the previous 3s here could never let the
+//      rest of its teardown finish. The wait ends the moment the child exits,
+//      so a healthy stop still returns in milliseconds and only a genuinely
+//      slow shutdown spends the extra time.
 //   2. SIGKILL, wait up to 1.5s for hard kill.
 //   3. Clear the slot regardless — if the OS truly orphaned the child,
 //      we'd rather lose track of it than block app quit forever.
@@ -812,7 +844,7 @@ async function stopServerUnlocked(): Promise<void> {
 
   await Promise.race([
     exited,
-    new Promise<void>((resolve) => setTimeout(resolve, 3_000)),
+    new Promise<void>((resolve) => setTimeout(resolve, 6_000)),
   ]);
 
   // Still alive? Force-kill. `proc.exitCode === null` means the child
@@ -832,6 +864,25 @@ async function stopServerUnlocked(): Promise<void> {
   if (serverProcess === proc) {
     serverProcess = null;
   }
+}
+
+// Last-resort reap that does NOT take the lifecycle lock.
+//
+// stopServer() queues behind whatever holds that lock, and a start holds it for
+// as long as the sidecar is still coming up. On quit that means the polite stop
+// can lose its race and the app exits with a python still importing, which then
+// binds the port with nobody supervising it — the exact orphan the quit drain
+// exists to prevent. This kills what we have a handle on and whatever holds the
+// port, and is only for the path where stopServer() has already timed out.
+export async function forceReapServer(): Promise<void> {
+  const proc = serverProcess;
+  if (proc) {
+    _stopRequested = true; // the death is ours; don't report it as a crash
+    killTree(proc, 'SIGKILL');
+  }
+  serverStarted = false;
+  await killProcessOnPort(serverPort);
+  if (serverProcess === proc) serverProcess = null;
 }
 
 // Track whether we adopted an external server (no child process to manage)

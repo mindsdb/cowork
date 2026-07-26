@@ -2389,9 +2389,14 @@ export default function SettingsView({
       ? new Date(diag.lastStartAt).toLocaleTimeString()
       : null;
     // "never started" is wrong for a backend that was still importing when we
-    // stopped waiting for it, which is the most common failure on a slow
-    // machine's first launch.
-    const exitLabel = exitCodeLabel({ kind: errorKind, exitCode: diag?.lastExitCode ?? null });
+    // stopped waiting for it (the most common failure on a slow machine's first
+    // launch), and equally wrong for one the user deliberately stopped — a
+    // signal kill leaves no exit code, so both used to land on that string.
+    const exitLabel = exitCodeLabel({
+      kind: errorKind,
+      exitCode: diag?.lastExitCode ?? null,
+      stopIntentional: diag?.lastStopIntentional ?? null,
+    });
     const failureCopy = backendFailureCopy({
       kind: errorKind,
       hasLog: log.length > 0,

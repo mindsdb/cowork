@@ -1,12 +1,13 @@
 // Orchestration tests for the sidecar start path. The budget decision itself
-// is tested directly in update-logic.test.ts (qa.md §5a rule); what's covered
-// here is the wiring the decision depends on — that a spawn failure and an
-// early exit actually reach the diagnostics, that a timed-out start reaps the
-// whole process tree on Windows, and that the port-holder lookup survives a
-// non-English Windows.
+// is tested directly in update-logic.test.ts; what's covered here is the wiring
+// the decision depends on — that a spawn failure and an early exit actually
+// reach the diagnostics, that a timed-out start reaps the whole process tree on
+// Windows, and that the port-holder lookup survives a non-English Windows.
 //
-// server-process pulls in electron; fs/child_process/http are mocked so
-// nothing spawns a real process or touches the network.
+// server-process pulls in electron; fs/child_process/http are mocked so nothing
+// spawns a real process or touches the network. process.kill is stubbed for the
+// same reason: killTree's POSIX branch signals a process GROUP, and the fake
+// child's pid is not ours to signal.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EventEmitter } from 'events';
 import * as cp from 'child_process';
@@ -59,9 +60,24 @@ function setPlatform(value: string): void {
   Object.defineProperty(process, 'platform', { value, configurable: true });
 }
 
+/** Signals killTree's POSIX branch sent, as [pid, signal]. A negative pid is a
+ *  process-group kill, which is the behaviour these tests care about. */
+let signals: Array<[number, string]> = [];
+
 beforeEach(() => {
   execCalls = [];
   execHandler = () => ({ err: new Error('nothing found'), stdout: '' });
+
+  // process.kill is the real global — killTree calls it directly, so without
+  // this stub the POSIX branch would SIGTERM and then SIGKILL whatever process
+  // group happens to own the fake child's pid on the machine running the
+  // tests. Reporting success (rather than throwing) also keeps the code on the
+  // group-kill path instead of falling through to child.kill().
+  signals = [];
+  vi.spyOn(process, 'kill').mockImplementation(((pid: number, signal?: string) => {
+    signals.push([pid, String(signal)]);
+    return true;
+  }) as never);
 
   // The packaged binary exists; no dev source tree does.
   vi.mocked(fs.existsSync).mockImplementation((p) => String(p) === '/fake/bin/cowork-server');
@@ -179,6 +195,27 @@ describe('startServer failure diagnostics', () => {
     const diag = getServerDiagnostics();
     expect(diag.lastErrorKind).toBe('timeout');
     expect(diag.lastError).toContain('still starting');
+    // A live child gets reaped by process GROUP, not by pid: the packaged
+    // binary can have a python of its own, and killing only the leader is
+    // what left an orphan holding the port.
+    expect(signals).toContainEqual([-4242, 'SIGTERM']);
+  });
+
+  it('does not spend the reap timeout on an exit event that can never arrive', async () => {
+    // A spawn that never happened emits 'error' and nothing else — Node does
+    // not emit 'exit' for a process that never existed. Waiting on one cost
+    // this path 2s, on the one failure whose point is that it reports at once.
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => child.emit('error', new Error('spawn ENOENT')), 0);
+      return child as never;
+    }) as never);
+
+    const startedAt = Date.now();
+    await startServer({ port: PORT, readyTimeoutMs: 5_000 });
+
+    expect(Date.now() - startedAt).toBeLessThan(1_500);
+    expect(signals).toEqual([]); // nothing to reap
   });
 });
 
@@ -205,22 +242,51 @@ describe('Windows reap', () => {
     expect(child.killed).toBe(false); // the tree kill replaces it, not supplements it
   });
 
-  it('finds the port holder on a non-English Windows, where the state column is translated', async () => {
-    // Matching the literal "LISTENING" made the reap a silent no-op outside
-    // English installs. The all-zero foreign address is not localized.
+  // Matching the literal "LISTENING" made the reap a silent no-op outside
+  // English installs.
+  //
+  // These cases are not an attempt to enumerate the locales Windows ships —
+  // that list is unknowable from here and would rot. The parser never reads the
+  // state column at all; it anchors on four things no locale translates: the
+  // literal TCP protocol name, the local address ending in our port, the
+  // all-zero foreign address, and the PID being the LAST column. So the only
+  // things that can break it are the two axes below, and a new language is
+  // covered the moment its state word matches one of these shapes:
+  //
+  //   - token count, because it shifts every column after it (this is what
+  //     defeated a fixed `cols[4]` read even after the word stopped mattering)
+  //   - script, because the row still has to survive splitting and comparison
+  //
+  // Real strings are used where known; the three-token row is synthetic, since
+  // the point is that an unknown-length state cannot break the parse.
+  const STATE_WORDS = [
+    { shape: 'one ASCII word', state: 'LISTENING' },
+    { shape: 'one accented word', state: 'ABHÖREN' },
+    { shape: 'one Spanish word', state: 'ESCUCHANDO' },
+    { shape: 'one Cyrillic word', state: 'ПРОСЛУШИВАНИЕ' },
+    { shape: 'one CJK word', state: '接続待ち' },
+    { shape: 'two words', state: 'IN ASCOLTO' },
+    { shape: 'two words with an apostrophe', state: "À L'ÉCOUTE" },
+    { shape: 'three words', state: 'EN ATTENTE DE' },
+  ];
+
+  it.each(STATE_WORDS)('finds the port holder when the state column is $shape', async ({ state }) => {
     setPlatform('win32');
     const child = makeChild();
     vi.mocked(cp.spawn).mockImplementation((() => child as never) as never);
-    const germanNetstat = [
-      'Aktive Verbindungen',
+    const netstat = [
       '',
-      '  Proto  Lokale Adresse         Remoteadresse          Status           PID',
-      `  TCP    127.0.0.1:${PORT}      0.0.0.0:0              ABHÖREN          9911`,
-      '  TCP    127.0.0.1:52000        127.0.0.1:443          HERGESTELLT      777',
+      '  Proto  Local Address          Foreign Address        State            PID',
+      `  TCP    127.0.0.1:${PORT}      0.0.0.0:0              ${state}          9911`,
+      `  TCP    [::]:${PORT}           [::]:0                 ${state}          9911`,
+      // Same local port, but a real peer: a connection to the server, not the
+      // server. Must never be reaped.
+      `  TCP    127.0.0.1:${PORT}      127.0.0.1:443          ${state}          777`,
+      // UDP rows have no state column at all.
       `  UDP    127.0.0.1:${PORT}      *:*                                     123`,
     ].join('\r\n');
     execHandler = (cmd) => {
-      if (cmd === 'netstat') return { err: null, stdout: germanNetstat };
+      if (cmd === 'netstat') return { err: null, stdout: netstat };
       if (cmd === 'taskkill') {
         setTimeout(() => { child.exitCode = 0; child.emit('exit', 0); }, 0);
         return { err: null, stdout: '' };
@@ -231,7 +297,10 @@ describe('Windows reap', () => {
     await startServer({ port: PORT, readyTimeoutMs: 0 });
 
     // Reaped before the spawn, and named as the port holder after the failure.
-    expect(execCalls.filter((c) => c.cmd === 'taskkill').some((c) => c.args.includes('9911'))).toBe(true);
+    const killed = execCalls.filter((c) => c.cmd === 'taskkill').flatMap((c) => c.args);
+    expect(killed).toContain('9911');
+    expect(killed).not.toContain('777');
+    expect(killed).not.toContain('123');
     expect(getServerDiagnostics().portHolderPid).toBe(9911);
   });
 });

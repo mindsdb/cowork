@@ -444,11 +444,12 @@ export type StartWaitStep =
  *  to be told nothing useful. Waiting on liveness instead means a slow start
  *  succeeds and a dead one is reported the moment it dies.
  *
- *  Health is evaluated BEFORE liveness on purpose. On Windows the thing we
- *  spawn is a launcher that hands off to a python child, so the process we hold
- *  can legitimately exit while the server it started is coming up fine. Asking
- *  "did it answer /health" first means that handoff reads as success, not as a
- *  process that died. */
+ *  Health is evaluated BEFORE liveness on purpose. Both spawn targets normally
+ *  wait on python and forward its exit code, so an exit really is the end — but
+ *  the two are reported through different channels and can land out of order,
+ *  and a launcher that hands off without waiting would look identical to a
+ *  crash. Asking "did it answer /health" first means a server that is provably
+ *  up is never called dead over a technicality about who its parent was. */
 export function decideStartWait(input: {
   healthy: boolean;
   spawnError: string | null;

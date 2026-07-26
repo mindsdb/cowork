@@ -21,33 +21,46 @@
  */
 export type ServerStartErrorKind = 'spawn-error' | 'exited' | 'timeout' | 'not-installed';
 
-/** Hard cap on a packaged start, in ms.
+/** Hard cap on a start, in ms. One number for every build and every platform.
  *
  *  Not a "normal boot takes this long" figure — a warm packaged boot is under
  *  2s. It's the ceiling on a pathological one: a fresh install makes Windows
  *  Defender scan a brand-new uv venv's DLLs and .pyd files the first time they
- *  execute, which can push the pre-uvicorn import phase past half a minute. The
+ *  execute, which can push the pre-uvicorn import phase past half a minute; a
+ *  dev source tree may additionally build a whole .venv on a cold cache. The
  *  wait is progress-aware, so this cap is only ever reached by a process that
  *  is genuinely still alive and still starting; a dead one is detected the
- *  moment it exits. */
-export const SERVER_START_CAP_MS = 90_000;
-
-/** Hard cap when running from a dev source tree, where `uv run` may build a
- *  fresh .venv and download the whole dependency tree on a cold cache. */
-export const SERVER_START_DEV_CAP_MS = 180_000;
+ *  moment it exits, and a healthy one the moment it answers.
+ *
+ *  Deliberately NOT split by build kind. A dev-only allowance means a start
+ *  that passes locally can still be killed in a packaged build, so the failure
+ *  only ever reproduces on a customer's machine. The cap is sized for the
+ *  slowest case any build can hit, and every build gets the same one. */
+export const SERVER_START_CAP_MS = 180_000;
 
 /** What the "Exit code" tile should read.
  *
  *  The tile used to say "never started" for every failure, which was actively
- *  misleading in the case that matters most: a process that was still starting
- *  when we gave up on it had very much started. */
+ *  misleading in the two cases that matter most: a process that was still
+ *  starting when we gave up on it had very much started, and so had one the
+ *  user deliberately stopped.
+ *
+ *  `stopIntentional` is the stop attribution from the main process: true when
+ *  the backend went down because someone asked it to, false when it died on
+ *  its own, null before it has ever gone down. */
 export function exitCodeLabel(input: {
   kind: ServerStartErrorKind | null;
   exitCode: number | null;
+  stopIntentional?: boolean | null;
 }): string {
+  // A timed-out start is reaped by us, so any exit code on it is our own
+  // taskkill/SIGKILL rather than anything the backend chose. Reporting that
+  // number as "the exit code" would be the same lie in a new costume.
+  if (input.kind === 'timeout') return 'still starting';
   if (typeof input.exitCode === 'number') return String(input.exitCode);
+  if (input.stopIntentional === true) return 'stopped';
+  if (input.stopIntentional === false) return 'unknown';
   switch (input.kind) {
-    case 'timeout': return 'still starting';
     case 'exited': return 'unknown';
     case 'spawn-error':
     case 'not-installed': return 'never started';
@@ -114,11 +127,27 @@ export function backendFailureCopy(input: {
     );
   }
 
-  hints.push(
-    input.hasLog
-      ? 'If it keeps failing, copy the log below and send it to support.'
-      : 'Nothing was captured in the log because the backend died before it printed anything, so there is no log to send.',
-  );
+  hints.push(input.hasLog ? 'If it keeps failing, copy the log below and send it to support.' : noLogHint(input.kind));
 
   return { headline, hints };
+}
+
+/** Why the log is empty, phrased so it agrees with the headline above it.
+ *
+ *  A single "it died before printing anything" sentence contradicted three of
+ *  the four kinds: a timed-out backend is alive and still importing, and
+ *  nothing ran at all in the not-installed and spawn-error cases. */
+function noLogHint(kind: ServerStartErrorKind | null): string {
+  switch (kind) {
+    case 'timeout':
+      return 'The backend had not printed anything yet when the app stopped waiting, so there is no log to send.';
+    case 'exited':
+      return 'Nothing was captured in the log because the backend died before it printed anything, so there is no log to send.';
+    case 'spawn-error':
+      return 'The program never ran, so the launch error above is the only evidence there is; there is no log to send.';
+    case 'not-installed':
+      return 'Nothing has run yet, so there is no log to send.';
+    default:
+      return 'No log has been captured yet, so there is nothing to send.';
+  }
 }
