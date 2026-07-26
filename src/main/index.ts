@@ -6,7 +6,7 @@ import * as https from 'https';
 import * as http from 'http';
 import { IPC } from '../shared/ipc-channels';
 import { checkInstallStatus, runInstaller } from './installer';
-import { startServer, stopServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort, fetchServerVersions } from './server-process';
+import { startServer, stopServer, forceReapServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort, fetchServerVersions } from './server-process';
 import { setUpdateNotifier, recreateVenvIfUnsupportedPython, repairServerInstall } from './server-updater';
 import { initUpdater, registerUpdateHandlers } from './updater';
 import { oauthConnect, cancelCurrentOAuth } from './oauth-service';
@@ -1624,14 +1624,28 @@ async function drainServerForQuit(): Promise<void> {
   // in-flight tick can call PATCH /token against a dead server.
   stopAllRefreshLoops();
   // Hard ceiling so a wedged python can't pin the quit indefinitely.
-  // stopServer's own SIGTERM(3s) + SIGKILL(1.5s) chain stays inside
+  // stopServer's own SIGTERM(6s) + SIGKILL(1.5s) chain stays inside
   // this window, but a misbehaving OS-level process delay could push
-  // past it; if so we'd rather quit and reparent the child to launchd
-  // than leave the user waiting on the dock icon.
-  await Promise.race([
-    stopServer(),
-    new Promise<void>((resolve) => setTimeout(resolve, 6_000)),
+  // past it; if so we'd rather quit than leave the user waiting on the
+  // dock icon. Both numbers end early the moment the child exits, so a
+  // healthy quit is still immediate.
+  const stopped = await Promise.race([
+    stopServer().then(() => true),
+    new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 8_000)),
   ]);
+
+  // stopServer lost the race. The usual reason is that a start still holds
+  // the lifecycle lock — a sidecar that is still importing can hold it for
+  // the whole start cap, far longer than this ceiling — so the polite stop
+  // never even ran. Quitting here would leave that python behind to bind the
+  // port unsupervised. Reap it directly, without the lock, still bounded.
+  if (!stopped) {
+    console.warn('[server] stop did not finish before the quit ceiling; force-reaping the sidecar');
+    await Promise.race([
+      forceReapServer(),
+      new Promise<void>((resolve) => setTimeout(resolve, 2_000)),
+    ]);
+  }
 }
 
 app.on('window-all-closed', async () => {

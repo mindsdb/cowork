@@ -18,6 +18,8 @@ import {
   otaCacheIsFresh,
   uiUpdateIsNewer,
   uiServerCompatSkipReason,
+  decideStartWait,
+  startFailureMessage,
 } from './update-logic';
 
 describe('compareVersions', () => {
@@ -598,5 +600,70 @@ describe('installerStepPlan', () => {
   it('pypi channel omits the git step on every platform (git is never shown or required)', () => {
     expect(installerStepPlan('win32', 'pypi')).toEqual({ needsXcodeStep: false, showGitStep: false, gitRequired: false });
     expect(installerStepPlan('linux', 'pypi')).toEqual({ needsXcodeStep: false, showGitStep: false, gitRequired: false });
+  });
+});
+
+describe('decideStartWait', () => {
+  const base = { healthy: false, spawnError: null, exited: false, elapsedMs: 0, capMs: 90_000 };
+
+  it('keeps polling while the child is alive, silent, and inside the cap', () => {
+    expect(decideStartWait({ ...base, elapsedMs: 40_000 })).toEqual({ action: 'poll' });
+  });
+
+  it('is ready as soon as /health answers, however long it took', () => {
+    expect(decideStartWait({ ...base, healthy: true, elapsedMs: 89_000 })).toEqual({ action: 'ready' });
+  });
+
+  it('is ready when /health answers even though the process we spawned has exited', () => {
+    // The Windows launcher hands off to a python child and can exit itself;
+    // the server it started is up, so this is a success, not a death.
+    expect(decideStartWait({ ...base, healthy: true, exited: true })).toEqual({ action: 'ready' });
+  });
+
+  it('fails immediately on a spawn error, without waiting out the cap', () => {
+    expect(decideStartWait({ ...base, spawnError: 'spawn EPERM', elapsedMs: 10 }))
+      .toEqual({ action: 'fail', kind: 'spawn-error' });
+  });
+
+  it('reports a spawn error ahead of the exit it also produced', () => {
+    expect(decideStartWait({ ...base, spawnError: 'spawn ENOENT', exited: true }))
+      .toEqual({ action: 'fail', kind: 'spawn-error' });
+  });
+
+  it('fails the moment an unhealthy child exits, long before the cap', () => {
+    expect(decideStartWait({ ...base, exited: true, elapsedMs: 900 }))
+      .toEqual({ action: 'fail', kind: 'exited' });
+  });
+
+  it('fails on the cap only while the child is still alive', () => {
+    expect(decideStartWait({ ...base, elapsedMs: 90_000 })).toEqual({ action: 'fail', kind: 'timeout' });
+    expect(decideStartWait({ ...base, elapsedMs: 90_001 })).toEqual({ action: 'fail', kind: 'timeout' });
+  });
+});
+
+describe('startFailureMessage', () => {
+  it('names the spawn error rather than blaming the health check', () => {
+    expect(startFailureMessage({ kind: 'spawn-error', exitCode: null, spawnError: 'spawn EPERM', elapsedMs: 12 }))
+      .toBe('The backend could not be launched: spawn EPERM.');
+  });
+
+  it('falls back to a generic reason when the spawn error is missing', () => {
+    expect(startFailureMessage({ kind: 'spawn-error', exitCode: null, spawnError: null, elapsedMs: 12 }))
+      .toBe('The backend could not be launched: unknown spawn error.');
+  });
+
+  it('reports the exit code and keeps a decimal on a fast death', () => {
+    expect(startFailureMessage({ kind: 'exited', exitCode: 1, spawnError: null, elapsedMs: 3400 }))
+      .toBe('The backend exited while starting up (code 1) after 3.4s.');
+  });
+
+  it('says so when the process died without an exit code', () => {
+    expect(startFailureMessage({ kind: 'exited', exitCode: null, spawnError: null, elapsedMs: 15_000 }))
+      .toBe('The backend exited while starting up (no exit code) after 15s.');
+  });
+
+  it('distinguishes "still starting" from "never started"', () => {
+    expect(startFailureMessage({ kind: 'timeout', exitCode: null, spawnError: null, elapsedMs: 90_000 }))
+      .toBe('The backend was still starting after 90s and never answered /health.');
   });
 });

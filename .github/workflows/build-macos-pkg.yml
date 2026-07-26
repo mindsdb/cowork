@@ -24,10 +24,19 @@ on:
         type: string
         default: ""
       minds_api_url:
-        description: "MindsHub API base URL (empty = https://api.mindshub.ai)"
-        required: false
+        description: >-
+          MindsHub API base URL, e.g. https://api.mindshub.ai (prod) or
+          https://api.staging.mindshub.ai. Required, and deliberately without a
+          default: this one value is baked into BOTH halves of the app
+          (gen-build-channel for main, Vite for the renderer) and is the only
+          thing keeping them on the same environment. The renderer cannot see
+          build_kind, so an absent value makes it fall back to production while
+          main falls back on build_kind, and a build whose two halves disagree
+          can never complete a login. A default would only make that silent:
+          the wrong value does not fail a build, it ships a signed installer
+          pointed at the wrong environment.
+        required: true
         type: string
-        default: ""
       app_version:
         description: >-
           App display version baked into the renderer as __APP_VERSION__.

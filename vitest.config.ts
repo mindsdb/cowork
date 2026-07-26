@@ -19,6 +19,8 @@ export default defineConfig({
         lines: 1.7,
         'src/main/update-logic.ts': { statements: 100, branches: 100 },
         'src/main/server-source.ts': { statements: 100, branches: 90 },
+        'src/shared/server-status.ts': { statements: 100, branches: 100 },
+        'src/main/server-process.ts': { statements: 60, branches: 45 },
         'src/main/ui-updater.ts': { statements: 75, branches: 68 },
         'src/renderer/platform/host.ts': { statements: 38, branches: 32 },
       },

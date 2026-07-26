@@ -13,6 +13,8 @@
 // operations (openPath) return { ok: false, reason: 'unsupported' }
 // so call sites can branch / hide affordances.
 
+import type { ServerStartErrorKind } from '../../shared/server-status';
+
 const ANTON_SERVER_PORT = 26866;
 
 type Bridge = typeof window extends { antontron?: infer T } ? T : never;
@@ -137,9 +139,15 @@ export interface ServerDiagnostics {
   starting: boolean;
   port: number | null;
   lastError: string | null;
+  /** Discriminant for the failure the panel explains; null when healthy. */
+  lastErrorKind: ServerStartErrorKind | null;
+  /** PID holding the port after a failed start, when one was found. */
+  portHolderPid: number | null;
   lastExitCode: number | null;
   lastStartAt: number | null;
   recentLog: string;
+  /** True when the backend went down because the user asked it to. */
+  lastStopIntentional: boolean | null;
 }
 
 export async function serverDiagnostics(): Promise<ServerDiagnostics> {
@@ -151,9 +159,12 @@ export async function serverDiagnostics(): Promise<ServerDiagnostics> {
     starting: false,
     port: window.location.port ? Number(window.location.port) : null,
     lastError: null,
+    lastErrorKind: null,
+    portHolderPid: null,
     lastExitCode: null,
     lastStartAt: null,
     recentLog: '',
+    lastStopIntentional: null,
   };
 }
 

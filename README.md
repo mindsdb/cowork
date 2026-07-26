@@ -391,7 +391,7 @@ App starts
   │   └─ Served only if: OTA enabled (prod build) + valid provenance
   │      + strictly newer than bundled + server-compat floor verified;
   │      otherwise the bundled renderer loads
-  ├─ Start cowork-server (spawn process, wait for /health)
+  ├─ Start cowork-server (spawn process, poll /health while the child lives)
   └─ After renderer loads: boot update check (UI manifest + server, in parallel)
       ├─ apply now (server first, then UI, health-checked reload) — unless the
       │   UI_UPDATE_MODE=manual escape hatch is set (support/QA only), then banner only
@@ -726,6 +726,50 @@ ls dist/renderer/index.html
 ### Server shows "Disconnected" immediately after launch
 
 The packaged `.app` doesn't inherit shell PATH. Ensure cowork-server is installed: `uv tool install cowork-server`. Check that `~/.local/bin/cowork-server` exists.
+
+### Backend takes a long time to come up on a first launch (Windows)
+
+Expected, and it is waited out rather than killed. The first execution of a
+freshly installed uv venv makes Windows Defender scan hundreds of MB of DLLs
+and `.pyd` files, which can push the pre-uvicorn import phase past half a
+minute; every launch after that is warm and takes a couple of seconds.
+
+The start wait is progress-aware: `/health` is polled for as long as the child
+process is alive, up to a hard cap (`SERVER_START_CAP_MS`, 180s, in
+[src/shared/server-status.ts](src/shared/server-status.ts)). A sidecar that
+dies is reported the moment it exits, with its exit code and stderr, rather
+than after the full budget. The renderer's status poll is derived from the same
+cap so the UI cannot declare the backend offline while the main process is
+still waiting.
+
+One cap covers every build and platform, deliberately. A dev-only allowance
+means a start that passes locally can still be killed in a packaged build, so
+the failure would only ever reproduce on a customer's machine. The cap is
+therefore sized for the slowest case any build can hit (a dev source tree
+building a fresh `.venv` on a cold cache) and everything else inherits it. It
+costs nothing in the normal case: the wait ends the moment `/health` answers or
+the process dies, so the cap only ever bounds a process that is genuinely still
+alive and still starting.
+
+Failures are classified rather than collapsed into one timeout message:
+
+| Diagnostics `lastErrorKind` | Means |
+|---|---|
+| `spawn-error` | The OS refused to launch the program (`EPERM` from antivirus, `ENOENT` from a broken shim). Nothing ran, so there is no log. |
+| `exited` | It ran and died during boot. Exit code + captured output are the evidence. |
+| `timeout` | Still alive and still silent at the cap. Almost always a very slow first import. |
+| `not-installed` | The backend or `uv` isn't on disk; re-run the installer. |
+
+After a failed start the whole process tree is killed (`taskkill /F /T` on
+Windows, process-group signal elsewhere), so a retry never collides with a
+leftover `python.exe` holding the port. If something else still holds it, the
+diagnostics name the PID.
+
+Finding that PID on Windows means parsing `netstat -ano`, where the state
+column is both translated and variable in length (`ABHÖREN` on German,
+`IN ASCOLTO` on Italian, and a two-word state shifts every column after it).
+The lookup reads none of it: a listening socket is the only TCP row with an
+all-zero foreign address, and the PID is always the last column.
 
 ### macOS Gatekeeper blocks unsigned app
 
