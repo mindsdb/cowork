@@ -67,7 +67,7 @@ function EnableToggle({ enabled, onChange, busy }) {
         onCheckedChange={onChange}
         disabled={busy}
         size="sm"
-        aria-label={enabled ? 'Disable schedule' : 'Enable schedule'}
+        aria-label="Schedule enabled"
       />
       <span style={{
         fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 500,

@@ -243,9 +243,14 @@ export default function ScheduleTaskModal({
                 because the modal is vertically centered, that re-centered the
                 whole dialog, reading as a layout shift. A fixed-height block
                 row is baseline-independent, so the toggle never moves anything.
-                Not a <label>: the Switch renders its own hidden input, so a
-                <label> wrapper double-activates; keep the text clickable via
-                its own handler. */}
+                The Switch is the sole control — keyboard-operable, with a
+                STABLE aria-label ("Schedule enabled"); aria-checked conveys
+                on/off, so the name must not change with state. The visible
+                Enabled/Paused text is a non-interactive status echo, hidden
+                from assistive tech (the switch already announces state). It's
+                deliberately not a clickable <span> (mouse-only + unassociated)
+                nor a <label> (the Switch's own hidden input would be
+                double-activated). */}
             <div style={{
               display: 'flex', width: 'fit-content', alignItems: 'center', gap: 8, height: 22,
               fontFamily: FONT_BODY, fontSize: 13.5, color: 'var(--ink)',
@@ -256,10 +261,7 @@ export default function ScheduleTaskModal({
                 size="sm"
                 aria-label="Schedule enabled"
               />
-              <span
-                onClick={() => update('enabled', !form.enabled)}
-                style={{ cursor: 'pointer', userSelect: 'none' }}
-              >
+              <span aria-hidden="true" style={{ userSelect: 'none' }}>
                 {form.enabled ? 'Enabled' : 'Paused'}
               </span>
             </div>

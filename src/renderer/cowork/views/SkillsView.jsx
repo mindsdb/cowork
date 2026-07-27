@@ -433,7 +433,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
             <div style={{ flex: 1 }} />
             <Switch
               checked={selected.enabled ?? true}
-              aria-label={(selected.enabled ?? true) ? 'Disable skill' : 'Enable skill'}
+              aria-label="Skill enabled"
               onCheckedChange={async (next) => {
                 setSelected((prev) => ({ ...prev, enabled: next }));
                 try {
