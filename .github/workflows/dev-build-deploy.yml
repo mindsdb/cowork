@@ -110,16 +110,14 @@ jobs:
     # This repo is PUBLIC, so the shared reusable drops the runbook link and the
     # notes by itself; the hosts stay because they are what a reviewer came for.
     needs: [gate, build-deploy]
-    if: ${{ needs.gate.outputs.run == 'true' && needs.build-deploy.outputs.pr-env-deployed == 'true' }}
+    if: ${{ !cancelled() && needs.gate.outputs.run == 'true' }}
     permissions:
       contents: read
       pull-requests: write
     uses: mindsdb/github-actions/.github/workflows/pr-env-comment.yml@main
     with:
       env-name: pr-cowork-${{ github.event.pull_request.number }}
-      links: >-
-        [{"label":"Cowork web","url":"https://pr-cowork-${{ github.event.pull_request.number }}.dev.mindshub.ai"},
-         {"label":"Namespace","url":"`pr-cowork-${{ github.event.pull_request.number }}`"}]
+      status: ${{ needs.build-deploy.outputs.pr-env-deployed == 'true' && 'up' || 'absent' }}
     secrets: inherit
 
   # Signed installers, per platform, by label. Each is expensive and needs signing
@@ -184,6 +182,8 @@ jobs:
     with:
       heading: "Installers built"
       env-name: preview
+      # Not an environment: no service table, no default-tag note.
+      standard-links: false
       # Its own marker, so it rolls independently of the environment comment.
       marker: pr-installer-artifacts
       links: ${{ needs.compose-installer-links.outputs.links }}
