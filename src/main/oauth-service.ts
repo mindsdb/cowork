@@ -254,7 +254,7 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
   try {
     const res = await fetch(opts.tokenUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
       body: tokenBody.toString(),
       signal: AbortSignal.any([
         AbortSignal.timeout(TOKEN_EXCHANGE_TIMEOUT_MS),

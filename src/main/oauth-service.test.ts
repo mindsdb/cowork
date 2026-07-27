@@ -74,6 +74,29 @@ describe('oauthConnect', () => {
     expect(exchangeBody).toContain('code=the-code');
   });
 
+  // ─── GitHub regression: classic OAuth apps return form-urlencoded ───
+  // bodies from /login/oauth/access_token unless the request asks for
+  // JSON. Without this header the exchange threw "Unexpected token 'a',
+  // \"access_tok\"... is not valid JSON" and the caller never saw
+  // pkceResult.ok, so the window-refocus step never ran either.
+  it('requests a JSON response from the token endpoint', async () => {
+    const nextAuthUrl = captureAuthUrl();
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ access_token: 'at' }),
+    }));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const flow = oauthConnect(OPTS);
+    const authUrl = await nextAuthUrl();
+    await hitCallback(authUrl, { code: 'c', state: authUrl.searchParams.get('state') as string });
+    await flow;
+
+    const [, exchangeInit] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect((exchangeInit.headers as Record<string, string>).Accept).toBe('application/json');
+  });
+
   // ─── ENG-761 regression: a dead exchange must FAIL, visibly ─────────
   // The browser has already shown "You're authorized!" by the time the
   // exchange runs. Pre-fix, the exchange had no timeout — a black-holed
