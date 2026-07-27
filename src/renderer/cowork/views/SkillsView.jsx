@@ -3,6 +3,7 @@ import Ico from '../components/Icons';
 import { PageHeader, FilterRow, SearchInput, SortPill } from '../components/collection';
 import { Menu, Button, Card, Select, Input, Textarea } from '../components/ui';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
+import { Switch } from '../components/ui/Switch';
 import { Crumb, CrumbSep, CrumbCurrent } from '../components/ui/Crumb';
 import { useToastManager } from '../components/ui/Toast';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
@@ -91,31 +92,6 @@ function SkillGridCard({ skill, onClick }) {
     </Card>
   );
 }
-
-function Toggle({ checked, onChange }) {
-  return (
-    <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}>
-      <input type="checkbox" checked={checked} onChange={onChange} style={{ display: 'none' }} />
-      <div style={{
-        width: 36, height: 20, borderRadius: 10,
-        background: checked ? 'var(--accent)' : 'var(--line-2)',
-        position: 'relative',
-        transition: 'background .2s ease',
-        flexShrink: 0,
-      }}>
-        <div style={{
-          position: 'absolute',
-          top: 2, left: checked ? 18 : 2,
-          width: 16, height: 16, borderRadius: '50%',
-          background: 'white',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
-          transition: 'left .2s ease',
-        }} />
-      </div>
-    </label>
-  );
-}
-
 
 const fieldStyle = {
   width: '100%',
@@ -455,17 +431,20 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
             <CrumbSep />
             <CrumbCurrent label={selected.label} />
             <div style={{ flex: 1 }} />
-            <Toggle checked={selected.enabled ?? true} onChange={async (e) => {
-              const next = e.target.checked;
-              setSelected((prev) => ({ ...prev, enabled: next }));
-              try {
-                const saved = await saveSkillAndSync({ label: selected.label, enabled: next }, true);
-                setSelected(saved);
-              } catch (err) {
-                setSelected((prev) => ({ ...prev, enabled: !next }));
-                showToast(err.message || 'Could not update skill.');
-              }
-            }} />
+            <Switch
+              checked={selected.enabled ?? true}
+              aria-label="Skill enabled"
+              onCheckedChange={async (next) => {
+                setSelected((prev) => ({ ...prev, enabled: next }));
+                try {
+                  const saved = await saveSkillAndSync({ label: selected.label, enabled: next }, true);
+                  setSelected(saved);
+                } catch (err) {
+                  setSelected((prev) => ({ ...prev, enabled: !next }));
+                  showToast(err.message || 'Could not update skill.');
+                }
+              }}
+            />
             <OverflowMenu
               items={[
                 { id: 'try',       label: 'Try in chat', icon: Ico.chats(14),  onClick: () => onTryInChat?.(`/${selected.label}`, selected.projects?.[0]) },
