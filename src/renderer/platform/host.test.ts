@@ -204,6 +204,28 @@ describe('electron mode (bridge present)', () => {
     });
   });
 
+  it('getShellUpdate maps the cached main status to the renderer shape when a reinstall is pending', async () => {
+    (window as unknown as Record<string, unknown>).antontron = {
+      getShellUpdate: async () => ({
+        available: true, currentVersion: '2.26.7.13.1', latestVersion: '2.26.7.20.1', downloadUrl: 'https://x/y.pkg',
+      }),
+    };
+    const host = await importHost();
+    await expect(host.getShellUpdate()).resolves.toEqual({
+      version: '2.26.7.20.1', currentVersion: '2.26.7.13.1', downloadUrl: 'https://x/y.pkg',
+    });
+  });
+
+  it('getShellUpdate returns null when nothing is pending, or on an older shell missing the handler', async () => {
+    (window as unknown as Record<string, unknown>).antontron = { getShellUpdate: async () => ({ available: false }) };
+    let host = await importHost();
+    await expect(host.getShellUpdate()).resolves.toBeNull();
+
+    (window as unknown as Record<string, unknown>).antontron = {}; // partial bridge — old main, no handler
+    host = await importHost();
+    await expect(host.getShellUpdate()).resolves.toBeNull();
+  });
+
   it('getVersionInfo degrades to web facts when the bridge lacks the method', async () => {
     (window as unknown as Record<string, unknown>).antontron = {}; // partial bridge
     const host = await importHost();

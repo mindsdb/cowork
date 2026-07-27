@@ -21,6 +21,13 @@ const UI_RELOAD_HEALTH_MS = 15000;
 
 type GetWindow = () => BrowserWindow | null;
 
+// Last-known shell (installer) update status (ENG-849). The poll pushes the
+// notice via UI_UPDATE_STATUS, but an OTA auto-apply reloads the window and the
+// re-mounted renderer loses that push — and the next push is a poll interval
+// away (up to 4h). Caching it here lets the renderer re-pull on mount
+// (UI_SHELL_UPDATE_GET), so a pending reinstall notice survives a reload.
+let lastShellStatus: ShellUpdateStatus = { available: false };
+
 // Returns whether the server is in a good state to proceed with a UI update:
 // true if it was updated cleanly or was already current, false if an update was
 // attempted and failed (in which case it has rolled back to the old server).
@@ -140,6 +147,9 @@ export function registerUpdateHandlers(getWindow: GetWindow) {
   const { ipcMain } = require('electron');
 
   ipcMain.handle(IPC.UI_UPDATE_CHECK, () => checkForUIUpdate());
+  // The renderer re-pulls the shell notice on mount so it survives an OTA
+  // reload that would otherwise drop the pushed 'shell-available' (ENG-849).
+  ipcMain.handle(IPC.UI_SHELL_UPDATE_GET, () => lastShellStatus);
   ipcMain.handle(IPC.UI_UPDATE_APPLY, async () => {
     // A manual apply always re-checks the server so it can't drift from the UI.
     const server = await checkForServerUpdate();
@@ -225,6 +235,10 @@ export function initUpdater(
     // prod; the manifest fetch is skipped when the host is unreachable.
     if (manifestReachable) {
       const shell = await checkForShellUpdate().catch(() => ({ available: false as const }));
+      // Cache it so the renderer can re-pull after an OTA reload (see below).
+      // Only overwrite when we actually checked — an unreachable host must not
+      // clear a notice we already know about.
+      lastShellStatus = shell;
       if (shell.available) {
         console.log(`[updater] shell update available: ${shell.currentVersion} → ${shell.latestVersion}`);
         sendStatus(getWindow, {

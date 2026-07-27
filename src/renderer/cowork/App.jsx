@@ -1475,6 +1475,17 @@ function AppCore() {
     });
   }, []);
 
+  // Re-pull the shell (installer) notice on mount (ENG-849). The push above
+  // only fires on the boot/periodic poll; an OTA auto-apply reload re-mounts
+  // this component and drops that push, with the next one a poll interval away.
+  // Pulling main's cached status here means a pending reinstall notice survives
+  // the reload instead of silently vanishing for up to 4h.
+  useEffect(() => {
+    let cancelled = false;
+    host.getShellUpdate().then((s) => { if (!cancelled && s) setShellUpdate(s); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
   // Listen for background OAuth refresh failures pushed from main process.
   // timeout: 0 — persists until the user manually dismisses it, same as
   // the previous hand-rolled banner (these need action, not a fade-out).

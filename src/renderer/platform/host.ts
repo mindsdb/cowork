@@ -458,6 +458,27 @@ export async function applyUpdate(): Promise<boolean> {
   return false;
 }
 
+export interface ShellUpdate {
+  version: string; // newest published shell (installer) CalVer
+  currentVersion?: string;
+  downloadUrl?: string;
+}
+
+// Pull the last-known shell (installer) update notice from main (ENG-849).
+// The notice is normally pushed via onUpdateStatus('shell-available'), but an
+// OTA reload re-mounts the renderer and drops that push; re-pulling on mount
+// re-surfaces a pending reinstall. Returns null when nothing is pending, or in
+// web / on a shell too old to have the handler (partial bridge → degrade).
+export async function getShellUpdate(): Promise<ShellUpdate | null> {
+  if (isElectron && typeof bridge.getShellUpdate === 'function') {
+    const s = await bridge.getShellUpdate();
+    if (s?.available && s.latestVersion) {
+      return { version: s.latestVersion, currentVersion: s.currentVersion, downloadUrl: s.downloadUrl ?? undefined };
+    }
+  }
+  return null;
+}
+
 // ---- OAuth (Electron-only PKCE flow) -----------------------------------
 
 export type OAuthConnectOpts =

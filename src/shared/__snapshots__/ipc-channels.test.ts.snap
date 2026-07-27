@@ -38,6 +38,7 @@ exports[`IPC channel contract > locks the full channel map (a rename here is a b
   "SETTINGS_VALIDATE": "settings:validate",
   "SHOW_ITEM_IN_FOLDER": "shell:show-item-in-folder",
   "TERMS_ACCEPT": "terms:accept",
+  "UI_SHELL_UPDATE_GET": "ui:shell-update-get",
   "UI_UPDATE_APPLY": "ui:update-apply",
   "UI_UPDATE_CHECK": "ui:update-check",
   "UI_UPDATE_STATUS": "ui:update-status",
