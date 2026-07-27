@@ -247,6 +247,7 @@ jobs:
           COWORK_SERVER_MIN_VERSION: ${{ steps.server_floor.outputs.version }}
           VITE_MINDS_API_URL: ${{ inputs.minds_api_url }}
           VITE_APP_VERSION: ${{ inputs.app_version }}
+          BUILD_KIND: ${{ inputs.build_kind }}
         run: npm run release:mac:pkg:notarized
 
       - name: Compute artifact name
@@ -286,6 +287,20 @@ jobs:
           mkdir -p out
           NAME="${{ steps.name.outputs.artifact_name }}"
           mv release/*.pkg "out/${NAME}"
+
+      - name: Collect shell updater artifacts
+        if: inputs.build_kind == 'prod' || inputs.build_kind == 'stable'
+        run: |
+          set -euo pipefail
+          mkdir -p out/updater
+          ZIP=$(find release -maxdepth 1 -type f -name 'mindshub-cowork-update-*.zip' -print -quit)
+          test -n "$ZIP"
+          test -f release/latest-mac.yml
+          cp "$ZIP" out/updater/
+          cp release/latest-mac.yml out/updater/
+          if [ -f "${ZIP}.blockmap" ]; then
+            cp "${ZIP}.blockmap" out/updater/
+          fi
 
       - name: Upload pkg artifact
         uses: actions/upload-artifact@v4

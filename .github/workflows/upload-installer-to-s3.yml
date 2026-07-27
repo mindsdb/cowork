@@ -165,3 +165,85 @@ jobs:
           for KEY in "${UPLOADED_KEYS[@]}"; do
             echo "- ${CDN_BASE}/${KEY}" >> "$GITHUB_STEP_SUMMARY"
           done
+
+      # electron-updater reads one mutable channel manifest that references an
+      # immutable signed payload. Publish payload/blockmap first and latest*.yml
+      # last so clients can never observe metadata for bytes that do not exist.
+      - name: Publish shell updater feed
+        if: inputs.build_kind == 'prod' || inputs.build_kind == 'stable'
+        env:
+          PLATFORM: ${{ inputs.platform }}
+          KIND: ${{ inputs.build_kind }}
+          NAME: ${{ inputs.artifact_name }}
+        run: |
+          set -euo pipefail
+          BUCKET="anton-installer"
+          PREFIX="mindshub-cowork/updates/${KIND}/${PLATFORM}"
+          CDN_BASE="https://downloads.mindshub.ai"
+
+          case "$PLATFORM" in
+            mac)
+              PAYLOAD=$(find out/updater -maxdepth 1 -type f -name '*.zip' -print -quit)
+              METADATA="out/updater/latest-mac.yml"
+              ;;
+            windows)
+              PAYLOAD="out/${NAME}"
+              METADATA="out/updater/latest.yml"
+              ;;
+            *)
+              echo "::error::Unknown updater platform: $PLATFORM"
+              exit 1
+              ;;
+          esac
+
+          test -n "$PAYLOAD"
+          test -f "$PAYLOAD"
+          test -f "$METADATA"
+          PAYLOAD_NAME=$(basename "$PAYLOAD")
+          PAYLOAD_KEY="${PREFIX}/${PAYLOAD_NAME}"
+
+          upload_immutable() {
+            local src="$1" key="$2"
+            aws s3 cp "$src" "s3://${BUCKET}/${key}" \
+              --cache-control "public,max-age=31536000,immutable"
+            local expected actual tmp
+            expected=$(sha256sum "$src" | awk '{print $1}')
+            tmp=$(mktemp)
+            aws s3 cp "s3://${BUCKET}/${key}" "$tmp" >/dev/null
+            actual=$(sha256sum "$tmp" | awk '{print $1}')
+            rm -f "$tmp"
+            test "$expected" = "$actual"
+          }
+
+          # 1. Immutable signed payload.
+          upload_immutable "$PAYLOAD" "$PAYLOAD_KEY"
+
+          # 2. Optional differential-download blockmap, generated from the
+          # final payload bytes (post-sign on Windows).
+          BLOCKMAP="${PAYLOAD}.blockmap"
+          if [ ! -f "$BLOCKMAP" ]; then
+            BLOCKMAP="out/updater/${PAYLOAD_NAME}.blockmap"
+          fi
+          if [ -f "$BLOCKMAP" ]; then
+            upload_immutable "$BLOCKMAP" "${PREFIX}/$(basename "$BLOCKMAP")"
+          fi
+
+          # 3. Mutable channel pointer, always last.
+          METADATA_NAME=$(basename "$METADATA")
+          aws s3 cp "$METADATA" "s3://${BUCKET}/${PREFIX}/${METADATA_NAME}" \
+            --cache-control "no-cache,no-store,must-revalidate"
+
+          # Verify the public CDN can serve both objects. A query suffix avoids
+          # accepting an older cached channel manifest during publication.
+          curl -fsSL --retry 5 --retry-delay 2 \
+            "${CDN_BASE}/${PAYLOAD_KEY}" -o /dev/null
+          curl -fsSL --retry 5 --retry-delay 2 \
+            "${CDN_BASE}/${PREFIX}/${METADATA_NAME}?run=${GITHUB_RUN_ID}" -o /dev/null
+
+          {
+            echo ""
+            echo "### Shell updater feed"
+            echo ""
+            echo "- Payload: ${CDN_BASE}/${PAYLOAD_KEY}"
+            echo "- Metadata: ${CDN_BASE}/${PREFIX}/${METADATA_NAME}"
+          } >> "$GITHUB_STEP_SUMMARY"

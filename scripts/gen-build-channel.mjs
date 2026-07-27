@@ -19,7 +19,7 @@
 // In dev mode the env var from the Makefile wins and this file is never
 // needed — but it's safe to generate it anyway.
 
-import { mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -27,6 +27,11 @@ import { dirname, join } from 'path';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const outDir = join(__dirname, '..', 'src', 'main');
 const outFile = join(outDir, 'build-channel.gen.ts');
+
+// A feed file is generated later by run-electron-builder.mjs only for an
+// eligible channel. Remove any prior build's copy before compilation so a
+// direct/local package can never inherit a stale prod or stable feed.
+rmSync(join(__dirname, '..', 'build', 'app-update.yml'), { force: true });
 
 const coworkRef = (process.env.COWORK_SERVER_REF || '').trim();
 const antonRef = (process.env.ANTON_REF || '').trim();
