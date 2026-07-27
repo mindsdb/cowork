@@ -58,6 +58,40 @@ function antonKeyName(): string {
   return `${ANTON_KEY_NAME}:${getInstallationId()}`;
 }
 
+// ── Per-device key renewal decision (ENG-498) ─────────────────────
+//
+// The auth-service may stamp an absolute expiry on device keys
+// (API_KEYS__DEVICE_KEY_TTL_DAYS, auth #145). Renew when under this
+// fraction of the key's own lifetime remains — deriving the window from
+// created/expiry_date keeps the client correct for whatever TTL ops
+// picks, with no config knob. An already-expired key also renews (heal):
+// the laptop may have slept past the deadline, or expiry may have been
+// backfilled server-side before this client updated.
+const KEY_RENEWAL_LIFETIME_FRACTION = 0.25;
+
+// When the lifetime can't be derived (missing/garbled `created`, or
+// created >= expiry), fall back to a fixed window rather than never
+// renewing — a wrong-but-safe early renewal beats a 401 at the deadline.
+const KEY_RENEWAL_FALLBACK_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
+
+export function shouldRenewKey(
+  created: string | null | undefined,
+  expiryDate: string | null | undefined,
+  nowMs: number,
+): boolean {
+  if (!expiryDate) return false;
+  const expiryMs = Date.parse(expiryDate);
+  if (Number.isNaN(expiryMs)) return false;
+  const remainingMs = expiryMs - nowMs;
+  if (remainingMs <= 0) return true;
+  const createdMs = created ? Date.parse(created) : NaN;
+  const lifetimeMs = expiryMs - createdMs;
+  const windowMs = Number.isNaN(createdMs) || lifetimeMs <= 0
+    ? KEY_RENEWAL_FALLBACK_WINDOW_MS
+    : lifetimeMs * KEY_RENEWAL_LIFETIME_FRACTION;
+  return remainingMs < windowMs;
+}
+
 // Every auth-service / Keycloak request gets a hard deadline. Node's
 // fetch has none by default, so a black-holed connection would hang
 // the onboarding "TESTING LINK…" phase forever with no error to show.
