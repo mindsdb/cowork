@@ -10,7 +10,7 @@ import { checkForUIUpdate, applyUIUpdate, getRendererPath, hasInternet, rollback
 import type { UpdateCheckResult } from './ui-updater';
 import { checkForServerUpdate, maybeUpdateServer } from './server-updater';
 import { isServerRunning } from './server-process';
-import { decideUpdateApply, shellUpdateIsNewer, shellDownloadUrl } from './update-logic';
+import { decideUpdateApply, summarizeUpdateCheck, shellUpdateIsNewer, shellDownloadUrl, type UpdateCheckSummary } from './update-logic';
 import { buildKindStrict } from './cowork-home';
 import { getAppDisplayVersion } from './server-source';
 
@@ -138,15 +138,51 @@ async function applyUpdates(getWindow: GetWindow, applyServer: boolean, applyUi:
   return uiApplied || (applyServer && serverOk);
 }
 
+// On-demand "Check for updates" (ENG-671). Runs the same detection the periodic
+// poll does — UI (OTA) and server independently — but applies nothing and
+// returns a display-ready summary. It reports the two together because the
+// apply path updates both (see summarizeUpdateCheck).
+//
+// No manifest-reachability pre-gate here (unlike poll(), which uses hasInternet()
+// purely as a latency shortcut for a background loop that never surfaces
+// "couldn't check" to a user). checkForUIUpdate() already self-guards: OTA
+// disabled for this build channel returns instantly with no network call at
+// all, so a manifest host outage must never poison a check in a build where
+// the UI channel isn't even applicable. When OTA IS enabled and the manifest
+// really is unreachable, checkForUIUpdate() surfaces that itself via `error`.
+// Each channel carries its own `error` flag when its check couldn't complete;
+// summarizeUpdateCheck lets a channel that DID confirm an update win over the
+// other one being inconclusive, and only reports "up to date" when neither
+// channel found anything AND neither errored.
+export async function checkForUpdates(): Promise<UpdateCheckSummary> {
+  const [ui, server, shell] = await Promise.all([
+    checkForUIUpdate(),
+    checkForServerUpdate(),
+    // The shell is detection-only and self-gates to prod; a failure here must
+    // not sink the whole check, so fall back to "no shell update" (ENG-849).
+    checkForShellUpdate().catch(() => ({ available: false as const })),
+  ]);
+  return summarizeUpdateCheck({
+    ui: { updateAvailable: ui.updateAvailable, newVersion: ui.newVersion, error: ui.error },
+    server: { updateAvailable: server.updateAvailable, latestVersion: server.latestVersion, error: server.error },
+    shell: shell.available
+      ? { updateAvailable: true, version: shell.latestVersion, downloadUrl: shell.downloadUrl ?? undefined }
+      : { updateAvailable: false },
+  });
+}
+
 // Register the update IPC handlers. Called unconditionally at startup so the
 // renderer can always check/apply (e.g. a manual "Check for updates" action) —
-// independent of packaging, DEV_MODE, or whether the server booted. Both
+// independent of packaging, DEV_MODE, or whether the server booted. checkForUpdates(),
 // checkForUIUpdate() and applyUIUpdate() self-guard (OTA disable + manifest),
 // so they're safe to expose in every build.
 export function registerUpdateHandlers(getWindow: GetWindow) {
   const { ipcMain } = require('electron');
 
-  ipcMain.handle(IPC.UI_UPDATE_CHECK, () => checkForUIUpdate());
+  // Unified check: UI + server + shell detection, no apply. The renderer's
+  // "Check for updates" control surfaces the result and offers apply via
+  // UI_UPDATE_APPLY (UI/server) or a download link (shell, ENG-849).
+  ipcMain.handle(IPC.UI_UPDATE_CHECK, () => checkForUpdates());
   // The renderer re-pulls the shell notice on mount so it survives an OTA
   // reload that would otherwise drop the pushed 'shell-available' (ENG-849).
   ipcMain.handle(IPC.UI_SHELL_UPDATE_GET, () => lastShellStatus);

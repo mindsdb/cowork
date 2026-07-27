@@ -63,6 +63,21 @@ export function patchSavedJson(prevJson, key, value) {
   }
 }
 
+// Exported for tests. Decide the "Update now" control's state after an
+// on-demand apply attempt (ENG-671 / PR #449 review). host.applyUpdate()
+// communicates several expected failure paths — a failed download, a
+// compatibility rejection, the update disappearing between check and apply —
+// by resolving `false` rather than throwing. A caller that only clears its
+// "applying" flag in a `catch` block leaves the button stuck on "Updating…"
+// forever for those paths; this is the single source of truth for both the
+// resolved-false and thrown-exception cases (the caller maps a thrown
+// exception to `applied: false` before calling this). `applied: true` keeps
+// `applying` true on purpose: a window reload is imminent and will tear this
+// view down, so there is no idle state to render.
+export function nextApplyUpdateState(applied) {
+  return applied ? { applying: true, error: false } : { applying: false, error: true };
+}
+
 function Section({ title, subtitle, notice, children }) {
   const { mobile } = useContext(SettingsLayoutContext);
   // A section whose sole control is a Switch or ToggleGroup is compact enough
@@ -766,6 +781,16 @@ export default function SettingsView({
   const [antonVersion, setAntonVersion] = useState('');
   const [showVersionDetails, setShowVersionDetails] = useState(false);
   const [versionCopied, setVersionCopied] = useState(false);
+  // ENG-671 — on-demand "Check for updates". `checkResult` is null (idle) or a
+  // summary { ok, offline, updateAvailable, uiUpdateAvailable,
+  // serverUpdateAvailable, uiVersion?, serverVersion? } from host.checkForUpdates().
+  const [checkingUpdates, setCheckingUpdates] = useState(false);
+  const [checkResult, setCheckResult] = useState(null);
+  const [applyingUpdate, setApplyingUpdate] = useState(false);
+  // Set when applyUpdate() resolves false — a normal, expected failure path
+  // (failed download, compatibility rejection, update disappeared between
+  // check and apply), distinct from the thrown-exception case below.
+  const [applyError, setApplyError] = useState(false);
   // Whether the refresh token lives in the macOS keychain (vs a file under
   // ~/.cowork). Mac-only; read from main on mount.
   const [keychainPref, setKeychainPref] = useState(false);
@@ -837,6 +862,48 @@ export default function SettingsView({
       setKeychainPref(!next);
     }
   };
+  // ENG-671 — run the on-demand update check. Detection only; the result drives
+  // the status line and (when an update is available) the "Update now" button.
+  const handleCheckForUpdates = async () => {
+    if (checkingUpdates || applyingUpdate) return;
+    setCheckingUpdates(true);
+    setCheckResult(null);
+    setApplyError(false);
+    try {
+      setCheckResult(await host.checkForUpdates());
+    } catch {
+      // A thrown check is an "error" outcome distinct from offline.
+      setCheckResult({ ok: false, offline: false, updateAvailable: false });
+    } finally {
+      setCheckingUpdates(false);
+    }
+  };
+
+  // Apply now, without waiting for the next launch. Updates otherwise auto-apply
+  // only at boot (ENG-858); the mid-session periodic check never auto-applies,
+  // so this button is how a user acts on a detected update immediately. Runs the
+  // same server-first + UI apply as the boot check; the window reloads when it
+  // lands (App.jsx listens for UI_UPDATE_STATUS), which tears this view down —
+  // so there's a success path (stay busy, reload incoming) but no success
+  // *state* to render here. A resolved `false` is a normal, expected failure
+  // (failed download, compatibility rejection, update disappeared between
+  // check and apply) — not an exception — so it must be handled here rather
+  // than only in `catch`, or the button is stuck on "Updating…" forever.
+  const handleApplyUpdateNow = async () => {
+    if (applyingUpdate) return;
+    setApplyingUpdate(true);
+    setApplyError(false);
+    try {
+      const { applying, error } = nextApplyUpdateState(await host.applyUpdate());
+      setApplyingUpdate(applying);
+      setApplyError(error);
+    } catch {
+      const { applying, error } = nextApplyUpdateState(false);
+      setApplyingUpdate(applying);
+      setApplyError(error);
+    }
+  };
+
   // Tracks whether any LLM-affecting setting changed since the last
   // successful Save. Used to skip provider tests on a no-op Save so a
   // user just toggling appearance doesn't pay the network round-trip.
@@ -2363,24 +2430,103 @@ export default function SettingsView({
             );
           })()}
         </Section>
-        {isElectron && shellUpdate && (
+        {isElectron && (
           <Section
-            title="App update available"
-            subtitle="A newer version of MindsHub Cowork has been released. The app itself updates by downloading and reinstalling."
+            title="Software updates"
+            subtitle="Check now for a newer version. UI and server updates apply in place; a new app version installs by downloading and reinstalling."
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '10px 12px', border: '1px solid rgba(93,146,135,0.30)', background: 'rgba(93,146,135,0.12)', borderRadius: 8 }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 160 }}>
-                <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-strong)' }}>
-                  {shellUpdate.version ? `Version ${shellUpdate.version} is available` : 'A new version is available'}
-                </span>
-                <span style={{ fontSize: 11.5, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-                  {(shellUpdate.currentVersion || '—')} → {shellUpdate.version || '—'}
-                </span>
-              </div>
-              <Button variant="primary" onClick={onDownloadShellUpdate} style={{ cursor: 'pointer' }}>
-                Download update
-              </Button>
-            </div>
+            {(() => {
+              const r = checkResult;
+              // A fresh check (r.ok) is authoritative; before one runs, fall back
+              // to the background poll's notice (shellUpdate prop) so a pending
+              // reinstall shows on a plain Settings visit too (ENG-849).
+              const shellPending = r?.ok ? !!r.shellUpdateAvailable : !!shellUpdate;
+              const shellVersion = r?.shellVersion || shellUpdate?.version;
+              const shellUrl = r?.shellDownloadUrl || shellUpdate?.downloadUrl;
+              // Status line shown beside the button once a check resolves.
+              // ok:false is an error/offline outcome — never "up to date".
+              // "Up to date" also requires no shell reinstall pending, since
+              // r.updateAvailable already folds the shell in (ENG-849) — so it
+              // can't claim you're current while the app itself is behind.
+              let status = null;
+              if (!checkingUpdates && r) {
+                if (!r.ok) {
+                  status = r.offline
+                    ? "Couldn't check — you appear to be offline."
+                    : "Couldn't check for updates. Please try again.";
+                } else if (!r.updateAvailable) {
+                  status = "You're up to date.";
+                }
+              }
+              const isError = !!r && !r.ok;
+              const isUpToDate = !checkingUpdates && !!r && r.ok && !r.updateAvailable;
+              // UI/server apply in place; the shell is download-only, so keep it
+              // out of the "Update now" apply path.
+              const applyAvailable = !checkingUpdates && !!r && r.ok && (r.uiUpdateAvailable || r.serverUpdateAvailable);
+              const busy = checkingUpdates || applyingUpdate;
+              const parts = [];
+              if (applyAvailable) {
+                if (r.serverUpdateAvailable) parts.push(`Server → ${r.serverVersion || 'new version'}`);
+                if (r.uiUpdateAvailable) parts.push(`UI → ${r.uiVersion || 'new version'}`);
+              }
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                    <Button
+                      onClick={handleCheckForUpdates}
+                      disabled={busy}
+                      style={{ minWidth: 150, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.7 : 1 }}
+                    >
+                      {checkingUpdates ? 'Checking…' : 'Check for updates'}
+                    </Button>
+                    {status && (
+                      <span style={{ fontSize: 12.5, color: isError ? 'var(--warning, #c47f00)' : 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        {isUpToDate && Ico.check ? Ico.check(14) : null}
+                        {status}
+                      </span>
+                    )}
+                  </div>
+                  {applyAvailable && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '10px 12px', border: '1px solid rgba(93,146,135,0.30)', background: 'rgba(93,146,135,0.12)', borderRadius: 8 }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 160 }}>
+                        <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-strong)' }}>Update available</span>
+                        {parts.length > 0 && (
+                          <span style={{ fontSize: 11.5, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{parts.join('   ')}</span>
+                        )}
+                      </div>
+                      <Button
+                        variant="primary"
+                        onClick={handleApplyUpdateNow}
+                        disabled={applyingUpdate}
+                        style={{ cursor: applyingUpdate ? 'default' : 'pointer', opacity: applyingUpdate ? 0.7 : 1 }}
+                      >
+                        {applyingUpdate ? 'Updating…' : applyError ? 'Try again' : 'Update now'}
+                      </Button>
+                    </div>
+                  )}
+                  {shellPending && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '10px 12px', border: '1px solid rgba(93,146,135,0.30)', background: 'rgba(93,146,135,0.12)', borderRadius: 8 }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 160 }}>
+                        <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-strong)' }}>
+                          {shellVersion ? `New app version ${shellVersion}` : 'New app version available'}
+                        </span>
+                        <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
+                          The app itself updates by downloading and reinstalling.
+                        </span>
+                      </div>
+                      <Button variant="primary" onClick={() => onDownloadShellUpdate(shellUrl)} style={{ cursor: 'pointer' }}>
+                        Download update
+                      </Button>
+                    </div>
+                  )}
+                  {applyError && (
+                    <span style={{ fontSize: 12.5, color: 'var(--warning, #c47f00)' }}>
+                      Update failed. Please try again.
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
           </Section>
         )}
       </div>

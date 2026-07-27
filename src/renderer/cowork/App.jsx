@@ -1522,10 +1522,14 @@ function AppCore() {
     }
   }, [updateApplying, updateStatus]);
 
-  // Shell update = manual reinstall: open the installer download in the browser
-  // (fall back to the downloads site for a platform without a direct URL).
-  const handleDownloadShellUpdate = useCallback(() => {
-    host.openExternal(shellUpdate?.downloadUrl || 'https://downloads.mindshub.ai');
+  // Shell update = manual reinstall: open the installer download in the browser.
+  // An explicit URL wins (the Settings "Check for updates" result passes the one
+  // it found); otherwise use the poll-notice URL, falling back to the downloads
+  // site. The `typeof` guard ignores the click event a bare onClick handler
+  // passes as the first arg (e.g. the sidebar's Download button).
+  const handleDownloadShellUpdate = useCallback((url) => {
+    const explicit = typeof url === 'string' && url ? url : null;
+    host.openExternal(explicit || shellUpdate?.downloadUrl || 'https://downloads.mindshub.ai');
   }, [shellUpdate]);
 
   const dismissShellUpdate = useCallback(() => {
