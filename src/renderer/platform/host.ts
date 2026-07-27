@@ -15,8 +15,14 @@
 
 import type { ServerStartErrorKind } from '../../shared/server-status';
 import type { UpdateCheckSummary } from '../../shared/update-types';
+import { parseCalVer, compareCalVer } from '../../shared/version';
 
 const ANTON_SERVER_PORT = 26866;
+
+// The release manifest (same URL main's ui-updater defaults to). Hardcoded on
+// purpose: the renderer-side shell check exists precisely for shells too old to
+// tell us the manifest URL over the bridge (ENG-1103).
+const SHELL_MANIFEST_URL = 'https://mindsdb.github.io/antontron-releases/latest.json';
 
 type Bridge = typeof window extends { antontron?: infer T } ? T : never;
 
@@ -465,17 +471,78 @@ export interface ShellUpdate {
   downloadUrl?: string;
 }
 
-// Pull the cached notice after reload; old shells and web degrade to null.
+// Resolve the shell (installer) update notice.
+//
+// New shells (ENG-849): pull the last-known status from main. The notice is
+// normally pushed via onUpdateStatus('shell-available'), but an OTA reload
+// re-mounts the renderer and drops that push; re-pulling on mount re-surfaces a
+// pending reinstall.
+//
+// Old shells (ENG-1103): a shell that predates the getShellUpdate bridge never
+// pushes or serves the notice, so a user stranded on it would never be told a
+// newer app version exists — even while their UI keeps hot-updating over OTA.
+// This code rides that OTA bundle, so on those shells we fall back to a
+// renderer-side check: fetch the manifest ourselves and compare shellVersion
+// against the installed app version. New shells never take this path (they have
+// the bridge), so there's no double-notify. Web has no shell → null.
 export async function getShellUpdate(): Promise<ShellUpdate | null> {
   if (isElectron && typeof bridge.getShellUpdate === 'function') {
     const s = await bridge.getShellUpdate();
-    if (s?.available && s.latestVersion) {
-      return { version: s.latestVersion, currentVersion: s.currentVersion, downloadUrl: s.downloadUrl ?? undefined };
-    }
+    return s?.available && s.latestVersion
+      ? { version: s.latestVersion, currentVersion: s.currentVersion, downloadUrl: s.downloadUrl ?? undefined }
+      : null;
   }
+  if (isElectron) return shellUpdateFromManifest();
   return null;
 }
 
+// Renderer-side shell-update check for old shells (ENG-1103). Fetches the
+// release manifest directly (the CSP in index.html allows the manifest host)
+// and reports a reinstall only when the published shell is strictly newer by
+// CalVer than the installed app version — failing closed on any fetch error,
+// missing/absent shellVersion, or a non-CalVer version (e.g. a dev/SemVer
+// build). No installer URL is returned: computing the exact per-platform link
+// needs the build kind, which an old shell doesn't expose, so the Download
+// action falls back to the downloads site.
+async function shellUpdateFromManifest(): Promise<ShellUpdate | null> {
+  try {
+    const res = await fetch(SHELL_MANIFEST_URL, { cache: 'no-store' });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const latest = data?.shellVersion ?? data?.shell_version
+      ?? (data?.shell && typeof data.shell === 'object' ? data.shell.version : undefined);
+    if (typeof latest !== 'string' || !latest) return null;
+    const { app: installed } = await getVersionInfo();
+    const l = parseCalVer(latest);
+    const i = parseCalVer(installed);
+    if (!l || !i || compareCalVer(l, i) <= 0) return null;
+    return { version: latest, currentVersion: installed };
+  } catch {
+    return null;
+  }
+}
+
+function mergeShellUpdate(
+  summary: UpdateCheckSummary,
+  shell: ShellUpdate | null,
+): UpdateCheckSummary {
+  if (!shell) return summary;
+  return {
+    ...summary,
+    ok: true,
+    offline: false,
+    updateAvailable: true,
+    shellUpdateAvailable: true,
+    shellVersion: shell.version,
+    ...(shell.downloadUrl ? { shellDownloadUrl: shell.downloadUrl } : {}),
+  };
+}
+
+// On-demand check for a newer UI, server, or shell version. Detection only —
+// never applies; call applyUpdate() (UI/server) or download the installer
+// (shell). Electron-only: the web app has no updater (hosted instances update
+// via redeploy, ENG-852), so it resolves to a benign "up to date" and the
+// Settings control is hidden there.
 export async function checkForUpdates(): Promise<UpdateCheckSummary> {
   if (isElectron && typeof bridge.checkForUpdate === 'function') {
     const reply = await bridge.checkForUpdate();
@@ -486,9 +553,11 @@ export async function checkForUpdates(): Promise<UpdateCheckSummary> {
     // An OTA-updated renderer can still be hosted by an older Electron shell,
     // whose UI_UPDATE_CHECK reply predates the unified UI/server/shell summary.
     // Normalize that UI-only shape so Settings does not mistake a missing `ok`
-    // field for a failed check.
+    // field for a failed check. The old reply cannot report shell updates, so
+    // merge the renderer-side manifest result as well; otherwise a manual check
+    // would override the mount-time notice and incorrectly say "up to date."
     const uiUpdateAvailable = !!reply?.updateAvailable;
-    return {
+    const summary: UpdateCheckSummary = {
       ok: true,
       offline: false,
       updateAvailable: uiUpdateAvailable,
@@ -497,8 +566,9 @@ export async function checkForUpdates(): Promise<UpdateCheckSummary> {
       shellUpdateAvailable: false,
       ...(typeof reply?.newVersion === 'string' ? { uiVersion: reply.newVersion } : {}),
     };
+    return mergeShellUpdate(summary, await getShellUpdate());
   }
-  return {
+  const summary: UpdateCheckSummary = {
     ok: true,
     offline: false,
     updateAvailable: false,
@@ -506,6 +576,9 @@ export async function checkForUpdates(): Promise<UpdateCheckSummary> {
     serverUpdateAvailable: false,
     shellUpdateAvailable: false,
   };
+  return isElectron
+    ? mergeShellUpdate(summary, await getShellUpdate())
+    : summary;
 }
 
 // ---- OAuth (Electron-only PKCE flow) -----------------------------------
