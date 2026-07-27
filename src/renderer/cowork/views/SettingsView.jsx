@@ -2438,7 +2438,7 @@ export default function SettingsView({
         {isElectron && (
           <Section
             title="Software updates"
-            subtitle="Check now for a newer version. UI and server updates apply in place; a new app version installs by downloading and reinstalling."
+            subtitle="UI and server updates apply automatically when the app restarts. Only a new app version has to be downloaded and reinstalled by hand."
           >
             {(() => {
               const r = checkResult;
@@ -2465,8 +2465,10 @@ export default function SettingsView({
               }
               const isError = !!r && !r.ok;
               const isUpToDate = !checkingUpdates && !!r && r.ok && !r.updateAvailable;
-              // UI/server apply in place; the shell is download-only, so keep it
-              // out of the "Update now" apply path.
+              // UI/server updates are applied by restarting the app (server
+              // restart + renderer reload), framed as a restart rather than a
+              // version to manage; the shell is download-only and keeps the
+              // "new version" framing, so keep it out of this apply path.
               const applyAvailable = !checkingUpdates && !!r && r.ok && (r.uiUpdateAvailable || r.serverUpdateAvailable);
               const busy = checkingUpdates || applyingUpdate;
               const parts = [];
@@ -2494,10 +2496,10 @@ export default function SettingsView({
                   {applyAvailable && (
                     <div style={UPDATE_CARD_STYLE}>
                       <div style={UPDATE_CARD_BODY_STYLE}>
-                        <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-strong)' }}>Update available</span>
-                        {parts.length > 0 && (
-                          <span style={{ fontSize: 11.5, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{parts.join('   ')}</span>
-                        )}
+                        <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-strong)' }}>Update ready</span>
+                        <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
+                          Restart the app to apply it{parts.length > 0 ? ` (${parts.join(', ')})` : ''}.
+                        </span>
                       </div>
                       <Button
                         variant="primary"
@@ -2505,7 +2507,7 @@ export default function SettingsView({
                         disabled={applyingUpdate}
                         style={{ cursor: applyingUpdate ? 'default' : 'pointer', opacity: applyingUpdate ? 0.7 : 1 }}
                       >
-                        {applyingUpdate ? 'Updating…' : applyError ? 'Try again' : 'Update now'}
+                        {applyingUpdate ? 'Restarting…' : applyError ? 'Try again' : 'Restart now'}
                       </Button>
                     </div>
                   )}
@@ -2526,7 +2528,7 @@ export default function SettingsView({
                   )}
                   {applyError && (
                     <span style={{ fontSize: 12.5, color: 'var(--warning, #c47f00)' }}>
-                      Update failed. Please try again.
+                      Couldn't apply the update. Please try again.
                     </span>
                   )}
                 </div>

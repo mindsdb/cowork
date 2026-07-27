@@ -247,9 +247,9 @@ export default function Sidebar({
   updateAvailable = null, // { version: string } or null
   onApplyUpdate,
   // Shell (installer) update notice (ENG-849): { version, currentVersion,
-  // downloadUrl } or null. Distinct from updateAvailable — the shell only
-  // updates via a manual reinstall, so this offers a download link + dismiss,
-  // never an in-place "Install".
+  // downloadUrl } or null. Distinct from updateAvailable — UI/server updates
+  // apply by restarting the app, but the shell only updates via a manual
+  // reinstall, so this offers a download link + dismiss, never a "Restart".
   shellUpdate = null,
   onDownloadShellUpdate,
   onDismissShellUpdate,
@@ -799,7 +799,7 @@ export default function Sidebar({
               flex: 1, fontSize: 11.5, color: 'var(--text-strong)',
               fontFamily: 'var(--font-sans)',
             }}>
-              Update available{updateAvailable.version ? ` (${updateAvailable.version})` : ''}
+              Update ready{updateAvailable.version ? ` (${updateAvailable.version})` : ''}
             </span>
             <span style={{
               fontSize: 10, color: 'var(--sage-500, #5D9287)',
@@ -808,7 +808,7 @@ export default function Sidebar({
               textTransform: 'uppercase',
               fontWeight: 600,
             }}>
-              Install
+              Restart
             </span>
           </button>
         )}

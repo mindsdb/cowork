@@ -32,6 +32,7 @@ vi.mock('../lib/analytics', () => ({
 vi.mock('./ChannelsView', () => ({ default: () => <div data-testid="channels-stub" /> }));
 
 import SettingsView from './SettingsView';
+import { host } from '../../platform/host';
 
 const baseProps = {
   settings: {}, setSetting: vi.fn(), onSave: vi.fn(),
@@ -62,6 +63,22 @@ describe('SettingsView desktop — shell reinstall download (ENG-849)', () => {
 
   it('shows no reinstall notice when nothing is pending', () => {
     render(<SettingsView {...baseProps} shellUpdate={null} onDownloadShellUpdate={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: /Download update/ })).toBeNull();
+  });
+});
+
+describe('SettingsView desktop — UI/server updates framed as a restart', () => {
+  it('presents a pending UI/server update as "Restart now", not the shell\'s download/version wording', async () => {
+    host.checkForUpdates.mockResolvedValueOnce({
+      ok: true, offline: false, updateAvailable: true,
+      uiUpdateAvailable: true, uiVersion: '2.26.7.20.1',
+      serverUpdateAvailable: false, shellUpdateAvailable: false,
+    });
+    render(<SettingsView {...baseProps} shellUpdate={null} onDownloadShellUpdate={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /Check for updates/ }));
+    // UI/server updates apply by restarting the app — reserve download/version
+    // language for the shell reinstall path.
+    expect(await screen.findByRole('button', { name: /Restart now/ })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Download update/ })).toBeNull();
   });
 });

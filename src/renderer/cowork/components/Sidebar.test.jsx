@@ -133,23 +133,23 @@ describe('Sidebar — update banners (ENG-849: shell reinstall supersedes OTA)',
     hostMock.isWeb = false;
   });
 
-  it('shows the OTA "Update available" banner when only an OTA update is pending', () => {
+  it('shows the OTA "Update ready" (restart) banner when only an OTA update is pending', () => {
     render(<Sidebar {...baseProps} serverOnline updateAvailable={{ version: '1.2.3' }} />);
-    expect(screen.getByRole('button', { name: /Update available/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Update ready/ })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /New version available/ })).toBeNull();
   });
 
   it('shows the shell reinstall notice when only a shell update is pending', () => {
     render(<Sidebar {...baseProps} serverOnline shellUpdate={{ version: '2.0.0' }} />);
     expect(screen.getByRole('button', { name: /New version available/ })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Update available/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Update ready/ })).toBeNull();
   });
 
   it('suppresses the OTA banner while a shell reinstall is pending (no double banner)', () => {
     render(
       <Sidebar {...baseProps} serverOnline updateAvailable={{ version: '1.2.3' }} shellUpdate={{ version: '2.0.0' }} />
     );
-    expect(screen.queryByRole('button', { name: /Update available/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Update ready/ })).toBeNull();
     expect(screen.getByRole('button', { name: /New version available/ })).toBeInTheDocument();
   });
 });
