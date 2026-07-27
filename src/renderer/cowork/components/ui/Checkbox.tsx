@@ -66,7 +66,7 @@ export function Checkbox({
       indeterminate={indeterminate}
       className={cn(
         boxVariants({ size }),
-        'border-[var(--stone-400)] bg-[var(--surface)] text-[var(--ink-3)]',
+        'border-[var(--border-strong)] bg-[var(--surface)] text-[var(--ink-3)]',
         'data-[checked]:border-[var(--primary-700)] data-[checked]:bg-[var(--primary-700)] data-[checked]:text-white',
         'data-[indeterminate]:border-[var(--primary-700)] data-[indeterminate]:bg-[var(--primary-700)] data-[indeterminate]:text-white',
         'focus-visible:ring-2 focus-visible:ring-[var(--primary-700)]/40',
