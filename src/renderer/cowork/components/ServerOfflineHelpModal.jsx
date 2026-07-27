@@ -7,6 +7,7 @@
 import { useEffect, useState } from 'react';
 import Ico from './Icons';
 import { Button } from './ui';
+import { Modal } from './ui/Modal';
 import { host } from '../../platform/host';
 import { backendFailureCopy, exitCodeLabel } from '../../../shared/server-status';
 
@@ -52,14 +53,7 @@ export default function ServerOfflineHelpModal({
     return () => { cancelled = true; };
   }, [open]);
 
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e) => { if (e.key === 'Escape') onClose?.(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
-
-  if (!open) return null;
+  // Esc + backdrop dismissal are handled by <Modal>.
 
   const error = diag?.lastError;
   const log = (diag?.recentLog || '').trim();
@@ -207,30 +201,14 @@ export default function ServerOfflineHelpModal({
   };
 
   return (
-    <div
-      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }}
-      style={{
-        position: 'fixed', inset: 0, zIndex: 90,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: 'rgba(0,0,0,0.45)',
-        backdropFilter: 'blur(2px)',
-        WebkitBackdropFilter: 'blur(2px)',
-        WebkitAppRegion: 'no-drag',
-      }}
+    <Modal
+      open={open}
+      onClose={onClose}
+      size="md"
+      width="min(640px, 92vw)"
+      maxHeight="min(640px, 88vh)"
+      ariaLabel={HEADER.title}
     >
-      <div
-        onMouseDown={(e) => e.stopPropagation()}
-        style={{
-          width: 'min(640px, 92vw)',
-          maxHeight: 'min(640px, 88vh)',
-          background: 'var(--surface)',
-          border: '1px solid var(--line)',
-          borderRadius: 14,
-          boxShadow: 'var(--sh-modal)',
-          display: 'flex', flexDirection: 'column', overflow: 'hidden',
-          fontFamily: FONT_BODY,
-        }}
-      >
         <div style={{
           display: 'flex', alignItems: 'flex-start', gap: 12,
           padding: '16px 18px',
@@ -419,7 +397,6 @@ export default function ServerOfflineHelpModal({
             </Button>
           )}
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
