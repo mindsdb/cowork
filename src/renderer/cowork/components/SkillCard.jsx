@@ -71,7 +71,7 @@ export default function SkillCard({ skill, projectName }) {
   // A draft is NOT in the skills store until the user Saves it — the agent may
   // narrate "saved" while the card is still just a draft (ENG-645 RC #2). Show
   // the truth: saved this session, or already in the store, else an unsaved draft.
-  const isSaved = saved || (Array.isArray(skills) && skills.some((s) => s.id === slug));
+  const isSaved = saved || (Array.isArray(skills) && skills.some((s) => s.label === slug));
 
   const handleDownload = (e) => {
     e.stopPropagation();
@@ -98,7 +98,7 @@ export default function SkillCard({ skill, projectName }) {
       ...(projectName && { projects: [projectName] }),
     };
     // A saved skill with this slug → PUT (overwrite, scope included); else POST.
-    const exists = Array.isArray(skills) && skills.some((s) => s.id === slug);
+    const exists = Array.isArray(skills) && skills.some((s) => s.label === slug);
 
     const markSaved = () => {
       setSaved(true);
