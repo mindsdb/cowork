@@ -7,7 +7,7 @@
 
 import { useEffect, useState } from 'react';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
-import { Button, Select } from '../ui';
+import { Button, Select, Input, Textarea } from '../ui';
 import Ico from '../Icons';
 
 const FONT_BODY = 'var(--font-body)';
@@ -184,10 +184,9 @@ export default function ScheduleTaskModal({
       <ModalBody padding="18px 20px">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <Field label="Title">
-            <input
-              type="text"
+            <Input
               value={form.title}
-              onChange={(e) => update('title', e.target.value)}
+              onChange={(v) => update('title', v)}
               placeholder="Weekly metrics summary"
               autoFocus
               style={fieldInput}
@@ -211,11 +210,11 @@ export default function ScheduleTaskModal({
               />
             </Field>
             <Field label="Next run">
-              <input
+              <Input
                 type="datetime-local"
                 value={form.nextRunAt}
                 min={toLocalInput(new Date().toISOString())}
-                onChange={(e) => update('nextRunAt', e.target.value)}
+                onChange={(v) => update('nextRunAt', v)}
                 style={fieldInput}
               />
             </Field>
@@ -251,9 +250,9 @@ export default function ScheduleTaskModal({
           </div>
 
           <Field label="Prompt">
-            <textarea
+            <Textarea
               value={form.prompt}
-              onChange={(e) => update('prompt', e.target.value)}
+              onChange={(v) => update('prompt', v)}
               placeholder={`Ask ${agentLabel} to…`}
               rows={6}
               style={{ ...fieldInput, resize: 'vertical', lineHeight: 1.45 }}

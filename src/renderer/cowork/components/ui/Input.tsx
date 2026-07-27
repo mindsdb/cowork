@@ -10,8 +10,9 @@
 //   <Input variant="mono" size="sm" />
 //   <Textarea value={v} onChange={(next) => ...} rows={4} />
 
+import { forwardRef } from 'react';
 import { Input as BaseInput } from '@base-ui/react/input';
-import type { ChangeEvent, ComponentPropsWithoutRef } from 'react';
+import type { ChangeEvent, ComponentPropsWithoutRef, ComponentRef } from 'react';
 
 export type InputVariant = 'mono';
 export type InputSize = 'sm';
@@ -26,7 +27,9 @@ export interface InputProps
   className?: string;
 }
 
-export function Input({ value, onChange, variant, size, className = '', ...rest }: InputProps) {
+export const Input = forwardRef<ComponentRef<typeof BaseInput>, InputProps>(function Input(
+  { value, onChange, variant, size, className = '', ...rest }, ref,
+) {
   const classes = [
     'field-input',
     variant === 'mono' ? 'mono' : '',
@@ -35,13 +38,15 @@ export function Input({ value, onChange, variant, size, className = '', ...rest 
   ].filter(Boolean).join(' ');
   return (
     <BaseInput
+      ref={ref}
       className={classes}
       value={value ?? ''}
       onChange={(e) => onChange?.(e.target.value, e)}
       {...rest}
     />
   );
-}
+});
+Input.displayName = 'Input';
 
 export interface TextareaProps
   extends Omit<ComponentPropsWithoutRef<'textarea'>, 'onChange' | 'value'> {
@@ -51,7 +56,9 @@ export interface TextareaProps
   className?: string;
 }
 
-export function Textarea({ value, onChange, variant, className = '', ...rest }: TextareaProps) {
+export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function Textarea(
+  { value, onChange, variant, className = '', ...rest }, ref,
+) {
   const classes = [
     'field-textarea',
     variant === 'mono' ? 'mono' : '',
@@ -59,12 +66,14 @@ export function Textarea({ value, onChange, variant, className = '', ...rest }: 
   ].filter(Boolean).join(' ');
   return (
     <textarea
+      ref={ref}
       className={classes}
       value={value ?? ''}
       onChange={(e) => onChange?.(e.target.value, e)}
       {...rest}
     />
   );
-}
+});
+Textarea.displayName = 'Textarea';
 
 export default Input;
