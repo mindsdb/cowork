@@ -118,4 +118,7 @@ jobs:
   #         image-tag: ${{ inputs.build-environment }}-${{ env.SLUG }}
   #         timeout: 600s
   #         wait: "true"
-  #     - run: kubectl -n <env> wait --for=condition=ready --timeout=10m pod -l app=cowork-frontend
+  #     # rollout status, not `wait ... pod -l <selector>`: the selector also
+  #     # matches the old ReplicaSet's terminating pods, and `wait` fails when one
+  #     # disappears mid-wait even though the deploy succeeded.
+  #     - run: kubectl -n <env> rollout status deployment/cowork-frontend --timeout=10m
