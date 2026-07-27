@@ -643,6 +643,10 @@ export default function SettingsView({
   // Settings is a deliberate visit, so it always reflects the true state.
   shellUpdate = null,
   onDownloadShellUpdate,
+  shellAutoUpdate = null,
+  onDownloadShellAutoUpdate,
+  onInstallShellAutoUpdate,
+  onRetryShellAutoUpdate,
 }) {
   const [saved, setSaved] = useState(false);
   const [validation, setValidation] = useState(null);
@@ -2136,6 +2140,10 @@ export default function SettingsView({
       serverOnline={serverOnline}
       shellUpdate={shellUpdate}
       onDownloadShellUpdate={onDownloadShellUpdate}
+      shellAutoUpdate={shellAutoUpdate}
+      onDownloadShellAutoUpdate={onDownloadShellAutoUpdate}
+      onInstallShellAutoUpdate={onInstallShellAutoUpdate}
+      onRetryShellAutoUpdate={onRetryShellAutoUpdate}
     />
   );
 

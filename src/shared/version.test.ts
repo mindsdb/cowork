@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   calVerToUpdaterSemVer,
+  compareUpdaterSemVer,
   parseCalVer,
   calverDate,
   compareCalVer,
@@ -65,6 +66,16 @@ describe('calVerToUpdaterSemVer', () => {
     expect(calVerToUpdaterSemVer('2.26.2.32.1')).toBeNull();
     expect(calVerToUpdaterSemVer('2.2026.7.27.1')).toBeNull();
     expect(calVerToUpdaterSemVer(null)).toBeNull();
+  });
+});
+
+describe('compareUpdaterSemVer', () => {
+  it('orders releases and prerelease distances', () => {
+    expect(compareUpdaterSemVer('2.260728.1', '2.260727.9')).toBeGreaterThan(0);
+    expect(compareUpdaterSemVer('2.260727.2', '2.260727.1')).toBeGreaterThan(0);
+    expect(compareUpdaterSemVer('2.260727.1-4.gbbbb', '2.260727.1-3.gaaaa')).toBeGreaterThan(0);
+    expect(compareUpdaterSemVer('2.260727.1', '2.260727.1-4.gbbbb')).toBeGreaterThan(0);
+    expect(compareUpdaterSemVer('invalid', '2.260727.1')).toBeNull();
   });
 });
 

@@ -14,6 +14,13 @@ import { decideUpdateApply, summarizeUpdateCheck, shellUpdateIsNewer, shellDownl
 import type { UpdateCheckSummary } from '../shared/update-types';
 import { buildKindStrict } from './cowork-home';
 import { getAppDisplayVersion } from './server-source';
+import {
+  checkShellAutoUpdate,
+  configureShellAutoUpdate,
+  registerShellAutoUpdateHandlers,
+  startShellAutoUpdatePolling,
+} from './shell-auto-update-runtime';
+import { withUpdateMaintenance } from './update-maintenance';
 
 const UPDATE_POLL_MS = 4 * 60 * 60 * 1000; // 4 hours
 // How long a freshly-activated UI bundle has to finish loading before we treat
@@ -124,7 +131,7 @@ async function reloadWithUiHealthCheck(getWindow: GetWindow): Promise<void> {
 // Apply server (if requested) then UI, and reload if either landed. Shared by
 // the manual IPC apply and the boot/periodic poll. Args are "apply this",
 // already resolved against update mode + server health by the caller.
-async function applyUpdates(getWindow: GetWindow, applyServer: boolean, applyUi: boolean): Promise<boolean> {
+async function applyUpdatesUnlocked(getWindow: GetWindow, applyServer: boolean, applyUi: boolean): Promise<boolean> {
   const serverOk = applyServer ? await applyServerUpdate() : true;
   // Never activate a UI bundle on top of a server update that failed (and thus
   // rolled back to the old server) — the tandem coupling only holds when the
@@ -141,6 +148,10 @@ async function applyUpdates(getWindow: GetWindow, applyServer: boolean, applyUi:
   return uiApplied || (applyServer && serverOk);
 }
 
+function applyUpdates(getWindow: GetWindow, applyServer: boolean, applyUi: boolean): Promise<boolean> {
+  return withUpdateMaintenance(() => applyUpdatesUnlocked(getWindow, applyServer, applyUi));
+}
+
 // Detection only. Each channel reports its own errors so a confirmed update can
 // still win when another channel is inconclusive.
 export async function checkForUpdates(): Promise<UpdateCheckSummary> {
@@ -148,6 +159,10 @@ export async function checkForUpdates(): Promise<UpdateCheckSummary> {
     checkForUIUpdate(),
     checkForServerUpdate(),
     checkForShellUpdate().catch(() => ({ available: false as const })),
+    // The stateful shell updater owns background download/install. Its
+    // snapshot is exposed separately; this call only coalesces the user's
+    // manual trigger with any boot/periodic check already in flight.
+    checkShellAutoUpdate('manual').catch(() => undefined),
   ]);
   return summarizeUpdateCheck({
     ui: { updateAvailable: ui.updateAvailable, newVersion: ui.newVersion, error: ui.error },
@@ -169,6 +184,7 @@ export function registerUpdateHandlers(getWindow: GetWindow) {
     const server = await checkForServerUpdate();
     return applyUpdates(getWindow, server.updateAvailable, true);
   });
+  registerShellAutoUpdateHandlers();
 }
 
 // After the boot poll (server now current), re-verify a constrained OTA cache
@@ -217,7 +233,15 @@ export function initUpdater(
   getWindow: GetWindow,
   rendererReady: Promise<void>,
   getMode: () => 'auto' | 'manual',
+  shellAutoUpdateEnabled = false,
 ) {
+  configureShellAutoUpdate({
+    enabled: shellAutoUpdateEnabled,
+    getWindow,
+    getMode,
+  });
+  startShellAutoUpdatePolling(rendererReady);
+
   async function poll(autoApply: boolean) {
     // hasInternet() probes the OTA manifest host (GitHub Pages). The server
     // update lives on different hosts (git remote / PyPI) with its own

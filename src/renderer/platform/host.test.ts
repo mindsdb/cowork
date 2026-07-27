@@ -324,6 +324,25 @@ describe('electron mode (bridge present)', () => {
     });
   });
 
+  it('bridges the authoritative shell auto-update snapshot and commands', async () => {
+    const snapshot = {
+      phase: 'ready-to-install' as const,
+      mode: 'auto' as const,
+      channel: 'prod' as const,
+      currentVersion: '2.260713.1',
+      targetVersion: '2.260720.1',
+    };
+    const installShellAutoUpdate = vi.fn(async () => true);
+    (window as unknown as Record<string, unknown>).antontron = {
+      getShellAutoUpdate: async () => snapshot,
+      installShellAutoUpdate,
+    };
+    const mod = await importHost();
+    await expect(mod.host.getShellAutoUpdate()).resolves.toEqual(snapshot);
+    await expect(mod.host.installShellAutoUpdate()).resolves.toBe(true);
+    expect(installShellAutoUpdate).toHaveBeenCalledTimes(1);
+  });
+
   it('getVersionInfo degrades to web facts when the bridge lacks the method', async () => {
     (window as unknown as Record<string, unknown>).antontron = {}; // partial bridge
     const host = await importHost();

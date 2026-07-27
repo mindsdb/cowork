@@ -106,6 +106,25 @@ export function calVerToUpdaterSemVer(raw: string | null | undefined): string | 
   return distance === null ? base : `${base}-${distance}.g${sha}`;
 }
 
+const UPDATER_SEMVER_RE = /^(\d+)\.(\d+)\.(\d+)(?:-(\d+)\.g[0-9a-f]+)?$/i;
+
+/** Compare the constrained SemVer shape emitted by calVerToUpdaterSemVer. */
+export function compareUpdaterSemVer(a: string, b: string): number | null {
+  const left = UPDATER_SEMVER_RE.exec(a);
+  const right = UPDATER_SEMVER_RE.exec(b);
+  if (!left || !right) return null;
+  for (let index = 1; index <= 3; index += 1) {
+    const delta = Number(left[index]) - Number(right[index]);
+    if (delta !== 0) return delta;
+  }
+  const leftDistance = left[4] === undefined ? null : Number(left[4]);
+  const rightDistance = right[4] === undefined ? null : Number(right[4]);
+  if (leftDistance === rightDistance) return 0;
+  if (leftDistance === null) return 1;
+  if (rightDistance === null) return -1;
+  return leftDistance - rightDistance;
+}
+
 /** The newest of a set of version strings (unparseable entries ignored). */
 export function newestCalVer(raws: (string | null | undefined)[]): CalVer | null {
   const xs = raws.map(parseCalVer).filter((v): v is CalVer => v !== null);

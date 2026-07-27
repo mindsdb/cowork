@@ -538,6 +538,63 @@ function mergeShellUpdate(
   };
 }
 
+export interface ShellAutoUpdateSnapshot {
+  phase: 'disabled' | 'idle' | 'checking' | 'available' | 'downloading' |
+    'ready-to-install' | 'installing' | 'complete' | 'failed';
+  mode: 'auto' | 'manual';
+  channel: 'prod' | 'stable' | 'preview';
+  currentVersion: string;
+  targetVersion?: string;
+  progress?: { transferred: number; total: number; percent: number; bytesPerSecond?: number };
+  recoverable?: boolean;
+  errorCode?: string;
+  errorMessage?: string;
+  disabledReason?: string;
+}
+
+const DISABLED_SHELL_AUTO_UPDATE: ShellAutoUpdateSnapshot = {
+  phase: 'disabled',
+  mode: 'manual',
+  channel: 'preview',
+  currentVersion: '',
+  disabledReason: 'unavailable',
+};
+
+export async function getShellAutoUpdate(): Promise<ShellAutoUpdateSnapshot> {
+  if (isElectron && typeof bridge.getShellAutoUpdate === 'function') {
+    return bridge.getShellAutoUpdate();
+  }
+  return DISABLED_SHELL_AUTO_UPDATE;
+}
+
+export function onShellAutoUpdate(cb: (snapshot: ShellAutoUpdateSnapshot) => void): () => void {
+  if (isElectron && typeof bridge.onShellAutoUpdate === 'function') {
+    return bridge.onShellAutoUpdate(cb);
+  }
+  return () => {};
+}
+
+export async function checkShellAutoUpdate(): Promise<ShellAutoUpdateSnapshot> {
+  if (isElectron && typeof bridge.checkShellAutoUpdate === 'function') {
+    return bridge.checkShellAutoUpdate();
+  }
+  return DISABLED_SHELL_AUTO_UPDATE;
+}
+
+export async function downloadShellAutoUpdate(): Promise<ShellAutoUpdateSnapshot> {
+  if (isElectron && typeof bridge.downloadShellAutoUpdate === 'function') {
+    return bridge.downloadShellAutoUpdate();
+  }
+  return DISABLED_SHELL_AUTO_UPDATE;
+}
+
+export async function installShellAutoUpdate(): Promise<boolean> {
+  if (isElectron && typeof bridge.installShellAutoUpdate === 'function') {
+    return bridge.installShellAutoUpdate();
+  }
+  return false;
+}
+
 // On-demand check for a newer UI, server, or shell version. Detection only —
 // never applies; call applyUpdate() (UI/server) or download the installer
 // (shell). Electron-only: the web app has no updater (hosted instances update
@@ -821,6 +878,11 @@ export const host = {
   applyUpdate,
   checkForUpdates,
   getShellUpdate,
+  getShellAutoUpdate,
+  onShellAutoUpdate,
+  checkShellAutoUpdate,
+  downloadShellAutoUpdate,
+  installShellAutoUpdate,
   oauthConnect,
   oauthCancel,
   mindshubLogin,
