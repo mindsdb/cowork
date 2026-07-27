@@ -22,7 +22,8 @@ import { MINDS_API_HOST } from './minds-urls';
 import { sendEvent } from './analytics';
 import { getRendererPath, getBundledPath, checkForUIUpdate, applyUIUpdate, hasInternet, getCachedVersion, isServingOta, rollbackUI } from './ui-updater';
 import type { UpdateCheckResult } from './ui-updater';
-import { coworkHome, coworkEnvPath, coworkStatePath, migrateLegacyHome, readEnvFile } from './cowork-home';
+import { buildKindStrict, coworkHome, coworkEnvPath, coworkStatePath, migrateLegacyHome, readEnvFile } from './cowork-home';
+import { shellAutoUpdateEnabledFor } from './shell-auto-update-rollout';
 import { getServerAuthToken, authHeader, resetServerAuthTokenCache } from './server-auth';
 import { getAppDisplayVersion } from './server-source';
 import { unifiedVersion, SKEW_WARN_DAYS } from '../shared/version';
@@ -79,12 +80,10 @@ function getUpdateMode(): 'auto' | 'manual' {
   return vars.UI_UPDATE_MODE === 'manual' ? 'manual' : 'auto';
 }
 
-/** Hidden QA gate for ENG-850. The rollout PR will change the default after
- * signed N → N+1 smoke tests pass; until then packaged builds remain on the
- * ENG-849 manual-download fallback unless explicitly opted in. */
+/** Stable-first ENG-850 rollout with an environment kill switch. */
 function shellAutoUpdateEnabled(): boolean {
   const vars = readEnvFile();
-  return vars.SHELL_AUTO_UPDATE_ENABLED === '1' || vars.SHELL_AUTO_UPDATE_ENABLED === 'true';
+  return shellAutoUpdateEnabledFor(buildKindStrict(), vars.SHELL_AUTO_UPDATE_ENABLED);
 }
 
 // Resolves once the boot-time server start has settled (server up, or

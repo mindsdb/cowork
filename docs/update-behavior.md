@@ -80,10 +80,11 @@ installer. So the app can't apply a shell update; it can only *notice* one:
 ## Shell automatic update lifecycle (ENG-850)
 
 Eligible packaged prod/stable builds contain a channel-specific
-`electron-updater` feed. The runtime is rollout-gated by
-`SHELL_AUTO_UPDATE_ENABLED=1|true` until signed N → N+1 smoke tests pass.
-Without that flag, the ENG-849 manual installer notice above remains the
-authoritative fallback.
+`electron-updater` feed. Stable is the first automatic-update rollout ring;
+prod remains disabled by default until stable completes signed N → N+1 smoke
+testing and its observation window. `SHELL_AUTO_UPDATE_ENABLED=false` is the
+emergency stable kill switch, while `true` explicitly opts prod into QA. The
+ENG-849 manual installer notice remains the disabled/failure fallback.
 
 When enabled, main owns one immutable shell-update snapshot:
 
