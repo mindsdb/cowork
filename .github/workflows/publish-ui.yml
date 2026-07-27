@@ -188,10 +188,19 @@ jobs:
           msv = os.environ.get('MIN_SERVER_VERSION', '').strip()
           if msv:
               data['min_server_version'] = msv
-          # Shell (installer) version — only present on the auto-release path,
-          # where a prod installer actually shipped (ENG-849). Its absence means
-          # 'no new installer', so the client shows no reinstall notice.
+          # Shell (installer) version (ENG-849). A new installer only ships on
+          # the auto-release path, which passes SHELL_VERSION. On a UI-only
+          # publish it's empty — carry over the last-published shellVersion
+          # rather than dropping it, or users on an older shell would stop
+          # getting the reinstall notice after any UI-only publish. First real
+          # installer sets it; nothing here ever clears a once-published value.
           sv = os.environ.get('SHELL_VERSION', '').strip()
+          if not sv:
+              try:
+                  with open('latest.json') as prev:
+                      sv = (json.load(prev).get('shellVersion') or '').strip()
+              except (FileNotFoundError, ValueError):
+                  sv = ''
           if sv:
               data['shellVersion'] = sv
           with open('latest.json', 'w') as f:

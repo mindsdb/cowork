@@ -748,6 +748,7 @@ export const host = {
   onUpdateStatus,
   applyUpdate,
   checkForUpdates,
+  getShellUpdate,
   oauthConnect,
   oauthCancel,
   mindshubLogin,

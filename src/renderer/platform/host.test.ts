@@ -226,6 +226,15 @@ describe('electron mode (bridge present)', () => {
     await expect(host.getShellUpdate()).resolves.toBeNull();
   });
 
+  it('exposes getShellUpdate on the curated `host` object, not just as a named export', async () => {
+    // App.jsx calls host.getShellUpdate() through the bundled `host` object; a
+    // method present only as a named export would be a runtime TypeError there.
+    (window as unknown as Record<string, unknown>).antontron = { getShellUpdate: async () => ({ available: false }) };
+    const mod = await importHost();
+    expect(typeof mod.host.getShellUpdate).toBe('function');
+    await expect(mod.host.getShellUpdate()).resolves.toBeNull();
+  });
+
   it('getVersionInfo degrades to web facts when the bridge lacks the method', async () => {
     (window as unknown as Record<string, unknown>).antontron = {}; // partial bridge
     const host = await importHost();

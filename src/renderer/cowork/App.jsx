@@ -4137,6 +4137,8 @@ function AppCore() {
                 isSsoConnected={ssoConnected}
                 ssoError={ssoError}
                 onSsoSignIn={!ssoConnected && host.isElectron ? async () => { setSettingsOpen(false); await handleSsoSignIn(); } : undefined}
+                shellUpdate={shellUpdate}
+                onDownloadShellUpdate={handleDownloadShellUpdate}
               />
             </ModalBody>
           </Modal>
