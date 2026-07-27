@@ -24,13 +24,23 @@ const messageVariants = cva(
   },
 );
 
+const MESSAGE_VARIANTS = ['error', 'warning', 'info', 'success'] as const;
+type MessageVariant = (typeof MESSAGE_VARIANTS)[number];
+
 export interface MessageProps
   extends ComponentPropsWithoutRef<'div'>,
     VariantProps<typeof messageVariants> {}
 
 export default function Message({ variant, className, children, ...rest }: MessageProps) {
+  // Runtime fallback: consumers are JavaScript and aren't bound by the TS
+  // union, and cva renders an unknown variant with only the base (unthemed)
+  // classes. Normalize anything outside the known set back to `error`,
+  // preserving the pre-cva behavior.
+  const safeVariant: MessageVariant = MESSAGE_VARIANTS.includes(variant as MessageVariant)
+    ? (variant as MessageVariant)
+    : 'error';
   return (
-    <div className={cn(messageVariants({ variant }), className)} {...rest}>
+    <div className={cn(messageVariants({ variant: safeVariant }), className)} {...rest}>
       {children}
     </div>
   );

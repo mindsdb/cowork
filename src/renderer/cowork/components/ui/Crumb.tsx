@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react';
+import type { ComponentPropsWithoutRef } from 'react';
 import { cn } from '../../lib/cn';
 
 // Breadcrumb primitives. `Crumb` is the clickable ancestor link, `CrumbSep`
@@ -9,27 +9,26 @@ import { cn } from '../../lib/cn';
 // Note the hover treatment is now a `hover:` utility, replacing the old
 // onMouseOver/onMouseOut style-mutation handlers.
 
-export interface CrumbProps {
+export interface CrumbProps extends ComponentPropsWithoutRef<'button'> {
   label: string;
-  onClick?: () => void;
-  title?: string;
   maxWidth?: number | string;
 }
 
-export function Crumb({ label, onClick, title, maxWidth }: CrumbProps) {
+export function Crumb({ label, title, maxWidth, className, style, ...rest }: CrumbProps) {
   return (
     <button
       type="button"
-      onClick={onClick}
       title={title || label}
-      style={{ maxWidth }}
+      style={{ maxWidth, ...style }}
       className={cn(
         'shrink cursor-pointer appearance-none border-0 bg-transparent px-1.5 py-0.5',
         'overflow-hidden text-ellipsis whitespace-nowrap rounded-[5px]',
         'font-display text-[13px] font-semibold tracking-normal text-ink-3',
         'transition-colors duration-[120ms] hover:bg-surface-2 hover:text-ink',
         '[-webkit-app-region:no-drag]',
+        className,
       )}
+      {...rest}
     >
       {label}
     </button>
@@ -47,17 +46,15 @@ export function CrumbSep() {
   );
 }
 
-export interface CrumbCurrentProps {
+export interface CrumbCurrentProps extends ComponentPropsWithoutRef<'span'> {
   label: string;
-  title?: string;
   maxWidth?: number | string;
-  style?: CSSProperties;
 }
 
 // The trailing "you are here" crumb — the current page. Same size (13) and
 // tracking (0) as the link so the row reads as one unit; the only differences
 // are colour (ink, not ink-3) and that it isn't a button.
-export function CrumbCurrent({ label, title, maxWidth, style }: CrumbCurrentProps) {
+export function CrumbCurrent({ label, title, maxWidth, className, style, ...rest }: CrumbCurrentProps) {
   return (
     <span
       title={title || label}
@@ -65,7 +62,9 @@ export function CrumbCurrent({ label, title, maxWidth, style }: CrumbCurrentProp
       className={cn(
         'min-w-0 overflow-hidden text-ellipsis whitespace-nowrap px-1.5 py-0.5',
         'font-display text-[13px] font-semibold tracking-normal text-ink',
+        className,
       )}
+      {...rest}
     >
       {label}
     </span>

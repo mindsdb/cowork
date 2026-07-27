@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { CSSProperties } from 'react';
+import type { ComponentPropsWithoutRef } from 'react';
 import { cn } from '../../lib/cn';
 
 // Braille-dot spinner — the same look as terminal CLIs (e.g. ora, npm).
@@ -9,13 +9,11 @@ import { cn } from '../../lib/cn';
 // No variants, so the convention is plain cn() + Tailwind + TS (not cva).
 const FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
-export interface SpinnerProps {
+export interface SpinnerProps extends ComponentPropsWithoutRef<'span'> {
   intervalMs?: number;
-  className?: string;
-  style?: CSSProperties;
 }
 
-export default function Spinner({ intervalMs = 80, className, style }: SpinnerProps) {
+export default function Spinner({ intervalMs = 80, className, ...rest }: SpinnerProps) {
   const [i, setI] = useState(0);
   useEffect(() => {
     const id = setInterval(() => setI((x) => (x + 1) % FRAMES.length), intervalMs);
@@ -24,8 +22,8 @@ export default function Spinner({ intervalMs = 80, className, style }: SpinnerPr
   return (
     <span
       className={cn('inline-block w-[1ch] text-center font-mono', className)}
-      style={style}
       aria-hidden="true"
+      {...rest}
     >
       {FRAMES[i]}
     </span>
