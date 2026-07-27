@@ -219,6 +219,7 @@ jobs:
           # Activates the build-time channel guard in gen-build-channel.mjs:
           # fail the build if this kind and VITE_MINDS_API_URL target different
           # environments (e.g. preview baked against the prod API).
+          # Also consumed by run-electron-builder.mjs to resolve the shell update feed.
           COWORK_BUILD_KIND: ${{ inputs.build_kind }}
 
       - name: Resolve installer path
@@ -424,6 +425,26 @@ jobs:
           $src = "${{ steps.installer.outputs.exe_path }}"
           $dest = Join-Path $out $name
           Move-Item $src $dest -Force
+
+      # The installer is signed after electron-builder runs. Recompute the
+      # blockmap and latest.yml from the final signed/renamed bytes; publishing
+      # builder's pre-sign metadata would guarantee a sha512 mismatch.
+      - name: Generate shell updater metadata from signed installer
+        if: inputs.build_kind == 'prod' || inputs.build_kind == 'stable'
+        shell: pwsh
+        run: |
+          $name = "${{ steps.name.outputs.artifact_name }}"
+          $exe = Join-Path $env:GITHUB_WORKSPACE "out\$name"
+          $updaterDir = Join-Path $env:GITHUB_WORKSPACE "out\updater"
+          New-Item -ItemType Directory -Path $updaterDir -Force | Out-Null
+          $blockmap = Join-Path $updaterDir "$name.blockmap"
+          $version = (Get-Content "src/main/updater-version.gen.txt" -Raw).Trim()
+          node scripts/write-update-metadata.mjs `
+            --platform windows `
+            --artifact "$exe" `
+            --version "$version" `
+            --output (Join-Path $updaterDir "latest.yml") `
+            --blockmap-output "$blockmap"
 
       - name: Generate installer signing report
         shell: pwsh

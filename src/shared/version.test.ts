@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  calVerToUpdaterSemVer,
   parseCalVer,
   calverDate,
   compareCalVer,
@@ -42,6 +43,28 @@ describe('parseCalVer', () => {
     expect(parseCalVer('')).toBeNull();
     expect(parseCalVer(null)).toBeNull();
     expect(parseCalVer(undefined)).toBeNull();
+  });
+});
+
+describe('calVerToUpdaterSemVer', () => {
+  it('maps tagged display CalVer to an order-preserving SemVer', () => {
+    expect(calVerToUpdaterSemVer('2.26.7.27.1')).toBe('2.260727.1');
+    expect(calVerToUpdaterSemVer('v2.26.12.3.14')).toBe('2.261203.14');
+  });
+
+  it('maps git-describe builds to ordered SemVer prereleases', () => {
+    expect(calVerToUpdaterSemVer('2.26.7.27.1-3-gAbC123'))
+      .toBe('2.260727.1-3.gabc123');
+    expect(calVerToUpdaterSemVer('2.26.7.27.1-14-g00ff00'))
+      .toBe('2.260727.1-14.g00ff00');
+  });
+
+  it('fails closed for malformed or impossible display versions', () => {
+    expect(calVerToUpdaterSemVer('2.0.7')).toBeNull();
+    expect(calVerToUpdaterSemVer('2.26.13.1.1')).toBeNull();
+    expect(calVerToUpdaterSemVer('2.26.2.32.1')).toBeNull();
+    expect(calVerToUpdaterSemVer('2.2026.7.27.1')).toBeNull();
+    expect(calVerToUpdaterSemVer(null)).toBeNull();
   });
 });
 

@@ -65,6 +65,47 @@ export function compareCalVer(a: CalVer, b: CalVer): number {
   return a.distance - b.distance;
 }
 
+const UPDATER_CALVER_RE = /^v?(\d+)\.(\d{2})\.(\d{1,2})\.(\d{1,2})\.(\d+)(?:-(\d+)-g([0-9a-f]+))?$/i;
+
+/**
+ * Convert the five-part display CalVer into the three numeric components
+ * required by electron-updater/SemVer.
+ *
+ *   2.26.7.27.1           -> 2.260727.1
+ *   2.26.7.27.1-3-gabc123 -> 2.260727.1-3.gabc123
+ *
+ * YY, month and day are packed into the SemVer minor component, preserving
+ * chronological ordering; the same-day sequence becomes the patch. Untagged
+ * builds are prereleases ordered by git distance and are isolated by feed.
+ */
+export function calVerToUpdaterSemVer(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const match = UPDATER_CALVER_RE.exec(raw.trim());
+  if (!match) return null;
+
+  const major = Number(match[1]);
+  const yy = Number(match[2]);
+  const month = Number(match[3]);
+  const day = Number(match[4]);
+  const sequence = Number(match[5]);
+  const distance = match[6] === undefined ? null : Number(match[6]);
+  const sha = match[7]?.toLowerCase();
+
+  if (
+    !Number.isSafeInteger(major)
+    || !Number.isSafeInteger(sequence)
+    || sequence < 0
+    || month < 1
+    || month > 12
+    || day < 1
+    || day > 31
+  ) return null;
+
+  const calendar = Number(`${String(yy).padStart(2, '0')}${String(month).padStart(2, '0')}${String(day).padStart(2, '0')}`);
+  const base = `${major}.${calendar}.${sequence}`;
+  return distance === null ? base : `${base}-${distance}.g${sha}`;
+}
+
 /** The newest of a set of version strings (unparseable entries ignored). */
 export function newestCalVer(raws: (string | null | undefined)[]): CalVer | null {
   const xs = raws.map(parseCalVer).filter((v): v is CalVer => v !== null);

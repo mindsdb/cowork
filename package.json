@@ -32,7 +32,7 @@
     "start": "electron dist/main/main/index.js",
     "pack": "npm run build && electron-builder --dir",
     "dist": "npm run build && electron-builder",
-    "dist:mac": "npm run build && electron-builder --mac",
+    "dist:mac": "npm run build && node scripts/run-electron-builder.mjs --mac",
     "dist:mac:unsigned": "bash ./scripts/dist-mac-unsigned.sh",
     "dist:mac:dmg-custom": "bash ./scripts/dist-mac-dmg-custom.sh",
     "release:mac:dmg-custom:notarized": "bash ./scripts/release-mac-custom-notarized.sh",
