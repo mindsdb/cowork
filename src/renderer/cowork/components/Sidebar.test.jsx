@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 
 // Mutable host mock so each test can flip isWeb. Sidebar reads host.isWeb at
 // render time to decide whether to show the web-only Channels entry (ENG-720:
@@ -151,6 +151,28 @@ describe('Sidebar — update banners (ENG-849: shell reinstall supersedes OTA)',
     );
     expect(screen.queryByRole('button', { name: /Update ready/ })).toBeNull();
     expect(screen.getByRole('button', { name: /New version available/ })).toBeInTheDocument();
+  });
+
+  it('shows the authoritative auto-update action and hides the manual fallback', () => {
+    const onShellAutoUpdateAction = vi.fn();
+    render(
+      <Sidebar
+        {...baseProps}
+        serverOnline
+        shellUpdate={{ version: '2.0.0' }}
+        shellAutoUpdate={{
+          phase: 'ready-to-install',
+          mode: 'auto',
+          channel: 'prod',
+          currentVersion: '2.0.0',
+          targetVersion: '2.1.0',
+        }}
+        onShellAutoUpdateAction={onShellAutoUpdateAction}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: /App update ready/ }));
+    expect(onShellAutoUpdateAction).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('button', { name: /New version available/ })).toBeNull();
   });
 });
 

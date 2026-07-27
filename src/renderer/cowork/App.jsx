@@ -1348,6 +1348,7 @@ function AppCore() {
   // main's boot/periodic poll. Dismissal is per-version so a dismissed notice
   // reappears when a newer shell ships (don't nag; do re-notify).
   const [shellUpdate, setShellUpdate] = useState(null); // { version, currentVersion, downloadUrl }
+  const [shellAutoUpdate, setShellAutoUpdate] = useState(null);
   const [shellUpdateDismissed, setShellUpdateDismissed] = useState(() => {
     try { return localStorage.getItem('shellUpdateDismissedVersion') || ''; } catch { return ''; }
   });
@@ -1407,6 +1408,22 @@ function AppCore() {
       const result = await host.serverStop?.();
       if (result) setServerOnline(!!result.running);
     } catch {} finally { setServerBusy(false); }
+  }, []);
+
+  // ENG-850 shell updater snapshot. Pull once for renderer reload recovery,
+  // then subscribe to the same authoritative main-process state.
+  useEffect(() => {
+    let cancelled = false;
+    host.getShellAutoUpdate().then((snapshot) => {
+      if (!cancelled) setShellAutoUpdate(snapshot);
+    }).catch(() => {});
+    const unsubscribe = host.onShellAutoUpdate((snapshot) => {
+      if (!cancelled) setShellAutoUpdate(snapshot);
+    });
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
   }, []);
 
   // Allow descendants (e.g. ProjectsView's rename / create flow) to
@@ -1531,6 +1548,40 @@ function AppCore() {
     const explicit = typeof url === 'string' && url ? url : null;
     host.openExternal(explicit || shellUpdate?.downloadUrl || 'https://downloads.mindshub.ai');
   }, [shellUpdate]);
+
+  const handleShellAutoUpdateDownload = useCallback(async () => {
+    const snapshot = await host.downloadShellAutoUpdate().catch(() => null);
+    if (snapshot) setShellAutoUpdate(snapshot);
+  }, []);
+
+  const handleShellAutoUpdateInstall = useCallback(async () => {
+    await host.installShellAutoUpdate().catch(() => false);
+  }, []);
+
+  const handleShellAutoUpdateRetry = useCallback(async () => {
+    const snapshot = await host.checkShellAutoUpdate().catch(() => null);
+    if (snapshot) setShellAutoUpdate(snapshot);
+  }, []);
+
+  const handleShellAutoUpdateAction = useCallback(() => {
+    switch (shellAutoUpdate?.phase) {
+      case 'available':
+        return handleShellAutoUpdateDownload();
+      case 'ready-to-install':
+        return handleShellAutoUpdateInstall();
+      case 'failed':
+        if (shellAutoUpdate.recoverable) return handleShellAutoUpdateRetry();
+        return handleDownloadShellUpdate();
+      default:
+        return undefined;
+    }
+  }, [
+    shellAutoUpdate,
+    handleShellAutoUpdateDownload,
+    handleShellAutoUpdateInstall,
+    handleShellAutoUpdateRetry,
+    handleDownloadShellUpdate,
+  ]);
 
   const dismissShellUpdate = useCallback(() => {
     const v = shellUpdate?.version;
@@ -3762,6 +3813,8 @@ function AppCore() {
           updateAvailable={updateStatus?.phase === 'available' ? { version: updateStatus.version } : null}
           onApplyUpdate={handleApplyUpdate}
           shellUpdate={shellUpdate && shellUpdate.version !== shellUpdateDismissed ? shellUpdate : null}
+          shellAutoUpdate={shellAutoUpdate}
+          onShellAutoUpdateAction={handleShellAutoUpdateAction}
           onDownloadShellUpdate={handleDownloadShellUpdate}
           onDismissShellUpdate={dismissShellUpdate}
           onShowServerHelp={() => openSettings('backend')}
@@ -4092,6 +4145,10 @@ function AppCore() {
               onSsoSignIn={!ssoConnected && host.isElectron ? async () => { setSettingsOpen(false); await handleSsoSignIn(); } : undefined}
               shellUpdate={shellUpdate}
               onDownloadShellUpdate={handleDownloadShellUpdate}
+              shellAutoUpdate={shellAutoUpdate}
+              onDownloadShellAutoUpdate={handleShellAutoUpdateDownload}
+              onInstallShellAutoUpdate={handleShellAutoUpdateInstall}
+              onRetryShellAutoUpdate={handleShellAutoUpdateRetry}
             />
           </Modal>
         ) : (
@@ -4139,6 +4196,10 @@ function AppCore() {
                 onSsoSignIn={!ssoConnected && host.isElectron ? async () => { setSettingsOpen(false); await handleSsoSignIn(); } : undefined}
                 shellUpdate={shellUpdate}
                 onDownloadShellUpdate={handleDownloadShellUpdate}
+                shellAutoUpdate={shellAutoUpdate}
+                onDownloadShellAutoUpdate={handleShellAutoUpdateDownload}
+                onInstallShellAutoUpdate={handleShellAutoUpdateInstall}
+                onRetryShellAutoUpdate={handleShellAutoUpdateRetry}
               />
             </ModalBody>
           </Modal>

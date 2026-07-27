@@ -79,6 +79,14 @@ function getUpdateMode(): 'auto' | 'manual' {
   return vars.UI_UPDATE_MODE === 'manual' ? 'manual' : 'auto';
 }
 
+/** Hidden QA gate for ENG-850. The rollout PR will change the default after
+ * signed N → N+1 smoke tests pass; until then packaged builds remain on the
+ * ENG-849 manual-download fallback unless explicitly opted in. */
+function shellAutoUpdateEnabled(): boolean {
+  const vars = readEnvFile();
+  return vars.SHELL_AUTO_UPDATE_ENABLED === '1' || vars.SHELL_AUTO_UPDATE_ENABLED === 'true';
+}
+
 // Resolves once the boot-time server start has settled (server up, or
 // decided-not-to-start because it isn't installed). serverConfigured() awaits
 // this instead of polling, so cold-boot routing waits exactly as long as the
@@ -1550,7 +1558,7 @@ app.whenReady().then(async () => {
 
     const devMode = getDevMode();
     if (app.isPackaged && !devMode && mainWindow) {
-      initUpdater(() => mainWindow, rendererReady, getUpdateMode);
+      initUpdater(() => mainWindow, rendererReady, getUpdateMode, shellAutoUpdateEnabled());
     } else if (!app.isPackaged) {
       console.log('[updater] skipped — not a packaged build');
     } else if (devMode) {

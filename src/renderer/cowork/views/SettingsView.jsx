@@ -766,6 +766,10 @@ export default function SettingsView({
   // Settings is a deliberate visit, so it always reflects the true state.
   shellUpdate = null,
   onDownloadShellUpdate,
+  shellAutoUpdate = null,
+  onDownloadShellAutoUpdate,
+  onInstallShellAutoUpdate,
+  onRetryShellAutoUpdate,
 }) {
   const [saved, setSaved] = useState(false);
   const [validation, setValidation] = useState(null);
@@ -2448,6 +2452,9 @@ export default function SettingsView({
               const shellPending = r?.ok ? !!r.shellUpdateAvailable : !!shellUpdate;
               const shellVersion = r?.shellVersion || shellUpdate?.version;
               const shellUrl = r?.shellDownloadUrl || shellUpdate?.downloadUrl;
+              const autoPhase = shellAutoUpdate?.phase;
+              const autoVisible = !!autoPhase && !['disabled', 'idle', 'complete'].includes(autoPhase);
+              const manualFallback = shellPending && (!autoVisible || autoPhase === 'failed');
               // Status line shown beside the button once a check resolves.
               // ok:false is an error/offline outcome — never "up to date".
               // "Up to date" also requires no shell reinstall pending, since
@@ -2511,14 +2518,53 @@ export default function SettingsView({
                       </Button>
                     </div>
                   )}
-                  {shellPending && (
+                  {autoVisible && (
+                    <div style={UPDATE_CARD_STYLE}>
+                      <div style={UPDATE_CARD_BODY_STYLE}>
+                        <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-strong)' }}>
+                          {autoPhase === 'checking'
+                            ? 'Checking for an app update…'
+                            : autoPhase === 'available'
+                              ? 'New app version available'
+                              : autoPhase === 'downloading'
+                                ? `Downloading app update${shellAutoUpdate.progress?.percent != null ? ` — ${Math.round(shellAutoUpdate.progress.percent)}%` : '…'}`
+                                : autoPhase === 'ready-to-install'
+                                  ? 'App update ready'
+                                  : autoPhase === 'installing'
+                                    ? 'Installing app update…'
+                                    : 'App update failed'}
+                        </span>
+                        <span style={{ fontSize: 11.5, color: autoPhase === 'failed' ? 'var(--warning, #c47f00)' : 'var(--text-muted)' }}>
+                          {autoPhase === 'ready-to-install'
+                            ? 'Restart Cowork to finish installing the downloaded update.'
+                            : autoPhase === 'failed'
+                              ? (shellAutoUpdate.errorMessage || 'The automatic update could not be completed. Your current installation is still usable.')
+                              : autoPhase === 'available'
+                                ? (shellAutoUpdate.mode === 'manual' ? 'Download it when you are ready.' : 'The update is ready to download.')
+                                : 'You can continue working while Cowork prepares the update.'}
+                        </span>
+                      </div>
+                      {autoPhase === 'available' && (
+                        <Button variant="primary" onClick={onDownloadShellAutoUpdate}>Download update</Button>
+                      )}
+                      {autoPhase === 'ready-to-install' && (
+                        <Button variant="primary" onClick={onInstallShellAutoUpdate}>Restart now</Button>
+                      )}
+                      {autoPhase === 'failed' && shellAutoUpdate.recoverable && (
+                        <Button variant="primary" onClick={onRetryShellAutoUpdate}>Retry</Button>
+                      )}
+                    </div>
+                  )}
+                  {manualFallback && (
                     <div style={UPDATE_CARD_STYLE}>
                       <div style={UPDATE_CARD_BODY_STYLE}>
                         <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-strong)' }}>
                           {shellVersion ? `New app version ${shellVersion}` : 'New app version available'}
                         </span>
                         <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
-                          The app itself updates by downloading and reinstalling.
+                          {autoPhase === 'failed'
+                            ? 'You can still download the installer manually.'
+                            : 'The app itself updates by downloading and reinstalling.'}
                         </span>
                       </div>
                       <Button variant="primary" onClick={() => onDownloadShellUpdate(shellUrl)} style={{ cursor: 'pointer' }}>
