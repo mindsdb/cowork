@@ -235,18 +235,27 @@ export default function ScheduleTaskModal({
 
           <div>
             <span style={{ ...fieldLabel, display: 'block' }}>Status</span>
-            <label style={{
+            {/* Not a <label>: Base UI's Checkbox renders its own hidden
+                native input, so wrapping it in a <label> creates a second
+                activation path — a click toggles the box, then the label
+                re-dispatches to the hidden input and toggles it back
+                (net no-op). Keep the text clickable via its own handler. */}
+            <div style={{
               display: 'inline-flex', alignItems: 'center', gap: 8,
               fontFamily: FONT_BODY, fontSize: 13.5, color: 'var(--ink)',
-              cursor: 'pointer',
             }}>
               <Checkbox
                 checked={form.enabled}
                 onCheckedChange={(v) => update('enabled', v)}
                 aria-label="Schedule enabled"
               />
-              {form.enabled ? 'Enabled' : 'Paused'}
-            </label>
+              <span
+                onClick={() => update('enabled', !form.enabled)}
+                style={{ cursor: 'pointer', userSelect: 'none' }}
+              >
+                {form.enabled ? 'Enabled' : 'Paused'}
+              </span>
+            </div>
           </div>
 
           <Field label="Prompt">

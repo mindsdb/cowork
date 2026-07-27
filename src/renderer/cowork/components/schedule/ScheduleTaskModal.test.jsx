@@ -84,8 +84,10 @@ describe('ScheduleTaskModal — S7 fixes', () => {
     };
     const { onSubmit } = renderModal({ task });
 
-    // Hydrated as Paused.
-    expect(screen.getByRole('checkbox').checked).toBe(false);
+    // Hydrated as Paused. The design-system Checkbox renders a
+    // role="checkbox" element whose state lives in aria-checked, not the
+    // native `.checked` property — read it via jest-dom's toBeChecked().
+    expect(screen.getByRole('checkbox')).not.toBeChecked();
 
     fireEvent.click(screen.getByRole('button', { name: /Save changes/i }));
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
