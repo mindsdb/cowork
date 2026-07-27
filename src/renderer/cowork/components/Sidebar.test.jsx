@@ -128,6 +128,32 @@ describe('Sidebar — footer theme toggle (design polish PR 3: chrome)', () => {
   });
 });
 
+describe('Sidebar — update banners (ENG-849: shell reinstall supersedes OTA)', () => {
+  beforeEach(() => {
+    hostMock.isWeb = false;
+  });
+
+  it('shows the OTA "Update available" banner when only an OTA update is pending', () => {
+    render(<Sidebar {...baseProps} serverOnline updateAvailable={{ version: '1.2.3' }} />);
+    expect(screen.getByRole('button', { name: /Update available/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /New version available/ })).toBeNull();
+  });
+
+  it('shows the shell reinstall notice when only a shell update is pending', () => {
+    render(<Sidebar {...baseProps} serverOnline shellUpdate={{ version: '2.0.0' }} />);
+    expect(screen.getByRole('button', { name: /New version available/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Update available/ })).toBeNull();
+  });
+
+  it('suppresses the OTA banner while a shell reinstall is pending (no double banner)', () => {
+    render(
+      <Sidebar {...baseProps} serverOnline updateAvailable={{ version: '1.2.3' }} shellUpdate={{ version: '2.0.0' }} />
+    );
+    expect(screen.queryByRole('button', { name: /Update available/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /New version available/ })).toBeInTheDocument();
+  });
+});
+
 describe('Sidebar — nav title/logo override', () => {
   it('shows the default "MindsHub" wordmark and no logo when unset', () => {
     render(<Sidebar {...baseProps} />);

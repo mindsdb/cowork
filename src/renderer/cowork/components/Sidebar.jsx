@@ -763,8 +763,13 @@ export default function Sidebar({
           )}
         </div>
 
-        {/* Update available banner */}
-        {updateAvailable && (
+        {/* OTA (UI/server) update banner. Suppressed while a shell reinstall is
+            pending: reinstalling ships a current UI/server bundle, so the shell
+            notice supersedes this one rather than stacking a second, near-
+            identical banner (ENG-849). Dismissing the shell notice sets its prop
+            to null upstream, which brings this banner back for anyone who can't
+            reinstall right now but could still apply the OTA update. */}
+        {updateAvailable && !shellUpdate && (
           <button
             type="button"
             style={{
