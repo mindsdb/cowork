@@ -7,7 +7,8 @@
 
 import { useEffect, useState } from 'react';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
-import { Button, Select, Input, Textarea, Checkbox } from '../ui';
+import { Button, Select, Input, Textarea } from '../ui';
+import { Switch } from '../ui/Switch';
 import Ico from '../Icons';
 
 const FONT_BODY = 'var(--font-body)';
@@ -235,18 +236,24 @@ export default function ScheduleTaskModal({
 
           <div>
             <span style={{ ...fieldLabel, display: 'block' }}>Status</span>
-            {/* Not a <label>: Base UI's Checkbox renders its own hidden
-                native input, so wrapping it in a <label> creates a second
-                activation path — a click toggles the box, then the label
-                re-dispatches to the hidden input and toggles it back
-                (net no-op). Keep the text clickable via its own handler. */}
+            {/* Block-level `flex` with a fixed height (not `inline-flex`): an
+                inline-flex row sits on a text baseline in the parent's line
+                box, so toggling the label between "Enabled" and "Paused"
+                (different descenders) nudged the line-box height ~1px — and
+                because the modal is vertically centered, that re-centered the
+                whole dialog, reading as a layout shift. A fixed-height block
+                row is baseline-independent, so the toggle never moves anything.
+                Not a <label>: the Switch renders its own hidden input, so a
+                <label> wrapper double-activates; keep the text clickable via
+                its own handler. */}
             <div style={{
-              display: 'inline-flex', alignItems: 'center', gap: 8,
+              display: 'flex', width: 'fit-content', alignItems: 'center', gap: 8, height: 22,
               fontFamily: FONT_BODY, fontSize: 13.5, color: 'var(--ink)',
             }}>
-              <Checkbox
+              <Switch
                 checked={form.enabled}
                 onCheckedChange={(v) => update('enabled', v)}
+                size="sm"
                 aria-label="Schedule enabled"
               />
               <span
