@@ -92,6 +92,8 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
     setBusy(false);
     setError('');
     setDragActive(false);
+    const id = requestAnimationFrame(() => nameRef.current?.focus());
+    return () => cancelAnimationFrame(id);
   }, [open]);
 
   // Esc + backdrop dismissal are <Modal>'s job (suppressed while busy via
