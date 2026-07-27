@@ -78,6 +78,15 @@ export function nextApplyUpdateState(applied) {
   return applied ? { applying: true, error: false } : { applying: false, error: true };
 }
 
+// Shared sage-surface style for the Updates section's two notice cards
+// (apply-available and shell-reinstall) so they can't drift apart.
+const UPDATE_CARD_STYLE = {
+  display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+  padding: '10px 12px', border: '1px solid rgba(93,146,135,0.30)',
+  background: 'rgba(93,146,135,0.12)', borderRadius: 8,
+};
+const UPDATE_CARD_BODY_STYLE = { display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 160 };
+
 function Section({ title, subtitle, notice, children }) {
   const { mobile } = useContext(SettingsLayoutContext);
   // A section whose sole control is a Switch or ToggleGroup is compact enough
@@ -893,15 +902,11 @@ export default function SettingsView({
     if (applyingUpdate) return;
     setApplyingUpdate(true);
     setApplyError(false);
-    try {
-      const { applying, error } = nextApplyUpdateState(await host.applyUpdate());
-      setApplyingUpdate(applying);
-      setApplyError(error);
-    } catch {
-      const { applying, error } = nextApplyUpdateState(false);
-      setApplyingUpdate(applying);
-      setApplyError(error);
-    }
+    // applyUpdate() resolves false on an expected failure and can also throw;
+    // normalize both so the button never sticks on "Updating…".
+    const { applying, error } = nextApplyUpdateState(await host.applyUpdate().catch(() => false));
+    setApplyingUpdate(applying);
+    setApplyError(error);
   };
 
   // Tracks whether any LLM-affecting setting changed since the last
@@ -2487,8 +2492,8 @@ export default function SettingsView({
                     )}
                   </div>
                   {applyAvailable && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '10px 12px', border: '1px solid rgba(93,146,135,0.30)', background: 'rgba(93,146,135,0.12)', borderRadius: 8 }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 160 }}>
+                    <div style={UPDATE_CARD_STYLE}>
+                      <div style={UPDATE_CARD_BODY_STYLE}>
                         <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-strong)' }}>Update available</span>
                         {parts.length > 0 && (
                           <span style={{ fontSize: 11.5, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{parts.join('   ')}</span>
@@ -2505,8 +2510,8 @@ export default function SettingsView({
                     </div>
                   )}
                   {shellPending && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '10px 12px', border: '1px solid rgba(93,146,135,0.30)', background: 'rgba(93,146,135,0.12)', borderRadius: 8 }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 160 }}>
+                    <div style={UPDATE_CARD_STYLE}>
+                      <div style={UPDATE_CARD_BODY_STYLE}>
                         <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-strong)' }}>
                           {shellVersion ? `New app version ${shellVersion}` : 'New app version available'}
                         </span>
