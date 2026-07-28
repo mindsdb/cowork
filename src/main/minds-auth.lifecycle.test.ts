@@ -139,6 +139,7 @@ describe('replaceMindsApiKeyLine', () => {
 import * as fs from 'fs';
 import { beforeEach, afterEach, type Mock } from 'vitest';
 import { getAccessToken, getRefreshToken, isAccessTokenExpired } from './token-store';
+import { isServerRunning, isServerStarting } from './server-process';
 import { runKeyLifecycleCheck, cancelKeyLifecycleChecks } from './minds-auth';
 
 const TEST_HOME = '/tmp/minds-auth-lifecycle-test';
@@ -199,6 +200,12 @@ describe('runKeyLifecycleCheck', () => {
     (getAccessToken as Mock).mockReturnValue(TOKEN_A);
     (getRefreshToken as Mock).mockReturnValue('rt-1');
     (isAccessTokenExpired as Mock).mockReturnValue(false);
+    // vi.restoreAllMocks() in afterEach does not reliably bring these back
+    // to the module-mock's factory defaults, so pin them explicitly per
+    // test — otherwise a test that flips them false (server-down cases)
+    // can leak into the next test's run.
+    (isServerRunning as Mock).mockReturnValue(true);
+    (isServerStarting as Mock).mockReturnValue(false);
   });
 
   afterEach(() => {
@@ -214,7 +221,7 @@ describe('runKeyLifecycleCheck', () => {
     expiry_date: new Date(Date.now() + 5 * 24 * 3600 * 1000).toISOString(),
   };
 
-  function happyRoutes(overrides: Partial<Record<'list' | 'mint', Route['reply']>> = {}): Route[] {
+  function happyRoutes(overrides: Partial<Record<'list' | 'mint' | 'put', Route['reply']>> = {}): Route[] {
     return [
       {
         method: 'GET', match: '/api-keys/',
@@ -225,7 +232,7 @@ describe('runKeyLifecycleCheck', () => {
         method: 'POST', match: '/api-keys/',
         reply: overrides.mint ?? (() => ({ status: 200, body: { key: 'mdb_new', name: DEVICE_KEY_NAME, prefix: 'pfx-new' } })),
       },
-      { method: 'PUT', match: '/settings/minds_api_key', reply: () => ({ status: 200, body: {} }) },
+      { method: 'PUT', match: '/settings/minds_api_key', reply: overrides.put ?? (() => ({ status: 200, body: {} })) },
     ];
   }
 
@@ -310,6 +317,30 @@ describe('runKeyLifecycleCheck', () => {
     }));
     await runKeyLifecycleCheck();
     expect(calls.filter((c) => c.method === 'PUT')).toHaveLength(0);
+    expect(fs.readFileSync(TEST_ENV, 'utf-8')).toMatch(/mdb_old/);
+  });
+
+  it('skips the tick entirely when the server is not running', async () => {
+    (isServerRunning as Mock).mockReturnValue(false);
+    (isServerStarting as Mock).mockReturnValue(false);
+    const calls = installRoutedFetch(happyRoutes());
+    await runKeyLifecycleCheck();
+    // No commit path (server down) means no point minting — the whole
+    // tick bails before any network call.
+    expect(calls).toHaveLength(0);
+  });
+
+  it('rolls back the minted key when the settings PUT fails', async () => {
+    // The settings PUT is the authoritative commit (DB outranks .env); if
+    // it fails, the just-minted key must not linger as the account's
+    // "newest" — otherwise the next tick sees it as fresh and never
+    // retries the renewal, permanently stranding the old key at expiry.
+    const calls = installRoutedFetch(happyRoutes({
+      put: () => ({ status: 500, body: {} }),
+    }));
+    await runKeyLifecycleCheck();
+    const del = calls.find((c) => c.method === 'DELETE' && c.url.includes('pfx-new'));
+    expect(del).toBeDefined();
     expect(fs.readFileSync(TEST_ENV, 'utf-8')).toMatch(/mdb_old/);
   });
 });

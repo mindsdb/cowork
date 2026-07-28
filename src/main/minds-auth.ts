@@ -449,6 +449,9 @@ interface ApiKeyRecord {
 export interface ProvisionResult {
   // `mdb_*` API key on success.
   key?: string;
+  // The minted key's prefix (identifies it for rollback in the renewal
+  // path — see commitRenewedKey).
+  prefix?: string;
   // True iff the auth-service rejected the request because the user
   // lacks the entitlement to mint LLM keys (free tier). Surfaced to
   // the renderer so it can route to the paywall instead of treating
@@ -747,7 +750,7 @@ export async function provisionAntonApiKey(
     });
     if (res.ok) {
       const data = await res.json() as ApiKeyRecord;
-      if (data?.key) return { key: data.key };
+      if (data?.key) return { key: data.key, prefix: data.prefix };
       return { error: 'Auth-service did not return an API key value.' };
     }
     type ErrorBody = { code?: string; detail?: string; error?: string; message?: string };
@@ -1057,6 +1060,16 @@ async function doKeyLifecycleCheck(): Promise<void> {
   // Signed-out sessions have nothing to renew. Don't force a refresh
   // round-trip when there is no session at all.
   if (!getAccessToken() && !getRefreshToken()) return;
+  // The settings PUT in commitRenewedKey is the ONLY durable commit path
+  // (DB rows outrank .env in the server's settings chain, and the
+  // env→DB migration is sentinel-guarded — it never re-runs). With no
+  // server to PUT to, minting now would strand the new key unwritten
+  // until some later tick; simpler and safer to skip the whole tick and
+  // let the next one retry once the server is up.
+  if (!isServerRunning() && !isServerStarting()) {
+    console.log('[minds-auth] server not running — no commit path — skipping this tick');
+    return;
+  }
   let token = getAccessToken();
   if (!token || isAccessTokenExpired()) {
     const result = await refreshTokensOnly();
@@ -1089,40 +1102,68 @@ async function doKeyLifecycleCheck(): Promise<void> {
     return;
   }
   if (tokenSubject(getAccessToken()) !== renewingFor) {
+    // Deliberately no rollback here: a logout/different-user login is a
+    // separate concern from a failed commit, and the new session may
+    // already be relying on whatever it just did — the TTL reaps this
+    // key on its own if it truly goes unused.
     console.warn('[minds-auth] session changed during key renewal — discarding minted key');
     return;
   }
-  await commitRenewedKey(result.key);
+  await commitRenewedKey(token, result.key, result.prefix);
 }
 
-// Hot-swap the renewed credential: one .env line + one settings PUT.
+// Hot-swap the renewed credential. The settings PUT goes FIRST and is the
+// AUTHORITATIVE commit: in cowork-server, DB rows outrank .env in the
+// settings chain, and the one-time env→DB migration is sentinel-guarded
+// and never re-runs — so a key that only reaches .env never reaches the
+// app. .env is written only after the PUT lands; it's just the
+// standalone-CLI's copy. If the PUT is skipped or fails, roll the mint
+// back (delete the just-minted key) so the account's "newest key" reverts
+// to the old one and the next tick retries the whole renewal statelessly
+// — recovery that works even across an app restart.
 // Deliberately NOT writeMindsKeyToEnvAndRestart — no server restart (the
 // settings cache invalidates on PUT; in-flight sessions keep the old key,
 // which stays valid until its own expiry), and no provider flips (a user
 // who switched to BYOK keeps their selection).
-async function commitRenewedKey(apiKey: string): Promise<void> {
-  const homeDir = coworkHome();
-  if (!fs.existsSync(homeDir)) {
-    fs.mkdirSync(homeDir, { recursive: true });
+async function commitRenewedKey(accessToken: string, apiKey: string, prefix: string | undefined): Promise<void> {
+  // Re-check here too: the boot-time gate in doKeyLifecycleCheck can go
+  // stale across the mint's network round-trip if the sidecar goes down
+  // mid-renewal.
+  if (!isServerRunning() && !isServerStarting()) {
+    console.warn('[minds-auth] server no longer available for renewal commit — rolling back minted key, will retry next tick');
+    if (prefix) await deleteKeyByPrefix(accessToken, prefix);
+    return;
   }
-  const envPath = coworkEnvPath();
-  const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
-  fs.writeFileSync(envPath, replaceMindsApiKeyLine(existing, apiKey), { encoding: 'utf-8', mode: 0o600 });
-  try { fs.chmodSync(envPath, 0o600); } catch { /* best-effort */ }
-
-  if (isServerRunning() || isServerStarting()) {
-    const port = getServerPort();
-    try {
-      const res = await timedFetch(`http://127.0.0.1:${port}/api/v1/settings/minds_api_key`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ value: apiKey }),
-      });
-      if (!res.ok) {
-        console.warn('[minds-auth] renewal settings PUT returned', res.status);
-      }
-    } catch (error) {
-      console.warn('[minds-auth] failed to write renewed key to server DB', error);
+  const port = getServerPort();
+  try {
+    const res = await timedFetch(`http://127.0.0.1:${port}/api/v1/settings/minds_api_key`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ value: apiKey }),
+    });
+    if (!res.ok) {
+      console.warn('[minds-auth] renewal settings PUT returned', res.status, '— rolling back minted key, will retry next tick');
+      if (prefix) await deleteKeyByPrefix(accessToken, prefix);
+      return;
     }
+  } catch (error) {
+    console.warn('[minds-auth] failed to write renewed key to server DB — rolling back minted key, will retry next tick', error);
+    if (prefix) await deleteKeyByPrefix(accessToken, prefix);
+    return;
+  }
+
+  // DB is authoritative and already correct at this point — a failure
+  // here is not a renewal failure, only a stale standalone-CLI copy.
+  try {
+    const homeDir = coworkHome();
+    if (!fs.existsSync(homeDir)) {
+      fs.mkdirSync(homeDir, { recursive: true });
+    }
+    const envPath = coworkEnvPath();
+    const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
+    fs.writeFileSync(envPath, replaceMindsApiKeyLine(existing, apiKey), { encoding: 'utf-8', mode: 0o600 });
+    try { fs.chmodSync(envPath, 0o600); } catch { /* best-effort */ }
+  } catch (error) {
+    console.warn('[minds-auth] renewed key committed to server DB but failed to write .env (CLI copy stale)', error);
   }
 }
