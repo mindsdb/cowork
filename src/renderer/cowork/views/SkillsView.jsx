@@ -63,7 +63,9 @@ function SkillGridCard({ skill, onClick }) {
           )}
         </div>
         <span style={{
-          fontFamily: 'var(--font-body)', fontSize: 14, lineHeight: '24px',
+          // Matches the page-header subtitle (13.5 / 1.5) so the card copy
+          // reads as the same "muted body" voice, not a looser 14/24 block.
+          fontFamily: 'var(--font-body)', fontSize: 13.5, lineHeight: 1.5,
           color: 'var(--ink-3)',
           display: '-webkit-box',
           WebkitLineClamp: 2,
@@ -457,9 +459,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
 
           {/* Scope */}
           <div style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 11.5, fontWeight: 500, color: 'var(--ink-3)', marginBottom: 4, fontFamily: 'var(--font-mono)', letterSpacing: '0.04em' }}>
-              Scope
-            </div>
+            <h3 className="s-h3" style={{ margin: '0 0 4px' }}>Scope</h3>
             <p style={{ margin: 0, fontSize: 13.5, color: 'var(--ink)', lineHeight: 1.5, userSelect: 'text' }}>
               {selected.projects?.[0]}
             </p>
@@ -468,9 +468,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
           {/* Description */}
           {selected.description && (
             <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 11.5, fontWeight: 500, color: 'var(--ink-3)', marginBottom: 4, fontFamily: 'var(--font-mono)', letterSpacing: '0.04em' }}>
-                Description
-              </div>
+              <h3 className="s-h3" style={{ margin: '0 0 4px' }}>Description</h3>
               <p style={{ margin: 0, fontSize: 13.5, color: 'var(--ink)', lineHeight: 1.5, userSelect: 'text' }}>
                 {selected.description}
               </p>
