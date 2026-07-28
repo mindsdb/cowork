@@ -497,6 +497,57 @@ export function diffSettingsForWrite(patch, lastFetched) {
   return writes;
 }
 
+// ─── Agent budget clamping ───────────────────────────────────────────
+//
+// The server bounds these (pydantic ge/le) and 422s anything outside, and a
+// failed key fails the whole multi-key save — so the client must never PUT
+// an out-of-range value. Values are STRINGS end-to-end (server rows are
+// strings; the page-wide dirty compare is a JSON diff, so types must survive
+// the save → re-fetch round trip unchanged).
+
+export const BUDGET_FIELDS = {
+  maxToolRounds: { min: 5, max: 500, fallback: 50 },
+  maxContinuations: { min: 0, max: 25, fallback: 5 },
+};
+
+/**
+ * Clamp one budget value into its range, as a string.
+ *
+ * Number() (not parseInt) so number-input-legal forms like "5e2" mean 500,
+ * not 5. Unparseable/empty input falls back to `prev` (the last committed
+ * value — clearing a field to retype must not silently reset a saved 500 to
+ * the factory default) and only then to the spec fallback.
+ */
+export function clampBudgetValue(raw, spec, prev = null) {
+  const { min, max, fallback } = spec;
+  let n = Math.round(Number(raw));
+  if (raw == null || String(raw).trim() === '' || Number.isNaN(n)) {
+    const p = Math.round(Number(prev));
+    n = (prev != null && String(prev).trim() !== '' && !Number.isNaN(p)) ? p : fallback;
+  }
+  return String(Math.min(max, Math.max(min, n)));
+}
+
+/**
+ * Return `settings` with any present budget keys clamped into range.
+ *
+ * Safety net for values that skipped the input's blur clamp (e.g. the
+ * settings modal dismissed with Escape mid-edit — React fires no blur on
+ * unmount, and the raw draft survives in App state). Keys the server never
+ * sent stay absent: materializing them here would create a phantom write —
+ * and a failing one on an older server without these settings.
+ */
+export function clampBudgets(settings) {
+  let out = settings;
+  for (const [key, spec] of Object.entries(BUDGET_FIELDS)) {
+    const v = settings?.[key];
+    if (v == null) continue;
+    const clamped = clampBudgetValue(v, spec);
+    if (clamped !== String(v)) out = { ...out, [key]: clamped };
+  }
+  return out;
+}
+
 // ─── Provider card ↔ individual key mapping ──────────────────────────
 
 /**

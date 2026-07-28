@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, createContext, useContext, Children } from
 import { useId } from 'react';
 import Ico from '../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchHealth, fetchRecommendedModels } from '../api';
-import { providerTypeToKeyField, providerValueToType, resolveModelPickerValue, buildModelOptions, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels } from '../lib/settingsTransform';
+import { providerTypeToKeyField, providerValueToType, resolveModelPickerValue, buildModelOptions, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, clampBudgetValue, clampBudgets, BUDGET_FIELDS } from '../lib/settingsTransform';
 import { trackHarnessSwapped, resetDeviceIdentity } from '../lib/analytics';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
@@ -75,14 +75,26 @@ const UPDATE_CARD_BODY_STYLE = { display: 'flex', flexDirection: 'column', gap: 
 // server's string form (settings round-trip as strings; the page-wide dirty
 // compare is a JSON diff, so types must stay stable across save → re-fetch).
 // Free typing is allowed — including transiently empty/out-of-range text —
-// and the value is clamped into [min, max] on blur, so the Save button can
-// never submit a value the server would reject.
-function BudgetNumberField({ settingKey, value, fallback, min, max, label, setSetting }) {
-  const clamp = (raw) => {
-    const n = parseInt(raw, 10);
-    if (Number.isNaN(n)) return String(fallback);
-    return String(Math.min(max, Math.max(min, n)));
-  };
+// and the value is clamped into [min, max] on blur. Two deliberate rules:
+//   * An untouched field never commits (blur alone must not materialize a
+//     key the server never sent — that would flip Save to dirty with zero
+//     edits and PUT an unknown key to an older server).
+//   * Emptied/unparseable input reverts to the last committed value, not the
+//     factory default (clearing a saved 500 to retype must not save 50).
+// Escape-dismiss skips blur entirely; clampBudgets() in save() is the
+// backstop that keeps rejectable values out of every PUT.
+function BudgetNumberField({ settingKey, value, spec, label, setSetting }) {
+  const { min, max, fallback } = spec;
+  const hintId = useId();
+  // Last known-good committed value; seeded from the server value and
+  // refreshed on every valid change, so a blur on an emptied field can
+  // restore what the user actually had.
+  const lastValidRef = useRef(null);
+  useEffect(() => {
+    if (value == null) return;
+    const n = Math.round(Number(value));
+    if (String(value).trim() !== '' && !Number.isNaN(n)) lastValidRef.current = String(value);
+  }, [value]);
   return (
     <div style={{ display: 'inline-flex', alignItems: 'baseline', gap: 8 }}>
       <input
@@ -94,12 +106,16 @@ function BudgetNumberField({ settingKey, value, fallback, min, max, label, setSe
         step={1}
         value={value ?? String(fallback)}
         onChange={(e) => setSetting(settingKey, e.target.value)}
-        onBlur={(e) => setSetting(settingKey, clamp(e.target.value))}
+        onBlur={(e) => {
+          if (value == null) return; // untouched — don't materialize the key
+          setSetting(settingKey, clampBudgetValue(e.target.value, spec, lastValidRef.current));
+        }}
         aria-label={label}
+        aria-describedby={hintId}
         title={`${label} (${min}–${max}, default ${fallback})`}
         style={{ width: 90 }}
       />
-      <span style={{ fontSize: 11.5, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+      <span id={hintId} style={{ fontSize: 11.5, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
         {min}&ndash;{max} &middot; default {fallback}
       </span>
     </div>
@@ -1205,7 +1221,7 @@ export default function SettingsView({
     setTesting(true);
     setTested(false);
     try {
-      await onSave(withResolvedRoles(settings));
+      await onSave(withResolvedRoles(clampBudgets(settings)));
       // Record the harness swap only now that it's persisted (ENG-385). Compare
       // against the pre-save snapshot — settingsRef holds the latest value since
       // the closure `settings` is stale after the await.
@@ -1987,9 +2003,7 @@ export default function SettingsView({
             <BudgetNumberField
               settingKey="maxToolRounds"
               value={settings.maxToolRounds}
-              fallback={50}
-              min={5}
-              max={500}
+              spec={BUDGET_FIELDS.maxToolRounds}
               label="Max steps per task"
               setSetting={setSetting}
             />
@@ -2001,9 +2015,7 @@ export default function SettingsView({
             <BudgetNumberField
               settingKey="maxContinuations"
               value={settings.maxContinuations}
-              fallback={5}
-              min={0}
-              max={25}
+              spec={BUDGET_FIELDS.maxContinuations}
               label="Max auto-continues"
               setSetting={setSetting}
             />

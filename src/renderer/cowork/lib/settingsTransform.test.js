@@ -7,6 +7,8 @@ import {
   effectiveRoleProvider,
   recommendedModelOptions,
   mergeRecommendedModels,
+  clampBudgetValue,
+  clampBudgets,
 } from './settingsTransform';
 
 // The minds-cloud recommended list holds bare aliases — never `latest:`-prefixed.
@@ -376,5 +378,44 @@ describe('agent tool-budget settings (max_tool_rounds / max_continuations)', () 
       { maxToolRounds: '50', maxContinuations: '3' },
     );
     expect(writes).toEqual({ max_tool_rounds: '80' }); // unchanged key skipped
+  });
+});
+
+describe('clampBudgetValue / clampBudgets', () => {
+  const spec = { min: 5, max: 500, fallback: 50 };
+
+  it('clamps into range and returns strings', () => {
+    expect(clampBudgetValue('80', spec)).toBe('80');
+    expect(clampBudgetValue('2', spec)).toBe('5');
+    expect(clampBudgetValue('9999', spec)).toBe('500');
+    expect(clampBudgetValue(' 50 ', spec)).toBe('50');
+  });
+
+  it('treats number-input-legal scientific notation as its numeric value', () => {
+    // parseInt('5e2') === 5 was the bug: a user-entered 5e2 means 500.
+    expect(clampBudgetValue('5e2', spec)).toBe('500');
+    expect(clampBudgetValue('1e3', spec)).toBe('500'); // 1000, max-clamped
+  });
+
+  it('empty/unparseable input reverts to prev, then fallback', () => {
+    // Clearing a saved 500 to retype must not silently save the default.
+    expect(clampBudgetValue('', spec, '500')).toBe('500');
+    expect(clampBudgetValue('abc', spec, '120')).toBe('120');
+    expect(clampBudgetValue('', spec, null)).toBe('50');
+    expect(clampBudgetValue('', spec, 'junk')).toBe('50');
+    // A stale out-of-range prev (e.g. Escape-dismissed draft) still clamps.
+    expect(clampBudgetValue('', spec, '9999')).toBe('500');
+  });
+
+  it('clampBudgets clamps present keys and never materializes absent ones', () => {
+    const out = clampBudgets({ maxToolRounds: '9999', harness: 'anton' });
+    expect(out.maxToolRounds).toBe('500');
+    expect(out.harness).toBe('anton');
+    // absent keys stay absent: materializing one would create a phantom
+    // write — and a failing PUT on an older server without these settings
+    expect('maxContinuations' in out).toBe(false);
+    // untouched settings object is returned by reference (no spurious dirty)
+    const clean = { maxToolRounds: '50', maxContinuations: '5' };
+    expect(clampBudgets(clean)).toBe(clean);
   });
 });
