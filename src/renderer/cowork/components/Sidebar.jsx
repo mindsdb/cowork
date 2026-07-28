@@ -245,6 +245,9 @@ export default function Sidebar({
   onToggleServer,
   onShowServerHelp,
   updateAvailable = null, // { version: string } or null
+  // Set when an apply attempt failed (phase 'error'); surfaces a retry so the
+  // sidebar doesn't go silent on failure the way it used to (ENG-849 QA find).
+  updateError = null, // { version?: string } or null
   onApplyUpdate,
   // Download-only shell update notice.
   shellUpdate = null,
@@ -801,6 +804,52 @@ export default function Sidebar({
               fontWeight: 600,
             }}>
               Restart
+            </span>
+          </button>
+        )}
+
+        {/* A failed apply keeps the banner (as a retry) instead of silently
+            vanishing until the next poll — mirrors Settings → Software updates. */}
+        {updateError && !shellUpdate && (
+          <button
+            type="button"
+            style={{
+              margin: '0 10px 6px',
+              padding: '8px 12px',
+              background: 'rgba(196,127,0,0.12)',
+              border: '1px solid rgba(196,127,0,0.30)',
+              borderRadius: 8,
+              display: 'flex', alignItems: 'center', gap: 8,
+              cursor: 'pointer',
+              transition: 'background 120ms ease',
+              width: 'calc(100% - 20px)',
+              textAlign: 'left',
+              fontFamily: 'inherit',
+              WebkitAppRegion: 'no-drag',
+            }}
+            onClick={onApplyUpdate}
+            onMouseOver={(e) => { e.currentTarget.style.background = 'rgba(196,127,0,0.22)'; }}
+            onMouseOut={(e) => { e.currentTarget.style.background = 'rgba(196,127,0,0.12)'; }}
+          >
+            <span style={{
+              width: 6, height: 6, borderRadius: '50%',
+              background: 'var(--warning, #c47f00)',
+              flexShrink: 0,
+            }} />
+            <span style={{
+              flex: 1, fontSize: 11.5, color: 'var(--text-strong)',
+              fontFamily: 'var(--font-sans)',
+            }}>
+              Update failed{updateError.version ? ` (${updateError.version})` : ''}
+            </span>
+            <span style={{
+              fontSize: 10, color: 'var(--warning, #c47f00)',
+              fontFamily: 'var(--font-mono)',
+              letterSpacing: '0.03em',
+              textTransform: 'uppercase',
+              fontWeight: 600,
+            }}>
+              Try again
             </span>
           </button>
         )}

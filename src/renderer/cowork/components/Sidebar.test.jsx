@@ -152,6 +152,26 @@ describe('Sidebar — update banners (ENG-849: shell reinstall supersedes OTA)',
     expect(screen.queryByRole('button', { name: /Update ready/ })).toBeNull();
     expect(screen.getByRole('button', { name: /New version available/ })).toBeInTheDocument();
   });
+
+  it('surfaces a labelled retry when an apply failed (does not go silent)', () => {
+    const onApplyUpdate = vi.fn();
+    render(
+      <Sidebar {...baseProps} serverOnline updateError={{ version: '1.2.3' }} onApplyUpdate={onApplyUpdate} />
+    );
+    const retry = screen.getByRole('button', { name: /Update failed/ });
+    expect(retry).toBeInTheDocument();
+    expect(retry).toHaveTextContent(/Try again/);
+    retry.click();
+    expect(onApplyUpdate).toHaveBeenCalled();
+  });
+
+  it('lets a pending shell reinstall supersede the failed-apply retry too', () => {
+    render(
+      <Sidebar {...baseProps} serverOnline updateError={{ version: '1.2.3' }} shellUpdate={{ version: '2.0.0' }} />
+    );
+    expect(screen.queryByRole('button', { name: /Update failed/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /New version available/ })).toBeInTheDocument();
+  });
 });
 
 describe('Sidebar — nav title/logo override', () => {

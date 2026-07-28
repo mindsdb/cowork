@@ -1508,7 +1508,9 @@ function AppCore() {
     } catch (err) {
       console.error('[ui-update] applyUpdate failed:', err);
       setUpdateApplying(false);
-      setUpdateStatus({ phase: 'error' });
+      // Keep the version so the sidebar can offer a labelled retry rather than
+      // going silent until the next poll.
+      setUpdateStatus({ phase: 'error', version: updateStatus?.version });
     }
   }, [updateApplying, updateStatus]);
 
@@ -3746,6 +3748,7 @@ function AppCore() {
           navTitle={settings.navTitle || null}
           navLogo={settings.navLogo || null}
           updateAvailable={updateStatus?.phase === 'available' ? { version: updateStatus.version } : null}
+          updateError={updateStatus?.phase === 'error' ? { version: updateStatus.version } : null}
           onApplyUpdate={handleApplyUpdate}
           shellUpdate={shellUpdate && shellUpdate.version !== shellUpdateDismissed ? shellUpdate : null}
           onDownloadShellUpdate={handleDownloadShellUpdate}
