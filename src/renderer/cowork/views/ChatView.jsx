@@ -37,6 +37,7 @@ import { harnessLabel } from '../lib/agentLabel';
 import { modelLabel } from '../lib/settingsTransform';
 import { providerOverloadedButtons } from '../lib/turnErrorActions';
 import { isThinkingActive } from '../lib/thinkingActive';
+import { truncateLabel } from '../lib/responseStreamAdapter';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 
 // Token shorthand mapped to our globals.css custom properties so the same
@@ -1808,30 +1809,33 @@ export default function ChatView({
 
             {streamingMsg ? (
               <AnswerTurn state="thinking" showActions={false}>
-                {streamingMsg.steps?.length > 0 && (
+                {(streamingMsg.steps?.length > 0 || streamingMsg.currentThought?.text) && (
                   <ThinkingBlock
                     steps={streamingMsg.steps}
                     startedAt={streamingMsg.startedAt}
                     isActive={isThinkingActive(streamingMsg.streamStatus)}
                     slotId="header:streaming"
+                    currentThought={streamingMsg.currentThought}
                     currentLabel={(() => {
                       const active = [...(streamingMsg.steps || [])].reverse().find(s => s.status === 'in_progress');
-                      return active?.label || null;
+                      if (active?.label) return active.label;
+                      return streamingMsg.currentThought?.text ? truncateLabel(streamingMsg.currentThought.text) : null;
                     })()}
                     onActivateStep={(step) => setOpenScratchpadStepId(prefixId(streamingKey, step.id))}
                   />
                 )}
                 {/* Bridge state: between the first stream event arriving
                     (which strips the activity placeholder) and the first
-                    step or body chunk landing, the AnswerTurn would
-                    otherwise render empty — the user sees the message
-                    "appear, vanish, then come back" once scratchpad
-                    output starts. Keep the working indicator visible
-                    whenever there are no steps and no body text yet.
-                    `_placeholderLabel` is set by the pre-first-event
-                    stub in App.jsx `withThinkingPlaceholder` ("Creating
-                    task…" for new tasks, "Thinking…" for replies). */}
-                {!streamingMsg.steps?.length && !streamingMsg.content && (
+                    step, thought, or body chunk landing, the AnswerTurn
+                    would otherwise render empty — the user sees the
+                    message "appear, vanish, then come back" once
+                    scratchpad output starts. Keep the working indicator
+                    visible whenever there's nothing else occupying the
+                    same slot yet. `_placeholderLabel` is set by the
+                    pre-first-event stub in App.jsx
+                    `withThinkingPlaceholder` ("Creating task…" for new
+                    tasks, "Thinking…" for replies). */}
+                {!streamingMsg.steps?.length && !streamingMsg.currentThought?.text && !streamingMsg.content && (
                   <WorkingIndicator
                     slotId="header:streaming"
                     label={streamingMsg._placeholderLabel || 'Thinking…'}

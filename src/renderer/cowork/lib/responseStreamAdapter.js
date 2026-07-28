@@ -42,6 +42,13 @@ export function initialStreamState() {
     startedAt: null,
     /** ThinkingStep[] in order */
     steps: [],
+    /** Live "train of thought" text that isn't part of the final answer
+     *  (extended-thinking / reasoning deltas). A single ephemeral burst —
+     *  NOT a step, so it never accumulates into the persisted steps list.
+     *  `{ text, startedAt } | null`. Cleared (not carried into the next
+     *  burst) whenever the burst ends: a tool call starts, body text
+     *  starts streaming, or the turn finishes. */
+    currentThought: null,
     /** Streaming/finished body text (markdown). */
     bodyText: '',
     /** Harness/agent ID from `response.created` (e.g. 'anton', 'hermes'). */
@@ -97,7 +104,7 @@ function closeOpenInspectableSteps(steps, completedAt) {
   const next = steps.map((step) => {
     if (
       step?.status !== 'in_progress'
-      || (!step._isScratchpad && !step._isToolCall && !step._isReasoning)
+      || (!step._isScratchpad && !step._isToolCall)
     ) {
       return step;
     }
@@ -120,16 +127,6 @@ function closeOpenScratchpadStep(steps, completedAt) {
   return next;
 }
 
-/** Close an open reasoning step (if any). Called when the model
- *  transitions from thinking to producing output. */
-function closeReasoningStep(steps, ts) {
-  const idx = steps.findIndex((s) => s._isReasoning && s.status === 'in_progress');
-  if (idx === -1) return steps;
-  const updated = steps.slice();
-  updated[idx] = { ...steps[idx], status: 'completed', completedAt: ts, label: 'Reasoning' };
-  return updated;
-}
-
 /** Build a descriptive label for a Hermes tool-call step from the
  *  tool name and its arguments dict. Shows a preview of the actual
  *  command/code so the user can see what's running at a glance. */
@@ -144,8 +141,9 @@ function toolCallLabel(name, args) {
   return `${name}: ${short}`;
 }
 
-/** Truncate reasoning text to a short label for the step row. */
-function truncateLabel(text) {
+/** Truncate accumulated thought/reasoning text to its last meaningful
+ *  line, for display as a single live "current thought" line. */
+export function truncateLabel(text) {
   if (!text) return 'Reasoning…';
   // Take the last meaningful line (reasoning streams append).
   const lines = text.trim().split('\n').filter(Boolean);
@@ -233,7 +231,12 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
   }
 
   if (type === 'response.completed') {
-    return { ...state, steps: closeOpenInspectableSteps(state.steps, eventTs), status: 'done' };
+    return {
+      ...state,
+      steps: closeOpenInspectableSteps(state.steps, eventTs),
+      status: 'done',
+      currentThought: null,
+    };
   }
 
   if (type === 'response.failed') {
@@ -251,16 +254,16 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       // Stable wire code (e.g. 'token_limit') so the renderer can show a
       // richer affordance — the out-of-credits card — instead of plain text.
       errorCode: event.code || null,
+      currentThought: null,
     };
   }
 
   if (type === 'response.output_text.delta') {
     const delta = typeof event.delta === 'string' ? event.delta : '';
     if (!delta) return state;
-    // Close any open reasoning step — the model has finished thinking
-    // and is now producing the visible response.
-    const steps = closeReasoningStep(state.steps, eventTs);
-    return { ...state, status: 'streaming', bodyText: state.bodyText + delta, steps };
+    // The model has moved from thinking to producing the visible
+    // response — end the current thought burst.
+    return { ...state, status: 'streaming', bodyText: state.bodyText + delta, currentThought: null };
   }
 
   // Inline artifact card. The harness emits one of these at turn end for
@@ -382,7 +385,8 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       _scratchpadTabId: null,
       _toolUseId: event.tool_use_id || null,
     };
-    return { ...state, steps: [...state.steps, step] };
+    // A tool cell starting ends any current thought burst.
+    return { ...state, steps: [...state.steps, step], currentThought: null };
   }
 
   // Scratchpad input — the JSON contains action, name, code,
@@ -472,9 +476,8 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       _scratchpadTabId: null,
       _toolUseId: event.tool_use_id || null,
     };
-    // Close any open reasoning step — tool use means thinking is done.
-    const steps = closeReasoningStep(state.steps, eventTs);
-    return { ...state, steps: [...steps, step] };
+    // Tool use starting ends any current thought burst.
+    return { ...state, steps: [...state.steps, step], currentThought: null };
   }
 
   if (role === 'thought.tool_call.end') {
@@ -511,45 +514,17 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
   }
 
   // ── Hermes reasoning/thinking ────────────────────────────────────
-  // Streaming reasoning text from the model's extended thinking.
-  // Accumulate into a "Reasoning" step so the user can see what the
-  // model is considering.
+  // Streaming reasoning text from the model's extended thinking. This is
+  // NOT part of the final answer, so it never becomes a step (ENG-1108) —
+  // it accumulates into the ephemeral `currentThought` burst instead,
+  // which the UI renders as a single live line and drops entirely once
+  // the burst ends or the turn completes.
   if (role === 'thought.progress' && (event.subtype === 'reasoning' || event.subtype === 'thinking')) {
     const text = event.content || '';
     if (!text) return state;
-    // Find the active reasoning step to append to. Closed reasoning
-    // steps belong to a previous phase and should stay immutable.
-    const existingIdx = state.steps.findIndex((s) => s._isReasoning && s.status === 'in_progress');
-    if (existingIdx !== -1) {
-      const existing = state.steps[existingIdx];
-      const updated = state.steps.slice();
-      updated[existingIdx] = {
-        ...existing,
-        label: truncateLabel(existing._fullText + text),
-        _fullText: existing._fullText + text,
-      };
-      return { ...state, steps: updated };
-    }
-    // Create a new reasoning step.
-    const id = `step-${state.steps.length + 1}`;
-    const step = {
-      id,
-      label: truncateLabel(text),
-      badge: null,
-      icon: 'sparkle',
-      status: 'in_progress',
-      startedAt: eventTs,
-      completedAt: null,
-      data: null,
-      output: null,
-      result: null,
-      _isScratchpad: false,
-      _scratchpadTabId: null,
-      _toolUseId: null,
-      _isReasoning: true,
-      _fullText: text,
-    };
-    return { ...state, steps: [...state.steps, step] };
+    const prevText = state.currentThought?.text || '';
+    const startedAt = state.currentThought?.startedAt || eventTs;
+    return { ...state, currentThought: { text: prevText + text, startedAt } };
   }
 
   // Progress markers

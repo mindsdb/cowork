@@ -21,6 +21,7 @@ import clsx from 'clsx';
 import Ico from '../Icons';
 import { ThinkingStep } from './ThinkingStep';
 import { WorkingIndicator } from './WorkingIndicator';
+import { truncateLabel } from '../../lib/responseStreamAdapter';
 
 function formatDuration(ms) {
   if (ms == null || ms < 0) return null;
@@ -53,6 +54,7 @@ export function ThinkingBlock({
   isActive = false,
   startedAt = null,
   currentLabel = null,
+  currentThought = null,
   slotId = null,
   onActivateStep,
 }) {
@@ -153,17 +155,30 @@ export function ThinkingBlock({
         )}
       </button>
 
-      {isExpanded && hasSteps && (
+      {isExpanded && (hasSteps || (isActive && currentThought?.text)) && (
         <div className="ml-0 mt-1">
-          {steps.map((step, index, arr) => (
+          {steps.map((step, index) => (
             <ThinkingStep
               key={step.id}
               step={step}
               isFirst={index === 0}
-              isLast={index === arr.length - 1}
+              isLast={!currentThought?.text && index === steps.length - 1}
               onActivate={onActivateStep}
             />
           ))}
+          {/* Live train-of-thought — not a step (never persisted), just
+              the current burst of reasoning text. Stable key so it
+              updates smoothly in place as new deltas arrive rather than
+              stacking a new row per chunk; disappears the moment the
+              burst ends or the turn completes (ENG-1108). */}
+          {isActive && currentThought?.text && (
+            <ThinkingStep
+              key="current-thought"
+              step={{ id: 'current-thought', label: truncateLabel(currentThought.text), icon: 'sparkle', status: 'in_progress' }}
+              isFirst={!hasSteps}
+              isLast
+            />
+          )}
         </div>
       )}
     </div>
