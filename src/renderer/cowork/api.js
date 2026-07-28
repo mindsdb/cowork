@@ -221,6 +221,7 @@ function _conversationToTask(conv, messages = []) {
     status: 'idle',
     messages: _hydrateAssistantEvents(messages),
     projectName: conv.project || null,
+    projectId: conv.project_id || null,
     projectPath: conv.project_path || null,
     model: null,
     attachments: [],
@@ -316,7 +317,7 @@ export function allocateConversationId() {
 // callback shape the rest of the app already speaks. `conversationId` is
 // optional — omit it to start a new conversation; the caller learns the
 // new id via the first onChunk/onProgress/onDone callback's second arg.
-function _streamResponse(text, { conversationId, projectName, projectPath, model, attachmentIds = [], disabledConnections, onChunk, onProgress, onToolResult, onDone, onError, onEvent } = {}) {
+function _streamResponse(text, { conversationId, projectName, projectId, projectPath, model, attachmentIds = [], disabledConnections, onChunk, onProgress, onToolResult, onDone, onError, onEvent } = {}) {
   const ctrl = new AbortController();
   (async () => {
     try {
@@ -332,6 +333,10 @@ function _streamResponse(text, { conversationId, projectName, projectPath, model
           // projects_store). Sending project_path is silently ignored —
           // every conversation would fall back to the active project.
           project: projectName || null,
+          // Names are mutable (rename) — the id is the stable identifier,
+          // so send it whenever the caller has one (ENG-1028). Conditional
+          // so older servers never see an unknown field.
+          ...(projectId ? { project_id: projectId } : {}),
           attachment_ids: attachmentIds,
           ...(disabledConnections !== undefined
             ? { disabled_connections: disabledConnections }
