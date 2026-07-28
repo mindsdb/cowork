@@ -244,12 +244,6 @@ function pickerPage(opts: { accessToken: string; apiKey: string; appId: string; 
          background: #1F9CB0; margin-right: 8px; vertical-align: middle; }
   .err .dot { background: #d64545; }
   .err p { color: #d64545; }
-  button { margin-top: 14px; font-size: 14px; font-family: inherit; padding: 8px 16px;
-           border-radius: 8px; border: 1px solid #d64545; background: transparent;
-           color: #d64545; cursor: pointer; }
-  @media (prefers-color-scheme: dark) {
-    button { border-color: #e8848a; color: #e8848a; }
-  }
 </style></head>
 <body>
   <div class="card" id="status">
@@ -275,14 +269,10 @@ function pickerPage(opts: { accessToken: string; apiKey: string; appId: string; 
     });
   }
 
-  function setStatus(title, body, isError, showReload) {
+  function setStatus(title, body, isError) {
     var card = document.getElementById('status');
     card.className = isError ? 'card err' : 'card';
-    card.innerHTML = '<h1><span class="dot"></span>' + title + '</h1><p>' + body + '</p>'
-      + (showReload ? '<p><button id="reload-btn" type="button">Reload and try again</button></p>' : '');
-    if (showReload) {
-      document.getElementById('reload-btn').addEventListener('click', function () { location.reload(); });
-    }
+    card.innerHTML = '<h1><span class="dot"></span>' + title + '</h1><p>' + body + '</p>';
   }
 
   function reportResult(payload) {
@@ -292,6 +282,33 @@ function pickerPage(opts: { accessToken: string; apiKey: string; appId: string; 
       body: JSON.stringify(Object.assign({ state: STATE }, payload)),
     }).catch(function () {});
   }
+
+  // Most common cause of both the in-widget ERROR action and a picker that
+  // never loads at all: the browser's active Google account differs from
+  // the connected account (ACCOUNT_EMAIL) — Google's picker widget renders
+  // under whichever account is ambient in this browser session, not the one
+  // the access token above is scoped to, and 403s instead of showing the
+  // file browser.
+  function reportPickerLoadFailure() {
+    setStatus(
+      'Could not open Google Drive',
+      'This is usually caused by ' + escapeHtml(ACCOUNT_EMAIL) + ' not being the active Google account in this browser. '
+        + 'Switch to that account (check the avatar menu on a Google page), close this tab, and try again from Cowork.',
+      true
+    );
+    // Sent as 'reason' to the renderer, which displays it as plain React
+    // text (not innerHTML) — intentionally NOT escapeHtml(ACCOUNT_EMAIL)
+    // here, since escaping would show literal HTML entities in that text.
+    reportResult({ error: 'Google Picker could not open — the browser’s active Google account may not match ' + ACCOUNT_EMAIL + '.' });
+  }
+
+  // A static Google 403 error page rendered inside the picker's iframe (the
+  // ENG-1102 failure mode) has no picker JS running in it, so it can never
+  // emit PICKED/CANCEL/ERROR over the postMessage relay — Action.ERROR only
+  // fires once the widget itself has loaded and then hit a problem. This is
+  // the fallback for that silent case: if nothing has come back within a
+  // generous load window, assume the widget never came up.
+  var PICKER_LOAD_TIMEOUT_MS = 9000;
 
   function buildAndShowPicker() {
     var google = window.google;
@@ -310,14 +327,23 @@ function pickerPage(opts: { accessToken: string; apiKey: string; appId: string; 
     views.push(new google.picker.DocsView(google.picker.ViewId.DOCS).setOwnedByMe(false));
     views.push(new google.picker.DocsView(google.picker.ViewId.DOCS).setEnableDrives(true));
 
+    var settled = false;
+    var loadTimeoutId = null;
+    function markSettled() {
+      settled = true;
+      if (loadTimeoutId !== null) { clearTimeout(loadTimeoutId); loadTimeoutId = null; }
+    }
+
     var builder = new google.picker.PickerBuilder()
       .setOAuthToken(ACCESS_TOKEN)
       .setDeveloperKey(API_KEY)
       .setAppId(APP_ID)
+      .setTitle('Choose files from ' + ACCOUNT_EMAIL)
       .enableFeature(google.picker.Feature.MULTISELECT_ENABLED)
       .enableFeature(google.picker.Feature.SUPPORT_DRIVES)
       .setCallback(function (data) {
         if (data.action === google.picker.Action.PICKED) {
+          markSettled();
           var files = (data.docs || []).map(function (doc) {
             // resourceKey: required by Drive API alongside the file id for
             // many files that aren't owned by the connecting account (link-
@@ -331,26 +357,27 @@ function pickerPage(opts: { accessToken: string; apiKey: string; appId: string; 
           );
           reportResult({ files: files });
         } else if (data.action === google.picker.Action.CANCEL) {
+          markSettled();
           setStatus('Picker closed', 'You can close this tab and return to MindsHub Cowork.');
           reportResult({ files: [] });
         } else if (data.action === google.picker.Action.ERROR) {
-          // Most common cause: the browser's active Google account differs
-          // from the connected account (ACCOUNT_EMAIL) — Google's picker
-          // widget renders under whichever account is ambient in this
-          // browser session, not the one the access token above is scoped
-          // to, and 403s instead of showing the file browser.
-          setStatus(
-            'Could not open Google Drive',
-            'This is usually caused by ' + escapeHtml(ACCOUNT_EMAIL) + ' not being the active Google account in this browser. '
-              + 'Switch to that account (check the avatar menu on a Google page), then reload and try again.',
-            true,
-            true
-          );
-          reportResult({ error: 'Google Picker could not open — the browser’s active Google account may not match ' + ACCOUNT_EMAIL + '.' });
+          // The widget itself loaded and then hit an internal error — a
+          // genuine in-widget failure, distinct from the silent load
+          // failure the timeout below catches.
+          markSettled();
+          reportPickerLoadFailure();
         }
       });
     views.forEach(function (v) { builder.addView(v); });
-    builder.build().setVisible(true);
+    var picker = builder.build();
+    picker.setVisible(true);
+
+    loadTimeoutId = setTimeout(function () {
+      if (settled) return;
+      markSettled();
+      try { picker.setVisible(false); } catch (e) {}
+      reportPickerLoadFailure();
+    }, PICKER_LOAD_TIMEOUT_MS);
   }
 
   window.onload = function () {

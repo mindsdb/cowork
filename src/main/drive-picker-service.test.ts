@@ -189,11 +189,13 @@ describe('openDrivePickerFlow', () => {
     await flowPromise;
   });
 
-  it('resolves with a descriptive failure (not an empty file list) when the picker page reports an error', async () => {
-    // Mirrors what the picker page sends when google.picker.Action.ERROR
-    // fires — most commonly the browser's active Google account not
-    // matching the connected account. Must be distinguishable from a plain
-    // user cancellation, which resolves ok:true with an empty file list.
+  it('resolves with a descriptive failure (not an empty file list) given an error payload from the picker page', async () => {
+    // Server-side plumbing only: exercises the /result contract the picker
+    // page uses to report a failure (whether from Action.ERROR or the load
+    // timeout), and that it's distinguishable from a plain user cancellation,
+    // which resolves ok:true with an empty file list. This does NOT prove
+    // either detector actually fires for a real account-mismatch 403 — see
+    // the load-timeout test below for that regression coverage.
     const flowPromise = openDrivePickerFlow('token', 'key', undefined, 'user@example.com');
     await vi.waitFor(() => expect(openExternalMock).toHaveBeenCalled());
     const { port, state } = extractPortAndState(openExternalMock.mock.calls[0][0]);
@@ -203,6 +205,28 @@ describe('openDrivePickerFlow', () => {
 
     expect(result.ok).toBe(false);
     expect(result.reason).toMatch(/user@example\.com/);
+  });
+
+  it('serves a load-timeout fallback that can detect a picker that never loads at all', async () => {
+    // ENG-1102 regression coverage: the reported failure is a static Google
+    // 403 page rendered inside the picker's iframe instead of the widget.
+    // That page has no picker JS in it, so it can never emit PICKED/CANCEL/
+    // ERROR over the postMessage relay — Action.ERROR only fires once the
+    // widget itself has loaded and then hit a problem, so it can't catch
+    // this case. The load timeout is what's supposed to catch it instead;
+    // assert it's actually present in the served page rather than only
+    // exercising the /result contract it eventually calls into.
+    const flowPromise = openDrivePickerFlow('token', 'key', undefined, 'user@example.com');
+    await vi.waitFor(() => expect(openExternalMock).toHaveBeenCalled());
+    const url = openExternalMock.mock.calls[0][0] as string;
+
+    const { body } = await getPickerPage(url);
+    expect(body).toContain('PICKER_LOAD_TIMEOUT_MS');
+    expect(body).toContain('picker.setVisible(false)');
+    expect(body).toContain('reportPickerLoadFailure');
+
+    cancelCurrentDrivePicker();
+    await flowPromise;
   });
 
   it('HTML-escapes the account email in the served page so it cannot break out of the markup', async () => {
