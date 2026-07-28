@@ -379,6 +379,15 @@ describe('agent tool-budget settings (max_tool_rounds / max_continuations)', () 
     );
     expect(writes).toEqual({ max_tool_rounds: '80' }); // unchanged key skipped
   });
+
+  it('never writes a budget key the server did not send', () => {
+    // Older server (no budget settings): the key is absent from the fetched
+    // snapshot, and a PUT would 400 and fail the whole multi-key save. The
+    // UI also hides the section in this state; this pins the write layer.
+    expect(diffSettingsForWrite({ maxToolRounds: '200' }, { theme: 'dark' })).toEqual({});
+    // Non-budget keys keep the old behavior (writable even when absent).
+    expect(diffSettingsForWrite({ greeting: 'hi' }, {})).toEqual({ greeting: 'hi' });
+  });
 });
 
 describe('clampBudgetValue / clampBudgets', () => {

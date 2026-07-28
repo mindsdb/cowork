@@ -965,6 +965,15 @@ export default function SettingsView({
     if (lastSavedJson == null) return null;
     try { return JSON.parse(lastSavedJson); } catch { return null; }
   }, [lastSavedJson]);
+  // Capability probe for the Advanced Settings budgets: cowork-server's
+  // list_settings returns a row for EVERY UserSettings field, so a server
+  // with the budget settings always sends both keys and an older one never
+  // does. Gating on presence keeps the section (and any possibility of
+  // writing the keys) off screens backed by servers that would 400 the
+  // write — the renderer ships OTA and can lead the installed server.
+  const hasBudgetSettings = lastSavedSettings != null
+    && 'maxToolRounds' in lastSavedSettings
+    && 'maxContinuations' in lastSavedSettings;
   // Ref-mirror of `settings` so the post-Save snapshot can read the
   // freshly-refetched value (the closure's `settings` is stale after
   // the await but the ref tracks every render).
@@ -2006,34 +2015,36 @@ export default function SettingsView({
           </Section>
         </CollapsibleGroup>
 
-        <CollapsibleGroup title="Advanced Settings" defaultOpen={false}>
-          <Section
-            title="Max steps per task"
-            subtitle={`How many actions (running code, reading files, searching) ${agentLabel || 'Anton'} may take on one request before pausing to check in with you. Raise it so big tasks finish in one go; lower it for a tighter leash on time and cost.`}
-          >
-            <BudgetNumberField
-              settingKey="maxToolRounds"
-              value={settings.maxToolRounds}
-              savedValue={lastSavedSettings?.maxToolRounds}
-              spec={BUDGET_FIELDS.maxToolRounds}
-              label="Max steps per task"
-              setSetting={setSetting}
-            />
-          </Section>
-          <Section
-            title="Max auto-continues"
-            subtitle={`When ${agentLabel || 'Anton'} stops but the work looks unfinished, Cowork sends it back to complete the job — this caps how many times. Raise it for hands-off thoroughness; set 0 to always stop at the first draft.`}
-          >
-            <BudgetNumberField
-              settingKey="maxContinuations"
-              value={settings.maxContinuations}
-              savedValue={lastSavedSettings?.maxContinuations}
-              spec={BUDGET_FIELDS.maxContinuations}
-              label="Max auto-continues"
-              setSetting={setSetting}
-            />
-          </Section>
-        </CollapsibleGroup>
+        {hasBudgetSettings && (
+          <CollapsibleGroup title="Advanced Settings" defaultOpen={false}>
+            <Section
+              title="Max steps per task"
+              subtitle={`How many actions (running code, reading files, searching) ${agentLabel || 'Anton'} may take on one request before pausing to check in with you. Raise it so big tasks finish in one go; lower it for a tighter leash on time and cost.`}
+            >
+              <BudgetNumberField
+                settingKey="maxToolRounds"
+                value={settings.maxToolRounds}
+                savedValue={lastSavedSettings?.maxToolRounds}
+                spec={BUDGET_FIELDS.maxToolRounds}
+                label="Max steps per task"
+                setSetting={setSetting}
+              />
+            </Section>
+            <Section
+              title="Max auto-continues"
+              subtitle={`When ${agentLabel || 'Anton'} stops but the work looks unfinished, Cowork sends it back to complete the job — this caps how many times. Raise it for hands-off thoroughness; set 0 to stop after the first attempt (you'll still get a summary of what's missing).`}
+            >
+              <BudgetNumberField
+                settingKey="maxContinuations"
+                value={settings.maxContinuations}
+                savedValue={lastSavedSettings?.maxContinuations}
+                spec={BUDGET_FIELDS.maxContinuations}
+                label="Max auto-continues"
+                setSetting={setSetting}
+              />
+            </Section>
+          </CollapsibleGroup>
+        )}
       </SettingsSectionPanel>
     );
   };

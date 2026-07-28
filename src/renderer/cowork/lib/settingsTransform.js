@@ -483,6 +483,13 @@ export function diffSettingsForWrite(patch, lastFetched) {
     const serverKey = CLIENT_TO_SERVER[clientKey];
     if (!serverKey) continue;
     if (value === '***') continue;
+    // Budget keys are writable only when the server serves them: the server
+    // returns a row for every settings field, so absence from the fetched
+    // snapshot means an older server that would 400 the write (and fail the
+    // whole multi-key save with it). Deliberately budget-scoped — as a global
+    // rule this would be wrong, because lastFetched falls back to mock data
+    // offline, where "absent from snapshot" is not "absent on the server".
+    if (clientKey in BUDGET_FIELDS && !(clientKey in lastFetched)) continue;
     const prev = lastFetched[clientKey];
     if (prev === value) continue;
     if (typeof value === 'object' && JSON.stringify(prev) === JSON.stringify(value)) continue;
@@ -536,7 +543,10 @@ export function clampBudgetValue(raw, spec, prev = null) {
  * settings modal dismissed with Escape mid-edit — React fires no blur on
  * unmount, and the raw draft survives in App state). Two rules:
  *   * Keys the server never sent stay absent: materializing them here would
- *     create a phantom write — and a failing one on an older server.
+ *     create a phantom write — and a failing one on an older server. (Also
+ *     enforced structurally: the Settings UI only renders the budget section
+ *     when the fetched snapshot has the keys, and diffSettingsForWrite skips
+ *     budget keys absent from it.)
  *   * An empty or unparseable draft is "no instruction", not "reset to
  *     default": clamping '' to the factory fallback here would silently
  *     overwrite the user's saved value (this function has no access to it).
