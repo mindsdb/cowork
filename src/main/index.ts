@@ -17,7 +17,7 @@ import { fetchAccountEmail } from './oauth-identity';
 import { openDrivePickerFlow, cancelCurrentDrivePicker, isValidDriveFileIds } from './drive-picker-service';
 import { getPickedFiles, savePickedFiles, verifyPickedFiles, type PickedFile } from './picked-files';
 import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefreshTokenStore, isAccessTokenExpired } from './token-store';
-import { refreshTokensOnly, writeMindsKeyToEnvAndRestart, provisionAntonApiKey, scheduleRefresh, cancelScheduledRefresh, endKeycloakSession, KEYCLOAK_AUTH_URL, KEYCLOAK_REGISTRATION_URL, KEYCLOAK_TOKEN_URL, SIGNUP_CALLBACK_TIMEOUT_MS } from './minds-auth';
+import { refreshTokensOnly, writeMindsKeyToEnvAndRestart, provisionAntonApiKey, scheduleRefresh, cancelScheduledRefresh, startKeyLifecycleChecks, cancelKeyLifecycleChecks, revokeDeviceKeyAndEndSession, getRevokeToken, KEYCLOAK_AUTH_URL, KEYCLOAK_REGISTRATION_URL, KEYCLOAK_TOKEN_URL, SIGNUP_CALLBACK_TIMEOUT_MS } from './minds-auth';
 import { MINDS_API_HOST } from './minds-urls';
 import { sendEvent } from './analytics';
 import { getRendererPath, getBundledPath, checkForUIUpdate, applyUIUpdate, hasInternet, getCachedVersion, isServingOta, rollbackUI } from './ui-updater';
@@ -919,6 +919,9 @@ function setupIPC() {
       console.error('[mindshub:finalize] writeMindsKeyToEnvAndRestart failed:', err);
       return { ok: false, reason: `Failed to save MindsHub credentials: ${err?.message || err}` };
     }
+    // ENG-498: (re)arm the key lifecycle watch for this fresh sign-in —
+    // logout cancels it, and boot only starts it when already signed in.
+    startKeyLifecycleChecks();
     return { ok: true, apiKey: result.key };
   });
 
@@ -949,16 +952,20 @@ function setupIPC() {
     // ANTON_TERMS_CONSENT (the user already agreed) and non-credential
     // preferences (memory mode, theme, etc.).
     //
-    // SSO end-session is fire-and-forget — endKeycloakSession reads
-    // the refresh token before this returns, so it has what it needs
-    // even though we drop the local copy in the next line. We must
-    // NOT await it: when the dev Keycloak hangs (which has happened),
-    // a synchronous await freezes the whole logout, leaving the
-    // confirm modal stuck on "Signing out…" because the renderer is
-    // waiting on this IPC. The end-session call has its own 3s
-    // timeout regardless, so worst case it tidies up in background.
-    endKeycloakSession();
+    // We must NOT await the chain below: when the dev Keycloak hangs
+    // (which has happened), a synchronous await freezes the whole
+    // logout, leaving the confirm modal stuck on "Signing out…"
+    // because the renderer is waiting on this IPC.
+    //
+    // ENG-498: revoke THIS device's key while the session is still valid,
+    // then end the Keycloak session — one detached chain (see
+    // revokeDeviceKeyAndEndSession for the ordering rationale). Tokens are
+    // snapshotted here because clearTokens() below wipes them; the token
+    // fetch is bounded (~5s) so a dead IdP can't stall sign-out, in which
+    // case the key simply falls to the server-side TTL.
+    void revokeDeviceKeyAndEndSession(await getRevokeToken(), getRefreshToken());
     cancelScheduledRefresh();
+    cancelKeyLifecycleChecks();
     // Tear down any sign-in still waiting on its browser tab. Without
     // this, the loopback server stays armed for up to 3 minutes and
     // completing that stale tab silently signs the user back in after
@@ -1529,6 +1536,11 @@ app.whenReady().then(async () => {
       // Resume refresh loops for Google OAuth connections already in the
       // vault from prior sessions — fire-and-forget, failures are per-entry.
       startOrphanRefreshLoops().catch(() => {});
+      // ENG-498: watch this device's MindsHub key and renew it ahead of
+      // its TTL deadline. No-op while keys carry no expiry_date, and when
+      // signed out (the check needs the server up for the settings PUT,
+      // hence this hook rather than the earlier boot refresh).
+      startKeyLifecycleChecks();
     } else {
       console.error(`[server] start failed: ${result.reason}`);
     }
