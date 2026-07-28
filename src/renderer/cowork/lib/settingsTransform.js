@@ -529,19 +529,30 @@ export function clampBudgetValue(raw, spec, prev = null) {
 }
 
 /**
- * Return `settings` with any present budget keys clamped into range.
+ * Return `settings` with any present budget keys clamped into range, and
+ * empty/unparseable drafts DROPPED from the write entirely.
  *
  * Safety net for values that skipped the input's blur clamp (e.g. the
  * settings modal dismissed with Escape mid-edit — React fires no blur on
- * unmount, and the raw draft survives in App state). Keys the server never
- * sent stay absent: materializing them here would create a phantom write —
- * and a failing one on an older server without these settings.
+ * unmount, and the raw draft survives in App state). Two rules:
+ *   * Keys the server never sent stay absent: materializing them here would
+ *     create a phantom write — and a failing one on an older server.
+ *   * An empty or unparseable draft is "no instruction", not "reset to
+ *     default": clamping '' to the factory fallback here would silently
+ *     overwrite the user's saved value (this function has no access to it).
+ *     Dropping the key means diffSettingsForWrite writes nothing and the
+ *     server keeps what it has; the post-save re-fetch heals the input.
  */
 export function clampBudgets(settings) {
   let out = settings;
   for (const [key, spec] of Object.entries(BUDGET_FIELDS)) {
     const v = settings?.[key];
     if (v == null) continue;
+    if (String(v).trim() === '' || Number.isNaN(Math.round(Number(v)))) {
+      const { [key]: _dropped, ...rest } = out;
+      out = rest;
+      continue;
+    }
     const clamped = clampBudgetValue(v, spec);
     if (clamped !== String(v)) out = { ...out, [key]: clamped };
   }

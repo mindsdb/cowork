@@ -108,6 +108,12 @@ function BudgetNumberField({ settingKey, value, spec, label, setSetting }) {
         onChange={(e) => setSetting(settingKey, e.target.value)}
         onBlur={(e) => {
           if (value == null) return; // untouched — don't materialize the key
+          // Emptied field with no known-good value to restore (e.g. modal was
+          // remounted over an Escape-orphaned '' draft): leave it empty rather
+          // than commit the factory default over the user's saved value —
+          // clampBudgets() drops empty drafts from the write, and the
+          // post-save re-fetch restores the server's stored value.
+          if (String(e.target.value).trim() === '' && lastValidRef.current == null) return;
           setSetting(settingKey, clampBudgetValue(e.target.value, spec, lastValidRef.current));
         }}
         aria-label={label}

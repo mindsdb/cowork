@@ -418,4 +418,14 @@ describe('clampBudgetValue / clampBudgets', () => {
     const clean = { maxToolRounds: '50', maxContinuations: '5' };
     expect(clampBudgets(clean)).toBe(clean);
   });
+
+  it('clampBudgets drops empty/unparseable drafts instead of defaulting them', () => {
+    // An Escape-orphaned '' draft must not become a factory-default write
+    // that silently overwrites the user's saved value — no key, no PUT,
+    // server keeps what it has.
+    const out = clampBudgets({ maxToolRounds: '', maxContinuations: 'abc', harness: 'anton' });
+    expect('maxToolRounds' in out).toBe(false);
+    expect('maxContinuations' in out).toBe(false);
+    expect(out.harness).toBe('anton');
+  });
 });
