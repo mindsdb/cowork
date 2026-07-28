@@ -71,6 +71,41 @@ const UPDATE_CARD_STYLE = {
 };
 const UPDATE_CARD_BODY_STYLE = { display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 160 };
 
+// Numeric input for the Advanced Settings agent budgets. State keeps the
+// server's string form (settings round-trip as strings; the page-wide dirty
+// compare is a JSON diff, so types must stay stable across save → re-fetch).
+// Free typing is allowed — including transiently empty/out-of-range text —
+// and the value is clamped into [min, max] on blur, so the Save button can
+// never submit a value the server would reject.
+function BudgetNumberField({ settingKey, value, fallback, min, max, label, setSetting }) {
+  const clamp = (raw) => {
+    const n = parseInt(raw, 10);
+    if (Number.isNaN(n)) return String(fallback);
+    return String(Math.min(max, Math.max(min, n)));
+  };
+  return (
+    <div style={{ display: 'inline-flex', alignItems: 'baseline', gap: 8 }}>
+      <input
+        className="field-input"
+        type="number"
+        inputMode="numeric"
+        min={min}
+        max={max}
+        step={1}
+        value={value ?? String(fallback)}
+        onChange={(e) => setSetting(settingKey, e.target.value)}
+        onBlur={(e) => setSetting(settingKey, clamp(e.target.value))}
+        aria-label={label}
+        title={`${label} (${min}–${max}, default ${fallback})`}
+        style={{ width: 90 }}
+      />
+      <span style={{ fontSize: 11.5, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+        {min}&ndash;{max} &middot; default {fallback}
+      </span>
+    </div>
+  );
+}
+
 function Section({ title, subtitle, notice, children }) {
   const { mobile } = useContext(SettingsLayoutContext);
   // A section whose sole control is a Switch or ToggleGroup is compact enough
@@ -1940,6 +1975,37 @@ export default function SettingsView({
               onCheckedChange={(v) => setSetting('actFirst', v)}
               title={`${agentLabel || 'Anton'} acts on sensible defaults and surfaces its assumptions as it goes, instead of pausing to ask.`}
               aria-label="Act first, ask later"
+            />
+          </Section>
+        </CollapsibleGroup>
+
+        <CollapsibleGroup title="Advanced Settings" defaultOpen={false}>
+          <Section
+            title="Max steps per task"
+            subtitle={`How many actions (running code, reading files, searching) ${agentLabel || 'Anton'} may take on one request before pausing to check in with you. Raise it so big tasks finish in one go; lower it for a tighter leash on time and cost.`}
+          >
+            <BudgetNumberField
+              settingKey="maxToolRounds"
+              value={settings.maxToolRounds}
+              fallback={50}
+              min={5}
+              max={500}
+              label="Max steps per task"
+              setSetting={setSetting}
+            />
+          </Section>
+          <Section
+            title="Max auto-continues"
+            subtitle={`When ${agentLabel || 'Anton'} stops but the work looks unfinished, Cowork sends it back to complete the job — this caps how many times. Raise it for hands-off thoroughness; set 0 to always stop at the first draft.`}
+          >
+            <BudgetNumberField
+              settingKey="maxContinuations"
+              value={settings.maxContinuations}
+              fallback={5}
+              min={0}
+              max={25}
+              label="Max auto-continues"
+              setSetting={setSetting}
             />
           </Section>
         </CollapsibleGroup>

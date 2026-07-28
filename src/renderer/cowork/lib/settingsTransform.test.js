@@ -354,3 +354,27 @@ describe('effectiveRoleModel / effectiveRoleProvider — canonical fields, never
     expect(effectiveRoleProvider({}, 'planning')).toBe('minds-cloud');
   });
 })
+
+describe('agent tool-budget settings (max_tool_rounds / max_continuations)', () => {
+  it('transforms server rows into camelCase string values', async () => {
+    const { transformSettingsRows } = await import('./settingsTransform');
+    const rows = [
+      { key: 'max_tool_rounds', value: '50', is_sensitive: false, is_set: false },
+      { key: 'max_continuations', value: '5', is_sensitive: false, is_set: false },
+    ];
+    const s = transformSettingsRows(rows);
+    // Strings, not numbers: the page-wide dirty compare is a JSON diff
+    // against the post-save re-fetch, so the type must survive the
+    // save -> PUT -> re-fetch round trip unchanged.
+    expect(s.maxToolRounds).toBe('50');
+    expect(s.maxContinuations).toBe('5');
+  });
+
+  it('writes changed budgets to their snake_case keys as strings', () => {
+    const writes = diffSettingsForWrite(
+      { maxToolRounds: '80', maxContinuations: '3' },
+      { maxToolRounds: '50', maxContinuations: '3' },
+    );
+    expect(writes).toEqual({ max_tool_rounds: '80' }); // unchanged key skipped
+  });
+});

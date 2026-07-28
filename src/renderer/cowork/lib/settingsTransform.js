@@ -60,6 +60,8 @@ export const SETTINGS_KEY_MAP = {
   episodic_memory: 'episodicMemory',
   proactive_dashboards: 'proactiveDashboards',
   act_first: 'actFirst',
+  max_tool_rounds: 'maxToolRounds',
+  max_continuations: 'maxContinuations',
   publish_url: 'publishUrl',
   greeting: 'greeting',
   tone: 'tone',
