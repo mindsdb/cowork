@@ -816,6 +816,18 @@ export function buildMindsEnvContent(existing: string, apiKey: string, host: str
   return lines.filter(Boolean).join('\n') + '\n';
 }
 
+// Renewal-only .env rewrite (ENG-498): swap the credential line and
+// nothing else. buildMindsEnvContent is deliberately NOT reused here —
+// it re-asserts ANTON_MINDS_ENABLED and the provider lines, which would
+// hijack the provider selection of a user who switched to BYOK after
+// signing in. Same filter+push shape as the sign-in writer.
+export function replaceMindsApiKeyLine(existing: string, apiKey: string): string {
+  const lines = existing.split('\n')
+    .filter((l) => !l.startsWith('ANTON_MINDS_API_KEY='));
+  lines.push(`ANTON_MINDS_API_KEY=${apiKey}`);
+  return lines.filter(Boolean).join('\n') + '\n';
+}
+
 // The DB setting keys a MindsHub sign-in must push, and ONLY these. The
 // server's one-time `.env`→DB migration is sentinel-guarded and won't re-run,
 // so a freshly-minted key / URL / provider selection has to be written

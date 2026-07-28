@@ -59,3 +59,50 @@ describe('shouldRenewKey', () => {
     expect(shouldRenewKey(iso(NOW - 30 * DAY_MS), 'garbage', NOW)).toBe(false);
   });
 });
+
+import { replaceMindsApiKeyLine } from './minds-auth';
+
+// ─── ENG-498: lean .env rewrite for key renewal ──────────────────────
+//
+// Renewal must swap ONLY the credential line. The sign-in writer
+// (buildMindsEnvContent) also forces provider lines — using it for a
+// background renewal would hijack the provider selection of a user who
+// switched to BYOK after signing in.
+describe('replaceMindsApiKeyLine', () => {
+  it('replaces an existing key line and preserves everything else', () => {
+    const existing = [
+      'ANTON_MINDS_ENABLED=true',
+      'ANTON_MINDS_API_KEY=mdb_old',
+      'ANTON_ANTHROPIC_API_KEY=sk-keepme',
+    ].join('\n') + '\n';
+    const out = replaceMindsApiKeyLine(existing, 'mdb_new');
+    expect(out).toMatch(/ANTON_MINDS_API_KEY=mdb_new/);
+    expect(out).not.toMatch(/mdb_old/);
+    expect(out).toMatch(/ANTON_MINDS_ENABLED=true/);
+    expect(out).toMatch(/ANTON_ANTHROPIC_API_KEY=sk-keepme/);
+  });
+
+  it('adds no provider lines (unlike the sign-in writer)', () => {
+    const out = replaceMindsApiKeyLine('ANTON_MINDS_API_KEY=mdb_old\n', 'mdb_new');
+    expect(out).not.toMatch(/ANTON_PLANNING_PROVIDER=/);
+    expect(out).not.toMatch(/ANTON_CODING_PROVIDER=/);
+    expect(out).not.toMatch(/ANTON_MINDS_URL=/);
+  });
+
+  it('appends the line when absent', () => {
+    const out = replaceMindsApiKeyLine('SOME_KEY=v\n', 'mdb_new');
+    expect(out).toMatch(/SOME_KEY=v/);
+    expect(out).toMatch(/ANTON_MINDS_API_KEY=mdb_new/);
+  });
+
+  it('collapses duplicate key lines into one', () => {
+    const existing = 'ANTON_MINDS_API_KEY=mdb_a\nANTON_MINDS_API_KEY=mdb_b\n';
+    const out = replaceMindsApiKeyLine(existing, 'mdb_new');
+    expect(out.match(/ANTON_MINDS_API_KEY=/g)).toHaveLength(1);
+  });
+
+  it('handles an empty file and ends with a single trailing newline', () => {
+    const out = replaceMindsApiKeyLine('', 'mdb_new');
+    expect(out).toBe('ANTON_MINDS_API_KEY=mdb_new\n');
+  });
+});
