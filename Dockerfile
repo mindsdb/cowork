@@ -8,6 +8,9 @@
 #     # Install cowork-server from a git ref instead of PyPI (staging builds):
 #     docker build -f Dockerfile -t cowork:dev \
 #       --build-arg COWORK_SERVER_REF=staging .
+#     # Also install anton-agent from a git ref instead of PyPI (staging builds):
+#     docker build -f cowork/Dockerfile -t cowork:dev \
+#       --build-arg COWORK_SERVER_REF=staging --build-arg ANTON_REF=staging .
 #
 # Run:
 #     docker run -p 26866:26866 \
@@ -71,6 +74,23 @@ RUN chmod +x /tmp/install-cowork-server.sh && /tmp/install-cowork-server.sh
 # HIGH). Re-check on every version bump and drop the floor once the
 # closure's own pins move past it.
 RUN uv pip install --python /opt/venv/bin/python "pyjwt>=2.13.0"
+
+# Staging builds override anton-agent with a git ref instead of the PyPI
+# release that cowork-server pins. Declared *after* the cowork-server and
+# pyjwt RUNs so a moving anton branch only invalidates this layer — the
+# cowork-server install layer survives (same post-install-override-as-a-
+# separate-RUN pattern as the pyjwt floor above). Empty ANTON_REF → no-op
+# (prod path, anton stays on PyPI). The direct-URL requirement
+# (anton-agent @ git+...) is what forces replacement of the already-installed
+# PyPI anton regardless of resolver order; a broken-pin warning from uv is
+# harmless.
+ARG ANTON_REF=
+RUN if [ -n "$ANTON_REF" ]; then \
+        echo "→ Overriding anton-agent with git ref '$ANTON_REF'" >&2; \
+        uv pip install --python /opt/venv/bin/python \
+            "anton-agent @ git+https://github.com/mindsdb/anton.git@${ANTON_REF}" && \
+        /opt/venv/bin/python -c "import anton; import importlib.metadata as m; print('✓ anton-agent', m.version('anton-agent'))"; \
+    fi
 
 # ── Stage 3: runtime — minimal, no compilers, no git, no source tree ─────
 FROM python:3.12-slim AS runtime
