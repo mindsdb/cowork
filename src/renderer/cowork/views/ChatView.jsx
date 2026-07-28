@@ -29,6 +29,7 @@ import { FormErrorBoundary } from '../components/datavault/FormErrorBoundary';
 import { revealArtifact, exportArtifact, attachmentRawUrl, fetchHealth } from '../api';
 import { AttachmentThumbnail } from '../components/AttachmentThumbnail';
 import { normalizeArtifactRecord } from '../lib/artifactPaths';
+import { latestSkillCardIndexByKey } from '../lib/skillCards';
 import { host, isWeb } from '../../platform/host';
 import { Crumb as CrumbButton, CrumbSep } from '../components/ui/Crumb';
 import { useBreakpoint } from '../hooks/useBreakpoint';
@@ -482,13 +483,18 @@ function StepArtifacts({ steps, onOpen, projectPath }) {
 // Renders any badge='Skill' steps as inline SkillCards — a skill the agent
 // BUILT this turn. Sibling of StepArtifacts, but explicitly NOT the artifact
 // system: a skill is a draft the user saves or downloads from the card.
-function StepSkills({ steps }) {
-  const skills = steps?.filter((s) => s.badge === 'Skill') || [];
+function StepSkills({ steps, latestByKey, messageIndex, projectName }) {
+  let skills = steps?.filter((s) => s.badge === 'Skill') || [];
+  // Show a skill card only at the latest turn that emitted its slug — earlier
+  // (superseded) copies are hidden so the chat holds one card per skill.
+  if (latestByKey && messageIndex != null) {
+    skills = skills.filter((s) => latestByKey.get(s._skillKey || s.data?.slug || s.id) === messageIndex);
+  }
   if (skills.length === 0) return null;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 4 }}>
       {skills.map((s) => (
-        <SkillCard key={s.id} skill={s.data || {}} />
+        <SkillCard key={s.id} skill={s.data || {}} projectName={projectName} />
       ))}
     </div>
   );
@@ -1203,6 +1209,14 @@ export default function ChatView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visibleMessages, streamingMsg]);
 
+  // One inline skill card per slug — shown only at the LATEST turn that emitted
+  // it, so a refined skill's card moves down to the newest version and earlier
+  // copies disappear. Streaming message is last in chronological order.
+  const latestSkillCardByKey = useMemo(
+    () => latestSkillCardIndexByKey(streamingMsg ? [...visibleMessages, streamingMsg] : visibleMessages),
+    [visibleMessages, streamingMsg],
+  );
+
   useLayoutEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [task.messages.length, isStreaming]);
@@ -1800,7 +1814,7 @@ export default function ChatView({
                     />
                   )}
                   <StepArtifacts steps={m.steps} onOpen={handleArtifactOpen} projectPath={artifactProjectPath} />
-                  <StepSkills steps={m.steps} />
+                  <StepSkills steps={m.steps} latestByKey={latestSkillCardByKey} messageIndex={i} projectName={project?.name} />
                 </AnswerTurn>
               );
               });
@@ -1844,7 +1858,7 @@ export default function ChatView({
                   </div>
                 )}
                 <StepArtifacts steps={streamingMsg.steps} onOpen={handleArtifactOpen} projectPath={artifactProjectPath} />
-                <StepSkills steps={streamingMsg.steps} />
+                <StepSkills steps={streamingMsg.steps} latestByKey={latestSkillCardByKey} messageIndex={visibleMessages.length} projectName={project?.name} />
               </AnswerTurn>
             ) : isStreaming && (
               <AnswerTurn state="thinking" showActions={false}>
