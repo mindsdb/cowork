@@ -68,10 +68,14 @@ export default function SkillCard({ skill, projectName }) {
 
   const name = skill.name || skill.slug || 'Skill';
   const slug = skill.slug || skill.label;
-  // A draft is NOT in the skills store until the user Saves it — the agent may
-  // narrate "saved" while the card is still just a draft (ENG-645 RC #2). Show
-  // the truth: saved this session, or already in the store, else an unsaved draft.
-  const isSaved = saved || (Array.isArray(skills) && skills.some((s) => s.label === slug));
+  // "Saved" only when THIS revision is in the store — compare instructions, not
+  // just slug existence: editing an existing skill seeds the draft from the
+  // stored version, so slug-existence alone would falsely show "Saved" before
+  // the refinement is saved (ENG-645 RC #2). Trimmed to ignore round-trip
+  // whitespace; a mismatch errs to "Draft · not saved" (the safe side).
+  const isSaved = saved || (Array.isArray(skills) && skills.some(
+    (s) => s.label === slug && (s.declarative || '').trim() === (skill.instructions || '').trim()
+  ));
 
   const handleDownload = (e) => {
     e.stopPropagation();
