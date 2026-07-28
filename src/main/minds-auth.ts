@@ -1232,10 +1232,16 @@ async function doKeyLifecycleCheck(): Promise<void> {
   let result = await provisionAntonApiKey(token, { deleteExistingKey: false });
   if (!result.key && result.limitReached) {
     // At the active-key cap the no-delete renewal can never succeed and
-    // would fail identically every tick until the 401 deadline. Trade the
-    // in-flight-session guarantee for the renewal: one retry that deletes
-    // this device's own prior key first — a bounded mid-session 401 beats a
-    // guaranteed 401 for every session at the deadline.
+    // would fail identically every tick until the 401 deadline, so retry
+    // once with this device's own prior key deleted. The trade is not
+    // free: the delete runs BEFORE the mint, so if the retry's mint then
+    // fails (network, 5xx, token expiry mid-flight) the device holds no
+    // live key — and since revoked rows are filtered out above, the next
+    // tick takes the "missing ⇒ don't silently re-mint" branch, so the
+    // only in-product recovery is a re-sign-in until the local-vs-remote
+    // key-identity heal (ENG-498 enablement precondition) ships. Accepted:
+    // it needs the cap AND a second-mint failure, and this path can't
+    // fire at all until the TTL is enabled — which is gated on that heal.
     console.warn('[minds-auth] key renewal hit the active-key cap — retrying once with own prior key deleted');
     result = await provisionAntonApiKey(token, { deleteExistingKey: true });
   }
