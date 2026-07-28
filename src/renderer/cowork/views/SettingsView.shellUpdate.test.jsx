@@ -20,6 +20,7 @@ vi.mock('../../platform/host', () => ({
     openExternal: vi.fn(),
     serverDiagnostics: vi.fn(async () => ({})),
     checkForUpdates: vi.fn(async () => ({ ok: true, offline: false, updateAvailable: false, uiUpdateAvailable: false, serverUpdateAvailable: false, shellUpdateAvailable: false })),
+    applyUpdate: vi.fn(async () => true),
   },
   getVersionInfo: vi.fn(async () => ({ app: '2.26.7.13.1', ui: null, source: 'bundled' })),
   isElectron: true,
@@ -80,5 +81,18 @@ describe('SettingsView desktop — UI/server updates framed as a restart', () =>
     // language for the shell reinstall path.
     expect(await screen.findByRole('button', { name: /Restart now/ })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Download update/ })).toBeNull();
+  });
+
+  it('returns to a retryable state when applyUpdate resolves false', async () => {
+    host.checkForUpdates.mockResolvedValueOnce({
+      ok: true, offline: false, updateAvailable: true,
+      uiUpdateAvailable: true, serverUpdateAvailable: false, shellUpdateAvailable: false,
+    });
+    host.applyUpdate.mockResolvedValueOnce(false);
+    render(<SettingsView {...baseProps} shellUpdate={null} onDownloadShellUpdate={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /Check for updates/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Restart now/ }));
+    expect(await screen.findByRole('button', { name: /Try again/ })).toBeInTheDocument();
+    expect(screen.getByText(/Couldn't apply the update/)).toBeInTheDocument();
   });
 });

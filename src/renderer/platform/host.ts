@@ -14,6 +14,7 @@
 // so call sites can branch / hide affordances.
 
 import type { ServerStartErrorKind } from '../../shared/server-status';
+import type { UpdateCheckSummary } from '../../shared/update-types';
 
 const ANTON_SERVER_PORT = 26866;
 
@@ -464,11 +465,7 @@ export interface ShellUpdate {
   downloadUrl?: string;
 }
 
-// Pull the last-known shell (installer) update notice from main (ENG-849).
-// The notice is normally pushed via onUpdateStatus('shell-available'), but an
-// OTA reload re-mounts the renderer and drops that push; re-pulling on mount
-// re-surfaces a pending reinstall. Returns null when nothing is pending, or in
-// web / on a shell too old to have the handler (partial bridge → degrade).
+// Pull the cached notice after reload; old shells and web degrade to null.
 export async function getShellUpdate(): Promise<ShellUpdate | null> {
   if (isElectron && typeof bridge.getShellUpdate === 'function') {
     const s = await bridge.getShellUpdate();
@@ -479,34 +476,18 @@ export async function getShellUpdate(): Promise<ShellUpdate | null> {
   return null;
 }
 
-/** Display-ready result of a user-triggered "Check for updates" (ENG-671).
- *  `ok:false` means the check itself couldn't run (e.g. offline) — distinct
- *  from "up to date", which is `ok && !updateAvailable`. Shell (installer)
- *  updates ride along too (ENG-849): they can't be applied in place, so
- *  `shellUpdateAvailable` drives a download link rather than an apply. */
-export interface UpdateCheckSummary {
-  ok: boolean;
-  offline: boolean;
-  updateAvailable: boolean;
-  uiUpdateAvailable: boolean;
-  serverUpdateAvailable: boolean;
-  uiVersion?: string;
-  serverVersion?: string;
-  shellUpdateAvailable?: boolean;
-  shellVersion?: string;
-  shellDownloadUrl?: string;
-}
-
-// On-demand check for a newer UI, server, or shell version. Detection only —
-// never applies; call applyUpdate() (UI/server) or download the installer
-// (shell). Electron-only: the web app has no updater (hosted instances update
-// via redeploy, ENG-852), so it resolves to a benign "up to date" and the
-// Settings control is hidden there.
 export async function checkForUpdates(): Promise<UpdateCheckSummary> {
   if (isElectron && typeof bridge.checkForUpdate === 'function') {
     return bridge.checkForUpdate();
   }
-  return { ok: true, offline: false, updateAvailable: false, uiUpdateAvailable: false, serverUpdateAvailable: false };
+  return {
+    ok: true,
+    offline: false,
+    updateAvailable: false,
+    uiUpdateAvailable: false,
+    serverUpdateAvailable: false,
+    shellUpdateAvailable: false,
+  };
 }
 
 // ---- OAuth (Electron-only PKCE flow) -----------------------------------

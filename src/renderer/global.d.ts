@@ -18,21 +18,7 @@ interface AntonTronAPI {
     Promise<{ ok: boolean; error?: string }>;
 
   // UI Updates
-  // checkForUpdate runs a unified UI + server + shell detection pass (ENG-671 /
-  // ENG-849) and returns a display-ready summary; ok:false means the check
-  // couldn't run (e.g. offline), distinct from "up to date" (ok && !updateAvailable).
-  checkForUpdate: () => Promise<{
-    ok: boolean;
-    offline: boolean;
-    updateAvailable: boolean;
-    uiUpdateAvailable: boolean;
-    serverUpdateAvailable: boolean;
-    shellUpdateAvailable: boolean;
-    uiVersion?: string;
-    serverVersion?: string;
-    shellVersion?: string;
-    shellDownloadUrl?: string;
-  }>;
+  checkForUpdate: () => Promise<import('../shared/update-types').UpdateCheckSummary>;
   applyUpdate: () => Promise<boolean>;
   onUpdateStatus: (cb: (status: { phase: string; version?: string; currentVersion?: string; downloadUrl?: string }) => void) => () => void;
   getShellUpdate: () => Promise<{ available: boolean; currentVersion?: string; latestVersion?: string; downloadUrl?: string | null }>;

@@ -1342,11 +1342,7 @@ function AppCore() {
   const [updateStatus, setUpdateStatus] = useState(null); // { phase, version }
   const [updateApplying, setUpdateApplying] = useState(false);
   const toastManager = useToastManager();
-  // Shell (installer) update notice (ENG-849). The Electron shell isn't covered
-  // by OTA — it updates only via a manual reinstall — so this offers a download
-  // link, never an in-place apply. Populated by the 'shell-available' push from
-  // main's boot/periodic poll. Dismissal is per-version so a dismissed notice
-  // reappears when a newer shell ships (don't nag; do re-notify).
+  // Download-only shell notice; dismissal is scoped to the offered version.
   const [shellUpdate, setShellUpdate] = useState(null); // { version, currentVersion, downloadUrl }
   const [shellUpdateDismissed, setShellUpdateDismissed] = useState(() => {
     try { return localStorage.getItem('shellUpdateDismissedVersion') || ''; } catch { return ''; }
@@ -1465,8 +1461,6 @@ function AppCore() {
   // web — host returns a noop unsubscriber there.
   useEffect(() => {
     return host.onUpdateStatus((status) => {
-      // The shell (installer) notice rides the same channel but is a distinct,
-      // download-only flow — keep it out of the OTA apply state.
       if (status?.phase === 'shell-available') {
         setShellUpdate({ version: status.version, currentVersion: status.currentVersion, downloadUrl: status.downloadUrl });
         return;
@@ -1475,11 +1469,7 @@ function AppCore() {
     });
   }, []);
 
-  // Re-pull the shell (installer) notice on mount (ENG-849). The push above
-  // only fires on the boot/periodic poll; an OTA auto-apply reload re-mounts
-  // this component and drops that push, with the next one a poll interval away.
-  // Pulling main's cached status here means a pending reinstall notice survives
-  // the reload instead of silently vanishing for up to 4h.
+  // Recover a cached notice after an OTA reload drops the original push.
   useEffect(() => {
     let cancelled = false;
     host.getShellUpdate().then((s) => { if (!cancelled && s) setShellUpdate(s); }).catch(() => {});
@@ -1522,11 +1512,7 @@ function AppCore() {
     }
   }, [updateApplying, updateStatus]);
 
-  // Shell update = manual reinstall: open the installer download in the browser.
-  // An explicit URL wins (the Settings "Check for updates" result passes the one
-  // it found); otherwise use the poll-notice URL, falling back to the downloads
-  // site. The `typeof` guard ignores the click event a bare onClick handler
-  // passes as the first arg (e.g. the sidebar's Download button).
+  // Settings can pass a URL; a bare click falls back to the cached notice.
   const handleDownloadShellUpdate = useCallback((url) => {
     const explicit = typeof url === 'string' && url ? url : null;
     host.openExternal(explicit || shellUpdate?.downloadUrl || 'https://downloads.mindshub.ai');

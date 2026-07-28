@@ -12,6 +12,7 @@
 // OTA cache-freshness / update-newer decisions below.
 import { parseCalVer, compareCalVer, newestCalVer } from '../shared/version';
 import type { ServerStartErrorKind } from '../shared/server-status';
+import type { UpdateCheckSummary } from '../shared/update-types';
 
 // ---------------------------------------------------------------------------
 // Version comparison
@@ -284,67 +285,22 @@ export function decideUpdateApply(input: {
 // On-demand "Check for updates" summary (ENG-671)
 // ---------------------------------------------------------------------------
 
-/** Display-ready result of a user-triggered "Check for updates" — the two
- *  independent detection passes (UI/OTA and server) collapsed into one shape
- *  the Settings panel can render directly. `ok:false` means the check itself
- *  could not run (e.g. the network was unreachable); it is NOT "up to date". A
- *  caller shows "you're up to date" only when `ok && !updateAvailable`. */
-export interface UpdateCheckSummary {
-  ok: boolean;
-  offline: boolean;
-  updateAvailable: boolean;
-  uiUpdateAvailable: boolean;
-  serverUpdateAvailable: boolean;
-  shellUpdateAvailable: boolean;
-  uiVersion?: string;    // available OTA bundle version (present iff uiUpdateAvailable)
-  serverVersion?: string; // available server version (present iff serverUpdateAvailable)
-  shellVersion?: string;     // newest published shell/installer version (iff shellUpdateAvailable)
-  shellDownloadUrl?: string; // installer download URL for this platform/channel, if any
-}
-
-/** Collapse the UI and server detection passes into one summary.
- *
- *  `updateAvailable` is the OR of the two on purpose: the manual apply path
- *  (`UI_UPDATE_APPLY`) updates server AND UI together, so "an update is
- *  available" must be true when EITHER is — a UI-only view would report "up to
- *  date" while a server update was pending.
- *
- *  Pure: the orchestrator does the network I/O and passes each channel's
- *  result here, including its own `error` flag when that channel's check
- *  couldn't complete (as opposed to completing and finding no update).
- *
- *  A channel's own error never invalidates ITS OWN positive result — a
- *  channel that actually completed and found an update is never inconclusive
- *  about itself. So a confirmed update on either channel always wins over the
- *  other channel being inconclusive: the periodic poll would still surface
- *  (and could apply) that same confirmed update, and hiding it behind a
- *  generic "couldn't check" would make the manual check strictly less useful
- *  than the poll it's meant to mirror. `ok:false` — "couldn't check", never
- *  "up to date" — applies only when NEITHER channel confirmed anything AND at
- *  least one was inconclusive. `offline` additionally requires BOTH channels
- *  to have failed (or an explicit override), since one erroring while the
- *  other completed cleanly with no update is a partial-check failure, not "no
- *  connectivity". */
+/** A confirmed update wins over an error from another channel. With no update,
+ * any channel error makes the result inconclusive; both errors imply offline. */
 export function summarizeUpdateCheck(input: {
-  offline?: boolean;
   ui: { updateAvailable: boolean; newVersion?: string; error?: boolean };
   server: { updateAvailable: boolean; latestVersion?: string; error?: boolean };
-  // Shell (installer) is detection-only and download-applied (ENG-849). It has
-  // no `error` flag — the orchestrator swallows a shell-check failure to "no
-  // update" — so it can only ever add a confirmed update, never inconclusiveness.
   shell?: { updateAvailable: boolean; version?: string; downloadUrl?: string };
 }): UpdateCheckSummary {
-  // An explicit `offline` override (no channel result can be trusted) still
-  // wins outright, same as before.
-  const uiUpdateAvailable = !input.offline && !!input.ui.updateAvailable;
-  const serverUpdateAvailable = !input.offline && !!input.server.updateAvailable;
-  const shellUpdateAvailable = !input.offline && !!input.shell?.updateAvailable;
+  const uiUpdateAvailable = !!input.ui.updateAvailable;
+  const serverUpdateAvailable = !!input.server.updateAvailable;
+  const shellUpdateAvailable = !!input.shell?.updateAvailable;
   const updateAvailable = uiUpdateAvailable || serverUpdateAvailable || shellUpdateAvailable;
 
-  if (!updateAvailable && (input.offline || input.ui.error || input.server.error)) {
+  if (!updateAvailable && (input.ui.error || input.server.error)) {
     return {
       ok: false,
-      offline: !!input.offline || (!!input.ui.error && !!input.server.error),
+      offline: !!input.ui.error && !!input.server.error,
       updateAvailable: false,
       uiUpdateAvailable: false,
       serverUpdateAvailable: false,
@@ -599,20 +555,9 @@ export function startFailureMessage(input: {
 // Shell (installer) update notice (ENG-849)
 // ---------------------------------------------------------------------------
 
-// Where signed installers live (CloudFront over the anton-installer S3 bucket).
-// Per-platform, per-channel-by-filename: `-latest` = prod, `-staging` = stable.
 const SHELL_DOWNLOADS_BASE = 'https://downloads.mindshub.ai/mindshub-cowork';
 
-/** Is a newer Electron shell (installer) available for download?
- *
- *  The shell is not covered by OTA — it only updates via a manual reinstall —
- *  so all we can do is compare the installed shell CalVer against the newest
- *  published one and, if strictly newer, point the user at the installer.
- *
- *  Fail-closed: if either version isn't CalVer (e.g. a dev build whose
- *  `getAppDisplayVersion()` fell back to the package.json SemVer), return false
- *  — never nag on a version we can't actually compare. MAJOR is ignored, same
- *  as every other CalVer comparison (compareCalVer). */
+/** Compare shell CalVers, failing closed for dev or malformed versions. */
 export function shellUpdateIsNewer(
   latestShellVersion: string | null | undefined,
   installedShellVersion: string | null | undefined,
@@ -623,12 +568,7 @@ export function shellUpdateIsNewer(
   return compareCalVer(latest, installed) > 0;
 }
 
-/** The stable installer download URL for this platform + build channel, or null
- *  when there isn't one. Prod points at the `-latest` installer, stable at the
- *  `-staging` installer — a non-prod build must never be sent to the prod
- *  installer (ENG-676). preview/dev (and any unknown channel) have no stable
- *  installer URL, and only macOS/Windows ship an installer, so both cases
- *  return null (the caller can fall back to the downloads site). */
+/** Return the installer URL for a supported platform and release channel. */
 export function shellDownloadUrl(
   platform: string,
   buildKind: string | null | undefined,

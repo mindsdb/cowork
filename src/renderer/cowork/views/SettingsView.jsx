@@ -63,23 +63,6 @@ export function patchSavedJson(prevJson, key, value) {
   }
 }
 
-// Exported for tests. Decide the "Update now" control's state after an
-// on-demand apply attempt (ENG-671 / PR #449 review). host.applyUpdate()
-// communicates several expected failure paths — a failed download, a
-// compatibility rejection, the update disappearing between check and apply —
-// by resolving `false` rather than throwing. A caller that only clears its
-// "applying" flag in a `catch` block leaves the button stuck on "Updating…"
-// forever for those paths; this is the single source of truth for both the
-// resolved-false and thrown-exception cases (the caller maps a thrown
-// exception to `applied: false` before calling this). `applied: true` keeps
-// `applying` true on purpose: a window reload is imminent and will tear this
-// view down, so there is no idle state to render.
-export function nextApplyUpdateState(applied) {
-  return applied ? { applying: true, error: false } : { applying: false, error: true };
-}
-
-// Shared sage-surface style for the Updates section's two notice cards
-// (apply-available and shell-reinstall) so they can't drift apart.
 const UPDATE_CARD_STYLE = {
   display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
   padding: '10px 12px', border: '1px solid rgba(93,146,135,0.30)',
@@ -871,8 +854,6 @@ export default function SettingsView({
       setKeychainPref(!next);
     }
   };
-  // ENG-671 — run the on-demand update check. Detection only; the result drives
-  // the status line and (when an update is available) the "Update now" button.
   const handleCheckForUpdates = async () => {
     if (checkingUpdates || applyingUpdate) return;
     setCheckingUpdates(true);
@@ -881,32 +862,20 @@ export default function SettingsView({
     try {
       setCheckResult(await host.checkForUpdates());
     } catch {
-      // A thrown check is an "error" outcome distinct from offline.
       setCheckResult({ ok: false, offline: false, updateAvailable: false });
     } finally {
       setCheckingUpdates(false);
     }
   };
 
-  // Apply now, without waiting for the next launch. Updates otherwise auto-apply
-  // only at boot (ENG-858); the mid-session periodic check never auto-applies,
-  // so this button is how a user acts on a detected update immediately. Runs the
-  // same server-first + UI apply as the boot check; the window reloads when it
-  // lands (App.jsx listens for UI_UPDATE_STATUS), which tears this view down —
-  // so there's a success path (stay busy, reload incoming) but no success
-  // *state* to render here. A resolved `false` is a normal, expected failure
-  // (failed download, compatibility rejection, update disappeared between
-  // check and apply) — not an exception — so it must be handled here rather
-  // than only in `catch`, or the button is stuck on "Updating…" forever.
   const handleApplyUpdateNow = async () => {
     if (applyingUpdate) return;
     setApplyingUpdate(true);
     setApplyError(false);
-    // applyUpdate() resolves false on an expected failure and can also throw;
-    // normalize both so the button never sticks on "Updating…".
-    const { applying, error } = nextApplyUpdateState(await host.applyUpdate().catch(() => false));
-    setApplyingUpdate(applying);
-    setApplyError(error);
+    const applied = await host.applyUpdate().catch(() => false);
+    // Success reloads the window; a resolved false or throw returns to retry.
+    setApplyingUpdate(applied);
+    setApplyError(!applied);
   };
 
   // Tracks whether any LLM-affecting setting changed since the last
@@ -2442,17 +2411,9 @@ export default function SettingsView({
           >
             {(() => {
               const r = checkResult;
-              // A fresh check (r.ok) is authoritative; before one runs, fall back
-              // to the background poll's notice (shellUpdate prop) so a pending
-              // reinstall shows on a plain Settings visit too (ENG-849).
               const shellPending = r?.ok ? !!r.shellUpdateAvailable : !!shellUpdate;
               const shellVersion = r?.shellVersion || shellUpdate?.version;
               const shellUrl = r?.shellDownloadUrl || shellUpdate?.downloadUrl;
-              // Status line shown beside the button once a check resolves.
-              // ok:false is an error/offline outcome — never "up to date".
-              // "Up to date" also requires no shell reinstall pending, since
-              // r.updateAvailable already folds the shell in (ENG-849) — so it
-              // can't claim you're current while the app itself is behind.
               let status = null;
               if (!checkingUpdates && r) {
                 if (!r.ok) {
@@ -2465,10 +2426,6 @@ export default function SettingsView({
               }
               const isError = !!r && !r.ok;
               const isUpToDate = !checkingUpdates && !!r && r.ok && !r.updateAvailable;
-              // UI/server updates are applied by restarting the app (server
-              // restart + renderer reload), framed as a restart rather than a
-              // version to manage; the shell is download-only and keeps the
-              // "new version" framing, so keep it out of this apply path.
               const applyAvailable = !checkingUpdates && !!r && r.ok && (r.uiUpdateAvailable || r.serverUpdateAvailable);
               const busy = checkingUpdates || applyingUpdate;
               const parts = [];

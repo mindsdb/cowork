@@ -246,10 +246,7 @@ export default function Sidebar({
   onShowServerHelp,
   updateAvailable = null, // { version: string } or null
   onApplyUpdate,
-  // Shell (installer) update notice (ENG-849): { version, currentVersion,
-  // downloadUrl } or null. Distinct from updateAvailable — UI/server updates
-  // apply by restarting the app, but the shell only updates via a manual
-  // reinstall, so this offers a download link + dismiss, never a "Restart".
+  // Download-only shell update notice.
   shellUpdate = null,
   onDownloadShellUpdate,
   onDismissShellUpdate,
@@ -763,12 +760,7 @@ export default function Sidebar({
           )}
         </div>
 
-        {/* OTA (UI/server) update banner. Suppressed while a shell reinstall is
-            pending: reinstalling ships a current UI/server bundle, so the shell
-            notice supersedes this one rather than stacking a second, near-
-            identical banner (ENG-849). Dismissing the shell notice sets its prop
-            to null upstream, which brings this banner back for anyone who can't
-            reinstall right now but could still apply the OTA update. */}
+        {/* A shell reinstall supersedes the OTA banner until dismissed. */}
         {updateAvailable && !shellUpdate && (
           <button
             type="button"
@@ -813,9 +805,7 @@ export default function Sidebar({
           </button>
         )}
 
-        {/* Shell (installer) update notice — the app itself is newer than what's
-            installed; the shell can't hot-update, so this links to the download
-            and is dismissible per-version (ENG-849). */}
+        {/* Shell updates are download-only and dismissible per version. */}
         {shellUpdate && (
           <div
             style={{

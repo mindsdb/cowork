@@ -699,230 +699,103 @@ describe('parseUiManifest — shellVersion (ENG-849)', () => {
 });
 
 describe('shellUpdateIsNewer (ENG-849)', () => {
-  it('true only when the latest shell is strictly newer by CalVer', () => {
-    expect(shellUpdateIsNewer('2.26.7.20.1', '2.26.7.13.1')).toBe(true);
-    expect(shellUpdateIsNewer('2.26.7.20.1', '2.26.7.20.1')).toBe(false); // equal
-    expect(shellUpdateIsNewer('2.26.7.13.1', '2.26.7.20.1')).toBe(false); // older
-  });
-
-  it('ignores MAJOR, ordering on the date (a server-major shell string still compares by date)', () => {
-    expect(shellUpdateIsNewer('0.26.7.21.1', '2.26.7.20.1')).toBe(true);
-  });
-
-  it('fails closed on a non-CalVer installed or latest (never nag on the dev SemVer fallback)', () => {
-    expect(shellUpdateIsNewer('2.26.7.20.1', '2.0.7')).toBe(false);
-    expect(shellUpdateIsNewer('2.0.7', '2.26.7.20.1')).toBe(false);
-    expect(shellUpdateIsNewer(null, '2.26.7.20.1')).toBe(false);
-    expect(shellUpdateIsNewer('2.26.7.20.1', undefined)).toBe(false);
+  it.each([
+    ['newer', '2.26.7.20.1', '2.26.7.13.1', true],
+    ['equal', '2.26.7.20.1', '2.26.7.20.1', false],
+    ['older', '2.26.7.13.1', '2.26.7.20.1', false],
+    ['newer date with a lower major', '0.26.7.21.1', '2.26.7.20.1', true],
+    ['non-CalVer latest', '2.0.7', '2.26.7.20.1', false],
+    ['non-CalVer installed', '2.26.7.20.1', '2.0.7', false],
+    ['missing latest', null, '2.26.7.20.1', false],
+    ['missing installed', '2.26.7.20.1', undefined, false],
+  ])('%s', (_name, latest, installed, expected) => {
+    expect(shellUpdateIsNewer(latest, installed)).toBe(expected);
   });
 });
 
 describe('shellDownloadUrl (ENG-849)', () => {
-  it('points prod at the -latest installer per platform', () => {
-    expect(shellDownloadUrl('darwin', 'prod')).toBe('https://downloads.mindshub.ai/mindshub-cowork/mac/mindshub-cowork-latest.pkg');
-    expect(shellDownloadUrl('win32', 'prod')).toBe('https://downloads.mindshub.ai/mindshub-cowork/windows/mindshub-cowork-latest.exe');
-  });
-
-  it('points stable at the -staging installer, never the prod one (ENG-676)', () => {
-    expect(shellDownloadUrl('darwin', 'stable')).toBe('https://downloads.mindshub.ai/mindshub-cowork/mac/mindshub-cowork-staging.pkg');
-    expect(shellDownloadUrl('win32', 'stable')).toBe('https://downloads.mindshub.ai/mindshub-cowork/windows/mindshub-cowork-staging.exe');
-  });
-
-  it('returns null for channels without a stable installer URL', () => {
-    expect(shellDownloadUrl('darwin', 'preview')).toBeNull();
-    expect(shellDownloadUrl('darwin', 'dev')).toBeNull();
-    expect(shellDownloadUrl('darwin', null)).toBeNull();
-  });
-
-  it('returns null for platforms that ship no installer', () => {
-    expect(shellDownloadUrl('linux', 'prod')).toBeNull();
-    expect(shellDownloadUrl('', 'prod')).toBeNull();
+  const base = 'https://downloads.mindshub.ai/mindshub-cowork';
+  it.each([
+    ['darwin', 'prod', `${base}/mac/mindshub-cowork-latest.pkg`],
+    ['win32', 'prod', `${base}/windows/mindshub-cowork-latest.exe`],
+    ['darwin', 'stable', `${base}/mac/mindshub-cowork-staging.pkg`],
+    ['win32', 'stable', `${base}/windows/mindshub-cowork-staging.exe`],
+    ['darwin', 'preview', null],
+    ['darwin', 'dev', null],
+    ['darwin', null, null],
+    ['linux', 'prod', null],
+    ['', 'prod', null],
+  ])('%s / %s', (platform, kind, expected) => {
+    expect(shellDownloadUrl(platform, kind)).toBe(expected);
   });
 });
 
 describe('summarizeUpdateCheck (ENG-671 "Check for updates")', () => {
-  it('reports offline as ok:false (not "up to date")', () => {
-    const r = summarizeUpdateCheck({ offline: true, ui: { updateAvailable: false }, server: { updateAvailable: false } });
-    expect(r).toEqual({ ok: false, offline: true, updateAvailable: false, uiUpdateAvailable: false, serverUpdateAvailable: false, shellUpdateAvailable: false });
+  const clean = { updateAvailable: false };
+  const empty = {
+    updateAvailable: false,
+    uiUpdateAvailable: false,
+    serverUpdateAvailable: false,
+    shellUpdateAvailable: false,
+  };
+
+  it.each([
+    ['all current', { ui: clean, server: clean }, { ok: true, offline: false, ...empty }],
+    ['UI failure', { ui: { ...clean, error: true }, server: clean }, { ok: false, offline: false, ...empty }],
+    ['server failure', { ui: clean, server: { ...clean, error: true } }, { ok: false, offline: false, ...empty }],
+    ['both failures', { ui: { ...clean, error: true }, server: { ...clean, error: true } }, { ok: false, offline: true, ...empty }],
+    [
+      'UI update',
+      { ui: { updateAvailable: true, newVersion: '1.26.7.20.3' }, server: clean },
+      { ok: true, offline: false, updateAvailable: true, uiUpdateAvailable: true, serverUpdateAvailable: false, shellUpdateAvailable: false, uiVersion: '1.26.7.20.3' },
+    ],
+    [
+      'server update',
+      { ui: clean, server: { updateAvailable: true, latestVersion: '0.26.8.1.2' } },
+      { ok: true, offline: false, updateAvailable: true, uiUpdateAvailable: false, serverUpdateAvailable: true, shellUpdateAvailable: false, serverVersion: '0.26.8.1.2' },
+    ],
+    [
+      'both updates',
+      { ui: { updateAvailable: true, newVersion: '1.26.7.20.3' }, server: { updateAvailable: true, latestVersion: '0.26.8.1.2' } },
+      { ok: true, offline: false, updateAvailable: true, uiUpdateAvailable: true, serverUpdateAvailable: true, shellUpdateAvailable: false, uiVersion: '1.26.7.20.3', serverVersion: '0.26.8.1.2' },
+    ],
+    [
+      'shell update',
+      { ui: clean, server: clean, shell: { updateAvailable: true, version: '2.26.7.20.1', downloadUrl: 'https://x/y.pkg' } },
+      { ok: true, offline: false, updateAvailable: true, uiUpdateAvailable: false, serverUpdateAvailable: false, shellUpdateAvailable: true, shellVersion: '2.26.7.20.1', shellDownloadUrl: 'https://x/y.pkg' },
+    ],
+    [
+      'confirmed server update despite UI failure',
+      { ui: { ...clean, error: true }, server: { updateAvailable: true, latestVersion: '0.26.8.1.2' } },
+      { ok: true, offline: false, updateAvailable: true, uiUpdateAvailable: false, serverUpdateAvailable: true, shellUpdateAvailable: false, serverVersion: '0.26.8.1.2' },
+    ],
+    [
+      'confirmed UI update despite server failure',
+      { ui: { updateAvailable: true, newVersion: '1.26.7.20.3' }, server: { ...clean, error: true } },
+      { ok: true, offline: false, updateAvailable: true, uiUpdateAvailable: true, serverUpdateAvailable: false, shellUpdateAvailable: false, uiVersion: '1.26.7.20.3' },
+    ],
+    [
+      'confirmed aggregate update despite a partial error',
+      { ui: clean, server: { updateAvailable: true, latestVersion: '0.26.8.1.2', error: true } },
+      { ok: true, offline: false, updateAvailable: true, uiUpdateAvailable: false, serverUpdateAvailable: true, shellUpdateAvailable: false, serverVersion: '0.26.8.1.2' },
+    ],
+  ])('%s', (_name, input, expected) => {
+    expect(summarizeUpdateCheck(input)).toEqual(expected);
   });
 
-  it('reports up to date when both passes are clean', () => {
-    const r = summarizeUpdateCheck({ ui: { updateAvailable: false }, server: { updateAvailable: false } });
-    expect(r.ok).toBe(true);
-    expect(r.offline).toBe(false);
-    expect(r.updateAvailable).toBe(false);
-    expect(r.uiVersion).toBeUndefined();
-    expect(r.serverVersion).toBeUndefined();
-  });
-
-  it('surfaces a server-only update (available even with no UI update)', () => {
-    const r = summarizeUpdateCheck({
-      ui: { updateAvailable: false },
-      server: { updateAvailable: true, latestVersion: '0.26.8.1.2' },
-    });
-    expect(r.updateAvailable).toBe(true);
-    expect(r.serverUpdateAvailable).toBe(true);
-    expect(r.uiUpdateAvailable).toBe(false);
-    expect(r.serverVersion).toBe('0.26.8.1.2');
-    expect(r.uiVersion).toBeUndefined();
-  });
-
-  it('surfaces a UI-only update', () => {
-    const r = summarizeUpdateCheck({
-      ui: { updateAvailable: true, newVersion: '1.26.7.20.3' },
-      server: { updateAvailable: false },
-    });
-    expect(r.updateAvailable).toBe(true);
-    expect(r.uiUpdateAvailable).toBe(true);
-    expect(r.serverUpdateAvailable).toBe(false);
-    expect(r.uiVersion).toBe('1.26.7.20.3');
-    expect(r.serverVersion).toBeUndefined();
-  });
-
-  it('carries both versions when UI and server both update', () => {
-    const r = summarizeUpdateCheck({
-      ui: { updateAvailable: true, newVersion: '1.26.7.20.3' },
-      server: { updateAvailable: true, latestVersion: '0.26.8.1.2' },
-    });
-    expect(r.updateAvailable).toBe(true);
-    expect(r.uiVersion).toBe('1.26.7.20.3');
-    expect(r.serverVersion).toBe('0.26.8.1.2');
-  });
-
-  it('omits a version string when the pass flags available but reports no version', () => {
-    const r = summarizeUpdateCheck({
+  it('omits absent versions and download URLs', () => {
+    expect(summarizeUpdateCheck({
       ui: { updateAvailable: true },
-      server: { updateAvailable: false },
-    });
-    expect(r.uiUpdateAvailable).toBe(true);
-    expect(r.uiVersion).toBeUndefined();
-  });
-
-  // Regression (PR #449 review, round 1): a channel that failed to check
-  // must never be collapsed into "up to date" alongside a channel that
-  // completed cleanly and found nothing.
-  it('reports a UI-only check failure (no update found on either side) as ok:false, not offline', () => {
-    const r = summarizeUpdateCheck({
-      ui: { updateAvailable: false, error: true },
-      server: { updateAvailable: false },
-    });
-    expect(r).toEqual({ ok: false, offline: false, updateAvailable: false, uiUpdateAvailable: false, serverUpdateAvailable: false, shellUpdateAvailable: false });
-  });
-
-  it('reports a server-only check failure (no update found on either side) as ok:false, not offline', () => {
-    const r = summarizeUpdateCheck({
-      ui: { updateAvailable: false },
-      server: { updateAvailable: false, error: true },
-    });
-    expect(r).toEqual({ ok: false, offline: false, updateAvailable: false, uiUpdateAvailable: false, serverUpdateAvailable: false, shellUpdateAvailable: false });
-  });
-
-  it('reports offline only when BOTH channels failed to check', () => {
-    const r = summarizeUpdateCheck({
-      ui: { updateAvailable: false, error: true },
-      server: { updateAvailable: false, error: true },
-    });
-    expect(r).toEqual({ ok: false, offline: true, updateAvailable: false, uiUpdateAvailable: false, serverUpdateAvailable: false, shellUpdateAvailable: false });
-  });
-
-  // Regression (PR #449 review, round 2): a channel that DID complete and
-  // find a real update must win over the other channel being inconclusive —
-  // the periodic poll would still surface (and could apply) that same
-  // confirmed update, so the manual check must not hide it behind a generic
-  // "couldn't check".
-  it('surfaces a confirmed server update even when the UI check errored', () => {
-    const r = summarizeUpdateCheck({
-      ui: { updateAvailable: false, error: true },
-      server: { updateAvailable: true, latestVersion: '0.26.8.1.2' },
-    });
-    expect(r.ok).toBe(true);
-    expect(r.updateAvailable).toBe(true);
-    expect(r.serverUpdateAvailable).toBe(true);
-    expect(r.serverVersion).toBe('0.26.8.1.2');
-    expect(r.uiUpdateAvailable).toBe(false);
-  });
-
-  it('surfaces a confirmed UI update even when the server check errored', () => {
-    const r = summarizeUpdateCheck({
-      ui: { updateAvailable: true, newVersion: '1.26.7.20.3' },
-      server: { updateAvailable: false, error: true },
-    });
-    expect(r.ok).toBe(true);
-    expect(r.updateAvailable).toBe(true);
-    expect(r.uiUpdateAvailable).toBe(true);
-    expect(r.uiVersion).toBe('1.26.7.20.3');
-    expect(r.serverUpdateAvailable).toBe(false);
-  });
-
-  it('surfaces a confirmed update when the same aggregated channel also reports a partial error', () => {
-    // The server result aggregates cowork + Anton remote checks. One remote can
-    // confirm a change while the sibling lookup fails, producing both flags.
-    const r = summarizeUpdateCheck({
-      ui: { updateAvailable: false },
-      server: { updateAvailable: true, latestVersion: '0.26.8.1.2', error: true },
-    });
-    expect(r.ok).toBe(true);
-    expect(r.updateAvailable).toBe(true);
-    expect(r.serverUpdateAvailable).toBe(true);
-    expect(r.serverVersion).toBe('0.26.8.1.2');
-  });
-
-  it('an explicit offline override still discards a reported positive from either channel', () => {
-    // Belt-and-suspenders: if the caller asserts the whole check is offline,
-    // no per-channel result can be trusted, confirmed-looking or not.
-    const r = summarizeUpdateCheck({
-      offline: true,
-      ui: { updateAvailable: false },
-      server: { updateAvailable: true, latestVersion: '0.26.8.1.2' },
-    });
-    expect(r).toEqual({ ok: false, offline: true, updateAvailable: false, uiUpdateAvailable: false, serverUpdateAvailable: false, shellUpdateAvailable: false });
-  });
-
-  // Shell (installer) updates fold into the same check (ENG-849): download-only,
-  // so they can only ever add a confirmed update, never inconclusiveness.
-  it('surfaces a shell-only update, keeping it distinct from the applyable UI/server flags', () => {
-    const r = summarizeUpdateCheck({
-      ui: { updateAvailable: false },
-      server: { updateAvailable: false },
-      shell: { updateAvailable: true, version: '2.26.7.20.1', downloadUrl: 'https://x/y.pkg' },
-    });
-    expect(r.ok).toBe(true);
-    expect(r.updateAvailable).toBe(true);
-    expect(r.shellUpdateAvailable).toBe(true);
-    expect(r.shellVersion).toBe('2.26.7.20.1');
-    expect(r.shellDownloadUrl).toBe('https://x/y.pkg');
-    expect(r.uiUpdateAvailable).toBe(false);
-    expect(r.serverUpdateAvailable).toBe(false);
-  });
-
-  it('a shell update alone means NOT "up to date", so the check can\'t claim you\'re current while the app is behind', () => {
-    const r = summarizeUpdateCheck({
-      ui: { updateAvailable: false },
-      server: { updateAvailable: false },
+      server: clean,
       shell: { updateAvailable: true, version: '2.26.7.20.1' },
+    })).toEqual({
+      ok: true,
+      offline: false,
+      updateAvailable: true,
+      uiUpdateAvailable: true,
+      serverUpdateAvailable: false,
+      shellUpdateAvailable: true,
+      shellVersion: '2.26.7.20.1',
     });
-    expect(r.ok).toBe(true);
-    expect(r.updateAvailable).toBe(true);
-    // no downloadUrl on this platform/channel → field omitted, still flagged
-    expect(r.shellDownloadUrl).toBeUndefined();
-  });
-
-  it('reports up to date only when UI, server, AND shell are all clean', () => {
-    const r = summarizeUpdateCheck({
-      ui: { updateAvailable: false },
-      server: { updateAvailable: false },
-      shell: { updateAvailable: false },
-    });
-    expect(r).toEqual({ ok: true, offline: false, updateAvailable: false, uiUpdateAvailable: false, serverUpdateAvailable: false, shellUpdateAvailable: false });
-  });
-
-  it('an explicit offline override discards a reported shell update too', () => {
-    const r = summarizeUpdateCheck({
-      offline: true,
-      ui: { updateAvailable: false },
-      server: { updateAvailable: false },
-      shell: { updateAvailable: true, version: '2.26.7.20.1' },
-    });
-    expect(r).toEqual({ ok: false, offline: true, updateAvailable: false, uiUpdateAvailable: false, serverUpdateAvailable: false, shellUpdateAvailable: false });
   });
 });

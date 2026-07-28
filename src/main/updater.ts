@@ -10,7 +10,8 @@ import { checkForUIUpdate, applyUIUpdate, getRendererPath, hasInternet, rollback
 import type { UpdateCheckResult } from './ui-updater';
 import { checkForServerUpdate, maybeUpdateServer } from './server-updater';
 import { isServerRunning } from './server-process';
-import { decideUpdateApply, summarizeUpdateCheck, shellUpdateIsNewer, shellDownloadUrl, type UpdateCheckSummary } from './update-logic';
+import { decideUpdateApply, summarizeUpdateCheck, shellUpdateIsNewer, shellDownloadUrl } from './update-logic';
+import type { UpdateCheckSummary } from '../shared/update-types';
 import { buildKindStrict } from './cowork-home';
 import { getAppDisplayVersion } from './server-source';
 
@@ -21,11 +22,7 @@ const UI_RELOAD_HEALTH_MS = 15000;
 
 type GetWindow = () => BrowserWindow | null;
 
-// Last-known shell (installer) update status (ENG-849). The poll pushes the
-// notice via UI_UPDATE_STATUS, but an OTA auto-apply reloads the window and the
-// re-mounted renderer loses that push — and the next push is a poll interval
-// away (up to 4h). Caching it here lets the renderer re-pull on mount
-// (UI_SHELL_UPDATE_GET), so a pending reinstall notice survives a reload.
+// Cached so the renderer can recover the notice after an OTA reload.
 let lastShellStatus: ShellUpdateStatus = { available: false };
 
 // Returns whether the server is in a good state to proceed with a UI update:
@@ -138,28 +135,12 @@ async function applyUpdates(getWindow: GetWindow, applyServer: boolean, applyUi:
   return uiApplied || (applyServer && serverOk);
 }
 
-// On-demand "Check for updates" (ENG-671). Runs the same detection the periodic
-// poll does — UI (OTA) and server independently — but applies nothing and
-// returns a display-ready summary. It reports the two together because the
-// apply path updates both (see summarizeUpdateCheck).
-//
-// No manifest-reachability pre-gate here (unlike poll(), which uses hasInternet()
-// purely as a latency shortcut for a background loop that never surfaces
-// "couldn't check" to a user). checkForUIUpdate() already self-guards: OTA
-// disabled for this build channel returns instantly with no network call at
-// all, so a manifest host outage must never poison a check in a build where
-// the UI channel isn't even applicable. When OTA IS enabled and the manifest
-// really is unreachable, checkForUIUpdate() surfaces that itself via `error`.
-// Each channel carries its own `error` flag when its check couldn't complete;
-// summarizeUpdateCheck lets a channel that DID confirm an update win over the
-// other one being inconclusive, and only reports "up to date" when neither
-// channel found anything AND neither errored.
+// Detection only. Each channel reports its own errors so a confirmed update can
+// still win when another channel is inconclusive.
 export async function checkForUpdates(): Promise<UpdateCheckSummary> {
   const [ui, server, shell] = await Promise.all([
     checkForUIUpdate(),
     checkForServerUpdate(),
-    // The shell is detection-only and self-gates to prod; a failure here must
-    // not sink the whole check, so fall back to "no shell update" (ENG-849).
     checkForShellUpdate().catch(() => ({ available: false as const })),
   ]);
   return summarizeUpdateCheck({
@@ -171,20 +152,11 @@ export async function checkForUpdates(): Promise<UpdateCheckSummary> {
   });
 }
 
-// Register the update IPC handlers. Called unconditionally at startup so the
-// renderer can always check/apply (e.g. a manual "Check for updates" action) —
-// independent of packaging, DEV_MODE, or whether the server booted. checkForUpdates(),
-// checkForUIUpdate() and applyUIUpdate() self-guard (OTA disable + manifest),
-// so they're safe to expose in every build.
+// Register unconditionally; each updater self-gates for unsupported builds.
 export function registerUpdateHandlers(getWindow: GetWindow) {
   const { ipcMain } = require('electron');
 
-  // Unified check: UI + server + shell detection, no apply. The renderer's
-  // "Check for updates" control surfaces the result and offers apply via
-  // UI_UPDATE_APPLY (UI/server) or a download link (shell, ENG-849).
   ipcMain.handle(IPC.UI_UPDATE_CHECK, () => checkForUpdates());
-  // The renderer re-pulls the shell notice on mount so it survives an OTA
-  // reload that would otherwise drop the pushed 'shell-available' (ENG-849).
   ipcMain.handle(IPC.UI_SHELL_UPDATE_GET, () => lastShellStatus);
   ipcMain.handle(IPC.UI_UPDATE_APPLY, async () => {
     // A manual apply always re-checks the server so it can't drift from the UI.
@@ -215,18 +187,8 @@ export interface ShellUpdateStatus {
   downloadUrl?: string | null; // platform/channel installer URL, null if none
 }
 
-// Detect whether a newer Electron *shell* (installer) is available (ENG-849).
-// The shell is not covered by OTA — it only updates via a manual reinstall — so
-// this is DETECTION ONLY: it never downloads or installs, it just surfaces a
-// "download the new version" notice.
-//
-// Prod-only, deliberately: the OTA manifest is prod-only, UI OTA (the reason a
-// stale shell strands a user) is prod-only, and a non-prod build must never be
-// sent to a prod installer (ENG-676) — so a non-prod build simply doesn't
-// check. The manifest carries an explicit `shellVersion` only when an installer
-// actually shipped (release path), so a UI-only publish can't fabricate a
-// phantom reinstall notice. Fails closed everywhere (unknown kind, no manifest,
-// no shellVersion, unparseable versions) → { available: false }.
+// Detection only and prod-only: non-prod builds must never receive a prod
+// installer URL. Missing manifests or malformed versions fail closed.
 export async function checkForShellUpdate(): Promise<ShellUpdateStatus> {
   let kind: string | null = null;
   try { kind = buildKindStrict(); } catch { kind = null; }
@@ -264,16 +226,9 @@ export function initUpdater(
       checkForServerUpdate(),
     ]);
 
-    // Shell (installer) update notice (ENG-849) — independent of OTA and never
-    // auto-applied (the shell only updates via reinstall). Surface it whenever a
-    // newer installer exists, even if UI/server are up to date, so it isn't
-    // gated behind the OTA early-return below. checkForShellUpdate self-gates to
-    // prod; the manifest fetch is skipped when the host is unreachable.
+    // Shell notices are independent of OTA and never auto-applied.
     if (manifestReachable) {
       const shell = await checkForShellUpdate().catch(() => ({ available: false as const }));
-      // Cache it so the renderer can re-pull after an OTA reload (see below).
-      // Only overwrite when we actually checked — an unreachable host must not
-      // clear a notice we already know about.
       lastShellStatus = shell;
       if (shell.available) {
         console.log(`[updater] shell update available: ${shell.currentVersion} → ${shell.latestVersion}`);
