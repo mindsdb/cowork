@@ -61,7 +61,8 @@ export function cancelCurrentDrivePicker(): void {
 export async function openDrivePickerFlow(
   accessToken: string,
   apiKey: string,
-  appId?: string,
+  appId: string | undefined,
+  accountEmail: string,
   fileIds?: string[],
 ): Promise<DrivePickerResult> {
   // A second picker session (e.g. the composer's picker still open when
@@ -106,7 +107,7 @@ export async function openDrivePickerFlow(
           // The token in this page must never survive in a disk/back-forward
           // cache once served.
           res.setHeader('Cache-Control', 'no-store');
-          res.end(pickerPage({ accessToken, apiKey, appId: appId || '', state, fileIds: fileIds || [] }));
+          res.end(pickerPage({ accessToken, apiKey, appId: appId || '', accountEmail, state, fileIds: fileIds || [] }));
           return;
         }
 
@@ -129,7 +130,7 @@ export async function openDrivePickerFlow(
           });
           req.on('data', (chunk) => { body += chunk; });
           req.on('end', () => {
-            let payload: { state?: string; files?: DrivePickerFile[]; cancelled?: boolean };
+            let payload: { state?: string; files?: DrivePickerFile[]; cancelled?: boolean; error?: string };
             try {
               payload = JSON.parse(body || '{}');
             } catch {
@@ -145,6 +146,15 @@ export async function openDrivePickerFlow(
             res.statusCode = 200;
             res.setHeader('Content-Type', 'application/json');
             res.end('{"ok":true}');
+            // The picker page reports `error` when Google's own widget hit an
+            // error (google.picker.Action.ERROR) — most commonly the browser's
+            // active Google account not matching the connected account. Reject
+            // rather than resolve so the caller gets a reason instead of an
+            // empty (indistinguishable-from-cancelled) file list.
+            if (payload.error) {
+              reject(new Error(payload.error));
+              return;
+            }
             resolve(payload.cancelled ? [] : (Array.isArray(payload.files) ? payload.files : []));
           });
           return;
@@ -204,8 +214,15 @@ function jsonForScript(value: unknown): string {
   return JSON.stringify(value).replace(/</g, '\\u003c');
 }
 
-function pickerPage(opts: { accessToken: string; apiKey: string; appId: string; state: string; fileIds: string[] }): string {
-  const { accessToken, apiKey, appId, state, fileIds } = opts;
+// accountEmail is interpolated directly into the static HTML markup below
+// (not just the inline <script>), so it needs HTML escaping on top of the
+// script-breakout escaping jsonForScript does for the values embedded there.
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
+}
+
+function pickerPage(opts: { accessToken: string; apiKey: string; appId: string; accountEmail: string; state: string; fileIds: string[] }): string {
+  const { accessToken, apiKey, appId, accountEmail, state, fileIds } = opts;
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Pick Google Drive files</title>
 <style>
@@ -227,11 +244,17 @@ function pickerPage(opts: { accessToken: string; apiKey: string; appId: string; 
          background: #1F9CB0; margin-right: 8px; vertical-align: middle; }
   .err .dot { background: #d64545; }
   .err p { color: #d64545; }
+  button { margin-top: 14px; font-size: 14px; font-family: inherit; padding: 8px 16px;
+           border-radius: 8px; border: 1px solid #d64545; background: transparent;
+           color: #d64545; cursor: pointer; }
+  @media (prefers-color-scheme: dark) {
+    button { border-color: #e8848a; color: #e8848a; }
+  }
 </style></head>
 <body>
   <div class="card" id="status">
     <h1><span class="dot"></span>Opening Google Drive picker…</h1>
-    <p>A Google file picker will open in a moment.</p>
+    <p>A Google file picker will open in a moment, using your ${escapeHtml(accountEmail)} connection.</p>
   </div>
 <script src="https://apis.google.com/js/api.js"></script>
 <script>
@@ -240,12 +263,26 @@ function pickerPage(opts: { accessToken: string; apiKey: string; appId: string; 
   var ACCESS_TOKEN = ${jsonForScript(accessToken)};
   var API_KEY = ${jsonForScript(apiKey)};
   var APP_ID = ${jsonForScript(appId)};
+  var ACCOUNT_EMAIL = ${jsonForScript(accountEmail)};
   var FILE_IDS = ${jsonForScript(fileIds)};
 
-  function setStatus(title, body, isError) {
+  // ACCOUNT_EMAIL ends up in innerHTML below (not just a JS string literal),
+  // so it needs HTML escaping too, on top of the <script>-breakout escaping
+  // jsonForScript already did when embedding it above.
+  function escapeHtml(value) {
+    return String(value).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  function setStatus(title, body, isError, showReload) {
     var card = document.getElementById('status');
     card.className = isError ? 'card err' : 'card';
-    card.innerHTML = '<h1><span class="dot"></span>' + title + '</h1><p>' + body + '</p>';
+    card.innerHTML = '<h1><span class="dot"></span>' + title + '</h1><p>' + body + '</p>'
+      + (showReload ? '<p><button id="reload-btn" type="button">Reload and try again</button></p>' : '');
+    if (showReload) {
+      document.getElementById('reload-btn').addEventListener('click', function () { location.reload(); });
+    }
   }
 
   function reportResult(payload) {
@@ -296,6 +333,20 @@ function pickerPage(opts: { accessToken: string; apiKey: string; appId: string; 
         } else if (data.action === google.picker.Action.CANCEL) {
           setStatus('Picker closed', 'You can close this tab and return to MindsHub Cowork.');
           reportResult({ files: [] });
+        } else if (data.action === google.picker.Action.ERROR) {
+          // Most common cause: the browser's active Google account differs
+          // from the connected account (ACCOUNT_EMAIL) — Google's picker
+          // widget renders under whichever account is ambient in this
+          // browser session, not the one the access token above is scoped
+          // to, and 403s instead of showing the file browser.
+          setStatus(
+            'Could not open Google Drive',
+            'This is usually caused by ' + escapeHtml(ACCOUNT_EMAIL) + ' not being the active Google account in this browser. '
+              + 'Switch to that account (check the avatar menu on a Google page), then reload and try again.',
+            true,
+            true
+          );
+          reportResult({ error: 'Google Picker could not open — the browser’s active Google account may not match ' + ACCOUNT_EMAIL + '.' });
         }
       });
     views.forEach(function (v) { builder.addView(v); });

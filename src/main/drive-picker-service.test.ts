@@ -49,7 +49,7 @@ describe('openDrivePickerFlow', () => {
   });
 
   it('resolves with the picked files once the browser posts back a selection', async () => {
-    const flowPromise = openDrivePickerFlow('token', 'key');
+    const flowPromise = openDrivePickerFlow('token', 'key', undefined, 'user@example.com');
     // Wait for openExternal to have been called with the picker URL.
     await vi.waitFor(() => expect(openExternalMock).toHaveBeenCalled());
     const { port, state } = extractPortAndState(openExternalMock.mock.calls[0][0]);
@@ -61,7 +61,7 @@ describe('openDrivePickerFlow', () => {
   });
 
   it('survives an aborted /result request instead of crashing the process', async () => {
-    const flowPromise = openDrivePickerFlow('token', 'key');
+    const flowPromise = openDrivePickerFlow('token', 'key', undefined, 'user@example.com');
     await vi.waitFor(() => expect(openExternalMock).toHaveBeenCalled());
     const { port } = extractPortAndState(openExternalMock.mock.calls[0][0]);
 
@@ -92,7 +92,7 @@ describe('openDrivePickerFlow', () => {
   });
 
   it('ignores unauthenticated /result POSTs instead of tearing down the flow, and still resolves the real one', async () => {
-    const flowPromise = openDrivePickerFlow('token', 'key');
+    const flowPromise = openDrivePickerFlow('token', 'key', undefined, 'user@example.com');
     await vi.waitFor(() => expect(openExternalMock).toHaveBeenCalled());
     const { port, state } = extractPortAndState(openExternalMock.mock.calls[0][0]);
 
@@ -121,10 +121,10 @@ describe('openDrivePickerFlow', () => {
   });
 
   it('cancels the FIRST picker session (not left orphaned) when a second one starts before the first resolves', async () => {
-    const firstFlow = openDrivePickerFlow('token-1', 'key');
+    const firstFlow = openDrivePickerFlow('token-1', 'key', undefined, 'user@example.com');
     await vi.waitFor(() => expect(openExternalMock).toHaveBeenCalledTimes(1));
 
-    const secondFlow = openDrivePickerFlow('token-2', 'key');
+    const secondFlow = openDrivePickerFlow('token-2', 'key', undefined, 'user@example.com');
     await vi.waitFor(() => expect(openExternalMock).toHaveBeenCalledTimes(2));
 
     // The first attempt must have been cancelled by the second one starting
@@ -141,7 +141,7 @@ describe('openDrivePickerFlow', () => {
   });
 
   it('serves the token-bearing picker page only once and marks it uncacheable', async () => {
-    const flowPromise = openDrivePickerFlow('token', 'key');
+    const flowPromise = openDrivePickerFlow('token', 'key', undefined, 'user@example.com');
     await vi.waitFor(() => expect(openExternalMock).toHaveBeenCalled());
     const url = openExternalMock.mock.calls[0][0] as string;
 
@@ -163,7 +163,7 @@ describe('openDrivePickerFlow', () => {
     openExternalMock.mockRejectedValueOnce(new Error('no default browser'));
 
     const start = Date.now();
-    const result = await openDrivePickerFlow('token', 'key');
+    const result = await openDrivePickerFlow('token', 'key', undefined, 'user@example.com');
     const elapsedMs = Date.now() - start;
 
     expect(result.ok).toBe(false);
@@ -177,13 +177,43 @@ describe('openDrivePickerFlow', () => {
     // JSON.stringify does NOT escape `/`, so without the fix this value
     // would close the real <script> early and let the injected one run.
     const malicious = '</script><script>window.__pwned = true;</script>';
-    const flowPromise = openDrivePickerFlow(malicious, 'key');
+    const flowPromise = openDrivePickerFlow(malicious, 'key', undefined, 'user@example.com');
     await vi.waitFor(() => expect(openExternalMock).toHaveBeenCalled());
     const url = openExternalMock.mock.calls[0][0] as string;
 
     const { body } = await getPickerPage(url);
     expect(body).not.toContain('</script><script>window.__pwned');
     expect(body).toContain('\\u003c/script>\\u003cscript>');
+
+    cancelCurrentDrivePicker();
+    await flowPromise;
+  });
+
+  it('resolves with a descriptive failure (not an empty file list) when the picker page reports an error', async () => {
+    // Mirrors what the picker page sends when google.picker.Action.ERROR
+    // fires — most commonly the browser's active Google account not
+    // matching the connected account. Must be distinguishable from a plain
+    // user cancellation, which resolves ok:true with an empty file list.
+    const flowPromise = openDrivePickerFlow('token', 'key', undefined, 'user@example.com');
+    await vi.waitFor(() => expect(openExternalMock).toHaveBeenCalled());
+    const { port, state } = extractPortAndState(openExternalMock.mock.calls[0][0]);
+
+    await postResult(port, state, { error: 'Google Picker could not open — the browser’s active Google account may not match user@example.com.' });
+    const result = await flowPromise;
+
+    expect(result.ok).toBe(false);
+    expect(result.reason).toMatch(/user@example\.com/);
+  });
+
+  it('HTML-escapes the account email in the served page so it cannot break out of the markup', async () => {
+    const malicious = '"><img src=x onerror=alert(1)>@example.com';
+    const flowPromise = openDrivePickerFlow('token', 'key', undefined, malicious);
+    await vi.waitFor(() => expect(openExternalMock).toHaveBeenCalled());
+    const url = openExternalMock.mock.calls[0][0] as string;
+
+    const { body } = await getPickerPage(url);
+    expect(body).not.toContain('<img src=x onerror=alert(1)>');
+    expect(body).toContain('&lt;img src=x onerror=alert(1)&gt;');
 
     cancelCurrentDrivePicker();
     await flowPromise;

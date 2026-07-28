@@ -738,7 +738,7 @@ function setupIPC() {
     if (!isValidDriveFileIds(fileIds)) return { ok: false, reason: 'Invalid file id.' };
     const access = await getPickerAccess(engine, accountEmail);
     if (!access.ok) return access;
-    const pickResult = await openDrivePickerFlow(access.accessToken, access.apiKey, access.appId, fileIds);
+    const pickResult = await openDrivePickerFlow(access.accessToken, access.apiKey, access.appId, accountEmail, fileIds);
     if (!pickResult.ok) return pickResult;
     focusMainWindow();
     const newFiles = pickResult.files || [];
