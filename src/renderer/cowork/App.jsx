@@ -34,6 +34,7 @@ import { loadSkin, persistSkin, nextSkin, skinLabel } from '../lib/skins';
 import { loadCustomTheme, persistCustomTheme, applyCustomTheme } from '../lib/customTheme';
 import { applyNavTitleColor } from '../lib/navBranding';
 import { getAgentLabel } from './lib/agentLabel';
+import { loadCachedSettings } from './lib/settingsCache';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { useGoogleDrivePicker } from './hooks/useGoogleDrivePicker';
 import { fetchSessions, fetchSession, fetchConversationList, fetchProjects, fetchArtifacts, fetchSettings, fetchHealth,
@@ -750,23 +751,13 @@ export default function App() {
 }
 
 function AppCore() {
-  const [settings, setSettings] = useState({
-    greeting: "Let's knock something off your list",
-    tone: 'balanced',
-    defaultModel: 'claude-sonnet-4-6',
-    autoPin: true,
-    // Animated dot-grid background off by default — a flat surface reads
-    // calmer and cohesive with the rest of the UI. Users can opt back in
-    // via Settings → Personalization → Animated background.
-    showDots: false,
-    showCounters: true,
-    navTitle: '',
-    navTitleColor: '',
-    navLogo: '',
-    showThemeToggle: true,
-    show8bitToggle: true,
-    accentVariant: 'aqua',
-  });
+  // Seed from the read-through cache of the last settings fetch, not a literal
+  // set of defaults — the server (GET /settings/) is the single source of truth
+  // and returns every field's resolved default, so the boot fetch (below) fills
+  // this. On the very first launch the cache is empty and the app renders the
+  // server's values within one fetch. This removes the hard-coded copy whose
+  // values could drift from the server's (e.g. showDots). See ENG-941/ENG-1125.
+  const [settings, setSettings] = useState(loadCachedSettings);
 
   const agentLabel = getAgentLabel(settings);
 

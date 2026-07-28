@@ -8,6 +8,7 @@ import { initialStreamState, reduceStream, iterateSSE } from './lib/responseStre
 import { host } from '../platform/host';
 import { relativeAge } from './lib/formatTime';
 import { transformSettingsRows, diffSettingsForWrite, mergeRecommendedModels } from './lib/settingsTransform';
+import { cacheSettings } from './lib/settingsCache';
 import {
   buildMemoryDeletePayload,
   buildMemoryWritePayload,
@@ -1042,6 +1043,10 @@ export async function fetchSettings() {
       const merged = mergeRecommendedModels(result, await fetchRecommendedModels());
       if (merged) Object.assign(result, merged);
       _lastFetchedSettings = result;
+      // Refresh the first-paint seed so the next cold start renders the server's
+      // values immediately instead of a hard-coded default that could drift
+      // (ENG-1125). Cache-of-the-truth only — never written from anywhere else.
+      cacheSettings(result);
       return result;
     } catch {
       return { ...MOCK_DATA.settings, configReady: false, configError: 'Backend is offline.' };
