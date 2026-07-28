@@ -963,7 +963,13 @@ function setupIPC() {
     // snapshotted here because clearTokens() below wipes them; the token
     // fetch is bounded (~5s) so a dead IdP can't stall sign-out, in which
     // case the key simply falls to the server-side TTL.
-    void revokeDeviceKeyAndEndSession(await getRevokeToken(), getRefreshToken());
+    const revokeAccessToken = await getRevokeToken();
+    // Read the refresh token only AFTER the exchange above settles: a
+    // refresh inside getRevokeToken may ROTATE the persisted refresh token
+    // (see its NOTE), and reading earlier would hand end-session a
+    // superseded token.
+    const logoutRefreshToken = getRefreshToken();
+    void revokeDeviceKeyAndEndSession(revokeAccessToken, logoutRefreshToken);
     cancelScheduledRefresh();
     cancelKeyLifecycleChecks();
     // Tear down any sign-in still waiting on its browser tab. Without
@@ -1536,14 +1542,15 @@ app.whenReady().then(async () => {
       // Resume refresh loops for Google OAuth connections already in the
       // vault from prior sessions — fire-and-forget, failures are per-entry.
       startOrphanRefreshLoops().catch(() => {});
-      // ENG-498: watch this device's MindsHub key and renew it ahead of
-      // its TTL deadline. No-op while keys carry no expiry_date, and when
-      // signed out (the check needs the server up for the settings PUT,
-      // hence this hook rather than the earlier boot refresh).
-      startKeyLifecycleChecks();
     } else {
       console.error(`[server] start failed: ${result.reason}`);
     }
+    // ENG-498: watch this device's MindsHub key and renew it ahead of its
+    // TTL deadline. Armed even when the boot start failed: the check itself
+    // no-ops until the server is running/starting, so a sidecar the user
+    // starts manually later still gets its daily renewal ticks instead of
+    // staying disarmed until the next app launch.
+    startKeyLifecycleChecks();
     // A constrained OTA cache that booted bundled (fail-closed) is re-verified
     // and, if compatible, swapped in by the updater's boot check after the
     // server-update pass — see settleConstrainedCache in updater.ts.

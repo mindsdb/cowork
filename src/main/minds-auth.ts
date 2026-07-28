@@ -3,6 +3,7 @@ import { stopServer, startServer, isServerRunning, isServerStarting, getServerPo
 import { checkInstallStatus } from './installer';
 import { coworkHome, coworkEnvPath, coworkStatePath } from './cowork-home';
 import { getInstallationId } from './installation-id';
+import { authHeader } from './server-auth';
 import {
   MINDS_API_HOST,
   MINDS_KEYCLOAK_BASE,
@@ -458,6 +459,9 @@ export interface ProvisionResult {
   // the renderer so it can route to the paywall instead of treating
   // this as a generic failure.
   upgradeRequired?: boolean;
+  // True iff the mint hit the account's active-key cap (HTTP 409). The
+  // renewal path treats this as "retry once, deleting own prior key".
+  limitReached?: boolean;
   // Free-form error message for any other failure (network, auth
   // expired, etc.). Renderer paints it on the welcome screen.
   error?: string;
@@ -477,6 +481,11 @@ interface ApiKeyListEntry {
   prefix?: string;
   created?: string;
   expiry_date?: string | null;
+  // Auth-service DELETE is a soft delete (perform_destroy sets revoked=True
+  // and keeps the row for the audit trail), and the list endpoint does NOT
+  // filter revoked rows — so every consumer here must, or revoked keys are
+  // indistinguishable from live ones.
+  revoked?: boolean;
 }
 
 async function listExistingKeys(accessToken: string): Promise<ApiKeyListEntry[]> {
@@ -539,7 +548,11 @@ async function revokeAntonApiKeys(accessToken: string): Promise<void> {
   const existing = await listExistingKeys(accessToken);
   let revoked = 0;
   for (const entry of existing) {
-    if (entry?.name === keyName && entry.prefix) {
+    // Skip rows auth already soft-revoked: every sign-in's pre-mint cleanup
+    // adds one, so they accumulate — and they list oldest-first, so deleting
+    // them here burns the 5s revoke budget before reaching the one live key
+    // (the newest) that actually needs revoking.
+    if (entry?.name === keyName && entry.prefix && entry.revoked !== true) {
       await deleteKeyByPrefix(accessToken, entry.prefix);
       revoked++;
     }
@@ -828,7 +841,10 @@ export async function provisionAntonApiKey(
   if (deleteExistingKey) {
     const existing = await listExistingKeys(provisionToken);
     for (const entry of existing) {
-      if (entry?.name === keyName && entry.prefix) {
+      // revoked !== true: auth's delete is a soft delete, so prior sign-ins'
+      // cleanup rows keep listing forever — re-deleting them is one wasted
+      // round-trip each per sign-in.
+      if (entry?.name === keyName && entry.prefix && entry.revoked !== true) {
         await deleteKeyByPrefix(provisionToken, entry.prefix);
       }
     }
@@ -858,6 +874,16 @@ export async function provisionAntonApiKey(
     try { body = await res.json() as ErrorBody; } catch { /* not JSON */ }
     if (res.status === 402 || body?.code === 'upgrade_required') {
       return { upgradeRequired: true };
+    }
+    // 409 on this endpoint is only ever the active-key cap
+    // (max_active_per_user_organization). Surfaced distinctly so the
+    // renewal path can retry with its own prior key deleted instead of
+    // failing identically every tick until the 401 deadline.
+    if (res.status === 409) {
+      return {
+        limitReached: true,
+        error: body?.detail || body?.error || body?.message || 'API key limit reached.',
+      };
     }
     if (res.status === 401 || res.status === 403) {
       return {
@@ -1047,9 +1073,12 @@ export async function writeMindsKeyToEnvAndRestart(apiKey: string): Promise<void
     for (const { key, value } of mindsSignInSettingWrites(apiKey, MINDS_API_HOST)) {
       let ok = false;
       try {
+        // authHeader(): main-process fetch — the webRequest injection hook
+        // only covers renderer requests, so this must carry the server
+        // bearer token itself when COWORK_REQUIRE_AUTH=true.
         const res = await timedFetch(`http://127.0.0.1:${port}/api/v1/settings/${key}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...authHeader() },
           body: JSON.stringify({ value }),
         });
         ok = res.ok;
@@ -1186,7 +1215,12 @@ async function doKeyLifecycleCheck(): Promise<void> {
   if (!renewingFor) return;
 
   const keyName = antonKeyName();
-  const own = (await listExistingKeys(token)).filter((k) => k?.name === keyName);
+  // revoked !== true: auth's DELETE is a soft delete and the list keeps the
+  // row, so a console-revoked key still lists with its expiry_date. Filtering
+  // it out makes it genuinely look absent — renewing it would quietly undo an
+  // admin's deliberate revocation (and an expired revoked key would
+  // "self-heal" the moment its TTL lapsed).
+  const own = (await listExistingKeys(token)).filter((k) => k?.name === keyName && k.revoked !== true);
   if (own.length === 0) return;
   // Duplicates exist after a renewal (old key rides to expiry) — the
   // newest one is the live credential and drives the decision.
@@ -1195,7 +1229,16 @@ async function doKeyLifecycleCheck(): Promise<void> {
   if (!shouldRenewKey(newest.created, newest.expiry_date, Date.now())) return;
 
   console.log('[minds-auth] device key expired or near expiry — re-minting');
-  const result = await provisionAntonApiKey(token, { deleteExistingKey: false });
+  let result = await provisionAntonApiKey(token, { deleteExistingKey: false });
+  if (!result.key && result.limitReached) {
+    // At the active-key cap the no-delete renewal can never succeed and
+    // would fail identically every tick until the 401 deadline. Trade the
+    // in-flight-session guarantee for the renewal: one retry that deletes
+    // this device's own prior key first — a bounded mid-session 401 beats a
+    // guaranteed 401 for every session at the deadline.
+    console.warn('[minds-auth] key renewal hit the active-key cap — retrying once with own prior key deleted');
+    result = await provisionAntonApiKey(token, { deleteExistingKey: true });
+  }
   if (!result.key) {
     console.warn('[minds-auth] key renewal mint failed:',
       result.error || (result.upgradeRequired ? 'upgrade required' : 'no key returned'));
@@ -1247,9 +1290,13 @@ async function commitRenewedKey(accessToken: string, apiKey: string, prefix: str
   }
   const port = getServerPort();
   try {
+    // authHeader(): main-process fetches never pass through the renderer's
+    // webRequest injection hook, so with COWORK_REQUIRE_AUTH=true a bare PUT
+    // 401s — which here would mean mint → rollback → retry, silently, every
+    // tick forever.
     const res = await timedFetch(`http://127.0.0.1:${port}/api/v1/settings/minds_api_key`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeader() },
       body: JSON.stringify({ value: apiKey }),
     });
     if (!res.ok) {

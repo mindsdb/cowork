@@ -37,6 +37,12 @@ vi.mock('./cowork-home', () => ({
   coworkEnvPath: () => '/tmp/minds-auth-lifecycle-test/.env',
   coworkStatePath: () => '/tmp/minds-auth-lifecycle-test/state.json',
 }));
+// server-auth reads the owner token lazily from the cowork .env; pin a fixed
+// header so tests can assert the localhost settings PUTs carry it themselves
+// (main-process fetches never get the renderer's webRequest injection).
+vi.mock('./server-auth', () => ({
+  authHeader: () => ({ Authorization: 'Bearer owner-token' }),
+}));
 
 import { shouldRenewKey } from './minds-auth';
 
@@ -256,6 +262,10 @@ describe('runKeyLifecycleCheck', () => {
     const put = calls.find((c) => c.method === 'PUT' && c.url.includes('/settings/minds_api_key'));
     expect(put).toBeDefined();
     expect(JSON.parse(put!.body!)).toEqual({ value: 'mdb_new' });
+    // The main-process PUT must carry the server bearer itself — with
+    // COWORK_REQUIRE_AUTH=true a bare PUT 401s and the renewal would
+    // mint/rollback silently every tick.
+    expect(put!.auth).toBe('Bearer owner-token');
 
     const env = fs.readFileSync(TEST_ENV, 'utf-8');
     expect(env).toMatch(/ANTON_MINDS_API_KEY=mdb_new/);
@@ -293,6 +303,53 @@ describe('runKeyLifecycleCheck', () => {
     }));
     await runKeyLifecycleCheck();
     expect(calls.filter((c) => c.method === 'POST')).toHaveLength(0);
+  });
+
+  it('treats a console-revoked key as absent (never re-mints over an admin revocation)', async () => {
+    // Auth's DELETE is a soft delete: a console-revoked key still lists,
+    // still carrying its expiry_date. It must look absent here — re-minting
+    // would quietly undo the admin's revocation.
+    const calls = installRoutedFetch(happyRoutes({
+      list: () => ({ status: 200, body: [{ ...nearExpiryKey, revoked: true }] }),
+    }));
+    await runKeyLifecycleCheck();
+    expect(calls.filter((c) => c.method === 'POST')).toHaveLength(0);
+    expect(fs.readFileSync(TEST_ENV, 'utf-8')).toMatch(/mdb_old/);
+  });
+
+  it('ignores revoked rows when picking the newest live key', async () => {
+    // A revoked row NEWER than the live key must not mask that the live
+    // key is near expiry.
+    const freshRevoked = {
+      name: DEVICE_KEY_NAME, prefix: 'pfx-revoked',
+      created: new Date(Date.now() - 1 * 24 * 3600 * 1000).toISOString(),
+      expiry_date: new Date(Date.now() + 89 * 24 * 3600 * 1000).toISOString(),
+      revoked: true,
+    };
+    const calls = installRoutedFetch(happyRoutes({
+      list: () => ({ status: 200, body: [nearExpiryKey, freshRevoked] }),
+    }));
+    await runKeyLifecycleCheck();
+    expect(calls.filter((c) => c.method === 'POST')).toHaveLength(1);
+  });
+
+  it('retries once with own-key delete when the mint hits the active-key cap', async () => {
+    let mints = 0;
+    const calls = installRoutedFetch(happyRoutes({
+      mint: () => (++mints === 1
+        ? { status: 409, body: { code: 'API_KEY_LIMIT_REACHED', error: 'API key limit reached' } }
+        : { status: 200, body: { key: 'mdb_new', name: DEVICE_KEY_NAME, prefix: 'pfx-new' } }),
+    }).concat([{ method: 'DELETE', match: '/api-keys/', reply: () => ({ status: 204, body: {} }) }]));
+    await runKeyLifecycleCheck();
+
+    expect(calls.filter((c) => c.method === 'POST')).toHaveLength(2);
+    // The retry trades the keep-old-key guarantee for the renewal: it
+    // deletes THIS device's own prior key to get under the cap.
+    const deletes = calls.filter((c) => c.method === 'DELETE');
+    expect(deletes).toHaveLength(1);
+    expect(deletes[0].url).toContain('pfx-own');
+    // And the retried mint still commits.
+    expect(fs.readFileSync(TEST_ENV, 'utf-8')).toMatch(/ANTON_MINDS_API_KEY=mdb_new/);
   });
 
   it('no-ops when signed out', async () => {
@@ -426,6 +483,34 @@ describe('revokeDeviceKeyAndEndSession', () => {
     expect(calls[endSession].body).toContain('rt-snapshot');
     // Visibility (ENG-498 review): a matched revoke logs how many keys it got.
     expect(logSpy).toHaveBeenCalledWith('[logout] revoked %d device key(s)', 2);
+  });
+
+  it('skips soft-revoked rows so the bounded budget is spent on the live key', async () => {
+    // Every sign-in's pre-mint cleanup soft-revokes a row, and revoked rows
+    // list forever (oldest first). Without the filter, the 5s revoke budget
+    // burns on re-deleting them and the live key — last in the list — is
+    // the first casualty of the timeout.
+    const calls = installRoutedFetch([
+      {
+        method: 'GET', match: '/api-keys/',
+        reply: () => ({
+          status: 200,
+          body: [
+            { name: DEVICE_KEY_NAME, prefix: 'pfx-stale-0', revoked: true },
+            { name: DEVICE_KEY_NAME, prefix: 'pfx-stale-1', revoked: true },
+            { name: DEVICE_KEY_NAME, prefix: 'pfx-live' },
+          ],
+        }),
+      },
+      { method: 'DELETE', match: '/api-keys/', reply: () => ({ status: 204, body: {} }) },
+      { method: 'POST', match: '/protocol/openid-connect/logout', reply: () => ({ status: 204, body: {} }) },
+    ]);
+
+    await revokeDeviceKeyAndEndSession(TOKEN_A, 'rt-snapshot');
+
+    const deletes = calls.filter((c) => c.method === 'DELETE').map((c) => c.url);
+    expect(deletes).toHaveLength(1);
+    expect(deletes[0]).toContain('pfx-live');
   });
 
   it('still ends the session when the key list returns nothing', async () => {
