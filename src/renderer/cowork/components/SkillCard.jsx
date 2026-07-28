@@ -95,10 +95,18 @@ export default function SkillCard({ skill, projectName }) {
       // instructions only — never the raw SKILL.md (its YAML frontmatter
       // would get double-stored inside the body). Download uses skill_md.
       declarative: skill.instructions || '',
-      ...(projectName && { projects: [projectName] }),
     };
-    // A saved skill with this slug → PUT (overwrite, scope included); else POST.
+    // A saved skill with this slug → PUT; else POST.
     const exists = Array.isArray(skills) && skills.some((s) => s.label === slug);
+
+    // Scope is set on CREATE only, and only for a real project — general/default
+    // are reserved (global), so they stay unscoped. On UPDATE we omit `projects`:
+    // the API replaces the whole list, so sending just the current project would
+    // wipe the skill's other project associations.
+    const isReserved = projectName === 'general' || projectName === 'default';
+    const createPayload = (projectName && !isReserved)
+      ? { ...payload, projects: [projectName] }
+      : payload;
 
     const markSaved = () => {
       setSaved(true);
@@ -109,10 +117,11 @@ export default function SkillCard({ skill, projectName }) {
     };
 
     try {
-      await saveSkillAndSync(payload, exists);
+      await saveSkillAndSync(exists ? payload : createPayload, exists);
       markSaved();
     } catch (err) {
-      // Stale list (created since the last fetch): retry as an update, not fail.
+      // Stale list (created since the last fetch): retry as an update — `payload`
+      // carries no `projects`, so the skill's existing scope is preserved.
       if (!exists && /already exists/i.test(err?.message || '')) {
         try {
           await saveSkillAndSync(payload, true);
