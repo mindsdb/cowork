@@ -1059,32 +1059,25 @@ export async function fetchSettings() {
 export async function updateSettings(patch) {
   const op = _settingsLock.then(async () => {
     const writes = diffSettingsForWrite(patch, _lastFetchedSettings);
+    const keys = Object.keys(writes);
+    let updated = keys;
 
-    const updated = [];
-    const failed = [];
-    for (const [key, value] of Object.entries(writes)) {
+    if (keys.length > 0) {
+      // One transactional bulk write: the server applies every key or none, so
+      // a partial failure can't leave settings half-saved the way the former
+      // per-key PUT loop could (ENG-1126).
       try {
-        await req(`/settings/${encodeURIComponent(key)}`, {
-          method: 'PUT',
-          body: JSON.stringify({ value }),
-        });
-        updated.push(key);
+        const res = await req('/settings/', { method: 'PUT', body: JSON.stringify({ values: writes }) });
+        if (Array.isArray(res?.updated)) updated = res.updated;
       } catch (err) {
-        console.warn(`Failed to save setting ${key}:`, err);
-        failed.push({ key, message: err?.message || String(err) });
+        const e = new Error(`Failed to save settings: ${err?.message || String(err)}`);
+        e.failed = keys;
+        throw e;
       }
     }
 
-    if (failed.length > 0) {
-      const summary = failed.map((f) => `${f.key}: ${f.message}`).join('; ');
-      const err = new Error(`Failed to save ${failed.length === 1 ? 'setting' : 'settings'}: ${summary}`);
-      err.failed = failed;
-      err.updated = updated;
-      throw err;
-    }
-
-    // Re-fetch after successful writes so _lastFetchedSettings reflects
-    // the server's canonical state (including any server-side defaults).
+    // Re-fetch so _lastFetchedSettings reflects the server's canonical state
+    // (including any server-side defaults).
     try {
       const rows = await req('/settings/');
       _lastFetchedSettings = transformSettingsRows(rows);
