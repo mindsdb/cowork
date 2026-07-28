@@ -56,15 +56,20 @@ describe('SettingsView desktop — shell reinstall download (ENG-849)', () => {
       />
     );
     expect(screen.getByText(/New app version 2\.26\.7\.20\.1/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /Download update/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Download installer/ }));
     // The handler must be defined (the desktop instance was previously unwired)
     // and receive the resolved installer URL.
     expect(onDownloadShellUpdate).toHaveBeenCalledWith('https://x/y.pkg');
+    // After the hand-off to the browser download, the card guides the user
+    // through the manual steps that download can't — quit + open the installer
+    // — and the CTA de-emphasizes to a "Download again" retry.
+    expect(screen.getByText(/Installer downloading/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Download again/ })).toBeInTheDocument();
   });
 
   it('shows no reinstall notice when nothing is pending', () => {
     render(<SettingsView {...baseProps} shellUpdate={null} onDownloadShellUpdate={vi.fn()} />);
-    expect(screen.queryByRole('button', { name: /Download update/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Download installer/ })).toBeNull();
   });
 });
 
@@ -80,7 +85,7 @@ describe('SettingsView desktop — UI/server updates framed as a restart', () =>
     // UI/server updates apply by restarting the app — reserve download/version
     // language for the shell reinstall path.
     expect(await screen.findByRole('button', { name: /Restart now/ })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Download update/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Download installer/ })).toBeNull();
   });
 
   it('returns to a retryable state when applyUpdate resolves false', async () => {

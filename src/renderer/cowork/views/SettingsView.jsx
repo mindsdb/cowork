@@ -783,6 +783,12 @@ export default function SettingsView({
   // (failed download, compatibility rejection, update disappeared between
   // check and apply), distinct from the thrown-exception case below.
   const [applyError, setApplyError] = useState(false);
+  // The shell (installer) download is a hand-off to the browser — we can't
+  // detect when it finishes, so once the user triggers it for a given version
+  // we flip the card to the quit-and-open guidance. Keyed by version so a newer
+  // shell notice later in the session starts fresh instead of showing stale
+  // "downloading…" copy for a version that was never fetched.
+  const [shellDownloadedVersion, setShellDownloadedVersion] = useState(null);
   // Whether the refresh token lives in the macOS keychain (vs a file under
   // ~/.cowork). Mac-only; read from main on mount.
   const [keychainPref, setKeychainPref] = useState(false);
@@ -2414,6 +2420,7 @@ export default function SettingsView({
               const shellPending = r?.ok ? !!r.shellUpdateAvailable : !!shellUpdate;
               const shellVersion = r?.shellVersion || shellUpdate?.version;
               const shellUrl = r?.shellDownloadUrl || shellUpdate?.downloadUrl;
+              const shellDownloadStarted = shellPending && !!shellVersion && shellDownloadedVersion === shellVersion;
               let status = null;
               if (!checkingUpdates && r) {
                 if (!r.ok) {
@@ -2475,11 +2482,17 @@ export default function SettingsView({
                           {shellVersion ? `New app version ${shellVersion}` : 'New app version available'}
                         </span>
                         <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
-                          The app itself updates by downloading and reinstalling.
+                          {shellDownloadStarted
+                            ? "Installer downloading — when it's done, quit MindsHub Cowork and open the installer to finish updating."
+                            : "Download the installer, then quit MindsHub Cowork and open it to finish updating."}
                         </span>
                       </div>
-                      <Button variant="primary" onClick={() => onDownloadShellUpdate(shellUrl)} style={{ cursor: 'pointer' }}>
-                        Download update
+                      <Button
+                        variant={shellDownloadStarted ? 'subtle' : 'primary'}
+                        onClick={() => { onDownloadShellUpdate(shellUrl); if (shellVersion) setShellDownloadedVersion(shellVersion); }}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        {shellDownloadStarted ? 'Download again' : 'Download installer'}
                       </Button>
                     </div>
                   )}

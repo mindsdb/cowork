@@ -871,7 +871,7 @@ export default function Sidebar({
             <button
               type="button"
               onClick={onDownloadShellUpdate}
-              title={`A new version of MindsHub Cowork is available${shellUpdate.version ? ` (${shellUpdate.version})` : ''} — download the installer`}
+              title={`A new version of MindsHub Cowork is available${shellUpdate.version ? ` (${shellUpdate.version})` : ''} — download the installer, then quit the app and open it to update`}
               style={{
                 flex: 1, display: 'flex', alignItems: 'center', gap: 8,
                 background: 'none', border: 'none', padding: 0, margin: 0,
