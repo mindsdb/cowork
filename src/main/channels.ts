@@ -23,6 +23,23 @@ export interface ChannelSpec {
   readonly envSlug: string;
   /** Default cowork-server / anton git branch this channel builds from. */
   readonly serverRef: string;
+  /** Electron app name → the on-disk userData dir (~/Library/Application
+   *  Support/<appName> on macOS). Set via app.setName so build kinds on one
+   *  machine get separate localStorage / consent / token-store state and
+   *  install as distinct apps. prod is FROZEN to 'anton' (the historical name
+   *  real users' data lives under) and is applied by NOT calling setName — see
+   *  app-identity.ts. Build-time identity (appId/productName/icon) lives in
+   *  scripts/channel-identity.mjs. */
+  readonly appName: string;
+  /** Basename (under assets/) of the icon used at RUNTIME for the window / dock /
+   *  taskbar. Non-prod kinds ship a badged icon (icon-<kind>.png) so a build is
+   *  visually distinct on the desktop; prod and dev use the base icon.png. This
+   *  must be set at runtime because the window/dock icon is chosen in code
+   *  (BrowserWindow icon + app.dock.setIcon) — the packaged bundle icon alone
+   *  doesn't govern it. The build-time bundle icon lives in
+   *  scripts/channel-identity.mjs and is kept in lockstep with this field by the
+   *  drift test in channels.test.ts. */
+  readonly iconName: string;
 }
 
 const API_PROD = 'https://api.mindshub.ai';
@@ -32,14 +49,15 @@ const API_STAGING = 'https://api.staging.mindshub.ai';
 export const CHANNELS: Record<BuildKind, ChannelSpec> = {
   // Local `npm run dev` only (never built by CI). STAGING, so a bare dev run
   // never authenticates against prod.
-  dev: { kind: 'dev', homeDirName: '.cowork-dev', apiHost: API_STAGING, envSlug: 'staging', serverRef: 'main' },
+  dev: { kind: 'dev', homeDirName: '.cowork-dev', apiHost: API_STAGING, envSlug: 'staging', serverRef: 'main', appName: 'MindsHub Cowork (Dev)', iconName: 'icon.png' },
   // Ephemeral per-PR installers. Isolated home + STAGING (not prod — the old bug).
-  preview: { kind: 'preview', homeDirName: '.cowork-preview', apiHost: API_STAGING, envSlug: 'staging', serverRef: 'staging' },
+  preview: { kind: 'preview', homeDirName: '.cowork-preview', apiHost: API_STAGING, envSlug: 'staging', serverRef: 'staging', appName: 'MindsHub Cowork (Preview)', iconName: 'icon-preview.png' },
   // Rolling builds off `staging`. Keeps the historical kind name "stable"
-  // (home ~/.cowork-stable) but targets the staging env.
-  stable: { kind: 'stable', homeDirName: '.cowork-stable', apiHost: API_STAGING, envSlug: 'staging', serverRef: 'staging' },
-  // Released builds off `main` — the only kind on the historical ~/.cowork.
-  prod: { kind: 'prod', homeDirName: '.cowork', apiHost: API_PROD, envSlug: '', serverRef: 'main' },
+  // (home ~/.cowork-stable) but targets the staging env; user-facing label "Staging".
+  stable: { kind: 'stable', homeDirName: '.cowork-stable', apiHost: API_STAGING, envSlug: 'staging', serverRef: 'staging', appName: 'MindsHub Cowork (Staging)', iconName: 'icon-staging.png' },
+  // Released builds off `main` — the only kind on the historical ~/.cowork and the
+  // historical 'anton' userData name (never re-set — see app-identity.ts).
+  prod: { kind: 'prod', homeDirName: '.cowork', apiHost: API_PROD, envSlug: '', serverRef: 'main', appName: 'anton', iconName: 'icon.png' },
 };
 
 /** Coerce a raw string (env / build-config.json / CI input) to a BuildKind.

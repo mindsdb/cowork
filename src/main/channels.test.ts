@@ -7,6 +7,7 @@ import {
   checkChannelConsistency,
 } from './channels';
 import { EXPECTED_API_ORIGIN } from '../../scripts/channel-origins.mjs';
+import { channelIdentity } from '../../scripts/channel-identity.mjs';
 
 describe('channels — canonical table', () => {
   it('every build kind has a spec whose envSlug matches its apiHost', () => {
@@ -27,6 +28,21 @@ describe('channels — canonical table', () => {
   it('preview points at staging, not prod (regression: the old cross-env bug)', () => {
     expect(CHANNELS.preview.apiHost).toBe('https://api.staging.mindshub.ai');
     expect(CHANNELS.preview.serverRef).toBe('staging');
+  });
+
+  it('prod app name is frozen to "anton"; non-prod kinds are distinct', () => {
+    expect(CHANNELS.prod.appName).toBe('anton'); // real users' userData lives here — never change
+    const names = [CHANNELS.dev, CHANNELS.preview, CHANNELS.stable].map((c) => c.appName);
+    expect(new Set(names).size).toBe(3); // all distinct
+    expect(names).not.toContain('anton'); // no non-prod kind collides with prod's userData
+  });
+
+  it('non-prod kinds ship a badged runtime icon; prod/dev use the base icon', () => {
+    // The runtime window/dock icon (resolveChannelIconPath) reads these.
+    expect(CHANNELS.prod.iconName).toBe('icon.png'); // unchanged from historical prod icon
+    expect(CHANNELS.dev.iconName).toBe('icon.png'); // never packaged
+    expect(CHANNELS.preview.iconName).toBe('icon-preview.png');
+    expect(CHANNELS.stable.iconName).toBe('icon-staging.png');
   });
 });
 
@@ -121,5 +137,28 @@ describe('build-script mirrors of the channel table', () => {
     for (const kind of BUILD_KINDS) {
       expect(EXPECTED_API_ORIGIN[kind]).toBe(CHANNELS[kind].apiHost);
     }
+  });
+
+  it('scripts/channel-identity.mjs (bundle identity) matches CHANNELS exactly', () => {
+    for (const kind of ['stable', 'preview'] as const) {
+      const id = channelIdentity(kind);
+      expect(id).not.toBeNull();
+      // The packaged productName must equal the runtime appName: the userData
+      // dir (app.setName → appName) and the on-disk app the user sees
+      // (productName) have to agree, and reset-onboarding.sh derives the
+      // Electron dir from this same name.
+      expect(id!.productName).toBe(CHANNELS[kind].appName);
+      expect(id!.appId).toBe(`com.mindshub.cowork.${kind}`);
+      // Build-time bundle icon must match the runtime icon (CHANNELS[kind].iconName)
+      // so the packaged icon and the running window/dock icon can't drift apart.
+      expect(id!.macIcon).toBe(`assets/${CHANNELS[kind].iconName}`);
+      expect(id!.winIcon).toBe(`assets/${CHANNELS[kind].iconName}`);
+    }
+    // prod/dev (and unset) get NO overrides — prod must keep the
+    // electron-builder.yml identity byte-for-byte; dev is never packaged.
+    expect(channelIdentity('prod')).toBeNull();
+    expect(channelIdentity('dev')).toBeNull();
+    expect(channelIdentity('')).toBeNull();
+    expect(channelIdentity(undefined)).toBeNull();
   });
 });

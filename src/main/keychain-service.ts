@@ -1,6 +1,10 @@
 import keytar from 'keytar';
+import { buildKind } from './cowork-home';
 
-const SERVICE_NAME = 'cowork-oauth';
+// Namespace the keychain service per channel so build kinds on one machine don't
+// share OAuth refresh tokens. prod keeps the historical 'cowork-oauth' (existing
+// users' entries live there); non-prod kinds get 'cowork-oauth-<kind>'.
+const SERVICE_NAME = buildKind() === 'prod' ? 'cowork-oauth' : `cowork-oauth-${buildKind()}`;
 
 function accountKey(engine: string, accountEmail: string): string {
   return `${engine}:${accountEmail}`;
