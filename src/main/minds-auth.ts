@@ -1,4 +1,4 @@
-import { saveTokens, getRefreshToken, clearTokens, getTokenStoreVersion } from './token-store';
+import { saveTokens, getRefreshToken, clearTokens, getTokenStoreVersion, getAccessToken, isAccessTokenExpired } from './token-store';
 import { stopServer, startServer, isServerRunning, isServerStarting, getServerPort } from './server-process';
 import { checkInstallStatus } from './installer';
 import { coworkHome, coworkEnvPath, coworkStatePath } from './cowork-home';
@@ -165,6 +165,7 @@ async function doRefreshTokens(): Promise<TokenRefreshResult> {
         console.warn('[minds-auth] refresh token rejected (invalid_grant) — clearing session');
         clearTokens();
         cancelScheduledRefresh();
+        cancelKeyLifecycleChecks();
         return { status: 'invalid_grant' };
       }
       console.warn(`[minds-auth] token refresh failed transiently (HTTP ${res.status}${oauthError ? `, ${oauthError}` : ''}) — keeping tokens`);
@@ -467,8 +468,15 @@ export interface ProvisionResult {
 // array means the endpoint isn't paginated and is already the full list.
 // Best-effort: any failure returns what we have so far so key creation
 // still proceeds.
-async function listExistingKeys(accessToken: string): Promise<{ name?: string; prefix?: string }[]> {
-  const collected: { name?: string; prefix?: string }[] = [];
+interface ApiKeyListEntry {
+  name?: string;
+  prefix?: string;
+  created?: string;
+  expiry_date?: string | null;
+}
+
+async function listExistingKeys(accessToken: string): Promise<ApiKeyListEntry[]> {
+  const collected: ApiKeyListEntry[] = [];
   let url: string | null = `${AUTH_SERVICE_URL}/api-keys/`;
   // Hard page cap so a malformed `next` chain can't loop forever.
   for (let page = 0; url && page < 50; page++) {
@@ -479,12 +487,12 @@ async function listExistingKeys(accessToken: string): Promise<{ name?: string; p
       if (!res.ok) break;
       const body = await res.json() as { results?: unknown; next?: unknown } | unknown[];
       if (Array.isArray(body)) {
-        collected.push(...(body as { name?: string; prefix?: string }[]));
+        collected.push(...(body as ApiKeyListEntry[]));
         break;
       }
       const results = (body as { results?: unknown }).results;
       if (Array.isArray(results)) {
-        collected.push(...(results as { name?: string; prefix?: string }[]));
+        collected.push(...(results as ApiKeyListEntry[]));
       }
       const next = (body as { next?: unknown }).next;
       url = typeof next === 'string' && next ? next : null;
@@ -583,7 +591,18 @@ function canUseAntonWithMinds(entitlements: any): boolean {
   return canCreateApiKeys(entitlements) && !requiresHubUpgrade(entitlements);
 }
 
-export async function provisionAntonApiKey(initialToken: string): Promise<ProvisionResult> {
+export interface ProvisionOptions {
+  // Renewal (ENG-498) mints the replacement while the old key is still
+  // valid — in-flight sessions may hold it, and the TTL reaps it anyway —
+  // so it skips the delete. Sign-in keeps the default and stays tidy.
+  deleteExistingKey?: boolean;
+}
+
+export async function provisionAntonApiKey(
+  initialToken: string,
+  options: ProvisionOptions = {},
+): Promise<ProvisionResult> {
+  const { deleteExistingKey = true } = options;
   const orgResult = await ensureActiveOrg(initialToken);
   if (!orgResult.token) {
     return {
@@ -703,10 +722,12 @@ export async function provisionAntonApiKey(initialToken: string): Promise<Provis
   // fixing. Best-effort — listing/deleting failures shouldn't block creation
   // of the new key.
   const keyName = antonKeyName();
-  const existing = await listExistingKeys(provisionToken);
-  for (const entry of existing) {
-    if (entry?.name === keyName && entry.prefix) {
-      await deleteKeyByPrefix(provisionToken, entry.prefix);
+  if (deleteExistingKey) {
+    const existing = await listExistingKeys(provisionToken);
+    for (const entry of existing) {
+      if (entry?.name === keyName && entry.prefix) {
+        await deleteKeyByPrefix(provisionToken, entry.prefix);
+      }
     }
   }
 
@@ -988,4 +1009,120 @@ function scheduleRefreshIn(delayMs: number): void {
   // the chain never dies after a single failure — the pre-ENG-761 timer
   // ran silentRefresh once and never retried.
   _refreshTimer = setTimeout(() => { void refreshTokensOnly(); }, delayMs);
+}
+
+// ── Per-device key lifecycle (ENG-498) ────────────────────────────
+//
+// Boot + daily watch over THIS device's key. While the auth-service TTL
+// is disabled every key has expiry_date null and this is a no-op listing
+// call; once ops enables the TTL, installs renew ahead of the deadline
+// instead of 401-ing at it (the ENG-440 bug, time-delayed). A key that
+// is MISSING (not expired — absent) is deliberately left alone: that is
+// plausibly a console revocation, and silently re-minting would undo it.
+
+const KEY_LIFECYCLE_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
+let _keyLifecycleTimer: NodeJS.Timeout | null = null;
+let _inflightKeyLifecycle: Promise<void> | null = null;
+
+export function startKeyLifecycleChecks(): void {
+  cancelKeyLifecycleChecks();
+  void runKeyLifecycleCheck();
+  _keyLifecycleTimer = setInterval(() => { void runKeyLifecycleCheck(); }, KEY_LIFECYCLE_INTERVAL_MS);
+}
+
+export function cancelKeyLifecycleChecks(): void {
+  if (_keyLifecycleTimer) clearInterval(_keyLifecycleTimer);
+  _keyLifecycleTimer = null;
+}
+
+// Single-flight like refreshTokensOnly: a boot check racing the first
+// interval tick must not double-mint.
+export function runKeyLifecycleCheck(): Promise<void> {
+  if (!_inflightKeyLifecycle) {
+    _inflightKeyLifecycle = doKeyLifecycleCheck()
+      .catch((e: any) => { console.warn('[minds-auth] key lifecycle check failed:', e?.message || e); })
+      .finally(() => { _inflightKeyLifecycle = null; });
+  }
+  return _inflightKeyLifecycle;
+}
+
+function tokenSubject(token: string | null): string | null {
+  if (!token) return null;
+  const payload = decodeJwtPayload(token);
+  return typeof payload?.sub === 'string' ? payload.sub : null;
+}
+
+async function doKeyLifecycleCheck(): Promise<void> {
+  // Signed-out sessions have nothing to renew. Don't force a refresh
+  // round-trip when there is no session at all.
+  if (!getAccessToken() && !getRefreshToken()) return;
+  let token = getAccessToken();
+  if (!token || isAccessTokenExpired()) {
+    const result = await refreshTokensOnly();
+    if (result.status !== 'ok') return;
+    token = result.token;
+  }
+  // Whose key we are renewing. Compared again before the commit: benign
+  // refreshes rotate the token string but keep `sub`, so this aborts
+  // exactly when a logout or different-user login landed mid-renewal.
+  // (getTokenStoreVersion is unsuitable here — provisioning's own
+  // org-switch refreshes bump it, which would abort every renewal that
+  // needs the personal-org fallback.)
+  const renewingFor = tokenSubject(token);
+  if (!renewingFor) return;
+
+  const keyName = antonKeyName();
+  const own = (await listExistingKeys(token)).filter((k) => k?.name === keyName);
+  if (own.length === 0) return;
+  // Duplicates exist after a renewal (old key rides to expiry) — the
+  // newest one is the live credential and drives the decision.
+  const newest = own.reduce((a, b) =>
+    (Date.parse(b.created ?? '') || 0) > (Date.parse(a.created ?? '') || 0) ? b : a);
+  if (!shouldRenewKey(newest.created, newest.expiry_date, Date.now())) return;
+
+  console.log('[minds-auth] device key expired or near expiry — re-minting');
+  const result = await provisionAntonApiKey(token, { deleteExistingKey: false });
+  if (!result.key) {
+    console.warn('[minds-auth] key renewal mint failed:',
+      result.error || (result.upgradeRequired ? 'upgrade required' : 'no key returned'));
+    return;
+  }
+  if (tokenSubject(getAccessToken()) !== renewingFor) {
+    console.warn('[minds-auth] session changed during key renewal — discarding minted key');
+    return;
+  }
+  await commitRenewedKey(result.key);
+}
+
+// Hot-swap the renewed credential: one .env line + one settings PUT.
+// Deliberately NOT writeMindsKeyToEnvAndRestart — no server restart (the
+// settings cache invalidates on PUT; in-flight sessions keep the old key,
+// which stays valid until its own expiry), and no provider flips (a user
+// who switched to BYOK keeps their selection).
+async function commitRenewedKey(apiKey: string): Promise<void> {
+  const homeDir = coworkHome();
+  if (!fs.existsSync(homeDir)) {
+    fs.mkdirSync(homeDir, { recursive: true });
+  }
+  const envPath = coworkEnvPath();
+  const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
+  fs.writeFileSync(envPath, replaceMindsApiKeyLine(existing, apiKey), { encoding: 'utf-8', mode: 0o600 });
+  try { fs.chmodSync(envPath, 0o600); } catch { /* best-effort */ }
+
+  if (isServerRunning() || isServerStarting()) {
+    const port = getServerPort();
+    try {
+      const res = await timedFetch(`http://127.0.0.1:${port}/api/v1/settings/minds_api_key`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value: apiKey }),
+      });
+      if (!res.ok) {
+        console.warn('[minds-auth] renewal settings PUT returned', res.status);
+      }
+    } catch (error) {
+      console.warn('[minds-auth] failed to write renewed key to server DB', error);
+    }
+  }
 }
