@@ -17,7 +17,16 @@ case "$KIND" in
 esac
 
 LEGACY_ANTON_DIR="$HOME/.anton"
-ELECTRON_DIR="$HOME/Library/Application Support/anton"
+
+# Electron userData dir = the per-channel app name (app.setName — see
+# src/main/channels.ts appName). Keep in sync with channels.ts appName.
+case "$KIND" in
+  prod)    ELECTRON_APP_NAME="anton" ;;
+  dev)     ELECTRON_APP_NAME="MindsHub Cowork (Dev)" ;;
+  preview) ELECTRON_APP_NAME="MindsHub Cowork (Preview)" ;;
+  stable)  ELECTRON_APP_NAME="MindsHub Cowork (Staging)" ;;
+esac
+ELECTRON_DIR="$HOME/Library/Application Support/$ELECTRON_APP_NAME"
 
 echo "=== MindsHub Cowork Onboarding Restore ($KIND) ==="
 echo "Target config home: $COWORK_DIR"

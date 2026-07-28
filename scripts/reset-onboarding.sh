@@ -14,8 +14,10 @@
 #
 # The home holds the DB, .env, state.json, projects, data vault, and (for
 # non-prod kinds) the per-channel server logs and uv-installed server binary.
-# Terms consent lives in Electron localStorage (shared across all build kinds)
-# and is cleared regardless of which kind you pass.
+# Terms consent / onboarding flags live in Electron localStorage under the
+# channel's OWN userData dir — since the per-channel app-identity split each
+# build kind has a separate userData dir (see the ELECTRON_APP_NAME map below),
+# so this clears only the localStorage of the kind you pass, not the others.
 #
 # Usage: ./reset-onboarding.sh [dev|preview|stable|prod]   (default: dev)
 set -euo pipefail
@@ -31,7 +33,17 @@ case "$KIND" in
 esac
 
 LEGACY_ANTON_DIR="$HOME/.anton"
-ELECTRON_DIR="$HOME/Library/Application Support/anton"
+
+# Electron userData dir = the per-channel app name (app.setName — see
+# src/main/channels.ts appName / app-identity.ts). prod is the historical
+# 'anton'; non-prod kinds are isolated. Keep in sync with channels.ts appName.
+case "$KIND" in
+  prod)    ELECTRON_APP_NAME="anton" ;;
+  dev)     ELECTRON_APP_NAME="MindsHub Cowork (Dev)" ;;
+  preview) ELECTRON_APP_NAME="MindsHub Cowork (Preview)" ;;
+  stable)  ELECTRON_APP_NAME="MindsHub Cowork (Staging)" ;;
+esac
+ELECTRON_DIR="$HOME/Library/Application Support/$ELECTRON_APP_NAME"
 
 echo "=== MindsHub Cowork Onboarding Reset ($KIND) ==="
 echo "Target config home: $COWORK_DIR"
@@ -67,7 +79,8 @@ if [ "$KIND" = "prod" ]; then
   fi
 fi
 
-# Clear Electron localStorage (terms consent persisted here; shared across kinds).
+# Clear this channel's Electron localStorage (terms consent persisted here;
+# isolated per build kind via the per-channel userData dir resolved above).
 if [ -d "$ELECTRON_DIR" ]; then
   if [ -d "$ELECTRON_DIR.backup" ]; then
     echo "⚠ Electron backup already exists — removing old backup first"
