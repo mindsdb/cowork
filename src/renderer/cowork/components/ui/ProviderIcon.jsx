@@ -2,12 +2,14 @@
 // the model picker (ENG-1096) trigger.
 //
 // Path data comes from the shared provider icon set (single black path on a
-// 40x40 viewBox), plus the app's own minds icon for MindsHub. Everything
-// renders `fill="currentColor"` so the mark follows the surrounding text
-// color in both themes — no per-theme assets.
+// 40x40 viewBox), plus the app's own minds icon for MindsHub and the Gemini
+// mark for Google. Everything renders `fill="currentColor"` so the mark
+// follows the surrounding text color in both themes — no per-theme assets.
 //
-// Makers with no mark yet (google, zai, muse: ENG-1112 tracks the missing
-// svgs) fall back to a neutral placeholder glyph instead of a broken image.
+// Makers with no mark yet (zai: ENG-1112 tracks the missing svgs) — and any
+// model whose maker can't be inferred at all, like muse-spark (grouped under
+// "other") — fall back to a neutral placeholder glyph instead of a broken
+// image.
 //
 //   <ProviderIcon maker="anthropic" size={15} />
 

@@ -127,7 +127,10 @@ export function ModelSelect({
       itemToStringLabel={(item) => item?.label ?? ''}
       // Match on the display label OR the raw id, across every group at
       // once — "opus" finds Claude Opus whether typed as alias or name.
-      filter={(item, query) => contains(item?.label ?? '', query) || contains(item?.value ?? '', query)}
+      // Pinned entries bypass the filter: "Other…" is the escape hatch for
+      // typing a model id we don't list, so a search with no matches must
+      // not hide it.
+      filter={(item, query) => !!item?.pin || contains(item?.label ?? '', query) || contains(item?.value ?? '', query)}
       autoHighlight
       disabled={disabled}
       id={id}

@@ -67,7 +67,7 @@ export default function Composer({
   model,
   onModelChange,
   projects,
-  models,
+  models = [],
   attachments = [],
   connectors = [],
   onNavigateToConnectors,

@@ -14,7 +14,7 @@
 // design: MindsHub first, then the frontier labs, Other last).
 const MAKERS = [
   { key: 'mindshub', name: 'MindsHub', test: /\bmindshub\b|\bminds hub\b/ },
-  { key: 'openai', name: 'OpenAI', test: /\bgpt\b|\bcodex\b|\bchatgpt\b|\bopenai\b|(^| )o\d(\b|-)/ },
+  { key: 'openai', name: 'OpenAI', test: /\bgpt\b|\bcodex\b|\bchatgpt\b|\bopenai\b|\bo\d\b/ },
   { key: 'anthropic', name: 'Anthropic', test: /\bclaude\b|\bopus\b|\bsonnet\b|\bhaiku\b|\bfable\b/ },
   { key: 'google', name: 'Google', test: /\bgemini\b|\bgemma\b/ },
   { key: 'xai', name: 'xAI', test: /\bgrok\b/ },

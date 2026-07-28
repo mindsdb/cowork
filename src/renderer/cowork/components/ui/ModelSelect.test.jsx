@@ -94,13 +94,24 @@ describe('ModelSelect', () => {
 
   it('shows the no-results message when nothing matches', async () => {
     const user = userEvent.setup();
-    render(<Harness />);
+    render(<Harness options={OPTIONS.filter((o) => !o.pin)} />);
 
     await user.click(screen.getByRole('combobox'));
     await user.keyboard('zzzz');
 
     expect(screen.getByText('No models found')).toBeInTheDocument();
     expect(screen.queryAllByRole('option')).toHaveLength(0);
+  });
+
+  it('keeps pinned entries visible while searching (Other… escape hatch)', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+
+    await user.click(screen.getByRole('combobox'));
+    await user.keyboard('zzzz');
+
+    expect(screen.getByRole('option', { name: 'Other…' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'Claude Sonnet 5' })).not.toBeInTheDocument();
   });
 
   it('renders pinned entries without a group header', async () => {

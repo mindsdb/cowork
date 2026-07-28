@@ -58,3 +58,38 @@ describe('Composer — "+ New project" (ENG-992)', () => {
     expect(props.onProjectChange).toHaveBeenCalledWith({ name: 'acme' });
   });
 });
+
+// The composer's model pill is the shared ModelSelect picker (ENG-1096) —
+// same component as the Settings Agent Models rows, wearing the meta-pill
+// skin. These cover the composer-specific contract: options come from the
+// {id, name} model list and a pick hands back the full model object.
+describe('Composer — model picker (ENG-1096)', () => {
+  const MODELS = [
+    { id: 'sonnet', name: 'Claude Sonnet 5', desc: '' },
+    { id: 'gpt-codex', name: 'GPT 5.3 Codex', desc: '' },
+  ];
+
+  it('shows the current model on the pill and lists models grouped by maker', async () => {
+    const user = userEvent.setup();
+    renderComposer({ hideModel: false, models: MODELS, model: MODELS[0], onModelChange: vi.fn() });
+
+    const pill = screen.getByTitle('Choose model');
+    expect(pill).toHaveTextContent('Claude Sonnet 5');
+
+    await user.click(pill);
+    expect(screen.getByText('Anthropic')).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'GPT 5.3 Codex' })).toBeInTheDocument();
+  });
+
+  it('hands the full model object back to onModelChange on pick', async () => {
+    const user = userEvent.setup();
+    const onModelChange = vi.fn();
+    renderComposer({ hideModel: false, models: MODELS, model: MODELS[0], onModelChange });
+
+    await user.click(screen.getByTitle('Choose model'));
+    await user.click(screen.getByRole('option', { name: 'GPT 5.3 Codex' }));
+
+    expect(onModelChange).toHaveBeenCalledTimes(1);
+    expect(onModelChange).toHaveBeenCalledWith(MODELS[1]);
+  });
+});
