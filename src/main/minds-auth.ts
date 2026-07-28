@@ -202,8 +202,9 @@ async function doRefreshTokens(): Promise<TokenRefreshResult> {
 // gateway has had intermittent outages), the local logout must not
 // hang on the network. Local state cleanup is the user-visible part;
 // the SSO revocation is best-effort.
-export async function endKeycloakSession(): Promise<void> {
-  const refreshToken = getRefreshToken();
+// ENG-498: logout passes the token explicitly — the detached revoke chain
+// runs after clearTokens() has wiped the store.
+export async function endKeycloakSession(refreshToken: string | null = getRefreshToken()): Promise<void> {
   if (!refreshToken) return;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 3000);
@@ -520,6 +521,55 @@ async function deleteKeyByPrefix(accessToken: string, prefix: string): Promise<v
   } catch {
     // best-effort cleanup — proceed with the new key creation regardless
   }
+}
+
+// ENG-498: on explicit sign-out, delete THIS device's own key(s) so a
+// retired session doesn't leave a live, mintable credential behind.
+// Exact-name matches only — never the legacy fixed `hub:anton` (a
+// not-yet-upgraded device may still rely on it) and never other
+// devices' keys (that's the ENG-440 silent-revocation bug).
+async function revokeAntonApiKeys(accessToken: string): Promise<void> {
+  const keyName = antonKeyName();
+  const existing = await listExistingKeys(accessToken);
+  for (const entry of existing) {
+    if (entry?.name === keyName && entry.prefix) {
+      await deleteKeyByPrefix(accessToken, entry.prefix);
+    }
+  }
+}
+
+// Detached logout cleanup: revoke this device's key while the session is
+// still valid, then end the IdP session. Ordering matters — end-session
+// first would leave the revoke racing an invalidated session. Both are
+// best-effort; the caller (AUTH_LOGOUT) deliberately does not await this,
+// so failures may not block sign-out. Exported (rather than inlined in
+// the handler) so the ordering is unit-testable.
+export async function revokeDeviceKeyAndEndSession(
+  accessToken: string | null,
+  refreshToken: string | null,
+): Promise<void> {
+  try {
+    if (accessToken) await revokeAntonApiKeys(accessToken);
+  } catch (err) {
+    console.warn('[logout] device key revoke failed:', err instanceof Error ? err.message : err);
+  } finally {
+    await endKeycloakSession(refreshToken);
+  }
+}
+
+// Best-effort token for the logout revoke. The common case (valid cached
+// token) is synchronous; an expired token gets ONE refresh attempt bounded
+// by `timeoutMs` so a hung IdP can never stall sign-out. On timeout the
+// caller proceeds without the revoke — the key then falls to the TTL.
+export async function getRevokeToken(timeoutMs = 5_000): Promise<string | null> {
+  const cached = getAccessToken();
+  if (cached && !isAccessTokenExpired()) return cached;
+  if (!getRefreshToken()) return cached;
+  const refreshed = await Promise.race([
+    refreshTokensOnly(),
+    new Promise<null>((resolve) => setTimeout(resolve, timeoutMs, null)),
+  ]);
+  return refreshed && refreshed.status === 'ok' ? refreshed.token : getAccessToken();
 }
 
 // Probes the auth-service `/authenticate/` endpoint, which both

@@ -373,3 +373,96 @@ describe('runKeyLifecycleCheck', () => {
     expect(put).toBeDefined();
   });
 });
+
+import { revokeDeviceKeyAndEndSession, getRevokeToken } from './minds-auth';
+
+// ─── ENG-498: revoke this device's key on logout ─────────────────────
+describe('revokeDeviceKeyAndEndSession', () => {
+  beforeEach(() => {
+    // Prove endKeycloakSession used the PASSED snapshot token rather than
+    // a store read — these tests pass tokens explicitly and must not
+    // depend on the token-store mocks at all.
+    (getRefreshToken as Mock).mockReturnValue(null);
+  });
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it('deletes every exact-name duplicate, never legacy or other devices, then ends the session', async () => {
+    const calls = installRoutedFetch([
+      {
+        method: 'GET', match: '/api-keys/',
+        reply: () => ({
+          status: 200,
+          body: [
+            { name: DEVICE_KEY_NAME, prefix: 'pfx-1' },
+            { name: DEVICE_KEY_NAME, prefix: 'pfx-2' },   // duplicate from a past renewal
+            { name: 'hub:anton', prefix: 'pfx-legacy' },   // legacy fixed name — must survive
+            { name: 'hub:anton:other', prefix: 'pfx-other' }, // another device — must survive
+          ],
+        }),
+      },
+      { method: 'DELETE', match: '/api-keys/', reply: () => ({ status: 204, body: {} }) },
+      { method: 'POST', match: '/protocol/openid-connect/logout', reply: () => ({ status: 204, body: {} }) },
+    ]);
+
+    await revokeDeviceKeyAndEndSession(TOKEN_A, 'rt-snapshot');
+
+    const deletes = calls.filter((c) => c.method === 'DELETE').map((c) => c.url);
+    expect(deletes).toHaveLength(2);
+    expect(deletes[0]).toContain('pfx-1');
+    expect(deletes[1]).toContain('pfx-2');
+    expect(deletes.join()).not.toContain('pfx-legacy');
+    expect(deletes.join()).not.toContain('pfx-other');
+
+    // Ordering: the revoke needs a live session, so end-session comes last.
+    const endSession = calls.findIndex((c) => c.url.includes('/protocol/openid-connect/logout'));
+    const lastDelete = calls.map((c) => c.method).lastIndexOf('DELETE');
+    expect(endSession).toBeGreaterThan(lastDelete);
+    // The snapshotted refresh token is used — clearTokens() has already
+    // wiped the store by the time this detached chain runs.
+    expect(calls[endSession].body).toContain('rt-snapshot');
+  });
+
+  it('still ends the session when the revoke fails', async () => {
+    const calls = installRoutedFetch([
+      // /api-keys/ list gets the default 500 → revoke aborts silently.
+      { method: 'POST', match: '/protocol/openid-connect/logout', reply: () => ({ status: 204, body: {} }) },
+    ]);
+    await revokeDeviceKeyAndEndSession(TOKEN_A, 'rt-snapshot');
+    expect(calls.some((c) => c.url.includes('/protocol/openid-connect/logout'))).toBe(true);
+  });
+
+  it('skips the revoke without a token but still ends the session', async () => {
+    const calls = installRoutedFetch([
+      { method: 'POST', match: '/protocol/openid-connect/logout', reply: () => ({ status: 204, body: {} }) },
+    ]);
+    await revokeDeviceKeyAndEndSession(null, 'rt-snapshot');
+    expect(calls.filter((c) => c.url.includes('/api-keys/'))).toHaveLength(0);
+    expect(calls.some((c) => c.url.includes('/protocol/openid-connect/logout'))).toBe(true);
+  });
+});
+
+describe('getRevokeToken', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it('returns the cached token immediately when valid', async () => {
+    (getAccessToken as Mock).mockReturnValue(TOKEN_A);
+    (isAccessTokenExpired as Mock).mockReturnValue(false);
+    await expect(getRevokeToken()).resolves.toBe(TOKEN_A);
+  });
+
+  it('gives up after the timeout instead of hanging logout on a dead IdP', async () => {
+    vi.useFakeTimers();
+    (getAccessToken as Mock).mockReturnValue(null);
+    (getRefreshToken as Mock).mockReturnValue('rt-1');
+    (isAccessTokenExpired as Mock).mockReturnValue(true);
+    // Refresh that never resolves (black-holed network).
+    globalThis.fetch = vi.fn(() => new Promise(() => {})) as unknown as typeof fetch;
+
+    const pending = getRevokeToken(5000);
+    await vi.advanceTimersByTimeAsync(5001);
+    await expect(pending).resolves.toBeNull();
+  });
+});
