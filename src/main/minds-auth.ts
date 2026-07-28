@@ -528,15 +528,38 @@ async function deleteKeyByPrefix(accessToken: string, prefix: string): Promise<v
 // Exact-name matches only — never the legacy fixed `hub:anton` (a
 // not-yet-upgraded device may still rely on it) and never other
 // devices' keys (that's the ENG-440 silent-revocation bug).
+//
+// listExistingKeys/deleteKeyByPrefix both swallow their own failures
+// (best-effort by design), so a zero-match result is otherwise silent and
+// indistinguishable from "already revoked" — log which case happened at
+// least once so a stuck key is diagnosable. The key NAME is safe to log:
+// it's just `hub:anton:<installation_id>`, not a secret.
 async function revokeAntonApiKeys(accessToken: string): Promise<void> {
   const keyName = antonKeyName();
   const existing = await listExistingKeys(accessToken);
+  let revoked = 0;
   for (const entry of existing) {
     if (entry?.name === keyName && entry.prefix) {
       await deleteKeyByPrefix(accessToken, entry.prefix);
+      revoked++;
     }
   }
+  if (revoked === 0) {
+    console.warn('[logout] no per-device key found to revoke (name=%s) — list failed, key already gone, or key lives in another org', keyName);
+  } else {
+    console.log('[logout] revoked %d device key(s)', revoked);
+  }
 }
+
+// Bounds the revoke phase of logout. Without this, a black-holed
+// auth-service delays endKeycloakSession by up to 30-90s (list + several
+// sequential deletes, each carrying the 30s timedFetch deadline) — long
+// enough that the IdP SSO session outlives the moment the user already
+// saw "signed out": clicking Sign in during that window silently
+// re-authenticates, the exact bug end-session exists to prevent. On
+// timeout we abandon the revoke and fall through to end-session; the
+// un-revoked key still falls to the server-side TTL.
+const LOGOUT_REVOKE_TIMEOUT_MS = 5_000;
 
 // Detached logout cleanup: revoke this device's key while the session is
 // still valid, then end the IdP session. Ordering matters — end-session
@@ -549,7 +572,17 @@ export async function revokeDeviceKeyAndEndSession(
   refreshToken: string | null,
 ): Promise<void> {
   try {
-    if (accessToken) await revokeAntonApiKeys(accessToken);
+    if (accessToken) {
+      let timer: NodeJS.Timeout | undefined;
+      try {
+        await Promise.race([
+          revokeAntonApiKeys(accessToken),
+          new Promise<void>((resolve) => { timer = setTimeout(resolve, LOGOUT_REVOKE_TIMEOUT_MS); }),
+        ]);
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+    }
   } catch (err) {
     console.warn('[logout] device key revoke failed:', err instanceof Error ? err.message : err);
   } finally {
@@ -561,15 +594,27 @@ export async function revokeDeviceKeyAndEndSession(
 // token) is synchronous; an expired token gets ONE refresh attempt bounded
 // by `timeoutMs` so a hung IdP can never stall sign-out. On timeout the
 // caller proceeds without the revoke — the key then falls to the TTL.
+//
+// NOTE: a refresh here may ROTATE the persisted refresh token (Keycloak
+// may be configured to rotate it on exchange — see the _inflightRefresh
+// comment above). Callers composing this with endKeycloakSession must
+// read getRefreshToken() AFTER awaiting getRevokeToken, never before —
+// otherwise they'd hand end-session a refresh token the exchange already
+// superseded.
 export async function getRevokeToken(timeoutMs = 5_000): Promise<string | null> {
   const cached = getAccessToken();
   if (cached && !isAccessTokenExpired()) return cached;
   if (!getRefreshToken()) return cached;
-  const refreshed = await Promise.race([
-    refreshTokensOnly(),
-    new Promise<null>((resolve) => setTimeout(resolve, timeoutMs, null)),
-  ]);
-  return refreshed && refreshed.status === 'ok' ? refreshed.token : getAccessToken();
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    const refreshed = await Promise.race([
+      refreshTokensOnly(),
+      new Promise<null>((resolve) => { timer = setTimeout(resolve, timeoutMs, null); }),
+    ]);
+    return refreshed && refreshed.status === 'ok' ? refreshed.token : getAccessToken();
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 // Probes the auth-service `/authenticate/` endpoint, which both

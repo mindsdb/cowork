@@ -384,9 +384,13 @@ describe('revokeDeviceKeyAndEndSession', () => {
     // depend on the token-store mocks at all.
     (getRefreshToken as Mock).mockReturnValue(null);
   });
-  afterEach(() => { vi.restoreAllMocks(); });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
 
   it('deletes every exact-name duplicate, never legacy or other devices, then ends the session', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     const calls = installRoutedFetch([
       {
         method: 'GET', match: '/api-keys/',
@@ -420,15 +424,30 @@ describe('revokeDeviceKeyAndEndSession', () => {
     // The snapshotted refresh token is used — clearTokens() has already
     // wiped the store by the time this detached chain runs.
     expect(calls[endSession].body).toContain('rt-snapshot');
+    // Visibility (ENG-498 review): a matched revoke logs how many keys it got.
+    expect(logSpy).toHaveBeenCalledWith('[logout] revoked %d device key(s)', 2);
   });
 
-  it('still ends the session when the revoke fails', async () => {
+  it('still ends the session when the key list returns nothing', async () => {
+    // Nothing in this chain actually throws — listExistingKeys/
+    // deleteKeyByPrefix both swallow their own failures by design, so a
+    // failed list just resolves to zero matches. The try/catch around the
+    // revoke in the implementation is defensive insurance for a future
+    // change, not something this path exercises.
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const calls = installRoutedFetch([
-      // /api-keys/ list gets the default 500 → revoke aborts silently.
+      // /api-keys/ list gets the default 500 → revoke matches zero keys.
       { method: 'POST', match: '/protocol/openid-connect/logout', reply: () => ({ status: 204, body: {} }) },
     ]);
     await revokeDeviceKeyAndEndSession(TOKEN_A, 'rt-snapshot');
     expect(calls.some((c) => c.url.includes('/protocol/openid-connect/logout'))).toBe(true);
+    // Visibility (ENG-498 review): a zero-match revoke logs why it's
+    // ambiguous (list failure vs. already-gone vs. wrong org) rather than
+    // silently deleting nothing forever.
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[logout] no per-device key found to revoke (name=%s) — list failed, key already gone, or key lives in another org',
+      DEVICE_KEY_NAME,
+    );
   });
 
   it('skips the revoke without a token but still ends the session', async () => {
@@ -437,6 +456,29 @@ describe('revokeDeviceKeyAndEndSession', () => {
     ]);
     await revokeDeviceKeyAndEndSession(null, 'rt-snapshot');
     expect(calls.filter((c) => c.url.includes('/api-keys/'))).toHaveLength(0);
+    expect(calls.some((c) => c.url.includes('/protocol/openid-connect/logout'))).toBe(true);
+  });
+
+  it('bounds the revoke phase — end-session still fires when the key list hangs', async () => {
+    // Black-holed auth-service: the /api-keys/ GET never resolves. Without
+    // the LOGOUT_REVOKE_TIMEOUT_MS bound this would delay end-session
+    // indefinitely, leaving the IdP SSO session alive long after the user
+    // saw "signed out".
+    vi.useFakeTimers();
+    const calls: { method: string; url: string }[] = [];
+    globalThis.fetch = vi.fn((input: unknown, init?: RequestInit) => {
+      const call = { method: (init?.method || 'GET').toUpperCase(), url: String(input) };
+      calls.push(call);
+      if (call.url.includes('/protocol/openid-connect/logout')) {
+        return Promise.resolve({ ok: true, status: 204, json: async () => ({}) });
+      }
+      return new Promise(() => {}); // /api-keys/ list — black-holed
+    }) as unknown as typeof fetch;
+
+    const pending = revokeDeviceKeyAndEndSession(TOKEN_A, 'rt-snapshot');
+    await vi.advanceTimersByTimeAsync(5001);
+    await pending;
+
     expect(calls.some((c) => c.url.includes('/protocol/openid-connect/logout'))).toBe(true);
   });
 });
@@ -453,6 +495,10 @@ describe('getRevokeToken', () => {
     await expect(getRevokeToken()).resolves.toBe(TOKEN_A);
   });
 
+  // This test's fetch never resolves, so refreshTokensOnly's internal
+  // single-flight promise (`_inflightRefresh`) is left permanently
+  // pending — keep this the LAST test in the file, and never add a test
+  // after it that calls refreshTokensOnly directly or indirectly.
   it('gives up after the timeout instead of hanging logout on a dead IdP', async () => {
     vi.useFakeTimers();
     (getAccessToken as Mock).mockReturnValue(null);
