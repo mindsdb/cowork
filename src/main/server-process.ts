@@ -19,7 +19,7 @@ import { coworkHome, buildKind } from './cowork-home';
 import { MINDS_ENV_SLUG } from './minds-urls';
 import { withServerLifecycle } from './server-lifecycle';
 import { decideStartWait, startFailureMessage } from './update-logic';
-import { getEnvPath, findUv, getCoworkServerBinary } from './uv-paths';
+import { getEnvPath, findUv, coworkServerBinCandidates } from './uv-paths';
 import {
   SERVER_START_CAP_MS,
   type ServerStartErrorKind,
@@ -185,11 +185,16 @@ function appendStderr(chunk: string) {
 let logStream: fs.WriteStream | null = null;
 
 export function getServerLogPath(): string {
-  /* getPath('logs') resolves to ~/Library/Logs/<AppName> on macOS,
-     %APPDATA%/<AppName>/logs on Windows, ~/.config/<AppName>/logs on Linux.
+  /* Non-prod channels log under their isolated data home so launching one
+     build kind never truncates another's log — every kind shares one
+     app.getPath('logs') because they share a productName, and the stream opens
+     with flags:'w'. prod keeps the historical getPath('logs') location
+     (~/Library/Logs/<AppName> on macOS, %APPDATA%/<AppName>/logs on Windows,
+     ~/.config/<AppName>/logs on Linux).
      Pure getter — the directory is created lazily in openLogStream(), so
      callers that only need the path (e.g. the Help > Reveal Logs menu item)
      don't trigger a filesystem write on every invocation. */
+  if (buildKind() !== 'prod') return path.join(coworkHome(), 'logs', 'cowork-server.log');
   return path.join(app.getPath('logs'), 'cowork-server.log');
 }
 
@@ -354,11 +359,11 @@ function getDevServerDir(): string | null {
 }
 
 function getCoworkServerBin(): string | null {
-  const bin = getCoworkServerBinary();
-  if (fs.existsSync(bin)) return bin;
-  if (process.platform === 'win32' && process.env.LOCALAPPDATA) {
-    const winCandidate = path.join(process.env.LOCALAPPDATA, 'bin', 'cowork-server.exe');
-    if (fs.existsSync(winCandidate)) return winCandidate;
+  // Candidate order — including the prod-only Windows %LOCALAPPDATA% global
+  // fallback — lives in uv-paths.coworkServerBinCandidates so it is unit-tested
+  // alongside the rest of the per-channel binary isolation.
+  for (const candidate of coworkServerBinCandidates()) {
+    if (fs.existsSync(candidate)) return candidate;
   }
   return null;
 }

@@ -23,7 +23,9 @@ import { MINDS_API_HOST } from './minds-urls';
 import { sendEvent } from './analytics';
 import { getRendererPath, getBundledPath, checkForUIUpdate, applyUIUpdate, hasInternet, getCachedVersion, isServingOta, rollbackUI } from './ui-updater';
 import type { UpdateCheckResult } from './ui-updater';
-import { coworkHome, coworkEnvPath, coworkStatePath, migrateLegacyHome, readEnvFile } from './cowork-home';
+import { coworkHome, coworkEnvPath, coworkStatePath, migrateLegacyHome, readEnvFile, buildKind } from './cowork-home';
+import { checkChannelConsistency } from './channels';
+import { applyChannelUvIsolation } from './uv-paths';
 import { getServerAuthToken, authHeader, resetServerAuthTokenCache } from './server-auth';
 import { getAppDisplayVersion } from './server-source';
 import { extractProviderError, classifyOpenAICompatibleResult } from './provider-error';
@@ -57,7 +59,8 @@ function clearStoredProviderState(): void {
   }
 }
 
-/** Read DEV_MODE from ~/.anton/.env. Returns 'live', 'full', or null.
+/** Read DEV_MODE from the Cowork config home's .env (coworkEnvPath()).
+ *  Returns 'live', 'full', or null.
  *
  * Defaults to null (OTA enabled). Set `DEV_MODE=live` for the Vite
  * dev-server flow, `DEV_MODE=full` to force the bundled renderer
@@ -70,7 +73,7 @@ function getDevMode(): string | null {
   return val; // 'live' or 'full'
 }
 
-/** Read UI_UPDATE_MODE from ~/.anton/.env. Defaults to 'auto'.
+/** Read UI_UPDATE_MODE from the Cowork config home's .env. Defaults to 'auto'.
  *
  * ENG-858: this is now an env-only escape hatch, not a user-facing setting —
  * there is no Settings UI control for it. It exists for support (pin a user
@@ -1287,6 +1290,30 @@ app.whenReady().then(async () => {
   powerMonitor.on('resume', () => {
     if (getRefreshToken() && isAccessTokenExpired()) void refreshTokensOnly();
   });
+
+  // Isolate this channel's uv tool install (cowork-server binary + venv) so
+  // build kinds on one machine don't share one binary. Must run before the
+  // installer's presence check and before the server starts.
+  applyChannelUvIsolation();
+
+  // Guard the two environment axes against silent disagreement: the build kind
+  // (data home / branch) must target the API host the canonical channel model
+  // says it should. A mismatch means a build was wired to talk to the wrong
+  // backend (e.g. a preview build pointed at the prod API) — log it loudly
+  // rather than let it write to the wrong environment unnoticed.
+  {
+    const c = checkChannelConsistency(buildKind(), MINDS_API_HOST);
+    if (!c.ok) {
+      console.warn(
+        `[channels] BUILD/ENV MISMATCH: build kind "${c.kind}" expects the ` +
+          `"${c.expectedSlug || 'prod'}" backend (${c.expectedApiHost}) but this build ` +
+          `points at "${c.actualSlug || 'prod'}" (${c.actualApiHost}). ` +
+          `Check the CI minds_api_url / build_kind inputs.`,
+      );
+    } else {
+      console.log(`[channels] build kind "${c.kind}" → ${c.actualApiHost} (consistent)`);
+    }
+  }
 
   // Purge any plaintext API keys older builds cached to disk (ENG-462).
   // Fire-and-forget: version-gated + idempotent, and current responses send

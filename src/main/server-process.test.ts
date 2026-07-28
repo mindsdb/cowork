@@ -25,7 +25,7 @@ vi.mock('./minds-urls', () => ({ MINDS_ENV_SLUG: '' }));
 vi.mock('./uv-paths', () => ({
   getEnvPath: () => '/usr/bin',
   findUv: () => '/usr/bin/uv',
-  getCoworkServerBinary: () => '/fake/bin/cowork-server',
+  coworkServerBinCandidates: () => ['/fake/bin/cowork-server'],
 }));
 vi.mock('fs');
 vi.mock('child_process');

@@ -743,8 +743,9 @@ const MINDS_KEYS = [
   'ANTON_GEMINI_API_KEY',
 ];
 
-// Writes the MindsHub LLM credentials to ~/.anton/.env (merge, not
-// overwrite) and restarts the python server so it picks them up.
+// Writes the MindsHub LLM credentials to the Cowork config home's .env
+// (coworkEnvPath(); merge, not overwrite) and restarts the python server so it
+// picks them up.
 // `apiKey` MUST be the `mdb_*` value minted via `provisionAntonApiKey`
 // — passing a raw Keycloak JWT here is what caused the historic 401s
 // from the LLM gateway. The live MindsHub gateway expects the

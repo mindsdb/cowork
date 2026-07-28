@@ -9,7 +9,10 @@ import * as path from 'path';
 // (never prod) so a mispackaged build can't opt into production-only OTA. These
 // tests pin exactly that, standing in for the "confirm buildKindStrict resolves
 // prod in a real prod build" QA item at the logic level.
-
+//
+// The mock exposes a mutable `isPackaged` getter for buildKindStrict's
+// packaging checks; the seeding suite below takes explicit paths and never
+// touches `app`, so the same stub serves both.
 const appState = { isPackaged: true };
 vi.mock('electron', () => ({
   app: {
@@ -20,7 +23,7 @@ vi.mock('electron', () => ({
   },
 }));
 
-import { buildKindStrict } from './cowork-home';
+import { buildKindStrict, migrateLegacyHomeInto, readBuildConfigKind } from './cowork-home';
 
 let resourcesDir: string;
 let originalResourcesPath: string | undefined;
@@ -87,5 +90,101 @@ describe('buildKindStrict', () => {
     appState.isPackaged = true;
     writeBuildConfig(JSON.stringify({ buildKind: 'prod' })); // ignored — env wins
     expect(buildKindStrict()).toBeNull();
+  });
+});
+
+describe('readBuildConfigKind (present-but-broken config must fail closed)', () => {
+  // Re-review boundary: distinguish an ABSENT config (legacy release → prod)
+  // from a PRESENT but broken one (mispackaged build → fail closed, never prod).
+  it('returns undefined when there is no build-config.json (legacy → prod)', () => {
+    // beforeEach points resourcesPath at a fresh empty dir, so no file exists.
+    expect(readBuildConfigKind()).toBeUndefined();
+  });
+
+  it('returns the raw kind when present and well-formed (validation is the caller’s job)', () => {
+    writeBuildConfig(JSON.stringify({ buildKind: 'stable' }));
+    expect(readBuildConfigKind()).toBe('stable');
+  });
+
+  it('THROWS on a present but malformed (non-JSON) config', () => {
+    writeBuildConfig('{ not json');
+    expect(() => readBuildConfigKind()).toThrow(/not valid JSON/i);
+  });
+
+  it('THROWS on a present config with no buildKind key', () => {
+    writeBuildConfig(JSON.stringify({ somethingElse: true }));
+    expect(() => readBuildConfigKind()).toThrow(/no buildKind/i);
+  });
+
+  it('THROWS on a present config with an empty/whitespace buildKind', () => {
+    writeBuildConfig(JSON.stringify({ buildKind: '   ' }));
+    expect(() => readBuildConfigKind()).toThrow(/no buildKind/i);
+  });
+});
+
+describe('migrateLegacyHomeInto (legacy ~/.anton seeding is PROD-ONLY)', () => {
+  // ~/.anton predates the channel split, so its .env / state.json are prod-era
+  // by definition (prod-minted MindsHub credentials, prod ANTON_MINDS_URL).
+  // Seeding a non-prod channel's fresh home with it would leak prod
+  // credentials/URLs into an isolated channel — the review-flagged gap.
+  let root: string;
+  let legacyHome: string;
+  let home: string;
+
+  beforeEach(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), 'cowork-legacy-test-'));
+    legacyHome = path.join(root, '.anton');
+    home = path.join(root, '.cowork-x');
+  });
+
+  afterEach(() => {
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  function seedLegacy(): void {
+    fs.mkdirSync(path.join(legacyHome, 'cowork'), { recursive: true });
+    fs.writeFileSync(path.join(legacyHome, '.env'), 'ANTON_MINDS_URL=prod');
+    fs.writeFileSync(path.join(legacyHome, 'cowork', 'state.json'), '{"from":"legacy"}');
+  }
+
+  it('prod: copies legacy .env and state.json into an empty home', () => {
+    seedLegacy();
+
+    migrateLegacyHomeInto('prod', home, legacyHome);
+
+    expect(fs.readFileSync(path.join(home, '.env'), 'utf8')).toBe('ANTON_MINDS_URL=prod');
+    expect(fs.readFileSync(path.join(home, 'state.json'), 'utf8')).toBe('{"from":"legacy"}');
+  });
+
+  it('prod: never overwrites files already present in the home', () => {
+    seedLegacy();
+    fs.mkdirSync(home, { recursive: true });
+    fs.writeFileSync(path.join(home, '.env'), 'ANTON_MINDS_URL=current');
+
+    migrateLegacyHomeInto('prod', home, legacyHome);
+
+    expect(fs.readFileSync(path.join(home, '.env'), 'utf8')).toBe('ANTON_MINDS_URL=current');
+    // The absent file is still filled in.
+    expect(fs.existsSync(path.join(home, 'state.json'))).toBe(true);
+  });
+
+  it.each(['dev', 'preview', 'stable'] as const)(
+    '%s: creates the home dir but copies NOTHING from the legacy home',
+    (kind) => {
+      seedLegacy();
+
+      migrateLegacyHomeInto(kind, home, legacyHome);
+
+      expect(fs.existsSync(home)).toBe(true); // dir still ensured for every kind
+      expect(fs.existsSync(path.join(home, '.env'))).toBe(false);
+      expect(fs.existsSync(path.join(home, 'state.json'))).toBe(false);
+    },
+  );
+
+  it('prod with no legacy files: just ensures the home dir', () => {
+    migrateLegacyHomeInto('prod', home, legacyHome);
+
+    expect(fs.existsSync(home)).toBe(true);
+    expect(fs.readdirSync(home)).toEqual([]);
   });
 });

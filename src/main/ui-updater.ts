@@ -6,7 +6,7 @@ import * as path from 'path';
 import * as crypto from 'crypto';
 import { parseUiManifest, otaUiEnabled, otaCacheIsFresh, uiUpdateIsNewer, uiServerCompatSkipReason, type UIManifest } from './update-logic';
 import { parseCalVer } from '../shared/version';
-import { buildKindStrict } from './cowork-home';
+import { buildKindStrict, coworkHome, buildKind } from './cowork-home';
 import { getAppDisplayVersion } from './server-source';
 import { fetchServerVersions } from './server-process';
 import { retryOnTransientLock } from './fs-retry';
@@ -113,6 +113,10 @@ export interface UpdateCheckResult {
 }
 
 function getCacheDir(): string {
+  // Isolate the OTA UI cache per non-prod channel so build kinds on one machine
+  // don't clobber each other's cached bundle (they share one userData because
+  // they share a productName). prod keeps the historical userData location.
+  if (buildKind() !== 'prod') return path.join(coworkHome(), 'ui-cache');
   return path.join(app.getPath('userData'), 'ui-cache');
 }
 

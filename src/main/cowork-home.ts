@@ -11,8 +11,11 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { app } from 'electron';
+import { BUILD_KINDS, CHANNELS, normalizeBuildKind, type BuildKind } from './channels';
 
 const LEGACY_HOME = path.join(os.homedir(), '.anton');
+
+export type { BuildKind };
 
 // Build-kind isolation: dev, preview, and stable builds each get their own
 // config home (~/.cowork-<kind>) so switching between builds never shares
@@ -23,28 +26,21 @@ const LEGACY_HOME = path.join(os.homedir(), '.anton');
 // an older build reopening a DB a newer build advanced fails to start on the
 // unrecognized Alembic migration (ENG-324). Only prod uses ~/.cowork.
 //
+// The canonical kind→home/API/branch mapping lives in channels.ts; this module
+// only resolves WHICH kind this process is and turns it into paths.
+//
 // Build kind resolves (first match wins):
 //   1. COWORK_BUILD_KIND env var (manual override)
 //   2. Unpackaged Electron (npm run dev) → "dev"
 //   3. build-config.json bundled in app resources (CI writes it before
 //      building — see .github/workflows/build-*.yml)
-//   4. Fallback → "prod"
+//   4. No override + packaged + no config → "prod" (a legacy release)
 //
-// Any value not in BUILD_KINDS (a typo, an unset CI input) resolves to "prod"
-// so a mistake can never silently orphan a user onto a fresh, empty home that
-// looks — to a confused tester — exactly like the ENG-324 symptom.
-const BUILD_KINDS = ['dev', 'preview', 'stable', 'prod'] as const;
-type BuildKind = (typeof BUILD_KINDS)[number];
-
-function normalizeBuildKind(raw: string, source: string): BuildKind {
-  const kind = raw.trim().toLowerCase();
-  if ((BUILD_KINDS as readonly string[]).includes(kind)) return kind as BuildKind;
-  console.warn(
-    `[cowork-home] unrecognized build kind "${raw}" from ${source}; falling back ` +
-      `to "prod". Expected one of: ${BUILD_KINDS.join(', ')}.`,
-  );
-  return 'prod';
-}
+// Fail-closed: only a genuinely ABSENT signal degrades to prod (legacy releases
+// with no COWORK_BUILD_KIND and no build-config.json keep working). A PRESENT
+// but broken config (unreadable / invalid JSON / no buildKind) or an unrecognized
+// kind THROWS instead — pointing a non-prod build at the production home on a
+// typo is the exact hazard the channel model prevents.
 
 let _buildKind: BuildKind | undefined;
 
@@ -60,15 +56,51 @@ function resolveBuildKind(): BuildKind {
   if (process.env.COWORK_BUILD_KIND) {
     return normalizeBuildKind(process.env.COWORK_BUILD_KIND, 'COWORK_BUILD_KIND');
   }
-  if (!app.isPackaged) return 'dev';
+  // `app?.` (not `app.`): outside the Electron main process — unit tests and
+  // tooling that transitively import this module — `app` is undefined. Treat
+  // that as unpackaged (dev) instead of throwing. In production `app` is always
+  // present, so this is byte-for-byte identical there.
+  if (!app?.isPackaged) return 'dev';
+  // Absent config → prod (legacy release); present-but-broken or unrecognized
+  // throws (readBuildConfigKind / normalizeBuildKind). See the module header.
+  const configured = readBuildConfigKind();
+  if (configured === undefined) return 'prod';
+  return normalizeBuildKind(configured, 'build-config.json');
+}
+
+// Read `buildKind` from the bundled build-config.json:
+//   - no file (ENOENT) → undefined (a legacy release; the caller maps it to prod)
+//   - present but unreadable / invalid JSON / missing buildKind → THROW (a
+//     mispackaged build must fail closed, not silently open the prod home)
+// Recognized-kind validation is the caller's (normalizeBuildKind); this only
+// distinguishes "no config" from "broken config".
+export function readBuildConfigKind(): string | undefined {
+  const configPath = path.join(process.resourcesPath || '', 'build-config.json');
+  let raw: string;
   try {
-    const configPath = path.join(process.resourcesPath || '', 'build-config.json');
-    if (fs.existsSync(configPath)) {
-      const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-      if (config?.buildKind) return normalizeBuildKind(String(config.buildKind), 'build-config.json');
-    }
-  } catch { /* missing or malformed — fall through to prod */ }
-  return 'prod';
+    raw = fs.readFileSync(configPath, 'utf8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+    throw new Error(
+      `[cowork-home] build-config.json is present but unreadable ` +
+        `(${(err as NodeJS.ErrnoException).code ?? 'unknown'}); refusing to fall back to prod.`,
+    );
+  }
+  let config: { buildKind?: unknown } | null;
+  try {
+    config = JSON.parse(raw);
+  } catch {
+    throw new Error(
+      '[cowork-home] build-config.json is present but not valid JSON; refusing to fall back to prod.',
+    );
+  }
+  const kind = config?.buildKind;
+  if (kind === undefined || kind === null || String(kind).trim() === '') {
+    throw new Error(
+      '[cowork-home] build-config.json is present but declares no buildKind; refusing to fall back to prod.',
+    );
+  }
+  return String(kind);
 }
 
 /** Strict build-kind resolver for safety gates (e.g. OTA enablement).
@@ -83,20 +115,21 @@ export function buildKindStrict(): BuildKind | null {
     return (BUILD_KINDS as readonly string[]).includes(kind) ? (kind as BuildKind) : null;
   };
   if (process.env.COWORK_BUILD_KIND) return strict(process.env.COWORK_BUILD_KIND);
-  if (!app.isPackaged) return 'dev';
+  if (!app?.isPackaged) return 'dev';
+  // Reuse the one config reader so parsing can't drift between the two resolvers.
+  // Strict never throws or defaults to prod: a broken config (readBuildConfigKind
+  // throws) or an absent one (undefined) both mean "unknown" → null, so a
+  // mispackaged build can't opt into production-only behavior.
   try {
-    const configPath = path.join(process.resourcesPath || '', 'build-config.json');
-    if (fs.existsSync(configPath)) {
-      const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-      if (config?.buildKind) return strict(String(config.buildKind));
-    }
-  } catch { /* fall through to unknown */ }
-  return null;
+    const configured = readBuildConfigKind();
+    return configured === undefined ? null : strict(configured);
+  } catch {
+    return null;
+  }
 }
 
 export function coworkHome(): string {
-  const kind = buildKind();
-  return path.join(os.homedir(), kind === 'prod' ? '.cowork' : `.cowork-${kind}`);
+  return path.join(os.homedir(), CHANNELS[buildKind()].homeDirName);
 }
 
 export function coworkEnvPath(): string {
@@ -122,26 +155,39 @@ export function readEnvFile(): Record<string, string> {
 }
 
 // Copy the legacy `~/.anton/.env` and `~/.anton/cowork/state.json` to the
-// new `~/.cowork` location when they don't exist there yet, so existing
-// installs keep their credentials + provider state. Idempotent and
-// best-effort — never block startup on it.
+// current config home when they don't exist there yet, so existing installs
+// keep their credentials + provider state. Idempotent and best-effort — never
+// block startup on it.
 export function migrateLegacyHome(): void {
   try {
-    const home = coworkHome();
-    if (!fs.existsSync(home)) fs.mkdirSync(home, { recursive: true });
-
-    const newEnv = coworkEnvPath();
-    const oldEnv = path.join(LEGACY_HOME, '.env');
-    if (!fs.existsSync(newEnv) && fs.existsSync(oldEnv)) {
-      fs.copyFileSync(oldEnv, newEnv);
-    }
-
-    const newState = coworkStatePath();
-    const oldState = path.join(LEGACY_HOME, 'cowork', 'state.json');
-    if (!fs.existsSync(newState) && fs.existsSync(oldState)) {
-      fs.copyFileSync(oldState, newState);
-    }
+    migrateLegacyHomeInto(buildKind(), coworkHome(), LEGACY_HOME);
   } catch {
     // best-effort migration; a failure here must not stop the app.
+  }
+}
+
+// The testable body of migrateLegacyHome (explicit kind + paths, so the
+// filesystem behavior is unit-tested without Electron / `buildKind()`).
+// Ensures the home dir exists for every kind, but seeds
+// the legacy files into the PROD home only: ~/.anton predates the channel
+// split, so its contents are prod-era by definition — the .env carries
+// prod-minted MindsHub credentials and a prod ANTON_MINDS_URL. Seeding a
+// non-prod channel's fresh home with it would point that channel's server at
+// the production gateway until the next login rewrote the values — a cross-env
+// leak the channel isolation exists to prevent.
+export function migrateLegacyHomeInto(kind: BuildKind, home: string, legacyHome: string): void {
+  if (!fs.existsSync(home)) fs.mkdirSync(home, { recursive: true });
+  if (kind !== 'prod') return;
+
+  const newEnv = path.join(home, '.env');
+  const oldEnv = path.join(legacyHome, '.env');
+  if (!fs.existsSync(newEnv) && fs.existsSync(oldEnv)) {
+    fs.copyFileSync(oldEnv, newEnv);
+  }
+
+  const newState = path.join(home, 'state.json');
+  const oldState = path.join(legacyHome, 'cowork', 'state.json');
+  if (!fs.existsSync(newState) && fs.existsSync(oldState)) {
+    fs.copyFileSync(oldState, newState);
   }
 }
