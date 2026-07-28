@@ -36,6 +36,7 @@ import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { harnessLabel } from '../lib/agentLabel';
 import { modelLabel } from '../lib/settingsTransform';
 import { providerOverloadedButtons } from '../lib/turnErrorActions';
+import { isThinkingActive } from '../lib/thinkingActive';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 
 // Token shorthand mapped to our globals.css custom properties so the same
@@ -1811,7 +1812,7 @@ export default function ChatView({
                   <ThinkingBlock
                     steps={streamingMsg.steps}
                     startedAt={streamingMsg.startedAt}
-                    isActive={streamingMsg.streamStatus !== 'done' && streamingMsg.streamStatus !== 'streaming'}
+                    isActive={isThinkingActive(streamingMsg.streamStatus)}
                     slotId="header:streaming"
                     currentLabel={(() => {
                       const active = [...(streamingMsg.steps || [])].reverse().find(s => s.status === 'in_progress');
