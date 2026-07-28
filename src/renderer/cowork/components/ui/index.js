@@ -12,6 +12,8 @@ export { default as Spinner } from './Spinner.jsx';
 export { default as OrbitMorph } from './OrbitMorph.jsx';
 export { default as Menu } from './Menu.jsx';
 export { default as Select } from './Select.jsx';
+export { default as ModelSelect } from './ModelSelect.jsx';
+export { default as ProviderIcon } from './ProviderIcon.jsx';
 export { default as Tooltip } from './Tooltip.tsx';
 export { default as Checkbox } from './Checkbox.tsx';
 export { default as Kbd } from './Kbd.jsx';

@@ -12,6 +12,8 @@ import { HighlightOverlay } from './composerHighlight';
 import { useFileDrop, FileDropOverlay, extractClipboardFiles } from '../lib/useFileDrop';
 import { AttachmentThumbnail } from './AttachmentThumbnail';
 import { useSkills } from '../lib/skillsStore';
+import { ModelSelect, ProviderIcon } from './ui';
+import { modelMaker } from '../lib/modelCatalog';
 
 // Detect a "/" slash-command token immediately before the caret. Returns the
 // token's start index (the "/") and the lowercased query fragment, or null when
@@ -1053,6 +1055,7 @@ export default function Composer({
               </span>
               {!hideModel && (
                 <span className="meta-pill" title="Model is fixed for this task">
+                  {model && <ProviderIcon maker={modelMaker(model.id, model.name).key} size={14} />}
                   <span>{model?.name ?? 'Model'}</span>
                 </span>
               )}
@@ -1232,37 +1235,25 @@ export default function Composer({
                 )}
               </span>
               {!hideModel && (
-                <button
+                // Same searchable, provider-grouped picker as Settings
+                // (ENG-1096: one component everywhere a model gets picked),
+                // wearing the composer's meta-pill skin.
+                <ModelSelect
+                  variant="unstyled"
                   className="meta-pill"
-                  onClick={() => setOpenMenu(openMenu === 'model' ? null : 'model')}
+                  value={model?.id ?? ''}
+                  onValueChange={(id) => {
+                    const next = models.find((m) => m.id === id);
+                    if (next) onModelChange(next);
+                  }}
+                  options={models.map((m) => ({ value: m.id, label: m.name }))}
+                  placeholder="Select model"
+                  ariaLabel="Choose model"
                   title="Choose model"
-                >
-                  <span>{model?.name ?? 'Select model'}</span>
-                  <span style={{ display: 'inline-flex', color: 'var(--frost-500)' }}>{Ico.chevDown(13)}</span>
-                </button>
+                />
               )}
             </>
           )}
-        </div>
-      )}
-
-      {openMenu === 'model' && !metaReadOnly && (
-        <div className="menu" style={{ right: 8, top: 'calc(100% + 6px)', minWidth: 260 }}>
-          <div style={{ padding: '6px 10px', fontSize: 11, fontWeight: 600, color: 'var(--frost-600)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Model</div>
-          {models.map((m) => (
-            <button
-              key={m.id}
-              className={`menu-item${model?.id === m.id ? ' checked' : ''}`}
-              onClick={() => { onModelChange(m); setOpenMenu(null); }}
-              style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%' }}>
-                <span style={{ flex: 1, fontWeight: 500 }}>{m.name}</span>
-                {model?.id === m.id && <span style={{ color: 'var(--primary-700)' }}>{Ico.check(14)}</span>}
-              </div>
-              <div style={{ fontSize: 11.5, color: 'var(--frost-600)' }}>{m.desc}</div>
-            </button>
-          ))}
         </div>
       )}
 
