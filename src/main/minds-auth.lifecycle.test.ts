@@ -154,13 +154,16 @@ const makeJwt = (payload: Record<string, unknown>) =>
 // needing the org-switch endpoints.
 const TOKEN_A = makeJwt({ sub: 'user-a', active_organization: { id: 'org-1', name: 'org1' } });
 const TOKEN_B = makeJwt({ sub: 'user-b', active_organization: { id: 'org-2', name: 'org2' } });
+// Same subject as TOKEN_A but a different org claim — simulates the store
+// holding a post-org-switch token by the time a rollback needs to happen.
+const TOKEN_A2 = makeJwt({ sub: 'user-a', active_organization: { id: 'org-2', name: 'org2' } });
 
 const ENTITLED = {
   permissions: { agents: { use: true }, api_keys: { create: true } },
   allocations: { deploy_agents: 1 },
 };
 
-interface RoutedCall { method: string; url: string; body?: string }
+interface RoutedCall { method: string; url: string; body?: string; auth?: string }
 type Route = {
   method: string;
   match: string;
@@ -177,6 +180,9 @@ function installRoutedFetch(routes: Route[]): RoutedCall[] {
       method: (init?.method || 'GET').toUpperCase(),
       url: String(input),
       body: typeof init?.body === 'string' ? init.body : undefined,
+      // Every call site in minds-auth passes headers as a plain object,
+      // not a Headers instance — safe to read the field directly.
+      auth: (init?.headers as Record<string, string> | undefined)?.Authorization,
     };
     calls.push(call);
     for (const r of routes) {
@@ -330,17 +336,40 @@ describe('runKeyLifecycleCheck', () => {
     expect(calls).toHaveLength(0);
   });
 
-  it('rolls back the minted key when the settings PUT fails', async () => {
+  it('rolls back the minted key when the settings PUT fails, using the current store token', async () => {
     // The settings PUT is the authoritative commit (DB outranks .env); if
     // it fails, the just-minted key must not linger as the account's
     // "newest" — otherwise the next tick sees it as fresh and never
     // retries the renewal, permanently stranding the old key at expiry.
+    //
+    // The PUT failure also swaps the store's access token to simulate
+    // provisioning having minted under an org-switched token by the time
+    // the rollback runs: the DELETE must use THAT token (org-scoped
+    // endpoint), not the one captured before provisioning started.
     const calls = installRoutedFetch(happyRoutes({
-      put: () => ({ status: 500, body: {} }),
+      put: () => {
+        (getAccessToken as Mock).mockReturnValue(TOKEN_A2);
+        return { status: 500, body: {} };
+      },
     }));
     await runKeyLifecycleCheck();
-    const del = calls.find((c) => c.method === 'DELETE' && c.url.includes('pfx-new'));
-    expect(del).toBeDefined();
+    const deletes = calls.filter((c) => c.method === 'DELETE');
+    // Renewal mints with deleteExistingKey: false, so the only DELETE in
+    // this flow is the rollback — the old key (pfx-own) must be spared.
+    expect(deletes).toHaveLength(1);
+    expect(deletes[0].url).toContain('pfx-new');
+    expect(deletes[0].auth).toBe(`Bearer ${TOKEN_A2}`);
     expect(fs.readFileSync(TEST_ENV, 'utf-8')).toMatch(/mdb_old/);
+  });
+
+  it('permits the tick when only the server is starting (boot-time case)', async () => {
+    (isServerRunning as Mock).mockReturnValue(false);
+    (isServerStarting as Mock).mockReturnValue(true);
+    const calls = installRoutedFetch(happyRoutes());
+    await runKeyLifecycleCheck();
+    const mint = calls.find((c) => c.method === 'POST' && c.url.includes('/api-keys/'));
+    expect(mint).toBeDefined();
+    const put = calls.find((c) => c.method === 'PUT' && c.url.includes('/settings/minds_api_key'));
+    expect(put).toBeDefined();
   });
 });

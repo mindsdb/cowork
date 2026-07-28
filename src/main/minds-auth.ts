@@ -508,10 +508,15 @@ async function listExistingKeys(accessToken: string): Promise<ApiKeyListEntry[]>
 
 async function deleteKeyByPrefix(accessToken: string, prefix: string): Promise<void> {
   try {
-    await timedFetch(`${AUTH_SERVICE_URL}/api-keys/${encodeURIComponent(prefix)}/`, {
+    const res = await timedFetch(`${AUTH_SERVICE_URL}/api-keys/${encodeURIComponent(prefix)}/`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${accessToken}` },
     });
+    // Best-effort cleanup — a failed delete never blocks the caller — but
+    // a silent failure here is exactly what let the renewal-rollback bug
+    // hide, so at least make it diagnosable. `prefix` is the public
+    // display prefix, not a secret.
+    if (!res.ok) console.warn('[minds-auth] key delete returned', res.status, 'for prefix', prefix);
   } catch {
     // best-effort cleanup — proceed with the new key creation regardless
   }
@@ -1126,12 +1131,23 @@ async function doKeyLifecycleCheck(): Promise<void> {
 // which stays valid until its own expiry), and no provider flips (a user
 // who switched to BYOK keeps their selection).
 async function commitRenewedKey(accessToken: string, apiKey: string, prefix: string | undefined): Promise<void> {
+  // Roll back with the CURRENT store token, not the one captured at the
+  // top of doKeyLifecycleCheck: provisionAntonApiKey may have minted under
+  // an org-switched token (org-switch / personal-org fallback), and the
+  // auth-service's DELETE is org-scoped — deleting with the stale token
+  // 404s. refreshAfterOrgSwitch persists the switched token via
+  // saveTokens, so getAccessToken() carries the right org claim by now;
+  // fall back to the passed-in token only if the store emptied mid-flight.
+  const rollbackMint = async (): Promise<void> => {
+    if (prefix) await deleteKeyByPrefix(getAccessToken() ?? accessToken, prefix);
+  };
+
   // Re-check here too: the boot-time gate in doKeyLifecycleCheck can go
   // stale across the mint's network round-trip if the sidecar goes down
   // mid-renewal.
   if (!isServerRunning() && !isServerStarting()) {
     console.warn('[minds-auth] server no longer available for renewal commit — rolling back minted key, will retry next tick');
-    if (prefix) await deleteKeyByPrefix(accessToken, prefix);
+    await rollbackMint();
     return;
   }
   const port = getServerPort();
@@ -1143,12 +1159,12 @@ async function commitRenewedKey(accessToken: string, apiKey: string, prefix: str
     });
     if (!res.ok) {
       console.warn('[minds-auth] renewal settings PUT returned', res.status, '— rolling back minted key, will retry next tick');
-      if (prefix) await deleteKeyByPrefix(accessToken, prefix);
+      await rollbackMint();
       return;
     }
   } catch (error) {
     console.warn('[minds-auth] failed to write renewed key to server DB — rolling back minted key, will retry next tick', error);
-    if (prefix) await deleteKeyByPrefix(accessToken, prefix);
+    await rollbackMint();
     return;
   }
 
