@@ -138,6 +138,7 @@ describe('buildModelOptions', () => {
       value: '__stale__',
       label: 'sonnet (legacy — re-select a model)',
       disabled: true,
+      pin: 'top',
     });
   });
 
@@ -155,7 +156,7 @@ describe('buildModelOptions', () => {
 
   it('appends an "Other…" entry only when allowOther is true', () => {
     const withOther = buildModelOptions('claude-opus-4-8', ANTHROPIC_LIST, true, false);
-    expect(withOther.at(-1)).toEqual({ value: '__custom__', label: 'Other…' });
+    expect(withOther.at(-1)).toEqual({ value: '__custom__', label: 'Other…', pin: 'bottom' });
 
     const withoutOther = buildModelOptions('mindshub_air', MINDS_LIST, false, false);
     expect(withoutOther.some((o) => o.value === '__custom__')).toBe(false);

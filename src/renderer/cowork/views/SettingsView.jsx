@@ -8,6 +8,7 @@ import { ConfirmModal } from '../components/ConfirmModal';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
 import { Switch } from '../components/ui/Switch';
 import { Badge, Button, Input, Checkbox, Select } from '../components/ui';
+import ModelSelect from '../components/ModelSelect.jsx';
 import { host } from '../../platform/host';
 import { SKINS, normalizeSkin } from '../../lib/skins';
 import { MINDS_API_BASE, MINDS_API_KEY_URL, MINDS_CONSOLE_URL, MINDS_REGISTER_URL, MINDS_BILLING_URL } from '../../lib/mindsUrls';
@@ -1732,7 +1733,7 @@ export default function SettingsView({
                             return (
                               <label style={{ display: 'grid', gap: 4 }}>
                                 {fieldLabel('Model')}
-                                <Select
+                                <ModelSelect
                                   value={selectValue || firstEnabledModel}
                                   onValueChange={(next) => {
                                     if (next === '__custom__') {

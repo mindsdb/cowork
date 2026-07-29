@@ -12,6 +12,7 @@ export { default as Spinner } from './Spinner.tsx';
 export { default as OrbitMorph } from './OrbitMorph.jsx';
 export { default as Menu } from './Menu.jsx';
 export { default as Select } from './Select.jsx';
+export { default as Combobox } from './Combobox.jsx';
 export { default as Tooltip } from './Tooltip.tsx';
 export { default as Checkbox } from './Checkbox.tsx';
 export { default as Kbd } from './Kbd.tsx';

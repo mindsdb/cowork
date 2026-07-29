@@ -342,6 +342,9 @@ export function buildModelOptions(curModel, modelList, allowOther, showStalePin,
           value: '__stale__',
           label: `${labelFor(curModel.replace(/^latest:/, ''))} (legacy — re-select a model)`,
           disabled: true,
+          // `pin` keeps the special entries out of ModelSelect's provider
+          // groups: 'top'/'bottom' render unheaded above/below the groups.
+          pin: 'top',
         }]
       : []),
     // Wallet-based access (ENG-412, #434): a locked model is one the org's
@@ -351,7 +354,7 @@ export function buildModelOptions(curModel, modelList, allowOther, showStalePin,
       label: `${labelFor(m)}${isLocked(m) ? ' — Add credits to unlock' : ''}`,
       disabled: isLocked(m),
     })),
-    ...(allowOther ? [{ value: '__custom__', label: 'Other…' }] : []),
+    ...(allowOther ? [{ value: '__custom__', label: 'Other…', pin: 'bottom' }] : []),
   ];
 }
 
