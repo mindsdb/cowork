@@ -8,7 +8,7 @@ vi.mock('electron', () => ({
 }));
 
 // Imported after the mock so drive-picker-service picks up the mocked shell.
-const { openDrivePickerFlow, cancelCurrentDrivePicker, isValidDriveFileIds } = await import('./drive-picker-service');
+const { openDrivePickerFlow, cancelCurrentDrivePicker, isValidDriveFileIds, buildPickerFailureReason } = await import('./drive-picker-service');
 
 function extractPortAndState(url: string): { port: number; state: string } {
   const parsed = new URL(url);
@@ -207,26 +207,44 @@ describe('openDrivePickerFlow', () => {
     expect(result.reason).toMatch(/user@example\.com/);
   });
 
-  it('serves a load-timeout fallback that can detect a picker that never loads at all', async () => {
+  it('serves a load-timeout fallback that signals suspicion without closing the picker or ending the flow', async () => {
     // ENG-1102 regression coverage: the reported failure is a static Google
     // 403 page rendered inside the picker's iframe instead of the widget.
     // That page has no picker JS in it, so it can never emit PICKED/CANCEL/
     // ERROR over the postMessage relay — Action.ERROR only fires once the
     // widget itself has loaded and then hit a problem, so it can't catch
-    // this case. The load timeout is what's supposed to catch it instead;
-    // assert it's actually present in the served page rather than only
-    // exercising the /result contract it eventually calls into.
+    // this case. The load timeout is what's supposed to catch it instead —
+    // but a first attempt at this (round 1 of ENG-1102's fix) force-closed
+    // the picker and rejected the flow on the same 9s timer, which fired
+    // just as wrongly for any user who was simply still browsing. Assert
+    // the timeout only ever signals a suspicion, never force-closes
+    // anything, so that regression can't come back.
     const flowPromise = openDrivePickerFlow('token', 'key', undefined, 'user@example.com');
     await vi.waitFor(() => expect(openExternalMock).toHaveBeenCalled());
     const url = openExternalMock.mock.calls[0][0] as string;
 
     const { body } = await getPickerPage(url);
     expect(body).toContain('PICKER_LOAD_TIMEOUT_MS');
-    expect(body).toContain('picker.setVisible(false)');
-    expect(body).toContain('reportPickerLoadFailure');
+    expect(body).toContain("signal: 'suspected-account-mismatch'");
+    expect(body).not.toContain('setVisible(false)');
 
     cancelCurrentDrivePicker();
     await flowPromise;
+  });
+
+  it('does not resolve or reject the flow when the picker page only signals a suspected load failure', async () => {
+    // The signal is a guess, not proof — a user who was merely slow to
+    // pick, or whose widget loaded fine all along, must be able to still
+    // finish normally after the signal has fired.
+    const flowPromise = openDrivePickerFlow('token', 'key', undefined, 'user@example.com');
+    await vi.waitFor(() => expect(openExternalMock).toHaveBeenCalled());
+    const { port, state } = extractPortAndState(openExternalMock.mock.calls[0][0]);
+
+    await postResult(port, state, { signal: 'suspected-account-mismatch' });
+    await postResult(port, state, { files: [{ id: 'f1', name: 'Doc 1' }] });
+    const result = await flowPromise;
+
+    expect(result).toEqual({ ok: true, files: [{ id: 'f1', name: 'Doc 1' }] });
   });
 
   it('HTML-escapes the account email in the served page so it cannot break out of the markup', async () => {
@@ -241,6 +259,28 @@ describe('openDrivePickerFlow', () => {
 
     cancelCurrentDrivePicker();
     await flowPromise;
+  });
+});
+
+describe('buildPickerFailureReason', () => {
+  it('leaves the reason untouched when no load-failure was suspected', () => {
+    expect(buildPickerFailureReason('Picker timed out — no selection received within 5 minutes.', false, 'user@example.com'))
+      .toBe('Picker timed out — no selection received within 5 minutes.');
+  });
+
+  it('leaves cancellations and in-widget errors untouched even if a suspicion was flagged', () => {
+    // A genuine Action.ERROR or a user cancellation already carries its own
+    // specific reason — the suspicion should only ever augment the generic
+    // "timed out" message, not every failure mode.
+    expect(buildPickerFailureReason('Picker cancelled.', true, 'user@example.com')).toBe('Picker cancelled.');
+    expect(buildPickerFailureReason('Google Picker could not open — the browser’s active Google account may not match user@example.com.', true, 'user@example.com'))
+      .toBe('Google Picker could not open — the browser’s active Google account may not match user@example.com.');
+  });
+
+  it('appends account-mismatch guidance to a genuine timeout when a load failure was suspected', () => {
+    const reason = buildPickerFailureReason('Picker timed out — no selection received within 5 minutes.', true, 'user@example.com');
+    expect(reason).toMatch(/^Picker timed out/);
+    expect(reason).toMatch(/user@example\.com/);
   });
 });
 
