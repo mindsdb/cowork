@@ -486,9 +486,10 @@ export function diffSettingsForWrite(patch, lastFetched) {
     // Budget keys are writable only when the server serves them: the server
     // returns a row for every settings field, so absence from the fetched
     // snapshot means an older server that would 400 the write (and fail the
-    // whole multi-key save with it). Deliberately budget-scoped — as a global
-    // rule this would be wrong, because lastFetched falls back to mock data
-    // offline, where "absent from snapshot" is not "absent on the server".
+    // whole multi-key save with it). Deliberately budget-scoped: lastFetched
+    // is {} until the first successful fetch, so as a global rule this would
+    // silently drop the first save of a session. For budget keys the trade
+    // is worth it — absence really does mean a server that can't take them.
     if (clientKey in BUDGET_FIELDS && !(clientKey in lastFetched)) continue;
     const prev = lastFetched[clientKey];
     if (prev === value) continue;

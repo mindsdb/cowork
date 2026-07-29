@@ -971,9 +971,14 @@ export default function SettingsView({
   // does. Gating on presence keeps the section (and any possibility of
   // writing the keys) off screens backed by servers that would 400 the
   // write — the renderer ships OTA and can lead the installed server.
-  const hasBudgetSettings = lastSavedSettings != null
-    && 'maxToolRounds' in lastSavedSettings
-    && 'maxContinuations' in lastSavedSettings;
+  // Probe the LIVE settings, not the saved snapshot: the snapshot latches on
+  // the first render (offline-open would pin "no budgets" for the whole
+  // mount, even after a successful fetch). Live is equally safe — the only
+  // writer that can materialize these keys is the budget field itself, which
+  // sits inside this gate, so on an older server they can never appear.
+  const hasBudgetSettings = settings != null
+    && 'maxToolRounds' in settings
+    && 'maxContinuations' in settings;
   // Ref-mirror of `settings` so the post-Save snapshot can read the
   // freshly-refetched value (the closure's `settings` is stale after
   // the await but the ref tracks every render).
