@@ -95,7 +95,11 @@ describe('preamble reclassification (ENG-1108 — narration before a tool call i
     // Preamble is NOT left sitting in the answer…
     expect(state.bodyText).toBe('');
     // …it's shown as the current inner-dialogue thought instead.
-    expect(state.currentThought).toEqual({ text: "Let me verify SpaceX's status first.", startedAt: 1000 });
+    expect(state.currentThought).toEqual({
+      text: "Let me verify SpaceX's status first.",
+      startedAt: 1000,
+      _isPreamble: true,
+    });
     // And the tool call still became a real step.
     expect(state.steps).toHaveLength(1);
     expect(state.steps[0]._isScratchpad).toBe(true);
@@ -109,7 +113,31 @@ describe('preamble reclassification (ENG-1108 — narration before a tool call i
     ], initialStreamState(), now);
 
     expect(state.bodyText).toBe('');
-    expect(state.currentThought).toEqual({ text: 'Checking the docs.', startedAt: 1000 });
+    expect(state.currentThought).toEqual({
+      text: 'Checking the docs.',
+      startedAt: 1000,
+      _isPreamble: true,
+    });
+  });
+
+  it('replaces reclassified narration when genuine reasoning resumes', () => {
+    const state = reduceAll([
+      { type: 'response.created', response: { id: 'r1' } },
+      { type: 'response.output_text.delta', delta: 'Checking the docs.' },
+      { type: 'response.in_progress', thought_role: 'thought.tool_call.start', content: 'search', tool_use_id: 'a' },
+      {
+        type: 'response.in_progress',
+        thought_role: 'thought.progress',
+        subtype: 'reasoning',
+        content: 'Analyzing the result.',
+        at_ms: 2000,
+      },
+    ], initialStreamState(), now);
+
+    expect(state.currentThought).toEqual({
+      text: 'Analyzing the result.',
+      startedAt: 2000,
+    });
   });
 
   it('keeps the FINAL round text (no tool call after it) as the answer', () => {

@@ -63,18 +63,22 @@ export function ThinkingBlock({
     () => steps.some((s) => s._isScratchpad || s._isToolCall),
     [steps]
   );
+  const hasLiveThought = isActive && Boolean(currentThought?.text);
 
-  const [isExpanded, setIsExpanded] = useState(() => isActive && hasInspectableSteps);
+  const [isExpanded, setIsExpanded] = useState(
+    () => isActive && (hasInspectableSteps || Boolean(currentThought?.text))
+  );
   const hasAutoExpanded = useRef(false);
 
-  // Auto-expand the first time scratchpad or tool-call steps appear —
-  // but only while the turn is live. Finished blocks mount collapsed.
+  // Auto-expand the first time inspectable work appears — including a
+  // reasoning burst that arrives before the first tool call. Finished
+  // blocks still mount collapsed.
   useEffect(() => {
-    if (isActive && hasInspectableSteps && !hasAutoExpanded.current) {
+    if ((hasInspectableSteps || hasLiveThought) && !hasAutoExpanded.current) {
       setIsExpanded(true);
       hasAutoExpanded.current = true;
     }
-  }, [isActive, hasInspectableSteps]);
+  }, [hasInspectableSteps, hasLiveThought]);
 
   // Auto-collapse when the turn finishes.
   const wasActive = useRef(isActive);

@@ -45,9 +45,10 @@ export function initialStreamState() {
     /** Live "train of thought" text that isn't part of the final answer
      *  (extended-thinking / reasoning deltas). A single ephemeral burst —
      *  NOT a step, so it never accumulates into the persisted steps list.
-     *  `{ text, startedAt } | null`. Cleared (not carried into the next
-     *  burst) whenever the burst ends: a tool call starts, body text
-     *  starts streaming, or the turn finishes. */
+     *  `{ text, startedAt, _isPreamble? } | null`. `_isPreamble` marks
+     *  reclassified narration so the next real reasoning delta replaces
+     *  it instead of appending. Cleared whenever body text starts
+     *  streaming or the turn finishes. */
     currentThought: null,
     /** Streaming/finished body text (markdown). */
     bodyText: '',
@@ -176,6 +177,7 @@ function reclassifyPreambleOnToolStart(state, eventTs) {
     currentThought: {
       text: preamble,
       startedAt: state.currentThought?.startedAt || eventTs,
+      _isPreamble: true,
     },
     bodyText: '',
   };
@@ -565,8 +567,12 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
   if (role === 'thought.progress' && (event.subtype === 'reasoning' || event.subtype === 'thinking')) {
     const text = event.content || '';
     if (!text) return state;
-    const prevText = state.currentThought?.text || '';
-    const startedAt = state.currentThought?.startedAt || eventTs;
+    // Reclassified pre-tool narration is its own display burst. The next
+    // genuine reasoning delta starts a new burst even if the tool protocol
+    // has not emitted its completion marker yet.
+    const resumesAfterPreamble = state.currentThought?._isPreamble === true;
+    const prevText = resumesAfterPreamble ? '' : (state.currentThought?.text || '');
+    const startedAt = resumesAfterPreamble ? eventTs : (state.currentThought?.startedAt || eventTs);
     return { ...state, currentThought: { text: prevText + text, startedAt } };
   }
 

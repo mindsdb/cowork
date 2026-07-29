@@ -38,7 +38,6 @@ import { harnessLabel } from '../lib/agentLabel';
 import { modelLabel } from '../lib/settingsTransform';
 import { providerOverloadedButtons } from '../lib/turnErrorActions';
 import { isThinkingActive } from '../lib/thinkingActive';
-import { truncateLabel } from '../lib/responseStreamAdapter';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 
 // Token shorthand mapped to our globals.css custom properties so the same
