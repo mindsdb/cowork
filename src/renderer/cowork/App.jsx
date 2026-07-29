@@ -1505,10 +1505,14 @@ function AppCore() {
     }
   }, [updateApplying, updateStatus]);
 
-  // Settings can pass a URL; a bare click falls back to the cached notice.
+  // Settings can pass a URL; a bare click falls back to the cached notice, and
+  // failing that to the human download page. Note: bare downloads.mindshub.ai
+  // now 302s to the marketing homepage — the real per-OS installer page lives
+  // at mindshub.ai/download. Old shells never supply a downloadUrl, so this
+  // last fallback is the only link that cohort ever gets.
   const handleDownloadShellUpdate = useCallback((url) => {
     const explicit = typeof url === 'string' && url ? url : null;
-    host.openExternal(explicit || shellUpdate?.downloadUrl || 'https://downloads.mindshub.ai');
+    host.openExternal(explicit || shellUpdate?.downloadUrl || 'https://mindshub.ai/download');
   }, [shellUpdate]);
 
   const dismissShellUpdate = useCallback(() => {
