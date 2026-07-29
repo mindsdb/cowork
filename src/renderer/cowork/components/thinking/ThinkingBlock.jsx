@@ -74,11 +74,11 @@ export function ThinkingBlock({
   // reasoning burst that arrives before the first tool call. Finished
   // blocks still mount collapsed.
   useEffect(() => {
-    if ((hasInspectableSteps || hasLiveThought) && !hasAutoExpanded.current) {
+    if (isActive && (hasInspectableSteps || hasLiveThought) && !hasAutoExpanded.current) {
       setIsExpanded(true);
       hasAutoExpanded.current = true;
     }
-  }, [hasInspectableSteps, hasLiveThought]);
+  }, [isActive, hasInspectableSteps, hasLiveThought]);
 
   // Auto-collapse when the turn finishes.
   const wasActive = useRef(isActive);

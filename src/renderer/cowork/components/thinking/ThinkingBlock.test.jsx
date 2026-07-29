@@ -13,4 +13,19 @@ describe('ThinkingBlock', () => {
 
     expect(screen.getByText('Checking the latest information.')).toBeVisible();
   });
+
+  it('keeps a completed block collapsed when it has inspectable steps', () => {
+    render(
+      <ThinkingBlock
+        steps={[{
+          id: 'tool-1',
+          label: 'Search the docs',
+          status: 'completed',
+          _isToolCall: true,
+        }]}
+      />
+    );
+
+    expect(screen.queryByText('Search the docs')).not.toBeInTheDocument();
+  });
 });
