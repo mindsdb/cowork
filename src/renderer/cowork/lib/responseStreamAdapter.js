@@ -151,6 +151,36 @@ export function truncateLabel(text) {
   return last.length > 80 ? last.slice(0, 77) + '…' : last || 'Reasoning…';
 }
 
+/** A tool call is starting mid-turn — compute the currentThought/bodyText
+ *  patch for it.
+ *
+ *  Any answer text that streamed before this tool call was
+ *  preamble/narration ("let me check X first…"), NOT the final answer —
+ *  the turn isn't over, the model is about to act on a tool result and
+ *  keep going (see anton's tool loop). Move that text into the ephemeral
+ *  currentThought so it reads as inner dialogue, and reset bodyText so
+ *  only the FINAL round's text (the one with no tool call after it) ends
+ *  up as the persisted answer. Preserves live streaming: the preamble
+ *  still streamed token-by-token into the answer area first; this just
+ *  relocates it once we learn it was preamble.
+ *
+ *  When there's no un-committed answer text, the tool call instead seals
+ *  the current burst: currentThought is reset to null so a reasoning
+ *  burst that resumes after the tool starts fresh rather than appending
+ *  to the pre-tool one (bursts separated by a tool call are distinct).
+ *  (ENG-1108) */
+function reclassifyPreambleOnToolStart(state, eventTs) {
+  const preamble = (state.bodyText || '').trim();
+  if (!preamble) return { currentThought: null };
+  return {
+    currentThought: {
+      text: preamble,
+      startedAt: state.currentThought?.startedAt || eventTs,
+    },
+    bodyText: '',
+  };
+}
+
 function safeJsonParse(text) {
   if (typeof text !== 'string') return null;
   try { return JSON.parse(text); } catch { return null; }
@@ -385,8 +415,13 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       _scratchpadTabId: null,
       _toolUseId: event.tool_use_id || null,
     };
-    // A tool cell starting ends any current thought burst.
-    return { ...state, steps: [...state.steps, step], currentThought: null };
+    // Any answer text before this tool call was preamble → move it to
+    // the thought line; only the final round's text stays as the answer.
+    return {
+      ...state,
+      steps: [...state.steps, step],
+      ...reclassifyPreambleOnToolStart(state, eventTs),
+    };
   }
 
   // Scratchpad input — the JSON contains action, name, code,
@@ -476,8 +511,13 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       _scratchpadTabId: null,
       _toolUseId: event.tool_use_id || null,
     };
-    // Tool use starting ends any current thought burst.
-    return { ...state, steps: [...state.steps, step], currentThought: null };
+    // Any answer text before this tool call was preamble → move it to
+    // the thought line; only the final round's text stays as the answer.
+    return {
+      ...state,
+      steps: [...state.steps, step],
+      ...reclassifyPreambleOnToolStart(state, eventTs),
+    };
   }
 
   if (role === 'thought.tool_call.end') {

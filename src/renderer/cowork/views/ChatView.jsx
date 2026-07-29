@@ -1216,14 +1216,17 @@ export default function ChatView({
   const convRef = useRef(null);
 
   // The orb anchors to the WorkingIndicator box (pre-step placeholder,
-  // then the ThinkingBlock header) while the turn is in its thinking
-  // phase. Once body text streams the StreamCursor takes over as the
-  // moving part, and when the turn is done the hover meta replaces it —
-  // exactly one in-progress indicator at any moment.
+  // then the ThinkingBlock header) for as long as there's real work
+  // going on — steps and thoughts keep streaming above the growing
+  // answer text throughout, so the orb stays put for the whole turn
+  // rather than handing off once body text starts. Shares
+  // isThinkingActive with ThinkingBlock's own header so the two can't
+  // drift out of sync again the way they did before (ENG-1107/1109):
+  // whatever keeps the steps panel expanded is exactly what should keep
+  // the orb anchored.
   const orbView = useMemo(() => {
     if (!streamingMsg) return { state: null, activeSlot: null };
-    const status = streamingMsg.streamStatus;
-    if (status === 'done' || status === 'streaming') return { state: null, activeSlot: null };
+    if (!isThinkingActive(streamingMsg.streamStatus)) return { state: null, activeSlot: null };
     return { state: 'thinking', activeSlot: 'header:streaming' };
   }, [streamingMsg]);
 
@@ -1817,9 +1820,14 @@ export default function ChatView({
                     slotId="header:streaming"
                     currentThought={streamingMsg.currentThought}
                     currentLabel={(() => {
+                      // The header stays the WORKING message (active step
+                      // label, else "Thinking…") — never the live thought
+                      // text. The thought has its own distinct line at the
+                      // bottom of the steps; letting it also drive the
+                      // header made the working message flicker/overwrite
+                      // as each reasoning delta streamed in.
                       const active = [...(streamingMsg.steps || [])].reverse().find(s => s.status === 'in_progress');
-                      if (active?.label) return active.label;
-                      return streamingMsg.currentThought?.text ? truncateLabel(streamingMsg.currentThought.text) : null;
+                      return active?.label || null;
                     })()}
                     onActivateStep={(step) => setOpenScratchpadStepId(prefixId(streamingKey, step.id))}
                   />

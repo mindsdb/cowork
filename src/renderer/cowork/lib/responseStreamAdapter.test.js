@@ -82,6 +82,68 @@ describe('currentThought (ENG-1108 — live train of thought, not a step)', () =
   });
 });
 
+describe('preamble reclassification (ENG-1108 — narration before a tool call is not the answer)', () => {
+  const now = () => 1000;
+
+  it('moves answer text that precedes a scratchpad tool call into the thought line, clearing bodyText', () => {
+    const state = reduceAll([
+      { type: 'response.created', response: { id: 'r1' } },
+      { type: 'response.output_text.delta', delta: "Let me verify SpaceX's status first." },
+      { type: 'response.in_progress', thought_role: 'thought.scratchpad.start', tool_use_id: 'a' },
+    ], initialStreamState(), now);
+
+    // Preamble is NOT left sitting in the answer…
+    expect(state.bodyText).toBe('');
+    // …it's shown as the current inner-dialogue thought instead.
+    expect(state.currentThought).toEqual({ text: "Let me verify SpaceX's status first.", startedAt: 1000 });
+    // And the tool call still became a real step.
+    expect(state.steps).toHaveLength(1);
+    expect(state.steps[0]._isScratchpad).toBe(true);
+  });
+
+  it('moves preamble before a Hermes tool_call.start too', () => {
+    const state = reduceAll([
+      { type: 'response.created', response: { id: 'r1' } },
+      { type: 'response.output_text.delta', delta: 'Checking the docs.' },
+      { type: 'response.in_progress', thought_role: 'thought.tool_call.start', content: 'search', tool_use_id: 'a' },
+    ], initialStreamState(), now);
+
+    expect(state.bodyText).toBe('');
+    expect(state.currentThought).toEqual({ text: 'Checking the docs.', startedAt: 1000 });
+  });
+
+  it('keeps the FINAL round text (no tool call after it) as the answer', () => {
+    const state = reduceAll([
+      { type: 'response.created', response: { id: 'r1' } },
+      { type: 'response.output_text.delta', delta: 'First, let me check.' },
+      { type: 'response.in_progress', thought_role: 'thought.scratchpad.start', tool_use_id: 'a' },
+      { type: 'response.in_progress', thought_role: 'thought.scratchpad.result', tool_use_id: 'a', content: '{"stdout":"ok"}' },
+      { type: 'response.output_text.delta', delta: 'Here is the real answer.' },
+      { type: 'response.completed' },
+    ], initialStreamState(), now);
+
+    // Only the final round's text survives as the answer — the preamble
+    // ("First, let me check.") is gone from bodyText.
+    expect(state.bodyText).toBe('Here is the real answer.');
+    // Thought line is cleared once the turn completes.
+    expect(state.currentThought).toBeNull();
+  });
+
+  it('seals the reasoning burst on a tool start when there is no preamble (next burst starts fresh)', () => {
+    const state = reduceAll([
+      { type: 'response.created', response: { id: 'r1' } },
+      { type: 'response.in_progress', thought_role: 'thought.progress', subtype: 'reasoning', content: 'Planning.' },
+      { type: 'response.in_progress', thought_role: 'thought.scratchpad.start', tool_use_id: 'a' },
+      { type: 'response.in_progress', thought_role: 'thought.progress', subtype: 'reasoning', content: 'New plan.' },
+    ], initialStreamState(), now);
+
+    // The tool call sealed the first burst, so the resumed reasoning is a
+    // fresh burst — no "Planning." leaking into it.
+    expect(state.bodyText).toBe('');
+    expect(state.currentThought).toEqual({ text: 'New plan.', startedAt: 1000 });
+  });
+});
+
 describe('truncateLabel', () => {
   it('returns the last non-empty line of accumulated text', () => {
     expect(truncateLabel('First line.\nSecond line.\n\nThird line.')).toBe('Third line.');

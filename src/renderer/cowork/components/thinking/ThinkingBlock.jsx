@@ -166,18 +166,33 @@ export function ThinkingBlock({
               onActivate={onActivateStep}
             />
           ))}
-          {/* Live train-of-thought — not a step (never persisted), just
-              the current burst of reasoning text. Stable key so it
-              updates smoothly in place as new deltas arrive rather than
-              stacking a new row per chunk; disappears the moment the
-              burst ends or the turn completes (ENG-1108). */}
+          {/* Live train-of-thought — the model's inner dialogue, NOT a
+              persisted step. Rail-aligned under the steps so it fits the
+              timeline, but deliberately styled distinct from a step row:
+              a small pulsing dot instead of a boxed step icon, and
+              italic shimmering text instead of a solid label, so it reads
+              as live inner monologue rather than a discrete action. The
+              text updates smoothly in place as new deltas arrive and the
+              whole line disappears the moment the burst ends or the turn
+              completes (ENG-1108/1109). */}
           {isActive && currentThought?.text && (
-            <ThinkingStep
-              key="current-thought"
-              step={{ id: 'current-thought', label: truncateLabel(currentThought.text), icon: 'sparkle', status: 'in_progress' }}
-              isFirst={!hasSteps}
-              isLast
-            />
+            <div className="flex gap-1.5">
+              <div className="flex w-4 flex-col items-center">
+                <div className={clsx('w-px flex-1', hasSteps ? 'bg-line-2' : 'bg-transparent')} />
+                <div className="my-0.5 flex h-4 w-4 flex-none items-center justify-center">
+                  <span className="pulse-dot inline-block h-1.5 w-1.5 flex-none rounded-full bg-ink-4" />
+                </div>
+                <div className="w-px flex-1 bg-transparent" />
+              </div>
+              <div className="flex min-w-0 flex-1 items-center py-1.5">
+                <span
+                  className="thinking-shimmer min-w-0 truncate px-1 text-[12.5px] italic"
+                  title={currentThought.text}
+                >
+                  {truncateLabel(currentThought.text)}
+                </span>
+              </div>
+            </div>
           )}
         </div>
       )}
