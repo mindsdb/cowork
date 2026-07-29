@@ -13,12 +13,16 @@ accessibility, theming, and behaviour so it's fixed in one place.
 |---|---|
 | `<button className="btn-*">` | `<Button variant="…">` |
 | `<input>` / `<textarea>` (text) | `<Input>` / `<Textarea>` |
+| `<select>` | `<Select>` (fully adopted — baseline is 0) |
 | a hand-rolled dropdown / popover | `<Menu>` / `<Select>` |
-| a bespoke overlay | `<Modal>` (+ `ModalHeader/Body/Footer`) |
+| a bespoke `role="dialog"` overlay | `<Modal>` (+ `ModalHeader/Body/Footer`) |
+| a native `title=` hover hint | `<Tooltip>` (or `aria-label` for a pure name) — ENG-1152 |
 
 Genuinely-native controls (`<input type="file">`, `type="checkbox"` when
 `ui/Checkbox` doesn't fit, `type="color"`) are fine — mark the line with a
-trailing `// ds-ignore` so the guardrail skips it.
+trailing `// ds-ignore` so the guardrail skips it. SVG paint attributes
+(`fill=`/`stroke=`/`stopColor=`) on icons and brand logos are exempt from the
+color check automatically — their color is intrinsic art, not a token.
 
 ## Style with tokens, not hardcoded values
 
@@ -39,8 +43,11 @@ trailing `// ds-ignore` so the guardrail skips it.
 
 ## The guardrail is a ratchet
 
-`check:design-system` counts raw elements and hardcoded colors and fails CI
-only when a count **rises** above `scripts/design-system-baseline.json`. So:
+`check:design-system` counts anti-patterns — raw `<button>`/`<input>`/
+`<textarea>`/`<select>`, hand-rolled `role="dialog"` overlays, hardcoded hex
+colors, raw px spacing/radii and `boxShadow` in inline styles, and native
+`title=` tooltips — and fails CI only when a count **rises** above
+`scripts/design-system-baseline.json`. So:
 
 - You can't add a new raw `<button>` / hardcoded color — but you're not
   blocked on the existing backlog either.

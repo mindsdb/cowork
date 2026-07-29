@@ -2,5 +2,10 @@
   "raw-button": 150,
   "raw-input": 40,
   "raw-textarea": 14,
-  "hardcoded-color": 123
+  "hardcoded-color": 66,
+  "raw-select": 0,
+  "handrolled-dialog": 3,
+  "inline-px": 750,
+  "inline-shadow": 12,
+  "native-title": 261
 }
