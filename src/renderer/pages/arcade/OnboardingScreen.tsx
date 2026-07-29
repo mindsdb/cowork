@@ -1,16 +1,17 @@
 // Provider onboarding ("POWER UP"), arcade edition.
 //
-// The logic is a 1:1 port of the previous Onboarding page — same phase
-// machine (choose / validating / minds-no-llm / success / error), same
-// host calls, same .env lines, same backend sync — re-skinned as the
-// stage where you plug a power source into the coworker you just chose.
+// Same phase machine (choose / validating / minds-no-llm / success / error) as
+// the previous Onboarding page, re-skinned as the stage where you plug a power
+// source into the coworker you just chose. ENG-1127: settings are written ONLY
+// via the single transactional bulk PUT /settings/ (pushSettingsToDb) — the
+// same path the settings form uses. No `.env` write, no `.env`→DB sync.
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { host } from '../../platform/host';
 import { BASE, authFetch, fetchRecommendedModels } from '../../cowork/api';
 import { recommendedModelOptions, type ProviderModel } from '../../cowork/lib/settingsTransform';
 import { MINDS_API_BASE, MINDS_REGISTER_URL } from '../../lib/mindsUrls';
-import { syncSettingsToDb, syncModelsToDb, modelLinesFrom } from '../../lib/syncSettings';
+import { pushSettingsToDb } from '../../lib/pushSettings';
 import { ArcadeShell, PixelMarquee } from './components';
 import { PixelSprite, type SpriteName } from './sprites';
 import { LegalViewer } from './TermsScreen';
@@ -59,42 +60,49 @@ async function syncHarness(harnessId: string): Promise<void> {
   } catch {}
 }
 
-// The onboarding model write lives in lib/syncSettings as `syncModelsToDb` — the
-// only non-picker path allowed to set a model (ENG-739) — so both onboarding and
-// the post-install replay (ENG-922) share one implementation.
+// The onboarding funnel analytics (ANTONAPP_*) used to fire as a side effect of
+// the main-process `.env`-write handler (SETTINGS_SAVE), which ENG-1127 removed.
+// Fire them here at the equivalent onboarding moments instead — same
+// content-based rules as the old handler — forwarded to the Electron ZoomInfo
+// collector via host.onboardingAnalytics. No-op on web (these events only ever
+// fired in the Electron shell). Best-effort: analytics must never break
+// onboarding.
+function fireOnboardingAnalytics(lines: string[]): void {
+  const content = lines.join('\n');
+  if (content.includes('ANTON_TERMS_CONSENT=true')) host.onboardingAnalytics('ANTONAPP_TERMS_ACCEPTED');
+  if (content.includes('ANTON_MINDS_ENABLED=true')) host.onboardingAnalytics('ANTONAPP_MINDSLLM');
+  else if (content.includes('ANTON_ANTHROPIC_API_KEY') || content.includes('ANTON_OPENAI_API_KEY')) host.onboardingAnalytics('ANTONAPP_BYOK');
+}
 
 export interface PersistDeps {
-  /** .env write — best-effort in web (loopback-gated, ENG-817), throws on a real error. */
-  saveSettings: (content: string) => Promise<boolean>;
-  /** Authoritative DB write (PUT /settings/:key). Returns false if any key failed. */
-  syncToDb: (lines: string[]) => Promise<boolean>;
-  /** Best-effort model write here (result ignored on the success path — server
-   *  is up); the return type is widened so syncModelsToDb's boolean fits. */
-  syncModels: (lines: string[]) => Promise<unknown>;
+  /** Authoritative DB write via the transactional bulk PUT /settings/. Returns
+   *  false if the write was rejected or the server was unreachable. */
+  pushToServer: (lines: string[]) => Promise<boolean>;
   syncHarness: () => Promise<void>;
 }
 
 export type PersistResult =
   | { ok: true }
-  // dbSyncFailed marks specifically a `syncToDb` false, as opposed to a
+  // dbSyncFailed marks specifically a `pushToServer` false, as opposed to a
   // thrown error — so callers can tell "the write was rejected/unreachable"
-  // apart from a real .env/IPC failure (see resolveFinalizeOutcome).
+  // (the expected onboarding/install race) apart from an unexpected failure
+  // (see resolveFinalizeOutcome).
   | { ok: false; error: string; dbSyncFailed?: true };
 
 // Run the onboarding persist sequence and report whether the config actually
-// landed. The .env write is best-effort (host.saveSettings tolerates the web
-// loopback 403; ENG-817), but the DB write is AUTHORITATIVE — a `false` there
-// means the settings did NOT persist, so onboarding must not advance to
-// success over an unsaved config (raised in ENG-817 review). Exported pure so
-// the success/failure decision is unit-tested without rendering the component.
+// landed. The bulk DB write is AUTHORITATIVE — a `false` there means the
+// settings did NOT persist (rejected or server unreachable), so onboarding must
+// not advance to success over an unsaved config (raised in ENG-817 review).
+// ENG-1127: provider + keys + model all ride the one bulk PUT, so there's no
+// separate model write to reconcile. Exported pure so the success/failure
+// decision is unit-tested without rendering the component.
 export async function persistOnboarding(
   deps: PersistDeps,
   lines: string[],
 ): Promise<PersistResult> {
   const GENERIC = 'Could not save your settings. Please try again.';
   try {
-    await deps.saveSettings(lines.join('\n'));
-    const dbOk = await deps.syncToDb(lines);
+    const dbOk = await deps.pushToServer(lines);
     if (!dbOk) {
       return {
         ok: false,
@@ -102,19 +110,9 @@ export async function persistOnboarding(
         dbSyncFailed: true,
       };
     }
-    // syncModels writes the model keys the bulk DB sync intentionally skips
-    // (ENG-739); harness records the chosen cartridge. Both are best-effort:
-    // the config has ALREADY persisted authoritatively (dbOk), so a flaky
-    // model/harness sync must NOT bounce the user to the error screen over a
-    // saved config (ENG-848). Each gets its own catch so one failing can't
-    // skip the other (#435 review). Logged because a dropped model write does
-    // NOT self-heal (model keys ride neither the bulk re-sync nor the startup
-    // migration — ENG-739/922).
-    try {
-      await deps.syncModels(lines);
-    } catch (e) {
-      console.error('[onboarding] best-effort model sync failed', e);
-    }
+    // harness records the chosen cartridge. Best-effort: the config has ALREADY
+    // persisted authoritatively (dbOk), so a flaky harness sync must NOT bounce
+    // the user to the error screen over a saved config (ENG-848).
     try {
       await deps.syncHarness();
     } catch (e) {
@@ -209,11 +207,11 @@ export default function OnboardingScreen({
   coworker: { id: string; label: string; sprite: SpriteName };
   /**
    * Advance out of onboarding. On the setup-deferral path (fresh install, server
-   * not up yet) the caller receives the just-chosen `ANTON_*_MODEL` lines so the
-   * post-install handshake can replay them once (ENG-922); omitted on every
+   * not up yet) the caller receives the FULL just-chosen settings lines so the
+   * post-install push can persist them once (ENG-922/ENG-1127); omitted on every
    * other path.
    */
-  onComplete: (deferredModelLines?: string[]) => void;
+  onComplete: (pendingLines?: string[]) => void;
   /** Optional — returns to the coworker-select screen. */
   onBack?: () => void;
 }) {
@@ -344,11 +342,13 @@ export default function OnboardingScreen({
   // resolveFinalizeOutcome). Any other failure surfaces as a retryable error.
   // Shared by every finalize path so they can't drift.
   const finalizeSettings = async (lines: string[]) => {
+    // Fire the funnel analytics before the push (mirrors the old .env-write
+    // handler, which fired regardless of the DB outcome) so a deferred/failed
+    // push still records that the user made a provider choice.
+    fireOnboardingAnalytics(lines);
     const res = await persistOnboarding(
       {
-        saveSettings: (c) => host.saveSettings(c),
-        syncToDb: syncSettingsToDb,
-        syncModels: syncModelsToDb,
+        pushToServer: pushSettingsToDb,
         syncHarness: () => syncHarness(coworker.id),
       },
       lines,
@@ -363,14 +363,12 @@ export default function OnboardingScreen({
     }
     if (outcome.action === 'defer') {
       // Server isn't up yet — skip the "success" flash (misleading here) and
-      // let onComplete's checkInstall gate show the setup/install screen.
-      // persistOnboarding stopped at the failed DB sync, BEFORE syncModels, so
-      // the chosen model never reached the DB and the post-install bulk .env
-      // re-sync deliberately excludes model keys (ENG-739). Hand the just-chosen
-      // model lines up so the post-install handshake replays them once —
-      // otherwise a non-Anthropic BYOK user lands config-not-ready ("Select a
-      // model"). In-memory choice, never a .env re-read (ENG-922).
-      onComplete(modelLinesFrom(lines));
+      // let onComplete's checkInstall gate show the setup/install screen. The
+      // bulk push never reached the DB, so hand the FULL just-chosen settings
+      // lines up: the post-install push persists them once (ENG-922/ENG-1127),
+      // otherwise the user lands config-not-ready. In-memory choice, never a
+      // .env re-read.
+      onComplete(lines);
       return;
     }
     setPhase('success');
@@ -426,7 +424,13 @@ export default function OnboardingScreen({
         ];
         await saveFinal(lines);
       } else {
-        await host.saveSettings(mindsLines.join('\n'));
+        // No LLM credits on this MindsHub key. Its Stage-1 keys stay in
+        // component state (apiKey/mindsUrl) and are folded into the final push
+        // when the user connects a BYOK provider — no interim .env write
+        // (ENG-1127). Fire the funnel analytics here so the "reached
+        // minds-no-LLM" event isn't lost if the user abandons before connecting
+        // an LLM (matches the old interim-save analytics).
+        fireOnboardingAnalytics(mindsLines);
         setStep('byok');
         setPhase('minds-no-llm');
       }
@@ -483,11 +487,22 @@ export default function OnboardingScreen({
       return;
     }
 
-    // Merge the new LLM vars onto the existing settings (the MindsHub
-    // keys saved in Stage 1 stay intact for publishing/connectors).
-    const existing = await host.readSettings();
+    // Merge the new LLM vars onto the Stage-1 MindsHub keys (kept intact for
+    // publishing/connectors). ENG-1127: the Stage-1 values live in component
+    // state — no `.env`/`/settings/raw` re-read. A minds key is present only on
+    // the "valid MindsHub key, no LLM credits" path (the user typed a key that
+    // validated); the SSO-no-credits and "continue without an account" paths
+    // carry no minds key, matching the old behavior where those flows had none
+    // in `.env` either.
+    const stage1: Record<string, string> = {};
+    const mindsKey = apiKey.trim();
+    if (mindsKey) {
+      stage1.ANTON_MINDS_ENABLED = 'true';
+      stage1.ANTON_MINDS_API_KEY = mindsKey;
+      stage1.ANTON_MINDS_URL = mindsUrl.trim().replace(/\/+$/, '');
+    }
     const merged: Record<string, string> = {
-      ...existing,
+      ...stage1,
       ...buildProviderEnv(byokProvider, key, customBaseUrl, resolvedModel),
     };
     merged.ANTON_MEMORY_MODE = merged.ANTON_MEMORY_MODE || 'autopilot';
@@ -572,9 +587,10 @@ export default function OnboardingScreen({
     // No LLM credits — account authenticated but key wasn't provisioned.
     // Save terms consent and redirect to BYOK so the user can pick a provider.
     if (finalizeResult.upgradeRequired) {
-      // Best-effort in web (loopback-gated; consent also persists client-side
-      // on completion). See host.saveSettings / ENG-817.
-      await host.saveSettings('ANTON_TERMS_CONSENT=true');
+      // Consent persists client-side (localStorage in App on auth-complete); no
+      // .env write here (ENG-1127). Fire the terms-accepted funnel event that
+      // the removed .env write used to trigger.
+      fireOnboardingAnalytics(['ANTON_TERMS_CONSENT=true']);
       setMindsNoCredits(true);
       setStep('byok');
       setPhase('minds-no-llm');

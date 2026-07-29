@@ -17,7 +17,7 @@ import { fetchAccountEmail } from './oauth-identity';
 import { openDrivePickerFlow, cancelCurrentDrivePicker, isValidDriveFileIds } from './drive-picker-service';
 import { getPickedFiles, savePickedFiles, verifyPickedFiles, type PickedFile } from './picked-files';
 import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefreshTokenStore, isAccessTokenExpired } from './token-store';
-import { refreshTokensOnly, writeMindsKeyToEnvAndRestart, provisionAntonApiKey, scheduleRefresh, cancelScheduledRefresh, endKeycloakSession, KEYCLOAK_AUTH_URL, KEYCLOAK_REGISTRATION_URL, KEYCLOAK_TOKEN_URL, SIGNUP_CALLBACK_TIMEOUT_MS } from './minds-auth';
+import { refreshTokensOnly, provisionAntonApiKey, scheduleRefresh, cancelScheduledRefresh, endKeycloakSession, KEYCLOAK_AUTH_URL, KEYCLOAK_REGISTRATION_URL, KEYCLOAK_TOKEN_URL, SIGNUP_CALLBACK_TIMEOUT_MS } from './minds-auth';
 import { scrubEnvCredentials } from './logout-env';
 import { MINDS_API_HOST } from './minds-urls';
 import { sendEvent } from './analytics';
@@ -833,9 +833,9 @@ function setupIPC() {
   // Logging in via Keycloak doesn't yet decide the user's LLM —
   // free users hit a paywall and may bail to BYOK. So login only
   // refreshes in-memory tokens + persists the refresh token to disk
-  // (for next-launch silent refresh); writing ~/.anton/.env is
-  // deferred to `mindshub:finalize` (or to host.saveSettings on the
-  // BYOK path).
+  // (for next-launch silent refresh); the LLM credential is minted in
+  // `mindshub:finalize` and returned to the renderer, which persists it
+  // via the normal onboarding push (ENG-1127).
   // Shared by MINDSHUB_LOGIN and MINDSHUB_SIGNUP — the same loopback PKCE
   // exchange against Keycloak; only the browser entry point (login vs
   // registration form) and the callback patience differ. `anton-desktop`
@@ -890,10 +890,12 @@ function setupIPC() {
 
   // Commit MindsHub as the LLM provider. The Keycloak JWT alone is
   // NOT a valid LLM credential — the gateway only accepts an `mdb_*`
-  // API key minted through the auth-service. We exchange the JWT for
-  // a key here, write that key to env, and restart the python server
-  // so it talks to the gateway with a credential the gateway will
-  // actually accept (otherwise every chat call comes back 401).
+  // API key minted through the auth-service. We exchange the JWT for a
+  // key here and return it to the renderer, which persists it via the
+  // normal onboarding push (the single bulk PUT /settings/) — ENG-1127.
+  // A credential written to the running server takes effect on the next
+  // request (per-request DB-cache resolution), so no `.env` write or
+  // server restart is needed here.
   // Renderer only calls this on the paid-user / Minds-as-LLM path.
   ipcMain.handle(IPC.MINDSHUB_FINALIZE, async () => {
     const token = getAccessToken();
@@ -909,12 +911,6 @@ function setupIPC() {
     }
     if (!result.key) {
       return { ok: false, reason: result.error || 'Could not provision a MindsHub API key.' };
-    }
-    try {
-      await writeMindsKeyToEnvAndRestart(result.key);
-    } catch (err: any) {
-      console.error('[mindshub:finalize] writeMindsKeyToEnvAndRestart failed:', err);
-      return { ok: false, reason: `Failed to save MindsHub credentials: ${err?.message || err}` };
     }
     return { ok: true, apiKey: result.key };
   });
@@ -1096,8 +1092,18 @@ function setupIPC() {
     return true;
   });
 
-  ipcMain.handle(IPC.SETTINGS_READ, async () => {
-    return readEnvFile();
+  // Onboarding funnel analytics forwarder (ENG-1127). These ANTONAPP_* events
+  // used to fire as a side effect of the (now-removed) SETTINGS_SAVE .env-write
+  // handler; the renderer now fires them at the equivalent onboarding moments
+  // via host.onboardingAnalytics. Allowlisted so the renderer can only emit the
+  // known onboarding events, never an arbitrary action.
+  const ONBOARDING_ANALYTICS_EVENTS = new Set([
+    'ANTONAPP_TERMS_ACCEPTED',
+    'ANTONAPP_MINDSLLM',
+    'ANTONAPP_BYOK',
+  ]);
+  ipcMain.handle(IPC.ONBOARDING_ANALYTICS, (_event, action: string) => {
+    if (ONBOARDING_ANALYTICS_EVENTS.has(action)) sendEvent(action);
   });
 
   ipcMain.handle(IPC.SERVER_RESTART, async () => {
@@ -1113,38 +1119,6 @@ function setupIPC() {
       console.error(`[server] restart failed: ${result.reason}`);
     }
     return result;
-  });
-
-  ipcMain.handle(IPC.SETTINGS_SAVE, async (_event, content: string) => {
-    const homeDir = coworkHome();
-    if (!fs.existsSync(homeDir)) {
-      fs.mkdirSync(homeDir, { recursive: true });
-    }
-    const envPath = coworkEnvPath();
-    const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
-    const merged = new Map<string, string>();
-    for (const line of existing.split('\n')) {
-      const eq = line.indexOf('=');
-      if (eq > 0) merged.set(line.slice(0, eq), line.slice(eq + 1));
-    }
-    for (const line of content.split('\n')) {
-      const eq = line.indexOf('=');
-      if (eq > 0) merged.set(line.slice(0, eq), line.slice(eq + 1));
-    }
-    const out = [...merged.entries()].map(([k, v]) => `${k}=${v}`).join('\n') + '\n';
-    fs.writeFileSync(envPath, out, 'utf-8');
-
-    // Analytics — fire-and-forget, never blocks
-    if (content.includes('ANTON_TERMS_CONSENT=true')) {
-      sendEvent('ANTONAPP_TERMS_ACCEPTED');
-    }
-    if (content.includes('ANTON_MINDS_ENABLED=true')) {
-      sendEvent('ANTONAPP_MINDSLLM');
-    } else if (content.includes('ANTON_ANTHROPIC_API_KEY') || content.includes('ANTON_OPENAI_API_KEY')) {
-      sendEvent('ANTONAPP_BYOK');
-    }
-
-    return true;
   });
 
   // Keychain preference — reads/writes COWORK_KEYCHAIN in ~/.cowork/.env.

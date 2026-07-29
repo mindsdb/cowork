@@ -10,8 +10,6 @@ interface AntonTronAPI {
   onInstallError: (cb: (err: string) => void) => () => void;
   onInstallCancelled: (cb: () => void) => () => void;
 
-  readSettings: () => Promise<Record<string, string>>;
-  saveSettings: (content: string) => Promise<boolean>;
   restartServer: () => Promise<void>;
   checkConfigured: () => Promise<{ configured: boolean; provider: string }>;
   validateProvider: (provider: string, apiKey: string, baseUrl?: string, model?: string) =>
@@ -88,6 +86,7 @@ interface AntonTronAPI {
   onMindsHubAuthChanged: (cb: (payload: { authenticated: boolean }) => void) => () => void;
   getAccessToken: () => Promise<string | null>;
   logout: () => Promise<void>;
+  onboardingAnalytics: (action: string) => Promise<void>;
   getKeychainPref: () => Promise<{ enabled: boolean }>;
   setKeychainPref: (enabled: boolean) => Promise<{ ok: boolean }>;
   getPathForFile: (file: File) => string;

@@ -10,11 +10,13 @@ export const IPC = {
   INSTALL_CANCELLED: 'install:cancelled',
 
   // Settings / Onboarding
-  SETTINGS_READ: 'settings:read',
-  SETTINGS_SAVE: 'settings:save',
   SETTINGS_CHECK_CONFIGURED: 'settings:check-configured',
   SETTINGS_VALIDATE: 'settings:validate',
   TERMS_ACCEPT: 'terms:accept',
+  // Onboarding funnel analytics forwarder (ENG-1127): the renderer fires an
+  // allowlisted ANTONAPP_* event at the equivalent onboarding moment, replacing
+  // the analytics side effect of the removed settings:save (.env-write) handler.
+  ONBOARDING_ANALYTICS: 'onboarding:analytics',
 
   // UI Updates
   UI_UPDATE_CHECK: 'ui:update-check',

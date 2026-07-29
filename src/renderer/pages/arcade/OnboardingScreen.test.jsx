@@ -11,10 +11,11 @@ const hostMock = vi.hoisted(() => ({
   isMac: () => false,
   checkConfigured: vi.fn(async () => ({ configured: true, provider: 'minds_cloud' })),
   openExternal: vi.fn(),
-  saveSettings: vi.fn(async () => true),
   validateProvider: vi.fn(async () => ({ ok: true })),
-  readSettings: vi.fn(async () => ({})),
   restartServer: vi.fn(async () => {}),
+  // ENG-1127: onboarding fires the funnel analytics through this forwarder
+  // (relocated from the removed .env-write handler); a no-op in these tests.
+  onboardingAnalytics: vi.fn(),
 }));
 // Mutable keycloak mock so a test can flip authenticated (standalone/localhost
 // auto-finalize path). Hosted cloud never authenticates here → stays false.
@@ -22,18 +23,14 @@ const keycloakMock = vi.hoisted(() => ({ authenticated: false }));
 vi.mock('../../platform/host', () => ({ host: hostMock }));
 vi.mock('../../cowork/api', () => ({ BASE: '/api/v1', fetchRecommendedModels: vi.fn(async () => ({})) }));
 vi.mock('../../lib/keycloak', () => ({ keycloak: keycloakMock }));
-// Keep the REAL pure helpers (modelLinesFrom) — mock only the I/O functions —
-// so the component test can't pass on a broken modelLinesFrom (no mock/real drift).
-vi.mock('../../lib/syncSettings', async (importActual) => ({
-  ...(await importActual()),
-  syncSettingsToDb: vi.fn(async () => true),
-  syncModelsToDb: vi.fn(async () => true),
+// ENG-1127: settings now write via the single bulk PUT (pushSettingsToDb). Mock
+// it so a test can make it fail (server not up yet during onboarding).
+vi.mock('../../lib/pushSettings', () => ({
+  pushSettingsToDb: vi.fn(async () => true),
 }));
 
 import OnboardingScreen from './OnboardingScreen';
-// The syncSettings module is mocked above; grab the mocked syncToDb so a test
-// can make it fail (simulating the server not being up yet during onboarding).
-import { syncSettingsToDb } from '../../lib/syncSettings';
+import { pushSettingsToDb } from '../../lib/pushSettings';
 
 const coworker = { id: 'anton', label: 'ANTON', sprite: 'anton' };
 
@@ -147,29 +144,27 @@ describe('OnboardingScreen — desktop sign-up returns to the app (ENG-917)', ()
   });
 });
 
-// ENG-922: on a fresh desktop install the cowork-server isn't up during
-// onboarding, so the DB write fails and finalizeSettings DEFERS to the install
-// screen. persistOnboarding returns before syncModels, and the post-install
-// bulk .env re-sync excludes model keys (ENG-739) — so unless the chosen model
-// is handed to onComplete for a one-time replay, a non-Anthropic BYOK user lands
-// config-not-ready ("Select a model"). This locks the OnboardingScreen half of
-// that wiring (the App-side replay is exercised by the manual clean-machine E2E).
-describe('OnboardingScreen — BYOK setup-deferral hands the model up (ENG-922)', () => {
+// ENG-922/ENG-1127: on a fresh desktop install the cowork-server isn't up
+// during onboarding, so the bulk push fails and finalizeSettings DEFERS to the
+// install screen. The push never reached the DB, so the FULL chosen settings
+// lines must be handed to onComplete for a one-time post-install push —
+// otherwise a BYOK user lands config-not-ready ("Select a model"). This locks
+// the OnboardingScreen half of that wiring (the App-side push is exercised by
+// the manual clean-machine E2E).
+describe('OnboardingScreen — BYOK setup-deferral hands the settings up (ENG-922/ENG-1127)', () => {
   beforeEach(() => {
     hostMock.isWeb = false;      // desktop
     hostMock.isElectron = true;
     keycloakMock.authenticated = false;
     hostMock.validateProvider = vi.fn(async () => ({ ok: true }));
-    hostMock.saveSettings = vi.fn(async () => true);   // .env write succeeds (IPC, no server needed)
-    hostMock.readSettings = vi.fn(async () => ({}));
-    // The race: cowork-server not installed yet → DB sync fails AND checkInstall
-    // reports not-ready → resolveFinalizeOutcome returns 'defer'.
+    // The race: cowork-server not installed yet → bulk push fails AND
+    // checkInstall reports not-ready → resolveFinalizeOutcome returns 'defer'.
     hostMock.checkInstall = vi.fn(async () => ({ antonInstalled: false, serverDepsReady: false }));
-    syncSettingsToDb.mockResolvedValue(false);
+    pushSettingsToDb.mockResolvedValue(false);
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({}) })));
   });
 
-  it('defers with a failed DB sync + uninstalled server → onComplete receives the chosen model lines', async () => {
+  it('defers with a failed push + uninstalled server → onComplete receives the FULL chosen settings lines', async () => {
     const onComplete = vi.fn();
     render(<OnboardingScreen coworker={coworker} onComplete={onComplete} />);
 
@@ -187,11 +182,14 @@ describe('OnboardingScreen — BYOK setup-deferral hands the model up (ENG-922)'
     fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
 
     await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
-    // The just-chosen model is handed up for the post-install replay — never dropped.
+    // The FULL lines are handed up for the post-install push — not just the
+    // model, so provider + base URL land too (never dropped).
     expect(onComplete).toHaveBeenCalledWith(
       expect.arrayContaining([
         'ANTON_PLANNING_MODEL=llama-3.3-70b',
         'ANTON_CODING_MODEL=llama-3.3-70b',
+        'ANTON_OPENAI_BASE_URL=http://localhost:11434/v1',
+        'ANTON_PLANNING_PROVIDER=openai-compatible',
       ]),
     );
   });

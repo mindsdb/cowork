@@ -3,9 +3,7 @@ import { persistOnboarding, resolveFinalizeOutcome, type PersistDeps } from './O
 
 function makeDeps(over: Partial<PersistDeps> = {}): PersistDeps {
   return {
-    saveSettings: vi.fn(async () => true),
-    syncToDb: vi.fn(async () => true),
-    syncModels: vi.fn(async () => {}),
+    pushToServer: vi.fn(async () => true),
     syncHarness: vi.fn(async () => {}),
     ...over,
   };
@@ -16,53 +14,26 @@ describe('persistOnboarding', () => {
     await expect(persistOnboarding(makeDeps(), ['ANTON_X=1'])).resolves.toEqual({ ok: true });
   });
 
-  // ENG-817 review (pnewsam): a failed AUTHORITATIVE DB write must NOT let
-  // onboarding advance to success — the config didn't actually persist.
-  it('fails when the DB sync returns false, and skips the best-effort follow-ups', async () => {
-    const d = makeDeps({ syncToDb: vi.fn(async () => false) });
+  // ENG-1127: a single bulk push is the ONLY write. It's authoritative — a
+  // `false` there means the settings did NOT persist, so onboarding must not
+  // advance to success (ENG-817 review), and the best-effort harness sync is
+  // skipped.
+  it('fails when the bulk push returns false, and skips the best-effort harness sync', async () => {
+    const syncHarness = vi.fn(async () => {});
+    const d = makeDeps({ pushToServer: vi.fn(async () => false), syncHarness });
     const res = await persistOnboarding(d, ['ANTON_X=1']);
     expect(res.ok).toBe(false);
     // dbSyncFailed distinguishes "the write was rejected/unreachable" from a
     // thrown error, so finalizeSettings can defer to the install check
     // instead of erroring when the server just isn't up yet.
     if (!res.ok) expect(res.dbSyncFailed).toBe(true);
-    expect(d.syncModels).not.toHaveBeenCalled();
-    expect(d.syncHarness).not.toHaveBeenCalled();
+    expect(syncHarness).not.toHaveBeenCalled();
   });
 
-  // A real .env write error (non-403, which host.saveSettings now propagates)
-  // surfaces to the user rather than being swallowed.
-  it('fails and surfaces the message when the .env write throws', async () => {
-    const d = makeDeps({ saveSettings: vi.fn(async () => { throw new Error('HTTP 500'); }) });
-    const res = await persistOnboarding(d, ['ANTON_X=1']);
-    expect(res.ok).toBe(false);
-    if (!res.ok) {
-      expect(res.error).toContain('500');
-      // Not a DB-sync rejection — a thrown .env error must always be a real,
-      // user-facing failure, never deferred.
-      expect(res.dbSyncFailed).toBeUndefined();
-    }
-  });
-
-  // The expected web loopback 403 makes host.saveSettings return false (best-
-  // effort .env), which must NOT block success as long as the DB write lands.
-  it('still succeeds when the best-effort .env write returns false but the DB write succeeds', async () => {
-    const d = makeDeps({ saveSettings: vi.fn(async () => false) });
-    await expect(persistOnboarding(d, ['ANTON_X=1'])).resolves.toEqual({ ok: true });
-  });
-
-  // ENG-848: syncModels/syncHarness run AFTER the authoritative DB write and are
+  // ENG-848: syncHarness runs AFTER the authoritative bulk push and is
   // best-effort — a throw there must not bounce a user whose config already
   // persisted to the onboarding error screen.
-  it('still succeeds when syncModels throws after the DB write lands', async () => {
-    const d = makeDeps({ syncModels: vi.fn(async () => { throw new Error('model sync flaked'); }) });
-    await expect(persistOnboarding(d, ['ANTON_X=1'])).resolves.toEqual({ ok: true });
-    // The two best-effort syncs are independent (#435 review): a throwing
-    // syncModels must not skip the harness write.
-    expect(d.syncHarness).toHaveBeenCalled();
-  });
-
-  it('still succeeds when syncHarness throws after the DB write lands', async () => {
+  it('still succeeds when syncHarness throws after the push lands', async () => {
     const d = makeDeps({ syncHarness: vi.fn(async () => { throw new Error('harness sync flaked'); }) });
     await expect(persistOnboarding(d, ['ANTON_X=1'])).resolves.toEqual({ ok: true });
   });

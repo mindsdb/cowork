@@ -1,17 +1,12 @@
 import { saveTokens, getRefreshToken, clearTokens, getTokenStoreVersion } from './token-store';
-import { stopServer, startServer, isServerRunning, isServerStarting, getServerPort } from './server-process';
-import { checkInstallStatus } from './installer';
-import { coworkHome, coworkEnvPath, coworkStatePath } from './cowork-home';
 import { getInstallationId } from './installation-id';
 import { retryOnTransientLock } from './fs-retry';
 import {
-  MINDS_API_HOST,
   MINDS_KEYCLOAK_BASE,
   MINDS_AUTH_SERVICE_URL as AUTH_SERVICE_URL,
   MINDS_CONSOLE_HOST,
 } from './minds-urls';
 import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
 import * as crypto from 'crypto';
 
@@ -716,100 +711,44 @@ export async function provisionAntonApiKey(initialToken: string): Promise<Provis
   }
 }
 
-// ── Env commit ────────────────────────────────────────────────────
+let _refreshTimer: NodeJS.Timeout | null = null;
 
-const MINDS_KEYS = [
-  'ANTON_MINDS_ENABLED',
-  'ANTON_MINDS_URL',
-  // NOTE: ANTON_OPENAI_API_KEY / ANTON_OPENAI_BASE_URL are intentionally
-  // NOT in this strip list (ENG-436). MindsHub no longer commandeers the
-  // OpenAI slot — the scratchpad resolves minds-cloud natively via
-  // minds_api_key/minds_url (cowork-server `_resolve_coding`). Leaving
-  // them out means a user's own OpenAI key survives a MindsHub login,
-  // the same way the Anthropic key already does.
-  'ANTON_MINDS_API_KEY',
-  'ANTON_PLANNING_PROVIDER',
-  'ANTON_CODING_PROVIDER',
-  // NOTE: ANTON_PLANNING_MODEL / ANTON_CODING_MODEL are intentionally NOT
-  // stripped (ENG-739). They may hold a value the user set deliberately for
-  // the standalone `anton` CLI (e.g. `ANTON_PLANNING_MODEL=latest:opus` via a
-  // hand-edited .env or the settings PUT API). A `latest:` prefix is not
-  // provable provenance, so wiping these on re-login silently mutates the
-  // user's CLI config. Leaving them untouched preserves that config; sign-in
-  // no longer *writes* a model pin, so a fresh user still gets the server's
-  // enabled-aware default.
-  'ANTON_ANTHROPIC_API_KEY',
-  'ANTON_OPENAI_API_KEY_CUSTOM',
-  'ANTON_GEMINI_API_KEY',
-];
+// How long to wait before retrying after a transient refresh failure.
+// Constant (no backoff): one loopback-cheap POST per minute while the
+// network is down, and the session converges to signed-in the moment
+// connectivity returns instead of waiting for the next app launch.
+const REFRESH_RETRY_DELAY_MS = 60_000;
 
-// Writes the MindsHub LLM credentials to the Cowork config home's .env
-// (coworkEnvPath(); merge, not overwrite) and restarts the python server so it
-// picks them up.
-// `apiKey` MUST be the `mdb_*` value minted via `provisionAntonApiKey`
-// — passing a raw Keycloak JWT here is what caused the historic 401s
-// from the LLM gateway. The live MindsHub gateway expects the
-// `latest:*` alias namespace; the older deprecated sentinel aliases
-// 500 with "Mind not found".
-//
-// ENG-436: we write ONLY the dedicated minds_* slots — never
-// ANTON_OPENAI_API_KEY / ANTON_OPENAI_BASE_URL. cowork-server resolves
-// minds-cloud from minds_api_key/minds_url for both the main agent and
-// the scratchpad, and `check_configured` is satisfied by minds_api_key
-// alone, so the OpenAI slot is no longer needed — and leaving it
-// untouched lets a user's own OpenAI key survive login.
-// Pure: given the existing `.env` contents, produce the contents to write on
-// MindsHub sign-in. Strips every prior MINDS_KEYS line and re-adds the
-// credential + provider keys with fresh values.
-//
-// Deliberately writes NO ANTON_PLANNING_MODEL / ANTON_CODING_MODEL, and (as of
-// ENG-739) no longer strips them either — MINDS_KEYS omits both model keys, so
-// any model line the user set for the standalone CLI survives re-login. Pinning
-// `latest:sonnet` / `latest:haiku` here (an ENG-436-era guard against
-// deprecated-alias 500s) became fatal once tier gating shipped: it made every
-// sign-in an *explicit* model pick, so the server's enabled-aware default
-// (which only fills an unset model) could never steer a free-tier user to a
-// model their plan allows → first message 403s (ENG-597/ENG-739). Leaving the
-// model unset for a fresh user lets the server resolve the right model per tier
-// (paid → sonnet/haiku, free → first enabled).
-export function buildMindsEnvContent(existing: string, apiKey: string, host: string): string {
-  const lines = existing.split('\n')
-    .filter(l => !MINDS_KEYS.some(k => l.startsWith(k + '=')));
-  lines.push(
-    'ANTON_MINDS_ENABLED=true',
-    `ANTON_MINDS_URL=${host}`,
-    `ANTON_MINDS_API_KEY=${apiKey}`,
-    'ANTON_PLANNING_PROVIDER=minds-cloud',
-    'ANTON_CODING_PROVIDER=minds-cloud',
-  );
-  return lines.filter(Boolean).join('\n') + '\n';
+export function scheduleRefresh(expiresInSeconds: number): void {
+  scheduleRefreshIn(Math.max((expiresInSeconds - 60) * 1000, 10_000));
 }
 
-// The DB setting keys a MindsHub sign-in must push, and ONLY these. The
-// server's one-time `.env`→DB migration is sentinel-guarded and won't re-run,
-// so a freshly-minted key / URL / provider selection has to be written
-// explicitly after login. Provider values are the DB enum form (`minds_cloud`,
-// underscore) — same as the picker writes via `PROVIDER_TO_SERVER`.
-//
-// Deliberately excludes planning_model / coding_model (ENG-739). The old sign-
-// in path POSTed the whole `.env` to `/settings/raw`, which re-reads the full
-// `.env` from disk and syncs EVERY recognised key — so a legacy `.env` model
-// line (or a stale login-written `latest:` pin) would clobber a model the user
-// just fixed via the picker, with no way to leave the model untouched. Writing
-// only these keys leaves the DB's model rows (and any picker fix) alone.
-export function mindsSignInSettingWrites(apiKey: string, host: string): Array<{ key: string; value: string }> {
-  return [
-    { key: 'minds_api_key', value: apiKey },
-    { key: 'minds_url', value: host },
-    { key: 'planning_provider', value: 'minds_cloud' },
-    { key: 'coding_provider', value: 'minds_cloud' },
-  ];
+export function scheduleRefreshRetry(): void {
+  scheduleRefreshIn(REFRESH_RETRY_DELAY_MS);
 }
 
-// Durable `.env` write for Windows: at sign-in finalize this runs while the old
-// server still holds the file open, which EPERM'd onboarding (ENG-1209). The fix
-// is the temp-write-then-atomic-rename with retry — the write lands on a fresh,
-// unlocked path and only the rename contends with the lock. Two things matter:
+export function cancelScheduledRefresh(): void {
+  if (_refreshTimer) clearTimeout(_refreshTimer);
+  _refreshTimer = null;
+}
+
+function scheduleRefreshIn(delayMs: number): void {
+  if (_refreshTimer) clearTimeout(_refreshTimer);
+  // refreshTokensOnly re-arms the timer itself on every outcome that
+  // warrants one (ok → next expiry window, transient → retry delay), so
+  // the chain never dies after a single failure — the pre-ENG-761 timer
+  // ran silentRefresh once and never retried.
+  _refreshTimer = setTimeout(() => { void refreshTokensOnly(); }, delayMs);
+}
+
+// Durable `.env` write for Windows. Since ENG-1127 Phase B the client no longer
+// writes `.env` on sign-in (the server mirrors the DB out for the standalone
+// anton CLI); this helper survives only for the sign-out credential scrub
+// (logout-env.ts), which still edits `.env` directly. The server holds this same
+// file open, so the rename can hit the EPERM share-mode lock that wedged
+// onboarding (ENG-1209). The fix is the temp-write-then-atomic-rename with retry
+// — the write lands on a fresh, unlocked path and only the rename contends with
+// the lock. Two things matter:
 //   1. Atomic — a torn/failed write must never truncate `.env` (it holds the
 //      user's OTHER credentials/consent flags), so it's data loss, not a lost key.
 //   2. mode 0o600 on the temp — it holds the full plaintext key and lives at
@@ -849,155 +788,4 @@ export async function writeEnvFileAtomic(
     try { fs.rmSync(tmpPath, { force: true }); } catch { /* best-effort cleanup */ }
     throw err;
   }
-}
-
-export async function writeMindsKeyToEnvAndRestart(apiKey: string): Promise<void> {
-  const homeDir = coworkHome();
-  // ~/.cowork normally exists by the time SSO finalize runs (the server
-  // creates it on boot), but if the server failed to start the finalize
-  // write would ENOENT and the user's freshly-minted key is lost.
-  if (!fs.existsSync(homeDir)) {
-    fs.mkdirSync(homeDir, { recursive: true });
-  }
-  const envPath = coworkEnvPath();
-  const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
-  // Atomic + lock-tolerant write that wedged onboarding on Windows (ENG-1209).
-  // NOT fatal on the installed path: the DB sync below is the authoritative
-  // credential store, so an exhausted-retry .env failure must not abort there and
-  // strand the user with an already-revoked key — that abort WAS the wedge. But
-  // on the pre-install path there IS no DB sync (early-return below), so .env is
-  // the only store and a failed write must still surface — swallowing it there
-  // would report success with the credential saved nowhere.
-  let envWriteError: unknown = null;
-  try {
-    await writeEnvFileAtomic(envPath, buildMindsEnvContent(existing, apiKey, MINDS_API_HOST));
-    // Owner-only perms (plaintext API key); best-effort, a no-op on Windows.
-    try { fs.chmodSync(envPath, 0o600); } catch { /* best-effort */ }
-  } catch (err) {
-    envWriteError = err;
-    console.warn('[minds-auth] .env write failed', err);
-  }
-
-  // Ensure state.json has minds-cloud as the active provider so the server
-  // doesn't default to Anthropic on first boot (state.json may not exist yet
-  // after a flush).
-  const statePath = coworkStatePath();
-  try {
-    let state: any = { preferences: {} };
-    if (fs.existsSync(statePath)) {
-      try { state = JSON.parse(fs.readFileSync(statePath, 'utf-8')); } catch { state = { preferences: {} }; }
-    }
-    if (!state.preferences) state.preferences = {};
-    // Keep only minds-cloud; remove any other provider entries.
-    const existing: any[] = Array.isArray(state.preferences.providers) ? state.preferences.providers : [];
-    const mindsEntry = existing.find((p: any) => p?.type === 'minds-cloud') ?? { type: 'minds-cloud' };
-    mindsEntry.isDefault = true;
-    state.preferences.providers = [mindsEntry];
-    fs.mkdirSync(coworkHome(), { recursive: true });
-    fs.writeFileSync(statePath, JSON.stringify(state, null, 2) + '\n', 'utf-8');
-  } catch (error) {
-    console.warn('[minds-auth] failed to set provider state', error);
-  }
-
-  // Only restart the server if it's already installed. On a fresh install the
-  // server isn't available yet — the setup wizard will start it after install
-  // completes, at which point handleInstallComplete syncs the credentials.
-  const { antonInstalled } = await checkInstallStatus();
-  if (!antonInstalled) {
-    // No DB to fall back to on this path — .env IS the store here, so a failed
-    // write is fatal and must surface rather than reporting a false success.
-    if (envWriteError) throw envWriteError;
-    console.log('[minds-auth] server not installed yet — skipping restart; setup will sync creds after install');
-    return;
-  }
-
-  await stopServer();
-  await startServer();
-
-  // Push the freshly-minted credential + provider selection to the server's
-  // SQLite DB. The one-time .env → DB migration (migrate_env_to_db) is
-  // sentinel-guarded and won't re-run, so values written to .env after initial
-  // setup never reach the DB unless we explicitly push them.
-  //
-  // ENG-739: use individual `PUT /settings/{key}` writes for exactly the
-  // sign-in fields — NOT `POST /settings/raw`. That endpoint re-reads the full
-  // .env from disk and syncs EVERY recognised key, so a legacy/stale model
-  // line in .env would clobber a model the user just fixed via the picker.
-  // Writing only these keys leaves the DB's model rows untouched.
-  if (isServerRunning() || isServerStarting()) {
-    const port = getServerPort();
-    // Order matters (mindsSignInSettingWrites lists the credential first): if
-    // the minds_api_key write fails, ABORT before flipping the provider to
-    // minds-cloud. provisionAntonApiKey already revoked the old key, so a
-    // partial "provider=minds-cloud + no/stale key" state would leave
-    // config_ready true while every message 401s. Bailing keeps the prior
-    // config intact until the next sign-in retries the whole sequence.
-    for (const { key, value } of mindsSignInSettingWrites(apiKey, MINDS_API_HOST)) {
-      let ok = false;
-      try {
-        const res = await timedFetch(`http://127.0.0.1:${port}/api/v1/settings/${key}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ value }),
-        });
-        ok = res.ok;
-        if (!res.ok) {
-          console.warn(`[minds-auth] settings PUT ${key} returned`, res.status);
-        }
-      } catch (error) {
-        console.warn(`[minds-auth] failed to write ${key} to server DB`, error);
-      }
-      if (!ok && key === 'minds_api_key') {
-        console.warn('[minds-auth] aborting settings sync — credential write failed; leaving prior config intact');
-        break;
-      }
-    }
-
-    // Verify the server is actually configured after the writes.
-    // If the writes failed silently (DB not updated), config_ready will
-    // still be false and the user would appear unconfigured after login.
-    try {
-      const healthRes = await timedFetch(`http://127.0.0.1:${port}/api/v1/health/`);
-      if (healthRes.ok) {
-        const health = await healthRes.json() as Record<string, unknown>;
-        if (!health.config_ready) {
-          console.warn('[minds-auth] config_ready is false after settings writes — restarting server');
-          await stopServer();
-          await startServer();
-        }
-      }
-    } catch (error) {
-      console.warn('[minds-auth] health check after settings writes failed:', error);
-    }
-  }
-}
-
-let _refreshTimer: NodeJS.Timeout | null = null;
-
-// How long to wait before retrying after a transient refresh failure.
-// Constant (no backoff): one loopback-cheap POST per minute while the
-// network is down, and the session converges to signed-in the moment
-// connectivity returns instead of waiting for the next app launch.
-const REFRESH_RETRY_DELAY_MS = 60_000;
-
-export function scheduleRefresh(expiresInSeconds: number): void {
-  scheduleRefreshIn(Math.max((expiresInSeconds - 60) * 1000, 10_000));
-}
-
-export function scheduleRefreshRetry(): void {
-  scheduleRefreshIn(REFRESH_RETRY_DELAY_MS);
-}
-
-export function cancelScheduledRefresh(): void {
-  if (_refreshTimer) clearTimeout(_refreshTimer);
-  _refreshTimer = null;
-}
-
-function scheduleRefreshIn(delayMs: number): void {
-  if (_refreshTimer) clearTimeout(_refreshTimer);
-  // refreshTokensOnly re-arms the timer itself on every outcome that
-  // warrants one (ok → next expiry window, transient → retry delay), so
-  // the chain never dies after a single failure — the pre-ENG-761 timer
-  // ran silentRefresh once and never retried.
-  _refreshTimer = setTimeout(() => { void refreshTokensOnly(); }, delayMs);
 }
