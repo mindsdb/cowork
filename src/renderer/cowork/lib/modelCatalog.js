@@ -50,24 +50,39 @@ export function modelMaker(id, label = '') {
 /**
  * Group flat picker options by maker, ready for the ModelSelect popup.
  *
- * @param {Array<{value: string, label: string, maker?: string}>} options
+ * @param {Array<{value: string, label: string, maker?: string, makerName?: string}>} options
  *   Flat option list. An option carrying an explicit `maker` key (the
  *   future ENG-1111 backend field) is trusted verbatim; otherwise the
- *   maker is inferred from value + label.
+ *   maker is inferred from value + label. A `maker` we ship no MAKERS
+ *   entry for still gets its own group — named by `makerName` (falling
+ *   back to a capitalised key) with ProviderIcon's placeholder mark — so
+ *   a new backend maker never needs a frontend release to group correctly.
  * @returns {Array<{key: string, name: string, items: object[]}>}
- *   Groups in MAKERS declaration order (Other last); empty groups dropped;
- *   option order preserved within each group.
+ *   Groups in MAKERS declaration order, then dynamic makers in first-seen
+ *   order, Other last; empty groups dropped; option order preserved within
+ *   each group.
  */
 export function groupModelOptions(options) {
   const byKey = new Map();
+  const dynamic = new Map();
   for (const opt of options || []) {
     if (!opt) continue;
-    const known = opt.maker && MAKERS.find((m) => m.key === opt.maker);
-    const maker = known || (opt.maker ? OTHER_MAKER : modelMaker(opt.value, opt.label));
+    let maker;
+    if (opt.maker && opt.maker !== OTHER_MAKER.key) {
+      maker = MAKERS.find((m) => m.key === opt.maker) || dynamic.get(opt.maker);
+      if (!maker) {
+        maker = { key: opt.maker, name: opt.makerName || opt.maker.charAt(0).toUpperCase() + opt.maker.slice(1) };
+        dynamic.set(maker.key, maker);
+      }
+    } else if (opt.maker) {
+      maker = OTHER_MAKER;
+    } else {
+      maker = modelMaker(opt.value, opt.label);
+    }
     if (!byKey.has(maker.key)) byKey.set(maker.key, []);
     byKey.get(maker.key).push(opt);
   }
-  return [...MAKERS, OTHER_MAKER]
+  return [...MAKERS, ...dynamic.values(), OTHER_MAKER]
     .filter((m) => byKey.has(m.key))
     .map((m) => ({ key: m.key, name: m.name, items: byKey.get(m.key) }));
 }

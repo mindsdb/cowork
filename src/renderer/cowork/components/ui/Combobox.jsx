@@ -1,42 +1,37 @@
-// `<ModelSelect>` — searchable, provider-grouped model picker (ENG-1096).
+// `<Combobox>` — searchable, optionally-grouped picker primitive.
 //
 // Built on Base UI's Combobox in its "input inside popup" shape: the closed
-// control is a Select-style trigger (provider mark + model name + caret);
-// opening it shows a search input pinned above a grouped, scrollable list.
-// Base UI owns filtering, keyboard nav (arrows/Enter/Esc, typing lands in
-// the search box), focus management, and hiding groups whose items all
-// filtered out — we own only the skin, wired to the same design tokens as
-// `Select` (whose trigger cva this reuses, so the two controls are
-// indistinguishable when closed).
+// control is a Select-style trigger; opening it shows a search input pinned
+// above a grouped, scrollable list. Base UI owns filtering, keyboard nav
+// (arrows/Enter/Esc, typing lands in the search box), focus management, and
+// hiding groups whose items all filtered out — we own only the skin, wired
+// to the same design tokens as `Select` (whose trigger cva this reuses, so
+// the two controls are indistinguishable when closed).
 //
-// Grouping comes from `lib/modelCatalog` (maker inferred from alias+label
-// until the backend ships an explicit field — ENG-1111). Provider marks
-// come from `ProviderIcon`, with a neutral placeholder for makers we have
-// no svg for yet (ENG-1112).
+// This is a generic primitive: it knows nothing about what it's picking.
+// Domain pickers (e.g. `components/ModelSelect`) build the groups, the
+// filter, and the trigger adornments, and compose this for the wiring.
 //
-// API mirrors `Select` where the two overlap, so call sites swap 1:1:
-//
-//   <ModelSelect
-//     value={modelId}
-//     onValueChange={setModelId}
-//     options={[
-//       { value: 'sonnet', label: 'Claude Sonnet 5' },
-//       { value: 'opus', label: 'Claude Opus 5', disabled: true },
-//       { value: '__custom__', label: 'Other…', pin: 'bottom' },
-//     ]}
+//   <Combobox
+//     value={id}
+//     onValueChange={setId}
+//     groups={[{ key: 'fruit', name: 'Fruit', items: [{ value: 'a', label: 'Apple' }] }]}
 //   />
 //
-// Option shape: { value, label, disabled?, title?, maker?, pin? }.
-//   - `maker`: explicit maker key (trusted over inference when present).
-//   - `pin: 'top' | 'bottom'`: render outside the maker groups, unheaded,
-//     at the top/bottom of the list (stale-pin and "Other…" entries).
+// Group shape:  { key, name, items }  — `name: null` renders unheaded.
+// Item shape:   { value, label, disabled?, title?, ... }  — extra fields
+//   pass through untouched, so domain filters/renderers can read them.
+//
+// Optional hooks for domain pickers:
+//   - `filter(item, query, contains)`: replaces the default match on
+//     label + value. `contains` is Base UI's locale-aware substring test.
+//   - `renderValue(selected)`: replaces the default trigger content
+//     (truncated label, or placeholder styling when nothing is selected).
 
 import { useMemo } from 'react';
-import { Combobox } from '@base-ui/react/combobox';
+import { Combobox as BaseCombobox } from '@base-ui/react/combobox';
 import { cn } from '../../lib/cn';
-import { groupModelOptions, modelMaker } from '../../lib/modelCatalog';
 import Spinner from './Spinner.jsx';
-import ProviderIcon from './ProviderIcon.jsx';
 import { triggerVariants } from './Select.jsx';
 
 const CARET_UP_DOWN = (
@@ -57,27 +52,19 @@ const SEARCH = (
   </svg>
 );
 
-// Pseudo-group keys for pinned (unheaded) entries. Underscored so they can
-// never collide with a real maker key from modelCatalog.
-const PIN_TOP = '__pinned-top__';
-const PIN_BOTTOM = '__pinned-bottom__';
-
-function makerKeyFor(option) {
-  if (!option) return 'other';
-  if (option.pin) return 'other'; // specials get the neutral mark
-  return option.maker || modelMaker(option.value, option.label).key;
-}
-
-export function ModelSelect({
+export function Combobox({
   value,
   onValueChange,
   // Fires on open and on close, same contract as Select — callers refresh
-  // `options` on open and the popup reconciles in place.
+  // their options on open and the popup reconciles in place.
   onOpenChange,
-  options = [],
-  placeholder = 'Select model',
+  groups = [],
+  filter,
+  renderValue,
+  placeholder = 'Select',
   searchPlaceholder = 'Search',
-  emptyText = 'No models found',
+  searchAriaLabel = 'Search',
+  emptyText = 'No results',
   variant = 'field',
   size = 'md',
   disabled = false,
@@ -93,49 +80,37 @@ export function ModelSelect({
   zIndex = 95,
   ...rest
 }) {
-  const entries = useMemo(() => options.filter(Boolean), [options]);
-
-  const items = useMemo(() => {
-    const top = entries.filter((o) => o.pin === 'top');
-    const bottom = entries.filter((o) => o.pin === 'bottom');
-    const grouped = groupModelOptions(entries.filter((o) => !o.pin));
-    return [
-      ...(top.length ? [{ key: PIN_TOP, name: null, items: top }] : []),
-      ...grouped,
-      ...(bottom.length ? [{ key: PIN_BOTTOM, name: null, items: bottom }] : []),
-    ];
-  }, [entries]);
+  const entries = useMemo(() => groups.flatMap((g) => g.items), [groups]);
 
   // The controlled selection as an item object (Combobox deals in items,
   // call sites deal in string ids). A value with no matching option still
-  // renders on the trigger via a synthesized entry — same resilience the
-  // composer needs when the saved model vanished from the list.
+  // renders on the trigger via a synthesized entry — resilience for when
+  // the saved value vanished from the list.
   const selected = useMemo(() => {
     if (value == null || value === '') return null;
     return entries.find((o) => o.value === value) || { value, label: String(value) };
   }, [entries, value]);
 
-  const { contains } = Combobox.useFilter();
+  const { contains } = BaseCombobox.useFilter();
 
   return (
-    <Combobox.Root
-      items={items}
+    <BaseCombobox.Root
+      items={groups}
       value={selected}
       onValueChange={(item) => onValueChange?.(item ? item.value : '')}
       onOpenChange={onOpenChange}
       isItemEqualToValue={(a, b) => a?.value === b?.value}
       itemToStringLabel={(item) => item?.label ?? ''}
-      // Match on the display label OR the raw id, across every group at
-      // once — "opus" finds Claude Opus whether typed as alias or name.
-      // Pinned entries bypass the filter: "Other…" is the escape hatch for
-      // typing a model id we don't list, so a search with no matches must
-      // not hide it.
-      filter={(item, query) => !!item?.pin || contains(item?.label ?? '', query) || contains(item?.value ?? '', query)}
+      // Default: match on the display label OR the raw id, across every
+      // group at once. Domain pickers override via `filter`.
+      filter={(item, query) => (filter
+        ? filter(item, query, contains)
+        : contains(item?.label ?? '', query) || contains(item?.value ?? '', query))}
       autoHighlight
       disabled={disabled}
       id={id}
     >
-      <Combobox.Trigger
+      <BaseCombobox.Trigger
         className={cn(variant === 'unstyled' ? null : triggerVariants({ variant, size }), className)}
         aria-label={ariaLabel}
         aria-invalid={invalid || undefined}
@@ -145,24 +120,25 @@ export function ModelSelect({
         {...rest}
       >
         <span className="flex items-center gap-[8px] min-w-0">
-          {selected && <ProviderIcon maker={makerKeyFor(selected)} className="text-ink-2" />}
-          <span className={cn('truncate', !selected && 'text-ink-4')}>
-            {selected ? selected.label : placeholder}
-          </span>
+          {renderValue ? renderValue(selected) : (
+            <span className={cn('truncate', !selected && 'text-ink-4')}>
+              {selected ? selected.label : placeholder}
+            </span>
+          )}
         </span>
         <span className="inline-flex shrink-0 text-ink-3">
           {loading ? <Spinner style={{ color: 'currentColor' }} /> : CARET_UP_DOWN}
         </span>
-      </Combobox.Trigger>
-      <Combobox.Portal>
-        <Combobox.Backdrop className="fixed inset-0" />
-        <Combobox.Positioner
+      </BaseCombobox.Trigger>
+      <BaseCombobox.Portal>
+        <BaseCombobox.Backdrop className="fixed inset-0" />
+        <BaseCombobox.Positioner
           className="box-border outline-none"
           sideOffset={6}
           align="start"
           style={{ zIndex }}
         >
-          <Combobox.Popup
+          <BaseCombobox.Popup
             className={cn(
               // overflow-hidden clips the square-cornered search row to the
               // popup's rounded corners.
@@ -182,26 +158,26 @@ export function ModelSelect({
                 box around the whole row. */}
             <div className="flex items-center gap-[8px] px-[12px] py-[9px] border-solid border-line border-b border-t-0 border-x-0 text-ink-4">
               {SEARCH}
-              <Combobox.Input
+              <BaseCombobox.Input
                 placeholder={searchPlaceholder}
-                aria-label="Search models"
+                aria-label={searchAriaLabel}
                 className="flex-1 min-w-0 border-0 bg-transparent p-0 outline-none font-body text-[13px] text-ink placeholder:text-ink-4"
               />
             </div>
-            <Combobox.Empty className="px-[14px] py-[10px] text-[12.5px] text-ink-4">
+            <BaseCombobox.Empty className="px-[14px] py-[10px] text-[12.5px] text-ink-4">
               {emptyText}
-            </Combobox.Empty>
-            <Combobox.List className="max-h-[min(320px,calc(var(--available-height,320px)-44px))] overflow-y-auto overscroll-contain py-[4px] outline-none empty:p-0">
+            </BaseCombobox.Empty>
+            <BaseCombobox.List className="max-h-[min(320px,calc(var(--available-height,320px)-44px))] overflow-y-auto overscroll-contain py-[4px] outline-none empty:p-0">
               {(group) => (
-                <Combobox.Group key={group.key} items={group.items}>
+                <BaseCombobox.Group key={group.key} items={group.items}>
                   {group.name && (
-                    <Combobox.GroupLabel className="pt-[8px] px-[14px] pb-[3px] text-[11.5px] text-ink-4 select-none">
+                    <BaseCombobox.GroupLabel className="pt-[8px] px-[14px] pb-[3px] text-[11.5px] text-ink-4 select-none">
                       {group.name}
-                    </Combobox.GroupLabel>
+                    </BaseCombobox.GroupLabel>
                   )}
-                  <Combobox.Collection>
+                  <BaseCombobox.Collection>
                     {(item) => (
-                      <Combobox.Item
+                      <BaseCombobox.Item
                         key={item.value}
                         value={item}
                         disabled={item.disabled}
@@ -215,20 +191,20 @@ export function ModelSelect({
                         )}
                       >
                         <span className="inline-flex justify-center text-accent">
-                          <Combobox.ItemIndicator>{CHECK}</Combobox.ItemIndicator>
+                          <BaseCombobox.ItemIndicator>{CHECK}</BaseCombobox.ItemIndicator>
                         </span>
                         <span className="min-w-0 truncate">{item.label}</span>
-                      </Combobox.Item>
+                      </BaseCombobox.Item>
                     )}
-                  </Combobox.Collection>
-                </Combobox.Group>
+                  </BaseCombobox.Collection>
+                </BaseCombobox.Group>
               )}
-            </Combobox.List>
-          </Combobox.Popup>
-        </Combobox.Positioner>
-      </Combobox.Portal>
-    </Combobox.Root>
+            </BaseCombobox.List>
+          </BaseCombobox.Popup>
+        </BaseCombobox.Positioner>
+      </BaseCombobox.Portal>
+    </BaseCombobox.Root>
   );
 }
 
-export default ModelSelect;
+export default Combobox;

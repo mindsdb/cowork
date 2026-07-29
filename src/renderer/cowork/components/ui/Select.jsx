@@ -50,7 +50,7 @@ import { cva } from 'class-variance-authority';
 import { cn } from '../../lib/cn';
 import Spinner from './Spinner.jsx';
 
-// Exported for ModelSelect, which renders a Combobox-based trigger that
+// Exported for Combobox, which renders a popup-based trigger that
 // must look identical to a Select trigger (same tokens, same variants).
 export const triggerVariants = cva(
   [

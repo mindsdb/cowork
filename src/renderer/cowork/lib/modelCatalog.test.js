@@ -82,11 +82,31 @@ describe('groupModelOptions', () => {
     expect(groups.map((g) => g.key)).toEqual(['mindshub']);
   });
 
-  it('routes an explicit but unrecognised maker to Other', () => {
+  it('gives an explicit but unrecognised maker its own group (dynamic maker, ENG-1111)', () => {
     const groups = groupModelOptions([
-      { value: 'x', label: 'X', maker: 'somebody-new' },
+      { value: 'x', label: 'X', maker: 'somebody-new', makerName: 'Somebody New' },
+      { value: 'y', label: 'Y', maker: 'acme' },
+    ]);
+    expect(groups.map((g) => g.key)).toEqual(['somebody-new', 'acme']);
+    expect(groups.map((g) => g.name)).toEqual(['Somebody New', 'Acme']);
+  });
+
+  it('orders dynamic makers after known makers and before Other', () => {
+    const groups = groupModelOptions([
+      { value: 'muse-spark', label: 'Muse Spark 1.1' },
+      { value: 'x', label: 'X', maker: 'acme' },
+      { value: 'sonnet', label: 'Claude Sonnet 5' },
+    ]);
+    expect(groups.map((g) => g.key)).toEqual(['anthropic', 'acme', 'other']);
+  });
+
+  it('routes an explicit maker of "other" to the Other group, not a duplicate', () => {
+    const groups = groupModelOptions([
+      { value: 'muse-spark', label: 'Muse Spark 1.1' },
+      { value: 'x', label: 'X', maker: 'other' },
     ]);
     expect(groups.map((g) => g.key)).toEqual(['other']);
+    expect(groups[0].items.map((o) => o.value)).toEqual(['muse-spark', 'x']);
   });
 
   it('ignores null/undefined entries', () => {
