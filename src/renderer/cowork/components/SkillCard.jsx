@@ -19,7 +19,8 @@ import Button from './ui/Button';
 import { Card } from './ui/Card';
 import { Modal, ModalHeader, ModalBody } from './ui/Modal';
 import { MarkdownContent } from './markdown/MarkdownContent';
-import { saveSkillAndSync } from '../lib/skillsStore';
+import { saveSkillAndSync, useSkills } from '../lib/skillsStore';
+import { deleteSkillDraft } from '../api';
 
 // Trigger a browser save-as for a text file, fully client-side (no server).
 // The event payload already carries the full SKILL.md, so download works
@@ -49,7 +50,10 @@ function SkillModal({ skill, open, onClose }) {
         onClose={onClose}
       />
       <ModalBody padding="20px 22px">
-        <MarkdownContent text={body} />
+        {/* Opt back into text selection — the app root sets user-select:none. */}
+        <div style={{ userSelect: 'text' }}>
+          <MarkdownContent text={body} />
+        </div>
       </ModalBody>
     </Modal>
   );
@@ -60,8 +64,18 @@ export default function SkillCard({ skill, projectName }) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [status, setStatus] = useState(null); // { kind: 'ok'|'error', text }
+  const { skills } = useSkills();
 
   const name = skill.name || skill.slug || 'Skill';
+  const slug = skill.slug || skill.label;
+  // "Saved" only when THIS revision is in the store — compare instructions, not
+  // just slug existence: editing an existing skill seeds the draft from the
+  // stored version, so slug-existence alone would falsely show "Saved" before
+  // the refinement is saved (ENG-645 RC #2). Trimmed to ignore round-trip
+  // whitespace; a mismatch errs to "Draft · not saved" (the safe side).
+  const isSaved = saved || (Array.isArray(skills) && skills.some(
+    (s) => s.label === slug && (s.declarative || '').trim() === (skill.instructions || '').trim()
+  ));
 
   const handleDownload = (e) => {
     e.stopPropagation();
@@ -75,24 +89,50 @@ export default function SkillCard({ skill, projectName }) {
     if (saving || saved) return;
     setSaving(true);
     setStatus(null);
-    try {
-      // `declarative` is the API's instructions alias (matches SkillsView's save).
-      await saveSkillAndSync({
-        label: skill.label || skill.slug,
-        name: skill.name || undefined,
-        description: skill.description || undefined,
-        // instructions only — never the raw SKILL.md (its YAML frontmatter
-        // would get double-stored inside the body). Download uses skill_md.
-        declarative: skill.instructions || '',
-        ...(projectName && { projects: [projectName] }),
-      });
+
+    // `declarative` is the API's instructions alias (matches SkillsView's save);
+    // `label` is the slug identity used for both create and the PUT URL.
+    const payload = {
+      label: slug,
+      name: skill.name || undefined,
+      description: skill.description || undefined,
+      // instructions only — never the raw SKILL.md (its YAML frontmatter
+      // would get double-stored inside the body). Download uses skill_md.
+      declarative: skill.instructions || '',
+    };
+    // A saved skill with this slug → PUT; else POST.
+    const exists = Array.isArray(skills) && skills.some((s) => s.label === slug);
+
+    // Scope is set on CREATE only, and only for a real project — general/default
+    // are reserved (global), so they stay unscoped. On UPDATE we omit `projects`:
+    // the API replaces the whole list, so sending just the current project would
+    // wipe the skill's other project associations.
+    const isReserved = projectName === 'general' || projectName === 'default';
+    const createPayload = (projectName && !isReserved)
+      ? { ...payload, projects: [projectName] }
+      : payload;
+
+    const markSaved = () => {
       setSaved(true);
       setStatus({ kind: 'ok', text: 'Saved to your skills' });
+      // Sweep the on-disk draft now it lives in the store; fire-and-forget (the
+      // server is idempotent, and a lingering draft must never fail the save UI).
+      if (projectName && slug) deleteSkillDraft(projectName, slug).catch(() => {});
+    };
+
+    try {
+      await saveSkillAndSync(exists ? payload : createPayload, exists);
+      markSaved();
     } catch (err) {
-      // A duplicate slug means it's effectively already in the library.
-      if (/already exists/i.test(err?.message || '')) {
-        setSaved(true);
-        setStatus({ kind: 'ok', text: 'Already in your skills' });
+      // Stale list (created since the last fetch): retry as an update — `payload`
+      // carries no `projects`, so the skill's existing scope is preserved.
+      if (!exists && /already exists/i.test(err?.message || '')) {
+        try {
+          await saveSkillAndSync(payload, true);
+          markSaved();
+        } catch (err2) {
+          setStatus({ kind: 'error', text: err2?.message || 'Could not save skill.' });
+        }
       } else {
         setStatus({ kind: 'error', text: err?.message || 'Could not save skill.' });
       }
@@ -134,7 +174,7 @@ export default function SkillCard({ skill, projectName }) {
                 <span style={{ color: status.kind === 'error' ? 'var(--danger)' : 'var(--success, #1F8F5F)' }}>
                   {status.text}
                 </span>
-              ) : 'Skill'}
+              ) : isSaved ? 'Saved' : 'Draft · not saved'}
             </div>
           </div>
 

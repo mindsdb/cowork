@@ -340,8 +340,11 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
   // agent BUILT this turn (via skill-creator), detected via the skill-drafts
   // dir diff. A skill is NOT an artifact and is NOT auto-saved — this card lets
   // the user Save or Download it. Self-contained payload (full SKILL.md +
-  // sibling files) so it renders + downloads identically on reload. Deduped by
-  // slug so a replay can't double a card.
+  // sibling files) so it renders + downloads identically on reload.
+  //
+  // Deduped by slug WITHIN a turn so a replay can't double a card. Across turns
+  // a refined skill re-emits (server diffs SKILL.md content); the chat renderer
+  // shows only the latest turn's card per slug (see latestSkillCardIndexByKey).
   if (type === 'response.skill_created') {
     const sk = (event.skill && typeof event.skill === 'object') ? event.skill : {};
     const key = sk.slug || sk.label || sk.name || '';

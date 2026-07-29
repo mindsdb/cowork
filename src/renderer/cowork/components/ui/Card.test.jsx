@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { Card, CardRow, cardClasses, cardActivationProps } from './Card.jsx';
+import { Card, CardRow, cardClasses, cardActivationProps } from './Card';
 
 describe('cardClasses', () => {
   it('is just "card" with no options', () => {
