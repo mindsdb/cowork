@@ -9,9 +9,19 @@ function makeDeps(over: Partial<PersistDeps> = {}): PersistDeps {
   };
 }
 
+// ENG-1127: persistOnboarding takes a DB-keyed values object (not `.env` lines)
+// and hands it straight to the authoritative bulk push.
+const VALUES = { anthropic_api_key: 'sk-ant', planning_provider: 'anthropic' };
+
 describe('persistOnboarding', () => {
   it('returns ok when every step succeeds', async () => {
-    await expect(persistOnboarding(makeDeps(), ['ANTON_X=1'])).resolves.toEqual({ ok: true });
+    await expect(persistOnboarding(makeDeps(), VALUES)).resolves.toEqual({ ok: true });
+  });
+
+  it('hands the DB-keyed values object straight to the bulk push', async () => {
+    const pushToServer = vi.fn(async () => true);
+    await persistOnboarding(makeDeps({ pushToServer }), VALUES);
+    expect(pushToServer).toHaveBeenCalledWith(VALUES);
   });
 
   // ENG-1127: a single bulk push is the ONLY write. It's authoritative — a
@@ -21,7 +31,7 @@ describe('persistOnboarding', () => {
   it('fails when the bulk push returns false, and skips the best-effort harness sync', async () => {
     const syncHarness = vi.fn(async () => {});
     const d = makeDeps({ pushToServer: vi.fn(async () => false), syncHarness });
-    const res = await persistOnboarding(d, ['ANTON_X=1']);
+    const res = await persistOnboarding(d, VALUES);
     expect(res.ok).toBe(false);
     // dbSyncFailed distinguishes "the write was rejected/unreachable" from a
     // thrown error, so finalizeSettings can defer to the install check
@@ -35,7 +45,7 @@ describe('persistOnboarding', () => {
   // persisted to the onboarding error screen.
   it('still succeeds when syncHarness throws after the push lands', async () => {
     const d = makeDeps({ syncHarness: vi.fn(async () => { throw new Error('harness sync flaked'); }) });
-    await expect(persistOnboarding(d, ['ANTON_X=1'])).resolves.toEqual({ ok: true });
+    await expect(persistOnboarding(d, VALUES)).resolves.toEqual({ ok: true });
   });
 });
 

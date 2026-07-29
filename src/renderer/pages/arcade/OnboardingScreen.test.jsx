@@ -147,16 +147,17 @@ describe('OnboardingScreen — desktop sign-up returns to the app (ENG-917)', ()
 // ENG-922/ENG-1127: on a fresh desktop install the cowork-server isn't up
 // during onboarding, so the bulk push fails and finalizeSettings DEFERS to the
 // install screen. The push never reached the DB, so the FULL chosen settings
-// lines must be handed to onComplete for a one-time post-install push —
-// otherwise a BYOK user lands config-not-ready ("Select a model"). This locks
-// the OnboardingScreen half of that wiring (the App-side push is exercised by
-// the manual clean-machine E2E).
+// (a DB-keyed values object) must be handed to onComplete for a one-time
+// post-install push — otherwise a BYOK user lands config-not-ready ("Select a
+// model"). This locks the OnboardingScreen half of that wiring (the App-side
+// push is exercised by the manual clean-machine E2E).
 describe('OnboardingScreen — BYOK setup-deferral hands the settings up (ENG-922/ENG-1127)', () => {
   beforeEach(() => {
     hostMock.isWeb = false;      // desktop
     hostMock.isElectron = true;
     keycloakMock.authenticated = false;
     hostMock.validateProvider = vi.fn(async () => ({ ok: true }));
+    hostMock.onboardingAnalytics = vi.fn();
     // The race: cowork-server not installed yet → bulk push fails AND
     // checkInstall reports not-ready → resolveFinalizeOutcome returns 'defer'.
     hostMock.checkInstall = vi.fn(async () => ({ antonInstalled: false, serverDepsReady: false }));
@@ -164,7 +165,7 @@ describe('OnboardingScreen — BYOK setup-deferral hands the settings up (ENG-92
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({}) })));
   });
 
-  it('defers with a failed push + uninstalled server → onComplete receives the FULL chosen settings lines', async () => {
+  it('defers with a failed push + uninstalled server → onComplete receives the FULL chosen DB values', async () => {
     const onComplete = vi.fn();
     render(<OnboardingScreen coworker={coworker} onComplete={onComplete} />);
 
@@ -182,16 +183,23 @@ describe('OnboardingScreen — BYOK setup-deferral hands the settings up (ENG-92
     fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
 
     await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
-    // The FULL lines are handed up for the post-install push — not just the
-    // model, so provider + base URL land too (never dropped).
+    // The FULL DB-keyed values are handed up for the post-install push — not
+    // just the model, so provider + base URL land too (never dropped). Keys are
+    // the backend setting names, provider enum is snake_case at the source.
     expect(onComplete).toHaveBeenCalledWith(
-      expect.arrayContaining([
-        'ANTON_PLANNING_MODEL=llama-3.3-70b',
-        'ANTON_CODING_MODEL=llama-3.3-70b',
-        'ANTON_OPENAI_BASE_URL=http://localhost:11434/v1',
-        'ANTON_PLANNING_PROVIDER=openai-compatible',
-      ]),
+      expect.objectContaining({
+        planning_model: 'llama-3.3-70b',
+        coding_model: 'llama-3.3-70b',
+        openai_base_url: 'http://localhost:11434/v1',
+        planning_provider: 'openai_compatible',
+        coding_provider: 'openai_compatible',
+      }),
     );
+    // The funnel analytics fire before the push (so a deferred push still
+    // records the choice), under the explicit-event scheme: terms + BYOK.
+    expect(hostMock.onboardingAnalytics).toHaveBeenCalledWith('ANTONAPP_TERMS_ACCEPTED');
+    expect(hostMock.onboardingAnalytics).toHaveBeenCalledWith('ANTONAPP_BYOK');
+    expect(hostMock.onboardingAnalytics).not.toHaveBeenCalledWith('ANTONAPP_MINDSLLM');
   });
 
   it('errors (does NOT defer) when the DB sync fails but the server IS installed', async () => {
