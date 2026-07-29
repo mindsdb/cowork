@@ -61,7 +61,8 @@ export function cancelCurrentDrivePicker(): void {
 export async function openDrivePickerFlow(
   accessToken: string,
   apiKey: string,
-  appId?: string,
+  appId: string | undefined,
+  accountEmail: string,
   fileIds?: string[],
 ): Promise<DrivePickerResult> {
   // A second picker session (e.g. the composer's picker still open when
@@ -87,6 +88,15 @@ export async function openDrivePickerFlow(
   // state rides in the URL) any number of times before the server closes.
   let stateConsumed = false;
 
+  // Set by the picker page's load-timeout signal (see pickerPage below) when
+  // the widget hasn't reached a terminal action within a few seconds — most
+  // often because the browser's active Google account doesn't match
+  // accountEmail. That alone isn't proof of failure (a slow-but-successful
+  // load looks identical from the page's point of view), so it must never
+  // resolve/reject the flow by itself — it only upgrades the message if the
+  // flow *later* genuinely times out, via buildPickerFailureReason below.
+  let suspectedAccountMismatch = false;
+
   let rejectResult: ((err: Error) => void) | null = null;
   const { server, resultPromise } = startLoopbackServer<DrivePickerFile[]>(port, (resolve, reject) => {
     rejectResult = reject;
@@ -106,7 +116,7 @@ export async function openDrivePickerFlow(
           // The token in this page must never survive in a disk/back-forward
           // cache once served.
           res.setHeader('Cache-Control', 'no-store');
-          res.end(pickerPage({ accessToken, apiKey, appId: appId || '', state, fileIds: fileIds || [] }));
+          res.end(pickerPage({ accessToken, apiKey, appId: appId || '', accountEmail, state, fileIds: fileIds || [] }));
           return;
         }
 
@@ -129,7 +139,7 @@ export async function openDrivePickerFlow(
           });
           req.on('data', (chunk) => { body += chunk; });
           req.on('end', () => {
-            let payload: { state?: string; files?: DrivePickerFile[]; cancelled?: boolean };
+            let payload: { state?: string; files?: DrivePickerFile[]; cancelled?: boolean; error?: string; signal?: string };
             try {
               payload = JSON.parse(body || '{}');
             } catch {
@@ -145,6 +155,24 @@ export async function openDrivePickerFlow(
             res.statusCode = 200;
             res.setHeader('Content-Type', 'application/json');
             res.end('{"ok":true}');
+            // A non-terminal signal — the widget hasn't settled yet, this
+            // only records a suspicion for later. Must return before the
+            // resolve/reject calls below: the flow stays open so a user who
+            // was just slow, or whose widget was fine all along, can still
+            // finish normally.
+            if (payload.signal === 'suspected-account-mismatch') {
+              suspectedAccountMismatch = true;
+              return;
+            }
+            // The picker page reports `error` when Google's own widget hit an
+            // error (google.picker.Action.ERROR) — most commonly the browser's
+            // active Google account not matching the connected account. Reject
+            // rather than resolve so the caller gets a reason instead of an
+            // empty (indistinguishable-from-cancelled) file list.
+            if (payload.error) {
+              reject(new Error(payload.error));
+              return;
+            }
             resolve(payload.cancelled ? [] : (Array.isArray(payload.files) ? payload.files : []));
           });
           return;
@@ -186,13 +214,24 @@ export async function openDrivePickerFlow(
     );
     return { ok: true, files };
   } catch (e: any) {
-    return { ok: false, reason: e?.message || 'Drive picker failed.' };
+    const reason = buildPickerFailureReason(e?.message || 'Drive picker failed.', suspectedAccountMismatch, accountEmail);
+    return { ok: false, reason };
   } finally {
     // Tiny delay so the confirmation state actually paints in the
     // user's browser tab before we tear the server down.
     setTimeout(() => closeServer(server), 300);
     _activeAttempt = null;
   }
+}
+
+// Only upgrades a genuine timeout (never a cancellation or an in-widget
+// Action.ERROR, which already carry their own specific reason) — matching on
+// the timeout's own wording rather than a separate error code keeps this a
+// pure, directly testable function instead of threading a reason-kind enum
+// through raceWithTimeout for one caller.
+export function buildPickerFailureReason(rawReason: string, suspectedAccountMismatch: boolean, accountEmail: string): string {
+  if (!suspectedAccountMismatch || !/timed out/i.test(rawReason)) return rawReason;
+  return `${rawReason} This is usually caused by ${accountEmail} not being the active Google account in this browser — switch to that account, close the tab, and try again.`;
 }
 
 // JSON.stringify doesn't escape `<`, so a value containing `</script>`
@@ -204,8 +243,15 @@ function jsonForScript(value: unknown): string {
   return JSON.stringify(value).replace(/</g, '\\u003c');
 }
 
-function pickerPage(opts: { accessToken: string; apiKey: string; appId: string; state: string; fileIds: string[] }): string {
-  const { accessToken, apiKey, appId, state, fileIds } = opts;
+// accountEmail is interpolated directly into the static HTML markup below
+// (not just the inline <script>), so it needs HTML escaping on top of the
+// script-breakout escaping jsonForScript does for the values embedded there.
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
+}
+
+function pickerPage(opts: { accessToken: string; apiKey: string; appId: string; accountEmail: string; state: string; fileIds: string[] }): string {
+  const { accessToken, apiKey, appId, accountEmail, state, fileIds } = opts;
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Pick Google Drive files</title>
 <style>
@@ -231,7 +277,7 @@ function pickerPage(opts: { accessToken: string; apiKey: string; appId: string; 
 <body>
   <div class="card" id="status">
     <h1><span class="dot"></span>Opening Google Drive picker…</h1>
-    <p>A Google file picker will open in a moment.</p>
+    <p>A Google file picker will open in a moment, using your ${escapeHtml(accountEmail)} connection.</p>
   </div>
 <script src="https://apis.google.com/js/api.js"></script>
 <script>
@@ -240,7 +286,17 @@ function pickerPage(opts: { accessToken: string; apiKey: string; appId: string; 
   var ACCESS_TOKEN = ${jsonForScript(accessToken)};
   var API_KEY = ${jsonForScript(apiKey)};
   var APP_ID = ${jsonForScript(appId)};
+  var ACCOUNT_EMAIL = ${jsonForScript(accountEmail)};
   var FILE_IDS = ${jsonForScript(fileIds)};
+
+  // ACCOUNT_EMAIL ends up in innerHTML below (not just a JS string literal),
+  // so it needs HTML escaping too, on top of the <script>-breakout escaping
+  // jsonForScript already did when embedding it above.
+  function escapeHtml(value) {
+    return String(value).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
 
   function setStatus(title, body, isError) {
     var card = document.getElementById('status');
@@ -255,6 +311,43 @@ function pickerPage(opts: { accessToken: string; apiKey: string; appId: string; 
       body: JSON.stringify(Object.assign({ state: STATE }, payload)),
     }).catch(function () {});
   }
+
+  // Most common cause of the in-widget ERROR action: the browser's active
+  // Google account differs from the connected account (ACCOUNT_EMAIL) —
+  // Google's picker widget renders under whichever account is ambient in
+  // this browser session, not the one the access token above is scoped to,
+  // and 403s instead of showing the file browser. This is a genuine,
+  // widget-confirmed error (the widget loaded and then reported one), so
+  // it's fine to end the flow here — unlike the load-timeout signal below,
+  // which is only a guess.
+  function reportPickerLoadFailure() {
+    setStatus(
+      'Could not open Google Drive',
+      'This is usually caused by ' + escapeHtml(ACCOUNT_EMAIL) + ' not being the active Google account in this browser. '
+        + 'Switch to that account (check the avatar menu on a Google page), close this tab, and try again from Cowork.',
+      true
+    );
+    // Sent as 'reason' to the renderer, which displays it as plain React
+    // text (not innerHTML) — intentionally NOT escapeHtml(ACCOUNT_EMAIL)
+    // here, since escaping would show literal HTML entities in that text.
+    reportResult({ error: 'Google Picker could not open — the browser’s active Google account may not match ' + ACCOUNT_EMAIL + '.' });
+  }
+
+  // A static Google 403 error page rendered inside the picker's iframe (the
+  // ENG-1102 failure mode) has no picker JS running in it, so it can never
+  // emit PICKED/CANCEL/ERROR over the postMessage relay — Action.ERROR only
+  // fires once the widget itself has loaded and then hit a problem, so it
+  // can't catch this case.
+  //
+  // This can't be told apart, from here, from a widget that loaded fine and
+  // is just sitting there while the user browses — the iframe is
+  // cross-origin, onload fires identically for both, and there is no
+  // Action.LOADED. So on timeout this only signals a suspicion to the
+  // main process (see /result's 'signal' handling in openDrivePickerFlow) —
+  // it must never close the picker or end the flow itself, or a user who
+  // simply takes longer than this to pick a file loses their in-progress
+  // selection.
+  var PICKER_LOAD_TIMEOUT_MS = 9000;
 
   function buildAndShowPicker() {
     var google = window.google;
@@ -273,14 +366,27 @@ function pickerPage(opts: { accessToken: string; apiKey: string; appId: string; 
     views.push(new google.picker.DocsView(google.picker.ViewId.DOCS).setOwnedByMe(false));
     views.push(new google.picker.DocsView(google.picker.ViewId.DOCS).setEnableDrives(true));
 
+    // Tracks whether the user reached a terminal action (picked, cancelled,
+    // or the widget reported a genuine error) — NOT whether the widget
+    // loaded, since nothing here can observe that directly (see
+    // PICKER_LOAD_TIMEOUT_MS above).
+    var userActed = false;
+    var loadTimeoutId = null;
+    function markUserActed() {
+      userActed = true;
+      if (loadTimeoutId !== null) { clearTimeout(loadTimeoutId); loadTimeoutId = null; }
+    }
+
     var builder = new google.picker.PickerBuilder()
       .setOAuthToken(ACCESS_TOKEN)
       .setDeveloperKey(API_KEY)
       .setAppId(APP_ID)
+      .setTitle('Choose files from ' + ACCOUNT_EMAIL)
       .enableFeature(google.picker.Feature.MULTISELECT_ENABLED)
       .enableFeature(google.picker.Feature.SUPPORT_DRIVES)
       .setCallback(function (data) {
         if (data.action === google.picker.Action.PICKED) {
+          markUserActed();
           var files = (data.docs || []).map(function (doc) {
             // resourceKey: required by Drive API alongside the file id for
             // many files that aren't owned by the connecting account (link-
@@ -294,12 +400,31 @@ function pickerPage(opts: { accessToken: string; apiKey: string; appId: string; 
           );
           reportResult({ files: files });
         } else if (data.action === google.picker.Action.CANCEL) {
+          markUserActed();
           setStatus('Picker closed', 'You can close this tab and return to MindsHub Cowork.');
           reportResult({ files: [] });
+        } else if (data.action === google.picker.Action.ERROR) {
+          // The widget itself loaded and then hit an internal error — a
+          // genuine in-widget failure, distinct from the silent load
+          // failure the timeout below only suspects.
+          markUserActed();
+          reportPickerLoadFailure();
         }
       });
     views.forEach(function (v) { builder.addView(v); });
-    builder.build().setVisible(true);
+    var picker = builder.build();
+    picker.setVisible(true);
+
+    loadTimeoutId = setTimeout(function () {
+      if (userActed) return;
+      loadTimeoutId = null;
+      // Non-destructive: the picker stays open and the flow stays alive. A
+      // user who was just slow keeps their in-progress picker and finishes
+      // normally; a user genuinely stuck on a silent 403 gets the
+      // account-mismatch guidance once the flow eventually times out (see
+      // buildPickerFailureReason in drive-picker-service.ts).
+      reportResult({ signal: 'suspected-account-mismatch' });
+    }, PICKER_LOAD_TIMEOUT_MS);
   }
 
   window.onload = function () {

@@ -738,9 +738,11 @@ function setupIPC() {
     if (!isValidDriveFileIds(fileIds)) return { ok: false, reason: 'Invalid file id.' };
     const access = await getPickerAccess(engine, accountEmail);
     if (!access.ok) return access;
-    const pickResult = await openDrivePickerFlow(access.accessToken, access.apiKey, access.appId, fileIds);
-    if (!pickResult.ok) return pickResult;
+    const pickResult = await openDrivePickerFlow(access.accessToken, access.apiKey, access.appId, accountEmail, fileIds);
+    // Bring the app forward on failure too — this is the only place the
+    // account-mismatch guidance the picker page fell back to shows up.
     focusMainWindow();
+    if (!pickResult.ok) return pickResult;
     const newFiles = pickResult.files || [];
     // Nothing new picked (user cancelled) — return the existing persisted
     // list untouched rather than wiping it.
