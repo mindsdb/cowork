@@ -128,6 +128,52 @@ describe('Sidebar — footer theme toggle (design polish PR 3: chrome)', () => {
   });
 });
 
+describe('Sidebar — update banners (ENG-849: shell reinstall supersedes OTA)', () => {
+  beforeEach(() => {
+    hostMock.isWeb = false;
+  });
+
+  it('shows the OTA "Update ready" (restart) banner when only an OTA update is pending', () => {
+    render(<Sidebar {...baseProps} serverOnline updateAvailable={{ version: '1.2.3' }} />);
+    expect(screen.getByRole('button', { name: /Update ready/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /New version available/ })).toBeNull();
+  });
+
+  it('shows the shell reinstall notice when only a shell update is pending', () => {
+    render(<Sidebar {...baseProps} serverOnline shellUpdate={{ version: '2.0.0' }} />);
+    expect(screen.getByRole('button', { name: /New version available/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Update ready/ })).toBeNull();
+  });
+
+  it('suppresses the OTA banner while a shell reinstall is pending (no double banner)', () => {
+    render(
+      <Sidebar {...baseProps} serverOnline updateAvailable={{ version: '1.2.3' }} shellUpdate={{ version: '2.0.0' }} />
+    );
+    expect(screen.queryByRole('button', { name: /Update ready/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /New version available/ })).toBeInTheDocument();
+  });
+
+  it('surfaces a labelled retry when an apply failed (does not go silent)', () => {
+    const onApplyUpdate = vi.fn();
+    render(
+      <Sidebar {...baseProps} serverOnline updateError={{ version: '1.2.3' }} onApplyUpdate={onApplyUpdate} />
+    );
+    const retry = screen.getByRole('button', { name: /Update failed/ });
+    expect(retry).toBeInTheDocument();
+    expect(retry).toHaveTextContent(/Try again/);
+    retry.click();
+    expect(onApplyUpdate).toHaveBeenCalled();
+  });
+
+  it('lets a pending shell reinstall supersede the failed-apply retry too', () => {
+    render(
+      <Sidebar {...baseProps} serverOnline updateError={{ version: '1.2.3' }} shellUpdate={{ version: '2.0.0' }} />
+    );
+    expect(screen.queryByRole('button', { name: /Update failed/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /New version available/ })).toBeInTheDocument();
+  });
+});
+
 describe('Sidebar — nav title/logo override', () => {
   it('shows the default "MindsHub" wordmark and no logo when unset', () => {
     render(<Sidebar {...baseProps} />);

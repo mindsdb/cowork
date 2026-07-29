@@ -14,6 +14,7 @@
 // so call sites can branch / hide affordances.
 
 import type { ServerStartErrorKind } from '../../shared/server-status';
+import type { UpdateCheckSummary } from '../../shared/update-types';
 
 const ANTON_SERVER_PORT = 26866;
 
@@ -436,6 +437,10 @@ export function onInstallCancelled(cb: () => void): () => void {
 export interface UpdateStatus {
   phase: string;
   version?: string;
+  // Set on the shell (installer) update notice (phase 'shell-available',
+  // ENG-849): the running shell version and the installer download URL.
+  currentVersion?: string;
+  downloadUrl?: string;
 }
 
 // Subscribes to update-status pushes from the main process. Returns
@@ -452,6 +457,55 @@ export async function applyUpdate(): Promise<boolean> {
     return bridge.applyUpdate();
   }
   return false;
+}
+
+export interface ShellUpdate {
+  version: string; // newest published shell (installer) CalVer
+  currentVersion?: string;
+  downloadUrl?: string;
+}
+
+// Pull the cached notice after reload; old shells and web degrade to null.
+export async function getShellUpdate(): Promise<ShellUpdate | null> {
+  if (isElectron && typeof bridge.getShellUpdate === 'function') {
+    const s = await bridge.getShellUpdate();
+    if (s?.available && s.latestVersion) {
+      return { version: s.latestVersion, currentVersion: s.currentVersion, downloadUrl: s.downloadUrl ?? undefined };
+    }
+  }
+  return null;
+}
+
+export async function checkForUpdates(): Promise<UpdateCheckSummary> {
+  if (isElectron && typeof bridge.checkForUpdate === 'function') {
+    const reply = await bridge.checkForUpdate();
+    if (reply && typeof reply === 'object' && 'ok' in reply) {
+      return reply;
+    }
+
+    // An OTA-updated renderer can still be hosted by an older Electron shell,
+    // whose UI_UPDATE_CHECK reply predates the unified UI/server/shell summary.
+    // Normalize that UI-only shape so Settings does not mistake a missing `ok`
+    // field for a failed check.
+    const uiUpdateAvailable = !!reply?.updateAvailable;
+    return {
+      ok: true,
+      offline: false,
+      updateAvailable: uiUpdateAvailable,
+      uiUpdateAvailable,
+      serverUpdateAvailable: false,
+      shellUpdateAvailable: false,
+      ...(typeof reply?.newVersion === 'string' ? { uiVersion: reply.newVersion } : {}),
+    };
+  }
+  return {
+    ok: true,
+    offline: false,
+    updateAvailable: false,
+    uiUpdateAvailable: false,
+    serverUpdateAvailable: false,
+    shellUpdateAvailable: false,
+  };
 }
 
 // ---- OAuth (Electron-only PKCE flow) -----------------------------------
@@ -692,6 +746,8 @@ export const host = {
   onInstallCancelled,
   onUpdateStatus,
   applyUpdate,
+  checkForUpdates,
+  getShellUpdate,
   oauthConnect,
   oauthCancel,
   mindshubLogin,

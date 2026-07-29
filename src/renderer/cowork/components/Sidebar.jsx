@@ -245,7 +245,14 @@ export default function Sidebar({
   onToggleServer,
   onShowServerHelp,
   updateAvailable = null, // { version: string } or null
+  // Set when an apply attempt failed (phase 'error'); surfaces a retry so the
+  // sidebar doesn't go silent on failure the way it used to (ENG-849 QA find).
+  updateError = null, // { version?: string } or null
   onApplyUpdate,
+  // Download-only shell update notice.
+  shellUpdate = null,
+  onDownloadShellUpdate,
+  onDismissShellUpdate,
   agentLabel,
   // Light/dark theme + 8-bit skin toggles — the sidebar footer hosts
   // both switches (relocated from the old floating bottom-right
@@ -756,8 +763,8 @@ export default function Sidebar({
           )}
         </div>
 
-        {/* Update available banner */}
-        {updateAvailable && (
+        {/* A shell reinstall supersedes the OTA banner until dismissed. */}
+        {updateAvailable && !shellUpdate && (
           <button
             type="button"
             style={{
@@ -787,7 +794,7 @@ export default function Sidebar({
               flex: 1, fontSize: 11.5, color: 'var(--text-strong)',
               fontFamily: 'var(--font-sans)',
             }}>
-              Update available{updateAvailable.version ? ` (${updateAvailable.version})` : ''}
+              Update ready{updateAvailable.version ? ` (${updateAvailable.version})` : ''}
             </span>
             <span style={{
               fontSize: 10, color: 'var(--sage-500, #5D9287)',
@@ -796,9 +803,105 @@ export default function Sidebar({
               textTransform: 'uppercase',
               fontWeight: 600,
             }}>
-              Install
+              Restart
             </span>
           </button>
+        )}
+
+        {/* A failed apply keeps the banner (as a retry) instead of silently
+            vanishing until the next poll — mirrors Settings → Software updates. */}
+        {updateError && !shellUpdate && (
+          <button
+            type="button"
+            style={{
+              margin: '0 10px 6px',
+              padding: '8px 12px',
+              background: 'rgba(196,127,0,0.12)',
+              border: '1px solid rgba(196,127,0,0.30)',
+              borderRadius: 8,
+              display: 'flex', alignItems: 'center', gap: 8,
+              cursor: 'pointer',
+              transition: 'background 120ms ease',
+              width: 'calc(100% - 20px)',
+              textAlign: 'left',
+              fontFamily: 'inherit',
+              WebkitAppRegion: 'no-drag',
+            }}
+            onClick={onApplyUpdate}
+            onMouseOver={(e) => { e.currentTarget.style.background = 'rgba(196,127,0,0.22)'; }}
+            onMouseOut={(e) => { e.currentTarget.style.background = 'rgba(196,127,0,0.12)'; }}
+          >
+            <span style={{
+              width: 6, height: 6, borderRadius: '50%',
+              background: 'var(--warning, #c47f00)',
+              flexShrink: 0,
+            }} />
+            <span style={{
+              flex: 1, fontSize: 11.5, color: 'var(--text-strong)',
+              fontFamily: 'var(--font-sans)',
+            }}>
+              Update failed{updateError.version ? ` (${updateError.version})` : ''}
+            </span>
+            <span style={{
+              fontSize: 10, color: 'var(--warning, #c47f00)',
+              fontFamily: 'var(--font-mono)',
+              letterSpacing: '0.03em',
+              textTransform: 'uppercase',
+              fontWeight: 600,
+            }}>
+              Try again
+            </span>
+          </button>
+        )}
+
+        {/* Shell updates are download-only and dismissible per version. */}
+        {shellUpdate && (
+          <div
+            style={{
+              margin: '0 10px 6px',
+              padding: '8px 12px',
+              background: 'rgba(93,146,135,0.12)',
+              border: '1px solid rgba(93,146,135,0.30)',
+              borderRadius: 8,
+              display: 'flex', alignItems: 'center', gap: 8,
+              width: 'calc(100% - 20px)',
+              WebkitAppRegion: 'no-drag',
+            }}
+          >
+            <button
+              type="button"
+              onClick={onDownloadShellUpdate}
+              title={`A new version of MindsHub Cowork is available${shellUpdate.version ? ` (${shellUpdate.version})` : ''} — download the installer, then quit the app and open it to update`}
+              style={{
+                flex: 1, display: 'flex', alignItems: 'center', gap: 8,
+                background: 'none', border: 'none', padding: 0, margin: 0,
+                cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+              }}
+            >
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--sage-500, #5D9287)', flexShrink: 0 }} />
+              <span style={{ flex: 1, fontSize: 11.5, color: 'var(--text-strong)', fontFamily: 'var(--font-sans)' }}>
+                New version available{shellUpdate.version ? ` (${shellUpdate.version})` : ''}
+              </span>
+              <span style={{
+                fontSize: 10, color: 'var(--sage-500, #5D9287)', fontFamily: 'var(--font-mono)',
+                letterSpacing: '0.03em', textTransform: 'uppercase', fontWeight: 600,
+              }}>
+                Download
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={onDismissShellUpdate}
+              aria-label="Dismiss update notice"
+              title="Dismiss"
+              style={{
+                background: 'none', border: 'none', padding: '0 2px', margin: 0,
+                cursor: 'pointer', color: 'var(--text-muted)', fontSize: 14, lineHeight: 1, flexShrink: 0,
+              }}
+            >
+              ×
+            </button>
+          </div>
         )}
 
         {/* Footer — always rendered so the theme toggle (relocated here

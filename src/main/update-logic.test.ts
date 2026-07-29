@@ -20,6 +20,9 @@ import {
   uiServerCompatSkipReason,
   decideStartWait,
   startFailureMessage,
+  shellUpdateIsNewer,
+  shellDownloadUrl,
+  summarizeUpdateCheck,
 } from './update-logic';
 
 describe('compareVersions', () => {
@@ -665,5 +668,134 @@ describe('startFailureMessage', () => {
   it('distinguishes "still starting" from "never started"', () => {
     expect(startFailureMessage({ kind: 'timeout', exitCode: null, spawnError: null, elapsedMs: 90_000 }))
       .toBe('The backend was still starting after 90s and never answered /health.');
+  });
+});
+
+describe('parseUiManifest — shellVersion (ENG-849)', () => {
+  const base = { version: '2.26.7.20.1', url: 'https://x/y.tar.gz', sha256: 'a'.repeat(64) };
+
+  it('captures a valid shellVersion (camelCase)', () => {
+    const m = parseUiManifest(JSON.stringify({ ...base, shellVersion: '2.26.7.20.1' }));
+    expect(m?.shellVersion).toBe('2.26.7.20.1');
+  });
+
+  it('accepts snake_case and nested shell.version forms', () => {
+    expect(parseUiManifest(JSON.stringify({ ...base, shell_version: '2.26.7.20.2' }))?.shellVersion).toBe('2.26.7.20.2');
+    expect(parseUiManifest(JSON.stringify({ ...base, shell: { version: '2.26.7.20.3' } }))?.shellVersion).toBe('2.26.7.20.3');
+  });
+
+  it('leaves shellVersion absent when not published (no false reinstall notice)', () => {
+    const m = parseUiManifest(JSON.stringify(base));
+    expect(m).not.toBeNull();
+    expect(m?.shellVersion).toBeUndefined();
+  });
+
+  it('ignores a malformed shellVersion rather than rejecting the manifest (OTA must survive)', () => {
+    const m = parseUiManifest(JSON.stringify({ ...base, shellVersion: 123 }));
+    expect(m).not.toBeNull();
+    expect(m?.version).toBe('2.26.7.20.1');
+    expect(m?.shellVersion).toBeUndefined();
+  });
+});
+
+describe('shellUpdateIsNewer (ENG-849)', () => {
+  it.each([
+    ['newer', '2.26.7.20.1', '2.26.7.13.1', true],
+    ['equal', '2.26.7.20.1', '2.26.7.20.1', false],
+    ['older', '2.26.7.13.1', '2.26.7.20.1', false],
+    ['newer date with a lower major', '0.26.7.21.1', '2.26.7.20.1', true],
+    ['non-CalVer latest', '2.0.7', '2.26.7.20.1', false],
+    ['non-CalVer installed', '2.26.7.20.1', '2.0.7', false],
+    ['missing latest', null, '2.26.7.20.1', false],
+    ['missing installed', '2.26.7.20.1', undefined, false],
+  ])('%s', (_name, latest, installed, expected) => {
+    expect(shellUpdateIsNewer(latest, installed)).toBe(expected);
+  });
+});
+
+describe('shellDownloadUrl (ENG-849)', () => {
+  const base = 'https://downloads.mindshub.ai/mindshub-cowork';
+  it.each([
+    ['darwin', 'prod', `${base}/mac/mindshub-cowork-latest.pkg`],
+    ['win32', 'prod', `${base}/windows/mindshub-cowork-latest.exe`],
+    ['darwin', 'stable', `${base}/mac/mindshub-cowork-staging.pkg`],
+    ['win32', 'stable', `${base}/windows/mindshub-cowork-staging.exe`],
+    ['darwin', 'preview', null],
+    ['darwin', 'dev', null],
+    ['darwin', null, null],
+    ['linux', 'prod', null],
+    ['', 'prod', null],
+  ])('%s / %s', (platform, kind, expected) => {
+    expect(shellDownloadUrl(platform, kind)).toBe(expected);
+  });
+});
+
+describe('summarizeUpdateCheck (ENG-671 "Check for updates")', () => {
+  const clean = { updateAvailable: false };
+  const empty = {
+    updateAvailable: false,
+    uiUpdateAvailable: false,
+    serverUpdateAvailable: false,
+    shellUpdateAvailable: false,
+  };
+
+  it.each([
+    ['all current', { ui: clean, server: clean }, { ok: true, offline: false, ...empty }],
+    ['UI failure', { ui: { ...clean, error: true }, server: clean }, { ok: false, offline: false, ...empty }],
+    ['server failure', { ui: clean, server: { ...clean, error: true } }, { ok: false, offline: false, ...empty }],
+    ['both failures', { ui: { ...clean, error: true }, server: { ...clean, error: true } }, { ok: false, offline: true, ...empty }],
+    [
+      'UI update',
+      { ui: { updateAvailable: true, newVersion: '1.26.7.20.3' }, server: clean },
+      { ok: true, offline: false, updateAvailable: true, uiUpdateAvailable: true, serverUpdateAvailable: false, shellUpdateAvailable: false, uiVersion: '1.26.7.20.3' },
+    ],
+    [
+      'server update',
+      { ui: clean, server: { updateAvailable: true, latestVersion: '0.26.8.1.2' } },
+      { ok: true, offline: false, updateAvailable: true, uiUpdateAvailable: false, serverUpdateAvailable: true, shellUpdateAvailable: false, serverVersion: '0.26.8.1.2' },
+    ],
+    [
+      'both updates',
+      { ui: { updateAvailable: true, newVersion: '1.26.7.20.3' }, server: { updateAvailable: true, latestVersion: '0.26.8.1.2' } },
+      { ok: true, offline: false, updateAvailable: true, uiUpdateAvailable: true, serverUpdateAvailable: true, shellUpdateAvailable: false, uiVersion: '1.26.7.20.3', serverVersion: '0.26.8.1.2' },
+    ],
+    [
+      'shell update',
+      { ui: clean, server: clean, shell: { updateAvailable: true, version: '2.26.7.20.1', downloadUrl: 'https://x/y.pkg' } },
+      { ok: true, offline: false, updateAvailable: true, uiUpdateAvailable: false, serverUpdateAvailable: false, shellUpdateAvailable: true, shellVersion: '2.26.7.20.1', shellDownloadUrl: 'https://x/y.pkg' },
+    ],
+    [
+      'confirmed server update despite UI failure',
+      { ui: { ...clean, error: true }, server: { updateAvailable: true, latestVersion: '0.26.8.1.2' } },
+      { ok: true, offline: false, updateAvailable: true, uiUpdateAvailable: false, serverUpdateAvailable: true, shellUpdateAvailable: false, serverVersion: '0.26.8.1.2' },
+    ],
+    [
+      'confirmed UI update despite server failure',
+      { ui: { updateAvailable: true, newVersion: '1.26.7.20.3' }, server: { ...clean, error: true } },
+      { ok: true, offline: false, updateAvailable: true, uiUpdateAvailable: true, serverUpdateAvailable: false, shellUpdateAvailable: false, uiVersion: '1.26.7.20.3' },
+    ],
+    [
+      'confirmed aggregate update despite a partial error',
+      { ui: clean, server: { updateAvailable: true, latestVersion: '0.26.8.1.2', error: true } },
+      { ok: true, offline: false, updateAvailable: true, uiUpdateAvailable: false, serverUpdateAvailable: true, shellUpdateAvailable: false, serverVersion: '0.26.8.1.2' },
+    ],
+  ])('%s', (_name, input, expected) => {
+    expect(summarizeUpdateCheck(input)).toEqual(expected);
+  });
+
+  it('omits absent versions and download URLs', () => {
+    expect(summarizeUpdateCheck({
+      ui: { updateAvailable: true },
+      server: clean,
+      shell: { updateAvailable: true, version: '2.26.7.20.1' },
+    })).toEqual({
+      ok: true,
+      offline: false,
+      updateAvailable: true,
+      uiUpdateAvailable: true,
+      serverUpdateAvailable: false,
+      shellUpdateAvailable: true,
+      shellVersion: '2.26.7.20.1',
+    });
   });
 });

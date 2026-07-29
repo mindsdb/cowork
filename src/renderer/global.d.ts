@@ -18,9 +18,10 @@ interface AntonTronAPI {
     Promise<{ ok: boolean; error?: string }>;
 
   // UI Updates
-  checkForUpdate: () => Promise<{ updateAvailable: boolean; applied: boolean; newVersion?: string }>;
+  checkForUpdate: () => Promise<import('../shared/update-types').UpdateCheckSummary>;
   applyUpdate: () => Promise<boolean>;
-  onUpdateStatus: (cb: (status: { phase: string; version?: string }) => void) => () => void;
+  onUpdateStatus: (cb: (status: { phase: string; version?: string; currentVersion?: string; downloadUrl?: string }) => void) => () => void;
+  getShellUpdate: () => Promise<{ available: boolean; currentVersion?: string; latestVersion?: string; downloadUrl?: string | null }>;
 
   getPlatform: () => string;
   getUIVersion: () => Promise<{ app: string; ui: string | null; source: 'ota' | 'bundled' }>;

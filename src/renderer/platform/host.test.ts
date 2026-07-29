@@ -204,6 +204,59 @@ describe('electron mode (bridge present)', () => {
     });
   });
 
+  it('getShellUpdate maps the cached main status to the renderer shape when a reinstall is pending', async () => {
+    (window as unknown as Record<string, unknown>).antontron = {
+      getShellUpdate: async () => ({
+        available: true, currentVersion: '2.26.7.13.1', latestVersion: '2.26.7.20.1', downloadUrl: 'https://x/y.pkg',
+      }),
+    };
+    const host = await importHost();
+    await expect(host.getShellUpdate()).resolves.toEqual({
+      version: '2.26.7.20.1', currentVersion: '2.26.7.13.1', downloadUrl: 'https://x/y.pkg',
+    });
+  });
+
+  it('getShellUpdate returns null when nothing is pending, or on an older shell missing the handler', async () => {
+    (window as unknown as Record<string, unknown>).antontron = { getShellUpdate: async () => ({ available: false }) };
+    let host = await importHost();
+    await expect(host.getShellUpdate()).resolves.toBeNull();
+
+    (window as unknown as Record<string, unknown>).antontron = {}; // partial bridge — old main, no handler
+    host = await importHost();
+    await expect(host.getShellUpdate()).resolves.toBeNull();
+  });
+
+  it('exposes getShellUpdate on the curated `host` object, not just as a named export', async () => {
+    // App.jsx calls host.getShellUpdate() through the bundled `host` object; a
+    // method present only as a named export would be a runtime TypeError there.
+    (window as unknown as Record<string, unknown>).antontron = { getShellUpdate: async () => ({ available: false }) };
+    const mod = await importHost();
+    expect(typeof mod.host.getShellUpdate).toBe('function');
+    await expect(mod.host.getShellUpdate()).resolves.toBeNull();
+  });
+
+  it('checkForUpdates normalizes the legacy UI-only reply from an older shell', async () => {
+    // OTA renderers can be newer than main/preload. Older shells return the
+    // original checkForUIUpdate shape, which has no `ok` discriminator.
+    (window as unknown as Record<string, unknown>).antontron = {
+      checkForUpdate: async () => ({
+        updateAvailable: true,
+        applied: false,
+        newVersion: '2.26.7.20.1',
+      }),
+    };
+    const host = await importHost();
+    await expect(host.checkForUpdates()).resolves.toEqual({
+      ok: true,
+      offline: false,
+      updateAvailable: true,
+      uiUpdateAvailable: true,
+      serverUpdateAvailable: false,
+      shellUpdateAvailable: false,
+      uiVersion: '2.26.7.20.1',
+    });
+  });
+
   it('getVersionInfo degrades to web facts when the bridge lacks the method', async () => {
     (window as unknown as Record<string, unknown>).antontron = {}; // partial bridge
     const host = await importHost();

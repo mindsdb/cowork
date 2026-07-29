@@ -1333,6 +1333,11 @@ function AppCore() {
   const [updateStatus, setUpdateStatus] = useState(null); // { phase, version }
   const [updateApplying, setUpdateApplying] = useState(false);
   const toastManager = useToastManager();
+  // Download-only shell notice; dismissal is scoped to the offered version.
+  const [shellUpdate, setShellUpdate] = useState(null); // { version, currentVersion, downloadUrl }
+  const [shellUpdateDismissed, setShellUpdateDismissed] = useState(() => {
+    try { return localStorage.getItem('shellUpdateDismissedVersion') || ''; } catch { return ''; }
+  });
 
   // Load data from server on mount
   const refreshData = useCallback(() => {
@@ -1447,8 +1452,19 @@ function AppCore() {
   // web — host returns a noop unsubscriber there.
   useEffect(() => {
     return host.onUpdateStatus((status) => {
+      if (status?.phase === 'shell-available') {
+        setShellUpdate({ version: status.version, currentVersion: status.currentVersion, downloadUrl: status.downloadUrl });
+        return;
+      }
       setUpdateStatus(status);
     });
+  }, []);
+
+  // Recover a cached notice after an OTA reload drops the original push.
+  useEffect(() => {
+    let cancelled = false;
+    host.getShellUpdate().then((s) => { if (!cancelled && s) setShellUpdate(s); }).catch(() => {});
+    return () => { cancelled = true; };
   }, []);
 
   // Listen for background OAuth refresh failures pushed from main process.
@@ -1483,9 +1499,24 @@ function AppCore() {
     } catch (err) {
       console.error('[ui-update] applyUpdate failed:', err);
       setUpdateApplying(false);
-      setUpdateStatus({ phase: 'error' });
+      // Keep the version so the sidebar can offer a labelled retry rather than
+      // going silent until the next poll.
+      setUpdateStatus({ phase: 'error', version: updateStatus?.version });
     }
   }, [updateApplying, updateStatus]);
+
+  // Settings can pass a URL; a bare click falls back to the cached notice.
+  const handleDownloadShellUpdate = useCallback((url) => {
+    const explicit = typeof url === 'string' && url ? url : null;
+    host.openExternal(explicit || shellUpdate?.downloadUrl || 'https://downloads.mindshub.ai');
+  }, [shellUpdate]);
+
+  const dismissShellUpdate = useCallback(() => {
+    const v = shellUpdate?.version;
+    if (!v) return;
+    try { localStorage.setItem('shellUpdateDismissedVersion', v); } catch { /* private mode */ }
+    setShellUpdateDismissed(v);
+  }, [shellUpdate]);
 
   // ── Boot lifecycle decisions ─────────────────────────────────────
   // Both of these used to live inside HomeView, but the user can
@@ -3708,7 +3739,11 @@ function AppCore() {
           navTitle={settings.navTitle || null}
           navLogo={settings.navLogo || null}
           updateAvailable={updateStatus?.phase === 'available' ? { version: updateStatus.version } : null}
+          updateError={updateStatus?.phase === 'error' ? { version: updateStatus.version } : null}
           onApplyUpdate={handleApplyUpdate}
+          shellUpdate={shellUpdate && shellUpdate.version !== shellUpdateDismissed ? shellUpdate : null}
+          onDownloadShellUpdate={handleDownloadShellUpdate}
+          onDismissShellUpdate={dismissShellUpdate}
           onShowServerHelp={() => openSettings('backend')}
           onToggleServer={async () => {
             if (serverBusy) return;
@@ -4035,6 +4070,8 @@ function AppCore() {
               isSsoConnected={ssoConnected}
               ssoError={ssoError}
               onSsoSignIn={!ssoConnected && host.isElectron ? async () => { setSettingsOpen(false); await handleSsoSignIn(); } : undefined}
+              shellUpdate={shellUpdate}
+              onDownloadShellUpdate={handleDownloadShellUpdate}
             />
           </Modal>
         ) : (
@@ -4080,6 +4117,8 @@ function AppCore() {
                 isSsoConnected={ssoConnected}
                 ssoError={ssoError}
                 onSsoSignIn={!ssoConnected && host.isElectron ? async () => { setSettingsOpen(false); await handleSsoSignIn(); } : undefined}
+                shellUpdate={shellUpdate}
+                onDownloadShellUpdate={handleDownloadShellUpdate}
               />
             </ModalBody>
           </Modal>
