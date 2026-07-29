@@ -1,11 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { pushSettingsToDb, pushSettingsToDbWithRetry } from './pushSettings';
 
-// pushSettingsToDb does ONE bulk PUT to `${BASE}/settings/` with body
-// `{ values: { db_key: value } }`. Callers pass DB-keyed values directly — the
-// client no longer holds an `.env`→DB map or any provider normalization, so
-// these assert the object is sent through verbatim. We stub fetch and inspect
-// that single call.
+// pushSettingsToDb does ONE bulk PUT to `${BASE}/settings/` with `{ values }`.
+// Callers pass DB-keyed values directly — no `.env`→DB map, no normalization —
+// so these assert the object is sent through verbatim.
 function lastPutValues(calls: any[]): Record<string, string> {
   const put = calls.find(([, opts]) => opts?.method === 'PUT');
   if (!put) return {};
@@ -49,9 +47,8 @@ describe('pushSettingsToDb', () => {
       coding_model: 'llama-3.3-70b',
     };
     await pushSettingsToDb(values);
-    // The bulk write carries every key exactly as given — the client does not
-    // rewrite `openai_compatible`, does not split models into a second write,
-    // and does not re-tag anything as minds_cloud.
+    // Carried exactly as given — no rewrite of `openai_compatible`, no second
+    // model write, no re-tag to minds_cloud.
     expect(lastPutValues(fetchMock.mock.calls)).toEqual(values);
   });
 

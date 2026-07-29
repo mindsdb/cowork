@@ -834,8 +834,7 @@ function setupIPC() {
   // free users hit a paywall and may bail to BYOK. So login only
   // refreshes in-memory tokens + persists the refresh token to disk
   // (for next-launch silent refresh); the LLM credential is minted in
-  // `mindshub:finalize` and returned to the renderer, which persists it
-  // via the normal onboarding push (ENG-1127).
+  // `mindshub:finalize` and persisted by the renderer's onboarding push (ENG-1127).
   // Shared by MINDSHUB_LOGIN and MINDSHUB_SIGNUP — the same loopback PKCE
   // exchange against Keycloak; only the browser entry point (login vs
   // registration form) and the callback patience differ. `anton-desktop`
@@ -890,12 +889,10 @@ function setupIPC() {
 
   // Commit MindsHub as the LLM provider. The Keycloak JWT alone is
   // NOT a valid LLM credential — the gateway only accepts an `mdb_*`
-  // API key minted through the auth-service. We exchange the JWT for a
-  // key here and return it to the renderer, which persists it via the
-  // normal onboarding push (the single bulk PUT /settings/) — ENG-1127.
-  // A credential written to the running server takes effect on the next
-  // request (per-request DB-cache resolution), so no `.env` write or
-  // server restart is needed here.
+  // API key minted through the auth-service. We exchange the JWT for a key here
+  // and return it to the renderer, which persists it via the onboarding push
+  // (bulk PUT /settings/, ENG-1127). A credential written to the running server
+  // takes effect next request (per-request DB-cache), so no `.env` write/restart.
   // Renderer only calls this on the paid-user / Minds-as-LLM path.
   ipcMain.handle(IPC.MINDSHUB_FINALIZE, async () => {
     const token = getAccessToken();
@@ -1092,11 +1089,9 @@ function setupIPC() {
     return true;
   });
 
-  // Onboarding funnel analytics forwarder (ENG-1127). These ANTONAPP_* events
-  // used to fire as a side effect of the (now-removed) SETTINGS_SAVE .env-write
-  // handler; the renderer now fires them at the equivalent onboarding moments
-  // via host.onboardingAnalytics. Allowlisted so the renderer can only emit the
-  // known onboarding events, never an arbitrary action.
+  // Onboarding funnel analytics forwarder (ENG-1127) — these ANTONAPP_* events
+  // used to fire from the removed SETTINGS_SAVE handler. Allowlisted so the
+  // renderer can only emit known events, never an arbitrary action.
   const ONBOARDING_ANALYTICS_EVENTS = new Set([
     'ANTONAPP_TERMS_ACCEPTED',
     'ANTONAPP_MINDSLLM',

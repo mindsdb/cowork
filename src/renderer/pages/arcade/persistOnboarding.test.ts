@@ -9,8 +9,7 @@ function makeDeps(over: Partial<PersistDeps> = {}): PersistDeps {
   };
 }
 
-// ENG-1127: persistOnboarding takes a DB-keyed values object (not `.env` lines)
-// and hands it straight to the authoritative bulk push.
+// ENG-1127: persistOnboarding takes a DB-keyed values object (not `.env` lines).
 const VALUES = { anthropic_api_key: 'sk-ant', planning_provider: 'anthropic' };
 
 describe('persistOnboarding', () => {
@@ -24,10 +23,9 @@ describe('persistOnboarding', () => {
     expect(pushToServer).toHaveBeenCalledWith(VALUES);
   });
 
-  // ENG-1127: a single bulk push is the ONLY write. It's authoritative — a
-  // `false` there means the settings did NOT persist, so onboarding must not
-  // advance to success (ENG-817 review), and the best-effort harness sync is
-  // skipped.
+  // ENG-1127: the single bulk push is the ONLY write and is authoritative — a
+  // `false` means settings did NOT persist, so onboarding must not advance to
+  // success (ENG-817), and the best-effort harness sync is skipped.
   it('fails when the bulk push returns false, and skips the best-effort harness sync', async () => {
     const syncHarness = vi.fn(async () => {});
     const d = makeDeps({ pushToServer: vi.fn(async () => false), syncHarness });
@@ -41,8 +39,7 @@ describe('persistOnboarding', () => {
   });
 
   // ENG-848: syncHarness runs AFTER the authoritative bulk push and is
-  // best-effort — a throw there must not bounce a user whose config already
-  // persisted to the onboarding error screen.
+  // best-effort — a throw must not bounce a user whose config already persisted.
   it('still succeeds when syncHarness throws after the push lands', async () => {
     const d = makeDeps({ syncHarness: vi.fn(async () => { throw new Error('harness sync flaked'); }) });
     await expect(persistOnboarding(d, VALUES)).resolves.toEqual({ ok: true });

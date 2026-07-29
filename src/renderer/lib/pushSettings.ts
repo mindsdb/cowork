@@ -1,33 +1,21 @@
 /**
- * Push settings to the cowork-server SQLite database in ONE transactional bulk
- * write.
+ * Push settings to the cowork-server SQLite DB in ONE transactional bulk write.
  *
- * ENG-1127: every client write path (onboarding, MindsHub login, the settings
- * form) now goes through the same endpoint the settings form uses —
- * `PUT /api/v1/settings/` with body `{ values: { db_key: value } }`, applied
- * atomically server-side (all keys or none). The DB is authoritative; the
- * server owns the `.env` export for the standalone `anton` CLI, so the client
- * no longer writes `.env` for settings at all.
- *
- * Callers pass DB-keyed values DIRECTLY. There is no `.env`→DB key map and no
- * provider normalization in the client — the server's SETTING_ENV_ALIASES is
- * the single source of truth for that. The only knowledge shared with the
- * client is the DB setting key names themselves (the settings-API contract).
+ * ENG-1127: every client write path (onboarding, MindsHub login, settings form)
+ * uses `PUT /api/v1/settings/` with body `{ values: { db_key: value } }`,
+ * applied atomically server-side. The client no longer writes `.env` and passes
+ * DB-keyed values DIRECTLY — no `.env`→DB key map, no provider normalization
+ * (the server owns that).
  */
 import { BASE, authFetch } from '../cowork/api';
 
 /**
- * Push a map of DB setting keys → values to the backend via ONE bulk
- * `PUT ${BASE}/settings/` with body `{ values }`.
- *
- * Returns true on a 2xx response (or when `values` is empty — nothing to
- * write, so vacuously successful and no request is made), false if the write
- * was rejected or the server was unreachable. Callers may use this to decide
- * whether to retry or defer.
+ * Bulk `PUT ${BASE}/settings/` with body `{ values }`. Returns true on a 2xx
+ * (or when `values` is empty — nothing to write, vacuously true, no request),
+ * false if rejected or the server was unreachable.
  */
 export async function pushSettingsToDb(values: Record<string, string>): Promise<boolean> {
-  // Nothing to persist → vacuously successful, no request (matches the old
-  // syncSettingsToDb/syncModelsToDb "no writes → true" contract).
+  // Nothing to persist → vacuously true, no request.
   if (Object.keys(values).length === 0) return true;
 
   try {
@@ -45,15 +33,11 @@ export async function pushSettingsToDb(values: Record<string, string>): Promise<
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 /**
- * pushSettingsToDb with a few retries and exponential backoff — for the single
- * post-install push (ENG-1127, retry shape reused from the old
- * syncModelsToDbWithRetry). On a fresh install the cowork-server has just been
- * installed/started, so a lone failed request is usually a transient settling
- * blip; the backoff gives it a moment to come up rather than hammering it
- * back-to-back. Returns true once a full write succeeds (or there's nothing to
- * write), false if every attempt failed — on false the caller MUST keep its
- * payload and route to a retryable error rather than strand a fresh install
- * config-not-ready. `baseDelayMs` is 0 in tests to keep them fast.
+ * pushSettingsToDb with retries + exponential backoff for the single
+ * post-install push (ENG-1127) — on a fresh install the server has just started,
+ * so a lone failure is usually a transient blip. On false (all attempts failed)
+ * the caller MUST keep its payload and route to a retryable error rather than
+ * strand a fresh install config-not-ready. `baseDelayMs` is 0 in tests.
  */
 export async function pushSettingsToDbWithRetry(
   values: Record<string, string>,

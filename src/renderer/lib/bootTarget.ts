@@ -14,13 +14,11 @@ export interface BootHost {
 /**
  * Decide the first screen after the welcome orb.
  *
- * Consent comes only from the client-side localStorage flag (`hasLocalConsent`,
- * passed in so this stays free of DOM/global access). ENG-1127: consent is no
- * longer read from `.env`/`/settings/raw` — the localStorage flag is the sole
- * client record pending the auth-layer consent record being introduced
- * separately. `config_ready` (checkConfigured/health) is the real readiness
- * signal. A genuine throw (Electron IPC bridge failure, or the server being
- * unreachable) routes to `auth`.
+ * Consent comes only from the localStorage flag (`hasLocalConsent`, passed in
+ * to stay free of DOM/global access) — ENG-1127 no longer reads it from
+ * `.env`/`/settings/raw`. `config_ready` (checkConfigured/health) is the real
+ * readiness signal; a genuine throw (IPC failure or unreachable server) routes
+ * to `auth`.
  */
 export async function resolveBootTarget(
   host: BootHost,

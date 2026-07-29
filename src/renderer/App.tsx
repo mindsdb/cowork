@@ -93,12 +93,11 @@ function MoonIcon({ size = 15 }: { size?: number }) {
 export default function App() {
   const [page, setPage] = useState<Page>('loading');
   const [coworker] = useState(recallCoworker);
-  // ENG-922/ENG-1127: the FULL chosen settings as a DB-keyed values object
-  // handed up by OnboardingScreen when it deferred to the setup/install screen
-  // (server wasn't up to take the DB write). Consumed once by handlePostAuth
-  // after install, which pushes them via the single bulk PUT. A ref (not state)
-  // — it drives a one-shot side effect, not a render; it also must survive the
-  // auth→setup→install page transitions without re-rendering.
+  // ENG-922/ENG-1127: the FULL chosen settings (DB-keyed values) handed up by
+  // OnboardingScreen when it deferred to setup (server wasn't up for the write).
+  // Consumed once by handlePostAuth after install via the bulk PUT. A ref (not
+  // state) — a one-shot side effect that must survive the auth→setup→install
+  // transitions without re-rendering.
   const pendingSettingsRef = useRef<Record<string, string> | null>(null);
   // Guards the setupError Retry button so a double-click can't fan out redundant
   // concurrent handshakes.
@@ -194,21 +193,11 @@ export default function App() {
     }
   };
 
-<<<<<<< HEAD
   // After login (SSO or BYOK): consent recorded, provider chosen. Ensure the
   // backend is installed, then run the post-auth push. `deferredValues` is set
   // only when onboarding deferred to setup (server-not-up race, ENG-922),
   // stashed for handlePostAuth. restartServer is now optional/harmless — a
   // credential written via the settings API takes effect next request.
-=======
-  // After login (SSO or BYOK): consent is recorded and a provider is chosen.
-  // Ensure the backend is installed, then run the post-auth push.
-  // `deferredValues` is present only when onboarding deferred to setup (the
-  // fresh-install/server-not-up race, ENG-922); stashed for handlePostAuth to
-  // push once install finishes. restartServer is now optional/harmless — a
-  // credential written via the settings API takes effect on the next request
-  // (no `.env` re-read), so leaving it is fine.
->>>>>>> 92a9cafb (refactor(settings): build DB-keyed values directly; drop the client .env->DB map (ENG-1127))
   const handleAuthComplete = async (deferredValues?: Record<string, string>) => {
     pendingSettingsRef.current = deferredValues ?? null;
     rememberTermsConsent();

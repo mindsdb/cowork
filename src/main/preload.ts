@@ -103,8 +103,7 @@ contextBridge.exposeInMainWorld('antontron', {
   logout: () => ipcRenderer.invoke(IPC.AUTH_LOGOUT),
 
   // Onboarding funnel analytics forwarder (ENG-1127) — relocated from the
-  // removed SETTINGS_SAVE handler; forwards an allowlisted ANTONAPP_* event to
-  // the main-process analytics collector.
+  // removed SETTINGS_SAVE handler; forwards an allowlisted ANTONAPP_* event.
   onboardingAnalytics: (action: string) => ipcRenderer.invoke(IPC.ONBOARDING_ANALYTICS, action),
 
   // Keychain preference (Electron-only, mac-relevant)

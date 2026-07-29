@@ -1,10 +1,6 @@
-// Provider onboarding ("POWER UP"), arcade edition.
-//
-// Same phase machine (choose / validating / minds-no-llm / success / error) as
-// the previous Onboarding page, re-skinned as the stage where you plug a power
-// source into the coworker you just chose. ENG-1127: settings are written ONLY
-// via the single transactional bulk PUT /settings/ (pushSettingsToDb) — the
-// same path the settings form uses. No `.env` write, no `.env`→DB sync.
+// Provider onboarding ("POWER UP"), arcade edition. ENG-1127: settings are
+// written ONLY via the single bulk PUT /settings/ (pushSettingsToDb) — no
+// `.env` write, no sync.
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { host } from '../../platform/host';
@@ -60,18 +56,11 @@ async function syncHarness(harnessId: string): Promise<void> {
   } catch {}
 }
 
-// The onboarding funnel analytics (ANTONAPP_*) used to fire as a side effect of
-// the main-process `.env`-write handler (SETTINGS_SAVE), which ENG-1127 removed.
-// Fire them here at the equivalent onboarding moments instead — forwarded to
-// the Electron ZoomInfo collector via host.onboardingAnalytics. No-op on web
-// (these events only ever fired in the Electron shell). Best-effort: analytics
-// must never break onboarding (host.onboardingAnalytics never throws).
-//
-// This covers the finalizeSettings moment, derived from the DB-values object:
-// terms consent is recorded on every finalize; the LLM-choice event is MINDSLLM
-// when the chosen provider is minds_cloud, otherwise BYOK when a provider key
-// was supplied. The two non-finalize moments (reached minds-no-LLM; upgrade
-// required) fire their events directly at their call sites.
+// Onboarding funnel analytics (ANTONAPP_*) used to fire as a side effect of the
+// removed `.env`-write handler (SETTINGS_SAVE, ENG-1127). Fire them here via
+// host.onboardingAnalytics — no-op on web, best-effort. This covers the
+// finalizeSettings moment; the two non-finalize moments (minds-no-LLM; upgrade
+// required) fire at their own call sites.
 function fireOnboardingAnalytics(values: Record<string, string>): void {
   host.onboardingAnalytics('ANTONAPP_TERMS_ACCEPTED');
   if (values.planning_provider === 'minds_cloud') host.onboardingAnalytics('ANTONAPP_MINDSLLM');
@@ -79,28 +68,24 @@ function fireOnboardingAnalytics(values: Record<string, string>): void {
 }
 
 export interface PersistDeps {
-  /** Authoritative DB write via the transactional bulk PUT /settings/. Takes a
-   *  DB-keyed values object. Returns false if the write was rejected or the
-   *  server was unreachable. */
+  /** Authoritative bulk PUT /settings/ with a DB-keyed values object. Returns
+   *  false if rejected or the server was unreachable. */
   pushToServer: (values: Record<string, string>) => Promise<boolean>;
   syncHarness: () => Promise<void>;
 }
 
 export type PersistResult =
   | { ok: true }
-  // dbSyncFailed marks specifically a `pushToServer` false, as opposed to a
-  // thrown error — so callers can tell "the write was rejected/unreachable"
-  // (the expected onboarding/install race) apart from an unexpected failure
-  // (see resolveFinalizeOutcome).
+  // dbSyncFailed marks a `pushToServer` false (write rejected/unreachable — the
+  // expected onboarding/install race) vs a thrown error (see
+  // resolveFinalizeOutcome).
   | { ok: false; error: string; dbSyncFailed?: true };
 
-// Run the onboarding persist sequence and report whether the config actually
-// landed. The bulk DB write is AUTHORITATIVE — a `false` there means the
-// settings did NOT persist (rejected or server unreachable), so onboarding must
-// not advance to success over an unsaved config (raised in ENG-817 review).
-// ENG-1127: provider + keys + model all ride the one bulk PUT, so there's no
-// separate model write to reconcile. Exported pure so the success/failure
-// decision is unit-tested without rendering the component.
+// Run the onboarding persist sequence and report whether the config landed. The
+// bulk DB write is AUTHORITATIVE — a `false` means settings did NOT persist, so
+// onboarding must not advance to success over an unsaved config (ENG-817). All
+// keys ride the one bulk PUT (ENG-1127). Exported pure so the decision is
+// unit-tested without rendering.
 export async function persistOnboarding(
   deps: PersistDeps,
   values: Record<string, string>,
@@ -115,9 +100,8 @@ export async function persistOnboarding(
         dbSyncFailed: true,
       };
     }
-    // harness records the chosen cartridge. Best-effort: the config has ALREADY
-    // persisted authoritatively (dbOk), so a flaky harness sync must NOT bounce
-    // the user to the error screen over a saved config (ENG-848).
+    // harness records the chosen cartridge. Best-effort: config already
+    // persisted (dbOk), so a flaky harness sync must NOT bounce to error (ENG-848).
     try {
       await deps.syncHarness();
     } catch (e) {
@@ -171,11 +155,10 @@ function resolveValidationTarget(
   return { provider, baseUrl };
 }
 
-// Build the DB-keyed values a BYOK provider choice writes. Keys are the
-// backend setting names directly — no `.env`→DB map, no provider
-// normalization (ENG-1127). The provider routing is unchanged from before:
-// gemini, openai and openai-compatible all land on the openai slot with
-// provider `openai_compatible`; only anthropic uses its own slot/provider.
+// Build the DB-keyed values a BYOK provider choice writes (ENG-1127 — keys are
+// backend setting names directly, no map/normalization). Routing unchanged:
+// gemini, openai and openai-compatible all use the openai slot with provider
+// `openai_compatible`; only anthropic uses its own slot.
 function buildProviderEnv(
   bp: ByokProvider,
   key: string,
@@ -217,9 +200,8 @@ export default function OnboardingScreen({
   coworker: { id: string; label: string; sprite: SpriteName };
   /**
    * Advance out of onboarding. On the setup-deferral path (fresh install, server
-   * not up yet) the caller receives the FULL just-chosen DB-keyed values so the
-   * post-install push can persist them once (ENG-922/ENG-1127); omitted on every
-   * other path.
+   * not up yet) the caller receives the FULL just-chosen DB-keyed values for the
+   * post-install push (ENG-922/ENG-1127); omitted otherwise.
    */
   onComplete: (pendingValues?: Record<string, string>) => void;
   /** Optional — returns to the coworker-select screen. */
@@ -352,9 +334,8 @@ export default function OnboardingScreen({
   // resolveFinalizeOutcome). Any other failure surfaces as a retryable error.
   // Shared by every finalize path so they can't drift.
   const finalizeSettings = async (values: Record<string, string>) => {
-    // Fire the funnel analytics before the push (mirrors the old .env-write
-    // handler, which fired regardless of the DB outcome) so a deferred/failed
-    // push still records that the user made a provider choice.
+    // Fire analytics before the push (like the old .env handler, regardless of
+    // outcome) so a deferred/failed push still records the choice.
     fireOnboardingAnalytics(values);
     const res = await persistOnboarding(
       {
@@ -372,12 +353,10 @@ export default function OnboardingScreen({
       return;
     }
     if (outcome.action === 'defer') {
-      // Server isn't up yet — skip the "success" flash (misleading here) and
-      // let onComplete's checkInstall gate show the setup/install screen. The
-      // bulk push never reached the DB, so hand the FULL just-chosen DB values
-      // up: the post-install push persists them once (ENG-922/ENG-1127),
-      // otherwise the user lands config-not-ready. In-memory choice, never a
-      // .env re-read.
+      // Server isn't up yet — skip the "success" flash and let onComplete's
+      // checkInstall gate show the setup screen. The push never reached the DB,
+      // so hand the FULL DB values up for the post-install push
+      // (ENG-922/ENG-1127) — otherwise config-not-ready. Never a .env re-read.
       onComplete(values);
       return;
     }
@@ -406,9 +385,8 @@ export default function OnboardingScreen({
         return;
       }
 
-      // DB-keyed Stage-1 MindsHub values. No terms_consent / minds_enabled —
-      // those aren't DB settings (consent = localStorage in App; there's no
-      // minds_enabled key). ENG-1127: values are DB-keyed at the source.
+      // DB-keyed Stage-1 MindsHub values (ENG-1127). No terms_consent /
+      // minds_enabled — not DB settings (consent = localStorage in App).
       const mindsValues: Record<string, string> = {
         minds_api_key: apiKey.trim(),
         minds_url: mindsBase,
@@ -435,12 +413,10 @@ export default function OnboardingScreen({
         };
         await saveFinal(values);
       } else {
-        // No LLM credits on this MindsHub key. Its Stage-1 keys stay in
-        // component state (apiKey/mindsUrl) and are folded into the final push
-        // when the user connects a BYOK provider — no interim .env write
-        // (ENG-1127). Fire the funnel analytics here so the "reached
-        // minds-no-LLM" event isn't lost if the user abandons before connecting
-        // an LLM (matches the old interim-save analytics: terms + MindsLLM).
+        // No LLM credits. Stage-1 keys stay in component state (apiKey/mindsUrl)
+        // and fold into the final push when a BYOK provider is connected — no
+        // interim .env write (ENG-1127). Fire analytics here so the
+        // "minds-no-LLM" event isn't lost if the user abandons (terms + MindsLLM).
         host.onboardingAnalytics('ANTONAPP_TERMS_ACCEPTED');
         host.onboardingAnalytics('ANTONAPP_MINDSLLM');
         setStep('byok');
@@ -498,15 +474,12 @@ export default function OnboardingScreen({
       return;
     }
 
-    // Merge the new LLM vars onto the Stage-1 MindsHub keys (kept intact for
-    // publishing/connectors). ENG-1127: the Stage-1 values live in component
-    // state — no `.env`/`/settings/raw` re-read. A minds key is present only on
-    // the "valid MindsHub key, no LLM credits" path (the user typed a key that
-    // validated); the SSO-no-credits and "continue without an account" paths
-    // carry no minds key, matching the old behavior where those flows had none
-    // in `.env` either. The chosen provider is the BYOK provider's own DB enum
-    // (from buildProviderEnv) — a genuine openai-compatible endpoint is NOT
-    // re-tagged minds_cloud just because a minds key rides alongside it.
+    // Merge the new LLM vars onto the Stage-1 MindsHub keys (kept for
+    // publishing/connectors). ENG-1127: Stage-1 values live in component state —
+    // no `.env` re-read. A minds key is present only on the "valid key, no LLM
+    // credits" path; SSO-no-credits and "continue without an account" carry
+    // none. The chosen provider stays the BYOK provider's own DB enum — NOT
+    // re-tagged minds_cloud just because a minds key rides alongside.
     const stage1: Record<string, string> = {};
     const mindsKey = apiKey.trim();
     if (mindsKey) {
@@ -595,9 +568,8 @@ export default function OnboardingScreen({
     // No LLM credits — account authenticated but key wasn't provisioned.
     // Save terms consent and redirect to BYOK so the user can pick a provider.
     if (finalizeResult.upgradeRequired) {
-      // Consent persists client-side (localStorage in App on auth-complete); no
-      // .env write here (ENG-1127). Fire the terms-accepted funnel event that
-      // the removed .env write used to trigger.
+      // Consent persists client-side (localStorage in App); no .env write here
+      // (ENG-1127). Fire the terms-accepted event the removed .env write did.
       host.onboardingAnalytics('ANTONAPP_TERMS_ACCEPTED');
       setMindsNoCredits(true);
       setStep('byok');

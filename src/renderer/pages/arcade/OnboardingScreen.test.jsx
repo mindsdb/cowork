@@ -13,8 +13,7 @@ const hostMock = vi.hoisted(() => ({
   openExternal: vi.fn(),
   validateProvider: vi.fn(async () => ({ ok: true })),
   restartServer: vi.fn(async () => {}),
-  // ENG-1127: onboarding fires the funnel analytics through this forwarder
-  // (relocated from the removed .env-write handler); a no-op in these tests.
+  // ENG-1127: funnel analytics forwarder; no-op in these tests.
   onboardingAnalytics: vi.fn(),
 }));
 // Mutable keycloak mock so a test can flip authenticated (standalone/localhost
@@ -23,8 +22,8 @@ const keycloakMock = vi.hoisted(() => ({ authenticated: false }));
 vi.mock('../../platform/host', () => ({ host: hostMock }));
 vi.mock('../../cowork/api', () => ({ BASE: '/api/v1', fetchRecommendedModels: vi.fn(async () => ({})) }));
 vi.mock('../../lib/keycloak', () => ({ keycloak: keycloakMock }));
-// ENG-1127: settings now write via the single bulk PUT (pushSettingsToDb). Mock
-// it so a test can make it fail (server not up yet during onboarding).
+// ENG-1127: settings write via the single bulk PUT (pushSettingsToDb). Mock it
+// so a test can make it fail (server not up during onboarding).
 vi.mock('../../lib/pushSettings', () => ({
   pushSettingsToDb: vi.fn(async () => true),
 }));
@@ -144,13 +143,11 @@ describe('OnboardingScreen — desktop sign-up returns to the app (ENG-917)', ()
   });
 });
 
-// ENG-922/ENG-1127: on a fresh desktop install the cowork-server isn't up
-// during onboarding, so the bulk push fails and finalizeSettings DEFERS to the
-// install screen. The push never reached the DB, so the FULL chosen settings
-// (a DB-keyed values object) must be handed to onComplete for a one-time
-// post-install push — otherwise a BYOK user lands config-not-ready ("Select a
-// model"). This locks the OnboardingScreen half of that wiring (the App-side
-// push is exercised by the manual clean-machine E2E).
+// ENG-922/ENG-1127: on a fresh desktop install the server isn't up during
+// onboarding, so the bulk push fails and finalizeSettings DEFERS to setup. The
+// push never reached the DB, so the FULL chosen settings must be handed to
+// onComplete for a one-time post-install push — otherwise a BYOK user lands
+// config-not-ready. Locks the OnboardingScreen half (App-side push is in E2E).
 describe('OnboardingScreen — BYOK setup-deferral hands the settings up (ENG-922/ENG-1127)', () => {
   beforeEach(() => {
     hostMock.isWeb = false;      // desktop
@@ -183,9 +180,8 @@ describe('OnboardingScreen — BYOK setup-deferral hands the settings up (ENG-92
     fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
 
     await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
-    // The FULL DB-keyed values are handed up for the post-install push — not
-    // just the model, so provider + base URL land too (never dropped). Keys are
-    // the backend setting names, provider enum is snake_case at the source.
+    // The FULL DB-keyed values are handed up (not just the model) so provider +
+    // base URL land too. Keys are backend setting names; provider enum snake_case.
     expect(onComplete).toHaveBeenCalledWith(
       expect.objectContaining({
         planning_model: 'llama-3.3-70b',

@@ -749,11 +749,9 @@ export async function logout(): Promise<void> {
 }
 
 // Fire an onboarding funnel analytics event (ANTONAPP_*). ENG-1127: these used
-// to fire as a side effect of the main-process .env-write handler, which is now
-// removed; the renderer fires them at the equivalent onboarding moments through
-// this thin forwarder to the Electron ZoomInfo collector (main/analytics
-// sendEvent). No-op on web — these events only ever fired in the Electron
-// shell. Fire-and-forget: analytics must never break onboarding.
+// to fire from the removed main-process .env-write handler; the renderer now
+// fires them through this thin forwarder to the Electron analytics collector.
+// No-op on web. Fire-and-forget: analytics must never break onboarding.
 export function onboardingAnalytics(action: string): void {
   if (isElectron && typeof bridge.onboardingAnalytics === 'function') {
     try {
