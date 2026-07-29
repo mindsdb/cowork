@@ -17,6 +17,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.unstubAllGlobals();
   setUrl('http://localhost:3000/');
 });
 
@@ -216,13 +217,9 @@ describe('electron mode (bridge present)', () => {
     });
   });
 
-  it('getShellUpdate returns null when nothing is pending, or on an older shell missing the handler', async () => {
+  it('getShellUpdate returns null when a new shell reports nothing pending', async () => {
     (window as unknown as Record<string, unknown>).antontron = { getShellUpdate: async () => ({ available: false }) };
-    let host = await importHost();
-    await expect(host.getShellUpdate()).resolves.toBeNull();
-
-    (window as unknown as Record<string, unknown>).antontron = {}; // partial bridge — old main, no handler
-    host = await importHost();
+    const host = await importHost();
     await expect(host.getShellUpdate()).resolves.toBeNull();
   });
 
@@ -239,12 +236,17 @@ describe('electron mode (bridge present)', () => {
     // OTA renderers can be newer than main/preload. Older shells return the
     // original checkForUIUpdate shape, which has no `ok` discriminator.
     (window as unknown as Record<string, unknown>).antontron = {
+      getUIVersion: async () => ({ app: '2.26.7.20.1', ui: null, source: 'bundled' }),
       checkForUpdate: async () => ({
         updateAvailable: true,
         applied: false,
         newVersion: '2.26.7.20.1',
       }),
     };
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ shellVersion: '2.26.7.20.1' }),
+    })));
     const host = await importHost();
     await expect(host.checkForUpdates()).resolves.toEqual({
       ok: true,
@@ -254,6 +256,71 @@ describe('electron mode (bridge present)', () => {
       serverUpdateAvailable: false,
       shellUpdateAvailable: false,
       uiVersion: '2.26.7.20.1',
+    });
+  });
+
+  it('falls back to a renderer-side manifest check on a shell too old for the bridge (ENG-1103)', async () => {
+    // Old shell: a real bridge, but no getShellUpdate handler. This is the
+    // cohort that would otherwise never be told a newer app version exists.
+    (window as unknown as Record<string, unknown>).antontron = {
+      getUIVersion: async () => ({ app: '2.26.7.10.1', ui: null, source: 'bundled' }),
+    };
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ version: '2.26.7.10.1', url: 'u', sha256: 's', shellVersion: '2.26.7.20.1' }),
+    })));
+    const host = await importHost();
+    await expect(host.getShellUpdate()).resolves.toEqual({ version: '2.26.7.20.1', currentVersion: '2.26.7.10.1' });
+  });
+
+  it('the renderer-side fallback fails closed: not-newer, missing shellVersion, or a bad fetch → null', async () => {
+    (window as unknown as Record<string, unknown>).antontron = {
+      getUIVersion: async () => ({ app: '2.26.7.20.1', ui: null, source: 'bundled' }),
+    };
+    // Published shell equals installed → not strictly newer.
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ shellVersion: '2.26.7.20.1' }) })));
+    let host = await importHost();
+    await expect(host.getShellUpdate()).resolves.toBeNull();
+    // Manifest carries no shellVersion (a UI-only publish).
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ version: '2.26.7.30.1' }) })));
+    host = await importHost();
+    await expect(host.getShellUpdate()).resolves.toBeNull();
+    // The fetch itself fails.
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, json: async () => ({}) })));
+    host = await importHost();
+    await expect(host.getShellUpdate()).resolves.toBeNull();
+  });
+
+  it('a new shell (bridge has getShellUpdate) never hits the network fallback', async () => {
+    const fetchSpy = vi.fn(async () => ({ ok: true, json: async () => ({ shellVersion: '9.26.9.9.9' }) }));
+    vi.stubGlobal('fetch', fetchSpy);
+    (window as unknown as Record<string, unknown>).antontron = { getShellUpdate: async () => ({ available: false }) };
+    const host = await importHost();
+    await expect(host.getShellUpdate()).resolves.toBeNull();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('a manual legacy check keeps a renderer-detected shell update in the unified result', async () => {
+    (window as unknown as Record<string, unknown>).antontron = {
+      getUIVersion: async () => ({ app: '2.26.7.10.1', ui: null, source: 'bundled' }),
+      checkForUpdate: async () => ({
+        updateAvailable: false,
+        applied: false,
+      }),
+    };
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ shellVersion: '2.26.7.20.1' }),
+    })));
+    const host = await importHost();
+    await expect(host.checkForUpdates()).resolves.toEqual({
+      ok: true,
+      offline: false,
+      updateAvailable: true,
+      uiUpdateAvailable: false,
+      serverUpdateAvailable: false,
+      shellUpdateAvailable: true,
+      shellVersion: '2.26.7.20.1',
     });
   });
 
