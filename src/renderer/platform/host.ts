@@ -478,7 +478,25 @@ export async function getShellUpdate(): Promise<ShellUpdate | null> {
 
 export async function checkForUpdates(): Promise<UpdateCheckSummary> {
   if (isElectron && typeof bridge.checkForUpdate === 'function') {
-    return bridge.checkForUpdate();
+    const reply = await bridge.checkForUpdate();
+    if (reply && typeof reply === 'object' && 'ok' in reply) {
+      return reply;
+    }
+
+    // An OTA-updated renderer can still be hosted by an older Electron shell,
+    // whose UI_UPDATE_CHECK reply predates the unified UI/server/shell summary.
+    // Normalize that UI-only shape so Settings does not mistake a missing `ok`
+    // field for a failed check.
+    const uiUpdateAvailable = !!reply?.updateAvailable;
+    return {
+      ok: true,
+      offline: false,
+      updateAvailable: uiUpdateAvailable,
+      uiUpdateAvailable,
+      serverUpdateAvailable: false,
+      shellUpdateAvailable: false,
+      ...(typeof reply?.newVersion === 'string' ? { uiVersion: reply.newVersion } : {}),
+    };
   }
   return {
     ok: true,

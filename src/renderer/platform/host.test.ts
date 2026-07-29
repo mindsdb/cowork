@@ -235,6 +235,28 @@ describe('electron mode (bridge present)', () => {
     await expect(mod.host.getShellUpdate()).resolves.toBeNull();
   });
 
+  it('checkForUpdates normalizes the legacy UI-only reply from an older shell', async () => {
+    // OTA renderers can be newer than main/preload. Older shells return the
+    // original checkForUIUpdate shape, which has no `ok` discriminator.
+    (window as unknown as Record<string, unknown>).antontron = {
+      checkForUpdate: async () => ({
+        updateAvailable: true,
+        applied: false,
+        newVersion: '2.26.7.20.1',
+      }),
+    };
+    const host = await importHost();
+    await expect(host.checkForUpdates()).resolves.toEqual({
+      ok: true,
+      offline: false,
+      updateAvailable: true,
+      uiUpdateAvailable: true,
+      serverUpdateAvailable: false,
+      shellUpdateAvailable: false,
+      uiVersion: '2.26.7.20.1',
+    });
+  });
+
   it('getVersionInfo degrades to web facts when the bridge lacks the method', async () => {
     (window as unknown as Record<string, unknown>).antontron = {}; // partial bridge
     const host = await importHost();
