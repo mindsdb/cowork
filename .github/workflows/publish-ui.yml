@@ -19,6 +19,13 @@ on:
     secrets:
       RELEASES_TOKEN:
         required: true
+      # Baked into the OTA renderer bundle at Vite build time (see the "Build
+      # renderer" step). Optional so a UI-only re-publish still works, but its
+      # absence means the shipped bundle emits zero PostHog events — the OTA
+      # bundle overwrites the installer's renderer, so a missing token here
+      # silently kills desktop analytics for every updated client.
+      VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN:
+        required: false
   # Manual re-publish / backfill. Leave version empty to derive from git describe.
   workflow_dispatch:
     inputs:
@@ -89,8 +96,16 @@ jobs:
       - name: Build renderer
         # Bake the resolved version into __APP_VERSION__ so the running bundle
         # reports the same version as latest.json and the prod app installer.
+        #
+        # The PostHog token is a Vite build-time constant (import.meta.env in
+        # lib/analytics.js). It MUST be injected here: the installer workflows
+        # bake it in, but this OTA bundle overwrites the installer's renderer on
+        # first update, so without it every updated desktop client silently
+        # drops all analytics events (capture() no-ops on an empty key). Do not
+        # remove this line.
         env:
           VITE_APP_VERSION: ${{ steps.version.outputs.version }}
+          VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN: ${{ secrets.VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN }}
         run: npm run build:renderer
 
       - name: Check if version already published
