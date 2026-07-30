@@ -3852,6 +3852,7 @@ function AppCore() {
             projects={projects}
             sidebarCollapsed={isNarrow || sidebarCollapsedEffective}
             agentLabel={agentLabel}
+            inFlightSet={inFlightSet}
           />
         )}
 

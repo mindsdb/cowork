@@ -23,6 +23,7 @@ import { ScratchpadModal } from '../components/thinking/ScratchpadModal';
 import { ProgressBox, WorkingFolderBox, ContextBox } from '../components/rail';
 import { ArtifactViewer } from '../components/artifact';
 import SkillCard from '../components/SkillCard';
+import AskUserCard from '../components/AskUserCard';
 import { DataVaultFormPanel } from '../components/datavault/DataVaultFormPanel';
 import { getForm as getDataVaultForm, setForm as setDataVaultForm, subscribe as subscribeDataVaultForm, clearForm as clearDataVaultForm } from '../components/datavault/formStore';
 import { FormErrorBoundary } from '../components/datavault/FormErrorBoundary';
@@ -475,6 +476,26 @@ function StepArtifacts({ steps, onOpen, projectPath }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 4 }}>
       {artifacts.map((s) => (
         <ArtifactCard key={s.id} artifact={artifactStepToCard(s, projectPath)} onOpen={onOpen} />
+      ))}
+    </div>
+  );
+}
+
+// Renders any badge='AskUser' steps as inline question cards, the same way
+// StepArtifacts renders artifacts — both receive the shared `steps` array.
+function StepQuestions({ steps, conversationId, expired, onAnswered }) {
+  const questions = steps?.filter((s) => s.badge === 'AskUser') || [];
+  if (questions.length === 0) return null;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 4 }}>
+      {questions.map((s) => (
+        <AskUserCard
+          key={s.id}
+          step={s}
+          conversationId={conversationId}
+          expired={expired}
+          onAnswered={onAnswered}
+        />
       ))}
     </div>
   );
@@ -1067,6 +1088,12 @@ export default function ChatView({
   queuedMessages = [],
   onRemoveFromQueue,
   agentLabel,
+  // Conversation ids the server currently has an active producer for
+  // (App.jsx's cross-client sync feed). Used to decide whether an
+  // unanswered AskUser card is still live or "expired" — replay
+  // resurrects unanswered questions from persisted history, and a
+  // click on one with no live run behind it would 404.
+  inFlightSet,
 }) {
   const scrollRef = useRef(null);
   const { isNarrow } = useBreakpoint();
@@ -1814,6 +1841,11 @@ export default function ChatView({
                     />
                   )}
                   <StepArtifacts steps={m.steps} onOpen={handleArtifactOpen} projectPath={artifactProjectPath} />
+                  <StepQuestions
+                    steps={m.steps}
+                    conversationId={task.id}
+                    expired={!isStreaming && !inFlightSet?.has(task.id)}
+                  />
                   <StepSkills steps={m.steps} latestByKey={latestSkillCardByKey} messageIndex={i} projectName={project?.name} />
                 </AnswerTurn>
               );
@@ -1858,6 +1890,11 @@ export default function ChatView({
                   </div>
                 )}
                 <StepArtifacts steps={streamingMsg.steps} onOpen={handleArtifactOpen} projectPath={artifactProjectPath} />
+                <StepQuestions
+                  steps={streamingMsg.steps}
+                  conversationId={task.id}
+                  expired={!isStreaming && !inFlightSet?.has(task.id)}
+                />
                 <StepSkills steps={streamingMsg.steps} latestByKey={latestSkillCardByKey} messageIndex={visibleMessages.length} projectName={project?.name} />
               </AnswerTurn>
             ) : isStreaming && (
