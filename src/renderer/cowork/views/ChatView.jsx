@@ -1094,16 +1094,39 @@ export default function ChatView({
   // resurrects unanswered questions from persisted history, and a
   // click on one with no live run behind it would 404.
   inFlightSet,
+  // Bump-driven signal from App.jsx: a question appeared while messages
+  // were queued for this task, so their text is handed back here instead
+  // of being auto-sent as the answer or left queued to deadlock. Same
+  // {text, bump} shape as the local edit-and-resend `composerPrefill`.
+  composerRedirect,
+  // Lets App.jsx release a dead question's grip on the composer (see
+  // handleSendInTask's pendingQuestionFor check) as soon as the card
+  // itself learns the question is gone.
+  onQuestionAnswered,
 }) {
   const scrollRef = useRef(null);
   const { isNarrow } = useBreakpoint();
   // Wide: inline grid column. Narrow: fixed overlay from the right.
   const [railOpen, setRailOpen] = useState(true);
   const [railNarrowOpen, setRailNarrowOpen] = useState(false);
-  // Composer prefill — set by clicking Edit on a user message.
-  // `bump` is a monotonically-increasing nonce so the Composer's
-  // sync effect runs even when re-editing the same text.
+  // Composer prefill — set by clicking Edit on a user message, or by
+  // App.jsx's composerRedirect (a question appeared while messages were
+  // queued). `bump` is a monotonically-increasing nonce so the Composer's
+  // sync effect runs even when re-editing/re-redirecting the same text.
   const [composerPrefill, setComposerPrefill] = useState({ text: '', bump: 0 });
+  // Forward App.jsx's redirect signal into the same prefill state Edit
+  // uses, so Composer only has to react to one {text, bump} prop. Only
+  // sync on a real bump increase — the initial {text: '', bump: 0} must
+  // not clobber a draft the user is mid-typing.
+  const lastRedirectBumpRef = useRef(0);
+  useEffect(() => {
+    if (!composerRedirect || composerRedirect.bump <= lastRedirectBumpRef.current) return;
+    lastRedirectBumpRef.current = composerRedirect.bump;
+    setComposerPrefill((prev) => ({
+      text: composerRedirect.text || '',
+      bump: (prev?.bump || 0) + 1,
+    }));
+  }, [composerRedirect]);
   // Inline rail only active on wide screens.
   const effectiveRailOpen = !isNarrow && railOpen;
   // Narrow-screen overlay rail.
@@ -1845,6 +1868,7 @@ export default function ChatView({
                     steps={m.steps}
                     conversationId={task.id}
                     expired={!isStreaming && !inFlightSet?.has(task.id)}
+                    onAnswered={onQuestionAnswered}
                   />
                   <StepSkills steps={m.steps} latestByKey={latestSkillCardByKey} messageIndex={i} projectName={project?.name} />
                 </AnswerTurn>
@@ -1894,6 +1918,7 @@ export default function ChatView({
                   steps={streamingMsg.steps}
                   conversationId={task.id}
                   expired={!isStreaming && !inFlightSet?.has(task.id)}
+                  onAnswered={onQuestionAnswered}
                 />
                 <StepSkills steps={streamingMsg.steps} latestByKey={latestSkillCardByKey} messageIndex={visibleMessages.length} projectName={project?.name} />
               </AnswerTurn>

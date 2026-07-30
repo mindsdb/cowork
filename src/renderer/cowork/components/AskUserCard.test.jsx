@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import AskUserCard from './AskUserCard';
 
@@ -109,5 +109,23 @@ describe('AskUserCard', () => {
     await user.click(screen.getByRole('button', { name: /postgres/i }));
     expect(await screen.findByText(/no longer active/i)).toBeInTheDocument();
     expect(onAnswered).toHaveBeenCalledWith({ status: 'not_found' });
+  });
+
+  it('ignores a second overlapping click while the first submission is in flight', async () => {
+    // Two clicks fired back-to-back, before the first `submitAnswer` await
+    // resolves — this is what the `busy` guard in AskUserCard.jsx exists
+    // to prevent. userEvent.click serializes clicks (awaits each one), so
+    // this uses fireEvent to dispatch both synchronously in the same tick.
+    renderCard();
+    const button = screen.getByRole('button', { name: /mysql/i });
+    // Each fireEvent.click is its own discrete browser event, so it gets
+    // its own act() — matching two separate rapid clicks rather than one
+    // batched dispatch. The guard must still hold: setBusy(true) commits
+    // synchronously within the first click's event handler, before the
+    // second click's handler runs.
+    act(() => { fireEvent.click(button); });
+    act(() => { fireEvent.click(button); });
+    await act(async () => { await Promise.resolve(); });
+    expect(submitAnswer).toHaveBeenCalledTimes(1);
   });
 });

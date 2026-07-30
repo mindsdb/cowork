@@ -46,7 +46,7 @@ import { fetchSessions, fetchSession, fetchConversationList, fetchProjects, fetc
          renameConversation, deleteConversation, deleteConversationTurn, moveConversation, moveTaskToProject,
          deleteProject, cancelScratchpad, cancelResponse, fetchConnector,
          fetchSavedConnection, deleteDatasource, deletePickedFile,
-         fetchInFlightStatus, tailInFlight, fetchInFlightList } from './api';
+         fetchInFlightStatus, tailInFlight, fetchInFlightList, submitAnswer } from './api';
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
 import { modelLabel, recommendedModelOptions, providerValueToType } from './lib/settingsTransform';
 import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery } from './lib/analytics';
@@ -147,6 +147,35 @@ function normalizeAntonError(message, event) {
   }
   const text = String(message || '');
   return text || 'Could not complete this task.';
+}
+
+/**
+ * The question a turn is currently blocked on, or null.
+ *
+ * Derived from the live stream steps rather than tracked separately, so it
+ * cannot drift: the answered state arrives on an event and clears this by
+ * construction.
+ */
+export function pendingQuestionFor(steps) {
+  const pending = (steps || []).filter(
+    (s) => s.badge === 'AskUser' && !s.data?.answer,
+  );
+  if (pending.length === 0) return null;
+  return { question_id: pending[pending.length - 1].data.question_id };
+}
+
+/**
+ * Text to put back in the composer when a question appears while messages
+ * are queued.
+ *
+ * A message queued before the question existed was written for a different
+ * purpose: auto-sending it as the answer would silently pick an option the
+ * user never chose, and leaving it queued deadlocks (the queue drains on turn
+ * completion, which cannot happen while the question is pending). So it goes
+ * back to the user to decide.
+ */
+export function drainQueueToInput(queued) {
+  return (queued || []).map((m) => m.text).filter(Boolean).join('\n');
 }
 
 async function resolveComposerAttachmentsForSend(projectName, sessionId, attachments) {
@@ -837,6 +866,24 @@ function AppCore() {
   const messageQueueRef = useRef({});
   useEffect(() => { messageQueueRef.current = messageQueue; }, [messageQueue]);
 
+  // Live steps per task, so handleSendInTask can see a pending question
+  // without threading stream state through the composer.
+  const liveStepsRef = useRef({});
+
+  // question_id values we've already drained a pre-existing queue for.
+  // Explicit one-shot guard rather than relying on "the queue is already
+  // empty after the first drain" — clearing the queue goes through
+  // setState, which is async, so a second event landing before that state
+  // commits would otherwise see the same non-empty queue and drain twice.
+  const drainedQuestionsRef = useRef(new Set());
+
+  // Bump-driven signal that redirects the composer's value when a question
+  // appears while messages are queued (see drainQueueToInput). Same shape
+  // as ChatView's own edit-and-resend `composerPrefill` — ChatView forwards
+  // a bump here into its local prefill state so Composer only needs to
+  // know about one signal.
+  const [composerRedirect, setComposerRedirect] = useState({ text: '', bump: 0 });
+
   // Cross-client sync cache (Option B). Conversations that have an
   // in-flight producer task on the server, regardless of which client
   // started them. Synchronously consulted by reconcileTaskMessages so
@@ -972,6 +1019,40 @@ function AppCore() {
     return head;
   };
 
+  const clearQueueForTask = (taskId) => {
+    setMessageQueue((prev) => {
+      if (!prev[taskId]) return prev;
+      const next = { ...prev };
+      delete next[taskId];
+      return next;
+    });
+  };
+
+  // Called from every stream's onEvent, right after reduceStream. Keeps
+  // liveStepsRef current (so handleSendInTask can see a pending question
+  // without threading stream state through the composer) and, the first
+  // time a question appears while messages are queued, hands them back to
+  // the user as composer text instead of answering with text written for
+  // something else or leaving them queued to deadlock.
+  const updateLiveStepsAndDrainQueue = (taskIds, steps) => {
+    taskIds.forEach((tid) => {
+      if (tid) liveStepsRef.current[tid] = steps;
+    });
+    const pending = pendingQuestionFor(steps);
+    if (!pending) return;
+    if (drainedQuestionsRef.current.has(pending.question_id)) return;
+    const queueTaskId = taskIds.find((tid) => tid && (messageQueueRef.current[tid] || []).length > 0);
+    if (!queueTaskId) return;
+    drainedQuestionsRef.current.add(pending.question_id);
+    const queued = messageQueueRef.current[queueTaskId] || [];
+    const restored = drainQueueToInput(queued);
+    clearQueueForTask(queueTaskId);
+    setComposerRedirect((prev) => ({
+      text: prev.text ? `${prev.text}\n${restored}` : restored,
+      bump: prev.bump + 1,
+    }));
+  };
+
   const handleStopStream = useCallback(async (opts = {}) => {
     const silent = opts?.silent === true;
     activeStreamGenerationRef.current += 1;
@@ -1049,6 +1130,10 @@ function AppCore() {
     activeStreamingTaskIdRef.current = null;
     const ids = [...new Set(taskIds.filter(Boolean))];
     ids.forEach((id) => markInFlightDone(id));
+    // A dead turn must not leave a stale pending question behind — that
+    // would permanently redirect the composer into a question nobody can
+    // ever answer.
+    ids.forEach((id) => { delete liveStepsRef.current[id]; });
 
     const loaded = cid ? await loadSessionMessagesWithRetry(cid) : null;
     setTasks((prev) => prev.map((t) => {
@@ -1769,6 +1854,7 @@ function AppCore() {
       onEvent(ev) {
         if (streamGen !== activeStreamGenerationRef.current) return;
         streamState = reduceStream(streamState, ev);
+        updateLiveStepsAndDrainQueue([taskId], streamState.steps);
         const open = streamState.steps.find((s) => s.status === 'in_progress' && s._isScratchpad);
         if (open?._scratchpadTabId) activeScratchpadRef.current = open._scratchpadTabId;
         flushSync(() => flushStreaming());
@@ -1783,6 +1869,7 @@ function AppCore() {
         activeScratchpadRef.current = null;
         activeStreamingTaskIdRef.current = null;
         markInFlightDone(taskId);
+        delete liveStepsRef.current[taskId];
         const finalContent = streamState.bodyText || assistantContent;
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
@@ -2651,6 +2738,7 @@ function AppCore() {
         const sid = ev?.conversation_id || ev?.response?.conversation_id;
         if (sid) adoptServerId(sid);
         streamState = reduceStream(streamState, ev);
+        updateLiveStepsAndDrainQueue([resolvedId, taskId], streamState.steps);
         // Track latest in-progress scratchpad so the Stop button
         // can cancel anton's current cell, not just abort our stream.
         const open = streamState.steps.find((s) => s.status === 'in_progress' && s._isScratchpad);
@@ -2682,6 +2770,8 @@ function AppCore() {
         const finalId = sid || resolvedId;
         markInFlightDone(finalId);
         if (finalId !== taskId) markInFlightDone(taskId);
+        delete liveStepsRef.current[finalId];
+        delete liveStepsRef.current[taskId];
         const finalContent = streamState.bodyText || assistantContent;
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
@@ -2766,6 +2856,20 @@ function AppCore() {
           : t,
       ));
       setComposerAttachments([]);
+      return;
+    }
+
+    // A pending question owns the composer: typed text is the answer, not a
+    // new message. Queuing it instead would deadlock — the queue drains on
+    // turn completion, and the turn cannot complete until this is answered.
+    const pending = pendingQuestionFor(liveStepsRef.current[id]);
+    if (pending) {
+      const result = await submitAnswer(id, pending.question_id, { text });
+      if (queuedAttachments == null) setComposerAttachments([]);
+      if (result?.status === 'not_found') {
+        // The question died with its run — fall through on the next send.
+        liveStepsRef.current[id] = [];
+      }
       return;
     }
 
@@ -2933,6 +3037,7 @@ function AppCore() {
         const sid = ev?.conversation_id || ev?.response?.conversation_id;
         if (sid) adoptServerId(sid);
         streamState = reduceStream(streamState, ev);
+        updateLiveStepsAndDrainQueue([resolvedId, id], streamState.steps);
         const open = streamState.steps.find((s) => s.status === 'in_progress' && s._isScratchpad);
         if (open?._scratchpadTabId) activeScratchpadRef.current = open._scratchpadTabId;
         flushSync(() => flushStreaming());
@@ -2952,6 +3057,8 @@ function AppCore() {
         activeStreamingTaskIdRef.current = null;
         markInFlightDone(resolvedId);
         if (resolvedId !== id) markInFlightDone(id);
+        delete liveStepsRef.current[resolvedId];
+        delete liveStepsRef.current[id];
         const finalContent = streamState.bodyText || assistantContent;
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
@@ -3087,6 +3194,7 @@ function AppCore() {
         const sid = ev?.conversation_id || ev?.response?.conversation_id;
         if (sid) adoptServerId(sid);
         streamState = reduceStream(streamState, ev);
+        updateLiveStepsAndDrainQueue([resolvedId, id], streamState.steps);
         // The probe's `data-vault-form-patch` success signal travels
         // inside the SSE body text, but MarkdownCode can't process it
         // (the streaming message has complete=false, and the final
@@ -3139,6 +3247,8 @@ function AppCore() {
         if (sid) adoptServerId(sid);
         activeStreamCtrlRef.current = null;
         activeStreamingTaskIdRef.current = null;
+        delete liveStepsRef.current[resolvedId];
+        delete liveStepsRef.current[id];
         const finalContent = streamState.bodyText || assistantContent;
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
@@ -3171,6 +3281,8 @@ function AppCore() {
       onError(message) {
         activeStreamCtrlRef.current = null;
         activeStreamingTaskIdRef.current = null;
+        delete liveStepsRef.current[resolvedId];
+        delete liveStepsRef.current[id];
         setTasks((prev) => prev.map((t) => {
           if (t.id !== id && t.id !== resolvedId) return t;
           const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
@@ -3853,6 +3965,12 @@ function AppCore() {
             sidebarCollapsed={isNarrow || sidebarCollapsedEffective}
             agentLabel={agentLabel}
             inFlightSet={inFlightSet}
+            composerRedirect={composerRedirect}
+            onQuestionAnswered={(result) => {
+              if (result?.status === 'not_found' && currentTask?.id) {
+                liveStepsRef.current[currentTask.id] = [];
+              }
+            }}
           />
         )}
 
