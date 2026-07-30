@@ -79,7 +79,7 @@ describe('app_version on captured events', () => {
     expect(body.properties).not.toHaveProperty('app_version');
   });
 
-  it('carries app_version into the person $set for authenticated events', async () => {
+  it('carries last_seen_app_version into the person $set for authenticated events', async () => {
     vi.stubGlobal('__APP_VERSION__', '9.9.9-test');
     getAccessToken.mockResolvedValue(fakeJwt({ sub: 'user-123', email: 'a@example.com' }));
     const fetchMock = mockFetch();
@@ -92,6 +92,6 @@ describe('app_version on captured events', () => {
       .map((c) => JSON.parse(c[1].body))
       .find((b) => b.event === 'app_installed');
     expect(event.distinct_id).toBe('user-123');
-    expect(event.properties.$set.app_version).toBe('9.9.9-test');
+    expect(event.properties.$set.last_seen_app_version).toBe('9.9.9-test');
   });
 });
