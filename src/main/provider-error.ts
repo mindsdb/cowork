@@ -22,6 +22,16 @@ export function extractProviderError(body: string): string | null {
   }
 }
 
+// Auth-SHAPED provider messages: only the genuinely "your key is bad" phrasings.
+// A bare `/api key/` also matches permission ("The API key does not have
+// permission to use this model") and quota ("Quota exceeded for this API key")
+// errors — neither fixed by a new key — so it would send a user with a good key
+// off to regenerate it. The passthrough branch below already surfaces those
+// verbatim, which is actionable; this just stops stealing them. Must stay in
+// step with cowork-server's providers.py _AUTH_SHAPED_RE (ENG-1145 review).
+const AUTH_SHAPED =
+  /api[_ ]?key (is )?(not valid|invalid)|invalid api[_ ]?key|pass a valid api[_ ]?key/i;
+
 /**
  * Map an OpenAI-compatible validation response to an ok/error result.
  *
@@ -36,7 +46,7 @@ export function classifyOpenAICompatibleResult(
 ): { ok: boolean; error?: string } {
   if (status === 200 || status === 201) return { ok: true };
   const message = extractProviderError(body);
-  if (status === 401 || status === 403 || (message !== null && /api key/i.test(message))) {
+  if (status === 401 || status === 403 || (message !== null && AUTH_SHAPED.test(message))) {
     return { ok: false, error: 'Invalid API key' };
   }
   return { ok: false, error: message || `HTTP ${status}` };

@@ -44,6 +44,28 @@ describe('classifyOpenAICompatibleResult', () => {
     expect(classifyOpenAICompatibleResult(400, body)).toEqual({ ok: false, error: 'Invalid API key' });
   });
 
+  it("catches Google's full bad-key string", () => {
+    const body = '[{"error":{"message":"API key not valid. Please pass a valid API key."}}]';
+    expect(classifyOpenAICompatibleResult(400, body)).toEqual({ ok: false, error: 'Invalid API key' });
+  });
+
+  it('does NOT call a permission 400 a bad key — surfaces it verbatim (ENG-1145 review)', () => {
+    // Contains "API key" but the key is fine; a new key won't help.
+    const body = '[{"error":{"message":"The API key does not have permission to use this model."}}]';
+    const r = classifyOpenAICompatibleResult(400, body);
+    expect(r.ok).toBe(false);
+    expect(r.error).not.toBe('Invalid API key');
+    expect(r.error).toContain('does not have permission');
+  });
+
+  it('does NOT call a quota 400 a bad key — surfaces it verbatim (ENG-1145 review)', () => {
+    const body = '[{"error":{"message":"Quota exceeded for this API key. Upgrade your plan."}}]';
+    const r = classifyOpenAICompatibleResult(400, body);
+    expect(r.ok).toBe(false);
+    expect(r.error).not.toBe('Invalid API key');
+    expect(r.error).toContain('Quota exceeded');
+  });
+
   it('maps 401/403 to Invalid API key', () => {
     expect(classifyOpenAICompatibleResult(401, '{}')).toEqual({ ok: false, error: 'Invalid API key' });
     expect(classifyOpenAICompatibleResult(403, '{}')).toEqual({ ok: false, error: 'Invalid API key' });
