@@ -4,6 +4,7 @@ import Ico from '../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchHealth, fetchRecommendedModels } from '../api';
 import { providerTypeToKeyField, providerValueToType, resolveModelPickerValue, buildModelOptions, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, clampBudgetValue, clampBudgets, BUDGET_FIELDS } from '../lib/settingsTransform';
 import { trackHarnessSwapped, resetDeviceIdentity } from '../lib/analytics';
+import { copyText as copyToClipboard } from '../lib/clipboard';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
 import { Switch } from '../components/ui/Switch';
@@ -2568,10 +2569,12 @@ export default function SettingsView({
                       </span>
                     ))}
                     <Button
-                      onClick={() => {
-                        navigator.clipboard?.writeText(copyText);
-                        setVersionCopied(true);
-                        setTimeout(() => setVersionCopied(false), 1500);
+                      onClick={async () => {
+                        const ok = await copyToClipboard(copyText);
+                        if (ok) {
+                          setVersionCopied(true);
+                          setTimeout(() => setVersionCopied(false), 1500);
+                        }
                       }}
                       style={{ alignSelf: 'flex-start', marginTop: 4 }}
                     >
