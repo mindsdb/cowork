@@ -19,10 +19,10 @@ on:
     secrets:
       RELEASES_TOKEN:
         required: true
-      # Baked into the OTA bundle at build time (see "Build renderer"). Optional
-      # so a UI-only re-publish still works, but its absence silently kills
-      # desktop analytics: the OTA bundle overwrites the installer's renderer,
-      # so a missing token here ships an empty PostHog key to every client.
+      # Baked into the OTA bundle at build time (see "Build renderer").
+      # Required for reusable-workflow callers so missing configuration fails
+      # before a release starts. Direct dispatch/tag triggers do not validate
+      # workflow_call secrets, so the build step also rejects an empty value.
       VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN:
         required: true
   # Manual re-publish / backfill. Leave version empty to derive from git describe.
