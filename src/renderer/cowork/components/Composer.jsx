@@ -384,16 +384,23 @@ export default function Composer({
   // text into the composer and focus the textarea so the user can
   // immediately tweak + send. Guarded on `bump > 0` so the initial
   // `{text: '', bump: 0}` doesn't clobber a draft on mount.
+  //
+  // `prefill.append` is the queue-drain case (a question appeared while
+  // messages were queued): that text is handed BACK to the user, so it joins
+  // the current draft instead of destroying it. Edit-and-resend leaves
+  // `append` unset and keeps the original replace semantics.
   useEffect(() => {
     if (!prefill || !prefill.bump) return;
-    setValue(prefill.text || '');
+    const incoming = prefill.text || '';
+    if (prefill.append) setValue((prev) => (prev ? `${prev}\n${incoming}` : incoming));
+    else setValue(incoming);
     setError('');
     requestAnimationFrame(() => {
       const ta = taRef.current;
       if (!ta) return;
       ta.focus();
       try {
-        const end = (prefill.text || '').length;
+        const end = prefill.append ? ta.value.length : incoming.length;
         ta.setSelectionRange(end, end);
       } catch {}
     });

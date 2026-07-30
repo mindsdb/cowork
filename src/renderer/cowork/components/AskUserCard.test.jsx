@@ -108,21 +108,34 @@ describe('AskUserCard', () => {
     renderCard({}, { onAnswered });
     await user.click(screen.getByRole('button', { name: /postgres/i }));
     expect(await screen.findByText(/no longer active/i)).toBeInTheDocument();
-    expect(onAnswered).toHaveBeenCalledWith({ status: 'not_found' });
+    // The card's own conversation id rides along, so the listener never has to
+    // assume the card belongs to the currently-open conversation.
+    expect(onAnswered).toHaveBeenCalledWith({ status: 'not_found' }, 'conv-1');
   });
 
-  it('ignores a second overlapping click while the first submission is in flight', async () => {
-    // Two clicks fired back-to-back, before the first `submitAnswer` await
-    // resolves — this is what the `busy` guard in AskUserCard.jsx exists
-    // to prevent. userEvent.click serializes clicks (awaits each one), so
-    // this uses fireEvent to dispatch both synchronously in the same tick.
+  it('disables every control while a submission is in flight', async () => {
+    // This is the guard that actually decides the double-click case in a
+    // browser (and in this DOM): `disabled={settled || busy}`. Asserted on its
+    // own so the double-click test below is not silently proving this instead
+    // of what its name says.
+    let release;
+    submitAnswer.mockImplementationOnce(() => new Promise((r) => { release = r; }));
+    renderCard();
+    act(() => { fireEvent.click(screen.getByRole('button', { name: /mysql/i })); });
+    expect(screen.getByRole('button', { name: /mysql/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /postgres/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /skip/i })).toBeDisabled();
+    await act(async () => { release({ accepted: true }); });
+  });
+
+  it('submits only once for a rapid double click', async () => {
+    // End-to-end statement of the property, not of a specific mechanism: in
+    // this DOM the deciding factor is the `disabled` attribute committed by
+    // the first click (asserted above); the `if (settled || busy) return;`
+    // check in send() is the belt-and-braces layer for callers that reach the
+    // handler without going through the DOM. Both must hold for this to pass.
     renderCard();
     const button = screen.getByRole('button', { name: /mysql/i });
-    // Each fireEvent.click is its own discrete browser event, so it gets
-    // its own act() — matching two separate rapid clicks rather than one
-    // batched dispatch. The guard must still hold: setBusy(true) commits
-    // synchronously within the first click's event handler, before the
-    // second click's handler runs.
     act(() => { fireEvent.click(button); });
     act(() => { fireEvent.click(button); });
     await act(async () => { await Promise.resolve(); });

@@ -1049,6 +1049,18 @@ function ProviderOverloadedCard({
   );
 }
 
+/**
+ * Whether App.jsx's composer-redirect signal belongs to the task on screen.
+ *
+ * The signal is app-global but a drain is per-conversation: a reconnected
+ * background stream (tailInFlight) can drain task A's queue while the user is
+ * looking at task B, and that text must not land in B's composer.
+ */
+export function isRedirectForTask(redirect, taskId) {
+  if (!redirect || !taskId) return false;
+  return redirect.taskId === taskId;
+}
+
 // ─── Main view ───────────────────────────────────────────────────────────
 export default function ChatView({
   task,
@@ -1094,11 +1106,14 @@ export default function ChatView({
   // resurrects unanswered questions from persisted history, and a
   // click on one with no live run behind it would 404.
   inFlightSet,
-  // Bump-driven signal from App.jsx: a question appeared while messages
-  // were queued for this task, so their text is handed back here instead
-  // of being auto-sent as the answer or left queued to deadlock. Same
-  // {text, bump} shape as the local edit-and-resend `composerPrefill`.
+  // One-shot signal from App.jsx: a question appeared while messages were
+  // queued for `composerRedirect.taskId`, so their text is handed back to
+  // that task's composer instead of being auto-sent as the answer or left
+  // queued to deadlock. Shape {taskId, text, bump} — consumed only when
+  // taskId matches the task on screen, then cleared by the parent via
+  // onComposerRedirectConsumed so it cannot re-fire on a later remount.
   composerRedirect,
+  onComposerRedirectConsumed,
   // Lets App.jsx release a dead question's grip on the composer (see
   // handleSendInTask's pendingQuestionFor check) as soon as the card
   // itself learns the question is gone.
@@ -1114,19 +1129,24 @@ export default function ChatView({
   // queued). `bump` is a monotonically-increasing nonce so the Composer's
   // sync effect runs even when re-editing/re-redirecting the same text.
   const [composerPrefill, setComposerPrefill] = useState({ text: '', bump: 0 });
-  // Forward App.jsx's redirect signal into the same prefill state Edit
-  // uses, so Composer only has to react to one {text, bump} prop. Only
-  // sync on a real bump increase — the initial {text: '', bump: 0} must
-  // not clobber a draft the user is mid-typing.
-  const lastRedirectBumpRef = useRef(0);
+  // Forward App.jsx's redirect signal into the same prefill state Edit uses,
+  // so Composer only has to react to one prefill prop — but with append:true,
+  // because a drain hands text BACK to the user and must not destroy the
+  // draft they are mid-typing. Consuming the signal (clearing it in the
+  // parent) is what stops a stale drain re-applying on remount.
   useEffect(() => {
-    if (!composerRedirect || composerRedirect.bump <= lastRedirectBumpRef.current) return;
-    lastRedirectBumpRef.current = composerRedirect.bump;
-    setComposerPrefill((prev) => ({
-      text: composerRedirect.text || '',
-      bump: (prev?.bump || 0) + 1,
-    }));
-  }, [composerRedirect]);
+    if (!isRedirectForTask(composerRedirect, task?.id)) return;
+    const restored = composerRedirect.text || '';
+    if (restored) {
+      setComposerPrefill((prev) => ({
+        text: restored,
+        bump: (prev?.bump || 0) + 1,
+        append: true,
+      }));
+    }
+    onComposerRedirectConsumed?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [composerRedirect, task?.id]);
   // Inline rail only active on wide screens.
   const effectiveRailOpen = !isNarrow && railOpen;
   // Narrow-screen overlay rail.
