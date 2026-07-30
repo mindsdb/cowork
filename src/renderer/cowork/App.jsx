@@ -180,15 +180,23 @@ export function drainQueueToInput(queued) {
 
 /**
  * Decides whether a freshly-appeared question should hand a task's queued
- * messages back to the composer, and which task's queue that is.
+ * messages back to the composer: which key the messages sit under, and which
+ * conversation the text must be handed back to.
  *
- * Pure so the decision can be tested without a stream: `steps` is the live
- * reducer output, `taskIds` the ids the stream is known by (a tmp- id and the
- * server's canonical id are both in play), `queues` the whole per-task queue
- * map, and `drainedQuestionIds` the set of questions already drained.
+ * Those are not always the same id. `enqueueMessage` keys the queue by the id
+ * the task had when the message was typed, and `adoptServerId` renames the task
+ * without re-keying the queue — so a message queued before `response.created`
+ * lands stays filed under a now-dead `tmp-…` id. The queue therefore has to be
+ * looked up across every id the stream is known by, while the redirect must be
+ * keyed by the id the task actually has now, or ChatView (which renders the
+ * adopted id) would never match it and the text would be lost.
  *
- * Returns null when nothing should happen, else {taskId, questionId, text}.
- * The caller is responsible for adding `questionId` to the drained set
+ * `taskIds[0]` is the current id by construction: every caller passes the
+ * stream's live `resolvedId` first, followed by the id it started with.
+ *
+ * Pure so the decision can be tested without a stream. Returns null when
+ * nothing should happen, else {taskId, queueTaskId, questionId, text}. The
+ * caller is responsible for adding `questionId` to the drained set
  * synchronously, before any setState — that is what makes the drain
  * exactly-once even though clearing the queue is async.
  */
@@ -196,14 +204,14 @@ export function planQueueDrain(steps, taskIds, queues, drainedQuestionIds) {
   const pending = pendingQuestionFor(steps);
   if (!pending) return null;
   if (drainedQuestionIds?.has(pending.question_id)) return null;
-  const taskId = (taskIds || []).find(
-    (tid) => tid && ((queues || {})[tid] || []).length > 0,
-  );
-  if (!taskId) return null;
+  const ids = (taskIds || []).filter(Boolean);
+  const queueTaskId = ids.find((tid) => ((queues || {})[tid] || []).length > 0);
+  if (!queueTaskId) return null;
   return {
-    taskId,
+    taskId: ids[0],
+    queueTaskId,
     questionId: pending.question_id,
-    text: drainQueueToInput(queues[taskId]),
+    text: drainQueueToInput(queues[queueTaskId]),
   };
 }
 
@@ -1125,7 +1133,9 @@ function AppCore() {
     // second event landing before that commits would otherwise see the same
     // non-empty queue and drain it twice.
     drainedQuestionsRef.current.add(plan.questionId);
-    clearQueueForTask(plan.taskId);
+    // Clear under the key the messages are filed under, but redirect to the
+    // conversation the task is known by now — see planQueueDrain.
+    clearQueueForTask(plan.queueTaskId);
     composerRedirectBumpRef.current += 1;
     // Only the newly restored batch, and only under this task's key — never
     // accumulated (that re-injects an earlier drain's text) and never into a

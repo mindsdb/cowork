@@ -54,6 +54,7 @@ describe('planQueueDrain', () => {
   it('drains the queue of the task the question belongs to', () => {
     expect(planQueueDrain([askStep()], ['conv-a'], queues, new Set())).toEqual({
       taskId: 'conv-a',
+      queueTaskId: 'conv-a',
       questionId: 'ask:1',
       text: 'first\nsecond',
     });
@@ -61,8 +62,27 @@ describe('planQueueDrain', () => {
 
   it('finds the queue under either id a stream is known by', () => {
     // A tmp- id and the server's canonical id are both in play mid-adoption.
-    expect(planQueueDrain([askStep()], ['tmp-1', 'conv-a'], queues, new Set())?.taskId)
+    expect(planQueueDrain([askStep()], ['tmp-1', 'conv-a'], queues, new Set())?.queueTaskId)
       .toBe('conv-a');
+  });
+
+  it('redirects to the current id even when the queue is under an alias', () => {
+    // enqueueMessage filed the messages under the task's pre-adoption tmp- id;
+    // adoptServerId renamed the task without re-keying the queue. The queue has
+    // to be found under the dead key, but the text must be handed back to the
+    // id the task has now, or ChatView will never match it.
+    const plan = planQueueDrain(
+      [askStep()],
+      ['conv-new', 'tmp-1'],
+      { 'tmp-1': [{ text: 'queued before adoption' }] },
+      new Set(),
+    );
+    expect(plan).toEqual({
+      taskId: 'conv-new',
+      queueTaskId: 'tmp-1',
+      questionId: 'ask:1',
+      text: 'queued before adoption',
+    });
   });
 
   it('skips a question it has already drained for', () => {

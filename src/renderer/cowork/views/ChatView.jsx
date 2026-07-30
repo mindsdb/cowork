@@ -1125,10 +1125,11 @@ export default function ChatView({
   // Wide: inline grid column. Narrow: fixed overlay from the right.
   const [railOpen, setRailOpen] = useState(true);
   const [railNarrowOpen, setRailNarrowOpen] = useState(false);
-  // Composer prefill — set by clicking Edit on a user message, or by
-  // App.jsx's composerRedirect (a question appeared while messages were
-  // queued). `bump` is a monotonically-increasing nonce so the Composer's
-  // sync effect runs even when re-editing/re-redirecting the same text.
+  // Composer prefill — set by clicking Edit on a user message, or by this
+  // task's entry in App.jsx's `composerRedirects` (a question appeared while
+  // messages were queued). `bump` is a monotonically-increasing nonce so the
+  // Composer's sync effect runs even when re-editing/re-redirecting the same
+  // text.
   const [composerPrefill, setComposerPrefill] = useState({ text: '', bump: 0 });
   // Forward App.jsx's redirect for THIS task into the same prefill state Edit
   // uses, so Composer only has to react to one prefill prop — but with

@@ -137,6 +137,20 @@ async function send(user, composer, text) {
   await user.keyboard('{Enter}');
 }
 
+/**
+ * Resolves once a stream handle newer than `after` exists. Opening a task only
+ * awaits the composer; reconnectInFlight has an extra await (the in-flight
+ * probe) before it reaches tailInFlight, so reading streams[] straight after
+ * navigating is a race.
+ */
+async function waitForStream(after = null) {
+  return waitFor(() => {
+    const last = streams[streams.length - 1];
+    if (!last || last === after) throw new Error('stream not started yet');
+    return last;
+  });
+}
+
 /** Pushes an event into a specific stream handle. */
 async function emitOn(handle, event) {
   await act(async () => {
@@ -350,12 +364,14 @@ describe('two tasks draining while only one is on screen', () => {
     render(<App />);
 
     let composer = await openByTitle(user, 'Beta task');
-    const streamB = streams[streams.length - 1];
+    // openByTitle only waits for the composer; reconnectInFlight awaits
+    // fetchInFlightStatus before it calls tailInFlight, so wait for the stream.
+    const streamB = await waitForStream();
     await send(user, composer, 'queued for beta');
     expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
 
     composer = await openByTitle(user, 'Alpha task');
-    const streamA = streams[streams.length - 1];
+    const streamA = await waitForStream(streamB);
     expect(streamA).not.toBe(streamB);
     await send(user, composer, 'queued for alpha');
 
@@ -453,5 +469,72 @@ describe('new-session stream (send from home)', () => {
 
     expect(spies.submitAnswer).toHaveBeenCalledTimes(1);
     expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
+  });
+});
+
+describe('a queue filed under a pre-adoption tmp- id', () => {
+  it('still reaches the composer of the adopted conversation', async () => {
+    const user = userEvent.setup();
+    await openTask(user);
+    await user.click(screen.getByRole('button', { name: /new task/i }));
+    const homeComposer = await waitFor(() => {
+      const ta = document.querySelector('textarea');
+      if (!ta) throw new Error('composer not mounted');
+      return ta;
+    });
+
+    await send(user, homeComposer, 'start a new conversation');
+    const handle = await waitFor(() => {
+      const h = streams.find((x) => x.kind === 'new');
+      if (!h) throw new Error('new-session stream not started');
+      return h;
+    });
+    const composer = await waitFor(() => {
+      const ta = document.querySelector('textarea');
+      if (!ta || ta === homeComposer) throw new Error('chat composer not mounted');
+      return ta;
+    });
+
+    // Queued BEFORE response.created, so enqueueMessage files it under the
+    // task's tmp- id.
+    await send(user, composer, 'queued before adoption');
+    expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
+
+    // The server mints the canonical id; the task is renamed but the queue key
+    // is not.
+    await emitOn(handle, { type: 'response.created', conversation_id: 'conv-new' });
+    await emitOn(handle, ASK_EVENT);
+
+    // The drain has to find the queue under the dead tmp- key and still hand
+    // the text back to conv-new, which is the id ChatView renders.
+    await waitFor(() => expect(composer.value).toBe('queued before adoption'));
+  });
+});
+
+describe('two events in one synchronous burst', () => {
+  it('drains the queue once, not once per event', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+
+    await send(user, composer, 'first message');
+    await send(user, composer, 'queued one');
+    expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
+
+    const handle = streams[streams.length - 1];
+    // Both events in the same tick, with no await between them — the burst the
+    // exactly-once property has to survive. It holds for two independent
+    // reasons: the drainedQuestionsRef entry added for this question_id, and
+    // the flushSync at the end of onEvent, which commits clearQueueForTask and
+    // resyncs messageQueueRef before the second event runs. This test locks the
+    // observable property; it does NOT isolate either mechanism (see the
+    // report's note on the drained-set write).
+    await act(async () => {
+      handle.opts.onEvent(ASK_EVENT);
+      handle.opts.onEvent({ ...ASK_EVENT, question_id: 'ask:1' });
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(composer.value).toBe('queued one'));
+    expect(composer.value).toBe('queued one');
   });
 });
