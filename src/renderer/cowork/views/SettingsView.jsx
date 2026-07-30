@@ -335,7 +335,15 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
   };
 
   const onToggleShow = async () => {
-    if (!show && revealName && isSentinel && revealedValue === null) {
+    // `!host.isWeb`: /settings/reveal-key returns UNMASKED provider secrets and
+    // is loopback-only server-side (`_require_local`). On hosted the browser
+    // reaches the server from the docker bridge, not 127.0.0.1, so the fetch
+    // would 403 — a Settings panel that looks functional and throws on a
+    // sub-action (the ENG-912 shape). Gated here, at the network call, rather
+    // than per call site, so a future caller can't reintroduce it. A web user
+    // can still SET a key (PUT /settings/{key} is not gated); they just can't
+    // read the stored one back, and the field keeps showing the "***" sentinel.
+    if (!host.isWeb && !show && revealName && isSentinel && revealedValue === null) {
       // Reveal the real stored key from the loopback server.
       setRevealing(true);
       try {
@@ -646,6 +654,24 @@ const NAV_ITEMS = [
   { id: 'account', label: 'Account', icon: 'people' },
 ];
 
+// Sections that make sense in the hosted web shell (ENG-932). Absent, not
+// disabled — a nav row that opens a dead end is worse than no row:
+//   backend  — start/stop/diagnostics of a server the user doesn't control.
+//   updates  — App-shell version and OTA source are meaningless on hosted;
+//              the server updates itself.
+//   account  — renders an SSO sign-in card, but a hosted user already
+//              authenticated through the console; a second sign-in is
+//              confusing at best.
+// Agent stays because it carries the model picker and reasoning effort — the
+// point of the ticket. Appearance is purely cosmetic. Channels moved back here
+// from its standalone sidebar entry, which only existed while Settings was
+// hidden on web.
+const WEB_NAV_IDS = new Set(['agent', 'appearance', 'channels']);
+
+export function navItemsForHost(isWeb) {
+  return isWeb ? NAV_ITEMS.filter((i) => WEB_NAV_IDS.has(i.id)) : NAV_ITEMS;
+}
+
 function SettingsNav({ section, onSectionChange, serverOnline = true }) {
   return (
     <nav
@@ -669,7 +695,7 @@ function SettingsNav({ section, onSectionChange, serverOnline = true }) {
         padding: '0 10px 6px',
         fontWeight: 600,
       }}>Settings</div>
-      {NAV_ITEMS.map((item) => {
+      {navItemsForHost(host.isWeb).map((item) => {
         const active = section === item.id;
         const disabled = !serverOnline && item.id !== 'backend';
         const icon = Ico[item.icon] ? Ico[item.icon](15) : null;
@@ -2929,7 +2955,7 @@ export default function SettingsView({
       backend: renderBackendSection,
       account: renderAccountSection,
     };
-    const activeItem = NAV_ITEMS.find((i) => i.id === section) || null;
+    const activeItem = navItemsForHost(host.isWeb).find((i) => i.id === section) || null;
     const inDetail = Boolean(activeItem);
     return (
       <SettingsLayoutContext.Provider value={{ mobile: true }}>
@@ -2954,7 +2980,7 @@ export default function SettingsView({
             </div>
           ) : (
             <nav className="settings-list" role="navigation" aria-label="Settings sections">
-              {NAV_ITEMS.map((item) => {
+              {navItemsForHost(host.isWeb).map((item) => {
                 const disabled = !serverOnline && item.id !== 'backend';
                 const icon = Ico[item.icon] ? Ico[item.icon](18) : null;
                 return (
@@ -2986,16 +3012,25 @@ export default function SettingsView({
     );
   }
 
+  // Hiding a nav row isn't enough on its own — `navigate('settings:backend')`
+  // sets the section directly, so a deep link (or a stale persisted section)
+  // could still render one this host doesn't offer. Resolve through the visible
+  // set and fall back to its first entry (Agent).
+  const visibleNav = navItemsForHost(host.isWeb);
+  const effectiveSection = visibleNav.some((i) => i.id === section)
+    ? section
+    : visibleNav[0]?.id;
+
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'row', minHeight: 0 }}>
-      <SettingsNav section={section} onSectionChange={onSectionChange} serverOnline={serverOnline} />
+      <SettingsNav section={effectiveSection} onSectionChange={onSectionChange} serverOnline={serverOnline} />
 
-      {section === 'agent' && renderAgentSection()}
-      {section === 'appearance' && renderAppearanceSection()}
-      {section === 'channels' && renderChannelsSection()}
-      {section === 'updates' && renderUpdatesSection()}
-      {section === 'backend' && renderBackendSection()}
-      {section === 'account' && renderAccountSection()}
+      {effectiveSection === 'agent' && renderAgentSection()}
+      {effectiveSection === 'appearance' && renderAppearanceSection()}
+      {effectiveSection === 'channels' && renderChannelsSection()}
+      {effectiveSection === 'updates' && renderUpdatesSection()}
+      {effectiveSection === 'backend' && renderBackendSection()}
+      {effectiveSection === 'account' && renderAccountSection()}
 
       {logoutConfirm}
     </div>

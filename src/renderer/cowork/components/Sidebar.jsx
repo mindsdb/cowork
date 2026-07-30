@@ -603,15 +603,12 @@ export default function Sidebar({
             active={activeRoute === 'customize'}
             badge={showCounters ? (connectorsCount || null) : null}
           />
-          {/* Channels — connect messaging apps (Telegram/Slack/etc.) so people
-              can talk to the agent from their chats. Web-only: the desktop app
-              surfaces Channels under Settings, but the web shell hides Settings
-              entirely (the Electron-only sidebar footer), so the hosted build
-              needs this standalone entry. Routes to the `channels` key, which
-              App.jsx renders as <ChannelsView />. */}
-          {host.isWeb && (
-            <NavItem icon={Ico.chats(15)} label="Channels" onClick={() => onNavigate('channels')} active={activeRoute === 'channels'} />
-          )}
+          {/* Channels used to have a standalone entry here, web-only, purely
+              because the web shell hid Settings entirely — Channels lives
+              under Settings on desktop. Settings is now reachable on web
+              (ENG-932), so the workaround is removed and both platforms find
+              Channels in the same place. The `channels` route in App.jsx is
+              left intact so existing deep links still resolve. */}
         </div>
 
         {/* Agent — the agent's own brain: what it remembers (Memories)
@@ -909,15 +906,23 @@ export default function Sidebar({
             both Electron and the hosted web shell. The settings /
             backend-status controls stay Electron-only: the FastAPI
             process IS the host on web, so start/stop/diagnostics don't
-            apply and the web shell hides Settings entirely.
+            apply. Settings itself is NOT Electron-only any more — the web
+            shell used to hide it entirely, which also hid the only
+            workaround for ENG-1042; see the gate below (ENG-932).
 
             Normal state: a settings nav row — no server noise when everything
             is working fine.
             Disconnected / busy: the status pill replaces the settings row so
             the problem is immediately visible. */}
         <div className="anton-sidebar__footer">
-          {!host.isWeb && (
-            (!serverOnline || serverBusy) ? (
+          {/* The status-pill variant is Electron-only — on web the FastAPI
+              process IS the host, so there is no local server lifecycle to
+              report on. But Settings itself must be reachable on web
+              (ENG-932): it holds the reasoning-effort control, which is the
+              only user-side workaround for a turn that burns its whole
+              output budget and returns nothing (ENG-1042). So web always
+              gets the plain Settings row; only the pill is gated. */}
+          {(!host.isWeb && (!serverOnline || serverBusy)) ? (
               <>
                 <button
                   type="button"
@@ -964,8 +969,7 @@ export default function Sidebar({
                 <span style={{ display: 'inline-flex', flexShrink: 0 }}>{Ico.settings(13)}</span>
                 <span>Settings</span>
               </button>
-            )
-          )}
+            )}
           {(show8bitToggle || showThemeToggle) && (
             // Marks these as quick display toggles, not settings — separate
             // from the Settings/backend-status controls to the left.
