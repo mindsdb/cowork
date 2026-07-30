@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import Ico from '../Icons';
 
 // Small rounded checkbox — hollow while pending, accent-filled with a tick
@@ -22,25 +21,19 @@ function Checkbox({ done }) {
 }
 
 // One checklist row. Pending: title + description shown. Done: title struck
-// through and muted, description collapsed — and revealed again on hover.
+// through and muted, description collapsed — revealed again on hover. Hover
+// visuals live in CSS (`.onboarding-step-row`), not React state.
 export default function OnboardingItem({ step, done, onStart }) {
-  const [hover, setHover] = useState(false);
-  const showDescription = !done || hover;
-
   return (
     <button
       type="button"
+      className="onboarding-step-row"
+      data-done={done || undefined}
       onClick={() => onStart(step)}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
       style={{
         display: 'flex', gap: 10, alignItems: 'flex-start',
         width: '100%', textAlign: 'left', font: 'inherit',
         border: 0, cursor: 'pointer', borderRadius: 'var(--r-sm)', padding: '7px 6px',
-        // Ink-tinted overlay darkens the row in light mode and lightens it
-        // in dark — works on any card background.
-        background: hover ? 'color-mix(in srgb, var(--ink) 6%, transparent)' : 'transparent',
-        transition: 'background 140ms ease',
       }}
     >
       <Checkbox done={done} />
@@ -57,14 +50,7 @@ export default function OnboardingItem({ step, done, onStart }) {
         </span>
         {/* Collapsible description: the 0fr→1fr grid row animates height
             open/closed without hard-coding a pixel value. */}
-        <span
-          style={{
-            display: 'grid', minHeight: 0,
-            gridTemplateRows: showDescription ? '1fr' : '0fr',
-            opacity: showDescription ? 1 : 0,
-            transition: 'grid-template-rows 200ms ease, opacity 200ms ease',
-          }}
-        >
+        <span className="onboarding-step-desc">
           <span style={{ overflow: 'hidden', minHeight: 0 }}>
             <span style={{ display: 'block', fontSize: 12, lineHeight: 1.4, color: 'var(--frost-600)', marginTop: 2 }}>
               {step.description}

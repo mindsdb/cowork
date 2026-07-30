@@ -19,6 +19,11 @@ describe('HomeSuggestions', () => {
     localStorage.clear();
   });
 
+  it('keeps the step-1 send-match prefix in sync with the prompt', async () => {
+    const { HABIT_TRACKER_PROMPT, HABIT_TRACKER_PREFIX } = await import('./steps');
+    expect(HABIT_TRACKER_PROMPT.startsWith(HABIT_TRACKER_PREFIX)).toBe(true);
+  });
+
   it('shows all three chips on a brand-new account', async () => {
     const { HomeSuggestions } = await load();
     render(<HomeSuggestions tasksCount={0} artifactsCount={0} onPick={vi.fn()} />);

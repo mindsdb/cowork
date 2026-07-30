@@ -9,6 +9,11 @@
 export const HABIT_TRACKER_PROMPT =
   'Build me a habit tracker as a live artifact: a simple week grid I can tick off each day. Start with three sensible habits and make them easy to rename.';
 
+// Stable prefix used to recognize a (possibly user-edited) habit-tracker
+// send and complete step 1. Kept next to the prompt so a copy edit can't
+// silently break the match — a test asserts the prompt starts with it.
+export const HABIT_TRACKER_PREFIX = 'Build me a habit tracker';
+
 export const ONBOARDING_STEPS = [
   {
     id: 'see-it-work',

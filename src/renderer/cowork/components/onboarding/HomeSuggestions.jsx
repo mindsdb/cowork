@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import Ico from '../Icons';
 import { useOnboarding } from './useOnboarding';
 import { HABIT_TRACKER_PROMPT } from './steps';
@@ -34,14 +33,13 @@ const CHIPS = [
   { id: 'project-brief', label: 'Draft a project brief', icon: (s) => Ico.doc(s), prompt: PROJECT_BRIEF_PROMPT },
 ];
 
+// Hover visuals (icon-tile lift, label color) live in CSS
+// (`.home-suggestion-chip`), not React state.
 function Chip({ chip, onPick, index }) {
-  const [hover, setHover] = useState(false);
   return (
     <button
       type="button"
       onClick={() => onPick(chip)}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
       className="home-suggestion-chip"
       style={{
         display: 'flex', alignItems: 'center', gap: 12,
@@ -51,27 +49,13 @@ function Chip({ chip, onPick, index }) {
         // Stagger the chips in behind the composer's own fade.
         opacity: 0,
         animation: `fadein-up 300ms cubic-bezier(0.23, 1, 0.32, 1) ${180 + index * 60}ms both`,
-        transition: 'background 140ms ease',
       }}
     >
       {/* Icon tile — outer radius 9 = inner content radius + padding. */}
-      <span style={{
-        width: 34, height: 34, borderRadius: 9, flexShrink: 0,
-        display: 'grid', placeItems: 'center',
-        color: 'var(--frost-600)',
-        background: 'var(--surface-0)',
-        boxShadow: hover ? 'var(--sh-2)' : 'var(--sh-1, 0 1px 2px rgba(0,0,0,0.06))',
-        border: '1px solid var(--line-2)',
-        transform: hover ? 'translateY(-1px)' : 'translateY(0)',
-        transition: 'box-shadow 160ms ease, transform 160ms cubic-bezier(0.23, 1, 0.32, 1)',
-      }}>
+      <span className="home-suggestion-chip__tile" aria-hidden>
         {chip.icon(16)}
       </span>
-      <span style={{
-        fontSize: 14, fontWeight: 500,
-        color: hover ? 'var(--text-strong)' : 'var(--frost-700, var(--frost-600))',
-        transition: 'color 140ms ease',
-      }}>
+      <span className="home-suggestion-chip__label">
         {chip.label}
       </span>
     </button>

@@ -1,5 +1,5 @@
-import { useState } from 'react';
 import { Popover } from '@base-ui/react/popover';
+import { Button } from '../ui';
 
 // One-shot callout anchored to the Live Artifacts nav badge, shown the
 // moment the user's FIRST artifact lands (App owns the arm/trigger
@@ -11,32 +11,6 @@ import { Popover } from '@base-ui/react/popover';
 //   • "Show me" (also opens the Artifacts view)
 //   • clicking the Live Artifacts nav item itself (wired in Sidebar)
 //   • Escape / clicking anywhere else
-
-function TipButton({ label, primary, onClick }) {
-  const [hover, setHover] = useState(false);
-  const [pressed, setPressed] = useState(false);
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => { setHover(false); setPressed(false); }}
-      onMouseDown={() => setPressed(true)}
-      onMouseUp={() => setPressed(false)}
-      style={{
-        font: 'inherit', fontSize: 12, fontWeight: 600,
-        padding: '6px 12px', borderRadius: 7, border: 0, cursor: 'pointer',
-        background: primary ? 'var(--surface)' : 'color-mix(in srgb, var(--surface) 16%, transparent)',
-        color: primary ? 'var(--ink)' : 'var(--surface)',
-        opacity: hover ? 0.9 : 1,
-        transform: pressed ? 'scale(0.96)' : 'scale(1)',
-        transition: 'opacity 140ms ease, transform 140ms ease-out',
-      }}
-    >
-      {label}
-    </button>
-  );
-}
 
 export default function FirstArtifactTip({ open, anchorRef, onGotIt, onShowMe }) {
   return (
@@ -57,6 +31,7 @@ export default function FirstArtifactTip({ open, anchorRef, onGotIt, onShowMe })
             // shows up on its own, not from a click.
             initialFocus={false}
             finalFocus={false}
+            aria-label="Your first Live Artifact"
             className="first-artifact-tip"
             style={{
               background: 'var(--ink)',
@@ -74,9 +49,12 @@ export default function FirstArtifactTip({ open, anchorRef, onGotIt, onShowMe })
             <div style={{ fontSize: 12.5, lineHeight: 1.5 }}>
               Your first Live Artifact is ready. It lives here. Open it anytime, or publish it to share a live URL.
             </div>
+            {/* Shared Button primitives; the tip sits on an inverted ink
+                surface, so their variant colors are reskinned in
+                globals.css under `.first-artifact-tip .btn`. */}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 10 }}>
-              <TipButton label="Got it" onClick={onGotIt} />
-              <TipButton label="Show me" primary onClick={onShowMe} />
+              <Button size="sm" onClick={onGotIt}>Got it</Button>
+              <Button size="sm" variant="primary" onClick={onShowMe}>Show me</Button>
             </div>
           </Popover.Popup>
         </Popover.Positioner>

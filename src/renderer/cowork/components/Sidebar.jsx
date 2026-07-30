@@ -1035,7 +1035,10 @@ export default function Sidebar({
       </div>
 
       <FirstArtifactTip
-        open={artifactTipOpen}
+        // Hold the tip while the sidebar is collapsed — the anchor is
+        // invisible (opacity 0) and the popover would point at nothing.
+        // The arm state survives, so it shows on the next expand.
+        open={artifactTipOpen && !collapsed}
         anchorRef={artifactsNavRef}
         onGotIt={() => onArtifactTipDismiss?.()}
         onShowMe={() => {

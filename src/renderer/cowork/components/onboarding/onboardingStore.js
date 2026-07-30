@@ -31,8 +31,11 @@ function writeJSON(key, value) {
 
 // `state` is replaced (never mutated) on every change so its identity is
 // a valid useSyncExternalStore snapshot.
+// Array.isArray guard: a corrupted key holding valid-but-non-iterable
+// JSON (`true`, a number) would otherwise throw at module load.
+const storedCompleted = readJSON(COMPLETED_KEY, []);
 let state = {
-  completed: new Set(readJSON(COMPLETED_KEY, [])),
+  completed: new Set(Array.isArray(storedCompleted) ? storedCompleted : []),
   dismissed: readJSON(DISMISSED_KEY, false) === true,
 };
 

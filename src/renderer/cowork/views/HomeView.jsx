@@ -3,6 +3,7 @@ import Ico from '../components/Icons';
 import Composer from '../components/Composer';
 import HomeSuggestions from '../components/onboarding/HomeSuggestions';
 import { completeStep } from '../components/onboarding/onboardingStore';
+import { HABIT_TRACKER_PREFIX } from '../components/onboarding/steps';
 import { OrbitMorph, Button } from '../components/ui';
 import { host } from '../../platform/host';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
@@ -255,7 +256,7 @@ export default function HomeView({
   // matter which surface filled the composer (suggestion chip, sidebar
   // checklist, or the user typing it by hand).
   const sendTracked = (text) => {
-    if (typeof text === 'string' && text.trim().startsWith('Build me a habit tracker')) {
+    if (typeof text === 'string' && text.trim().startsWith(HABIT_TRACKER_PREFIX)) {
       completeStep('see-it-work');
     }
     return onSend(text);

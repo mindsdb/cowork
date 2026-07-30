@@ -2815,6 +2815,79 @@ body[data-theme="dark"] .onboarding-card {
 .onboarding-collapse-toggle { background: transparent; transition: background 140ms ease; }
 .onboarding-collapse-toggle:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
 
+/* Checklist step rows. Ink-tinted hover works on any card background
+   (darkens in light mode, lightens in dark). Done rows collapse their
+   description and reveal it again on hover via the 0fr→1fr grid idiom. */
+.onboarding-step-row { background: transparent; transition: background 140ms ease; }
+.onboarding-step-row:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.onboarding-step-desc {
+  display: grid;
+  min-height: 0;
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transition: grid-template-rows 200ms ease, opacity 200ms ease;
+}
+.onboarding-step-row[data-done] .onboarding-step-desc { grid-template-rows: 0fr; opacity: 0; }
+.onboarding-step-row[data-done]:hover .onboarding-step-desc { grid-template-rows: 1fr; opacity: 1; }
+
+/* Home starter chips — icon tile lifts on hover, label darkens. */
+.home-suggestion-chip__tile {
+  width: 34px; height: 34px; border-radius: 9px; flex-shrink: 0;
+  display: grid; place-items: center;
+  color: var(--frost-600);
+  background: var(--surface-0);
+  border: 1px solid var(--line-2);
+  box-shadow: var(--sh-1);
+  transform: translateY(0);
+  transition: box-shadow 160ms ease, transform 160ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+.home-suggestion-chip__label {
+  font-size: 14px; font-weight: 500;
+  color: var(--frost-700);
+  transition: color 140ms ease;
+}
+.home-suggestion-chip:hover .home-suggestion-chip__tile { box-shadow: var(--sh-2); transform: translateY(-1px); }
+.home-suggestion-chip:hover .home-suggestion-chip__label { color: var(--text-strong); }
+.home-suggestion-chip:active .home-suggestion-chip__tile { transform: translateY(0) scale(0.96); }
+
+/* First-artifact tip buttons — the tip sits on an inverted ink surface,
+   so the shared Button variants get an on-ink skin here. body-prefixed
+   to outrank the theme-keyed `.btn.default` / `.btn.primary` rules
+   above (same specificity, later in source). */
+body .first-artifact-tip .btn {
+  border: 0;
+  box-shadow: none;
+  font-weight: 600;
+}
+body .first-artifact-tip .btn.default {
+  background: color-mix(in srgb, var(--surface) 14%, transparent);
+  color: var(--surface);
+}
+body .first-artifact-tip .btn.default:hover {
+  background: color-mix(in srgb, var(--surface) 24%, transparent);
+  color: var(--surface);
+  box-shadow: none;
+  text-shadow: none;
+}
+body .first-artifact-tip .btn.default:active {
+  background: color-mix(in srgb, var(--surface) 30%, transparent);
+  box-shadow: none;
+}
+body .first-artifact-tip .btn.primary {
+  background: var(--surface);
+  color: var(--ink);
+}
+body .first-artifact-tip .btn.primary:hover {
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  color: var(--ink);
+  box-shadow: none;
+  text-shadow: none;
+}
+body .first-artifact-tip .btn.primary:active {
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  box-shadow: none;
+}
+
 /* First-artifact tip arrow — a rotated square poking out of the popup's
    anchor-facing edge. Base UI positions it along the popup edge and stamps
    data-side; we supply the perpendicular offset per side. */
