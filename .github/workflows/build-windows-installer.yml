@@ -87,6 +87,10 @@ on:
         required: false
       GH_OAUTH_CLIENT_SECRET:
         required: false
+      HUBSPOT_CLIENT_ID:
+        required: false
+      HUBSPOT_CLIENT_SECRET:
+        required: false
       VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN:
         required: false
 
@@ -134,6 +138,8 @@ jobs:
           LINEAR_CLIENT_SECRET: ${{ secrets.LINEAR_CLIENT_SECRET }}
           GITHUB_CLIENT_ID: ${{ secrets.GH_OAUTH_CLIENT_ID }}
           GITHUB_CLIENT_SECRET: ${{ secrets.GH_OAUTH_CLIENT_SECRET }}
+          HUBSPOT_CLIENT_ID: ${{ secrets.HUBSPOT_CLIENT_ID }}
+          HUBSPOT_CLIENT_SECRET: ${{ secrets.HUBSPOT_CLIENT_SECRET }}
 
         run: |
           python -c "
@@ -147,6 +153,7 @@ jobs:
             'GOOGLE_PICKER_API_KEY',
             'LINEAR_CLIENT_ID', 'LINEAR_CLIENT_SECRET',
             'GITHUB_CLIENT_ID', 'GITHUB_CLIENT_SECRET',
+            'HUBSPOT_CLIENT_ID', 'HUBSPOT_CLIENT_SECRET',
           ]}
           with open('server-credentials.json', 'w') as f:
               json.dump(creds, f)
