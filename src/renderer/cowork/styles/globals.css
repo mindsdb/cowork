@@ -2887,6 +2887,12 @@ body .first-artifact-tip .btn.primary:active {
   background: color-mix(in srgb, var(--surface) 80%, transparent);
   box-shadow: none;
 }
+/* Rest-state shadows: the shared block above is 0-2-1 and loses to the
+   theme-keyed variant rules (0-3-1), so kill the shadow at variant
+   specificity. Focus ring comes last so it wins the source-order tie. */
+body .first-artifact-tip .btn.default,
+body .first-artifact-tip .btn.primary { box-shadow: none; }
+body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surface); }
 
 /* First-artifact tip arrow — a rotated square poking out of the popup's
    anchor-facing edge. Base UI positions it along the popup edge and stamps
