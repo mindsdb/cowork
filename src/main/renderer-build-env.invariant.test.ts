@@ -3,28 +3,22 @@ import { readFileSync, readdirSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-// Regression guard for the class of bug behind PR #528 (silent OTA analytics
-// outage): the desktop renderer is built by more than one CI workflow, and one
-// of them (the OTA bundle, publish-ui.yml) drifted out of sync with the
-// installer builds — it stopped injecting a VITE_* build var, so the shipped
-// bundle silently lost that value with no test/build failure.
+// Regression guard for PR #528: the desktop renderer is built by several CI
+// workflows, and the OTA bundle (publish-ui.yml) drifted out of sync with the
+// installers — it dropped a VITE_* var, silently gutting the shipped bundle
+// with no build failure.
 //
-// Rather than assert one named var, this enforces PARITY: every workflow that
-// bakes VITE_* build vars into the renderer must bake the SAME set. Drift in
-// either direction (a var added to one build but not another, or dropped from
-// one) fails here — for any variable, present or future. A small documented
-// contract list additionally catches a var being dropped from *every* build at
-// once (which parity alone would see as "consistently absent").
+// Enforces PARITY over the named var: every workflow that bakes VITE_* vars
+// into the renderer must bake the SAME set. Any drift fails, for any variable.
+// The contract list below also catches a var dropped from *every* build at once
+// (which parity alone reads as "consistently absent").
 //
-// Detection is natural: the desktop builds inject via a step `env:` block,
-// while the web/Docker build (Dockerfile.frontend) injects via build-args on
-// the `build-push-ecr` action's `with:` — so keying on step-env VITE_*
-// injection scopes this to the desktop renderer profile and leaves the web
-// build (a legitimately different var profile, tracked in ENG-1163) alone.
+// Scoped to the desktop builds by keying on step-`env:` injection — the
+// web/Docker build injects via `build-push-ecr` build-args (a legitimately
+// different profile, tracked in ENG-1163), so it stays out of scope.
 
-// The renderer build-var contract: every VITE_* var the desktop builds inject.
-// Update this deliberately when the renderer's build-time inputs change — the
-// parity check below then guarantees the change lands in every build.
+// The renderer build-var contract. Update deliberately when the renderer's
+// build-time inputs change; the parity check then enforces it everywhere.
 const EXPECTED_RENDERER_BUILD_VARS = [
   'VITE_APP_VERSION', // → __APP_VERSION__; fallback: git describe / package.json
   'VITE_MINDS_API_URL', // API/auth base; fallback: prod (mindsUrls.ts)
@@ -38,9 +32,9 @@ const WORKFLOWS_DIR = path.resolve(
 
 const read = (file: string): string => readFileSync(path.join(WORKFLOWS_DIR, file), 'utf8');
 
-// VITE_* vars injected via a step `env:` — a `VITE_FOO: <value>` line. The
-// trailing `\S` requires a value, so the reusable-workflow `secrets:`
-// DECLARATION form (`VITE_...:` with nothing after the colon) is not counted.
+// VITE_* vars injected via a step `env:`. The trailing `\S` requires a value,
+// so a reusable-workflow `secrets:` declaration (`VITE_...:` with nothing after
+// the colon) is not counted.
 const injectedViteVars = (text: string): Set<string> =>
   new Set([...text.matchAll(/^[ \t]+(VITE_[A-Z0-9_]+):[ \t]+\S/gm)].map((m) => m[1]));
 
@@ -50,8 +44,7 @@ const rendererBuilds = readdirSync(WORKFLOWS_DIR)
   .filter((w) => w.vars.size > 0);
 
 describe('renderer-build workflows carry the same VITE_ build vars (regression: PR #528)', () => {
-  // Guards against a path/detection regression silently emptying `rendererBuilds`
-  // and making the parity check pass vacuously.
+  // Guards against detection silently emptying the list (vacuous parity pass).
   it('detects the desktop renderer-build workflows', () => {
     const detected = rendererBuilds.map((w) => w.file).sort();
     expect(detected).toEqual(
@@ -59,7 +52,7 @@ describe('renderer-build workflows carry the same VITE_ build vars (regression: 
     );
   });
 
-  // The general guard: no drift between builds — every build injects the union.
+  // The general guard: every build injects the union — no drift.
   it('every renderer build injects the same set of VITE_ vars (no drift)', () => {
     const union = new Set(rendererBuilds.flatMap((w) => [...w.vars]));
     const drift = rendererBuilds
@@ -68,8 +61,8 @@ describe('renderer-build workflows carry the same VITE_ build vars (regression: 
     expect(drift).toEqual([]); // failure shows exactly which build is missing which var(s)
   });
 
-  // The contract: the shared set is the documented one — catches a var dropped
-  // from every build at once, and forces an intentional update when it changes.
+  // Catches a var dropped from every build at once, and forces an intentional
+  // update when the contract changes.
   it('the shared VITE_ set matches the documented contract', () => {
     const union = [...new Set(rendererBuilds.flatMap((w) => [...w.vars]))].sort();
     expect(union).toEqual(EXPECTED_RENDERER_BUILD_VARS);
@@ -82,7 +75,7 @@ describe('renderer-build workflows carry the same VITE_ build vars (regression: 
     // A build missing VITE_FOO relative to the union is flagged.
     const union = new Set([...withVar, ...withoutVar, 'VITE_FOO']);
     expect([...union].filter((v) => !withoutVar.has(v)).sort()).toEqual(['VITE_FOO']);
-    // The `secrets:` declaration form (no value) is not an injection.
+    // A `secrets:` declaration (no value) is not an injection.
     expect(injectedViteVars('    secrets:\n      VITE_FOO:\n        required: false').size).toBe(0);
   });
 });

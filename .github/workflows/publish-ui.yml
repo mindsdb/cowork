@@ -19,11 +19,10 @@ on:
     secrets:
       RELEASES_TOKEN:
         required: true
-      # Baked into the OTA renderer bundle at Vite build time (see the "Build
-      # renderer" step). Optional so a UI-only re-publish still works, but its
-      # absence means the shipped bundle emits zero PostHog events — the OTA
-      # bundle overwrites the installer's renderer, so a missing token here
-      # silently kills desktop analytics for every updated client.
+      # Baked into the OTA bundle at build time (see "Build renderer"). Optional
+      # so a UI-only re-publish still works, but its absence silently kills
+      # desktop analytics: the OTA bundle overwrites the installer's renderer,
+      # so a missing token here ships an empty PostHog key to every client.
       VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN:
         required: false
   # Manual re-publish / backfill. Leave version empty to derive from git describe.
@@ -95,25 +94,19 @@ jobs:
 
       - name: Build renderer
         # Bake the resolved version into __APP_VERSION__ so the running bundle
-        # reports the same version as latest.json and the prod app installer.
+        # matches latest.json and the prod installer.
         #
-        # The PostHog token is a Vite build-time constant (import.meta.env in
-        # lib/analytics.js). It MUST be injected here: the installer workflows
-        # bake it in, but this OTA bundle overwrites the installer's renderer on
-        # first update, so without it every updated desktop client silently
-        # drops all analytics events (capture() no-ops on an empty key). Do not
-        # remove this line.
+        # The PostHog token MUST be injected here (Vite build-time constant): the
+        # OTA bundle overwrites the installer's renderer, so without it every
+        # updated client drops all analytics on an empty key. Do not remove.
         env:
           VITE_APP_VERSION: ${{ steps.version.outputs.version }}
           VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN: ${{ secrets.VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN }}
-          # This workflow only ever publishes the PROD bundle (called by
-          # release.yml; manual triggers publish prod CalVer to
-          # antontron-releases). The renderer's non-DEV fallback already
-          # resolves to api.mindshub.ai (mindsUrls.ts), so this is defense-in-
-          # depth: it pins the OTA bundle's environment explicitly rather than
-          # relying on that implicit fallback, and it fails loudly (wrong env)
-          # rather than silently if this workflow is ever reused for a non-prod
-          # channel. Keycloak/console are derived from this base at runtime.
+          # Defense-in-depth: this workflow only publishes the PROD bundle, and
+          # the renderer's non-DEV fallback already resolves to api.mindshub.ai
+          # (mindsUrls.ts). Pinning it makes the target explicit and fails loudly
+          # (wrong env) if this workflow is ever reused for a non-prod channel.
+          # Keycloak/console derive from this base at runtime.
           VITE_MINDS_API_URL: https://api.mindshub.ai
         run: npm run build:renderer
 
