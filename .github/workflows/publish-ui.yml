@@ -106,6 +106,15 @@ jobs:
         env:
           VITE_APP_VERSION: ${{ steps.version.outputs.version }}
           VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN: ${{ secrets.VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN }}
+          # This workflow only ever publishes the PROD bundle (called by
+          # release.yml; manual triggers publish prod CalVer to
+          # antontron-releases). The renderer's non-DEV fallback already
+          # resolves to api.mindshub.ai (mindsUrls.ts), so this is defense-in-
+          # depth: it pins the OTA bundle's environment explicitly rather than
+          # relying on that implicit fallback, and it fails loudly (wrong env)
+          # rather than silently if this workflow is ever reused for a non-prod
+          # channel. Keycloak/console are derived from this base at runtime.
+          VITE_MINDS_API_URL: https://api.mindshub.ai
         run: npm run build:renderer
 
       - name: Check if version already published
