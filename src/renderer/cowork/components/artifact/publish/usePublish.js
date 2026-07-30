@@ -265,7 +265,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
   // before it can be edited, and it works for every artifact type (unlike the
   // mount payload, which text/.md previews bypass). Keyed on targetPath so the
   // onChange-driven prop churn from refresh() itself doesn't re-fire it, and so
-  // the accessLoaded reset is per-artifact-identity (never залипает — ENG-931).
+  // the accessLoaded reset is per-artifact-identity (never stuck — ENG-931).
   useEffect(() => {
     if (!enabled || !targetPath) return;
     // Reset readiness from the prop's own knowledge first, then confirm via the
