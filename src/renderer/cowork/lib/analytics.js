@@ -43,6 +43,17 @@ const POSTHOG_KEY =
 
 const SURFACE = host.isElectron ? 'desktop' : 'web';
 
+// Running UI-bundle version, baked in at build time as __APP_VERSION__ (Vite
+// `define`). For OTA clients this is the bundle actually running, not the
+// installer shell. `typeof`-guarded like every __APP_VERSION__ read in the
+// renderer, so it degrades to undefined outside a real build (dropped by
+// JSON.stringify). Attached to every event as `app_version`, and to the person
+// as `last_seen_app_version` — `$set` is last-writer-wins, so a straggling
+// event from an older install can overwrite it; it is not authoritative for
+// "current version" (use the latest event's app_version for that).
+const APP_VERSION =
+  typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : undefined;
+
 // Cohort-hygiene flag. CI/QA traffic shouldn't pollute the funnel: a build
 // can opt out via VITE_POSTHOG_MINDSHUB_MAIN_CI, and a session can opt out at runtime
 // with `?ci=1` (mirrors the web hub's `VITE_POSTHOG_HUB_CI` / `?ci=1`).
@@ -230,7 +241,7 @@ function mergeAnonIntoAccount(sub) {
       $anon_distinct_id: deviceId,
       // Carry device_id onto the person too, so the deterministic join key is
       // available regardless of whether the person-merge lands (ENG-537).
-      $set: { ..._cachedPersonProps, device_id: deviceId },
+      $set: { ..._cachedPersonProps, device_id: deviceId, last_seen_app_version: APP_VERSION },
       surface: SURFACE,
       is_internal: _cachedIsInternal,
       $lib: 'cowork-desktop',
@@ -289,6 +300,7 @@ function capture(event, properties = {}) {
     const eventProps = {
       ...properties,
       surface: SURFACE,
+      app_version: APP_VERSION,
       is_internal: _cachedIsInternal,
       $lib: 'cowork-desktop',
       // Stable per-install id on every event (pre- and post-login) so
@@ -298,7 +310,7 @@ function capture(event, properties = {}) {
     };
     // Account attributes only apply to an identified person; pre-login events
     // ride the device id and inherit these via the $identify merge on sign-in.
-    if (distinctId) eventProps.$set = { ..._cachedPersonProps, device_id: deviceId };
+    if (distinctId) eventProps.$set = { ..._cachedPersonProps, device_id: deviceId, last_seen_app_version: APP_VERSION };
     const body = JSON.stringify({
       api_key: POSTHOG_KEY,
       event,
