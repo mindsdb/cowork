@@ -302,6 +302,28 @@ function ClearableTextInput({ value, onChange, placeholder, ariaLabel }) {
 // The fetched value is held in local component state — we never push it
 // into the parent settings object, so saving an untouched revealed value
 // still sends "***" and the server skips overwriting the stored key.
+// Whether toggling the eye should fetch the real stored key from the server.
+//
+// `isWeb` short-circuits everything: `/settings/reveal-key` returns UNMASKED
+// provider secrets and is loopback-only server-side (`_require_local`), and on
+// hosted the browser reaches the server from the docker bridge rather than
+// 127.0.0.1 — so the fetch would 403. That is the ENG-912 shape: a panel that
+// looks functional and throws on a sub-action. A web user can still SET a key
+// (`PUT /settings/{key}` is not gated); they just can't read the stored one
+// back, and the field keeps showing the "***" sentinel.
+//
+// Extracted as a pure predicate rather than inlined so both platforms' paths
+// are directly testable — this gate lives inside a shared component that
+// desktop depends on, and the desktop direction is the one a web-only change
+// is most likely to break silently (ENG-932).
+export function shouldRevealStoredKey({ isWeb, show, revealName, isSentinel, alreadyRevealed }) {
+  if (isWeb) return false;
+  // Only worth a round trip when the field is currently masked, the caller told
+  // us which key to ask for, the value really is the server's sentinel, and we
+  // haven't already fetched it.
+  return !show && Boolean(revealName) && Boolean(isSentinel) && !alreadyRevealed;
+}
+
 function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
   const [show, setShow] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -335,15 +357,13 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
   };
 
   const onToggleShow = async () => {
-    // `!host.isWeb`: /settings/reveal-key returns UNMASKED provider secrets and
-    // is loopback-only server-side (`_require_local`). On hosted the browser
-    // reaches the server from the docker bridge, not 127.0.0.1, so the fetch
-    // would 403 — a Settings panel that looks functional and throws on a
-    // sub-action (the ENG-912 shape). Gated here, at the network call, rather
-    // than per call site, so a future caller can't reintroduce it. A web user
-    // can still SET a key (PUT /settings/{key} is not gated); they just can't
-    // read the stored one back, and the field keeps showing the "***" sentinel.
-    if (!host.isWeb && !show && revealName && isSentinel && revealedValue === null) {
+    if (shouldRevealStoredKey({
+      isWeb: host.isWeb,
+      show,
+      revealName,
+      isSentinel,
+      alreadyRevealed: revealedValue !== null,
+    })) {
       // Reveal the real stored key from the loopback server.
       setRevealing(true);
       try {
@@ -697,7 +717,14 @@ function SettingsNav({ section, onSectionChange, serverOnline = true }) {
       }}>Settings</div>
       {navItemsForHost(host.isWeb).map((item) => {
         const active = section === item.id;
-        const disabled = !serverOnline && item.id !== 'backend';
+        // `!host.isWeb &&`: the offline-disable exists because a dead local
+        // server can't accept a save, and Backend stays enabled as the escape
+        // hatch to restart it. On web there is no Backend row — so without this
+        // guard, a falsy `serverOnline` would disable EVERY row with no way out.
+        // `serverOnline` is initialised to true and never polled on web today
+        // (App.jsx), so this is defence against that invariant changing in
+        // another file rather than a live bug.
+        const disabled = !host.isWeb && !serverOnline && item.id !== 'backend';
         const icon = Ico[item.icon] ? Ico[item.icon](15) : null;
         return (
           <button
@@ -2538,6 +2565,10 @@ export default function SettingsView({
   );
 
   const renderBackendSection = () => {
+    // Unreachable from the nav since ENG-932 — `navItemsForHost` drops Backend
+    // on web, and `effectiveSection` refuses to resolve to a section the host
+    // doesn't offer. Kept as a defensive fallback for any future caller that
+    // renders a section directly rather than through the nav.
     if (host.isWeb) {
       return (
         <SettingsSectionPanel>
@@ -2981,7 +3012,14 @@ export default function SettingsView({
           ) : (
             <nav className="settings-list" role="navigation" aria-label="Settings sections">
               {navItemsForHost(host.isWeb).map((item) => {
-                const disabled = !serverOnline && item.id !== 'backend';
+                // `!host.isWeb &&`: the offline-disable exists because a dead local
+        // server can't accept a save, and Backend stays enabled as the escape
+        // hatch to restart it. On web there is no Backend row — so without this
+        // guard, a falsy `serverOnline` would disable EVERY row with no way out.
+        // `serverOnline` is initialised to true and never polled on web today
+        // (App.jsx), so this is defence against that invariant changing in
+        // another file rather than a live bug.
+        const disabled = !host.isWeb && !serverOnline && item.id !== 'backend';
                 const icon = Ico[item.icon] ? Ico[item.icon](18) : null;
                 return (
                   <div className="mshell-accordion" key={item.id}>

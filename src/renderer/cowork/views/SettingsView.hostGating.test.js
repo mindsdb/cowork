@@ -32,7 +32,7 @@ vi.mock('../lib/analytics', () => ({
   resetDeviceIdentity: vi.fn(),
 }));
 
-import { navItemsForHost } from './SettingsView';
+import { navItemsForHost, shouldRevealStoredKey } from './SettingsView';
 
 const ids = (items) => items.map((i) => i.id);
 
@@ -85,5 +85,50 @@ describe('navItemsForHost — which Settings sections a host offers (ENG-932)', 
     const a = navItemsForHost(true);
     a.pop();
     expect(ids(navItemsForHost(true))).toEqual(['agent', 'appearance', 'channels']);
+  });
+});
+
+describe('shouldRevealStoredKey — the key-reveal gate (ENG-932)', () => {
+  const base = { isWeb: false, show: false, revealName: 'anthropic', isSentinel: true, alreadyRevealed: false };
+
+  // ── The direction a web-only change is most likely to break silently ──
+  it('still reveals on desktop — the pre-existing behaviour must be intact', () => {
+    expect(shouldRevealStoredKey(base)).toBe(true);
+  });
+
+  it('never reveals on web, whatever else is true', () => {
+    // /settings/reveal-key is loopback-only server-side; from a browser it 403s.
+    expect(shouldRevealStoredKey({ ...base, isWeb: true })).toBe(false);
+  });
+
+  it('web short-circuits even the case that would otherwise fetch', () => {
+    // Same inputs, only the platform differs — isolates the gate itself.
+    expect(shouldRevealStoredKey({ ...base, isWeb: false })).toBe(true);
+    expect(shouldRevealStoredKey({ ...base, isWeb: true })).toBe(false);
+  });
+
+  // ── The pre-existing conditions, unchanged by this ticket ──
+  it('does not fetch when the field is already showing', () => {
+    expect(shouldRevealStoredKey({ ...base, show: true })).toBe(false);
+  });
+
+  it('does not fetch without a key name to ask for', () => {
+    expect(shouldRevealStoredKey({ ...base, revealName: null })).toBe(false);
+    expect(shouldRevealStoredKey({ ...base, revealName: '' })).toBe(false);
+  });
+
+  it('does not fetch when the value is a real local edit, not the sentinel', () => {
+    // The user typed a key; there is nothing stored to reveal.
+    expect(shouldRevealStoredKey({ ...base, isSentinel: false })).toBe(false);
+  });
+
+  it('does not re-fetch a key it already holds', () => {
+    expect(shouldRevealStoredKey({ ...base, alreadyRevealed: true })).toBe(false);
+  });
+
+  it('returns a boolean, never a truthy string', () => {
+    // `revealName &&` used to leak the name itself when the other legs passed.
+    expect(shouldRevealStoredKey(base)).toBe(true);
+    expect(shouldRevealStoredKey({ ...base, revealName: 'minds' })).toBe(true);
   });
 });
