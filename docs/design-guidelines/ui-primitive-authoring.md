@@ -60,3 +60,5 @@ note in `Badge.tsx` for the full explanation.
 | Kbd, Eyebrow | n/a | ✅ | ✅ | retrofitted (ENG-1018); variant-free |
 | Toast | n/a | ✅ | ✅ | retrofitted (ENG-1018) — type variants via Base UI `data-[type]`; no cva needed |
 | Modal, EmptyState | ⬜ | partial | ⬜ | remaining (Modal = the ENG-1014 shell work; EmptyState's debt is ENG-1017 inline styles) |
+| Alert | ✅ | ✅ | ✅ | new (ENG-1146) — cva variants danger/warning/info/success, icon + title slots |
+| Field | n/a | ✅ | ✅ | new (ENG-1147) — clones the control to wire id / aria-describedby / aria-invalid |
