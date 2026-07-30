@@ -25,6 +25,7 @@ import type { UpdateCheckResult } from './ui-updater';
 import { coworkHome, coworkEnvPath, coworkStatePath, migrateLegacyHome, readEnvFile } from './cowork-home';
 import { getServerAuthToken, authHeader, resetServerAuthTokenCache } from './server-auth';
 import { getAppDisplayVersion } from './server-source';
+import { extractProviderError, classifyOpenAICompatibleResult } from './provider-error';
 import { unifiedVersion, SKEW_WARN_DAYS } from '../shared/version';
 
 function getAntonEnvPath(): string {
@@ -185,12 +186,7 @@ async function validateAnthropic(apiKey: string, model: string): Promise<{ ok: b
     if (res.status === 200 || res.status === 201) {
       return { ok: true };
     }
-    try {
-      const parsed = JSON.parse(res.body).error?.message || `HTTP ${res.status}`;
-      return { ok: false, error: parsed };
-    } catch {
-      return { ok: false, error: `HTTP ${res.status}` };
-    }
+    return { ok: false, error: extractProviderError(res.body) || `HTTP ${res.status}` };
   } catch (err: any) {
     return { ok: false, error: `Cannot connect: ${err.message}` };
   }
@@ -228,12 +224,7 @@ async function validateMinds(
     if (res.status >= 200 && res.status < 300) {
       return { ok: true };
     }
-    try {
-      const parsed = JSON.parse(res.body).error?.message || `HTTP ${res.status}`;
-      return { ok: false, error: parsed };
-    } catch {
-      return { ok: false, error: `Server returned HTTP ${res.status}` };
-    }
+    return { ok: false, error: extractProviderError(res.body) || `HTTP ${res.status}` };
   } catch (err: any) {
     return { ok: false, error: `Cannot connect: ${err.message}` };
   }
@@ -261,18 +252,9 @@ async function validateOpenAICompatible(
         messages: [{ role: 'user', content: 'ping' }],
       }),
     });
-    if (res.status === 200 || res.status === 201) {
-      return { ok: true };
-    }
-    if (res.status === 401 || res.status === 403) {
-      return { ok: false, error: 'Invalid API key' };
-    }
-    try {
-      const parsed = JSON.parse(res.body).error?.message || `HTTP ${res.status}`;
-      return { ok: false, error: parsed };
-    } catch {
-      return { ok: false, error: `HTTP ${res.status}` };
-    }
+    // Gemini's footguns (ENG-1145) live in classifyOpenAICompatibleResult:
+    // array-shaped error bodies and a bad key that returns 400, not 401/403.
+    return classifyOpenAICompatibleResult(res.status, res.body);
   } catch (err: any) {
     return { ok: false, error: `Cannot connect: ${err.message}` };
   }
