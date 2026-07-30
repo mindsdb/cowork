@@ -32,4 +32,8 @@ export const OAUTH_CREDENTIALS: Record<string, OAuthCredentials> = {
     clientIdVar: 'GITHUB_CLIENT_ID',
     clientSecretVar: 'GITHUB_CLIENT_SECRET',
   },
+  hubspot: {
+    clientIdVar: 'HUBSPOT_CLIENT_ID',
+    clientSecretVar: 'HUBSPOT_CLIENT_SECRET',
+  },
 };

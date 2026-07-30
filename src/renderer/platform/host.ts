@@ -585,7 +585,7 @@ export async function checkForUpdates(): Promise<UpdateCheckSummary> {
 
 export type OAuthConnectOpts =
   | { engine: string; name?: string }
-  | { authUrl: string; tokenUrl: string; clientId: string; clientSecret?: string; scopes: string[]; extraAuthParams?: Record<string, string>; redirectPort?: number };
+  | { authUrl: string; tokenUrl: string; clientId: string; clientSecret?: string; scopes: string[]; extraAuthParams?: Record<string, string>; redirectPort?: number; redirectHost?: string; optionalScopes?: string[] };
 
 export interface OAuthConnectResult {
   ok: boolean;

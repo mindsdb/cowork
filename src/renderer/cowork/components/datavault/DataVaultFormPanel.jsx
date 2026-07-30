@@ -396,6 +396,8 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
           scopes: oauthMeta.scopes,
           extraAuthParams: oauthMeta.extra_auth_params,
           redirectPort: oauthMeta.redirect_port,
+          redirectHost: oauthMeta.redirect_host,
+          optionalScopes: oauthMeta.optional_scopes,
         });
         if (!result || result.ok === false) {
           setError(result?.reason || 'OAuth flow failed.');

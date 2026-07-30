@@ -36,6 +36,16 @@ export interface OAuthConnectOpts {
   /** Scopes to request, e.g. ["https://www.googleapis.com/auth/gmail.compose"] */
   scopes: string[];
   /**
+   * Optional scopes, sent in a SEPARATE `optional_scope` query param
+   * instead of `scope` — required for providers (HubSpot, confirmed
+   * 2026-07-30) that reject an authorize request mixing optional scopes
+   * into `scope` with "mismatch between the scopes in the install URL
+   * and the app's configured scopes". Omit for providers with a single
+   * flat scope list (unaffected). Sourced from the connector spec's
+   * oauth.optional_scopes.
+   */
+  optionalScopes?: string[];
+  /**
    * Extra params merged into the auth URL. Provider-specific —
    * e.g. Google needs `access_type=offline` + `prompt=consent` to
    * always return a refresh_token.
@@ -49,6 +59,17 @@ export interface OAuthConnectOpts {
    * from the connector spec's oauth.redirect_port.
    */
   redirectPort?: number;
+  /**
+   * Loopback hostname to use in the redirect URI sent to the provider —
+   * required for providers (HubSpot, confirmed 2026-07-30) that reject any
+   * raw IP literal (127.0.0.1) in a registered redirect_uri, accepting only
+   * a valid https:// URL or exactly http://localhost. The loopback server
+   * itself still binds to 127.0.0.1 regardless — localhost resolves to the
+   * same address, only the string handed to the provider changes. Defaults
+   * to '127.0.0.1', matching every connector that doesn't set this.
+   * Sourced from the connector spec's oauth.redirect_host.
+   */
+  redirectHost?: string;
   /**
    * How long the loopback server waits for the browser callback before
    * giving up. Defaults to CALLBACK_TIMEOUT_MS (3 min) — enough to type
@@ -148,7 +169,7 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
   }
   if (cancelled) return { ok: false, reason: 'cancelled' };
 
-  const redirectUri = `http://127.0.0.1:${port}/callback`;
+  const redirectUri = `http://${opts.redirectHost || '127.0.0.1'}:${port}/callback`;
 
   // Build the authorize URL.
   const authParams = new URLSearchParams({
@@ -159,6 +180,7 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
     state,
     code_challenge: challenge,
     code_challenge_method: 'S256',
+    ...(opts.optionalScopes?.length ? { optional_scope: opts.optionalScopes.join(' ') } : {}),
     ...(opts.extraAuthParams || {}),
   });
   const authUrl = `${opts.authUrl}?${authParams.toString()}`;
@@ -402,3 +424,23 @@ function escapeHtml(s: string): string {
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string
   ));
 }
+
+async function revokeHubspot(refreshToken: string): Promise<void> {
+  // HubSpot's revoke endpoint takes the REFRESH token in the URL path with
+  // DELETE — confirmed 2026-07-30 that this deletes only the refresh token
+  // (access tokens keep working until they naturally expire, ~30 min), so
+  // it must be called with the real refresh_token, never an access_token.
+  // Mirrors _revoke_hubspot in cowork-server's oauth/google.py, needed here
+  // too because that server-side path only ever sees an access_token for
+  // Electron-originated connections (the vault never holds refresh_token —
+  // it lives only in this process's OS keychain).
+  await fetch(`https://api.hubapi.com/oauth/v1/refresh-tokens/${refreshToken}`, { method: 'DELETE' });
+}
+
+// engine → custom revoke function, for providers whose revoke call needs
+// the REAL refresh_token (only ever held here, never in the vault) in a
+// shape the generic revoke_url/POST/form-body path (see KEYCHAIN_REVOKE
+// in index.ts) doesn't support. Checked before that generic path.
+export const CUSTOM_REVOKE_HANDLERS: Record<string, (refreshToken: string) => Promise<void>> = {
+  hubspot: revokeHubspot,
+};

@@ -9,7 +9,7 @@ import { checkInstallStatus, runInstaller } from './installer';
 import { startServer, stopServer, forceReapServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort, fetchServerVersions } from './server-process';
 import { setUpdateNotifier, recreateVenvIfUnsupportedPython, repairServerInstall } from './server-updater';
 import { initUpdater, registerUpdateHandlers } from './updater';
-import { oauthConnect, cancelCurrentOAuth } from './oauth-service';
+import { oauthConnect, cancelCurrentOAuth, CUSTOM_REVOKE_HANDLERS } from './oauth-service';
 import { setRefreshToken, deleteRefreshToken, getRefreshToken as getOAuthRefreshToken } from './keychain-service';
 import { OAUTH_CREDENTIALS } from './credentials';
 import { startRefreshLoop, stopRefreshLoop, stopAllRefreshLoops, revokedConnections, getPickerAccess } from './token-refresh';
@@ -664,6 +664,8 @@ function setupIPC() {
         scopes: oauthBlock.scopes,
         extraAuthParams: oauthBlock.extra_auth_params,
         redirectPort: oauthBlock.redirect_port,
+        redirectHost: oauthBlock.redirect_host,
+        optionalScopes: oauthBlock.optional_scopes,
       });
       if (!pkceResult.ok || !pkceResult.access_token || (supportsRefresh && !pkceResult.refresh_token)) {
         return { ok: false, reason: pkceResult.reason || 'OAuth flow did not return tokens.' };
@@ -806,20 +808,25 @@ function setupIPC() {
     try {
       const refreshToken = await getOAuthRefreshToken(engine, accountEmail);
       if (refreshToken) {
-        const specRes = await fetch(
-          `http://127.0.0.1:${getServerPort()}/api/v1/connectors/specs/${engine}`,
-          { headers: authHeader() },
-        );
-        if (specRes.ok) {
-          const spec = await specRes.json() as Record<string, any>;
-          const builtinMethod = spec?.form?.methods?.find((m: any) => m.id === 'browser_oauth_builtin');
-          const oauthBlock = builtinMethod?.oauth;
-          if (oauthBlock?.supports_revoke !== false && oauthBlock?.revoke_url) {
-            await fetch(oauthBlock.revoke_url, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-              body: new URLSearchParams({ token: refreshToken }).toString(),
-            });
+        const customRevoke = CUSTOM_REVOKE_HANDLERS[engine];
+        if (customRevoke) {
+          await customRevoke(refreshToken);
+        } else {
+          const specRes = await fetch(
+            `http://127.0.0.1:${getServerPort()}/api/v1/connectors/specs/${engine}`,
+            { headers: authHeader() },
+          );
+          if (specRes.ok) {
+            const spec = await specRes.json() as Record<string, any>;
+            const builtinMethod = spec?.form?.methods?.find((m: any) => m.id === 'browser_oauth_builtin');
+            const oauthBlock = builtinMethod?.oauth;
+            if (oauthBlock?.supports_revoke !== false && oauthBlock?.revoke_url) {
+              await fetch(oauthBlock.revoke_url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({ token: refreshToken }).toString(),
+              });
+            }
           }
         }
       }

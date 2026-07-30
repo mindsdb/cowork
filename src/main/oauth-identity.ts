@@ -44,6 +44,16 @@ async function fetchGithubIdentity(accessToken: string): Promise<{ email: string
   return { email: data.email || data.login || '' };
 }
 
+async function fetchHubspotIdentity(accessToken: string): Promise<{ email: string }> {
+  // HubSpot has no OIDC-style userinfo endpoint — identity comes from the
+  // token-introspection endpoint, which returns the authorizing user's
+  // email under `user`. Matches the server-side _fetch_userinfo_hubspot.
+  const res = await fetch(`https://api.hubapi.com/oauth/v1/access-tokens/${accessToken}`);
+  if (!res.ok) return { email: '' };
+  const data = await res.json() as { user?: string };
+  return { email: data.user || '' };
+}
+
 const FETCHERS: Record<string, (accessToken: string) => Promise<{ email: string }>> = {
   google_drive: fetchGoogleIdentity,
   google_calendar: fetchGoogleIdentity,
@@ -52,6 +62,7 @@ const FETCHERS: Record<string, (accessToken: string) => Promise<{ email: string 
   google_analytics_4: fetchGoogleIdentity,
   linear: fetchLinearIdentity,
   github: fetchGithubIdentity,
+  hubspot: fetchHubspotIdentity,
 };
 
 export async function fetchAccountEmail(engine: string, accessToken: string): Promise<string> {
