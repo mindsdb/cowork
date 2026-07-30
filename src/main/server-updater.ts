@@ -40,7 +40,10 @@ import {
   decidePypiUpdate,
   looksLikeBrokenInstall,
   parseAntonPin,
+  parseAntonConstraint,
+  satisfiesAntonConstraint,
   selectLatestPypiVersion,
+  selectLatestConstrainedPypiVersion,
   type VcsInfo,
 } from './update-logic';
 import {
@@ -53,7 +56,14 @@ import {
 } from './uv-paths';
 
 const PACKAGE_NAME = 'cowork-server';
+// PyPI project name (hyphenated) and the installed dist-info name (underscored)
+// for anton-agent — the desktop tracks it as a second PyPI-channel component so
+// an anton-only release reaches users without a cowork-server release (ENG-1094).
+const ANTON_PACKAGE_NAME = 'anton-agent';
+const ANTON_DIST_NAME = 'anton_agent';
+const COWORK_DIST_NAME = 'cowork_server';
 const PYPI_JSON_URL = `https://pypi.org/pypi/${PACKAGE_NAME}/json`;
+const ANTON_PYPI_JSON_URL = `https://pypi.org/pypi/${ANTON_PACKAGE_NAME}/json`;
 const PYPI_TIMEOUT_MS = 5000;
 const DISABLE_VAR = 'COWORK_SERVER_DISABLE_AUTOUPDATE';
 
@@ -97,28 +107,68 @@ function sitesPackagesDir(toolsDir: string = getUvToolsDir()): string | null {
   return null;
 }
 
-/** Read git VCS info for an installed dist (e.g. "cowork_server", "anton_agent").
- *  Returns null when the dist was installed from a registry (PyPI) — i.e.
- *  no direct_url.json with vcs_info. */
-function readVcsInfo(distName: string, toolsDir?: string): VcsInfo | null {
+/** Locate an installed dist's `.dist-info` directory (e.g. "cowork_server",
+ *  "anton_agent") inside the tool venv's site-packages. Null when site-packages
+ *  can't be found or the dist isn't installed. */
+function findDistInfoDir(distName: string, toolsDir?: string): string | null {
   const sp = sitesPackagesDir(toolsDir);
   if (!sp) return null;
-  let distInfo: string | null = null;
   try {
     for (const entry of fs.readdirSync(sp)) {
       if (entry.startsWith(`${distName}-`) && entry.endsWith('.dist-info')) {
-        distInfo = path.join(sp, entry, 'direct_url.json');
-        break;
+        return path.join(sp, entry);
       }
     }
   } catch {
     return null;
   }
-  if (!distInfo || !fs.existsSync(distInfo)) return null;
+  return null;
+}
+
+/** Read git VCS info for an installed dist (e.g. "cowork_server", "anton_agent").
+ *  Returns null when the dist was installed from a registry (PyPI) — i.e.
+ *  no direct_url.json with vcs_info. */
+function readVcsInfo(distName: string, toolsDir?: string): VcsInfo | null {
+  const dir = findDistInfoDir(distName, toolsDir);
+  if (!dir) return null;
+  const distInfo = path.join(dir, 'direct_url.json');
+  if (!fs.existsSync(distInfo)) return null;
   try {
     return parseVcsInfo(fs.readFileSync(distInfo, 'utf-8'));
   } catch {
     return null;
+  }
+}
+
+/** The installed version of a dist, read from its `.dist-info` directory name
+ *  ("anton_agent-2.26.7.27.1.dist-info" → "2.26.7.27.1"). This is the only
+ *  place the installed anton-agent version is available: `uv tool list` reports
+ *  the tool (cowork-server) and its entry points, never its dependencies. Null
+ *  when the dist isn't installed. */
+function readInstalledDistVersion(distName: string, toolsDir?: string): string | null {
+  const dir = findDistInfoDir(distName, toolsDir);
+  if (!dir) return null;
+  const base = path.basename(dir); // "<distName>-<version>.dist-info"
+  return base.slice(distName.length + 1, base.length - '.dist-info'.length) || null;
+}
+
+/** The `Requires-Dist:` values from an installed dist's METADATA — the actual
+ *  dependency constraints uv will honor on a `--reinstall`. Reading the local
+ *  wheel metadata (rather than re-fetching from PyPI) reflects exactly what is
+ *  installed. Empty array when the dist or its METADATA can't be read. */
+function readInstalledRequiresDist(distName: string, toolsDir?: string): string[] {
+  const dir = findDistInfoDir(distName, toolsDir);
+  if (!dir) return [];
+  try {
+    const meta = fs.readFileSync(path.join(dir, 'METADATA'), 'utf-8');
+    const out: string[] = [];
+    for (const line of meta.split('\n')) {
+      const m = line.match(/^Requires-Dist:\s*(.+?)\s*$/);
+      if (m) out.push(m[1]);
+    }
+    return out;
+  } catch {
+    return [];
   }
 }
 
@@ -410,6 +460,39 @@ export async function resolvePypiInstallTarget(): Promise<{ version: string; wit
   return { version, withArgs: await antonWithArgs(version) };
 }
 
+/** PyPI channel, anton-only (ENG-1094): is there a newer anton-agent on PyPI
+ *  that the installed cowork-server's Requires-Dist still permits?
+ *
+ *  The desktop used to check only cowork-server on the PyPI channel, so an
+ *  anton-only release (e.g. a completion-verifier hotfix shipped as a new
+ *  anton-agent with cowork-server's version unchanged) never reached a
+ *  PyPI-channel install until cowork-server happened to publish. cowork-server's
+ *  own `Requires-Dist: anton-agent<3,>=…` already permits the newer anton, so
+ *  no cowork-server release or pin edit is needed — only the detection was
+ *  missing.
+ *
+ *  Returns `{ from, to }` when an anton-only update is warranted, else null.
+ *  Fails closed (returns null) when the constraint can't be read — never offers
+ *  an anton a `--with anton-agent==X` reinstall couldn't resolve against the
+ *  installed cowork-server (which would loop the banner). Shared by BOTH the
+ *  check and the apply so the two can't disagree. */
+async function resolveAntonPypiUpdate(toolsDir?: string): Promise<{ from: string; to: string } | null> {
+  const installedAnton = readInstalledDistVersion(ANTON_DIST_NAME, toolsDir);
+  if (!installedAnton) return null;
+  const constraint = parseAntonConstraint(readInstalledRequiresDist(COWORK_DIST_NAME, toolsDir));
+  const json = (await fetchPypiJson(ANTON_PYPI_JSON_URL)) as {
+    releases?: Record<string, Array<{ yanked?: boolean }>>;
+  } | null;
+  if (!json) return null;
+  const latest = selectLatestConstrainedPypiVersion({
+    releases: json.releases ?? null,
+    includePrereleases: includePrereleases(),
+    satisfies: (v) => satisfiesAntonConstraint(v, constraint),
+  });
+  const decision = decidePypiUpdate(installedAnton, latest);
+  return decision.action === 'update' ? { from: decision.from, to: decision.to } : null;
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -429,6 +512,12 @@ export interface ServerUpdateCheckResult {
   // no update. Never set for a deliberate, deterministic "no" (updates
   // disabled via env). See checkForServerUpdate.
   error?: boolean;
+  // Which backend component the available update is for. On the PyPI channel an
+  // update can now be an anton-only release (ENG-1094), so currentVersion/
+  // latestVersion describe whichever component this names; the banner uses it
+  // to say what's actually changing. Absent on the git channel (both components
+  // move together as one commit-pair update).
+  component?: 'cowork-server' | 'anton-agent';
 }
 
 /** Check whether a server update is available WITHOUT applying it. */
@@ -477,11 +566,17 @@ export async function checkForServerUpdate(): Promise<ServerUpdateCheckResult> {
       fetchLatestVersion(),
     ]);
     if (!currentVersion || !latestVersion) return { updateAvailable: false, error: true };
-    return {
-      updateAvailable: decidePypiUpdate(currentVersion, latestVersion).action === 'update',
-      currentVersion,
-      latestVersion,
-    };
+    if (decidePypiUpdate(currentVersion, latestVersion).action === 'update') {
+      return { updateAvailable: true, currentVersion, latestVersion, component: 'cowork-server' };
+    }
+    // cowork-server is current — an anton-only release may still be pending.
+    // Detected the SAME way maybeUpdateServer applies it, so the banner and the
+    // action can never disagree.
+    const anton = await resolveAntonPypiUpdate();
+    if (anton) {
+      return { updateAvailable: true, currentVersion: anton.from, latestVersion: anton.to, component: 'anton-agent' };
+    }
+    return { updateAvailable: false, currentVersion, latestVersion, component: 'cowork-server' };
   } catch (err: any) {
     console.error('[server-updater] check failed:', err);
     return { updateAvailable: false, error: true };
@@ -591,6 +686,11 @@ async function _pypiUpdate(uv: string): Promise<ServerUpdateResult> {
       : { updated: false };
   }
   if (decision.action === 'up-to-date') {
+    // cowork-server is current — but an anton-only release may still be pending
+    // (ENG-1094). The cowork-update path above already pulls the right anton via
+    // the target wheel, so this only matters when cowork itself is unchanged.
+    const anton = await resolveAntonPypiUpdate();
+    if (anton) return _pypiAntonUpdate(uv, currentVersion!, anton);
     console.log(`[server-updater] up to date (installed=${currentVersion}, latest=${latestVersion})`);
     return { updated: false };
   }
@@ -638,5 +738,54 @@ async function _pypiUpdate(uv: string): Promise<ServerUpdateResult> {
 
     console.log(`[server-updater] successfully updated to ${to}`);
     return { updated: true, previousVersion: from, newVersion: to };
+  });
+}
+
+/** Apply an anton-only update (ENG-1094): reinstall the SAME cowork-server
+ *  version while forcing the newer anton-agent as a direct requirement. The
+ *  installed cowork-server's Requires-Dist already permits `anton.to`
+ *  (resolveAntonPypiUpdate verified this), so uv resolves cleanly; pinning it
+ *  with `--with anton-agent==<to>` makes the applied version deterministic
+ *  rather than "whatever a bare re-resolution happens to pick". Rolls back to
+ *  the prior anton on a health-check failure, mirroring _pypiUpdate. */
+async function _pypiAntonUpdate(uv: string, coworkVersion: string, anton: { from: string; to: string }): Promise<ServerUpdateResult> {
+  console.log(`[server-updater] anton-only update available: anton-agent ${anton.from} → ${anton.to} (cowork-server ${coworkVersion} unchanged)`);
+  return withServerMaintenance(async () => {
+    const wasRunning = isServerRunning();
+    if (wasRunning) await stopServer();
+
+    const coworkSpec = `${PACKAGE_NAME}==${coworkVersion}`;
+    const install = await runUv(uv, [
+      'tool', 'install', '--force', '--reinstall', '--python', PYTHON_RANGE,
+      coworkSpec, '--with', `${ANTON_PACKAGE_NAME}==${anton.to}`,
+    ]);
+    if (!install.ok) {
+      console.error('[server-updater] anton upgrade failed:', install.stderr);
+      if (wasRunning) await startServer();
+      return { updated: false, previousVersion: anton.from, error: install.stderr };
+    }
+
+    const result = await startServer();
+    if (!result.ok) {
+      console.error('[server-updater] new anton failed health check, rolling back...');
+      const rollback = await runUv(uv, [
+        'tool', 'install', '--force', '--reinstall', '--python', PYTHON_RANGE,
+        coworkSpec, '--with', `${ANTON_PACKAGE_NAME}==${anton.from}`,
+      ]);
+      if (rollback.ok) {
+        const restored = await startServer();
+        if (restored.ok) {
+          console.log(`[server-updater] rolled back to anton-agent ${anton.from}`);
+        } else {
+          _notify?.({ phase: 'error', critical: true, error: `Anton update to ${anton.to} failed; rolled back to ${anton.from} but the restored server did not start (${restored.reason}). Restart the app to recover.` });
+        }
+      } else {
+        _notify?.({ phase: 'error', critical: true, error: `Anton update to ${anton.to} failed and rollback to ${anton.from} also failed. Restart the app to recover.` });
+      }
+      return { updated: false, previousVersion: anton.from, newVersion: anton.to, error: `New anton failed to start: ${result.reason}` };
+    }
+
+    console.log(`[server-updater] successfully updated anton-agent to ${anton.to}`);
+    return { updated: true, previousVersion: anton.from, newVersion: anton.to };
   });
 }

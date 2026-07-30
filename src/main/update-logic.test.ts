@@ -4,7 +4,10 @@ import {
   installerStepPlan,
   meetsMinVersion,
   parseAntonPin,
+  parseAntonConstraint,
+  satisfiesAntonConstraint,
   selectLatestPypiVersion,
+  selectLatestConstrainedPypiVersion,
   parseInstalledVersion,
   isFullCommitSha,
   parseLsRemote,
@@ -584,6 +587,124 @@ describe('parseAntonPin', () => {
     expect(parseAntonPin('anton-agent==1.0')).toBeNull();
     expect(parseAntonPin([42, null])).toBeNull();
     expect(parseAntonPin(['not-anton-agent==1.0'])).toBeNull();
+  });
+});
+
+describe('parseAntonConstraint', () => {
+  it('extracts the full specifier range (the ENG-1094 case)', () => {
+    expect(parseAntonConstraint(['httpx>=0.27', 'anton-agent<3,>=2.26.6.30.1', 'uvicorn>=0.47.0']))
+      .toBe('<3,>=2.26.6.30.1');
+  });
+
+  it('keeps an exact pin as a (one-clause) constraint', () => {
+    expect(parseAntonConstraint(['anton-agent==2.26.7.23.1rc1'])).toBe('==2.26.7.23.1rc1');
+  });
+
+  it('drops environment markers, extras, and PEP 508 parentheses', () => {
+    expect(parseAntonConstraint(['anton-agent<3 ; python_version >= "3.12"'])).toBe('<3');
+    expect(parseAntonConstraint(['anton-agent[cli]>=2,<3'])).toBe('>=2,<3');
+    expect(parseAntonConstraint(['anton-agent (>=2)'])).toBe('>=2');
+  });
+
+  it('returns "" when anton-agent is required with no version bound (any allowed)', () => {
+    expect(parseAntonConstraint(['anton-agent'])).toBe('');
+    expect(parseAntonConstraint(['anton-agent ; python_version >= "3.12"'])).toBe('');
+  });
+
+  it('returns null when there is no anton-agent requirement (fail-closed signal)', () => {
+    expect(parseAntonConstraint(['fastapi>=0.100', 'httpx>=0.27'])).toBeNull();
+    // Word-boundaried: a differently-named package must not match.
+    expect(parseAntonConstraint(['anton-agent-extras>=1'])).toBeNull();
+  });
+
+  it('returns null for non-array / non-string entries', () => {
+    expect(parseAntonConstraint(null)).toBeNull();
+    expect(parseAntonConstraint('anton-agent<3')).toBeNull();
+    expect(parseAntonConstraint([42, null])).toBeNull();
+  });
+});
+
+describe('satisfiesAntonConstraint', () => {
+  it('honors the real ENG-1094 range (<3,>=2.26.6.30.1)', () => {
+    const c = '<3,>=2.26.6.30.1';
+    expect(satisfiesAntonConstraint('2.26.7.27.2', c)).toBe(true);  // the fix
+    expect(satisfiesAntonConstraint('2.26.6.30.1', c)).toBe(true);  // lower bound inclusive
+    expect(satisfiesAntonConstraint('2.26.6.30.0', c)).toBe(false); // below floor
+    expect(satisfiesAntonConstraint('3.0.0', c)).toBe(false);       // hits the <3 ceiling
+  });
+
+  it('evaluates every operator on both sides of the boundary', () => {
+    expect(satisfiesAntonConstraint('2', '<3')).toBe(true);
+    expect(satisfiesAntonConstraint('3', '<3')).toBe(false);
+    expect(satisfiesAntonConstraint('3', '<=3')).toBe(true);
+    expect(satisfiesAntonConstraint('4', '<=3')).toBe(false);
+    expect(satisfiesAntonConstraint('4', '>3')).toBe(true);
+    expect(satisfiesAntonConstraint('3', '>3')).toBe(false);
+    expect(satisfiesAntonConstraint('3', '>=3')).toBe(true);
+    expect(satisfiesAntonConstraint('2', '>=3')).toBe(false);
+    expect(satisfiesAntonConstraint('3', '==3')).toBe(true);
+    expect(satisfiesAntonConstraint('4', '==3')).toBe(false);
+    expect(satisfiesAntonConstraint('4', '!=3')).toBe(true);
+    expect(satisfiesAntonConstraint('3', '!=3')).toBe(false);
+  });
+
+  it('an empty constraint allows anything; blank clauses are skipped', () => {
+    expect(satisfiesAntonConstraint('9.9.9', '')).toBe(true);
+    expect(satisfiesAntonConstraint('2.5', '>=2, ,<3')).toBe(true);
+  });
+
+  it('fails closed on a null constraint or an operator we do not implement', () => {
+    expect(satisfiesAntonConstraint('2.5', null)).toBe(false);   // couldn't read it
+    expect(satisfiesAntonConstraint('2.5', '~=2.2')).toBe(false); // unimplemented op
+    expect(satisfiesAntonConstraint('2.5', '==2.*')).toBe(false); // wildcard
+    expect(satisfiesAntonConstraint('2.5', 'garbage')).toBe(false);
+  });
+});
+
+describe('selectLatestConstrainedPypiVersion', () => {
+  const files = [{ yanked: false }];
+  const releases = {
+    '2.26.6.30.1': files,
+    '2.26.7.27.1': files,
+    '2.26.7.27.2': files,     // the ENG-1081 fix
+    '2.26.7.28.1rc1': files,  // a pre-release
+    '3.0.0': files,           // a next-major, outside cowork-server's <3
+  };
+  const allow = (c: string) => (v: string) => satisfiesAntonConstraint(v, c);
+
+  it('picks the newest release that satisfies the constraint, ignoring out-of-range majors', () => {
+    expect(selectLatestConstrainedPypiVersion({
+      releases, includePrereleases: false, satisfies: allow('<3,>=2.26.6.30.1'),
+    })).toBe('2.26.7.27.2'); // 3.0.0 excluded by <3, rc excluded by stream
+  });
+
+  it('includes rc candidates only on a prerelease stream', () => {
+    expect(selectLatestConstrainedPypiVersion({
+      releases, includePrereleases: true, satisfies: allow('<3,>=2.26.6.30.1'),
+    })).toBe('2.26.7.28.1rc1');
+  });
+
+  it('keeps the running max when a later candidate is older', () => {
+    // Descending key order: the reduce must retain the earlier (newer) best
+    // rather than adopt the later (older) candidate.
+    expect(selectLatestConstrainedPypiVersion({
+      releases: { '2.26.7.27.2': files, '2.26.7.27.1': files },
+      includePrereleases: false, satisfies: allow('<3'),
+    })).toBe('2.26.7.27.2');
+  });
+
+  it('skips yanked/empty releases and returns null when nothing qualifies', () => {
+    expect(selectLatestConstrainedPypiVersion({
+      releases: { '2.26.7.27.2': [{ yanked: true }], '2.26.7.27.1': [] },
+      includePrereleases: false, satisfies: allow('<3'),
+    })).toBeNull();
+    expect(selectLatestConstrainedPypiVersion({
+      releases: null, includePrereleases: false, satisfies: () => true,
+    })).toBeNull();
+    // Everything filtered out by the constraint → null.
+    expect(selectLatestConstrainedPypiVersion({
+      releases, includePrereleases: false, satisfies: allow('>=99'),
+    })).toBeNull();
   });
 });
 

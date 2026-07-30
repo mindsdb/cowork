@@ -101,6 +101,102 @@ export function parseAntonPin(requiresDist: unknown): string | null {
   return null;
 }
 
+/** Extract anton-agent's full version specifier set from a Requires-Dist list
+ *  (e.g. `["anton-agent<3,>=2.26.6.30.1", "fastapi>=0.100"]` → `"<3,>=2.26.6.30.1"`).
+ *
+ *  Three distinct return values, all load-bearing for the PyPI anton-only
+ *  update check (ENG-1094):
+ *   - the specifier string when anton-agent is required with a version bound;
+ *   - `""` when anton-agent is required with NO version bound (any version ok);
+ *   - `null` when there is no anton-agent requirement, or the input isn't a
+ *     list — the "couldn't read the constraint" case, which the check treats as
+ *     fail-closed (see satisfiesAntonConstraint) rather than "anything goes".
+ *
+ *  Distinct from parseAntonPin, which extracts only the `==` pin the staging rc
+ *  stream needs restated on the command line; this returns the whole range so
+ *  the updater can prove a candidate anton is permitted before offering it. */
+export function parseAntonConstraint(requiresDist: unknown): string | null {
+  if (!Array.isArray(requiresDist)) return null;
+  for (const entry of requiresDist) {
+    if (typeof entry !== 'string') continue;
+    // `anton-agent` (word-boundaried so `anton-agent-foo` can't match), an
+    // optional `[extra]`, then the specifier up to any `;` environment marker.
+    const m = entry.match(/^\s*anton-agent(?![A-Za-z0-9_-])\s*(?:\[[^\]]*\])?\s*([^;]*)/i);
+    if (!m) continue;
+    let spec = m[1].trim();
+    // PEP 508 allows the specifier wrapped in parentheses: `anton-agent (>=2)`.
+    if (spec.startsWith('(') && spec.endsWith(')')) spec = spec.slice(1, -1).trim();
+    return spec;
+  }
+  return null;
+}
+
+// A single PEP 440 comparison clause, e.g. `<3` or `>=2.26.6.30.1`. The version
+// charclass deliberately omits `*`, so a wildcard clause (`==2.*`) fails to
+// parse and the whole constraint fails closed (below) — we never offer an anton
+// we can't prove is allowed.
+const SPEC_CLAUSE = /^(<=|>=|==|!=|<|>)\s*([0-9A-Za-z.!+]+)$/;
+
+/** Does `version` satisfy an anton-agent specifier set (the string returned by
+ *  parseAntonConstraint)? Comparison reuses compareVersions, the same CalVer
+ *  ordering the rest of the updater uses.
+ *
+ *  Fail-closed by design — the whole point is to never install an anton the
+ *  installed cowork-server forbids (which a `--with anton-agent==X` reinstall
+ *  would then fail to resolve, looping the banner):
+ *   - `null` constraint (couldn't be read) → false;
+ *   - any clause we can't parse, or an operator we don't implement (`~=`,
+ *     wildcards) → false;
+ *   - `""` (declared with no bound) → true (any version allowed). */
+export function satisfiesAntonConstraint(version: string, constraint: string | null): boolean {
+  if (constraint === null) return false;
+  const spec = constraint.trim();
+  if (spec === '') return true;
+  for (const raw of spec.split(',')) {
+    const clause = raw.trim();
+    if (clause === '') continue;
+    const m = SPEC_CLAUSE.exec(clause);
+    if (!m) return false;
+    const op = m[1];
+    const cmp = compareVersions(version, m[2]);
+    switch (op) {
+      case '<': if (!(cmp < 0)) return false; break;
+      case '<=': if (!(cmp <= 0)) return false; break;
+      case '>': if (!(cmp > 0)) return false; break;
+      case '>=': if (!(cmp >= 0)) return false; break;
+      case '==': if (cmp !== 0) return false; break;
+      default: if (cmp === 0) return false; break; // '!='
+    }
+  }
+  return true;
+}
+
+/** Newest anton-agent version on PyPI that BOTH satisfies cowork-server's
+ *  Requires-Dist constraint AND is eligible for this build's stream.
+ *
+ *  Unlike selectLatestPypiVersion (which trusts `info.version` on the prod
+ *  path), this always scans the releases map: anton-agent's own `info.version`
+ *  could be a major outside cowork-server's range (a 3.x while the installed
+ *  wheel requires `<3`), so the constraint must be applied to every candidate
+ *  before taking the max. Pre-releases are excluded unless includePrereleases
+ *  (the same stream gate cowork-server uses). Null when nothing qualifies. */
+export function selectLatestConstrainedPypiVersion(input: {
+  releases: Record<string, Array<{ yanked?: boolean }>> | null | undefined;
+  includePrereleases: boolean;
+  satisfies: (version: string) => boolean;
+}): string | null {
+  const candidates = Object.entries(input.releases ?? {})
+    .filter(([version, files]) =>
+      SANE_PYPI_VERSION.test(version) &&
+      (input.includePrereleases || !/rc\d+$/.test(version)) &&
+      Array.isArray(files) && files.length > 0 &&
+      files.some((f) => !f?.yanked) &&
+      input.satisfies(version))
+    .map(([version]) => version);
+  if (candidates.length === 0) return null;
+  return candidates.reduce((best, v) => (compareVersions(v, best) > 0 ? v : best));
+}
+
 // ---------------------------------------------------------------------------
 // `uv tool list` output → installed cowork-server version
 // ---------------------------------------------------------------------------
