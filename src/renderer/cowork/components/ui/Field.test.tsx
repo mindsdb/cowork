@@ -37,6 +37,21 @@ describe('Field', () => {
     const help = screen.getByText('Lowercase, no spaces.');
     expect(input.getAttribute('aria-describedby')).toBe(help.id);
     expect(input).not.toHaveAttribute('aria-invalid');
+    expect(input).not.toBeRequired();
+  });
+
+  it('preserves a descriptor id that resembles a utility class', () => {
+    // Regression: composing aria-describedby with cn()/tailwind-merge would
+    // drop ids that look like conflicting utilities. Plain join must keep both.
+    const { container } = render(
+      <Field label="Name" help="hint">
+        <input aria-describedby="p-4" />
+      </Field>,
+    );
+    const input = container.querySelector('input')!;
+    const ids = input.getAttribute('aria-describedby')!.split(' ');
+    expect(ids).toContain('p-4');
+    expect(ids).toHaveLength(2);
   });
 
   it('renders an error as a live region and marks the control invalid', () => {
@@ -62,18 +77,29 @@ describe('Field', () => {
     expect(screen.queryByText('helpful')).not.toBeInTheDocument();
   });
 
-  it('renders required and optional affordances', () => {
-    const { rerender } = render(
+  it('exposes the required state on the control, not just the asterisk', () => {
+    const { container } = render(
       <Field label="Name" required>
         <input />
       </Field>,
     );
     expect(screen.getByText('*')).toBeInTheDocument();
-    rerender(
+    const input = container.querySelector('input')!;
+    expect(input).toBeRequired();
+    expect(input.getAttribute('aria-required')).toBe('true');
+  });
+
+  it('renders the optional affordance', () => {
+    render(
       <Field label="Name" optional>
         <input />
       </Field>,
     );
     expect(screen.getByText('(optional)')).toBeInTheDocument();
+  });
+
+  it('leaves a non-element child untouched instead of throwing', () => {
+    expect(() => render(<Field label="Note">just text</Field>)).not.toThrow();
+    expect(screen.getByText('just text')).toBeInTheDocument();
   });
 });

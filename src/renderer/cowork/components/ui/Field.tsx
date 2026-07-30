@@ -1,4 +1,4 @@
-import { Children, cloneElement, isValidElement, useId } from 'react';
+import { cloneElement, isValidElement, useId } from 'react';
 import type { ReactElement, ReactNode } from 'react';
 import { cn } from '../../lib/cn';
 
@@ -37,14 +37,19 @@ export interface FieldProps {
 export function Field({ label, help, error, required, optional, htmlFor, children, className }: FieldProps) {
   const generatedId = useId();
 
-  // Wire id + aria onto a single control child. Multiple/!element children are
-  // left untouched (association then falls to an explicit htmlFor/id).
-  const only = Children.count(children) === 1 ? Children.only(children) : null;
-  const childEl = only && isValidElement(only) ? (only as ReactElement<Record<string, unknown>>) : null;
+  // Wire id + aria onto a single control child. Anything that isn't a single
+  // React element (multiple children, a bare string/boolean) is left untouched
+  // and association falls to an explicit htmlFor/id. `isValidElement` is the
+  // safe test — `Children.only` throws for a lone string/boolean child.
+  const childEl = isValidElement(children)
+    ? (children as ReactElement<Record<string, unknown>>)
+    : null;
   const childProps = (childEl?.props ?? {}) as {
     id?: string;
+    required?: boolean;
     ['aria-describedby']?: string;
     ['aria-invalid']?: boolean;
+    ['aria-required']?: boolean;
   };
 
   // Label ↔ control association. Precedence: explicit htmlFor, then the
@@ -53,11 +58,21 @@ export function Field({ label, help, error, required, optional, htmlFor, childre
   const controlId = htmlFor ?? childProps.id ?? generatedId;
   const messageId = error || help ? `${controlId}-message` : undefined;
 
+  // Plain string join, NOT cn(): aria-describedby is a space-separated list of
+  // element IDs, and cn()'s tailwind-merge treats tokens as utility classes —
+  // it can silently drop an ID that resembles a conflicting utility.
+  const describedBy =
+    [childProps['aria-describedby'], messageId].filter(Boolean).join(' ') || undefined;
+
   const control = childEl
     ? cloneElement(childEl, {
         id: controlId,
-        'aria-describedby': cn(childProps['aria-describedby'], messageId) || undefined,
+        'aria-describedby': describedBy,
         'aria-invalid': error ? true : childProps['aria-invalid'],
+        // Expose the required state to native validation AND assistive tech,
+        // not just the visual asterisk on the label.
+        required: required || childProps.required,
+        'aria-required': required ? true : childProps['aria-required'],
       })
     : children;
 
