@@ -44,12 +44,10 @@ const POSTHOG_KEY =
 const SURFACE = host.isElectron ? 'desktop' : 'web';
 
 // Running UI-bundle version, baked in at build time as __APP_VERSION__ (Vite
-// `define`, see vite.config.ts). For OTA-updated desktop clients this reflects
-// the UI bundle actually running, not the installer shell. Guarded with the
-// same `typeof` check the rest of the renderer uses so it degrades to undefined
-// outside a real build (tests, `vite dev` edge cases); undefined is dropped by
-// JSON.stringify. Attached to every event (so any event can be broken down by
-// version) and to the person via $set (their current version).
+// `define`). For OTA clients this is the bundle actually running, not the
+// installer shell. `typeof`-guarded like every __APP_VERSION__ read in the
+// renderer, so it degrades to undefined outside a real build (dropped by
+// JSON.stringify). Attached to every event and to the person via $set.
 const APP_VERSION =
   typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : undefined;
 
