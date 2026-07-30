@@ -7,6 +7,7 @@ const spies = vi.hoisted(() => ({
   submitAnswer: vi.fn(async () => ({ accepted: true })),
   streamMessage: vi.fn(),
   cancelResponse: vi.fn(async () => ({})),
+  fetchInFlightStatus: vi.fn(async () => ({ in_flight: false })),
 }));
 
 // The live stream handles are captured per streamMessage call so the test can
@@ -19,6 +20,7 @@ vi.mock('./api', async (importOriginal) => ({
   fetchHealth: vi.fn(async () => ({ status: 'ok', config_ready: true })),
   fetchSessions: vi.fn(async () => [
     { id: 'conv-a', title: 'Alpha task', messages: [], status: 'idle', projectName: 'general' },
+    { id: 'conv-b', title: 'Beta task', messages: [], status: 'idle', projectName: 'general' },
   ]),
   fetchSession: vi.fn(async () => ({ messages: [] })),
   fetchConversationList: vi.fn(async () => []),
@@ -29,7 +31,7 @@ vi.mock('./api', async (importOriginal) => ({
   fetchSchedules: vi.fn(async () => []),
   fetchDatasources: vi.fn(async () => ({ connections: [] })),
   fetchInFlightList: vi.fn(async () => []),
-  fetchInFlightStatus: vi.fn(async () => ({ in_flight: false })),
+  fetchInFlightStatus: (...args) => spies.fetchInFlightStatus(...args),
   fetchConnector: vi.fn(async () => ({})),
   fetchSavedConnection: vi.fn(async () => ({})),
   createProject: vi.fn(async () => ({})),
@@ -58,12 +60,20 @@ vi.mock('./api', async (importOriginal) => ({
   cancelScratchpad: vi.fn(async () => ({})),
   cancelResponse: (...args) => spies.cancelResponse(...args),
   submitAnswer: (...args) => spies.submitAnswer(...args),
-  streamNewSession: vi.fn(() => ({ abort: vi.fn() })),
+  streamNewSession: (...args) => {
+    const handle = { kind: 'new', opts: args[args.length - 1], abort: vi.fn() };
+    streams.push(handle);
+    return handle;
+  },
   streamDataVaultSubmission: vi.fn(() => ({ abort: vi.fn() })),
-  tailInFlight: vi.fn(() => ({ abort: vi.fn() })),
+  tailInFlight: (...args) => {
+    const handle = { kind: 'tail', opts: args[args.length - 1], abort: vi.fn() };
+    streams.push(handle);
+    return handle;
+  },
   streamMessage: (...args) => {
     spies.streamMessage(...args);
-    const handle = { opts: args[args.length - 1], abort: vi.fn() };
+    const handle = { kind: 'reply', opts: args[args.length - 1], abort: vi.fn() };
     streams.push(handle);
     return handle;
   },
@@ -104,17 +114,20 @@ const ASK_EVENT = {
   select: 'one',
 };
 
-/** Renders App, opens the seeded conversation, and returns the composer. */
-async function openTask(user) {
-  render(<App />);
-  const row = await screen.findByText('Alpha task');
-  await user.click(row);
-  const composer = await waitFor(() => {
+/** Clicks the sidebar row for `title` and resolves once the composer is up. */
+async function openByTitle(user, title) {
+  await user.click(await screen.findByText(title));
+  return waitFor(() => {
     const ta = document.querySelector('textarea');
     if (!ta) throw new Error('composer not mounted');
     return ta;
   });
-  return composer;
+}
+
+/** Renders App, opens the seeded conversation, and returns the composer. */
+async function openTask(user) {
+  render(<App />);
+  return openByTitle(user, 'Alpha task');
 }
 
 /** Types `text` into the composer and submits it with Enter. */
@@ -124,13 +137,17 @@ async function send(user, composer, text) {
   await user.keyboard('{Enter}');
 }
 
-/** Pushes an event into the most recently started stream. */
-async function emit(event) {
-  const handle = streams[streams.length - 1];
+/** Pushes an event into a specific stream handle. */
+async function emitOn(handle, event) {
   await act(async () => {
     handle.opts.onEvent(event);
     await Promise.resolve();
   });
+}
+
+/** Pushes an event into the most recently started stream. */
+async function emit(event) {
+  return emitOn(streams[streams.length - 1], event);
 }
 
 beforeEach(() => {
@@ -139,6 +156,7 @@ beforeEach(() => {
   spies.streamMessage.mockClear();
   spies.cancelResponse.mockClear();
   spies.submitAnswer.mockImplementation(async () => ({ accepted: true }));
+  spies.fetchInFlightStatus.mockImplementation(async () => ({ in_flight: false }));
 });
 
 describe('composer send while a question is pending', () => {
@@ -285,5 +303,155 @@ describe('queue drain when a question appears', () => {
     await emit(ASK_EVENT);
     await emit({ ...ASK_EVENT, question_id: 'ask:1' });
     expect(composer.value).toBe('half-written thought\nqueued one');
+  });
+});
+
+describe('reconnected background stream (tailInFlight)', () => {
+  it('releases a pending question when the reattached stream dies', async () => {
+    const user = userEvent.setup();
+    // The server says a producer is still running for this conversation, so
+    // opening it reattaches via tailInFlight instead of starting a new turn.
+    spies.fetchInFlightStatus.mockImplementation(async () => ({ in_flight: true }));
+    const composer = await openTask(user);
+
+    await waitFor(() => expect(streams.some((s) => s.kind === 'tail')).toBe(true));
+    await emit(ASK_EVENT);
+
+    // A send now goes to the question, proving the reconnect path feeds
+    // liveStepsRef at all.
+    await send(user, composer, 'via the reconnected stream');
+    expect(spies.submitAnswer).toHaveBeenCalledWith('conv-a', 'ask:1', {
+      text: 'via the reconnected stream',
+    });
+
+    // Aborted, so this bails out before handleStreamError — the reconnect
+    // call site has to do the release itself.
+    await act(async () => {
+      streams[streams.length - 1].opts.onError('aborted', { code: 'cancelled' });
+      await Promise.resolve();
+    });
+
+    await send(user, composer, 'a brand new message');
+
+    // Released: still just the one submit from before the stream died, and the
+    // text went to the queue (the aborted controller is still parked) rather
+    // than into a dead question.
+    expect(spies.submitAnswer).toHaveBeenCalledTimes(1);
+    expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
+    expect(screen.getByText('a brand new message')).toBeInTheDocument();
+  });
+});
+
+describe('two tasks draining while only one is on screen', () => {
+  it('keeps each task\'s restored text under its own key', async () => {
+    const user = userEvent.setup();
+    // Both conversations have a live producer, so opening either reattaches.
+    spies.fetchInFlightStatus.mockImplementation(async () => ({ in_flight: true }));
+    render(<App />);
+
+    let composer = await openByTitle(user, 'Beta task');
+    const streamB = streams[streams.length - 1];
+    await send(user, composer, 'queued for beta');
+    expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
+
+    composer = await openByTitle(user, 'Alpha task');
+    const streamA = streams[streams.length - 1];
+    expect(streamA).not.toBe(streamB);
+    await send(user, composer, 'queued for alpha');
+
+    // Beta drains while Alpha is on screen — nothing consumes it.
+    await emitOn(streamB, { ...ASK_EVENT, question_id: 'ask:beta' });
+    expect(composer.value).toBe('');
+
+    // Then Alpha drains and is consumed straight away. A single shared slot
+    // would have discarded Beta's text at this point.
+    await emitOn(streamA, { ...ASK_EVENT, question_id: 'ask:alpha' });
+    await waitFor(() => expect(composer.value).toBe('queued for alpha'));
+
+    await user.clear(composer);
+    composer = await openByTitle(user, 'Beta task');
+
+    await waitFor(() => expect(composer.value).toBe('queued for beta'));
+  });
+});
+
+describe('a superseded stream\'s late abort', () => {
+  it('does not release the question of the run that replaced it', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+
+    await send(user, composer, 'first message');
+    const staleStream = streams[streams.length - 1];
+    await emitOn(staleStream, ASK_EVENT);
+
+    // Stop bumps the stream generation and kills that run's question.
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-a'));
+
+    // A fresh turn on the same conversation, with its own question.
+    await send(user, composer, 'second message');
+    const freshStream = streams[streams.length - 1];
+    expect(freshStream).not.toBe(staleStream);
+    await emitOn(freshStream, { ...ASK_EVENT, question_id: 'ask:2' });
+
+    // The old stream's abort finally lands. It belongs to a superseded
+    // generation and must not touch the new run's pending question.
+    await act(async () => {
+      staleStream.opts.onError('aborted', { code: 'cancelled' });
+      await Promise.resolve();
+    });
+
+    await send(user, composer, 'this is the answer');
+
+    expect(spies.submitAnswer).toHaveBeenCalledWith('conv-a', 'ask:2', {
+      text: 'this is the answer',
+    });
+  });
+});
+
+describe('new-session stream (send from home)', () => {
+  it('releases a pending question when the new turn is aborted', async () => {
+    const user = userEvent.setup();
+    // Open a task first, then go back home: App passes skipIntro once the
+    // backend has been online, so HomeView mounts straight at 'idle' with the
+    // composer present instead of playing the boot choreography.
+    await openTask(user);
+    await user.click(screen.getByRole('button', { name: /new task/i }));
+    const composer = await waitFor(() => {
+      const ta = document.querySelector('textarea');
+      if (!ta) throw new Error('composer not mounted');
+      return ta;
+    });
+
+    await send(user, composer, 'start a new conversation');
+    const handle = await waitFor(() => {
+      const h = streams.find((x) => x.kind === 'new');
+      if (!h) throw new Error('new-session stream not started');
+      return h;
+    });
+    // The route flipped to the chat view, which mounts its own Composer.
+    const chatComposer = await waitFor(() => {
+      const ta = document.querySelector('textarea');
+      if (!ta || ta === composer) throw new Error('chat composer not mounted');
+      return ta;
+    });
+
+    // The server mints the canonical id, so liveSteps ends up under both the
+    // tmp- id and the adopted one.
+    await emitOn(handle, { type: 'response.created', conversation_id: 'conv-new' });
+    await emitOn(handle, ASK_EVENT);
+
+    await send(user, chatComposer, 'my answer');
+    expect(spies.submitAnswer).toHaveBeenCalledWith('conv-new', 'ask:1', { text: 'my answer' });
+
+    await act(async () => {
+      handle.opts.onError('aborted', { code: 'cancelled' });
+      await Promise.resolve();
+    });
+
+    await send(user, chatComposer, 'a brand new message');
+
+    expect(spies.submitAnswer).toHaveBeenCalledTimes(1);
+    expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
   });
 });

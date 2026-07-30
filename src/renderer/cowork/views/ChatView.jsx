@@ -1050,15 +1050,16 @@ function ProviderOverloadedCard({
 }
 
 /**
- * Whether App.jsx's composer-redirect signal belongs to the task on screen.
+ * The pending composer redirect for the task on screen, or null.
  *
- * The signal is app-global but a drain is per-conversation: a reconnected
- * background stream (tailInFlight) can drain task A's queue while the user is
- * looking at task B, and that text must not land in B's composer.
+ * A drain is per-conversation: a reconnected background stream (tailInFlight)
+ * can drain task A's queue while the user is looking at task B, and A's text
+ * must neither land in B's composer nor be dropped while it waits for A to be
+ * opened again. Hence a per-task map rather than one shared slot.
  */
-export function isRedirectForTask(redirect, taskId) {
-  if (!redirect || !taskId) return false;
-  return redirect.taskId === taskId;
+export function redirectForTask(redirects, taskId) {
+  if (!redirects || !taskId) return null;
+  return redirects[taskId] || null;
 }
 
 // ─── Main view ───────────────────────────────────────────────────────────
@@ -1106,13 +1107,13 @@ export default function ChatView({
   // resurrects unanswered questions from persisted history, and a
   // click on one with no live run behind it would 404.
   inFlightSet,
-  // One-shot signal from App.jsx: a question appeared while messages were
-  // queued for `composerRedirect.taskId`, so their text is handed back to
-  // that task's composer instead of being auto-sent as the answer or left
-  // queued to deadlock. Shape {taskId, text, bump} — consumed only when
-  // taskId matches the task on screen, then cleared by the parent via
-  // onComposerRedirectConsumed so it cannot re-fire on a later remount.
-  composerRedirect,
+  // Pending composer redirects from App.jsx, keyed by conversation id:
+  // {[taskId]: {text, bump}}. A question appeared while messages were queued
+  // for that task, so their text is handed back to its composer instead of
+  // being auto-sent as the answer or left queued to deadlock. Only this task's
+  // entry is read, and consuming it calls onComposerRedirectConsumed(taskId)
+  // so the parent deletes it and it cannot re-fire on a later remount.
+  composerRedirects,
   onComposerRedirectConsumed,
   // Lets App.jsx release a dead question's grip on the composer (see
   // handleSendInTask's pendingQuestionFor check) as soon as the card
@@ -1129,14 +1130,15 @@ export default function ChatView({
   // queued). `bump` is a monotonically-increasing nonce so the Composer's
   // sync effect runs even when re-editing/re-redirecting the same text.
   const [composerPrefill, setComposerPrefill] = useState({ text: '', bump: 0 });
-  // Forward App.jsx's redirect signal into the same prefill state Edit uses,
-  // so Composer only has to react to one prefill prop — but with append:true,
-  // because a drain hands text BACK to the user and must not destroy the
-  // draft they are mid-typing. Consuming the signal (clearing it in the
-  // parent) is what stops a stale drain re-applying on remount.
+  // Forward App.jsx's redirect for THIS task into the same prefill state Edit
+  // uses, so Composer only has to react to one prefill prop — but with
+  // append:true, because a drain hands text BACK to the user and must not
+  // destroy the draft they are mid-typing. Consuming the entry (deleting it in
+  // the parent) is what stops a stale drain re-applying on remount.
   useEffect(() => {
-    if (!isRedirectForTask(composerRedirect, task?.id)) return;
-    const restored = composerRedirect.text || '';
+    const redirect = redirectForTask(composerRedirects, task?.id);
+    if (!redirect) return;
+    const restored = redirect.text || '';
     if (restored) {
       setComposerPrefill((prev) => ({
         text: restored,
@@ -1144,9 +1146,9 @@ export default function ChatView({
         append: true,
       }));
     }
-    onComposerRedirectConsumed?.();
+    onComposerRedirectConsumed?.(task?.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [composerRedirect, task?.id]);
+  }, [composerRedirects, task?.id]);
   // Inline rail only active on wide screens.
   const effectiveRailOpen = !isNarrow && railOpen;
   // Narrow-screen overlay rail.

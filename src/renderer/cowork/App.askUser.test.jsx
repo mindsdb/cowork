@@ -113,6 +113,15 @@ describe('resolvePendingAnswer', () => {
     expect(rejected.message).toMatch(/rejected/i);
   });
 
+  it('releases and sends for a status it does not recognise', async () => {
+    // Fail safe: a status the server grows later must not silently swallow the
+    // user's text. Only a body with NO status at all is a success.
+    await expect(call([askStep()], { status: 'throttled' }))
+      .resolves.toEqual({ action: 'send', release: true });
+    await expect(call([askStep()], { status: '' }))
+      .resolves.toEqual({ action: 'consumed' });
+  });
+
   it('submits the typed text against the pending question id', async () => {
     const submit = vi.fn(async () => ({ accepted: true }));
     await resolvePendingAnswer({

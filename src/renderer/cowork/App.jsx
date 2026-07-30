@@ -242,6 +242,11 @@ export async function resolvePendingAnswer({ steps, conversationId, text, submit
         : 'Could not send your answer. Please try again.',
     };
   }
+  // A success body carries no `status` at all (`{accepted: true}`) — api.js
+  // only sets one for the failures above. So "no status" means the text became
+  // the answer, while any status we do NOT recognise is one the server grew
+  // later: release and send it, rather than silently swallowing the text.
+  if (status) return { action: 'send', release: true };
   return { action: 'consumed' };
 }
 
@@ -944,14 +949,15 @@ function AppCore() {
   // commits would otherwise see the same non-empty queue and drain twice.
   const drainedQuestionsRef = useRef(new Set());
 
-  // One-shot signal that hands a drained queue back to the composer when a
-  // question appears (see drainQueueToInput). `taskId` names the conversation
-  // the text belongs to, so a background stream can never redirect the
-  // composer of the task the user is actually looking at; ChatView consumes
-  // it (matching taskId only) and calls onComposerRedirectConsumed, which
-  // clears it back to null. Consumable rather than sticky: a signal that
-  // stayed set would re-apply every time ChatView remounted.
-  const [composerRedirect, setComposerRedirect] = useState(null);
+  // Pending composer redirects, keyed by conversation: a drained queue is
+  // handed back to the composer of the task it came from (see
+  // drainQueueToInput), never to whichever task happens to be on screen.
+  // ChatView consumes its own key and calls onComposerRedirectConsumed(taskId),
+  // which deletes just that entry. One slot per task, not one globally: a
+  // background task's drain must be able to wait, unconsumed, while another
+  // task drains, without either losing its text. Consumable rather than
+  // sticky, so a consumed entry cannot re-apply when ChatView remounts.
+  const [composerRedirects, setComposerRedirects] = useState({}); // { [taskId]: {text, bump} }
   const composerRedirectBumpRef = useRef(0);
 
   // Cross-client sync cache (Option B). Conversations that have an
@@ -1121,13 +1127,13 @@ function AppCore() {
     drainedQuestionsRef.current.add(plan.questionId);
     clearQueueForTask(plan.taskId);
     composerRedirectBumpRef.current += 1;
-    // Only the newly restored batch — never accumulated against the previous
-    // signal, which would re-inject an earlier drain's text.
-    setComposerRedirect({
-      taskId: plan.taskId,
-      text: plan.text,
-      bump: composerRedirectBumpRef.current,
-    });
+    // Only the newly restored batch, and only under this task's key — never
+    // accumulated (that re-injects an earlier drain's text) and never into a
+    // shared slot (that discards an earlier drain's text).
+    setComposerRedirects((prev) => ({
+      ...prev,
+      [plan.taskId]: { text: plan.text, bump: composerRedirectBumpRef.current },
+    }));
   };
 
   // Drops any pending question these conversations were blocked on, so the
@@ -1137,6 +1143,23 @@ function AppCore() {
   // handleStreamError ever runs.
   const releaseLiveSteps = useCallback((ids) => {
     (ids || []).forEach((tid) => { if (tid) delete liveStepsRef.current[tid]; });
+  }, []);
+
+  // Same, plus every alias of the conversation. Stop only knows the adopted
+  // id, but a stream that started on a `tmp-…` id wrote its steps under BOTH
+  // keys, and the pre-adoption one is unreachable by name once the task has
+  // been renamed — it would leak in the map forever. The aliases hold the
+  // identical steps array (the only writer is updateLiveStepsAndDrainQueue,
+  // which assigns the same reference to every id), so value identity is
+  // exactly the alias set.
+  const releaseLiveStepsWithAliases = useCallback((taskId) => {
+    if (!taskId) return;
+    const dying = liveStepsRef.current[taskId];
+    delete liveStepsRef.current[taskId];
+    if (!dying) return;
+    Object.keys(liveStepsRef.current).forEach((key) => {
+      if (liveStepsRef.current[key] === dying) delete liveStepsRef.current[key];
+    });
   }, []);
 
   const handleStopStream = useCallback(async (opts = {}) => {
@@ -1182,7 +1205,7 @@ function AppCore() {
       // on. Without this the composer stays hijacked: the next send would be
       // routed into submitAnswer, 404 on the dead run, and the user's text
       // would be discarded.
-      releaseLiveSteps([cidToCancel]);
+      releaseLiveStepsWithAliases(cidToCancel);
       setMessageQueue((prev) => {
         const next = { ...prev };
         delete next[cidToCancel];
@@ -1212,7 +1235,7 @@ function AppCore() {
         ));
       }
     } catch { /* placeholders already stripped */ }
-  }, [markInFlightDone, releaseLiveSteps]);
+  }, [markInFlightDone, releaseLiveStepsWithAliases]);
 
   const handleStreamError = useCallback(async (taskIds, cid, message, event) => {
     const ids = [...new Set(taskIds.filter(Boolean))];
@@ -1264,7 +1287,7 @@ function AppCore() {
     if (isAntonConfigError(message, event)) {
       fetchHealth().then((h) => setHealth(h));
     }
-  }, [markInFlightDone]);
+  }, [markInFlightDone, releaseLiveSteps]);
 
   // Per-task streaming state is derived inside ChatView (it has the
   // task object via props). Don't compute it here — `activeTaskId` is
@@ -1992,11 +2015,14 @@ function AppCore() {
         fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
       },
       onError(message, event) {
-        // Before the `cancelled` bail-out: an aborted run's question is dead
-        // too, and leaving it in liveStepsRef would hijack the composer.
+        // Order matters twice over. The generation guard comes first: a
+        // superseded stream's late abort must not clear liveStepsRef for a
+        // NEWER run on the same conversation. The release then comes before
+        // the `cancelled` bail-out, because an aborted run's question is dead
+        // too and leaving it behind would hijack the composer.
+        if (streamGen !== activeStreamGenerationRef.current) return;
         releaseLiveSteps([taskId]);
         if (event?.code === 'cancelled') return;
-        if (streamGen !== activeStreamGenerationRef.current) return;
         void handleStreamError([taskId], taskId, message, event);
       },
     });
@@ -2911,9 +2937,9 @@ function AppCore() {
         fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
       },
       onError(message, event) {
+        if (streamGen !== activeStreamGenerationRef.current) return;
         releaseLiveSteps([resolvedId, taskId]);
         if (event?.code === 'cancelled') return;
-        if (streamGen !== activeStreamGenerationRef.current) return;
         void handleStreamError([resolvedId, taskId], resolvedId, message, event);
       },
     });
@@ -3202,18 +3228,21 @@ function AppCore() {
         // what enqueueMessage used while the adoption was pending.
         const next = popQueueHead(id);
         if (next) {
-          Promise.resolve().then(() => handleSendInTask(next.text, next.attachments || []));
+          // .catch: handleSendInTask throws when an answer submit fails, and a
+          // bare then() would surface that as an unhandled rejection. The user
+          // has already been told via the toast.
+          Promise.resolve().then(() => handleSendInTask(next.text, next.attachments || [])).catch(() => {});
         }
       },
       onError(message, event) {
+        if (streamGen !== activeStreamGenerationRef.current) return;
         releaseLiveSteps([resolvedId, id]);
         if (event?.code === 'cancelled') return;
-        if (streamGen !== activeStreamGenerationRef.current) return;
         void (async () => {
           await handleStreamError([resolvedId, id], resolvedId, message, event);
           const next = popQueueHead(id);
           if (next) {
-            Promise.resolve().then(() => handleSendInTask(next.text, next.attachments || []));
+            Promise.resolve().then(() => handleSendInTask(next.text, next.attachments || [])).catch(() => {});
           }
         })();
       },
@@ -4072,8 +4101,13 @@ function AppCore() {
             sidebarCollapsed={isNarrow || sidebarCollapsedEffective}
             agentLabel={agentLabel}
             inFlightSet={inFlightSet}
-            composerRedirect={composerRedirect}
-            onComposerRedirectConsumed={() => setComposerRedirect(null)}
+            composerRedirects={composerRedirects}
+            onComposerRedirectConsumed={(taskId) => setComposerRedirects((prev) => {
+              if (!taskId || !prev[taskId]) return prev;
+              const next = { ...prev };
+              delete next[taskId];
+              return next;
+            })}
             onQuestionAnswered={(result, conversationId) => {
               // Keyed off the conversation the card was rendered with, not the
               // currently-open task — the card knows which conversation it
