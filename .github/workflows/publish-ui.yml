@@ -24,7 +24,7 @@ on:
       # desktop analytics: the OTA bundle overwrites the installer's renderer,
       # so a missing token here ships an empty PostHog key to every client.
       VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN:
-        required: false
+        required: true
   # Manual re-publish / backfill. Leave version empty to derive from git describe.
   workflow_dispatch:
     inputs:
@@ -108,7 +108,12 @@ jobs:
           # (wrong env) if this workflow is ever reused for a non-prod channel.
           # Keycloak/console derive from this base at runtime.
           VITE_MINDS_API_URL: https://api.mindshub.ai
-        run: npm run build:renderer
+        run: |
+          if [ -z "${VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN}" ]; then
+            echo "::error::VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN is empty; refusing to publish an analytics-disabled OTA bundle."
+            exit 1
+          fi
+          npm run build:renderer
 
       - name: Check if version already published
         id: check
