@@ -19,10 +19,9 @@ on:
     secrets:
       RELEASES_TOKEN:
         required: true
-      # Baked into the OTA bundle at build time (see "Build renderer").
-      # Required for reusable-workflow callers so missing configuration fails
-      # before a release starts. Direct dispatch/tag triggers do not validate
-      # workflow_call secrets, so the build step also rejects an empty value.
+      # Baked into the OTA bundle at build time (see "Build renderer"). Required
+      # so a caller fails before a release starts; dispatch/tag triggers skip
+      # workflow_call secret validation, so the build step rejects empty too.
       VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN:
         required: true
   # Manual re-publish / backfill. Leave version empty to derive from git describe.
@@ -93,20 +92,17 @@ jobs:
           echo "Publishing UI version: $VER"
 
       - name: Build renderer
-        # Bake the resolved version into __APP_VERSION__ so the running bundle
-        # matches latest.json and the prod installer.
-        #
-        # The PostHog token MUST be injected here (Vite build-time constant): the
-        # OTA bundle overwrites the installer's renderer, so without it every
-        # updated client drops all analytics on an empty key. Do not remove.
+        # Bake the resolved version into __APP_VERSION__ (matches latest.json and
+        # the prod installer). The PostHog token MUST be injected here: the OTA
+        # bundle overwrites the installer's renderer, so a missing token ships an
+        # empty key and silently disables analytics. Do not remove.
         env:
           VITE_APP_VERSION: ${{ steps.version.outputs.version }}
           VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN: ${{ secrets.VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN }}
-          # Defense-in-depth: this workflow only publishes the PROD bundle, and
-          # the renderer's non-DEV fallback already resolves to api.mindshub.ai
-          # (mindsUrls.ts). Pinning it makes the target explicit and fails loudly
-          # (wrong env) if this workflow is ever reused for a non-prod channel.
-          # Keycloak/console derive from this base at runtime.
+          # Explicit prod target (defense-in-depth). This workflow only publishes
+          # the prod bundle and the renderer already falls back to api.mindshub.ai
+          # (mindsUrls.ts); pinning it fails loudly if reused for a non-prod
+          # channel. Keycloak/console derive from this base.
           VITE_MINDS_API_URL: https://api.mindshub.ai
         run: |
           if [ -z "${VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN}" ]; then

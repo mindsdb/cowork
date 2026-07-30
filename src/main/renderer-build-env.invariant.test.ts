@@ -4,18 +4,14 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 // Regression guard for PR #528: the desktop renderer is built by several CI
-// workflows, and the OTA bundle (publish-ui.yml) drifted out of sync with the
-// installers — it dropped a VITE_* var, silently gutting the shipped bundle
-// with no build failure.
+// workflows, and the OTA bundle (publish-ui.yml) drifted from the installers —
+// it dropped a VITE_* var, silently gutting the shipped bundle with no failure.
 //
-// Enforces PARITY over the named var: every workflow that bakes VITE_* vars
-// into the renderer must bake the SAME set. Any drift fails, for any variable.
-// The contract list below also catches a var dropped from *every* build at once
-// (which parity alone reads as "consistently absent").
-//
-// Scoped to the desktop builds by keying on step-`env:` injection — the
-// web/Docker build injects via `build-push-ecr` build-args (a legitimately
-// different profile, tracked in ENG-1163), so it stays out of scope.
+// Enforces PARITY: every workflow that bakes VITE_* vars into the renderer must
+// bake the SAME set, so any drift fails (for any var). The contract list also
+// catches a var dropped from every build at once. Scoped to the desktop builds
+// by keying on step-`env:` injection; the web/Docker build passes build-args
+// via `build-push-ecr` (a different profile, tracked in ENG-1163).
 
 // The renderer build-var contract. Update deliberately when the renderer's
 // build-time inputs change; the parity check then enforces it everywhere.
