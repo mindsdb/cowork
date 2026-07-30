@@ -345,6 +345,70 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
     return { ...state, steps: [...state.steps, step] };
   }
 
+  // Inline ask_user card. The harness pauses mid-turn to ask the user a
+  // multiple-choice question; the payload is self-contained so the card
+  // renders from this event alone, including on replay. Deduped by
+  // question_id so a /tail replay from seq 0 can't double the card.
+  if (type === 'response.ask_user') {
+    const key = event.question_id || '';
+    // Idempotent: /tail replays from seq 0, so the same question arrives
+    // again on every reconnect.
+    if (key && state.steps.some((s) => s.badge === 'AskUser' && s._questionKey === key)) {
+      return state;
+    }
+    const step = {
+      id: `question-${key || state.steps.length + 1}`,
+      label: event.prompt || 'Question',
+      badge: 'AskUser',
+      icon: 'question',
+      status: 'in_progress',
+      startedAt: eventTs,
+      completedAt: null,
+      data: {
+        question_id: key,
+        prompt: event.prompt || '',
+        options: Array.isArray(event.options) ? event.options : [],
+        select: event.select === 'many' ? 'many' : 'one',
+        allow_custom: event.allow_custom !== false,
+        timeout_s: event.timeout_s ?? null,
+        answer: null,
+      },
+      output: null,
+      result: null,
+      _questionKey: key,
+      _isScratchpad: false,
+      _scratchpadTabId: null,
+    };
+    return { ...state, steps: [...state.steps, step] };
+  }
+
+  // Retires a published ask_user question once the user answers, cancels,
+  // or the server times it out. Never sent for a question that wasn't
+  // published, so an unknown question_id is ignored rather than throwing.
+  if (type === 'response.ask_user_answered') {
+    const key = event.question_id || '';
+    if (!key) return state;
+    let found = false;
+    const steps = state.steps.map((s) => {
+      if (s.badge !== 'AskUser' || s._questionKey !== key) return s;
+      found = true;
+      return {
+        ...s,
+        status: 'completed',
+        completedAt: eventTs,
+        data: {
+          ...s.data,
+          answer: {
+            status: event.status || 'answered',
+            values: Array.isArray(event.values) ? event.values : [],
+            text: event.text || '',
+          },
+        },
+      };
+    });
+    return found ? { ...state, steps } : state;
+  }
+
   // ── thought.* sub-events live under response.in_progress ──────────
   if (type !== 'response.in_progress') return state;
 
