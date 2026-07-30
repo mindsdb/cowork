@@ -1767,7 +1767,6 @@ function AppCore() {
     // sibling tab) sees the right state without needing its own probe.
     markInFlight(taskId);
 
-    let assistantContent = '';
     let streamState = initialStreamState();
 
     const flushStreaming = () => {
@@ -1776,8 +1775,9 @@ function AppCore() {
         const msgs = removeThinkingPlaceholder(stripStreaming(t.messages));
         return { ...t, status: 'active', messages: [...msgs, {
           role: '_streaming',
-          content: streamState.bodyText || assistantContent,
+          content: streamState.bodyText,
           steps: streamState.steps,
+          currentThought: streamState.currentThought,
           startedAt: streamState.startedAt,
           streamStatus: streamState.status,
           harness: streamState.harness,
@@ -1799,17 +1799,13 @@ function AppCore() {
         if (open?._scratchpadTabId) activeScratchpadRef.current = open._scratchpadTabId;
         flushSync(() => flushStreaming());
       },
-      onChunk(chunk) {
-        if (streamGen !== activeStreamGenerationRef.current) return;
-        assistantContent += chunk;
-      },
       onDone() {
         if (streamGen !== activeStreamGenerationRef.current) return;
         activeStreamCtrlRef.current = null;
         activeScratchpadRef.current = null;
         activeStreamingTaskIdRef.current = null;
         markInFlightDone(taskId);
-        const finalContent = streamState.bodyText || assistantContent;
+        const finalContent = streamState.bodyText;
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;
@@ -2596,7 +2592,6 @@ function AppCore() {
     setActiveTaskId(taskId);
     setRoute('task');
 
-    let assistantContent = '';
     let resolvedId = taskId;
     // Server mints the canonical id on `response.created` for tmp- tasks.
     // adoptServerId keeps activeStreamingTaskIdRef (and cancel) in sync.
@@ -2624,8 +2619,9 @@ function AppCore() {
         const msgs = removeThinkingPlaceholder(stripStreaming(t.messages));
         return { ...t, messages: [...msgs, {
           role: '_streaming',
-          content: streamState.bodyText || assistantContent,
+          content: streamState.bodyText,
           steps: streamState.steps,
+          currentThought: streamState.currentThought,
           startedAt: streamState.startedAt,
           streamStatus: streamState.status,
           harness: streamState.harness,
@@ -2683,11 +2679,6 @@ function AppCore() {
         if (open?._scratchpadTabId) activeScratchpadRef.current = open._scratchpadTabId;
         flushSync(() => flushStreamingMessage());
       },
-      onChunk(chunk, sid) {
-        if (streamGen !== activeStreamGenerationRef.current) return;
-        if (sid) adoptServerId(sid);
-        assistantContent += chunk;
-      },
       onProgress(event, sid) {
         if (streamGen !== activeStreamGenerationRef.current) return;
         if (sid) adoptServerId(sid);
@@ -2708,7 +2699,7 @@ function AppCore() {
         const finalId = sid || resolvedId;
         markInFlightDone(finalId);
         if (finalId !== taskId) markInFlightDone(taskId);
-        const finalContent = streamState.bodyText || assistantContent;
+        const finalContent = streamState.bodyText;
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;
@@ -2877,7 +2868,6 @@ function AppCore() {
     // user may have started composing since.
     if (queuedAttachments == null) setComposerAttachments([]);
 
-    let assistantContent = '';
     let streamState = initialStreamState();
     // `id` is the local task id we started with. If it's a temporary
     // (`tmp-connect-…`), the server replaces it with a fresh canonical
@@ -2922,8 +2912,9 @@ function AppCore() {
         const msgs = removeThinkingPlaceholder(stripStreaming(t.messages));
         return { ...t, messages: [...msgs, {
           role: '_streaming',
-          content: streamState.bodyText || assistantContent,
+          content: streamState.bodyText,
           steps: streamState.steps,
+          currentThought: streamState.currentThought,
           startedAt: streamState.startedAt,
           streamStatus: streamState.status,
           harness: streamState.harness,
@@ -2963,14 +2954,6 @@ function AppCore() {
         if (open?._scratchpadTabId) activeScratchpadRef.current = open._scratchpadTabId;
         flushSync(() => flushStreaming());
       },
-      onChunk(chunk, sid) {
-        if (streamGen !== activeStreamGenerationRef.current) return;
-        if (sid) adoptServerId(sid);
-        // The adapter accumulates bodyText already; this callback is
-        // redundant for content but cheap and useful as a fallback if
-        // the adapter ever fails to parse a delta.
-        assistantContent += chunk;
-      },
       onDone() {
         if (streamGen !== activeStreamGenerationRef.current) return;
         activeStreamCtrlRef.current = null;
@@ -2978,7 +2961,7 @@ function AppCore() {
         activeStreamingTaskIdRef.current = null;
         markInFlightDone(resolvedId);
         if (resolvedId !== id) markInFlightDone(id);
-        const finalContent = streamState.bodyText || assistantContent;
+        const finalContent = streamState.bodyText;
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;
@@ -3045,7 +3028,6 @@ function AppCore() {
         : t,
     ));
 
-    let assistantContent = '';
     let streamState = initialStreamState();
     // See handleSendInTask for the rationale — the datavault stream's
     // `response.created` carries the server-minted id when the client
@@ -3087,8 +3069,9 @@ function AppCore() {
         const msgs = removeThinkingPlaceholder(stripStreaming(t.messages));
         return { ...t, messages: [...msgs, {
           role: '_streaming',
-          content: streamState.bodyText || assistantContent,
+          content: streamState.bodyText,
           steps: streamState.steps,
+          currentThought: streamState.currentThought,
           startedAt: streamState.startedAt,
           streamStatus: streamState.status,
           harness: streamState.harness,
@@ -3148,7 +3131,6 @@ function AppCore() {
       },
       onChunk(chunk, sid) {
         if (sid) adoptServerId(sid);
-        assistantContent += chunk;
         // data-vault-form-patch blocks are delivered as complete deltas —
         // parse and apply them immediately so the panel can show the
         // spinner (_is_probing), status updates, and the error card
@@ -3165,7 +3147,7 @@ function AppCore() {
         if (sid) adoptServerId(sid);
         activeStreamCtrlRef.current = null;
         activeStreamingTaskIdRef.current = null;
-        const finalContent = streamState.bodyText || assistantContent;
+        const finalContent = streamState.bodyText;
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;
