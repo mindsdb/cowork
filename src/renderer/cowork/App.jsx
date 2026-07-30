@@ -49,6 +49,7 @@ import { fetchSessions, fetchSession, fetchConversationList, fetchProjects, fetc
          fetchSavedConnection, deleteDatasource, deletePickedFile,
          fetchInFlightStatus, tailInFlight, fetchInFlightList } from './api';
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
+import { isArtifactTipDismissed, dismissArtifactTip } from './components/onboarding/onboardingStore';
 import { modelLabel, recommendedModelOptions, providerValueToType } from './lib/settingsTransform';
 import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery } from './lib/analytics';
 
@@ -770,6 +771,26 @@ function AppCore() {
   const [projects, setProjects] = useState([]);
   const [moveModalTask, setMoveModalTask] = useState(null);  // task pending a move-to-project
   const [artifacts, setArtifacts] = useState([]);
+  // First-artifact tip (ENG-1137). Armed only when the FIRST artifacts
+  // fetch of the session comes back empty — an account that already has
+  // artifacts is not a first-run and must never see the tip. Once armed,
+  // the 0 → ≥1 transition (the user's first artifact finishing) opens it.
+  //   null  = undecided (fetch hasn't resolved yet)
+  //   true  = armed (fresh account, watching for the first artifact)
+  //   false = decided-off (existing account, or already fired)
+  const artifactTipArmedRef = useRef(null);
+  const [artifactTipOpen, setArtifactTipOpen] = useState(false);
+  useEffect(() => {
+    if (artifactTipArmedRef.current !== true) return;
+    if (artifacts.length >= 1) {
+      artifactTipArmedRef.current = false;
+      setArtifactTipOpen(true);
+    }
+  }, [artifacts.length]);
+  const handleArtifactTipDismiss = useCallback(() => {
+    setArtifactTipOpen(false);
+    dismissArtifactTip();
+  }, []);
   const [scheduled, setScheduled] = useState([]);
   // Flat session→schedule map sourced from `GET /v1/schedules`.
   // Lets TasksView collapse all conversations belonging to one
@@ -1349,7 +1370,22 @@ function AppCore() {
       if (Array.isArray(data)) setTasks((prev) => mergeTasksFromServer(data, prev).filter((t) => !deletedTaskIdsRef.current.has(t.id)));
     });
     fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); });
-    fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
+    fetchArtifacts().then((data) => {
+      if (!Array.isArray(data)) return;
+      // One-time arm/disarm decision for the first-artifact tip, taken on
+      // the session's first successful fetch: empty list = fresh account
+      // (watch for the first artifact); anything else = existing account
+      // (flag it dismissed so no later session shows the tip either).
+      if (artifactTipArmedRef.current === null) {
+        if (data.length === 0 && !isArtifactTipDismissed()) {
+          artifactTipArmedRef.current = true;
+        } else {
+          artifactTipArmedRef.current = false;
+          if (data.length > 0) dismissArtifactTip();
+        }
+      }
+      setArtifacts(data);
+    });
     fetchPins().then((data) => setPins(data.pins || []));
     fetchSchedules().then((data) => {
       setScheduled(data.schedules || []);
@@ -3730,6 +3766,9 @@ function AppCore() {
           shellUpdate={shellUpdate && shellUpdate.version !== shellUpdateDismissed ? shellUpdate : null}
           onDownloadShellUpdate={handleDownloadShellUpdate}
           onDismissShellUpdate={dismissShellUpdate}
+          onStartChat={handleSendFromHome}
+          artifactTipOpen={artifactTipOpen}
+          onArtifactTipDismiss={handleArtifactTipDismiss}
           onShowServerHelp={() => openSettings('backend')}
           onToggleServer={async () => {
             if (serverBusy) return;
@@ -3811,6 +3850,9 @@ function AppCore() {
             onShowServerHelp={() => openSettings('backend')}
             skipIntro={bootIntroDone}
             prefill={composerPrefill}
+            tasksCount={tasks.length}
+            artifactsCount={artifacts.length}
+            onPrefill={(text, select) => setComposerPrefill({ text, bump: Date.now(), select })}
           />
         )}
 

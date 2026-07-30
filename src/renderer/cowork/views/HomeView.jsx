@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import Composer from '../components/Composer';
+import HomeSuggestions from '../components/onboarding/HomeSuggestions';
+import { completeStep } from '../components/onboarding/onboardingStore';
 import { OrbitMorph, Button } from '../components/ui';
 import { host } from '../../platform/host';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
@@ -239,9 +241,25 @@ export default function HomeView({
   skipIntro = false,
   agentLabel,
   prefill = null,
+  // First-run suggestion chips (ENG-1137): total counts decide chip
+  // visibility (both zero = brand-new account); onPrefill drops a chip's
+  // prompt into the composer with its [placeholder] range selected.
+  tasksCount = 0,
+  artifactsCount = 0,
+  onPrefill,
 }) {
   const greetingText = greeting || GREETING_FALLBACK;
   const blocked = configReady === false;
+
+  // Sending the habit-tracker prompt completes onboarding step 1 no
+  // matter which surface filled the composer (suggestion chip, sidebar
+  // checklist, or the user typing it by hand).
+  const sendTracked = (text) => {
+    if (typeof text === 'string' && text.trim().startsWith('Build me a habit tracker')) {
+      completeStep('see-it-work');
+    }
+    return onSend(text);
+  };
 
   const { phase, typedCount } = useBootPhase({
     serverOnline, configReady,
@@ -509,7 +527,7 @@ export default function HomeView({
             </div>
           ) : (
             <Composer
-              onSend={onSend}
+              onSend={sendTracked}
               prefill={prefill}
               project={project}
               onProjectChange={onProjectChange}
@@ -528,6 +546,13 @@ export default function HomeView({
               onCreateProject={onCreateProject}
               hideModel
               onTypingChange={setIsTyping}
+            />
+          )}
+          {!blocked && onPrefill && (
+            <HomeSuggestions
+              tasksCount={tasksCount}
+              artifactsCount={artifactsCount}
+              onPick={onPrefill}
             />
           )}
           <ActiveList tasks={activeTasks} onSelect={onSelectTask} onClear={onClearActive} />
