@@ -63,6 +63,16 @@ vi.mock('./cowork-home', () => ({
 vi.mock('./installer', () => ({
   checkInstallStatus: async () => ({ antonInstalled: homeHolder.antonInstalled }),
 }));
+// Stub the server lifecycle so the installed-path test can run past the early
+// return without touching a real server. isServerRunning=false short-circuits
+// the DB-sync block, so the test needs no network mock.
+vi.mock('./server-process', () => ({
+  stopServer: async () => {},
+  startServer: async () => {},
+  isServerRunning: () => false,
+  isServerStarting: () => false,
+  getServerPort: () => 26866,
+}));
 
 // Regression coverage for ENG-1209 (Windows EPERM saving MindsHub creds):
 // writeEnvFileAtomic must write atomically (never truncate the user's other
@@ -139,25 +149,42 @@ describe('writeEnvFileAtomic', () => {
     expect(control.renameFailTimes).toBe(4);
   });
 
-  it('sweeps an orphaned .env.tmp-* from a prior crash before writing', async () => {
+  it('sweeps a STALE orphaned .env.tmp-* but spares a fresh sibling', async () => {
     // A hard kill between writeFileSync and rename can leave a temp holding the
-    // full plaintext key; it must not linger in the config home.
-    const orphan = path.join(dir, '.env.tmp-9999-deadbeef');
-    fs.writeFileSync(orphan, 'ANTON_MINDS_API_KEY=leaked\n');
+    // full plaintext key; a stale one must be cleaned, but a concurrent writer's
+    // fresh temp must survive (the age threshold is what lets the sweep and the
+    // random suffix coexist).
+    const stale = path.join(dir, '.env.tmp-9999-deadbeef');
+    fs.writeFileSync(stale, 'ANTON_MINDS_API_KEY=leaked\n');
+    fs.utimesSync(stale, new Date(0), new Date(0)); // backdate → stale
+    const fresh = path.join(dir, '.env.tmp-1234-cafebabe');
+    fs.writeFileSync(fresh, 'ANTON_MINDS_API_KEY=inflight\n'); // mtime ~now
+
     await writeEnvFileAtomic(target, 'K=v\n');
-    expect(fs.existsSync(orphan)).toBe(false);
-    expect(fs.readdirSync(dir)).toEqual(['.env']);
+
+    expect(fs.existsSync(stale)).toBe(false); // stale orphan swept
+    expect(fs.existsSync(fresh)).toBe(true);  // live sibling spared
+    expect(fs.readFileSync(target, 'utf-8')).toBe('K=v\n');
   });
 });
 
-describe('writeMindsKeyToEnvAndRestart — .env failure is non-fatal', () => {
-  it('does not throw (or surface the finalize error) when the .env write fails', async () => {
-    // The wedge (ENG-1209): a locked .env made this abort before the
-    // authoritative DB sync, stranding the user with an already-revoked key.
-    // Server not installed here, so it early-returns after the .env attempt —
-    // the point is that an exhausted-retry write no longer propagates.
+describe('writeMindsKeyToEnvAndRestart — .env failure handling', () => {
+  it('is non-fatal on the installed path (the DB sync is authoritative)', async () => {
+    // The wedge (ENG-1209): a locked .env aborted before the DB sync, stranding
+    // the user with an already-revoked key. With the server installed, an
+    // exhausted-retry write must no longer propagate.
+    homeHolder.antonInstalled = true;
     control.renameFailCode = 'EPERM';
     control.renameFailTimes = Infinity;
     await expect(writeMindsKeyToEnvAndRestart('mdb_newkey')).resolves.toBeUndefined();
+  }, 15000);
+
+  it('is FATAL on the pre-install path (.env is the only store, no DB fallback)', async () => {
+    // No server yet → early-return with no DB sync, so a failed .env write must
+    // surface rather than report a false success with the credential nowhere.
+    homeHolder.antonInstalled = false;
+    control.renameFailCode = 'EPERM';
+    control.renameFailTimes = Infinity;
+    await expect(writeMindsKeyToEnvAndRestart('mdb_newkey')).rejects.toThrow(/EPERM/);
   }, 15000);
 });

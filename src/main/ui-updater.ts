@@ -431,8 +431,21 @@ export async function checkForUIUpdate(): Promise<UpdateCheckResult> {
 /**
  * Download, verify, stage, and activate a UI update in one shot.
  * Returns true if the update was applied successfully.
+ *
+ * Single-flighted: both the manual apply (UI_UPDATE_APPLY) and the boot/poll
+ * reach here, and downloadAndStage's `rmDir(staging)` + extract runs outside the
+ * swap chain — so without this two runs could overlap on the staging dir (one
+ * extracting while the other renames staging→current). Concurrent callers share
+ * the one in-flight run.
  */
-export async function applyUIUpdate(): Promise<boolean> {
+let _applyInFlight: Promise<boolean> | null = null;
+export function applyUIUpdate(): Promise<boolean> {
+  if (_applyInFlight) return _applyInFlight;
+  _applyInFlight = runApplyUIUpdate().finally(() => { _applyInFlight = null; });
+  return _applyInFlight;
+}
+
+async function runApplyUIUpdate(): Promise<boolean> {
   if (!otaEnabled()) return false;
   warnIfBundledVersionNotCalVer();
   const manifest = await fetchManifest();
