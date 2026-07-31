@@ -48,6 +48,15 @@ function makeChild(): EventEmitter & { pid: number; stdout: EventEmitter; stderr
   return child;
 }
 
+/** A stand-in for the on-disk log WriteStream. An EventEmitter so the code
+ *  under test can attach the 'error' listener that ENG-1187 turns on. */
+function makeLogStream(): EventEmitter & { write: () => boolean; end: () => void } {
+  const s = new EventEmitter() as ReturnType<typeof makeLogStream>;
+  s.write = () => true;
+  s.end = () => {};
+  return s;
+}
+
 /** Owner token /health answers with, or null to make every probe fail. */
 let healthOwner: string | null = null;
 
@@ -85,7 +94,9 @@ beforeEach(() => {
   vi.mocked(fs.mkdirSync).mockReturnValue(undefined as never);
   vi.mocked(fs.writeFileSync).mockReturnValue(undefined);
   vi.mocked(fs.chmodSync).mockReturnValue(undefined);
-  vi.mocked(fs.createWriteStream).mockReturnValue({ write: () => true, end: () => {} } as never);
+  vi.mocked(fs.createWriteStream).mockImplementation((() => {
+    return makeLogStream() as never;
+  }) as never);
 
   vi.mocked(cp.execFile).mockImplementation(((cmd: string, args: string[], _opts: unknown, cb: unknown) => {
     execCalls.push({ cmd, args });
@@ -143,6 +154,37 @@ describe('startServer failure diagnostics', () => {
     expect(diag.lastError).toBe('The backend could not be launched: spawn EPERM.');
     expect(diag.lastErrorKind).toBe('spawn-error');
     expect(diag.recentLog).toContain('spawn EPERM');
+  });
+
+  it('survives an EPERM on the log file instead of crashing the main process', async () => {
+    // Regression (ENG-1187): createWriteStream reports an open failure via an
+    // async 'error' event, not a throw — so the try/catch around it never saw
+    // it. With no 'error' listener Node re-raised it as an uncaught exception,
+    // which Electron turned into a fatal "A JavaScript error occurred in the
+    // main process" dialog that blocked startup on Windows. Disk logging is
+    // best-effort: the open failure must be swallowed and the app must start.
+    vi.mocked(fs.createWriteStream).mockImplementation((() => {
+      const s = makeLogStream();
+      // Fire the failure the moment the caller has had a chance to listen —
+      // if nothing listened this emit would throw synchronously and fail the
+      // test, which is exactly the crash this guards against.
+      setTimeout(() => s.emit('error', new Error('EPERM: operation not permitted, open')), 0);
+      return s as never;
+    }) as never);
+
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      // Health is the authority; the launcher exiting lets stopServer() below
+      // resolve without a real reap (see the healthy-backend test).
+      setTimeout(() => { healthOwner = 'owner-token'; child.exitCode = 0; child.emit('exit', 0); }, 0);
+      return child as never;
+    }) as never);
+
+    const result = await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+
+    expect(result.ok).toBe(true);
+    expect(isServerRunning()).toBe(true);
+    await stopServer(); // leave the module's state clean for the next test
   });
 
   it('fails as soon as the child dies rather than waiting out the budget', async () => {
