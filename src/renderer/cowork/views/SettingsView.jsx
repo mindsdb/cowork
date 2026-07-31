@@ -1,13 +1,14 @@
-import { useState, useEffect, useRef, createContext, useContext, Children } from 'react';
+import { useState, useEffect, useMemo, useRef, createContext, useContext, Children } from 'react';
 import { useId } from 'react';
 import Ico from '../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchHealth, fetchRecommendedModels } from '../api';
-import { providerTypeToKeyField, providerValueToType, resolveModelPickerValue, buildModelOptions, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels } from '../lib/settingsTransform';
+import { providerTypeToKeyField, providerValueToType, resolveModelPickerValue, buildModelOptions, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, clampBudgetValue, clampBudgets, BUDGET_FIELDS } from '../lib/settingsTransform';
 import { trackHarnessSwapped, resetDeviceIdentity } from '../lib/analytics';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
 import { Switch } from '../components/ui/Switch';
 import { Badge, Button, Input, Checkbox, Select } from '../components/ui';
+import ModelSelect from '../components/ModelSelect.jsx';
 import { host } from '../../platform/host';
 import { SKINS, normalizeSkin } from '../../lib/skins';
 import { MINDS_API_BASE, MINDS_API_KEY_URL, MINDS_CONSOLE_URL, MINDS_REGISTER_URL, MINDS_BILLING_URL } from '../../lib/mindsUrls';
@@ -61,6 +62,67 @@ export function patchSavedJson(prevJson, key, value) {
   } catch {
     return prevJson;
   }
+}
+
+const UPDATE_CARD_STYLE = {
+  display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+  padding: '10px 12px', border: '1px solid rgba(93,146,135,0.30)',
+  background: 'rgba(93,146,135,0.12)', borderRadius: 8,
+};
+const UPDATE_CARD_BODY_STYLE = { display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 160 };
+
+// Numeric input for the Advanced Settings agent budgets. State keeps the
+// server's string form (settings round-trip as strings; the page-wide dirty
+// compare is a JSON diff, so types must stay stable across save → re-fetch).
+// Free typing is allowed — including transiently empty/out-of-range text —
+// and the value is clamped into [min, max] on blur. Two deliberate rules:
+//   * An untouched field never commits (blur alone must not materialize a
+//     key the server never sent — that would flip Save to dirty with zero
+//     edits and PUT an unknown key to an older server).
+//   * Emptied/unparseable input reverts to the last committed value, not the
+//     factory default (clearing a saved 500 to retype must not save 50).
+// Escape-dismiss skips blur entirely; clampBudgets() in save() is the
+// backstop that keeps rejectable values out of every PUT.
+function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSetting }) {
+  const { min, max, fallback } = spec;
+  const hintId = useId();
+  // The last COMMITTED value, from the page's saved-state snapshot — never a
+  // draft. Tracking "last parseable edit" instead was a bug (Codex review on
+  // #514): editing a saved 120 to an unsaved 300, then clearing, restored the
+  // 300; an abandoned out-of-range draft resurrected as its clamped form.
+  const saved =
+    savedValue != null && String(savedValue).trim() !== '' ? String(savedValue) : null;
+  return (
+    <div style={{ display: 'inline-flex', alignItems: 'baseline', gap: 8 }}>
+      <input
+        className="field-input"
+        type="number"
+        inputMode="numeric"
+        min={min}
+        max={max}
+        step={1}
+        value={value ?? String(fallback)}
+        onChange={(e) => setSetting(settingKey, e.target.value)}
+        onBlur={(e) => {
+          if (value == null) return; // untouched — don't materialize the key
+          // Emptied field with no committed value to restore (the key was
+          // never saved — e.g. an older server that doesn't serve it): leave
+          // it empty rather than commit the factory default — clampBudgets()
+          // drops empty drafts from the write, and the post-save re-fetch
+          // restores whatever the server holds.
+          if (String(e.target.value).trim() === '' && saved == null) return;
+          setSetting(settingKey, clampBudgetValue(e.target.value, spec, saved));
+        }}
+        aria-label={label}
+        aria-describedby={hintId}
+        title={`${label} (${min}–${max}, default ${fallback})`}
+        style={{ width: 90 }}
+      />
+      <span id={hintId} style={{ fontSize: 11.5, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+        {min}&ndash;{max} &middot; default {fallback}
+      </span>
+    </div>
+  );
 }
 
 function Section({ title, subtitle, notice, children }) {
@@ -294,6 +356,28 @@ function ClearableTextInput({ value, onChange, placeholder, ariaLabel }) {
 // The fetched value is held in local component state — we never push it
 // into the parent settings object, so saving an untouched revealed value
 // still sends "***" and the server skips overwriting the stored key.
+// Whether toggling the eye should fetch the real stored key from the server.
+//
+// `isWeb` short-circuits everything: `/settings/reveal-key` returns UNMASKED
+// provider secrets and is loopback-only server-side (`_require_local`), and on
+// hosted the browser reaches the server from the docker bridge rather than
+// 127.0.0.1 — so the fetch would 403. That is the ENG-912 shape: a panel that
+// looks functional and throws on a sub-action. A web user can still SET a key
+// (`PUT /settings/{key}` is not gated); they just can't read the stored one
+// back, and the field keeps showing the "***" sentinel.
+//
+// Extracted as a pure predicate rather than inlined so both platforms' paths
+// are directly testable — this gate lives inside a shared component that
+// desktop depends on, and the desktop direction is the one a web-only change
+// is most likely to break silently (ENG-932).
+export function shouldRevealStoredKey({ isWeb, show, revealName, isSentinel, alreadyRevealed }) {
+  if (isWeb) return false;
+  // Only worth a round trip when the field is currently masked, the caller told
+  // us which key to ask for, the value really is the server's sentinel, and we
+  // haven't already fetched it.
+  return !show && Boolean(revealName) && Boolean(isSentinel) && !alreadyRevealed;
+}
+
 function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
   const [show, setShow] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -327,7 +411,13 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
   };
 
   const onToggleShow = async () => {
-    if (!show && revealName && isSentinel && revealedValue === null) {
+    if (shouldRevealStoredKey({
+      isWeb: host.isWeb,
+      show,
+      revealName,
+      isSentinel,
+      alreadyRevealed: revealedValue !== null,
+    })) {
       // Reveal the real stored key from the loopback server.
       setRevealing(true);
       try {
@@ -638,6 +728,27 @@ const NAV_ITEMS = [
   { id: 'account', label: 'Account', icon: 'people' },
 ];
 
+// Sections that make sense in the hosted web shell (ENG-932). Absent, not
+// disabled — a nav row that opens a dead end is worse than no row:
+//   backend  — start/stop/diagnostics of a server the user doesn't control.
+//   updates  — App-shell version and OTA source are meaningless on hosted;
+//              the server updates itself.
+//   account  — renders an SSO sign-in card, but a hosted user already
+//              authenticated through the console; a second sign-in is
+//              confusing at best.
+// Agent stays because it carries the model picker and reasoning effort — the
+// point of the ticket. Appearance is purely cosmetic. Channels moved back here
+// from its standalone sidebar entry, which only existed while Settings was
+// hidden on web.
+const WEB_NAV_IDS = new Set(['agent', 'appearance', 'channels']);
+
+export function navItemsForHost(isWeb) {
+  // Fresh array on both branches — filter() already copies for web, and the
+  // desktop spread keeps a caller's mutation from reaching the shared module
+  // constant.
+  return isWeb ? NAV_ITEMS.filter((i) => WEB_NAV_IDS.has(i.id)) : [...NAV_ITEMS];
+}
+
 function SettingsNav({ section, onSectionChange, serverOnline = true }) {
   return (
     <nav
@@ -661,9 +772,16 @@ function SettingsNav({ section, onSectionChange, serverOnline = true }) {
         padding: '0 10px 6px',
         fontWeight: 600,
       }}>Settings</div>
-      {NAV_ITEMS.map((item) => {
+      {navItemsForHost(host.isWeb).map((item) => {
         const active = section === item.id;
-        const disabled = !serverOnline && item.id !== 'backend';
+        // `!host.isWeb &&`: the offline-disable exists because a dead local
+        // server can't accept a save, and Backend stays enabled as the escape
+        // hatch to restart it. On web there is no Backend row — and
+        // `serverOnline` DOES go false there: refreshData() polls /health on
+        // mount on both platforms (App.jsx), so a transient failure on hosted
+        // (proxy 502, auth blip) would otherwise disable EVERY row with no
+        // way out.
+        const disabled = !host.isWeb && !serverOnline && item.id !== 'backend';
         const icon = Ico[item.icon] ? Ico[item.icon](15) : null;
         return (
           <button
@@ -737,6 +855,11 @@ export default function SettingsView({
   // from the section list (the top-bar back control drills out to it first).
   mobile = false,
   onClose,
+  // Shell (installer) update notice (ENG-849): { version, currentVersion,
+  // downloadUrl } or null. Shown in Updates regardless of banner dismissal —
+  // Settings is a deliberate visit, so it always reflects the true state.
+  shellUpdate = null,
+  onDownloadShellUpdate,
 }) {
   const [saved, setSaved] = useState(false);
   const [validation, setValidation] = useState(null);
@@ -761,6 +884,22 @@ export default function SettingsView({
   const [antonVersion, setAntonVersion] = useState('');
   const [showVersionDetails, setShowVersionDetails] = useState(false);
   const [versionCopied, setVersionCopied] = useState(false);
+  // ENG-671 — on-demand "Check for updates". `checkResult` is null (idle) or a
+  // summary { ok, offline, updateAvailable, uiUpdateAvailable,
+  // serverUpdateAvailable, uiVersion?, serverVersion? } from host.checkForUpdates().
+  const [checkingUpdates, setCheckingUpdates] = useState(false);
+  const [checkResult, setCheckResult] = useState(null);
+  const [applyingUpdate, setApplyingUpdate] = useState(false);
+  // Set when applyUpdate() resolves false — a normal, expected failure path
+  // (failed download, compatibility rejection, update disappeared between
+  // check and apply), distinct from the thrown-exception case below.
+  const [applyError, setApplyError] = useState(false);
+  // The shell (installer) download is a hand-off to the browser — we can't
+  // detect when it finishes, so once the user triggers it for a given version
+  // we flip the card to the quit-and-open guidance. Keyed by version so a newer
+  // shell notice later in the session starts fresh instead of showing stale
+  // "downloading…" copy for a version that was never fetched.
+  const [shellDownloadedVersion, setShellDownloadedVersion] = useState(null);
   // Whether the refresh token lives in the macOS keychain (vs a file under
   // ~/.cowork). Mac-only; read from main on mount.
   const [keychainPref, setKeychainPref] = useState(false);
@@ -832,6 +971,30 @@ export default function SettingsView({
       setKeychainPref(!next);
     }
   };
+  const handleCheckForUpdates = async () => {
+    if (checkingUpdates || applyingUpdate) return;
+    setCheckingUpdates(true);
+    setCheckResult(null);
+    setApplyError(false);
+    try {
+      setCheckResult(await host.checkForUpdates());
+    } catch {
+      setCheckResult({ ok: false, offline: false, updateAvailable: false });
+    } finally {
+      setCheckingUpdates(false);
+    }
+  };
+
+  const handleApplyUpdateNow = async () => {
+    if (applyingUpdate) return;
+    setApplyingUpdate(true);
+    setApplyError(false);
+    const applied = await host.applyUpdate().catch(() => false);
+    // Success reloads the window; a resolved false or throw returns to retry.
+    setApplyingUpdate(applied);
+    setApplyError(!applied);
+  };
+
   // Tracks whether any LLM-affecting setting changed since the last
   // successful Save. Used to skip provider tests on a no-op Save so a
   // user just toggling appearance doesn't pay the network round-trip.
@@ -850,6 +1013,28 @@ export default function SettingsView({
   const { providerStatus: _ps, providerStatusDetails: _psd, ...settingsForDirty } = settings;
   const currentJson = JSON.stringify(settingsForDirty);
   const settingsDirty = lastSavedJson !== null && currentJson !== lastSavedJson;
+  // Parsed view of the saved snapshot. The Advanced Settings budget inputs
+  // use it to revert an emptied field to the last COMMITTED value — the
+  // snapshot is the only place that value survives once drafts land in
+  // `settings` (see BudgetNumberField).
+  const lastSavedSettings = useMemo(() => {
+    if (lastSavedJson == null) return null;
+    try { return JSON.parse(lastSavedJson); } catch { return null; }
+  }, [lastSavedJson]);
+  // Capability probe for the Advanced Settings budgets: cowork-server's
+  // list_settings returns a row for EVERY UserSettings field, so a server
+  // with the budget settings always sends both keys and an older one never
+  // does. Gating on presence keeps the section (and any possibility of
+  // writing the keys) off screens backed by servers that would 400 the
+  // write — the renderer ships OTA and can lead the installed server.
+  // Probe the LIVE settings, not the saved snapshot: the snapshot latches on
+  // the first render (offline-open would pin "no budgets" for the whole
+  // mount, even after a successful fetch). Live is equally safe — the only
+  // writer that can materialize these keys is the budget field itself, which
+  // sits inside this gate, so on an older server they can never appear.
+  const hasBudgetSettings = settings != null
+    && 'maxToolRounds' in settings
+    && 'maxContinuations' in settings;
   // Ref-mirror of `settings` so the post-Save snapshot can read the
   // freshly-refetched value (the closure's `settings` is stale after
   // the await but the ref tracks every render).
@@ -1117,7 +1302,7 @@ export default function SettingsView({
     setTesting(true);
     setTested(false);
     try {
-      await onSave(withResolvedRoles(settings));
+      await onSave(withResolvedRoles(clampBudgets(settings)));
       // Record the harness swap only now that it's persisted (ENG-385). Compare
       // against the pre-save snapshot — settingsRef holds the latest value since
       // the closure `settings` is stale after the await.
@@ -1732,7 +1917,7 @@ export default function SettingsView({
                             return (
                               <label style={{ display: 'grid', gap: 4 }}>
                                 {fieldLabel('Model')}
-                                <Select
+                                <ModelSelect
                                   value={selectValue || firstEnabledModel}
                                   onValueChange={(next) => {
                                     if (next === '__custom__') {
@@ -1890,6 +2075,37 @@ export default function SettingsView({
             />
           </Section>
         </CollapsibleGroup>
+
+        {hasBudgetSettings && (
+          <CollapsibleGroup title="Advanced Settings" defaultOpen={false}>
+            <Section
+              title="Max steps per task"
+              subtitle={`How many actions (running code, reading files, searching) ${agentLabel || 'Anton'} may take on one request before pausing to check in with you. Raise it so big tasks finish in one go; lower it for a tighter leash on time and cost.`}
+            >
+              <BudgetNumberField
+                settingKey="maxToolRounds"
+                value={settings.maxToolRounds}
+                savedValue={lastSavedSettings?.maxToolRounds}
+                spec={BUDGET_FIELDS.maxToolRounds}
+                label="Max steps per task"
+                setSetting={setSetting}
+              />
+            </Section>
+            <Section
+              title="Max auto-continues"
+              subtitle={`When ${agentLabel || 'Anton'} stops but the work looks unfinished, Cowork sends it back to complete the job — this caps how many times. Raise it for hands-off thoroughness; set 0 to stop after the first attempt (you'll still get a summary of what's missing).`}
+            >
+              <BudgetNumberField
+                settingKey="maxContinuations"
+                value={settings.maxContinuations}
+                savedValue={lastSavedSettings?.maxContinuations}
+                spec={BUDGET_FIELDS.maxContinuations}
+                label="Max auto-continues"
+                setSetting={setSetting}
+              />
+            </Section>
+          </CollapsibleGroup>
+        )}
       </SettingsSectionPanel>
     );
   };
@@ -2358,11 +2574,111 @@ export default function SettingsView({
             );
           })()}
         </Section>
+        {isElectron && (
+          <Section
+            title="Software updates"
+            subtitle="UI and server updates apply automatically when the app restarts. Only a new app version has to be downloaded and reinstalled by hand."
+          >
+            {(() => {
+              const r = checkResult;
+              const shellPending = r?.ok ? !!r.shellUpdateAvailable : !!shellUpdate;
+              const shellVersion = r?.shellVersion || shellUpdate?.version;
+              const shellUrl = r?.shellDownloadUrl || shellUpdate?.downloadUrl;
+              const shellDownloadStarted = shellPending && !!shellVersion && shellDownloadedVersion === shellVersion;
+              let status = null;
+              if (!checkingUpdates && r) {
+                if (!r.ok) {
+                  status = r.offline
+                    ? "Couldn't check — you appear to be offline."
+                    : "Couldn't check for updates. Please try again.";
+                } else if (!r.updateAvailable) {
+                  status = "You're up to date.";
+                }
+              }
+              const isError = !!r && !r.ok;
+              const isUpToDate = !checkingUpdates && !!r && r.ok && !r.updateAvailable;
+              const applyAvailable = !checkingUpdates && !!r && r.ok && (r.uiUpdateAvailable || r.serverUpdateAvailable);
+              const busy = checkingUpdates || applyingUpdate;
+              const parts = [];
+              if (applyAvailable) {
+                if (r.serverUpdateAvailable) parts.push(`Server → ${r.serverVersion || 'new version'}`);
+                if (r.uiUpdateAvailable) parts.push(`UI → ${r.uiVersion || 'new version'}`);
+              }
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                    <Button
+                      onClick={handleCheckForUpdates}
+                      disabled={busy}
+                      style={{ minWidth: 150, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.7 : 1 }}
+                    >
+                      {checkingUpdates ? 'Checking…' : 'Check for updates'}
+                    </Button>
+                    {status && (
+                      <span style={{ fontSize: 12.5, color: isError ? 'var(--warning, #c47f00)' : 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        {isUpToDate && Ico.check ? Ico.check(14) : null}
+                        {status}
+                      </span>
+                    )}
+                  </div>
+                  {applyAvailable && (
+                    <div style={UPDATE_CARD_STYLE}>
+                      <div style={UPDATE_CARD_BODY_STYLE}>
+                        <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-strong)' }}>Update ready</span>
+                        <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
+                          Restart the app to apply it{parts.length > 0 ? ` (${parts.join(', ')})` : ''}.
+                        </span>
+                      </div>
+                      <Button
+                        variant="primary"
+                        onClick={handleApplyUpdateNow}
+                        disabled={applyingUpdate}
+                        style={{ cursor: applyingUpdate ? 'default' : 'pointer', opacity: applyingUpdate ? 0.7 : 1 }}
+                      >
+                        {applyingUpdate ? 'Restarting…' : applyError ? 'Try again' : 'Restart now'}
+                      </Button>
+                    </div>
+                  )}
+                  {shellPending && (
+                    <div style={UPDATE_CARD_STYLE}>
+                      <div style={UPDATE_CARD_BODY_STYLE}>
+                        <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-strong)' }}>
+                          {shellVersion ? `New app version ${shellVersion}` : 'New app version available'}
+                        </span>
+                        <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
+                          {shellDownloadStarted
+                            ? "Installer downloading — when it's done, quit MindsHub Cowork and open the installer to finish updating."
+                            : "Download the installer, then quit MindsHub Cowork and open it to finish updating."}
+                        </span>
+                      </div>
+                      <Button
+                        variant={shellDownloadStarted ? 'subtle' : 'primary'}
+                        onClick={() => { onDownloadShellUpdate(shellUrl); if (shellVersion) setShellDownloadedVersion(shellVersion); }}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        {shellDownloadStarted ? 'Download again' : 'Download installer'}
+                      </Button>
+                    </div>
+                  )}
+                  {applyError && (
+                    <span style={{ fontSize: 12.5, color: 'var(--warning, #c47f00)' }}>
+                      Couldn't apply the update. Please try again.
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
+          </Section>
+        )}
       </div>
     </SettingsSectionPanel>
   );
 
   const renderBackendSection = () => {
+    // Unreachable from the nav since ENG-932 — `navItemsForHost` drops Backend
+    // on web, and `effectiveSection` refuses to resolve to a section the host
+    // doesn't offer. Kept as a defensive fallback for any future caller that
+    // renders a section directly rather than through the nav.
     if (host.isWeb) {
       return (
         <SettingsSectionPanel>
@@ -2780,7 +3096,7 @@ export default function SettingsView({
       backend: renderBackendSection,
       account: renderAccountSection,
     };
-    const activeItem = NAV_ITEMS.find((i) => i.id === section) || null;
+    const activeItem = navItemsForHost(host.isWeb).find((i) => i.id === section) || null;
     const inDetail = Boolean(activeItem);
     return (
       <SettingsLayoutContext.Provider value={{ mobile: true }}>
@@ -2805,8 +3121,15 @@ export default function SettingsView({
             </div>
           ) : (
             <nav className="settings-list" role="navigation" aria-label="Settings sections">
-              {NAV_ITEMS.map((item) => {
-                const disabled = !serverOnline && item.id !== 'backend';
+              {navItemsForHost(host.isWeb).map((item) => {
+                // `!host.isWeb &&`: the offline-disable exists because a dead local
+                // server can't accept a save, and Backend stays enabled as the
+                // escape hatch to restart it. On web there is no Backend row —
+                // and `serverOnline` DOES go false there: refreshData() polls
+                // /health on mount on both platforms (App.jsx), so a transient
+                // failure on hosted (proxy 502, auth blip) would otherwise
+                // disable EVERY row with no way out.
+                const disabled = !host.isWeb && !serverOnline && item.id !== 'backend';
                 const icon = Ico[item.icon] ? Ico[item.icon](18) : null;
                 return (
                   <div className="mshell-accordion" key={item.id}>
@@ -2837,16 +3160,25 @@ export default function SettingsView({
     );
   }
 
+  // Hiding a nav row isn't enough on its own — `navigate('settings:backend')`
+  // sets the section directly, so a deep link (or a stale persisted section)
+  // could still render one this host doesn't offer. Resolve through the visible
+  // set and fall back to its first entry (Agent).
+  const visibleNav = navItemsForHost(host.isWeb);
+  const effectiveSection = visibleNav.some((i) => i.id === section)
+    ? section
+    : visibleNav[0]?.id;
+
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'row', minHeight: 0 }}>
-      <SettingsNav section={section} onSectionChange={onSectionChange} serverOnline={serverOnline} />
+      <SettingsNav section={effectiveSection} onSectionChange={onSectionChange} serverOnline={serverOnline} />
 
-      {section === 'agent' && renderAgentSection()}
-      {section === 'appearance' && renderAppearanceSection()}
-      {section === 'channels' && renderChannelsSection()}
-      {section === 'updates' && renderUpdatesSection()}
-      {section === 'backend' && renderBackendSection()}
-      {section === 'account' && renderAccountSection()}
+      {effectiveSection === 'agent' && renderAgentSection()}
+      {effectiveSection === 'appearance' && renderAppearanceSection()}
+      {effectiveSection === 'channels' && renderChannelsSection()}
+      {effectiveSection === 'updates' && renderUpdatesSection()}
+      {effectiveSection === 'backend' && renderBackendSection()}
+      {effectiveSection === 'account' && renderAccountSection()}
 
       {logoutConfirm}
     </div>

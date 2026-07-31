@@ -28,11 +28,20 @@ jobs:
 
   # Publish the UI bundle from the SAME release version as the prod installer
   # above, so OTA users never see a UI version that differs from the app.
+  #
+  # Depends on build-deploy-prod (not just auto-release) so the manifest is
+  # written only AFTER the installer uploads succeed. It records that installer
+  # as the latest shell version (ENG-849), so publishing it before the installer
+  # exists — or after that build failed — would advertise a reinstall the
+  # download URL can't serve.
   publish-ui:
-    needs: auto-release
+    needs: [auto-release, build-deploy-prod]
     uses: ./.github/workflows/publish-ui.yml
     with:
       version: ${{ needs.auto-release.outputs.version }}
+      # The prod installer that build-deploy-prod just shipped, at the same
+      # CalVer as the installer and the UI bundle (ENG-849).
+      shell_version: ${{ needs.auto-release.outputs.version }}
     secrets: inherit
 
   notify:

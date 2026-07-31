@@ -12,8 +12,17 @@ on:
         description: 'Exact version to publish (from the auto-release job, e.g. 2.26.7.6.1).'
         required: true
         type: string
+      shell_version:
+        description: 'Installer (shell) CalVer shipping alongside this UI bundle. Emitted into latest.json as shellVersion so clients can offer a reinstall notice (ENG-849). ONLY set on the auto-release path, where a prod installer is actually published — a UI-only re-publish must leave it empty so no phantom reinstall notice appears.'
+        required: false
+        type: string
     secrets:
       RELEASES_TOKEN:
+        required: true
+      # Baked into the OTA bundle at build time (see "Build renderer"). Required
+      # so a caller fails before a release starts; dispatch/tag triggers skip
+      # workflow_call secret validation, so the build step rejects empty too.
+      VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN:
         required: true
   # Manual re-publish / backfill. Leave version empty to derive from git describe.
   workflow_dispatch:
@@ -83,11 +92,24 @@ jobs:
           echo "Publishing UI version: $VER"
 
       - name: Build renderer
-        # Bake the resolved version into __APP_VERSION__ so the running bundle
-        # reports the same version as latest.json and the prod app installer.
+        # Bake the resolved version into __APP_VERSION__ (matches latest.json and
+        # the prod installer). The PostHog token MUST be injected here: the OTA
+        # bundle overwrites the installer's renderer, so a missing token ships an
+        # empty key and silently disables analytics. Do not remove.
         env:
           VITE_APP_VERSION: ${{ steps.version.outputs.version }}
-        run: npm run build:renderer
+          VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN: ${{ secrets.VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN }}
+          # Explicit prod target (defense-in-depth). This workflow only publishes
+          # the prod bundle and the renderer already falls back to api.mindshub.ai
+          # (mindsUrls.ts); pinning it fails loudly if reused for a non-prod
+          # channel. Keycloak/console derive from this base.
+          VITE_MINDS_API_URL: https://api.mindshub.ai
+        run: |
+          if [ -z "${VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN}" ]; then
+            echo "::error::VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN is empty; refusing to publish an analytics-disabled OTA bundle."
+            exit 1
+          fi
+          npm run build:renderer
 
       - name: Check if version already published
         id: check
@@ -117,6 +139,7 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
           TAG: ${{ steps.version.outputs.tag }}
           MIN_SERVER_VERSION_INPUT: ${{ github.event.inputs.min_server_version }}
+          SHELL_VERSION: ${{ inputs.shell_version }}
         run: |
           # -e: halt on first failure (so a bad token fails here, not
           # three commands later). pipefail: propagate failure of the
@@ -183,6 +206,21 @@ jobs:
           msv = os.environ.get('MIN_SERVER_VERSION', '').strip()
           if msv:
               data['min_server_version'] = msv
+          # Shell (installer) version (ENG-849). A new installer only ships on
+          # the auto-release path, which passes SHELL_VERSION. On a UI-only
+          # publish it's empty — carry over the last-published shellVersion
+          # rather than dropping it, or users on an older shell would stop
+          # getting the reinstall notice after any UI-only publish. First real
+          # installer sets it; nothing here ever clears a once-published value.
+          sv = os.environ.get('SHELL_VERSION', '').strip()
+          if not sv:
+              try:
+                  with open('latest.json') as prev:
+                      sv = (json.load(prev).get('shellVersion') or '').strip()
+              except (FileNotFoundError, ValueError):
+                  sv = ''
+          if sv:
+              data['shellVersion'] = sv
           with open('latest.json', 'w') as f:
               json.dump(data, f, indent=2)
           print(json.dumps(data, indent=2))

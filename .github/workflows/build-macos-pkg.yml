@@ -91,9 +91,9 @@ on:
         required: false
       LINEAR_CLIENT_SECRET:
         required: false
-      GITHUB_CLIENT_ID:
+      GH_OAUTH_CLIENT_ID:
         required: false
-      GITHUB_CLIENT_SECRET:
+      GH_OAUTH_CLIENT_SECRET:
         required: false
       VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN:
         required: false
@@ -167,7 +167,7 @@ jobs:
           GOOGLE_PICKER_API_KEY: ${{ secrets.GOOGLE_PICKER_API_KEY }}
           LINEAR_CLIENT_ID: ${{ secrets.LINEAR_CLIENT_ID }}
           LINEAR_CLIENT_SECRET: ${{ secrets.LINEAR_CLIENT_SECRET }}
-          GITHUB_CLIENT_ID: ${{ secrets.GITHUB_CLIENT_ID }}
+          GITHUB_CLIENT_ID: ${{ secrets.GH_OAUTH_CLIENT_ID }}
           GITHUB_CLIENT_SECRET: ${{ secrets.GH_OAUTH_CLIENT_SECRET }}
 
         run: |

@@ -245,7 +245,14 @@ export default function Sidebar({
   onToggleServer,
   onShowServerHelp,
   updateAvailable = null, // { version: string } or null
+  // Set when an apply attempt failed (phase 'error'); surfaces a retry so the
+  // sidebar doesn't go silent on failure the way it used to (ENG-849 QA find).
+  updateError = null, // { version?: string } or null
   onApplyUpdate,
+  // Download-only shell update notice.
+  shellUpdate = null,
+  onDownloadShellUpdate,
+  onDismissShellUpdate,
   agentLabel,
   // Light/dark theme + 8-bit skin toggles — the sidebar footer hosts
   // both switches (relocated from the old floating bottom-right
@@ -596,15 +603,12 @@ export default function Sidebar({
             active={activeRoute === 'customize'}
             badge={showCounters ? (connectorsCount || null) : null}
           />
-          {/* Channels — connect messaging apps (Telegram/Slack/etc.) so people
-              can talk to the agent from their chats. Web-only: the desktop app
-              surfaces Channels under Settings, but the web shell hides Settings
-              entirely (the Electron-only sidebar footer), so the hosted build
-              needs this standalone entry. Routes to the `channels` key, which
-              App.jsx renders as <ChannelsView />. */}
-          {host.isWeb && (
-            <NavItem icon={Ico.chats(15)} label="Channels" onClick={() => onNavigate('channels')} active={activeRoute === 'channels'} />
-          )}
+          {/* Channels used to have a standalone entry here, web-only, purely
+              because the web shell hid Settings entirely — Channels lives
+              under Settings on desktop. Settings is now reachable on web
+              (ENG-932), so the workaround is removed and both platforms find
+              Channels in the same place. The `channels` route in App.jsx is
+              left intact so existing deep links still resolve. */}
         </div>
 
         {/* Agent — the agent's own brain: what it remembers (Memories)
@@ -756,8 +760,8 @@ export default function Sidebar({
           )}
         </div>
 
-        {/* Update available banner */}
-        {updateAvailable && (
+        {/* A shell reinstall supersedes the OTA banner until dismissed. */}
+        {updateAvailable && !shellUpdate && (
           <button
             type="button"
             style={{
@@ -787,7 +791,7 @@ export default function Sidebar({
               flex: 1, fontSize: 11.5, color: 'var(--text-strong)',
               fontFamily: 'var(--font-sans)',
             }}>
-              Update available{updateAvailable.version ? ` (${updateAvailable.version})` : ''}
+              Update ready{updateAvailable.version ? ` (${updateAvailable.version})` : ''}
             </span>
             <span style={{
               fontSize: 10, color: 'var(--sage-500, #5D9287)',
@@ -796,9 +800,105 @@ export default function Sidebar({
               textTransform: 'uppercase',
               fontWeight: 600,
             }}>
-              Install
+              Restart
             </span>
           </button>
+        )}
+
+        {/* A failed apply keeps the banner (as a retry) instead of silently
+            vanishing until the next poll — mirrors Settings → Software updates. */}
+        {updateError && !shellUpdate && (
+          <button
+            type="button"
+            style={{
+              margin: '0 10px 6px',
+              padding: '8px 12px',
+              background: 'rgba(196,127,0,0.12)',
+              border: '1px solid rgba(196,127,0,0.30)',
+              borderRadius: 8,
+              display: 'flex', alignItems: 'center', gap: 8,
+              cursor: 'pointer',
+              transition: 'background 120ms ease',
+              width: 'calc(100% - 20px)',
+              textAlign: 'left',
+              fontFamily: 'inherit',
+              WebkitAppRegion: 'no-drag',
+            }}
+            onClick={onApplyUpdate}
+            onMouseOver={(e) => { e.currentTarget.style.background = 'rgba(196,127,0,0.22)'; }}
+            onMouseOut={(e) => { e.currentTarget.style.background = 'rgba(196,127,0,0.12)'; }}
+          >
+            <span style={{
+              width: 6, height: 6, borderRadius: '50%',
+              background: 'var(--warning, #c47f00)',
+              flexShrink: 0,
+            }} />
+            <span style={{
+              flex: 1, fontSize: 11.5, color: 'var(--text-strong)',
+              fontFamily: 'var(--font-sans)',
+            }}>
+              Update failed{updateError.version ? ` (${updateError.version})` : ''}
+            </span>
+            <span style={{
+              fontSize: 10, color: 'var(--warning, #c47f00)',
+              fontFamily: 'var(--font-mono)',
+              letterSpacing: '0.03em',
+              textTransform: 'uppercase',
+              fontWeight: 600,
+            }}>
+              Try again
+            </span>
+          </button>
+        )}
+
+        {/* Shell updates are download-only and dismissible per version. */}
+        {shellUpdate && (
+          <div
+            style={{
+              margin: '0 10px 6px',
+              padding: '8px 12px',
+              background: 'rgba(93,146,135,0.12)',
+              border: '1px solid rgba(93,146,135,0.30)',
+              borderRadius: 8,
+              display: 'flex', alignItems: 'center', gap: 8,
+              width: 'calc(100% - 20px)',
+              WebkitAppRegion: 'no-drag',
+            }}
+          >
+            <button
+              type="button"
+              onClick={onDownloadShellUpdate}
+              title={`A new version of MindsHub Cowork is available${shellUpdate.version ? ` (${shellUpdate.version})` : ''} — download the installer, then quit the app and open it to update`}
+              style={{
+                flex: 1, display: 'flex', alignItems: 'center', gap: 8,
+                background: 'none', border: 'none', padding: 0, margin: 0,
+                cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+              }}
+            >
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--sage-500, #5D9287)', flexShrink: 0 }} />
+              <span style={{ flex: 1, fontSize: 11.5, color: 'var(--text-strong)', fontFamily: 'var(--font-sans)' }}>
+                New version available{shellUpdate.version ? ` (${shellUpdate.version})` : ''}
+              </span>
+              <span style={{
+                fontSize: 10, color: 'var(--sage-500, #5D9287)', fontFamily: 'var(--font-mono)',
+                letterSpacing: '0.03em', textTransform: 'uppercase', fontWeight: 600,
+              }}>
+                Download
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={onDismissShellUpdate}
+              aria-label="Dismiss update notice"
+              title="Dismiss"
+              style={{
+                background: 'none', border: 'none', padding: '0 2px', margin: 0,
+                cursor: 'pointer', color: 'var(--text-muted)', fontSize: 14, lineHeight: 1, flexShrink: 0,
+              }}
+            >
+              ×
+            </button>
+          </div>
         )}
 
         {/* Footer — always rendered so the theme toggle (relocated here
@@ -806,15 +906,23 @@ export default function Sidebar({
             both Electron and the hosted web shell. The settings /
             backend-status controls stay Electron-only: the FastAPI
             process IS the host on web, so start/stop/diagnostics don't
-            apply and the web shell hides Settings entirely.
+            apply. Settings itself is NOT Electron-only any more — the web
+            shell used to hide it entirely, which also hid the only
+            workaround for ENG-1042; see the gate below (ENG-932).
 
             Normal state: a settings nav row — no server noise when everything
             is working fine.
             Disconnected / busy: the status pill replaces the settings row so
             the problem is immediately visible. */}
         <div className="anton-sidebar__footer">
-          {!host.isWeb && (
-            (!serverOnline || serverBusy) ? (
+          {/* The status-pill variant is Electron-only — on web the FastAPI
+              process IS the host, so there is no local server lifecycle to
+              report on. But Settings itself must be reachable on web
+              (ENG-932): it holds the reasoning-effort control, which is the
+              only user-side workaround for a turn that burns its whole
+              output budget and returns nothing (ENG-1042). So web always
+              gets the plain Settings row; only the pill is gated. */}
+          {(!host.isWeb && (!serverOnline || serverBusy)) ? (
               <>
                 <button
                   type="button"
@@ -861,8 +969,7 @@ export default function Sidebar({
                 <span style={{ display: 'inline-flex', flexShrink: 0 }}>{Ico.settings(13)}</span>
                 <span>Settings</span>
               </button>
-            )
-          )}
+            )}
           {(show8bitToggle || showThemeToggle) && (
             // Marks these as quick display toggles, not settings — separate
             // from the Settings/backend-status controls to the left.

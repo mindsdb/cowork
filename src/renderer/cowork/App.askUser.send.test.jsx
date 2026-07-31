@@ -94,6 +94,7 @@ vi.mock('../platform/host', () => ({
     onOAuthRefreshError: () => () => {},
     getKeychainPref: vi.fn(async () => false),
     serverDiagnostics: vi.fn(async () => ({})),
+    getShellUpdate: vi.fn(async () => null),
   },
   getAccessToken: vi.fn(async () => null),
   getVersionInfo: vi.fn(async () => ({ app: '', ui: null, source: 'web' })),

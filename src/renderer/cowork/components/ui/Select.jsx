@@ -50,7 +50,9 @@ import { cva } from 'class-variance-authority';
 import { cn } from '../../lib/cn';
 import Spinner from './Spinner.jsx';
 
-const triggerVariants = cva(
+// Exported for Combobox, which renders a popup-based trigger that
+// must look identical to a Select trigger (same tokens, same variants).
+export const triggerVariants = cva(
   [
     'inline-flex items-center justify-between gap-[10px]',
     // `border-solid` is load-bearing, not redundant: preflight is disabled

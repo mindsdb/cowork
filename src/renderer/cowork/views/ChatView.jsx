@@ -1322,14 +1322,17 @@ export default function ChatView({
   const convRef = useRef(null);
 
   // The orb anchors to the WorkingIndicator box (pre-step placeholder,
-  // then the ThinkingBlock header) while the turn is in its thinking
-  // phase. Once body text streams the StreamCursor takes over as the
-  // moving part, and when the turn is done the hover meta replaces it —
-  // exactly one in-progress indicator at any moment.
+  // then the ThinkingBlock header) for as long as there's real work
+  // going on — steps and thoughts keep streaming above the growing
+  // answer text throughout, so the orb stays put for the whole turn
+  // rather than handing off once body text starts. Shares
+  // isThinkingActive with ThinkingBlock's own header so the two can't
+  // drift out of sync again the way they did before (ENG-1107/1109):
+  // whatever keeps the steps panel expanded is exactly what should keep
+  // the orb anchored.
   const orbView = useMemo(() => {
     if (!streamingMsg) return { state: null, activeSlot: null };
-    const status = streamingMsg.streamStatus;
-    if (status === 'done' || status === 'streaming') return { state: null, activeSlot: null };
+    if (!isThinkingActive(streamingMsg.streamStatus)) return { state: null, activeSlot: null };
     return { state: 'thinking', activeSlot: 'header:streaming' };
   }, [streamingMsg]);
 
@@ -1779,11 +1782,12 @@ export default function ChatView({
                 );
               }
               if (m.role === 'error') {
-                // Out-of-credits: render an actionable card (Add credits /
-                // Bring your own keys) instead of a plain error. Reused for
-                // ANY turn that fails with the `token_limit` code — the
-                // first message on a fresh account that's spent its free
-                // tokens, or a mid-session exhaustion.
+                // Out-of-credits: render an actionable card instead of a
+                // plain error. Reused for ANY turn that fails with the
+                // `token_limit` code — the first message on a fresh account
+                // that's spent its free tokens, or a mid-session exhaustion.
+                // Single CTA on purpose (ENG-1169): the out-of-credits
+                // moment funnels to top-up; BYOK setup stays in Settings.
                 if (m.code === 'token_limit') {
                   return (
                     <ActionCard
@@ -1791,10 +1795,9 @@ export default function ChatView({
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
                       title="You're out of credits"
-                      body={m.content || "You've used your MindsHub credits. Add more to keep using managed models, or bring your own LLM provider key in Settings."}
+                      body={m.content || "You've used your MindsHub credits. Add more to keep working."}
                       buttons={[
                         { label: 'Add credits', onClick: () => host.openExternal(MINDS_BILLING_URL), primary: true },
-                        { label: 'Bring your own keys', onClick: () => onOpenSettings?.('agent') },
                       ]}
                     />
                   );
@@ -1925,13 +1928,20 @@ export default function ChatView({
 
             {streamingMsg ? (
               <AnswerTurn state="thinking" showActions={false}>
-                {streamingMsg.steps?.length > 0 && (
+                {(streamingMsg.steps?.length > 0 || streamingMsg.currentThought?.text) && (
                   <ThinkingBlock
                     steps={streamingMsg.steps}
                     startedAt={streamingMsg.startedAt}
                     isActive={isThinkingActive(streamingMsg.streamStatus)}
                     slotId="header:streaming"
+                    currentThought={streamingMsg.currentThought}
                     currentLabel={(() => {
+                      // The header stays the WORKING message (active step
+                      // label, else "Thinking…") — never the live thought
+                      // text. The thought has its own distinct line at the
+                      // bottom of the steps; letting it also drive the
+                      // header made the working message flicker/overwrite
+                      // as each reasoning delta streamed in.
                       const active = [...(streamingMsg.steps || [])].reverse().find(s => s.status === 'in_progress');
                       return active?.label || null;
                     })()}
@@ -1940,15 +1950,16 @@ export default function ChatView({
                 )}
                 {/* Bridge state: between the first stream event arriving
                     (which strips the activity placeholder) and the first
-                    step or body chunk landing, the AnswerTurn would
-                    otherwise render empty — the user sees the message
-                    "appear, vanish, then come back" once scratchpad
-                    output starts. Keep the working indicator visible
-                    whenever there are no steps and no body text yet.
-                    `_placeholderLabel` is set by the pre-first-event
-                    stub in App.jsx `withThinkingPlaceholder` ("Creating
-                    task…" for new tasks, "Thinking…" for replies). */}
-                {!streamingMsg.steps?.length && !streamingMsg.content && (
+                    step, thought, or body chunk landing, the AnswerTurn
+                    would otherwise render empty — the user sees the
+                    message "appear, vanish, then come back" once
+                    scratchpad output starts. Keep the working indicator
+                    visible whenever there's nothing else occupying the
+                    same slot yet. `_placeholderLabel` is set by the
+                    pre-first-event stub in App.jsx
+                    `withThinkingPlaceholder` ("Creating task…" for new
+                    tasks, "Thinking…" for replies). */}
+                {!streamingMsg.steps?.length && !streamingMsg.currentThought?.text && !streamingMsg.content && (
                   <WorkingIndicator
                     slotId="header:streaming"
                     label={streamingMsg._placeholderLabel || 'Thinking…'}
