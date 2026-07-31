@@ -1,4 +1,4 @@
-import { createLogger, defineConfig } from 'vite';
+import { createLogger, defineConfig, loadEnv } from 'vite';
 import react, { reactCompilerPreset } from '@vitejs/plugin-react';
 import babel from '@rolldown/plugin-babel';
 import path from 'path';
@@ -48,6 +48,18 @@ const IS_WEB = process.env.BUILD_TARGET === 'web';
 
 const SERVER_PORT = Number(process.env.COWORK_SERVER_PORT || 26866);
 
+// Env dir shared by Vite's client env loading and the dev-only `/auth` proxy.
+const ENV_DIR = path.resolve(__dirname, '../..');
+
+// Keycloak host for the dev-login `/auth` proxy (web dev only). Read from the
+// same env files Vite exposes to the client so it tracks VITE_KEYCLOAK_URL.
+// Only used to build the ROPC token endpoint under `npm run dev:web`; never
+// touched by production builds.
+const KEYCLOAK_URL =
+  process.env.VITE_KEYCLOAK_URL ||
+  loadEnv('development', ENV_DIR, 'VITE_').VITE_KEYCLOAK_URL ||
+  '';
+
 // `npm run dev` boots vite before Electron spawns the sidecar, so downgrade the expected startup ECONNREFUSED proxy noise to a calm line.
 const logger = createLogger();
 const logError = logger.error;
@@ -95,7 +107,7 @@ export default defineConfig({
     __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
   },
   root: __dirname,
-  envDir: path.resolve(__dirname, '../..'),
+  envDir: ENV_DIR,
   base: './',
   build: {
     outDir: path.resolve(
@@ -112,6 +124,19 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       '/api': `http://127.0.0.1:${SERVER_PORT}`,
+      // Dev-login (VITE_DEV_LOGIN) POSTs ROPC credentials to Keycloak's token
+      // endpoint; proxy it same-origin so the browser isn't blocked by
+      // Keycloak CORS on localhost. Web dev only, and inert without a
+      // configured Keycloak host.
+      ...(IS_WEB && KEYCLOAK_URL
+        ? {
+            '/auth': {
+              target: KEYCLOAK_URL.replace(/\/auth\/?$/, ''),
+              changeOrigin: true,
+              secure: true,
+            },
+          }
+        : {}),
     },
   },
   resolve: {

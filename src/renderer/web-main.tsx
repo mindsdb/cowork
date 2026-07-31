@@ -5,12 +5,15 @@
 // via FastAPI in web and via window.antontron in Electron. Setup auto-completes
 // on web (the FastAPI host running this code IS the install).
 //
-// Auth: every web instance requires a Keycloak login (onLoad 'login-required'),
-// same as the MindsHub console (mindshub_frontend). An unauthenticated visitor
-// is redirected to Keycloak before <App /> mounts; the resulting token rides as
-// `Authorization: Bearer` on every /api call (see host.ts / cowork/api.js),
-// which the ingress auth subrequest validates. There is no separate "cloud"
-// bypass: the old Cloudflare-Worker standalone path is retired.
+// Auth is decided by <WebAuthGate> (see lib/devLogin). A deployed build always
+// requires a Keycloak login (onLoad 'login-required'), same as the MindsHub
+// console: an unauthenticated visitor is redirected to Keycloak before <App />
+// mounts; the resulting token rides as `Authorization: Bearer` on every /api
+// call (see host.ts / cowork/api.js), which the ingress auth subrequest
+// validates. Under `vite dev` only, the gate instead mounts the app without
+// auth (localhost has no ingress gate and isn't a registered redirect URI), or
+// runs a local ROPC dev-login when VITE_DEV_LOGIN=true. Those dev branches are
+// tree-shaken out of `build:web`.
 //
 // Same as main.tsx:
 //   - First-paint theme bootstrap (avoids palette flash).
@@ -18,13 +21,12 @@
 
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ReactKeycloakProvider } from '@react-keycloak/web';
 import './cowork/styles/tailwind.css';
 import './cowork/styles/globals.css';
 import './cowork/styles/skin-8bit.css';
 import './styles.css';
 import App from './App';
-import { keycloak } from './lib/keycloak';
+import { WebAuthGate } from './lib/devLogin';
 import { loadSkin } from './lib/skins';
 
 (() => {
@@ -38,16 +40,12 @@ import { loadSkin } from './lib/skins';
   document.body.classList.add(theme === 'light' ? 'gf-theme-light' : 'gf-theme-dark');
 })();
 
-// Base URL without query params. Keycloak validates redirect URIs strictly.
-const cleanRedirectUri = `${window.location.protocol}//${window.location.host}${window.location.pathname}`;
-const initOptions = { onLoad: 'login-required' as const, pkceMethod: 'S256', checkLoginIframe: false, redirectUri: cleanRedirectUri };
-
 const root = document.getElementById('root')!;
 
 createRoot(root).render(
   <StrictMode>
-    <ReactKeycloakProvider authClient={keycloak} initOptions={initOptions}>
+    <WebAuthGate>
       <App />
-    </ReactKeycloakProvider>
+    </WebAuthGate>
   </StrictMode>
 );
