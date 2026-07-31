@@ -31,9 +31,12 @@ export const ONBOARDING_STEPS = [
   {
     id: 'connect-app',
     title: 'Connect an app',
-    description: 'Link Gmail or Slack, let Cowork act on it.',
+    // Google Drive is the one connector with a complete in-browser
+    // connect flow today (Gmail doesn't have it yet) — point the step
+    // at the path that actually works end to end.
+    description: 'Link Google Drive, let Cowork act on your files.',
     prompt:
-      'I want to connect one of my apps so you can work with my real stuff. Walk me through linking one (email, calendar, chat, or files all work), then once it\'s connected, do something useful with it and show me what you found.',
+      'I want to connect my Google Drive so you can work with my real files. Walk me through linking it, then once it\'s connected, do something useful with a file and show me what you found.',
   },
   {
     id: 'point-at-folder',
