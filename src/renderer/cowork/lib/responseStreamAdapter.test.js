@@ -74,6 +74,16 @@ describe('responseStreamAdapter — ask_user', () => {
     expect(state.steps).toHaveLength(0);
   });
 
+  it('drops an ask_user with no question_id', () => {
+    // Every retirement path matches on question_id, so an id-less question
+    // could never be deduped, answered, or timed out — it would sit at
+    // `answer: null` forever and keep the composer redirected into a question
+    // nobody can answer. Identity-preserving, like any other ignored event.
+    const before = initialStreamState();
+    expect(reduceStream(before, { ...ASK, question_id: '' })).toBe(before);
+    expect(reduceStream(before, { ...ASK, question_id: undefined })).toBe(before);
+  });
+
   it('leaves state untouched for an unknown event type', () => {
     // Documents the silent-drop behaviour the server-side kill switch exists
     // to protect against.

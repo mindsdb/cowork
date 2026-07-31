@@ -24,9 +24,11 @@ export default function AskUserCard({ step, conversationId, onAnswered, expired 
     const result = await submitAnswer(conversationId, q.question_id, payload);
     setBusy(false);
     if (result?.status === 'not_found') setGone(true);
-    // The conversation id travels with the result so the listener doesn't have
-    // to assume this card belongs to whatever conversation is currently open.
-    onAnswered?.(result, conversationId);
+    // The conversation id AND the question id travel with the result: the
+    // listener must not have to assume this card belongs to whatever
+    // conversation is currently open, nor that this is the only question that
+    // conversation has ever asked.
+    onAnswered?.(result, conversationId, q.question_id);
   };
 
   const onOption = (value) => {

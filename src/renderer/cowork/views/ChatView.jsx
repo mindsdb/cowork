@@ -483,17 +483,37 @@ function StepArtifacts({ steps, onOpen, projectPath }) {
 
 // Renders any badge='AskUser' steps as inline question cards, the same way
 // StepArtifacts renders artifacts — both receive the shared `steps` array.
-function StepQuestions({ steps, conversationId, expired, onAnswered }) {
+//
+// `expired` is derived PER QUESTION, not per conversation. Conversation-level
+// liveness ("this chat has something in flight") is the wrong granularity: it
+// renders an unanswered card from an EARLIER turn with live buttons for as long
+// as any new stream runs on the same conversation, and clicking it 404s — which
+// then retires whatever question the new turn is actually blocked on.
+//
+// Two rules:
+//   - an answered question is never expired; the card renders its outcome, and
+//     the generic "no longer active" line would be noise on top of it
+//   - only the LAST unanswered question of a LIVE turn can still be answered
+//
+// That last rule leans on an invariant owned by anton, not by this repo: the
+// `ask_user` tool blocks the turn, so anton never publishes a second question
+// while one is outstanding, and it always retires the outstanding one (answer,
+// cancel, or the server's 300 s timeout) before the turn ends. This repo can
+// neither see nor enforce that cross-repo contract, so an earlier unanswered
+// card is treated as expired rather than trusted to still be answerable.
+function StepQuestions({ steps, conversationId, conversationLive, onAnswered }) {
   const questions = steps?.filter((s) => s.badge === 'AskUser') || [];
   if (questions.length === 0) return null;
+  let lastUnanswered = -1;
+  questions.forEach((s, i) => { if (!s.data?.answer) lastUnanswered = i; });
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 4 }}>
-      {questions.map((s) => (
+      {questions.map((s, i) => (
         <AskUserCard
           key={s.id}
           step={s}
           conversationId={conversationId}
-          expired={expired}
+          expired={!s.data?.answer && !(conversationLive && i === lastUnanswered)}
           onAnswered={onAnswered}
         />
       ))}
@@ -1890,7 +1910,11 @@ export default function ChatView({
                   <StepQuestions
                     steps={m.steps}
                     conversationId={task.id}
-                    expired={!isStreaming && !inFlightSet?.has(task.id)}
+                    // A completed turn by construction — `visibleMessages`
+                    // excludes the `_streaming` row — so no question rendered
+                    // here belongs to the live turn, whatever else is in flight
+                    // on this conversation.
+                    conversationLive={false}
                     onAnswered={onQuestionAnswered}
                   />
                   <StepSkills steps={m.steps} latestByKey={latestSkillCardByKey} messageIndex={i} projectName={project?.name} />
@@ -1940,7 +1964,7 @@ export default function ChatView({
                 <StepQuestions
                   steps={streamingMsg.steps}
                   conversationId={task.id}
-                  expired={!isStreaming && !inFlightSet?.has(task.id)}
+                  conversationLive={isStreaming || !!inFlightSet?.has(task.id)}
                   onAnswered={onQuestionAnswered}
                 />
                 <StepSkills steps={streamingMsg.steps} latestByKey={latestSkillCardByKey} messageIndex={visibleMessages.length} projectName={project?.name} />

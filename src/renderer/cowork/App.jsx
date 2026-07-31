@@ -204,6 +204,26 @@ export function drainQueueAttachments(queued) {
 }
 
 /**
+ * The live steps with one question removed.
+ *
+ * Retiring a dead card must not blank the whole mirror: if a DIFFERENT question
+ * in the same conversation is genuinely live, blanking drops its interception,
+ * and nothing re-arms it — the mirror is only rewritten by a stream event, and
+ * while a question is pending no further events arrive. The composer would stop
+ * redirecting, the next send would queue behind a turn that cannot complete,
+ * and it would sit there until the server's 300 s timeout.
+ *
+ * No questionId (a caller that cannot say which question died) falls back to
+ * the blanket clear.
+ */
+export function retireQuestionFromSteps(steps, questionId) {
+  if (!questionId) return [];
+  return (steps || []).filter(
+    (s) => !(s.badge === 'AskUser' && s.data?.question_id === questionId),
+  );
+}
+
+/**
  * Decides whether a freshly-appeared question should hand a task's queued
  * messages back to the composer: which key the messages sit under, and which
  * conversation the text must be handed back to.
@@ -1210,6 +1230,23 @@ function AppCore() {
     if (!dying) return;
     Object.keys(liveStepsRef.current).forEach((key) => {
       if (liveStepsRef.current[key] === dying) delete liveStepsRef.current[key];
+    });
+  }, []);
+
+  // Retires ONE question from the mirror (see retireQuestionFromSteps for why
+  // granularity matters), leaving anything else the conversation is blocked on
+  // intact.
+  //
+  // Aliases share one array reference (see releaseLiveStepsWithAliases), so the
+  // replacement is written under every key holding it — otherwise the aliases
+  // diverge and the pre-adoption id keeps serving the retired question.
+  const retireLiveQuestion = useCallback((conversationId, questionId) => {
+    if (!conversationId) return;
+    const steps = liveStepsRef.current[conversationId];
+    if (!steps) return;
+    const next = retireQuestionFromSteps(steps, questionId);
+    Object.keys(liveStepsRef.current).forEach((key) => {
+      if (liveStepsRef.current[key] === steps) liveStepsRef.current[key] = next;
     });
   }, []);
 
@@ -3389,6 +3426,27 @@ function AppCore() {
     };
 
     activeStreamingTaskIdRef.current = id;
+    // Same generation guard the other three stream sites carry, in the same
+    // order: generation → release → (`cancelled` bail, where the transport
+    // reports one). It is not enough that "this stream cannot carry ask_user"
+    // — that is a claim about today's server, while onEvent below pushes
+    // through the same `updateLiveStepsAndDrainQueue` and `reduceStream` as
+    // every other site. Two ways a superseded data-vault stream would
+    // otherwise stall the composer:
+    //   (a) its late onEvent overwrites liveStepsRef[cid] with its own steps,
+    //       masking a newer run's pending question — no ask_user needed on
+    //       this stream at all;
+    //   (b) its late onDone/onError deletes the newer run's entry.
+    // Either way the composer stops redirecting, the next send is queued
+    // behind a turn that cannot complete, and it sits there until the
+    // server's 300 s question timeout.
+    //
+    // The counter is deliberately global rather than per conversation: there
+    // is only ever one `activeStreamCtrlRef` slot, so only one stream can be
+    // live, and the sole bump site (handleStopStream) explicitly releases the
+    // conversation it just stopped. Making it per conversation would buy
+    // nothing while one-stream-at-a-time holds.
+    const streamGen = activeStreamGenerationRef.current;
     activeStreamCtrlRef.current = streamDataVaultSubmission({
       formId,
       // Pass the local id only when it's a real server id — otherwise
@@ -3402,6 +3460,7 @@ function AppCore() {
       name,
       method,
       onEvent(ev) {
+        if (streamGen !== activeStreamGenerationRef.current) return;
         const sid = ev?.conversation_id || ev?.response?.conversation_id;
         if (sid) adoptServerId(sid);
         streamState = reduceStream(streamState, ev);
@@ -3440,6 +3499,7 @@ function AppCore() {
         flushSync(() => flushStreaming());
       },
       onChunk(chunk, sid) {
+        if (streamGen !== activeStreamGenerationRef.current) return;
         if (sid) adoptServerId(sid);
         assistantContent += chunk;
         // data-vault-form-patch blocks are delivered as complete deltas —
@@ -3455,6 +3515,7 @@ function AppCore() {
         }
       },
       onDone(sid) {
+        if (streamGen !== activeStreamGenerationRef.current) return;
         if (sid) adoptServerId(sid);
         activeStreamCtrlRef.current = null;
         activeStreamingTaskIdRef.current = null;
@@ -3488,7 +3549,13 @@ function AppCore() {
           .then((data) => setConnectors(Array.isArray(data?.connections) ? data.connections : []))
           .catch(() => {});
       },
+      // No `cancelled` bail here, unlike the other three sites: this
+      // transport's onError takes a message only, with no event/code to
+      // inspect. An abort therefore lands as a plain error — but the
+      // generation guard above already swallows it, because the only thing
+      // that aborts this stream is handleStopStream, which bumps first.
       onError(message) {
+        if (streamGen !== activeStreamGenerationRef.current) return;
         activeStreamCtrlRef.current = null;
         activeStreamingTaskIdRef.current = null;
         releaseLiveSteps([resolvedId, id]);
@@ -4181,13 +4248,15 @@ function AppCore() {
               delete next[taskId];
               return next;
             })}
-            onQuestionAnswered={(result, conversationId) => {
+            onQuestionAnswered={(result, conversationId, questionId) => {
               // Keyed off the conversation the card was rendered with, not the
               // currently-open task — the card knows which conversation it
               // belongs to and this must not depend on them being the same.
+              // And keyed off the question too: a dead card must not take a
+              // live sibling's interception down with it.
               if (!conversationId) return;
               if (result?.status === 'not_found' || result?.status === 'already_answered') {
-                liveStepsRef.current[conversationId] = [];
+                retireLiveQuestion(conversationId, questionId);
               }
             }}
           />

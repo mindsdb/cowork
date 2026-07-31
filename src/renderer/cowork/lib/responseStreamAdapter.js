@@ -351,13 +351,22 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
   // question_id so a /tail replay from seq 0 can't double the card.
   if (type === 'response.ask_user') {
     const key = event.question_id || '';
+    // No id, no card. Everything that retires a question matches on
+    // question_id: the dedupe guard below, the `ask_user_answered` branch, and
+    // App.jsx's composer interception. An id-less question would be both
+    // un-dedupable and un-retirable — stuck at `answer: null` forever, so
+    // `pendingQuestionFor` keeps returning it and the composer stays hijacked
+    // for the life of the live-steps entry. The server always sends an id, so
+    // this is defence in depth; it earns its place because it is the one
+    // malformed payload whose failure mode is permanent rather than cosmetic.
+    if (!key) return state;
     // Idempotent: /tail replays from seq 0, so the same question arrives
     // again on every reconnect.
-    if (key && state.steps.some((s) => s.badge === 'AskUser' && s._questionKey === key)) {
+    if (state.steps.some((s) => s.badge === 'AskUser' && s._questionKey === key)) {
       return state;
     }
     const step = {
-      id: `question-${key || state.steps.length + 1}`,
+      id: `question-${key}`,
       label: event.prompt || 'Question',
       badge: 'AskUser',
       icon: 'question',

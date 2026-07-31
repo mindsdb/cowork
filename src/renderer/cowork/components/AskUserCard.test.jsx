@@ -108,9 +108,10 @@ describe('AskUserCard', () => {
     renderCard({}, { onAnswered });
     await user.click(screen.getByRole('button', { name: /postgres/i }));
     expect(await screen.findByText(/no longer active/i)).toBeInTheDocument();
-    // The card's own conversation id rides along, so the listener never has to
-    // assume the card belongs to the currently-open conversation.
-    expect(onAnswered).toHaveBeenCalledWith({ status: 'not_found' }, 'conv-1');
+    // The card's own conversation id AND question id ride along, so the
+    // listener never has to assume the card belongs to the currently-open
+    // conversation, nor that it is the only question that conversation asked.
+    expect(onAnswered).toHaveBeenCalledWith({ status: 'not_found' }, 'conv-1', 'ask:1');
   });
 
   it('disables every control while a submission is in flight', async () => {

@@ -4,6 +4,7 @@ import {
   drainQueueToInput,
   drainQueueAttachments,
   planQueueDrain,
+  retireQuestionFromSteps,
   resolvePendingAnswer,
 } from './App';
 
@@ -131,6 +132,36 @@ describe('planQueueDrain', () => {
     expect(planQueueDrain([], ['conv-a'], queues, new Set())).toBeNull();
     expect(planQueueDrain([askStep()], ['conv-a'], {}, new Set())).toBeNull();
     expect(planQueueDrain([askStep()], [], queues, new Set())).toBeNull();
+  });
+});
+
+describe('retireQuestionFromSteps', () => {
+  it('removes only the named question', () => {
+    // The point of the granularity: a card that 404s must not take a sibling
+    // question the turn is genuinely blocked on down with it. Nothing re-arms
+    // the interception — while a question is pending no stream event arrives to
+    // rewrite the mirror.
+    const steps = [
+      askStep(),
+      askStep({ question_id: 'ask:2' }),
+      { badge: 'Skill', data: {} },
+    ];
+    const next = retireQuestionFromSteps(steps, 'ask:1');
+    expect(next.filter((s) => s.badge === 'AskUser').map((s) => s.data.question_id))
+      .toEqual(['ask:2']);
+    // And it is still a pending question afterwards, which is what the composer
+    // interception reads.
+    expect(pendingQuestionFor(next)).toEqual({ question_id: 'ask:2' });
+  });
+
+  it('keeps non-question steps', () => {
+    const steps = [askStep(), { badge: 'Artifact', data: {} }];
+    expect(retireQuestionFromSteps(steps, 'ask:1')).toEqual([{ badge: 'Artifact', data: {} }]);
+  });
+
+  it('falls back to a blanket clear when the caller cannot name the question', () => {
+    expect(retireQuestionFromSteps([askStep()], undefined)).toEqual([]);
+    expect(retireQuestionFromSteps(undefined, 'ask:1')).toEqual([]);
   });
 });
 

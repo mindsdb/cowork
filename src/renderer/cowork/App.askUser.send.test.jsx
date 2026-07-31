@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
@@ -65,7 +65,11 @@ vi.mock('./api', async (importOriginal) => ({
     streams.push(handle);
     return handle;
   },
-  streamDataVaultSubmission: vi.fn(() => ({ abort: vi.fn() })),
+  streamDataVaultSubmission: (...args) => {
+    const handle = { kind: 'datavault', opts: args[args.length - 1], abort: vi.fn() };
+    streams.push(handle);
+    return handle;
+  },
   tailInFlight: (...args) => {
     const handle = { kind: 'tail', opts: args[args.length - 1], abort: vi.fn() };
     streams.push(handle);
@@ -105,6 +109,10 @@ vi.mock('./lib/analytics', () => ({
 }));
 
 import App from './App';
+import {
+  setForm as setDataVaultForm,
+  clearForm as clearDataVaultForm,
+} from './components/datavault/formStore';
 
 const ASK_EVENT = {
   type: 'response.ask_user',
@@ -585,5 +593,80 @@ describe('two events in one synchronous burst', () => {
 
     await waitFor(() => expect(composer.value).toBe('queued one'));
     expect(composer.value).toBe('queued one');
+  });
+});
+
+describe('superseded data-vault stream', () => {
+  // The fourth stream site. It is the only one whose callbacks used to run
+  // unguarded, and the standing defence ("that stream cannot carry ask_user")
+  // is a claim about today's server, not about this code: its onEvent pushes
+  // through the same updateLiveStepsAndDrainQueue and reduceStream.
+  afterEach(() => clearDataVaultForm('conv-a'));
+
+  /** Opens the connect form for conv-a and submits it, returning the stream. */
+  async function submitConnectForm(user) {
+    await act(async () => {
+      setDataVaultForm('conv-a', {
+        form_id: 'fm_1',
+        title: 'Connect Postgres',
+        fields: [],
+      });
+    });
+    await user.click(await screen.findByRole('button', { name: /^submit$/i }));
+    const handle = await waitFor(() => {
+      const h = streams.find((x) => x.kind === 'datavault');
+      if (!h) throw new Error('data-vault stream not started');
+      return h;
+    });
+    // One innocuous event so flushStreaming commits the `_streaming` message —
+    // that is what surfaces the composer's Stop button.
+    await emitOn(handle, { type: 'response.created' });
+    return handle;
+  }
+
+  it('does not hijack the composer with a question from a dead stream', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+    const vault = await submitConnectForm(user);
+
+    // Stop supersedes the stream: bump, then abort.
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-a'));
+    await act(async () => { clearDataVaultForm('conv-a'); });
+
+    // A late event from the aborted stream. Without the generation guard on
+    // onEvent this writes a pending question into liveStepsRef and the next
+    // send is routed into submitAnswer against a run that no longer exists.
+    await emitOn(vault, ASK_EVENT);
+
+    await send(user, composer, 'a brand new message');
+    expect(spies.submitAnswer).not.toHaveBeenCalled();
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(1));
+    expect(spies.streamMessage.mock.calls[0][1]).toBe('a brand new message');
+  });
+
+  it('does not release a newer run when the dead stream finishes late', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+    const vault = await submitConnectForm(user);
+
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-a'));
+    await act(async () => { clearDataVaultForm('conv-a'); });
+
+    // A new turn on the same conversation, blocked on a question.
+    await send(user, composer, 'first message');
+    const live = await waitForStream(vault);
+    await emitOn(live, ASK_EVENT);
+
+    // The dead data-vault stream finally terminates. Unguarded, its onDone
+    // deletes liveStepsRef['conv-a'] — the newer run's entry — and the
+    // interception silently stops working.
+    await act(async () => { vault.opts.onDone(); await Promise.resolve(); });
+
+    await send(user, composer, 'the postgres one');
+    expect(spies.submitAnswer).toHaveBeenCalledWith('conv-a', 'ask:1', {
+      text: 'the postgres one',
+    });
   });
 });
