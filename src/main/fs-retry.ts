@@ -11,7 +11,11 @@ export function isTransientLockError(err: unknown): boolean {
 }
 
 // Run a sync fs op, retrying on a transient lock with a widening backoff. Async
-// so it never blocks the main thread; non-lock errors (ENOENT, …) rethrow at once.
+// so it never blocks the main thread; codes outside the set above (ENOENT,
+// ENOTDIR, …) rethrow at once. Caveat: a GENUINELY unwritable target (read-only
+// attribute, restrictive ACL) can also surface as EPERM/EACCES and will burn
+// the full budget before failing — acceptable here, where those are rare and
+// the alternative is missing a real transient lock.
 export async function retryOnTransientLock<T>(
   op: () => T,
   opts: { attempts?: number; baseDelayMs?: number } = {},

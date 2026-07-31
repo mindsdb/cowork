@@ -13,6 +13,7 @@ import {
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import * as crypto from 'crypto';
 
 const KEYCLOAK_BASE = MINDS_KEYCLOAK_BASE;
 const KEYCLOAK_REALM = 'mindsdb';
@@ -821,7 +822,20 @@ export async function writeEnvFileAtomic(
   opts: { attempts?: number; baseDelayMs?: number } = {},
 ): Promise<void> {
   const dir = path.dirname(targetPath);
-  const tmpPath = path.join(dir, `${path.basename(targetPath)}.tmp-${process.pid}`);
+  const base = path.basename(targetPath);
+  // Sweep any orphaned temp from a prior hard-kill / power-loss between the
+  // write and the rename — it holds the full plaintext key, so it must never
+  // linger in the config home. Best-effort; single sign-in flow, so this can't
+  // race a live temp (each write's name is unique below).
+  try {
+    for (const name of fs.readdirSync(dir)) {
+      if (name.startsWith(`${base}.tmp-`)) {
+        try { fs.rmSync(path.join(dir, name), { force: true }); } catch { /* best-effort */ }
+      }
+    }
+  } catch { /* dir unreadable — nothing to sweep */ }
+  // Random suffix (not pid alone) so two writers can never collide on the name.
+  const tmpPath = path.join(dir, `${base}.tmp-${process.pid}-${crypto.randomBytes(6).toString('hex')}`);
   fs.writeFileSync(tmpPath, content, { encoding: 'utf-8', mode: 0o600 });
   try {
     await retryOnTransientLock(() => fs.renameSync(tmpPath, targetPath), opts);
@@ -842,9 +856,19 @@ export async function writeMindsKeyToEnvAndRestart(apiKey: string): Promise<void
   const envPath = coworkEnvPath();
   const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
   // Atomic + lock-tolerant write that wedged onboarding on Windows (ENG-1209).
-  await writeEnvFileAtomic(envPath, buildMindsEnvContent(existing, apiKey, MINDS_API_HOST));
-  // Owner-only perms (plaintext API key); best-effort, a no-op on Windows.
-  try { fs.chmodSync(envPath, 0o600); } catch { /* best-effort */ }
+  // NOT fatal: once the server is up the DB sync below is the authoritative
+  // credential store, so an exhausted-retry .env failure must not abort here and
+  // strand the user with an already-revoked key — that abort WAS the wedge. (On
+  // the pre-install path there's no running server to lock the file, and .env is
+  // its only store: the first server boot seeds the DB from it via
+  // migrate_env_to_db, so the atomic write simply lands with no contention.)
+  try {
+    await writeEnvFileAtomic(envPath, buildMindsEnvContent(existing, apiKey, MINDS_API_HOST));
+    // Owner-only perms (plaintext API key); best-effort, a no-op on Windows.
+    try { fs.chmodSync(envPath, 0o600); } catch { /* best-effort */ }
+  } catch (err) {
+    console.warn('[minds-auth] .env write failed — continuing to the authoritative DB sync', err);
+  }
 
   // Ensure state.json has minds-cloud as the active provider so the server
   // doesn't default to Anthropic on first boot (state.json may not exist yet
