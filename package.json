@@ -60,7 +60,7 @@
     "babel-plugin-react-compiler": "^1.0.0",
     "concurrently": "^9.2.3",
     "electron": "^39.8.10",
-    "electron-builder": "^26.8.1",
+    "electron-builder": "^26.15.3",
     "happy-dom": "^20.10.6",
     "postcss": "^8.5.13",
     "tailwindcss": "^3.4.19",
