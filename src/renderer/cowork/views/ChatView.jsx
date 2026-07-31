@@ -1689,11 +1689,12 @@ export default function ChatView({
                 );
               }
               if (m.role === 'error') {
-                // Out-of-credits: render an actionable card (Add credits /
-                // Bring your own keys) instead of a plain error. Reused for
-                // ANY turn that fails with the `token_limit` code — the
-                // first message on a fresh account that's spent its free
-                // tokens, or a mid-session exhaustion.
+                // Out-of-credits: render an actionable card instead of a
+                // plain error. Reused for ANY turn that fails with the
+                // `token_limit` code — the first message on a fresh account
+                // that's spent its free tokens, or a mid-session exhaustion.
+                // Single CTA on purpose (ENG-1169): the out-of-credits
+                // moment funnels to top-up; BYOK setup stays in Settings.
                 if (m.code === 'token_limit') {
                   return (
                     <ActionCard
@@ -1701,10 +1702,9 @@ export default function ChatView({
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
                       title="You're out of credits"
-                      body={m.content || "You've used your MindsHub credits. Add more to keep using managed models, or bring your own LLM provider key in Settings."}
+                      body={m.content || "You've used your MindsHub credits. Add more to keep working."}
                       buttons={[
                         { label: 'Add credits', onClick: () => host.openExternal(MINDS_BILLING_URL), primary: true },
-                        { label: 'Bring your own keys', onClick: () => onOpenSettings?.('agent') },
                       ]}
                     />
                   );
