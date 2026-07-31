@@ -1108,6 +1108,13 @@ export async function testProviders(providers) {
 }
 
 export async function revealSettingKey(name) {
+  // `/settings/reveal-key` returns UNMASKED provider secrets and is
+  // loopback-only server-side (`require_local`); on hosted the browser
+  // reaches the server from the docker bridge rather than 127.0.0.1, so the
+  // fetch would 403 (ENG-932). Short-circuited here — not just at the
+  // ApiKeyInput call site — so a future caller can't reintroduce the doomed
+  // request.
+  if (host.isWeb) return '';
   try {
     const res = await req(`/settings/reveal-key/${encodeURIComponent(name)}`);
     return res?.value || '';

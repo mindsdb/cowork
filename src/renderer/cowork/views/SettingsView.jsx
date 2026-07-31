@@ -356,6 +356,28 @@ function ClearableTextInput({ value, onChange, placeholder, ariaLabel }) {
 // The fetched value is held in local component state — we never push it
 // into the parent settings object, so saving an untouched revealed value
 // still sends "***" and the server skips overwriting the stored key.
+// Whether toggling the eye should fetch the real stored key from the server.
+//
+// `isWeb` short-circuits everything: `/settings/reveal-key` returns UNMASKED
+// provider secrets and is loopback-only server-side (`_require_local`), and on
+// hosted the browser reaches the server from the docker bridge rather than
+// 127.0.0.1 — so the fetch would 403. That is the ENG-912 shape: a panel that
+// looks functional and throws on a sub-action. A web user can still SET a key
+// (`PUT /settings/{key}` is not gated); they just can't read the stored one
+// back, and the field keeps showing the "***" sentinel.
+//
+// Extracted as a pure predicate rather than inlined so both platforms' paths
+// are directly testable — this gate lives inside a shared component that
+// desktop depends on, and the desktop direction is the one a web-only change
+// is most likely to break silently (ENG-932).
+export function shouldRevealStoredKey({ isWeb, show, revealName, isSentinel, alreadyRevealed }) {
+  if (isWeb) return false;
+  // Only worth a round trip when the field is currently masked, the caller told
+  // us which key to ask for, the value really is the server's sentinel, and we
+  // haven't already fetched it.
+  return !show && Boolean(revealName) && Boolean(isSentinel) && !alreadyRevealed;
+}
+
 function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
   const [show, setShow] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -389,7 +411,13 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
   };
 
   const onToggleShow = async () => {
-    if (!show && revealName && isSentinel && revealedValue === null) {
+    if (shouldRevealStoredKey({
+      isWeb: host.isWeb,
+      show,
+      revealName,
+      isSentinel,
+      alreadyRevealed: revealedValue !== null,
+    })) {
       // Reveal the real stored key from the loopback server.
       setRevealing(true);
       try {
@@ -700,6 +728,27 @@ const NAV_ITEMS = [
   { id: 'account', label: 'Account', icon: 'people' },
 ];
 
+// Sections that make sense in the hosted web shell (ENG-932). Absent, not
+// disabled — a nav row that opens a dead end is worse than no row:
+//   backend  — start/stop/diagnostics of a server the user doesn't control.
+//   updates  — App-shell version and OTA source are meaningless on hosted;
+//              the server updates itself.
+//   account  — renders an SSO sign-in card, but a hosted user already
+//              authenticated through the console; a second sign-in is
+//              confusing at best.
+// Agent stays because it carries the model picker and reasoning effort — the
+// point of the ticket. Appearance is purely cosmetic. Channels moved back here
+// from its standalone sidebar entry, which only existed while Settings was
+// hidden on web.
+const WEB_NAV_IDS = new Set(['agent', 'appearance', 'channels']);
+
+export function navItemsForHost(isWeb) {
+  // Fresh array on both branches — filter() already copies for web, and the
+  // desktop spread keeps a caller's mutation from reaching the shared module
+  // constant.
+  return isWeb ? NAV_ITEMS.filter((i) => WEB_NAV_IDS.has(i.id)) : [...NAV_ITEMS];
+}
+
 function SettingsNav({ section, onSectionChange, serverOnline = true }) {
   return (
     <nav
@@ -723,9 +772,16 @@ function SettingsNav({ section, onSectionChange, serverOnline = true }) {
         padding: '0 10px 6px',
         fontWeight: 600,
       }}>Settings</div>
-      {NAV_ITEMS.map((item) => {
+      {navItemsForHost(host.isWeb).map((item) => {
         const active = section === item.id;
-        const disabled = !serverOnline && item.id !== 'backend';
+        // `!host.isWeb &&`: the offline-disable exists because a dead local
+        // server can't accept a save, and Backend stays enabled as the escape
+        // hatch to restart it. On web there is no Backend row — and
+        // `serverOnline` DOES go false there: refreshData() polls /health on
+        // mount on both platforms (App.jsx), so a transient failure on hosted
+        // (proxy 502, auth blip) would otherwise disable EVERY row with no
+        // way out.
+        const disabled = !host.isWeb && !serverOnline && item.id !== 'backend';
         const icon = Ico[item.icon] ? Ico[item.icon](15) : null;
         return (
           <button
@@ -2619,6 +2675,10 @@ export default function SettingsView({
   );
 
   const renderBackendSection = () => {
+    // Unreachable from the nav since ENG-932 — `navItemsForHost` drops Backend
+    // on web, and `effectiveSection` refuses to resolve to a section the host
+    // doesn't offer. Kept as a defensive fallback for any future caller that
+    // renders a section directly rather than through the nav.
     if (host.isWeb) {
       return (
         <SettingsSectionPanel>
@@ -3036,7 +3096,7 @@ export default function SettingsView({
       backend: renderBackendSection,
       account: renderAccountSection,
     };
-    const activeItem = NAV_ITEMS.find((i) => i.id === section) || null;
+    const activeItem = navItemsForHost(host.isWeb).find((i) => i.id === section) || null;
     const inDetail = Boolean(activeItem);
     return (
       <SettingsLayoutContext.Provider value={{ mobile: true }}>
@@ -3061,8 +3121,15 @@ export default function SettingsView({
             </div>
           ) : (
             <nav className="settings-list" role="navigation" aria-label="Settings sections">
-              {NAV_ITEMS.map((item) => {
-                const disabled = !serverOnline && item.id !== 'backend';
+              {navItemsForHost(host.isWeb).map((item) => {
+                // `!host.isWeb &&`: the offline-disable exists because a dead local
+                // server can't accept a save, and Backend stays enabled as the
+                // escape hatch to restart it. On web there is no Backend row —
+                // and `serverOnline` DOES go false there: refreshData() polls
+                // /health on mount on both platforms (App.jsx), so a transient
+                // failure on hosted (proxy 502, auth blip) would otherwise
+                // disable EVERY row with no way out.
+                const disabled = !host.isWeb && !serverOnline && item.id !== 'backend';
                 const icon = Ico[item.icon] ? Ico[item.icon](18) : null;
                 return (
                   <div className="mshell-accordion" key={item.id}>
@@ -3093,16 +3160,25 @@ export default function SettingsView({
     );
   }
 
+  // Hiding a nav row isn't enough on its own — `navigate('settings:backend')`
+  // sets the section directly, so a deep link (or a stale persisted section)
+  // could still render one this host doesn't offer. Resolve through the visible
+  // set and fall back to its first entry (Agent).
+  const visibleNav = navItemsForHost(host.isWeb);
+  const effectiveSection = visibleNav.some((i) => i.id === section)
+    ? section
+    : visibleNav[0]?.id;
+
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'row', minHeight: 0 }}>
-      <SettingsNav section={section} onSectionChange={onSectionChange} serverOnline={serverOnline} />
+      <SettingsNav section={effectiveSection} onSectionChange={onSectionChange} serverOnline={serverOnline} />
 
-      {section === 'agent' && renderAgentSection()}
-      {section === 'appearance' && renderAppearanceSection()}
-      {section === 'channels' && renderChannelsSection()}
-      {section === 'updates' && renderUpdatesSection()}
-      {section === 'backend' && renderBackendSection()}
-      {section === 'account' && renderAccountSection()}
+      {effectiveSection === 'agent' && renderAgentSection()}
+      {effectiveSection === 'appearance' && renderAppearanceSection()}
+      {effectiveSection === 'channels' && renderChannelsSection()}
+      {effectiveSection === 'updates' && renderUpdatesSection()}
+      {effectiveSection === 'backend' && renderBackendSection()}
+      {effectiveSection === 'account' && renderAccountSection()}
 
       {logoutConfirm}
     </div>
