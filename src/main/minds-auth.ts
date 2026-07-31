@@ -3,6 +3,7 @@ import { stopServer, startServer, isServerRunning, isServerStarting, getServerPo
 import { checkInstallStatus } from './installer';
 import { coworkHome, coworkEnvPath, coworkStatePath } from './cowork-home';
 import { getInstallationId } from './installation-id';
+import { retryOnTransientLock } from './fs-retry';
 import {
   MINDS_API_HOST,
   MINDS_KEYCLOAK_BASE,
@@ -803,6 +804,29 @@ export function mindsSignInSettingWrites(apiKey: string, host: string): Array<{ 
   ];
 }
 
+// Durable `.env` write for Windows: at sign-in finalize this runs while the old
+// server still holds the file, which EPERM'd onboarding (ENG-1209). Temp-write
+// then atomic rename with retry. Two things matter:
+//   1. Atomic — a torn/failed write must never truncate `.env` (it holds the
+//      user's OTHER credentials/consent flags), so it's data loss, not a lost key.
+//   2. No `mode` — unsupported on Windows; owner-only perms stay best-effort via
+//      the caller's chmod (matches the other .env writers, which work).
+export async function writeEnvFileAtomic(
+  targetPath: string,
+  content: string,
+  opts: { attempts?: number; baseDelayMs?: number } = {},
+): Promise<void> {
+  const dir = path.dirname(targetPath);
+  const tmpPath = path.join(dir, `${path.basename(targetPath)}.tmp-${process.pid}`);
+  fs.writeFileSync(tmpPath, content, { encoding: 'utf-8' });
+  try {
+    await retryOnTransientLock(() => fs.renameSync(tmpPath, targetPath), opts);
+  } catch (err) {
+    try { fs.rmSync(tmpPath, { force: true }); } catch { /* best-effort cleanup */ }
+    throw err;
+  }
+}
+
 export async function writeMindsKeyToEnvAndRestart(apiKey: string): Promise<void> {
   const homeDir = coworkHome();
   // ~/.cowork normally exists by the time SSO finalize runs (the server
@@ -813,14 +837,9 @@ export async function writeMindsKeyToEnvAndRestart(apiKey: string): Promise<void
   }
   const envPath = coworkEnvPath();
   const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
-  // Owner-only perms — this file holds the plaintext API key for the CLI. The
-  // `mode` option applies when the file is CREATED, closing the window where a
-  // brand-new `.env` would briefly exist world-readable (0644) before a
-  // trailing chmod. Previously the `POST /settings/raw` sync chmod'd it
-  // server-side; sign-in now writes the DB directly (not via /raw), so do it
-  // here. The explicit chmod still covers the pre-existing-file case (`mode` is
-  // ignored on overwrite). Best-effort: unsupported on some filesystems (Windows).
-  fs.writeFileSync(envPath, buildMindsEnvContent(existing, apiKey, MINDS_API_HOST), { encoding: 'utf-8', mode: 0o600 });
+  // Atomic + lock-tolerant write that wedged onboarding on Windows (ENG-1209).
+  await writeEnvFileAtomic(envPath, buildMindsEnvContent(existing, apiKey, MINDS_API_HOST));
+  // Owner-only perms (plaintext API key); best-effort, a no-op on Windows.
   try { fs.chmodSync(envPath, 0o600); } catch { /* best-effort */ }
 
   // Ensure state.json has minds-cloud as the active provider so the server
