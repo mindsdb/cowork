@@ -1902,14 +1902,9 @@ export default function ChatView({
                       onActivateStep={(step) => setOpenScratchpadStepId(prefixId(messageKey(m, i), step.id))}
                     />
                   )}
-                  <TextBlock text={m.content} id={m.id || `msg-${i}`} complete conversationId={task.id} />
-                  {m.artifact && (
-                    <ArtifactCard
-                      artifact={normalizeArtifactRecord(m.artifact, artifactProjectPath)}
-                      onOpen={handleArtifactOpen}
-                    />
-                  )}
-                  <StepArtifacts steps={m.steps} onOpen={handleArtifactOpen} projectPath={artifactProjectPath} />
+                  {/* Above the text: a question is asked, then answered, then
+                      (at most) the turn's closing text streams — so the card
+                      always precedes any text that came after the answer. */}
                   <StepQuestions
                     steps={m.steps}
                     conversationId={task.id}
@@ -1920,6 +1915,14 @@ export default function ChatView({
                     conversationLive={false}
                     onAnswered={onQuestionAnswered}
                   />
+                  <TextBlock text={m.content} id={m.id || `msg-${i}`} complete conversationId={task.id} />
+                  {m.artifact && (
+                    <ArtifactCard
+                      artifact={normalizeArtifactRecord(m.artifact, artifactProjectPath)}
+                      onOpen={handleArtifactOpen}
+                    />
+                  )}
+                  <StepArtifacts steps={m.steps} onOpen={handleArtifactOpen} projectPath={artifactProjectPath} />
                   <StepSkills steps={m.steps} latestByKey={latestSkillCardByKey} messageIndex={i} projectName={project?.name} />
                 </AnswerTurn>
               );
@@ -1948,6 +1951,15 @@ export default function ChatView({
                     onActivateStep={(step) => setOpenScratchpadStepId(prefixId(streamingKey, step.id))}
                   />
                 )}
+                {/* Above the text: a question is asked, then answered, then
+                    (at most) the turn's closing text streams — so the card
+                    always precedes any text that came after the answer. */}
+                <StepQuestions
+                  steps={streamingMsg.steps}
+                  conversationId={task.id}
+                  conversationLive={isStreaming || !!inFlightSet?.has(task.id)}
+                  onAnswered={onQuestionAnswered}
+                />
                 {/* Bridge state: between the first stream event arriving
                     (which strips the activity placeholder) and the first
                     step, thought, or body chunk landing, the AnswerTurn
@@ -1972,12 +1984,6 @@ export default function ChatView({
                   </div>
                 )}
                 <StepArtifacts steps={streamingMsg.steps} onOpen={handleArtifactOpen} projectPath={artifactProjectPath} />
-                <StepQuestions
-                  steps={streamingMsg.steps}
-                  conversationId={task.id}
-                  conversationLive={isStreaming || !!inFlightSet?.has(task.id)}
-                  onAnswered={onQuestionAnswered}
-                />
                 <StepSkills steps={streamingMsg.steps} latestByKey={latestSkillCardByKey} messageIndex={visibleMessages.length} projectName={project?.name} />
               </AnswerTurn>
             ) : isStreaming && (
