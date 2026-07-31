@@ -1380,22 +1380,31 @@ export default function SettingsView({
   const handleLogout = async () => {
     if (loggingOut) return; // Guard against double-fire (Enter / re-click).
     setLoggingOut(true);
+    let ok = true;
     try {
       await host.logout();
     } catch {
-      // Swallow — partial logout is still worth recovering from on the
-      // boot path, and the reload below puts us back through it.
+      // logout() rejected. The main handler clears the refresh token + the
+      // server-DB credentials early, before anything that can throw, so the
+      // user IS signed out — main just threw before it could drive its own
+      // reload. Fall through and reload from here (see below).
+      ok = false;
     }
     // Rotate the analytics device identity so the next account on this machine
-    // starts anonymous-fresh and merges cleanly (ENG-537).
-    resetDeviceIdentity();
-    // Exactly ONE reload must happen, or the two compete and leave the
-    // page stuck on this confirm modal (flaky in packaged builds). On
-    // Electron the main process drives webContents.reload() itself
-    // after the IPC reply — that's the reliable path, so the renderer
-    // must NOT also reload. On web there's no main process, so we
-    // reload here.
-    if (host.isWeb) {
+    // starts anonymous-fresh (ENG-537) — only on a confirmed sign-out, not on
+    // a rejected attempt (which would otherwise re-rotate on every retry).
+    if (ok) {
+      resetDeviceIdentity();
+    }
+    // Exactly ONE reload must happen, or two compete and leave the page stuck
+    // on this confirm modal (flaky in packaged builds). On Electron SUCCESS the
+    // main process drives webContents.reload() after the IPC reply, so the
+    // renderer must NOT also reload. We reload here only when nothing else
+    // will: on web (no main process), and on an Electron REJECTION — main threw
+    // before its own reload, and since the user is already signed out a
+    // renderer reload is race-free and re-routes to onboarding (the correct end
+    // state) rather than a misleading "sign-out didn't complete". (ENG-1206)
+    if (host.isWeb || !ok) {
       window.location.reload();
     }
   };
