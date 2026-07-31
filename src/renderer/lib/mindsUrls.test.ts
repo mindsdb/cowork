@@ -88,6 +88,33 @@ describe('same-origin API base derivation (VITE_MINDS_API_URL unset)', () => {
     expect(MINDS_CONSOLE_URL).toBe('https://console-pr123.dev.mindshub.ai');
   });
 
+  // Regression: legacy per-user instances are served on cw-<id>.<env>.mindshub.ai
+  // — an opaque label with no api-<id> sibling. Before this shape was handled,
+  // the host fell through to the prod default, so a staging instance pointed the
+  // SPA at the prod API/console and (once #473 retired the Worker auth gate and
+  // forced a Keycloak login) at prod Keycloak, which rejected the staging
+  // redirect_uri. It must resolve to the staging api/auth/console family.
+  it('derives api.<env> from a legacy cw-<id>.<env> web host (staging)', async () => {
+    vi.stubEnv('DEV', false);
+    vi.stubEnv('VITE_KEYCLOAK_URL', '');
+    vi.stubEnv('VITE_MINDS_API_URL', '');
+    setUrl('https://cw-e075837b.staging.mindshub.ai/');
+    const { MINDS_API_BASE, MINDS_KEYCLOAK_URL, MINDS_CONSOLE_URL } = await importUrls();
+    expect(MINDS_API_BASE).toBe('https://api.staging.mindshub.ai');
+    expect(MINDS_KEYCLOAK_URL).toBe('https://auth.staging.mindshub.ai/auth');
+    expect(MINDS_CONSOLE_URL).toBe('https://console.staging.mindshub.ai');
+  });
+
+  it('derives api.mindshub.ai from a legacy cw-<id> prod web host', async () => {
+    vi.stubEnv('DEV', false);
+    vi.stubEnv('VITE_KEYCLOAK_URL', '');
+    vi.stubEnv('VITE_MINDS_API_URL', '');
+    setUrl('https://cw-e075837b.mindshub.ai/');
+    const { MINDS_API_BASE, MINDS_KEYCLOAK_URL } = await importUrls();
+    expect(MINDS_API_BASE).toBe('https://api.mindshub.ai');
+    expect(MINDS_KEYCLOAK_URL).toBe('https://auth.mindshub.ai/auth');
+  });
+
   it('falls back to prod on an unrecognised (non-cowork) remote host', async () => {
     // A built/deployed renderer (DEV=false) on a host we cannot map: prod.
     vi.stubEnv('DEV', false);

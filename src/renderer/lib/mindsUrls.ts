@@ -4,17 +4,31 @@
 
 // Derive the MindsHub API base from the SPA's own origin so a single web build
 // serves every environment without baking a per-env URL. The MindsHub cloud API
-// is a sibling of the cowork host on the same domain, reached by swapping the
-// leading `cowork` token of the first host label for `api`. Two host shapes:
-//   static: cowork.<env>.mindshub.ai   -> api.<env>.mindshub.ai
-//           cowork.mindshub.ai (prod)  -> api.mindshub.ai
+// is a sibling of the cowork host on the same domain, reached by rewriting the
+// first host label to the `api` service and keeping the environment labels that
+// follow. Three host shapes:
+//   static: cowork.<env>.mindshub.ai    -> api.<env>.mindshub.ai
+//           cowork.mindshub.ai (prod)   -> api.mindshub.ai
 //   PR:     cowork-<pr>.dev.mindshub.ai -> api-<pr>.dev.mindshub.ai
+//   legacy: cw-<id>.<env>.mindshub.ai   -> api.<env>.mindshub.ai
 //
-// Only derive on a real remote host whose first label is a cowork host. In
-// Electron the renderer loads over file:// (no meaningful origin), localhost dev
-// has no sibling `api` host, and an unrecognised host shape can't be mapped, so
-// all three fall back to prod. This matches the behaviour the tests lock in and
-// avoids the file:// misfire that once stranded auth on the dev host.
+// The static/PR shapes keep any `-<pr>` suffix (cowork-<pr> -> api-<pr>) so a PR
+// SPA stays paired with its PR API. The legacy per-user shape uses an opaque
+// `cw-<id>` label with no matching `api-<id>` sibling, so the whole label
+// collapses to plain `api` and the env is taken from the remaining labels —
+// cw-<id>.staging -> api.staging. These `cw-<id>` hosts predate the k8s
+// multitenant deployment and, until that deployment (#473) retired the
+// Cloudflare-Worker auth gate, skipped the SPA's own Keycloak login entirely,
+// so their env family was never exercised through this derivation.
+//
+// Only derive on a real remote host whose first label is a recognised cowork
+// host. In Electron the renderer loads over file:// (no meaningful origin),
+// localhost dev has no sibling `api` host, and an unrecognised host shape can't
+// be mapped, so all three fall back to prod. This matches the behaviour the
+// tests lock in and avoids the file:// misfire that once stranded auth on the
+// dev host. Regression: before the legacy shape was handled, a cw-<id>.staging
+// host fell through to the prod default, so the SPA hit the prod API/console
+// and (post-#473) the prod Keycloak, which rejected the staging redirect_uri.
 function deriveMindsApiBaseFromOrigin(): string | null {
   if (typeof window === 'undefined') return null;
   const { protocol, hostname, host } = window.location;
@@ -25,8 +39,16 @@ function deriveMindsApiBaseFromOrigin(): string | null {
     hostname !== '::1';
   if (!isRemoteWeb) return null;
   const [first, ...rest] = host.split('.');
-  if (first !== 'cowork' && !first.startsWith('cowork-')) return null;
-  const apiFirst = first.replace(/^cowork/, 'api');
+  let apiFirst: string;
+  if (first === 'cowork' || first.startsWith('cowork-')) {
+    // Static / PR host: swap the leading `cowork` token, keep any `-<pr>` tail.
+    apiFirst = first.replace(/^cowork/, 'api');
+  } else if (first.startsWith('cw-')) {
+    // Legacy per-user host: the `cw-<id>` label has no api sibling; use `api`.
+    apiFirst = 'api';
+  } else {
+    return null;
+  }
   return `${protocol}//${[apiFirst, ...rest].join('.')}`;
 }
 
