@@ -803,6 +803,49 @@ export function mindsSignInSettingWrites(apiKey: string, host: string): Array<{ 
   ];
 }
 
+// Windows raises EPERM/EBUSY/EACCES on open/rename when the target is briefly
+// held by another handle — the running cowork-server subprocess reading `.env`,
+// an antivirus scan of the freshly-written file, or an orphaned prior sidecar.
+// The .env write at sign-in finalize hits exactly this: it runs while the old
+// server is still up (the restart happens later) and blocked onboarding on
+// Windows with "EPERM: operation not permitted, open '…\.cowork-stable\.env'"
+// (ENG-1209) — the same share-mode class as the log-stream EPERM in ENG-1187.
+//
+// Write to a temp sibling then atomically rename over the target, retrying the
+// rename briefly so a transient lock clears. Two properties matter here:
+//   1. Atomic — a retry-exhausted or torn write must never leave a truncated
+//      `.env`; that file holds the user's OTHER credentials/consent flags, so a
+//      partial write is data loss, not just a lost key.
+//   2. No `mode` option — it is unsupported on Windows (the failing write was
+//      the only .env write that passed one; SETTINGS_SAVE / KEYCHAIN_PREF_SET
+//      use plain writeFileSync and work). Owner-only perms are applied
+//      best-effort via chmod by the caller, a POSIX no-op-on-Windows nicety.
+export async function writeEnvFileAtomic(
+  targetPath: string,
+  content: string,
+  opts: { attempts?: number; baseDelayMs?: number } = {},
+): Promise<void> {
+  const attempts = opts.attempts ?? 6;
+  const baseDelayMs = opts.baseDelayMs ?? 60;
+  const dir = path.dirname(targetPath);
+  const tmpPath = path.join(dir, `${path.basename(targetPath)}.tmp-${process.pid}`);
+  fs.writeFileSync(tmpPath, content, { encoding: 'utf-8' });
+  for (let i = 0; i < attempts; i++) {
+    try {
+      fs.renameSync(tmpPath, targetPath);
+      return;
+    } catch (err: any) {
+      const retriable = err?.code === 'EPERM' || err?.code === 'EBUSY' || err?.code === 'EACCES';
+      if (i < attempts - 1 && retriable) {
+        await new Promise((resolve) => setTimeout(resolve, baseDelayMs * (i + 1)));
+        continue;
+      }
+      try { fs.rmSync(tmpPath, { force: true }); } catch { /* best-effort cleanup */ }
+      throw err;
+    }
+  }
+}
+
 export async function writeMindsKeyToEnvAndRestart(apiKey: string): Promise<void> {
   const homeDir = coworkHome();
   // ~/.cowork normally exists by the time SSO finalize runs (the server
@@ -813,14 +856,11 @@ export async function writeMindsKeyToEnvAndRestart(apiKey: string): Promise<void
   }
   const envPath = coworkEnvPath();
   const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
-  // Owner-only perms — this file holds the plaintext API key for the CLI. The
-  // `mode` option applies when the file is CREATED, closing the window where a
-  // brand-new `.env` would briefly exist world-readable (0644) before a
-  // trailing chmod. Previously the `POST /settings/raw` sync chmod'd it
-  // server-side; sign-in now writes the DB directly (not via /raw), so do it
-  // here. The explicit chmod still covers the pre-existing-file case (`mode` is
-  // ignored on overwrite). Best-effort: unsupported on some filesystems (Windows).
-  fs.writeFileSync(envPath, buildMindsEnvContent(existing, apiKey, MINDS_API_HOST), { encoding: 'utf-8', mode: 0o600 });
+  // Atomic temp-write + retrying rename — survives the Windows share-mode lock
+  // that wedged onboarding (ENG-1209). See writeEnvFileAtomic for why no `mode`.
+  await writeEnvFileAtomic(envPath, buildMindsEnvContent(existing, apiKey, MINDS_API_HOST));
+  // Owner-only perms — this file holds the plaintext API key for the CLI.
+  // Best-effort: chmod is a no-op on Windows and unsupported on some filesystems.
   try { fs.chmodSync(envPath, 0o600); } catch { /* best-effort */ }
 
   // Ensure state.json has minds-cloud as the active provider so the server
