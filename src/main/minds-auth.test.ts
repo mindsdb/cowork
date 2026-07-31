@@ -43,12 +43,9 @@ vi.mock('fs', async (importActual) => {
   };
 });
 
-// Regression coverage for ENG-1209: sign-in finalize failed on Windows with
-// "EPERM: operation not permitted, open '…\.cowork-stable\.env'" because the
-// .env write ran while the target was briefly locked (running server / AV) and
-// passed a `mode` option unsupported on Windows. writeEnvFileAtomic must write
-// atomically (never truncate the user's other credentials) and ride out a
-// transient EPERM/EBUSY/EACCES on the rename instead of throwing.
+// Regression coverage for ENG-1209 (Windows EPERM saving MindsHub creds):
+// writeEnvFileAtomic must write atomically (never truncate the user's other
+// creds) and ride out a transient lock on the rename instead of throwing.
 import { writeEnvFileAtomic } from './minds-auth';
 
 let dir: string;

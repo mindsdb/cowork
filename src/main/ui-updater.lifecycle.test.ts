@@ -17,16 +17,14 @@ const h = vi.hoisted(() => ({
   server: null as string | null,
   manifest: null as unknown,
   tarball: Buffer.from('') as Buffer,
-  // When set, fs.renameSync throws EPERM for any rename whose SOURCE path
-  // contains this substring — lets a test force a Windows-style lock on a
-  // specific step of the OTA swap. Null = real renameSync (all other tests).
+  // Set to make fs.renameSync throw EPERM for renames whose SOURCE contains
+  // this substring (fake a Windows lock on one swap step). Null = real rename.
   renameFailFromSubstr: null as string | null,
 }));
 
-// Real fs on a temp dir, EXCEPT renameSync, which a test can force to fail on a
-// chosen swap step (h.renameFailFromSubstr). fs exports are non-configurable in
-// ESM so this can't be done with vi.spyOn; default is pure passthrough so every
-// other test is unaffected.
+// Real fs except renameSync, which h.renameFailFromSubstr can force to fail
+// (fs exports are non-configurable in ESM, so vi.spyOn can't; default passes
+// through so other tests are unaffected).
 vi.mock('fs', async (importActual) => {
   const actual = await importActual<typeof import('fs')>();
   return {
@@ -245,10 +243,9 @@ describe('applyUIUpdate (apply-time gate)', () => {
     await expect(ui.applyUIUpdate()).resolves.toBe(false);
   });
 
-  // A Windows share-mode lock can EPERM the staging→current rename AFTER current
-  // has been moved aside — the exact torn-state that would leave the app with no
-  // UI slot on next boot. The swap must restore the prior bundle and the update
-  // must decline cleanly rather than throw. (ENG-1209 sibling / OTA edge.)
+  // EPERM on staging→current AFTER current was moved aside is the torn state
+  // that would leave no UI slot on next boot; the swap must restore the prior
+  // bundle and decline cleanly rather than throw. (OTA sibling of ENG-1209.)
   it('recovers the prior slot when the final swap rename is locked (EPERM)', async () => {
     seedSlot('current', '2.26.7.10.1'); // prior good bundle, newer than bundled
     stageManifest('2.26.7.13.1', '2.26.7.6.1');

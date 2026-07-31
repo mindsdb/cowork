@@ -325,15 +325,10 @@ async function downloadAndStage(manifest: UIManifest): Promise<boolean> {
 }
 
 /** Activate a staged bundle: current → previous, staging → current.
- *
- *  The rm/rename steps race Windows share-mode locks (the renderer holding a
- *  file in `current`, AV scanning the freshly-extracted `staging`) — the same
- *  EPERM class as ENG-1209/ENG-1187 — so each is retried. Critically the swap
- *  is multi-step: if `staging → current` fails after `current` has already been
- *  moved aside, the app would be left with NO active slot and can't load its UI
- *  on the next boot. So on a mid-swap failure we put `current` back before
- *  rethrowing, leaving the previously-active bundle intact for the caller to
- *  keep serving. */
+ *  The rm/rename steps race Windows locks (renderer/AV holding a file), so each
+ *  retries. And the swap is multi-step: if `staging → current` fails after
+ *  `current` was moved aside, the app would be left with NO active slot — so on
+ *  a mid-swap failure we put `current` back before rethrowing. */
 async function activateStaged(version: string, minServerVersion?: string): Promise<void> {
   const current = getCurrentDir();
   const previous = getPreviousDir();
@@ -354,8 +349,7 @@ async function activateStaged(version: string, minServerVersion?: string): Promi
   try {
     await retryOnTransientLock(() => fs.renameSync(staging, current));
   } catch (err) {
-    // Recover the torn swap: restore the bundle we moved aside so the app never
-    // ends up with an empty `current` slot.
+    // Torn swap — restore the bundle we moved aside so `current` isn't left empty.
     if (movedCurrent && !fs.existsSync(current)) {
       try { fs.renameSync(previous, current); } catch { /* best-effort recovery */ }
     }
@@ -441,10 +435,8 @@ export async function applyUIUpdate(): Promise<boolean> {
   const ok = await downloadAndStage(manifest);
   if (!ok) return false;
 
-  // The swap can fail on a transient Windows lock even after retries; if so it
-  // has already restored the prior slot, so treat it as "no update this pass"
-  // and keep serving what we had rather than propagating and risking a torn
-  // reload.
+  // If the swap fails after retries it has already restored the prior slot, so
+  // treat it as "no update this pass" rather than propagating a torn reload.
   try {
     await activateStaged(manifest.version, manifest.minServerVersion);
   } catch (err) {
@@ -452,22 +444,19 @@ export async function applyUIUpdate(): Promise<boolean> {
     return false;
   }
 
-  // Activation succeeded: serverCompatSkip above verified this version against
-  // the current server, so open the serve-gate for exactly this slot —
-  // otherwise the health-checked reload right after activation would fall back
-  // to bundled and "succeed" without ever loading the new (constrained) bundle.
+  // Open the serve-gate for this (compat-verified) slot only on success —
+  // otherwise the reload right after activation falls back to bundled and
+  // "succeeds" without ever loading the new bundle.
   _verifiedCompatVersion = manifest.version;
   return true;
 }
 
 /** Roll back the active OTA bundle: quarantine the version we're leaving (so it
- *  isn't re-activated), restore the previous slot if there is one, otherwise
- *  fall through to the bundled renderer. Provenance travels with each slot, so
- *  getCachedVersion() reflects the restored state automatically.
- *
- *  The quarantine is recorded synchronously (before the first await), so even a
- *  fire-and-forget caller can't re-activate the bad version; the rm/rename that
- *  follow are retried against the same Windows locks activateStaged guards. */
+ *  isn't re-activated), restore the previous slot if there is one, else fall
+ *  through to the bundled renderer. Provenance travels with each slot, so
+ *  getCachedVersion() reflects the restored state. The quarantine is recorded
+ *  synchronously (before the first await), so a fire-and-forget caller is safe;
+ *  the rm/rename retry the same Windows locks activateStaged guards. */
 export async function rollbackUI(): Promise<void> {
   const current = getCurrentDir();
   const previous = getPreviousDir();

@@ -1,15 +1,8 @@
-// Shared retry primitive for the Windows share-mode locks that keep surfacing
-// as EPERM in the main process: a running subprocess holding a file open (the
-// cowork-server reading ~/.cowork/.env), an antivirus scan of a freshly-written
-// file, or a delete-pending file whose prior handle is still closing. All of
-// these are TRANSIENT — the handle releases a beat later — but on Windows they
-// abort the op with EPERM/EBUSY/EACCES (and ENOTEMPTY for a recursive dir
-// remove whose child is held). POSIX has no mandatory locking, so these are
-// effectively Windows-only on these ops.
-//
-// Callers that need atomicity or recovery layer that on top; this module owns
-// exactly one thing — "which errors are worth retrying, and how." See the .env
-// write (ENG-1209, minds-auth.ts) and the OTA bundle swap (ui-updater.ts).
+// Retry primitive for transient Windows share-mode locks (a subprocess holding
+// a file, an AV scan, a delete-pending handle still closing) that abort fs ops
+// with EPERM/EBUSY/EACCES/ENOTEMPTY. POSIX has no mandatory locking, so these
+// are effectively Windows-only. Callers layer atomicity/recovery on top; this
+// owns only "which errors retry" — see minds-auth.ts (.env) and ui-updater.ts.
 
 const TRANSIENT_LOCK_CODES = new Set(['EPERM', 'EBUSY', 'EACCES', 'ENOTEMPTY']);
 
@@ -17,10 +10,8 @@ export function isTransientLockError(err: unknown): boolean {
   return TRANSIENT_LOCK_CODES.has((err as NodeJS.ErrnoException)?.code ?? '');
 }
 
-// Run a synchronous fs operation, retrying briefly on a transient Windows lock.
-// Async so the backoff (a widening linear delay) never blocks the main thread.
-// Non-lock errors (ENOENT, ENOTDIR, …) rethrow immediately — we only ever paper
-// over genuinely transient conditions, never a real bug.
+// Run a sync fs op, retrying on a transient lock with a widening backoff. Async
+// so it never blocks the main thread; non-lock errors (ENOENT, …) rethrow at once.
 export async function retryOnTransientLock<T>(
   op: () => T,
   opts: { attempts?: number; baseDelayMs?: number } = {},

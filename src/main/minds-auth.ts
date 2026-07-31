@@ -804,22 +804,13 @@ export function mindsSignInSettingWrites(apiKey: string, host: string): Array<{ 
   ];
 }
 
-// Write `.env` durably on Windows, where the target is briefly held by another
-// handle — the running cowork-server subprocess reading `.env`, an antivirus
-// scan of the freshly-written file, or an orphaned prior sidecar. The write at
-// sign-in finalize hits exactly this: it runs while the old server is still up
-// (the restart happens later) and blocked onboarding on Windows with
-// "EPERM: operation not permitted, open '…\.cowork-stable\.env'" (ENG-1209).
-//
-// Write a temp sibling then atomically rename over the target, retrying the
-// rename via the shared transient-lock helper. Two properties matter here:
-//   1. Atomic — a retry-exhausted or torn write must never leave a truncated
-//      `.env`; that file holds the user's OTHER credentials/consent flags, so a
-//      partial write is data loss, not just a lost key.
-//   2. No `mode` option — it is unsupported on Windows (the failing write was
-//      the only .env write that passed one; SETTINGS_SAVE / KEYCHAIN_PREF_SET
-//      use plain writeFileSync and work). Owner-only perms are applied
-//      best-effort via chmod by the caller, a POSIX no-op-on-Windows nicety.
+// Durable `.env` write for Windows: at sign-in finalize this runs while the old
+// server still holds the file, which EPERM'd onboarding (ENG-1209). Temp-write
+// then atomic rename with retry. Two things matter:
+//   1. Atomic — a torn/failed write must never truncate `.env` (it holds the
+//      user's OTHER credentials/consent flags), so it's data loss, not a lost key.
+//   2. No `mode` — unsupported on Windows; owner-only perms stay best-effort via
+//      the caller's chmod (matches the other .env writers, which work).
 export async function writeEnvFileAtomic(
   targetPath: string,
   content: string,
@@ -846,11 +837,9 @@ export async function writeMindsKeyToEnvAndRestart(apiKey: string): Promise<void
   }
   const envPath = coworkEnvPath();
   const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
-  // Atomic temp-write + retrying rename — survives the Windows share-mode lock
-  // that wedged onboarding (ENG-1209). See writeEnvFileAtomic for why no `mode`.
+  // Atomic + lock-tolerant write that wedged onboarding on Windows (ENG-1209).
   await writeEnvFileAtomic(envPath, buildMindsEnvContent(existing, apiKey, MINDS_API_HOST));
-  // Owner-only perms — this file holds the plaintext API key for the CLI.
-  // Best-effort: chmod is a no-op on Windows and unsupported on some filesystems.
+  // Owner-only perms (plaintext API key); best-effort, a no-op on Windows.
   try { fs.chmodSync(envPath, 0o600); } catch { /* best-effort */ }
 
   // Ensure state.json has minds-cloud as the active provider so the server
