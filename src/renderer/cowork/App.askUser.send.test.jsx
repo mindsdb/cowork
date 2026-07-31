@@ -164,6 +164,14 @@ async function emit(event) {
   return emitOn(streams[streams.length - 1], event);
 }
 
+/** Stages a file on the composer through the real hidden file input. */
+async function attach(user, name = 'notes.txt') {
+  const input = document.querySelector('input[type="file"]');
+  if (!input) throw new Error('composer file input not mounted');
+  await user.upload(input, new File(['hello'], name, { type: 'text/plain' }));
+  return screen.findByText(name);
+}
+
 beforeEach(() => {
   streams.length = 0;
   spies.submitAnswer.mockClear();
@@ -291,6 +299,26 @@ describe('composer send while a question is pending', () => {
     expect(spies.submitAnswer).toHaveBeenCalledTimes(1);
     expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
   });
+
+  it('keeps staged attachments when the send is consumed as an answer', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+
+    await send(user, composer, 'first message');
+    await emit(ASK_EVENT);
+
+    await attach(user, 'notes.txt');
+    await send(user, composer, 'use this one');
+
+    // The text became the answer — and submitAnswer carries `{text}` only.
+    expect(spies.submitAnswer).toHaveBeenCalledWith('conv-a', 'ask:1', {
+      text: 'use this one',
+    });
+    // …so the file must NOT be discarded on the way out. It stays staged for
+    // the next real message, and the user is told it did not go.
+    expect(screen.getByText('notes.txt')).toBeInTheDocument();
+    expect(await screen.findByText(/file was not sent/i)).toBeInTheDocument();
+  });
 });
 
 describe('queue drain when a question appears', () => {
@@ -317,6 +345,27 @@ describe('queue drain when a question appears', () => {
     await emit(ASK_EVENT);
     await emit({ ...ASK_EVENT, question_id: 'ask:1' });
     expect(composer.value).toBe('half-written thought\nqueued one');
+  });
+
+  it('hands the queued files back too, not just the text', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+
+    await send(user, composer, 'first message');
+
+    // A queued message carrying a file. enqueueMessage takes the file with it
+    // and clears the composer, so the chip is gone while it sits in the queue…
+    await attach(user, 'notes.txt');
+    await send(user, composer, 'queued one');
+    expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
+    expect(screen.queryByText('notes.txt')).toBeNull();
+
+    await emit(ASK_EVENT);
+
+    // …and the drain deletes the queue entry, so the file has nowhere else to
+    // live. It has to come back with the text or it is silently lost.
+    await waitFor(() => expect(composer.value).toBe('queued one'));
+    expect(screen.getByText('notes.txt')).toBeInTheDocument();
   });
 });
 

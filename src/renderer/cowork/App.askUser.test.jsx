@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   pendingQuestionFor,
   drainQueueToInput,
+  drainQueueAttachments,
   planQueueDrain,
   resolvePendingAnswer,
 } from './App';
@@ -48,6 +49,28 @@ describe('drainQueueToInput', () => {
   });
 });
 
+describe('drainQueueAttachments', () => {
+  it('returns the files every drained message was carrying', () => {
+    expect(drainQueueAttachments([
+      { text: 'first', attachments: [{ id: 'a1' }] },
+      { text: 'second', attachments: [{ id: 'a2' }] },
+    ])).toEqual([{ id: 'a1' }, { id: 'a2' }]);
+  });
+
+  it('dedupes by id — a re-queued item reuses its own list', () => {
+    expect(drainQueueAttachments([
+      { attachments: [{ id: 'a1' }] },
+      { attachments: [{ id: 'a1' }, { id: 'a2' }] },
+    ])).toEqual([{ id: 'a1' }, { id: 'a2' }]);
+  });
+
+  it('is empty for a queue that carried no files', () => {
+    expect(drainQueueAttachments([{ text: 'first' }])).toEqual([]);
+    expect(drainQueueAttachments([])).toEqual([]);
+    expect(drainQueueAttachments(undefined)).toEqual([]);
+  });
+});
+
 describe('planQueueDrain', () => {
   const queues = { 'conv-a': [{ text: 'first' }, { text: 'second' }] };
 
@@ -57,6 +80,7 @@ describe('planQueueDrain', () => {
       queueTaskId: 'conv-a',
       questionId: 'ask:1',
       text: 'first\nsecond',
+      attachments: [],
     });
   });
 
@@ -82,7 +106,20 @@ describe('planQueueDrain', () => {
       queueTaskId: 'tmp-1',
       questionId: 'ask:1',
       text: 'queued before adoption',
+      attachments: [],
     });
+  });
+
+  it('carries the queued files out with the text', () => {
+    // The caller deletes the queue entry right after this, so a plan without
+    // `attachments` is the same silent file loss enqueueMessage exists to stop.
+    const plan = planQueueDrain(
+      [askStep()],
+      ['conv-a'],
+      { 'conv-a': [{ text: 'look at this', attachments: [{ id: 'a1' }] }] },
+      new Set(),
+    );
+    expect(plan.attachments).toEqual([{ id: 'a1' }]);
   });
 
   it('skips a question it has already drained for', () => {

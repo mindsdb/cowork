@@ -179,6 +179,31 @@ export function drainQueueToInput(queued) {
 }
 
 /**
+ * The files those same queued messages were carrying.
+ *
+ * `enqueueMessage` deliberately stores `attachments` with each item, because a
+ * queue that held text only lost the user's files. Handing the text back to the
+ * composer without the files reintroduces exactly that loss: the queue entry is
+ * deleted immediately after the drain, so anything not returned here is gone
+ * with no error, no chip, and no upload.
+ *
+ * Deduped by id — a drained item that gets re-queued reuses its own list, so
+ * the same attachment object can appear under more than one queued message.
+ */
+export function drainQueueAttachments(queued) {
+  const seen = new Set();
+  const out = [];
+  (queued || []).forEach((m) => {
+    (m.attachments || []).forEach((a) => {
+      if (!a || seen.has(a.id)) return;
+      seen.add(a.id);
+      out.push(a);
+    });
+  });
+  return out;
+}
+
+/**
  * Decides whether a freshly-appeared question should hand a task's queued
  * messages back to the composer: which key the messages sit under, and which
  * conversation the text must be handed back to.
@@ -195,7 +220,8 @@ export function drainQueueToInput(queued) {
  * stream's live `resolvedId` first, followed by the id it started with.
  *
  * Pure so the decision can be tested without a stream. Returns null when
- * nothing should happen, else {taskId, queueTaskId, questionId, text}. The
+ * nothing should happen, else {taskId, queueTaskId, questionId, text,
+ * attachments}. The
  * caller is responsible for adding `questionId` to the drained set
  * synchronously, before any setState — that is what makes the drain
  * exactly-once even though clearing the queue is async.
@@ -212,6 +238,7 @@ export function planQueueDrain(steps, taskIds, queues, drainedQuestionIds) {
     queueTaskId,
     questionId: pending.question_id,
     text: drainQueueToInput(queues[queueTaskId]),
+    attachments: drainQueueAttachments(queues[queueTaskId]),
   };
 }
 
@@ -1144,6 +1171,20 @@ function AppCore() {
       ...prev,
       [plan.taskId]: { text: plan.text, bump: composerRedirectBumpRef.current },
     }));
+    // The files those queued messages were carrying come back too. Only the
+    // text is per task (`composerRedirects` is keyed by task id); staged
+    // attachments are a single app-wide list by design — `composerAttachments`
+    // is not keyed by task and survives switching tasks — so re-staging is
+    // app-wide by construction, not a new asymmetry introduced here. What
+    // matters is that `clearQueueForTask` below no longer deletes the only
+    // reference to the user's files.
+    if (plan.attachments.length > 0) {
+      setComposerAttachments((prev) => {
+        const have = new Set(prev.map((a) => a.id));
+        const back = plan.attachments.filter((a) => !have.has(a.id));
+        return back.length > 0 ? [...prev, ...back] : prev;
+      });
+    }
   };
 
   // Drops any pending question these conversations were blocked on, so the
@@ -2999,7 +3040,29 @@ function AppCore() {
       submit: submitAnswer,
     });
     if (answerOutcome.action === 'consumed') {
-      if (queuedAttachments == null) setComposerAttachments([]);
+      // The text became the answer — but `submitAnswer` sends `{text}` only, so
+      // no file travelled with it. Clearing the staged attachments here would
+      // destroy them: never uploaded, never sent, never mentioned. So leave
+      // them staged for the next real message (a drained queued item's files
+      // have no composer entry of their own, so put them back), and say out
+      // loud that they did not go — silence is the failure this whole path
+      // exists to prevent.
+      const orphaned = queuedAttachments ?? composerAttachments;
+      if (queuedAttachments != null && queuedAttachments.length > 0) {
+        setComposerAttachments((prev) => {
+          const have = new Set(prev.map((a) => a.id));
+          const back = queuedAttachments.filter((a) => a && !have.has(a.id));
+          return back.length > 0 ? [...prev, ...back] : prev;
+        });
+      }
+      if (orphaned.length > 0) {
+        toastManager.add({
+          type: 'warning',
+          title: orphaned.length === 1
+            ? 'Your file was not sent — the agent asked a question first. It is still attached.'
+            : `Your ${orphaned.length} files were not sent — the agent asked a question first. They are still attached.`,
+        });
+      }
       return;
     }
     if (answerOutcome.action === 'fail') {
