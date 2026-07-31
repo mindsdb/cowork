@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef, createContext, useContext, Children } from 'react';
+import { useState, useEffect, useMemo, useRef, createContext, useContext, Children } from 'react';
 import { useId } from 'react';
 import Ico from '../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchHealth, fetchRecommendedModels } from '../api';
-import { providerTypeToKeyField, providerValueToType, resolveModelPickerValue, buildModelOptions, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels } from '../lib/settingsTransform';
+import { providerTypeToKeyField, providerValueToType, resolveModelPickerValue, buildModelOptions, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, clampBudgetValue, clampBudgets, BUDGET_FIELDS } from '../lib/settingsTransform';
 import { trackHarnessSwapped, resetDeviceIdentity } from '../lib/analytics';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
@@ -70,6 +70,60 @@ const UPDATE_CARD_STYLE = {
   background: 'rgba(93,146,135,0.12)', borderRadius: 8,
 };
 const UPDATE_CARD_BODY_STYLE = { display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 160 };
+
+// Numeric input for the Advanced Settings agent budgets. State keeps the
+// server's string form (settings round-trip as strings; the page-wide dirty
+// compare is a JSON diff, so types must stay stable across save → re-fetch).
+// Free typing is allowed — including transiently empty/out-of-range text —
+// and the value is clamped into [min, max] on blur. Two deliberate rules:
+//   * An untouched field never commits (blur alone must not materialize a
+//     key the server never sent — that would flip Save to dirty with zero
+//     edits and PUT an unknown key to an older server).
+//   * Emptied/unparseable input reverts to the last committed value, not the
+//     factory default (clearing a saved 500 to retype must not save 50).
+// Escape-dismiss skips blur entirely; clampBudgets() in save() is the
+// backstop that keeps rejectable values out of every PUT.
+function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSetting }) {
+  const { min, max, fallback } = spec;
+  const hintId = useId();
+  // The last COMMITTED value, from the page's saved-state snapshot — never a
+  // draft. Tracking "last parseable edit" instead was a bug (Codex review on
+  // #514): editing a saved 120 to an unsaved 300, then clearing, restored the
+  // 300; an abandoned out-of-range draft resurrected as its clamped form.
+  const saved =
+    savedValue != null && String(savedValue).trim() !== '' ? String(savedValue) : null;
+  return (
+    <div style={{ display: 'inline-flex', alignItems: 'baseline', gap: 8 }}>
+      <input
+        className="field-input"
+        type="number"
+        inputMode="numeric"
+        min={min}
+        max={max}
+        step={1}
+        value={value ?? String(fallback)}
+        onChange={(e) => setSetting(settingKey, e.target.value)}
+        onBlur={(e) => {
+          if (value == null) return; // untouched — don't materialize the key
+          // Emptied field with no committed value to restore (the key was
+          // never saved — e.g. an older server that doesn't serve it): leave
+          // it empty rather than commit the factory default — clampBudgets()
+          // drops empty drafts from the write, and the post-save re-fetch
+          // restores whatever the server holds.
+          if (String(e.target.value).trim() === '' && saved == null) return;
+          setSetting(settingKey, clampBudgetValue(e.target.value, spec, saved));
+        }}
+        aria-label={label}
+        aria-describedby={hintId}
+        title={`${label} (${min}–${max}, default ${fallback})`}
+        style={{ width: 90 }}
+      />
+      <span id={hintId} style={{ fontSize: 11.5, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+        {min}&ndash;{max} &middot; default {fallback}
+      </span>
+    </div>
+  );
+}
 
 function Section({ title, subtitle, notice, children }) {
   const { mobile } = useContext(SettingsLayoutContext);
@@ -903,6 +957,28 @@ export default function SettingsView({
   const { providerStatus: _ps, providerStatusDetails: _psd, ...settingsForDirty } = settings;
   const currentJson = JSON.stringify(settingsForDirty);
   const settingsDirty = lastSavedJson !== null && currentJson !== lastSavedJson;
+  // Parsed view of the saved snapshot. The Advanced Settings budget inputs
+  // use it to revert an emptied field to the last COMMITTED value — the
+  // snapshot is the only place that value survives once drafts land in
+  // `settings` (see BudgetNumberField).
+  const lastSavedSettings = useMemo(() => {
+    if (lastSavedJson == null) return null;
+    try { return JSON.parse(lastSavedJson); } catch { return null; }
+  }, [lastSavedJson]);
+  // Capability probe for the Advanced Settings budgets: cowork-server's
+  // list_settings returns a row for EVERY UserSettings field, so a server
+  // with the budget settings always sends both keys and an older one never
+  // does. Gating on presence keeps the section (and any possibility of
+  // writing the keys) off screens backed by servers that would 400 the
+  // write — the renderer ships OTA and can lead the installed server.
+  // Probe the LIVE settings, not the saved snapshot: the snapshot latches on
+  // the first render (offline-open would pin "no budgets" for the whole
+  // mount, even after a successful fetch). Live is equally safe — the only
+  // writer that can materialize these keys is the budget field itself, which
+  // sits inside this gate, so on an older server they can never appear.
+  const hasBudgetSettings = settings != null
+    && 'maxToolRounds' in settings
+    && 'maxContinuations' in settings;
   // Ref-mirror of `settings` so the post-Save snapshot can read the
   // freshly-refetched value (the closure's `settings` is stale after
   // the await but the ref tracks every render).
@@ -1170,7 +1246,7 @@ export default function SettingsView({
     setTesting(true);
     setTested(false);
     try {
-      await onSave(withResolvedRoles(settings));
+      await onSave(withResolvedRoles(clampBudgets(settings)));
       // Record the harness swap only now that it's persisted (ENG-385). Compare
       // against the pre-save snapshot — settingsRef holds the latest value since
       // the closure `settings` is stale after the await.
@@ -1943,6 +2019,37 @@ export default function SettingsView({
             />
           </Section>
         </CollapsibleGroup>
+
+        {hasBudgetSettings && (
+          <CollapsibleGroup title="Advanced Settings" defaultOpen={false}>
+            <Section
+              title="Max steps per task"
+              subtitle={`How many actions (running code, reading files, searching) ${agentLabel || 'Anton'} may take on one request before pausing to check in with you. Raise it so big tasks finish in one go; lower it for a tighter leash on time and cost.`}
+            >
+              <BudgetNumberField
+                settingKey="maxToolRounds"
+                value={settings.maxToolRounds}
+                savedValue={lastSavedSettings?.maxToolRounds}
+                spec={BUDGET_FIELDS.maxToolRounds}
+                label="Max steps per task"
+                setSetting={setSetting}
+              />
+            </Section>
+            <Section
+              title="Max auto-continues"
+              subtitle={`When ${agentLabel || 'Anton'} stops but the work looks unfinished, Cowork sends it back to complete the job — this caps how many times. Raise it for hands-off thoroughness; set 0 to stop after the first attempt (you'll still get a summary of what's missing).`}
+            >
+              <BudgetNumberField
+                settingKey="maxContinuations"
+                value={settings.maxContinuations}
+                savedValue={lastSavedSettings?.maxContinuations}
+                spec={BUDGET_FIELDS.maxContinuations}
+                label="Max auto-continues"
+                setSetting={setSetting}
+              />
+            </Section>
+          </CollapsibleGroup>
+        )}
       </SettingsSectionPanel>
     );
   };
