@@ -82,6 +82,18 @@ describe('AskUserCard', () => {
       'data-chosen',
       'true',
     );
+    // `data-chosen` had no styling anywhere, so "highlights the choice" was not
+    // true on screen: the chosen option has to LOOK different from the others.
+    expect(screen.getByRole('button', { name: /postgres/i }).className)
+      .not.toBe(screen.getByRole('button', { name: /mysql/i }).className);
+  });
+
+  it('names the choice for a card that was answered by clicking an option', () => {
+    // The reload / second-tab case. Only `answer.text` used to be rendered, so
+    // an option-answered card showed the prompt, greyed buttons, and nothing
+    // about what was chosen.
+    renderCard({ answer: { status: 'answered', values: ['pg'], text: '' } });
+    expect(screen.getByText(/answered: postgres/i)).toBeInTheDocument();
   });
 
   it('shows a free-text answer verbatim', () => {
@@ -127,6 +139,49 @@ describe('AskUserCard', () => {
     expect(screen.getByRole('button', { name: /postgres/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /skip/i })).toBeDisabled();
     await act(async () => { release({ accepted: true }); });
+  });
+
+  it('stays disabled between the 200 and the answered event', async () => {
+    // `settled` needs step.data.answer, which only response.ask_user_answered
+    // supplies. Clearing `busy` on success re-enabled every control in the gap
+    // between the two, and a click in that window submits again and 409s —
+    // which then retires the question.
+    const user = userEvent.setup();
+    renderCard();
+    await user.click(screen.getByRole('button', { name: /mysql/i }));
+    expect(submitAnswer).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: /mysql/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /postgres/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /skip/i })).toBeDisabled();
+  });
+
+  it('re-enables after a retryable failure so the user can try again', async () => {
+    const user = userEvent.setup();
+    submitAnswer.mockResolvedValueOnce({ status: 'error' });
+    renderCard();
+    await user.click(screen.getByRole('button', { name: /mysql/i }));
+    expect(screen.getByRole('button', { name: /mysql/i })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /skip/i })).toBeEnabled();
+  });
+
+  it('ties the options to the prompt and announces the card arriving', async () => {
+    // The only interactive control in an otherwise static stream, appearing
+    // unprompted and blocking the agent — a screen-reader user gets no signal
+    // that it is their turn without this.
+    renderCard();
+    expect(screen.getByRole('group')).toHaveAccessibleName('Which database?');
+    expect(await screen.findByRole('status'))
+      .toHaveTextContent(/asking a question: Which database\?/i);
+  });
+
+  it('reports the chosen single-select option as pressed', async () => {
+    renderCard({ answer: { status: 'answered', values: ['pg'], text: '' } });
+    expect(screen.getByRole('button', { name: /postgres/i }))
+      .toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: /mysql/i }))
+      .toHaveAttribute('aria-pressed', 'false');
+    // …and an answered card no longer announces itself.
+    expect(await screen.findByRole('status')).toHaveTextContent('');
   });
 
   it('submits only once for a rapid double click', async () => {
