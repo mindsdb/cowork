@@ -34,6 +34,7 @@ import { loadSkin, persistSkin, nextSkin, skinLabel } from '../lib/skins';
 import { loadCustomTheme, persistCustomTheme, applyCustomTheme } from '../lib/customTheme';
 import { applyNavTitleColor } from '../lib/navBranding';
 import { getAgentLabel } from './lib/agentLabel';
+import { loadCachedSettings } from './lib/settingsCache';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { useGoogleDrivePicker } from './hooks/useGoogleDrivePicker';
 import { fetchSessions, fetchSession, fetchConversationList, fetchProjects, fetchArtifacts, fetchSettings, fetchHealth,
@@ -750,23 +751,13 @@ export default function App() {
 }
 
 function AppCore() {
-  const [settings, setSettings] = useState({
-    greeting: "Let's knock something off your list",
-    tone: 'balanced',
-    defaultModel: 'claude-sonnet-4-6',
-    autoPin: true,
-    // Animated dot-grid background off by default — a flat surface reads
-    // calmer and cohesive with the rest of the UI. Users can opt back in
-    // via Settings → Personalization → Animated background.
-    showDots: false,
-    showCounters: true,
-    navTitle: '',
-    navTitleColor: '',
-    navLogo: '',
-    showThemeToggle: true,
-    show8bitToggle: true,
-    accentVariant: 'aqua',
-  });
+  // Seed from the read-through cache of the last settings fetch, not a literal
+  // set of defaults — the server (GET /settings/) is the single source of truth
+  // and returns every field's resolved default, so the boot fetch (below) fills
+  // this. On the very first launch the cache is empty and the app renders the
+  // server's values within one fetch. This removes the hard-coded copy whose
+  // values could drift from the server's (e.g. showDots). See ENG-941/ENG-1125.
+  const [settings, setSettings] = useState(loadCachedSettings);
 
   const agentLabel = getAgentLabel(settings);
 
@@ -1342,6 +1333,11 @@ function AppCore() {
   const [updateStatus, setUpdateStatus] = useState(null); // { phase, version }
   const [updateApplying, setUpdateApplying] = useState(false);
   const toastManager = useToastManager();
+  // Download-only shell notice; dismissal is scoped to the offered version.
+  const [shellUpdate, setShellUpdate] = useState(null); // { version, currentVersion, downloadUrl }
+  const [shellUpdateDismissed, setShellUpdateDismissed] = useState(() => {
+    try { return localStorage.getItem('shellUpdateDismissedVersion') || ''; } catch { return ''; }
+  });
 
   // Load data from server on mount
   const refreshData = useCallback(() => {
@@ -1456,8 +1452,19 @@ function AppCore() {
   // web — host returns a noop unsubscriber there.
   useEffect(() => {
     return host.onUpdateStatus((status) => {
+      if (status?.phase === 'shell-available') {
+        setShellUpdate({ version: status.version, currentVersion: status.currentVersion, downloadUrl: status.downloadUrl });
+        return;
+      }
       setUpdateStatus(status);
     });
+  }, []);
+
+  // Recover a cached notice after an OTA reload drops the original push.
+  useEffect(() => {
+    let cancelled = false;
+    host.getShellUpdate().then((s) => { if (!cancelled && s) setShellUpdate(s); }).catch(() => {});
+    return () => { cancelled = true; };
   }, []);
 
   // Listen for background OAuth refresh failures pushed from main process.
@@ -1492,9 +1499,28 @@ function AppCore() {
     } catch (err) {
       console.error('[ui-update] applyUpdate failed:', err);
       setUpdateApplying(false);
-      setUpdateStatus({ phase: 'error' });
+      // Keep the version so the sidebar can offer a labelled retry rather than
+      // going silent until the next poll.
+      setUpdateStatus({ phase: 'error', version: updateStatus?.version });
     }
   }, [updateApplying, updateStatus]);
+
+  // Settings can pass a URL; a bare click falls back to the cached notice, and
+  // failing that to the human download page. Note: bare downloads.mindshub.ai
+  // now 302s to the marketing homepage — the real per-OS installer page lives
+  // at mindshub.ai/download. Old shells never supply a downloadUrl, so this
+  // last fallback is the only link that cohort ever gets.
+  const handleDownloadShellUpdate = useCallback((url) => {
+    const explicit = typeof url === 'string' && url ? url : null;
+    host.openExternal(explicit || shellUpdate?.downloadUrl || 'https://mindshub.ai/download');
+  }, [shellUpdate]);
+
+  const dismissShellUpdate = useCallback(() => {
+    const v = shellUpdate?.version;
+    if (!v) return;
+    try { localStorage.setItem('shellUpdateDismissedVersion', v); } catch { /* private mode */ }
+    setShellUpdateDismissed(v);
+  }, [shellUpdate]);
 
   // ── Boot lifecycle decisions ─────────────────────────────────────
   // Both of these used to live inside HomeView, but the user can
@@ -1741,7 +1767,6 @@ function AppCore() {
     // sibling tab) sees the right state without needing its own probe.
     markInFlight(taskId);
 
-    let assistantContent = '';
     let streamState = initialStreamState();
 
     const flushStreaming = () => {
@@ -1750,8 +1775,9 @@ function AppCore() {
         const msgs = removeThinkingPlaceholder(stripStreaming(t.messages));
         return { ...t, status: 'active', messages: [...msgs, {
           role: '_streaming',
-          content: streamState.bodyText || assistantContent,
+          content: streamState.bodyText,
           steps: streamState.steps,
+          currentThought: streamState.currentThought,
           startedAt: streamState.startedAt,
           streamStatus: streamState.status,
           harness: streamState.harness,
@@ -1773,17 +1799,13 @@ function AppCore() {
         if (open?._scratchpadTabId) activeScratchpadRef.current = open._scratchpadTabId;
         flushSync(() => flushStreaming());
       },
-      onChunk(chunk) {
-        if (streamGen !== activeStreamGenerationRef.current) return;
-        assistantContent += chunk;
-      },
       onDone() {
         if (streamGen !== activeStreamGenerationRef.current) return;
         activeStreamCtrlRef.current = null;
         activeScratchpadRef.current = null;
         activeStreamingTaskIdRef.current = null;
         markInFlightDone(taskId);
-        const finalContent = streamState.bodyText || assistantContent;
+        const finalContent = streamState.bodyText;
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;
@@ -2570,7 +2592,6 @@ function AppCore() {
     setActiveTaskId(taskId);
     setRoute('task');
 
-    let assistantContent = '';
     let resolvedId = taskId;
     // Server mints the canonical id on `response.created` for tmp- tasks.
     // adoptServerId keeps activeStreamingTaskIdRef (and cancel) in sync.
@@ -2598,8 +2619,9 @@ function AppCore() {
         const msgs = removeThinkingPlaceholder(stripStreaming(t.messages));
         return { ...t, messages: [...msgs, {
           role: '_streaming',
-          content: streamState.bodyText || assistantContent,
+          content: streamState.bodyText,
           steps: streamState.steps,
+          currentThought: streamState.currentThought,
           startedAt: streamState.startedAt,
           streamStatus: streamState.status,
           harness: streamState.harness,
@@ -2657,11 +2679,6 @@ function AppCore() {
         if (open?._scratchpadTabId) activeScratchpadRef.current = open._scratchpadTabId;
         flushSync(() => flushStreamingMessage());
       },
-      onChunk(chunk, sid) {
-        if (streamGen !== activeStreamGenerationRef.current) return;
-        if (sid) adoptServerId(sid);
-        assistantContent += chunk;
-      },
       onProgress(event, sid) {
         if (streamGen !== activeStreamGenerationRef.current) return;
         if (sid) adoptServerId(sid);
@@ -2682,7 +2699,7 @@ function AppCore() {
         const finalId = sid || resolvedId;
         markInFlightDone(finalId);
         if (finalId !== taskId) markInFlightDone(taskId);
-        const finalContent = streamState.bodyText || assistantContent;
+        const finalContent = streamState.bodyText;
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;
@@ -2851,7 +2868,6 @@ function AppCore() {
     // user may have started composing since.
     if (queuedAttachments == null) setComposerAttachments([]);
 
-    let assistantContent = '';
     let streamState = initialStreamState();
     // `id` is the local task id we started with. If it's a temporary
     // (`tmp-connect-…`), the server replaces it with a fresh canonical
@@ -2896,8 +2912,9 @@ function AppCore() {
         const msgs = removeThinkingPlaceholder(stripStreaming(t.messages));
         return { ...t, messages: [...msgs, {
           role: '_streaming',
-          content: streamState.bodyText || assistantContent,
+          content: streamState.bodyText,
           steps: streamState.steps,
+          currentThought: streamState.currentThought,
           startedAt: streamState.startedAt,
           streamStatus: streamState.status,
           harness: streamState.harness,
@@ -2937,14 +2954,6 @@ function AppCore() {
         if (open?._scratchpadTabId) activeScratchpadRef.current = open._scratchpadTabId;
         flushSync(() => flushStreaming());
       },
-      onChunk(chunk, sid) {
-        if (streamGen !== activeStreamGenerationRef.current) return;
-        if (sid) adoptServerId(sid);
-        // The adapter accumulates bodyText already; this callback is
-        // redundant for content but cheap and useful as a fallback if
-        // the adapter ever fails to parse a delta.
-        assistantContent += chunk;
-      },
       onDone() {
         if (streamGen !== activeStreamGenerationRef.current) return;
         activeStreamCtrlRef.current = null;
@@ -2952,7 +2961,7 @@ function AppCore() {
         activeStreamingTaskIdRef.current = null;
         markInFlightDone(resolvedId);
         if (resolvedId !== id) markInFlightDone(id);
-        const finalContent = streamState.bodyText || assistantContent;
+        const finalContent = streamState.bodyText;
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;
@@ -3019,7 +3028,6 @@ function AppCore() {
         : t,
     ));
 
-    let assistantContent = '';
     let streamState = initialStreamState();
     // See handleSendInTask for the rationale — the datavault stream's
     // `response.created` carries the server-minted id when the client
@@ -3061,8 +3069,9 @@ function AppCore() {
         const msgs = removeThinkingPlaceholder(stripStreaming(t.messages));
         return { ...t, messages: [...msgs, {
           role: '_streaming',
-          content: streamState.bodyText || assistantContent,
+          content: streamState.bodyText,
           steps: streamState.steps,
+          currentThought: streamState.currentThought,
           startedAt: streamState.startedAt,
           streamStatus: streamState.status,
           harness: streamState.harness,
@@ -3122,7 +3131,6 @@ function AppCore() {
       },
       onChunk(chunk, sid) {
         if (sid) adoptServerId(sid);
-        assistantContent += chunk;
         // data-vault-form-patch blocks are delivered as complete deltas —
         // parse and apply them immediately so the panel can show the
         // spinner (_is_probing), status updates, and the error card
@@ -3139,7 +3147,7 @@ function AppCore() {
         if (sid) adoptServerId(sid);
         activeStreamCtrlRef.current = null;
         activeStreamingTaskIdRef.current = null;
-        const finalContent = streamState.bodyText || assistantContent;
+        const finalContent = streamState.bodyText;
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;
@@ -3717,7 +3725,11 @@ function AppCore() {
           navTitle={settings.navTitle || null}
           navLogo={settings.navLogo || null}
           updateAvailable={updateStatus?.phase === 'available' ? { version: updateStatus.version } : null}
+          updateError={updateStatus?.phase === 'error' ? { version: updateStatus.version } : null}
           onApplyUpdate={handleApplyUpdate}
+          shellUpdate={shellUpdate && shellUpdate.version !== shellUpdateDismissed ? shellUpdate : null}
+          onDownloadShellUpdate={handleDownloadShellUpdate}
+          onDismissShellUpdate={dismissShellUpdate}
           onShowServerHelp={() => openSettings('backend')}
           onToggleServer={async () => {
             if (serverBusy) return;
@@ -4044,6 +4056,8 @@ function AppCore() {
               isSsoConnected={ssoConnected}
               ssoError={ssoError}
               onSsoSignIn={!ssoConnected && host.isElectron ? async () => { setSettingsOpen(false); await handleSsoSignIn(); } : undefined}
+              shellUpdate={shellUpdate}
+              onDownloadShellUpdate={handleDownloadShellUpdate}
             />
           </Modal>
         ) : (
@@ -4089,6 +4103,8 @@ function AppCore() {
                 isSsoConnected={ssoConnected}
                 ssoError={ssoError}
                 onSsoSignIn={!ssoConnected && host.isElectron ? async () => { setSettingsOpen(false); await handleSsoSignIn(); } : undefined}
+                shellUpdate={shellUpdate}
+                onDownloadShellUpdate={handleDownloadShellUpdate}
               />
             </ModalBody>
           </Modal>

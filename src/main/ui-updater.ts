@@ -92,6 +92,9 @@ export interface UpdateCheckResult {
   applied: boolean;
   newVersion?: string;
   skippedReason?: string; // set when a bundle was withheld (e.g. server too old)
+  // Set when the check itself couldn't complete (manifest unreachable/unparseable) —
+  // distinct from a completed check that found no update. See checkForUIUpdate.
+  error?: boolean;
 }
 
 function getCacheDir(): string {
@@ -364,7 +367,10 @@ export async function checkForUIUpdate(): Promise<UpdateCheckResult> {
   }
   warnIfBundledVersionNotCalVer();
   const manifest = await fetchManifest();
-  if (!manifest) return { updateAvailable: false, applied: false };
+  // fetchManifest() swallows its own network/parse errors to null — that's a
+  // genuine "couldn't check" (error: true), not the same as a manifest that
+  // was fetched and simply isn't newer.
+  if (!manifest) return { updateAvailable: false, applied: false, error: true };
 
   // Quarantine: a version we activated and rolled back stays skipped until the
   // manifest advances to a different version — otherwise every auto-update boot

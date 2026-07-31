@@ -12,6 +12,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Ico from '../components/Icons';
 import { Crumb as CrumbButton, CrumbSep, CrumbCurrent } from '../components/ui/Crumb';
 import { Button } from '../components/ui';
+import { Switch } from '../components/ui/Switch';
 import { fetchScheduleRuns } from '../api';
 import ScheduleTaskModal from '../components/schedule/ScheduleTaskModal';
 import { ScheduleStatusBadge } from '../components/schedule/ScheduleStatusBadge';
@@ -61,45 +62,13 @@ function EnableToggle({ enabled, onChange, busy }) {
       cursor: busy ? 'not-allowed' : 'pointer',
       opacity: busy ? 0.6 : 1,
     }}>
-      {/* Track + thumb live in a positioned wrapper so the absolute-
-          positioned thumb anchors to the track itself. Earlier the
-          thumb was a sibling of the label with `position: absolute`
-          but no positioned ancestor — it ended up anchored to the
-          nearest higher-up positioned element and visually
-          "floated" as the page scrolled. */}
-      <span style={{
-        position: 'relative',
-        display: 'inline-block',
-        width: 30, height: 18,
-        flexShrink: 0,
-      }}>
-        <input
-          type="checkbox"
-          checked={!!enabled}
-          disabled={busy}
-          onChange={(e) => onChange?.(e.target.checked)}
-          style={{
-            appearance: 'none',
-            width: 30, height: 18, borderRadius: 999,
-            background: enabled ? 'var(--accent)' : 'var(--surface-2)',
-            border: '1px solid var(--line)',
-            transition: 'background 140ms ease',
-            cursor: 'inherit',
-            margin: 0,
-            display: 'block',
-          }}
-        />
-        {/* Thumb — absolutely positioned inside the track wrapper. */}
-        <span aria-hidden style={{
-          position: 'absolute',
-          top: 2, left: enabled ? 14 : 2,
-          width: 14, height: 14, borderRadius: '50%',
-          background: '#fff',
-          boxShadow: '0 1px 2px rgba(15,16,17,0.18)',
-          transition: 'left 140ms ease',
-          pointerEvents: 'none',
-        }} />
-      </span>
+      <Switch
+        checked={!!enabled}
+        onCheckedChange={onChange}
+        disabled={busy}
+        size="sm"
+        aria-label="Schedule enabled"
+      />
       <span style={{
         fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 500,
         color: enabled ? 'var(--ink-2)' : 'var(--ink-3)',

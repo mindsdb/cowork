@@ -56,6 +56,30 @@ Always the same sequence, whether triggered by the boot check or the user:
 Net effect: every applied update — even server-only at boot — produces one
 visible refresh of the window.
 
+## Shell (installer) update notice (ENG-849)
+
+The Electron **shell** (`src/main`, preload, the runtime, native deps) is *not*
+covered by OTA — it updates only when the user downloads and reinstalls a new
+installer. So the app can't apply a shell update; it can only *notice* one:
+
+- The boot/periodic poll compares the installed shell CalVer against
+  `shellVersion` in `latest.json`. If a newer shell exists it pushes a
+  `shell-available` status.
+- Surfaced as a dismissible sidebar banner ("New version available — Download")
+  and an "App update available" card in Settings → Updates, both linking to the
+  installer on `downloads.mindshub.ai`. Detection only — never downloads or
+  installs.
+- **Prod-only.** The manifest is prod-only and a non-prod build must never be
+  pointed at a prod installer (ENG-676), so non-prod builds don't check.
+- `shellVersion` is written by `publish-ui.yml` **only on the auto-release
+  path** (where a prod installer actually ships), so a UI-only re-publish can't
+  fabricate a phantom "reinstall" notice.
+- Banner dismissal is **per-version** (localStorage) — a dismissed notice
+  reappears when a newer shell ships. Settings always shows the current state.
+
+Auto-download / install-on-relaunch (electron-updater) is a separate,
+out-of-scope effort (ENG-850).
+
 ## Build kinds
 
 Each packaged build carries a build kind, baked into `build-config.json` in

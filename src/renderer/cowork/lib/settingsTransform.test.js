@@ -7,6 +7,8 @@ import {
   effectiveRoleProvider,
   recommendedModelOptions,
   mergeRecommendedModels,
+  clampBudgetValue,
+  clampBudgets,
 } from './settingsTransform';
 
 // The minds-cloud recommended list holds bare aliases — never `latest:`-prefixed.
@@ -138,6 +140,7 @@ describe('buildModelOptions', () => {
       value: '__stale__',
       label: 'sonnet (legacy — re-select a model)',
       disabled: true,
+      pin: 'top',
     });
   });
 
@@ -155,7 +158,7 @@ describe('buildModelOptions', () => {
 
   it('appends an "Other…" entry only when allowOther is true', () => {
     const withOther = buildModelOptions('claude-opus-4-8', ANTHROPIC_LIST, true, false);
-    expect(withOther.at(-1)).toEqual({ value: '__custom__', label: 'Other…' });
+    expect(withOther.at(-1)).toEqual({ value: '__custom__', label: 'Other…', pin: 'bottom' });
 
     const withoutOther = buildModelOptions('mindshub_air', MINDS_LIST, false, false);
     expect(withoutOther.some((o) => o.value === '__custom__')).toBe(false);
@@ -353,3 +356,85 @@ describe('effectiveRoleModel / effectiveRoleProvider — canonical fields, never
     expect(effectiveRoleProvider({}, 'planning')).toBe('minds-cloud');
   });
 })
+
+describe('agent tool-budget settings (max_tool_rounds / max_continuations)', () => {
+  it('transforms server rows into camelCase string values', async () => {
+    const { transformSettingsRows } = await import('./settingsTransform');
+    const rows = [
+      { key: 'max_tool_rounds', value: '50', is_sensitive: false, is_set: false },
+      { key: 'max_continuations', value: '5', is_sensitive: false, is_set: false },
+    ];
+    const s = transformSettingsRows(rows);
+    // Strings, not numbers: the page-wide dirty compare is a JSON diff
+    // against the post-save re-fetch, so the type must survive the
+    // save -> PUT -> re-fetch round trip unchanged.
+    expect(s.maxToolRounds).toBe('50');
+    expect(s.maxContinuations).toBe('5');
+  });
+
+  it('writes changed budgets to their snake_case keys as strings', () => {
+    const writes = diffSettingsForWrite(
+      { maxToolRounds: '80', maxContinuations: '3' },
+      { maxToolRounds: '50', maxContinuations: '3' },
+    );
+    expect(writes).toEqual({ max_tool_rounds: '80' }); // unchanged key skipped
+  });
+
+  it('never writes a budget key the server did not send', () => {
+    // Older server (no budget settings): the key is absent from the fetched
+    // snapshot, and a PUT would 400 and fail the whole multi-key save. The
+    // UI also hides the section in this state; this pins the write layer.
+    expect(diffSettingsForWrite({ maxToolRounds: '200' }, { theme: 'dark' })).toEqual({});
+    // Non-budget keys keep the old behavior (writable even when absent).
+    expect(diffSettingsForWrite({ greeting: 'hi' }, {})).toEqual({ greeting: 'hi' });
+  });
+});
+
+describe('clampBudgetValue / clampBudgets', () => {
+  const spec = { min: 5, max: 500, fallback: 50 };
+
+  it('clamps into range and returns strings', () => {
+    expect(clampBudgetValue('80', spec)).toBe('80');
+    expect(clampBudgetValue('2', spec)).toBe('5');
+    expect(clampBudgetValue('9999', spec)).toBe('500');
+    expect(clampBudgetValue(' 50 ', spec)).toBe('50');
+  });
+
+  it('treats number-input-legal scientific notation as its numeric value', () => {
+    // parseInt('5e2') === 5 was the bug: a user-entered 5e2 means 500.
+    expect(clampBudgetValue('5e2', spec)).toBe('500');
+    expect(clampBudgetValue('1e3', spec)).toBe('500'); // 1000, max-clamped
+  });
+
+  it('empty/unparseable input reverts to prev, then fallback', () => {
+    // Clearing a saved 500 to retype must not silently save the default.
+    expect(clampBudgetValue('', spec, '500')).toBe('500');
+    expect(clampBudgetValue('abc', spec, '120')).toBe('120');
+    expect(clampBudgetValue('', spec, null)).toBe('50');
+    expect(clampBudgetValue('', spec, 'junk')).toBe('50');
+    // A stale out-of-range prev (e.g. Escape-dismissed draft) still clamps.
+    expect(clampBudgetValue('', spec, '9999')).toBe('500');
+  });
+
+  it('clampBudgets clamps present keys and never materializes absent ones', () => {
+    const out = clampBudgets({ maxToolRounds: '9999', harness: 'anton' });
+    expect(out.maxToolRounds).toBe('500');
+    expect(out.harness).toBe('anton');
+    // absent keys stay absent: materializing one would create a phantom
+    // write — and a failing PUT on an older server without these settings
+    expect('maxContinuations' in out).toBe(false);
+    // untouched settings object is returned by reference (no spurious dirty)
+    const clean = { maxToolRounds: '50', maxContinuations: '5' };
+    expect(clampBudgets(clean)).toBe(clean);
+  });
+
+  it('clampBudgets drops empty/unparseable drafts instead of defaulting them', () => {
+    // An Escape-orphaned '' draft must not become a factory-default write
+    // that silently overwrites the user's saved value — no key, no PUT,
+    // server keeps what it has.
+    const out = clampBudgets({ maxToolRounds: '', maxContinuations: 'abc', harness: 'anton' });
+    expect('maxToolRounds' in out).toBe(false);
+    expect('maxContinuations' in out).toBe(false);
+    expect(out.harness).toBe('anton');
+  });
+});

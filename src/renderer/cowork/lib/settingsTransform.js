@@ -60,6 +60,8 @@ export const SETTINGS_KEY_MAP = {
   episodic_memory: 'episodicMemory',
   proactive_dashboards: 'proactiveDashboards',
   act_first: 'actFirst',
+  max_tool_rounds: 'maxToolRounds',
+  max_continuations: 'maxContinuations',
   publish_url: 'publishUrl',
   greeting: 'greeting',
   tone: 'tone',
@@ -342,6 +344,9 @@ export function buildModelOptions(curModel, modelList, allowOther, showStalePin,
           value: '__stale__',
           label: `${labelFor(curModel.replace(/^latest:/, ''))} (legacy — re-select a model)`,
           disabled: true,
+          // `pin` keeps the special entries out of ModelSelect's provider
+          // groups: 'top'/'bottom' render unheaded above/below the groups.
+          pin: 'top',
         }]
       : []),
     // Wallet-based access (ENG-412, #434): a locked model is one the org's
@@ -351,7 +356,7 @@ export function buildModelOptions(curModel, modelList, allowOther, showStalePin,
       label: `${labelFor(m)}${isLocked(m) ? ' — Add credits to unlock' : ''}`,
       disabled: isLocked(m),
     })),
-    ...(allowOther ? [{ value: '__custom__', label: 'Other…' }] : []),
+    ...(allowOther ? [{ value: '__custom__', label: 'Other…', pin: 'bottom' }] : []),
   ];
 }
 
@@ -478,6 +483,14 @@ export function diffSettingsForWrite(patch, lastFetched) {
     const serverKey = CLIENT_TO_SERVER[clientKey];
     if (!serverKey) continue;
     if (value === '***') continue;
+    // Budget keys are writable only when the server serves them: the server
+    // returns a row for every settings field, so absence from the fetched
+    // snapshot means an older server that would 400 the write (and fail the
+    // whole multi-key save with it). Deliberately budget-scoped: lastFetched
+    // is {} until the first successful fetch, so as a global rule this would
+    // silently drop the first save of a session. For budget keys the trade
+    // is worth it — absence really does mean a server that can't take them.
+    if (clientKey in BUDGET_FIELDS && !(clientKey in lastFetched)) continue;
     const prev = lastFetched[clientKey];
     if (prev === value) continue;
     if (typeof value === 'object' && JSON.stringify(prev) === JSON.stringify(value)) continue;
@@ -490,6 +503,71 @@ export function diffSettingsForWrite(patch, lastFetched) {
     }
   }
   return writes;
+}
+
+// ─── Agent budget clamping ───────────────────────────────────────────
+//
+// The server bounds these (pydantic ge/le) and 422s anything outside, and a
+// failed key fails the whole multi-key save — so the client must never PUT
+// an out-of-range value. Values are STRINGS end-to-end (server rows are
+// strings; the page-wide dirty compare is a JSON diff, so types must survive
+// the save → re-fetch round trip unchanged).
+
+export const BUDGET_FIELDS = {
+  maxToolRounds: { min: 5, max: 500, fallback: 50 },
+  maxContinuations: { min: 0, max: 25, fallback: 5 },
+};
+
+/**
+ * Clamp one budget value into its range, as a string.
+ *
+ * Number() (not parseInt) so number-input-legal forms like "5e2" mean 500,
+ * not 5. Unparseable/empty input falls back to `prev` (the last committed
+ * value — clearing a field to retype must not silently reset a saved 500 to
+ * the factory default) and only then to the spec fallback.
+ */
+export function clampBudgetValue(raw, spec, prev = null) {
+  const { min, max, fallback } = spec;
+  let n = Math.round(Number(raw));
+  if (raw == null || String(raw).trim() === '' || Number.isNaN(n)) {
+    const p = Math.round(Number(prev));
+    n = (prev != null && String(prev).trim() !== '' && !Number.isNaN(p)) ? p : fallback;
+  }
+  return String(Math.min(max, Math.max(min, n)));
+}
+
+/**
+ * Return `settings` with any present budget keys clamped into range, and
+ * empty/unparseable drafts DROPPED from the write entirely.
+ *
+ * Safety net for values that skipped the input's blur clamp (e.g. the
+ * settings modal dismissed with Escape mid-edit — React fires no blur on
+ * unmount, and the raw draft survives in App state). Two rules:
+ *   * Keys the server never sent stay absent: materializing them here would
+ *     create a phantom write — and a failing one on an older server. (Also
+ *     enforced structurally: the Settings UI only renders the budget section
+ *     when the fetched snapshot has the keys, and diffSettingsForWrite skips
+ *     budget keys absent from it.)
+ *   * An empty or unparseable draft is "no instruction", not "reset to
+ *     default": clamping '' to the factory fallback here would silently
+ *     overwrite the user's saved value (this function has no access to it).
+ *     Dropping the key means diffSettingsForWrite writes nothing and the
+ *     server keeps what it has; the post-save re-fetch heals the input.
+ */
+export function clampBudgets(settings) {
+  let out = settings;
+  for (const [key, spec] of Object.entries(BUDGET_FIELDS)) {
+    const v = settings?.[key];
+    if (v == null) continue;
+    if (String(v).trim() === '' || Number.isNaN(Math.round(Number(v)))) {
+      const { [key]: _dropped, ...rest } = out;
+      out = rest;
+      continue;
+    }
+    const clamped = clampBudgetValue(v, spec);
+    if (clamped !== String(v)) out = { ...out, [key]: clamped };
+  }
+  return out;
 }
 
 // ─── Provider card ↔ individual key mapping ──────────────────────────
