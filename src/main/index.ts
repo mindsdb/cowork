@@ -18,6 +18,7 @@ import { openDrivePickerFlow, cancelCurrentDrivePicker, isValidDriveFileIds } fr
 import { getPickedFiles, savePickedFiles, verifyPickedFiles, type PickedFile } from './picked-files';
 import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefreshTokenStore, isAccessTokenExpired } from './token-store';
 import { refreshTokensOnly, writeMindsKeyToEnvAndRestart, provisionAntonApiKey, scheduleRefresh, cancelScheduledRefresh, endKeycloakSession, KEYCLOAK_AUTH_URL, KEYCLOAK_REGISTRATION_URL, KEYCLOAK_TOKEN_URL, SIGNUP_CALLBACK_TIMEOUT_MS } from './minds-auth';
+import { scrubEnvCredentials } from './logout-env';
 import { MINDS_API_HOST } from './minds-urls';
 import { sendEvent } from './analytics';
 import { getRendererPath, getBundledPath, checkForUIUpdate, applyUIUpdate, hasInternet, getCachedVersion, isServingOta, rollbackUI } from './ui-updater';
@@ -1004,40 +1005,30 @@ function setupIPC() {
       }
     }
 
-    // Strip .env (for the standalone anton CLI and next-boot migration).
-    const LOGOUT_ENV_KEYS = [
-      'ANTON_MINDS_API_KEY',
-      'ANTON_MINDS_URL',
-      'ANTON_MINDS_ENABLED',
-      'ANTON_OPENAI_API_KEY',
-      'ANTON_OPENAI_BASE_URL',
-      'ANTON_OPENAI_API_KEY_CUSTOM',
-      'ANTON_ANTHROPIC_API_KEY',
-      'ANTON_GEMINI_API_KEY',
-      'ANTON_PLANNING_PROVIDER',
-      'ANTON_CODING_PROVIDER',
-      // ANTON_PLANNING_MODEL / ANTON_CODING_MODEL are intentionally NOT stripped
-      // on logout (ENG-739). Preserving them on sign-in but deleting them on
-      // sign-out would break the same "a `latest:` value may be a deliberate
-      // choice — never silently mutate it" rule the sign-in path now follows.
-      // A model is CLI-only in .env; the DB (product) is cleared separately.
-    ];
-    const envPath = getAntonEnvPath();
-    if (fs.existsSync(envPath)) {
-      const lines = fs.readFileSync(envPath, 'utf-8').split('\n')
-        .filter((l) => !LOGOUT_ENV_KEYS.some((k) => l.startsWith(k + '=')));
-      fs.writeFileSync(envPath, lines.join('\n'), 'utf-8');
-      for (const key of LOGOUT_ENV_KEYS) {
-        delete process.env[key];
-      }
+    // Scrub credential keys from the shared .env (see logout-env.ts). Since the
+    // ENG-941 settings refactor the DB — not the .env — is authoritative for
+    // credentials and config_ready: the .env→DB seed is one-time and
+    // sentinel-guarded, so a restart never re-reads the .env, and the DB clear
+    // above (POST /settings/logout) is what actually signs the user out. This
+    // scrub is therefore best-effort hygiene: it keeps stale keys from the
+    // standalone anton CLI, but a failure does NOT mean the user is still
+    // signed in. scrubEnvCredentials retries transient Windows share-mode locks
+    // (ENG-1209) and always clears process.env; if the write still can't land we
+    // log and press on rather than fail an otherwise-complete sign-out or trap
+    // the renderer's "Signing out…" spinner (the original ENG-1206 hang). The
+    // renderer keeps its own recovery path for a genuinely rejected logout.
+    try {
+      await scrubEnvCredentials(getAntonEnvPath());
+    } catch (err) {
+      console.warn('[logout] failed to scrub credential keys from .env (best-effort):', err);
     }
     clearStoredProviderState();
 
-    // Restart the server so in-memory caches (settings, provider objects)
-    // are flushed. If the DB clear failed (server was down, timed out),
-    // the restart re-reads the cleaned .env as the sole credential source.
-    // Without this, the Python process could still hold credentials in
-    // memory and report config_ready: true after the UI says "signed out".
+    // Restart the server so in-memory caches (settings, provider objects) are
+    // flushed. The DB clear above already dropped the credential rows and
+    // invalidated the settings cache, so config_ready is false without this —
+    // the restart is belt-and-suspenders against any provider object still held
+    // in memory reporting config_ready: true after the UI says "signed out".
     if (isServerRunning() || isServerStarting()) {
       try {
         await stopServer();
