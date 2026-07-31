@@ -200,9 +200,20 @@ function openLogStream(): void {
     /* Electron does not guarantee the logs directory exists; create it
        here, at the one point we actually open the stream for writing. */
     fs.mkdirSync(path.dirname(logPath), { recursive: true });
-    logStream = fs.createWriteStream(logPath, { flags: 'w' });
+    const stream = fs.createWriteStream(logPath, { flags: 'w' });
+    /* A failure to open surfaces ASYNCHRONOUSLY as an 'error' event, not as a
+       throw from createWriteStream — so the try/catch alone never sees it. With
+       no 'error' listener Node re-raises it as an uncaught exception, which
+       Electron turns into a fatal "A JavaScript error occurred in the main
+       process" dialog and blocks the whole app from starting (ENG-1187: EPERM =
+       ERROR_ACCESS_DENIED on the log file — a read-only/ACL condition, a
+       delete-pending file from a prior install's still-open handle, or AV
+       controlled-folder protection). Logging to disk is best-effort: degrade to
+       no disk log, keeping the in-memory recentStderr tail and the running app. */
+    stream.on('error', () => { if (logStream === stream) logStream = null; });
+    logStream = stream;
   } catch {
-    /* Logging to disk is best-effort — never let it block server startup. */
+    /* Synchronous failures (e.g. mkdir denied) — same best-effort stance. */
     logStream = null;
   }
 }
