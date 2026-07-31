@@ -66,6 +66,22 @@ describe('AskUserCard', () => {
     expect(submitAnswer).toHaveBeenCalledWith('conv-1', 'ask:1', { values: ['pg', 'my'] });
   });
 
+  it('multi-select marks a picked option as selected before Send, not just after', async () => {
+    // Before this, `chosen` (derived from the server-confirmed answer, which
+    // doesn't exist yet in multi-select until Send) drove both the styling
+    // class and data-chosen — so clicking had no visible effect until the
+    // round trip completed.
+    const user = userEvent.setup();
+    renderCard({ select: 'many' });
+    const pg = screen.getByRole('button', { name: /postgres/i });
+    const my = screen.getByRole('button', { name: /mysql/i });
+    await user.click(pg);
+    expect(pg).toHaveAttribute('data-chosen', 'true');
+    expect(pg).toHaveAttribute('aria-pressed', 'true');
+    expect(pg.className).not.toBe(my.className);
+    expect(my).toHaveAttribute('data-chosen', 'false');
+  });
+
   it('Skip sends a cancellation', async () => {
     const user = userEvent.setup();
     renderCard();

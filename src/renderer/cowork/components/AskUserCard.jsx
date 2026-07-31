@@ -85,26 +85,42 @@ export default function AskUserCard({ step, conversationId, onAnswered, expired 
           is therefore set in BOTH modes — for single-select it reflects the
           server's recorded answer. */}
       <div className="flex flex-col gap-1.5" role="group" aria-labelledby={promptId}>
-        {(q.options || []).map((option) => (
-          <button
-            key={option.value}
-            type="button"
-            disabled={settled || busy}
-            data-chosen={chosen.has(option.value) ? 'true' : 'false'}
-            aria-pressed={isMany ? picked.includes(option.value) : chosen.has(option.value)}
-            onClick={() => onOption(option.value)}
-            className={`flex flex-col items-start rounded-md border px-2.5 py-1.5 text-left text-[12.5px] disabled:opacity-60 ${
-              chosen.has(option.value)
-                ? 'border-accent bg-accent-bg text-ink font-medium'
-                : 'border-line'
-            }`}
-          >
-            <span>{option.label || option.value}</span>
-            {option.detail ? (
-              <span className="text-[11px] text-ink-4">{option.detail}</span>
-            ) : null}
-          </button>
-        ))}
+        {(q.options || []).map((option) => {
+          // Single-select submits on click, so "selected" only ever means
+          // the server-confirmed answer. Multi-select stages picks locally
+          // until Send, so before settling it must reflect that local
+          // toggle — otherwise a click has no visible effect at all. Once
+          // settled, the confirmed `chosen` set is the source of truth for
+          // both.
+          const isSelected = isMany
+            ? (settled ? chosen.has(option.value) : picked.includes(option.value))
+            : chosen.has(option.value);
+          return (
+            <button
+              key={option.value}
+              type="button"
+              disabled={settled || busy}
+              data-chosen={isSelected ? 'true' : 'false'}
+              aria-pressed={isSelected}
+              onClick={() => onOption(option.value)}
+              // Explicit bg-* on every branch: Tailwind preflight is off in
+              // this app (globals.css already owns the reset), so a button
+              // with no background falls through to the browser's native
+              // button chrome instead of the app's surface tokens — that's
+              // what read as "grey, low-contrast" before this class was added.
+              className={`flex flex-col items-start rounded-md border px-2.5 py-1.5 text-left text-[12.5px] transition-colors disabled:opacity-60 ${
+                isSelected
+                  ? 'border-accent bg-accent-bg text-ink font-medium'
+                  : 'border-line bg-surface text-ink hover:bg-surface-3 hover:border-line-2'
+              }`}
+            >
+              <span>{option.label || option.value}</span>
+              {option.detail ? (
+                <span className="text-[11px] text-ink-4">{option.detail}</span>
+              ) : null}
+            </button>
+          );
+        })}
       </div>
 
       {isMany && !settled ? (
@@ -112,7 +128,7 @@ export default function AskUserCard({ step, conversationId, onAnswered, expired 
           type="button"
           disabled={picked.length === 0 || busy}
           onClick={() => send({ values: picked })}
-          className="mt-2 rounded-md border border-line px-2.5 py-1 text-[12px] disabled:opacity-60"
+          className="mt-2 rounded-md border border-line bg-surface text-ink px-2.5 py-1 text-[12px] transition-colors hover:bg-surface-3 hover:border-line-2 disabled:opacity-60"
         >
           Send
         </button>
@@ -124,7 +140,7 @@ export default function AskUserCard({ step, conversationId, onAnswered, expired 
             type="button"
             disabled={busy}
             onClick={() => send({ skipped: true })}
-            className="text-[11.5px] text-ink-4 underline"
+            className="bg-transparent border-0 text-[11.5px] text-ink-4 underline"
           >
             Skip
           </button>
