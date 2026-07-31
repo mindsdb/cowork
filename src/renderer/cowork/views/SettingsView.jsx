@@ -381,7 +381,10 @@ export function shouldRevealStoredKey({ isWeb, show, revealName, isSentinel, alr
 
 function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
   const [show, setShow] = useState(false);
-  const [copied, setCopied] = useState(false);
+  // 'idle' | 'copied' | 'failed' — 'failed' surfaces feedback when the
+  // clipboard helper's fallback chain (see lib/clipboard.js) also fails,
+  // instead of leaving the button looking like it silently did nothing.
+  const [copyState, setCopyState] = useState('idle');
   const [revealedValue, setRevealedValue] = useState(null); // null = no fetched override
   const [revealing, setRevealing] = useState(false);
 
@@ -402,13 +405,9 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
 
   const onCopy = async () => {
     if (!hasValue) return;
-    try {
-      await navigator.clipboard.writeText(v);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      /* clipboard may be unavailable in some browser sandboxes */
-    }
+    const ok = await copyToClipboard(v);
+    setCopyState(ok ? 'copied' : 'failed');
+    setTimeout(() => setCopyState('idle'), 1500);
   };
 
   const onToggleShow = async () => {
@@ -494,15 +493,16 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
             disabled={!canCopy}
             title={
               isDisplayingSentinel ? 'Reveal the key first to copy it'
-                : copied ? 'Copied'
-                  : 'Copy to clipboard'
+                : copyState === 'copied' ? 'Copied'
+                  : copyState === 'failed' ? "Couldn't copy"
+                    : 'Copy to clipboard'
             }
-            aria-label={copied ? 'Copied to clipboard' : 'Copy key to clipboard'}
+            aria-label={copyState === 'copied' ? 'Copied to clipboard' : 'Copy key to clipboard'}
             style={canCopy ? btnStyle : { ...btnStyle, opacity: 0.35, cursor: 'not-allowed' }}
           >
-            {copied ? Ico.check(13) : Ico.copy(13)}
+            {copyState === 'copied' ? Ico.check(13) : Ico.copy(13)}
           </button>
-          {copied && (
+          {(copyState === 'copied' || copyState === 'failed') && (
             <span
               role="status"
               aria-live="polite"
@@ -523,7 +523,7 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
                 animation: 'copied-pop 1.5s ease forwards',
                 zIndex: 5,
               }}
-            >Copied</span>
+            >{copyState === 'failed' ? "Couldn't copy" : 'Copied'}</span>
           )}
         </span>
         <button
@@ -884,7 +884,10 @@ export default function SettingsView({
   const [serverVersion, setServerVersion] = useState('');
   const [antonVersion, setAntonVersion] = useState('');
   const [showVersionDetails, setShowVersionDetails] = useState(false);
-  const [versionCopied, setVersionCopied] = useState(false);
+  // 'idle' | 'copied' | 'failed' — 'failed' surfaces feedback when the
+  // clipboard helper's fallback chain (see lib/clipboard.js) also fails,
+  // instead of leaving the button looking like it silently did nothing.
+  const [versionCopyState, setVersionCopyState] = useState('idle');
   // ENG-671 — on-demand "Check for updates". `checkResult` is null (idle) or a
   // summary { ok, offline, updateAvailable, uiUpdateAvailable,
   // serverUpdateAvailable, uiVersion?, serverVersion? } from host.checkForUpdates().
@@ -2571,14 +2574,12 @@ export default function SettingsView({
                     <Button
                       onClick={async () => {
                         const ok = await copyToClipboard(copyText);
-                        if (ok) {
-                          setVersionCopied(true);
-                          setTimeout(() => setVersionCopied(false), 1500);
-                        }
+                        setVersionCopyState(ok ? 'copied' : 'failed');
+                        setTimeout(() => setVersionCopyState('idle'), 1500);
                       }}
                       style={{ alignSelf: 'flex-start', marginTop: 4 }}
                     >
-                      {versionCopied ? 'Copied' : 'Copy'}
+                      {versionCopyState === 'copied' ? 'Copied' : versionCopyState === 'failed' ? "Couldn't copy" : 'Copy'}
                     </Button>
                   </div>
                 )}

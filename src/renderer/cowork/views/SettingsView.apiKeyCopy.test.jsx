@@ -1,14 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 
-// Regression (ENG-1154): the "Copy" button under Settings → Updates →
-// Version details called navigator.clipboard.writeText() directly, without
-// awaiting it, so it flipped to the "Copied" success state even when the
-// write failed. It also bypassed the shared `copyText` helper (lib/clipboard)
-// that every other copy-to-clipboard button in the app uses, which matters
-// because this Electron shell's setPermissionRequestHandler denies the
-// `clipboard-sanitized-write` permission raw navigator.clipboard needs —
-// only the helper's document.execCommand('copy') fallback actually works.
+// Regression (ENG-1154 follow-up): the API-key copy button in the Providers
+// list called navigator.clipboard.writeText() directly in a try/catch that
+// swallowed failures — same bug class as the version-details Copy button,
+// in the same file, flagged in review on PR #532. It now goes through the
+// shared `copyText` helper (lib/clipboard) and surfaces a "Couldn't copy"
+// state instead of doing nothing when the write fails.
 vi.mock('../api', () => ({
   fetchHealth: vi.fn(async () => ({})),
   validateSettings: vi.fn(async () => ({ ok: true })),
@@ -41,37 +39,37 @@ vi.mock('../lib/clipboard', () => ({ copyText }));
 import SettingsView from './SettingsView';
 
 const baseProps = {
-  settings: {}, setSetting: vi.fn(), onSave: vi.fn(),
+  settings: { providers: [{ type: 'anthropic', apiKey: 'sk-ant-test-key-123' }] },
+  setSetting: vi.fn(), onSave: vi.fn(),
   theme: 'dark', onThemeChange: vi.fn(),
   skin: 'default', onSkinChange: vi.fn(),
   customTheme: {}, onCustomThemeChange: vi.fn(),
   agentLabel: 'Anton',
-  section: 'updates',
+  section: 'agent',
   onSectionChange: vi.fn(),
   shellUpdate: null,
   onDownloadShellUpdate: vi.fn(),
 };
 
-describe('SettingsView — version details Copy button', () => {
-  it('shows "Copied" only after the shared clipboard helper resolves truthy', async () => {
+describe('SettingsView — provider API key Copy button', () => {
+  it('shows "Copied to clipboard" only after the shared clipboard helper resolves truthy', async () => {
     copyText.mockResolvedValueOnce(true);
 
     render(<SettingsView {...baseProps} />);
-    fireEvent.click(screen.getByRole('button', { name: /Details/ }));
-    fireEvent.click(screen.getByRole('button', { name: /^Copy$/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Copy key to clipboard' }));
 
-    expect(copyText).toHaveBeenCalledWith(expect.stringContaining('App shell'));
-    expect(await screen.findByRole('button', { name: /^Copied$/ })).toBeInTheDocument();
+    expect(copyText).toHaveBeenCalledWith('sk-ant-test-key-123');
+    expect(await screen.findByRole('button', { name: 'Copied to clipboard' })).toBeInTheDocument();
   });
 
   it('shows a "Couldn\'t copy" fallback, not silent nothing, when the clipboard helper resolves false', async () => {
     copyText.mockResolvedValueOnce(false);
 
     render(<SettingsView {...baseProps} />);
-    fireEvent.click(screen.getByRole('button', { name: /Details/ }));
-    fireEvent.click(screen.getByRole('button', { name: /^Copy$/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Copy key to clipboard' }));
 
-    expect(await screen.findByRole('button', { name: /Couldn't copy/ })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /^Copied$/ })).toBeNull();
+    expect(copyText).toHaveBeenCalledWith('sk-ant-test-key-123');
+    expect(await screen.findByText("Couldn't copy")).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Copied to clipboard' })).toBeNull();
   });
 });
