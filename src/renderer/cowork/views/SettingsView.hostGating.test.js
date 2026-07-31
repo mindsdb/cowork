@@ -85,6 +85,14 @@ describe('navItemsForHost — which Settings sections a host offers (ENG-932)', 
     const a = navItemsForHost(true);
     a.pop();
     expect(ids(navItemsForHost(true))).toEqual(['agent', 'appearance', 'channels']);
+    // Desktop returns a copy too — without the spread it would hand back the
+    // module-level NAV_ITEMS itself, and this pop() would corrupt every
+    // later call on both platforms.
+    const b = navItemsForHost(false);
+    b.pop();
+    expect(ids(navItemsForHost(false))).toEqual([
+      'agent', 'appearance', 'channels', 'updates', 'backend', 'account',
+    ]);
   });
 });
 

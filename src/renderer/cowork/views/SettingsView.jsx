@@ -689,7 +689,10 @@ const NAV_ITEMS = [
 const WEB_NAV_IDS = new Set(['agent', 'appearance', 'channels']);
 
 export function navItemsForHost(isWeb) {
-  return isWeb ? NAV_ITEMS.filter((i) => WEB_NAV_IDS.has(i.id)) : NAV_ITEMS;
+  // Fresh array on both branches — filter() already copies for web, and the
+  // desktop spread keeps a caller's mutation from reaching the shared module
+  // constant.
+  return isWeb ? NAV_ITEMS.filter((i) => WEB_NAV_IDS.has(i.id)) : [...NAV_ITEMS];
 }
 
 function SettingsNav({ section, onSectionChange, serverOnline = true }) {
@@ -719,11 +722,11 @@ function SettingsNav({ section, onSectionChange, serverOnline = true }) {
         const active = section === item.id;
         // `!host.isWeb &&`: the offline-disable exists because a dead local
         // server can't accept a save, and Backend stays enabled as the escape
-        // hatch to restart it. On web there is no Backend row — so without this
-        // guard, a falsy `serverOnline` would disable EVERY row with no way out.
-        // `serverOnline` is initialised to true and never polled on web today
-        // (App.jsx), so this is defence against that invariant changing in
-        // another file rather than a live bug.
+        // hatch to restart it. On web there is no Backend row — and
+        // `serverOnline` DOES go false there: refreshData() polls /health on
+        // mount on both platforms (App.jsx), so a transient failure on hosted
+        // (proxy 502, auth blip) would otherwise disable EVERY row with no
+        // way out.
         const disabled = !host.isWeb && !serverOnline && item.id !== 'backend';
         const icon = Ico[item.icon] ? Ico[item.icon](15) : null;
         return (
@@ -3013,13 +3016,13 @@ export default function SettingsView({
             <nav className="settings-list" role="navigation" aria-label="Settings sections">
               {navItemsForHost(host.isWeb).map((item) => {
                 // `!host.isWeb &&`: the offline-disable exists because a dead local
-        // server can't accept a save, and Backend stays enabled as the escape
-        // hatch to restart it. On web there is no Backend row — so without this
-        // guard, a falsy `serverOnline` would disable EVERY row with no way out.
-        // `serverOnline` is initialised to true and never polled on web today
-        // (App.jsx), so this is defence against that invariant changing in
-        // another file rather than a live bug.
-        const disabled = !host.isWeb && !serverOnline && item.id !== 'backend';
+                // server can't accept a save, and Backend stays enabled as the
+                // escape hatch to restart it. On web there is no Backend row —
+                // and `serverOnline` DOES go false there: refreshData() polls
+                // /health on mount on both platforms (App.jsx), so a transient
+                // failure on hosted (proxy 502, auth blip) would otherwise
+                // disable EVERY row with no way out.
+                const disabled = !host.isWeb && !serverOnline && item.id !== 'backend';
                 const icon = Ico[item.icon] ? Ico[item.icon](18) : null;
                 return (
                   <div className="mshell-accordion" key={item.id}>
