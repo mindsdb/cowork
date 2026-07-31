@@ -49,17 +49,13 @@ function makeChild(): EventEmitter & { pid: number; stdout: EventEmitter; stderr
 }
 
 /** A stand-in for the on-disk log WriteStream. An EventEmitter so the code
- *  under test can attach 'error'/'close' listeners; end() releases the handle
- *  by emitting 'close' on the next tick, matching a real stream. */
+ *  under test can attach the 'error' listener that ENG-1187 turns on. */
 function makeLogStream(): EventEmitter & { write: () => boolean; end: () => void } {
   const s = new EventEmitter() as ReturnType<typeof makeLogStream>;
   s.write = () => true;
-  s.end = () => { setTimeout(() => s.emit('close'), 0); };
+  s.end = () => {};
   return s;
 }
-
-/** Every log stream createWriteStream handed out this test, in order. */
-let logStreams: Array<ReturnType<typeof makeLogStream>> = [];
 
 /** Owner token /health answers with, or null to make every probe fail. */
 let healthOwner: string | null = null;
@@ -98,11 +94,8 @@ beforeEach(() => {
   vi.mocked(fs.mkdirSync).mockReturnValue(undefined as never);
   vi.mocked(fs.writeFileSync).mockReturnValue(undefined);
   vi.mocked(fs.chmodSync).mockReturnValue(undefined);
-  logStreams = [];
   vi.mocked(fs.createWriteStream).mockImplementation((() => {
-    const s = makeLogStream();
-    logStreams.push(s);
-    return s as never;
+    return makeLogStream() as never;
   }) as never);
 
   vi.mocked(cp.execFile).mockImplementation(((cmd: string, args: string[], _opts: unknown, cb: unknown) => {
@@ -172,7 +165,6 @@ describe('startServer failure diagnostics', () => {
     // best-effort: the open failure must be swallowed and the app must start.
     vi.mocked(fs.createWriteStream).mockImplementation((() => {
       const s = makeLogStream();
-      logStreams.push(s);
       // Fire the failure the moment the caller has had a chance to listen —
       // if nothing listened this emit would throw synchronously and fail the
       // test, which is exactly the crash this guards against.
