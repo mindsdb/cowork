@@ -349,9 +349,13 @@ async function activateStaged(version: string, minServerVersion?: string): Promi
   try {
     await retryOnTransientLock(() => fs.renameSync(staging, current));
   } catch (err) {
-    // Torn swap — restore the bundle we moved aside so `current` isn't left empty.
+    // Torn swap — restore the bundle we moved aside so `current` isn't left
+    // empty. Retry this too: a transient lock on `previous` must not be what
+    // leaves the app with no slot.
     if (movedCurrent && !fs.existsSync(current)) {
-      try { fs.renameSync(previous, current); } catch { /* best-effort recovery */ }
+      try {
+        await retryOnTransientLock(() => fs.renameSync(previous, current));
+      } catch { /* best-effort recovery */ }
     }
     throw err;
   }

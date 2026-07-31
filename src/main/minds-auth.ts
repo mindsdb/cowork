@@ -805,12 +805,16 @@ export function mindsSignInSettingWrites(apiKey: string, host: string): Array<{ 
 }
 
 // Durable `.env` write for Windows: at sign-in finalize this runs while the old
-// server still holds the file, which EPERM'd onboarding (ENG-1209). Temp-write
-// then atomic rename with retry. Two things matter:
+// server still holds the file open, which EPERM'd onboarding (ENG-1209). The fix
+// is the temp-write-then-atomic-rename with retry — the write lands on a fresh,
+// unlocked path and only the rename contends with the lock. Two things matter:
 //   1. Atomic — a torn/failed write must never truncate `.env` (it holds the
 //      user's OTHER credentials/consent flags), so it's data loss, not a lost key.
-//   2. No `mode` — unsupported on Windows; owner-only perms stay best-effort via
-//      the caller's chmod (matches the other .env writers, which work).
+//   2. mode 0o600 on the temp — it holds the full plaintext key and lives at
+//      that mode through every retry and any crash, so it must be owner-only from
+//      creation, not just after the trailing chmod on the final path. `mode` is
+//      accepted on Windows (it just has limited POSIX semantics) and the temp is
+//      unlocked, so it can't reintroduce the EPERM this write class hit.
 export async function writeEnvFileAtomic(
   targetPath: string,
   content: string,
@@ -818,7 +822,7 @@ export async function writeEnvFileAtomic(
 ): Promise<void> {
   const dir = path.dirname(targetPath);
   const tmpPath = path.join(dir, `${path.basename(targetPath)}.tmp-${process.pid}`);
-  fs.writeFileSync(tmpPath, content, { encoding: 'utf-8' });
+  fs.writeFileSync(tmpPath, content, { encoding: 'utf-8', mode: 0o600 });
   try {
     await retryOnTransientLock(() => fs.renameSync(tmpPath, targetPath), opts);
   } catch (err) {

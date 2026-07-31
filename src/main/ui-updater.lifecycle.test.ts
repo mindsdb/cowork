@@ -17,21 +17,21 @@ const h = vi.hoisted(() => ({
   server: null as string | null,
   manifest: null as unknown,
   tarball: Buffer.from('') as Buffer,
-  // Set to make fs.renameSync throw EPERM for renames whose SOURCE contains
-  // this substring (fake a Windows lock on one swap step). Null = real rename.
-  renameFailFromSubstr: null as string | null,
+  // Set to make fs.renameSync throw EPERM whenever the predicate returns true
+  // for a rename's SOURCE path (fake a Windows lock on a chosen swap step).
+  // Null = real rename, so every other test is unaffected.
+  shouldFailRename: null as ((from: string) => boolean) | null,
 }));
 
-// Real fs except renameSync, which h.renameFailFromSubstr can force to fail
-// (fs exports are non-configurable in ESM, so vi.spyOn can't; default passes
-// through so other tests are unaffected).
+// Real fs except renameSync, which h.shouldFailRename can force to fail
+// (fs exports are non-configurable in ESM, so vi.spyOn can't).
 vi.mock('fs', async (importActual) => {
   const actual = await importActual<typeof import('fs')>();
   return {
     ...actual,
     default: actual,
     renameSync: (from: fs.PathLike, to: fs.PathLike) => {
-      if (h.renameFailFromSubstr && String(from).includes(h.renameFailFromSubstr)) {
+      if (h.shouldFailRename && h.shouldFailRename(String(from))) {
         const err: NodeJS.ErrnoException = new Error('EPERM: operation not permitted, rename');
         err.code = 'EPERM';
         throw err;
@@ -94,7 +94,7 @@ beforeEach(() => {
   h.server = null;
   h.manifest = null;
   h.tarball = Buffer.from('');
-  h.renameFailFromSubstr = null;
+  h.shouldFailRename = null;
   delete process.env.OTA_UI;
 });
 
@@ -250,7 +250,7 @@ describe('applyUIUpdate (apply-time gate)', () => {
     seedSlot('current', '2.26.7.10.1'); // prior good bundle, newer than bundled
     stageManifest('2.26.7.13.1', '2.26.7.6.1');
     h.server = '2.26.7.13.1';
-    h.renameFailFromSubstr = `${path.sep}staging`; // fail only staging → current
+    h.shouldFailRename = (from) => from.includes(`${path.sep}staging`); // only staging → current
     const ui = await loadUpdater();
 
     // Declines the update instead of propagating the EPERM…
@@ -259,6 +259,27 @@ describe('applyUIUpdate (apply-time gate)', () => {
     expect(ui.getCachedVersion()).toBe('2.26.7.10.1');
     expect(fs.existsSync(path.join(slotDir('current'), 'index.html'))).toBe(true);
   }, 15000); // permanent-fail path exhausts the retry backoff before recovering
+
+  // The recovery rename itself must be retried: a transient lock on `previous`
+  // must not be what leaves the app with no slot. Fail staging→current forever
+  // (to trigger recovery) and previous→current twice (to force recovery retries),
+  // then assert the prior slot is restored.
+  it('retries the recovery rename until the transient lock on `previous` clears', async () => {
+    seedSlot('current', '2.26.7.10.1');
+    stageManifest('2.26.7.13.1', '2.26.7.6.1');
+    h.server = '2.26.7.13.1';
+    let prevTries = 0;
+    h.shouldFailRename = (from) => {
+      if (from.includes(`${path.sep}staging`)) return true; // never activates
+      if (from.includes(`${path.sep}previous`)) return ++prevTries <= 2; // recovery clears on 3rd
+      return false;
+    };
+    const ui = await loadUpdater();
+
+    await expect(ui.applyUIUpdate()).resolves.toBe(false);
+    expect(prevTries).toBe(3); // recovery rename went through retryOnTransientLock
+    expect(ui.getCachedVersion()).toBe('2.26.7.10.1'); // prior slot restored
+  }, 15000);
 });
 
 describe('bundled-version misconfiguration guard', () => {
