@@ -193,16 +193,44 @@ export function getServerLogPath(): string {
   return path.join(app.getPath('logs'), 'cowork-server.log');
 }
 
-function openLogStream(): void {
+async function openLogStream(): Promise<void> {
+  /* Close the previous stream and wait for its handle to actually release
+     BEFORE we truncate the same path. end() only *schedules* the close; on
+     Windows, opening the file for 'w' while the old handle is still closing is
+     itself an EPERM source (POSIX tolerates it, Windows share modes do not).
+     Bounded so a wedged handle can never stall server startup — after the
+     timeout we open anyway and let the open's own error handling take over. */
+  const prev = logStream;
+  logStream = null;
+  if (prev) {
+    await new Promise<void>((resolve) => {
+      let settled = false;
+      const done = () => { if (!settled) { settled = true; resolve(); } };
+      prev.once('close', done);
+      prev.once('error', done); // a prev that errored still frees the path
+      const t = setTimeout(done, 2_000);
+      (t as { unref?: () => void }).unref?.();
+      prev.end();
+    });
+  }
   try {
-    logStream?.end();
     const logPath = getServerLogPath();
     /* Electron does not guarantee the logs directory exists; create it
        here, at the one point we actually open the stream for writing. */
     fs.mkdirSync(path.dirname(logPath), { recursive: true });
-    logStream = fs.createWriteStream(logPath, { flags: 'w' });
+    const stream = fs.createWriteStream(logPath, { flags: 'w' });
+    /* A failure to open surfaces ASYNCHRONOUSLY as an 'error' event, not as a
+       throw from createWriteStream — so the try/catch alone never sees it. With
+       no 'error' listener Node re-raises it as an uncaught exception, which
+       Electron turns into a fatal "A JavaScript error occurred in the main
+       process" dialog and blocks the whole app from starting (ENG-1187: EPERM
+       on the log file — the path held by an antivirus scan or an orphaned prior
+       sidecar). Logging to disk is best-effort: degrade to no disk log, keeping
+       the in-memory recentStderr tail and the running app. */
+    stream.on('error', () => { if (logStream === stream) logStream = null; });
+    logStream = stream;
   } catch {
-    /* Logging to disk is best-effort — never let it block server startup. */
+    /* Synchronous failures (e.g. mkdir denied) — same best-effort stance. */
     logStream = null;
   }
 }
@@ -629,7 +657,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     // we can kill the entire tree (uv + grandchild python) with a single
     // process.kill(-pid). Without this, SIGTERM only reaches `uv` and
     // the grandchild python survives, holding the port.
-    openLogStream();
+    await openLogStream();
 
     const child = spawn(spawnCmd, spawnArgs, {
       cwd: spawnCwd,
