@@ -3,6 +3,7 @@ import { stopServer, startServer, isServerRunning, isServerStarting, getServerPo
 import { checkInstallStatus } from './installer';
 import { coworkHome, coworkEnvPath, coworkStatePath } from './cowork-home';
 import { getInstallationId } from './installation-id';
+import { retryOnTransientLock } from './fs-retry';
 import {
   MINDS_API_HOST,
   MINDS_KEYCLOAK_BASE,
@@ -803,16 +804,15 @@ export function mindsSignInSettingWrites(apiKey: string, host: string): Array<{ 
   ];
 }
 
-// Windows raises EPERM/EBUSY/EACCES on open/rename when the target is briefly
-// held by another handle — the running cowork-server subprocess reading `.env`,
-// an antivirus scan of the freshly-written file, or an orphaned prior sidecar.
-// The .env write at sign-in finalize hits exactly this: it runs while the old
-// server is still up (the restart happens later) and blocked onboarding on
-// Windows with "EPERM: operation not permitted, open '…\.cowork-stable\.env'"
-// (ENG-1209) — the same share-mode class as the log-stream EPERM in ENG-1187.
+// Write `.env` durably on Windows, where the target is briefly held by another
+// handle — the running cowork-server subprocess reading `.env`, an antivirus
+// scan of the freshly-written file, or an orphaned prior sidecar. The write at
+// sign-in finalize hits exactly this: it runs while the old server is still up
+// (the restart happens later) and blocked onboarding on Windows with
+// "EPERM: operation not permitted, open '…\.cowork-stable\.env'" (ENG-1209).
 //
-// Write to a temp sibling then atomically rename over the target, retrying the
-// rename briefly so a transient lock clears. Two properties matter here:
+// Write a temp sibling then atomically rename over the target, retrying the
+// rename via the shared transient-lock helper. Two properties matter here:
 //   1. Atomic — a retry-exhausted or torn write must never leave a truncated
 //      `.env`; that file holds the user's OTHER credentials/consent flags, so a
 //      partial write is data loss, not just a lost key.
@@ -825,24 +825,14 @@ export async function writeEnvFileAtomic(
   content: string,
   opts: { attempts?: number; baseDelayMs?: number } = {},
 ): Promise<void> {
-  const attempts = opts.attempts ?? 6;
-  const baseDelayMs = opts.baseDelayMs ?? 60;
   const dir = path.dirname(targetPath);
   const tmpPath = path.join(dir, `${path.basename(targetPath)}.tmp-${process.pid}`);
   fs.writeFileSync(tmpPath, content, { encoding: 'utf-8' });
-  for (let i = 0; i < attempts; i++) {
-    try {
-      fs.renameSync(tmpPath, targetPath);
-      return;
-    } catch (err: any) {
-      const retriable = err?.code === 'EPERM' || err?.code === 'EBUSY' || err?.code === 'EACCES';
-      if (i < attempts - 1 && retriable) {
-        await new Promise((resolve) => setTimeout(resolve, baseDelayMs * (i + 1)));
-        continue;
-      }
-      try { fs.rmSync(tmpPath, { force: true }); } catch { /* best-effort cleanup */ }
-      throw err;
-    }
+  try {
+    await retryOnTransientLock(() => fs.renameSync(tmpPath, targetPath), opts);
+  } catch (err) {
+    try { fs.rmSync(tmpPath, { force: true }); } catch { /* best-effort cleanup */ }
+    throw err;
   }
 }
 

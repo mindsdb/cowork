@@ -9,6 +9,7 @@ import { parseCalVer } from '../shared/version';
 import { buildKindStrict } from './cowork-home';
 import { getAppDisplayVersion } from './server-source';
 import { fetchServerVersions } from './server-process';
+import { retryOnTransientLock } from './fs-retry';
 
 export type { UIManifest };
 
@@ -323,8 +324,17 @@ async function downloadAndStage(manifest: UIManifest): Promise<boolean> {
   return true;
 }
 
-/** Activate a staged bundle: current → previous, staging → current. */
-function activateStaged(version: string, minServerVersion?: string): void {
+/** Activate a staged bundle: current → previous, staging → current.
+ *
+ *  The rm/rename steps race Windows share-mode locks (the renderer holding a
+ *  file in `current`, AV scanning the freshly-extracted `staging`) — the same
+ *  EPERM class as ENG-1209/ENG-1187 — so each is retried. Critically the swap
+ *  is multi-step: if `staging → current` fails after `current` has already been
+ *  moved aside, the app would be left with NO active slot and can't load its UI
+ *  on the next boot. So on a mid-swap failure we put `current` back before
+ *  rethrowing, leaving the previously-active bundle intact for the caller to
+ *  keep serving. */
+async function activateStaged(version: string, minServerVersion?: string): Promise<void> {
   const current = getCurrentDir();
   const previous = getPreviousDir();
   const staging = getStagingDir();
@@ -336,11 +346,21 @@ function activateStaged(version: string, minServerVersion?: string): void {
   if (minServerVersion) meta.minServerVersion = minServerVersion;
   fs.writeFileSync(slotMetaFile(staging), JSON.stringify(meta), 'utf-8');
 
-  rmDir(previous);
-  if (fs.existsSync(current)) {
-    fs.renameSync(current, previous);
+  await retryOnTransientLock(() => rmDir(previous));
+  const movedCurrent = fs.existsSync(current);
+  if (movedCurrent) {
+    await retryOnTransientLock(() => fs.renameSync(current, previous));
   }
-  fs.renameSync(staging, current);
+  try {
+    await retryOnTransientLock(() => fs.renameSync(staging, current));
+  } catch (err) {
+    // Recover the torn swap: restore the bundle we moved aside so the app never
+    // ends up with an empty `current` slot.
+    if (movedCurrent && !fs.existsSync(current)) {
+      try { fs.renameSync(previous, current); } catch { /* best-effort recovery */ }
+    }
+    throw err;
+  }
   console.log(`[ui-updater] activated UI ${version}`);
 }
 
@@ -421,29 +441,43 @@ export async function applyUIUpdate(): Promise<boolean> {
   const ok = await downloadAndStage(manifest);
   if (!ok) return false;
 
-  // serverCompatSkip above verified this version against the current server, so
-  // open the serve-gate for exactly this slot — otherwise the health-checked
-  // reload right after activation would fall back to bundled and "succeed"
-  // without ever loading the new (constrained) bundle.
+  // The swap can fail on a transient Windows lock even after retries; if so it
+  // has already restored the prior slot, so treat it as "no update this pass"
+  // and keep serving what we had rather than propagating and risking a torn
+  // reload.
+  try {
+    await activateStaged(manifest.version, manifest.minServerVersion);
+  } catch (err) {
+    console.error('[ui-updater] activation failed — kept the existing UI slot', err);
+    return false;
+  }
+
+  // Activation succeeded: serverCompatSkip above verified this version against
+  // the current server, so open the serve-gate for exactly this slot —
+  // otherwise the health-checked reload right after activation would fall back
+  // to bundled and "succeed" without ever loading the new (constrained) bundle.
   _verifiedCompatVersion = manifest.version;
-  activateStaged(manifest.version, manifest.minServerVersion);
   return true;
 }
 
 /** Roll back the active OTA bundle: quarantine the version we're leaving (so it
  *  isn't re-activated), restore the previous slot if there is one, otherwise
  *  fall through to the bundled renderer. Provenance travels with each slot, so
- *  getCachedVersion() reflects the restored state automatically. */
-export function rollbackUI(): void {
+ *  getCachedVersion() reflects the restored state automatically.
+ *
+ *  The quarantine is recorded synchronously (before the first await), so even a
+ *  fire-and-forget caller can't re-activate the bad version; the rm/rename that
+ *  follow are retried against the same Windows locks activateStaged guards. */
+export async function rollbackUI(): Promise<void> {
   const current = getCurrentDir();
   const previous = getPreviousDir();
 
   const failed = readSlotVersion(current);
   if (failed) recordRejectedVersion(failed);
 
-  rmDir(current);
+  await retryOnTransientLock(() => rmDir(current));
   if (fs.existsSync(previous)) {
-    fs.renameSync(previous, current);
+    await retryOnTransientLock(() => fs.renameSync(previous, current));
   }
 }
 

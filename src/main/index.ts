@@ -330,7 +330,11 @@ function armOtaBootSelfHeal(win: BrowserWindow) {
   const recover = (why: string) => {
     disarm();
     console.error(`[main] OTA renderer ${why} at boot — rolling back to bundled`);
-    rollbackUI();
+    // rollbackUI() records the quarantine synchronously before its first await,
+    // so fire-and-forget is safe: the bad version can't be re-activated, and we
+    // load the app-bundled renderer immediately regardless of the async cache
+    // shuffle (it doesn't depend on the restored slot).
+    void rollbackUI();
     if (!win.isDestroyed()) win.loadFile(getBundledPath());
   };
   const onOk = () => disarm();

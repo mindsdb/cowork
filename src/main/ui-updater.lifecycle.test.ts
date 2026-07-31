@@ -17,7 +17,31 @@ const h = vi.hoisted(() => ({
   server: null as string | null,
   manifest: null as unknown,
   tarball: Buffer.from('') as Buffer,
+  // When set, fs.renameSync throws EPERM for any rename whose SOURCE path
+  // contains this substring — lets a test force a Windows-style lock on a
+  // specific step of the OTA swap. Null = real renameSync (all other tests).
+  renameFailFromSubstr: null as string | null,
 }));
+
+// Real fs on a temp dir, EXCEPT renameSync, which a test can force to fail on a
+// chosen swap step (h.renameFailFromSubstr). fs exports are non-configurable in
+// ESM so this can't be done with vi.spyOn; default is pure passthrough so every
+// other test is unaffected.
+vi.mock('fs', async (importActual) => {
+  const actual = await importActual<typeof import('fs')>();
+  return {
+    ...actual,
+    default: actual,
+    renameSync: (from: fs.PathLike, to: fs.PathLike) => {
+      if (h.renameFailFromSubstr && String(from).includes(h.renameFailFromSubstr)) {
+        const err: NodeJS.ErrnoException = new Error('EPERM: operation not permitted, rename');
+        err.code = 'EPERM';
+        throw err;
+      }
+      return actual.renameSync(from, to);
+    },
+  };
+});
 
 vi.mock('electron', () => ({
   app: { getPath: () => h.userData, getVersion: () => h.bundled, isPackaged: true },
@@ -72,6 +96,7 @@ beforeEach(() => {
   h.server = null;
   h.manifest = null;
   h.tarball = Buffer.from('');
+  h.renameFailFromSubstr = null;
   delete process.env.OTA_UI;
 });
 
@@ -161,7 +186,7 @@ describe('rollbackUI (quarantine + provenance rotation)', () => {
     seedSlot('current', '2.26.7.13.1');
     const ui = await loadUpdater();
 
-    ui.rollbackUI();
+    await ui.rollbackUI();
 
     // The failed (current) version is quarantined so it isn't re-activated.
     expect(JSON.parse(fs.readFileSync(rejectedFile(), 'utf-8')).version).toBe('2.26.7.13.1');
@@ -173,7 +198,7 @@ describe('rollbackUI (quarantine + provenance rotation)', () => {
   it('falls back to bundled when there is no previous slot', async () => {
     seedSlot('current', '2.26.7.13.1');
     const ui = await loadUpdater();
-    ui.rollbackUI();
+    await ui.rollbackUI();
     expect(ui.isServingOta()).toBe(false);
     expect(ui.getCachedVersion()).toBeNull();
   });
@@ -219,6 +244,24 @@ describe('applyUIUpdate (apply-time gate)', () => {
     const ui = await loadUpdater();
     await expect(ui.applyUIUpdate()).resolves.toBe(false);
   });
+
+  // A Windows share-mode lock can EPERM the staging→current rename AFTER current
+  // has been moved aside — the exact torn-state that would leave the app with no
+  // UI slot on next boot. The swap must restore the prior bundle and the update
+  // must decline cleanly rather than throw. (ENG-1209 sibling / OTA edge.)
+  it('recovers the prior slot when the final swap rename is locked (EPERM)', async () => {
+    seedSlot('current', '2.26.7.10.1'); // prior good bundle, newer than bundled
+    stageManifest('2.26.7.13.1', '2.26.7.6.1');
+    h.server = '2.26.7.13.1';
+    h.renameFailFromSubstr = `${path.sep}staging`; // fail only staging → current
+    const ui = await loadUpdater();
+
+    // Declines the update instead of propagating the EPERM…
+    await expect(ui.applyUIUpdate()).resolves.toBe(false);
+    // …and the prior bundle is intact, not a torn/empty current slot.
+    expect(ui.getCachedVersion()).toBe('2.26.7.10.1');
+    expect(fs.existsSync(path.join(slotDir('current'), 'index.html'))).toBe(true);
+  }, 15000); // permanent-fail path exhausts the retry backoff before recovering
 });
 
 describe('bundled-version misconfiguration guard', () => {
