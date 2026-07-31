@@ -78,10 +78,11 @@ describe('writeEnvFileAtomic', () => {
     expect(fs.readdirSync(dir)).toEqual(['.env']);
   });
 
-  it('passes NO mode option to writeFileSync (mode is unsupported on Windows)', async () => {
+  it('creates the temp file owner-only (0o600) — the secret must never be world-readable', async () => {
     await writeEnvFileAtomic(target, 'X=1\n');
-    // encoding is fine; a `mode` key is exactly what tripped Windows (ENG-1209).
-    expect((control.lastWriteOpts as any)?.mode).toBeUndefined();
+    // The temp holds the full plaintext key through every retry / crash window,
+    // so it must be 0o600 from creation, not only after the final chmod (ENG-1209).
+    expect((control.lastWriteOpts as any)?.mode).toBe(0o600);
   });
 
   it('retries the rename through a transient EPERM and then succeeds', async () => {
