@@ -48,7 +48,10 @@ export function ConfirmModal({
       closeOnEsc={!busy}
     >
       <ModalHeader id="confirm-modal-title" title={title} />
-      {message && <ModalBody>{message}</ModalBody>}
+      {/* ModalBody sets no text typography — carry the muted body style
+          (matches ModalHeader's s-h3) so the message stays 14px/--ink-2
+          rather than inheriting the larger, darker root default. */}
+      {message && <ModalBody><div className="s-body">{message}</div></ModalBody>}
       <ModalFooter>
         <Button variant="subtle" onClick={onClose} disabled={busy}>
           {cancelLabel}
