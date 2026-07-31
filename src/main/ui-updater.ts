@@ -9,6 +9,7 @@ import { parseCalVer } from '../shared/version';
 import { buildKindStrict } from './cowork-home';
 import { getAppDisplayVersion } from './server-source';
 import { fetchServerVersions } from './server-process';
+import { retryOnTransientLock } from './fs-retry';
 
 export type { UIManifest };
 
@@ -27,6 +28,20 @@ const CACHE_META_SCHEMA = 2;
 // passed. null = nothing verified yet (fail-closed: a constrained slot at boot
 // serves bundled until proven compatible).
 let _verifiedCompatVersion: string | null = null;
+
+// Serialize the cache-slot shuffle. activateStaged and rollbackUI both moved
+// from sync to async (retry backoff), so the current/previous/staging rename
+// dance is no longer atomic w.r.t. the event loop and the two paths could
+// interleave — e.g. a boot-time rollback still retrying a locked `current`
+// while the update poll starts an activate on the same dirs. This promise chain
+// forces every shuffle to run to completion before the next begins. A rejection
+// never breaks the chain (the next op still runs).
+let _swapChain: Promise<unknown> = Promise.resolve();
+function serializeSwap<T>(fn: () => Promise<T>): Promise<T> {
+  const run = _swapChain.then(fn, fn);
+  _swapChain = run.then(() => undefined, () => undefined);
+  return run;
+}
 
 // Whether UI OTA hot-updates run in this build. Gated by build channel + env
 // (see otaUiEnabled) instead of a hardcoded constant (ENG-670): ON for prod
@@ -323,8 +338,12 @@ async function downloadAndStage(manifest: UIManifest): Promise<boolean> {
   return true;
 }
 
-/** Activate a staged bundle: current → previous, staging → current. */
-function activateStaged(version: string, minServerVersion?: string): void {
+/** Activate a staged bundle: current → previous, staging → current.
+ *  The rm/rename steps race Windows locks (renderer/AV holding a file), so each
+ *  retries. And the swap is multi-step: if `staging → current` fails after
+ *  `current` was moved aside, the app would be left with NO active slot — so on
+ *  a mid-swap failure we put `current` back before rethrowing. */
+async function activateStaged(version: string, minServerVersion?: string): Promise<void> {
   const current = getCurrentDir();
   const previous = getPreviousDir();
   const staging = getStagingDir();
@@ -336,11 +355,24 @@ function activateStaged(version: string, minServerVersion?: string): void {
   if (minServerVersion) meta.minServerVersion = minServerVersion;
   fs.writeFileSync(slotMetaFile(staging), JSON.stringify(meta), 'utf-8');
 
-  rmDir(previous);
-  if (fs.existsSync(current)) {
-    fs.renameSync(current, previous);
+  await retryOnTransientLock(() => rmDir(previous));
+  const movedCurrent = fs.existsSync(current);
+  if (movedCurrent) {
+    await retryOnTransientLock(() => fs.renameSync(current, previous));
   }
-  fs.renameSync(staging, current);
+  try {
+    await retryOnTransientLock(() => fs.renameSync(staging, current));
+  } catch (err) {
+    // Torn swap — restore the bundle we moved aside so `current` isn't left
+    // empty. Retry this too: a transient lock on `previous` must not be what
+    // leaves the app with no slot.
+    if (movedCurrent && !fs.existsSync(current)) {
+      try {
+        await retryOnTransientLock(() => fs.renameSync(previous, current));
+      } catch { /* best-effort recovery */ }
+    }
+    throw err;
+  }
   console.log(`[ui-updater] activated UI ${version}`);
 }
 
@@ -399,8 +431,21 @@ export async function checkForUIUpdate(): Promise<UpdateCheckResult> {
 /**
  * Download, verify, stage, and activate a UI update in one shot.
  * Returns true if the update was applied successfully.
+ *
+ * Single-flighted: both the manual apply (UI_UPDATE_APPLY) and the boot/poll
+ * reach here, and downloadAndStage's `rmDir(staging)` + extract runs outside the
+ * swap chain — so without this two runs could overlap on the staging dir (one
+ * extracting while the other renames staging→current). Concurrent callers share
+ * the one in-flight run.
  */
-export async function applyUIUpdate(): Promise<boolean> {
+let _applyInFlight: Promise<boolean> | null = null;
+export function applyUIUpdate(): Promise<boolean> {
+  if (_applyInFlight) return _applyInFlight;
+  _applyInFlight = runApplyUIUpdate().finally(() => { _applyInFlight = null; });
+  return _applyInFlight;
+}
+
+async function runApplyUIUpdate(): Promise<boolean> {
   if (!otaEnabled()) return false;
   warnIfBundledVersionNotCalVer();
   const manifest = await fetchManifest();
@@ -421,30 +466,44 @@ export async function applyUIUpdate(): Promise<boolean> {
   const ok = await downloadAndStage(manifest);
   if (!ok) return false;
 
-  // serverCompatSkip above verified this version against the current server, so
-  // open the serve-gate for exactly this slot — otherwise the health-checked
-  // reload right after activation would fall back to bundled and "succeed"
-  // without ever loading the new (constrained) bundle.
+  // If the swap fails after retries it has already restored the prior slot, so
+  // treat it as "no update this pass" rather than propagating a torn reload.
+  try {
+    await serializeSwap(() => activateStaged(manifest.version, manifest.minServerVersion));
+  } catch (err) {
+    console.error('[ui-updater] activation failed — kept the existing UI slot', err);
+    return false;
+  }
+
+  // Open the serve-gate for this (compat-verified) slot only on success —
+  // otherwise the reload right after activation falls back to bundled and
+  // "succeeds" without ever loading the new bundle.
   _verifiedCompatVersion = manifest.version;
-  activateStaged(manifest.version, manifest.minServerVersion);
   return true;
 }
 
 /** Roll back the active OTA bundle: quarantine the version we're leaving (so it
- *  isn't re-activated), restore the previous slot if there is one, otherwise
- *  fall through to the bundled renderer. Provenance travels with each slot, so
- *  getCachedVersion() reflects the restored state automatically. */
-export function rollbackUI(): void {
+ *  isn't re-activated), restore the previous slot if there is one, else fall
+ *  through to the bundled renderer. Provenance travels with each slot, so
+ *  getCachedVersion() reflects the restored state. The quarantine is recorded
+ *  synchronously (before the first await), so a fire-and-forget caller is safe;
+ *  the rm/rename retry the same Windows locks activateStaged guards. */
+export async function rollbackUI(): Promise<void> {
   const current = getCurrentDir();
   const previous = getPreviousDir();
 
   const failed = readSlotVersion(current);
   if (failed) recordRejectedVersion(failed);
 
-  rmDir(current);
-  if (fs.existsSync(previous)) {
-    fs.renameSync(previous, current);
-  }
+  // Quarantine above stays synchronous (before the first await) so a
+  // fire-and-forget caller can't re-activate the bad version; the slot shuffle
+  // runs through the shared chain so it can't interleave with an activate.
+  await serializeSwap(async () => {
+    await retryOnTransientLock(() => rmDir(current));
+    if (fs.existsSync(previous)) {
+      await retryOnTransientLock(() => fs.renameSync(previous, current));
+    }
+  });
 }
 
 /** Re-verify the currently-active OTA slot against the running server and open

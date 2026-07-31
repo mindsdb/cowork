@@ -3,6 +3,7 @@ import { stopServer, startServer, isServerRunning, isServerStarting, getServerPo
 import { checkInstallStatus } from './installer';
 import { coworkHome, coworkEnvPath, coworkStatePath } from './cowork-home';
 import { getInstallationId } from './installation-id';
+import { retryOnTransientLock } from './fs-retry';
 import {
   MINDS_API_HOST,
   MINDS_KEYCLOAK_BASE,
@@ -12,6 +13,7 @@ import {
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import * as crypto from 'crypto';
 
 const KEYCLOAK_BASE = MINDS_KEYCLOAK_BASE;
 const KEYCLOAK_REALM = 'mindsdb';
@@ -803,6 +805,51 @@ export function mindsSignInSettingWrites(apiKey: string, host: string): Array<{ 
   ];
 }
 
+// Durable `.env` write for Windows: at sign-in finalize this runs while the old
+// server still holds the file open, which EPERM'd onboarding (ENG-1209). The fix
+// is the temp-write-then-atomic-rename with retry — the write lands on a fresh,
+// unlocked path and only the rename contends with the lock. Two things matter:
+//   1. Atomic — a torn/failed write must never truncate `.env` (it holds the
+//      user's OTHER credentials/consent flags), so it's data loss, not a lost key.
+//   2. mode 0o600 on the temp — it holds the full plaintext key and lives at
+//      that mode through every retry and any crash, so it must be owner-only from
+//      creation, not just after the trailing chmod on the final path. `mode` is
+//      accepted on Windows (it just has limited POSIX semantics) and the temp is
+//      unlocked, so it can't reintroduce the EPERM this write class hit.
+export async function writeEnvFileAtomic(
+  targetPath: string,
+  content: string,
+  opts: { attempts?: number; baseDelayMs?: number } = {},
+): Promise<void> {
+  const dir = path.dirname(targetPath);
+  const base = path.basename(targetPath);
+  // Sweep only STALE orphaned temps from a prior hard-kill / power-loss between
+  // the write and the rename — they hold the full plaintext key, so they must
+  // never linger. The age threshold is what lets this coexist with the random
+  // suffix below: a concurrent writer's in-flight temp is fresh and spared, so
+  // the sweep can't yank it out from under a live rename.
+  const STALE_TMP_MS = 5 * 60 * 1000;
+  try {
+    const now = Date.now();
+    for (const name of fs.readdirSync(dir)) {
+      if (!name.startsWith(`${base}.tmp-`)) continue;
+      const p = path.join(dir, name);
+      try {
+        if (now - fs.statSync(p).mtimeMs > STALE_TMP_MS) fs.rmSync(p, { force: true });
+      } catch { /* best-effort — gone already or unreadable */ }
+    }
+  } catch { /* dir unreadable — nothing to sweep */ }
+  // Random suffix (not pid alone) so two writers can never collide on the name.
+  const tmpPath = path.join(dir, `${base}.tmp-${process.pid}-${crypto.randomBytes(6).toString('hex')}`);
+  fs.writeFileSync(tmpPath, content, { encoding: 'utf-8', mode: 0o600 });
+  try {
+    await retryOnTransientLock(() => fs.renameSync(tmpPath, targetPath), opts);
+  } catch (err) {
+    try { fs.rmSync(tmpPath, { force: true }); } catch { /* best-effort cleanup */ }
+    throw err;
+  }
+}
+
 export async function writeMindsKeyToEnvAndRestart(apiKey: string): Promise<void> {
   const homeDir = coworkHome();
   // ~/.cowork normally exists by the time SSO finalize runs (the server
@@ -813,15 +860,22 @@ export async function writeMindsKeyToEnvAndRestart(apiKey: string): Promise<void
   }
   const envPath = coworkEnvPath();
   const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
-  // Owner-only perms — this file holds the plaintext API key for the CLI. The
-  // `mode` option applies when the file is CREATED, closing the window where a
-  // brand-new `.env` would briefly exist world-readable (0644) before a
-  // trailing chmod. Previously the `POST /settings/raw` sync chmod'd it
-  // server-side; sign-in now writes the DB directly (not via /raw), so do it
-  // here. The explicit chmod still covers the pre-existing-file case (`mode` is
-  // ignored on overwrite). Best-effort: unsupported on some filesystems (Windows).
-  fs.writeFileSync(envPath, buildMindsEnvContent(existing, apiKey, MINDS_API_HOST), { encoding: 'utf-8', mode: 0o600 });
-  try { fs.chmodSync(envPath, 0o600); } catch { /* best-effort */ }
+  // Atomic + lock-tolerant write that wedged onboarding on Windows (ENG-1209).
+  // NOT fatal on the installed path: the DB sync below is the authoritative
+  // credential store, so an exhausted-retry .env failure must not abort there and
+  // strand the user with an already-revoked key — that abort WAS the wedge. But
+  // on the pre-install path there IS no DB sync (early-return below), so .env is
+  // the only store and a failed write must still surface — swallowing it there
+  // would report success with the credential saved nowhere.
+  let envWriteError: unknown = null;
+  try {
+    await writeEnvFileAtomic(envPath, buildMindsEnvContent(existing, apiKey, MINDS_API_HOST));
+    // Owner-only perms (plaintext API key); best-effort, a no-op on Windows.
+    try { fs.chmodSync(envPath, 0o600); } catch { /* best-effort */ }
+  } catch (err) {
+    envWriteError = err;
+    console.warn('[minds-auth] .env write failed', err);
+  }
 
   // Ensure state.json has minds-cloud as the active provider so the server
   // doesn't default to Anthropic on first boot (state.json may not exist yet
@@ -849,6 +903,9 @@ export async function writeMindsKeyToEnvAndRestart(apiKey: string): Promise<void
   // completes, at which point handleInstallComplete syncs the credentials.
   const { antonInstalled } = await checkInstallStatus();
   if (!antonInstalled) {
+    // No DB to fall back to on this path — .env IS the store here, so a failed
+    // write is fatal and must surface rather than reporting a false success.
+    if (envWriteError) throw envWriteError;
     console.log('[minds-auth] server not installed yet — skipping restart; setup will sync creds after install');
     return;
   }

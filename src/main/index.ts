@@ -330,7 +330,11 @@ function armOtaBootSelfHeal(win: BrowserWindow) {
   const recover = (why: string) => {
     disarm();
     console.error(`[main] OTA renderer ${why} at boot — rolling back to bundled`);
-    rollbackUI();
+    // Fire-and-forget: rollbackUI records the quarantine synchronously before
+    // its first await, and the bundled renderer we load below doesn't depend on
+    // the async cache shuffle. Swallow a rejected cleanup so it can't become an
+    // unhandled rejection and take down the main process mid-self-heal.
+    void rollbackUI().catch((err) => console.error('[main] UI rollback failed', err));
     if (!win.isDestroyed()) win.loadFile(getBundledPath());
   };
   const onOk = () => disarm();
