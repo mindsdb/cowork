@@ -68,8 +68,33 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
   const [activeMethodId, setActiveMethodId] = useState(
     () => (conversationId ? getSelectedMethod(conversationId) : null)
   );
+  // Generic "name this connection" label — submitted as `user_label`
+  // alongside whatever per-connector fields the form collects.
+  const [userLabel, setUserLabel] = useState(spec?.user_label || '');
 
   useEffect(() => () => { if (oauthPollRef.current) clearInterval(oauthPollRef.current); }, []);
+
+  // `useState`'s initial value is only read on mount. This panel is reused
+  // across different connections without unmounting (e.g. the store swaps
+  // `spec` under it), so `spec.user_label` changing on its own wouldn't
+  // update `userLabel` — it would keep showing whatever the *first*
+  // connection's value was. Reset explicitly whenever the underlying
+  // connection identity changes (mirrors how `spec._existing_name` already
+  // identifies "which connection is this panel for").
+  useEffect(() => {
+    setUserLabel(spec?.user_label || '');
+  }, [spec?._existing_name]);
+
+  // After a successful save, prefer the authoritative label the server
+  // resolved (may differ from what was typed — e.g. de-duplicated with a
+  // " 2" suffix, or a computed default when none was typed) over the
+  // locally-typed value. Only overwrites when the store actually carries
+  // one; no-op until whatever patched the form in also threads it through.
+  useEffect(() => {
+    if (spec?._is_success && spec?.user_label) {
+      setUserLabel(spec.user_label);
+    }
+  }, [spec?._is_success, spec?.user_label]);
 
   useEffect(() => {
     setSpec(getForm(conversationId));
@@ -412,6 +437,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
           access_token: result.access_token || '',
           scope: result.scope || (oauthMeta.scopes || []).join(' '),
           token_type: result.token_type || 'Bearer',
+          user_label: userLabel,
         };
         // OAuth submits go through the connector-aware save endpoint —
         // not the legacy datasources path that validates against
@@ -436,6 +462,10 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
               name: connectionName,
               values: oauthValues,
             });
+            // Reconcile with the authoritative value — the server may
+            // have de-duplicated it (e.g. appended " 2") or computed a
+            // default when none was typed.
+            if (saved.user_label) setUserLabel(saved.user_label);
             // Flip the form into its success branch so the user gets
             // a clear "connected" affordance + the standard
             // Close / View connectors actions.
@@ -500,7 +530,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
           formSpec: wireMethodId
             ? { ...spec, auth_method: wireMethodId, selected_method: wireMethodId }
             : spec,
-          values: values || {},
+          values: { ...(values || {}), user_label: userLabel },
           skipped: skipped || [],
           name: connectionName,
           method: wireMethodId || null,
@@ -516,7 +546,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
           formId: spec.form_id,
           conversationId,
           formSpec: spec,
-          values: values || {},
+          values: { ...(values || {}), user_label: userLabel },
           skipped: skipped || [],
           name: connectionName,
           method: wireMethodId || null,
@@ -803,6 +833,34 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
                 >
                   {Ico.close ? Ico.close(11) : <span style={{ fontSize: 14, lineHeight: 1 }}>×</span>}
                 </button>
+              </div>
+            )}
+            {!spec._is_success && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 10 }}>
+                <label htmlFor="connection-user-label" style={{
+                  fontSize: 12, color: 'var(--ink-3)', fontWeight: 500,
+                }}>
+                  Label
+                </label>
+                <input
+                  id="connection-user-label"
+                  type="text"
+                  value={userLabel}
+                  onChange={(e) => setUserLabel(e.target.value)}
+                  disabled={busy}
+                  placeholder={spec.engine || spec._connector_id || 'e.g. prod-db'}
+                  style={{
+                    width: '100%', boxSizing: 'border-box',
+                    padding: '8px 10px', borderRadius: 7,
+                    background: 'var(--surface-2)',
+                    border: '1px solid var(--line)',
+                    color: 'var(--ink)',
+                    fontFamily: FONT_BODY,
+                    fontSize: 13,
+                    outline: 'none',
+                    opacity: busy ? 0.6 : 1,
+                  }}
+                />
               </div>
             )}
             <DataVaultForm

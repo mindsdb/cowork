@@ -2119,6 +2119,7 @@ function AppCore() {
           _modify: true,
           _existing_name: connection.name,
           name: connection.name,
+          user_label: saved.user_label || null,
           logo: full.form.logo || full.logo,
           logo_color: full.form.logo_color || full.logo_color,
         };
@@ -2135,6 +2136,7 @@ function AppCore() {
           _modify: true,
           _existing_name: connection.name,
           name: connection.name,
+          user_label: saved.user_label || null,
           logo: full.form.logo || full.logo,
           logo_color: full.form.logo_color || full.logo_color,
         };
