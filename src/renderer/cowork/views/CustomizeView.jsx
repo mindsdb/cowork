@@ -96,11 +96,11 @@ function ConnectionCard({ connection, onDelete, onModify }) {
   const [busy, setBusy] = useState(false);
   const engine = connection.engine || 'unknown';
   const name = connection.name || connection.slug || 'unnamed';
-  // Human-facing title (label or derived identity, e.g. "Support" /
-  // "user@gmail.com"); falls back to the slug. `name` stays the identity used
-  // for disconnect/modify.
-  const displayName =
-    connection.display_name || connection.displayName || name;
+  // Card title is the user-assigned label; a dash for pre-migration
+  // connections that don't have one yet. Identity (host/db, email, etc.)
+  // moves to a subtitle line below instead of being the title.
+  const title = connection.user_label || '—';
+  const subtitle = connection.display_name || connection.displayName || null;
   const updated = connection.updated_at || connection.updatedAt || null;
   const needsReconnect = connection.status === 'needs_reconnect';
 
@@ -163,7 +163,7 @@ function ConnectionCard({ connection, onDelete, onModify }) {
           fontFamily: FONT_DISPLAY, fontSize: 16, fontWeight: 600,
           letterSpacing: '0', color: 'var(--ink)',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }} title={displayName !== name ? name : undefined}>{displayName}</span>
+        }} title={title !== name ? name : undefined}>{title}</span>
         <span style={{
           flexShrink: 0,
           fontFamily: FONT_MONO, fontSize: 10.5,
@@ -174,6 +174,13 @@ function ConnectionCard({ connection, onDelete, onModify }) {
           border: '1px solid var(--line)',
         }}>{engine}</span>
       </div>
+
+      {subtitle && (
+        <span style={{
+          fontSize: 12.5, color: 'var(--ink-3)',
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>{subtitle}</span>
+      )}
 
       <div style={{ flex: 1 }} />
 
