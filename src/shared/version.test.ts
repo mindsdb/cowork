@@ -4,9 +4,7 @@ import {
   calverDate,
   compareCalVer,
   newestCalVer,
-  weekMonday,
   isoWeekLabel,
-  weekOfLabel,
   releaseWeekStart,
   formatDay,
   releaseWeekRange,
@@ -82,14 +80,6 @@ describe('newestCalVer', () => {
   });
 });
 
-describe('weekMonday', () => {
-  it('returns the Monday of the containing week', () => {
-    // Mon Jul 6 2026 → itself; Sun Jul 12 2026 → Mon Jul 6.
-    expect(weekMonday(new Date(Date.UTC(2026, 6, 6))).getTime()).toBe(Date.UTC(2026, 6, 6));
-    expect(weekMonday(new Date(Date.UTC(2026, 6, 12))).getTime()).toBe(Date.UTC(2026, 6, 6));
-  });
-});
-
 describe('isoWeekLabel', () => {
   it('labels a mid-year Monday', () => {
     expect(isoWeekLabel(new Date(Date.UTC(2026, 6, 6)))).toBe('2026-W28');
@@ -102,12 +92,6 @@ describe('isoWeekLabel', () => {
     expect(isoWeekLabel(new Date(Date.UTC(2025, 11, 31)))).toBe('2026-W01');
     // Jan 4 2027 is a Monday → week 1 of 2027.
     expect(isoWeekLabel(new Date(Date.UTC(2027, 0, 4)))).toBe('2027-W01');
-  });
-});
-
-describe('weekOfLabel', () => {
-  it('names the Monday of the week', () => {
-    expect(weekOfLabel(new Date(Date.UTC(2026, 6, 8)))).toBe('Week of Jul 6, 2026');
   });
 });
 
@@ -190,6 +174,19 @@ describe('unifiedVersion', () => {
   it('reports skewDays across the folded-in components (incl. agent)', () => {
     const u = unifiedVersion(['2.26.7.6.1', '0.26.6.29.1', '2.26.7.6.1']);
     expect(u).toMatchObject({ label: '2026-W27', skewDays: 7 });
+  });
+
+  it('lets the ISO-year label diverge from the cycle/build year at the boundary', () => {
+    // Sun Jan 3 2027 build → Fri Jan 1 2027 freeze. That Friday's ISO week is
+    // 2026-W53 (its Thursday is Dec 31 2026), yet the cycle span and build date
+    // are firmly in 2027. The label carrying a different year than the visible
+    // dates is correct, not a bug — pin it so a future "fix" doesn't unpick it.
+    const u = unifiedVersion(['2.27.1.3.1']);
+    expect(u).toMatchObject({
+      label: '2026-W53',
+      cycleRange: 'Jan 1 – Jan 7, 2027',
+      buildDate: 'Jan 3, 2027',
+    });
   });
 
   it('returns null when no input parses as CalVer', () => {

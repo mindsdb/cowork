@@ -72,14 +72,6 @@ export function newestCalVer(raws: (string | null | undefined)[]): CalVer | null
   return xs.reduce((best, v) => (compareCalVer(v, best) > 0 ? v : best));
 }
 
-/** Monday (UTC) of the week containing `date`. */
-export function weekMonday(date: Date): Date {
-  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
-  const dow = (d.getUTCDay() + 6) % 7; // Mon=0 … Sun=6
-  d.setUTCDate(d.getUTCDate() - dow);
-  return d;
-}
-
 /** ISO-8601 week label, e.g. "2026-W28". */
 export function isoWeekLabel(date: Date): string {
   // The Thursday of the week determines the ISO year.
@@ -97,12 +89,6 @@ export function isoWeekLabel(date: Date): string {
 }
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-/** Human "week of" label for the Monday, e.g. "Week of Jul 6, 2026". */
-export function weekOfLabel(date: Date): string {
-  const mon = weekMonday(date);
-  return `Week of ${MONTHS[mon.getUTCMonth()]} ${mon.getUTCDate()}, ${mon.getUTCFullYear()}`;
-}
 
 /** Day-gap between the newest and oldest parseable component. 0 when fewer
  *  than two parse. Surfaces the version skew the single week label would
