@@ -33,7 +33,7 @@ import {
   isAccessDraftValid,
   buildAccessPayload,
 } from '../components/artifact/publish/AccessChooser';
-import { ArtifactIcon, splitArtifactName } from '../components/artifacts/ArtifactIcon';
+import { ArtifactIcon, splitArtifactName, displayTitle, fileNameOf, isWebAppArtifact } from '../components/artifacts/ArtifactIcon';
 import { ArtifactStatus } from '../components/artifacts/ArtifactStatus';
 import {
   PageHeader,
@@ -123,6 +123,29 @@ function kindOf(a) {
   if (a.kind) return String(a.kind).toLowerCase();
   const ext = (a.ext || '').replace(/^\./, '').toLowerCase();
   return ext || 'file';
+}
+
+// Shared by both comparison levels below, so a numeric-aware order (v2
+// before v10) applies consistently to the primary compare AND the filename
+// tie-break — using different collator options per level would let the
+// tie-break re-introduce the wrong order it's supposed to help fix.
+// Locale pinned to 'en' (not `undefined`, i.e. not the runtime's default
+// locale) so digit-vs-letter collation order — and therefore this file's
+// own test fixtures — can't vary between a developer's machine and CI.
+// No `sensitivity: 'base'`: default sensitivity treats "Report" and "report"
+// as unequal, which matters here — the tie-break must only ever run when the
+// primary text is truly identical on screen, not merely case/accent-equivalent.
+const NAME_COLLATOR = new Intl.Collator('en', { numeric: true });
+
+export function titleCompare(a, b) {
+  const t = NAME_COLLATOR.compare(displayTitle(a), displayTitle(b));
+  if (t !== 0) return t;
+  // Tie-break only when a visible secondary line exists on both sides —
+  // web-app artifacts render no secondary line, so there is nothing on
+  // screen to justify breaking the tie by (falling back to fileNameOf here
+  // would reintroduce the exact "invisible sort key" bug this fixes).
+  if (isWebAppArtifact(a) || isWebAppArtifact(b)) return 0;
+  return NAME_COLLATOR.compare(fileNameOf(a), fileNameOf(b));
 }
 
 // Publish visibility chooser — a thin wrapper over the shared
@@ -794,7 +817,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
       switch (sort) {
         case 'recent': return timestampOf(b) - timestampOf(a);
         case 'oldest': return timestampOf(a) - timestampOf(b);
-        case 'title': return (a.title || '').localeCompare(b.title || '');
+        case 'title': return titleCompare(a, b);
         case 'type': return kindOf(a).localeCompare(kindOf(b));
         case 'published':
         default: {
