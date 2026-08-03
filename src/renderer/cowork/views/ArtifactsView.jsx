@@ -255,7 +255,7 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
   // is a "file" (shows its extension) yet still publishable. The name renders
   // base-truncated with the extension always visible.
   const publishable = isPublishableArtifact(artifact);
-  const { base, ext: nameExt } = splitArtifactName(artifact);
+  const { base, secondary } = splitArtifactName(artifact);
   // ↗ — open the live thing: published URL, else served URL, else local file.
   const onOpenExternal = (e) => {
     e.stopPropagation();
@@ -280,16 +280,36 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
       {/* Body — icon + name·ext + actions, then the status row. */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '14px 16px', flex: 1 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-          <span style={{ display: 'inline-flex', flexShrink: 0 }}>
+          <span style={{ display: 'inline-flex', flexShrink: 0, alignSelf: 'flex-start', marginTop: 2 }}>
             <ArtifactIcon artifact={artifact} size={18} />
           </span>
-          {/* Name: base truncates, extension stays pinned + visible. */}
-          <div style={{
-            display: 'flex', alignItems: 'baseline', minWidth: 0, flex: 1,
-            fontFamily: FONT_DISPLAY, fontSize: 14, fontWeight: 600, lineHeight: 1.2,
-          }} title={artifact.title}>
-            <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--ink)' }}>{base}</span>
-            {nameExt && <span style={{ flexShrink: 0, color: 'var(--ink-3)' }}>{nameExt}</span>}
+          {/* Name: title primary, filename secondary (ENG-1123 Bug 1) — the
+              secondary line always renders (empty for web apps) so row
+              height stays uniform whether or not there's a filename. */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, flex: 1 }}>
+            <div
+              style={{
+                display: 'flex', alignItems: 'baseline', minWidth: 0,
+                fontFamily: FONT_DISPLAY, fontSize: 14, fontWeight: 600, lineHeight: 1.2,
+              }}
+              title={base}
+            >
+              <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--ink)' }}>{base}</span>
+            </div>
+            <div
+              style={{
+                display: 'flex', alignItems: 'baseline', minWidth: 0,
+                fontFamily: FONT_BODY, fontSize: 12, lineHeight: 1.2, minHeight: '1.2em',
+              }}
+              title={secondary ? secondary.name + secondary.ext : undefined}
+            >
+              {secondary && (
+                <>
+                  <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--ink-3)' }}>{secondary.name}</span>
+                  <span style={{ flexShrink: 0, color: 'var(--ink-4)' }}>{secondary.ext}</span>
+                </>
+              )}
+            </div>
           </div>
           {/* Actions — open-in-browser + ⋯ menu. */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
