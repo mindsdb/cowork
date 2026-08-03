@@ -97,4 +97,23 @@ describe('SettingsView — version details Copy button', () => {
       vi.useRealTimers();
     }
   });
+
+  // Regression (review follow-up on #532): unlike the API-key copy button,
+  // this button's failure text IS its own label — with no live region, a
+  // screen reader has no guarantee it announces a focused button's label
+  // changing out from under it. The button is wrapped in role="status" so
+  // the "Couldn't copy" label change gets announced the same way the
+  // API-key pill's does.
+  it('wraps the button in a live region so the failure text is announced', async () => {
+    copyText.mockResolvedValueOnce(false);
+
+    render(<SettingsView {...baseProps} />);
+    fireEvent.click(screen.getByRole('button', { name: /Details/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Copy$/ }));
+
+    const failedButton = await screen.findByRole('button', { name: /Couldn't copy/ });
+    // SettingsSectionPanel's save footer is also role="status" — disambiguate
+    // by walking up from the button rather than screen.getByRole('status').
+    expect(failedButton.closest('[role="status"]')).not.toBeNull();
+  });
 });

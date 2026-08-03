@@ -2588,25 +2588,32 @@ export default function SettingsView({
                         <span style={{ color: 'var(--text-muted)', marginRight: 6, display: 'inline-block', minWidth: 64 }}>{k}</span>{v}
                       </span>
                     ))}
-                    <Button
-                      onClick={async () => {
-                        const ok = await copyToClipboard(copyText);
-                        if (ok) {
-                          setVersionCopyState('copied');
-                          setTimeout(() => setVersionCopyState('idle'), 1500);
-                        } else {
-                          // No auto-clear timer here — same reasoning as the
-                          // API-key copy above: an error needs longer than
-                          // 1.5s to read. Cleared by the next attempt, blur,
-                          // or hiding the panel (onClick above).
-                          setVersionCopyState('failed');
-                        }
-                      }}
-                      onBlur={() => { if (versionCopyState === 'failed') setVersionCopyState('idle'); }}
-                      style={{ alignSelf: 'flex-start', marginTop: 4 }}
-                    >
-                      {versionCopyState === 'copied' ? 'Copied' : versionCopyState === 'failed' ? "Couldn't copy — select the details above to copy manually" : 'Copy'}
-                    </Button>
+                    {/* role="status"/aria-live wraps the button itself (unlike
+                        ApiKeyInput's separate pill) because the failure text
+                        here IS the button's label — without a live region a
+                        screen reader has no guarantee it announces a focused
+                        button's label changing out from under it. */}
+                    <span role="status" aria-live="polite" style={{ alignSelf: 'flex-start' }}>
+                      <Button
+                        onClick={async () => {
+                          const ok = await copyToClipboard(copyText);
+                          if (ok) {
+                            setVersionCopyState('copied');
+                            setTimeout(() => setVersionCopyState('idle'), 1500);
+                          } else {
+                            // No auto-clear timer here — same reasoning as the
+                            // API-key copy above: an error needs longer than
+                            // 1.5s to read. Cleared by the next attempt, blur,
+                            // or hiding the panel (onClick above).
+                            setVersionCopyState('failed');
+                          }
+                        }}
+                        onBlur={() => { if (versionCopyState === 'failed') setVersionCopyState('idle'); }}
+                        style={{ marginTop: 4 }}
+                      >
+                        {versionCopyState === 'copied' ? 'Copied' : versionCopyState === 'failed' ? "Couldn't copy — select the details above to copy manually" : 'Copy'}
+                      </Button>
+                    </span>
                   </div>
                 )}
               </div>

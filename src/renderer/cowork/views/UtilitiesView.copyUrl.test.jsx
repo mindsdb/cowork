@@ -53,4 +53,18 @@ describe('UtilitiesView — publish artifact Copy URL button', () => {
     await waitFor(() => expect(copyText).toHaveBeenCalledWith(artifact.publishedUrl));
     expect(await screen.findByText(/Couldn't copy — select the URL above/)).toBeInTheDocument();
   });
+
+  // Regression (review follow-up on #532): the status line is a plain div
+  // by default (see components/ui/Message.tsx), so a screen reader has no
+  // guarantee it announces the failure text unless the line is marked as a
+  // live region.
+  it('marks the failure status line as a live region for screen readers', async () => {
+    copyText.mockResolvedValueOnce(false);
+
+    render(<UtilitiesView kind="publish" />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Copy URL' }));
+
+    const message = await screen.findByText(/Couldn't copy — select the URL above/);
+    expect(message.closest('[role="status"]')).not.toBeNull();
+  });
 });
