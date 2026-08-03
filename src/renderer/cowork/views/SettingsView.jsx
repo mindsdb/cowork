@@ -5,6 +5,7 @@ import { validateSettings, revealSettingKey, testProviders, fetchHealth, fetchRe
 import { providerTypeToKeyField, providerValueToType, resolveModelPickerValue, buildModelOptions, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, clampBudgetValue, clampBudgets, BUDGET_FIELDS } from '../lib/settingsTransform';
 import { trackHarnessSwapped, resetDeviceIdentity } from '../lib/analytics';
 import { copyText as copyToClipboard } from '../lib/clipboard';
+import { deriveProviderStatus, friendlyProviderError } from '../lib/providerStatus';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
 import { Switch } from '../components/ui/Switch';
@@ -1519,34 +1520,15 @@ export default function SettingsView({
                 // Show the persisted/seeded status for any configured provider — a
                 // configured provider reads as connected at startup, not just the one
                 // currently driving a role. Unconfigured rows have nothing to show.
-                const rawStatus = (settings.providerStatus || {})[p.type] || 'untested';
-                const status = (p.type === 'minds-cloud' && isSsoConnected) ? 'ok' : configured ? rawStatus : 'untested';
-                const detail = configured ? ((settings.providerStatusDetails || {})[p.type] || '') : '';
-                const friendlyError = (() => {
-                  if (!detail) return '';
-                  if (detail === 'missing API key') return 'Add an API key on the right.';
-                  if (detail === 'missing base URL') return 'Add a base URL on the right.';
-                  const m = detail.match(/HTTP (\d{3})/);
-                  if (m) {
-                    const code = parseInt(m[1], 10);
-                    if (code === 401) return 'Unauthorized — the API key was rejected.';
-                    if (code === 403) return 'Forbidden — the API key does not have access.';
-                    if (code === 404) return 'Endpoint not found — check the base URL.';
-                    if (code === 429) return 'Rate limited — try again in a moment.';
-                    if (code >= 500) return `Provider is currently unreachable (HTTP ${code}).`;
-                    return `Provider rejected the request (HTTP ${code}).`;
-                  }
-                  if (detail.startsWith('ConnectError') || detail.startsWith('ConnectTimeout')) {
-                    return 'Could not reach the provider — network or DNS problem.';
-                  }
-                  if (detail.startsWith('ReadTimeout') || detail.startsWith('TimeoutException')) {
-                    return 'Provider did not respond in time.';
-                  }
-                  if (detail.startsWith('SSLError') || detail.includes('certificate')) {
-                    return 'TLS / certificate problem reaching the provider.';
-                  }
-                  return detail;
-                })();
+                const st = deriveProviderStatus(p.type, {
+                  providerStatus: settings.providerStatus || {},
+                  providerStatusDetails: settings.providerStatusDetails || {},
+                  configured,
+                  isSsoConnected,
+                });
+                const status = st.settled;
+                const detail = configured ? st.detail : '';
+                const friendlyError = friendlyProviderError(detail);
                 const statusBadge = providerStatusBadge(status, configured);
                 const statusPillTitle = status === 'ok' ? `Last test passed${detail ? ` (${detail})` : ''}`
                   : status === 'fail' ? `Last test failed${detail ? `: ${detail}` : ''}`
@@ -1839,9 +1821,15 @@ export default function SettingsView({
                   const modelEnabled = settings.modelEnabled || {};
                   const isLocked = (m) => modelEnabled[m] === false;
                   const firstEnabledModel = modelList.find((m) => !isLocked(m)) || modelList[0] || '';
-                  const providerUnconfigured = !!curType && !(provider && providerConfigured(provider));
-                  const providerFailed = (settings.providerStatus || {})[curType] === 'fail';
-                  const providerFailDetail = (settings.providerStatusDetails || {})[curType] || '';
+                  const st = deriveProviderStatus(curType, {
+                    providerStatus: settings.providerStatus || {},
+                    providerStatusDetails: settings.providerStatusDetails || {},
+                    configured: !!(provider && providerConfigured(provider)),
+                    isSsoConnected,
+                  });
+                  const providerUnconfigured = !!curType && st.unconfigured;
+                  const providerFailed = st.failed;
+                  const providerFailDetail = st.detail;
                   const isNoCredits = providerFailed && curType === 'minds-cloud'
                     && (providerFailDetail.includes('402')
                       || providerFailDetail.includes('429')
