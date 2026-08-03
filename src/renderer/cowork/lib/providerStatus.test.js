@@ -74,7 +74,7 @@ describe('deriveProviderStatus', () => {
     expect(deriveProviderStatus('openai')).toBeTruthy();
   });
 
-  describe('in-flight test state (ENG-1113)', () => {
+  describe('stale failure verification (ENG-1113)', () => {
     const failing = (over) => deriveProviderStatus('minds-cloud', {
       providerStatus: { 'minds-cloud': 'fail' },
       providerStatusDetails: { 'minds-cloud': 'ReadTimeout' },
@@ -82,62 +82,36 @@ describe('deriveProviderStatus', () => {
       ...over,
     });
 
-    it('defaults to a settled, non-testing view when no in-flight inputs are given', () => {
-      const st = failing();
-      expect(st.testing).toBe(false);
-      expect(st.display).toBe('fail');
-      expect(st.verifying).toBe(false); // initialTestDone defaults true
+    it('trusts the recorded failure after the initial check settles', () => {
+      expect(failing().checking).toBe(false);
     });
 
-    it('marks a provider with a pending check as testing and verifying', () => {
-      const st = failing({ testPending: new Set(['minds-cloud']), initialTestDone: true });
-      expect(st.testing).toBe(true);
-      expect(st.display).toBe('testing');
-      expect(st.verifying).toBe(true);
+    it('holds the failure while the initial check is pending', () => {
+      expect(failing({ initialTestDone: false }).checking).toBe(true);
     });
 
-    it('reads pending membership from a Map (refcount) as well as a Set', () => {
-      // The component tracks pending types as a Map<type, count>; the helper
-      // only needs `.has`, so both container types must work.
-      const st = failing({ testPending: new Map([['minds-cloud', 2]]), initialTestDone: true });
-      expect(st.testing).toBe(true);
-      expect(st.display).toBe('testing');
+    it('holds the failure during a later Save or Test', () => {
+      expect(failing({ testInProgress: true }).checking).toBe(true);
     });
 
-    it('verifies a stale fail until the once-per-mount check settles, even before it starts', () => {
-      // Not yet in the pending set, but the initial verify has not settled and
-      // the persisted status is a fail — hold the hard error back AND show the
-      // row as testing rather than flashing the stale fail (ENG-1113 row flash).
-      const st = failing({ testPending: new Set(), initialTestDone: false });
-      expect(st.testing).toBe(false);
-      expect(st.verifying).toBe(true);
-      expect(st.display).toBe('testing');
-    });
-
-    it('stops verifying once the initial check settles and the provider is still ok/failed but idle', () => {
-      const st = failing({ testPending: new Set(), initialTestDone: true });
-      expect(st.verifying).toBe(false);
-    });
-
-    it('does not verify an unconfigured provider (no test to wait on)', () => {
+    it('does not hold an unconfigured provider', () => {
       const st = deriveProviderStatus('openai', {
         providerStatus: { openai: 'fail' },
         configured: false,
-        testPending: new Set(['openai']),
+        testInProgress: true,
         initialTestDone: false,
       });
-      expect(st.testing).toBe(false);
-      expect(st.verifying).toBe(false);
+      expect(st.checking).toBe(false);
     });
 
-    it('does not verify a configured, non-failed provider once settled', () => {
+    it('does not hold a recorded success', () => {
       const st = deriveProviderStatus('anthropic', {
         providerStatus: { anthropic: 'ok' },
         configured: true,
-        testPending: new Set(),
-        initialTestDone: false, // even pre-settle, an ok status needs no holding
+        testInProgress: true,
+        initialTestDone: false,
       });
-      expect(st.verifying).toBe(false);
+      expect(st.checking).toBe(false);
     });
   });
 });
