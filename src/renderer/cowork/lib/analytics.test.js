@@ -95,3 +95,80 @@ describe('app_version on captured events', () => {
     expect(event.properties.$set.last_seen_app_version).toBe('9.9.9-test');
   });
 });
+
+describe('resolveIsInternal (ENG-672)', () => {
+  it('flags a mindsdb.com email as internal', async () => {
+    const { resolveIsInternal } = await importAnalytics();
+    expect(resolveIsInternal('someone@mindsdb.com', undefined)).toBe(true);
+  });
+
+  it('flags the Keycloak staff role as internal, even on a non-mindsdb email', async () => {
+    const { resolveIsInternal } = await importAnalytics();
+    expect(resolveIsInternal('someone@gmail.com', ['free', 'staff'])).toBe(true);
+  });
+
+  it('matches the staff role case-insensitively', async () => {
+    const { resolveIsInternal } = await importAnalytics();
+    expect(resolveIsInternal('x@example.com', ['STAFF'])).toBe(true);
+  });
+
+  it('is not internal without a mindsdb email or staff role', async () => {
+    const { resolveIsInternal } = await importAnalytics();
+    expect(resolveIsInternal('user@example.com', ['free', 'pro'])).toBe(false);
+  });
+
+  it('tolerates missing/malformed inputs', async () => {
+    const { resolveIsInternal } = await importAnalytics();
+    expect(resolveIsInternal(undefined, undefined)).toBe(false);
+    expect(resolveIsInternal('', null)).toBe(false);
+    expect(resolveIsInternal(null, 'staff')).toBe(false); // roles must be an array
+  });
+});
+
+describe('is_internal on captured events (ENG-672)', () => {
+  it('stamps is_internal true (event + person $set) for a staff-role user on a non-mindsdb email', async () => {
+    getAccessToken.mockResolvedValue(
+      fakeJwt({ sub: 'staff-1', email: 'ext@gmail.com', realm_access: { roles: ['staff'] } })
+    );
+    const fetchMock = mockFetch();
+    const { trackAppInstalled } = await importAnalytics();
+
+    await trackAppInstalled();
+
+    const event = fetchMock.mock.calls
+      .map((c) => JSON.parse(c[1].body))
+      .find((b) => b.event === 'app_installed');
+    expect(event.properties.is_internal).toBe(true);
+    expect(event.properties.$set.is_internal).toBe(true);
+  });
+
+  it('stamps is_internal false for a genuinely external authenticated user', async () => {
+    getAccessToken.mockResolvedValue(
+      fakeJwt({ sub: 'ext-1', email: 'user@example.com', realm_access: { roles: ['free'] } })
+    );
+    const fetchMock = mockFetch();
+    const { trackAppInstalled } = await importAnalytics();
+
+    await trackAppInstalled();
+
+    const event = fetchMock.mock.calls
+      .map((c) => JSON.parse(c[1].body))
+      .find((b) => b.event === 'app_installed');
+    expect(event.properties.is_internal).toBe(false);
+    expect(event.properties.$set.is_internal).toBe(false);
+  });
+
+  it('omits is_internal entirely on pre-login events (identity unresolved)', async () => {
+    // getAccessToken resolves null by default → event rides the device id.
+    const fetchMock = mockFetch();
+    const { trackAppInstalled } = await importAnalytics();
+
+    await trackAppInstalled();
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.event).toBe('app_installed');
+    // Absent, not present-and-false — the person-level value governs after login.
+    expect(body.properties).not.toHaveProperty('is_internal');
+    expect(body.properties).not.toHaveProperty('$set');
+  });
+});
