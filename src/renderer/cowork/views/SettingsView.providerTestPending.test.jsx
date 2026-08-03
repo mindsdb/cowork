@@ -126,4 +126,23 @@ describe('SettingsView model picker — provider test in flight (ENG-1113)', () 
     await waitFor(() => expect(screen.queryByText(/Checking MindsHub connection/i)).toBeNull());
     expect(screen.getAllByText(/failed its last test/i).length).toBeGreaterThan(0);
   });
+
+  it('holds back the "No credits available" banner too while the verify is pending', async () => {
+    // A stale 402/429/quota fail otherwise flashes the no-credits banner during
+    // the verify window — the same flash-of-stale-error ENG-1113 targets, via a
+    // sibling notice. It must yield to the checking line until the test lands.
+    render(<Harness initialSettings={{
+      ...baseSettings(),
+      providerStatusDetails: { 'minds-cloud': 'HTTP 429' },
+    }} />);
+    await waitFor(() => expect(spies.testProviders).toHaveBeenCalled());
+
+    expect(screen.queryByText(/No credits available/i)).toBeNull();
+    expect((await screen.findAllByText(/Checking MindsHub connection/i)).length).toBeGreaterThan(0);
+
+    // Resolves to a genuine quota failure → the banner now surfaces.
+    deferred.resolve({ providerStatus: { 'minds-cloud': 'fail' }, providerStatusDetails: { 'minds-cloud': 'HTTP 429' } });
+    await waitFor(() => expect(screen.getAllByText(/No credits available/i).length).toBeGreaterThan(0));
+    expect(screen.queryByText(/Checking MindsHub connection/i)).toBeNull();
+  });
 });

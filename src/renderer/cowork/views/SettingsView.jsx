@@ -893,8 +893,11 @@ export default function SettingsView({
   // back the model picker's "failed its last test" warning until the request
   // resolves: a stale persisted 'fail' (e.g. from a transient blip last
   // session) would otherwise flash red until the mount-time verify lands and
-  // flips it to 'ok' (ENG-1113). A Set is replaced immutably on each change.
-  const [providerTestPending, setProviderTestPending] = useState(() => new Set());
+  // flips it to 'ok' (ENG-1113). A Map<type, count> (replaced immutably on each
+  // change) rather than a Set: overlapping checks on the same type — the mount
+  // verify racing a Save/Test — must both be tracked, so a type stays pending
+  // until the *last* outstanding request for it settles, not the first.
+  const [providerTestPending, setProviderTestPending] = useState(() => new Map());
   // False until the once-per-mount background verify (below) settles, so the
   // model picker shows a checking state rather than an error for the whole
   // window between open and the first result — not just the request's own
@@ -1265,9 +1268,11 @@ export default function SettingsView({
     if (toTest.length === 0) return null;
 
     const testedTypes = toTest.map((p) => p.type);
+    // Refcount each type so overlapping runs are both counted: a type stays
+    // pending until every request touching it has settled (see the state decl).
     setProviderTestPending((prev) => {
-      const nextPending = new Set(prev);
-      for (const t of testedTypes) nextPending.add(t);
+      const nextPending = new Map(prev);
+      for (const t of testedTypes) nextPending.set(t, (nextPending.get(t) || 0) + 1);
       return nextPending;
     });
     try {
@@ -1285,8 +1290,12 @@ export default function SettingsView({
       return result;
     } finally {
       setProviderTestPending((prev) => {
-        const nextPending = new Set(prev);
-        for (const t of testedTypes) nextPending.delete(t);
+        const nextPending = new Map(prev);
+        for (const t of testedTypes) {
+          const remaining = (nextPending.get(t) || 0) - 1;
+          if (remaining > 0) nextPending.set(t, remaining);
+          else nextPending.delete(t);
+        }
         return nextPending;
       });
     }
@@ -1878,21 +1887,28 @@ export default function SettingsView({
                   const providerUnconfigured = !!curType && st.unconfigured;
                   const providerFailed = st.failed;
                   const providerFailDetail = st.detail;
-                  const isNoCredits = providerFailed && curType === 'minds-cloud'
+                  // While a connectivity check is in flight we hold back the
+                  // failure UI: a stale persisted 'fail' commonly flips to 'ok'
+                  // the moment the result lands, and flashing red — or the "No
+                  // credits" banner — in between is confusing (ENG-1113).
+                  // `verifying` only covers a configured provider with a test to
+                  // wait on.
+                  const providerVerifying = st.verifying;
+                  // `!providerVerifying` here too, so a stale 402/429/quota fail
+                  // doesn't flash the "No credits available" notice during the
+                  // verify window — the checking line stands in for it, same as
+                  // the plain failure warning below.
+                  const isNoCredits = providerFailed && !providerVerifying && curType === 'minds-cloud'
                     && (providerFailDetail.includes('402')
                       || providerFailDetail.includes('429')
                       || providerFailDetail.toLowerCase().includes('credit')
                       || providerFailDetail.toLowerCase().includes('quota'));
-                  // While a connectivity check is in flight we hold back the
-                  // "failed its last test" warning: a stale persisted 'fail'
-                  // commonly flips to 'ok' the moment the result lands, and
-                  // flashing red in between is confusing (ENG-1113). `verifying`
-                  // only covers a configured provider with a test to wait on.
-                  const providerVerifying = st.verifying;
                   const providerUnusable = (providerUnconfigured || providerFailed) && !isNoCredits && !providerVerifying;
                   // Show the checking line only when it stands in for a warning
                   // we're suppressing — not over a healthy 'ok'/untested row.
-                  const providerCheckingNotice = providerVerifying && providerFailed && !isNoCredits;
+                  // (No !isNoCredits needed: isNoCredits already requires
+                  // !providerVerifying, so it's always false here.)
+                  const providerCheckingNotice = providerVerifying && providerFailed;
                   const providerWarnId = `agent-model-${role}-provider`;
 
                   // Reasoning effort — a per-role setting shown beside the model
@@ -1967,7 +1983,7 @@ export default function SettingsView({
                                 writeOverride({ providerType: t, model: newModel });
                               }}
                               invalid={providerUnusable}
-                              aria-describedby={providerUnusable ? providerWarnId : undefined}
+                              aria-describedby={(providerUnusable || providerCheckingNotice) ? providerWarnId : undefined}
                               title={`Choose which provider powers the ${role} role.`}
                               options={providers.map((p) => ({ value: p.type, label: providerDisplayName(p) }))}
                             />
@@ -2068,7 +2084,7 @@ export default function SettingsView({
                           </label>
                         )}
                         {providerCheckingNotice && (
-                          <div style={{ fontSize: 11.5, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <div id={providerWarnId} aria-live="polite" style={{ fontSize: 11.5, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
                             <Spinner intervalMs={90} />
                             Checking {providerDisplayName(provider)} connection…
                           </div>

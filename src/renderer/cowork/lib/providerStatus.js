@@ -45,6 +45,7 @@ export function deriveProviderStatus(type, {
     : configured ? raw : 'untested';
   const failed = raw === 'fail';
   const testing = configured && !!testPending && testPending.has(type);
+  const verifying = configured && (testing || (!initialTestDone && failed));
   return {
     raw,
     settled,
@@ -52,8 +53,12 @@ export function deriveProviderStatus(type, {
     unconfigured: !configured,
     detail: providerStatusDetails[type] || '',
     testing,
-    display: testing ? 'testing' : settled,
-    verifying: configured && (testing || (!initialTestDone && failed)),
+    // 'testing' whenever the settled status shouldn't be trusted yet — keyed
+    // off `verifying`, not just `testing`, so a row driven by `display` reads
+    // 'testing…' (not a red 'fail') during the gap between mount and the
+    // moment its check is actually added to testPending (ENG-1113).
+    display: verifying ? 'testing' : settled,
+    verifying,
   };
 }
 

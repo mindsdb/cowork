@@ -96,12 +96,22 @@ describe('deriveProviderStatus', () => {
       expect(st.verifying).toBe(true);
     });
 
+    it('reads pending membership from a Map (refcount) as well as a Set', () => {
+      // The component tracks pending types as a Map<type, count>; the helper
+      // only needs `.has`, so both container types must work.
+      const st = failing({ testPending: new Map([['minds-cloud', 2]]), initialTestDone: true });
+      expect(st.testing).toBe(true);
+      expect(st.display).toBe('testing');
+    });
+
     it('verifies a stale fail until the once-per-mount check settles, even before it starts', () => {
       // Not yet in the pending set, but the initial verify has not settled and
-      // the persisted status is a fail — hold the hard error back.
+      // the persisted status is a fail — hold the hard error back AND show the
+      // row as testing rather than flashing the stale fail (ENG-1113 row flash).
       const st = failing({ testPending: new Set(), initialTestDone: false });
       expect(st.testing).toBe(false);
       expect(st.verifying).toBe(true);
+      expect(st.display).toBe('testing');
     });
 
     it('stops verifying once the initial check settles and the provider is still ok/failed but idle', () => {
