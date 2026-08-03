@@ -58,3 +58,24 @@ describe('Composer — "+ New project" (ENG-992)', () => {
     expect(props.onProjectChange).toHaveBeenCalledWith({ name: 'acme' });
   });
 });
+
+describe('Composer — prefill selection (ENG-1137)', () => {
+  it('selects the given range after a prefill with `select`', async () => {
+    const text = "Plan my week. I'm working on [things]. Keep it easy.";
+    const start = text.indexOf('[');
+    const end = text.indexOf(']') + 1;
+    const { rerender } = render(<Composer onSend={vi.fn()} projects={[]} models={[]} hideModel />);
+    rerender(<Composer onSend={vi.fn()} projects={[]} models={[]} hideModel prefill={{ text, bump: 1, select: [start, end] }} />);
+    const ta = await screen.findByDisplayValue(text);
+    expect(ta.value.slice(ta.selectionStart, ta.selectionEnd)).toBe('[things]');
+  });
+
+  it('parks the caret at the end when prefill has no `select`', async () => {
+    const text = 'Build me a habit tracker as a live artifact.';
+    const { rerender } = render(<Composer onSend={vi.fn()} projects={[]} models={[]} hideModel />);
+    rerender(<Composer onSend={vi.fn()} projects={[]} models={[]} hideModel prefill={{ text, bump: 1 }} />);
+    const ta = await screen.findByDisplayValue(text);
+    expect(ta.selectionStart).toBe(text.length);
+    expect(ta.selectionEnd).toBe(text.length);
+  });
+});
