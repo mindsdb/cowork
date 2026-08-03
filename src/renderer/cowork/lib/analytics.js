@@ -42,7 +42,21 @@ const POSTHOG_KEY =
     : '';
 
 const SURFACE = host.isElectron ? 'desktop' : 'web';
-const LIB = 'cowork-desktop';
+// `$lib` is derived from the surface so web-SPA events read as `cowork-web` and
+// desktop events as `cowork-desktop`, keeping the shared PostHog project's
+// $lib/surface breakdown honest (ENG-1163). It is a client-type label, not an
+// environment label; whether an event is *sent* is gated separately below.
+const LIB = `cowork-${SURFACE}`;
+
+// Only production builds (`vite build`: packaged desktop, OTA bundle, web SPA)
+// emit. The Vite dev server used by `npm run dev` / `npm run dev:web` runs as
+// MODE=development, so local dev never pollutes the funnel even when a real
+// token sits in a machine-local .env (ENG-1163). Set `?analytics_debug=1` (or
+// VITE_ANALYTICS_DEBUG=true) to send from a dev build on purpose. Deployed
+// non-prod web is a production build and stays out of the funnel via the CI
+// cohort flag instead (isCi()).
+const IS_PROD_BUILD =
+  typeof import.meta !== 'undefined' && import.meta.env?.MODE === 'production';
 
 // Running UI-bundle version, baked in at build time as __APP_VERSION__ (Vite
 // `define`). For OTA clients this is the bundle actually running, not the
@@ -319,6 +333,12 @@ function capture(event, properties = {}) {
   }
   if (isCi()) {
     dlog('skip', event, '— CI session');
+    return Promise.resolve(false);
+  }
+  // Suppress dev-server traffic (npm run dev / dev:web) so local sessions with a
+  // token in .env don't reach the funnel; opt in with ?analytics_debug=1.
+  if (!IS_PROD_BUILD && !isDebug()) {
+    dlog('skip', event, '— non-production build (set ?analytics_debug=1 to send)');
     return Promise.resolve(false);
   }
   return getDistinctId()
