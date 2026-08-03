@@ -7,11 +7,26 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // vi.mock is hoisted above the file, so the mock's getAccessToken must come
 // from vi.hoisted (a bare const would not exist yet when the factory runs).
-const { getAccessToken } = vi.hoisted(() => ({ getAccessToken: vi.fn() }));
+// hostState.isElectron is a hoisted mutable so a test can flip the surface to
+// web before importAnalytics() (SURFACE/LIB are read at import time); getters
+// keep the mock reading the current value on each fresh import.
+const { getAccessToken, hostState } = vi.hoisted(() => ({
+  getAccessToken: vi.fn(),
+  hostState: { isElectron: true },
+}));
 vi.mock('../../platform/host', () => ({
-  host: { isElectron: true, getAccessToken },
-  isElectron: true,
-  isWeb: false,
+  host: {
+    get isElectron() {
+      return hostState.isElectron;
+    },
+    getAccessToken,
+  },
+  get isElectron() {
+    return hostState.isElectron;
+  },
+  get isWeb() {
+    return !hostState.isElectron;
+  },
 }));
 
 async function importAnalytics() {
@@ -39,6 +54,11 @@ function fakeJwt(payload) {
 
 beforeEach(() => {
   vi.stubEnv('VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN', 'phc_test');
+  // Most tests exercise the send path, so default to a production build; the
+  // dev-server-guard tests override MODE. Default to the desktop surface; the
+  // $lib/web tests flip hostState.isElectron before importing.
+  vi.stubEnv('MODE', 'production');
+  hostState.isElectron = true;
   getAccessToken.mockReset().mockResolvedValue(null); // unauthenticated by default
   try {
     window.localStorage.clear();
@@ -93,6 +113,116 @@ describe('app_version on captured events', () => {
       .find((b) => b.event === 'app_installed');
     expect(event.distinct_id).toBe('user-123');
     expect(event.properties.$set.last_seen_app_version).toBe('9.9.9-test');
+  });
+});
+
+describe('trackFirstQuery delivery gating (ENG-501)', () => {
+  const FIRST_QUERY_KEY = 'mdb_first_query_sent';
+
+  it('marks the localStorage flag only after a successful send', async () => {
+    const fetchMock = mockFetch(); // resolves ok:true
+    const { trackFirstQuery } = await importAnalytics();
+
+    await trackFirstQuery();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).event).toBe('first_query');
+    expect(window.localStorage.getItem(FIRST_QUERY_KEY)).toBe('1');
+  });
+
+  it('deduplicates concurrent calls while delivery is in flight', async () => {
+    const fetchMock = mockFetch();
+    const { trackFirstQuery } = await importAnalytics();
+
+    await Promise.all([trackFirstQuery(), trackFirstQuery()]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(window.localStorage.getItem(FIRST_QUERY_KEY)).toBe('1');
+  });
+
+  it('does NOT mark the flag when the send fails, so a later query can retry', async () => {
+    // Regression: previously the flag was set before the POST, so an offline
+    // first query set the flag, failed to send, and was lost forever.
+    const failing = vi.fn().mockResolvedValue({ ok: false, status: 500 });
+    globalThis.fetch = failing;
+    const { trackFirstQuery } = await importAnalytics();
+
+    await trackFirstQuery();
+    expect(window.localStorage.getItem(FIRST_QUERY_KEY)).toBeNull();
+
+    // Network recovers; the next query still fires and now succeeds.
+    const ok = mockFetch();
+    await trackFirstQuery();
+    expect(ok).toHaveBeenCalledTimes(1);
+    expect(window.localStorage.getItem(FIRST_QUERY_KEY)).toBe('1');
+  });
+
+  it('is a no-op once the flag is already set', async () => {
+    window.localStorage.setItem(FIRST_QUERY_KEY, '1');
+    const fetchMock = mockFetch();
+    const { trackFirstQuery } = await importAnalytics();
+
+    await trackFirstQuery();
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('surface-derived $lib (ENG-1163)', () => {
+  it('labels desktop events cowork-desktop', async () => {
+    const fetchMock = mockFetch();
+    const { trackFirstQuery } = await importAnalytics();
+
+    await trackFirstQuery();
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.properties.surface).toBe('desktop');
+    expect(body.properties.$lib).toBe('cowork-desktop');
+  });
+
+  it('labels web events cowork-web (regression: was hardcoded cowork-desktop)', async () => {
+    hostState.isElectron = false; // web SPA: no Electron bridge
+    const fetchMock = mockFetch();
+    const { trackFirstQuery } = await importAnalytics();
+
+    await trackFirstQuery();
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.properties.surface).toBe('web');
+    expect(body.properties.$lib).toBe('cowork-web');
+  });
+});
+
+describe('dev-server emission guard (ENG-1163)', () => {
+  it('sends from a production build', async () => {
+    vi.stubEnv('MODE', 'production'); // also the beforeEach default
+    const fetchMock = mockFetch();
+    const { trackFirstQuery } = await importAnalytics();
+
+    await trackFirstQuery();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('does NOT send from a non-production build (npm run dev / dev:web)', async () => {
+    vi.stubEnv('MODE', 'development');
+    const fetchMock = mockFetch();
+    const { trackFirstQuery } = await importAnalytics();
+
+    await trackFirstQuery();
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('sends from a non-production build when analytics debug is opted in', async () => {
+    vi.stubEnv('MODE', 'development');
+    vi.stubEnv('VITE_ANALYTICS_DEBUG', 'true');
+    const fetchMock = mockFetch();
+    const { trackFirstQuery } = await importAnalytics();
+
+    await trackFirstQuery();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
 
