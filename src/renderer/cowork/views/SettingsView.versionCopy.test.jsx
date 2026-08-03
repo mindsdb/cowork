@@ -74,4 +74,27 @@ describe('SettingsView — version details Copy button', () => {
     expect(await screen.findByRole('button', { name: /Couldn't copy/ })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^Copied$/ })).toBeNull();
   });
+
+  // Regression (review follow-up on #532): the failure state used to share
+  // the success state's 1.5s auto-clear timer, fading "Couldn't copy" out
+  // while it was still being read. It now persists until the next copy
+  // attempt, blur, or the details panel being hidden.
+  it('does not auto-clear "Couldn\'t copy" on the same timer as success, but clears on blur', async () => {
+    vi.useFakeTimers();
+    try {
+      copyText.mockResolvedValueOnce(false);
+      render(<SettingsView {...baseProps} />);
+      fireEvent.click(screen.getByRole('button', { name: /Details/ }));
+      fireEvent.click(screen.getByRole('button', { name: /^Copy$/ }));
+
+      const failedButton = await vi.waitFor(() => screen.getByRole('button', { name: /Couldn't copy/ }));
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(screen.getByRole('button', { name: /Couldn't copy/ })).toBeInTheDocument();
+
+      fireEvent.blur(failedButton);
+      expect(screen.queryByRole('button', { name: /Couldn't copy/ })).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

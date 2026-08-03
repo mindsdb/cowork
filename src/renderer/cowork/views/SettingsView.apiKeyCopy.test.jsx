@@ -69,7 +69,29 @@ describe('SettingsView — provider API key Copy button', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Copy key to clipboard' }));
 
     expect(copyText).toHaveBeenCalledWith('sk-ant-test-key-123');
-    expect(await screen.findByText("Couldn't copy")).toBeInTheDocument();
+    expect(await screen.findByText(/Couldn't copy/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Copied to clipboard' })).toBeNull();
+  });
+
+  // Regression (review follow-up on #532): the failure toast used to share
+  // the success toast's 1.5s auto-clear timer, which faded "Couldn't copy"
+  // out while it was still being read. It now persists until the next copy
+  // attempt or blur, same as 'copied' still auto-clearing on its own timer.
+  it('does not auto-clear "Couldn\'t copy" on the same timer as a success toast', async () => {
+    vi.useFakeTimers();
+    try {
+      copyText.mockResolvedValueOnce(false);
+      render(<SettingsView {...baseProps} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Copy key to clipboard' }));
+
+      await vi.waitFor(() => expect(screen.getByText(/Couldn't copy/)).toBeInTheDocument());
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(screen.getByText(/Couldn't copy/)).toBeInTheDocument();
+
+      fireEvent.blur(screen.getByRole('button', { name: 'Copy key to clipboard' }));
+      expect(screen.queryByText(/Couldn't copy/)).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
