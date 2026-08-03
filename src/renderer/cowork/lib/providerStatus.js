@@ -20,21 +20,40 @@
 //   unconfigured  — carries no usable credential.
 //   detail        — the persisted status detail string for this type ('' when
 //                   absent). Caller decides whether to gate it on `configured`.
+//   testing       — a connectivity check for this type is in flight.
+//   display       — 'testing' while a check runs, else `settled`. What a status
+//                   badge should show.
+//   verifying     — a configured provider whose 'fail' should not yet be
+//                   trusted: a check is in flight, or the once-per-mount verify
+//                   hasn't settled and the persisted result is a (possibly
+//                   stale) fail. Callers suppress the hard error and show a
+//                   checking state instead (ENG-1113).
+//
+// In-flight inputs (both optional; omit for a purely persisted view):
+//   testPending      — a Set of provider types with a check in flight.
+//   initialTestDone  — whether the once-per-mount background verify has settled.
 export function deriveProviderStatus(type, {
   providerStatus = {},
   providerStatusDetails = {},
   configured = false,
   isSsoConnected = false,
+  testPending = null,
+  initialTestDone = true,
 } = {}) {
   const raw = providerStatus[type] || 'untested';
   const settled = (type === 'minds-cloud' && isSsoConnected) ? 'ok'
     : configured ? raw : 'untested';
+  const failed = raw === 'fail';
+  const testing = configured && !!testPending && testPending.has(type);
   return {
     raw,
     settled,
-    failed: raw === 'fail',
+    failed,
     unconfigured: !configured,
     detail: providerStatusDetails[type] || '',
+    testing,
+    display: testing ? 'testing' : settled,
+    verifying: configured && (testing || (!initialTestDone && failed)),
   };
 }
 
