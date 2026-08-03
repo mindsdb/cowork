@@ -2533,7 +2533,7 @@ export default function SettingsView({
             const uiVer = baked || versionInfo.ui || '';
             const uiSource = versionInfo.source === 'ota' ? 'OTA'
               : versionInfo.source === 'web' ? 'web' : 'bundled';
-            // Unified "content" headline = ISO week of the newest of the
+            // Unified "content" headline = release week of the newest of the
             // hot-updated components (UI + server + agent). App shell is
             // excluded — it updates via reinstall and is shown on its own line.
             const unified = unifiedVersion([uiVer, serverVersion, antonVersion]);
@@ -2548,7 +2548,7 @@ export default function SettingsView({
             return (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 12.5, color: 'var(--text-strong)' }}>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-                  <span title={unified ? unified.weekOf : undefined} style={{ fontFamily: 'var(--font-mono)', fontSize: 15, fontWeight: 600 }}>
+                  <span title={unified ? `Release week ${unified.cycleRange}` : undefined} style={{ fontFamily: 'var(--font-mono)', fontSize: 15, fontWeight: 600 }}>
                     {unified ? unified.label : (shellVer || '—')}
                   </span>
                   {outOfSync && (
@@ -2560,7 +2560,7 @@ export default function SettingsView({
                     </span>
                   )}
                   {unified && (
-                    <span style={{ color: 'var(--text-muted)', fontSize: 11.5 }}>{unified.weekOf}</span>
+                    <span style={{ color: 'var(--text-muted)', fontSize: 11.5 }}>built {unified.buildDate}</span>
                   )}
                 </div>
                 {isElectron && (

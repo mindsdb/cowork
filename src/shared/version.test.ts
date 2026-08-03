@@ -4,9 +4,10 @@ import {
   calverDate,
   compareCalVer,
   newestCalVer,
-  weekMonday,
   isoWeekLabel,
-  weekOfLabel,
+  releaseWeekStart,
+  formatDay,
+  releaseWeekRange,
   versionSkewDays,
   unifiedVersion,
 } from './version';
@@ -79,14 +80,6 @@ describe('newestCalVer', () => {
   });
 });
 
-describe('weekMonday', () => {
-  it('returns the Monday of the containing week', () => {
-    // Mon Jul 6 2026 → itself; Sun Jul 12 2026 → Mon Jul 6.
-    expect(weekMonday(new Date(Date.UTC(2026, 6, 6))).getTime()).toBe(Date.UTC(2026, 6, 6));
-    expect(weekMonday(new Date(Date.UTC(2026, 6, 12))).getTime()).toBe(Date.UTC(2026, 6, 6));
-  });
-});
-
 describe('isoWeekLabel', () => {
   it('labels a mid-year Monday', () => {
     expect(isoWeekLabel(new Date(Date.UTC(2026, 6, 6)))).toBe('2026-W28');
@@ -99,12 +92,6 @@ describe('isoWeekLabel', () => {
     expect(isoWeekLabel(new Date(Date.UTC(2025, 11, 31)))).toBe('2026-W01');
     // Jan 4 2027 is a Monday → week 1 of 2027.
     expect(isoWeekLabel(new Date(Date.UTC(2027, 0, 4)))).toBe('2027-W01');
-  });
-});
-
-describe('weekOfLabel', () => {
-  it('names the Monday of the week', () => {
-    expect(weekOfLabel(new Date(Date.UTC(2026, 6, 8)))).toBe('Week of Jul 6, 2026');
   });
 });
 
@@ -129,16 +116,77 @@ describe('versionSkewDays', () => {
   });
 });
 
+describe('releaseWeekStart', () => {
+  it('maps every day of a Fri→Thu release week back to its Friday freeze', () => {
+    const friday = Date.UTC(2026, 6, 31); // Fri Jul 31 2026
+    // Fri Jul 31 → itself; Sun Aug 2, Mon Aug 3, Thu Aug 6 all → Fri Jul 31.
+    expect(releaseWeekStart(new Date(Date.UTC(2026, 6, 31))).getTime()).toBe(friday);
+    expect(releaseWeekStart(new Date(Date.UTC(2026, 7, 2))).getTime()).toBe(friday); // Sun
+    expect(releaseWeekStart(new Date(Date.UTC(2026, 7, 3))).getTime()).toBe(friday); // Mon
+    expect(releaseWeekStart(new Date(Date.UTC(2026, 7, 6))).getTime()).toBe(friday); // Thu
+    // The next freeze (Fri Aug 7) opens a new week.
+    expect(releaseWeekStart(new Date(Date.UTC(2026, 7, 7))).getTime()).toBe(Date.UTC(2026, 7, 7));
+  });
+});
+
+describe('formatDay', () => {
+  it('formats a UTC date as "Mon D, YYYY"', () => {
+    expect(formatDay(new Date(Date.UTC(2026, 7, 2)))).toBe('Aug 2, 2026');
+  });
+});
+
+describe('releaseWeekRange', () => {
+  it('spans Friday through the following Thursday, dropping the shared start year', () => {
+    expect(releaseWeekRange(new Date(Date.UTC(2026, 6, 31)))).toBe('Jul 31 – Aug 6, 2026');
+  });
+
+  it('keeps the start year when the week straddles the year boundary', () => {
+    // Start Dec 31 2026 → end Jan 6 2027: both ends carry their own year.
+    expect(releaseWeekRange(new Date(Date.UTC(2026, 11, 31)))).toBe('Dec 31, 2026 – Jan 6, 2027');
+  });
+});
+
 describe('unifiedVersion', () => {
-  it('derives the ISO-week headline from the newest component', () => {
+  it('derives the release-week headline from the newest component', () => {
+    // Newest = Mon Jul 6 2026 → belongs to the Fri Jul 3 freeze cycle → W27
+    // (the ISO week of the freeze, not the raw ISO week of the build date).
     const u = unifiedVersion(['2.26.7.6.1-95-g0472770', '0.26.7.6.4.dev40+g82a1da968']);
-    expect(u).toMatchObject({ label: '2026-W28', weekOf: 'Week of Jul 6, 2026', skewDays: 0 });
+    expect(u).toMatchObject({
+      label: '2026-W27',
+      buildDate: 'Jul 6, 2026',
+      cycleRange: 'Jul 3 – Jul 9, 2026',
+      skewDays: 0,
+    });
     expect(u?.newest.raw).toBe('0.26.7.6.4.dev40+g82a1da968');
+  });
+
+  it('holds the label across a within-cycle hotfix but surfaces the new build date', () => {
+    // A Sun-Aug-2 release and a Mon-Aug-3 hotfix are the same freeze cycle
+    // (Fri Jul 31), so the headline must NOT roll — only the build date moves.
+    const release = unifiedVersion(['2.26.8.2.1']); // Sun Aug 2 2026
+    const hotfix = unifiedVersion(['2.26.8.3.1']); // Mon Aug 3 2026
+    expect(release?.label).toBe('2026-W31');
+    expect(hotfix?.label).toBe('2026-W31'); // no jump to W32
+    expect(release?.buildDate).toBe('Aug 2, 2026');
+    expect(hotfix?.buildDate).toBe('Aug 3, 2026');
   });
 
   it('reports skewDays across the folded-in components (incl. agent)', () => {
     const u = unifiedVersion(['2.26.7.6.1', '0.26.6.29.1', '2.26.7.6.1']);
-    expect(u).toMatchObject({ label: '2026-W28', skewDays: 7 });
+    expect(u).toMatchObject({ label: '2026-W27', skewDays: 7 });
+  });
+
+  it('lets the ISO-year label diverge from the cycle/build year at the boundary', () => {
+    // Sun Jan 3 2027 build → Fri Jan 1 2027 freeze. That Friday's ISO week is
+    // 2026-W53 (its Thursday is Dec 31 2026), yet the cycle span and build date
+    // are firmly in 2027. The label carrying a different year than the visible
+    // dates is correct, not a bug — pin it so a future "fix" doesn't unpick it.
+    const u = unifiedVersion(['2.27.1.3.1']);
+    expect(u).toMatchObject({
+      label: '2026-W53',
+      cycleRange: 'Jan 1 – Jan 7, 2027',
+      buildDate: 'Jan 3, 2027',
+    });
   });
 
   it('returns null when no input parses as CalVer', () => {
