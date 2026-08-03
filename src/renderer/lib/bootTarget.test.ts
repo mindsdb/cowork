@@ -71,4 +71,20 @@ describe('resolveBootTarget', () => {
     });
     expect(await resolveBootTarget(host, true)).toBe('auth');
   });
+
+  // ENG-1232: readSettings + checkConfigured now run concurrently to save an
+  // ingress round-trip, but checkInstall stays conditional — the auth path (not
+  // configured) must not pay an extra request for an install status it won't use.
+  it('does not call checkInstall when the instance is not configured', async () => {
+    let installChecked = false;
+    const host = makeHost({
+      checkConfigured: async () => ({ configured: false, provider: '' }),
+      checkInstall: async () => {
+        installChecked = true;
+        return INSTALLED;
+      },
+    });
+    expect(await resolveBootTarget(host, true)).toBe('auth');
+    expect(installChecked).toBe(false);
+  });
 });

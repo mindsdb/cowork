@@ -8,6 +8,7 @@ import { host } from './platform/host';
 import { loadSkin, persistSkin } from './lib/skins';
 import { syncSettingsToDb, syncModelsToDbWithRetry } from './lib/syncSettings';
 import { resolveBootTarget } from './lib/bootTarget';
+import { hasBootedBefore, rememberBooted, welcomeFloorMs } from './lib/bootWelcome';
 import { runPostAuthHandshake } from './lib/postAuth';
 import type { SpriteName } from './pages/arcade/sprites';
 import './styles.css';
@@ -133,6 +134,11 @@ export default function App() {
   useEffect(() => {
     async function init() {
       const started = Date.now();
+      // Whether this browser has booted before is read up front: the web SPA
+      // re-mounts on every refresh, and a returning session shouldn't replay the
+      // artificial welcome floor (ENG-1232). Electron stays resident, so it only
+      // ever hits the first-boot path.
+      const bootedBefore = hasBootedBefore();
       // Boot-routing decision lives in a pure, tested unit (resolveBootTarget).
       // readSettings() is best-effort there, so a hosted-web /settings/raw 403
       // (ENG-817) can't abort the gate and strand a configured instance on the
@@ -141,11 +147,19 @@ export default function App() {
       // localStorage error), so calling it outside resolveBootTarget's guard is
       // safe — it can't throw and escape init() (ENG-848 review note).
       const target: Page = await resolveBootTarget(host, hasLocalTermsConsent());
-      // Keep the welcome orb up briefly so it doesn't flash on fast boots.
-      const elapsed = Date.now() - started;
-      if (elapsed < WELCOME_MIN_MS) {
-        await new Promise((r) => setTimeout(r, WELCOME_MIN_MS - elapsed));
+      // Keep the welcome orb up briefly so it doesn't flash on a genuine cold
+      // start — but skip that floor on a web refresh, where it was pure latency
+      // on every reload (ENG-1232).
+      const floor = welcomeFloorMs({
+        isWeb: host.isWeb,
+        bootedBefore,
+        elapsedMs: Date.now() - started,
+        minMs: WELCOME_MIN_MS,
+      });
+      if (floor > 0) {
+        await new Promise((r) => setTimeout(r, floor));
       }
+      rememberBooted();
       setPage(target);
     }
     init();
