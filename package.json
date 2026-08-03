@@ -71,6 +71,9 @@
   "optionalDependencies": {
     "appdmg": "^0.6.6"
   },
+  "overrides": {
+    "js-yaml": "^4.3.0"
+  },
   "dependencies": {
     "@base-ui/react": "^1.5.0",
     "@react-keycloak/web": "^3.4.0",
