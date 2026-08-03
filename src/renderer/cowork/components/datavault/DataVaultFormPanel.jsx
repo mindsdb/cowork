@@ -835,39 +835,13 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
                 </button>
               </div>
             )}
-            {!spec._is_success && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 10 }}>
-                <label htmlFor="connection-user-label" style={{
-                  fontSize: 12, color: 'var(--ink-3)', fontWeight: 500,
-                }}>
-                  Label
-                </label>
-                <input
-                  id="connection-user-label"
-                  type="text"
-                  value={userLabel}
-                  onChange={(e) => setUserLabel(e.target.value)}
-                  disabled={busy}
-                  placeholder={spec.engine || spec._connector_id || 'e.g. prod-db'}
-                  style={{
-                    width: '100%', boxSizing: 'border-box',
-                    padding: '8px 10px', borderRadius: 7,
-                    background: 'var(--surface-2)',
-                    border: '1px solid var(--line)',
-                    color: 'var(--ink)',
-                    fontFamily: FONT_BODY,
-                    fontSize: 13,
-                    outline: 'none',
-                    opacity: busy ? 0.6 : 1,
-                  }}
-                />
-              </div>
-            )}
             <DataVaultForm
               spec={spec}
               busy={busy}
               onAction={handleAction}
               conversationId={conversationId}
+              userLabel={!spec._is_success ? userLabel : undefined}
+              onUserLabelChange={setUserLabel}
               onMethodChange={async (methodId) => {
                 if (methodId !== 'browser_oauth_builtin') return;
                 // Methods with fields wait for Submit — handleAction takes over.

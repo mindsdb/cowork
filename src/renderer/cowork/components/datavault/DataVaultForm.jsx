@@ -173,7 +173,10 @@ function FieldInput({ field, value, onChange, disabled }) {
   );
 }
 
-export function DataVaultForm({ spec, busy = false, onAction, onMethodChange, conversationId }) {
+export function DataVaultForm({
+  spec, busy = false, onAction, onMethodChange, conversationId,
+  userLabel, onUserLabelChange,
+}) {
   // ── Multi-method shape ──────────────────────────────────────────
   // A form can either be single-method (top-level `fields[]` array,
   // legacy shape) or multi-method (`methods[]` array of method
@@ -435,6 +438,29 @@ export function DataVaultForm({ spec, busy = false, onAction, onMethodChange, co
               color: 'var(--ink)',
             }}>{spec.title || 'Connect'}</div>
           </div>
+        </div>
+      )}
+
+      {/* Generic "name this connection" field — applies to every connector
+          regardless of method, so it renders right under the title rather
+          than inside the per-method fields list below. Hidden on success
+          (host passes `userLabel={undefined}` in that case) and while the
+          user is still on the method picker (nothing to label yet). */}
+      {userLabel !== undefined && !(isMultiMethod && !activeMethod) && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <label htmlFor="connection-user-label" style={{
+            fontSize: 12, color: 'var(--ink-3)', fontWeight: 500,
+          }}>
+            Label
+          </label>
+          <Input
+            id="connection-user-label"
+            type="text"
+            value={userLabel}
+            onChange={(v) => onUserLabelChange?.(v)}
+            disabled={busy}
+            placeholder={spec.engine || spec._connector_id || 'e.g. prod-db'}
+          />
         </div>
       )}
 
