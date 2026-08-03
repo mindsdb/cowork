@@ -49,7 +49,7 @@ import { fetchSessions, fetchSession, fetchConversationList, fetchProjects, fetc
          fetchSavedConnection, deleteDatasource, deletePickedFile,
          fetchInFlightStatus, tailInFlight, fetchInFlightList } from './api';
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
-import { isArtifactTipDismissed, dismissArtifactTip } from './components/onboarding/onboardingStore';
+import { isArtifactTipDismissed, dismissArtifactTip, dismissIfUntouched } from './components/onboarding/onboardingStore';
 import { modelLabel, recommendedModelOptions, providerValueToType } from './lib/settingsTransform';
 import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery } from './lib/analytics';
 
@@ -780,6 +780,9 @@ function AppCore() {
   //   false = decided-off (existing account, or already fired)
   const artifactTipArmedRef = useRef(null);
   const [artifactTipOpen, setArtifactTipOpen] = useState(false);
+  // Same shape, for the sidebar checklist: flipped by the session's first
+  // sessions fetch (see refreshData) so the freshness call is taken once.
+  const onboardingFreshnessResolvedRef = useRef(false);
   useEffect(() => {
     if (artifactTipArmedRef.current !== true) return;
     if (artifacts.length >= 1) {
@@ -1367,7 +1370,16 @@ function AppCore() {
       setServerOnline(h.status === 'ok');
     });
     fetchSessions().then((data) => {
-      if (Array.isArray(data)) setTasks((prev) => mergeTasksFromServer(data, prev).filter((t) => !deletedTaskIdsRef.current.has(t.id)));
+      if (!Array.isArray(data)) return;
+      // One-time freshness decision for the onboarding checklist, taken on
+      // the session's first successful fetch (refreshData also polls, hence
+      // the ref guard): an account that already has tasks is not a first
+      // run, and would otherwise sit on a permanent, undismissable 0/4 card.
+      if (!onboardingFreshnessResolvedRef.current) {
+        onboardingFreshnessResolvedRef.current = true;
+        if (data.length > 0) dismissIfUntouched();
+      }
+      setTasks((prev) => mergeTasksFromServer(data, prev).filter((t) => !deletedTaskIdsRef.current.has(t.id)));
     });
     fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); });
     fetchArtifacts().then((data) => {
@@ -3766,8 +3778,18 @@ function AppCore() {
           shellUpdate={shellUpdate && shellUpdate.version !== shellUpdateDismissed ? shellUpdate : null}
           onDownloadShellUpdate={handleDownloadShellUpdate}
           onDismissShellUpdate={dismissShellUpdate}
-          onStartChat={handleSendFromHome}
-          artifactTipOpen={artifactTipOpen}
+          onStartChat={(text) => {
+            // On narrow desktop the sidebar is an overlay drawer. Close it
+            // like navigate/onOpenSchedule do, so the new task isn't buried
+            // under it.
+            if (isNarrow) setMobileSidebarOpen(false);
+            handleSendFromHome(text);
+          }}
+          // Hold the tip while the narrow-desktop drawer is shut: Sidebar
+          // sees collapsed={false} there, but the whole wrapper is
+          // translated off-screen, so its anchor is invisible. The armed
+          // state survives — it opens when the drawer does.
+          artifactTipOpen={artifactTipOpen && !(isNarrow && !mobileSidebarOpen)}
           onArtifactTipDismiss={handleArtifactTipDismiss}
           onShowServerHelp={() => openSettings('backend')}
           onToggleServer={async () => {

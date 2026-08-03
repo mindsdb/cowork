@@ -60,6 +60,16 @@ export function dismiss() {
   emit();
 }
 
+// Upgrade path: the checklist is a first-run affordance, so a profile
+// that already has work the first time we look at it must never get a
+// 0/4 "first-run" card. App calls this once per session, on the first
+// sessions fetch. The untouched guard keeps it off a genuinely fresh
+// user who has already started the steps — by then they have tasks too.
+export function dismissIfUntouched() {
+  if (state.dismissed || state.completed.size > 0) return;
+  dismiss();
+}
+
 // First-artifact tip flag — a one-shot, not part of the reactive
 // snapshot (App owns the open/closed state; this only records "never
 // show again" across reloads).

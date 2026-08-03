@@ -41,6 +41,21 @@ describe('onboardingStore', () => {
     expect(snap.dismissed).toBe(true);
   });
 
+  it('retires the checklist for an upgrading profile, but not mid-run', async () => {
+    // Untouched progress + an account that already has work → this is an
+    // existing user, not a first run. Retire the card.
+    const store = await load();
+    store.dismissIfUntouched();
+    expect(store.getSnapshot().dismissed).toBe(true);
+
+    // A fresh user partway through the steps has tasks too — theirs stays.
+    localStorage.clear();
+    const fresh = await load();
+    fresh.completeStep('see-it-work');
+    fresh.dismissIfUntouched();
+    expect(fresh.getSnapshot().dismissed).toBe(false);
+  });
+
   it('tracks the first-artifact tip flag independently of the snapshot', async () => {
     const store = await load();
     expect(store.isArtifactTipDismissed()).toBe(false);
