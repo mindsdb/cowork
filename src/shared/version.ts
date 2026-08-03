@@ -118,6 +118,16 @@ export const SKEW_WARN_DAYS = 7;
 // build date — it is the ISO week of the freeze that opened the cycle — so it
 // can differ from a calendar "week N" by up to the freeze offset. The exact
 // build date is surfaced alongside it (`buildDate`) so nothing is hidden.
+//
+// Second trade-off (day-granular boundary): the freeze runs Friday *13:47 UTC*,
+// but CalVer carries no time — `2.26.7.31.1` is just "Jul 31". We therefore
+// treat a build dated ON the freeze Friday as post-freeze (it gets the incoming
+// week). A hotfix cut Friday BEFORE 13:47 UTC belongs to the outgoing cycle yet
+// receives the incoming label — the same "jumped the week" symptom, narrowed
+// from a 3-day window (Fri/Sat/Sun release → Mon hotfix) to the Fri 00:00–13:47
+// UTC morning. Not closed: closing it needs a time component in CalVer or a
+// build-time freeze marker, both far more than this is worth. Documented so a
+// Friday label that looks off is understood, not re-debugged.
 const RELEASE_FREEZE_DOW = 5; // Friday
 
 /** Start of the release week `date` belongs to: the most recent freeze day
@@ -150,7 +160,13 @@ export interface UnifiedVersion {
   /** Release-week headline, e.g. "2026-W31" — the ISO week of the freeze
    *  (Friday) that opened the newest component's release cycle, NOT the raw ISO
    *  week of the build date. A hotfix that lands before the next freeze keeps
-   *  this label; the next freeze rolls it. See `releaseWeekStart`. */
+   *  this label; the next freeze rolls it. See `releaseWeekStart`.
+   *
+   *  The year is the *ISO* year of that freeze week, which can trail the build's
+   *  calendar year by a few days around Jan 1: a build dated Jan 1 2027 sits in
+   *  the freeze week whose Thursday is Dec 31 2026, so it labels "2026-W53".
+   *  That is correct, not stale — `buildDate` and `cycleRange` show the real
+   *  January dates. Don't "fix" the year to match the build date. */
   label: string;
   /** Exact build date of the newest component, e.g. "Aug 2, 2026". Shown beside
    *  the label so a within-cycle update stays visible even when `label` holds. */
