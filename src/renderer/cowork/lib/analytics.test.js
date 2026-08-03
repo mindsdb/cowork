@@ -130,6 +130,16 @@ describe('trackFirstQuery delivery gating (ENG-501)', () => {
     expect(window.localStorage.getItem(FIRST_QUERY_KEY)).toBe('1');
   });
 
+  it('deduplicates concurrent calls while delivery is in flight', async () => {
+    const fetchMock = mockFetch();
+    const { trackFirstQuery } = await importAnalytics();
+
+    await Promise.all([trackFirstQuery(), trackFirstQuery()]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(window.localStorage.getItem(FIRST_QUERY_KEY)).toBe('1');
+  });
+
   it('does NOT mark the flag when the send fails, so a later query can retry', async () => {
     // Regression: previously the flag was set before the POST, so an offline
     // first query set the flag, failed to send, and was lost forever.

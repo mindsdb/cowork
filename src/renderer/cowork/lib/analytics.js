@@ -413,21 +413,31 @@ export function trackHarnessSwapped(from, to) {
 // query sets the flag, fails to send, and is lost forever. If localStorage is
 // unavailable we can't dedupe, so we fire and accept possible duplicates.
 const FIRST_QUERY_STORAGE_KEY = 'mdb_first_query_sent';
-export async function trackFirstQuery() {
+// Share one delivery attempt across rapid calls; clear after it settles so a
+// failed send can still retry on the next query.
+let firstQueryInFlight = null;
+export function trackFirstQuery() {
   let storageOk = true;
   try {
-    if (localStorage.getItem(FIRST_QUERY_STORAGE_KEY)) return;
+    if (localStorage.getItem(FIRST_QUERY_STORAGE_KEY)) return Promise.resolve();
   } catch {
     storageOk = false;
   }
-  const sent = await capture(EVENTS.FIRST_QUERY);
-  if (sent && storageOk) {
-    try {
-      localStorage.setItem(FIRST_QUERY_STORAGE_KEY, '1');
-    } catch {
-      /* best effort */
-    }
-  }
+  if (firstQueryInFlight) return firstQueryInFlight;
+  firstQueryInFlight = capture(EVENTS.FIRST_QUERY)
+    .then((sent) => {
+      if (sent && storageOk) {
+        try {
+          localStorage.setItem(FIRST_QUERY_STORAGE_KEY, '1');
+        } catch {
+          /* best effort */
+        }
+      }
+    })
+    .finally(() => {
+      firstQueryInFlight = null;
+    });
+  return firstQueryInFlight;
 }
 
 // Desktop app installed, fired once per install on the first healthy launch.
