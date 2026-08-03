@@ -4,6 +4,7 @@ import Ico from '../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchHealth, fetchRecommendedModels } from '../api';
 import { providerTypeToKeyField, providerValueToType, resolveModelPickerValue, buildModelOptions, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, clampBudgetValue, clampBudgets, BUDGET_FIELDS } from '../lib/settingsTransform';
 import { trackHarnessSwapped, resetDeviceIdentity } from '../lib/analytics';
+import { copyText as copyToClipboard } from '../lib/clipboard';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
 import { Switch } from '../components/ui/Switch';
@@ -380,7 +381,10 @@ export function shouldRevealStoredKey({ isWeb, show, revealName, isSentinel, alr
 
 function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
   const [show, setShow] = useState(false);
-  const [copied, setCopied] = useState(false);
+  // 'idle' | 'copied' | 'failed' — 'failed' surfaces feedback when the
+  // clipboard helper's fallback chain (see lib/clipboard.js) also fails,
+  // instead of leaving the button looking like it silently did nothing.
+  const [copyState, setCopyState] = useState('idle');
   const [revealedValue, setRevealedValue] = useState(null); // null = no fetched override
   const [revealing, setRevealing] = useState(false);
 
@@ -401,12 +405,15 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
 
   const onCopy = async () => {
     if (!hasValue) return;
-    try {
-      await navigator.clipboard.writeText(v);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      /* clipboard may be unavailable in some browser sandboxes */
+    const ok = await copyToClipboard(v);
+    if (ok) {
+      setCopyState('copied');
+      setTimeout(() => setCopyState('idle'), 1500);
+    } else {
+      // Unlike 'copied', 'failed' doesn't auto-clear on a timer — an error
+      // needs longer than 1.5s to read. It clears on the next copy attempt
+      // (above) or here, on blur.
+      setCopyState('failed');
     }
   };
 
@@ -490,18 +497,20 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
           <button
             type="button"
             onClick={onCopy}
+            onBlur={() => { if (copyState === 'failed') setCopyState('idle'); }}
             disabled={!canCopy}
             title={
               isDisplayingSentinel ? 'Reveal the key first to copy it'
-                : copied ? 'Copied'
-                  : 'Copy to clipboard'
+                : copyState === 'copied' ? 'Copied'
+                  : copyState === 'failed' ? "Couldn't copy — select the key to copy manually"
+                    : 'Copy to clipboard'
             }
-            aria-label={copied ? 'Copied to clipboard' : 'Copy key to clipboard'}
+            aria-label={copyState === 'copied' ? 'Copied to clipboard' : 'Copy key to clipboard'}
             style={canCopy ? btnStyle : { ...btnStyle, opacity: 0.35, cursor: 'not-allowed' }}
           >
-            {copied ? Ico.check(13) : Ico.copy(13)}
+            {copyState === 'copied' ? Ico.check(13) : Ico.copy(13)}
           </button>
-          {copied && (
+          {(copyState === 'copied' || copyState === 'failed') && (
             <span
               role="status"
               aria-live="polite"
@@ -512,17 +521,20 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
                 padding: '3px 8px',
                 fontSize: 10.5, fontWeight: 600, letterSpacing: '0.04em',
                 textTransform: 'uppercase',
-                color: '#7CC4B6',
+                color: copyState === 'failed' ? 'var(--danger, #e5484d)' : '#7CC4B6',
                 background: 'rgba(20,28,28,0.92)',
-                border: '1px solid rgba(124,196,182,0.45)',
+                border: copyState === 'failed' ? '1px solid color-mix(in srgb, var(--danger, #e5484d) 45%, transparent)' : '1px solid rgba(124,196,182,0.45)',
                 borderRadius: 6,
                 whiteSpace: 'nowrap',
                 pointerEvents: 'none',
                 boxShadow: 'var(--sh-2)',
-                animation: 'copied-pop 1.5s ease forwards',
+                // 'copied' pops in, holds, fades on its own 1.5s clock. 'failed'
+                // only pops in and holds — it's cleared by state (next attempt
+                // or blur), not by the animation, so it stays legible.
+                animation: copyState === 'failed' ? 'failed-pop 0.2s ease forwards' : 'copied-pop 1.5s ease forwards',
                 zIndex: 5,
               }}
-            >Copied</span>
+            >{copyState === 'failed' ? "Couldn't copy — select the key to copy manually" : 'Copied'}</span>
           )}
         </span>
         <button
@@ -883,7 +895,10 @@ export default function SettingsView({
   const [serverVersion, setServerVersion] = useState('');
   const [antonVersion, setAntonVersion] = useState('');
   const [showVersionDetails, setShowVersionDetails] = useState(false);
-  const [versionCopied, setVersionCopied] = useState(false);
+  // 'idle' | 'copied' | 'failed' — 'failed' surfaces feedback when the
+  // clipboard helper's fallback chain (see lib/clipboard.js) also fails,
+  // instead of leaving the button looking like it silently did nothing.
+  const [versionCopyState, setVersionCopyState] = useState('idle');
   // ENG-671 — on-demand "Check for updates". `checkResult` is null (idle) or a
   // summary { ok, offline, updateAvailable, uiUpdateAvailable,
   // serverUpdateAvailable, uiVersion?, serverVersion? } from host.checkForUpdates().
@@ -2555,7 +2570,13 @@ export default function SettingsView({
                 )}
                 <button
                   type="button"
-                  onClick={() => setShowVersionDetails((v) => !v)}
+                  onClick={() => {
+                    setShowVersionDetails((v) => !v);
+                    // Hiding the panel unmounts the Copy button below — treat
+                    // it like the blur/unmount clear so a stale "Couldn't
+                    // copy" isn't waiting the next time details are reopened.
+                    setVersionCopyState('idle');
+                  }}
                   style={{ alignSelf: 'flex-start', background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--accent)', fontSize: 11.5 }}
                 >
                   {showVersionDetails ? 'Hide details' : 'Details'}
@@ -2563,20 +2584,36 @@ export default function SettingsView({
                 {showVersionDetails && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontFamily: 'var(--font-mono)', fontSize: 12, padding: '8px 10px', border: '1px solid var(--border-subtle)', borderRadius: 8, background: 'var(--surface-glass)' }}>
                     {rows.map(([k, v]) => (
-                      <span key={k}>
+                      <span key={k} style={{ userSelect: 'text' }}>
                         <span style={{ color: 'var(--text-muted)', marginRight: 6, display: 'inline-block', minWidth: 64 }}>{k}</span>{v}
                       </span>
                     ))}
-                    <Button
-                      onClick={() => {
-                        navigator.clipboard?.writeText(copyText);
-                        setVersionCopied(true);
-                        setTimeout(() => setVersionCopied(false), 1500);
-                      }}
-                      style={{ alignSelf: 'flex-start', marginTop: 4 }}
-                    >
-                      {versionCopied ? 'Copied' : 'Copy'}
-                    </Button>
+                    {/* role="status"/aria-live wraps the button itself (unlike
+                        ApiKeyInput's separate pill) because the failure text
+                        here IS the button's label — without a live region a
+                        screen reader has no guarantee it announces a focused
+                        button's label changing out from under it. */}
+                    <span role="status" aria-live="polite" style={{ alignSelf: 'flex-start' }}>
+                      <Button
+                        onClick={async () => {
+                          const ok = await copyToClipboard(copyText);
+                          if (ok) {
+                            setVersionCopyState('copied');
+                            setTimeout(() => setVersionCopyState('idle'), 1500);
+                          } else {
+                            // No auto-clear timer here — same reasoning as the
+                            // API-key copy above: an error needs longer than
+                            // 1.5s to read. Cleared by the next attempt, blur,
+                            // or hiding the panel (onClick above).
+                            setVersionCopyState('failed');
+                          }
+                        }}
+                        onBlur={() => { if (versionCopyState === 'failed') setVersionCopyState('idle'); }}
+                        style={{ marginTop: 4 }}
+                      >
+                        {versionCopyState === 'copied' ? 'Copied' : versionCopyState === 'failed' ? "Couldn't copy — select the details above to copy manually" : 'Copy'}
+                      </Button>
+                    </span>
                   </div>
                 )}
               </div>

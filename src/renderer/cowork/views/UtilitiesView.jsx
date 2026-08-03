@@ -3,6 +3,7 @@ import Ico from '../components/Icons';
 import { Message, Button, Card, EmptyState as UiEmptyState, Select, Input, Textarea } from '../components/ui';
 import { PageHeader as CollectionPageHeader } from '../components/collection';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
+import { copyText } from '../lib/clipboard';
 import {
   deleteDatasource,
   deleteMemory,
@@ -98,7 +99,7 @@ export default function UtilitiesView({ kind, project, onRefreshArtifacts }) {
       {/* MemoryView renders its own header. For the legacy kinds we
           keep the plain header here. */}
       {!isMemoryKind && <PageHeader title={title} subtitle={subtitle} />}
-      {status && <Message style={{ margin: '16px 28px 0', fontSize: 12.5 }}>{status}</Message>}
+      {status && <Message role="status" aria-live="polite" style={{ margin: '16px 28px 0', fontSize: 12.5 }}>{status}</Message>}
       {!data ? <EmptyState>Loading…</EmptyState> : null}
       {data && kind === 'memory' && (
         <MemoryView
@@ -522,6 +523,11 @@ function PublishView({ data, setData, setStatus, onRefreshArtifacts }) {
     }
   };
 
+  const copyUrl = async (url) => {
+    const ok = await copyText(url);
+    setStatus(ok ? 'Copied URL to clipboard.' : "Couldn't copy — select the URL above to copy it manually.");
+  };
+
   return (
     <div style={{ padding: 28, display: 'flex', flexDirection: 'column', gap: 10 }}>
       {!data.publishReady && (
@@ -537,7 +543,7 @@ function PublishView({ data, setData, setStatus, onRefreshArtifacts }) {
             <div style={{ fontSize: 11.5, color: 'var(--frost-600)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{artifact.path}</div>
             {artifact.publishedUrl && <div style={{ fontSize: 12, color: 'var(--sage-700)', marginTop: 4, userSelect: 'text' }}>{artifact.publishedUrl}</div>}
           </div>
-          {artifact.publishedUrl && <Button variant="subtle" onClick={() => navigator.clipboard?.writeText(artifact.publishedUrl)}>Copy URL</Button>}
+          {artifact.publishedUrl && <Button variant="subtle" onClick={() => copyUrl(artifact.publishedUrl)}>Copy URL</Button>}
           {artifact.publishedUrl && <Button variant="subtle" onClick={() => window.open(artifact.publishedUrl, '_blank', 'noopener,noreferrer')}>Open</Button>}
           <Button variant="subtle" disabled={!data.publishReady} onClick={() => publish(artifact)}>Share</Button>
         </div>

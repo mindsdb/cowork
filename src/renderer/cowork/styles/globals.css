@@ -3361,6 +3361,14 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
   100% { opacity: 0; transform: translate(-50%, -2px) scale(0.98);}
 }
 
+/* Failure variant: pops in like `copied-pop` but holds instead of fading out —
+   an error needs to stay legible until the user dismisses it (next attempt or
+   blur), not vanish on the same 1.5s clock as a success confirmation. */
+@keyframes failed-pop {
+  0%   { opacity: 0; transform: translate(-50%, 4px) scale(0.92); }
+  100% { opacity: 1; transform: translate(-50%, 0)   scale(1);    }
+}
+
 /* ─── Coming soon banner ─────────────────────────────────────────────────── */
 .coming-soon-banner {
   display: flex; align-items: center; gap: 10px;
