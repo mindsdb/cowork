@@ -91,7 +91,9 @@ When enabled, main owns one immutable shell-update snapshot:
 `idle → checking → available → downloading → ready-to-install → installing`
 
 - Auto mode downloads after detection and installs on normal app quit. Manual
-  mode waits for an explicit download and explicit restart.
+  mode waits for an explicit download and explicit restart. Either way the quit
+  path first drains any in-flight UI/server apply (bounded) before the process
+  terminates, so the on-quit install cannot overlap an apply.
 - Concurrent boot, periodic, and manual checks coalesce into one operation.
 - The renderer pulls the snapshot on mount and subscribes to full snapshot
   changes, so a UI reload cannot lose progress/readiness state.
@@ -99,7 +101,9 @@ When enabled, main owns one immutable shell-update snapshot:
   compares the running internal SemVer with that target and reports a
   recoverable `install-not-applied` failure if relaunch stayed on the old shell.
 - UI/server apply and shell install share a maintenance gate; shell install
-  also waits for active server lifecycle work.
+  also waits for active server lifecycle work. The explicit in-app install
+  enters the gate directly; the auto-mode on-quit install is serialized by the
+  quit drain above.
 - Signature/checksum failures are terminal for automatic update, while the
   existing manual installer URL remains available.
 

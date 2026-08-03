@@ -12,6 +12,7 @@ import { checkInstallStatus, runInstaller } from './installer';
 import { startServer, stopServer, forceReapServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort, fetchServerVersions } from './server-process';
 import { setUpdateNotifier, recreateVenvIfUnsupportedPython, repairServerInstall } from './server-updater';
 import { initUpdater, registerUpdateHandlers } from './updater';
+import { awaitUpdateMaintenanceIdle } from './update-maintenance';
 import { oauthConnect, cancelCurrentOAuth } from './oauth-service';
 import { setRefreshToken, deleteRefreshToken, getRefreshToken as getOAuthRefreshToken } from './keychain-service';
 import { OAUTH_CREDENTIALS } from './credentials';
@@ -1648,6 +1649,22 @@ async function drainServerForQuit(): Promise<void> {
   // Stop all OAuth refresh loops before the server shuts down so no
   // in-flight tick can call PATCH /token against a dead server.
   stopAllRefreshLoops();
+  // An auto-mode shell update installs itself as the app goes down, outside
+  // the update-maintenance gate that the in-app "Restart now" install enters.
+  // The download only stages the payload (Windows: the NSIS installer on disk;
+  // macOS: Squirrel.Mac fetches it into ShipIt's area) — the bundle swap runs
+  // later: on Windows in electron-updater's `app.once('quit')` handler, on
+  // macOS via ShipIt once this process terminates. Both are strictly after this
+  // before-quit drain, so waiting for any in-flight UI/server apply to finish
+  // here keeps the installer's file swap from overlapping it. Bounded like the
+  // server stop below so a wedged apply can't pin the quit indefinitely.
+  const applyDrained = await Promise.race([
+    awaitUpdateMaintenanceIdle().then(() => true),
+    new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 8_000)),
+  ]);
+  if (!applyDrained) {
+    console.warn('[updater] update-maintenance did not drain before the quit ceiling; an on-quit shell install may overlap an in-flight apply');
+  }
   // Hard ceiling so a wedged python can't pin the quit indefinitely.
   // stopServer's own SIGTERM(6s) + SIGKILL(1.5s) chain stays inside
   // this window, but a misbehaving OS-level process delay could push
