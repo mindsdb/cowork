@@ -27,11 +27,15 @@
 //   harness_swapped        — { from, to, surface }
 //   app_installed          — { surface }            desktop, once per install
 //
-// Internal traffic is kept out of the funnel (ENG-385): CI/QA sessions
-// (VITE_POSTHOG_MINDSHUB_MAIN_CI or `?ci=1`) are dropped entirely in capture(), and
-// events from a signed-in mindsdb.com user carry `is_internal: true` for a
-// PostHog-side cohort filter (the MindsHub main project has no reliable person email
-// to filter on, so the flag is derived client-side).
+// Internal traffic is kept out of the funnel: CI/QA sessions
+// (VITE_POSTHOG_MINDSHUB_MAIN_CI or `?ci=1`) are dropped entirely in capture()
+// (ENG-385). Signed-in internal users — a mindsdb.com email OR the Keycloak
+// `staff` role, mirroring the console's is_staff signal — carry
+// `is_internal: true`, set both as an event property and on the person via
+// `$set` so a person-level cohort filter is reliable and backfills pre-login
+// events like app_installed once the device merges into the account (ENG-672).
+// Before identity resolves the flag is unknown, so it is omitted (not sent as
+// `false`), otherwise anonymous/pre-login traffic would read as external.
 
 import { host } from '../../platform/host';
 
@@ -105,10 +109,23 @@ function dlog(...args) {
   if (isDebug()) console.log('[analytics]', ...args);
 }
 
-// True when the signed-in user is a mindsdb.com account — set from the JWT
-// `email` claim when the distinct_id is decoded (see getDistinctId).
+// Internal-traffic flag, resolved from JWT claims in getDistinctId (ENG-672).
+// A user is internal if they have a mindsdb.com email OR the Keycloak `staff`
+// role — the role mirrors the console's is_staff signal and catches staff on
+// non-mindsdb emails, while the domain keeps the original coverage. Starts
+// `null` (unknown) so pre-login/anonymous events omit the flag rather than
+// claim `false`; flips to a boolean once identity resolves.
 const INTERNAL_EMAIL_DOMAIN = '@mindsdb.com';
-let _cachedIsInternal = false;
+let _cachedIsInternal = null;
+
+// Internal iff a mindsdb.com email OR the Keycloak `staff` role is present.
+// Pure and role-case-insensitive; returns a boolean, leaving the
+// unresolved-identity case to the caller. Exported for direct unit testing.
+export function resolveIsInternal(email, roles) {
+  if (typeof email === 'string' && email.toLowerCase().endsWith(INTERNAL_EMAIL_DOMAIN)) return true;
+  if (Array.isArray(roles) && roles.some((r) => String(r).toLowerCase() === 'staff')) return true;
+  return false;
+}
 
 // Account attributes attached to the PostHog person via `$set` on every
 // authenticated event, so desktop events carry email/org and can be joined to
@@ -175,18 +192,31 @@ async function getDistinctId() {
   if (_cachedDistinctId && Date.now() < _cacheExpiry) return _cachedDistinctId;
   try {
     const token = await host.getAccessToken();
-    if (!token) return null;
+    // Identity is unresolved (or has become invalid — e.g. a revoked/expired
+    // refresh token, which does not route through resetDeviceIdentity). Drop the
+    // cached flag back to unknown so a later anonymous-keyed event omits it
+    // rather than replaying a prior session's value (ENG-672).
+    if (!token) {
+      _cachedIsInternal = null;
+      return null;
+    }
     const payload = decodeJwtPayload(token);
-    if (!payload?.sub) return null;
+    if (!payload?.sub) {
+      _cachedIsInternal = null;
+      return null;
+    }
     const email = typeof payload.email === 'string' ? payload.email.toLowerCase() : '';
-    _cachedIsInternal = email.endsWith(INTERNAL_EMAIL_DOMAIN);
+    const roles = payload.realm_access?.roles;
+    _cachedIsInternal = resolveIsInternal(email, roles);
     _cachedDistinctId = payload.sub;
     // Account attributes for `$set` (ENG-537). The active org lives in the
     // `activate_organization` claim; tier comes from `realm_access.roles` via
     // resolvePlanTier (paid wins over the co-present `free` role). Undefined
-    // values are dropped by JSON.stringify.
+    // values are dropped by JSON.stringify. is_internal rides `$set` too, so the
+    // internal/external split is a stable person property rather than only a
+    // per-event flag, and pre-login events inherit it via the merge (ENG-672).
     const activeOrg = payload.activate_organization;
-    const planTier = resolvePlanTier(payload.realm_access?.roles);
+    const planTier = resolvePlanTier(roles);
     _cachedPersonProps = {
       email: email || undefined,
       name: typeof payload.name === 'string' ? payload.name : undefined,
@@ -194,6 +224,7 @@ async function getDistinctId() {
       organization_name: typeof activeOrg?.name === 'string' ? activeOrg.name : undefined,
       plan_tier: planTier,
       is_free_tier: planTier === undefined ? undefined : planTier === 'free',
+      is_internal: _cachedIsInternal,
     };
     dlog('identity resolved', {
       distinct_id: _cachedDistinctId,
@@ -206,6 +237,9 @@ async function getDistinctId() {
     _cacheExpiry = Date.now() + 5 * 60 * 1000;
     return _cachedDistinctId;
   } catch {
+    // Any failure resolving identity leaves it unknown — see the token guards
+    // above for why the flag must not linger as a stale boolean (ENG-672).
+    _cachedIsInternal = null;
     return null;
   }
 }
@@ -301,13 +335,17 @@ function capture(event, properties = {}) {
       ...properties,
       surface: SURFACE,
       app_version: APP_VERSION,
-      is_internal: _cachedIsInternal,
       $lib: 'cowork-desktop',
       // Stable per-install id on every event (pre- and post-login) so
       // install → account can be joined deterministically even if PostHog
       // declines to merge the device person into the account (ENG-537).
       device_id: deviceId,
     };
+    // Only stamp is_internal once identity has resolved it; before then it is
+    // unknown, and sending `false` would tag anonymous/pre-login traffic as
+    // external (ENG-672). The person-level `$set` below carries it for the
+    // account, so pre-login events still roll up correctly after the merge.
+    if (_cachedIsInternal !== null) eventProps.is_internal = _cachedIsInternal;
     // Account attributes only apply to an identified person; pre-login events
     // ride the device id and inherit these via the $identify merge on sign-in.
     if (distinctId) eventProps.$set = { ..._cachedPersonProps, device_id: deviceId, last_seen_app_version: APP_VERSION };
@@ -419,7 +457,7 @@ export function resetDeviceIdentity() {
   _cachedDeviceId = null;
   _cachedDistinctId = null;
   _cacheExpiry = 0;
-  _cachedIsInternal = false;
+  _cachedIsInternal = null;
   _cachedPersonProps = {};
   _mergeInFlight.clear();
   try {
