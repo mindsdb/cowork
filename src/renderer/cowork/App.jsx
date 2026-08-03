@@ -34,6 +34,7 @@ import { loadSkin, persistSkin, nextSkin, skinLabel } from '../lib/skins';
 import { loadCustomTheme, persistCustomTheme, applyCustomTheme } from '../lib/customTheme';
 import { applyNavTitleColor } from '../lib/navBranding';
 import { getAgentLabel } from './lib/agentLabel';
+import { parseUrlState, buildSearch } from './lib/urlState';
 import { loadCachedSettings } from './lib/settingsCache';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { useGoogleDrivePicker } from './hooks/useGoogleDrivePicker';
@@ -752,6 +753,12 @@ export default function App() {
 }
 
 function AppCore() {
+  // Web deep-link / refresh seed (ENG-1233): the query string is the source of
+  // truth for "where you are" on the web shell, so the initial nav state is read
+  // from it. Desktop has no address bar — bootNav stays null and every URL hook
+  // below is gated on host.isWeb, leaving Electron behaviour untouched.
+  const bootNav = host.isWeb ? parseUrlState(window.location.search) : null;
+
   // Seed from the read-through cache of the last settings fetch, not a literal
   // set of defaults — the server (GET /settings/) is the single source of truth
   // and returns every field's resolved default, so the boot fetch (below) fills
@@ -807,10 +814,13 @@ function AppCore() {
   const [composerDisabledConnections, setComposerDisabledConnections] = useState([]);
   const [composerPrefill, setComposerPrefill] = useState(null);
   const [searchOpen, setSearchOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  // Settings is a modal overlay (not a route); on web it can be deep-linked /
+  // survive refresh via `?settings=<section>` — bootNav.settingsPane is null when
+  // closed, '' when open with no section, or the section name (ENG-1233).
+  const [settingsOpen, setSettingsOpen] = useState(bootNav?.settingsPane != null);
   // null = no section selected: the mobile master-detail shows its section
   // list; desktop (no list) falls back to 'agent' where it's read.
-  const [settingsSection, setSettingsSection] = useState(null);
+  const [settingsSection, setSettingsSection] = useState(bootNav?.settingsPane || null);
   const [ssoConnected, setSsoConnected] = useState(false);
   // Last sign-in failure, painted on the Settings account card. Cleared
   // on retry and on any authenticated push from main (ENG-761).
@@ -1315,7 +1325,7 @@ function AppCore() {
     document.body.classList.toggle('gf-dots-off', settings.showDots === false);
   }, [settings.showDots]);
 
-  const [route, setRoute] = useState('home');         // home | task | projects | scheduled | schedule-detail | artifacts | channels | customize
+  const [route, setRoute] = useState(bootNav?.route || 'home');  // home | task | projects | scheduled | schedule-detail | artifacts | channels | customize
   // Keep a ref of the live route so the keydown listener (bound
   // once on mount) can read it without a re-bind on every nav.
   routeRef.current = route;
@@ -1332,9 +1342,106 @@ function AppCore() {
   // stays expanded — gives the user permanent access to the nav.
   const sidebarCollapsedEffective =
     !isNarrow && sidebarCollapsibleRoutes.has(route) && sidebarCollapsed;
-  const [activeTaskId, setActiveTaskId] = useState(null);
-  const [selectedScheduleId, setSelectedScheduleId] = useState(null);
+  const [activeTaskId, setActiveTaskId] = useState(bootNav?.taskId || null);
+  const [selectedScheduleId, setSelectedScheduleId] = useState(bootNav?.scheduleId || null);
   const [selectedProject, setSelectedProject] = useState(null);
+  // ENG-1233 web restoration refs. selectedProject is an object resolved from the
+  // async-loaded `projects` list, and a deep-linked conversation must be hydrated
+  // once `tasks` arrive — so both are pending until their data loads. The URL
+  // writer normalises the first entry with replaceState (not pushState) so a
+  // reload doesn't inject a phantom history step.
+  const pendingProjectNameRef = useRef(bootNav?.route === 'projects' ? bootNav.projectName : null);
+  const pendingTaskIdRef = useRef(bootNav?.route === 'task' ? bootNav.taskId : null);
+  const firstUrlSyncRef = useRef(true);
+  const prevContentSigRef = useRef(null);
+  const navHandlerRef = useRef(() => {});
+
+  // ── ENG-1233: keep the URL in step with the nav state (web only) ──────────
+  // Outbound projection: whenever the content route, an entity selection, or the
+  // settings overlay changes, mirror it into the query string. The first write of
+  // a page life uses replaceState so a reload/deep-link doesn't add a history
+  // entry; subsequent changes push, so Back/Forward walk the in-app history.
+  // Idempotent by construction — buildSearch on its own output is a no-op, so the
+  // equality guard makes a popstate-driven state change (below) not re-push.
+  useEffect(() => {
+    if (!host.isWeb) return;
+    // The mount run is the "first sync" whether or not it writes: if the initial
+    // URL is already canonical we still consume the replaceState budget here, so
+    // the first genuine navigation afterwards pushes (and Back can return to it).
+    const isFirst = firstUrlSyncRef.current;
+    firstUrlSyncRef.current = false;
+    // Only a change to the CONTENT (route + open entity) pushes a history entry.
+    // The settings overlay opening/closing or switching sections replaces instead,
+    // so browsing settings doesn't bury the page under Back-press-eating entries —
+    // a refresh still restores it (it's in the URL), Back/Forward just ignore it.
+    const contentSig = `${route}|${activeTaskId || ''}|${selectedProject?.name || ''}|${selectedScheduleId || ''}`;
+    const contentChanged = prevContentSigRef.current !== null && prevContentSigRef.current !== contentSig;
+    prevContentSigRef.current = contentSig;
+    const desired = buildSearch({
+      route,
+      taskId: activeTaskId,
+      projectName: selectedProject?.name || null,
+      scheduleId: selectedScheduleId,
+      settingsPane: settingsOpen ? (settingsSection || '') : null,
+    }, window.location.search);
+    if (desired === window.location.search) return;
+    const url = `${window.location.pathname}${desired}${window.location.hash}`;
+    if (contentChanged && !isFirst) window.history.pushState(null, '', url);
+    else window.history.replaceState(null, '', url);
+  }, [route, activeTaskId, selectedProject, selectedScheduleId, settingsOpen, settingsSection]);
+
+  // Cold deep-link: seeding `route` directly skips the data fetch that navigate()
+  // does on normal entry, so kick the fetch the destination needs once on mount.
+  // Harmless if the app's own boot load also fetches these.
+  useEffect(() => {
+    if (!host.isWeb || !bootNav) return;
+    if (bootNav.route === 'artifacts') {
+      fetchArtifacts().then((d) => { if (Array.isArray(d)) setArtifacts(d); });
+    } else if (bootNav.route === 'projects') {
+      fetchProjects().then((d) => { if (Array.isArray(d)) setProjects(d); });
+    } else if (bootNav.route === 'scheduled' || bootNav.route === 'schedule-detail') {
+      fetchSchedules().then((d) => { setScheduled(d.schedules || []); setScheduleRunsIndex(d.runs_index || {}); });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Resolve a deep-linked conversation once the session list has loaded:
+  // selectTask hydrates messages + reattaches any in-flight stream, but only for
+  // a task that's actually in `tasks` — so it can't run at mount time.
+  useEffect(() => {
+    if (!host.isWeb) return;
+    const id = pendingTaskIdRef.current;
+    if (!id) return;
+    if (tasks.some((t) => t.id === id)) {
+      pendingTaskIdRef.current = null;
+      selectTask(id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tasks]);
+
+  // Resolve a deep-linked project once the project list has loaded (selectedProject
+  // is the full object, keyed by name in the URL).
+  useEffect(() => {
+    if (!host.isWeb) return;
+    const name = pendingProjectNameRef.current;
+    if (!name) return;
+    const p = projects.find((x) => x.name === name);
+    if (p) {
+      pendingProjectNameRef.current = null;
+      setSelectedProject(p);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projects]);
+
+  // Inbound: reflect browser Back/Forward into the nav state. Bound once; it calls
+  // through navHandlerRef so it always runs the latest closure (mirrors routeRef).
+  // The handler itself is assigned in render, just after navigate() is defined.
+  useEffect(() => {
+    if (!host.isWeb) return;
+    const onPop = () => navHandlerRef.current();
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
   // Set from the configured planning model once settings load.
   const [selectedModel, setSelectedModel] = useState(null);
   // In the hosted web shell the FastAPI process IS the host — there
@@ -2476,6 +2583,34 @@ function AppCore() {
     });
     }
     setRoute(key);
+  };
+
+  // ENG-1233: apply a URL back into the app on Back/Forward. Reuses the same
+  // primitives normal navigation goes through (selectTask / navigate / openSettings)
+  // so restored state is identical to clicked state. Reassigned each render via a
+  // ref so the popstate listener (bound once) always sees the latest closures.
+  navHandlerRef.current = () => {
+    const s = parseUrlState(window.location.search);
+    // Settings is an overlay orthogonal to the content route.
+    if (s.settingsPane != null) openSettings(s.settingsPane || null);
+    else setSettingsOpen(false);
+    if (s.route === 'task') {
+      if (s.taskId) selectTask(s.taskId); else setRoute('task');
+      return;
+    }
+    if (s.route === 'schedule-detail') {
+      setSelectedScheduleId(s.scheduleId);
+      setRoute('schedule-detail');
+      return;
+    }
+    if (s.route === 'projects') {
+      // navigate('projects') would clear the selection; set it directly so a
+      // Back into a project detail restores the project, not the grid.
+      setSelectedProject(s.projectName ? (projects.find((x) => x.name === s.projectName) || null) : null);
+      setRoute('projects');
+      return;
+    }
+    navigate(s.route);
   };
 
   const attachmentProjectPath = currentTask?.projectPath || selectedProject?.path || null;
