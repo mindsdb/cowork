@@ -120,11 +120,57 @@ export function versionSkewDays(raws: (string | null | undefined)[]): number {
  *  release train cuts weekly, so a full release behind ≈ 7 days. */
 export const SKEW_WARN_DAYS = 7;
 
+// Day-of-week (getUTCDay numbering: Sun=0 … Sat=6) the weekly release train
+// freezes. `.github/workflows/staging-freeze.yml` runs `cron: 47 13 * * 5`, so
+// the freeze — and thus the boundary between one release and the next — lands
+// on Friday. The headline "release week" starts here rather than on Monday
+// (raw ISO) so a scheduled release AND every hotfix that ships before the next
+// freeze carry ONE label. Under a Mon–Sun ISO week a release cut late in the
+// week (Fri/Sat/Sun) would roll to a new week number on the very next hotfix
+// (Mon), which reads as a bigger jump than it is; anchoring to the freeze day
+// removes that. Trade-off: the number is no longer the raw ISO week of the
+// build date — it is the ISO week of the freeze that opened the cycle — so it
+// can differ from a calendar "week N" by up to the freeze offset. The exact
+// build date is surfaced alongside it (`buildDate`) so nothing is hidden.
+const RELEASE_FREEZE_DOW = 5; // Friday
+
+/** Start of the release week `date` belongs to: the most recent freeze day
+ *  (Friday, UTC) on or before `date`. */
+export function releaseWeekStart(date: Date): Date {
+  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  const back = (d.getUTCDay() - RELEASE_FREEZE_DOW + 7) % 7;
+  d.setUTCDate(d.getUTCDate() - back);
+  return d;
+}
+
+/** Short calendar date, e.g. "Aug 2, 2026". */
+export function formatDay(date: Date): string {
+  return `${MONTHS[date.getUTCMonth()]} ${date.getUTCDate()}, ${date.getUTCFullYear()}`;
+}
+
+/** Human span of a release week from its `start` (Friday) through the following
+ *  Thursday, e.g. "Jul 31 – Aug 6, 2026". The start year is dropped when both
+ *  ends share it. */
+export function releaseWeekRange(start: Date): string {
+  const end = new Date(start);
+  end.setUTCDate(start.getUTCDate() + 6);
+  const left = start.getUTCFullYear() === end.getUTCFullYear()
+    ? `${MONTHS[start.getUTCMonth()]} ${start.getUTCDate()}`
+    : formatDay(start);
+  return `${left} – ${formatDay(end)}`;
+}
+
 export interface UnifiedVersion {
-  /** ISO-week headline, e.g. "2026-W28". */
+  /** Release-week headline, e.g. "2026-W31" — the ISO week of the freeze
+   *  (Friday) that opened the newest component's release cycle, NOT the raw ISO
+   *  week of the build date. A hotfix that lands before the next freeze keeps
+   *  this label; the next freeze rolls it. See `releaseWeekStart`. */
   label: string;
-  /** Human "week of" form for a tooltip, e.g. "Week of Jul 6, 2026". */
-  weekOf: string;
+  /** Exact build date of the newest component, e.g. "Aug 2, 2026". Shown beside
+   *  the label so a within-cycle update stays visible even when `label` holds. */
+  buildDate: string;
+  /** The release-week span for a tooltip, e.g. "Jul 31 – Aug 6, 2026". */
+  cycleRange: string;
   /** The component the label was derived from. */
   newest: CalVer;
   /** Day-gap between the newest and oldest component (0 when <2 parse). A gap
@@ -132,15 +178,17 @@ export interface UnifiedVersion {
   skewDays: number;
 }
 
-/** Unified "content" version = ISO week of the newest component, or null when
- *  no input parses as CalVer. */
+/** Unified "content" version = release week of the newest component, or null
+ *  when no input parses as CalVer. */
 export function unifiedVersion(raws: (string | null | undefined)[]): UnifiedVersion | null {
   const newest = newestCalVer(raws);
   if (!newest) return null;
-  const date = calverDate(newest);
+  const build = calverDate(newest);
+  const weekStart = releaseWeekStart(build);
   return {
-    label: isoWeekLabel(date),
-    weekOf: weekOfLabel(date),
+    label: isoWeekLabel(weekStart),
+    buildDate: formatDay(build),
+    cycleRange: releaseWeekRange(weekStart),
     newest,
     skewDays: versionSkewDays(raws),
   };

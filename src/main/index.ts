@@ -1316,7 +1316,7 @@ app.whenReady().then(async () => {
             {
               label: 'About MindsHub Cowork',
               click: async () => {
-                // Unified headline = ISO week of the newest hot-updated
+                // Unified headline = release week of the newest hot-updated
                 // component (UI + server + agent); the App shell is shown
                 // separately since it updates via a different channel.
                 // Per-component versions go in credits as a lightweight
