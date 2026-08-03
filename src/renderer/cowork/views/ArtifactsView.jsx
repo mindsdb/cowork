@@ -109,16 +109,12 @@ function isInlinePreviewable(a) {
   return false;
 }
 
-// "Updated" is already pre-formatted by the server (e.g. "3h ago",
-// "Yesterday"). For sorting we need a numeric stamp — fall back to the
-// raw `updatedAt` / `mtime` if present, otherwise 0 so unknown items
-// sink to the bottom.
-function timestampOf(a) {
-  const raw = a.updatedAt || a.updated_at || a.mtime || a.modified;
-  if (raw == null) return 0;
-  if (typeof raw === 'number') return raw;
-  const t = Date.parse(raw);
-  return Number.isFinite(t) ? t : 0;
+// "Updated" is pre-formatted by the server (e.g. "3h ago") from the same
+// content_mtime this sorts by (ENG-1123 Bug 2) — so the sort order and the
+// printed age can no longer disagree. a.mtime is always a plain number of
+// seconds (content_mtime) or absent/0 — never a string, so no Date.parse.
+export function timestampOf(a) {
+  return a.mtime || 0;
 }
 
 // Kind pill — short uppercase tag for the file type. Pulls from
