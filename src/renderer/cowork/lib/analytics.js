@@ -46,6 +46,7 @@ const POSTHOG_KEY =
     : '';
 
 const SURFACE = host.isElectron ? 'desktop' : 'web';
+const LIB = 'cowork-desktop';
 
 // Running UI-bundle version, baked in at build time as __APP_VERSION__ (Vite
 // `define`). For OTA clients this is the bundle actually running, not the
@@ -58,65 +59,74 @@ const SURFACE = host.isElectron ? 'desktop' : 'web';
 const APP_VERSION =
   typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : undefined;
 
-// Cohort-hygiene flag. CI/QA traffic shouldn't pollute the funnel: a build
-// can opt out via VITE_POSTHOG_MINDSHUB_MAIN_CI, and a session can opt out at runtime
-// with `?ci=1` (mirrors the web hub's `VITE_POSTHOG_HUB_CI` / `?ci=1`).
-let _cachedIsCi = null;
-function isCi() {
-  if (_cachedIsCi !== null) return _cachedIsCi;
-  let ci = false;
-  try {
-    if (
-      typeof import.meta !== 'undefined' &&
-      import.meta.env?.VITE_POSTHOG_MINDSHUB_MAIN_CI === 'true'
-    ) {
-      ci = true;
+// ── Session flags ──────────────────────────────────────────────────
+// Both CI-hygiene and debug-logging resolve to a boolean once (from a build-
+// time env var OR a per-session `?query`), then memoize. These are session-
+// level and are NOT cleared by resetDeviceIdentity — only per-identity state is.
+function memoizedFlag(read) {
+  let cached = null;
+  return () => {
+    if (cached !== null) return cached;
+    try {
+      cached = Boolean(read());
+    } catch {
+      cached = false;
     }
-    if (!ci && typeof window !== 'undefined' && window.location?.search) {
-      ci = new URLSearchParams(window.location.search).get('ci') === '1';
-    }
-  } catch {
-    ci = false;
-  }
-  _cachedIsCi = ci;
-  return ci;
+    return cached;
+  };
 }
+
+function queryFlag(param) {
+  if (typeof window === 'undefined' || !window.location?.search) return false;
+  return new URLSearchParams(window.location.search).get(param) === '1';
+}
+
+// CI/QA traffic shouldn't pollute the funnel: a build can opt out via
+// VITE_POSTHOG_MINDSHUB_MAIN_CI, and a session can opt out at runtime with
+// `?ci=1` (mirrors the web hub's `VITE_POSTHOG_HUB_CI` / `?ci=1`).
+const isCi = memoizedFlag(
+  () =>
+    (typeof import.meta !== 'undefined' &&
+      import.meta.env?.VITE_POSTHOG_MINDSHUB_MAIN_CI === 'true') ||
+    queryFlag('ci')
+);
 
 // Verbose per-event logging for local diagnosis (ENG-537). Off unless
 // VITE_ANALYTICS_DEBUG=true or `?analytics_debug=1` — keeps production silent
 // while letting a dev watch the capture path in the renderer DevTools console.
-let _cachedDebug = null;
-function isDebug() {
-  if (_cachedDebug !== null) return _cachedDebug;
-  let dbg = false;
-  try {
-    if (
-      typeof import.meta !== 'undefined' &&
-      import.meta.env?.VITE_ANALYTICS_DEBUG === 'true'
-    ) {
-      dbg = true;
-    }
-    if (!dbg && typeof window !== 'undefined' && window.location?.search) {
-      dbg = new URLSearchParams(window.location.search).get('analytics_debug') === '1';
-    }
-  } catch {
-    dbg = false;
-  }
-  _cachedDebug = dbg;
-  return dbg;
-}
+const isDebug = memoizedFlag(
+  () =>
+    (typeof import.meta !== 'undefined' &&
+      import.meta.env?.VITE_ANALYTICS_DEBUG === 'true') ||
+    queryFlag('analytics_debug')
+);
+
 function dlog(...args) {
   if (isDebug()) console.log('[analytics]', ...args);
 }
 
-// Internal-traffic flag, resolved from JWT claims in getDistinctId (ENG-672).
-// A user is internal if they have a mindsdb.com email OR the Keycloak `staff`
-// role — the role mirrors the console's is_staff signal and catches staff on
-// non-mindsdb emails, while the domain keeps the original coverage. Starts
-// `null` (unknown) so pre-login/anonymous events omit the flag rather than
-// claim `false`; flips to a boolean once identity resolves.
+// ── Identity state ─────────────────────────────────────────────────
+// All per-identity mutable state lives in one object so resetDeviceIdentity can
+// clear it wholesale and so a reader sees the full surface in one place:
+//   isInternal   — null (unknown) until identity resolves, then boolean (ENG-672)
+//   personProps  — account attributes for `$set` (ENG-537)
+//   deviceId     — stable anonymous id, distinct_id before sign-in (ENG-537)
+//   distinctId   — the Keycloak `sub`, cached to avoid decoding the JWT per event
+//   cacheExpiry  — epoch ms after which distinctId must be re-resolved
+const identity = {
+  isInternal: null,
+  personProps: {},
+  deviceId: null,
+  distinctId: null,
+  cacheExpiry: 0,
+};
+// Synchronous guard against the merge firing twice when two events resolve
+// identity in the same tick — the localStorage marker is only written after the
+// async POST returns, too late to dedupe concurrent callers. Entries are
+// cleared on failure so a later event can still retry.
+const mergeInFlight = new Set();
+
 const INTERNAL_EMAIL_DOMAIN = '@mindsdb.com';
-let _cachedIsInternal = null;
 
 // Internal iff a mindsdb.com email OR the Keycloak `staff` role is present.
 // Pure and role-case-insensitive; returns a boolean, leaving the
@@ -127,18 +137,12 @@ export function resolveIsInternal(email, roles) {
   return false;
 }
 
-// Account attributes attached to the PostHog person via `$set` on every
-// authenticated event, so desktop events carry email/org and can be joined to
-// signup + Stripe (ENG-537). Populated from JWT claims in getDistinctId.
-let _cachedPersonProps = {};
-
 // Stable anonymous device id (localStorage), used as the distinct_id before
 // sign-in so installs/opens are captured, then merged into the account via a
 // `$identify` alias on login (ENG-537). Mirrors the web console's client uuid.
 const DEVICE_ID_KEY = 'cowork_device_id';
-let _cachedDeviceId = null;
 function getDeviceId() {
-  if (_cachedDeviceId) return _cachedDeviceId;
+  if (identity.deviceId) return identity.deviceId;
   const mint = () =>
     typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
       ? crypto.randomUUID()
@@ -149,13 +153,13 @@ function getDeviceId() {
       id = mint();
       window.localStorage.setItem(DEVICE_ID_KEY, id);
     }
-    _cachedDeviceId = id;
+    identity.deviceId = id;
   } catch {
     // localStorage unavailable — volatile per-session id so events still send
     // (they just won't merge across restarts).
-    _cachedDeviceId = mint();
+    identity.deviceId = mint();
   }
-  return _cachedDeviceId;
+  return identity.deviceId;
 }
 
 // Decode the JWT payload without a library. Returns null on any error.
@@ -184,12 +188,16 @@ function resolvePlanTier(roles) {
   return 'free';
 }
 
-// Cached distinct_id to avoid decoding the JWT on every event.
-let _cachedDistinctId = null;
-let _cacheExpiry = 0;
+// The person attributes attached to an identified event/merge via `$set`, plus
+// the deterministic device_id join key and current app version. Single source
+// for both capture() and mergeAnonIntoAccount() (ENG-537). Undefined values are
+// dropped by JSON.stringify.
+function personSet() {
+  return { ...identity.personProps, device_id: getDeviceId(), last_seen_app_version: APP_VERSION };
+}
 
 async function getDistinctId() {
-  if (_cachedDistinctId && Date.now() < _cacheExpiry) return _cachedDistinctId;
+  if (identity.distinctId && Date.now() < identity.cacheExpiry) return identity.distinctId;
   try {
     const token = await host.getAccessToken();
     // Identity is unresolved (or has become invalid — e.g. a revoked/expired
@@ -197,51 +205,75 @@ async function getDistinctId() {
     // cached flag back to unknown so a later anonymous-keyed event omits it
     // rather than replaying a prior session's value (ENG-672).
     if (!token) {
-      _cachedIsInternal = null;
+      identity.isInternal = null;
       return null;
     }
     const payload = decodeJwtPayload(token);
     if (!payload?.sub) {
-      _cachedIsInternal = null;
+      identity.isInternal = null;
       return null;
     }
     const email = typeof payload.email === 'string' ? payload.email.toLowerCase() : '';
     const roles = payload.realm_access?.roles;
-    _cachedIsInternal = resolveIsInternal(email, roles);
-    _cachedDistinctId = payload.sub;
+    identity.isInternal = resolveIsInternal(email, roles);
+    identity.distinctId = payload.sub;
     // Account attributes for `$set` (ENG-537). The active org lives in the
     // `activate_organization` claim; tier comes from `realm_access.roles` via
-    // resolvePlanTier (paid wins over the co-present `free` role). Undefined
-    // values are dropped by JSON.stringify. is_internal rides `$set` too, so the
-    // internal/external split is a stable person property rather than only a
-    // per-event flag, and pre-login events inherit it via the merge (ENG-672).
+    // resolvePlanTier (paid wins over the co-present `free` role). is_internal
+    // rides `$set` too, so the internal/external split is a stable person
+    // property rather than only a per-event flag, and pre-login events inherit
+    // it via the merge (ENG-672).
     const activeOrg = payload.activate_organization;
     const planTier = resolvePlanTier(roles);
-    _cachedPersonProps = {
+    identity.personProps = {
       email: email || undefined,
       name: typeof payload.name === 'string' ? payload.name : undefined,
       organization_id: typeof activeOrg?.id === 'string' ? activeOrg.id : undefined,
       organization_name: typeof activeOrg?.name === 'string' ? activeOrg.name : undefined,
       plan_tier: planTier,
       is_free_tier: planTier === undefined ? undefined : planTier === 'free',
-      is_internal: _cachedIsInternal,
+      is_internal: identity.isInternal,
     };
-    dlog('identity resolved', {
-      distinct_id: _cachedDistinctId,
-      is_internal: _cachedIsInternal,
-      ..._cachedPersonProps,
-    });
+    dlog('identity resolved', { distinct_id: identity.distinctId, ...identity.personProps });
     // Fold any pre-login anonymous activity on this device into the account.
-    mergeAnonIntoAccount(_cachedDistinctId);
+    mergeAnonIntoAccount(identity.distinctId);
     // Cache for 5 minutes — tokens refresh on a longer cycle.
-    _cacheExpiry = Date.now() + 5 * 60 * 1000;
-    return _cachedDistinctId;
+    identity.cacheExpiry = Date.now() + 5 * 60 * 1000;
+    return identity.distinctId;
   } catch {
     // Any failure resolving identity leaves it unknown — see the token guards
     // above for why the flag must not linger as a stale boolean (ENG-672).
-    _cachedIsInternal = null;
+    identity.isInternal = null;
     return null;
   }
+}
+
+// Single POST path to the PostHog Capture API. Never throws; resolves true only
+// when the POST actually succeeded (2xx). Both capture() and the $identify merge
+// go through here so the request shape and error handling stay in one place.
+// `keepalive` lets an event fired just before quit/navigation still flush.
+function postCapture(event, distinctId, properties) {
+  const body = JSON.stringify({
+    api_key: POSTHOG_KEY,
+    event,
+    distinct_id: distinctId,
+    properties: { ...properties, $lib: LIB },
+    timestamp: new Date().toISOString(),
+  });
+  return fetch(`${POSTHOG_HOST}/capture/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body,
+    keepalive: true,
+  })
+    .then((res) => {
+      dlog('POST', event, '->', res.status);
+      return res.ok;
+    })
+    .catch((err) => {
+      dlog('POST', event, 'failed', err);
+      return false;
+    });
 }
 
 // Once per (device → account), tell PostHog to merge the anonymous device
@@ -250,14 +282,9 @@ async function getDistinctId() {
 // an `$identify` event carrying `$anon_distinct_id`. Idempotent via a
 // localStorage marker so it fires once per account, not on every event.
 const IDENTITY_MERGED_KEY = 'cowork_identity_merged_sub';
-// Synchronous guard against the merge firing twice when two events resolve
-// identity in the same tick — the localStorage marker is only written after the
-// async POST returns, too late to dedupe concurrent callers. Cleared on failure
-// so a later event can still retry.
-const _mergeInFlight = new Set();
 function mergeAnonIntoAccount(sub) {
   if (!POSTHOG_KEY || isCi() || !sub) return;
-  if (_mergeInFlight.has(sub)) return;
+  if (mergeInFlight.has(sub)) return;
   try {
     if (window.localStorage.getItem(IDENTITY_MERGED_KEY) === sub) return;
   } catch {
@@ -266,49 +293,31 @@ function mergeAnonIntoAccount(sub) {
   const deviceId = getDeviceId();
   // Nothing to merge if there's no distinct device id to alias from.
   if (!deviceId || deviceId === sub) return;
-  _mergeInFlight.add(sub);
-  const body = JSON.stringify({
-    api_key: POSTHOG_KEY,
-    event: '$identify',
-    distinct_id: sub,
-    properties: {
-      $anon_distinct_id: deviceId,
-      // Carry device_id onto the person too, so the deterministic join key is
-      // available regardless of whether the person-merge lands (ENG-537).
-      $set: { ..._cachedPersonProps, device_id: deviceId, last_seen_app_version: APP_VERSION },
-      surface: SURFACE,
-      is_internal: _cachedIsInternal,
-      $lib: 'cowork-desktop',
-    },
-    timestamp: new Date().toISOString(),
-  });
+  mergeInFlight.add(sub);
   dlog('$identify merge', { distinct_id: sub, $anon_distinct_id: deviceId });
-  fetch(`${POSTHOG_HOST}/capture/`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body,
-  })
-    .then((res) => {
-      dlog('$identify merge ->', res.status);
-      if (res.ok) {
-        try {
-          window.localStorage.setItem(IDENTITY_MERGED_KEY, sub);
-        } catch {
-          /* best effort — a re-merge next session is harmless */
-        }
-      } else {
-        _mergeInFlight.delete(sub); // let a later event retry
+  postCapture('$identify', sub, {
+    $anon_distinct_id: deviceId,
+    // Carry device_id onto the person too (via personSet), so the deterministic
+    // join key is available regardless of whether the person-merge lands.
+    $set: personSet(),
+    surface: SURFACE,
+    is_internal: identity.isInternal,
+  }).then((ok) => {
+    if (ok) {
+      try {
+        window.localStorage.setItem(IDENTITY_MERGED_KEY, sub);
+      } catch {
+        /* best effort — a re-merge next session is harmless */
       }
-    })
-    .catch((err) => {
-      dlog('$identify merge failed', err);
-      _mergeInFlight.delete(sub); // let a later event retry
-    });
+    } else {
+      mergeInFlight.delete(sub); // non-ok or network error — let a later event retry
+    }
+  });
 }
 
-// Fire-and-forget POST to PostHog Capture API. Never throws, never blocks.
-// Returns a promise that resolves true only when the POST actually succeeded —
-// one-shot callers (trackAppInstalled) rely on this so they don't mark
+// Fire-and-forget event capture. Never throws, never blocks. Returns a promise
+// that resolves true only when the POST actually succeeded — one-shot callers
+// (trackAppInstalled, trackFirstQuery) rely on this so they don't mark
 // themselves done before the event is delivered. Other callers ignore it.
 function capture(event, properties = {}) {
   if (!POSTHOG_KEY) {
@@ -321,59 +330,41 @@ function capture(event, properties = {}) {
     dlog('skip', event, '— CI session');
     return Promise.resolve(false);
   }
-  return getDistinctId().then((distinctId) => {
-    // Fall back to the anonymous device id before sign-in so pre-login events
-    // (notably app_installed) are captured instead of dropped; they merge into
-    // the account on first sign-in (see mergeAnonIntoAccount).
-    const deviceId = getDeviceId();
-    const captureId = distinctId || deviceId;
-    if (!captureId) {
-      dlog('skip', event, '— no identity and no device id');
-      return false;
-    }
-    const eventProps = {
-      ...properties,
-      surface: SURFACE,
-      app_version: APP_VERSION,
-      $lib: 'cowork-desktop',
-      // Stable per-install id on every event (pre- and post-login) so
-      // install → account can be joined deterministically even if PostHog
-      // declines to merge the device person into the account (ENG-537).
-      device_id: deviceId,
-    };
-    // Only stamp is_internal once identity has resolved it; before then it is
-    // unknown, and sending `false` would tag anonymous/pre-login traffic as
-    // external (ENG-672). The person-level `$set` below carries it for the
-    // account, so pre-login events still roll up correctly after the merge.
-    if (_cachedIsInternal !== null) eventProps.is_internal = _cachedIsInternal;
-    // Account attributes only apply to an identified person; pre-login events
-    // ride the device id and inherit these via the $identify merge on sign-in.
-    if (distinctId) eventProps.$set = { ..._cachedPersonProps, device_id: deviceId, last_seen_app_version: APP_VERSION };
-    const body = JSON.stringify({
-      api_key: POSTHOG_KEY,
-      event,
-      distinct_id: captureId,
-      properties: eventProps,
-      timestamp: new Date().toISOString(),
-    });
-    dlog('POST', event, { distinct_id: captureId, identified: Boolean(distinctId) });
-    return fetch(`${POSTHOG_HOST}/capture/`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body,
-    })
-      .then((res) => {
-        dlog('POST', event, '->', res.status);
-        return res.ok;
-      })
-      .catch((err) => {
-        dlog('POST', event, 'failed', err);
+  return getDistinctId()
+    .then((distinctId) => {
+      // Fall back to the anonymous device id before sign-in so pre-login events
+      // (notably app_installed) are captured instead of dropped; they merge into
+      // the account on first sign-in (see mergeAnonIntoAccount).
+      const deviceId = getDeviceId();
+      const captureId = distinctId || deviceId;
+      if (!captureId) {
+        dlog('skip', event, '— no identity and no device id');
         return false;
-      });
-  }).catch((err) => {
-    dlog('capture failed for', event, err);
-    return false;
-  });
+      }
+      const eventProps = {
+        ...properties,
+        surface: SURFACE,
+        app_version: APP_VERSION,
+        // Stable per-install id on every event (pre- and post-login) so
+        // install → account can be joined deterministically even if PostHog
+        // declines to merge the device person into the account (ENG-537).
+        device_id: deviceId,
+      };
+      // Only stamp is_internal once identity has resolved it; before then it is
+      // unknown, and sending `false` would tag anonymous/pre-login traffic as
+      // external (ENG-672). The person-level `$set` below carries it for the
+      // account, so pre-login events still roll up correctly after the merge.
+      if (identity.isInternal !== null) eventProps.is_internal = identity.isInternal;
+      // Account attributes only apply to an identified person; pre-login events
+      // ride the device id and inherit these via the $identify merge on sign-in.
+      if (distinctId) eventProps.$set = personSet();
+      dlog('POST', event, { distinct_id: captureId, identified: Boolean(distinctId) });
+      return postCapture(event, captureId, eventProps);
+    })
+    .catch((err) => {
+      dlog('capture failed for', event, err);
+      return false;
+    });
 }
 
 // ── Public event helpers ───────────────────────────────────────────
@@ -401,14 +392,25 @@ export function trackAgentSessionStarted() {
 
 const FIRST_QUERY_STORAGE_KEY = 'mdb_first_query_sent';
 
-export function trackFirstQuery() {
+// Once per user. Mark the localStorage flag only after the event is actually
+// delivered (mirrors trackAppInstalled) — otherwise an offline first query sets
+// the flag, fails to send, and is lost forever. If localStorage is unavailable
+// we can't dedupe, so we fire and accept possible duplicates on a later send.
+export async function trackFirstQuery() {
+  let storageOk = true;
   try {
     if (localStorage.getItem(FIRST_QUERY_STORAGE_KEY)) return;
-    localStorage.setItem(FIRST_QUERY_STORAGE_KEY, '1');
   } catch {
-    // localStorage unavailable — fire anyway and accept possible duplicates
+    storageOk = false;
   }
-  capture('first_query');
+  const sent = await capture('first_query');
+  if (sent && storageOk) {
+    try {
+      localStorage.setItem(FIRST_QUERY_STORAGE_KEY, '1');
+    } catch {
+      /* best effort */
+    }
+  }
 }
 
 // ── Free-tier funnel events (ENG-385) ──────────────────────────────
@@ -454,12 +456,12 @@ export async function trackAppInstalled() {
 // NOT cleared: the machine is still installed, so app_installed must not
 // re-fire (installs are counted per device, once).
 export function resetDeviceIdentity() {
-  _cachedDeviceId = null;
-  _cachedDistinctId = null;
-  _cacheExpiry = 0;
-  _cachedIsInternal = null;
-  _cachedPersonProps = {};
-  _mergeInFlight.clear();
+  identity.isInternal = null;
+  identity.personProps = {};
+  identity.deviceId = null;
+  identity.distinctId = null;
+  identity.cacheExpiry = 0;
+  mergeInFlight.clear();
   try {
     window.localStorage.removeItem(DEVICE_ID_KEY);
     window.localStorage.removeItem(IDENTITY_MERGED_KEY);

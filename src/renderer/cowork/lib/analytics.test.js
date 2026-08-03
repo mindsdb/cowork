@@ -96,6 +96,48 @@ describe('app_version on captured events', () => {
   });
 });
 
+describe('trackFirstQuery delivery gating (ENG-501)', () => {
+  const FIRST_QUERY_KEY = 'mdb_first_query_sent';
+
+  it('marks the localStorage flag only after a successful send', async () => {
+    const fetchMock = mockFetch(); // resolves ok:true
+    const { trackFirstQuery } = await importAnalytics();
+
+    await trackFirstQuery();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).event).toBe('first_query');
+    expect(window.localStorage.getItem(FIRST_QUERY_KEY)).toBe('1');
+  });
+
+  it('does NOT mark the flag when the send fails, so a later query can retry', async () => {
+    // Regression: previously the flag was set before the POST, so an offline
+    // first query set the flag, failed to send, and was lost forever.
+    const failing = vi.fn().mockResolvedValue({ ok: false, status: 500 });
+    globalThis.fetch = failing;
+    const { trackFirstQuery } = await importAnalytics();
+
+    await trackFirstQuery();
+    expect(window.localStorage.getItem(FIRST_QUERY_KEY)).toBeNull();
+
+    // Network recovers; the next query still fires and now succeeds.
+    const ok = mockFetch();
+    await trackFirstQuery();
+    expect(ok).toHaveBeenCalledTimes(1);
+    expect(window.localStorage.getItem(FIRST_QUERY_KEY)).toBe('1');
+  });
+
+  it('is a no-op once the flag is already set', async () => {
+    window.localStorage.setItem(FIRST_QUERY_KEY, '1');
+    const fetchMock = mockFetch();
+    const { trackFirstQuery } = await importAnalytics();
+
+    await trackFirstQuery();
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
 describe('resolveIsInternal (ENG-672)', () => {
   it('flags a mindsdb.com email as internal', async () => {
     const { resolveIsInternal } = await importAnalytics();
