@@ -122,7 +122,7 @@ let _cachedIsInternal = null;
 // Pure and role-case-insensitive; returns a boolean, leaving the
 // unresolved-identity case to the caller. Exported for direct unit testing.
 export function resolveIsInternal(email, roles) {
-  if (typeof email === 'string' && email.endsWith(INTERNAL_EMAIL_DOMAIN)) return true;
+  if (typeof email === 'string' && email.toLowerCase().endsWith(INTERNAL_EMAIL_DOMAIN)) return true;
   if (Array.isArray(roles) && roles.some((r) => String(r).toLowerCase() === 'staff')) return true;
   return false;
 }
@@ -192,9 +192,19 @@ async function getDistinctId() {
   if (_cachedDistinctId && Date.now() < _cacheExpiry) return _cachedDistinctId;
   try {
     const token = await host.getAccessToken();
-    if (!token) return null;
+    // Identity is unresolved (or has become invalid — e.g. a revoked/expired
+    // refresh token, which does not route through resetDeviceIdentity). Drop the
+    // cached flag back to unknown so a later anonymous-keyed event omits it
+    // rather than replaying a prior session's value (ENG-672).
+    if (!token) {
+      _cachedIsInternal = null;
+      return null;
+    }
     const payload = decodeJwtPayload(token);
-    if (!payload?.sub) return null;
+    if (!payload?.sub) {
+      _cachedIsInternal = null;
+      return null;
+    }
     const email = typeof payload.email === 'string' ? payload.email.toLowerCase() : '';
     const roles = payload.realm_access?.roles;
     _cachedIsInternal = resolveIsInternal(email, roles);
@@ -227,6 +237,9 @@ async function getDistinctId() {
     _cacheExpiry = Date.now() + 5 * 60 * 1000;
     return _cachedDistinctId;
   } catch {
+    // Any failure resolving identity leaves it unknown — see the token guards
+    // above for why the flag must not linger as a stale boolean (ENG-672).
+    _cachedIsInternal = null;
     return null;
   }
 }
