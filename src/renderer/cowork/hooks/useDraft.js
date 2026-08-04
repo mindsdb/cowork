@@ -1,7 +1,6 @@
 import { useCallback, useState } from 'react';
 import { getDraft, setDraft } from '../lib/draftStore';
 
-
 /**
  * Composer text that survives unmount. Drop-in for `useState('')`.
  *
