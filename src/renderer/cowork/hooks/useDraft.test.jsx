@@ -2,7 +2,7 @@
 // text survives unmount (navigation), stays isolated per surface, and clears
 // on send. The store is asserted through the hook rather than directly because
 // the unmount/remount pairing IS the bug (ENG-1221).
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 
 // Fresh module registry per test so the store's in-memory copy is rebuilt
@@ -17,7 +17,13 @@ const mount = (useDraft, key) => renderHook(({ k }) => useDraft(k), { initialPro
 describe('useDraft', () => {
   beforeEach(() => {
     localStorage.clear();
-    vi.useRealTimers();
+  });
+
+  // Each test gets a fresh module instance, so the previous one's debounce
+  // timer is still pending and would write its drafts back after the clear
+  // above. `pagehide` flushes and cancels it.
+  afterEach(() => {
+    window.dispatchEvent(new Event('pagehide'));
   });
 
   it('restores text after the composer unmounts and remounts', async () => {
@@ -58,11 +64,27 @@ describe('useDraft', () => {
 
     const view = mount(useDraft, 'new');
     act(() => view.result.current[1]('sent text'));
+    window.dispatchEvent(new Event('pagehide')); // draft is now on disk
+    expect(localStorage.getItem('anton.composerDrafts')).toContain('sent text');
+
     act(() => view.result.current[1]('')); // what handleSend does
     view.unmount();
 
     expect(mount(useDraft, 'new').result.current[0]).toBe('');
-    expect(localStorage.getItem('anton.composerDrafts') || '').not.toContain('sent text');
+    // Cleared synchronously, not on the debounce: quitting right after a send
+    // must not bring the sent text back as a draft.
+    expect(localStorage.getItem('anton.composerDrafts')).not.toContain('sent text');
+  });
+
+  it('accepts an updater function like useState', async () => {
+    const { useDraft } = await load();
+
+    const view = mount(useDraft, 'new');
+    act(() => view.result.current[1]('one'));
+    act(() => view.result.current[1]((prev) => `${prev} two`));
+    view.unmount();
+
+    expect(mount(useDraft, 'new').result.current[0]).toBe('one two');
   });
 
   it('survives a reload via localStorage', async () => {

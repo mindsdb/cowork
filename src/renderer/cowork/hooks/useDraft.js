@@ -9,8 +9,7 @@ import { getDraft, setDraft } from '../lib/draftStore';
  * composer already re-renders per keystroke from its own state, and a
  * subscription would add a second render for no visible gain.
  *
- * `setText` takes a string; the functional form isn't supported because
- * nothing needs it.
+ * `setText` takes a string or an updater function, like `useState`'s setter.
  */
 export function useDraft(key) {
   const [state, setState] = useState(() => ({ key, text: getDraft(key) }));
@@ -23,13 +22,16 @@ export function useDraft(key) {
   const text = state.key === key ? state.text : getDraft(key);
 
   const setText = useCallback((next) => {
+    // `text`, not `state.text`: on the render where the key changed, state is
+    // one render behind and an updater would see the previous surface's text.
+    const value = typeof next === 'function' ? next(text) : next;
     // Persisted straight through rather than from an effect: sending from the
     // home composer unmounts it in the same tick (`onSend` switches route), so
     // a post-commit effect would never run and the just-sent text would linger
     // as a draft.
-    setDraft(key, next);
-    setState({ key, text: next });
-  }, [key]);
+    setDraft(key, value);
+    setState({ key, text: value });
+  }, [key, text]);
 
   return [text, setText];
 }
