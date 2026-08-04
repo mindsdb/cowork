@@ -10,6 +10,7 @@ import { ConfirmModal } from '../components/ConfirmModal';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
 import { Switch } from '../components/ui/Switch';
 import { Badge, Button, Input, Checkbox, Select } from '../components/ui';
+import Spinner from '../components/ui/Spinner';
 import ModelSelect from '../components/ModelSelect.jsx';
 import { host } from '../../platform/host';
 import { SKINS, normalizeSkin } from '../../lib/skins';
@@ -888,6 +889,9 @@ export default function SettingsView({
   // trigger's spinner so a still-open dropdown showing possibly-stale
   // locked/unlocked state doesn't read as done loading.
   const [modelRefreshing, setModelRefreshing] = useState({ planning: false, coding: false, router: false });
+  // Start by distrusting a persisted provider failure. The mount-time check
+  // below decides whether it is still real before failure UI is shown.
+  const [initialProviderTestDone, setInitialProviderTestDone] = useState(false);
   // Per-role note of when the refresh above last landed fresh data, so
   // re-opening the dropdown doesn't re-pay a round trip that just completed.
   const modelOpenState = useRef({});
@@ -1274,9 +1278,16 @@ export default function SettingsView({
   useEffect(() => {
     if (didMountVerify.current) return;
     const configured = providers.filter(providerConfigured);
-    if (configured.length === 0) return;
+    if (configured.length === 0) {
+      // Nothing to verify — the picker's warning reflects config, not a
+      // pending network result, so let it show without waiting.
+      setInitialProviderTestDone(true);
+      return;
+    }
     didMountVerify.current = true;
-    runProviderTests(configured).catch(() => { });
+    runProviderTests(configured)
+      .catch(() => { })
+      .finally(() => setInitialProviderTestDone(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [providers]);
 
@@ -1525,8 +1536,10 @@ export default function SettingsView({
                   providerStatusDetails: settings.providerStatusDetails || {},
                   configured,
                   isSsoConnected,
+                  testInProgress: testing,
+                  initialTestDone: initialProviderTestDone,
                 });
-                const status = st.settled;
+                const status = st.checking ? 'testing' : st.settled;
                 const detail = configured ? st.detail : '';
                 const friendlyError = friendlyProviderError(detail);
                 const statusBadge = providerStatusBadge(status, configured);
@@ -1595,7 +1608,10 @@ export default function SettingsView({
                 // Show the key input when: unconfigured, never tested, or user clicked Edit.
                 // Otherwise the middle column shows the status pill and an Edit button appears.
                 const ssoMindsHub = p.type === 'minds-cloud' && isSsoConnected;
-                const showKeyInput = ssoMindsHub || !configured || status === 'untested' || status === 'fail' || editingProviders.has(p.type);
+                // Keep a stale failed provider in badge mode while its fresh test is
+                // pending; otherwise the testing badge is replaced by the masked key.
+                const showKeyInput = ssoMindsHub || !configured || st.settled === 'untested'
+                  || (st.settled === 'fail' && !st.checking) || editingProviders.has(p.type);
                 return (
                   <div key={p.type} className="settings-provider-row" style={{
                     // Desktop: name | key/status | actions in a 3-col grid.
@@ -1826,16 +1842,19 @@ export default function SettingsView({
                     providerStatusDetails: settings.providerStatusDetails || {},
                     configured: !!(provider && providerConfigured(provider)),
                     isSsoConnected,
+                    testInProgress: testing,
+                    initialTestDone: initialProviderTestDone,
                   });
                   const providerUnconfigured = !!curType && st.unconfigured;
                   const providerFailed = st.failed;
                   const providerFailDetail = st.detail;
-                  const isNoCredits = providerFailed && curType === 'minds-cloud'
+                  const isNoCredits = providerFailed && !st.checking && curType === 'minds-cloud'
                     && (providerFailDetail.includes('402')
                       || providerFailDetail.includes('429')
                       || providerFailDetail.toLowerCase().includes('credit')
                       || providerFailDetail.toLowerCase().includes('quota'));
-                  const providerUnusable = (providerUnconfigured || providerFailed) && !isNoCredits;
+                  const providerUnusable = (providerUnconfigured || providerFailed) && !isNoCredits && !st.checking;
+                  const providerCheckingNotice = st.checking;
                   const providerWarnId = `agent-model-${role}-provider`;
 
                   // Reasoning effort — a per-role setting shown beside the model
@@ -1910,7 +1929,7 @@ export default function SettingsView({
                                 writeOverride({ providerType: t, model: newModel });
                               }}
                               invalid={providerUnusable}
-                              aria-describedby={providerUnusable ? providerWarnId : undefined}
+                              aria-describedby={(providerUnusable || providerCheckingNotice) ? providerWarnId : undefined}
                               title={`Choose which provider powers the ${role} role.`}
                               options={providers.map((p) => ({ value: p.type, label: providerDisplayName(p) }))}
                             />
@@ -2009,6 +2028,12 @@ export default function SettingsView({
                               options={effortOptions.map((lvl) => ({ value: lvl, label: lvl.charAt(0).toUpperCase() + lvl.slice(1) }))}
                             />
                           </label>
+                        )}
+                        {providerCheckingNotice && (
+                          <div id={providerWarnId} aria-live="polite" style={{ fontSize: 11.5, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <Spinner intervalMs={90} />
+                            Checking {providerDisplayName(provider)} connection…
+                          </div>
                         )}
                         {providerUnusable && (
                           <div id={providerWarnId} style={{ fontSize: 11.5, color: '#E07060' }}>

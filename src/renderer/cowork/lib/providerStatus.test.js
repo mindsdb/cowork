@@ -73,6 +73,47 @@ describe('deriveProviderStatus', () => {
     });
     expect(deriveProviderStatus('openai')).toBeTruthy();
   });
+
+  describe('stale failure verification (ENG-1113)', () => {
+    const failing = (over) => deriveProviderStatus('minds-cloud', {
+      providerStatus: { 'minds-cloud': 'fail' },
+      providerStatusDetails: { 'minds-cloud': 'ReadTimeout' },
+      configured: true,
+      ...over,
+    });
+
+    it('trusts the recorded failure after the initial check settles', () => {
+      expect(failing().checking).toBe(false);
+    });
+
+    it('holds the failure while the initial check is pending', () => {
+      expect(failing({ initialTestDone: false }).checking).toBe(true);
+    });
+
+    it('holds the failure during a later Save or Test', () => {
+      expect(failing({ testInProgress: true }).checking).toBe(true);
+    });
+
+    it('does not hold an unconfigured provider', () => {
+      const st = deriveProviderStatus('openai', {
+        providerStatus: { openai: 'fail' },
+        configured: false,
+        testInProgress: true,
+        initialTestDone: false,
+      });
+      expect(st.checking).toBe(false);
+    });
+
+    it('does not hold a recorded success', () => {
+      const st = deriveProviderStatus('anthropic', {
+        providerStatus: { anthropic: 'ok' },
+        configured: true,
+        testInProgress: true,
+        initialTestDone: false,
+      });
+      expect(st.checking).toBe(false);
+    });
+  });
 });
 
 describe('friendlyProviderError', () => {

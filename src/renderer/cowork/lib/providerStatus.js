@@ -20,21 +20,27 @@
 //   unconfigured  — carries no usable credential.
 //   detail        — the persisted status detail string for this type ('' when
 //                   absent). Caller decides whether to gate it on `configured`.
+//   checking      — a recorded failure is being re-verified, so failure UI
+//                   should wait for the fresh result (ENG-1113).
 export function deriveProviderStatus(type, {
   providerStatus = {},
   providerStatusDetails = {},
   configured = false,
   isSsoConnected = false,
+  testInProgress = false,
+  initialTestDone = true,
 } = {}) {
   const raw = providerStatus[type] || 'untested';
   const settled = (type === 'minds-cloud' && isSsoConnected) ? 'ok'
     : configured ? raw : 'untested';
+  const failed = raw === 'fail';
   return {
     raw,
     settled,
-    failed: raw === 'fail',
+    failed,
     unconfigured: !configured,
     detail: providerStatusDetails[type] || '',
+    checking: configured && failed && (!initialTestDone || testInProgress),
   };
 }
 
