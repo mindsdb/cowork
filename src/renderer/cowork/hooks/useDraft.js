@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import { getDraft, setDraft } from '../lib/draftStore';
 
+
 /**
  * Composer text that survives unmount. Drop-in for `useState('')`.
  *
@@ -22,16 +23,17 @@ export function useDraft(key) {
   const text = state.key === key ? state.text : getDraft(key);
 
   const setText = useCallback((next) => {
-    // `text`, not `state.text`: on the render where the key changed, state is
-    // one render behind and an updater would see the previous surface's text.
-    const value = typeof next === 'function' ? next(text) : next;
+    // An updater reads the store, not React state: the store is written
+    // through on every call, so it's current even on the render where the key
+    // changed and across two updater calls batched into one render.
+    const value = typeof next === 'function' ? next(getDraft(key)) : next;
     // Persisted straight through rather than from an effect: sending from the
     // home composer unmounts it in the same tick (`onSend` switches route), so
     // a post-commit effect would never run and the just-sent text would linger
     // as a draft.
     setDraft(key, value);
     setState({ key, text: value });
-  }, [key, text]);
+  }, [key]);
 
   return [text, setText];
 }

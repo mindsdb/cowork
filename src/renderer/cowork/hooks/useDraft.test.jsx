@@ -82,9 +82,14 @@ describe('useDraft', () => {
     const view = mount(useDraft, 'new');
     act(() => view.result.current[1]('one'));
     act(() => view.result.current[1]((prev) => `${prev} two`));
+    // Two updaters batched into one render must compose, not clobber.
+    act(() => {
+      view.result.current[1]((prev) => `${prev} three`);
+      view.result.current[1]((prev) => `${prev} four`);
+    });
     view.unmount();
 
-    expect(mount(useDraft, 'new').result.current[0]).toBe('one two');
+    expect(mount(useDraft, 'new').result.current[0]).toBe('one two three four');
   });
 
   it('survives a reload via localStorage', async () => {
