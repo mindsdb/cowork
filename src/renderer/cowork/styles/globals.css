@@ -2904,6 +2904,16 @@ body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surfac
 /* New task CTA wrapper — the button itself is the tinted variant,
    full width (<Button variant="tinted" block size="lg">). */
 .anton-sidebar__cta-wrap { padding: 8px 10px 10px; }
+/* The New task CTA aligns to the rail gutter, not the standard .btn.lg inset.
+   Nav rows sit at padding 0 10px (content 20px from the sidebar edge); the
+   default .btn.lg carries 0 16px, which pushed the +/label 6px past the nav
+   icons below it and its ⌘N past the nav badges. Tighten the horizontal
+   padding 16→10 so the CTA's content and shortcut line up exactly with the
+   denser nav rows (ENG-1038). A deliberately non-standard, rail-scoped button. */
+.anton-sidebar__cta-wrap .btn.lg {
+  padding-left: 10px;
+  padding-right: 10px;
+}
 
 /* Override existing .nav-item rules to follow the guideline shape */
 .app-sidebar .nav-item {
