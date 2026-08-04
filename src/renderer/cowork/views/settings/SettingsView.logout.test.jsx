@@ -20,13 +20,13 @@ const spies = vi.hoisted(() => ({
   resetDeviceIdentity: vi.fn(),
 }));
 
-vi.mock('../api', () => ({
+vi.mock('../../api', () => ({
   fetchHealth: vi.fn(async () => ({})),
   validateSettings: vi.fn(async () => ({ ok: true })),
   revealSettingKey: vi.fn(async () => ''),
   testProviders: vi.fn(async () => ({})),
 }));
-vi.mock('../../platform/host', () => ({
+vi.mock('../../../platform/host', () => ({
   host: {
     isElectron: true,
     isWeb: false,
@@ -40,11 +40,11 @@ vi.mock('../../platform/host', () => ({
   isElectron: true,
   getAccessToken: spies.getAccessToken,
 }));
-vi.mock('../lib/analytics', () => ({
+vi.mock('../../lib/analytics', () => ({
   trackHarnessSwapped: vi.fn(),
   resetDeviceIdentity: spies.resetDeviceIdentity,
 }));
-vi.mock('./ChannelsView', () => ({ default: () => <div data-testid="channels-stub" /> }));
+vi.mock('../ChannelsView', () => ({ default: () => <div data-testid="channels-stub" /> }));
 
 import SettingsView from './SettingsView';
 

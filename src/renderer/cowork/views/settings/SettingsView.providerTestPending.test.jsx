@@ -8,24 +8,24 @@ import { useState } from 'react';
 let deferred;
 const spies = vi.hoisted(() => ({ testProviders: vi.fn() }));
 
-vi.mock('../api', () => ({
+vi.mock('../../api', () => ({
   fetchHealth: vi.fn(async () => ({})),
   validateSettings: vi.fn(async () => ({ ok: true })),
   revealSettingKey: vi.fn(async () => ''),
   fetchRecommendedModels: vi.fn(async () => ({})),
   testProviders: spies.testProviders,
 }));
-vi.mock('../../platform/host', () => ({
+vi.mock('../../../platform/host', () => ({
   host: { isElectron: true, isWeb: false, isMac: () => false, openExternal: vi.fn() },
   getVersionInfo: vi.fn(async () => ({ app: '', ui: null, source: 'electron' })),
   isElectron: true,
   getAccessToken: vi.fn(async () => ''),
 }));
-vi.mock('../lib/analytics', () => ({
+vi.mock('../../lib/analytics', () => ({
   trackHarnessSwapped: vi.fn(),
   resetDeviceIdentity: vi.fn(),
 }));
-vi.mock('./ChannelsView', () => ({ default: () => <div data-testid="channels-stub" /> }));
+vi.mock('../ChannelsView', () => ({ default: () => <div data-testid="channels-stub" /> }));
 
 import SettingsView from './SettingsView';
 

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { providerStatusBadge } from './SettingsView';
-import { accountUserFromToken } from '../lib/accountUser';
+import { accountUserFromToken } from '../../lib/accountUser';
 
 const jwt = (payload) =>
   `header.${btoa(JSON.stringify(payload)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')}.sig`;

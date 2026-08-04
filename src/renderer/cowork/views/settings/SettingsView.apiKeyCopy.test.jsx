@@ -7,13 +7,13 @@ import { render, screen, fireEvent } from '@testing-library/react';
 // in the same file, flagged in review on PR #532. It now goes through the
 // shared `copyText` helper (lib/clipboard) and surfaces a "Couldn't copy"
 // state instead of doing nothing when the write fails.
-vi.mock('../api', () => ({
+vi.mock('../../api', () => ({
   fetchHealth: vi.fn(async () => ({})),
   validateSettings: vi.fn(async () => ({ ok: true })),
   revealSettingKey: vi.fn(async () => ''),
   testProviders: vi.fn(async () => ({})),
 }));
-vi.mock('../../platform/host', () => ({
+vi.mock('../../../platform/host', () => ({
   host: {
     isElectron: true,
     isMac: () => true,
@@ -27,14 +27,14 @@ vi.mock('../../platform/host', () => ({
   isElectron: true,
   getAccessToken: vi.fn(async () => null),
 }));
-vi.mock('../lib/analytics', () => ({
+vi.mock('../../lib/analytics', () => ({
   trackHarnessSwapped: vi.fn(),
   resetDeviceIdentity: vi.fn(),
 }));
-vi.mock('./ChannelsView', () => ({ default: () => <div data-testid="channels-stub" /> }));
+vi.mock('../ChannelsView', () => ({ default: () => <div data-testid="channels-stub" /> }));
 
 const { copyText } = vi.hoisted(() => ({ copyText: vi.fn() }));
-vi.mock('../lib/clipboard', () => ({ copyText }));
+vi.mock('../../lib/clipboard', () => ({ copyText }));
 
 import SettingsView from './SettingsView';
 

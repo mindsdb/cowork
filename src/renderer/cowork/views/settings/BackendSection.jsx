@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import Ico from '../components/Icons';
-import { Button } from '../components/ui';
-import { host } from '../../platform/host';
-import { backendFailureCopy, exitCodeLabel } from '../../../shared/server-status';
+import Ico from '../../components/Icons';
+import { Button } from '../../components/ui';
+import { host } from '../../../platform/host';
+import { backendFailureCopy, exitCodeLabel } from '../../../../shared/server-status';
 import { Section, SettingsSectionPanel } from './settingsLayout';
 
 // The Backend settings section: local Python server status, diagnostics, and
