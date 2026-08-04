@@ -159,6 +159,13 @@ export default function App() {
       if (floor > 0) {
         await new Promise((r) => setTimeout(r, floor));
       }
+      // Mark this browser "booted" on every boot, including boots that land on
+      // 'auth': the login screen is a place web users sit and refresh, and
+      // gating the flag on the target would replay the floor on every such
+      // refresh — exactly the latency ENG-1232 removes. The only cost is
+      // cosmetic: if the very first boot ever errored to 'auth' (server
+      // unreachable), the next boot skips the floor, which is fine — a second
+      // mount is not a genuine cold start.
       rememberBooted();
       setPage(target);
     }

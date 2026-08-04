@@ -72,6 +72,34 @@ describe('resolveBootTarget', () => {
     expect(await resolveBootTarget(host, true)).toBe('auth');
   });
 
+  // ENG-1232: when BOTH concurrent checks reject (server fully unreachable on
+  // boot) we still route to auth, and no unhandledrejection escapes. Promise.all
+  // attaches a reject handler to both inputs so the sibling rejection is handled;
+  // this pins that and guards against a refactor back to sequential awaits on
+  // pre-started promises (`const a = await p1; const b = await p2`), which would
+  // leave p2's rejection unhandled if p1 rejects first.
+  it('routes to auth when both readSettings and checkConfigured reject, with no unhandled rejection', async () => {
+    const unhandled: unknown[] = [];
+    const onUnhandled = (e: PromiseRejectionEvent) => unhandled.push(e.reason);
+    window.addEventListener('unhandledrejection', onUnhandled);
+    try {
+      const host = makeHost({
+        readSettings: async () => {
+          throw new Error('network');
+        },
+        checkConfigured: async () => {
+          throw new Error('network');
+        },
+      });
+      expect(await resolveBootTarget(host, true)).toBe('auth');
+      // Give any stray rejection a microtask/task to surface before asserting.
+      await new Promise((r) => setTimeout(r, 0));
+      expect(unhandled).toEqual([]);
+    } finally {
+      window.removeEventListener('unhandledrejection', onUnhandled);
+    }
+  });
+
   // ENG-1232: readSettings + checkConfigured now run concurrently to save an
   // ingress round-trip, but checkInstall stays conditional — the auth path (not
   // configured) must not pay an extra request for an install status it won't use.

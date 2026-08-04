@@ -36,8 +36,11 @@ export async function resolveBootTarget(
     // serial, adding avoidable latency to every boot/refresh (ENG-1232). Routing
     // outcomes are unchanged: a rejection from either still rejects the
     // Promise.all and lands on 'auth' via the catch, exactly as the sequential
-    // awaits did. checkInstall() stays conditional (only consulted once we know
-    // we're headed into the app) so the auth path pays no extra request.
+    // awaits did. Promise.all attaches a reject handler to both inputs, so even
+    // when both reject (server fully unreachable) the sibling rejection is
+    // handled — no unhandledrejection escapes. checkInstall() stays conditional
+    // (only consulted once we know we're headed into the app) so the auth path
+    // pays no extra request.
     const [settings, { configured }] = await Promise.all([
       host.readSettings(),
       host.checkConfigured(),
