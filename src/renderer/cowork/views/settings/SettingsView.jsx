@@ -2267,7 +2267,10 @@ export default function SettingsView({
         <div className="settings-mobile__body scroll-clean">
           {inDetail ? (
             <div className="settings-detail">
-              {renderers[section]?.()}
+              {/* Own-property guard: `section` is URL-controlled (ENG-1233), so a
+                  bare renderers[section]() could dispatch to an inherited method
+                  like toString/constructor. Restrict to the known section keys. */}
+              {Object.hasOwn(renderers, section) ? renderers[section]() : null}
             </div>
           ) : (
             <nav className="settings-list" role="navigation" aria-label="Settings sections">

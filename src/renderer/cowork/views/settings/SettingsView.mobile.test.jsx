@@ -115,4 +115,19 @@ describe('SettingsView mobile master-detail (ENG-990/ENG-991)', () => {
     renderMobile({ initialSection: 'account' });
     await waitFor(() => expect(spies.getAccessToken).toHaveBeenCalled());
   });
+
+  // ENG-1233: `section` is URL-controlled (deep links / refresh), so a garbage
+  // value — including an inherited Object.prototype key like "toString" — must
+  // not dispatch through renderers[section]() into an unexpected target. It
+  // falls through to the section list instead of throwing (CodeQL
+  // js/unvalidated-dynamic-method-call).
+  it('falls back to the list for a bogus URL section instead of dispatching', () => {
+    expect(() => renderMobile({ initialSection: 'toString' })).not.toThrow();
+    // No detail view — the back-to-settings (detail) control is absent and the
+    // full section list is shown.
+    expect(screen.queryByRole('button', { name: 'Back to settings' })).toBeNull();
+    for (const label of NAV_LABELS) {
+      expect(screen.getByRole('button', { name: new RegExp(`^${label}$`) })).toBeTruthy();
+    }
+  });
 });
