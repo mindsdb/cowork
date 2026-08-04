@@ -188,3 +188,109 @@ describe('truncateLabel', () => {
     expect(out).toBe('x'.repeat(77) + '…');
   });
 });
+
+describe('tool_call.progress / tool_call.end (ENG-763 stage 2 — generic tool progress display)', () => {
+  const now = () => 1000;
+
+  it('creates a step lazily on the first progress event for a tool call', () => {
+    const state = reduceAll([
+      { type: 'response.created', response: { id: 'r1' } },
+      {
+        type: 'response.in_progress',
+        thought_role: 'thought.tool_call.progress',
+        tool_use_id: 'tc_1',
+        tool_name: 'streaming_probe',
+        content: 'step 1',
+      },
+    ], initialStreamState(), now);
+
+    expect(state.steps).toHaveLength(1);
+    const step = state.steps[0];
+    expect(step._isToolCall).toBe(true);
+    expect(step._toolUseId).toBe('tc_1');
+    expect(step.status).toBe('in_progress');
+    expect(step.data.one_line_description).toBe('step 1');
+  });
+
+  it('patches the same step in place on subsequent progress events, overwriting the text', () => {
+    const state = reduceAll([
+      { type: 'response.created', response: { id: 'r1' } },
+      { type: 'response.in_progress', thought_role: 'thought.tool_call.progress', tool_use_id: 'tc_1', tool_name: 'streaming_probe', content: 'step 1' },
+      { type: 'response.in_progress', thought_role: 'thought.tool_call.progress', tool_use_id: 'tc_1', content: 'step 2' },
+    ], initialStreamState(), now);
+
+    expect(state.steps).toHaveLength(1);
+    expect(state.steps[0].data.one_line_description).toBe('step 2');
+  });
+
+  it('closes the step as completed on tool_call.end', () => {
+    const state = reduceAll([
+      { type: 'response.created', response: { id: 'r1' } },
+      { type: 'response.in_progress', thought_role: 'thought.tool_call.progress', tool_use_id: 'tc_1', tool_name: 'streaming_probe', content: 'step 1' },
+      { type: 'response.in_progress', thought_role: 'thought.tool_call.end', tool_use_id: 'tc_1', content: '' },
+    ], initialStreamState(), now);
+
+    expect(state.steps).toHaveLength(1);
+    expect(state.steps[0].status).toBe('completed');
+  });
+
+  it('sets executionDurationMs from eta_seconds on tool_call.end', () => {
+    const state = reduceAll([
+      { type: 'response.created', response: { id: 'r1' } },
+      { type: 'response.in_progress', thought_role: 'thought.tool_call.progress', tool_use_id: 'tc_1', tool_name: 'streaming_probe', content: 'step 1' },
+      { type: 'response.in_progress', thought_role: 'thought.tool_call.end', tool_use_id: 'tc_1', eta_seconds: 1.5 },
+    ], initialStreamState(), now);
+
+    expect(state.steps[0].executionDurationMs).toBe(1500);
+  });
+
+  it('leaves executionDurationMs unset when tool_call.end has no eta_seconds', () => {
+    const state = reduceAll([
+      { type: 'response.created', response: { id: 'r1' } },
+      { type: 'response.in_progress', thought_role: 'thought.tool_call.progress', tool_use_id: 'tc_1', tool_name: 'streaming_probe', content: 'step 1' },
+      { type: 'response.in_progress', thought_role: 'thought.tool_call.end', tool_use_id: 'tc_1' },
+    ], initialStreamState(), now);
+
+    expect(state.steps[0].executionDurationMs).toBeUndefined();
+  });
+
+  it('does not touch any step when tool_call.end arrives with no matching tool-call step', () => {
+    // e.g. the tool's only progress event was lost — the step was never
+    // created, so tool_call.end must be a strict no-op, not a patch of
+    // "the last in-progress step" (which could be an unrelated scratchpad
+    // cell running concurrently in the same turn).
+    const state = reduceAll([
+      { type: 'response.created', response: { id: 'r1' } },
+      { type: 'response.in_progress', thought_role: 'thought.scratchpad.start', tool_use_id: 'sp_1' },
+      { type: 'response.in_progress', thought_role: 'thought.tool_call.end', tool_use_id: 'tc_never_seen', content: 'ignored' },
+    ], initialStreamState(), now);
+
+    expect(state.steps).toHaveLength(1);
+    expect(state.steps[0]._isScratchpad).toBe(true);
+    expect(state.steps[0].status).toBe('in_progress'); // untouched, not silently closed
+  });
+
+  it('no-ops on tool_call.end with a missing tool_use_id', () => {
+    const state = reduceStream(initialStreamState(), {
+      type: 'response.in_progress', thought_role: 'thought.tool_call.end', content: 'ignored',
+    }, now);
+    expect(state.steps).toEqual([]);
+  });
+
+  it('correlates two concurrent tool calls independently', () => {
+    const state = reduceAll([
+      { type: 'response.created', response: { id: 'r1' } },
+      { type: 'response.in_progress', thought_role: 'thought.tool_call.progress', tool_use_id: 'tc_1', tool_name: 'web_search', content: 'searching' },
+      { type: 'response.in_progress', thought_role: 'thought.tool_call.progress', tool_use_id: 'tc_2', tool_name: 'streaming_probe', content: 'step 1' },
+      { type: 'response.in_progress', thought_role: 'thought.tool_call.end', tool_use_id: 'tc_1' },
+    ], initialStreamState(), now);
+
+    expect(state.steps).toHaveLength(2);
+    const [a, b] = state.steps;
+    expect(a._toolUseId).toBe('tc_1');
+    expect(a.status).toBe('completed');
+    expect(b._toolUseId).toBe('tc_2');
+    expect(b.status).toBe('in_progress');
+    expect(b.data.one_line_description).toBe('step 1');
+  });
+});
