@@ -26,13 +26,11 @@ export function getLocalBin(): string {
   return path.join(os.homedir(), '.local', 'bin');
 }
 
-// Per-channel uv tool isolation. Build kinds on one machine used to share a
-// single `uv tool install`ed cowork-server binary in ~/.local/bin — so whichever
-// kind last installed/updated won, and a stable build could leave prod pointed
-// at a staging-branch server binary. Give each non-prod channel its own uv tool
-// dir + bin dir under its data home. prod keeps the historical global location
-// (~/.local/bin + uv's default tools dir), mirroring how COWORK_HOME is only set
-// for non-prod so prod stays byte-for-byte unchanged.
+// Per-channel uv tool isolation. Build kinds used to share one `uv tool install`ed
+// cowork-server in ~/.local/bin, so whichever kind installed last won — a stable
+// build could leave prod pointed at a staging-branch binary. Give each non-prod
+// channel its own uv tool/bin dir under its data home; prod keeps the historical
+// global location, so (like COWORK_HOME) prod stays byte-for-byte unchanged.
 export function coworkUvToolDir(): string {
   return path.join(coworkHome(), 'uv', 'tools');
 }
@@ -83,16 +81,13 @@ export function getCoworkServerBinary(): string {
   return path.join(binDir, `cowork-server${ext}`);
 }
 
-/** Candidate locations for the installed cowork-server binary, in priority
- *  order (first existing wins — see server-process.getCoworkServerBin). The
- *  global `%LOCALAPPDATA%\bin` fallback (where some uv setups drop tool shims
- *  on Windows) predates per-channel isolation and is PROD-ONLY: a non-prod
- *  channel whose own binary is missing must reinstall into its isolated bin
- *  dir, not silently adopt a binary another channel — or an old global
- *  install — left behind, which is likely built from the wrong branch and
- *  would reintroduce the exact cross-channel drift ENG-676 removes.
- *  `platform`/`localAppData` are parameters only so the Windows branch is
- *  unit-testable from any OS. */
+/** Candidate locations for the installed cowork-server binary, first-existing
+ *  wins (see server-process.getCoworkServerBin). The global `%LOCALAPPDATA%\bin`
+ *  Windows fallback predates per-channel isolation and is PROD-ONLY: a non-prod
+ *  channel with a missing binary must reinstall into its own bin dir, not adopt
+ *  a binary another channel (or an old global install) left behind — likely built
+ *  from the wrong branch, reintroducing the drift ENG-676 removes. `platform`/
+ *  `localAppData` are params only so the Windows branch is testable from any OS. */
 export function coworkServerBinCandidates(
   platform: string = process.platform,
   localAppData: string | undefined = process.env.LOCALAPPDATA,

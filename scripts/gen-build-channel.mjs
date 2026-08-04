@@ -43,20 +43,16 @@ const serverMinVersion = (process.env.COWORK_SERVER_MIN_VERSION || '').trim();
 // plain tsc and can't see it at runtime, so bake it here too.
 const mindsApiUrl = (process.env.VITE_MINDS_API_URL || '').trim();
 
-// Build-time guard for the two environment axes (mirrors channels.ts /
-// checkChannelConsistency + normalizeBuildKind at runtime): the build kind CI is
-// producing must be baked to talk to the matching MindsHub API. Only runs when
-// CI has exported COWORK_BUILD_KIND, so a local `npm run build` (which resolves
-// kind=dev from !app.isPackaged, not from this env) never trips it. Fail hard by
-// default in CI so a mis-wired installer can't ship — set COWORK_CHANNEL_CHECK=warn
-// to downgrade to a warning.
+// Build-time guard mirroring channels.ts (checkChannelConsistency +
+// normalizeBuildKind): the build kind CI is producing must be baked to talk to
+// the matching MindsHub API. Only runs when CI exported COWORK_BUILD_KIND, so a
+// local `npm run build` (kind=dev) never trips it. Fails hard in CI so a mis-wired
+// installer can't ship — set COWORK_CHANNEL_CHECK=warn to downgrade.
 //
-// Expected API ORIGIN per build kind comes from scripts/channel-origins.mjs —
-// the .mjs mirror of CHANNELS in src/main/channels.ts (this script can't
-// import the TS source; channels.test.ts drift-guards the mirror). Comparing
-// full origins (not just the env slug) is deliberate: a slug-only check treats
-// every unrecognized host as prod (its slug is ''), so a mistyped or unintended
-// host would pass a prod build. See the matching note in channels.ts.
+// Expected origins come from scripts/channel-origins.mjs, the .mjs mirror of
+// CHANNELS (this script can't import the TS; channels.test.ts drift-guards it).
+// Comparing full origins, not the env slug, is deliberate: a slug-only check
+// treats every unrecognized host as prod (slug ''), passing a mistyped host.
 const normOrigin = (u) => {
   const s = (u || '').trim();
   if (s === '') return '';

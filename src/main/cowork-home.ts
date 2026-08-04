@@ -17,30 +17,23 @@ const LEGACY_HOME = path.join(os.homedir(), '.anton');
 
 export type { BuildKind };
 
-// Build-kind isolation: dev, preview, and stable builds each get their own
-// config home (~/.cowork-<kind>) so switching between builds never shares
-// state. This is the single knob for that — the desktop app writes everything
-// (owner token, installation id, refresh token, .env, state.json) under
-// coworkHome(), and the server subprocess is handed the same path via
-// COWORK_HOME (see server-process.ts). Crucially it isolates the SQLite DB:
-// an older build reopening a DB a newer build advanced fails to start on the
-// unrecognized Alembic migration (ENG-324). Only prod uses ~/.cowork.
-//
-// The canonical kind→home/API/branch mapping lives in channels.ts; this module
-// only resolves WHICH kind this process is and turns it into paths.
+// Build-kind isolation: dev/preview/stable builds each get their own config home
+// (~/.cowork-<kind>) so switching builds never shares state — the desktop app
+// writes everything (tokens, .env, state.json) under coworkHome() and hands the
+// server the same path via COWORK_HOME. Critically this isolates the SQLite DB:
+// an older build reopening a DB a newer build advanced fails on the unrecognized
+// Alembic migration (ENG-324). Only prod uses ~/.cowork. The kind→home/API/branch
+// mapping lives in channels.ts; this module only resolves WHICH kind we are.
 //
 // Build kind resolves (first match wins):
 //   1. COWORK_BUILD_KIND env var (manual override)
 //   2. Unpackaged Electron (npm run dev) → "dev"
-//   3. build-config.json bundled in app resources (CI writes it before
-//      building — see .github/workflows/build-*.yml)
-//   4. No override + packaged + no config → "prod" (a legacy release)
+//   3. build-config.json bundled in app resources (CI writes it pre-build)
+//   4. Packaged, no override, no config → "prod" (a legacy release)
 //
-// Fail-closed: only a genuinely ABSENT signal degrades to prod (legacy releases
-// with no COWORK_BUILD_KIND and no build-config.json keep working). A PRESENT
-// but broken config (unreadable / invalid JSON / no buildKind) or an unrecognized
-// kind THROWS instead — pointing a non-prod build at the production home on a
-// typo is the exact hazard the channel model prevents.
+// Fail-closed: only a genuinely ABSENT signal degrades to prod; a present-but-
+// broken config (unreadable / invalid JSON / no buildKind) or unrecognized kind
+// THROWS — pointing a non-prod build at the prod home on a typo is the hazard.
 
 let _buildKind: BuildKind | undefined;
 
@@ -53,22 +46,16 @@ export function buildKind(): BuildKind {
 }
 
 function resolveBuildKind(): BuildKind {
-  // A present-but-BLANK override (empty or whitespace-only — e.g. a CI templating
-  // slip that sets `COWORK_BUILD_KIND=""` rather than leaving it unset) is treated
-  // as ABSENT: it falls through to packaging/config resolution instead of
-  // short-circuiting. Only a non-blank value is a real override, at which point
-  // normalizeBuildKind accepts a recognized kind or THROWS. This keeps a blank
-  // override from silently resolving to prod on a non-prod build (which carries a
-  // build-config.json that then resolves it correctly), matching how a blank
-  // buildKind in build-config.json is rejected rather than treated as prod.
+  // A blank override (empty or whitespace-only — e.g. a CI templating slip
+  // emitting `COWORK_BUILD_KIND=""`) is treated as ABSENT: it falls through to
+  // config resolution rather than short-circuiting to prod. Only a non-blank
+  // value is a real override, which normalizeBuildKind accepts or THROWS on.
   const envKind = process.env.COWORK_BUILD_KIND;
   if (envKind && envKind.trim() !== '') {
     return normalizeBuildKind(envKind, 'COWORK_BUILD_KIND');
   }
-  // `app?.` (not `app.`): outside the Electron main process — unit tests and
-  // tooling that transitively import this module — `app` is undefined. Treat
-  // that as unpackaged (dev) instead of throwing. In production `app` is always
-  // present, so this is byte-for-byte identical there.
+  // `app?.` (not `app.`): outside the Electron main process (tests, tooling)
+  // `app` is undefined — treat as unpackaged/dev. In prod `app` is always set.
   if (!app?.isPackaged) return 'dev';
   // Absent config → prod (legacy release); present-but-broken or unrecognized
   // throws (readBuildConfigKind / normalizeBuildKind). See the module header.
@@ -77,12 +64,11 @@ function resolveBuildKind(): BuildKind {
   return normalizeBuildKind(configured, 'build-config.json');
 }
 
-// Read `buildKind` from the bundled build-config.json:
-//   - no file (ENOENT) → undefined (a legacy release; the caller maps it to prod)
-//   - present but unreadable / invalid JSON / missing buildKind → THROW (a
-//     mispackaged build must fail closed, not silently open the prod home)
-// Recognized-kind validation is the caller's (normalizeBuildKind); this only
-// distinguishes "no config" from "broken config".
+// Read `buildKind` from the bundled build-config.json. No file (ENOENT) →
+// undefined (a legacy release; the caller maps it to prod); present but
+// unreadable / invalid JSON / missing buildKind → THROW (a mispackaged build
+// fails closed). Only distinguishes "no config" from "broken config"; recognized-
+// kind validation is the caller's (normalizeBuildKind).
 export function readBuildConfigKind(): string | undefined {
   const configPath = path.join(process.resourcesPath || '', 'build-config.json');
   let raw: string;
@@ -112,12 +98,10 @@ export function readBuildConfigKind(): string | undefined {
   return String(kind);
 }
 
-/** Strict build-kind resolver for safety gates (e.g. OTA enablement).
- *  Unlike buildKind(), a missing / malformed / unrecognized packaged config
- *  resolves to `null` ("unknown") instead of defaulting to `prod`, so a
- *  mispackaged build can never accidentally opt into production-only behavior.
- *  A packaged build must carry an explicit, recognized build kind to be
- *  treated as prod. */
+/** Strict build-kind resolver for safety gates (e.g. OTA enablement). Unlike
+ *  buildKind(), a missing / malformed / unrecognized packaged config resolves to
+ *  `null` ("unknown") instead of prod, so a mispackaged build can never opt into
+ *  production-only behavior. */
 export function buildKindStrict(): BuildKind | null {
   const strict = (raw: string): BuildKind | null => {
     const kind = raw.trim().toLowerCase();
@@ -128,10 +112,8 @@ export function buildKindStrict(): BuildKind | null {
   const envKind = process.env.COWORK_BUILD_KIND;
   if (envKind && envKind.trim() !== '') return strict(envKind);
   if (!app?.isPackaged) return 'dev';
-  // Reuse the one config reader so parsing can't drift between the two resolvers.
-  // Strict never throws or defaults to prod: a broken config (readBuildConfigKind
-  // throws) or an absent one (undefined) both mean "unknown" → null, so a
-  // mispackaged build can't opt into production-only behavior.
+  // Reuse the one config reader so parsing can't drift between the two resolvers;
+  // strict never throws or defaults to prod — broken (throws) or absent both → null.
   try {
     const configured = readBuildConfigKind();
     return configured === undefined ? null : strict(configured);
@@ -178,15 +160,11 @@ export function migrateLegacyHome(): void {
   }
 }
 
-// The testable body of migrateLegacyHome (explicit kind + paths, so the
-// filesystem behavior is unit-tested without Electron / `buildKind()`).
-// Ensures the home dir exists for every kind, but seeds
-// the legacy files into the PROD home only: ~/.anton predates the channel
-// split, so its contents are prod-era by definition — the .env carries
-// prod-minted MindsHub credentials and a prod ANTON_MINDS_URL. Seeding a
-// non-prod channel's fresh home with it would point that channel's server at
-// the production gateway until the next login rewrote the values — a cross-env
-// leak the channel isolation exists to prevent.
+// The testable body of migrateLegacyHome (explicit kind + paths, so it's
+// unit-testable without Electron). Ensures the home dir exists for every kind,
+// but seeds legacy files into the PROD home only: ~/.anton predates the channel
+// split, so its .env carries prod-minted credentials and a prod ANTON_MINDS_URL —
+// seeding a non-prod home with it would leak prod URLs/credentials across envs.
 export function migrateLegacyHomeInto(kind: BuildKind, home: string, legacyHome: string): void {
   if (!fs.existsSync(home)) fs.mkdirSync(home, { recursive: true });
   if (kind !== 'prod') return;

@@ -1,15 +1,12 @@
-// Canonical build-channel model — the single source of truth mapping each build
-// "kind" (dev / preview / stable / prod) to its isolated data home, MindsHub API
-// host, env slug (stamped on the cowork-server subprocess as ENV), and default
-// cowork-server/anton branch. Both the runtime and CI derive from — and validate
-// against — this one table.
+// Canonical build-channel model: the single source of truth mapping each build
+// "kind" (dev / preview / stable / prod) to its data home, MindsHub API host, env
+// slug (stamped on cowork-server as ENV), and default server/anton branch. Both
+// runtime and CI derive from — and validate against — this table.
 //
-// It exists because those axes used to drift: `buildKind` (build-config.json)
-// and the API host (a baked VITE_MINDS_API_URL) had nothing tying them together,
-// so a build could ship `preview` while pointed at the PRODUCTION API.
-//
-// Intentionally PURE (no electron / fs / env) so it is trivially testable and
-// cycle-free. Which kind is THIS process? — see cowork-home.ts.
+// It exists because those axes used to drift: nothing tied `buildKind` to the
+// baked API host, so a build could ship `preview` while pointed at PROD.
+// Pure (no electron/fs/env) so it's testable and cycle-free; which kind is THIS
+// process is resolved in cowork-home.ts.
 
 export const BUILD_KINDS = ['dev', 'preview', 'stable', 'prod'] as const;
 export type BuildKind = (typeof BUILD_KINDS)[number];
@@ -33,26 +30,22 @@ const API_STAGING = 'https://api.staging.mindshub.ai';
 
 // The one table. Change an environment mapping HERE and every layer follows.
 export const CHANNELS: Record<BuildKind, ChannelSpec> = {
-  // Local `npm run dev` only — never produced by CI. Points at STAGING so a bare
-  // `npm run dev` never authenticates against production; the sibling-source
-  // server it runs is stamped ENV=staging to match.
+  // Local `npm run dev` only (never built by CI). STAGING, so a bare dev run
+  // never authenticates against prod.
   dev: { kind: 'dev', homeDirName: '.cowork-dev', apiHost: API_STAGING, envSlug: 'staging', serverRef: 'main' },
-  // Ephemeral per-PR installers. Isolated home so a tester's PR build never
-  // touches their prod/staging data; talks to STAGING (not prod — the old bug).
+  // Ephemeral per-PR installers. Isolated home + STAGING (not prod — the old bug).
   preview: { kind: 'preview', homeDirName: '.cowork-preview', apiHost: API_STAGING, envSlug: 'staging', serverRef: 'staging' },
-  // Rolling builds off the `staging` branch. Kept the historical kind name
-  // "stable" (its data home is ~/.cowork-stable); it targets the staging env.
+  // Rolling builds off `staging`. Keeps the historical kind name "stable"
+  // (home ~/.cowork-stable) but targets the staging env.
   stable: { kind: 'stable', homeDirName: '.cowork-stable', apiHost: API_STAGING, envSlug: 'staging', serverRef: 'staging' },
-  // Released builds off `main`. The only kind that uses the historical ~/.cowork.
+  // Released builds off `main` — the only kind on the historical ~/.cowork.
   prod: { kind: 'prod', homeDirName: '.cowork', apiHost: API_PROD, envSlug: '', serverRef: 'main' },
 };
 
 /** Coerce a raw string (env / build-config.json / CI input) to a BuildKind.
- *  Fail-closed: an ABSENT value (empty) → "prod" (legacy releases carry no
- *  signal); a PRESENT but unrecognized value THROWS rather than defaulting to
- *  prod, so a typo can't silently point non-prod code at the production data
- *  home and API. Callers pass only values that were actually present (see
- *  resolveBuildKind). */
+ *  Fail-closed: an empty value → "prod" (legacy releases carry no signal); a
+ *  present but unrecognized value THROWS rather than defaulting to prod, so a
+ *  typo can't silently point non-prod code at the production home and API. */
 export function normalizeBuildKind(raw: string, source: string): BuildKind {
   const kind = raw.trim().toLowerCase();
   if (kind === '') return 'prod';
@@ -64,11 +57,10 @@ export function normalizeBuildKind(raw: string, source: string): BuildKind {
   );
 }
 
-/** The env slug ('staging' | 'dev' | '') encoded in a MindsHub API host —
- *  mirrors how minds-urls.ts derives MINDS_ENV_SLUG so the two never disagree.
- *  NOTE: this returns '' for BOTH the prod host and any non-MindsHub host, so it
- *  must NOT be used to decide consistency (an unknown host would look like prod).
- *  checkChannelConsistency compares full origins for exactly that reason. */
+/** The env slug ('staging' | 'dev' | '') encoded in a MindsHub API host; mirrors
+ *  minds-urls.ts's MINDS_ENV_SLUG so the two never disagree. Returns '' for BOTH
+ *  the prod host and any non-MindsHub host, so it must NOT decide consistency (an
+ *  unknown host would look like prod) — checkChannelConsistency compares origins. */
 export function envSlugForApiHost(apiHost: string): string {
   const m = apiHost.match(/^https?:\/\/api\.([a-z0-9-]+)\.mindshub\.ai/i);
   return m ? m[1] : '';
@@ -106,12 +98,10 @@ export function checkChannelConsistency(kind: BuildKind, actualApiHost: string):
   const spec = CHANNELS[kind];
   const actualOrigin = normalizeApiOrigin(actualApiHost);
   const expectedOrigin = normalizeApiOrigin(spec.apiHost);
-  // An empty host means no API was explicitly configured — the intentional prod
-  // default (an unset CI minds_api_url). That is consistent ONLY for prod; a
-  // non-prod build with no explicit host is a misconfiguration. Otherwise
-  // require an EXACT origin match. The previous slug-only check returned "ok"
-  // for ANY unrecognized host (its slug was '' == prod's slug), so a mistyped
-  // or unintended host was indistinguishable from prod.
+  // An empty host = no API explicitly configured (unset CI minds_api_url), the
+  // intentional prod default — consistent ONLY for prod. Otherwise require an
+  // EXACT origin match: the old slug-only check called any unrecognized host
+  // "ok" (its slug was '' == prod's), making a typo indistinguishable from prod.
   const ok = actualOrigin === '' ? kind === 'prod' : actualOrigin === expectedOrigin;
   return {
     ok,

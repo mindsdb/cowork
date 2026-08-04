@@ -1,22 +1,16 @@
-// Environment-aware MindsHub URL family for the main (Node) process.
-//
-// The renderer mirror (src/renderer/lib/mindsUrls.ts) reads Vite's baked
-// import.meta.env; the main process is compiled with plain `tsc`, which does NOT
-// inline env vars, so it reads the value baked into build-channel.gen.ts by
-// gen-build-channel.mjs — the same mechanism as the server ref.
+// Environment-aware MindsHub URL family for the main (Node) process. Unlike the
+// renderer mirror (which reads Vite's baked import.meta.env), main is compiled
+// with plain `tsc` and reads the value baked into build-channel.gen.ts.
 //
 // Resolution order (highest priority first):
 //   process.env.MINDS_API_HOST     — explicit runtime override (dev / tests)
 //   BUILD_MINDS_API_URL            — baked at build time (packaged apps)
 //   CHANNELS[buildKind()].apiHost  — the resolved channel's canonical host
 //
-// That last step is what lets the channel model drive the MAIN process, not just
-// the renderer: `npm run dev` bakes nothing, and main used to then hard-code a
-// PROD fallback while the renderer fell back to staging — a split-brain.
-// Deriving from buildKind() keeps both on the channel's host. prod is unchanged:
-// CHANNELS.prod.apiHost is the same prod host, baked or not.
-//
-// Hosts follow api/auth/console.<env>.mindshub.ai (bare *.mindshub.ai for prod).
+// That last step lets the channel model drive MAIN, not just the renderer:
+// `npm run dev` bakes nothing, and main used to hard-code a PROD fallback while
+// the renderer fell back to staging (a split-brain). prod is unchanged either
+// way. Hosts follow api/auth/console.<env>.mindshub.ai (bare for prod).
 
 import { CHANNELS } from './channels';
 import { buildKind, type BuildKind } from './cowork-home';

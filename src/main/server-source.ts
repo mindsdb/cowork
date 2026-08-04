@@ -116,21 +116,17 @@ export function getAppDisplayVersion(): string {
 }
 
 // Fallback cowork-server git ref keyed off the build kind, used only when neither
-// an explicit COWORK_SERVER_REF nor a baked ref is present. Safety net for a field
-// failure: a stable/preview build whose baked BUILD_COWORK_SERVER_REF came out
-// empty would default to `main` and install a server lacking the branch's routes
-// (e.g. the staging-only OAuth connector endpoints) — a bare 404 when the renderer
-// starts OAuth. The per-kind branch comes straight from the canonical table
-// (CHANNELS[kind].serverRef → dev/prod: main, preview/stable: staging) so it can't
-// drift; we return only a NON-'main' ref (forcing 'main' would needlessly flip
-// getInstallSpec's `overrides` on).
+// COWORK_SERVER_REF nor a baked ref is present. Safety net: a stable/preview build
+// whose baked BUILD_COWORK_SERVER_REF came out empty would default to `main` and
+// install a server missing the branch's routes (e.g. staging-only OAuth endpoints
+// → a bare 404). The ref comes from the canonical table (CHANNELS[kind].serverRef)
+// so it can't drift; we return only a NON-'main' ref (forcing 'main' would
+// needlessly flip getInstallSpec's `overrides` on).
 //
-// Applied to getCoworkRef() ONLY, never getAntonRef(): the anton ref must keep
-// deferring to cowork-server's own [tool.uv.sources] pin — a fallback there would
-// replace it with anton@staging-HEAD, which can mismatch what the server expects.
-//
-// Defensive: buildKind() may throw (unset kind outside Electron, or a fail-closed
-// invalid kind — see channels.ts); any failure resolves to '' → caller uses 'main'.
+// getCoworkRef() ONLY, never getAntonRef(): anton must keep deferring to
+// cowork-server's own [tool.uv.sources] pin, else a fallback would swap it for
+// anton@staging-HEAD, which can mismatch the server. Defensive: buildKind() may
+// throw (see channels.ts); any failure resolves to '' → caller uses 'main'.
 function _refForBuildKind(): string {
   try {
     const ref = CHANNELS[buildKind()].serverRef;
