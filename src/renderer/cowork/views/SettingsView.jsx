@@ -1,7 +1,7 @@
-import { useState, useEffect, useMemo, useRef, createContext, useContext, Children } from 'react';
+import { useState, useEffect, useMemo, useRef, useContext } from 'react';
 import { useId } from 'react';
 import Ico from '../components/Icons';
-import { validateSettings, revealSettingKey, testProviders, fetchHealth, fetchRecommendedModels } from '../api';
+import { validateSettings, revealSettingKey, testProviders, fetchRecommendedModels } from '../api';
 import { providerTypeToKeyField, providerValueToType, resolveModelPickerValue, buildModelOptions, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, clampBudgetValue, clampBudgets, BUDGET_FIELDS } from '../lib/settingsTransform';
 import { trackHarnessSwapped, resetDeviceIdentity } from '../lib/analytics';
 import { copyText as copyToClipboard } from '../lib/clipboard';
@@ -15,10 +15,11 @@ import ModelSelect from '../components/ModelSelect.jsx';
 import { host } from '../../platform/host';
 import { SKINS, normalizeSkin } from '../../lib/skins';
 import { MINDS_API_BASE, MINDS_API_KEY_URL, MINDS_CONSOLE_URL, MINDS_REGISTER_URL, MINDS_BILLING_URL } from '../../lib/mindsUrls';
-import { getVersionInfo, isElectron, getAccessToken } from '../../platform/host';
-import { unifiedVersion, SKEW_WARN_DAYS } from '../../../shared/version';
+import { isElectron, getAccessToken } from '../../platform/host';
 import { backendFailureCopy, exitCodeLabel } from '../../../shared/server-status';
 import ChannelsView from './ChannelsView';
+import UpdatesSection from './UpdatesSection';
+import { SettingsLayoutContext, Section, SettingsSectionPanel } from './settingsLayout';
 
 function decodeJwtPayload(token) {
   try {
@@ -66,13 +67,6 @@ export function patchSavedJson(prevJson, key, value) {
     return prevJson;
   }
 }
-
-const UPDATE_CARD_STYLE = {
-  display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
-  padding: '10px 12px', border: '1px solid rgba(93,146,135,0.30)',
-  background: 'rgba(93,146,135,0.12)', borderRadius: 8,
-};
-const UPDATE_CARD_BODY_STYLE = { display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 160 };
 
 // Numeric input for the Advanced Settings agent budgets. State keeps the
 // server's string form (settings round-trip as strings; the page-wide dirty
@@ -124,39 +118,6 @@ function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSett
       <span id={hintId} style={{ fontSize: 11.5, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
         {min}&ndash;{max} &middot; default {fallback}
       </span>
-    </div>
-  );
-}
-
-function Section({ title, subtitle, notice, children }) {
-  const { mobile } = useContext(SettingsLayoutContext);
-  // A section whose sole control is a Switch or ToggleGroup is compact enough
-  // to keep the desktop "title left / control right" row on wider mobile
-  // widths instead of stacking (ENG-990). Full-width controls — text inputs,
-  // selects, color pickers, the generic field wrapper — stay stacked. The
-  // row only re-forms above ~440px (see the media query); the narrowest
-  // phones still stack everything.
-  const kids = Children.toArray(children);
-  const compact = kids.length === 1 && (kids[0]?.type === Switch || kids[0]?.type === ToggleGroup);
-  return (
-    <div className={`settings-section${compact ? ' settings-section--inline' : ''}`} style={{
-      display: 'grid', gridTemplateColumns: '1fr 320px', gap: 0,
-      padding: '16px 0',
-      alignItems: 'flex-start',
-    }}>
-      {/* On mobile the grid collapses to one column (see the settings media
-          query), so the inter-column gutters (paddingRight/Left: 24) would
-          just indent the stacked label + control for no reason — drop them. */}
-      <div style={{ paddingRight: mobile ? 0 : 24 }}>
-        <h3 style={{
-          margin: 0, padding: 0,
-          fontSize: 14, fontWeight: 600, color: 'var(--text-strong)',
-          fontFamily: 'inherit', lineHeight: 1.3,
-        }}>{title}</h3>
-        {subtitle && <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginTop: 4 }}>{subtitle}</div>}
-        {notice && <div style={{ marginTop: 8 }}>{notice}</div>}
-      </div>
-      <div style={{ paddingLeft: mobile ? 0 : 24 }}>{children}</div>
     </div>
   );
 }
@@ -227,79 +188,6 @@ function CollapsibleGroup({ title, defaultOpen = true, children }) {
     </div>
   );
 }
-
-// Shared layout shell for every settings section: scrollable content area
-// on top, optional sticky footer with action buttons on the bottom.
-// Pass `footer` as JSX — buttons, status text, whatever the section needs.
-// Layout mode for the settings surface. Desktop (default) renders the
-// two-column nav + scrolling panel inside a modal; mobile (ENG-990) renders
-// a full page with accordion navigation, where each section flows naturally
-// so the whole page scrolls. SettingsSectionPanel reads this to drop its
-// flex-fill / internal scroll / sticky footer on mobile.
-const SettingsLayoutContext = createContext({ mobile: false });
-
-function SettingsSectionPanel({ children, footer, autoSaved = false }) {
-  const { mobile } = useContext(SettingsLayoutContext);
-  if (mobile) {
-    // Natural flow so the whole detail page scrolls (no internal scroll or
-    // width cap). A sticky full-bleed bottom bar carries the action: the Save
-    // footer when the section has one (always reachable on a long page instead
-    // of buried at the end), or a quiet "saves automatically" note when it
-    // doesn't — so an auto-save section (Appearance) doesn't read as "no way
-    // to save" next to sections with a Save button (ENG-990 QA).
-    const barStyle = {
-      position: 'sticky',
-      bottom: 0,
-      zIndex: 1,
-      display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
-      // Bleed past the .settings-detail 14px gutter to the screen edges.
-      margin: '16px -14px 0',
-      padding: '12px 14px calc(12px + env(safe-area-inset-bottom, 0))',
-      borderTop: '1px solid var(--border-subtle)',
-      // Opaque so scrolling content is masked behind the bar.
-      background: 'var(--bg)',
-    };
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column' }}>
-        <div>{children}</div>
-        {footer ? (
-          <div style={{ ...barStyle, gap: 10 }}>{footer}</div>
-        ) : autoSaved ? (
-          <div style={{ ...barStyle, color: 'var(--text-muted)', fontSize: 12.5 }}>
-            <span aria-hidden="true" style={{ display: 'inline-flex', color: 'var(--ok, #3aa876)' }}>
-              {Ico.check ? Ico.check(13) : '✓'}
-            </span>
-            <span>Changes are saved automatically.</span>
-          </div>
-        ) : null}
-      </div>
-    );
-  }
-  return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
-      <div
-        className="scroll-clean settings-scroll"
-        style={{ flex: 1, overflowY: 'auto', padding: '24px 28px' }}
-      >
-        <div style={{ maxWidth: 820 }}>{children}</div>
-      </div>
-      {footer && (
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 10,
-          padding: '12px 22px',
-          background: 'var(--surface-glass)',
-          WebkitBackdropFilter: 'blur(var(--surface-glass-blur))',
-          backdropFilter: 'blur(var(--surface-glass-blur))',
-          borderTop: '1px solid var(--border-subtle)',
-          flexShrink: 0,
-        }}>
-          {footer}
-        </div>
-      )}
-    </div>
-  );
-}
-
 
 function TextInput({ value, onChange, placeholder, title, ariaLabel }) {
   return (
@@ -896,30 +784,6 @@ export default function SettingsView({
   // re-opening the dropdown doesn't re-pay a round trip that just completed.
   const modelOpenState = useRef({});
   const modelOpenFor = (role) => (modelOpenState.current[role] ||= { refreshedAt: 0 });
-  const [versionInfo, setVersionInfo] = useState({ app: '', ui: null, source: 'web' });
-  const [serverVersion, setServerVersion] = useState('');
-  const [antonVersion, setAntonVersion] = useState('');
-  const [showVersionDetails, setShowVersionDetails] = useState(false);
-  // 'idle' | 'copied' | 'failed' — 'failed' surfaces feedback when the
-  // clipboard helper's fallback chain (see lib/clipboard.js) also fails,
-  // instead of leaving the button looking like it silently did nothing.
-  const [versionCopyState, setVersionCopyState] = useState('idle');
-  // ENG-671 — on-demand "Check for updates". `checkResult` is null (idle) or a
-  // summary { ok, offline, updateAvailable, uiUpdateAvailable,
-  // serverUpdateAvailable, uiVersion?, serverVersion? } from host.checkForUpdates().
-  const [checkingUpdates, setCheckingUpdates] = useState(false);
-  const [checkResult, setCheckResult] = useState(null);
-  const [applyingUpdate, setApplyingUpdate] = useState(false);
-  // Set when applyUpdate() resolves false — a normal, expected failure path
-  // (failed download, compatibility rejection, update disappeared between
-  // check and apply), distinct from the thrown-exception case below.
-  const [applyError, setApplyError] = useState(false);
-  // The shell (installer) download is a hand-off to the browser — we can't
-  // detect when it finishes, so once the user triggers it for a given version
-  // we flip the card to the quit-and-open guidance. Keyed by version so a newer
-  // shell notice later in the session starts fresh instead of showing stale
-  // "downloading…" copy for a version that was never fetched.
-  const [shellDownloadedVersion, setShellDownloadedVersion] = useState(null);
   // Whether the refresh token lives in the macOS keychain (vs a file under
   // ~/.cowork). Mac-only; read from main on mount.
   const [keychainPref, setKeychainPref] = useState(false);
@@ -934,21 +798,6 @@ export default function SettingsView({
   // load effects below fire on mobile too. `section == null` is the list; a
   // row tap calls onSectionChange(id), the back control onSectionChange(null).
 
-  useEffect(() => { getVersionInfo().then(setVersionInfo).catch(() => { }); }, []);
-  // Backend (server + agent) versions come from /health, which is only
-  // reachable when the backend is up. Re-read whenever the Updates section is
-  // shown and the backend is online, so versions populate after a cold open or
-  // a start/restart from the Backend section instead of staying blank at mount.
-  useEffect(() => {
-    if (section !== 'updates' || !serverOnline) return undefined;
-    let cancelled = false;
-    fetchHealth().then((h) => {
-      if (cancelled) return;
-      setServerVersion(h?.server_version || '');
-      setAntonVersion(h?.anton_version || '');
-    }).catch(() => { });
-    return () => { cancelled = true; };
-  }, [section, serverOnline]);
   useEffect(() => { if (host.isElectron && host.isMac()) host.getKeychainPref().then(setKeychainPref).catch(() => { }); }, []);
   // Re-runs when the signed-in state flips (ENG-761): previously deps
   // were [section] only, so signing in while this section was already
@@ -990,29 +839,6 @@ export default function SettingsView({
     } catch {
       setKeychainPref(!next);
     }
-  };
-  const handleCheckForUpdates = async () => {
-    if (checkingUpdates || applyingUpdate) return;
-    setCheckingUpdates(true);
-    setCheckResult(null);
-    setApplyError(false);
-    try {
-      setCheckResult(await host.checkForUpdates());
-    } catch {
-      setCheckResult({ ok: false, offline: false, updateAvailable: false });
-    } finally {
-      setCheckingUpdates(false);
-    }
-  };
-
-  const handleApplyUpdateNow = async () => {
-    if (applyingUpdate) return;
-    setApplyingUpdate(true);
-    setApplyError(false);
-    const applied = await host.applyUpdate().catch(() => false);
-    // Success reloads the window; a resolved false or throw returns to retry.
-    setApplyingUpdate(applied);
-    setApplyError(!applied);
   };
 
   // Tracks whether any LLM-affecting setting changed since the last
@@ -2522,215 +2348,12 @@ export default function SettingsView({
   );
 
   const renderUpdatesSection = () => (
-    <SettingsSectionPanel footer={renderSaveFooter()}>
-      <div style={{
-        border: '1px solid var(--border-subtle)', borderRadius: 'var(--card-radius)',
-        background: 'var(--surface-glass)',
-        WebkitBackdropFilter: 'blur(var(--surface-glass-blur))',
-        backdropFilter: 'blur(var(--surface-glass-blur))',
-        marginBottom: 14, overflow: 'hidden', padding: '0 18px 8px',
-      }}>
-        <Section
-          title="Current version"
-          subtitle="The version currently running. Server and UI updates are applied automatically at launch; components under the hood are shown in details."
-        >
-          {(() => {
-            const baked = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '';
-            // App shell = installed Electron shell (changes only on reinstall).
-            const shellVer = versionInfo.app || baked;
-            // The running renderer's own baked version is authoritative for the
-            // UI version — it's compiled into whichever bundle actually loaded
-            // (OTA or bundled). Main-process cache metadata (`versionInfo.ui`)
-            // can lag the loaded renderer (OTA off, missing cache, post-
-            // rollback), so it only informs the source label, never the version.
-            const uiVer = baked || versionInfo.ui || '';
-            const uiSource = versionInfo.source === 'ota' ? 'OTA'
-              : versionInfo.source === 'web' ? 'web' : 'bundled';
-            // Unified "content" headline = release week of the newest of the
-            // hot-updated components (UI + server + agent). App shell is
-            // excluded — it updates via reinstall and is shown on its own line.
-            const unified = unifiedVersion([uiVer, serverVersion, antonVersion]);
-            const outOfSync = !!unified && unified.skewDays >= SKEW_WARN_DAYS;
-            const rows = [
-              ['App shell', shellVer || '—'],
-              ['UI', uiVer ? `${uiVer} (${uiSource})` : '—'],
-              ['Server', serverVersion || '—'],
-              ['Agent', antonVersion || '—'],
-            ];
-            const copyText = rows.map(([k, v]) => `${k}: ${v}`).join('\n');
-            return (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 12.5, color: 'var(--text-strong)' }}>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-                  <span title={unified ? `Release week ${unified.cycleRange}` : undefined} style={{ fontFamily: 'var(--font-mono)', fontSize: 15, fontWeight: 600 }}>
-                    {unified ? unified.label : (shellVer || '—')}
-                  </span>
-                  {outOfSync && (
-                    <span
-                      title={`Underlying components span ${unified.skewDays} days — a component is lagging. See details.`}
-                      style={{ color: 'var(--warning, #c47f00)', fontSize: 11.5, fontWeight: 600 }}
-                    >
-                      ⚠ out of sync
-                    </span>
-                  )}
-                  {unified && (
-                    <span style={{ color: 'var(--text-muted)', fontSize: 11.5 }}>built {unified.buildDate}</span>
-                  )}
-                </div>
-                {isElectron && (
-                  <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', fontSize: 12 }}>
-                    <span style={{ marginRight: 4 }}>App shell</span>{shellVer || '—'}
-                  </span>
-                )}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowVersionDetails((v) => !v);
-                    // Hiding the panel unmounts the Copy button below — treat
-                    // it like the blur/unmount clear so a stale "Couldn't
-                    // copy" isn't waiting the next time details are reopened.
-                    setVersionCopyState('idle');
-                  }}
-                  style={{ alignSelf: 'flex-start', background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--accent)', fontSize: 11.5 }}
-                >
-                  {showVersionDetails ? 'Hide details' : 'Details'}
-                </button>
-                {showVersionDetails && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontFamily: 'var(--font-mono)', fontSize: 12, padding: '8px 10px', border: '1px solid var(--border-subtle)', borderRadius: 8, background: 'var(--surface-glass)' }}>
-                    {rows.map(([k, v]) => (
-                      <span key={k} style={{ userSelect: 'text' }}>
-                        <span style={{ color: 'var(--text-muted)', marginRight: 6, display: 'inline-block', minWidth: 64 }}>{k}</span>{v}
-                      </span>
-                    ))}
-                    {/* role="status"/aria-live wraps the button itself (unlike
-                        ApiKeyInput's separate pill) because the failure text
-                        here IS the button's label — without a live region a
-                        screen reader has no guarantee it announces a focused
-                        button's label changing out from under it. */}
-                    <span role="status" aria-live="polite" style={{ alignSelf: 'flex-start' }}>
-                      <Button
-                        onClick={async () => {
-                          const ok = await copyToClipboard(copyText);
-                          if (ok) {
-                            setVersionCopyState('copied');
-                            setTimeout(() => setVersionCopyState('idle'), 1500);
-                          } else {
-                            // No auto-clear timer here — same reasoning as the
-                            // API-key copy above: an error needs longer than
-                            // 1.5s to read. Cleared by the next attempt, blur,
-                            // or hiding the panel (onClick above).
-                            setVersionCopyState('failed');
-                          }
-                        }}
-                        onBlur={() => { if (versionCopyState === 'failed') setVersionCopyState('idle'); }}
-                        style={{ marginTop: 4 }}
-                      >
-                        {versionCopyState === 'copied' ? 'Copied' : versionCopyState === 'failed' ? "Couldn't copy — select the details above to copy manually" : 'Copy'}
-                      </Button>
-                    </span>
-                  </div>
-                )}
-              </div>
-            );
-          })()}
-        </Section>
-        {isElectron && (
-          <Section
-            title="Software updates"
-            subtitle="UI and server updates apply automatically when the app restarts. Only a new app version has to be downloaded and reinstalled by hand."
-          >
-            {(() => {
-              const r = checkResult;
-              const shellPending = r?.ok ? !!r.shellUpdateAvailable : !!shellUpdate;
-              const shellVersion = r?.shellVersion || shellUpdate?.version;
-              const shellUrl = r?.shellDownloadUrl || shellUpdate?.downloadUrl;
-              const shellDownloadStarted = shellPending && !!shellVersion && shellDownloadedVersion === shellVersion;
-              let status = null;
-              if (!checkingUpdates && r) {
-                if (!r.ok) {
-                  status = r.offline
-                    ? "Couldn't check — you appear to be offline."
-                    : "Couldn't check for updates. Please try again.";
-                } else if (!r.updateAvailable) {
-                  status = "You're up to date.";
-                }
-              }
-              const isError = !!r && !r.ok;
-              const isUpToDate = !checkingUpdates && !!r && r.ok && !r.updateAvailable;
-              const applyAvailable = !checkingUpdates && !!r && r.ok && (r.uiUpdateAvailable || r.serverUpdateAvailable);
-              const busy = checkingUpdates || applyingUpdate;
-              const parts = [];
-              if (applyAvailable) {
-                if (r.serverUpdateAvailable) parts.push(`Server → ${r.serverVersion || 'new version'}`);
-                if (r.uiUpdateAvailable) parts.push(`UI → ${r.uiVersion || 'new version'}`);
-              }
-              return (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                    <Button
-                      onClick={handleCheckForUpdates}
-                      disabled={busy}
-                      style={{ minWidth: 150, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.7 : 1 }}
-                    >
-                      {checkingUpdates ? 'Checking…' : 'Check for updates'}
-                    </Button>
-                    {status && (
-                      <span style={{ fontSize: 12.5, color: isError ? 'var(--warning, #c47f00)' : 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                        {isUpToDate && Ico.check ? Ico.check(14) : null}
-                        {status}
-                      </span>
-                    )}
-                  </div>
-                  {applyAvailable && (
-                    <div style={UPDATE_CARD_STYLE}>
-                      <div style={UPDATE_CARD_BODY_STYLE}>
-                        <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-strong)' }}>Update ready</span>
-                        <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
-                          Restart the app to apply it{parts.length > 0 ? ` (${parts.join(', ')})` : ''}.
-                        </span>
-                      </div>
-                      <Button
-                        variant="primary"
-                        onClick={handleApplyUpdateNow}
-                        disabled={applyingUpdate}
-                        style={{ cursor: applyingUpdate ? 'default' : 'pointer', opacity: applyingUpdate ? 0.7 : 1 }}
-                      >
-                        {applyingUpdate ? 'Restarting…' : applyError ? 'Try again' : 'Restart now'}
-                      </Button>
-                    </div>
-                  )}
-                  {shellPending && (
-                    <div style={UPDATE_CARD_STYLE}>
-                      <div style={UPDATE_CARD_BODY_STYLE}>
-                        <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-strong)' }}>
-                          {shellVersion ? `New app version ${shellVersion}` : 'New app version available'}
-                        </span>
-                        <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
-                          {shellDownloadStarted
-                            ? "Installer downloading — when it's done, quit MindsHub Cowork and open the installer to finish updating."
-                            : "Download the installer, then quit MindsHub Cowork and open it to finish updating."}
-                        </span>
-                      </div>
-                      <Button
-                        variant={shellDownloadStarted ? 'subtle' : 'primary'}
-                        onClick={() => { onDownloadShellUpdate(shellUrl); if (shellVersion) setShellDownloadedVersion(shellVersion); }}
-                        style={{ cursor: 'pointer' }}
-                      >
-                        {shellDownloadStarted ? 'Download again' : 'Download installer'}
-                      </Button>
-                    </div>
-                  )}
-                  {applyError && (
-                    <span style={{ fontSize: 12.5, color: 'var(--warning, #c47f00)' }}>
-                      Couldn't apply the update. Please try again.
-                    </span>
-                  )}
-                </div>
-              );
-            })()}
-          </Section>
-        )}
-      </div>
-    </SettingsSectionPanel>
+    <UpdatesSection
+      footer={renderSaveFooter()}
+      serverOnline={serverOnline}
+      shellUpdate={shellUpdate}
+      onDownloadShellUpdate={onDownloadShellUpdate}
+    />
   );
 
   const renderBackendSection = () => {
