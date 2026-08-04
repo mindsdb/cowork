@@ -293,4 +293,24 @@ describe('tool_call.progress / tool_call.end (ENG-763 stage 2 — generic tool p
     expect(b.status).toBe('in_progress');
     expect(b.data.one_line_description).toBe('step 1');
   });
+
+  it('gives each tool call its own _scratchpadTabId instead of sharing null', () => {
+    // ScratchpadModal groups cells by _scratchpadTabId — if every
+    // tool-call step shared the same value (null), three unrelated
+    // test_tool invocations would collapse into one synthetic pad and
+    // render as "step 1/3", "step 2/3", "step 3/3" as if they were
+    // sequential steps of a single execution, instead of three
+    // independent invocations (found via manual verification, ENG-763
+    // stage 2).
+    const state = reduceAll([
+      { type: 'response.created', response: { id: 'r1' } },
+      { type: 'response.in_progress', thought_role: 'thought.tool_call.progress', tool_use_id: 'tc_1', tool_name: 'test_tool', content: 'step 1' },
+      { type: 'response.in_progress', thought_role: 'thought.tool_call.progress', tool_use_id: 'tc_2', tool_name: 'test_tool', content: 'step 1' },
+    ], initialStreamState(), now);
+
+    expect(state.steps).toHaveLength(2);
+    expect(state.steps[0]._scratchpadTabId).toBe('tc_1');
+    expect(state.steps[1]._scratchpadTabId).toBe('tc_2');
+    expect(state.steps[0]._scratchpadTabId).not.toBe(state.steps[1]._scratchpadTabId);
+  });
 });

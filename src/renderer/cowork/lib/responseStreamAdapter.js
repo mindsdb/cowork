@@ -513,7 +513,13 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       result: null,
       _isScratchpad: false,
       _isToolCall: true,
-      _scratchpadTabId: null,
+      // Unlike scratchpad (where the SAME name deliberately groups
+      // multiple cells into one continuing notebook), each tool call is
+      // its own independent invocation — never a "step" of another one.
+      // Keying by tool_use_id gives every call its own pad in
+      // ScratchpadModal instead of collapsing unrelated calls into one
+      // synthetic "Untitled" pad with a misleading "step 1/3" counter.
+      _scratchpadTabId: event.tool_use_id || null,
       _toolUseId: event.tool_use_id || null,
     };
     // Any answer text before this tool call was preamble → move it to
