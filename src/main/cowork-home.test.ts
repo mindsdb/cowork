@@ -93,6 +93,63 @@ describe('buildKindStrict', () => {
   });
 });
 
+describe('buildKind (composed env → packaging → config resolver)', () => {
+  // buildKindStrict/readBuildConfigKind above cover the pieces; this pins the
+  // real function every consumer (coworkHome, minds-urls, server-source, …)
+  // calls, end-to-end. buildKind() caches in a module-level `_buildKind`, so
+  // each case re-imports a fresh module instance via vi.resetModules().
+  async function freshBuildKind() {
+    vi.resetModules();
+    const mod = await import('./cowork-home');
+    return mod.buildKind;
+  }
+
+  it('honours a valid COWORK_BUILD_KIND override', async () => {
+    process.env.COWORK_BUILD_KIND = 'preview';
+    const buildKind = await freshBuildKind();
+    expect(buildKind()).toBe('preview');
+  });
+
+  it('THROWS on an unrecognized COWORK_BUILD_KIND (never silently prod)', async () => {
+    process.env.COWORK_BUILD_KIND = 'prod-ish';
+    const buildKind = await freshBuildKind();
+    expect(() => buildKind()).toThrow(/invalid build kind/i);
+  });
+
+  it('treats a present-but-whitespace COWORK_BUILD_KIND as absent, resolving via config (not prod)', async () => {
+    // A whitespace-only override (a CI templating slip) must NOT short-circuit to
+    // prod: it falls through to the packaged config, which resolves the true kind.
+    process.env.COWORK_BUILD_KIND = '   ';
+    writeBuildConfig(JSON.stringify({ buildKind: 'stable' }));
+    const buildKind = await freshBuildKind();
+    expect(buildKind()).toBe('stable');
+  });
+
+  it('resolves prod from a packaged build with NO config (a legacy release)', async () => {
+    // no COWORK_BUILD_KIND (cleared in beforeEach), packaged, empty resourcesDir
+    const buildKind = await freshBuildKind();
+    expect(buildKind()).toBe('prod');
+  });
+
+  it('THROWS on a packaged build with a broken config (fail closed, never prod)', async () => {
+    writeBuildConfig('{ not json');
+    const buildKind = await freshBuildKind();
+    expect(() => buildKind()).toThrow(/not valid JSON/i);
+  });
+
+  it('resolves the configured kind from a well-formed packaged config', async () => {
+    writeBuildConfig(JSON.stringify({ buildKind: 'preview' }));
+    const buildKind = await freshBuildKind();
+    expect(buildKind()).toBe('preview');
+  });
+
+  it('treats an unpackaged build as dev', async () => {
+    appState.isPackaged = false;
+    const buildKind = await freshBuildKind();
+    expect(buildKind()).toBe('dev');
+  });
+});
+
 describe('readBuildConfigKind (present-but-broken config must fail closed)', () => {
   // Re-review boundary: distinguish an ABSENT config (legacy release → prod)
   // from a PRESENT but broken one (mispackaged build → fail closed, never prod).

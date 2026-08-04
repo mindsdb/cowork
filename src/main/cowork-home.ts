@@ -53,8 +53,17 @@ export function buildKind(): BuildKind {
 }
 
 function resolveBuildKind(): BuildKind {
-  if (process.env.COWORK_BUILD_KIND) {
-    return normalizeBuildKind(process.env.COWORK_BUILD_KIND, 'COWORK_BUILD_KIND');
+  // A present-but-BLANK override (empty or whitespace-only — e.g. a CI templating
+  // slip that sets `COWORK_BUILD_KIND=""` rather than leaving it unset) is treated
+  // as ABSENT: it falls through to packaging/config resolution instead of
+  // short-circuiting. Only a non-blank value is a real override, at which point
+  // normalizeBuildKind accepts a recognized kind or THROWS. This keeps a blank
+  // override from silently resolving to prod on a non-prod build (which carries a
+  // build-config.json that then resolves it correctly), matching how a blank
+  // buildKind in build-config.json is rejected rather than treated as prod.
+  const envKind = process.env.COWORK_BUILD_KIND;
+  if (envKind && envKind.trim() !== '') {
+    return normalizeBuildKind(envKind, 'COWORK_BUILD_KIND');
   }
   // `app?.` (not `app.`): outside the Electron main process — unit tests and
   // tooling that transitively import this module — `app` is undefined. Treat
@@ -114,7 +123,10 @@ export function buildKindStrict(): BuildKind | null {
     const kind = raw.trim().toLowerCase();
     return (BUILD_KINDS as readonly string[]).includes(kind) ? (kind as BuildKind) : null;
   };
-  if (process.env.COWORK_BUILD_KIND) return strict(process.env.COWORK_BUILD_KIND);
+  // Same blank-is-absent handling as resolveBuildKind: a whitespace-only override
+  // falls through rather than being treated as an (unrecognized → null) value.
+  const envKind = process.env.COWORK_BUILD_KIND;
+  if (envKind && envKind.trim() !== '') return strict(envKind);
   if (!app?.isPackaged) return 'dev';
   // Reuse the one config reader so parsing can't drift between the two resolvers.
   // Strict never throws or defaults to prod: a broken config (readBuildConfigKind
