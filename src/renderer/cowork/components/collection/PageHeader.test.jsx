@@ -31,4 +31,17 @@ describe('collection/PageHeader', () => {
     render(<PageHeader title="Tasks" actions={<button>New task</button>} />);
     expect(screen.getByRole('button', { name: 'New task' })).toBeInTheDocument();
   });
+
+  // Regression: preflight is disabled, so `border-b border-solid` alone leaves
+  // the other three sides at the UA's default `medium` width and draws a full
+  // box. `border-0` must reset all sides first, then `border-b` restores the
+  // 1px bottom divider.
+  it('trail shape draws only a bottom divider (border-0 reset), not a full box', () => {
+    const { container } = render(
+      <PageHeader crumbs={[{ label: 'Scheduled Tasks', onClick: () => {} }]} current="test" />,
+    );
+    const header = container.querySelector('header');
+    expect(header.className).toContain('border-0');
+    expect(header.className).toContain('border-b');
+  });
 });
