@@ -73,6 +73,8 @@ describe('SettingsView model picker — provider test in flight (ENG-1113)', () 
     await waitFor(() => expect(spies.testProviders).toHaveBeenCalled());
     const checking = await screen.findAllByText(/Checking MindsHub connection/i);
     expect(checking.length).toBeGreaterThan(0);
+    expect(screen.getByLabelText('Testing…')).toBeInTheDocument();
+    expect(screen.queryByLabelText('minds API key')).toBeNull();
     expect(screen.queryByText(/failed its last test/i)).toBeNull();
     expect(screen.queryByText(/did not respond in time/i)).toBeNull();
   });
@@ -83,7 +85,8 @@ describe('SettingsView model picker — provider test in flight (ENG-1113)', () 
 
     deferred.resolve({ providerStatus: { 'minds-cloud': 'ok' }, providerStatusDetails: {} });
 
-    await waitFor(() => expect(screen.queryByText(/Checking MindsHub connection/i)).toBeNull());
+    await waitFor(() => expect(screen.getByLabelText(/^Last test passed/)).toBeInTheDocument());
+    expect(screen.queryByLabelText('minds API key')).toBeNull();
     expect(screen.queryByText(/failed its last test/i)).toBeNull();
   });
 
@@ -94,6 +97,7 @@ describe('SettingsView model picker — provider test in flight (ENG-1113)', () 
     deferred.resolve({ providerStatus: { 'minds-cloud': 'fail' }, providerStatusDetails: { 'minds-cloud': 'HTTP 401' } });
 
     await waitFor(() => expect(screen.queryByText(/Checking MindsHub connection/i)).toBeNull());
+    expect(screen.getByLabelText('minds API key')).toBeInTheDocument();
     expect(screen.getAllByText(/failed its last test/i).length).toBeGreaterThan(0);
   });
 

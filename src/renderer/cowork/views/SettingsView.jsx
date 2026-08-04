@@ -1608,8 +1608,10 @@ export default function SettingsView({
                 // Show the key input when: unconfigured, never tested, or user clicked Edit.
                 // Otherwise the middle column shows the status pill and an Edit button appears.
                 const ssoMindsHub = p.type === 'minds-cloud' && isSsoConnected;
-                // Structural state follows the last result, not the temporary badge.
-                const showKeyInput = ssoMindsHub || !configured || st.settled === 'untested' || st.settled === 'fail' || editingProviders.has(p.type);
+                // Keep a stale failed provider in badge mode while its fresh test is
+                // pending; otherwise the testing badge is replaced by the masked key.
+                const showKeyInput = ssoMindsHub || !configured || st.settled === 'untested'
+                  || (st.settled === 'fail' && !st.checking) || editingProviders.has(p.type);
                 return (
                   <div key={p.type} className="settings-provider-row" style={{
                     // Desktop: name | key/status | actions in a 3-col grid.
