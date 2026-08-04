@@ -19,6 +19,7 @@ import { getPickedFiles, savePickedFiles, verifyPickedFiles, type PickedFile } f
 import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefreshTokenStore, isAccessTokenExpired } from './token-store';
 import { refreshTokensOnly, provisionAntonApiKey, scheduleRefresh, cancelScheduledRefresh, endKeycloakSession, KEYCLOAK_AUTH_URL, KEYCLOAK_REGISTRATION_URL, KEYCLOAK_TOKEN_URL, SIGNUP_CALLBACK_TIMEOUT_MS } from './minds-auth';
 import { scrubEnvCredentials } from './logout-env';
+import { resolveConfigured } from './configured';
 import { MINDS_API_HOST } from './minds-urls';
 import { sendEvent } from './analytics';
 import { getRendererPath, getBundledPath, checkForUIUpdate, applyUIUpdate, hasInternet, getCachedVersion, isServingOta, rollbackUI } from './ui-updater';
@@ -120,23 +121,12 @@ async function serverConfigured(): Promise<{ configured: boolean; provider: stri
   }
 }
 
-async function checkConfigured(): Promise<{ configured: boolean; provider: string }> {
-  const vars = readEnvFile();
-  if (vars.ANTON_TERMS_CONSENT !== 'true') return { configured: false, provider: '' };
-  // config_ready from /health is authoritative and is the SAME signal the
-  // in-app chat gate uses — defer to it so routing and the chat gate can't
-  // disagree. (The old .env any-key check could pass here while config_ready
-  // was false, stranding the user on "Connect a provider" with no recovery.)
-  const fromServer = await serverConfigured();
-  if (fromServer) return fromServer;
-  // Server genuinely unreachable: fall back to the .env heuristic so a
-  // configured user isn't needlessly bounced to onboarding. Provider strings
-  // mirror the server's config_status vocabulary so the IPC value isn't
-  // path-dependent.
-  if (vars.ANTON_MINDS_API_KEY) return { configured: true, provider: 'minds_cloud' };
-  if (vars.ANTON_ANTHROPIC_API_KEY) return { configured: true, provider: 'anthropic' };
-  if (vars.ANTON_OPENAI_API_KEY) return { configured: true, provider: 'openai' };
-  return { configured: false, provider: '' };
+// Thin wrapper over resolveConfigured (unit-tested in configured.test.ts). No
+// consent gate: ENG-1127 stopped writing ANTON_TERMS_CONSENT to .env, so gating
+// here would strand a consented, configured user on relaunch — consent is owned
+// by the renderer boot layer (bootTarget.resolveBootTarget, localStorage).
+function checkConfigured(): Promise<{ configured: boolean; provider: string }> {
+  return resolveConfigured(serverConfigured, readEnvFile);
 }
 
 function httpRequest(
