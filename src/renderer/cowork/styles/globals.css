@@ -1055,10 +1055,12 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
   min-width: 0;
 }
 
-.customize-serif {
-  font-family: "Times New Roman", Georgia, serif;
-  font-weight: 500;
-  letter-spacing: -0.02em;
+.customize-heading {
+  /* Was a Times New Roman serif — the one heading off the Inter system.
+     Now on the display font so it reads as part of the app (ENG-1038). */
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.01em;
   color: var(--ink);
 }
 
@@ -2124,19 +2126,11 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
 .bar { height: 4px; background: var(--stone-150); border-radius: var(--r-pill); overflow: hidden; }
 .bar > span { display: block; height: 100%; background: var(--primary-500); border-radius: var(--r-pill); transition: width .4s ease; }
 
-/* ─── Page header ────────────────────────────────────────────────────────── */
-.page-header {
-  display: flex; align-items: flex-end; gap: 16px;
-  padding: 28px 32px 16px;
-  border-bottom: 1px solid var(--border-0);
-}
-.page-title {
-  /* On the .s-h1 rung of the Inter ladder (28/600/-0.007em) so page titles
-     match the rest of the app's headings. */
-  font-family: var(--font-display);
-  font-size: 28px; font-weight: 600; letter-spacing: -0.007em;
-  color: var(--text-strong); margin: 0;
-}
+/* ─── Page header ──────────────────────────────────────────────────────────
+   Page headers now render via components/collection/PageHeader (title + trail
+   shapes, with the shell's titlebar-safe inset baked in). The old
+   .page-header / .page-title classes were retired in the ENG-1038 header
+   consolidation. */
 
 /* ─── Coming soon tooltip ────────────────────────────────────────────────── */
 [data-coming-soon] {
@@ -2909,19 +2903,33 @@ body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surfac
 
 /* New task CTA wrapper — the button itself is the tinted variant,
    full width (<Button variant="tinted" block size="lg">). */
-.anton-sidebar__cta-wrap { padding: 6px 10px 14px; }
+.anton-sidebar__cta-wrap { padding: 8px 10px 10px; }
+/* The New task CTA aligns to the rail gutter, not the standard .btn.lg inset.
+   Nav rows sit at padding 0 10px (content 20px from the sidebar edge); the
+   default .btn.lg carries 0 16px, which pushed the +/label 6px past the nav
+   icons below it and its ⌘N past the nav badges. Tighten the horizontal
+   padding 16→10 so the CTA's content and shortcut line up exactly with the
+   denser nav rows (ENG-1038). A deliberately non-standard, rail-scoped button. */
+.anton-sidebar__cta-wrap .btn.lg {
+  padding-left: 10px;
+  padding-right: 10px;
+  /* Match the nav rows' 13px body (the standard .btn.lg is 14px) so the CTA
+     reads as part of the same rail, not a heavier element above it. The label
+     weight is set on the span in Sidebar.jsx. */
+  font-size: 13px;
+}
 
 /* Override existing .nav-item rules to follow the guideline shape */
 .app-sidebar .nav-item {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 10px;
-  /* Uniform, roomier rows (ENG-640): a fixed min-height keeps every row
-     the same height whether or not it carries a count badge (the badge
-     was stretching auto-height rows unevenly), and gives the rail a
-     considered rhythm. */
-  min-height: 34px;
+  gap: 9px;
+  /* Uniform, dense rows: a fixed min-height keeps every row the same height
+     whether or not it carries a count badge (the badge was stretching
+     auto-height rows unevenly). Tightened 34→30 (ENG-1038) for a denser,
+     more structured rail. */
+  min-height: 30px;
   padding: 0 10px;
   border-radius: var(--r-lg);
   color: var(--ink-2);
@@ -2954,11 +2962,13 @@ body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surfac
 .app-sidebar .section-label {
   font-family: var(--font-sans);
   font-size: var(--text-2xs);
-  letter-spacing: 0.16em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--ink-4);
   font-weight: 600;
-  padding: 18px 14px 6px;
+  /* Tighter top gap so each group reads as attached to its heading, and a
+     10px left edge lined up with the nav-list gutter for structure. */
+  padding: 12px 10px 6px;
   margin: 0;
 }
 
@@ -3008,8 +3018,8 @@ body[data-theme="dark"] .app-sidebar .sidebar-empty {
   justify-content: space-between;
   gap: 8px;
   /* Match .nav-item exactly so nav rows and task/pinned rows read as one
-     consistent list (they were 32 vs 34 — a 2px mismatch that looked off). */
-  min-height: 34px;
+     consistent list, matched to the nav rows (ENG-1038: both tightened to 30). */
+  min-height: 30px;
   padding: 0 10px;
   border-radius: var(--r-8);
   font-family: var(--font-sans);
@@ -3257,41 +3267,11 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
 }
 .orbit-morph[data-state="idle"] svg { opacity: 0.7; }
 
-@media (max-width: 700px) {
-  .app-sidebar {
-    width: 104px !important;
-  }
-  .app-sidebar .section-label,
-  .app-sidebar .recent-item span:last-child,
-  .app-sidebar .nav-item span:nth-child(2),
-  .app-sidebar .nav-item span:nth-child(3),
-  .app-sidebar .nav-item span:nth-child(4) {
-    display: none !important;
-  }
-  .app-sidebar .nav-item,
-  .app-sidebar .recent-item {
-    justify-content: center;
-    padding: 0;
-  }
-}
-
-/* Sidebar in overlay/drawer mode — always shows full content regardless of
-   viewport width, overriding the compact @media rules above. */
-.sidebar-overlay-wrap .app-sidebar {
-  width: clamp(240px, 80vw, 320px) !important;
-}
-.sidebar-overlay-wrap .app-sidebar .section-label,
-.sidebar-overlay-wrap .app-sidebar .recent-item span:last-child,
-.sidebar-overlay-wrap .app-sidebar .nav-item span:nth-child(2),
-.sidebar-overlay-wrap .app-sidebar .nav-item span:nth-child(3),
-.sidebar-overlay-wrap .app-sidebar .nav-item span:nth-child(4) {
-  display: revert !important;
-}
-.sidebar-overlay-wrap .app-sidebar .nav-item,
-.sidebar-overlay-wrap .app-sidebar .recent-item {
-  justify-content: revert !important;
-  padding: revert !important;
-}
+/* Sidebar is a docked flex item across the whole desktop + tablet range
+   (≥640px); below 640 MobileShell replaces it. The old max-width:700 icon-rail
+   and the .sidebar-overlay-wrap tablet-drawer overrides were removed in the
+   ENG-1038 shell simplification (the tablet band no longer uses an overlay).
+   See lib/breakpoints.js for the shared 640 / 900 / 1280 scale. */
 
 /* ─── Toggle ─────────────────────────────────────────────────────────────── */
 .toggle {
@@ -4787,9 +4767,6 @@ body[data-theme="dark"] .mshell__drawer-title {
      one row, and the Health card puts three metric tiles inline
      with the description. Both go to two-row stacked layouts on a
      phone. Outer gutters tighten too. */
-  .sched-crumb {
-    padding: 12px 14px 6px !important;
-  }
   .sched-body {
     padding: 4px 14px calc(96px + env(safe-area-inset-bottom, 0)) !important;
   }

@@ -4,7 +4,6 @@ import { PageHeader, FilterRow, SearchInput, SortPill } from '../components/coll
 import { Menu, Button, Card, Select, Input, Textarea } from '../components/ui';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
 import { Switch } from '../components/ui/Switch';
-import { Crumb, CrumbSep, CrumbCurrent } from '../components/ui/Crumb';
 import { useToastManager } from '../components/ui/Toast';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
@@ -424,38 +423,38 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
     <div className="scroll-clean" style={{ flex: 1, overflowY: 'auto', paddingBottom: 40 }}>
       {selected ? (
         // ── Detail view ────────────────────────────────────────────────────
-        <div style={{ padding: 32 }}>
-
-
-          {/* Header */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-            <Crumb label="Skills" onClick={() => setSelected(null)} />
-            <CrumbSep />
-            <CrumbCurrent label={selected.label} />
-            <div style={{ flex: 1 }} />
-            <Switch
-              checked={selected.enabled ?? true}
-              aria-label="Skill enabled"
-              onCheckedChange={async (next) => {
-                setSelected((prev) => ({ ...prev, enabled: next }));
-                try {
-                  const saved = await saveSkillAndSync({ label: selected.label, enabled: next }, true);
-                  setSelected(saved);
-                } catch (err) {
-                  setSelected((prev) => ({ ...prev, enabled: !next }));
-                  showToast(err.message || 'Could not update skill.');
-                }
-              }}
-            />
-            <OverflowMenu
-              items={[
-                { id: 'try',       label: 'Try in chat', icon: Ico.chats(14),  onClick: () => onTryInChat?.(`/${selected.label}`, selected.projects?.[0]) },
-                { id: 'edit',      label: 'Edit',        icon: Ico.edit(14),   onClick: () => startEdit(selected) },
-                { divider: true },
-                { id: 'uninstall', label: 'Uninstall',   icon: Ico.trash(14),  danger: true, onClick: () => remove(selected) },
-              ]}
-            />
-          </div>
+        <>
+          <PageHeader
+            crumbs={[{ label: 'Skills', onClick: () => setSelected(null) }]}
+            current={selected.label}
+            actions={
+              <>
+                <Switch
+                  checked={selected.enabled ?? true}
+                  aria-label="Skill enabled"
+                  onCheckedChange={async (next) => {
+                    setSelected((prev) => ({ ...prev, enabled: next }));
+                    try {
+                      const saved = await saveSkillAndSync({ label: selected.label, enabled: next }, true);
+                      setSelected(saved);
+                    } catch (err) {
+                      setSelected((prev) => ({ ...prev, enabled: !next }));
+                      showToast(err.message || 'Could not update skill.');
+                    }
+                  }}
+                />
+                <OverflowMenu
+                  items={[
+                    { id: 'try',       label: 'Try in chat', icon: Ico.chats(14),  onClick: () => onTryInChat?.(`/${selected.label}`, selected.projects?.[0]) },
+                    { id: 'edit',      label: 'Edit',        icon: Ico.edit(14),   onClick: () => startEdit(selected) },
+                    { divider: true },
+                    { id: 'uninstall', label: 'Uninstall',   icon: Ico.trash(14),  danger: true, onClick: () => remove(selected) },
+                  ]}
+                />
+              </>
+            }
+          />
+          <div style={{ padding: '24px 32px 32px' }}>
 
           {/* Scope */}
           <div style={{ marginBottom: 16 }}>
@@ -492,6 +491,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
             />
           </div>
         </div>
+        </>
       ) : (
         // ── Grid ───────────────────────────────────────────────────────────
         <>

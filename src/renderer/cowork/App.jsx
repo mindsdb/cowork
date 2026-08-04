@@ -7,7 +7,7 @@ import { pickConnectWelcome } from './lib/connectWelcomes';
 // provider setup. The cowork app is mounted by CoworkApp.tsx only after
 // those gates pass, so AppCore renders unconditionally here.
 import Sidebar from './components/Sidebar';
-import MobileShell from './components/MobileShell';
+import AppShell from './components/AppShell';
 import { ConfirmModal } from './components/ConfirmModal';
 import { Modal, ModalHeader, ModalBody } from './components/ui/Modal';
 import { ToastProvider, useToastManager } from './components/ui/Toast';
@@ -1127,6 +1127,17 @@ function AppCore() {
   // means the collapse affordance is hidden in those views too.
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const { isMobile, isNarrow } = useBreakpoint();
+  // Narrow band (640–900): the docked sidebar becomes an off-canvas popout
+  // opened by the floating hamburger. Docked ≥900; MobileShell owns <640.
+  const [navPopoutOpen, setNavPopoutOpen] = useState(false);
+  // Close the popout on Escape (no-op outside the narrow band, where it stays
+  // closed). Backdrop-click and navigation close it too (below).
+  useEffect(() => {
+    if (!navPopoutOpen) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape') setNavPopoutOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [navPopoutOpen]);
 
   // iOS Safari (and Android Chrome) auto-zoom the page in when a text
   // input with font-size < 16px gets focus, and don't zoom back out
@@ -1186,8 +1197,6 @@ function AppCore() {
     };
   }, [isMobile]);
 
-  // On narrow screens (< 900px), sidebar is a slide-over overlay — track open state separately.
-  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   // Routes where the user can collapse the sidebar. Currently:
   // chat task only.
   const sidebarCollapsibleRoutes = useMemo(() => new Set(['task']), []);
@@ -1893,7 +1902,7 @@ function AppCore() {
   }, [markInFlight, markInFlightDone, handleStreamError]);
 
   const selectTask = (id) => {
-    if (isNarrow) setMobileSidebarOpen(false);
+    if (isNarrow) setNavPopoutOpen(false);
     const task = tasks.find((t) => t.id === id);
     if (task) {
       // Record the visit for recents ordering, but never auto-pin.
@@ -1965,7 +1974,7 @@ function AppCore() {
   };
 
   const newTask = () => {
-    if (isNarrow) setMobileSidebarOpen(false);
+    if (isNarrow) setNavPopoutOpen(false);
     setActiveTaskId(null);
     setComposerAttachments([]);
     setComposerPrefill(null);
@@ -2441,13 +2450,13 @@ function AppCore() {
   };
 
   const navigate = (key) => {
+    if (isNarrow) setNavPopoutOpen(false);
     if (key === 'settings' || key.startsWith('settings:')) {
       // Targeted (settings:backend) opens that section; a bare `settings`
       // opens the mobile section list (null) / desktop's last section.
       openSettings(key.includes(':') ? key.split(':')[1] : null);
       return;
     }
-    if (isNarrow) setMobileSidebarOpen(false);
     if (key === 'artifacts') {
       fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
     }
@@ -3624,9 +3633,69 @@ function AppCore() {
   const appStyle = { width: '100vw', height: '100vh', background: 'transparent' };
 
   const mainBg = 'transparent';
+
+  // One shell-owned top inset the content header uses to clear the macOS
+  // traffic lights and the floating open-sidebar button when neither is
+  // covered by a docked sidebar: the tablet band (640–900, sidebar is an
+  // off-canvas popout) and a collapsed sidebar on the chat route. Reserving
+  // the space on TOP (not the left) keeps every header's title/crumb aligned
+  // with the body beneath it and uses the full width, instead of shoving the
+  // header right into a lopsided gutter. Both the lights and the hamburger
+  // sit within the top ~44px, so 52 clears them on either platform (web has
+  // no lights but still floats the hamburger). Exposed as `--titlebar-safe-top`
+  // on <main> and consumed by PageHeader / view headers.
+  const contentChromeExposed = isNarrow || sidebarCollapsedEffective;
+  const titlebarSafeTop = contentChromeExposed ? 52 : 0;
+
   const modelOptions = selectedModel && !models.some((m) => m.id === selectedModel.id)
     ? [selectedModel, ...models]
     : models;
+
+  // Props for the mobile drawer (MobileShell), which AppShell renders below
+  // the phone breakpoint. Kept here (not in AppShell) because every handler
+  // closes over App's navigation state.
+  const mobileShellProps = {
+    route,
+    currentTask,
+    selectedProject,
+    tasks,
+    projects,
+    scheduled,
+    artifacts,
+    onNavigate: navigate,
+    onSelectTask: selectTask,
+    onSelectProject: (p) => {
+      // Drawer → project tap with tasks: show the project's task list
+      // (ProjectsView in detail mode). MobileShell only dispatches here when
+      // there ARE tasks; the empty-project case routes through
+      // onNewTaskInProject instead.
+      if (p) setSelectedProject(p);
+      setRoute('projects');
+    },
+    onNewTaskInProject: (p) => {
+      // Empty project → drop into the composer with the project preselected.
+      if (p) setSelectedProject(p);
+      setActiveTaskId(null);
+      setRoute('home');
+    },
+    onOpenSchedule: (scheduleId) => {
+      setSelectedScheduleId(scheduleId);
+      setRoute('schedule-detail');
+    },
+    onNewTask: newTask,
+    onNewProject: () => {
+      // Mobile FAB → "New project". The modal lives inside ProjectsView, so
+      // navigate there (on the grid, not detail), then dispatch the event
+      // ProjectsView listens for once mounted.
+      setSelectedProject(null);
+      setRoute('projects');
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('anton:open-new-project'));
+      }, 60);
+    },
+    navTitle: settings.navTitle || null,
+    navLogo: settings.navLogo || null,
+  };
 
   return (
     <div style={{
@@ -3639,72 +3708,40 @@ function AppCore() {
       // intercept drag on their own surface.
       WebkitAppRegion: 'drag',
     }}>
-      {/* Mobile backdrop — dims content behind the open drawer. Suppressed
-          on isMobile widths where MobileShell renders its own scrim. */}
+      {/*
+        Sidebar — a docked flex item across the whole desktop + tablet range
+        (≥640). `display: contents` makes the wrapper transparent to the flex
+        layout so Sidebar participates as a direct flex child. Suppressed on
+        isMobile — MobileShell replaces it with a mobile drawer below 640.
+      */}
+      {/* Narrow-band popout backdrop — dims content behind the slid-in
+          sidebar. Same 320ms curve as the drawer so the two read as one
+          motion (the old overlay used mismatched 280/380ms durations). */}
       {isNarrow && !isMobile && (
         <div
-          onClick={() => setMobileSidebarOpen(false)}
+          onClick={() => setNavPopoutOpen(false)}
+          aria-hidden="true"
           style={{
             position: 'fixed', inset: 0, zIndex: 100,
             background: 'rgba(0,0,0,0.35)',
             backdropFilter: 'blur(2px)',
             WebkitAppRegion: 'no-drag',
-            opacity: mobileSidebarOpen ? 1 : 0,
-            pointerEvents: mobileSidebarOpen ? 'auto' : 'none',
-            transition: 'opacity 280ms cubic-bezier(0.32, 0.72, 0, 1)',
+            opacity: navPopoutOpen ? 1 : 0,
+            pointerEvents: navPopoutOpen ? 'auto' : 'none',
+            transition: 'opacity 320ms cubic-bezier(0.32, 0.72, 0, 1)',
           }}
         />
       )}
 
-      {/*
-        Floating hamburger — on desktop: visible when sidebar is collapsed
-        (chat route only). On narrow desktop: opens the slide-over sidebar.
-        Suppressed entirely on isMobile — MobileShell has its own hamburger.
-      */}
-      {!isMobile && (
-      <button
-        onClick={() => isNarrow ? setMobileSidebarOpen(true) : setSidebarCollapsed(false)}
-        title="Open sidebar"
-        className="icon-btn"
-        style={{
-          position: 'absolute',
-          // On Electron, left: 97 clears the macOS traffic lights (which end ~x:80).
-          // On web there are no traffic lights so left: 18 sits flush with the app edge.
-          top: 18, left: host.isWeb ? 18 : 97,
-          zIndex: 10,
-          WebkitAppRegion: 'no-drag',
-          opacity: isNarrow
-            ? (mobileSidebarOpen ? 0 : 1)
-            : (sidebarCollapsedEffective ? 1 : 0),
-          transform: (isNarrow ? !mobileSidebarOpen : sidebarCollapsedEffective)
-            ? 'translateX(0)' : 'translateX(-8px)',
-          pointerEvents: (isNarrow ? !mobileSidebarOpen : sidebarCollapsedEffective)
-            ? 'auto' : 'none',
-          transition:
-            'opacity 280ms cubic-bezier(0.32, 0.72, 0, 1) 120ms, ' +
-            'transform 360ms cubic-bezier(0.32, 0.72, 0, 1) 80ms',
-        }}
-      >
-        {Ico.sidebarExpandRight(15)}
-      </button>
-      )}
-
-      {/*
-        Sidebar — on narrow desktop it's a fixed overlay drawer; on desktop
-        it's a normal flex item. `display: contents` makes the wrapper
-        transparent to the flex layout so Sidebar participates as a direct
-        flex child. Suppressed entirely on isMobile — MobileShell replaces
-        the desktop sidebar with a mobile-native drawer.
-      */}
       {!isMobile && (
       <div
-        className={isNarrow ? 'sidebar-overlay-wrap' : undefined}
         style={isNarrow ? {
-          position: 'fixed',
-          top: 9, bottom: 9, left: 9,
-          zIndex: 101,
-          transform: mobileSidebarOpen ? 'translateX(0)' : 'translateX(calc(-100% - 18px))',
-          transition: 'transform 380ms cubic-bezier(0.22, 1, 0.36, 1)',
+          // Popout: off-canvas fixed drawer, slid in on navPopoutOpen. Same
+          // 320ms curve as the scrim above. Docked (display:contents) ≥900.
+          position: 'fixed', top: 9, bottom: 9, left: 9, zIndex: 101,
+          transform: navPopoutOpen ? 'translateX(0)' : 'translateX(calc(-100% - 18px))',
+          transition: 'transform 320ms cubic-bezier(0.32, 0.72, 0, 1)',
+          willChange: 'transform',
           WebkitAppRegion: 'no-drag',
         } : { display: 'contents' }}
       >
@@ -3749,7 +3786,7 @@ function AppCore() {
           collapsed={sidebarCollapsedEffective}
           onToggleCollapsed={
             isNarrow
-              ? () => setMobileSidebarOpen(false)
+              ? () => setNavPopoutOpen(false)
               : (sidebarCollapsibleRoutes.has(route)
                   ? () => setSidebarCollapsed((c) => !c)
                   : undefined)
@@ -3763,7 +3800,7 @@ function AppCore() {
           schedules={scheduled}
           scheduleRunsIndex={scheduleRunsIndex}
           onOpenSchedule={(scheduleId) => {
-            if (isNarrow) setMobileSidebarOpen(false);
+            if (isNarrow) setNavPopoutOpen(false);
             setSelectedScheduleId(scheduleId);
             setRoute('schedule-detail');
           }}
@@ -3826,21 +3863,14 @@ function AppCore() {
       </div>
       )}
 
-      {(() => {
-      const mainEl = (
-      <main style={{
-        flex: 1, minWidth: 0, minHeight: 0,
-        display: 'flex', flexDirection: 'column',
-        background: mainBg,
-        // Opt the whole content column out of the window drag region.
-        // Without this, the empty canvas inherits the root's
-        // `-webkit-app-region: drag` (App container), and Electron then
-        // swallows mouse events over it — so clicking the canvas never
-        // reaches any outside-click handler and dropdowns can't dismiss
-        // (desktop only; the web build has no drag regions). The window
-        // still drags via the sidebar header and the window's top strip.
-        WebkitAppRegion: 'no-drag',
-      }}>
+      <AppShell
+        isMobile={isMobile}
+        mainBg={mainBg}
+        titlebarSafeTop={titlebarSafeTop}
+        showFloatingHamburger={isNarrow ? !navPopoutOpen : sidebarCollapsedEffective}
+        onOpenSidebar={isNarrow ? () => setNavPopoutOpen(true) : () => setSidebarCollapsed(false)}
+        mobileShellProps={mobileShellProps}
+      >
         {route === 'home' && (
           <HomeView
             greeting={settings.greeting}
@@ -3926,7 +3956,6 @@ function AppCore() {
               setRoute('projects');
             }}
             projects={projects}
-            sidebarCollapsed={isNarrow || sidebarCollapsedEffective}
             agentLabel={agentLabel}
           />
         )}
@@ -4187,63 +4216,7 @@ function AppCore() {
             agentLabel={agentLabel}
           />
         )}
-      </main>
-      );
-      return isMobile ? (
-        <MobileShell
-          route={route}
-          currentTask={currentTask}
-          selectedProject={selectedProject}
-          tasks={tasks}
-          projects={projects}
-          scheduled={scheduled}
-          artifacts={artifacts}
-          onNavigate={navigate}
-          onSelectTask={selectTask}
-          onSelectProject={(p) => {
-            // Drawer → project tap with tasks: show the project's task
-            // list (ProjectsView in detail mode). MobileShell only
-            // dispatches here when there ARE tasks; the empty-project
-            // case routes through onNewTaskInProject instead. On a
-            // mobile viewport, project-detail's rail (Working folder,
-            // Context, Scheduled) stacks below the task list — see
-            // the @media block in globals.css.
-            if (p) setSelectedProject(p);
-            setRoute('projects');
-          }}
-          onNewTaskInProject={(p) => {
-            // Empty project → drop the user into the composer with
-            // this project preselected. HomeView's first send creates
-            // the task on the server with projectName attached.
-            if (p) setSelectedProject(p);
-            setActiveTaskId(null);
-            setRoute('home');
-          }}
-          onOpenSchedule={(scheduleId) => {
-            setSelectedScheduleId(scheduleId);
-            setRoute('schedule-detail');
-          }}
-          onNewTask={newTask}
-          onNewProject={() => {
-            // Mobile FAB → "New project". The modal lives inside
-            // ProjectsView, so navigate there first (clearing any
-            // selected project so we land on the grid, not detail),
-            // then dispatch the event ProjectsView listens for. The
-            // small delay lets React commit ProjectsView's mount
-            // before the listener attaches.
-            setSelectedProject(null);
-            setRoute('projects');
-            setTimeout(() => {
-              window.dispatchEvent(new CustomEvent('anton:open-new-project'));
-            }, 60);
-          }}
-          navTitle={settings.navTitle || null}
-          navLogo={settings.navLogo || null}
-        >
-          {mainEl}
-        </MobileShell>
-      ) : mainEl;
-      })()}
+      </AppShell>
       <SearchModal
         open={searchOpen}
         onClose={() => setSearchOpen(false)}

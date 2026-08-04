@@ -595,7 +595,7 @@ export default function Sidebar({
             style={{ gap: 10 }}
           >
             {Ico.plus(14)}
-            <span style={{ flex: 1, textAlign: 'left', fontWeight: 600 }}>New task</span>
+            <span style={{ flex: 1, textAlign: 'left', fontWeight: 500 }}>New task</span>
             <Kbd>{shortcut('N')}</Kbd>
           </Button>
         </div>

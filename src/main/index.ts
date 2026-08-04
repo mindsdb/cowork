@@ -359,8 +359,13 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
-    minWidth: 800,
-    minHeight: 500,
+    // 640 is the floor of the tablet popout band (see lib/breakpoints.js):
+    // it lets the window shrink far enough to reveal the off-canvas sidebar
+    // popout, but never into the phone layout (< 640), whose MobileShell top
+    // bar would collide with the embedded traffic lights. The web build has
+    // no minimum and no traffic lights, so it keeps the phone layout safely.
+    minWidth: 640,
+    minHeight: 440,
     icon,
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     // Embed the macOS traffic lights inside the sidebar header. Coordinates
