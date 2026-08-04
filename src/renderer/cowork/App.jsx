@@ -34,7 +34,7 @@ import { loadSkin, persistSkin, nextSkin, skinLabel } from '../lib/skins';
 import { loadCustomTheme, persistCustomTheme, applyCustomTheme } from '../lib/customTheme';
 import { applyNavTitleColor } from '../lib/navBranding';
 import { getAgentLabel } from './lib/agentLabel';
-import { parseUrlState, buildSearch } from './lib/urlState';
+import { parseUrlState, buildSearch, historyWriteKind } from './lib/urlState';
 import { loadCachedSettings } from './lib/settingsCache';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { useGoogleDrivePicker } from './hooks/useGoogleDrivePicker';
@@ -757,7 +757,8 @@ function AppCore() {
   // truth for "where you are" on the web shell, so the initial nav state is read
   // from it. Desktop has no address bar — bootNav stays null and every URL hook
   // below is gated on host.isWeb, leaving Electron behaviour untouched.
-  const bootNav = host.isWeb ? parseUrlState(window.location.search) : null;
+  // Parsed once via lazy init (not on every render).
+  const [bootNav] = useState(() => (host.isWeb ? parseUrlState(window.location.search) : null));
 
   // Seed from the read-through cache of the last settings fetch, not a literal
   // set of defaults — the server (GET /settings/) is the single source of truth
@@ -1352,9 +1353,17 @@ function AppCore() {
   // reload doesn't inject a phantom history step.
   const pendingProjectNameRef = useRef(bootNav?.route === 'projects' ? bootNav.projectName : null);
   const pendingTaskIdRef = useRef(bootNav?.route === 'task' ? bootNav.taskId : null);
+  // Flips true when the authoritative session list first loads, so a deep-linked
+  // conversation that never appears (deleted, stale/shared link, wrong workspace)
+  // is abandoned to home instead of showing the wrong task or a blank pane.
+  const [sessionsLoaded, setSessionsLoaded] = useState(false);
   const firstUrlSyncRef = useRef(true);
   const prevContentSigRef = useRef(null);
   const navHandlerRef = useRef(() => {});
+  // Forces the next URL sync to replaceState (not push) — used when correcting an
+  // unresolvable deep link, so the broken URL is removed from history rather than
+  // left behind a Back press.
+  const forceReplaceRef = useRef(false);
 
   // ── ENG-1233: keep the URL in step with the nav state (web only) ──────────
   // Outbound projection: whenever the content route, an entity selection, or the
@@ -1370,12 +1379,21 @@ function AppCore() {
     // the first genuine navigation afterwards pushes (and Back can return to it).
     const isFirst = firstUrlSyncRef.current;
     firstUrlSyncRef.current = false;
+    // Consume the force-replace flag up front so it can't survive an early return
+    // (unchanged-URL) and wrongly turn a later genuine navigation into a replace.
+    const forceReplace = forceReplaceRef.current;
+    forceReplaceRef.current = false;
     // Only a change to the CONTENT (route + open entity) pushes a history entry.
     // The settings overlay opening/closing or switching sections replaces instead,
     // so browsing settings doesn't bury the page under Back-press-eating entries —
     // a refresh still restores it (it's in the URL), Back/Forward just ignore it.
+    const prevSig = prevContentSigRef.current;
     const contentSig = `${route}|${activeTaskId || ''}|${selectedProject?.name || ''}|${selectedScheduleId || ''}`;
-    const contentChanged = prevContentSigRef.current !== null && prevContentSigRef.current !== contentSig;
+    const contentChanged = prevSig !== null && prevSig !== contentSig;
+    // prevTaskId is the previous render's open conversation id (field 1 of the sig)
+    // — historyWriteKind uses it to treat the `tmp-`→real id adoption as a replace,
+    // so starting a chat costs one Back press, not two.
+    const prevTaskId = prevSig ? prevSig.split('|')[1] : '';
     prevContentSigRef.current = contentSig;
     const desired = buildSearch({
       route,
@@ -1386,7 +1404,9 @@ function AppCore() {
     }, window.location.search);
     if (desired === window.location.search) return;
     const url = `${window.location.pathname}${desired}${window.location.hash}`;
-    if (contentChanged && !isFirst) window.history.pushState(null, '', url);
+    let kind = historyWriteKind({ contentChanged, isFirst, route, prevTaskId, taskId: activeTaskId });
+    if (forceReplace) kind = 'replace';
+    if (kind === 'push') window.history.pushState(null, '', url);
     else window.history.replaceState(null, '', url);
   }, [route, activeTaskId, selectedProject, selectedScheduleId, settingsOpen, settingsSection]);
 
@@ -1415,9 +1435,21 @@ function AppCore() {
     if (tasks.some((t) => t.id === id)) {
       pendingTaskIdRef.current = null;
       selectTask(id);
+    } else if (sessionsLoaded) {
+      // Session list loaded and the deep-linked conversation isn't in it. Abandon
+      // the pending resolution — but only correct the view if the user is STILL on
+      // that broken deep link; if they navigated elsewhere during the load, leave
+      // them be (don't clobber where they went). When we do reset, replace (not
+      // push) so Back can't return to the broken link's blank pane.
+      pendingTaskIdRef.current = null;
+      if (route === 'task' && activeTaskId === id) {
+        forceReplaceRef.current = true;
+        setActiveTaskId(null);
+        setRoute('home');
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tasks]);
+  }, [tasks, sessionsLoaded]);
 
   // Resolve a deep-linked project once the project list has loaded (selectedProject
   // is the full object, keyed by name in the URL).
@@ -1486,6 +1518,7 @@ function AppCore() {
       setServerOnline(h.status === 'ok');
     });
     fetchSessions().then((data) => {
+      setSessionsLoaded(true);  // authoritative list loaded (ENG-1233 deep-link resolution)
       if (!Array.isArray(data)) return;
       // One-time freshness decision for the onboarding checklist, taken on
       // the session's first successful fetch (refreshData also polls, hence

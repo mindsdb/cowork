@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseUrlState, buildSearch, KNOWN_ROUTES } from './urlState';
+import { parseUrlState, buildSearch, historyWriteKind, KNOWN_ROUTES } from './urlState';
 
 const UUID = '11111111-2222-4333-8444-555555555555';
 
@@ -101,5 +101,38 @@ describe('buildSearch', () => {
     // navigating task -> home drops the c= that was there
     const fromTask = `?view=task&c=${UUID}`;
     expect(buildSearch({ route: 'home' }, fromTask)).toBe('');
+  });
+});
+
+describe('historyWriteKind', () => {
+  const base = { contentChanged: true, isFirst: false, route: 'home', prevTaskId: '', taskId: null };
+
+  it('the first sync always replaces (never a phantom history entry)', () => {
+    expect(historyWriteKind({ ...base, isFirst: true })).toBe('replace');
+  });
+
+  it('a settings-overlay-only change (no content change) replaces', () => {
+    expect(historyWriteKind({ ...base, contentChanged: false })).toBe('replace');
+  });
+
+  it('a genuine content navigation pushes', () => {
+    // clicking a conversation: home -> task with a real id
+    expect(historyWriteKind({ contentChanged: true, isFirst: false, route: 'task', prevTaskId: '', taskId: UUID })).toBe('push');
+    // switching between two real conversations
+    expect(historyWriteKind({ contentChanged: true, isFirst: false, route: 'task', prevTaskId: 'aaaa', taskId: UUID })).toBe('push');
+  });
+
+  it('the tmp-→real id adoption replaces (starting a chat = one Back press)', () => {
+    expect(historyWriteKind({
+      contentChanged: true, isFirst: false, route: 'task',
+      prevTaskId: 'tmp-1699999999', taskId: UUID,
+    })).toBe('replace');
+  });
+
+  it('home -> task(tmp) still pushes (that first entry is wanted)', () => {
+    expect(historyWriteKind({
+      contentChanged: true, isFirst: false, route: 'task',
+      prevTaskId: '', taskId: 'tmp-1699999999',
+    })).toBe('push');
   });
 });

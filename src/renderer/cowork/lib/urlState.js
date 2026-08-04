@@ -82,3 +82,21 @@ export function buildSearch(state, currentSearch = '') {
   const s = q.toString();
   return s ? `?${s}` : '';
 }
+
+/**
+ * Decide whether a nav-state change should push a new history entry or replace the
+ * current one (ENG-1233). Callers still short-circuit on an unchanged URL before
+ * this; here we only choose push vs replace.
+ *
+ * 'replace' for: the first sync of a page life, a change that isn't a content
+ * navigation (settings overlay only), and the `tmp-`→real conversation-id
+ * adoption — when a fresh chat's temporary id is swapped for the server UUID,
+ * which must not add a second entry. 'push' for a genuine content navigation.
+ */
+export function historyWriteKind({ contentChanged, isFirst, route, prevTaskId, taskId }) {
+  if (isFirst || !contentChanged) return 'replace';
+  const isTmpAdoption = route === 'task'
+    && String(prevTaskId || '').startsWith('tmp-')
+    && !!taskId && !String(taskId).startsWith('tmp-');
+  return isTmpAdoption ? 'replace' : 'push';
+}
