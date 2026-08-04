@@ -23,22 +23,16 @@ export interface ChannelSpec {
   readonly envSlug: string;
   /** Default cowork-server / anton git branch this channel builds from. */
   readonly serverRef: string;
-  /** Electron app name → the on-disk userData dir (~/Library/Application
-   *  Support/<appName> on macOS). Set via app.setName so build kinds on one
-   *  machine get separate localStorage / consent / token-store state and
-   *  install as distinct apps. prod is FROZEN to 'anton' (the historical name
-   *  real users' data lives under) and is applied by NOT calling setName — see
-   *  app-identity.ts. Build-time identity (appId/productName/icon) lives in
-   *  scripts/channel-identity.mjs. */
+  /** Electron app name → the userData dir, set via app.setName so build kinds get
+   *  separate localStorage / consent / token-store state and install as distinct
+   *  apps. prod is FROZEN to 'anton' (applied by NOT calling setName — see
+   *  app-identity.ts). Build-time identity lives in scripts/channel-identity.mjs. */
   readonly appName: string;
-  /** Basename (under assets/) of the icon used at RUNTIME for the window / dock /
-   *  taskbar. Non-prod kinds ship a badged icon (icon-<kind>.png) so a build is
-   *  visually distinct on the desktop; prod and dev use the base icon.png. This
-   *  must be set at runtime because the window/dock icon is chosen in code
-   *  (BrowserWindow icon + app.dock.setIcon) — the packaged bundle icon alone
-   *  doesn't govern it. The build-time bundle icon lives in
-   *  scripts/channel-identity.mjs and is kept in lockstep with this field by the
-   *  drift test in channels.test.ts. */
+  /** Basename (under assets/) of the RUNTIME window/dock icon. Non-prod kinds ship
+   *  a badged icon-<kind>.png; prod/dev use the base icon.png. Set at runtime
+   *  because the window/dock icon is chosen in code (the packaged bundle icon
+   *  alone doesn't govern it); channels.test.ts drift-guards it against the
+   *  build-time icon in channel-identity.mjs. */
   readonly iconName: string;
 }
 

@@ -1,19 +1,13 @@
 // Build-time channel BUNDLE identity for electron-builder: appId, productName,
-// and icon per build kind. electron-builder bakes these into the packaged app
-// (CFBundleIdentifier / CFBundleName / icon), and this is a .mjs build script so
-// it can't import the TS source — the kind names here mirror src/main/channels.ts.
-// The RUNTIME userData name (appName) lives in channels.ts and is applied via
-// app.setName (app-identity.ts); this file is only the packaged identity.
+// and icon per build kind, baked into the packaged app. A .mjs build script, so
+// it can't import the TS — kind names mirror src/main/channels.ts. The RUNTIME
+// userData name (appName) lives there and is applied via app.setName; this file
+// is only the packaged identity. prod/dev return null → no overrides, so the
+// prod build path uses electron-builder.yml unchanged.
 //
-// prod (and dev, which is never packaged) return null → NO overrides are
-// emitted, so the prod build path uses electron-builder.yml unchanged.
-//
-// Icon values are BARE basenames (no `assets/` prefix), matching the yml's own
-// `mac.icon: icon.png` / `win.icon: icon.png`: electron-builder resolves icons
-// relative to `directories.buildResources` (= assets/), so a bare name resolves
-// via that primary root. A prefixed `assets/icon-*.png` only resolved via
-// electron-builder's secondary projectDir fallback — same result today, but a
-// fragile reliance on an undocumented root.
+// Icon values are BARE basenames, matching the yml's own `icon: icon.png`:
+// electron-builder resolves them under directories.buildResources (= assets/). A
+// prefixed `assets/…` only resolved via the secondary projectDir fallback.
 
 const IDENTITY = {
   preview: {

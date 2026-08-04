@@ -1,14 +1,13 @@
 // Windows installer build with per-channel bundle identity. Wraps
-// electron-builder's programmatic API (instead of the CLI) so the spaced
-// productName ("MindsHub Cowork (Staging)") can't be mangled by Windows shell
-// quoting. For prod/dev/unset COWORK_BUILD_KIND no overrides are applied, so the
-// prod build matches the previous `electron-builder --win` behavior.
+// electron-builder's programmatic API (not the CLI) so the spaced productName
+// ("MindsHub Cowork (Staging)") can't be mangled by Windows shell quoting.
+// prod/dev/unset apply no overrides → same as the previous `electron-builder --win`.
 //
 //   node scripts/dist-win.mjs         # --x64 (what CI uses)
 //   node scripts/dist-win.mjs --all   # all Windows arches
 //
-// The `config` object is deep-merged over electron-builder.yml, so the win
-// target/artifactName from the yml are preserved; we only override identity.
+// `config` is deep-merged over electron-builder.yml, so the win target/
+// artifactName survive; we only override identity.
 
 import { build, Platform, Arch } from 'electron-builder';
 import { channelIdentity } from './channel-identity.mjs';
