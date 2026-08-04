@@ -151,8 +151,10 @@ describe('build-script mirrors of the channel table', () => {
       expect(id!.appId).toBe(`com.mindshub.cowork.${kind}`);
       // Build-time bundle icon must match the runtime icon (CHANNELS[kind].iconName)
       // so the packaged icon and the running window/dock icon can't drift apart.
-      expect(id!.macIcon).toBe(`assets/${CHANNELS[kind].iconName}`);
-      expect(id!.winIcon).toBe(`assets/${CHANNELS[kind].iconName}`);
+      // Bare basename (resolved under directories.buildResources = assets/), the
+      // same convention electron-builder.yml uses for `icon: icon.png`.
+      expect(id!.macIcon).toBe(CHANNELS[kind].iconName);
+      expect(id!.winIcon).toBe(CHANNELS[kind].iconName);
     }
     // prod/dev (and unset) get NO overrides — prod must keep the
     // electron-builder.yml identity byte-for-byte; dev is never packaged.

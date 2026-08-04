@@ -7,13 +7,20 @@
 //
 // prod (and dev, which is never packaged) return null → NO overrides are
 // emitted, so the prod build path uses electron-builder.yml unchanged.
+//
+// Icon values are BARE basenames (no `assets/` prefix), matching the yml's own
+// `mac.icon: icon.png` / `win.icon: icon.png`: electron-builder resolves icons
+// relative to `directories.buildResources` (= assets/), so a bare name resolves
+// via that primary root. A prefixed `assets/icon-*.png` only resolved via
+// electron-builder's secondary projectDir fallback — same result today, but a
+// fragile reliance on an undocumented root.
 
 const IDENTITY = {
   preview: {
     appId: 'com.mindshub.cowork.preview',
     productName: 'MindsHub Cowork (Preview)',
-    macIcon: 'assets/icon-preview.png',
-    winIcon: 'assets/icon-preview.png',
+    macIcon: 'icon-preview.png',
+    winIcon: 'icon-preview.png',
   },
   // The `stable` kind targets the staging env (see channels.ts — envSlug/
   // serverRef are 'staging'), so its USER-VISIBLE identity (productName, icon)
@@ -23,8 +30,8 @@ const IDENTITY = {
   stable: {
     appId: 'com.mindshub.cowork.stable',
     productName: 'MindsHub Cowork (Staging)',
-    macIcon: 'assets/icon-staging.png',
-    winIcon: 'assets/icon-staging.png',
+    macIcon: 'icon-staging.png',
+    winIcon: 'icon-staging.png',
   },
 };
 
