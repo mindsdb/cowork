@@ -14,7 +14,7 @@ import AppShell from './AppShell';
 
 const baseProps = {
   mainBg: 'transparent',
-  titlebarSafeLeft: 0,
+  titlebarSafeTop: 0,
   showFloatingHamburger: false,
   onOpenSidebar: () => {},
   mobileShellProps: {},
@@ -36,9 +36,9 @@ describe('AppShell', () => {
     expect(screen.queryByRole('button', { name: 'Open sidebar' })).toBeNull();
   });
 
-  it('exposes titlebarSafeLeft as --titlebar-safe-left on <main>', () => {
-    render(<AppShell {...baseProps} isMobile={false} titlebarSafeLeft={130}><div>x</div></AppShell>);
-    expect(screen.getByRole('main').style.getPropertyValue('--titlebar-safe-left')).toBe('130px');
+  it('exposes titlebarSafeTop as --titlebar-safe-top on <main>', () => {
+    render(<AppShell {...baseProps} isMobile={false} titlebarSafeTop={52}><div>x</div></AppShell>);
+    expect(screen.getByRole('main').style.getPropertyValue('--titlebar-safe-top')).toBe('52px');
   });
 
   it('calls onOpenSidebar when the hamburger is clicked', () => {

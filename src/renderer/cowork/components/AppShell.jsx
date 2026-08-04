@@ -4,7 +4,7 @@ import { host } from '../../platform/host';
 
 // The desktop/tablet shell chrome, extracted from App.jsx: the floating
 // "reopen sidebar" hamburger and the <main> content column (which owns the
-// --titlebar-safe-left inset and opts out of the window drag region). Below
+// --titlebar-safe-top inset and opts out of the window drag region). Below
 // the phone breakpoint it wraps the same content in MobileShell instead.
 //
 // The sidebar element and the route→view switch stay in App because they
@@ -16,7 +16,7 @@ import { host } from '../../platform/host';
 export default function AppShell({
   isMobile,
   mainBg,
-  titlebarSafeLeft,
+  titlebarSafeTop,
   showFloatingHamburger,
   onOpenSidebar,
   mobileShellProps,
@@ -27,10 +27,10 @@ export default function AppShell({
       flex: 1, minWidth: 0, minHeight: 0,
       display: 'flex', flexDirection: 'column',
       background: mainBg,
-      // Left inset any view header reads (via var(--titlebar-safe-left)) to
+      // Top inset any view header reads (via var(--titlebar-safe-top)) to
       // clear the traffic lights + floating hamburger when the sidebar isn't
       // docked over that corner. 0 when it is.
-      '--titlebar-safe-left': `${titlebarSafeLeft}px`,
+      '--titlebar-safe-top': `${titlebarSafeTop}px`,
       // Opt the content column out of the window drag region so clicks reach
       // outside-click handlers — Electron swallows events over drag regions
       // (desktop only; the web build has no drag regions).

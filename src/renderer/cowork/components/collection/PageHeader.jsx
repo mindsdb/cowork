@@ -11,10 +11,12 @@ import { Crumb, CrumbSep, CrumbCurrent } from '../ui/Crumb';
 //   • trail    drill-down surfaces (a schedule, a project, a skill) — pass
 //              `crumbs` and/or `current`, or `onBack` for a "← label" link.
 //
-// Both shapes own the titlebar-safe inset: paddingLeft honours
-// --titlebar-safe-left (set on <main> by the shell) so the header clears the
-// macOS traffic lights + the floating open-sidebar button when the sidebar
+// Both shapes own the titlebar-safe inset: paddingTop honours
+// --titlebar-safe-top (set on <main> by the shell) so the header drops below
+// the macOS traffic lights + the floating open-sidebar button when the sidebar
 // isn't docked over that corner, falling back to the normal padding via max().
+// Reserving the space on top (rather than the left) keeps the title/crumb left-
+// aligned with the body beneath it instead of pushing it into a lopsided gutter.
 //
 // Styling note: this is on the target stack (Tailwind utilities + `cn`, token
 // colours from tailwind.config), not inline styles. `border-solid` is explicit
@@ -39,7 +41,7 @@ export function PageHeader({
       <header
         className={cn(
           'flex items-center justify-between gap-3 shrink-0 min-w-0',
-          'py-3.5 pr-7 pl-[max(28px,var(--titlebar-safe-left,0px))]',
+          'pb-3.5 pr-7 pl-7 pt-[max(14px,var(--titlebar-safe-top,0px))]',
           bordered && 'border-b border-solid border-line',
         )}
       >
@@ -68,7 +70,7 @@ export function PageHeader({
   }
 
   return (
-    <div className="flex flex-col gap-[18px] pt-7 pr-8 pb-5 pl-[max(32px,var(--titlebar-safe-left,0px))]">
+    <div className="flex flex-col gap-[18px] pr-8 pb-5 pl-8 pt-[max(28px,var(--titlebar-safe-top,0px))]">
       <div className="flex items-start justify-between gap-6 min-w-0">
         <div className="min-w-0 flex flex-col gap-1">
           {eyebrow && (
@@ -86,7 +88,7 @@ export function PageHeader({
             </p>
           )}
         </div>
-        {actions}
+        {actions && <div className="shrink-0">{actions}</div>}
       </div>
     </div>
   );

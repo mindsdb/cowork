@@ -3634,15 +3634,18 @@ function AppCore() {
 
   const mainBg = 'transparent';
 
-  // One shell-owned inset the content header uses to clear the macOS
-  // traffic lights and the floating open-sidebar button. Only a collapsed
-  // sidebar on the chat route exposes that corner now — the tablet band
-  // (640–900) keeps a full docked sidebar, which covers it — and web has
-  // no traffic lights so it only needs to clear the hamburger. Exposed as
-  // `--titlebar-safe-left` on <main> and consumed by PageHeader / view
-  // headers, replacing the per-view padding guesses.
-  const contentLeftExposed = isNarrow || sidebarCollapsedEffective;
-  const titlebarSafeLeft = contentLeftExposed ? (host.isWeb ? 60 : 130) : 0;
+  // One shell-owned top inset the content header uses to clear the macOS
+  // traffic lights and the floating open-sidebar button when neither is
+  // covered by a docked sidebar: the tablet band (640–900, sidebar is an
+  // off-canvas popout) and a collapsed sidebar on the chat route. Reserving
+  // the space on TOP (not the left) keeps every header's title/crumb aligned
+  // with the body beneath it and uses the full width, instead of shoving the
+  // header right into a lopsided gutter. Both the lights and the hamburger
+  // sit within the top ~44px, so 52 clears them on either platform (web has
+  // no lights but still floats the hamburger). Exposed as `--titlebar-safe-top`
+  // on <main> and consumed by PageHeader / view headers.
+  const contentChromeExposed = isNarrow || sidebarCollapsedEffective;
+  const titlebarSafeTop = contentChromeExposed ? 52 : 0;
 
   const modelOptions = selectedModel && !models.some((m) => m.id === selectedModel.id)
     ? [selectedModel, ...models]
@@ -3863,7 +3866,7 @@ function AppCore() {
       <AppShell
         isMobile={isMobile}
         mainBg={mainBg}
-        titlebarSafeLeft={titlebarSafeLeft}
+        titlebarSafeTop={titlebarSafeTop}
         showFloatingHamburger={isNarrow ? !navPopoutOpen : sidebarCollapsedEffective}
         onOpenSidebar={isNarrow ? () => setNavPopoutOpen(true) : () => setSidebarCollapsed(false)}
         mobileShellProps={mobileShellProps}

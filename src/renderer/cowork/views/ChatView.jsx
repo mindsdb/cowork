@@ -1321,16 +1321,16 @@ export default function ChatView({
           {Ico.panelExpandLeft(15)}
         </button>
 
-        {/* Header — reserve the shell-owned titlebar-safe inset on the left
-            so the breadcrumbs clear the macOS traffic lights (and the
-            floating open-sidebar button) whenever the sidebar isn't docked
-            over that corner. `--titlebar-safe-left` is set on <main> by the
-            shell and is 0 when the sidebar/rail covers the zone, so max()
-            keeps the normal 28px padding in that case. */}
+        {/* Header — reserve the shell-owned titlebar-safe inset on top so the
+            breadcrumbs drop below the macOS traffic lights (and the floating
+            open-sidebar button) whenever the sidebar isn't docked over that
+            corner, staying left-aligned with the transcript below. `--titlebar-
+            safe-top` is set on <main> by the shell and is 0 when the sidebar/
+            rail covers the zone, so max() keeps the normal 14px padding then. */}
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          paddingTop: 14, paddingBottom: 14, paddingRight: 28,
-          paddingLeft: 'max(28px, var(--titlebar-safe-left, 0px))',
+          paddingTop: 'max(14px, var(--titlebar-safe-top, 0px))', paddingBottom: 14, paddingRight: 28,
+          paddingLeft: 28,
           borderBottom: `1px solid ${T.line}`,
           background: 'transparent',
           flexShrink: 0,
