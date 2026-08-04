@@ -19,7 +19,7 @@ import './styles.css';
 type Page = 'loading' | 'auth' | 'setup' | 'setupError' | 'terminal';
 
 // Per-machine terms-consent flag (localStorage). ENG-1127: consent is no longer
-// written to ~/.anton/.env — this flag is the sole client record for now.
+// written to ~/.cowork/.env — this flag is the sole client record for now.
 const TERMS_CONSENT_KEY = 'anton.termsConsent';
 const COWORKER_KEY = 'anton.coworker';
 // Minimum time the welcome orb stays up so it doesn't flash on fast boots.

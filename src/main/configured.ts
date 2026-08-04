@@ -3,7 +3,7 @@
 // (index.ts is the electron entry point and can't be imported under the test env).
 //
 // Consent is deliberately NOT considered here. Since ENG-1127 the client no
-// longer writes ANTON_TERMS_CONSENT to ~/.anton/.env, and cowork-server does not
+// longer writes ANTON_TERMS_CONSENT to ~/.cowork/.env, and cowork-server does not
 // export it, so gating configured-ness on that variable would strand a
 // consented, fully-configured user on the next launch (they finish onboarding,
 // relaunch, and get bounced back to auth). Consent is owned solely by the
