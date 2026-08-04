@@ -73,31 +73,48 @@ describe('resolveBootTarget', () => {
   });
 
   // ENG-1232: when BOTH concurrent checks reject (server fully unreachable on
-  // boot) we still route to auth, and no unhandledrejection escapes. Promise.all
-  // attaches a reject handler to both inputs so the sibling rejection is handled;
-  // this pins that and guards against a refactor back to sequential awaits on
-  // pre-started promises (`const a = await p1; const b = await p2`), which would
-  // leave p2's rejection unhandled if p1 rejects first.
-  it('routes to auth when both readSettings and checkConfigured reject, with no unhandled rejection', async () => {
-    const unhandled: unknown[] = [];
-    const onUnhandled = (e: PromiseRejectionEvent) => unhandled.push(e.reason);
-    window.addEventListener('unhandledrejection', onUnhandled);
-    try {
-      const host = makeHost({
-        readSettings: async () => {
-          throw new Error('network');
-        },
-        checkConfigured: async () => {
-          throw new Error('network');
-        },
-      });
-      expect(await resolveBootTarget(host, true)).toBe('auth');
-      // Give any stray rejection a microtask/task to surface before asserting.
-      await new Promise((r) => setTimeout(r, 0));
-      expect(unhandled).toEqual([]);
-    } finally {
-      window.removeEventListener('unhandledrejection', onUnhandled);
-    }
+  // boot) we still route to auth — the single-rejection cases above don't cover
+  // both failing at once.
+  it('routes to auth when both readSettings and checkConfigured reject', async () => {
+    const host = makeHost({
+      readSettings: async () => {
+        throw new Error('network');
+      },
+      checkConfigured: async () => {
+        throw new Error('network');
+      },
+    });
+    expect(await resolveBootTarget(host, true)).toBe('auth');
+  });
+
+  // ENG-1232: pin the parallelization — readSettings() and checkConfigured()
+  // must be in flight at the same time. Each resolves only once BOTH have
+  // started (via the cross-awaited "started" barriers), so a regression back to
+  // serial awaits — where checkConfigured() isn't called until readSettings()
+  // resolves — would deadlock and fail this test via timeout rather than pass
+  // silently.
+  it('runs readSettings and checkConfigured concurrently, not serially', async () => {
+    let markSettingsStarted!: () => void;
+    let markConfiguredStarted!: () => void;
+    const settingsStarted = new Promise<void>((r) => {
+      markSettingsStarted = r;
+    });
+    const configuredStarted = new Promise<void>((r) => {
+      markConfiguredStarted = r;
+    });
+    const host = makeHost({
+      readSettings: async () => {
+        markSettingsStarted();
+        await configuredStarted;
+        return { ANTON_TERMS_CONSENT: 'true' };
+      },
+      checkConfigured: async () => {
+        markConfiguredStarted();
+        await settingsStarted;
+        return CONFIGURED;
+      },
+    });
+    expect(await resolveBootTarget(host, false)).toBe('terminal');
   });
 
   // ENG-1232: readSettings + checkConfigured now run concurrently to save an

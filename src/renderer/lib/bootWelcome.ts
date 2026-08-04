@@ -2,9 +2,10 @@
 // the decision is testable without rendering App (see bootWelcome.test.ts).
 //
 // The welcome orb has a minimum on-screen time (WELCOME_MIN_MS in App.tsx) whose
-// only job is to avoid a jarring flash on a genuine cold start. On Electron that
-// happens once per process launch, so it's never felt repeatedly. On web the SPA
-// re-mounts on every browser refresh, so that artificial floor was replaying in
+// only job is to avoid a jarring flash on a genuine cold start. Electron gates
+// on isWeb below so it always keeps that floor (it rarely re-mounts anyway —
+// only on things like a sign-out reload). On web the SPA re-mounts on every
+// browser refresh, so that artificial floor was replaying in
 // full on every reload — pure added latency on top of the boot health checks
 // (ENG-1232). A refresh of an already-booted web session is not a cold start, so
 // once this browser has booted once we skip the floor and let the orb show only

@@ -136,8 +136,9 @@ export default function App() {
       const started = Date.now();
       // Whether this browser has booted before is read up front: the web SPA
       // re-mounts on every refresh, and a returning session shouldn't replay the
-      // artificial welcome floor (ENG-1232). Electron stays resident, so it only
-      // ever hits the first-boot path.
+      // artificial welcome floor (ENG-1232). welcomeFloorMs gates purely on
+      // isWeb, so Electron always keeps the floor regardless of this flag (it
+      // rarely re-mounts anyway — only on things like a sign-out reload).
       const bootedBefore = hasBootedBefore();
       // Boot-routing decision lives in a pure, tested unit (resolveBootTarget).
       // readSettings() is best-effort there, so a hosted-web /settings/raw 403
