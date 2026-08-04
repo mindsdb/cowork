@@ -31,9 +31,21 @@ export async function resolveBootTarget(
   hasLocalConsent: boolean,
 ): Promise<BootTarget> {
   try {
-    const settings = await host.readSettings();
+    // readSettings() and checkConfigured() are independent, so run them
+    // concurrently — on web these are two ingress round-trips that used to be
+    // serial, adding avoidable latency to every boot/refresh (ENG-1232). Routing
+    // outcomes are unchanged: a rejection from either still rejects the
+    // Promise.all and lands on 'auth' via the catch, exactly as the sequential
+    // awaits did. Promise.all attaches a reject handler to both inputs, so even
+    // when both reject (server fully unreachable) the sibling rejection is
+    // handled — no unhandledrejection escapes. checkInstall() stays conditional
+    // (only consulted once we know we're headed into the app) so the auth path
+    // pays no extra request.
+    const [settings, { configured }] = await Promise.all([
+      host.readSettings(),
+      host.checkConfigured(),
+    ]);
     const consented = settings.ANTON_TERMS_CONSENT === 'true' || hasLocalConsent;
-    const { configured } = await host.checkConfigured();
     if (consented && configured) {
       const status = await host.checkInstall();
       return !status.antonInstalled || !status.serverDepsReady ? 'setup' : 'terminal';
