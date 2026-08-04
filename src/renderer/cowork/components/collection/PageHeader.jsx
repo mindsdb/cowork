@@ -19,20 +19,16 @@ import { Crumb, CrumbSep, CrumbCurrent } from '../ui/Crumb';
 // aligned with the body beneath it instead of pushing it into a lopsided gutter.
 //
 // Styling note: this is on the target stack (Tailwind utilities + `cn`, token
-// colours from tailwind.config), not inline styles. The bottom divider is
-// `border-0 border-b border-solid border-line`: preflight is disabled, so
-// `border-b border-solid` alone would leave the other three sides at the UA's
-// default `medium` width and draw a full box — `border-0` zeroes all sides
-// first, then `border-b` restores just the 1px bottom (the same pattern as
-// MarkdownTable / Combobox). The one value that stays inline is `subtitleBottom`,
-// which is a caller-supplied dynamic number. cva isn't used here — the two
-// shapes are structural, not style-variants-on-one-element; cva stays for the
-// ui/ primitives (Button, Badge, …) where it fits.
+// colours from tailwind.config), not inline styles. Neither shape draws a
+// divider — the header floats above the body. The one value that stays inline
+// is `subtitleBottom`, a caller-supplied dynamic number. cva isn't used here —
+// the two shapes are structural, not style-variants-on-one-element; cva stays
+// for the ui/ primitives (Button, Badge, …) where it fits.
 export function PageHeader({
   // title shape
   title, subtitle, eyebrow, subtitleBottom,
   // trail shape
-  crumbs, current, onBack, backLabel = 'Back', bordered = true,
+  crumbs, current, onBack, backLabel = 'Back',
   // both
   actions,
 }) {
@@ -45,7 +41,6 @@ export function PageHeader({
         className={cn(
           'flex items-center justify-between gap-3 shrink-0 min-w-0',
           'pb-3.5 pr-7 pl-7 pt-[max(14px,var(--titlebar-safe-top,0px))]',
-          bordered && 'border-0 border-b border-solid border-line',
         )}
       >
         <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">

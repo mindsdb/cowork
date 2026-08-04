@@ -32,16 +32,15 @@ describe('collection/PageHeader', () => {
     expect(screen.getByRole('button', { name: 'New task' })).toBeInTheDocument();
   });
 
-  // Regression: preflight is disabled, so `border-b border-solid` alone leaves
-  // the other three sides at the UA's default `medium` width and draws a full
-  // box. `border-0` must reset all sides first, then `border-b` restores the
-  // 1px bottom divider.
-  it('trail shape draws only a bottom divider (border-0 reset), not a full box', () => {
+  // The trail header floats above the body with no divider. Guard against a
+  // border creeping back in: preflight is disabled, so any `border-solid`
+  // without a `border-0` reset would leave the other three sides at the UA's
+  // default `medium` width and draw a full box (the old ENG-1038 bug).
+  it('trail shape renders no border', () => {
     const { container } = render(
       <PageHeader crumbs={[{ label: 'Scheduled Tasks', onClick: () => {} }]} current="test" />,
     );
     const header = container.querySelector('header');
-    expect(header.className).toContain('border-0');
-    expect(header.className).toContain('border-b');
+    expect(header.className).not.toContain('border');
   });
 });
