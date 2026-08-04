@@ -46,7 +46,13 @@ vi.mock('electron', () => ({
   BrowserWindow: class {},
 }));
 // Prod build → OTA enabled (otaUiEnabled is the real pure fn from update-logic).
-vi.mock('./cowork-home', () => ({ buildKindStrict: () => 'prod' }));
+// buildKind()==='prod' keeps getCacheDir() on the historical userData path these
+// tests set up (non-prod channels relocate the cache under coworkHome()).
+vi.mock('./cowork-home', () => ({
+  buildKindStrict: () => 'prod',
+  buildKind: () => 'prod',
+  coworkHome: () => '/tmp/cowork-home-unused',
+}));
 vi.mock('./server-source', () => ({ getAppDisplayVersion: () => h.bundled }));
 vi.mock('./server-process', () => ({ fetchServerVersions: async () => ({ server: h.server, anton: null }) }));
 // Fake network: manifest URL → the JSON; anything else → the tarball body.
