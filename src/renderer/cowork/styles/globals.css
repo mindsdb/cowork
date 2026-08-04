@@ -2913,6 +2913,10 @@ body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surfac
 .anton-sidebar__cta-wrap .btn.lg {
   padding-left: 10px;
   padding-right: 10px;
+  /* Match the nav rows' 13px body (the standard .btn.lg is 14px) so the CTA
+     reads as part of the same rail, not a heavier element above it. The label
+     weight is set on the span in Sidebar.jsx. */
+  font-size: 13px;
 }
 
 /* Override existing .nav-item rules to follow the guideline shape */
