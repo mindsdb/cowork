@@ -3308,23 +3308,22 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
 }
 .toggle.on .toggle-thumb { left: 18px; }
 
-/* ─── Settings "Set" badge pulse ─────────────────────────────────────────
-   Drives the soft glow on credential rows that are stored AND on the
-   active provider's hot path. Pulses the box-shadow halo only — the
-   pill itself stays still, so the effect reads as breathing rather
-   than flicker. */
+/* ─── Settings badge pulse ────────────────────────────────────────────────
+   Drives the soft glow on active settings badges. The halo follows the
+   badge's semantic text color, so success stays green and pending stays
+   amber. The pill itself stays still, so the effect reads as breathing. */
 @keyframes set-badge-pulse {
   0%, 100% {
     box-shadow:
-      0 0 0 1px rgba(124,196,182,0.20),
-      0 0 10px rgba(124,196,182,0.32),
-      0 0 22px rgba(93,146,135,0.18);
+      0 0 0 1px color-mix(in srgb, currentColor 20%, transparent),
+      0 0 10px color-mix(in srgb, currentColor 32%, transparent),
+      0 0 22px color-mix(in srgb, currentColor 18%, transparent);
   }
   50% {
     box-shadow:
-      0 0 0 1px rgba(124,196,182,0.30),
-      0 0 18px rgba(124,196,182,0.55),
-      0 0 34px rgba(93,146,135,0.32);
+      0 0 0 1px color-mix(in srgb, currentColor 30%, transparent),
+      0 0 18px color-mix(in srgb, currentColor 55%, transparent),
+      0 0 34px color-mix(in srgb, currentColor 32%, transparent);
   }
 }
 
@@ -3343,9 +3342,9 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
   @keyframes set-badge-pulse {
     0%, 100% {
       box-shadow:
-        0 0 0 1px rgba(124,196,182,0.25),
-        0 0 14px rgba(124,196,182,0.45),
-        0 0 28px rgba(93,146,135,0.25);
+        0 0 0 1px color-mix(in srgb, currentColor 25%, transparent),
+        0 0 14px color-mix(in srgb, currentColor 45%, transparent),
+        0 0 28px color-mix(in srgb, currentColor 25%, transparent);
     }
   }
 }
