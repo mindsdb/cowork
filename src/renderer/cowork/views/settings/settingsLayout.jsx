@@ -1,7 +1,7 @@
 import { useContext, createContext, Children } from 'react';
-import Ico from '../components/Icons';
-import { ToggleGroup } from '../components/ui/ToggleGroup';
-import { Switch } from '../components/ui/Switch';
+import Ico from '../../components/Icons';
+import { ToggleGroup } from '../../components/ui/ToggleGroup';
+import { Switch } from '../../components/ui/Switch';
 
 // Layout mode for the settings surface. Desktop (default) renders the
 // two-column nav + scrolling panel inside a modal; mobile (ENG-990) renders

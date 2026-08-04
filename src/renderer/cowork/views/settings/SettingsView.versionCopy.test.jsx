@@ -9,13 +9,13 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 // because this Electron shell's setPermissionRequestHandler denies the
 // `clipboard-sanitized-write` permission raw navigator.clipboard needs —
 // only the helper's document.execCommand('copy') fallback actually works.
-vi.mock('../api', () => ({
+vi.mock('../../api', () => ({
   fetchHealth: vi.fn(async () => ({})),
   validateSettings: vi.fn(async () => ({ ok: true })),
   revealSettingKey: vi.fn(async () => ''),
   testProviders: vi.fn(async () => ({})),
 }));
-vi.mock('../../platform/host', () => ({
+vi.mock('../../../platform/host', () => ({
   host: {
     isElectron: true,
     isMac: () => true,
@@ -29,14 +29,14 @@ vi.mock('../../platform/host', () => ({
   isElectron: true,
   getAccessToken: vi.fn(async () => null),
 }));
-vi.mock('../lib/analytics', () => ({
+vi.mock('../../lib/analytics', () => ({
   trackHarnessSwapped: vi.fn(),
   resetDeviceIdentity: vi.fn(),
 }));
-vi.mock('./ChannelsView', () => ({ default: () => <div data-testid="channels-stub" /> }));
+vi.mock('../ChannelsView', () => ({ default: () => <div data-testid="channels-stub" /> }));
 
 const { copyText } = vi.hoisted(() => ({ copyText: vi.fn() }));
-vi.mock('../lib/clipboard', () => ({ copyText }));
+vi.mock('../../lib/clipboard', () => ({ copyText }));
 
 import SettingsView from './SettingsView';
 

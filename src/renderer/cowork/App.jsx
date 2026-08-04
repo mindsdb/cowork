@@ -20,7 +20,7 @@ import ScheduleDetailView from './views/ScheduleDetailView';
 import ArtifactsView from './views/ArtifactsView';
 import ChannelsView from './views/ChannelsView';
 import CustomizeView from './views/CustomizeView';
-import SettingsView from './views/SettingsView';
+import SettingsView from './views/settings/SettingsView';
 import UtilitiesView from './views/UtilitiesView';
 import SkillsView from './views/SkillsView';
 import SearchModal from './components/SearchModal';

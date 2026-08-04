@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Button } from '../components/ui';
-import { ConfirmModal } from '../components/ConfirmModal';
-import { host, getAccessToken } from '../../platform/host';
-import { resetDeviceIdentity } from '../lib/analytics';
-import { accountUserFromToken } from '../lib/accountUser';
-import { MINDS_CONSOLE_URL } from '../../lib/mindsUrls';
+import { Button } from '../../components/ui';
+import { ConfirmModal } from '../../components/ConfirmModal';
+import { host, getAccessToken } from '../../../platform/host';
+import { resetDeviceIdentity } from '../../lib/analytics';
+import { accountUserFromToken } from '../../lib/accountUser';
+import { MINDS_CONSOLE_URL } from '../../../lib/mindsUrls';
 import { Section, SettingsSectionPanel } from './settingsLayout';
 
 // The Account settings section: the signed-in user card, the MindsHub sign-in

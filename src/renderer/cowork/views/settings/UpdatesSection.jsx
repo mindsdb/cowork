@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
-import Ico from '../components/Icons';
-import { Button } from '../components/ui';
-import { copyText as copyToClipboard } from '../lib/clipboard';
-import { fetchHealth } from '../api';
-import { host, getVersionInfo, isElectron } from '../../platform/host';
-import { unifiedVersion, SKEW_WARN_DAYS } from '../../../shared/version';
+import Ico from '../../components/Icons';
+import { Button } from '../../components/ui';
+import { copyText as copyToClipboard } from '../../lib/clipboard';
+import { fetchHealth } from '../../api';
+import { host, getVersionInfo, isElectron } from '../../../platform/host';
+import { unifiedVersion, SKEW_WARN_DAYS } from '../../../../shared/version';
 import { Section, SettingsSectionPanel } from './settingsLayout';
 
 const UPDATE_CARD_STYLE = {

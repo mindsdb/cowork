@@ -6,13 +6,13 @@ import { render, screen, fireEvent } from '@testing-library/react';
 // API/host/analytics/Channels deps SettingsView reaches for on mount so this
 // stays focused on the shell-download path (regression: PR #453 review — the
 // desktop SettingsView instance wasn't wired with the shell props).
-vi.mock('../api', () => ({
+vi.mock('../../api', () => ({
   fetchHealth: vi.fn(async () => ({})),
   validateSettings: vi.fn(async () => ({ ok: true })),
   revealSettingKey: vi.fn(async () => ''),
   testProviders: vi.fn(async () => ({})),
 }));
-vi.mock('../../platform/host', () => ({
+vi.mock('../../../platform/host', () => ({
   host: {
     isElectron: true,
     isMac: () => true,
@@ -26,14 +26,14 @@ vi.mock('../../platform/host', () => ({
   isElectron: true,
   getAccessToken: vi.fn(async () => null),
 }));
-vi.mock('../lib/analytics', () => ({
+vi.mock('../../lib/analytics', () => ({
   trackHarnessSwapped: vi.fn(),
   resetDeviceIdentity: vi.fn(),
 }));
-vi.mock('./ChannelsView', () => ({ default: () => <div data-testid="channels-stub" /> }));
+vi.mock('../ChannelsView', () => ({ default: () => <div data-testid="channels-stub" /> }));
 
 import SettingsView from './SettingsView';
-import { host } from '../../platform/host';
+import { host } from '../../../platform/host';
 
 const baseProps = {
   settings: {}, setSetting: vi.fn(), onSave: vi.fn(),
