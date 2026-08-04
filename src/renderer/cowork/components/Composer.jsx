@@ -12,6 +12,7 @@ import { HighlightOverlay } from './composerHighlight';
 import { useFileDrop, FileDropOverlay, extractClipboardFiles } from '../lib/useFileDrop';
 import { AttachmentThumbnail } from './AttachmentThumbnail';
 import { useSkills } from '../lib/skillsStore';
+import { useDraft } from '../hooks/useDraft';
 
 // Detect a "/" slash-command token immediately before the caret. Returns the
 // token's start index (the "/") and the lowercased query fragment, or null when
@@ -105,8 +106,14 @@ export default function Composer({
   // with it so the new project is pre-selected for the task being
   // composed. When omitted, the row is hidden.
   onCreateProject = null,
+  // Names the surface this composer's unsent text belongs to, so a draft
+  // survives navigation (every composer unmounts on route change) and doesn't
+  // leak between surfaces. Defaults to the conversation for in-chat replies
+  // and to the shared "new task" surface otherwise; the project view passes
+  // its own so a per-project draft is separate from the home one.
+  draftKey = null,
 }) {
-  const [value, setValue] = useState('');
+  const [value, setValue] = useDraft(draftKey || conversationId || 'new');
   const [focused, setFocused] = useState(false);
   const [openMenu, setOpenMenu] = useState(null);
   /** Project-picker menu state. The menu is a search-first picker:

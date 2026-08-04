@@ -35,6 +35,7 @@ import { loadCustomTheme, persistCustomTheme, applyCustomTheme } from '../lib/cu
 import { applyNavTitleColor } from '../lib/navBranding';
 import { getAgentLabel } from './lib/agentLabel';
 import { loadCachedSettings } from './lib/settingsCache';
+import { clearDraft } from './lib/draftStore';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { useGoogleDrivePicker } from './hooks/useGoogleDrivePicker';
 import { fetchSessions, fetchSession, fetchConversationList, fetchProjects, fetchArtifacts, fetchSettings, fetchHealth,
@@ -3309,6 +3310,8 @@ function AppCore() {
     console.log('[performDeleteTask] confirmed', taskId);
     deletedTaskIdsRef.current.add(taskId);
     setTasks((prev) => prev.filter((t) => t.id !== taskId));
+    // Its unsent reply draft has nowhere to go back to.
+    clearDraft(taskId);
     // Optimistically remove from pins so the sidebar clears immediately.
     setPins((prev) => prev.filter((p) => p.item_id !== taskId));
     if (activeTaskId === taskId) {

@@ -876,6 +876,7 @@ function ProjectDetail({
               hideModel
               metaReadOnly
               placeholder={`Start a new task in ${project.name}…`}
+              draftKey={`project:${project.name}`}
             />
 
             <TaskList
