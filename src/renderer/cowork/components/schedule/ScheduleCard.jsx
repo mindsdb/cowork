@@ -228,6 +228,11 @@ export default function ScheduleCard({
           open={menuOpen}
           onOpenChange={setMenuOpen}
           align="start"
+          // Give the trigger a real hit target + hover surface (a ghost icon
+          // button, the pattern the Live-artifacts card uses) rather than the
+          // bare icon-sized default — a tiny kebab was hard to hit and to see.
+          icon={Ico.moreVert(16)}
+          triggerClassName="h-7 w-7 justify-center rounded-md hover:bg-surface-2"
         />
       </div>
     </Card>

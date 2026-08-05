@@ -509,6 +509,10 @@ function ScheduleListRow({
           disabled={busy}
           open={menuOpen}
           onOpenChange={setMenuOpen}
+          // Ghost icon button (matches the grid card / Live-artifacts kebab):
+          // a real hit target + hover surface instead of the bare icon.
+          icon={Ico.moreVert(16)}
+          triggerClassName="h-7 w-7 justify-center rounded-md hover:bg-surface-2"
         />
       </div>
     </CardRow>

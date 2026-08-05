@@ -334,6 +334,11 @@ export default function ScheduleDetailView({
                   and never sits inside the edit form (ENG-1245). */}
               <OverflowMenu
                 disabled={busy}
+                // Ghost icon button sized to the neighbouring "Run now" (32px)
+                // so the overflow reads as a real, hittable control — not a
+                // bare kebab — while staying lighter than the primary action.
+                icon={Ico.moreVert(16)}
+                triggerClassName="h-8 w-8 justify-center rounded-lg hover:bg-surface-2"
                 items={[
                   { id: 'edit', label: 'Edit', icon: Ico.edit ? Ico.edit(14) : null, onClick: () => setEditOpen(true) },
                   { separator: true },
