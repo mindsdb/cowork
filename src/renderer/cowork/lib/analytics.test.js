@@ -168,6 +168,70 @@ describe('trackFirstQuery delivery gating (ENG-501)', () => {
   });
 });
 
+describe('trackFirstResponse activation gate (ENG-736)', () => {
+  const FIRST_RESPONSE_KEY = 'mdb_first_response_tracked';
+
+  it('emits first_response with outcome=success and no reason on a completed answer', async () => {
+    const fetchMock = mockFetch();
+    const { trackFirstResponse } = await importAnalytics();
+
+    await trackFirstResponse('success');
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.event).toBe('first_response');
+    expect(body.properties.outcome).toBe('success');
+    // undefined reason is dropped by JSON.stringify — key absent, not null.
+    expect(body.properties).not.toHaveProperty('reason');
+    expect(window.localStorage.getItem(FIRST_RESPONSE_KEY)).toBe('1');
+  });
+
+  it('carries the failure reason on outcome=error so failures break down by reason', async () => {
+    const fetchMock = mockFetch();
+    const { trackFirstResponse } = await importAnalytics();
+
+    await trackFirstResponse('error', 'model_access_denied');
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.properties.outcome).toBe('error');
+    expect(body.properties.reason).toBe('model_access_denied');
+  });
+
+  it('falls back to reason=unknown when an error carries no code', async () => {
+    const fetchMock = mockFetch();
+    const { trackFirstResponse } = await importAnalytics();
+
+    await trackFirstResponse('error');
+
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).properties.reason).toBe('unknown');
+  });
+
+  it('records only the first outcome per user (a first error is not overwritten by a later success)', async () => {
+    const fetchMock = mockFetch();
+    const { trackFirstResponse } = await importAnalytics();
+
+    await trackFirstResponse('error', 'model_access_denied');
+    await trackFirstResponse('success'); // e.g. a later retry succeeds
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).properties.outcome).toBe('error');
+  });
+
+  it('does NOT mark the flag when the send fails, so a later outcome can retry', async () => {
+    const failing = vi.fn().mockResolvedValue({ ok: false, status: 500 });
+    globalThis.fetch = failing;
+    const { trackFirstResponse } = await importAnalytics();
+
+    await trackFirstResponse('success');
+    expect(window.localStorage.getItem(FIRST_RESPONSE_KEY)).toBeNull();
+
+    const ok = mockFetch();
+    await trackFirstResponse('success');
+    expect(ok).toHaveBeenCalledTimes(1);
+    expect(window.localStorage.getItem(FIRST_RESPONSE_KEY)).toBe('1');
+  });
+});
+
 describe('surface-derived $lib (ENG-1163)', () => {
   it('labels desktop events cowork-desktop', async () => {
     const fetchMock = mockFetch();

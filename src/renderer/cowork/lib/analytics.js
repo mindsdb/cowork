@@ -30,6 +30,7 @@ const EVENTS = {
   ARTIFACT_PUBLISHED:    'artifact_published',     // { artifact_id, visibility }
   AGENT_SESSION_STARTED: 'agent_session_started',  // {}
   FIRST_QUERY:           'first_query',            // {}  once per user (ENG-501)
+  FIRST_RESPONSE:        'first_response',         // { outcome: 'success'|'error', reason } once per user (ENG-736)
   TOKEN_CAP_HIT:         'token_cap_hit',          // {}  upgrade-intent signal (ENG-385)
   HARNESS_SWAPPED:       'harness_swapped',        // { from, to }
   APP_INSTALLED:         'app_installed',          // {}  desktop, once per install
@@ -438,6 +439,47 @@ export function trackFirstQuery() {
       firstQueryInFlight = null;
     });
   return firstQueryInFlight;
+}
+
+// The activation gate (ENG-736). `first_query` fires when a first message is
+// *sent*; this fires when that first query reaches a terminal *outcome*, so the
+// funnel can count activation only on a real answer and can see why a first
+// query failed. `outcome` is 'success' (a completed response — real assistant
+// tokens, no 4xx) or 'error'; on error, `reason` carries the stable failure
+// code (e.g. model_access_denied, token_limit) so a failed cohort — the 6-12
+// July free-tier break — reads as broken, not as weak interest.
+//
+// Once per user, keyed independently of first_query: the UI runs one stream at
+// a time, so the first terminal outcome we observe is the first query's. Same
+// deliver-then-mark discipline as trackFirstQuery so a dropped send can retry.
+const FIRST_RESPONSE_STORAGE_KEY = 'mdb_first_response_tracked';
+let firstResponseInFlight = null;
+export function trackFirstResponse(outcome, reason) {
+  let storageOk = true;
+  try {
+    if (localStorage.getItem(FIRST_RESPONSE_STORAGE_KEY)) return Promise.resolve();
+  } catch {
+    storageOk = false;
+  }
+  if (firstResponseInFlight) return firstResponseInFlight;
+  // reason is only meaningful on failure; undefined is dropped by JSON.stringify.
+  firstResponseInFlight = capture(EVENTS.FIRST_RESPONSE, {
+    outcome: outcome === 'success' ? 'success' : 'error',
+    reason: outcome === 'success' ? undefined : reason || 'unknown',
+  })
+    .then((sent) => {
+      if (sent && storageOk) {
+        try {
+          localStorage.setItem(FIRST_RESPONSE_STORAGE_KEY, '1');
+        } catch {
+          /* best effort */
+        }
+      }
+    })
+    .finally(() => {
+      firstResponseInFlight = null;
+    });
+  return firstResponseInFlight;
 }
 
 // Desktop app installed, fired once per install on the first healthy launch.

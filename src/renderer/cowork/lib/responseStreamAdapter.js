@@ -1,4 +1,4 @@
-import { trackArtifactBuilt as _trackArtifactBuilt, trackTokenCapHit as _trackTokenCapHit } from './analytics';
+import { trackArtifactBuilt as _trackArtifactBuilt, trackTokenCapHit as _trackTokenCapHit, trackFirstResponse as _trackFirstResponse } from './analytics';
 
 // Anton /v1/responses → ThinkingStep adapter.
 //
@@ -263,6 +263,13 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
   }
 
   if (type === 'response.completed') {
+    // Activation gate (ENG-736): the first query reached a real answer. Fire
+    // once here, on receipt — not the render path — mirroring the token-cap and
+    // artifact signals below. trackFirstResponse dedupes per user.
+    if (!replay) {
+      try { _trackFirstResponse('success'); }
+      catch { /* analytics must never break streaming */ }
+    }
     return {
       ...state,
       steps: closeOpenInspectableSteps(state.steps, eventTs),
@@ -276,6 +283,12 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
     // on receipt — not in the render path (ChatView), which re-runs every paint.
     if (!replay && event.code === 'token_limit') {
       try { _trackTokenCapHit(); }
+      catch { /* analytics must never break streaming */ }
+    }
+    // Activation gate (ENG-736): the first query failed. Record the outcome with
+    // its reason so a failed-first cohort reads as broken, not as weak interest.
+    if (!replay) {
+      try { _trackFirstResponse('error', event.code || 'unknown'); }
       catch { /* analytics must never break streaming */ }
     }
     return {
