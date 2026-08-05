@@ -70,5 +70,10 @@ jobs:
     with:
       env-name: "staging build + installers"
       status: ${{ contains(needs.*.result, 'failure') && 'failed' || 'recovered' }}
+      # A staging failure is release-blocking once the freeze window is open, and
+      # an ordinary integration-branch red before it. `freeze-scoped` keeps the
+      # red alert for the former and drops the latter to a muted notice, so the
+      # alert still means "look now" when it is styled to say so.
+      freeze-scoped: true
       runs-on: ubuntu-latest
     secrets: inherit
