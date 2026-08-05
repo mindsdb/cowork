@@ -34,7 +34,8 @@ import { loadSkin, persistSkin, nextSkin, skinLabel } from '../lib/skins';
 import { loadCustomTheme, persistCustomTheme, applyCustomTheme } from '../lib/customTheme';
 import { applyNavTitleColor } from '../lib/navBranding';
 import { getAgentLabel } from './lib/agentLabel';
-import { parseUrlState, buildSearch, historyWriteKind } from './lib/urlState';
+import { parseUrlState } from './lib/urlState';
+import { useWebNavUrlSync } from './hooks/useWebNavUrlSync';
 import { loadCachedSettings } from './lib/settingsCache';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { useGoogleDrivePicker } from './hooks/useGoogleDrivePicker';
@@ -1326,11 +1327,9 @@ function AppCore() {
     document.body.classList.toggle('gf-dots-off', settings.showDots === false);
   }, [settings.showDots]);
 
-  // A bare `?view=task` (no c=) on direct load/refresh names a conversation that
-  // can't be restored (a tmp- id is never written to the URL) — seed it as home,
-  // the blank-composer state, rather than route:'task' with a null activeTaskId,
-  // which currentTask (~below) would fill with tasks[0], an unrelated conversation.
-  // Mirrors the popstate reconciliation in navHandlerRef. ENG-1233.
+  // Seed the route from the boot URL (web deep-link / refresh). A bare `?view=task`
+  // with no conversation id can't be restored, so it falls back to home. ENG-1233;
+  // see useWebNavUrlSync for the rest of the URL wiring.
   const bootRoute = bootNav?.route === 'task' && !bootNav?.taskId ? 'home' : (bootNav?.route || 'home');
   const [route, setRoute] = useState(bootRoute);  // home | task | projects | scheduled | schedule-detail | artifacts | channels | customize
   // Keep a ref of the live route so the keydown listener (bound
@@ -1352,174 +1351,11 @@ function AppCore() {
   const [activeTaskId, setActiveTaskId] = useState(bootNav?.taskId || null);
   const [selectedScheduleId, setSelectedScheduleId] = useState(bootNav?.scheduleId || null);
   const [selectedProject, setSelectedProject] = useState(null);
-  // ENG-1233 web restoration refs. selectedProject is an object resolved from the
-  // async-loaded `projects` list, and a deep-linked conversation must be hydrated
-  // once `tasks` arrive — so both are pending until their data loads. The URL
-  // writer normalises the first entry with replaceState (not pushState) so a
-  // reload doesn't inject a phantom history step.
-  const pendingProjectNameRef = useRef(bootNav?.route === 'projects' ? bootNav.projectName : null);
-  const pendingTaskIdRef = useRef(bootNav?.route === 'task' ? bootNav.taskId : null);
-  // Flips true when the authoritative session list first loads, so a deep-linked
-  // conversation that never appears (deleted, stale/shared link, wrong workspace)
-  // is abandoned to home instead of showing the wrong task or a blank pane.
+  // Data-readiness flags the URL deep-link resolvers (useWebNavUrlSync) watch: they
+  // flip true when the authoritative session / project lists first load, so a
+  // deep-linked id that never appears is abandoned instead of guessed at.
   const [sessionsLoaded, setSessionsLoaded] = useState(false);
-  // Sibling of sessionsLoaded for the project deep-link resolver: lets it give up
-  // (and clear its pending ref) on a project name that never loads, instead of
-  // leaving the ref armed to fire a surprise selection much later (ENG-1233).
   const [projectsLoaded, setProjectsLoaded] = useState(false);
-  const firstUrlSyncRef = useRef(true);
-  const prevContentSigRef = useRef(null);
-  const navHandlerRef = useRef(() => {});
-  // Forces the next URL sync to replaceState (not push) — used when correcting an
-  // unresolvable deep link, so the broken URL is removed from history rather than
-  // left behind a Back press.
-  const forceReplaceRef = useRef(false);
-  // Bumped alongside forceReplaceRef so the outbound sync effect ALWAYS runs to
-  // consume the flag. The reconciliation setters (setActiveTaskId/setRoute/
-  // setSelectedProject) at the force-replace sites can be no-ops — e.g. a popstate
-  // that reconciles to home when already home — and React would then skip the
-  // effect (no nav dep changed), stranding forceReplaceRef=true to wrongly turn a
-  // LATER genuine push into a replace and silently drop a Back/Forward entry.
-  // Routing every force-replace through forceUrlReplace() guarantees consumption.
-  const [urlSyncTick, setUrlSyncTick] = useState(0);
-  const forceUrlReplace = () => { forceReplaceRef.current = true; setUrlSyncTick((n) => n + 1); };
-
-  // ── ENG-1233: keep the URL in step with the nav state (web only) ──────────
-  // Outbound projection: whenever the content route, an entity selection, or the
-  // settings overlay changes, mirror it into the query string. The first write of
-  // a page life uses replaceState so a reload/deep-link doesn't add a history
-  // entry; subsequent changes push, so Back/Forward walk the in-app history.
-  // Idempotent by construction — buildSearch on its own output is a no-op, so the
-  // equality guard makes a popstate-driven state change (below) not re-push.
-  useEffect(() => {
-    if (!host.isWeb) return;
-    // The mount run is the "first sync" whether or not it writes: if the initial
-    // URL is already canonical we still consume the replaceState budget here, so
-    // the first genuine navigation afterwards pushes (and Back can return to it).
-    const isFirst = firstUrlSyncRef.current;
-    firstUrlSyncRef.current = false;
-    // Consume the force-replace flag up front so it can't survive an early return
-    // (unchanged-URL) and wrongly turn a later genuine navigation into a replace.
-    const forceReplace = forceReplaceRef.current;
-    forceReplaceRef.current = false;
-    // Only a change to the CONTENT (route + open entity) pushes a history entry.
-    // The settings overlay opening/closing or switching sections replaces instead,
-    // so browsing settings doesn't bury the page under Back-press-eating entries —
-    // a refresh still restores it (it's in the URL), Back/Forward just ignore it.
-    const prevSig = prevContentSigRef.current;
-    const contentSig = `${route}|${activeTaskId || ''}|${selectedProject?.name || ''}|${selectedScheduleId || ''}`;
-    const contentChanged = prevSig !== null && prevSig !== contentSig;
-    // prevTaskId is the previous render's open conversation id (field 1 of the sig)
-    // — historyWriteKind uses it to treat the `tmp-`→real id adoption as a replace,
-    // so starting a chat costs one Back press, not two.
-    const prevTaskId = prevSig ? prevSig.split('|')[1] : '';
-    prevContentSigRef.current = contentSig;
-    const desired = buildSearch({
-      route,
-      taskId: activeTaskId,
-      projectName: selectedProject?.name || null,
-      scheduleId: selectedScheduleId,
-      settingsPane: settingsOpen ? (settingsSection || '') : null,
-    }, window.location.search);
-    if (desired === window.location.search) return;
-    const url = `${window.location.pathname}${desired}${window.location.hash}`;
-    let kind = historyWriteKind({ contentChanged, isFirst, route, prevTaskId, taskId: activeTaskId });
-    if (forceReplace) kind = 'replace';
-    if (kind === 'push') window.history.pushState(null, '', url);
-    else window.history.replaceState(null, '', url);
-  }, [route, activeTaskId, selectedProject, selectedScheduleId, settingsOpen, settingsSection, urlSyncTick]);
-
-  // Cold deep-link: seeding `route` directly skips the data fetch that navigate()
-  // does on normal entry, so kick the fetch the destination needs once on mount.
-  // Harmless if the app's own boot load also fetches these.
-  useEffect(() => {
-    if (!host.isWeb || !bootNav) return;
-    if (bootNav.route === 'artifacts') {
-      fetchArtifacts().then((d) => { if (Array.isArray(d)) setArtifacts(d); });
-    } else if (bootNav.route === 'projects') {
-      fetchProjects().then((d) => { if (Array.isArray(d)) setProjects(d); });
-    } else if (bootNav.route === 'scheduled' || bootNav.route === 'schedule-detail') {
-      fetchSchedules().then((d) => { setScheduled(d.schedules || []); setScheduleRunsIndex(d.runs_index || {}); });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Resolve a deep-linked conversation once the session list has loaded:
-  // selectTask hydrates messages + reattaches any in-flight stream, but only for
-  // a task that's actually in `tasks` — so it can't run at mount time.
-  useEffect(() => {
-    if (!host.isWeb) return;
-    const id = pendingTaskIdRef.current;
-    if (!id) return;
-    if (tasks.some((t) => t.id === id)) {
-      pendingTaskIdRef.current = null;
-      // Only hydrate if the user is STILL on the deep link. fetchSessions can land
-      // after the user has already navigated elsewhere (ordinary latency); yanking
-      // them back into the deep-linked conversation — and pushing a history entry
-      // over their manual navigation — is the same navigate-away hazard the abandon
-      // branch below guards against, so apply the same guard here (ENG-1233).
-      if (route === 'task' && activeTaskId === id) selectTask(id);
-    } else if (sessionsLoaded) {
-      // Session list loaded and the deep-linked conversation isn't in it. Abandon
-      // the pending resolution — but only correct the view if the user is STILL on
-      // that broken deep link; if they navigated elsewhere during the load, leave
-      // them be (don't clobber where they went). When we do reset, replace (not
-      // push) so Back can't return to the broken link's blank pane.
-      pendingTaskIdRef.current = null;
-      if (route === 'task' && activeTaskId === id) {
-        forceUrlReplace();
-        setActiveTaskId(null);
-        setRoute('home');
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tasks, sessionsLoaded]);
-
-  // Resolve a deep-linked project once the project list has loaded (selectedProject
-  // is the full object, keyed by name in the URL).
-  useEffect(() => {
-    if (!host.isWeb) return;
-    const name = pendingProjectNameRef.current;
-    if (!name) return;
-    const p = projects.find((x) => x.name === name);
-    if (p) {
-      pendingProjectNameRef.current = null;
-      // Only restore if the user is STILL on the projects grid with nothing
-      // selected — the deep link's landing state. If `projects` loaded after they
-      // navigated away (or to a different project), don't hijack them back, and
-      // don't let the forceReplace below clobber their current history entry
-      // (same navigate-away guard as the task resolver above).
-      if (route === 'projects' && !selectedProject) {
-        // Normalise the deep link with replaceState, not push. selectedProject
-        // can't be seeded synchronously (it's the async-loaded object, not just a
-        // name), so the first URL sync already ran with it null and wrote
-        // `?view=projects` (dropping p=), consuming the isFirst replace budget.
-        // This resolving write re-adds p= — force it to replace so it edits that
-        // first entry in place rather than pushing a phantom `?view=projects` step
-        // behind the restored project (a single Back would otherwise land on the
-        // bare grid). ENG-1233.
-        forceUrlReplace();
-        setSelectedProject(p);
-      }
-    } else if (projectsLoaded) {
-      // Project list has loaded and the deep-linked name isn't in it (deleted,
-      // renamed, wrong workspace). Give up the pending resolution so a later
-      // refetch that happens to reintroduce the name can't fire a surprise
-      // selection (mirrors the task resolver's sessionsLoaded abandon).
-      pendingProjectNameRef.current = null;
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projects, projectsLoaded]);
-
-  // Inbound: reflect browser Back/Forward into the nav state. Bound once; it calls
-  // through navHandlerRef so it always runs the latest closure (mirrors routeRef).
-  // The handler itself is assigned in render, just after navigate() is defined.
-  useEffect(() => {
-    if (!host.isWeb) return;
-    const onPop = () => navHandlerRef.current();
-    window.addEventListener('popstate', onPop);
-    return () => window.removeEventListener('popstate', onPop);
-  }, []);
   // Set from the configured planning model once settings load.
   const [selectedModel, setSelectedModel] = useState(null);
   // In the hosted web shell the FastAPI process IS the host — there
@@ -2677,73 +2513,18 @@ function AppCore() {
     setRoute(key);
   };
 
-  // ENG-1233: apply a URL back into the app on Back/Forward. Reuses the same
-  // primitives normal navigation goes through (selectTask / navigate / openSettings)
-  // so restored state is identical to clicked state. Reassigned each render via a
-  // ref so the popstate listener (bound once) always sees the latest closures.
-  navHandlerRef.current = () => {
-    const s = parseUrlState(window.location.search);
-    // Settings is an overlay orthogonal to the content route.
-    if (s.settingsPane != null) openSettings(s.settingsPane || null);
-    else setSettingsOpen(false);
-    if (s.route === 'task') {
-      // Restoring a conversation from the URL only makes sense when it still
-      // exists. Two ways it may not: a bare `?view=task` (no c= — a tmp-, unsent
-      // chat, whose id is never written to the URL), or a `c=` naming a
-      // conversation since deleted / in another workspace. In BOTH cases a naive
-      // selectTask()/setRoute('task') leaves route:'task' with an id that isn't in
-      // `tasks`, and currentTask (~line 1919) then falls through to tasks[0] —
-      // an unrelated conversation — because selectTask sets route/activeTaskId
-      // unconditionally and only gates HYDRATION on presence. So:
-      if (s.taskId && tasks.some((t) => t.id === s.taskId)) {
-        selectTask(s.taskId);
-      } else if (s.taskId && !sessionsLoaded) {
-        // Sessions haven't loaded yet (fast Back/Forward during boot) — defer to
-        // the resolver effect, which hydrates the conversation or abandons to home
-        // once the authoritative list arrives.
-        pendingTaskIdRef.current = s.taskId;
-        setActiveTaskId(s.taskId);
-        setRoute('task');
-      } else {
-        // No id, or the id is gone. Reconcile to the blank-composer home state
-        // (what newTask() does); replace so the dead entry doesn't linger a Back
-        // press behind. ENG-1233.
-        forceUrlReplace();
-        setActiveTaskId(null);
-        setRoute('home');
-      }
-      return;
-    }
-    if (s.route === 'schedule-detail') {
-      setSelectedScheduleId(s.scheduleId);
-      setRoute('schedule-detail');
-      return;
-    }
-    if (s.route === 'projects') {
-      // navigate('projects') would clear the selection; set it directly so a
-      // Back into a project detail restores the project, not the grid.
-      const p = s.projectName ? projects.find((x) => x.name === s.projectName) : null;
-      if (p) {
-        setSelectedProject(p);
-      } else if (s.projectName && !projectsLoaded) {
-        // Back/Forward reached a project entry before the list loaded (e.g. Back
-        // right after a hard reload). Defer to the resolver, which restores it
-        // once `projects` arrives — mirrors the task branch above. forceReplace so
-        // the interim URL normalisation edits this entry in place (no phantom
-        // push) while the project name is momentarily absent.
-        pendingProjectNameRef.current = s.projectName;
-        forceUrlReplace();
-        setSelectedProject(null);
-      } else {
-        // No project named, or the named project is gone — the grid is the
-        // correct fallback (unlike a missing task, which must not show tasks[0]).
-        setSelectedProject(null);
-      }
-      setRoute('projects');
-      return;
-    }
-    navigate(s.route);
-  };
+  // ENG-1233: keep the web URL in step with nav state and reflect refresh /
+  // Back / Forward back into it (web-only; no-ops under Electron). Called here so
+  // it closes over the navigation primitives (selectTask / navigate / openSettings)
+  // defined above — a restored URL runs the same primitives a click would.
+  useWebNavUrlSync({
+    bootNav,
+    route, activeTaskId, selectedProject, selectedScheduleId, settingsOpen, settingsSection,
+    tasks, projects, sessionsLoaded, projectsLoaded,
+    setRoute, setActiveTaskId, setSelectedProject, setSelectedScheduleId, setSettingsOpen,
+    selectTask, navigate, openSettings,
+    fetchArtifacts, setArtifacts, fetchProjects, setProjects, fetchSchedules, setScheduled, setScheduleRunsIndex,
+  });
 
   const attachmentProjectPath = currentTask?.projectPath || selectedProject?.path || null;
   const attachmentProjectName = currentTask?.projectName || selectedProject?.name || null;
