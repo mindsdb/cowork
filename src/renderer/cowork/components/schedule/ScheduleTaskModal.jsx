@@ -34,6 +34,23 @@ function defaultNextRun() {
   return toLocalInput(new Date(Date.now() + 60 * 60 * 1000).toISOString());
 }
 
+// Unambiguous echo of the datetime-local value. The native <input
+// type="datetime-local"> renders in Chromium's UI locale, which in Electron
+// can disagree with the OS regional format (e.g. shows DD/MM on an en_US
+// machine) — ambiguous for the first 12 days of a month on a control that
+// decides when a task runs (ENG-1244). A spelled-out month removes the
+// ambiguity regardless of what the native control shows. Takes the local
+// "YYYY-MM-DDTHH:mm" string the input holds.
+function formatNextRunEcho(local) {
+  if (!local) return '';
+  const d = new Date(local);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleString(undefined, {
+    weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
+    hour: 'numeric', minute: '2-digit',
+  });
+}
+
 const fieldLabel = {
   fontFamily: FONT_BODY, fontSize: 11.5, fontWeight: 500,
   color: 'var(--ink-3)', letterSpacing: '0.02em',
@@ -220,6 +237,14 @@ export default function ScheduleTaskModal({
                 onChange={(v) => update('nextRunAt', v)}
                 style={fieldInput}
               />
+              {formatNextRunEcho(form.nextRunAt) && (
+                <span style={{
+                  marginTop: 5, fontFamily: FONT_BODY, fontSize: 11.5,
+                  color: 'var(--ink-3)',
+                }}>
+                  {formatNextRunEcho(form.nextRunAt)}
+                </span>
+              )}
             </Field>
           </div>
 

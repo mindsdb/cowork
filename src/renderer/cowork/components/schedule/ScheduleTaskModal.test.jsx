@@ -45,6 +45,15 @@ describe('ScheduleTaskModal — S7 fixes', () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
+  // Regression (ENG-1244): the native datetime-local control renders in
+  // Chromium's locale (ambiguous DD/MM vs MM/DD); a spelled-out-month caption
+  // disambiguates the chosen run time. Tests run with TZ=UTC.
+  it('shows an unambiguous named-month caption under the Next run input', () => {
+    renderModal();
+    setNextRun('2026-08-03T16:37');
+    expect(screen.getByText(/Aug 3, 2026/)).toBeInTheDocument();
+  });
+
   it('accepts a future next-run time and submits', async () => {
     const { onSubmit } = renderModal();
     fireEvent.change(screen.getByPlaceholderText(/Ask Anton/i), {
