@@ -11,7 +11,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Ico from '../components/Icons';
 import { PageHeader } from '../components/collection';
-import { Button } from '../components/ui';
+import { Alert, Button } from '../components/ui';
 import { Switch } from '../components/ui/Switch';
 import { fetchScheduleRuns } from '../api';
 import ScheduleTaskModal from '../components/schedule/ScheduleTaskModal';
@@ -278,12 +278,7 @@ export default function ScheduleDetailView({
       <div className="sched-body" style={{ padding: '6px 28px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
         {error && (
-          <div style={{
-            padding: '8px 10px', borderRadius: 7,
-            background: 'color-mix(in srgb, var(--danger) 12%, var(--surface))',
-            border: '1px solid color-mix(in srgb, var(--danger) 35%, transparent)',
-            color: 'var(--danger)', fontSize: 12.5,
-          }}>{error}</div>
+          <Alert variant="danger">{error}</Alert>
         )}
 
         {/* Hero card — title, status, run-now, enable toggle, next-run */}

@@ -54,9 +54,10 @@ describe('UtilitiesView — publish artifact Copy URL button', () => {
     expect(await screen.findByText(/Couldn't copy — select the URL above/)).toBeInTheDocument();
   });
 
-  // Regression (review follow-up on #532): the status line is a plain div
-  // by default (see components/ui/Message.tsx), so a screen reader has no
-  // guarantee it announces the failure text unless the line is marked as a
+  // Regression (review follow-up on #532): the status line renders via
+  // Alert (components/ui/Alert.tsx), whose danger variant sets role="alert";
+  // but this banner is passive status, so a screen reader has no guarantee it
+  // announces the failure text unless the line is explicitly marked as a
   // live region.
   it('marks the failure status line as a live region for screen readers', async () => {
     copyText.mockResolvedValueOnce(false);

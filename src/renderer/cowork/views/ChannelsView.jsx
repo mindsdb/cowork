@@ -12,7 +12,7 @@
 
 import { useEffect, useState } from 'react';
 import Ico from '../components/Icons';
-import { Badge, Button } from '../components/ui';
+import { Badge, Button, Field } from '../components/ui';
 import ChannelBindings from './ChannelBindings';
 import {
   fetchChannelPlugins,
@@ -202,11 +202,11 @@ function ChannelCard({ plugin, status, onChanged }) {
           const isSet = fields[f.name]?.is_set;
           const stored = fields[f.name]?.value;  // non-null only for non-secret fields
           return (
-            <label key={f.name} className="channels-field">
-              <span className="channels-field-label">
-                {f.label}{f.required ? <em className="channels-req"> *</em> : null}
-                {isSet ? <Badge variant="muted" size="xs">set</Badge> : null}
-              </span>
+            <Field
+              key={f.name}
+              label={<>{f.label}{isSet ? <Badge variant="muted" size="xs">set</Badge> : null}</>}
+              required={f.required}
+            >
               <input
                 type={f.secret ? 'password' : 'text'}
                 className="channels-input"
@@ -216,7 +216,7 @@ function ChannelCard({ plugin, status, onChanged }) {
                 autoComplete="off"
                 spellCheck={false}
               />
-            </label>
+            </Field>
           );
         })}
       </div>

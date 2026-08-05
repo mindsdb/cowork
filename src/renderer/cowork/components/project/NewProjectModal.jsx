@@ -15,7 +15,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
-import { Button, Input, Textarea } from '../ui';
+import { Alert, Button, Field, Input, Textarea } from '../ui';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
 import {
   createProject,
@@ -188,11 +188,7 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
       />
       <ModalBody padding="16px 18px">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <span style={{
-              fontFamily: FONT_MONO, fontSize: 11, letterSpacing: '0.06em',
-              textTransform: 'uppercase', color: 'var(--ink-4)', fontWeight: 600,
-            }}>Project name</span>
+          <Field label="Project name">
             <Input
               ref={nameRef}
               value={name}
@@ -214,13 +210,21 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
                 outline: 'none',
               }}
             />
-          </label>
+          </Field>
 
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <span style={{
-              fontFamily: FONT_MONO, fontSize: 11, letterSpacing: '0.06em',
-              textTransform: 'uppercase', color: 'var(--ink-4)', fontWeight: 600,
-            }}>Instructions <span style={{ textTransform: 'none', letterSpacing: 0, color: 'var(--ink-4)', fontFamily: FONT_BODY, fontWeight: 400 }}>(optional)</span></span>
+          <Field
+            label="Instructions"
+            optional
+            help={
+              <>
+                Saved as <code style={{
+                  fontFamily: FONT_MONO,
+                  background: 'var(--surface-2)', padding: '1px 5px', borderRadius: 3,
+                  color: 'var(--ink-3)',
+                }}>.anton/anton.md</code>
+              </>
+            }
+          >
             <Textarea
               value={instructions}
               onChange={(v) => setInstructions(v)}
@@ -239,16 +243,7 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
                 minHeight: 80, maxHeight: 220,
               }}
             />
-            <span style={{
-              fontFamily: FONT_MONO, fontSize: 10.5, color: 'var(--ink-4)',
-            }}>
-              Saved as <code style={{
-                fontFamily: FONT_MONO,
-                background: 'var(--surface-2)', padding: '1px 5px', borderRadius: 3,
-                color: 'var(--ink-3)',
-              }}>.anton/anton.md</code>
-            </span>
-          </label>
+          </Field>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <span style={{
@@ -302,12 +297,7 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
           </div>
 
           {error && (
-            <div style={{
-              padding: '10px 12px', borderRadius: 7,
-              background: 'color-mix(in srgb, var(--danger) 12%, var(--surface))',
-              border: '1px solid color-mix(in srgb, var(--danger) 30%, transparent)',
-              color: 'var(--danger)', fontSize: 13,
-            }}>{error}</div>
+            <Alert variant="danger">{error}</Alert>
           )}
         </div>
       </ModalBody>

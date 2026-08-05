@@ -19,7 +19,7 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Popover } from '@base-ui/react/popover';
 import Ico from '../../Icons';
-import { Button, Spinner } from '../../ui';
+import { Alert, Button, Spinner } from '../../ui';
 import { copyText } from '../../../lib/clipboard';
 import {
   AccessChooser,
@@ -167,14 +167,7 @@ function AccessSummaryCard({ mode }) {
 
 function ErrorRow({ message }) {
   if (!message) return null;
-  return (
-    <div style={{
-      margin: '0 16px 12px', padding: '8px 10px', borderRadius: 8,
-      background: 'color-mix(in srgb, var(--danger) 10%, transparent)',
-      border: '1px solid color-mix(in srgb, var(--danger) 35%, transparent)',
-      color: 'var(--danger)', fontFamily: FONT_BODY, fontSize: 12,
-    }}>{message}</div>
-  );
+  return <Alert variant="danger" className="mx-4 mb-3">{message}</Alert>;
 }
 
 // ── Version history ───────────────────────────────────────────────────────

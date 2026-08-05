@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import { PageHeader, FilterRow, SearchInput, SortPill } from '../components/collection';
-import { Menu, Button, Card, Select, Input, Textarea } from '../components/ui';
+import { Menu, Button, Card, Field, Select, Input, Textarea } from '../components/ui';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
 import { Switch } from '../components/ui/Switch';
 import { useToastManager } from '../components/ui/Toast';
@@ -108,14 +108,6 @@ const fieldStyle = {
   boxSizing: 'border-box',
 };
 
-function FieldLabel({ children }) {
-  return (
-    <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink-2)', marginBottom: 4 }}>
-      {children}
-    </div>
-  );
-}
-
 function SkillModal({ open, onClose, onSaved, onError, initial = null, projects = [] }) {
   const isEdit = initial !== null;
   const [draft, setDraft] = useState({ label: '', description: '', declarative: '', project: 'general' });
@@ -164,8 +156,7 @@ function SkillModal({ open, onClose, onSaved, onError, initial = null, projects 
       />
       <ModalBody padding="20px">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div>
-            <FieldLabel>Label</FieldLabel>
+          <Field label="Label">
             <Input
               aria-label="Label"
               value={draft.label}
@@ -175,9 +166,8 @@ function SkillModal({ open, onClose, onSaved, onError, initial = null, projects 
               style={{ ...fieldStyle, height: 34, resize: 'none', ...(isEdit && { opacity: 0.5, cursor: 'default' }) }}
               autoFocus={!isEdit}
             />
-          </div>
-          <div>
-            <FieldLabel>Scope</FieldLabel>
+          </Field>
+          <Field label="Scope">
             <Select
               ariaLabel="Scope"
               value={draft.project}
@@ -188,9 +178,8 @@ function SkillModal({ open, onClose, onSaved, onError, initial = null, projects 
                 ...projects.map((p) => ({ value: p.name, label: p.name })),
               ]}
             />
-          </div>
-          <div>
-            <FieldLabel>Description</FieldLabel>
+          </Field>
+          <Field label="Description">
             <Textarea
               aria-label="Description"
               value={draft.description}
@@ -198,9 +187,8 @@ function SkillModal({ open, onClose, onSaved, onError, initial = null, projects 
               placeholder="Generate weekly status reports from recent work. Use when asked for updates or progress summaries."
               style={{ ...fieldStyle, height: 80 }}
             />
-          </div>
-          <div>
-            <FieldLabel>Instructions</FieldLabel>
+          </Field>
+          <Field label="Instructions">
             <Textarea
               aria-label="Instructions"
               value={draft.declarative}
@@ -208,7 +196,7 @@ function SkillModal({ open, onClose, onSaved, onError, initial = null, projects 
               placeholder="Summarize my recent work in three sections: wins, blockers, and next steps. Keep the tone professional but not stiff..."
               style={{ ...fieldStyle, height: 198, fontFamily: 'var(--font-mono)', fontSize: 12.5 }}
             />
-          </div>
+          </Field>
         </div>
       </ModalBody>
       <ModalFooter>

@@ -31,7 +31,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
-import { Badge, Button, Checkbox, Select, Input, Textarea } from '../ui';
+import { Alert, Badge, Button, Checkbox, Select, Input, Textarea } from '../ui';
 import {
   setFormState,
   setSelectedMethod,
@@ -332,17 +332,9 @@ export function DataVaultForm({ spec, busy = false, onAction, onMethodChange, co
           </div>
         </div>
         {(spec.engine === 'google_drive' || spec._connector_id === 'google_drive') && (
-          <div style={{
-            padding: '10px 12px', borderRadius: 8,
-            background: 'var(--info-bg)',
-            border: '1px solid var(--info-border)',
-            display: 'flex', gap: 8, alignItems: 'flex-start',
-          }}>
-            <span style={{ fontSize: 14, flexShrink: 0, lineHeight: 1.4 }}>ℹ️</span>
-            <span style={{ fontSize: 12.5, color: 'var(--info-text)', lineHeight: 1.55 }}>
-              This connection can access files it created, plus any you pick yourself — use "Add files from Google Drive" in a chat's + menu, or "Select files from Google Drive" in this connection's settings.
-            </span>
-          </div>
+          <Alert variant="info" icon="ℹ️">
+            This connection can access files it created, plus any you pick yourself — use "Add files from Google Drive" in a chat's + menu, or "Select files from Google Drive" in this connection's settings.
+          </Alert>
         )}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
           {/* On success we always offer two routes:
@@ -470,20 +462,10 @@ export function DataVaultForm({ spec, busy = false, onAction, onMethodChange, co
       {(!isMultiMethod || activeMethod) && <>
       {/* Form-level banners */}
       {spec.form_error && (
-        <div style={{
-          padding: '8px 10px', borderRadius: 7,
-          background: 'color-mix(in srgb, var(--danger) 12%, var(--surface))',
-          border: '1px solid color-mix(in srgb, var(--danger) 35%, transparent)',
-          color: 'var(--danger)', fontSize: 12.5,
-        }}>{spec.form_error}</div>
+        <Alert variant="danger">{spec.form_error}</Alert>
       )}
       {spec.form_warning && (
-        <div style={{
-          padding: '8px 10px', borderRadius: 7,
-          background: 'color-mix(in srgb, var(--accent) 8%, var(--surface))',
-          border: '1px solid color-mix(in srgb, var(--accent) 30%, transparent)',
-          color: 'var(--ink-2)', fontSize: 12.5,
-        }}>{spec.form_warning}</div>
+        <Alert variant="warning">{spec.form_warning}</Alert>
       )}
 
       {/* Fields — always rendered. While a probe is in flight the

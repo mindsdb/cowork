@@ -6,6 +6,7 @@
 // notice with the error message; the rest of the app keeps working.
 
 import { Component } from 'react';
+import { Alert } from '../ui';
 
 export class FormErrorBoundary extends Component {
   constructor(props) {
@@ -25,17 +26,9 @@ export class FormErrorBoundary extends Component {
   render() {
     if (this.state.error) {
       return (
-        <div style={{
-          margin: '8px 0',
-          padding: '10px 12px',
-          borderRadius: 8,
-          background: 'color-mix(in srgb, var(--danger) 10%, var(--surface))',
-          border: '1px solid color-mix(in srgb, var(--danger) 30%, transparent)',
-          color: 'var(--danger)',
-          fontFamily: 'var(--font-body)', fontSize: 12.5,
-        }}>
+        <Alert variant="danger" className="my-2">
           Form panel crashed: <code style={{ fontFamily: 'var(--font-mono)' }}>{String(this.state.error?.message || this.state.error)}</code>
-        </div>
+        </Alert>
       );
     }
     return this.props.children;

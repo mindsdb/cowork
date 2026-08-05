@@ -8,6 +8,7 @@ import { host } from './platform/host';
 import { loadSkin, persistSkin } from './lib/skins';
 import { syncSettingsToDb, syncModelsToDbWithRetry } from './lib/syncSettings';
 import { resolveBootTarget } from './lib/bootTarget';
+import { trackBootScreenResolved } from './cowork/lib/analytics';
 import { hasBootedBefore, rememberBooted, welcomeFloorMs } from './lib/bootWelcome';
 import { runPostAuthHandshake } from './lib/postAuth';
 import type { SpriteName } from './pages/arcade/sprites';
@@ -148,6 +149,11 @@ export default function App() {
       // localStorage error), so calling it outside resolveBootTarget's guard is
       // safe — it can't throw and escape init() (ENG-848 review note).
       const target: Page = await resolveBootTarget(host, hasLocalTermsConsent());
+      // ENG-921: record the resolved first screen + ground-truth server-install
+      // state before sign-in, so first-run breakage between download and a
+      // healthy server is measurable (app_installed only fires once the server
+      // is healthy). Desktop-only and fire-and-forget — it never blocks boot.
+      void trackBootScreenResolved(target);
       // Keep the welcome orb up briefly so it doesn't flash on a genuine cold
       // start — but skip that floor on a web refresh, where it was pure latency
       // on every reload (ENG-1232).
