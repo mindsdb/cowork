@@ -10,7 +10,7 @@
 
 import { useState } from 'react';
 import Ico from '../Icons';
-import { Card, Button } from '../ui';
+import { Alert, Card, Button } from '../ui';
 import { relativeTime } from '../../lib/formatTime';
 import { ScheduleStatusBadge } from './ScheduleStatusBadge';
 
@@ -108,15 +108,11 @@ export default function ScheduleCard({
       </div>
 
       {task.lastError && (
-        <div style={{
-          padding: '6px 8px', borderRadius: 6,
-          background: 'color-mix(in srgb, var(--danger) 8%, transparent)',
-          border: '1px solid color-mix(in srgb, var(--danger) 25%, transparent)',
-          fontSize: 11.5, color: 'var(--danger)',
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }} title={task.lastError}>
-          {task.lastError}
-        </div>
+        <Alert variant="danger" className="p-2 text-xs">
+          <span className="block overflow-hidden text-ellipsis whitespace-nowrap" title={task.lastError}>
+            {task.lastError}
+          </span>
+        </Alert>
       )}
 
       {/* Project label — mirrors ArtifactBubble's `project: <name>`.

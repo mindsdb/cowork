@@ -17,7 +17,7 @@ import {
   useCollectionShortcut,
 } from '../components/collection';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
-import { Button, CardRow, EmptyState } from '../components/ui';
+import { Alert, Button, CardRow, EmptyState } from '../components/ui';
 import ScheduleTaskModal from '../components/schedule/ScheduleTaskModal';
 import ScheduleCard from '../components/schedule/ScheduleCard';
 
@@ -188,12 +188,7 @@ export default function ScheduledView({
       )}
 
       {error && (
-        <div style={{
-          margin: '0 28px 12px', padding: '8px 10px', borderRadius: 7,
-          background: 'color-mix(in srgb, var(--danger) 12%, var(--surface))',
-          border: '1px solid color-mix(in srgb, var(--danger) 35%, transparent)',
-          color: 'var(--danger)', fontSize: 12.5,
-        }}>{error}</div>
+        <Alert variant="danger" className="mx-7 mb-3">{error}</Alert>
       )}
 
       {/* Body — empty state, grid, or list. */}

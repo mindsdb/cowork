@@ -9,7 +9,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Ico from '../components/Icons';
-import { Button, EmptyState } from '../components/ui';
+import { Alert, Button, EmptyState } from '../components/ui';
 import { CONNECTIONS_VAULT_KEEP, deleteDatasource, fetchConnector, fetchDatasources, fetchSavedConnection } from '../api';
 import { host } from '../../platform/host';
 import Spinner from '../components/ui/Spinner';
@@ -529,12 +529,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
                       <div style={{ fontSize: 12, color: 'var(--danger)' }}>{pickerState.reason}</div>
                     )}
                     {pickerState.status === 'done' && pickerState.failed?.length > 0 && (
-                      <div style={{
-                        fontSize: 12, color: 'var(--danger)', lineHeight: 1.5,
-                        padding: '8px 10px', borderRadius: 7,
-                        background: 'color-mix(in srgb, var(--danger) 8%, var(--surface))',
-                        border: '1px solid color-mix(in srgb, var(--danger) 25%, transparent)',
-                      }}>
+                      <Alert variant="danger">
                         Google didn't actually grant access to {pickerState.failed.length === 1 ? 'this file' : 'these files'} —
                         try picking {pickerState.failed.length === 1 ? 'it' : 'them'} again:
                         <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
@@ -542,7 +537,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
                             <li key={f.id}>{f.name} ({f.reason})</li>
                           ))}
                         </ul>
-                      </div>
+                      </Alert>
                     )}
                     {pickerState.status === 'done' && pickerState.files.length === 0 && (
                       <div style={{ fontSize: 12, color: 'var(--ink-4)', fontStyle: 'italic' }}>No files selected.</div>
@@ -588,15 +583,9 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
           flexShrink: 0,
         }}>
           {saved?.fields?.status === 'needs_reconnect' && (
-            <div style={{
-              padding: '10px 12px', borderRadius: 7,
-              background: 'color-mix(in srgb, var(--warning, #f5a623) 12%, var(--surface))',
-              border: '1px solid color-mix(in srgb, var(--warning, #f5a623) 35%, transparent)',
-              fontSize: 12, color: 'var(--ink-2)', lineHeight: 1.5,
-            }}>
-              <strong style={{ display: 'block', marginBottom: 4 }}>Reconnection required</strong>
+            <Alert variant="warning" title="Reconnection required">
               Access for this connection has expired or was revoked. Reconnect to restore access, or remove the connection.
-            </div>
+            </Alert>
           )}
           {spec && (
             <Button
