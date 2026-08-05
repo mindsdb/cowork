@@ -7,7 +7,8 @@
 
 import { useEffect, useState } from 'react';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
-import { Button, Select } from '../ui';
+import { Button, Select, Input, Textarea } from '../ui';
+import { Switch } from '../ui/Switch';
 import Ico from '../Icons';
 
 const FONT_BODY = 'var(--font-body)';
@@ -184,10 +185,9 @@ export default function ScheduleTaskModal({
       <ModalBody padding="18px 20px">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <Field label="Title">
-            <input
-              type="text"
+            <Input
               value={form.title}
-              onChange={(e) => update('title', e.target.value)}
+              onChange={(v) => update('title', v)}
               placeholder="Weekly metrics summary"
               autoFocus
               style={fieldInput}
@@ -211,11 +211,11 @@ export default function ScheduleTaskModal({
               />
             </Field>
             <Field label="Next run">
-              <input
+              <Input
                 type="datetime-local"
                 value={form.nextRunAt}
                 min={toLocalInput(new Date().toISOString())}
-                onChange={(e) => update('nextRunAt', e.target.value)}
+                onChange={(v) => update('nextRunAt', v)}
                 style={fieldInput}
               />
             </Field>
@@ -236,24 +236,41 @@ export default function ScheduleTaskModal({
 
           <div>
             <span style={{ ...fieldLabel, display: 'block' }}>Status</span>
-            <label style={{
-              display: 'inline-flex', alignItems: 'center', gap: 8,
+            {/* Block-level `flex` with a fixed height (not `inline-flex`): an
+                inline-flex row sits on a text baseline in the parent's line
+                box, so toggling the label between "Enabled" and "Paused"
+                (different descenders) nudged the line-box height ~1px — and
+                because the modal is vertically centered, that re-centered the
+                whole dialog, reading as a layout shift. A fixed-height block
+                row is baseline-independent, so the toggle never moves anything.
+                The Switch is the sole control — keyboard-operable, with a
+                STABLE aria-label ("Schedule enabled"); aria-checked conveys
+                on/off, so the name must not change with state. The visible
+                Enabled/Paused text is a non-interactive status echo, hidden
+                from assistive tech (the switch already announces state). It's
+                deliberately not a clickable <span> (mouse-only + unassociated)
+                nor a <label> (the Switch's own hidden input would be
+                double-activated). */}
+            <div style={{
+              display: 'flex', width: 'fit-content', alignItems: 'center', gap: 8, height: 22,
               fontFamily: FONT_BODY, fontSize: 13.5, color: 'var(--ink)',
-              cursor: 'pointer',
             }}>
-              <input
-                type="checkbox"
+              <Switch
                 checked={form.enabled}
-                onChange={(e) => update('enabled', e.target.checked)}
+                onCheckedChange={(v) => update('enabled', v)}
+                size="sm"
+                aria-label="Schedule enabled"
               />
-              {form.enabled ? 'Enabled' : 'Paused'}
-            </label>
+              <span aria-hidden="true" style={{ userSelect: 'none' }}>
+                {form.enabled ? 'Enabled' : 'Paused'}
+              </span>
+            </div>
           </div>
 
           <Field label="Prompt">
-            <textarea
+            <Textarea
               value={form.prompt}
-              onChange={(e) => update('prompt', e.target.value)}
+              onChange={(v) => update('prompt', v)}
               placeholder={`Ask ${agentLabel} to…`}
               rows={6}
               style={{ ...fieldInput, resize: 'vertical', lineHeight: 1.45 }}

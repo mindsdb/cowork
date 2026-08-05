@@ -31,7 +31,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
-import { Badge, Button, Checkbox, Select } from '../ui';
+import { Badge, Button, Checkbox, Select, Input, Textarea } from '../ui';
 import {
   setFormState,
   setSelectedMethod,
@@ -121,7 +121,7 @@ function FieldInput({ field, value, onChange, disabled }) {
   }
   if (field.type === 'textarea') {
     return (
-      <textarea
+      <Textarea
         value={displayValue}
         placeholder={placeholder}
         disabled={disabled}
@@ -129,7 +129,7 @@ function FieldInput({ field, value, onChange, disabled }) {
         spellCheck={false}
         autoCapitalize="none"
         autoCorrect="off"
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(v) => onChange(v)}
         style={{ ...baseStyle, fontFamily: FONT_MONO, lineHeight: 1.4, resize: 'vertical' }}
       />
     );
@@ -158,7 +158,7 @@ function FieldInput({ field, value, onChange, disabled }) {
   }
   // text, password, url, default
   return (
-    <input
+    <Input
       type={field.type === 'password' ? 'password' : (field.type === 'url' ? 'url' : 'text')}
       value={displayValue}
       placeholder={placeholder}
@@ -167,7 +167,7 @@ function FieldInput({ field, value, onChange, disabled }) {
       autoCorrect="off"
       spellCheck={false}
       disabled={disabled}
-      onChange={(e) => onChange(e.target.value)}
+      onChange={(v) => onChange(v)}
       style={baseStyle}
     />
   );

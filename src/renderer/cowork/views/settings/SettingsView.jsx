@@ -1,49 +1,25 @@
-import { useState, useEffect, useRef, createContext, useContext, Children } from 'react';
+import { useState, useEffect, useMemo, useRef, useContext } from 'react';
 import { useId } from 'react';
-import Ico from '../components/Icons';
-import { validateSettings, revealSettingKey, testProviders, fetchHealth, fetchRecommendedModels } from '../api';
-import { providerTypeToKeyField, providerValueToType, resolveModelPickerValue, buildModelOptions, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels } from '../lib/settingsTransform';
-import { trackHarnessSwapped, resetDeviceIdentity } from '../lib/analytics';
-import { ConfirmModal } from '../components/ConfirmModal';
-import { ToggleGroup } from '../components/ui/ToggleGroup';
-import { Switch } from '../components/ui/Switch';
-import { Badge, Button, Input, Checkbox, Select } from '../components/ui';
-import { host } from '../../platform/host';
-import { SKINS, normalizeSkin } from '../../lib/skins';
-import { MINDS_API_BASE, MINDS_API_KEY_URL, MINDS_CONSOLE_URL, MINDS_REGISTER_URL, MINDS_BILLING_URL } from '../../lib/mindsUrls';
-import { getVersionInfo, isElectron, getAccessToken } from '../../platform/host';
-import { unifiedVersion, SKEW_WARN_DAYS } from '../../../shared/version';
-import { backendFailureCopy, exitCodeLabel } from '../../../shared/server-status';
-import ChannelsView from './ChannelsView';
-
-function decodeJwtPayload(token) {
-  try {
-    let payload = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
-    while (payload.length % 4) payload += '=';
-    return JSON.parse(atob(payload));
-  } catch { return null; }
-}
-
-// Exported for tests. Pure mapping from an access token to the account
-// card's user object; null means "show the sign-in card" — both for a
-// missing token and for one that can't be decoded (a stale identity must
-// never keep rendering over a token we can no longer read, ENG-761).
-export function accountUserFromToken(token) {
-  if (!token) return null;
-  const payload = decodeJwtPayload(token);
-  if (!payload) return null;
-  return {
-    name: payload.name || [payload.given_name, payload.family_name].filter(Boolean).join(' ') || null,
-    email: payload.email || null,
-    username: payload.preferred_username || null,
-    sub: payload.sub || null,
-    org: (() => {
-      let org = payload.active_organization ?? payload.organization;
-      if (typeof org === 'string') { try { org = JSON.parse(org); } catch { return null; } }
-      return org?.displayName || org?.name || null;
-    })(),
-  };
-}
+import Ico from '../../components/Icons';
+import { validateSettings, revealSettingKey, testProviders, fetchRecommendedModels } from '../../api';
+import { providerTypeToKeyField, providerValueToType, resolveModelPickerValue, buildModelOptions, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, clampBudgetValue, clampBudgets, BUDGET_FIELDS } from '../../lib/settingsTransform';
+import { trackHarnessSwapped } from '../../lib/analytics';
+import { copyText as copyToClipboard } from '../../lib/clipboard';
+import { deriveProviderStatus, friendlyProviderError } from '../../lib/providerStatus';
+import { ToggleGroup } from '../../components/ui/ToggleGroup';
+import { Switch } from '../../components/ui/Switch';
+import { Badge, Button, Input, Checkbox, Select } from '../../components/ui';
+import Spinner from '../../components/ui/Spinner';
+import ModelSelect from '../../components/ModelSelect.jsx';
+import { host } from '../../../platform/host';
+import { SKINS, normalizeSkin } from '../../../lib/skins';
+import { MINDS_API_BASE, MINDS_API_KEY_URL, MINDS_REGISTER_URL, MINDS_BILLING_URL } from '../../../lib/mindsUrls';
+import { isElectron } from '../../../platform/host';
+import ChannelsView from '../ChannelsView';
+import UpdatesSection from './UpdatesSection';
+import BackendSection from './BackendSection';
+import AccountSection from './AccountSection';
+import { SettingsLayoutContext, Section, SettingsSectionPanel } from './settingsLayout';
 
 // Exported for tests. Narrows a `lastSavedJson` snapshot to reflect one
 // freshly auto-saved key, without touching any other field — critical so an
@@ -63,35 +39,56 @@ export function patchSavedJson(prevJson, key, value) {
   }
 }
 
-function Section({ title, subtitle, notice, children }) {
-  const { mobile } = useContext(SettingsLayoutContext);
-  // A section whose sole control is a Switch or ToggleGroup is compact enough
-  // to keep the desktop "title left / control right" row on wider mobile
-  // widths instead of stacking (ENG-990). Full-width controls — text inputs,
-  // selects, color pickers, the generic field wrapper — stay stacked. The
-  // row only re-forms above ~440px (see the media query); the narrowest
-  // phones still stack everything.
-  const kids = Children.toArray(children);
-  const compact = kids.length === 1 && (kids[0]?.type === Switch || kids[0]?.type === ToggleGroup);
+// Numeric input for the Advanced Settings agent budgets. State keeps the
+// server's string form (settings round-trip as strings; the page-wide dirty
+// compare is a JSON diff, so types must stay stable across save → re-fetch).
+// Free typing is allowed — including transiently empty/out-of-range text —
+// and the value is clamped into [min, max] on blur. Two deliberate rules:
+//   * An untouched field never commits (blur alone must not materialize a
+//     key the server never sent — that would flip Save to dirty with zero
+//     edits and PUT an unknown key to an older server).
+//   * Emptied/unparseable input reverts to the last committed value, not the
+//     factory default (clearing a saved 500 to retype must not save 50).
+// Escape-dismiss skips blur entirely; clampBudgets() in save() is the
+// backstop that keeps rejectable values out of every PUT.
+function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSetting }) {
+  const { min, max, fallback } = spec;
+  const hintId = useId();
+  // The last COMMITTED value, from the page's saved-state snapshot — never a
+  // draft. Tracking "last parseable edit" instead was a bug (Codex review on
+  // #514): editing a saved 120 to an unsaved 300, then clearing, restored the
+  // 300; an abandoned out-of-range draft resurrected as its clamped form.
+  const saved =
+    savedValue != null && String(savedValue).trim() !== '' ? String(savedValue) : null;
   return (
-    <div className={`settings-section${compact ? ' settings-section--inline' : ''}`} style={{
-      display: 'grid', gridTemplateColumns: '1fr 320px', gap: 0,
-      padding: '16px 0',
-      alignItems: 'flex-start',
-    }}>
-      {/* On mobile the grid collapses to one column (see the settings media
-          query), so the inter-column gutters (paddingRight/Left: 24) would
-          just indent the stacked label + control for no reason — drop them. */}
-      <div style={{ paddingRight: mobile ? 0 : 24 }}>
-        <h3 style={{
-          margin: 0, padding: 0,
-          fontSize: 14, fontWeight: 600, color: 'var(--text-strong)',
-          fontFamily: 'inherit', lineHeight: 1.3,
-        }}>{title}</h3>
-        {subtitle && <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginTop: 4 }}>{subtitle}</div>}
-        {notice && <div style={{ marginTop: 8 }}>{notice}</div>}
-      </div>
-      <div style={{ paddingLeft: mobile ? 0 : 24 }}>{children}</div>
+    <div style={{ display: 'inline-flex', alignItems: 'baseline', gap: 8 }}>
+      <input
+        className="field-input"
+        type="number"
+        inputMode="numeric"
+        min={min}
+        max={max}
+        step={1}
+        value={value ?? String(fallback)}
+        onChange={(e) => setSetting(settingKey, e.target.value)}
+        onBlur={(e) => {
+          if (value == null) return; // untouched — don't materialize the key
+          // Emptied field with no committed value to restore (the key was
+          // never saved — e.g. an older server that doesn't serve it): leave
+          // it empty rather than commit the factory default — clampBudgets()
+          // drops empty drafts from the write, and the post-save re-fetch
+          // restores whatever the server holds.
+          if (String(e.target.value).trim() === '' && saved == null) return;
+          setSetting(settingKey, clampBudgetValue(e.target.value, spec, saved));
+        }}
+        aria-label={label}
+        aria-describedby={hintId}
+        title={`${label} (${min}–${max}, default ${fallback})`}
+        style={{ width: 90 }}
+      />
+      <span id={hintId} style={{ fontSize: 11.5, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+        {min}&ndash;{max} &middot; default {fallback}
+      </span>
     </div>
   );
 }
@@ -163,79 +160,6 @@ function CollapsibleGroup({ title, defaultOpen = true, children }) {
   );
 }
 
-// Shared layout shell for every settings section: scrollable content area
-// on top, optional sticky footer with action buttons on the bottom.
-// Pass `footer` as JSX — buttons, status text, whatever the section needs.
-// Layout mode for the settings surface. Desktop (default) renders the
-// two-column nav + scrolling panel inside a modal; mobile (ENG-990) renders
-// a full page with accordion navigation, where each section flows naturally
-// so the whole page scrolls. SettingsSectionPanel reads this to drop its
-// flex-fill / internal scroll / sticky footer on mobile.
-const SettingsLayoutContext = createContext({ mobile: false });
-
-function SettingsSectionPanel({ children, footer, autoSaved = false }) {
-  const { mobile } = useContext(SettingsLayoutContext);
-  if (mobile) {
-    // Natural flow so the whole detail page scrolls (no internal scroll or
-    // width cap). A sticky full-bleed bottom bar carries the action: the Save
-    // footer when the section has one (always reachable on a long page instead
-    // of buried at the end), or a quiet "saves automatically" note when it
-    // doesn't — so an auto-save section (Appearance) doesn't read as "no way
-    // to save" next to sections with a Save button (ENG-990 QA).
-    const barStyle = {
-      position: 'sticky',
-      bottom: 0,
-      zIndex: 1,
-      display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
-      // Bleed past the .settings-detail 14px gutter to the screen edges.
-      margin: '16px -14px 0',
-      padding: '12px 14px calc(12px + env(safe-area-inset-bottom, 0))',
-      borderTop: '1px solid var(--border-subtle)',
-      // Opaque so scrolling content is masked behind the bar.
-      background: 'var(--bg)',
-    };
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column' }}>
-        <div>{children}</div>
-        {footer ? (
-          <div style={{ ...barStyle, gap: 10 }}>{footer}</div>
-        ) : autoSaved ? (
-          <div style={{ ...barStyle, color: 'var(--text-muted)', fontSize: 12.5 }}>
-            <span aria-hidden="true" style={{ display: 'inline-flex', color: 'var(--ok, #3aa876)' }}>
-              {Ico.check ? Ico.check(13) : '✓'}
-            </span>
-            <span>Changes are saved automatically.</span>
-          </div>
-        ) : null}
-      </div>
-    );
-  }
-  return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
-      <div
-        className="scroll-clean settings-scroll"
-        style={{ flex: 1, overflowY: 'auto', padding: '24px 28px' }}
-      >
-        <div style={{ maxWidth: 820 }}>{children}</div>
-      </div>
-      {footer && (
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 10,
-          padding: '12px 22px',
-          background: 'var(--surface-glass)',
-          WebkitBackdropFilter: 'blur(var(--surface-glass-blur))',
-          backdropFilter: 'blur(var(--surface-glass-blur))',
-          borderTop: '1px solid var(--border-subtle)',
-          flexShrink: 0,
-        }}>
-          {footer}
-        </div>
-      )}
-    </div>
-  );
-}
-
-
 function TextInput({ value, onChange, placeholder, title, ariaLabel }) {
   return (
     <Input
@@ -294,9 +218,34 @@ function ClearableTextInput({ value, onChange, placeholder, ariaLabel }) {
 // The fetched value is held in local component state — we never push it
 // into the parent settings object, so saving an untouched revealed value
 // still sends "***" and the server skips overwriting the stored key.
+// Whether toggling the eye should fetch the real stored key from the server.
+//
+// `isWeb` short-circuits everything: `/settings/reveal-key` returns UNMASKED
+// provider secrets and is loopback-only server-side (`_require_local`), and on
+// hosted the browser reaches the server from the docker bridge rather than
+// 127.0.0.1 — so the fetch would 403. That is the ENG-912 shape: a panel that
+// looks functional and throws on a sub-action. A web user can still SET a key
+// (`PUT /settings/{key}` is not gated); they just can't read the stored one
+// back, and the field keeps showing the "***" sentinel.
+//
+// Extracted as a pure predicate rather than inlined so both platforms' paths
+// are directly testable — this gate lives inside a shared component that
+// desktop depends on, and the desktop direction is the one a web-only change
+// is most likely to break silently (ENG-932).
+export function shouldRevealStoredKey({ isWeb, show, revealName, isSentinel, alreadyRevealed }) {
+  if (isWeb) return false;
+  // Only worth a round trip when the field is currently masked, the caller told
+  // us which key to ask for, the value really is the server's sentinel, and we
+  // haven't already fetched it.
+  return !show && Boolean(revealName) && Boolean(isSentinel) && !alreadyRevealed;
+}
+
 function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
   const [show, setShow] = useState(false);
-  const [copied, setCopied] = useState(false);
+  // 'idle' | 'copied' | 'failed' — 'failed' surfaces feedback when the
+  // clipboard helper's fallback chain (see lib/clipboard.js) also fails,
+  // instead of leaving the button looking like it silently did nothing.
+  const [copyState, setCopyState] = useState('idle');
   const [revealedValue, setRevealedValue] = useState(null); // null = no fetched override
   const [revealing, setRevealing] = useState(false);
 
@@ -317,17 +266,26 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
 
   const onCopy = async () => {
     if (!hasValue) return;
-    try {
-      await navigator.clipboard.writeText(v);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      /* clipboard may be unavailable in some browser sandboxes */
+    const ok = await copyToClipboard(v);
+    if (ok) {
+      setCopyState('copied');
+      setTimeout(() => setCopyState('idle'), 1500);
+    } else {
+      // Unlike 'copied', 'failed' doesn't auto-clear on a timer — an error
+      // needs longer than 1.5s to read. It clears on the next copy attempt
+      // (above) or here, on blur.
+      setCopyState('failed');
     }
   };
 
   const onToggleShow = async () => {
-    if (!show && revealName && isSentinel && revealedValue === null) {
+    if (shouldRevealStoredKey({
+      isWeb: host.isWeb,
+      show,
+      revealName,
+      isSentinel,
+      alreadyRevealed: revealedValue !== null,
+    })) {
       // Reveal the real stored key from the loopback server.
       setRevealing(true);
       try {
@@ -400,18 +358,20 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
           <button
             type="button"
             onClick={onCopy}
+            onBlur={() => { if (copyState === 'failed') setCopyState('idle'); }}
             disabled={!canCopy}
             title={
               isDisplayingSentinel ? 'Reveal the key first to copy it'
-                : copied ? 'Copied'
-                  : 'Copy to clipboard'
+                : copyState === 'copied' ? 'Copied'
+                  : copyState === 'failed' ? "Couldn't copy — select the key to copy manually"
+                    : 'Copy to clipboard'
             }
-            aria-label={copied ? 'Copied to clipboard' : 'Copy key to clipboard'}
+            aria-label={copyState === 'copied' ? 'Copied to clipboard' : 'Copy key to clipboard'}
             style={canCopy ? btnStyle : { ...btnStyle, opacity: 0.35, cursor: 'not-allowed' }}
           >
-            {copied ? Ico.check(13) : Ico.copy(13)}
+            {copyState === 'copied' ? Ico.check(13) : Ico.copy(13)}
           </button>
-          {copied && (
+          {(copyState === 'copied' || copyState === 'failed') && (
             <span
               role="status"
               aria-live="polite"
@@ -422,17 +382,20 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
                 padding: '3px 8px',
                 fontSize: 10.5, fontWeight: 600, letterSpacing: '0.04em',
                 textTransform: 'uppercase',
-                color: '#7CC4B6',
+                color: copyState === 'failed' ? 'var(--danger, #e5484d)' : '#7CC4B6',
                 background: 'rgba(20,28,28,0.92)',
-                border: '1px solid rgba(124,196,182,0.45)',
+                border: copyState === 'failed' ? '1px solid color-mix(in srgb, var(--danger, #e5484d) 45%, transparent)' : '1px solid rgba(124,196,182,0.45)',
                 borderRadius: 6,
                 whiteSpace: 'nowrap',
                 pointerEvents: 'none',
                 boxShadow: 'var(--sh-2)',
-                animation: 'copied-pop 1.5s ease forwards',
+                // 'copied' pops in, holds, fades on its own 1.5s clock. 'failed'
+                // only pops in and holds — it's cleared by state (next attempt
+                // or blur), not by the animation, so it stays legible.
+                animation: copyState === 'failed' ? 'failed-pop 0.2s ease forwards' : 'copied-pop 1.5s ease forwards',
                 zIndex: 5,
               }}
-            >Copied</span>
+            >{copyState === 'failed' ? "Couldn't copy — select the key to copy manually" : 'Copied'}</span>
           )}
         </span>
         <button
@@ -638,6 +601,27 @@ const NAV_ITEMS = [
   { id: 'account', label: 'Account', icon: 'people' },
 ];
 
+// Sections that make sense in the hosted web shell (ENG-932). Absent, not
+// disabled — a nav row that opens a dead end is worse than no row:
+//   backend  — start/stop/diagnostics of a server the user doesn't control.
+//   updates  — App-shell version and OTA source are meaningless on hosted;
+//              the server updates itself.
+//   account  — renders an SSO sign-in card, but a hosted user already
+//              authenticated through the console; a second sign-in is
+//              confusing at best.
+// Agent stays because it carries the model picker and reasoning effort — the
+// point of the ticket. Appearance is purely cosmetic. Channels moved back here
+// from its standalone sidebar entry, which only existed while Settings was
+// hidden on web.
+const WEB_NAV_IDS = new Set(['agent', 'appearance', 'channels']);
+
+export function navItemsForHost(isWeb) {
+  // Fresh array on both branches — filter() already copies for web, and the
+  // desktop spread keeps a caller's mutation from reaching the shared module
+  // constant.
+  return isWeb ? NAV_ITEMS.filter((i) => WEB_NAV_IDS.has(i.id)) : [...NAV_ITEMS];
+}
+
 function SettingsNav({ section, onSectionChange, serverOnline = true }) {
   return (
     <nav
@@ -661,9 +645,16 @@ function SettingsNav({ section, onSectionChange, serverOnline = true }) {
         padding: '0 10px 6px',
         fontWeight: 600,
       }}>Settings</div>
-      {NAV_ITEMS.map((item) => {
+      {navItemsForHost(host.isWeb).map((item) => {
         const active = section === item.id;
-        const disabled = !serverOnline && item.id !== 'backend';
+        // `!host.isWeb &&`: the offline-disable exists because a dead local
+        // server can't accept a save, and Backend stays enabled as the escape
+        // hatch to restart it. On web there is no Backend row — and
+        // `serverOnline` DOES go false there: refreshData() polls /health on
+        // mount on both platforms (App.jsx), so a transient failure on hosted
+        // (proxy 502, auth blip) would otherwise disable EVERY row with no
+        // way out.
+        const disabled = !host.isWeb && !serverOnline && item.id !== 'backend';
         const icon = Ico[item.icon] ? Ico[item.icon](15) : null;
         return (
           <button
@@ -737,14 +728,17 @@ export default function SettingsView({
   // from the section list (the top-bar back control drills out to it first).
   mobile = false,
   onClose,
+  // Shell (installer) update notice (ENG-849): { version, currentVersion,
+  // downloadUrl } or null. Shown in Updates regardless of banner dismissal —
+  // Settings is a deliberate visit, so it always reflects the true state.
+  shellUpdate = null,
+  onDownloadShellUpdate,
 }) {
   const [saved, setSaved] = useState(false);
   const [validation, setValidation] = useState(null);
   const [testing, setTesting] = useState(false);
   const [tested, setTested] = useState(false);
   const [addPickerOpen, setAddPickerOpen] = useState(false);
-  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
-  const [loggingOut, setLoggingOut] = useState(false);
   // Per-role "use a typed model id" flag. Sticky so picking Other…
   // keeps the text input visible even when the typed value is empty.
   const [modelInputMode, setModelInputMode] = useState({ planning: false, coding: false });
@@ -752,74 +746,23 @@ export default function SettingsView({
   // trigger's spinner so a still-open dropdown showing possibly-stale
   // locked/unlocked state doesn't read as done loading.
   const [modelRefreshing, setModelRefreshing] = useState({ planning: false, coding: false, router: false });
+  // Start by distrusting a persisted provider failure. The mount-time check
+  // below decides whether it is still real before failure UI is shown.
+  const [initialProviderTestDone, setInitialProviderTestDone] = useState(false);
   // Per-role note of when the refresh above last landed fresh data, so
   // re-opening the dropdown doesn't re-pay a round trip that just completed.
   const modelOpenState = useRef({});
   const modelOpenFor = (role) => (modelOpenState.current[role] ||= { refreshedAt: 0 });
-  const [versionInfo, setVersionInfo] = useState({ app: '', ui: null, source: 'web' });
-  const [serverVersion, setServerVersion] = useState('');
-  const [antonVersion, setAntonVersion] = useState('');
-  const [showVersionDetails, setShowVersionDetails] = useState(false);
-  const [versionCopied, setVersionCopied] = useState(false);
   // Whether the refresh token lives in the macOS keychain (vs a file under
   // ~/.cowork). Mac-only; read from main on mount.
   const [keychainPref, setKeychainPref] = useState(false);
-  // Backend section diagnostics state
-  const [diag, setDiag] = useState(null);
-  const [diagBusy, setDiagBusy] = useState(false);
-  // Account section — decoded from the JWT, null until loaded
-  const [accountUser, setAccountUser] = useState(null);
   // Mobile master-detail (ENG-990/ENG-991): the open section is the shared
   // `section` prop, not a separate local state — so a deep-link
   // (onOpenSettings('backend')) lands on that section AND the section-keyed
   // load effects below fire on mobile too. `section == null` is the list; a
   // row tap calls onSectionChange(id), the back control onSectionChange(null).
 
-  useEffect(() => { getVersionInfo().then(setVersionInfo).catch(() => { }); }, []);
-  // Backend (server + agent) versions come from /health, which is only
-  // reachable when the backend is up. Re-read whenever the Updates section is
-  // shown and the backend is online, so versions populate after a cold open or
-  // a start/restart from the Backend section instead of staying blank at mount.
-  useEffect(() => {
-    if (section !== 'updates' || !serverOnline) return undefined;
-    let cancelled = false;
-    fetchHealth().then((h) => {
-      if (cancelled) return;
-      setServerVersion(h?.server_version || '');
-      setAntonVersion(h?.anton_version || '');
-    }).catch(() => { });
-    return () => { cancelled = true; };
-  }, [section, serverOnline]);
   useEffect(() => { if (host.isElectron && host.isMac()) host.getKeychainPref().then(setKeychainPref).catch(() => { }); }, []);
-  // Re-runs when the signed-in state flips (ENG-761): previously deps
-  // were [section] only, so signing in while this section was already
-  // open never re-read the token — the card stayed on "Sign in". The
-  // cancelled guard matches the sibling effects: getAccessToken can ride
-  // a slow network refresh, and a stale resolution must not overwrite
-  // what a newer run painted.
-  useEffect(() => {
-    if (section !== 'account') return undefined;
-    let cancelled = false;
-    getAccessToken().then((token) => {
-      if (!cancelled) setAccountUser(accountUserFromToken(token));
-    }).catch(() => { });
-    return () => { cancelled = true; };
-  }, [section, isSsoConnected]);
-
-  // Load diagnostics when Backend section is active
-  useEffect(() => {
-    if (section !== 'backend') return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const data = await host.serverDiagnostics();
-        if (!cancelled) setDiag(data || null);
-      } catch {
-        if (!cancelled) setDiag(null);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [section]);
 
   // Optimistically flip the keychain toggle, then persist via main. Revert
   // the local state if the migration/write fails.
@@ -832,6 +775,7 @@ export default function SettingsView({
       setKeychainPref(!next);
     }
   };
+
   // Tracks whether any LLM-affecting setting changed since the last
   // successful Save. Used to skip provider tests on a no-op Save so a
   // user just toggling appearance doesn't pay the network round-trip.
@@ -850,6 +794,28 @@ export default function SettingsView({
   const { providerStatus: _ps, providerStatusDetails: _psd, ...settingsForDirty } = settings;
   const currentJson = JSON.stringify(settingsForDirty);
   const settingsDirty = lastSavedJson !== null && currentJson !== lastSavedJson;
+  // Parsed view of the saved snapshot. The Advanced Settings budget inputs
+  // use it to revert an emptied field to the last COMMITTED value — the
+  // snapshot is the only place that value survives once drafts land in
+  // `settings` (see BudgetNumberField).
+  const lastSavedSettings = useMemo(() => {
+    if (lastSavedJson == null) return null;
+    try { return JSON.parse(lastSavedJson); } catch { return null; }
+  }, [lastSavedJson]);
+  // Capability probe for the Advanced Settings budgets: cowork-server's
+  // list_settings returns a row for EVERY UserSettings field, so a server
+  // with the budget settings always sends both keys and an older one never
+  // does. Gating on presence keeps the section (and any possibility of
+  // writing the keys) off screens backed by servers that would 400 the
+  // write — the renderer ships OTA and can lead the installed server.
+  // Probe the LIVE settings, not the saved snapshot: the snapshot latches on
+  // the first render (offline-open would pin "no budgets" for the whole
+  // mount, even after a successful fetch). Live is equally safe — the only
+  // writer that can materialize these keys is the budget field itself, which
+  // sits inside this gate, so on an older server they can never appear.
+  const hasBudgetSettings = settings != null
+    && 'maxToolRounds' in settings
+    && 'maxContinuations' in settings;
   // Ref-mirror of `settings` so the post-Save snapshot can read the
   // freshly-refetched value (the closure's `settings` is stale after
   // the await but the ref tracks every render).
@@ -1073,9 +1039,16 @@ export default function SettingsView({
   useEffect(() => {
     if (didMountVerify.current) return;
     const configured = providers.filter(providerConfigured);
-    if (configured.length === 0) return;
+    if (configured.length === 0) {
+      // Nothing to verify — the picker's warning reflects config, not a
+      // pending network result, so let it show without waiting.
+      setInitialProviderTestDone(true);
+      return;
+    }
     didMountVerify.current = true;
-    runProviderTests(configured).catch(() => { });
+    runProviderTests(configured)
+      .catch(() => { })
+      .finally(() => setInitialProviderTestDone(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [providers]);
 
@@ -1117,7 +1090,7 @@ export default function SettingsView({
     setTesting(true);
     setTested(false);
     try {
-      await onSave(withResolvedRoles(settings));
+      await onSave(withResolvedRoles(clampBudgets(settings)));
       // Record the harness swap only now that it's persisted (ENG-385). Compare
       // against the pre-save snapshot — settingsRef holds the latest value since
       // the closure `settings` is stale after the await.
@@ -1189,76 +1162,6 @@ export default function SettingsView({
       ? (<><span style={{ display: 'inline-flex', marginRight: 6, verticalAlign: 'middle' }}>{Ico.check(13)}</span>Tested</>)
       : 'Test';
 
-  // Sign out: clears the persisted refresh token + every credential
-  // in ~/.anton/.env (ANTON_TERMS_CONSENT and prefs stay), then
-  // reloads so App.tsx re-routes the user to the onboarding flow.
-  const handleLogout = async () => {
-    if (loggingOut) return; // Guard against double-fire (Enter / re-click).
-    setLoggingOut(true);
-    try {
-      await host.logout();
-    } catch {
-      // Swallow — partial logout is still worth recovering from on the
-      // boot path, and the reload below puts us back through it.
-    }
-    // Rotate the analytics device identity so the next account on this machine
-    // starts anonymous-fresh and merges cleanly (ENG-537).
-    resetDeviceIdentity();
-    // Exactly ONE reload must happen, or the two compete and leave the
-    // page stuck on this confirm modal (flaky in packaged builds). On
-    // Electron the main process drives webContents.reload() itself
-    // after the IPC reply — that's the reliable path, so the renderer
-    // must NOT also reload. On web there's no main process, so we
-    // reload here.
-    if (host.isWeb) {
-      window.location.reload();
-    }
-  };
-
-  // ───────────────────────── Backend section helpers ─────────────────────────
-
-  const refreshDiag = async () => {
-    try {
-      const data = await host.serverDiagnostics();
-      setDiag(data || null);
-    } catch { }
-  };
-
-  const handleBackendStart = async () => {
-    if (!onStartServer) return;
-    setDiagBusy(true);
-    try {
-      await onStartServer();
-      await refreshDiag();
-    } finally {
-      setDiagBusy(false);
-    }
-  };
-
-  const handleBackendStop = async () => {
-    if (!onStopServer) return;
-    setDiagBusy(true);
-    try {
-      await onStopServer();
-      await refreshDiag();
-    } finally {
-      setDiagBusy(false);
-    }
-  };
-
-  const handleBackendRestart = async () => {
-    setDiagBusy(true);
-    try {
-      if (onStopServer && onStartServer) {
-        await onStopServer();
-        await onStartServer();
-      }
-      await refreshDiag();
-    } finally {
-      setDiagBusy(false);
-    }
-  };
-
   // ───────────────────────── Shared footer/banner helpers ─────────────────────────
 
   const renderSaveFooter = () => (
@@ -1310,34 +1213,17 @@ export default function SettingsView({
                 // Show the persisted/seeded status for any configured provider — a
                 // configured provider reads as connected at startup, not just the one
                 // currently driving a role. Unconfigured rows have nothing to show.
-                const rawStatus = (settings.providerStatus || {})[p.type] || 'untested';
-                const status = (p.type === 'minds-cloud' && isSsoConnected) ? 'ok' : configured ? rawStatus : 'untested';
-                const detail = configured ? ((settings.providerStatusDetails || {})[p.type] || '') : '';
-                const friendlyError = (() => {
-                  if (!detail) return '';
-                  if (detail === 'missing API key') return 'Add an API key on the right.';
-                  if (detail === 'missing base URL') return 'Add a base URL on the right.';
-                  const m = detail.match(/HTTP (\d{3})/);
-                  if (m) {
-                    const code = parseInt(m[1], 10);
-                    if (code === 401) return 'Unauthorized — the API key was rejected.';
-                    if (code === 403) return 'Forbidden — the API key does not have access.';
-                    if (code === 404) return 'Endpoint not found — check the base URL.';
-                    if (code === 429) return 'Rate limited — try again in a moment.';
-                    if (code >= 500) return `Provider is currently unreachable (HTTP ${code}).`;
-                    return `Provider rejected the request (HTTP ${code}).`;
-                  }
-                  if (detail.startsWith('ConnectError') || detail.startsWith('ConnectTimeout')) {
-                    return 'Could not reach the provider — network or DNS problem.';
-                  }
-                  if (detail.startsWith('ReadTimeout') || detail.startsWith('TimeoutException')) {
-                    return 'Provider did not respond in time.';
-                  }
-                  if (detail.startsWith('SSLError') || detail.includes('certificate')) {
-                    return 'TLS / certificate problem reaching the provider.';
-                  }
-                  return detail;
-                })();
+                const st = deriveProviderStatus(p.type, {
+                  providerStatus: settings.providerStatus || {},
+                  providerStatusDetails: settings.providerStatusDetails || {},
+                  configured,
+                  isSsoConnected,
+                  testInProgress: testing,
+                  initialTestDone: initialProviderTestDone,
+                });
+                const status = st.checking ? 'testing' : st.settled;
+                const detail = configured ? st.detail : '';
+                const friendlyError = friendlyProviderError(detail);
                 const statusBadge = providerStatusBadge(status, configured);
                 const statusPillTitle = status === 'ok' ? `Last test passed${detail ? ` (${detail})` : ''}`
                   : status === 'fail' ? `Last test failed${detail ? `: ${detail}` : ''}`
@@ -1404,7 +1290,10 @@ export default function SettingsView({
                 // Show the key input when: unconfigured, never tested, or user clicked Edit.
                 // Otherwise the middle column shows the status pill and an Edit button appears.
                 const ssoMindsHub = p.type === 'minds-cloud' && isSsoConnected;
-                const showKeyInput = ssoMindsHub || !configured || status === 'untested' || status === 'fail' || editingProviders.has(p.type);
+                // Keep a stale failed provider in badge mode while its fresh test is
+                // pending; otherwise the testing badge is replaced by the masked key.
+                const showKeyInput = ssoMindsHub || !configured || st.settled === 'untested'
+                  || (st.settled === 'fail' && !st.checking) || editingProviders.has(p.type);
                 return (
                   <div key={p.type} className="settings-provider-row" style={{
                     // Desktop: name | key/status | actions in a 3-col grid.
@@ -1630,15 +1519,24 @@ export default function SettingsView({
                   const modelEnabled = settings.modelEnabled || {};
                   const isLocked = (m) => modelEnabled[m] === false;
                   const firstEnabledModel = modelList.find((m) => !isLocked(m)) || modelList[0] || '';
-                  const providerUnconfigured = !!curType && !(provider && providerConfigured(provider));
-                  const providerFailed = (settings.providerStatus || {})[curType] === 'fail';
-                  const providerFailDetail = (settings.providerStatusDetails || {})[curType] || '';
-                  const isNoCredits = providerFailed && curType === 'minds-cloud'
+                  const st = deriveProviderStatus(curType, {
+                    providerStatus: settings.providerStatus || {},
+                    providerStatusDetails: settings.providerStatusDetails || {},
+                    configured: !!(provider && providerConfigured(provider)),
+                    isSsoConnected,
+                    testInProgress: testing,
+                    initialTestDone: initialProviderTestDone,
+                  });
+                  const providerUnconfigured = !!curType && st.unconfigured;
+                  const providerFailed = st.failed;
+                  const providerFailDetail = st.detail;
+                  const isNoCredits = providerFailed && !st.checking && curType === 'minds-cloud'
                     && (providerFailDetail.includes('402')
                       || providerFailDetail.includes('429')
                       || providerFailDetail.toLowerCase().includes('credit')
                       || providerFailDetail.toLowerCase().includes('quota'));
-                  const providerUnusable = (providerUnconfigured || providerFailed) && !isNoCredits;
+                  const providerUnusable = (providerUnconfigured || providerFailed) && !isNoCredits && !st.checking;
+                  const providerCheckingNotice = st.checking;
                   const providerWarnId = `agent-model-${role}-provider`;
 
                   // Reasoning effort — a per-role setting shown beside the model
@@ -1713,7 +1611,7 @@ export default function SettingsView({
                                 writeOverride({ providerType: t, model: newModel });
                               }}
                               invalid={providerUnusable}
-                              aria-describedby={providerUnusable ? providerWarnId : undefined}
+                              aria-describedby={(providerUnusable || providerCheckingNotice) ? providerWarnId : undefined}
                               title={`Choose which provider powers the ${role} role.`}
                               options={providers.map((p) => ({ value: p.type, label: providerDisplayName(p) }))}
                             />
@@ -1732,7 +1630,7 @@ export default function SettingsView({
                             return (
                               <label style={{ display: 'grid', gap: 4 }}>
                                 {fieldLabel('Model')}
-                                <Select
+                                <ModelSelect
                                   value={selectValue || firstEnabledModel}
                                   onValueChange={(next) => {
                                     if (next === '__custom__') {
@@ -1813,6 +1711,12 @@ export default function SettingsView({
                             />
                           </label>
                         )}
+                        {providerCheckingNotice && (
+                          <div id={providerWarnId} aria-live="polite" style={{ fontSize: 11.5, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <Spinner intervalMs={90} />
+                            Checking {providerDisplayName(provider)} connection…
+                          </div>
+                        )}
                         {providerUnusable && (
                           <div id={providerWarnId} style={{ fontSize: 11.5, color: '#E07060' }}>
                             {providerUnconfigured
@@ -1890,6 +1794,37 @@ export default function SettingsView({
             />
           </Section>
         </CollapsibleGroup>
+
+        {hasBudgetSettings && (
+          <CollapsibleGroup title="Advanced Settings" defaultOpen={false}>
+            <Section
+              title="Max steps per task"
+              subtitle={`How many actions (running code, reading files, searching) ${agentLabel || 'Anton'} may take on one request before pausing to check in with you. Raise it so big tasks finish in one go; lower it for a tighter leash on time and cost.`}
+            >
+              <BudgetNumberField
+                settingKey="maxToolRounds"
+                value={settings.maxToolRounds}
+                savedValue={lastSavedSettings?.maxToolRounds}
+                spec={BUDGET_FIELDS.maxToolRounds}
+                label="Max steps per task"
+                setSetting={setSetting}
+              />
+            </Section>
+            <Section
+              title="Max auto-continues"
+              subtitle={`When ${agentLabel || 'Anton'} stops but the work looks unfinished, Cowork sends it back to complete the job — this caps how many times. Raise it for hands-off thoroughness; set 0 to stop after the first attempt (you'll still get a summary of what's missing).`}
+            >
+              <BudgetNumberField
+                settingKey="maxContinuations"
+                value={settings.maxContinuations}
+                savedValue={lastSavedSettings?.maxContinuations}
+                spec={BUDGET_FIELDS.maxContinuations}
+                label="Max auto-continues"
+                setSetting={setSetting}
+              />
+            </Section>
+          </CollapsibleGroup>
+        )}
       </SettingsSectionPanel>
     );
   };
@@ -2269,501 +2204,32 @@ export default function SettingsView({
   );
 
   const renderUpdatesSection = () => (
-    <SettingsSectionPanel footer={renderSaveFooter()}>
-      <div style={{
-        border: '1px solid var(--border-subtle)', borderRadius: 'var(--card-radius)',
-        background: 'var(--surface-glass)',
-        WebkitBackdropFilter: 'blur(var(--surface-glass-blur))',
-        backdropFilter: 'blur(var(--surface-glass-blur))',
-        marginBottom: 14, overflow: 'hidden', padding: '0 18px 8px',
-      }}>
-        <Section
-          title="Current version"
-          subtitle="The version currently running. Server and UI updates are applied automatically at launch; components under the hood are shown in details."
-        >
-          {(() => {
-            const baked = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '';
-            // App shell = installed Electron shell (changes only on reinstall).
-            const shellVer = versionInfo.app || baked;
-            // The running renderer's own baked version is authoritative for the
-            // UI version — it's compiled into whichever bundle actually loaded
-            // (OTA or bundled). Main-process cache metadata (`versionInfo.ui`)
-            // can lag the loaded renderer (OTA off, missing cache, post-
-            // rollback), so it only informs the source label, never the version.
-            const uiVer = baked || versionInfo.ui || '';
-            const uiSource = versionInfo.source === 'ota' ? 'OTA'
-              : versionInfo.source === 'web' ? 'web' : 'bundled';
-            // Unified "content" headline = ISO week of the newest of the
-            // hot-updated components (UI + server + agent). App shell is
-            // excluded — it updates via reinstall and is shown on its own line.
-            const unified = unifiedVersion([uiVer, serverVersion, antonVersion]);
-            const outOfSync = !!unified && unified.skewDays >= SKEW_WARN_DAYS;
-            const rows = [
-              ['App shell', shellVer || '—'],
-              ['UI', uiVer ? `${uiVer} (${uiSource})` : '—'],
-              ['Server', serverVersion || '—'],
-              ['Agent', antonVersion || '—'],
-            ];
-            const copyText = rows.map(([k, v]) => `${k}: ${v}`).join('\n');
-            return (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 12.5, color: 'var(--text-strong)' }}>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-                  <span title={unified ? unified.weekOf : undefined} style={{ fontFamily: 'var(--font-mono)', fontSize: 15, fontWeight: 600 }}>
-                    {unified ? unified.label : (shellVer || '—')}
-                  </span>
-                  {outOfSync && (
-                    <span
-                      title={`Underlying components span ${unified.skewDays} days — a component is lagging. See details.`}
-                      style={{ color: 'var(--warning, #c47f00)', fontSize: 11.5, fontWeight: 600 }}
-                    >
-                      ⚠ out of sync
-                    </span>
-                  )}
-                  {unified && (
-                    <span style={{ color: 'var(--text-muted)', fontSize: 11.5 }}>{unified.weekOf}</span>
-                  )}
-                </div>
-                {isElectron && (
-                  <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', fontSize: 12 }}>
-                    <span style={{ marginRight: 4 }}>App shell</span>{shellVer || '—'}
-                  </span>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setShowVersionDetails((v) => !v)}
-                  style={{ alignSelf: 'flex-start', background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--accent)', fontSize: 11.5 }}
-                >
-                  {showVersionDetails ? 'Hide details' : 'Details'}
-                </button>
-                {showVersionDetails && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontFamily: 'var(--font-mono)', fontSize: 12, padding: '8px 10px', border: '1px solid var(--border-subtle)', borderRadius: 8, background: 'var(--surface-glass)' }}>
-                    {rows.map(([k, v]) => (
-                      <span key={k}>
-                        <span style={{ color: 'var(--text-muted)', marginRight: 6, display: 'inline-block', minWidth: 64 }}>{k}</span>{v}
-                      </span>
-                    ))}
-                    <Button
-                      onClick={() => {
-                        navigator.clipboard?.writeText(copyText);
-                        setVersionCopied(true);
-                        setTimeout(() => setVersionCopied(false), 1500);
-                      }}
-                      style={{ alignSelf: 'flex-start', marginTop: 4 }}
-                    >
-                      {versionCopied ? 'Copied' : 'Copy'}
-                    </Button>
-                  </div>
-                )}
-              </div>
-            );
-          })()}
-        </Section>
-      </div>
-    </SettingsSectionPanel>
-  );
-
-  const renderBackendSection = () => {
-    if (host.isWeb) {
-      return (
-        <SettingsSectionPanel>
-          <div style={{
-            padding: '32px 0',
-            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-            gap: 10, textAlign: 'center',
-            color: 'var(--text-muted)', fontSize: 13,
-          }}>
-            <span style={{ fontSize: 32, lineHeight: 1 }}>☁</span>
-            <div style={{ fontWeight: 600, color: 'var(--text-strong)', fontSize: 14 }}>Backend is managed server-side</div>
-            <div style={{ maxWidth: 320 }}>The Python backend runs on the server — it isn't controllable from this interface.</div>
-          </div>
-        </SettingsSectionPanel>
-      );
-    }
-
-    const FONT_MONO = "var(--font-mono, 'JetBrains Mono', monospace)";
-    const error = diag?.lastError;
-    const log = (diag?.recentLog || '').trim();
-    const port = diag?.port;
-    const errorKind = diag?.lastErrorKind ?? null;
-    const startedAt = diag?.lastStartAt
-      ? new Date(diag.lastStartAt).toLocaleTimeString()
-      : null;
-    // "never started" is wrong for a backend that was still importing when we
-    // stopped waiting for it (the most common failure on a slow machine's first
-    // launch), and equally wrong for one the user deliberately stopped — a
-    // signal kill leaves no exit code, so both used to land on that string.
-    const exitLabel = exitCodeLabel({
-      kind: errorKind,
-      exitCode: diag?.lastExitCode ?? null,
-      stopIntentional: diag?.lastStopIntentional ?? null,
-    });
-    const failureCopy = backendFailureCopy({
-      kind: errorKind,
-      hasLog: log.length > 0,
-      port: port ?? null,
-      portHolderPid: diag?.portHolderPid ?? null,
-    });
-
-    const state = serverBusy
-      ? (serverBusyKind === 'stopping' ? 'stopping' : 'starting')
-      : serverOnline ? 'online' : 'offline';
-    const offlineKind = state === 'offline'
-      && !error
-      && diag?.lastStopIntentional === true
-      ? 'stopped'
-      : 'failed';
-
-    const STATUS_META = {
-      online: { title: 'MindsHub backend is running', subtitle: 'The local Python server is responding to /health.', iconColor: 'var(--success, #1F8F5F)', iconBgMix: 'var(--success, #1F8F5F)' },
-      starting: { title: 'MindsHub backend is starting…', subtitle: 'Spawning the local Python server. This usually takes a few seconds.', iconColor: 'var(--accent)', iconBgMix: 'var(--accent)' },
-      stopping: { title: 'MindsHub backend is stopping…', subtitle: 'Waiting for the local Python server to terminate.', iconColor: 'var(--ink-3)', iconBgMix: 'var(--ink-3)' },
-      offline: offlineKind === 'stopped'
-        ? { title: 'MindsHub backend is stopped', subtitle: 'You stopped the local Python server. Click "Start backend" below to bring it back up.', iconColor: 'var(--ink-3)', iconBgMix: 'var(--ink-3)' }
-        : { title: 'MindsHub backend isn\'t running', subtitle: "The local Python server didn't start. The most recent error and log tail are captured below.", iconColor: 'var(--danger)', iconBgMix: 'var(--danger)' },
-    }[state];
-
-    const backendFooter = (
-      <>
-        <Button onClick={refreshDiag} title="Refresh diagnostics">
-          {Ico.refresh(14)}Refresh
-        </Button>
-        {(onStartServer || onStopServer) && state !== 'offline' && (
-          <Button onClick={handleBackendStop} disabled={diagBusy || serverBusy || !onStopServer}>
-            {(diagBusy && serverBusyKind === 'stopping') ? 'Stopping…' : 'Stop backend'}
-          </Button>
-        )}
-        {(onStartServer || onStopServer) && (
-          <Button variant="primary" onClick={state === 'offline' ? handleBackendStart : handleBackendRestart}
-            disabled={diagBusy || serverBusy || (state === 'offline' ? !onStartServer : !(onStartServer && onStopServer))}
-          >{diagBusy ? (state === 'offline' ? 'Starting…' : 'Restarting…') : (state === 'offline' ? 'Start backend' : 'Restart backend')}</Button>
-        )}
-      </>
-    );
-
-    return (
-      <SettingsSectionPanel footer={backendFooter}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-
-          {/* Status card — status header + port + logs */}
-          <div style={{
-            border: '1px solid var(--border-subtle)', borderRadius: 'var(--card-radius)',
-            background: 'var(--surface-glass)',
-            WebkitBackdropFilter: 'blur(var(--surface-glass-blur))',
-            backdropFilter: 'blur(var(--surface-glass-blur))',
-            overflow: 'hidden',
-          }}>
-            <div style={{
-              padding: '10px 16px',
-              borderBottom: '1px solid var(--line)',
-              fontSize: 10.5, fontWeight: 600, letterSpacing: '0.07em',
-              textTransform: 'uppercase', color: 'var(--ink-4)',
-            }}>Status</div>
-
-            {/* Status summary row */}
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '14px 16px' }}>
-              <span style={{
-                display: 'inline-grid', placeItems: 'center',
-                width: 34, height: 34, borderRadius: 8, flexShrink: 0,
-                background: `color-mix(in srgb, ${STATUS_META.iconBgMix} 14%, var(--surface))`,
-                color: STATUS_META.iconColor,
-                border: `1px solid color-mix(in srgb, ${STATUS_META.iconBgMix} 35%, transparent)`,
-              }}>
-                {Ico.power ? Ico.power(16) : '⏻'}
-              </span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 600, fontSize: 13.5, color: 'var(--ink)' }}>{STATUS_META.title}</div>
-                <div style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 2, lineHeight: 1.5 }}>{STATUS_META.subtitle}</div>
-              </div>
-            </div>
-
-            {/* Port + exit code + last attempt chips */}
-            <div style={{
-              display: 'flex', gap: 8, padding: '0 16px 14px',
-              fontFamily: FONT_MONO, fontSize: 11,
-            }}>
-              <div style={{ padding: '6px 10px', borderRadius: 6, background: 'var(--surface-2)', border: '1px solid var(--line)' }}>
-                <span style={{ color: 'var(--ink-4)', textTransform: 'uppercase', letterSpacing: '0.06em', fontSize: 9.5, marginRight: 6 }}>Port</span>
-                <span style={{ color: 'var(--ink)' }}>{port ?? '—'}</span>
-              </div>
-              {state === 'offline' && (
-                <div style={{ padding: '6px 10px', borderRadius: 6, background: 'var(--surface-2)', border: '1px solid var(--line)' }}>
-                  <span style={{ color: 'var(--ink-4)', textTransform: 'uppercase', letterSpacing: '0.06em', fontSize: 9.5, marginRight: 6 }}>Exit</span>
-                  <span style={{ color: 'var(--ink)' }}>{exitLabel}</span>
-                </div>
-              )}
-              {startedAt && (
-                <div style={{ padding: '6px 10px', borderRadius: 6, background: 'var(--surface-2)', border: '1px solid var(--line)' }}>
-                  <span style={{ color: 'var(--ink-4)', textTransform: 'uppercase', letterSpacing: '0.06em', fontSize: 9.5, marginRight: 6 }}>Started</span>
-                  <span style={{ color: 'var(--ink)' }}>{startedAt}</span>
-                </div>
-              )}
-            </div>
-
-            {/* Headline error inside card — offline + start-failure */}
-            {state === 'offline' && offlineKind === 'failed' && (
-              <div style={{ padding: '0 16px 14px' }}>
-                {error ? (
-                  <div style={{
-                    padding: '10px 12px', borderRadius: 8,
-                    background: 'color-mix(in srgb, var(--danger) 12%, var(--surface))',
-                    border: '1px solid color-mix(in srgb, var(--danger) 35%, transparent)',
-                    color: 'var(--danger)', fontSize: 12.5, lineHeight: 1.5,
-                    fontFamily: FONT_MONO, wordBreak: 'break-word',
-                  }}>{error}</div>
-                ) : (
-                  <div style={{
-                    padding: '10px 12px', borderRadius: 8,
-                    background: 'var(--surface-2)', border: '1px solid var(--line)',
-                    color: 'var(--ink-3)', fontSize: 12.5, lineHeight: 1.5,
-                  }}>No specific start error was captured. Check the log tail — the process may have died after starting.</div>
-                )}
-              </div>
-            )}
-
-            {/* Recent log */}
-            <div style={{ borderTop: '1px solid var(--line)', padding: '10px 16px 14px' }}>
-              <div style={{
-                fontFamily: FONT_MONO, fontSize: 10, color: 'var(--ink-4)',
-                letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 6,
-              }}>Log</div>
-              <pre style={{
-                margin: 0, padding: '10px 12px',
-                background: 'var(--surface-2)', border: '1px solid var(--line)',
-                borderRadius: 8, fontFamily: FONT_MONO, fontSize: 11.5, lineHeight: 1.55,
-                color: 'var(--ink-2)', maxHeight: 200, overflow: 'auto',
-                whiteSpace: 'pre-wrap', wordBreak: 'break-word', userSelect: 'text',
-              }}>{log || '(no log captured yet)'}</pre>
-            </div>
-          </div>
-
-          {/* What actually happened + what to do about it. Driven by the
-              failure kind, so the panel never asks for a log in the state
-              where no log can exist. */}
-          {state === 'offline' && offlineKind === 'failed' && (
-            <div style={{ fontSize: 12, color: 'var(--ink-3)', lineHeight: 1.5 }}>
-              <div style={{ color: 'var(--ink-2)', fontWeight: 600, marginBottom: 4 }}>{failureCopy.headline}</div>
-              <ul style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 3 }}>
-                {failureCopy.hints.map((hint) => <li key={hint}>{hint}</li>)}
-              </ul>
-            </div>
-          )}
-
-
-        </div>
-      </SettingsSectionPanel>
-    );
-  };
-
-  const renderAccountSection = () => {
-    const CARD = {
-      border: '1px solid var(--border-subtle)', borderRadius: 'var(--card-radius)',
-      background: 'var(--surface-glass)',
-      WebkitBackdropFilter: 'blur(var(--surface-glass-blur))',
-      backdropFilter: 'blur(var(--surface-glass-blur))',
-      marginBottom: 14, overflow: 'hidden',
-    };
-
-    // User info card — shown on both Electron and web if we have a token
-    const userCard = accountUser && (
-      <div style={{ ...CARD }}>
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 14,
-          padding: '16px 18px',
-        }}>
-          {/* Avatar circle with initials */}
-          <div style={{
-            width: 44, height: 44, borderRadius: '50%', flexShrink: 0,
-            background: 'color-mix(in srgb, var(--accent, #5d9287) 18%, var(--surface))',
-            border: '1px solid color-mix(in srgb, var(--accent, #5d9287) 35%, transparent)',
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 16, fontWeight: 700, color: 'var(--accent, #5d9287)',
-            userSelect: 'none',
-          }} aria-hidden="true">
-            {accountUser.name
-              ? accountUser.name.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase()
-              : accountUser.email
-                ? accountUser.email[0].toUpperCase()
-                : '?'}
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            {accountUser.name && (
-              <div style={{ fontSize: 15, fontWeight: 650, color: 'var(--ink)', lineHeight: 1.25, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {accountUser.name}
-              </div>
-            )}
-            {accountUser.email && (
-              <div style={{ fontSize: 13, color: 'var(--ink-3)', marginTop: accountUser.name ? 2 : 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {accountUser.email}
-              </div>
-            )}
-            {!accountUser.name && !accountUser.email && accountUser.username && (
-              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>{accountUser.username}</div>
-            )}
-          </div>
-          <a
-            href={MINDS_CONSOLE_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              flexShrink: 0, fontSize: 12, fontWeight: 500,
-              color: 'var(--accent, #5d9287)', textDecoration: 'none',
-              padding: '5px 10px', borderRadius: 6,
-              border: '1px solid color-mix(in srgb, var(--accent, #5d9287) 40%, transparent)',
-              background: 'color-mix(in srgb, var(--accent, #5d9287) 8%, transparent)',
-            }}
-          >MindsHub ↗</a>
-        </div>
-        {/* Extra rows for username / org if present */}
-        {(accountUser.username || accountUser.org) && (
-          <div style={{
-            borderTop: '1px solid var(--line)',
-            padding: '10px 18px',
-            display: 'flex', gap: 20,
-          }}>
-            {accountUser.username && (
-              <div>
-                <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--ink-4)', marginBottom: 2 }}>Username</div>
-                <div style={{ fontSize: 13, color: 'var(--ink-2)', fontFamily: 'var(--font-mono)' }}>{accountUser.username}</div>
-              </div>
-            )}
-            {accountUser.org && (
-              <div>
-                <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--ink-4)', marginBottom: 2 }}>Organization</div>
-                <div style={{ fontSize: 13, color: 'var(--ink-2)' }}>{accountUser.org}</div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    );
-
-    const signInCard = !accountUser && onSsoSignIn && (
-      <div style={{
-        ...CARD,
-        padding: '32px 28px 28px',
-        display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 24,
-        background: 'color-mix(in srgb, var(--accent, #5d9287) 5%, var(--surface-glass))',
-        borderColor: 'color-mix(in srgb, var(--accent, #5d9287) 28%, transparent)',
-      }}>
-        {/* Header */}
-        <div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-strong)', lineHeight: 1.25, marginBottom: 6 }}>
-            Enable cloud capabilities
-          </div>
-          <div style={{ fontSize: 13.5, color: 'var(--text-muted)', lineHeight: 1.6, maxWidth: 440 }}>
-            Sign in with MindsHub to access every model, cloud execution, and publishing — all in one place.
-          </div>
-        </div>
-
-        {/* Feature grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 20px', width: '100%' }}>
-          {[
-            { icon: '⇌', label: 'Seamless model router', desc: 'The simplest way to use all models in one place — Claude, GPT, DeepSeek, Kimi, and more.' },
-            { icon: '⟁', label: 'Remote tasks', desc: 'Run code and long tasks on managed infrastructure, not your laptop.', soon: true },
-            { icon: <svg width="17" height="13" viewBox="0 0 20 14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15.5 12H5a4 4 0 0 1-.5-7.97A5 5 0 0 1 14.5 6h1a3 3 0 0 1 0 6Z" /></svg>, label: 'Share & collaborate', desc: 'Share dashboards, reports, and artifacts — and work on them together.' },
-            { icon: '⊹', label: 'Unified account', desc: 'One login, one bill — no juggling API keys across providers.' },
-          ].map(({ icon, label, desc, soon }) => (
-            <div key={label} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-              <span style={{
-                fontSize: 16, lineHeight: 1,
-                color: 'var(--accent, #5d9287)',
-                marginTop: 2, flexShrink: 0,
-                display: 'inline-flex', alignItems: 'center',
-              }}>{icon}</span>
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 650, color: 'var(--text-strong)', marginBottom: 2, display: 'flex', alignItems: 'center', gap: 6 }}>
-                  {label}
-                  {soon && (
-                    <span style={{
-                      fontSize: 9.5, fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase',
-                      padding: '1px 5px', borderRadius: 99,
-                      background: 'rgba(127,127,127,0.1)', border: '1px solid rgba(127,127,127,0.2)',
-                      color: 'var(--text-muted)',
-                    }}>coming soon</span>
-                  )}
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>{desc}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Last sign-in failure (ENG-761) — without this, a failed
-            browser flow left the card looking untouched and the user
-            with no idea anything went wrong. */}
-        {ssoError && (
-          <div role="alert" style={{
-            width: '100%', padding: '10px 14px', borderRadius: 8,
-            fontSize: 12.5, lineHeight: 1.55,
-            color: 'var(--danger, #c0564f)',
-            background: 'color-mix(in srgb, var(--danger, #c0564f) 8%, transparent)',
-            border: '1px solid color-mix(in srgb, var(--danger, #c0564f) 30%, transparent)',
-          }}>
-            Sign-in didn't complete: {ssoError}
-          </div>
-        )}
-
-        {/* CTA */}
-        <Button variant="primary" onClick={onSsoSignIn}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
-            <polyline points="10 17 15 12 10 7" />
-            <line x1="15" y1="12" x2="3" y2="12" />
-          </svg>
-          Sign in / Sign up to MindsHub
-        </Button>
-      </div>
-    );
-
-    if (!host.isElectron) {
-      return (
-        <SettingsSectionPanel>
-          {userCard || (
-            <div style={{ padding: '32px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
-              <div style={{ fontWeight: 600, color: 'var(--text-strong)', fontSize: 14 }}>Managed via MindsHub</div>
-              <div style={{ maxWidth: 320 }}>Account management is handled through MindsHub for the web version.</div>
-            </div>
-          )}
-        </SettingsSectionPanel>
-      );
-    }
-
-    return (
-      <SettingsSectionPanel>
-        {signInCard}
-        {userCard}
-        {accountUser && <div style={{ ...CARD, padding: '0 18px 8px' }}>
-          <Section title="Sign out" subtitle="Disconnect from MindsHub and remove every stored credential on this device. Cowork will return to the onboarding flow on the next launch.">
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <Button variant="danger" onClick={() => setLogoutConfirmOpen(true)} disabled={loggingOut} title="Sign out and clear stored credentials">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                  <polyline points="16 17 21 12 16 7" />
-                  <line x1="21" y1="12" x2="9" y2="12" />
-                </svg>
-                {loggingOut ? 'Signing out…' : 'Sign out'}
-              </Button>
-            </div>
-          </Section>
-        </div>}
-      </SettingsSectionPanel>
-    );
-  };
-
-  const logoutConfirm = (
-    <ConfirmModal
-      open={logoutConfirmOpen}
-      title="Sign out of Cowork?"
-      message="This clears your stored API keys and disconnects from MindsHub. You'll need to sign in again to keep using Cowork."
-      confirmLabel="Sign out"
-      cancelLabel="Cancel"
-      destructive
-      busy={loggingOut}
-      busyLabel="Signing out…"
-      onConfirm={handleLogout}
-      onClose={() => setLogoutConfirmOpen(false)}
+    <UpdatesSection
+      footer={renderSaveFooter()}
+      serverOnline={serverOnline}
+      shellUpdate={shellUpdate}
+      onDownloadShellUpdate={onDownloadShellUpdate}
     />
   );
+
+  const renderBackendSection = () => (
+    <BackendSection
+      serverOnline={serverOnline}
+      serverBusy={serverBusy}
+      serverBusyKind={serverBusyKind}
+      onStartServer={onStartServer}
+      onStopServer={onStopServer}
+    />
+  );
+
+  const renderAccountSection = () => (
+    <AccountSection
+      isSsoConnected={isSsoConnected}
+      ssoError={ssoError}
+      onSsoSignIn={onSsoSignIn}
+    />
+  );
+
 
   // Mobile (ENG-990): master-detail. The surface is a list of the six
   // sections; tapping one drills into a focused full-screen page for just
@@ -2780,7 +2246,7 @@ export default function SettingsView({
       backend: renderBackendSection,
       account: renderAccountSection,
     };
-    const activeItem = NAV_ITEMS.find((i) => i.id === section) || null;
+    const activeItem = navItemsForHost(host.isWeb).find((i) => i.id === section) || null;
     const inDetail = Boolean(activeItem);
     return (
       <SettingsLayoutContext.Provider value={{ mobile: true }}>
@@ -2805,8 +2271,15 @@ export default function SettingsView({
             </div>
           ) : (
             <nav className="settings-list" role="navigation" aria-label="Settings sections">
-              {NAV_ITEMS.map((item) => {
-                const disabled = !serverOnline && item.id !== 'backend';
+              {navItemsForHost(host.isWeb).map((item) => {
+                // `!host.isWeb &&`: the offline-disable exists because a dead local
+                // server can't accept a save, and Backend stays enabled as the
+                // escape hatch to restart it. On web there is no Backend row —
+                // and `serverOnline` DOES go false there: refreshData() polls
+                // /health on mount on both platforms (App.jsx), so a transient
+                // failure on hosted (proxy 502, auth blip) would otherwise
+                // disable EVERY row with no way out.
+                const disabled = !host.isWeb && !serverOnline && item.id !== 'backend';
                 const icon = Ico[item.icon] ? Ico[item.icon](18) : null;
                 return (
                   <div className="mshell-accordion" key={item.id}>
@@ -2832,23 +2305,29 @@ export default function SettingsView({
             </nav>
           )}
         </div>
-        {logoutConfirm}
       </SettingsLayoutContext.Provider>
     );
   }
 
+  // Hiding a nav row isn't enough on its own — `navigate('settings:backend')`
+  // sets the section directly, so a deep link (or a stale persisted section)
+  // could still render one this host doesn't offer. Resolve through the visible
+  // set and fall back to its first entry (Agent).
+  const visibleNav = navItemsForHost(host.isWeb);
+  const effectiveSection = visibleNav.some((i) => i.id === section)
+    ? section
+    : visibleNav[0]?.id;
+
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'row', minHeight: 0 }}>
-      <SettingsNav section={section} onSectionChange={onSectionChange} serverOnline={serverOnline} />
+      <SettingsNav section={effectiveSection} onSectionChange={onSectionChange} serverOnline={serverOnline} />
 
-      {section === 'agent' && renderAgentSection()}
-      {section === 'appearance' && renderAppearanceSection()}
-      {section === 'channels' && renderChannelsSection()}
-      {section === 'updates' && renderUpdatesSection()}
-      {section === 'backend' && renderBackendSection()}
-      {section === 'account' && renderAccountSection()}
-
-      {logoutConfirm}
+      {effectiveSection === 'agent' && renderAgentSection()}
+      {effectiveSection === 'appearance' && renderAppearanceSection()}
+      {effectiveSection === 'channels' && renderChannelsSection()}
+      {effectiveSection === 'updates' && renderUpdatesSection()}
+      {effectiveSection === 'backend' && renderBackendSection()}
+      {effectiveSection === 'account' && renderAccountSection()}
     </div>
   );
 }

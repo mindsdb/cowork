@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import Ico from '../components/Icons';
-import { Message, Button, Card, EmptyState as UiEmptyState, Select } from '../components/ui';
+import { Message, Button, Card, EmptyState as UiEmptyState, Select, Input, Textarea } from '../components/ui';
 import { PageHeader as CollectionPageHeader } from '../components/collection';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
+import { copyText } from '../lib/clipboard';
 import {
   deleteDatasource,
   deleteMemory,
@@ -22,17 +23,6 @@ const TITLES = {
   memory:  ['Memories', 'Profile, rules, and lessons the agent can reuse across tasks.'],
   publish: ['Share', 'HTML artifacts the agent can share with Minds credentials.'],
 };
-
-function PageHeader({ title, subtitle }) {
-  return (
-    <div className="page-header">
-      <div style={{ flex: 1 }}>
-        <h1 className="page-title">{title}</h1>
-        {subtitle && <div style={{ fontSize: 13, color: 'var(--frost-600)', marginTop: 4 }}>{subtitle}</div>}
-      </div>
-    </div>
-  );
-}
 
 function EmptyState({ children }) {
   return <div style={{ padding: 32, color: 'var(--frost-600)', fontSize: 13 }}>{children}</div>;
@@ -97,8 +87,8 @@ export default function UtilitiesView({ kind, project, onRefreshArtifacts }) {
     <div className="scroll-clean" style={wrapperStyle}>
       {/* MemoryView renders its own header. For the legacy kinds we
           keep the plain header here. */}
-      {!isMemoryKind && <PageHeader title={title} subtitle={subtitle} />}
-      {status && <Message style={{ margin: '16px 28px 0', fontSize: 12.5 }}>{status}</Message>}
+      {!isMemoryKind && <CollectionPageHeader title={title} subtitle={subtitle} />}
+      {status && <Message role="status" aria-live="polite" style={{ margin: '16px 28px 0', fontSize: 12.5 }}>{status}</Message>}
       {!data ? <EmptyState>Loading…</EmptyState> : null}
       {data && kind === 'memory' && (
         <MemoryView
@@ -459,7 +449,7 @@ function ConnectView({ data, setData, setStatus }) {
             options={(engineDef.authMethods || []).map((method) => ({ value: method.name, label: method.display }))}
           />
         )}
-        <input aria-label="Connection name (optional)" value={name} onChange={(e) => setName(e.target.value)} placeholder="connection name (optional)" style={inputStyle} />
+        <Input aria-label="Connection name (optional)" value={name} onChange={(v) => setName(v)} placeholder="connection name (optional)" style={inputStyle} />
         {fields.length > 0 && (
           <div style={{ fontSize: 11.5, color: 'var(--frost-600)' }}>
             Required: {fields.filter((field) => field.required).map((field) => field.name).join(', ') || 'none'}
@@ -471,18 +461,18 @@ function ConnectView({ data, setData, setStatus }) {
               {fieldLabel(field.name)}{field.required ? ' *' : ''}
             </span>
             {shouldUseTextarea(field) ? (
-              <textarea
+              <Textarea
                 value={credentialValues[field.name] ?? ''}
-                onChange={(event) => updateCredential(field, event.target.value)}
+                onChange={(v) => updateCredential(field, v)}
                 rows={4}
                 placeholder={field.description || field.default || ''}
                 spellCheck={false}
                 style={{ ...inputStyle, height: 'auto', padding: 10, fontFamily: 'var(--font-mono)', userSelect: 'text' }}
               />
             ) : (
-              <input
+              <Input
                 value={credentialValues[field.name] ?? ''}
-                onChange={(event) => updateCredential(field, event.target.value)}
+                onChange={(v) => updateCredential(field, v)}
                 type={field.secret ? 'password' : 'text'}
                 placeholder={field.description || field.default || ''}
                 style={inputStyle}
@@ -522,6 +512,11 @@ function PublishView({ data, setData, setStatus, onRefreshArtifacts }) {
     }
   };
 
+  const copyUrl = async (url) => {
+    const ok = await copyText(url);
+    setStatus(ok ? 'Copied URL to clipboard.' : "Couldn't copy — select the URL above to copy it manually.");
+  };
+
   return (
     <div style={{ padding: 28, display: 'flex', flexDirection: 'column', gap: 10 }}>
       {!data.publishReady && (
@@ -537,7 +532,7 @@ function PublishView({ data, setData, setStatus, onRefreshArtifacts }) {
             <div style={{ fontSize: 11.5, color: 'var(--frost-600)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{artifact.path}</div>
             {artifact.publishedUrl && <div style={{ fontSize: 12, color: 'var(--sage-700)', marginTop: 4, userSelect: 'text' }}>{artifact.publishedUrl}</div>}
           </div>
-          {artifact.publishedUrl && <Button variant="subtle" onClick={() => navigator.clipboard?.writeText(artifact.publishedUrl)}>Copy URL</Button>}
+          {artifact.publishedUrl && <Button variant="subtle" onClick={() => copyUrl(artifact.publishedUrl)}>Copy URL</Button>}
           {artifact.publishedUrl && <Button variant="subtle" onClick={() => window.open(artifact.publishedUrl, '_blank', 'noopener,noreferrer')}>Open</Button>}
           <Button variant="subtle" disabled={!data.publishReady} onClick={() => publish(artifact)}>Share</Button>
         </div>

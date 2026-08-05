@@ -33,7 +33,7 @@ import {
   isAccessDraftValid,
   buildAccessPayload,
 } from '../components/artifact/publish/AccessChooser';
-import { ArtifactIcon, splitArtifactName } from '../components/artifacts/ArtifactIcon';
+import { ArtifactIcon, splitArtifactName, displayTitle, fileNameOf, isWebAppArtifact } from '../components/artifacts/ArtifactIcon';
 import { ArtifactStatus } from '../components/artifacts/ArtifactStatus';
 import {
   PageHeader,
@@ -109,16 +109,12 @@ function isInlinePreviewable(a) {
   return false;
 }
 
-// "Updated" is already pre-formatted by the server (e.g. "3h ago",
-// "Yesterday"). For sorting we need a numeric stamp — fall back to the
-// raw `updatedAt` / `mtime` if present, otherwise 0 so unknown items
-// sink to the bottom.
-function timestampOf(a) {
-  const raw = a.updatedAt || a.updated_at || a.mtime || a.modified;
-  if (raw == null) return 0;
-  if (typeof raw === 'number') return raw;
-  const t = Date.parse(raw);
-  return Number.isFinite(t) ? t : 0;
+// "Updated" is pre-formatted by the server (e.g. "3h ago") from the same
+// content_mtime this sorts by (ENG-1123 Bug 2) — so the sort order and the
+// printed age can no longer disagree. a.mtime is always a plain number of
+// seconds (content_mtime) or absent/0 — never a string, so no Date.parse.
+export function timestampOf(a) {
+  return a.mtime || 0;
 }
 
 // Kind pill — short uppercase tag for the file type. Pulls from
@@ -127,6 +123,29 @@ function kindOf(a) {
   if (a.kind) return String(a.kind).toLowerCase();
   const ext = (a.ext || '').replace(/^\./, '').toLowerCase();
   return ext || 'file';
+}
+
+// Shared by both comparison levels below, so a numeric-aware order (v2
+// before v10) applies consistently to the primary compare AND the filename
+// tie-break — using different collator options per level would let the
+// tie-break re-introduce the wrong order it's supposed to help fix.
+// Locale pinned to 'en' (not `undefined`, i.e. not the runtime's default
+// locale) so digit-vs-letter collation order — and therefore this file's
+// own test fixtures — can't vary between a developer's machine and CI.
+// No `sensitivity: 'base'`: default sensitivity treats "Report" and "report"
+// as unequal, which matters here — the tie-break must only ever run when the
+// primary text is truly identical on screen, not merely case/accent-equivalent.
+const NAME_COLLATOR = new Intl.Collator('en', { numeric: true });
+
+export function titleCompare(a, b) {
+  const t = NAME_COLLATOR.compare(displayTitle(a), displayTitle(b));
+  if (t !== 0) return t;
+  // Tie-break only when a visible secondary line exists on both sides —
+  // web-app artifacts render no secondary line, so there is nothing on
+  // screen to justify breaking the tie by (falling back to fileNameOf here
+  // would reintroduce the exact "invisible sort key" bug this fixes).
+  if (isWebAppArtifact(a) || isWebAppArtifact(b)) return 0;
+  return NAME_COLLATOR.compare(fileNameOf(a), fileNameOf(b));
 }
 
 // Publish visibility chooser — a thin wrapper over the shared
@@ -236,7 +255,7 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
   // is a "file" (shows its extension) yet still publishable. The name renders
   // base-truncated with the extension always visible.
   const publishable = isPublishableArtifact(artifact);
-  const { base, ext: nameExt } = splitArtifactName(artifact);
+  const { base, secondary } = splitArtifactName(artifact);
   // ↗ — open the live thing: published URL, else served URL, else local file.
   const onOpenExternal = (e) => {
     e.stopPropagation();
@@ -261,16 +280,36 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
       {/* Body — icon + name·ext + actions, then the status row. */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '14px 16px', flex: 1 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-          <span style={{ display: 'inline-flex', flexShrink: 0 }}>
+          <span style={{ display: 'inline-flex', flexShrink: 0, alignSelf: 'flex-start', marginTop: 2 }}>
             <ArtifactIcon artifact={artifact} size={18} />
           </span>
-          {/* Name: base truncates, extension stays pinned + visible. */}
-          <div style={{
-            display: 'flex', alignItems: 'baseline', minWidth: 0, flex: 1,
-            fontFamily: FONT_DISPLAY, fontSize: 14, fontWeight: 600, lineHeight: 1.2,
-          }} title={artifact.title}>
-            <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--ink)' }}>{base}</span>
-            {nameExt && <span style={{ flexShrink: 0, color: 'var(--ink-3)' }}>{nameExt}</span>}
+          {/* Name: title primary, filename secondary (ENG-1123 Bug 1) — the
+              secondary line always renders (empty for web apps) so row
+              height stays uniform whether or not there's a filename. */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, flex: 1 }}>
+            <div
+              style={{
+                display: 'flex', alignItems: 'baseline', minWidth: 0,
+                fontFamily: FONT_DISPLAY, fontSize: 14, fontWeight: 600, lineHeight: 1.2,
+              }}
+              title={base}
+            >
+              <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--ink)' }}>{base}</span>
+            </div>
+            <div
+              style={{
+                display: 'flex', alignItems: 'baseline', minWidth: 0,
+                fontFamily: FONT_BODY, fontSize: 12, lineHeight: 1.2, minHeight: '1.2em',
+              }}
+              title={secondary ? secondary.name + secondary.ext : undefined}
+            >
+              {secondary && (
+                <>
+                  <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--ink-3)' }}>{secondary.name}</span>
+                  <span style={{ flexShrink: 0, color: 'var(--ink-4)' }}>{secondary.ext}</span>
+                </>
+              )}
+            </div>
           </div>
           {/* Actions — open-in-browser + ⋯ menu. */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
@@ -441,7 +480,7 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
   const published = !!artifact.publishedUrl;
   const publishable = isPublishableArtifact(artifact);   // HTML + Markdown — see ArtifactBubble note
   const privateUrl = host.isWeb ? artifactServeUrl(artifact) : '';
-  const { base, ext: nameExt } = splitArtifactName(artifact);
+  const { base, secondary } = splitArtifactName(artifact);
   const project = projectNameOf(artifact, projects);
   const projectMatch = projectOf(artifact, projects);
   const canOpenProject = !!(projectMatch && typeof onOpenProject === 'function');
@@ -485,20 +524,35 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
           outline: 'none',
         }}
       >
-        {/* Name — icon + base (truncates) + extension (pinned, subtle). */}
+        {/* Name — title primary, filename secondary (ENG-1123 Bug 1). */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-          <span style={{ display: 'inline-flex', flexShrink: 0 }}>
+          <span style={{ display: 'inline-flex', flexShrink: 0, alignSelf: 'flex-start', marginTop: 2 }}>
             <ArtifactIcon artifact={artifact} size={16} />
           </span>
-          <div
-            title={artifact.title}
-            style={{
-              display: 'flex', alignItems: 'baseline', minWidth: 0,
-              fontFamily: FONT_DISPLAY, fontSize: 14, fontWeight: 600, lineHeight: 1.2,
-            }}
-          >
-            <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--ink)' }}>{base}</span>
-            {nameExt && <span style={{ flexShrink: 0, color: 'var(--ink-3)' }}>{nameExt}</span>}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+            <div
+              style={{
+                display: 'flex', alignItems: 'baseline', minWidth: 0,
+                fontFamily: FONT_DISPLAY, fontSize: 14, fontWeight: 600, lineHeight: 1.2,
+              }}
+              title={base}
+            >
+              <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--ink)' }}>{base}</span>
+            </div>
+            <div
+              style={{
+                display: 'flex', alignItems: 'baseline', minWidth: 0,
+                fontFamily: FONT_BODY, fontSize: 12, lineHeight: 1.2, minHeight: '1.2em',
+              }}
+              title={secondary ? secondary.name + secondary.ext : undefined}
+            >
+              {secondary && (
+                <>
+                  <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--ink-3)' }}>{secondary.name}</span>
+                  <span style={{ flexShrink: 0, color: 'var(--ink-4)' }}>{secondary.ext}</span>
+                </>
+              )}
+            </div>
           </div>
         </div>
 
@@ -798,7 +852,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
       switch (sort) {
         case 'recent': return timestampOf(b) - timestampOf(a);
         case 'oldest': return timestampOf(a) - timestampOf(b);
-        case 'title': return (a.title || '').localeCompare(b.title || '');
+        case 'title': return titleCompare(a, b);
         case 'type': return kindOf(a).localeCompare(kindOf(b));
         case 'published':
         default: {

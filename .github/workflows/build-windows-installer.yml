@@ -83,6 +83,10 @@ on:
         required: false
       LINEAR_CLIENT_SECRET:
         required: false
+      GH_OAUTH_CLIENT_ID:
+        required: false
+      GH_OAUTH_CLIENT_SECRET:
+        required: false
       VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN:
         required: false
 
@@ -128,6 +132,8 @@ jobs:
           GOOGLE_PICKER_API_KEY: ${{ secrets.GOOGLE_PICKER_API_KEY }}
           LINEAR_CLIENT_ID: ${{ secrets.LINEAR_CLIENT_ID }}
           LINEAR_CLIENT_SECRET: ${{ secrets.LINEAR_CLIENT_SECRET }}
+          GITHUB_CLIENT_ID: ${{ secrets.GH_OAUTH_CLIENT_ID }}
+          GITHUB_CLIENT_SECRET: ${{ secrets.GH_OAUTH_CLIENT_SECRET }}
 
         run: |
           python -c "
@@ -140,6 +146,7 @@ jobs:
             'GOOGLE_ANALYTICS_CLIENT_ID', 'GOOGLE_ANALYTICS_CLIENT_SECRET',
             'GOOGLE_PICKER_API_KEY',
             'LINEAR_CLIENT_ID', 'LINEAR_CLIENT_SECRET',
+            'GITHUB_CLIENT_ID', 'GITHUB_CLIENT_SECRET',
           ]}
           with open('server-credentials.json', 'w') as f:
               json.dump(creds, f)
@@ -209,6 +216,10 @@ jobs:
           COWORK_SERVER_MIN_VERSION: ${{ steps.server_floor.outputs.version }}
           VITE_MINDS_API_URL: ${{ inputs.minds_api_url }}
           VITE_APP_VERSION: ${{ inputs.app_version }}
+          # Activates the build-time channel guard in gen-build-channel.mjs:
+          # fail the build if this kind and VITE_MINDS_API_URL target different
+          # environments (e.g. preview baked against the prod API).
+          COWORK_BUILD_KIND: ${{ inputs.build_kind }}
 
       - name: Resolve installer path
         id: installer

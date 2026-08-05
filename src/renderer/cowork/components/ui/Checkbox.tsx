@@ -13,7 +13,11 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '../../lib/cn';
 
 const boxVariants = cva(
-  'inline-flex shrink-0 items-center justify-center rounded-[4px] border cursor-pointer outline-none transition-colors duration-150',
+  // `border-solid` is explicit because this app disables Tailwind's preflight
+  // (which is what normally sets `border-style: solid`) — without it the
+  // `border` utility sets a width but no style, so the box renders borderless
+  // and the unchecked state is invisible against a light surface.
+  'inline-flex shrink-0 items-center justify-center rounded-[4px] border border-solid cursor-pointer outline-none transition-colors duration-150',
   {
     variants: {
       size: {
@@ -62,7 +66,7 @@ export function Checkbox({
       indeterminate={indeterminate}
       className={cn(
         boxVariants({ size }),
-        'border-[var(--line)] bg-[var(--surface)] text-[var(--ink-3)]',
+        'border-[var(--border-strong)] bg-[var(--surface)] text-[var(--ink-3)]',
         'data-[checked]:border-[var(--primary-700)] data-[checked]:bg-[var(--primary-700)] data-[checked]:text-white',
         'data-[indeterminate]:border-[var(--primary-700)] data-[indeterminate]:bg-[var(--primary-700)] data-[indeterminate]:text-white',
         'focus-visible:ring-2 focus-visible:ring-[var(--primary-700)]/40',

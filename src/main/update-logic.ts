@@ -12,6 +12,7 @@
 // OTA cache-freshness / update-newer decisions below.
 import { parseCalVer, compareCalVer, newestCalVer } from '../shared/version';
 import type { ServerStartErrorKind } from '../shared/server-status';
+import type { UpdateCheckSummary } from '../shared/update-types';
 
 // ---------------------------------------------------------------------------
 // Version comparison
@@ -281,6 +282,48 @@ export function decideUpdateApply(input: {
 }
 
 // ---------------------------------------------------------------------------
+// On-demand "Check for updates" summary (ENG-671)
+// ---------------------------------------------------------------------------
+
+/** A confirmed update wins over an error from another channel. With no update,
+ * any channel error makes the result inconclusive; both errors imply offline. */
+export function summarizeUpdateCheck(input: {
+  ui: { updateAvailable: boolean; newVersion?: string; error?: boolean };
+  server: { updateAvailable: boolean; latestVersion?: string; error?: boolean };
+  shell?: { updateAvailable: boolean; version?: string; downloadUrl?: string };
+}): UpdateCheckSummary {
+  const uiUpdateAvailable = !!input.ui.updateAvailable;
+  const serverUpdateAvailable = !!input.server.updateAvailable;
+  const shellUpdateAvailable = !!input.shell?.updateAvailable;
+  const updateAvailable = uiUpdateAvailable || serverUpdateAvailable || shellUpdateAvailable;
+
+  if (!updateAvailable && (input.ui.error || input.server.error)) {
+    return {
+      ok: false,
+      offline: !!input.ui.error && !!input.server.error,
+      updateAvailable: false,
+      uiUpdateAvailable: false,
+      serverUpdateAvailable: false,
+      shellUpdateAvailable: false,
+    };
+  }
+
+  const summary: UpdateCheckSummary = {
+    ok: true,
+    offline: false,
+    updateAvailable,
+    uiUpdateAvailable,
+    serverUpdateAvailable,
+    shellUpdateAvailable,
+  };
+  if (uiUpdateAvailable && input.ui.newVersion) summary.uiVersion = input.ui.newVersion;
+  if (serverUpdateAvailable && input.server.latestVersion) summary.serverVersion = input.server.latestVersion;
+  if (shellUpdateAvailable && input.shell?.version) summary.shellVersion = input.shell.version;
+  if (shellUpdateAvailable && input.shell?.downloadUrl) summary.shellDownloadUrl = input.shell.downloadUrl;
+  return summary;
+}
+
+// ---------------------------------------------------------------------------
 // UI OTA enablement (build-channel / env gate)
 // ---------------------------------------------------------------------------
 
@@ -344,6 +387,12 @@ export interface UIManifest {
   url: string; // GitHub Release asset download URL
   sha256: string;
   minServerVersion?: string; // optional CalVer floor: minimum cowork-server this UI needs
+  // Optional CalVer of the newest *shell* (installer) published alongside this
+  // manifest (ENG-849). Distinct from `version` (the UI-bundle version): the
+  // publish workflow only emits it on the release path, where an installer
+  // actually ships — so it never falsely advertises a reinstall for a UI-only
+  // publish. Absent → no shell-update notice.
+  shellVersion?: string;
 }
 
 /** Should a UI bundle be withheld because the running server can't be shown to
@@ -396,6 +445,13 @@ export function parseUiManifest(jsonText: string): UIManifest | null {
       if (!isNonEmptyString(msv)) return null;
       manifest.minServerVersion = msv;
     }
+    // Optional shell (installer) version (ENG-849), accepting the camelCase the
+    // publish workflow writes plus a snake_case / nested `shell.version` form.
+    // Advisory-only — it drives a download-link notice, never a download/extract
+    // — so a malformed value is simply ignored (kept absent), NOT a reason to
+    // reject the whole manifest and break OTA.
+    const sv = data.shellVersion ?? data.shell_version ?? (data.shell && typeof data.shell === 'object' ? data.shell.version : undefined);
+    if (isNonEmptyString(sv)) manifest.shellVersion = sv;
     return manifest;
   } catch {
     return null;
@@ -493,4 +549,33 @@ export function startFailureMessage(input: {
     case 'timeout':
       return `The backend was still starting after ${formatElapsed(input.elapsedMs)} and never answered /health.`;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Shell (installer) update notice (ENG-849)
+// ---------------------------------------------------------------------------
+
+const SHELL_DOWNLOADS_BASE = 'https://downloads.mindshub.ai/mindshub-cowork';
+
+/** Compare shell CalVers, failing closed for dev or malformed versions. */
+export function shellUpdateIsNewer(
+  latestShellVersion: string | null | undefined,
+  installedShellVersion: string | null | undefined,
+): boolean {
+  const latest = parseCalVer(latestShellVersion);
+  const installed = parseCalVer(installedShellVersion);
+  if (!latest || !installed) return false;
+  return compareCalVer(latest, installed) > 0;
+}
+
+/** Return the installer URL for a supported platform and release channel. */
+export function shellDownloadUrl(
+  platform: string,
+  buildKind: string | null | undefined,
+): string | null {
+  const slot = buildKind === 'prod' ? 'latest' : buildKind === 'stable' ? 'staging' : null;
+  if (!slot) return null;
+  if (platform === 'darwin') return `${SHELL_DOWNLOADS_BASE}/mac/mindshub-cowork-${slot}.pkg`;
+  if (platform === 'win32') return `${SHELL_DOWNLOADS_BASE}/windows/mindshub-cowork-${slot}.exe`;
+  return null;
 }

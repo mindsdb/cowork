@@ -64,7 +64,11 @@ jobs:
     secrets: inherit
 
   publish-ui:
-    needs: [auto-release]
+    # Waits on build-installers, not just the tag: the manifest names that
+    # installer as the latest shell version, so publishing before the installer
+    # exists — or after its build failed — would advertise a reinstall the
+    # download URL can't serve.
+    needs: [auto-release, build-installers]
     # `contents: write` because publish-ui.yml declares it at workflow level (it
     # pushes the bundle and updates the release). Without this the whole prod run
     # is rejected at file load as a startup_failure — the permission gate caught
@@ -74,6 +78,9 @@ jobs:
     uses: ./.github/workflows/publish-ui.yml
     with:
       version: ${{ needs.auto-release.outputs.version }}
+      # The prod installer build-installers just shipped, at the same CalVer as
+      # the installer and the UI bundle.
+      shell_version: ${{ needs.auto-release.outputs.version }}
     secrets: inherit
 
   notify:

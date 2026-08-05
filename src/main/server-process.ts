@@ -19,7 +19,7 @@ import { coworkHome, buildKind } from './cowork-home';
 import { MINDS_ENV_SLUG } from './minds-urls';
 import { withServerLifecycle } from './server-lifecycle';
 import { decideStartWait, startFailureMessage } from './update-logic';
-import { getEnvPath, findUv, getCoworkServerBinary } from './uv-paths';
+import { getEnvPath, findUv, coworkServerBinCandidates } from './uv-paths';
 import {
   SERVER_START_CAP_MS,
   type ServerStartErrorKind,
@@ -185,11 +185,16 @@ function appendStderr(chunk: string) {
 let logStream: fs.WriteStream | null = null;
 
 export function getServerLogPath(): string {
-  /* getPath('logs') resolves to ~/Library/Logs/<AppName> on macOS,
-     %APPDATA%/<AppName>/logs on Windows, ~/.config/<AppName>/logs on Linux.
+  /* Non-prod channels log under their isolated data home so launching one
+     build kind never truncates another's log — every kind shares one
+     app.getPath('logs') because they share a productName, and the stream opens
+     with flags:'w'. prod keeps the historical getPath('logs') location
+     (~/Library/Logs/<AppName> on macOS, %APPDATA%/<AppName>/logs on Windows,
+     ~/.config/<AppName>/logs on Linux).
      Pure getter — the directory is created lazily in openLogStream(), so
      callers that only need the path (e.g. the Help > Reveal Logs menu item)
      don't trigger a filesystem write on every invocation. */
+  if (buildKind() !== 'prod') return path.join(coworkHome(), 'logs', 'cowork-server.log');
   return path.join(app.getPath('logs'), 'cowork-server.log');
 }
 
@@ -200,9 +205,20 @@ function openLogStream(): void {
     /* Electron does not guarantee the logs directory exists; create it
        here, at the one point we actually open the stream for writing. */
     fs.mkdirSync(path.dirname(logPath), { recursive: true });
-    logStream = fs.createWriteStream(logPath, { flags: 'w' });
+    const stream = fs.createWriteStream(logPath, { flags: 'w' });
+    /* A failure to open surfaces ASYNCHRONOUSLY as an 'error' event, not as a
+       throw from createWriteStream — so the try/catch alone never sees it. With
+       no 'error' listener Node re-raises it as an uncaught exception, which
+       Electron turns into a fatal "A JavaScript error occurred in the main
+       process" dialog and blocks the whole app from starting (ENG-1187: EPERM =
+       ERROR_ACCESS_DENIED on the log file — a read-only/ACL condition, a
+       delete-pending file from a prior install's still-open handle, or AV
+       controlled-folder protection). Logging to disk is best-effort: degrade to
+       no disk log, keeping the in-memory recentStderr tail and the running app. */
+    stream.on('error', () => { if (logStream === stream) logStream = null; });
+    logStream = stream;
   } catch {
-    /* Logging to disk is best-effort — never let it block server startup. */
+    /* Synchronous failures (e.g. mkdir denied) — same best-effort stance. */
     logStream = null;
   }
 }
@@ -343,11 +359,11 @@ function getDevServerDir(): string | null {
 }
 
 function getCoworkServerBin(): string | null {
-  const bin = getCoworkServerBinary();
-  if (fs.existsSync(bin)) return bin;
-  if (process.platform === 'win32' && process.env.LOCALAPPDATA) {
-    const winCandidate = path.join(process.env.LOCALAPPDATA, 'bin', 'cowork-server.exe');
-    if (fs.existsSync(winCandidate)) return winCandidate;
+  // Candidate order — including the prod-only Windows %LOCALAPPDATA% global
+  // fallback — lives in uv-paths.coworkServerBinCandidates so it is unit-tested
+  // alongside the rest of the per-channel binary isolation.
+  for (const candidate of coworkServerBinCandidates()) {
+    if (fs.existsSync(candidate)) return candidate;
   }
   return null;
 }

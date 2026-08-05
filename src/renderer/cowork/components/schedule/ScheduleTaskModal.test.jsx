@@ -65,7 +65,7 @@ describe('ScheduleTaskModal — S7 fixes', () => {
       target: { value: 'pause me' },
     });
     setNextRun(isoLocal(60 * 60 * 1000));
-    fireEvent.click(screen.getByRole('checkbox')); // toggle to Paused
+    fireEvent.click(screen.getByRole('switch')); // toggle to Paused
     fireEvent.click(screen.getByRole('button', { name: /Create/i }));
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
@@ -84,8 +84,10 @@ describe('ScheduleTaskModal — S7 fixes', () => {
     };
     const { onSubmit } = renderModal({ task });
 
-    // Hydrated as Paused.
-    expect(screen.getByRole('checkbox').checked).toBe(false);
+    // Hydrated as Paused. The design-system Switch renders a role="switch"
+    // element whose state lives in aria-checked, not a native `.checked`
+    // property — read it via jest-dom's toBeChecked().
+    expect(screen.getByRole('switch')).not.toBeChecked();
 
     fireEvent.click(screen.getByRole('button', { name: /Save changes/i }));
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));

@@ -15,7 +15,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
-import { Button } from '../ui';
+import { Button, Input, Textarea } from '../ui';
+import { Modal, ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
 import {
   createProject,
   uploadProjectFiles,
@@ -95,16 +96,8 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
     return () => cancelAnimationFrame(id);
   }, [open]);
 
-  // Esc closes (only when not busy — letting a half-completed create
-  // run to its terminal state avoids orphaned partial uploads).
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e) => { if (e.key === 'Escape' && !busy) onClose?.(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, busy, onClose]);
-
-  if (!open) return null;
+  // Esc + backdrop dismissal are <Modal>'s job (suppressed while busy via
+  // closeOnEsc / closeOnBackdrop). The name field auto-focuses on open.
 
   const addFiles = (incoming) => {
     if (!incoming || !incoming.length) return;
@@ -178,71 +171,32 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
   const removeFile = (i) => setFiles((prev) => prev.filter((_, j) => j !== i));
 
   return (
-    <div
-      onMouseDown={(e) => { if (e.target === e.currentTarget && !busy) onClose?.(); }}
-      style={{
-        position: 'fixed', inset: 0, zIndex: 90,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: 'rgba(0,0,0,0.45)',
-        backdropFilter: 'blur(2px)',
-        WebkitBackdropFilter: 'blur(2px)',
-        WebkitAppRegion: 'no-drag',
-      }}
+    <Modal
+      open={open}
+      onClose={onClose}
+      size="md"
+      width="min(560px, 92vw)"
+      maxHeight="min(680px, 88vh)"
+      labelledBy="new-project-title"
+      closeOnBackdrop={!busy}
+      closeOnEsc={!busy}
     >
-      <div
-        onMouseDown={(e) => e.stopPropagation()}
-        style={{
-          width: 'min(560px, 92vw)',
-          maxHeight: 'min(680px, 88vh)',
-          background: 'var(--surface)',
-          border: '1px solid var(--line)',
-          borderRadius: 14,
-          boxShadow: 'var(--sh-modal)',
-          display: 'flex', flexDirection: 'column', overflow: 'hidden',
-          fontFamily: FONT_BODY,
-        }}
-      >
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '16px 18px',
-          borderBottom: '1px solid var(--line)',
-        }}>
-          <h2 className="s-h3" style={{
-            margin: 0,
-            color: 'var(--ink)',
-          }}>Start a new project</h2>
-          <button
-            type="button"
-            onClick={() => !busy && onClose?.()}
-            disabled={busy}
-            title="Close"
-            style={{
-              cursor: busy ? 'not-allowed' : 'pointer',
-              background: 'transparent', border: 0,
-              color: 'var(--ink-3)',
-              width: 28, height: 28, borderRadius: 6,
-              display: 'inline-grid', placeItems: 'center',
-              fontSize: 18, lineHeight: 1,
-              opacity: busy ? 0.5 : 1,
-            }}
-          >×</button>
-        </div>
-
-        <div style={{
-          flex: 1, overflowY: 'auto',
-          padding: '16px 18px',
-          display: 'flex', flexDirection: 'column', gap: 14,
-        }}>
+      <ModalHeader
+        id="new-project-title"
+        title="Start a new project"
+        onClose={busy ? undefined : onClose}
+      />
+      <ModalBody padding="16px 18px">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <span style={{
               fontFamily: FONT_MONO, fontSize: 11, letterSpacing: '0.06em',
               textTransform: 'uppercase', color: 'var(--ink-4)', fontWeight: 600,
             }}>Project name</span>
-            <input
+            <Input
               ref={nameRef}
-              type="text"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(v) => setName(v)}
               placeholder="acme-engineering"
               spellCheck={false}
               autoCapitalize="none"
@@ -267,9 +221,9 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
               fontFamily: FONT_MONO, fontSize: 11, letterSpacing: '0.06em',
               textTransform: 'uppercase', color: 'var(--ink-4)', fontWeight: 600,
             }}>Instructions <span style={{ textTransform: 'none', letterSpacing: 0, color: 'var(--ink-4)', fontFamily: FONT_BODY, fontWeight: 400 }}>(optional)</span></span>
-            <textarea
+            <Textarea
               value={instructions}
-              onChange={(e) => setInstructions(e.target.value)}
+              onChange={(v) => setInstructions(v)}
               placeholder="Tell the agent how to work in this project — codebase conventions, output preferences, things to avoid…"
               rows={5}
               disabled={busy}
@@ -356,29 +310,23 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
             }}>{error}</div>
           )}
         </div>
+      </ModalBody>
 
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
-          gap: 8,
-          padding: '12px 18px',
-          borderTop: '1px solid var(--line)',
-          background: 'var(--surface)',
-        }}>
-          <Button
-            variant="subtle"
-            onClick={() => !busy && onClose?.()}
-            disabled={busy}
-          >Cancel</Button>
-          <Button
-            variant="primary"
-            onClick={create}
-            disabled={busy || !name.trim()}
-          >
-            {!busy && Ico.plus(14)}
-            {busy ? 'Creating…' : 'Create'}
-          </Button>
-        </div>
-      </div>
-    </div>
+      <ModalFooter>
+        <Button
+          variant="subtle"
+          onClick={() => !busy && onClose?.()}
+          disabled={busy}
+        >Cancel</Button>
+        <Button
+          variant="primary"
+          onClick={create}
+          disabled={busy || !name.trim()}
+        >
+          {!busy && Ico.plus(14)}
+          {busy ? 'Creating…' : 'Create'}
+        </Button>
+      </ModalFooter>
+    </Modal>
   );
 }

@@ -33,6 +33,7 @@
 // electron under test; in production server-source only runs in the Electron
 // main process anyway.
 import { buildKind } from './cowork-home';
+import { CHANNELS } from './channels';
 
 export const COWORK_SERVER_REPO = 'https://github.com/mindsdb/cowork-server.git';
 // export const COWORK_SERVER_BRANCH = 'main';
@@ -114,30 +115,22 @@ export function getAppDisplayVersion(): string {
   return _buildVal('BUILD_APP_VERSION') || app.getVersion();
 }
 
-// Fallback cowork-server git ref keyed off the build kind, used only when
-// neither an explicit COWORK_SERVER_REF env nor a build-time-baked ref is
-// present. This is the safety net for the failure we hit in the field: a
-// stable/preview build whose baked BUILD_COWORK_SERVER_REF came out empty
-// would otherwise default to `main` and install a cowork-server that lacks
-// the branch's routes (e.g. the OAuth connector endpoints only on staging) —
-// surfacing as a bare 404 "Not Found" when the renderer starts the OAuth flow.
+// Fallback cowork-server git ref keyed off the build kind, used only when neither
+// COWORK_SERVER_REF nor a baked ref is present. Safety net: a stable/preview build
+// whose baked BUILD_COWORK_SERVER_REF came out empty would default to `main` and
+// install a server missing the branch's routes (e.g. staging-only OAuth endpoints
+// → a bare 404). The ref comes from the canonical table (CHANNELS[kind].serverRef)
+// so it can't drift; we return only a NON-'main' ref (forcing 'main' would
+// needlessly flip getInstallSpec's `overrides` on).
 //
-//   dev/prod → main   preview/stable → staging
-//
-// This is deliberately applied to getCoworkRef() ONLY, not getAntonRef():
-// the anton ref must keep deferring to cowork-server's own [tool.uv.sources]
-// pin by default (see getInstallSpec) — a build-kind fallback here would flip
-// getInstallSpec's `overrides` on and REPLACE that pin with anton@staging-HEAD,
-// which can mismatch the anton cowork-server@staging actually expects.
-//
-// Defensive: buildKind() may reach for electron `app` (only when resolving an
-// unset COWORK_BUILD_KIND in a packaged process); this module must stay usable
-// outside Electron (tests, tooling). Any failure resolves to '' so the caller
-// falls through to 'main'.
+// getCoworkRef() ONLY, never getAntonRef(): anton must keep deferring to
+// cowork-server's own [tool.uv.sources] pin, else a fallback would swap it for
+// anton@staging-HEAD, which can mismatch the server. Defensive: buildKind() may
+// throw (see channels.ts); any failure resolves to '' → caller uses 'main'.
 function _refForBuildKind(): string {
   try {
-    const kind = buildKind();
-    return kind === 'preview' || kind === 'stable' ? 'staging' : '';
+    const ref = CHANNELS[buildKind()].serverRef;
+    return ref === 'main' ? '' : ref;
   } catch {
     return '';
   }

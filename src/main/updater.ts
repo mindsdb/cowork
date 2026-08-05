@@ -6,11 +6,14 @@
 
 import { app, BrowserWindow } from 'electron';
 import { IPC } from '../shared/ipc-channels';
-import { checkForUIUpdate, applyUIUpdate, getRendererPath, hasInternet, rollbackUI, isServingOta, verifyServedUiCompat } from './ui-updater';
+import { checkForUIUpdate, applyUIUpdate, getRendererPath, hasInternet, rollbackUI, isServingOta, verifyServedUiCompat, fetchManifest } from './ui-updater';
 import type { UpdateCheckResult } from './ui-updater';
 import { checkForServerUpdate, maybeUpdateServer } from './server-updater';
 import { isServerRunning } from './server-process';
-import { decideUpdateApply } from './update-logic';
+import { decideUpdateApply, summarizeUpdateCheck, shellUpdateIsNewer, shellDownloadUrl } from './update-logic';
+import type { UpdateCheckSummary } from '../shared/update-types';
+import { buildKindStrict } from './cowork-home';
+import { getAppDisplayVersion } from './server-source';
 
 const UPDATE_POLL_MS = 4 * 60 * 60 * 1000; // 4 hours
 // How long a freshly-activated UI bundle has to finish loading before we treat
@@ -18,6 +21,9 @@ const UPDATE_POLL_MS = 4 * 60 * 60 * 1000; // 4 hours
 const UI_RELOAD_HEALTH_MS = 15000;
 
 type GetWindow = () => BrowserWindow | null;
+
+// Cached so the renderer can recover the notice after an OTA reload.
+let lastShellStatus: ShellUpdateStatus = { available: false };
 
 // Returns whether the server is in a good state to proceed with a UI update:
 // true if it was updated cleanly or was already current, false if an update was
@@ -101,7 +107,13 @@ async function reloadWithUiHealthCheck(getWindow: GetWindow): Promise<void> {
   if (await loadAndVerify(win, getRendererPath())) return;
 
   console.error('[updater] new UI bundle failed to load — rolling back');
-  rollbackUI();
+  // Don't let an exhausted-retry rollback error skip the fallback reload below —
+  // the user would be stranded on a broken renderer with no status (Medium 4).
+  try {
+    await rollbackUI();
+  } catch (err) {
+    console.error('[updater] UI rollback failed — falling back anyway', err);
+  }
   const win2 = liveWindow(getWindow);
   if (!win2) return;
   win2.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'rolled-back' });
@@ -129,15 +141,29 @@ async function applyUpdates(getWindow: GetWindow, applyServer: boolean, applyUi:
   return uiApplied || (applyServer && serverOk);
 }
 
-// Register the update IPC handlers. Called unconditionally at startup so the
-// renderer can always check/apply (e.g. a manual "Check for updates" action) —
-// independent of packaging, DEV_MODE, or whether the server booted. Both
-// checkForUIUpdate() and applyUIUpdate() self-guard (OTA disable + manifest),
-// so they're safe to expose in every build.
+// Detection only. Each channel reports its own errors so a confirmed update can
+// still win when another channel is inconclusive.
+export async function checkForUpdates(): Promise<UpdateCheckSummary> {
+  const [ui, server, shell] = await Promise.all([
+    checkForUIUpdate(),
+    checkForServerUpdate(),
+    checkForShellUpdate().catch(() => ({ available: false as const })),
+  ]);
+  return summarizeUpdateCheck({
+    ui: { updateAvailable: ui.updateAvailable, newVersion: ui.newVersion, error: ui.error },
+    server: { updateAvailable: server.updateAvailable, latestVersion: server.latestVersion, error: server.error },
+    shell: shell.available
+      ? { updateAvailable: true, version: shell.latestVersion, downloadUrl: shell.downloadUrl ?? undefined }
+      : { updateAvailable: false },
+  });
+}
+
+// Register unconditionally; each updater self-gates for unsupported builds.
 export function registerUpdateHandlers(getWindow: GetWindow) {
   const { ipcMain } = require('electron');
 
-  ipcMain.handle(IPC.UI_UPDATE_CHECK, () => checkForUIUpdate());
+  ipcMain.handle(IPC.UI_UPDATE_CHECK, () => checkForUpdates());
+  ipcMain.handle(IPC.UI_SHELL_UPDATE_GET, () => lastShellStatus);
   ipcMain.handle(IPC.UI_UPDATE_APPLY, async () => {
     // A manual apply always re-checks the server so it can't drift from the UI.
     const server = await checkForServerUpdate();
@@ -158,6 +184,30 @@ async function settleConstrainedCache(getWindow: GetWindow): Promise<void> {
     console.log('[updater] constrained OTA cache verified against server — activating with health check');
     await reloadWithUiHealthCheck(getWindow);
   }
+}
+
+export interface ShellUpdateStatus {
+  available: boolean;
+  currentVersion?: string; // installed shell (Electron app) CalVer
+  latestVersion?: string;  // newest published shell CalVer
+  downloadUrl?: string | null; // platform/channel installer URL, null if none
+}
+
+// Detection only and prod-only: non-prod builds must never receive a prod
+// installer URL. Missing manifests or malformed versions fail closed.
+export async function checkForShellUpdate(): Promise<ShellUpdateStatus> {
+  let kind: string | null = null;
+  try { kind = buildKindStrict(); } catch { kind = null; }
+  if (kind !== 'prod') return { available: false };
+
+  const manifest = await fetchManifest();
+  const latestVersion = manifest?.shellVersion;
+  if (!latestVersion) return { available: false };
+
+  const currentVersion = getAppDisplayVersion();
+  if (!shellUpdateIsNewer(latestVersion, currentVersion)) return { available: false };
+
+  return { available: true, currentVersion, latestVersion, downloadUrl: shellDownloadUrl(process.platform, kind) };
 }
 
 // Start update polling: a boot check (may auto-apply in auto mode) plus a
@@ -181,6 +231,21 @@ export function initUpdater(
       manifestReachable ? checkForUIUpdate() : Promise.resolve(uiSkipped),
       checkForServerUpdate(),
     ]);
+
+    // Shell notices are independent of OTA and never auto-applied.
+    if (manifestReachable) {
+      const shell = await checkForShellUpdate().catch(() => ({ available: false as const }));
+      lastShellStatus = shell;
+      if (shell.available) {
+        console.log(`[updater] shell update available: ${shell.currentVersion} → ${shell.latestVersion}`);
+        sendStatus(getWindow, {
+          phase: 'shell-available',
+          version: shell.latestVersion,
+          currentVersion: shell.currentVersion,
+          downloadUrl: shell.downloadUrl ?? undefined,
+        });
+      }
+    }
 
     if (!ui.updateAvailable && !server.updateAvailable) {
       console.log('[updater] everything up to date');

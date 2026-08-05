@@ -21,6 +21,7 @@ import clsx from 'clsx';
 import Ico from '../Icons';
 import { ThinkingStep } from './ThinkingStep';
 import { WorkingIndicator } from './WorkingIndicator';
+import { truncateLabel } from '../../lib/responseStreamAdapter';
 
 function formatDuration(ms) {
   if (ms == null || ms < 0) return null;
@@ -53,6 +54,7 @@ export function ThinkingBlock({
   isActive = false,
   startedAt = null,
   currentLabel = null,
+  currentThought = null,
   slotId = null,
   onActivateStep,
 }) {
@@ -61,18 +63,22 @@ export function ThinkingBlock({
     () => steps.some((s) => s._isScratchpad || s._isToolCall),
     [steps]
   );
+  const hasLiveThought = isActive && Boolean(currentThought?.text);
 
-  const [isExpanded, setIsExpanded] = useState(() => isActive && hasInspectableSteps);
+  const [isExpanded, setIsExpanded] = useState(
+    () => isActive && (hasInspectableSteps || Boolean(currentThought?.text))
+  );
   const hasAutoExpanded = useRef(false);
 
-  // Auto-expand the first time scratchpad or tool-call steps appear —
-  // but only while the turn is live. Finished blocks mount collapsed.
+  // Auto-expand the first time inspectable work appears — including a
+  // reasoning burst that arrives before the first tool call. Finished
+  // blocks still mount collapsed.
   useEffect(() => {
-    if (isActive && hasInspectableSteps && !hasAutoExpanded.current) {
+    if (isActive && (hasInspectableSteps || hasLiveThought) && !hasAutoExpanded.current) {
       setIsExpanded(true);
       hasAutoExpanded.current = true;
     }
-  }, [isActive, hasInspectableSteps]);
+  }, [isActive, hasInspectableSteps, hasLiveThought]);
 
   // Auto-collapse when the turn finishes.
   const wasActive = useRef(isActive);
@@ -153,17 +159,45 @@ export function ThinkingBlock({
         )}
       </button>
 
-      {isExpanded && hasSteps && (
+      {isExpanded && (hasSteps || (isActive && currentThought?.text)) && (
         <div className="ml-0 mt-1">
-          {steps.map((step, index, arr) => (
+          {steps.map((step, index) => (
             <ThinkingStep
               key={step.id}
               step={step}
               isFirst={index === 0}
-              isLast={index === arr.length - 1}
+              isLast={!currentThought?.text && index === steps.length - 1}
               onActivate={onActivateStep}
             />
           ))}
+          {/* Live train-of-thought — the model's inner dialogue, NOT a
+              persisted step. Rail-aligned under the steps so it fits the
+              timeline, but deliberately styled distinct from a step row:
+              a small pulsing dot instead of a boxed step icon, and
+              italic shimmering text instead of a solid label, so it reads
+              as live inner monologue rather than a discrete action. The
+              text updates smoothly in place as new deltas arrive and the
+              whole line disappears the moment the burst ends or the turn
+              completes (ENG-1108/1109). */}
+          {isActive && currentThought?.text && (
+            <div className="flex gap-1.5">
+              <div className="flex w-4 flex-col items-center">
+                <div className={clsx('w-px flex-1', hasSteps ? 'bg-line-2' : 'bg-transparent')} />
+                <div className="my-0.5 flex h-4 w-4 flex-none items-center justify-center">
+                  <span className="pulse-dot inline-block h-1.5 w-1.5 flex-none rounded-full bg-ink-4" />
+                </div>
+                <div className="w-px flex-1 bg-transparent" />
+              </div>
+              <div className="flex min-w-0 flex-1 items-center py-1.5">
+                <span
+                  className="thinking-shimmer min-w-0 truncate px-1 text-[12.5px] italic"
+                  title={currentThought.text}
+                >
+                  {truncateLabel(currentThought.text)}
+                </span>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

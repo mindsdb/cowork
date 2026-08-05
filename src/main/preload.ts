@@ -119,6 +119,7 @@ contextBridge.exposeInMainWorld('antontron', {
   // UI Updates
   checkForUpdate: () => ipcRenderer.invoke(IPC.UI_UPDATE_CHECK),
   applyUpdate: () => ipcRenderer.invoke(IPC.UI_UPDATE_APPLY),
+  getShellUpdate: () => ipcRenderer.invoke(IPC.UI_SHELL_UPDATE_GET),
   onUpdateStatus: (cb: (status: { phase: string; version?: string }) => void) => {
     const listener = (_: any, status: { phase: string; version?: string }) => cb(status);
     ipcRenderer.on(IPC.UI_UPDATE_STATUS, listener);

@@ -234,7 +234,13 @@ export default function Composer({
     if (!ta) return;
     if (pendingCaretRef.current != null) {
       const target = pendingCaretRef.current;
-      ta.selectionStart = ta.selectionEnd = target;
+      // A [start, end] tuple selects a range (prefill placeholder
+      // highlighting); a bare number parks a collapsed caret.
+      if (Array.isArray(target)) {
+        try { ta.setSelectionRange(target[0], target[1]); } catch { /* out-of-range: skip */ }
+      } else {
+        ta.selectionStart = ta.selectionEnd = target;
+      }
       pendingCaretRef.current = null;
     }
     const pos = ta.selectionStart;
@@ -384,19 +390,30 @@ export default function Composer({
   // text into the composer and focus the textarea so the user can
   // immediately tweak + send. Guarded on `bump > 0` so the initial
   // `{text: '', bump: 0}` doesn't clobber a draft on mount.
+  //
+  // Optional `prefill.select = [start, end]` pre-selects that range
+  // instead of parking the caret at the end — the home suggestion chips
+  // use it to highlight their [type here] placeholder so the first
+  // keystroke replaces it.
   useEffect(() => {
     if (!prefill || !prefill.bump) return;
-    setValue(prefill.text || '');
+    const text = prefill.text || '';
+    const sel = Array.isArray(prefill.select) ? prefill.select : [text.length, text.length];
+    const ta = taRef.current;
     setError('');
-    requestAnimationFrame(() => {
-      const ta = taRef.current;
-      if (!ta) return;
+    if (ta && ta.value === text) {
+      // Same text re-prefilled — no re-render coming, so the layout
+      // effect won't fire; apply the selection directly.
       ta.focus();
-      try {
-        const end = (prefill.text || '').length;
-        ta.setSelectionRange(end, end);
-      } catch {}
-    });
+      try { ta.setSelectionRange(sel[0], sel[1]); } catch {}
+    } else {
+      // Queue the selection for the post-commit layout effect. Setting
+      // it via rAF raced React's value commit (the range clamped to the
+      // still-empty textarea and collapsed to 0).
+      pendingCaretRef.current = sel;
+      setValue(text);
+      ta?.focus();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefill?.bump]);
 

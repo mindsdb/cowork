@@ -7,7 +7,7 @@ import { pickConnectWelcome } from './lib/connectWelcomes';
 // provider setup. The cowork app is mounted by CoworkApp.tsx only after
 // those gates pass, so AppCore renders unconditionally here.
 import Sidebar from './components/Sidebar';
-import MobileShell from './components/MobileShell';
+import AppShell from './components/AppShell';
 import { ConfirmModal } from './components/ConfirmModal';
 import { Modal, ModalHeader, ModalBody } from './components/ui/Modal';
 import { ToastProvider, useToastManager } from './components/ui/Toast';
@@ -20,7 +20,7 @@ import ScheduleDetailView from './views/ScheduleDetailView';
 import ArtifactsView from './views/ArtifactsView';
 import ChannelsView from './views/ChannelsView';
 import CustomizeView from './views/CustomizeView';
-import SettingsView from './views/SettingsView';
+import SettingsView from './views/settings/SettingsView';
 import UtilitiesView from './views/UtilitiesView';
 import SkillsView from './views/SkillsView';
 import SearchModal from './components/SearchModal';
@@ -34,6 +34,7 @@ import { loadSkin, persistSkin, nextSkin, skinLabel } from '../lib/skins';
 import { loadCustomTheme, persistCustomTheme, applyCustomTheme } from '../lib/customTheme';
 import { applyNavTitleColor } from '../lib/navBranding';
 import { getAgentLabel } from './lib/agentLabel';
+import { loadCachedSettings } from './lib/settingsCache';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { useGoogleDrivePicker } from './hooks/useGoogleDrivePicker';
 import { fetchSessions, fetchSession, fetchConversationList, fetchProjects, fetchArtifacts, fetchSettings, fetchHealth,
@@ -48,6 +49,7 @@ import { fetchSessions, fetchSession, fetchConversationList, fetchProjects, fetc
          fetchSavedConnection, deleteDatasource, deletePickedFile,
          fetchInFlightStatus, tailInFlight, fetchInFlightList } from './api';
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
+import { isArtifactTipDismissed, dismissArtifactTip, dismissIfUntouched } from './components/onboarding/onboardingStore';
 import { modelLabel, recommendedModelOptions, providerValueToType } from './lib/settingsTransform';
 import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery } from './lib/analytics';
 
@@ -750,23 +752,13 @@ export default function App() {
 }
 
 function AppCore() {
-  const [settings, setSettings] = useState({
-    greeting: "Let's knock something off your list",
-    tone: 'balanced',
-    defaultModel: 'claude-sonnet-4-6',
-    autoPin: true,
-    // Animated dot-grid background off by default — a flat surface reads
-    // calmer and cohesive with the rest of the UI. Users can opt back in
-    // via Settings → Personalization → Animated background.
-    showDots: false,
-    showCounters: true,
-    navTitle: '',
-    navTitleColor: '',
-    navLogo: '',
-    showThemeToggle: true,
-    show8bitToggle: true,
-    accentVariant: 'aqua',
-  });
+  // Seed from the read-through cache of the last settings fetch, not a literal
+  // set of defaults — the server (GET /settings/) is the single source of truth
+  // and returns every field's resolved default, so the boot fetch (below) fills
+  // this. On the very first launch the cache is empty and the app renders the
+  // server's values within one fetch. This removes the hard-coded copy whose
+  // values could drift from the server's (e.g. showDots). See ENG-941/ENG-1125.
+  const [settings, setSettings] = useState(loadCachedSettings);
 
   const agentLabel = getAgentLabel(settings);
 
@@ -779,6 +771,29 @@ function AppCore() {
   const [projects, setProjects] = useState([]);
   const [moveModalTask, setMoveModalTask] = useState(null);  // task pending a move-to-project
   const [artifacts, setArtifacts] = useState([]);
+  // First-artifact tip (ENG-1137). Armed only when the FIRST artifacts
+  // fetch of the session comes back empty — an account that already has
+  // artifacts is not a first-run and must never see the tip. Once armed,
+  // the 0 → ≥1 transition (the user's first artifact finishing) opens it.
+  //   null  = undecided (fetch hasn't resolved yet)
+  //   true  = armed (fresh account, watching for the first artifact)
+  //   false = decided-off (existing account, or already fired)
+  const artifactTipArmedRef = useRef(null);
+  const [artifactTipOpen, setArtifactTipOpen] = useState(false);
+  // Same shape, for the sidebar checklist: flipped by the session's first
+  // sessions fetch (see refreshData) so the freshness call is taken once.
+  const onboardingFreshnessResolvedRef = useRef(false);
+  useEffect(() => {
+    if (artifactTipArmedRef.current !== true) return;
+    if (artifacts.length >= 1) {
+      artifactTipArmedRef.current = false;
+      setArtifactTipOpen(true);
+    }
+  }, [artifacts.length]);
+  const handleArtifactTipDismiss = useCallback(() => {
+    setArtifactTipOpen(false);
+    dismissArtifactTip();
+  }, []);
   const [scheduled, setScheduled] = useState([]);
   // Flat session→schedule map sourced from `GET /v1/schedules`.
   // Lets TasksView collapse all conversations belonging to one
@@ -1112,6 +1127,17 @@ function AppCore() {
   // means the collapse affordance is hidden in those views too.
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const { isMobile, isNarrow } = useBreakpoint();
+  // Narrow band (640–900): the docked sidebar becomes an off-canvas popout
+  // opened by the floating hamburger. Docked ≥900; MobileShell owns <640.
+  const [navPopoutOpen, setNavPopoutOpen] = useState(false);
+  // Close the popout on Escape (no-op outside the narrow band, where it stays
+  // closed). Backdrop-click and navigation close it too (below).
+  useEffect(() => {
+    if (!navPopoutOpen) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape') setNavPopoutOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [navPopoutOpen]);
 
   // iOS Safari (and Android Chrome) auto-zoom the page in when a text
   // input with font-size < 16px gets focus, and don't zoom back out
@@ -1171,8 +1197,6 @@ function AppCore() {
     };
   }, [isMobile]);
 
-  // On narrow screens (< 900px), sidebar is a slide-over overlay — track open state separately.
-  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   // Routes where the user can collapse the sidebar. Currently:
   // chat task only.
   const sidebarCollapsibleRoutes = useMemo(() => new Set(['task']), []);
@@ -1342,6 +1366,11 @@ function AppCore() {
   const [updateStatus, setUpdateStatus] = useState(null); // { phase, version }
   const [updateApplying, setUpdateApplying] = useState(false);
   const toastManager = useToastManager();
+  // Download-only shell notice; dismissal is scoped to the offered version.
+  const [shellUpdate, setShellUpdate] = useState(null); // { version, currentVersion, downloadUrl }
+  const [shellUpdateDismissed, setShellUpdateDismissed] = useState(() => {
+    try { return localStorage.getItem('shellUpdateDismissedVersion') || ''; } catch { return ''; }
+  });
 
   // Load data from server on mount
   const refreshData = useCallback(() => {
@@ -1350,10 +1379,34 @@ function AppCore() {
       setServerOnline(h.status === 'ok');
     });
     fetchSessions().then((data) => {
-      if (Array.isArray(data)) setTasks((prev) => mergeTasksFromServer(data, prev).filter((t) => !deletedTaskIdsRef.current.has(t.id)));
+      if (!Array.isArray(data)) return;
+      // One-time freshness decision for the onboarding checklist, taken on
+      // the session's first successful fetch (refreshData also polls, hence
+      // the ref guard): an account that already has tasks is not a first
+      // run, and would otherwise sit on a permanent, undismissable 0/4 card.
+      if (!onboardingFreshnessResolvedRef.current) {
+        onboardingFreshnessResolvedRef.current = true;
+        if (data.length > 0) dismissIfUntouched();
+      }
+      setTasks((prev) => mergeTasksFromServer(data, prev).filter((t) => !deletedTaskIdsRef.current.has(t.id)));
     });
     fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); });
-    fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
+    fetchArtifacts().then((data) => {
+      if (!Array.isArray(data)) return;
+      // One-time arm/disarm decision for the first-artifact tip, taken on
+      // the session's first successful fetch: empty list = fresh account
+      // (watch for the first artifact); anything else = existing account
+      // (flag it dismissed so no later session shows the tip either).
+      if (artifactTipArmedRef.current === null) {
+        if (data.length === 0 && !isArtifactTipDismissed()) {
+          artifactTipArmedRef.current = true;
+        } else {
+          artifactTipArmedRef.current = false;
+          if (data.length > 0) dismissArtifactTip();
+        }
+      }
+      setArtifacts(data);
+    });
     fetchPins().then((data) => setPins(data.pins || []));
     fetchSchedules().then((data) => {
       setScheduled(data.schedules || []);
@@ -1456,8 +1509,19 @@ function AppCore() {
   // web — host returns a noop unsubscriber there.
   useEffect(() => {
     return host.onUpdateStatus((status) => {
+      if (status?.phase === 'shell-available') {
+        setShellUpdate({ version: status.version, currentVersion: status.currentVersion, downloadUrl: status.downloadUrl });
+        return;
+      }
       setUpdateStatus(status);
     });
+  }, []);
+
+  // Recover a cached notice after an OTA reload drops the original push.
+  useEffect(() => {
+    let cancelled = false;
+    host.getShellUpdate().then((s) => { if (!cancelled && s) setShellUpdate(s); }).catch(() => {});
+    return () => { cancelled = true; };
   }, []);
 
   // Listen for background OAuth refresh failures pushed from main process.
@@ -1492,9 +1556,28 @@ function AppCore() {
     } catch (err) {
       console.error('[ui-update] applyUpdate failed:', err);
       setUpdateApplying(false);
-      setUpdateStatus({ phase: 'error' });
+      // Keep the version so the sidebar can offer a labelled retry rather than
+      // going silent until the next poll.
+      setUpdateStatus({ phase: 'error', version: updateStatus?.version });
     }
   }, [updateApplying, updateStatus]);
+
+  // Settings can pass a URL; a bare click falls back to the cached notice, and
+  // failing that to the human download page. Note: bare downloads.mindshub.ai
+  // now 302s to the marketing homepage — the real per-OS installer page lives
+  // at mindshub.ai/download. Old shells never supply a downloadUrl, so this
+  // last fallback is the only link that cohort ever gets.
+  const handleDownloadShellUpdate = useCallback((url) => {
+    const explicit = typeof url === 'string' && url ? url : null;
+    host.openExternal(explicit || shellUpdate?.downloadUrl || 'https://mindshub.ai/download');
+  }, [shellUpdate]);
+
+  const dismissShellUpdate = useCallback(() => {
+    const v = shellUpdate?.version;
+    if (!v) return;
+    try { localStorage.setItem('shellUpdateDismissedVersion', v); } catch { /* private mode */ }
+    setShellUpdateDismissed(v);
+  }, [shellUpdate]);
 
   // ── Boot lifecycle decisions ─────────────────────────────────────
   // Both of these used to live inside HomeView, but the user can
@@ -1741,7 +1824,6 @@ function AppCore() {
     // sibling tab) sees the right state without needing its own probe.
     markInFlight(taskId);
 
-    let assistantContent = '';
     let streamState = initialStreamState();
 
     const flushStreaming = () => {
@@ -1750,8 +1832,9 @@ function AppCore() {
         const msgs = removeThinkingPlaceholder(stripStreaming(t.messages));
         return { ...t, status: 'active', messages: [...msgs, {
           role: '_streaming',
-          content: streamState.bodyText || assistantContent,
+          content: streamState.bodyText,
           steps: streamState.steps,
+          currentThought: streamState.currentThought,
           startedAt: streamState.startedAt,
           streamStatus: streamState.status,
           harness: streamState.harness,
@@ -1773,17 +1856,13 @@ function AppCore() {
         if (open?._scratchpadTabId) activeScratchpadRef.current = open._scratchpadTabId;
         flushSync(() => flushStreaming());
       },
-      onChunk(chunk) {
-        if (streamGen !== activeStreamGenerationRef.current) return;
-        assistantContent += chunk;
-      },
       onDone() {
         if (streamGen !== activeStreamGenerationRef.current) return;
         activeStreamCtrlRef.current = null;
         activeScratchpadRef.current = null;
         activeStreamingTaskIdRef.current = null;
         markInFlightDone(taskId);
-        const finalContent = streamState.bodyText || assistantContent;
+        const finalContent = streamState.bodyText;
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;
@@ -1823,7 +1902,7 @@ function AppCore() {
   }, [markInFlight, markInFlightDone, handleStreamError]);
 
   const selectTask = (id) => {
-    if (isNarrow) setMobileSidebarOpen(false);
+    if (isNarrow) setNavPopoutOpen(false);
     const task = tasks.find((t) => t.id === id);
     if (task) {
       // Record the visit for recents ordering, but never auto-pin.
@@ -1895,7 +1974,7 @@ function AppCore() {
   };
 
   const newTask = () => {
-    if (isNarrow) setMobileSidebarOpen(false);
+    if (isNarrow) setNavPopoutOpen(false);
     setActiveTaskId(null);
     setComposerAttachments([]);
     setComposerPrefill(null);
@@ -2371,13 +2450,13 @@ function AppCore() {
   };
 
   const navigate = (key) => {
+    if (isNarrow) setNavPopoutOpen(false);
     if (key === 'settings' || key.startsWith('settings:')) {
       // Targeted (settings:backend) opens that section; a bare `settings`
       // opens the mobile section list (null) / desktop's last section.
       openSettings(key.includes(':') ? key.split(':')[1] : null);
       return;
     }
-    if (isNarrow) setMobileSidebarOpen(false);
     if (key === 'artifacts') {
       fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
     }
@@ -2570,7 +2649,6 @@ function AppCore() {
     setActiveTaskId(taskId);
     setRoute('task');
 
-    let assistantContent = '';
     let resolvedId = taskId;
     // Server mints the canonical id on `response.created` for tmp- tasks.
     // adoptServerId keeps activeStreamingTaskIdRef (and cancel) in sync.
@@ -2598,8 +2676,9 @@ function AppCore() {
         const msgs = removeThinkingPlaceholder(stripStreaming(t.messages));
         return { ...t, messages: [...msgs, {
           role: '_streaming',
-          content: streamState.bodyText || assistantContent,
+          content: streamState.bodyText,
           steps: streamState.steps,
+          currentThought: streamState.currentThought,
           startedAt: streamState.startedAt,
           streamStatus: streamState.status,
           harness: streamState.harness,
@@ -2657,11 +2736,6 @@ function AppCore() {
         if (open?._scratchpadTabId) activeScratchpadRef.current = open._scratchpadTabId;
         flushSync(() => flushStreamingMessage());
       },
-      onChunk(chunk, sid) {
-        if (streamGen !== activeStreamGenerationRef.current) return;
-        if (sid) adoptServerId(sid);
-        assistantContent += chunk;
-      },
       onProgress(event, sid) {
         if (streamGen !== activeStreamGenerationRef.current) return;
         if (sid) adoptServerId(sid);
@@ -2682,7 +2756,7 @@ function AppCore() {
         const finalId = sid || resolvedId;
         markInFlightDone(finalId);
         if (finalId !== taskId) markInFlightDone(taskId);
-        const finalContent = streamState.bodyText || assistantContent;
+        const finalContent = streamState.bodyText;
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;
@@ -2851,7 +2925,6 @@ function AppCore() {
     // user may have started composing since.
     if (queuedAttachments == null) setComposerAttachments([]);
 
-    let assistantContent = '';
     let streamState = initialStreamState();
     // `id` is the local task id we started with. If it's a temporary
     // (`tmp-connect-…`), the server replaces it with a fresh canonical
@@ -2896,8 +2969,9 @@ function AppCore() {
         const msgs = removeThinkingPlaceholder(stripStreaming(t.messages));
         return { ...t, messages: [...msgs, {
           role: '_streaming',
-          content: streamState.bodyText || assistantContent,
+          content: streamState.bodyText,
           steps: streamState.steps,
+          currentThought: streamState.currentThought,
           startedAt: streamState.startedAt,
           streamStatus: streamState.status,
           harness: streamState.harness,
@@ -2937,14 +3011,6 @@ function AppCore() {
         if (open?._scratchpadTabId) activeScratchpadRef.current = open._scratchpadTabId;
         flushSync(() => flushStreaming());
       },
-      onChunk(chunk, sid) {
-        if (streamGen !== activeStreamGenerationRef.current) return;
-        if (sid) adoptServerId(sid);
-        // The adapter accumulates bodyText already; this callback is
-        // redundant for content but cheap and useful as a fallback if
-        // the adapter ever fails to parse a delta.
-        assistantContent += chunk;
-      },
       onDone() {
         if (streamGen !== activeStreamGenerationRef.current) return;
         activeStreamCtrlRef.current = null;
@@ -2952,7 +3018,7 @@ function AppCore() {
         activeStreamingTaskIdRef.current = null;
         markInFlightDone(resolvedId);
         if (resolvedId !== id) markInFlightDone(id);
-        const finalContent = streamState.bodyText || assistantContent;
+        const finalContent = streamState.bodyText;
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;
@@ -3019,7 +3085,6 @@ function AppCore() {
         : t,
     ));
 
-    let assistantContent = '';
     let streamState = initialStreamState();
     // See handleSendInTask for the rationale — the datavault stream's
     // `response.created` carries the server-minted id when the client
@@ -3061,8 +3126,9 @@ function AppCore() {
         const msgs = removeThinkingPlaceholder(stripStreaming(t.messages));
         return { ...t, messages: [...msgs, {
           role: '_streaming',
-          content: streamState.bodyText || assistantContent,
+          content: streamState.bodyText,
           steps: streamState.steps,
+          currentThought: streamState.currentThought,
           startedAt: streamState.startedAt,
           streamStatus: streamState.status,
           harness: streamState.harness,
@@ -3122,7 +3188,6 @@ function AppCore() {
       },
       onChunk(chunk, sid) {
         if (sid) adoptServerId(sid);
-        assistantContent += chunk;
         // data-vault-form-patch blocks are delivered as complete deltas —
         // parse and apply them immediately so the panel can show the
         // spinner (_is_probing), status updates, and the error card
@@ -3139,7 +3204,7 @@ function AppCore() {
         if (sid) adoptServerId(sid);
         activeStreamCtrlRef.current = null;
         activeStreamingTaskIdRef.current = null;
-        const finalContent = streamState.bodyText || assistantContent;
+        const finalContent = streamState.bodyText;
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;
@@ -3568,9 +3633,69 @@ function AppCore() {
   const appStyle = { width: '100vw', height: '100vh', background: 'transparent' };
 
   const mainBg = 'transparent';
+
+  // One shell-owned top inset the content header uses to clear the macOS
+  // traffic lights and the floating open-sidebar button when neither is
+  // covered by a docked sidebar: the tablet band (640–900, sidebar is an
+  // off-canvas popout) and a collapsed sidebar on the chat route. Reserving
+  // the space on TOP (not the left) keeps every header's title/crumb aligned
+  // with the body beneath it and uses the full width, instead of shoving the
+  // header right into a lopsided gutter. Both the lights and the hamburger
+  // sit within the top ~44px, so 52 clears them on either platform (web has
+  // no lights but still floats the hamburger). Exposed as `--titlebar-safe-top`
+  // on <main> and consumed by PageHeader / view headers.
+  const contentChromeExposed = isNarrow || sidebarCollapsedEffective;
+  const titlebarSafeTop = contentChromeExposed ? 52 : 0;
+
   const modelOptions = selectedModel && !models.some((m) => m.id === selectedModel.id)
     ? [selectedModel, ...models]
     : models;
+
+  // Props for the mobile drawer (MobileShell), which AppShell renders below
+  // the phone breakpoint. Kept here (not in AppShell) because every handler
+  // closes over App's navigation state.
+  const mobileShellProps = {
+    route,
+    currentTask,
+    selectedProject,
+    tasks,
+    projects,
+    scheduled,
+    artifacts,
+    onNavigate: navigate,
+    onSelectTask: selectTask,
+    onSelectProject: (p) => {
+      // Drawer → project tap with tasks: show the project's task list
+      // (ProjectsView in detail mode). MobileShell only dispatches here when
+      // there ARE tasks; the empty-project case routes through
+      // onNewTaskInProject instead.
+      if (p) setSelectedProject(p);
+      setRoute('projects');
+    },
+    onNewTaskInProject: (p) => {
+      // Empty project → drop into the composer with the project preselected.
+      if (p) setSelectedProject(p);
+      setActiveTaskId(null);
+      setRoute('home');
+    },
+    onOpenSchedule: (scheduleId) => {
+      setSelectedScheduleId(scheduleId);
+      setRoute('schedule-detail');
+    },
+    onNewTask: newTask,
+    onNewProject: () => {
+      // Mobile FAB → "New project". The modal lives inside ProjectsView, so
+      // navigate there (on the grid, not detail), then dispatch the event
+      // ProjectsView listens for once mounted.
+      setSelectedProject(null);
+      setRoute('projects');
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('anton:open-new-project'));
+      }, 60);
+    },
+    navTitle: settings.navTitle || null,
+    navLogo: settings.navLogo || null,
+  };
 
   return (
     <div style={{
@@ -3583,72 +3708,40 @@ function AppCore() {
       // intercept drag on their own surface.
       WebkitAppRegion: 'drag',
     }}>
-      {/* Mobile backdrop — dims content behind the open drawer. Suppressed
-          on isMobile widths where MobileShell renders its own scrim. */}
+      {/*
+        Sidebar — a docked flex item across the whole desktop + tablet range
+        (≥640). `display: contents` makes the wrapper transparent to the flex
+        layout so Sidebar participates as a direct flex child. Suppressed on
+        isMobile — MobileShell replaces it with a mobile drawer below 640.
+      */}
+      {/* Narrow-band popout backdrop — dims content behind the slid-in
+          sidebar. Same 320ms curve as the drawer so the two read as one
+          motion (the old overlay used mismatched 280/380ms durations). */}
       {isNarrow && !isMobile && (
         <div
-          onClick={() => setMobileSidebarOpen(false)}
+          onClick={() => setNavPopoutOpen(false)}
+          aria-hidden="true"
           style={{
             position: 'fixed', inset: 0, zIndex: 100,
             background: 'rgba(0,0,0,0.35)',
             backdropFilter: 'blur(2px)',
             WebkitAppRegion: 'no-drag',
-            opacity: mobileSidebarOpen ? 1 : 0,
-            pointerEvents: mobileSidebarOpen ? 'auto' : 'none',
-            transition: 'opacity 280ms cubic-bezier(0.32, 0.72, 0, 1)',
+            opacity: navPopoutOpen ? 1 : 0,
+            pointerEvents: navPopoutOpen ? 'auto' : 'none',
+            transition: 'opacity 320ms cubic-bezier(0.32, 0.72, 0, 1)',
           }}
         />
       )}
 
-      {/*
-        Floating hamburger — on desktop: visible when sidebar is collapsed
-        (chat route only). On narrow desktop: opens the slide-over sidebar.
-        Suppressed entirely on isMobile — MobileShell has its own hamburger.
-      */}
-      {!isMobile && (
-      <button
-        onClick={() => isNarrow ? setMobileSidebarOpen(true) : setSidebarCollapsed(false)}
-        title="Open sidebar"
-        className="icon-btn"
-        style={{
-          position: 'absolute',
-          // On Electron, left: 97 clears the macOS traffic lights (which end ~x:80).
-          // On web there are no traffic lights so left: 18 sits flush with the app edge.
-          top: 18, left: host.isWeb ? 18 : 97,
-          zIndex: 10,
-          WebkitAppRegion: 'no-drag',
-          opacity: isNarrow
-            ? (mobileSidebarOpen ? 0 : 1)
-            : (sidebarCollapsedEffective ? 1 : 0),
-          transform: (isNarrow ? !mobileSidebarOpen : sidebarCollapsedEffective)
-            ? 'translateX(0)' : 'translateX(-8px)',
-          pointerEvents: (isNarrow ? !mobileSidebarOpen : sidebarCollapsedEffective)
-            ? 'auto' : 'none',
-          transition:
-            'opacity 280ms cubic-bezier(0.32, 0.72, 0, 1) 120ms, ' +
-            'transform 360ms cubic-bezier(0.32, 0.72, 0, 1) 80ms',
-        }}
-      >
-        {Ico.sidebarExpandRight(15)}
-      </button>
-      )}
-
-      {/*
-        Sidebar — on narrow desktop it's a fixed overlay drawer; on desktop
-        it's a normal flex item. `display: contents` makes the wrapper
-        transparent to the flex layout so Sidebar participates as a direct
-        flex child. Suppressed entirely on isMobile — MobileShell replaces
-        the desktop sidebar with a mobile-native drawer.
-      */}
       {!isMobile && (
       <div
-        className={isNarrow ? 'sidebar-overlay-wrap' : undefined}
         style={isNarrow ? {
-          position: 'fixed',
-          top: 9, bottom: 9, left: 9,
-          zIndex: 101,
-          transform: mobileSidebarOpen ? 'translateX(0)' : 'translateX(calc(-100% - 18px))',
-          transition: 'transform 380ms cubic-bezier(0.22, 1, 0.36, 1)',
+          // Popout: off-canvas fixed drawer, slid in on navPopoutOpen. Same
+          // 320ms curve as the scrim above. Docked (display:contents) ≥900.
+          position: 'fixed', top: 9, bottom: 9, left: 9, zIndex: 101,
+          transform: navPopoutOpen ? 'translateX(0)' : 'translateX(calc(-100% - 18px))',
+          transition: 'transform 320ms cubic-bezier(0.32, 0.72, 0, 1)',
+          willChange: 'transform',
           WebkitAppRegion: 'no-drag',
         } : { display: 'contents' }}
       >
@@ -3693,7 +3786,7 @@ function AppCore() {
           collapsed={sidebarCollapsedEffective}
           onToggleCollapsed={
             isNarrow
-              ? () => setMobileSidebarOpen(false)
+              ? () => setNavPopoutOpen(false)
               : (sidebarCollapsibleRoutes.has(route)
                   ? () => setSidebarCollapsed((c) => !c)
                   : undefined)
@@ -3707,7 +3800,7 @@ function AppCore() {
           schedules={scheduled}
           scheduleRunsIndex={scheduleRunsIndex}
           onOpenSchedule={(scheduleId) => {
-            if (isNarrow) setMobileSidebarOpen(false);
+            if (isNarrow) setNavPopoutOpen(false);
             setSelectedScheduleId(scheduleId);
             setRoute('schedule-detail');
           }}
@@ -3717,7 +3810,24 @@ function AppCore() {
           navTitle={settings.navTitle || null}
           navLogo={settings.navLogo || null}
           updateAvailable={updateStatus?.phase === 'available' ? { version: updateStatus.version } : null}
+          updateError={updateStatus?.phase === 'error' ? { version: updateStatus.version } : null}
           onApplyUpdate={handleApplyUpdate}
+          shellUpdate={shellUpdate && shellUpdate.version !== shellUpdateDismissed ? shellUpdate : null}
+          onDownloadShellUpdate={handleDownloadShellUpdate}
+          onDismissShellUpdate={dismissShellUpdate}
+          onStartChat={(text) => {
+            // On narrow desktop the sidebar is an overlay drawer. Close it
+            // like navigate/onOpenSchedule do, so the new task isn't buried
+            // under it.
+            if (isNarrow) setMobileSidebarOpen(false);
+            handleSendFromHome(text);
+          }}
+          // Hold the tip while the narrow-desktop drawer is shut: Sidebar
+          // sees collapsed={false} there, but the whole wrapper is
+          // translated off-screen, so its anchor is invisible. The armed
+          // state survives — it opens when the drawer does.
+          artifactTipOpen={artifactTipOpen && !(isNarrow && !mobileSidebarOpen)}
+          onArtifactTipDismiss={handleArtifactTipDismiss}
           onShowServerHelp={() => openSettings('backend')}
           onToggleServer={async () => {
             if (serverBusy) return;
@@ -3753,21 +3863,14 @@ function AppCore() {
       </div>
       )}
 
-      {(() => {
-      const mainEl = (
-      <main style={{
-        flex: 1, minWidth: 0, minHeight: 0,
-        display: 'flex', flexDirection: 'column',
-        background: mainBg,
-        // Opt the whole content column out of the window drag region.
-        // Without this, the empty canvas inherits the root's
-        // `-webkit-app-region: drag` (App container), and Electron then
-        // swallows mouse events over it — so clicking the canvas never
-        // reaches any outside-click handler and dropdowns can't dismiss
-        // (desktop only; the web build has no drag regions). The window
-        // still drags via the sidebar header and the window's top strip.
-        WebkitAppRegion: 'no-drag',
-      }}>
+      <AppShell
+        isMobile={isMobile}
+        mainBg={mainBg}
+        titlebarSafeTop={titlebarSafeTop}
+        showFloatingHamburger={isNarrow ? !navPopoutOpen : sidebarCollapsedEffective}
+        onOpenSidebar={isNarrow ? () => setNavPopoutOpen(true) : () => setSidebarCollapsed(false)}
+        mobileShellProps={mobileShellProps}
+      >
         {route === 'home' && (
           <HomeView
             greeting={settings.greeting}
@@ -3799,6 +3902,9 @@ function AppCore() {
             onShowServerHelp={() => openSettings('backend')}
             skipIntro={bootIntroDone}
             prefill={composerPrefill}
+            tasksCount={tasks.length}
+            artifactsCount={artifacts.length}
+            onPrefill={(text, select) => setComposerPrefill({ text, bump: Date.now(), select })}
           />
         )}
 
@@ -3850,7 +3956,6 @@ function AppCore() {
               setRoute('projects');
             }}
             projects={projects}
-            sidebarCollapsed={isNarrow || sidebarCollapsedEffective}
             agentLabel={agentLabel}
           />
         )}
@@ -4044,6 +4149,8 @@ function AppCore() {
               isSsoConnected={ssoConnected}
               ssoError={ssoError}
               onSsoSignIn={!ssoConnected && host.isElectron ? async () => { setSettingsOpen(false); await handleSsoSignIn(); } : undefined}
+              shellUpdate={shellUpdate}
+              onDownloadShellUpdate={handleDownloadShellUpdate}
             />
           </Modal>
         ) : (
@@ -4089,6 +4196,8 @@ function AppCore() {
                 isSsoConnected={ssoConnected}
                 ssoError={ssoError}
                 onSsoSignIn={!ssoConnected && host.isElectron ? async () => { setSettingsOpen(false); await handleSsoSignIn(); } : undefined}
+                shellUpdate={shellUpdate}
+                onDownloadShellUpdate={handleDownloadShellUpdate}
               />
             </ModalBody>
           </Modal>
@@ -4107,63 +4216,7 @@ function AppCore() {
             agentLabel={agentLabel}
           />
         )}
-      </main>
-      );
-      return isMobile ? (
-        <MobileShell
-          route={route}
-          currentTask={currentTask}
-          selectedProject={selectedProject}
-          tasks={tasks}
-          projects={projects}
-          scheduled={scheduled}
-          artifacts={artifacts}
-          onNavigate={navigate}
-          onSelectTask={selectTask}
-          onSelectProject={(p) => {
-            // Drawer → project tap with tasks: show the project's task
-            // list (ProjectsView in detail mode). MobileShell only
-            // dispatches here when there ARE tasks; the empty-project
-            // case routes through onNewTaskInProject instead. On a
-            // mobile viewport, project-detail's rail (Working folder,
-            // Context, Scheduled) stacks below the task list — see
-            // the @media block in globals.css.
-            if (p) setSelectedProject(p);
-            setRoute('projects');
-          }}
-          onNewTaskInProject={(p) => {
-            // Empty project → drop the user into the composer with
-            // this project preselected. HomeView's first send creates
-            // the task on the server with projectName attached.
-            if (p) setSelectedProject(p);
-            setActiveTaskId(null);
-            setRoute('home');
-          }}
-          onOpenSchedule={(scheduleId) => {
-            setSelectedScheduleId(scheduleId);
-            setRoute('schedule-detail');
-          }}
-          onNewTask={newTask}
-          onNewProject={() => {
-            // Mobile FAB → "New project". The modal lives inside
-            // ProjectsView, so navigate there first (clearing any
-            // selected project so we land on the grid, not detail),
-            // then dispatch the event ProjectsView listens for. The
-            // small delay lets React commit ProjectsView's mount
-            // before the listener attaches.
-            setSelectedProject(null);
-            setRoute('projects');
-            setTimeout(() => {
-              window.dispatchEvent(new CustomEvent('anton:open-new-project'));
-            }, 60);
-          }}
-          navTitle={settings.navTitle || null}
-          navLogo={settings.navLogo || null}
-        >
-          {mainEl}
-        </MobileShell>
-      ) : mainEl;
-      })()}
+      </AppShell>
       <SearchModal
         open={searchOpen}
         onClose={() => setSearchOpen(false)}

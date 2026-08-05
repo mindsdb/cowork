@@ -20,6 +20,10 @@ export const IPC = {
   UI_UPDATE_CHECK: 'ui:update-check',
   UI_UPDATE_APPLY: 'ui:update-apply',
   UI_UPDATE_STATUS: 'ui:update-status',
+  // Pull the last-known shell (installer) update status (ENG-849). The notice
+  // is normally pushed via UI_UPDATE_STATUS, but an OTA reload re-mounts the
+  // renderer and drops that push, so the renderer re-pulls this on mount.
+  UI_SHELL_UPDATE_GET: 'ui:shell-update-get',
 
   // Server
   SERVER_RESTART: 'server:restart',

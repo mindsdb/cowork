@@ -94,9 +94,9 @@ function LinkButton({ onClick, children }) {
 }
 
 // Footer action buttons. `primary` = accent fill, otherwise neutral.
-function FooterButton({ onClick, disabled, primary, busy, busyLabel, children }) {
+function FooterButton({ onClick, disabled, primary, busy, busyLabel, title, children }) {
   return (
-    <Button variant={primary ? 'primary' : 'default'} onClick={onClick} disabled={disabled}>
+    <Button variant={primary ? 'primary' : 'default'} onClick={onClick} disabled={disabled} title={title}>
       {busy && <Spinner style={{ color: 'currentColor' }} />}
       {busy ? busyLabel : children}
     </Button>
@@ -238,6 +238,9 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
   const [view, setView] = useState('summary');
   // Editable access draft for the publish + change-access flows.
   const [draft, setDraft] = useState(() => draftFromController(pub));
+  // Has the user touched the access draft? Gates the late-arrival re-seed below
+  // so we never clobber edits-in-progress when the server list lands (ENG-931).
+  const [draftDirty, setDraftDirty] = useState(false);
   const [pwd, setPwd] = useState({ value: '', reveal: false });
   const [activatingMd5, setActivatingMd5] = useState('');
 
@@ -247,6 +250,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
     if (!open) return;
     pub.setError('');
     setPwd({ value: '', reveal: false });
+    setDraftDirty(false);
     if (isPublished) {
       setView('summary');
       setDraft(draftFromController(pub));
@@ -258,6 +262,17 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, isPublished]);
 
+  // Late-arriving authoritative access (ENG-931): when the panel is opened from
+  // a source whose artifact object lacked the real list (e.g. a chat bubble),
+  // the draft is seeded empty and the true list arrives a moment later via
+  // usePublish's open refresh(). Re-seed the Change-access draft when that
+  // loaded access changes — but never over edits the user already started.
+  useEffect(() => {
+    if (!open || view !== 'access' || draftDirty) return;
+    setDraft(draftFromController(pub));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, view, draftDirty, pub.accessLoaded, pub.accessMode, pub.orgAllowed, (pub.accessEmails || []).join(',')]);
+
   const current = draftFromController(pub);
 
   const doPublish = async () => {
@@ -266,6 +281,10 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
     if (ok) setView('summary');
   };
   const doApplyAccess = async () => {
+    // Never submit an access change before the real prior list has loaded —
+    // that's exactly the silent-wipe path (ENG-931). Belt-and-suspenders with
+    // the disabled "Update" button below.
+    if (!pub.accessLoaded) return;
     if (!isAccessDraftValid(draft) || !draftDiffers(draft, current)) return;
     const ok = await pub.publish(buildAccessPayload(draft));
     if (ok) setView('summary');
@@ -368,7 +387,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                   <div style={{ padding: SECTION_PAD }}>
                     {view === 'summary' && (
                       <>
-                        <SectionLabel action={<LinkButton onClick={() => { setDraft(draftFromController(pub)); setView('access'); }}>Change</LinkButton>}>
+                        <SectionLabel action={<LinkButton onClick={() => { setDraft(draftFromController(pub)); setDraftDirty(false); setView('access'); }}>Change</LinkButton>}>
                           Who can access your app
                         </SectionLabel>
                         <AccessSummaryCard mode={pub.accessMode} />
@@ -387,10 +406,10 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
   
                     {view === 'access' && (
                       <>
-                        <SectionLabel action={<LinkButton onClick={() => { setDraft(draftFromController(pub)); setView('summary'); }}>Dismiss</LinkButton>}>
+                        <SectionLabel action={<LinkButton onClick={() => { setDraft(draftFromController(pub)); setDraftDirty(false); setView('summary'); }}>Dismiss</LinkButton>}>
                           Who can access your app
                         </SectionLabel>
-                        <AccessChooser value={draft} onChange={setDraft} onSubmit={doApplyAccess} />
+                        <AccessChooser value={draft} onChange={(d) => { setDraft(d); setDraftDirty(true); }} onSubmit={doApplyAccess} />
                       </>
                     )}
   
@@ -452,7 +471,13 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                         Save
                       </FooterButton>
                     ) : view === 'access' ? (
-                      (draftDiffers(draft, current) || pub.modified) ? (
+                      !pub.accessLoaded ? (
+                        // Real prior list not fetched yet — block "Update" so an
+                        // empty/stale draft can't overwrite the server's list (ENG-931).
+                        <FooterButton primary disabled title="Loading current access…">
+                          Update
+                        </FooterButton>
+                      ) : (draftDiffers(draft, current) || pub.modified) ? (
                         <FooterButton primary onClick={doApplyAccess}
                           disabled={pub.busy || !isAccessDraftValid(draft)}
                           busy={pub.phase === 'publishing'} busyLabel="Updating…">

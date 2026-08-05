@@ -123,19 +123,35 @@ export function isWebAppArtifact(a) {
   return ext === 'html' || ext === 'htm';
 }
 
-// Split an artifact's display name into { base, ext } so the row/card can
-// truncate the base while keeping the extension visible + subtle.
-//   - Web apps   → name only (e.g. "Weather Dashboard"), no extension.
-//   - Files      → the real filename (e.g. "google.pdf" → "google" + ".pdf"),
-//                  NOT a verbose agent title, so the extension is accurate
-//                  and can be muted. The full title stays in the hover tooltip.
-export function splitArtifactName(a) {
-  if (isWebAppArtifact(a)) {
-    return { base: a?.title || (a?.path || '').split(/[\\/]/).pop() || 'Untitled', ext: '' };
-  }
-  const fname = (a?.path || '').split(/[\\/]/).pop() || a?.title || 'file';
+// Display name for an artifact: title-primary, with the filename as a
+// secondary line for file artifacts (ENG-1123). Web apps show only the
+// title — there is no meaningful "filename" for a live app.
+//   - Web apps → title (falls back to filename, then "Untitled").
+//   - Files    → title (falls back to filename, then "file") as the
+//                primary line; the parsed filename as a secondary line,
+//                so the accurate extension stays visible even though the
+//                primary text is now the agent's title, not the filename.
+export function fileNameOf(a) {
+  return (a?.path || '').split(/[\\/]/).pop() || '';
+}
+
+export function displayTitle(a) {
+  const fname = fileNameOf(a);
+  if (isWebAppArtifact(a)) return a?.title || fname || 'Untitled';
+  return a?.title || fname || 'file';
+}
+
+function splitFileName(fname) {
   const m = fname.match(/^(.+?)(\.[A-Za-z0-9]{1,8})$/);
-  return m ? { base: m[1], ext: m[2].toLowerCase() } : { base: a?.title || fname, ext: '' };
+  return m ? { name: m[1], ext: m[2].toLowerCase() } : { name: fname, ext: '' };
+}
+
+export function splitArtifactName(a) {
+  const fname = fileNameOf(a);
+  return {
+    base: displayTitle(a),
+    secondary: isWebAppArtifact(a) ? null : (fname ? splitFileName(fname) : null),
+  };
 }
 
 const EXT_BY_GROUP = {

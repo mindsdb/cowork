@@ -9,7 +9,7 @@
 //     action={<Button variant="primary" onClick={onNew}>New project</Button>} />
 //   <EmptyState bordered icon={…} title="…" description="…" />
 
-import { Card } from './Card.jsx';
+import { Card } from './Card.tsx';
 
 const FONT_BODY = 'var(--font-body)';
 

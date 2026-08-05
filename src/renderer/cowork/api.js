@@ -8,6 +8,7 @@ import { initialStreamState, reduceStream, iterateSSE } from './lib/responseStre
 import { host } from '../platform/host';
 import { relativeAge } from './lib/formatTime';
 import { transformSettingsRows, diffSettingsForWrite, mergeRecommendedModels } from './lib/settingsTransform';
+import { cacheSettings } from './lib/settingsCache';
 import {
   buildMemoryDeletePayload,
   buildMemoryWritePayload,
@@ -1042,6 +1043,10 @@ export async function fetchSettings() {
       const merged = mergeRecommendedModels(result, await fetchRecommendedModels());
       if (merged) Object.assign(result, merged);
       _lastFetchedSettings = result;
+      // Refresh the first-paint seed so the next cold start renders the server's
+      // values immediately instead of a hard-coded default that could drift
+      // (ENG-1125). Cache-of-the-truth only — never written from anywhere else.
+      cacheSettings(result);
       return result;
     } catch {
       return { ...MOCK_DATA.settings, configReady: false, configError: 'Backend is offline.' };
@@ -1054,32 +1059,25 @@ export async function fetchSettings() {
 export async function updateSettings(patch) {
   const op = _settingsLock.then(async () => {
     const writes = diffSettingsForWrite(patch, _lastFetchedSettings);
+    const keys = Object.keys(writes);
+    let updated = keys;
 
-    const updated = [];
-    const failed = [];
-    for (const [key, value] of Object.entries(writes)) {
+    if (keys.length > 0) {
+      // One transactional bulk write: the server applies every key or none, so
+      // a partial failure can't leave settings half-saved the way the former
+      // per-key PUT loop could (ENG-1126).
       try {
-        await req(`/settings/${encodeURIComponent(key)}`, {
-          method: 'PUT',
-          body: JSON.stringify({ value }),
-        });
-        updated.push(key);
+        const res = await req('/settings/', { method: 'PUT', body: JSON.stringify({ values: writes }) });
+        if (Array.isArray(res?.updated)) updated = res.updated;
       } catch (err) {
-        console.warn(`Failed to save setting ${key}:`, err);
-        failed.push({ key, message: err?.message || String(err) });
+        const e = new Error(`Failed to save settings: ${err?.message || String(err)}`);
+        e.failed = keys;
+        throw e;
       }
     }
 
-    if (failed.length > 0) {
-      const summary = failed.map((f) => `${f.key}: ${f.message}`).join('; ');
-      const err = new Error(`Failed to save ${failed.length === 1 ? 'setting' : 'settings'}: ${summary}`);
-      err.failed = failed;
-      err.updated = updated;
-      throw err;
-    }
-
-    // Re-fetch after successful writes so _lastFetchedSettings reflects
-    // the server's canonical state (including any server-side defaults).
+    // Re-fetch so _lastFetchedSettings reflects the server's canonical state
+    // (including any server-side defaults).
     try {
       const rows = await req('/settings/');
       _lastFetchedSettings = transformSettingsRows(rows);
@@ -1110,6 +1108,13 @@ export async function testProviders(providers) {
 }
 
 export async function revealSettingKey(name) {
+  // `/settings/reveal-key` returns UNMASKED provider secrets and is
+  // loopback-only server-side (`require_local`); on hosted the browser
+  // reaches the server from the docker bridge rather than 127.0.0.1, so the
+  // fetch would 403 (ENG-932). Short-circuited here — not just at the
+  // ApiKeyInput call site — so a future caller can't reintroduce the doomed
+  // request.
+  if (host.isWeb) return '';
   try {
     const res = await req(`/settings/reveal-key/${encodeURIComponent(name)}`);
     return res?.value || '';
@@ -1176,6 +1181,12 @@ export async function uploadSkillFile(file) {
 
 export async function deleteSkill(label) {
   return req(`/skills/${encodeURIComponent(label)}`, { method: 'DELETE' });
+}
+
+// Sweep a staged skill draft (after Save or dismiss). Idempotent server-side —
+// a missing draft is a no-op — so callers can fire-and-forget.
+export async function deleteSkillDraft(projectName, slug) {
+  return req(`/projects/${enc(projectName)}/skill_drafts/${enc(slug)}`, { method: 'DELETE' });
 }
 
 export async function fetchDatasources() {

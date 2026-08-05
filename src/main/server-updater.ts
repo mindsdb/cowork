@@ -418,6 +418,11 @@ export interface ServerUpdateCheckResult {
   updateAvailable: boolean;
   currentVersion?: string;
   latestVersion?: string;
+  // Set when the check itself couldn't complete (missing prerequisite, remote
+  // lookup failed, thrown error) — distinct from a completed check that found
+  // no update. Never set for a deliberate, deterministic "no" (updates
+  // disabled via env). See checkForServerUpdate.
+  error?: boolean;
 }
 
 /** Check whether a server update is available WITHOUT applying it. */
@@ -427,7 +432,7 @@ export async function checkForServerUpdate(): Promise<ServerUpdateCheckResult> {
     if (disable === '1' || disable === 'true') return { updateAvailable: false };
 
     const uv = findUv();
-    if (!uv) return { updateAvailable: false };
+    if (!uv) return { updateAvailable: false, error: true };
 
     const coworkVcs = readVcsInfo('cowork_server');
     if (coworkVcs) {
@@ -439,6 +444,10 @@ export async function checkForServerUpdate(): Promise<ServerUpdateCheckResult> {
         lsRemote(COWORK_SERVER_REPO, coworkRef),
         lsRemote(ANTON_REPO, antonRef),
       ]);
+      // A null remote means that ls-remote failed (offline/network) — decideGitUpdate
+      // already fails safe to "no update" for a null remote, but for this caller
+      // that's an inconclusive check, not a confirmed up-to-date result.
+      const remoteCheckFailed = coworkRemote === null || (!!antonVcs && antonRemote === null);
       const { coworkChanged, needsUpdate } = decideGitUpdate({
         coworkRemote,
         antonRemote,
@@ -449,6 +458,7 @@ export async function checkForServerUpdate(): Promise<ServerUpdateCheckResult> {
         updateAvailable: needsUpdate,
         currentVersion: coworkVcs.commit.slice(0, 7),
         latestVersion: coworkChanged ? coworkRemote!.slice(0, 7) : coworkVcs.commit.slice(0, 7),
+        ...(remoteCheckFailed ? { error: true } : {}),
       };
     }
 
@@ -457,7 +467,7 @@ export async function checkForServerUpdate(): Promise<ServerUpdateCheckResult> {
       getInstalledVersion(uv),
       fetchLatestVersion(),
     ]);
-    if (!currentVersion || !latestVersion) return { updateAvailable: false };
+    if (!currentVersion || !latestVersion) return { updateAvailable: false, error: true };
     return {
       updateAvailable: decidePypiUpdate(currentVersion, latestVersion).action === 'update',
       currentVersion,
@@ -465,7 +475,7 @@ export async function checkForServerUpdate(): Promise<ServerUpdateCheckResult> {
     };
   } catch (err: any) {
     console.error('[server-updater] check failed:', err);
-    return { updateAvailable: false };
+    return { updateAvailable: false, error: true };
   }
 }
 

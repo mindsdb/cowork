@@ -12,6 +12,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
 import Ico from '../Icons';
 import { Badge } from '../ui';
+import { Modal } from '../ui/Modal';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { CodeBlock } from './CodeBlock';
 
 function fmtMs(ms) {
@@ -40,6 +42,8 @@ function detectLanguage(data, isToolCall) {
 const UNNAMED_TAB_KEY = '__unnamed__';
 
 export function ScratchpadModal({ open, onClose, steps = [], focusStepId = null }) {
+  const { isNarrow } = useBreakpoint();
+
   // Group cells by their canonical tab id (anton's `name` field).
   // Trim + validate so the empty string and whitespace-only strings
   // don't silently land in a "" group. Unnamed cells flow into a
@@ -78,23 +82,19 @@ export function ScratchpadModal({ open, onClose, steps = [], focusStepId = null 
 
   const activeTab = tabs.find((t) => t.id === activeTabId) || tabs[0];
 
-  // Esc closes.
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e) => { if (e.key === 'Escape') onClose?.(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
-
-  if (!open) return null;
+  // Esc + backdrop dismissal are handled by <Modal>.
 
   return (
-    <div
-      onClick={(e) => { if (e.target === e.currentTarget) onClose?.(); }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
-      style={{ WebkitAppRegion: 'no-drag' }}
+    <Modal
+      open={open}
+      onClose={onClose}
+      size="lg"
+      width="min(1040px, 94vw)"
+      height="82vh"
+      fullBleed={isNarrow}
+      ariaLabel="Scratchpad"
     >
-      <div className="scratchpad-modal flex h-[82vh] w-[min(1040px,94vw)] flex-col overflow-hidden rounded-xl border border-line bg-surface shadow-2xl">
+      <div className="scratchpad-modal flex h-full flex-col overflow-hidden">
 
         {/* Modal header — title + close. Per-cell `step x/y` already
             says the count, so we don't repeat it here. */}
@@ -200,7 +200,7 @@ export function ScratchpadModal({ open, onClose, steps = [], focusStepId = null 
           )}
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 

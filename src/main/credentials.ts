@@ -28,4 +28,8 @@ export const OAUTH_CREDENTIALS: Record<string, OAuthCredentials> = {
     clientIdVar: 'LINEAR_CLIENT_ID',
     clientSecretVar: 'LINEAR_CLIENT_SECRET',
   },
+  github: {
+    clientIdVar: 'GITHUB_CLIENT_ID',
+    clientSecretVar: 'GITHUB_CLIENT_SECRET',
+  },
 };
