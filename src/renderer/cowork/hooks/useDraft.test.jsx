@@ -104,6 +104,23 @@ describe('useDraft', () => {
     expect(mount(reloaded.useDraft, 'task-a').result.current[0]).toBe('typed before quitting');
   });
 
+  // A new task starts on a `tmp-` id and adopts the server's canonical id on
+  // the first turn's `response.created`, so the key changes under a composer
+  // the user may already be typing in.
+  it('carries a draft across an id change', async () => {
+    const { useDraft } = await load();
+    const { moveDraft } = await import('../lib/draftStore');
+
+    const view = mount(useDraft, 'tmp-1735');
+    act(() => view.result.current[1]('follow-up typed while the first turn runs'));
+
+    act(() => moveDraft('tmp-1735', 'real-uuid'));
+    view.rerender({ k: 'real-uuid' });
+
+    expect(view.result.current[0]).toBe('follow-up typed while the first turn runs');
+    expect(mount(useDraft, 'tmp-1735').result.current[0]).toBe('');
+  });
+
   it('ignores a corrupted or non-string persisted value', async () => {
     localStorage.setItem('anton.composerDrafts', '{"new":{"not":"text"},"task-a":"kept"}');
     const { useDraft } = await load();

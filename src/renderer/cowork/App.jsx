@@ -35,7 +35,7 @@ import { loadCustomTheme, persistCustomTheme, applyCustomTheme } from '../lib/cu
 import { applyNavTitleColor } from '../lib/navBranding';
 import { getAgentLabel } from './lib/agentLabel';
 import { loadCachedSettings } from './lib/settingsCache';
-import { clearDraft } from './lib/draftStore';
+import { clearDraft, moveDraft } from './lib/draftStore';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { useGoogleDrivePicker } from './hooks/useGoogleDrivePicker';
 import { fetchSessions, fetchSession, fetchConversationList, fetchProjects, fetchArtifacts, fetchSettings, fetchHealth,
@@ -2648,6 +2648,8 @@ function AppCore() {
       if (!sid || sid === resolvedId) return;
       const previousId = resolvedId;
       resolvedId = sid;
+      // Carry over a reply the user started typing under the tmp- id.
+      moveDraft(previousId, sid);
       setTasks((prev) => prev.map((t) =>
         t.id === previousId || t.id === taskId ? { ...t, id: sid } : t,
       ));
@@ -2930,6 +2932,8 @@ function AppCore() {
       if (!sid || sid === resolvedId) return;
       const previousId = resolvedId;
       resolvedId = sid;
+      // Carry over a reply the user started typing under the tmp- id.
+      moveDraft(previousId, sid);
       setTasks((prev) => prev.map((t) =>
         t.id === previousId || t.id === id ? { ...t, id: sid } : t,
       ));
@@ -3089,6 +3093,8 @@ function AppCore() {
       if (!sid || sid === resolvedId) return;
       const previousId = resolvedId;
       resolvedId = sid;
+      // Carry over a reply the user started typing under the tmp- id.
+      moveDraft(previousId, sid);
       setTasks((prev) => prev.map((t) =>
         t.id === previousId || t.id === id ? { ...t, id: sid } : t,
       ));

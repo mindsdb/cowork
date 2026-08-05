@@ -74,6 +74,18 @@ export function setDraft(key, text) {
   scheduleFlush();
 }
 
+// A conversation's key changes under the composer when the server mints the
+// canonical id for a `tmp-` task (App's adoptServerId, on the first turn's
+// `response.created`). Without carrying the draft over, a follow-up the user
+// is typing while that first turn streams disappears mid-keystroke.
+export function moveDraft(fromKey, toKey) {
+  if (!fromKey || !toKey || fromKey === toKey) return;
+  const text = getDraft(fromKey);
+  if (!text) return;
+  setDraft(toKey, text);
+  clearDraft(fromKey); // flushes both halves of the move in one write
+}
+
 export function clearDraft(key) {
   if (!key || !drafts.delete(key)) return;
   // Flushed now, not debounced: this runs once per send or delete, so there's
