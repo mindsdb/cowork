@@ -515,24 +515,12 @@ export async function trackAppInstalled() {
   try { window.localStorage.setItem(APP_INSTALLED_KEY, '1'); } catch { /* best effort */ }
 }
 
-// Boot-screen resolution (ENG-921). Fires once per launch, before sign-in, as
-// soon as the app has chosen its first screen — carrying that `target` and the
-// ground-truth local-server install state. This is the only signal in the
-// install -> server-ready stretch of the funnel: app_installed is gated on a
-// healthy server (App.jsx health.status === 'ok'), so a user who stalls before
-// then otherwise emits nothing and a first-run breakage is invisible.
-//
-// The install booleans are read here and logged independent of `target`, so a
-// routing regression that sends a server-missing boot to the wrong screen (the
-// ENG-918 dead-end: server absent, yet shown the auth screen) stays visible —
-// you'd see anton_installed:false on a target:'auth' event. Logging only the
-// screen would re-hide exactly that class of bug.
-//
-// Desktop only (the web SPA is served by an already-running server). Pre-login
-// it rides the anonymous device id and merges into the account on first login,
-// same as app_installed; capture() stamps app_version. Fire-and-forget: never
-// throws, never blocks boot. Per-launch by design (not deduped) — a stuck user
-// relaunching and still seeing the server missing is a signal worth repeating.
+// Boot-screen resolution (ENG-921): fires once per launch, before sign-in, with
+// the chosen `target` and the local-server install state. It's the only signal
+// in the install -> server-ready stretch — app_installed is gated on a healthy
+// server, so a user who stalls before then is otherwise invisible. Install state
+// is logged independent of `target` so a routing regression (ENG-918: server
+// missing, shown 'auth') stays visible. Desktop-only; per-launch, not deduped.
 export async function trackBootScreenResolved(target) {
   if (!host.isElectron) return;
   let status;
