@@ -34,6 +34,7 @@ const EVENTS = {
   TOKEN_CAP_HIT:         'token_cap_hit',          // {}  upgrade-intent signal (ENG-385)
   HARNESS_SWAPPED:       'harness_swapped',        // { from, to }
   APP_INSTALLED:         'app_installed',          // {}  desktop, once per install
+  BOOT_SCREEN_RESOLVED:  'boot_screen_resolved',   // { target, anton_installed, server_deps_ready } desktop, per launch (ENG-921)
 };
 
 const POSTHOG_HOST = 'https://us.i.posthog.com';
@@ -512,6 +513,30 @@ export async function trackAppInstalled() {
   const sent = await capture(EVENTS.APP_INSTALLED);
   if (!sent) return;
   try { window.localStorage.setItem(APP_INSTALLED_KEY, '1'); } catch { /* best effort */ }
+}
+
+// Boot-screen resolution (ENG-921): fires once per launch, before sign-in, with
+// the chosen `target` and the local-server install state. It's the only signal
+// in the install -> server-ready stretch — app_installed is gated on a healthy
+// server, so a user who stalls before then is otherwise invisible. Install state
+// is logged independent of `target` so a routing regression (ENG-918: server
+// missing, shown 'auth') stays visible. Desktop-only; per-launch, not deduped.
+export async function trackBootScreenResolved(target) {
+  if (!host.isElectron) return;
+  let status;
+  try {
+    status = await host.checkInstall();
+  } catch {
+    // Couldn't even check install state — record it as unknown (false) rather
+    // than drop the event; "the check failed at boot" is itself a first-run
+    // signal worth seeing.
+    status = null;
+  }
+  await capture(EVENTS.BOOT_SCREEN_RESOLVED, {
+    target,
+    anton_installed: Boolean(status?.antonInstalled),
+    server_deps_ready: Boolean(status?.serverDepsReady),
+  });
 }
 
 // Reset per-device analytics identity on sign-out (ENG-537 review note). A
