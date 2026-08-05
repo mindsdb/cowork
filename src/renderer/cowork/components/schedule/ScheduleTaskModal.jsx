@@ -7,7 +7,7 @@
 
 import { useEffect, useState } from 'react';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
-import { Alert, Button, Select, Input, Textarea } from '../ui';
+import { Alert, Button, Field, Select, Input, Textarea } from '../ui';
 import { Switch } from '../ui/Switch';
 import Ico from '../Icons';
 
@@ -49,16 +49,6 @@ const fieldSelectStyle = {
   background: 'var(--surface-2)',
   borderRadius: 7,
 };
-
-function Field({ label, children }) {
-  return (
-    <label style={{ display: 'flex', flexDirection: 'column' }}>
-      <span style={fieldLabel}>{label}</span>
-      {children}
-    </label>
-  );
-}
-
 
 export default function ScheduleTaskModal({
   open, onClose, onSubmit, onDelete,
