@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import ScheduleTaskModal from './ScheduleTaskModal';
 
-const PROJECTS = [{ name: 'Metrics', path: '/work/metrics' }];
+const PROJECTS = [{ id: 'proj-metrics', name: 'Metrics', path: '/work/metrics' }];
 
 function renderModal(props = {}) {
   const onSubmit = vi.fn().mockResolvedValue(undefined);
@@ -81,14 +81,16 @@ describe('ScheduleTaskModal — S7 fixes', () => {
     expect(onSubmit.mock.calls[0][0].enabled).toBe(false);
   });
 
-  it('edit mode hydrates enabled from the task and resolves project name', async () => {
+  // ENG-1255: the server keys the project by id (a UUID). Edit hydrates the
+  // Project control from `task.projectId` and submits `project_id`.
+  it('edit mode hydrates the project from its id and submits project_id', async () => {
     const task = {
       id: 's1',
       title: 'Weekly',
       prompt: 'summarize',
       cadence: 'weekly',
       nextRunAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-      project: 'Metrics',
+      projectId: 'proj-metrics',
       enabled: false,
     };
     const { onSubmit } = renderModal({ task });
@@ -97,13 +99,15 @@ describe('ScheduleTaskModal — S7 fixes', () => {
     // element whose state lives in aria-checked, not a native `.checked`
     // property — read it via jest-dom's toBeChecked().
     expect(screen.getByRole('switch')).not.toBeChecked();
+    // Project control resolved the stored id → shows the project name.
+    expect(screen.getByRole('combobox', { name: 'Project' })).toHaveTextContent('Metrics');
 
     fireEvent.click(screen.getByRole('button', { name: /Save changes/i }));
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
     const [payload, id] = onSubmit.mock.calls[0];
     expect(id).toBe('s1');
     expect(payload.enabled).toBe(false);
-    expect(payload.project).toBe('Metrics'); // path→name round-trip
+    expect(payload.project_id).toBe('proj-metrics'); // id round-trips
   });
 
   // Regression (ENG-1246): the "No project" catch-all must display its label
@@ -123,6 +127,6 @@ describe('ScheduleTaskModal — S7 fixes', () => {
     fireEvent.click(screen.getByRole('button', { name: /Create/i }));
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
-    expect(onSubmit.mock.calls[0][0].project).toBeNull();
+    expect(onSubmit.mock.calls[0][0].project_id).toBeNull();
   });
 });

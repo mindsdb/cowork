@@ -264,6 +264,10 @@ export default function ScheduleDetailView({
     finally     { setBusy(false); }
   }
 
+  // Resolve the project name from the stored id (ENG-1255) — the schedule
+  // response keys the project by id (a UUID), not a name.
+  const projectName = projects.find((p) => p.id === task.projectId)?.name || '';
+
   return (
     <div className="scroll-clean" style={{
       flex: 1, overflowY: 'auto',
@@ -364,8 +368,8 @@ export default function ScheduleDetailView({
             />
             <SummaryStat
               label="Project"
-              value={task.project || '—'}
-              hint={task.project || ''}
+              value={projectName || '—'}
+              hint={projectName}
             />
             <SummaryStat
               label="Model"
