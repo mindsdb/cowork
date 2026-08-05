@@ -194,7 +194,11 @@ function SkillModal({ open, onClose, onSaved, onError, initial = null, projects 
               onValueChange={(v) => setField('project', v)}
               style={{ ...fieldStyle, height: 34 }}
               options={[
-                { value: ALL_PROJECTS, label: 'All projects' },
+                // The global scope is a mode, not a project — set it apart from
+                // the real projects (which map 1:1 to the projects page) with a
+                // leading icon and a divider.
+                { value: ALL_PROJECTS, label: 'All projects', icon: Ico.globe(14) },
+                { separator: true },
                 ...projects.map((p) => ({ value: p.name, label: p.name })),
               ]}
             />

@@ -97,15 +97,15 @@ describe('ScheduleTaskModal — S7 fixes', () => {
     expect(payload.project).toBe('Metrics'); // path→name round-trip
   });
 
-  // Regression (ENG-1246): the "All projects" catch-all must display its label
+  // Regression (ENG-1246): the "No project" catch-all must display its label
   // (not the "Select…" placeholder) and must submit as no project. It's modeled
   // with a non-empty sentinel value because Base UI's Select renders the
   // placeholder for an empty-string value — see Select.test.jsx.
-  it('defaults to "All projects" and submits it as no project', async () => {
+  it('defaults to "No project" and submits it as no project', async () => {
     const { onSubmit } = renderModal();
 
     // The closed Project control shows the catch-all label, not a placeholder.
-    expect(screen.getByRole('combobox', { name: 'Project' })).toHaveTextContent('All projects');
+    expect(screen.getByRole('combobox', { name: 'Project' })).toHaveTextContent('No project');
 
     fireEvent.change(screen.getByPlaceholderText(/Ask Anton/i), {
       target: { value: 'no project task' },

@@ -145,6 +145,27 @@ describe('Select', () => {
     expect(screen.getByRole('separator')).toBeInTheDocument();
   });
 
+  // A leading option `icon` renders inside the open list item (used to set a
+  // mode entry like "All projects" apart from the real options) but is not
+  // echoed into the closed trigger, which shows only the label.
+  it('renders a leading icon on an option when provided', async () => {
+    const user = userEvent.setup();
+    const options = [
+      { value: 'all', label: 'All projects', icon: <svg data-testid="opt-icon" /> },
+      { separator: true },
+      { value: 'analytics', label: 'analytics' },
+    ];
+    render(<Harness initial="all" options={options} />);
+
+    // Not in the closed trigger.
+    expect(screen.getByRole('combobox')).not.toContainElement(screen.queryByTestId('opt-icon'));
+
+    await user.click(screen.getByRole('combobox'));
+    const icon = screen.getByTestId('opt-icon');
+    expect(icon).toBeInTheDocument();
+    expect(icon.closest('[role="option"]')).toHaveTextContent('All projects');
+  });
+
   it('prefixes the pill variant with its label', () => {
     render(<Harness variant="pill" label="Sort by" initial="date" />);
     expect(screen.getByRole('combobox')).toHaveTextContent('Sort by:Date');
