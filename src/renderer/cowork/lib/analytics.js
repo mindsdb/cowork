@@ -34,6 +34,7 @@ const EVENTS = {
   TOKEN_CAP_HIT:         'token_cap_hit',          // {}  upgrade-intent signal (ENG-385)
   HARNESS_SWAPPED:       'harness_swapped',        // { from, to }
   APP_INSTALLED:         'app_installed',          // {}  desktop, once per install
+  BOOT_SCREEN_RESOLVED:  'boot_screen_resolved',   // { target, anton_installed, server_deps_ready } desktop, per launch (ENG-921)
 };
 
 const POSTHOG_HOST = 'https://us.i.posthog.com';
@@ -512,6 +513,42 @@ export async function trackAppInstalled() {
   const sent = await capture(EVENTS.APP_INSTALLED);
   if (!sent) return;
   try { window.localStorage.setItem(APP_INSTALLED_KEY, '1'); } catch { /* best effort */ }
+}
+
+// Boot-screen resolution (ENG-921). Fires once per launch, before sign-in, as
+// soon as the app has chosen its first screen — carrying that `target` and the
+// ground-truth local-server install state. This is the only signal in the
+// install -> server-ready stretch of the funnel: app_installed is gated on a
+// healthy server (App.jsx health.status === 'ok'), so a user who stalls before
+// then otherwise emits nothing and a first-run breakage is invisible.
+//
+// The install booleans are read here and logged independent of `target`, so a
+// routing regression that sends a server-missing boot to the wrong screen (the
+// ENG-918 dead-end: server absent, yet shown the auth screen) stays visible —
+// you'd see anton_installed:false on a target:'auth' event. Logging only the
+// screen would re-hide exactly that class of bug.
+//
+// Desktop only (the web SPA is served by an already-running server). Pre-login
+// it rides the anonymous device id and merges into the account on first login,
+// same as app_installed; capture() stamps app_version. Fire-and-forget: never
+// throws, never blocks boot. Per-launch by design (not deduped) — a stuck user
+// relaunching and still seeing the server missing is a signal worth repeating.
+export async function trackBootScreenResolved(target) {
+  if (!host.isElectron) return;
+  let status;
+  try {
+    status = await host.checkInstall();
+  } catch {
+    // Couldn't even check install state — record it as unknown (false) rather
+    // than drop the event; "the check failed at boot" is itself a first-run
+    // signal worth seeing.
+    status = null;
+  }
+  await capture(EVENTS.BOOT_SCREEN_RESOLVED, {
+    target,
+    anton_installed: Boolean(status?.antonInstalled),
+    server_deps_ready: Boolean(status?.serverDepsReady),
+  });
 }
 
 // Reset per-device analytics identity on sign-out (ENG-537 review note). A

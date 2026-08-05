@@ -10,8 +10,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // hostState.isElectron is a hoisted mutable so a test can flip the surface to
 // web before importAnalytics() (SURFACE/LIB are read at import time); getters
 // keep the mock reading the current value on each fresh import.
-const { getAccessToken, hostState } = vi.hoisted(() => ({
+const { getAccessToken, checkInstall, hostState } = vi.hoisted(() => ({
   getAccessToken: vi.fn(),
+  checkInstall: vi.fn(),
   hostState: { isElectron: true },
 }));
 vi.mock('../../platform/host', () => ({
@@ -20,6 +21,7 @@ vi.mock('../../platform/host', () => ({
       return hostState.isElectron;
     },
     getAccessToken,
+    checkInstall,
   },
   get isElectron() {
     return hostState.isElectron;
@@ -60,6 +62,7 @@ beforeEach(() => {
   vi.stubEnv('MODE', 'production');
   hostState.isElectron = true;
   getAccessToken.mockReset().mockResolvedValue(null); // unauthenticated by default
+  checkInstall.mockReset().mockResolvedValue({ antonInstalled: true, serverDepsReady: true });
   try {
     window.localStorage.clear();
   } catch {
@@ -282,6 +285,63 @@ describe('classifyFirstResponse outcome mapping (ENG-736)', () => {
   it('falls back to reason=unknown for a codeless, non-config failure (e.g. a network drop)', async () => {
     const { classifyFirstResponse } = await importAnalytics();
     expect(classifyFirstResponse({ failed: true })).toEqual({ outcome: 'error', reason: 'unknown' });
+  });
+});
+
+describe('trackBootScreenResolved boot event (ENG-921)', () => {
+  it('captures the chosen screen and ground-truth install state on desktop', async () => {
+    checkInstall.mockResolvedValue({ antonInstalled: false, serverDepsReady: false });
+    const fetchMock = mockFetch();
+    const { trackBootScreenResolved } = await importAnalytics();
+
+    await trackBootScreenResolved('auth');
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.event).toBe('boot_screen_resolved');
+    expect(body.properties.target).toBe('auth');
+    // The ENG-918 signature: a server-missing boot still shows its true install
+    // state even when routed to 'auth', independent of the chosen screen.
+    expect(body.properties.anton_installed).toBe(false);
+    expect(body.properties.server_deps_ready).toBe(false);
+  });
+
+  it('reports a healthy install as installed/ready', async () => {
+    checkInstall.mockResolvedValue({ antonInstalled: true, serverDepsReady: true });
+    const fetchMock = mockFetch();
+    const { trackBootScreenResolved } = await importAnalytics();
+
+    await trackBootScreenResolved('terminal');
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.properties.target).toBe('terminal');
+    expect(body.properties.anton_installed).toBe(true);
+    expect(body.properties.server_deps_ready).toBe(true);
+  });
+
+  it('still fires with install state false when the install check throws', async () => {
+    checkInstall.mockRejectedValue(new Error('bridge unavailable'));
+    const fetchMock = mockFetch();
+    const { trackBootScreenResolved } = await importAnalytics();
+
+    await trackBootScreenResolved('setup');
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.properties.target).toBe('setup');
+    expect(body.properties.anton_installed).toBe(false);
+    expect(body.properties.server_deps_ready).toBe(false);
+  });
+
+  it('is a no-op off Electron (the web SPA has no local server to install)', async () => {
+    hostState.isElectron = false; // web SPA
+    const fetchMock = mockFetch();
+    const { trackBootScreenResolved } = await importAnalytics();
+
+    await trackBootScreenResolved('auth');
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(checkInstall).not.toHaveBeenCalled();
   });
 });
 
