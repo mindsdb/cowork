@@ -18,8 +18,8 @@ const FONT_BODY = 'var(--font-body)';
 // empty-string value as "nothing selected" and renders the placeholder, so an
 // option with value '' shows "Select…" on the closed control even while its
 // item carries a checkmark (ENG-1246). This value never reaches the server —
-// `handleSubmit` resolves it to `project: null`, and it can't collide with a
-// real project path.
+// `handleSubmit` resolves it to `project_id: null` (server → general), and it
+// can't collide with a real project path.
 const NO_PROJECT = '__no_project__';
 
 function toLocalInput(value) {
@@ -98,15 +98,12 @@ export default function ScheduleTaskModal({
     setError('');
     setConfirmingDelete(false);
     if (task) {
-      // The server stores the project as a NAME (`task.project`) and
-      // the form's Project select uses path as its value. Hydrate the
-      // form by resolving the name back to a path via `projects`.
-      // Earlier versions read `task.projectPath` which the server never
-      // sets, so editing always lost the project association.
+      // The server keys the project association by `projectId` (a UUID) and
+      // the form's Project select uses the project PATH as its value. Hydrate
+      // by resolving the stored id back to a path via `projects` (ENG-1255).
       const taskProjectPath = (() => {
-        if (task.projectPath) return task.projectPath;
-        if (task.project) {
-          const match = projects.find((p) => p.name === task.project);
+        if (task.projectId) {
+          const match = projects.find((p) => p.id === task.projectId);
           if (match?.path) return match.path;
         }
         return '';
@@ -141,13 +138,10 @@ export default function ScheduleTaskModal({
       return;
     }
     setError('');
-    // The server's `ScheduleRequest` schema accepts `project` as a
-    // bare project NAME (not a path) and ignores any unknown fields.
-    // The earlier payload sent `project_path: <path>` which silently
-    // dropped — every schedule landed with `project: null`, breaking
-    // the project-pivoted card / list / count. Resolve the form's
-    // path back to a name via `projects` and send the right field.
-    // The "No project" sentinel resolves to no project (`null`).
+    // The server keys the project association by `project_id` (a UUID); a
+    // bare name is silently dropped and the schedule falls back to the general
+    // project (ENG-1255). Resolve the selected path → project id via
+    // `projects`. The "No project" sentinel sends null (server → general).
     const projectMatch = form.projectPath === NO_PROJECT
       ? null
       : projects.find((p) => p.path === form.projectPath);
@@ -157,7 +151,7 @@ export default function ScheduleTaskModal({
       cadence:      form.cadence,
       timezone:     Intl.DateTimeFormat().resolvedOptions().timeZone || 'local',
       next_run_at:  new Date(form.nextRunAt).toISOString(),
-      project:      projectMatch?.name || null,
+      project_id:   projectMatch?.id || null,
       // Scheduled tasks always use the user's configured default
       // model — exposing the picker here let people accidentally
       // pin a stale model id that's no longer valid.

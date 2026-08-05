@@ -55,10 +55,13 @@ export default function ScheduleCard({
   const open  = () => onOpen?.(task);
   const stop  = (e) => { e.stopPropagation(); };
 
-  const projectName = task.project || task.projectName || '';
-  const projectMatch = projectName
-    ? projects.find((p) => p.name === projectName) || null
+  // The server keys the schedule's project by id (a UUID) — resolve the name
+  // to display from `projects` (ENG-1255). `task.project`/`projectName` were
+  // never sent by the server, so reading them showed a blank field.
+  const projectMatch = task.projectId
+    ? projects.find((p) => p.id === task.projectId) || null
     : null;
+  const projectName = projectMatch?.name || '';
   const canOpenProject = !!(projectMatch && typeof onOpenProject === 'function');
 
   return (

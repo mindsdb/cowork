@@ -96,7 +96,10 @@ export default function ScheduledView({
     const q = (search || '').trim().toLowerCase();
     const matches = (item) => {
       if (!q) return true;
-      const haystack = [item.title, item.prompt, item.project, item.projectName]
+      // Resolve the project name from the stored id (ENG-1255) so search by
+      // project works — `item.project`/`projectName` are never sent by the server.
+      const projectName = projects.find((p) => p.id === item.projectId)?.name;
+      const haystack = [item.title, item.prompt, projectName]
         .filter(Boolean).join(' ').toLowerCase();
       return haystack.includes(q);
     };
@@ -113,7 +116,7 @@ export default function ScheduledView({
       created: (a, b) => ts(b.createdAt) - ts(a.createdAt),
     }[sort] || (() => 0);
     return [...filtered].sort(cmp);
-  }, [scheduled, search, sort]);
+  }, [scheduled, search, sort, projects]);
 
   function openCreate() {
     setEditing(null);
@@ -344,10 +347,12 @@ function ScheduleListRow({
     once: 'Once', hourly: 'Hourly', daily: 'Daily', weekdays: 'Weekdays', weekly: 'Weekly',
   }[task.cadence] || task.cadence;
 
-  const projectName = task.project || task.projectName || '';
-  const projectMatch = projectName
-    ? projects.find((p) => p.name === projectName) || null
+  // Resolve the project name from the stored id (ENG-1255) — the server keys
+  // by project id (a UUID), not a name.
+  const projectMatch = task.projectId
+    ? projects.find((p) => p.id === task.projectId) || null
     : null;
+  const projectName = projectMatch?.name || '';
   const canOpenProject = !!(projectMatch && typeof onOpenProject === 'function');
 
   return (
