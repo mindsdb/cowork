@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Button } from '../../components/ui';
+import { Alert, Button } from '../../components/ui';
 import { ConfirmModal } from '../../components/ConfirmModal';
 import { host, getAccessToken } from '../../../platform/host';
 import { resetDeviceIdentity } from '../../lib/analytics';
@@ -199,15 +199,9 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
           browser flow left the card looking untouched and the user
           with no idea anything went wrong. */}
       {ssoError && (
-        <div role="alert" style={{
-          width: '100%', padding: '10px 14px', borderRadius: 8,
-          fontSize: 12.5, lineHeight: 1.55,
-          color: 'var(--danger, #c0564f)',
-          background: 'color-mix(in srgb, var(--danger, #c0564f) 8%, transparent)',
-          border: '1px solid color-mix(in srgb, var(--danger, #c0564f) 30%, transparent)',
-        }}>
+        <Alert variant="danger" className="w-full">
           Sign-in didn't complete: {ssoError}
-        </div>
+        </Alert>
       )}
 
       {/* CTA */}

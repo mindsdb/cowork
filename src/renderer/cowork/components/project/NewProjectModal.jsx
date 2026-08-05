@@ -15,7 +15,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
-import { Button, Input, Textarea } from '../ui';
+import { Alert, Button, Input, Textarea } from '../ui';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
 import {
   createProject,
@@ -302,12 +302,7 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
           </div>
 
           {error && (
-            <div style={{
-              padding: '10px 12px', borderRadius: 7,
-              background: 'color-mix(in srgb, var(--danger) 12%, var(--surface))',
-              border: '1px solid color-mix(in srgb, var(--danger) 30%, transparent)',
-              color: 'var(--danger)', fontSize: 13,
-            }}>{error}</div>
+            <Alert variant="danger">{error}</Alert>
           )}
         </div>
       </ModalBody>

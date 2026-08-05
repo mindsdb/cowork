@@ -7,7 +7,7 @@
 
 import { useEffect, useState } from 'react';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
-import { Button, Select, Input, Textarea } from '../ui';
+import { Alert, Button, Select, Input, Textarea } from '../ui';
 import { Switch } from '../ui/Switch';
 import Ico from '../Icons';
 
@@ -278,12 +278,7 @@ export default function ScheduleTaskModal({
           </Field>
 
           {error && (
-            <div style={{
-              padding: '8px 10px', borderRadius: 7,
-              background: 'color-mix(in srgb, var(--danger) 12%, var(--surface))',
-              border: '1px solid color-mix(in srgb, var(--danger) 35%, transparent)',
-              color: 'var(--danger)', fontSize: 12.5,
-            }}>{error}</div>
+            <Alert variant="danger">{error}</Alert>
           )}
         </div>
       </ModalBody>

@@ -16,7 +16,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
-import { Button } from '../ui';
+import { Alert, Button } from '../ui';
 import { DataVaultForm } from './DataVaultForm';
 import {
   clearForm, getForm, patchForm, subscribe,
@@ -854,12 +854,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
               }}
             />
             {error && (
-              <div style={{
-                marginTop: 10, padding: '8px 10px', borderRadius: 7,
-                background: 'color-mix(in srgb, var(--danger) 12%, var(--surface))',
-                border: '1px solid color-mix(in srgb, var(--danger) 35%, transparent)',
-                color: 'var(--danger)', fontSize: 12,
-              }}>{error}</div>
+              <Alert variant="danger" className="mt-2.5">{error}</Alert>
             )}
           </>
         )}

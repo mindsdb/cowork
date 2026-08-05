@@ -31,7 +31,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
-import { Badge, Button, Checkbox, Select, Input, Textarea } from '../ui';
+import { Alert, Badge, Button, Checkbox, Select, Input, Textarea } from '../ui';
 import {
   setFormState,
   setSelectedMethod,
@@ -470,12 +470,7 @@ export function DataVaultForm({ spec, busy = false, onAction, onMethodChange, co
       {(!isMultiMethod || activeMethod) && <>
       {/* Form-level banners */}
       {spec.form_error && (
-        <div style={{
-          padding: '8px 10px', borderRadius: 7,
-          background: 'color-mix(in srgb, var(--danger) 12%, var(--surface))',
-          border: '1px solid color-mix(in srgb, var(--danger) 35%, transparent)',
-          color: 'var(--danger)', fontSize: 12.5,
-        }}>{spec.form_error}</div>
+        <Alert variant="danger">{spec.form_error}</Alert>
       )}
       {spec.form_warning && (
         <div style={{
