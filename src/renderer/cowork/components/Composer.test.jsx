@@ -34,7 +34,7 @@ const renderComposer = (overrides = {}) => {
 };
 
 const openNewProjectModal = async (user) => {
-  await user.click(screen.getByTitle('Choose project'));
+  await user.click(screen.getByRole('button', { name: 'Choose project' }));
   await user.click(screen.getByRole('button', { name: /new project/i }));
   return screen.findByText('Start a new project');
 };

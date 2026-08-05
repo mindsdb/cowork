@@ -30,7 +30,7 @@ import {
   revealProjectInFinder,
   fetchMemory, fetchArtifacts, countNonEmptyMemory,
 } from '../api';
-import { Button, Menu, EmptyState } from '../components/ui';
+import { Button, Menu, EmptyState, Tooltip } from '../components/ui';
 import { Crumb, CrumbSep, CrumbCurrent } from '../components/ui/Crumb';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { host } from '../../platform/host';
@@ -716,11 +716,11 @@ function ProjectDetail({
         minWidth: 0, minHeight: 0,
       }}>
         {/* Floating expand-rail button (mirrors ChatView). */}
+        <Tooltip content="Expand panel">
         <button
           type="button"
           className="project-detail-rail-toggle"
           onClick={() => setRailOpen(true)}
-          title="Expand panel"
           aria-label="Expand panel"
           style={{
             position: 'absolute', top: 14, right: 14, zIndex: 10,
@@ -741,6 +741,7 @@ function ProjectDetail({
         >
           {Ico.panelExpandLeft(15)}
         </button>
+        </Tooltip>
 
         {/* Header — Projects › [project] crumb. Top padding honours the
             shell's --titlebar-safe-top so the crumb drops below the traffic
@@ -912,11 +913,11 @@ function ProjectDetail({
           display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
           flexShrink: 0,
         }}>
+          <Tooltip content="Collapse panel">
           <button
             type="button"
             className="project-detail-rail-toggle"
             onClick={() => setRailOpen(false)}
-            title="Collapse panel"
             aria-label="Collapse panel"
             style={{
               cursor: 'pointer', background: 'transparent', border: 0,
@@ -930,6 +931,7 @@ function ProjectDetail({
           >
             {Ico.panelCollapseRight(15)}
           </button>
+          </Tooltip>
         </div>
         <WorkingFolderBox project={project} />
         <ContextBox

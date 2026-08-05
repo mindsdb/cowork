@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import Ico from './Icons';
-import { Spinner, Kbd, Badge, Input, Button } from './ui';
+import { Spinner, Kbd, Badge, Input, Button, Tooltip } from './ui';
 import { TaskMenu } from './TaskMenu';
 import RecentsModal from './RecentsModal';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
@@ -499,17 +499,13 @@ export default function Sidebar({
             {(() => {
               const canToggle = typeof onToggleCollapsed === 'function';
               return (
+                <Tooltip content={canToggle ? `${collapsed ? 'Expand sidebar' : 'Collapse sidebar'}  (${shortcut('B')})` : ''}>
                 <button
                   className="icon-btn"
                   onClick={canToggle ? onToggleCollapsed : undefined}
                   disabled={!canToggle}
                   aria-hidden={canToggle ? undefined : 'true'}
                   tabIndex={canToggle ? undefined : -1}
-                  title={
-                    canToggle
-                      ? `${collapsed ? 'Expand sidebar' : 'Collapse sidebar'}  (${shortcut('B')})`
-                      : undefined
-                  }
                   aria-label={canToggle ? (collapsed ? 'Expand sidebar' : 'Collapse sidebar') : undefined}
                   style={{
                     WebkitAppRegion: 'no-drag',
@@ -533,17 +529,19 @@ export default function Sidebar({
                 >
                   {collapsed ? Ico.sidebarExpandRight(15) : Ico.sidebarCollapseLeft(15)}
                 </button>
+                </Tooltip>
               );
             })()}
-            <button
-              className="icon-btn"
-              onClick={onOpenSearch}
-              title={`Search  (${shortcut('K')})`}
-              aria-label="Search"
-              style={{ WebkitAppRegion: 'no-drag' }}
-            >
-              {Ico.search(15)}
-            </button>
+            <Tooltip content={`Search  (${shortcut('K')})`}>
+              <button
+                className="icon-btn"
+                onClick={onOpenSearch}
+                aria-label="Search"
+                style={{ WebkitAppRegion: 'no-drag' }}
+              >
+                {Ico.search(15)}
+              </button>
+            </Tooltip>
           </div>
           <span
             aria-hidden="true"
@@ -591,7 +589,6 @@ export default function Sidebar({
             block
             size="lg"
             onClick={onNewTask}
-            title={`New task  (${shortcut('N')})`}
             style={{ gap: 10 }}
           >
             {Ico.plus(14)}
@@ -714,7 +711,6 @@ export default function Sidebar({
               transform: recentsHeadingHover ? 'translateX(0)' : 'translateX(2px)',
               pointerEvents: recentsHeadingHover ? 'auto' : 'none',
             }}
-            title="View all tasks"
           >
             View all →
           </button>
@@ -897,10 +893,10 @@ export default function Sidebar({
               WebkitAppRegion: 'no-drag',
             }}
           >
+            <Tooltip content={`A new version of MindsHub Cowork is available${shellUpdate.version ? ` (${shellUpdate.version})` : ''} — download the installer, then quit the app and open it to update`}>
             <button
               type="button"
               onClick={onDownloadShellUpdate}
-              title={`A new version of MindsHub Cowork is available${shellUpdate.version ? ` (${shellUpdate.version})` : ''} — download the installer, then quit the app and open it to update`}
               style={{
                 flex: 1, display: 'flex', alignItems: 'center', gap: 8,
                 background: 'none', border: 'none', padding: 0, margin: 0,
@@ -918,18 +914,20 @@ export default function Sidebar({
                 Download
               </span>
             </button>
-            <button
-              type="button"
-              onClick={onDismissShellUpdate}
-              aria-label="Dismiss update notice"
-              title="Dismiss"
-              style={{
-                background: 'none', border: 'none', padding: '0 2px', margin: 0,
-                cursor: 'pointer', color: 'var(--text-muted)', fontSize: 14, lineHeight: 1, flexShrink: 0,
-              }}
-            >
-              ×
-            </button>
+            </Tooltip>
+            <Tooltip content="Dismiss">
+              <button
+                type="button"
+                onClick={onDismissShellUpdate}
+                aria-label="Dismiss update notice"
+                style={{
+                  background: 'none', border: 'none', padding: '0 2px', margin: 0,
+                  cursor: 'pointer', color: 'var(--text-muted)', fontSize: 14, lineHeight: 1, flexShrink: 0,
+                }}
+              >
+                ×
+              </button>
+            </Tooltip>
           </div>
         )}
 
@@ -956,6 +954,7 @@ export default function Sidebar({
               gets the plain Settings row; only the pill is gated. */}
           {(!host.isWeb && (!serverOnline || serverBusy)) ? (
               <>
+                <Tooltip content="Backend status — click for details">
                 <button
                   type="button"
                   className={
@@ -963,7 +962,6 @@ export default function Sidebar({
                     (serverBusy ? ' is-busy' : '')
                   }
                   onClick={onShowServerHelp}
-                  title="Backend status — click for details"
                   aria-label="Backend status — click for details"
                   style={{ WebkitAppRegion: 'no-drag', flex: 1 }}
                 >
@@ -980,21 +978,22 @@ export default function Sidebar({
                     )}
                   </span>
                 </button>
-                <button
-                  className={'chrome-btn--small' + (settingsActive ? ' is-on' : '')}
-                  onClick={() => onNavigate('settings:backend')}
-                  title="Settings"
-                  aria-label="Settings"
-                  style={{ WebkitAppRegion: 'no-drag', flexShrink: 0 }}
-                >
-                  {Ico.settings(13)}
-                </button>
+                </Tooltip>
+                <Tooltip content="Settings">
+                  <button
+                    className={'chrome-btn--small' + (settingsActive ? ' is-on' : '')}
+                    onClick={() => onNavigate('settings:backend')}
+                    aria-label="Settings"
+                    style={{ WebkitAppRegion: 'no-drag', flexShrink: 0 }}
+                  >
+                    {Ico.settings(13)}
+                  </button>
+                </Tooltip>
               </>
             ) : (
               <button
                 className={'anton-sidebar__footer-settings' + (settingsActive ? ' is-on' : '')}
                 onClick={() => onNavigate('settings:agent')}
-                title="Settings"
                 aria-label="Settings"
                 style={{ WebkitAppRegion: 'no-drag', flex: 1, minWidth: 0 }}
               >
@@ -1012,26 +1011,28 @@ export default function Sidebar({
             />
           )}
           {show8bitToggle && (
-            <button
-              className={'chrome-btn--small' + (resolved8bitActive ? ' is-on' : '')}
-              onClick={onToggleSkin}
-              title={skin === 'custom' ? '8-bit font' : '8-bit style'}
-              aria-label={skin === 'custom' ? 'Toggle 8-bit font' : 'Toggle 8-bit style'}
-              style={{ WebkitAppRegion: 'no-drag', flexShrink: 0 }}
-            >
-              {Ico.gamepad(15)}
-            </button>
+            <Tooltip content={skin === 'custom' ? '8-bit font' : '8-bit style'}>
+              <button
+                className={'chrome-btn--small' + (resolved8bitActive ? ' is-on' : '')}
+                onClick={onToggleSkin}
+                aria-label={skin === 'custom' ? 'Toggle 8-bit font' : 'Toggle 8-bit style'}
+                style={{ WebkitAppRegion: 'no-drag', flexShrink: 0 }}
+              >
+                {Ico.gamepad(15)}
+              </button>
+            </Tooltip>
           )}
           {showThemeToggle && (
-            <button
-              className="chrome-btn--small"
-              onClick={onToggleTheme}
-              title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
-              aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
-              style={{ WebkitAppRegion: 'no-drag', flexShrink: 0 }}
-            >
-              {theme === 'dark' ? Ico.sun(15) : Ico.moon(15)}
-            </button>
+            <Tooltip content={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}>
+              <button
+                className="chrome-btn--small"
+                onClick={onToggleTheme}
+                aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
+                style={{ WebkitAppRegion: 'no-drag', flexShrink: 0 }}
+              >
+                {theme === 'dark' ? Ico.sun(15) : Ico.moon(15)}
+              </button>
+            </Tooltip>
           )}
         </div>
 

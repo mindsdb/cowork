@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { createPortal } from 'react-dom';
 import Ico from './Icons';
 import NewProjectModal from './project/NewProjectModal';
+import { Tooltip } from './ui';
 import {
   parseFences,
   fenceCtxAtParsed,
@@ -50,9 +51,11 @@ function AttachmentChip({ attachment, onRemove }) {
         <span className="attachment-chip-meta">{status || label}</span>
       </span>
       {onRemove && (
-        <button className="attachment-chip-remove" title="Remove attachment" onClick={() => onRemove(attachment.id)}>
-          x
-        </button>
+        <Tooltip content="Remove attachment">
+          <button className="attachment-chip-remove" aria-label="Remove attachment" onClick={() => onRemove(attachment.id)}>
+            x
+          </button>
+        </Tooltip>
       )}
     </div>
   );
@@ -861,9 +864,10 @@ export default function Composer({
               ref={attachAnchorRef}
               style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}
             >
+              <Tooltip content="Add context">
               <button
                 className="composer-icon"
-                title="Add context"
+                aria-label="Add context"
                 disabled={disabled || busy}
                 onClick={() => {
                   if (openMenu === 'attach') {
@@ -880,6 +884,7 @@ export default function Composer({
               >
                 {Ico.plus(15)}
               </button>
+              </Tooltip>
               {openMenu === 'attach' && (
                 <div
                   ref={attachMenuRef}
@@ -1017,10 +1022,10 @@ export default function Composer({
                 around so we can reinstate later by re-rendering the
                 button (e.g. behind a `showMic` prop). */}
             {streaming && onStop ? (
+              <Tooltip content="Stop generation">
               <button
                 className="send-btn stop"
                 onClick={onStop}
-                title="Stop generation"
                 aria-label="Stop generation"
                 style={{
                   // Theme-aware "stop" treatment — uses the danger token
@@ -1046,15 +1051,18 @@ export default function Composer({
               >
                 {Ico.stop(14)}
               </button>
+              </Tooltip>
             ) : (
+              <Tooltip content="Send">
               <button
                 className="send-btn"
                 disabled={disabled || !value.trim() || busy}
                 onClick={handleSend}
-                title="Send"
+                aria-label="Send"
               >
                 {Ico.send(15)}
               </button>
+              </Tooltip>
             )}
           </div>
         </div>
@@ -1086,16 +1094,18 @@ export default function Composer({
               <span
                 style={{ position: 'relative', display: 'inline-flex' }}
               >
+                <Tooltip content="Choose project">
                 <button
                   ref={projectPillRef}
                   className="meta-pill"
                   onClick={() => setOpenMenu(openMenu === 'project' ? null : 'project')}
-                  title="Choose project"
+                  aria-label="Choose project"
                 >
                   {Ico.folder(14)}
                   <span>{project ? project.name : 'Work in a project'}</span>
                   <span style={{ display: 'inline-flex', color: 'var(--frost-500)' }}>{Ico.chevDown(13)}</span>
                 </button>
+                </Tooltip>
 
                 {openMenu === 'project' && !metaReadOnly && (
                   <div
@@ -1249,14 +1259,16 @@ export default function Composer({
                 )}
               </span>
               {!hideModel && (
+                <Tooltip content="Choose model">
                 <button
                   className="meta-pill"
                   onClick={() => setOpenMenu(openMenu === 'model' ? null : 'model')}
-                  title="Choose model"
+                  aria-label="Choose model"
                 >
                   <span>{model?.name ?? 'Select model'}</span>
                   <span style={{ display: 'inline-flex', color: 'var(--frost-500)' }}>{Ico.chevDown(13)}</span>
                 </button>
+                </Tooltip>
               )}
             </>
           )}

@@ -10,7 +10,7 @@
 
 import { useState } from 'react';
 import Ico from '../Icons';
-import { Alert, Card, Button } from '../ui';
+import { Alert, Card, Button, Tooltip } from '../ui';
 import { relativeTime } from '../../lib/formatTime';
 import { ScheduleStatusBadge } from './ScheduleStatusBadge';
 
@@ -128,10 +128,10 @@ export default function ScheduleCard({
         }}>
           <span style={{ flexShrink: 0 }}>project:</span>
           {canOpenProject ? (
+            <Tooltip content={`Open ${projectMatch.name}`}>
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); onOpenProject(projectMatch); }}
-              title={`Open ${projectMatch.name}`}
               style={{
                 all: 'unset', cursor: 'pointer',
                 color: 'var(--ink-3)', minWidth: 0,
@@ -148,6 +148,7 @@ export default function ScheduleCard({
                 e.currentTarget.style.textDecoration = 'none';
               }}
             >{projectName}</button>
+            </Tooltip>
           ) : (
             <span style={{
               color: 'var(--ink-3)', minWidth: 0,

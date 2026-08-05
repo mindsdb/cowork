@@ -26,6 +26,7 @@ import {
 import ContextFileModal from '../project/ContextFileModal';
 import { ConfirmModal } from '../ConfirmModal';
 import { OverflowMenu } from '../OverflowMenu';
+import { Tooltip } from '../ui';
 import * as host from '../../../platform/host';
 import { useFileDrop, FileDropOverlay } from '../../lib/useFileDrop';
 
@@ -48,25 +49,26 @@ function MemoryRow({ entry, onOpen }) {
   // filename itself. Hover/click opens the editor, which has the
   // full content; the rail row only needs the file identity + age.
   return (
-    <button
-      type="button"
-      onClick={onOpen}
-      title={entry.content || labelCategory(entry.category)}
-      className={clsx(
-        'group grid items-center gap-2 rounded-card-row px-1 py-1 text-left',
-        'cursor-pointer transition-colors hover:bg-surface-2',
-        'border-0 bg-transparent w-full'
-      )}
-      style={{ gridTemplateColumns: '14px minmax(0,1fr) auto', font: 'inherit' }}
-    >
-      <span className="text-ink-4 inline-flex flex-none">{Ico.code(13)}</span>
-      <span className="block truncate text-[12.5px] text-ink min-w-0">
-        {labelCategory(entry.category) || entry.name}
-      </span>
-      {entry.modifiedAt && (
-        <span className="text-[10.5px] text-ink-4">{relativeAge(entry.modifiedAt)}</span>
-      )}
-    </button>
+    <Tooltip content={entry.content || labelCategory(entry.category)}>
+      <button
+        type="button"
+        onClick={onOpen}
+        className={clsx(
+          'group grid items-center gap-2 rounded-card-row px-1 py-1 text-left',
+          'cursor-pointer transition-colors hover:bg-surface-2',
+          'border-0 bg-transparent w-full'
+        )}
+        style={{ gridTemplateColumns: '14px minmax(0,1fr) auto', font: 'inherit' }}
+      >
+        <span className="text-ink-4 inline-flex flex-none">{Ico.code(13)}</span>
+        <span className="block truncate text-[12.5px] text-ink min-w-0">
+          {labelCategory(entry.category) || entry.name}
+        </span>
+        {entry.modifiedAt && (
+          <span className="text-[10.5px] text-ink-4">{relativeAge(entry.modifiedAt)}</span>
+        )}
+      </button>
+    </Tooltip>
   );
 }
 
@@ -97,6 +99,7 @@ function SessionAttachmentRow({
   const canOpen = !!onOpen;
   const hasMenuActions = menuItems.length > 0;
   return (
+    <Tooltip content={titleText}>
     <div
       role={canOpen ? 'button' : undefined}
       tabIndex={canOpen ? 0 : undefined}
@@ -104,7 +107,6 @@ function SessionAttachmentRow({
       onKeyDown={canOpen
         ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen?.(); } }
         : undefined}
-      title={titleText}
       className={clsx(
         'group relative grid items-center gap-2 rounded-card-row px-1 py-1 text-left',
         canOpen && 'cursor-pointer transition-colors hover:bg-surface-2',
@@ -142,6 +144,7 @@ function SessionAttachmentRow({
         )}
       </span>
     </div>
+    </Tooltip>
   );
 }
 
@@ -157,12 +160,12 @@ function ContextFileRow({ file, onOpen, onRequestDelete }) {
   // some browsers. Switch the outer to a div with role="button" so
   // the trash can be a real interactive child.
   return (
+    <Tooltip content={`${file.path}${file.size ? ` · ${Math.ceil(file.size / 1024)} KB` : ''}`}>
     <div
       role="button"
       tabIndex={0}
       onClick={onOpen}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen?.(); } }}
-      title={`${file.path}${file.size ? ` · ${Math.ceil(file.size / 1024)} KB` : ''}`}
       className={clsx(
         'group grid items-center gap-2 rounded-card-row px-1 py-1 text-left',
         'cursor-pointer transition-colors hover:bg-surface-2',
@@ -189,10 +192,10 @@ function ContextFileRow({ file, onOpen, onRequestDelete }) {
           </span>
         ) : null}
         {canDelete && (
+          <Tooltip content="Delete file">
           <button
             type="button"
             aria-label={`Delete ${file.path || file.name}`}
-            title="Delete file"
             onClick={(e) => {
               // Don't let the click bubble up to the row — that
               // would open the file modal instead of confirming
@@ -210,9 +213,11 @@ function ContextFileRow({ file, onOpen, onRequestDelete }) {
           >
             {Ico.trash(13)}
           </button>
+          </Tooltip>
         )}
       </span>
     </div>
+    </Tooltip>
   );
 }
 
@@ -223,12 +228,12 @@ function ContextFileRow({ file, onOpen, onRequestDelete }) {
 function DriveReferenceRow({ file, onRequestDelete }) {
   const openInDrive = () => { if (file.url) host.openExternal(file.url); };
   return (
+    <Tooltip content={`Open "${file.name}" in Google Drive`}>
     <div
       role="button"
       tabIndex={0}
       onClick={openInDrive}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openInDrive(); } }}
-      title={`Open "${file.name}" in Google Drive`}
       className={clsx(
         'group grid items-center gap-2 rounded-card-row px-1 py-1 text-left',
         'cursor-pointer transition-colors hover:bg-surface-2',
@@ -255,10 +260,10 @@ function DriveReferenceRow({ file, onRequestDelete }) {
           {Ico.externalLink(11)}
         </span>
         {onRequestDelete && (
+          <Tooltip content="Remove from project files">
           <button
             type="button"
             aria-label={`Remove ${file.name || 'file'} from project files`}
-            title="Remove from project files"
             onClick={(e) => {
               // Don't let the click bubble up to the row — that would
               // open the file in Drive instead of confirming a delete.
@@ -273,9 +278,11 @@ function DriveReferenceRow({ file, onRequestDelete }) {
           >
             {Ico.trash(13)}
           </button>
+          </Tooltip>
         )}
       </span>
     </div>
+    </Tooltip>
   );
 }
 
@@ -696,10 +703,10 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
             <span className="font-display text-[10.5px] font-semibold uppercase tracking-widest text-ink-4">
               Task uploads{sessionAttachments.length > 1 ? ` · ${sessionAttachments.length}` : ''}
             </span>
+            <Tooltip content={taskUploadBusy ? 'Uploading…' : 'Attach files to this task'}>
             <button
               type="button"
               aria-label="Attach files to this task"
-              title={taskUploadBusy ? 'Uploading…' : 'Attach files to this task'}
               disabled={taskUploadBusy}
               onClick={() => taskUploadInputRef.current?.click()}
               className={clsx(
@@ -712,6 +719,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
             >
               {Ico.plus(13)}
             </button>
+            </Tooltip>
           </div>
           <input
             ref={taskUploadInputRef}
