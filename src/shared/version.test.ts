@@ -79,6 +79,110 @@ describe('compareUpdaterSemVer', () => {
   });
 });
 
+// ENG-850 regression guards. The whole auto-update decision rests on the
+// display CalVer mapping to an *order-preserving* SemVer: electron-updater with
+// allowDowngrade=false only moves N → N+1 when the target SemVer sorts strictly
+// above the running one, and reconcileDownloadedTarget declares an install
+// applied only when compareUpdaterSemVer(current, target) >= 0. A padding slip
+// or a boundary that fails to increment would either strand users on an old
+// shell or (worse) let a stale build read as "up to date". These pin the seams
+// unit tests are cheapest to defend and packaged smokes are most painful to hit.
+describe('calVerToUpdaterSemVer — zero-padding (the off-by-a-digit class)', () => {
+  it('pads single-digit month and day into a fixed 6-digit calendar field', () => {
+    // The failure mode: "26" + "1" + "1" = "2611" (Nov 2026?!) instead of the
+    // intended "26" + "01" + "01" = "260101". Every single-digit component must
+    // widen to two digits or the calendar number stops being monotonic.
+    expect(calVerToUpdaterSemVer('2.26.1.1.1')).toBe('2.260101.1');
+    expect(calVerToUpdaterSemVer('2.26.1.9.1')).toBe('2.260109.1');
+    expect(calVerToUpdaterSemVer('2.26.9.1.1')).toBe('2.260901.1');
+    expect(calVerToUpdaterSemVer('2.26.9.9.9')).toBe('2.260909.9');
+  });
+
+  it('keeps two-digit month/day and multi-digit sequence intact', () => {
+    expect(calVerToUpdaterSemVer('2.26.12.31.1')).toBe('2.261231.1');
+    expect(calVerToUpdaterSemVer('2.26.10.5.137')).toBe('2.261005.137');
+  });
+});
+
+describe('calVerToUpdaterSemVer + compareUpdaterSemVer — end-to-end monotonicity', () => {
+  const map = (raw: string) => {
+    const semver = calVerToUpdaterSemVer(raw);
+    if (semver === null) throw new Error(`unmappable CalVer in fixture: ${raw}`);
+    return semver;
+  };
+
+  it('is strictly increasing across a real release timeline (incl. month/year rollover)', () => {
+    // A chronologically ordered run of plausible display versions, including the
+    // two boundaries most likely to break naive concatenation: end-of-month
+    // (Jul 31 → Aug 1) and end-of-year (Dec 31 2026 → Jan 1 2027).
+    const timeline = [
+      '2.26.7.27.1',
+      '2.26.7.27.2',   // same-day hotfix
+      '2.26.7.31.1',
+      '2.26.8.1.1',    // month rollover
+      '2.26.8.1.2',
+      '2.26.12.31.1',
+      '2.27.1.1.1',    // year rollover (MAJOR also bumps — must NOT dominate)
+      '2.27.1.10.1',
+    ];
+    for (let i = 1; i < timeline.length; i += 1) {
+      const prev = map(timeline[i - 1]);
+      const curr = map(timeline[i]);
+      expect(
+        compareUpdaterSemVer(curr, prev),
+        `${timeline[i]} (${curr}) should sort above ${timeline[i - 1]} (${prev})`,
+      ).toBeGreaterThan(0);
+    }
+  });
+
+  it('does not let the MAJOR component decide ordering (date is authoritative)', () => {
+    // Dec 31 2026 on MAJOR 2 must still sort below Jan 1 2027, even though a
+    // raw SemVer major compare would tie (both major 2). The calendar lives in
+    // the minor field precisely so this holds.
+    expect(compareUpdaterSemVer(map('2.27.1.1.1'), map('2.26.12.31.1'))).toBeGreaterThan(0);
+  });
+});
+
+describe('compareUpdaterSemVer — reconcile contract (install-applied decision)', () => {
+  // Mirrors reconcileDownloadedTarget: current >= target ⇒ install applied.
+  const applied = (current: string, target: string) => {
+    const c = compareUpdaterSemVer(current, target);
+    return c !== null && c >= 0;
+  };
+
+  it('treats an equal running version as applied', () => {
+    expect(compareUpdaterSemVer('2.260727.1', '2.260727.1')).toBe(0);
+    expect(applied('2.260727.1', '2.260727.1')).toBe(true);
+  });
+
+  it('treats a newer running version as applied (user jumped ahead of the target)', () => {
+    expect(applied('2.260728.1', '2.260727.1')).toBe(true);
+  });
+
+  it('treats an older running version as NOT applied (relaunch stayed on N)', () => {
+    expect(applied('2.260727.1', '2.260728.1')).toBe(false);
+  });
+
+  it('sorts a legacy 3-part fallback below any CalVer-derived version', () => {
+    // '2.0.7' is the legacy package.json version. It is NOT display CalVer, but
+    // it IS a valid updater-SemVer shape, so compare returns a value (not null)
+    // and it lands below every mapped release. Good: a fallback build reads as
+    // older, so a real release still wins. Pinned so this stays intentional.
+    expect(compareUpdaterSemVer('2.0.7', '2.260727.1')).toBeLessThan(0);
+    expect(applied('2.0.7', '2.260727.1')).toBe(false);
+  });
+
+  it('returns null (never a false "applied") when a side is not updater-SemVer', () => {
+    // The trap: passing a 5-part DISPLAY CalVer straight into the comparer.
+    // reconcile must never see >= 0 from that — a null falls through to "not
+    // decided", which the caller treats as a recoverable failure, not success.
+    expect(compareUpdaterSemVer('2.26.7.27.1', '2.260727.1')).toBeNull();
+    expect(compareUpdaterSemVer('2.260727', '2.260727.1')).toBeNull();
+    expect(applied('2.26.7.27.1', '2.260727.1')).toBe(false);
+    expect(applied('2.260727.1', 'garbage')).toBe(false);
+  });
+});
+
 describe('calverDate', () => {
   it('decodes YY.M.D as a UTC calendar date (2000 + yy)', () => {
     const d = calverDate(parseCalVer('2.26.7.6.1')!);
