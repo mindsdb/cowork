@@ -168,6 +168,123 @@ describe('trackFirstQuery delivery gating (ENG-501)', () => {
   });
 });
 
+describe('trackFirstResponse activation gate (ENG-736)', () => {
+  const FIRST_RESPONSE_KEY = 'mdb_first_response_tracked';
+
+  it('emits first_response with outcome=success and no reason on a completed answer', async () => {
+    const fetchMock = mockFetch();
+    const { trackFirstResponse } = await importAnalytics();
+
+    await trackFirstResponse('success');
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.event).toBe('first_response');
+    expect(body.properties.outcome).toBe('success');
+    // undefined reason is dropped by JSON.stringify — key absent, not null.
+    expect(body.properties).not.toHaveProperty('reason');
+    expect(window.localStorage.getItem(FIRST_RESPONSE_KEY)).toBe('1');
+  });
+
+  it('deduplicates concurrent calls while delivery is in flight', async () => {
+    const fetchMock = mockFetch();
+    const { trackFirstResponse } = await importAnalytics();
+
+    await Promise.all([trackFirstResponse('success'), trackFirstResponse('error', 'model_access_denied')]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(window.localStorage.getItem(FIRST_RESPONSE_KEY)).toBe('1');
+  });
+
+  it('carries the failure reason on outcome=error so failures break down by reason', async () => {
+    const fetchMock = mockFetch();
+    const { trackFirstResponse } = await importAnalytics();
+
+    await trackFirstResponse('error', 'model_access_denied');
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.properties.outcome).toBe('error');
+    expect(body.properties.reason).toBe('model_access_denied');
+  });
+
+  it('falls back to reason=unknown when an error carries no code', async () => {
+    const fetchMock = mockFetch();
+    const { trackFirstResponse } = await importAnalytics();
+
+    await trackFirstResponse('error');
+
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).properties.reason).toBe('unknown');
+  });
+
+  it('records only the first outcome per user (a first error is not overwritten by a later success)', async () => {
+    const fetchMock = mockFetch();
+    const { trackFirstResponse } = await importAnalytics();
+
+    await trackFirstResponse('error', 'model_access_denied');
+    await trackFirstResponse('success'); // e.g. a later retry succeeds
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).properties.outcome).toBe('error');
+  });
+
+  it('does NOT mark the flag when the send fails, so a later outcome can retry', async () => {
+    const failing = vi.fn().mockResolvedValue({ ok: false, status: 500 });
+    globalThis.fetch = failing;
+    const { trackFirstResponse } = await importAnalytics();
+
+    await trackFirstResponse('success');
+    expect(window.localStorage.getItem(FIRST_RESPONSE_KEY)).toBeNull();
+
+    const ok = mockFetch();
+    await trackFirstResponse('success');
+    expect(ok).toHaveBeenCalledTimes(1);
+    expect(window.localStorage.getItem(FIRST_RESPONSE_KEY)).toBe('1');
+  });
+});
+
+describe('classifyFirstResponse outcome mapping (ENG-736)', () => {
+  it('maps a completed turn to success (no reason)', async () => {
+    const { classifyFirstResponse } = await importAnalytics();
+    expect(classifyFirstResponse({ completed: true })).toEqual({ outcome: 'success', reason: undefined });
+  });
+
+  it('counts a completed turn with an empty body as success (e.g. an artifact-only turn)', async () => {
+    const { classifyFirstResponse } = await importAnalytics();
+    // completed is true but no body content — still a real answer, so activation.
+    expect(classifyFirstResponse({ completed: true })).toEqual({ outcome: 'success', reason: undefined });
+  });
+
+  it('maps a config/auth error wrapped into a completed 200 body to error/config_required', async () => {
+    const { classifyFirstResponse } = await importAnalytics();
+    expect(classifyFirstResponse({ completed: true, isConfigError: true }))
+      .toEqual({ outcome: 'error', reason: 'config_required' });
+  });
+
+  it('records nothing (null) when no completion was observed — e.g. a reconnect whose buffer was evicted', async () => {
+    const { classifyFirstResponse } = await importAnalytics();
+    // Neither failed nor completed: the outcome is unknown, so do not guess.
+    expect(classifyFirstResponse({ completed: false })).toBeNull();
+    expect(classifyFirstResponse({})).toBeNull();
+  });
+
+  it('maps a failed turn to error with its wire code', async () => {
+    const { classifyFirstResponse } = await importAnalytics();
+    expect(classifyFirstResponse({ failed: true, code: 'model_access_denied' }))
+      .toEqual({ outcome: 'error', reason: 'model_access_denied' });
+  });
+
+  it('maps a failed config error without a code to error/config_required', async () => {
+    const { classifyFirstResponse } = await importAnalytics();
+    expect(classifyFirstResponse({ failed: true, isConfigError: true }))
+      .toEqual({ outcome: 'error', reason: 'config_required' });
+  });
+
+  it('falls back to reason=unknown for a codeless, non-config failure (e.g. a network drop)', async () => {
+    const { classifyFirstResponse } = await importAnalytics();
+    expect(classifyFirstResponse({ failed: true })).toEqual({ outcome: 'error', reason: 'unknown' });
+  });
+});
+
 describe('surface-derived $lib (ENG-1163)', () => {
   it('labels desktop events cowork-desktop', async () => {
     const fetchMock = mockFetch();

@@ -51,7 +51,7 @@ import { fetchSessions, fetchSession, fetchConversationList, fetchProjects, fetc
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
 import { isArtifactTipDismissed, dismissArtifactTip, dismissIfUntouched } from './components/onboarding/onboardingStore';
 import { modelLabel, recommendedModelOptions, providerValueToType } from './lib/settingsTransform';
-import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery } from './lib/analytics';
+import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery, trackFirstResponse, classifyFirstResponse } from './lib/analytics';
 
 // One-of-ten encouraging follow-ups picked when a connect task is
 // created. Reads as a friendly nudge after the connect-intro card —
@@ -149,6 +149,18 @@ function normalizeAntonError(message, event) {
   }
   const text = String(message || '');
   return text || 'Could not complete this task.';
+}
+
+// Activation gate (ENG-736): fire from the chat send/reply terminal handlers,
+// not the shared reducer (it also drives non-chat probes and replay).
+// trackFirstResponse dedupes once per user; wrapped so analytics can't break the turn.
+function fireFirstResponse(result) {
+  if (!result) return; // no terminal outcome observed — record nothing
+  try {
+    trackFirstResponse(result.outcome, result.reason);
+  } catch {
+    /* analytics must never break the turn */
+  }
 }
 
 async function resolveComposerAttachmentsForSend(projectName, sessionId, attachments) {
@@ -1059,6 +1071,13 @@ function AppCore() {
 
   const handleStreamError = useCallback(async (taskIds, cid, message, event) => {
     if (event?.code === 'cancelled') return;
+    // Activation gate (ENG-736): chat turn failed. Shared sink for every chat
+    // send/reply/reconnect error, so a failed first query records its reason.
+    fireFirstResponse(classifyFirstResponse({
+      failed: true,
+      code: event?.code,
+      isConfigError: isAntonConfigError(message, event),
+    }));
     activeStreamCtrlRef.current = null;
     activeScratchpadRef.current = null;
     activeStreamingTaskIdRef.current = null;
@@ -1867,6 +1886,13 @@ function AppCore() {
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;
         const configErrorInBody = finalContent && isAntonConfigError(finalContent, null);
+        // Activation gate (ENG-736): a completed turn (status 'done') is a real
+        // answer (success), unless a config error was wrapped into its 200 body.
+        // A reconnect that saw no completion records nothing.
+        fireFirstResponse(classifyFirstResponse({
+          completed: streamState.status === 'done',
+          isConfigError: !!configErrorInBody,
+        }));
         let assistantTurnIndex = 0;
         setTasks((prev) => prev.map((t) => {
           if (t.id !== taskId) return t;
@@ -2765,6 +2791,13 @@ function AppCore() {
         // and replace the assistant turn with the provider_required
         // card instead of rendering the raw SDK message.
         const configErrorInBody = finalContent && isAntonConfigError(finalContent, null);
+        // Activation gate (ENG-736): a completed turn (status 'done') is a real
+        // answer (success), unless a config error was wrapped into its 200 body.
+        // A reconnect that saw no completion records nothing.
+        fireFirstResponse(classifyFirstResponse({
+          completed: streamState.status === 'done',
+          isConfigError: !!configErrorInBody,
+        }));
         let assistantTurnIndex = 0;
         setTasks((prev) => prev.map((t) => {
           if (t.id !== finalId && t.id !== resolvedId && t.id !== taskId) return t;
@@ -3023,6 +3056,13 @@ function AppCore() {
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;
         const configErrorInBody = finalContent && isAntonConfigError(finalContent, null);
+        // Activation gate (ENG-736): a completed turn (status 'done') is a real
+        // answer (success), unless a config error was wrapped into its 200 body.
+        // A reconnect that saw no completion records nothing.
+        fireFirstResponse(classifyFirstResponse({
+          completed: streamState.status === 'done',
+          isConfigError: !!configErrorInBody,
+        }));
         let assistantTurnIndex = 0;
         setTasks((prev) => prev.map((t) => {
           if (t.id !== id && t.id !== resolvedId) return t;
