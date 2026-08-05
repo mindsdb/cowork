@@ -1326,7 +1326,13 @@ function AppCore() {
     document.body.classList.toggle('gf-dots-off', settings.showDots === false);
   }, [settings.showDots]);
 
-  const [route, setRoute] = useState(bootNav?.route || 'home');  // home | task | projects | scheduled | schedule-detail | artifacts | channels | customize
+  // A bare `?view=task` (no c=) on direct load/refresh names a conversation that
+  // can't be restored (a tmp- id is never written to the URL) — seed it as home,
+  // the blank-composer state, rather than route:'task' with a null activeTaskId,
+  // which currentTask (~below) would fill with tasks[0], an unrelated conversation.
+  // Mirrors the popstate reconciliation in navHandlerRef. ENG-1233.
+  const bootRoute = bootNav?.route === 'task' && !bootNav?.taskId ? 'home' : (bootNav?.route || 'home');
+  const [route, setRoute] = useState(bootRoute);  // home | task | projects | scheduled | schedule-detail | artifacts | channels | customize
   // Keep a ref of the live route so the keydown listener (bound
   // once on mount) can read it without a re-bind on every nav.
   routeRef.current = route;
@@ -1357,6 +1363,10 @@ function AppCore() {
   // conversation that never appears (deleted, stale/shared link, wrong workspace)
   // is abandoned to home instead of showing the wrong task or a blank pane.
   const [sessionsLoaded, setSessionsLoaded] = useState(false);
+  // Sibling of sessionsLoaded for the project deep-link resolver: lets it give up
+  // (and clear its pending ref) on a project name that never loads, instead of
+  // leaving the ref armed to fire a surprise selection much later (ENG-1233).
+  const [projectsLoaded, setProjectsLoaded] = useState(false);
   const firstUrlSyncRef = useRef(true);
   const prevContentSigRef = useRef(null);
   const navHandlerRef = useRef(() => {});
@@ -1364,6 +1374,15 @@ function AppCore() {
   // unresolvable deep link, so the broken URL is removed from history rather than
   // left behind a Back press.
   const forceReplaceRef = useRef(false);
+  // Bumped alongside forceReplaceRef so the outbound sync effect ALWAYS runs to
+  // consume the flag. The reconciliation setters (setActiveTaskId/setRoute/
+  // setSelectedProject) at the force-replace sites can be no-ops — e.g. a popstate
+  // that reconciles to home when already home — and React would then skip the
+  // effect (no nav dep changed), stranding forceReplaceRef=true to wrongly turn a
+  // LATER genuine push into a replace and silently drop a Back/Forward entry.
+  // Routing every force-replace through forceUrlReplace() guarantees consumption.
+  const [urlSyncTick, setUrlSyncTick] = useState(0);
+  const forceUrlReplace = () => { forceReplaceRef.current = true; setUrlSyncTick((n) => n + 1); };
 
   // ── ENG-1233: keep the URL in step with the nav state (web only) ──────────
   // Outbound projection: whenever the content route, an entity selection, or the
@@ -1408,7 +1427,7 @@ function AppCore() {
     if (forceReplace) kind = 'replace';
     if (kind === 'push') window.history.pushState(null, '', url);
     else window.history.replaceState(null, '', url);
-  }, [route, activeTaskId, selectedProject, selectedScheduleId, settingsOpen, settingsSection]);
+  }, [route, activeTaskId, selectedProject, selectedScheduleId, settingsOpen, settingsSection, urlSyncTick]);
 
   // Cold deep-link: seeding `route` directly skips the data fetch that navigate()
   // does on normal entry, so kick the fetch the destination needs once on mount.
@@ -1434,7 +1453,12 @@ function AppCore() {
     if (!id) return;
     if (tasks.some((t) => t.id === id)) {
       pendingTaskIdRef.current = null;
-      selectTask(id);
+      // Only hydrate if the user is STILL on the deep link. fetchSessions can land
+      // after the user has already navigated elsewhere (ordinary latency); yanking
+      // them back into the deep-linked conversation — and pushing a history entry
+      // over their manual navigation — is the same navigate-away hazard the abandon
+      // branch below guards against, so apply the same guard here (ENG-1233).
+      if (route === 'task' && activeTaskId === id) selectTask(id);
     } else if (sessionsLoaded) {
       // Session list loaded and the deep-linked conversation isn't in it. Abandon
       // the pending resolution — but only correct the view if the user is STILL on
@@ -1443,7 +1467,7 @@ function AppCore() {
       // push) so Back can't return to the broken link's blank pane.
       pendingTaskIdRef.current = null;
       if (route === 'task' && activeTaskId === id) {
-        forceReplaceRef.current = true;
+        forceUrlReplace();
         setActiveTaskId(null);
         setRoute('home');
       }
@@ -1460,10 +1484,32 @@ function AppCore() {
     const p = projects.find((x) => x.name === name);
     if (p) {
       pendingProjectNameRef.current = null;
-      setSelectedProject(p);
+      // Only restore if the user is STILL on the projects grid with nothing
+      // selected — the deep link's landing state. If `projects` loaded after they
+      // navigated away (or to a different project), don't hijack them back, and
+      // don't let the forceReplace below clobber their current history entry
+      // (same navigate-away guard as the task resolver above).
+      if (route === 'projects' && !selectedProject) {
+        // Normalise the deep link with replaceState, not push. selectedProject
+        // can't be seeded synchronously (it's the async-loaded object, not just a
+        // name), so the first URL sync already ran with it null and wrote
+        // `?view=projects` (dropping p=), consuming the isFirst replace budget.
+        // This resolving write re-adds p= — force it to replace so it edits that
+        // first entry in place rather than pushing a phantom `?view=projects` step
+        // behind the restored project (a single Back would otherwise land on the
+        // bare grid). ENG-1233.
+        forceUrlReplace();
+        setSelectedProject(p);
+      }
+    } else if (projectsLoaded) {
+      // Project list has loaded and the deep-linked name isn't in it (deleted,
+      // renamed, wrong workspace). Give up the pending resolution so a later
+      // refetch that happens to reintroduce the name can't fire a surprise
+      // selection (mirrors the task resolver's sessionsLoaded abandon).
+      pendingProjectNameRef.current = null;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projects]);
+  }, [projects, projectsLoaded]);
 
   // Inbound: reflect browser Back/Forward into the nav state. Bound once; it calls
   // through navHandlerRef so it always runs the latest closure (mirrors routeRef).
@@ -1530,7 +1576,7 @@ function AppCore() {
       }
       setTasks((prev) => mergeTasksFromServer(data, prev).filter((t) => !deletedTaskIdsRef.current.has(t.id)));
     });
-    fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); });
+    fetchProjects().then((data) => { setProjectsLoaded(true); if (Array.isArray(data)) setProjects(data); });
     fetchArtifacts().then((data) => {
       if (!Array.isArray(data)) return;
       // One-time arm/disarm decision for the first-artifact tip, taken on
@@ -1770,6 +1816,14 @@ function AppCore() {
   // upgrades from an older build that didn't have that.
   const generalDefaultRef = useRef(false);
   useEffect(() => {
+    // ENG-1233: while the user is on the Projects surface (a web project deep link,
+    // or the bare `?view=projects` grid), don't force the composer's default
+    // project onto `selectedProject` — it fires in the same effect flush as the URL
+    // restore, sees the same stale `selectedProject === null`, and its write would
+    // win, clobbering the deep-linked project (or pushing the bare grid into
+    // General's detail pane). Return WITHOUT claiming the once-per-session ref, so
+    // it still runs later when the user leaves the Projects route.
+    if (route === 'projects') return;
     if (selectedProject) return;        // user has picked something — don't override
     if (!serverOnline) return;          // wait for server
     if (generalDefaultRef.current) return; // only run once per session
@@ -1795,7 +1849,7 @@ function AppCore() {
         generalDefaultRef.current = false; // allow retry on next render
       }
     })();
-  }, [projects, selectedProject, serverOnline]);
+  }, [projects, selectedProject, serverOnline, route]);
 
   // Seed server state from main's truth on first paint so the toggle
   // button reflects reality (running OR starting) even before /health
@@ -1889,7 +1943,12 @@ function AppCore() {
   }, [settings]);
 
   const activeTasks = tasks.filter((t) => t.status === 'active');
-  const currentTask = tasks.find((t) => t.id === activeTaskId) || (route === 'task' ? tasks[0] : null);
+  // Fall back to tasks[0] only when there's genuinely NO open conversation id.
+  // A truthy activeTaskId that isn't in `tasks` means a stale/deleted deep link
+  // (ENG-1233: seeded from `?view=task&c=<id>` before `tasks` loads) mid-resolution
+  // — showing tasks[0] there would flash an unrelated conversation for a frame
+  // before the resolver resets to home, so render nothing until it does.
+  const currentTask = tasks.find((t) => t.id === activeTaskId) || (route === 'task' && !activeTaskId ? tasks[0] : null);
   // Tasks belong to one project for life. Resolve via projectName
   // first (server's canonical id), then projectPath, then fall back
   // to the currently-selected project for orphans.
@@ -2628,7 +2687,31 @@ function AppCore() {
     if (s.settingsPane != null) openSettings(s.settingsPane || null);
     else setSettingsOpen(false);
     if (s.route === 'task') {
-      if (s.taskId) selectTask(s.taskId); else setRoute('task');
+      // Restoring a conversation from the URL only makes sense when it still
+      // exists. Two ways it may not: a bare `?view=task` (no c= — a tmp-, unsent
+      // chat, whose id is never written to the URL), or a `c=` naming a
+      // conversation since deleted / in another workspace. In BOTH cases a naive
+      // selectTask()/setRoute('task') leaves route:'task' with an id that isn't in
+      // `tasks`, and currentTask (~line 1919) then falls through to tasks[0] —
+      // an unrelated conversation — because selectTask sets route/activeTaskId
+      // unconditionally and only gates HYDRATION on presence. So:
+      if (s.taskId && tasks.some((t) => t.id === s.taskId)) {
+        selectTask(s.taskId);
+      } else if (s.taskId && !sessionsLoaded) {
+        // Sessions haven't loaded yet (fast Back/Forward during boot) — defer to
+        // the resolver effect, which hydrates the conversation or abandons to home
+        // once the authoritative list arrives.
+        pendingTaskIdRef.current = s.taskId;
+        setActiveTaskId(s.taskId);
+        setRoute('task');
+      } else {
+        // No id, or the id is gone. Reconcile to the blank-composer home state
+        // (what newTask() does); replace so the dead entry doesn't linger a Back
+        // press behind. ENG-1233.
+        forceUrlReplace();
+        setActiveTaskId(null);
+        setRoute('home');
+      }
       return;
     }
     if (s.route === 'schedule-detail') {
@@ -2639,7 +2722,23 @@ function AppCore() {
     if (s.route === 'projects') {
       // navigate('projects') would clear the selection; set it directly so a
       // Back into a project detail restores the project, not the grid.
-      setSelectedProject(s.projectName ? (projects.find((x) => x.name === s.projectName) || null) : null);
+      const p = s.projectName ? projects.find((x) => x.name === s.projectName) : null;
+      if (p) {
+        setSelectedProject(p);
+      } else if (s.projectName && !projectsLoaded) {
+        // Back/Forward reached a project entry before the list loaded (e.g. Back
+        // right after a hard reload). Defer to the resolver, which restores it
+        // once `projects` arrives — mirrors the task branch above. forceReplace so
+        // the interim URL normalisation edits this entry in place (no phantom
+        // push) while the project name is momentarily absent.
+        pendingProjectNameRef.current = s.projectName;
+        forceUrlReplace();
+        setSelectedProject(null);
+      } else {
+        // No project named, or the named project is gone — the grid is the
+        // correct fallback (unlike a missing task, which must not show tasks[0]).
+        setSelectedProject(null);
+      }
       setRoute('projects');
       return;
     }
