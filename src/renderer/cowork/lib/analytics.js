@@ -30,9 +30,11 @@ const EVENTS = {
   ARTIFACT_PUBLISHED:    'artifact_published',     // { artifact_id, visibility }
   AGENT_SESSION_STARTED: 'agent_session_started',  // {}
   FIRST_QUERY:           'first_query',            // {}  once per user (ENG-501)
+  FIRST_RESPONSE:        'first_response',         // { outcome: 'success'|'error', reason } once per user (ENG-736)
   TOKEN_CAP_HIT:         'token_cap_hit',          // {}  upgrade-intent signal (ENG-385)
   HARNESS_SWAPPED:       'harness_swapped',        // { from, to }
   APP_INSTALLED:         'app_installed',          // {}  desktop, once per install
+  BOOT_SCREEN_RESOLVED:  'boot_screen_resolved',   // { target, anton_installed, server_deps_ready } desktop, per launch (ENG-921)
 };
 
 const POSTHOG_HOST = 'https://us.i.posthog.com';
@@ -440,6 +442,58 @@ export function trackFirstQuery() {
   return firstQueryInFlight;
 }
 
+// Map a first query's terminal state to a first_response (outcome, reason), or
+// null when there's nothing to record. Pure so it's unit-tested here, not in the
+// React send handlers (ENG-736):
+//   - failed turn → error (wire code, else config_required for auth, else unknown)
+//   - no completion observed → null: outcome unknown, let the next query settle it
+//   - completed with a config error in the body → error
+//   - any other completed turn → success (empty body is fine, e.g. artifact-only)
+export function classifyFirstResponse({ failed = false, completed = false, code, isConfigError = false } = {}) {
+  if (failed) {
+    return { outcome: 'error', reason: code || (isConfigError ? 'config_required' : 'unknown') };
+  }
+  if (!completed) return null;
+  if (isConfigError) return { outcome: 'error', reason: 'config_required' };
+  return { outcome: 'success', reason: undefined };
+}
+
+// The activation gate (ENG-736). first_query fires when a first message is sent;
+// this fires when it reaches a terminal outcome, so the funnel counts activation
+// only on a real answer and can see why one failed. On error, `reason` carries
+// the failure code (e.g. model_access_denied) so a failed cohort reads as broken,
+// not as weak interest. Once per user; same deliver-then-mark discipline as
+// trackFirstQuery so a dropped send can retry.
+const FIRST_RESPONSE_STORAGE_KEY = 'mdb_first_response_tracked';
+let firstResponseInFlight = null;
+export function trackFirstResponse(outcome, reason) {
+  let storageOk = true;
+  try {
+    if (localStorage.getItem(FIRST_RESPONSE_STORAGE_KEY)) return Promise.resolve();
+  } catch {
+    storageOk = false;
+  }
+  if (firstResponseInFlight) return firstResponseInFlight;
+  // reason is only meaningful on failure; undefined is dropped by JSON.stringify.
+  firstResponseInFlight = capture(EVENTS.FIRST_RESPONSE, {
+    outcome: outcome === 'success' ? 'success' : 'error',
+    reason: outcome === 'success' ? undefined : reason || 'unknown',
+  })
+    .then((sent) => {
+      if (sent && storageOk) {
+        try {
+          localStorage.setItem(FIRST_RESPONSE_STORAGE_KEY, '1');
+        } catch {
+          /* best effort */
+        }
+      }
+    })
+    .finally(() => {
+      firstResponseInFlight = null;
+    });
+  return firstResponseInFlight;
+}
+
 // Desktop app installed, fired once per install on the first healthy launch.
 // Captured even before sign-in (under the anonymous device id) so the install
 // is recorded at true install time and merged into the account on first login.
@@ -459,6 +513,30 @@ export async function trackAppInstalled() {
   const sent = await capture(EVENTS.APP_INSTALLED);
   if (!sent) return;
   try { window.localStorage.setItem(APP_INSTALLED_KEY, '1'); } catch { /* best effort */ }
+}
+
+// Boot-screen resolution (ENG-921): fires once per launch, before sign-in, with
+// the chosen `target` and the local-server install state. It's the only signal
+// in the install -> server-ready stretch — app_installed is gated on a healthy
+// server, so a user who stalls before then is otherwise invisible. Install state
+// is logged independent of `target` so a routing regression (ENG-918: server
+// missing, shown 'auth') stays visible. Desktop-only; per-launch, not deduped.
+export async function trackBootScreenResolved(target) {
+  if (!host.isElectron) return;
+  let status;
+  try {
+    status = await host.checkInstall();
+  } catch {
+    // Couldn't even check install state — record it as unknown (false) rather
+    // than drop the event; "the check failed at boot" is itself a first-run
+    // signal worth seeing.
+    status = null;
+  }
+  await capture(EVENTS.BOOT_SCREEN_RESOLVED, {
+    target,
+    anton_installed: Boolean(status?.antonInstalled),
+    server_deps_ready: Boolean(status?.serverDepsReady),
+  });
 }
 
 // Reset per-device analytics identity on sign-out (ENG-537 review note). A

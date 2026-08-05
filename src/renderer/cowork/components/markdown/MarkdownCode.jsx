@@ -12,6 +12,7 @@ import { MessageChart } from './MessageChart';
 import { parseChartIntent } from './utils';
 import { highlightCode } from './hljs';
 import Ico from '../Icons';
+import { Alert } from '../ui';
 import { patchForm, setForm, getForm } from '../datavault/formStore';
 import { parseFormSpec } from '../datavault/parseFormSpec';
 
@@ -165,26 +166,16 @@ export function MarkdownCode(props) {
     }
     if (!formSpec) {
       return (
-        <div style={{
-          margin: '8px 0',
-          padding: '10px 12px',
-          borderRadius: 8,
-          background: 'color-mix(in srgb, var(--danger) 10%, var(--surface))',
-          border: '1px solid color-mix(in srgb, var(--danger) 30%, transparent)',
-          color: 'var(--danger)',
-          fontFamily: 'var(--font-body)', fontSize: 12.5,
-          display: 'flex', flexDirection: 'column', gap: 4,
-        }}>
-          <strong style={{ fontWeight: 600 }}>Form spec did not parse.</strong>
+        <Alert variant="danger" title="Form spec did not parse." className="my-2">
           {parseError && (
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-3)' }}>
+            <span style={{ display: 'block', fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-3)', marginTop: 4 }}>
               {parseError}
             </span>
           )}
-          <span style={{ fontSize: 11.5, color: 'var(--ink-3)' }}>
+          <span style={{ display: 'block', fontSize: 11.5, color: 'var(--ink-3)', marginTop: 4 }}>
             Use the side panel to ask the agent to retry.
           </span>
-        </div>
+        </Alert>
       );
     }
     // The card is clickable: clicking re-opens the side panel when it's

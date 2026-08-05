@@ -34,9 +34,12 @@
 //     ]}
 //   />
 //
-// Option shape: { value, label, disabled?, title? }. `{ separator: true }`
-// renders a divider. `{ group, options }` renders a labeled group (only
-// used if a call site needs it — none currently do).
+// Option shape: { value, label, disabled?, title?, icon? }. `icon` is an
+// optional leading glyph shown in the open list only (not echoed into the
+// closed trigger, which renders just the label via `<Select.Value>`) — use it
+// to set a mode entry like "All projects" apart from the real options beneath
+// it. `{ separator: true }` renders a divider. `{ group, options }` renders a
+// labeled group (only used if a call site needs it — none currently do).
 //
 // Two visual variants:
 //   - `variant="field"` (default) — full-width bordered control, matches
@@ -66,7 +69,7 @@ export const triggerVariants = cva(
     'hover:border-line-2',
     'focus-visible:border-accent focus-visible:shadow-[var(--ring)]',
     'data-[disabled]:opacity-55 data-[disabled]:cursor-not-allowed',
-    'aria-[invalid=true]:border-[#E07060] aria-[invalid=true]:shadow-[0_0_0_1px_rgba(224,112,96,0.45)]',
+    'aria-[invalid=true]:border-[var(--danger)] aria-[invalid=true]:shadow-[0_0_0_1px_var(--danger)]',
   ],
   {
     variants: {
@@ -149,6 +152,9 @@ function renderOptions(options) {
           'data-[disabled]:opacity-55 data-[disabled]:cursor-not-allowed',
         )}
       >
+        {opt.icon && (
+          <span className="inline-flex shrink-0 text-ink-3">{opt.icon}</span>
+        )}
         <BaseSelect.ItemText className="flex-1 min-w-0 truncate">{opt.label}</BaseSelect.ItemText>
         <span className="inline-flex shrink-0 text-accent invisible group-data-[selected]:visible">
           <BaseSelect.ItemIndicator>{CHECK}</BaseSelect.ItemIndicator>
@@ -221,7 +227,12 @@ export function Select({
         {variant === 'pill' && (label || ariaLabel) && (
           <span className="text-ink-4 text-[11.5px]">{label || ariaLabel}:</span>
         )}
-        <BaseSelect.Value placeholder={placeholder} className="truncate" />
+        {/* Base UI stamps `data-placeholder` on this span when nothing is
+            selected — mute it to `text-ink-4` so an unselected control reads as
+            a prompt, not a value (matches Combobox's `placeholder:text-ink-4`).
+            Without this the placeholder inherited full-strength `text-ink` and
+            looked identical to a real selection. */}
+        <BaseSelect.Value placeholder={placeholder} className="truncate data-[placeholder]:text-ink-4" />
         <BaseSelect.Icon className="inline-flex shrink-0 text-ink-3">
           {loading ? <Spinner style={{ color: 'currentColor' }} /> : CHEVRON_DOWN}
         </BaseSelect.Icon>

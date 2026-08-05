@@ -7,11 +7,20 @@
 
 import { useEffect, useState } from 'react';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
-import { Button, Select, Input, Textarea } from '../ui';
+import { Alert, Button, Field, Select, Input, Textarea } from '../ui';
 import { Switch } from '../ui/Switch';
 import Ico from '../Icons';
 
 const FONT_BODY = 'var(--font-body)';
+
+// Sentinel for the "No project" (unassigned) choice in the Project <Select>.
+// It must be a non-empty string: Base UI's <Select.Value> treats an
+// empty-string value as "nothing selected" and renders the placeholder, so an
+// option with value '' shows "Select…" on the closed control even while its
+// item carries a checkmark (ENG-1246). This value never reaches the server —
+// `handleSubmit` resolves it to `project: null`, and it can't collide with a
+// real project path.
+const NO_PROJECT = '__no_project__';
 
 function toLocalInput(value) {
   if (!value) return '';
@@ -23,6 +32,23 @@ function toLocalInput(value) {
 
 function defaultNextRun() {
   return toLocalInput(new Date(Date.now() + 60 * 60 * 1000).toISOString());
+}
+
+// Unambiguous echo of the datetime-local value. The native <input
+// type="datetime-local"> renders in Chromium's UI locale, which in Electron
+// can disagree with the OS regional format (e.g. shows DD/MM on an en_US
+// machine) — ambiguous for the first 12 days of a month on a control that
+// decides when a task runs (ENG-1244). A spelled-out month removes the
+// ambiguity regardless of what the native control shows. Takes the local
+// "YYYY-MM-DDTHH:mm" string the input holds.
+function formatNextRunEcho(local) {
+  if (!local) return '';
+  const d = new Date(local);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleString(undefined, {
+    weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
+    hour: 'numeric', minute: '2-digit',
+  });
 }
 
 const fieldLabel = {
@@ -49,16 +75,6 @@ const fieldSelectStyle = {
   background: 'var(--surface-2)',
   borderRadius: 7,
 };
-
-function Field({ label, children }) {
-  return (
-    <label style={{ display: 'flex', flexDirection: 'column' }}>
-      <span style={fieldLabel}>{label}</span>
-      {children}
-    </label>
-  );
-}
-
 
 export default function ScheduleTaskModal({
   open, onClose, onSubmit, onDelete,
@@ -100,7 +116,7 @@ export default function ScheduleTaskModal({
         prompt:      task.prompt || '',
         cadence:     task.cadence || 'once',
         nextRunAt:   toLocalInput(task.nextRunAt) || defaultNextRun(),
-        projectPath: taskProjectPath || defaultProjectPath || '',
+        projectPath: taskProjectPath || defaultProjectPath || NO_PROJECT,
         enabled:     task.enabled !== false,
       });
     } else {
@@ -131,7 +147,10 @@ export default function ScheduleTaskModal({
     // dropped — every schedule landed with `project: null`, breaking
     // the project-pivoted card / list / count. Resolve the form's
     // path back to a name via `projects` and send the right field.
-    const projectMatch = projects.find((p) => p.path === form.projectPath);
+    // The "No project" sentinel resolves to no project (`null`).
+    const projectMatch = form.projectPath === NO_PROJECT
+      ? null
+      : projects.find((p) => p.path === form.projectPath);
     const payload = {
       title:        form.title.trim() || form.prompt.trim().slice(0, 80),
       prompt:       form.prompt,
@@ -218,6 +237,14 @@ export default function ScheduleTaskModal({
                 onChange={(v) => update('nextRunAt', v)}
                 style={fieldInput}
               />
+              {formatNextRunEcho(form.nextRunAt) && (
+                <span style={{
+                  marginTop: 5, fontFamily: FONT_BODY, fontSize: 11.5,
+                  color: 'var(--ink-3)',
+                }}>
+                  {formatNextRunEcho(form.nextRunAt)}
+                </span>
+              )}
             </Field>
           </div>
 
@@ -228,7 +255,10 @@ export default function ScheduleTaskModal({
               ariaLabel="Project"
               style={fieldSelectStyle}
               options={[
-                { value: '', label: 'No project' },
+                // "No project" is the unassigned mode, not a project — divide
+                // it from the real projects (which map 1:1 to the projects page).
+                { value: NO_PROJECT, label: 'No project' },
+                { separator: true },
                 ...projects.map((p) => ({ value: p.path, label: p.name })),
               ]}
             />
@@ -278,12 +308,7 @@ export default function ScheduleTaskModal({
           </Field>
 
           {error && (
-            <div style={{
-              padding: '8px 10px', borderRadius: 7,
-              background: 'color-mix(in srgb, var(--danger) 12%, var(--surface))',
-              border: '1px solid color-mix(in srgb, var(--danger) 35%, transparent)',
-              color: 'var(--danger)', fontSize: 12.5,
-            }}>{error}</div>
+            <Alert variant="danger">{error}</Alert>
           )}
         </div>
       </ModalBody>
@@ -334,7 +359,7 @@ function emptyForm({ defaultProjectPath }) {
     prompt: '',
     cadence: 'once',
     nextRunAt: defaultNextRun(),
-    projectPath: defaultProjectPath || '',
+    projectPath: defaultProjectPath || NO_PROJECT,
     enabled: true,
   };
 }

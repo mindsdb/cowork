@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import Ico from '../../components/Icons';
-import { Button } from '../../components/ui';
+import { Alert, Button } from '../../components/ui';
 import { host } from '../../../platform/host';
 import { backendFailureCopy, exitCodeLabel } from '../../../../shared/server-status';
 import { Section, SettingsSectionPanel } from './settingsLayout';
@@ -131,7 +131,7 @@ export default function BackendSection({
     : 'failed';
 
   const STATUS_META = {
-    online: { title: 'MindsHub backend is running', subtitle: 'The local Python server is responding to /health.', iconColor: 'var(--success, #1F8F5F)', iconBgMix: 'var(--success, #1F8F5F)' },
+    online: { title: 'MindsHub backend is running', subtitle: 'The local Python server is responding to /health.', iconColor: 'var(--success)', iconBgMix: 'var(--success)' },
     starting: { title: 'MindsHub backend is starting…', subtitle: 'Spawning the local Python server. This usually takes a few seconds.', iconColor: 'var(--accent)', iconBgMix: 'var(--accent)' },
     stopping: { title: 'MindsHub backend is stopping…', subtitle: 'Waiting for the local Python server to terminate.', iconColor: 'var(--ink-3)', iconBgMix: 'var(--ink-3)' },
     offline: offlineKind === 'stopped'
@@ -220,13 +220,7 @@ export default function BackendSection({
           {state === 'offline' && offlineKind === 'failed' && (
             <div style={{ padding: '0 16px 14px' }}>
               {error ? (
-                <div style={{
-                  padding: '10px 12px', borderRadius: 8,
-                  background: 'color-mix(in srgb, var(--danger) 12%, var(--surface))',
-                  border: '1px solid color-mix(in srgb, var(--danger) 35%, transparent)',
-                  color: 'var(--danger)', fontSize: 12.5, lineHeight: 1.5,
-                  fontFamily: FONT_MONO, wordBreak: 'break-word',
-                }}>{error}</div>
+                <Alert variant="danger" style={{ fontFamily: FONT_MONO, wordBreak: 'break-word' }}>{error}</Alert>
               ) : (
                 <div style={{
                   padding: '10px 12px', borderRadius: 8,

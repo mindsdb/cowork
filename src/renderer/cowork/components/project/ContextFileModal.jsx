@@ -29,7 +29,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
-import { Button } from '../ui';
+import { Alert, Button } from '../ui';
 import { Modal } from '../ui/Modal';
 import {
   readProjectFile,
@@ -492,13 +492,7 @@ export default function ContextFileModal({
             <div style={{ color: 'var(--ink-3)', fontSize: 13 }}>Loading…</div>
           )}
           {error && (
-            <div style={{
-              padding: '10px 12px', borderRadius: 7,
-              background: 'color-mix(in srgb, var(--danger) 12%, var(--surface))',
-              border: '1px solid color-mix(in srgb, var(--danger) 30%, transparent)',
-              color: 'var(--danger)', fontSize: 13,
-              flexShrink: 0,
-            }}>{error}</div>
+            <Alert variant="danger" className="shrink-0">{error}</Alert>
           )}
           {/* HTML branch — render inside a sandboxed iframe with the
               preview-mount URL so relative assets resolve. */}

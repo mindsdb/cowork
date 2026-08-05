@@ -45,6 +45,15 @@ describe('ScheduleTaskModal — S7 fixes', () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
+  // Regression (ENG-1244): the native datetime-local control renders in
+  // Chromium's locale (ambiguous DD/MM vs MM/DD); a spelled-out-month caption
+  // disambiguates the chosen run time. Tests run with TZ=UTC.
+  it('shows an unambiguous named-month caption under the Next run input', () => {
+    renderModal();
+    setNextRun('2026-08-03T16:37');
+    expect(screen.getByText(/Aug 3, 2026/)).toBeInTheDocument();
+  });
+
   it('accepts a future next-run time and submits', async () => {
     const { onSubmit } = renderModal();
     fireEvent.change(screen.getByPlaceholderText(/Ask Anton/i), {
@@ -95,5 +104,25 @@ describe('ScheduleTaskModal — S7 fixes', () => {
     expect(id).toBe('s1');
     expect(payload.enabled).toBe(false);
     expect(payload.project).toBe('Metrics'); // path→name round-trip
+  });
+
+  // Regression (ENG-1246): the "No project" catch-all must display its label
+  // (not the "Select…" placeholder) and must submit as no project. It's modeled
+  // with a non-empty sentinel value because Base UI's Select renders the
+  // placeholder for an empty-string value — see Select.test.jsx.
+  it('defaults to "No project" and submits it as no project', async () => {
+    const { onSubmit } = renderModal();
+
+    // The closed Project control shows the catch-all label, not a placeholder.
+    expect(screen.getByRole('combobox', { name: 'Project' })).toHaveTextContent('No project');
+
+    fireEvent.change(screen.getByPlaceholderText(/Ask Anton/i), {
+      target: { value: 'no project task' },
+    });
+    setNextRun(isoLocal(60 * 60 * 1000));
+    fireEvent.click(screen.getByRole('button', { name: /Create/i }));
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(onSubmit.mock.calls[0][0].project).toBeNull();
   });
 });
