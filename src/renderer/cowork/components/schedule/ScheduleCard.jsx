@@ -11,6 +11,7 @@
 import { useState } from 'react';
 import Ico from '../Icons';
 import { Alert, Card, Button } from '../ui';
+import OverflowMenu from '../OverflowMenu';
 import { relativeTime } from '../../lib/formatTime';
 import { ScheduleStatusBadge } from './ScheduleStatusBadge';
 
@@ -48,9 +49,13 @@ export default function ScheduleCard({
   // ArtifactBubble uses on the Live artifacts page.
   projects = [],
   onOpenProject,
-  onOpen, onRunNow, onPause, onResume, onEdit,
+  onOpen, onRunNow, onPause, onResume, onEdit, onDelete,
 }) {
   const [hover, setHover] = useState(false);
+  // Keep the action row revealed while the overflow menu is open (controlled),
+  // so the trigger doesn't fade out from under the open popup — the in-card
+  // menu pattern used by ContextCard.
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const open  = () => onOpen?.(task);
   const stop  = (e) => { e.stopPropagation(); };
@@ -206,9 +211,9 @@ export default function ScheduleCard({
         style={{
           display: 'flex', alignItems: 'center', gap: 6,
           paddingTop: 4, marginTop: 'auto',
-          opacity: hover ? 1 : 0,
+          opacity: (hover || menuOpen) ? 1 : 0,
           transition: 'opacity 140ms ease',
-          pointerEvents: hover ? 'auto' : 'none',
+          pointerEvents: (hover || menuOpen) ? 'auto' : 'none',
         }}
       >
         <ActionButton
@@ -217,30 +222,35 @@ export default function ScheduleCard({
           onClick={() => onRunNow?.(task)}
           busy={busy}
         />
-        {task.enabled ? (
-          <ActionButton
-            icon={Ico.pause ? Ico.pause(12) : '⏸'}
-            label="Pause"
-            onClick={() => onPause?.(task)}
-            busy={busy}
-          />
-        ) : (
-          <ActionButton
-            icon={Ico.power ? Ico.power(12) : '▶'}
-            label="Resume"
-            onClick={() => onResume?.(task)}
-            busy={busy}
-          />
-        )}
-        <ActionButton
-          icon={Ico.edit ? Ico.edit(12) : '✎'}
-          label="Edit"
-          onClick={() => onEdit?.(task)}
-          busy={busy}
+        <OverflowMenu
+          items={taskMenuItems({ task, onEdit, onPause, onResume, onDelete })}
+          disabled={busy}
+          open={menuOpen}
+          onOpenChange={setMenuOpen}
+          align="start"
+          // Give the trigger a real hit target + hover surface (a ghost icon
+          // button, the pattern the Live-artifacts card uses) rather than the
+          // bare icon-sized default — a tiny kebab was hard to hit and to see.
+          icon={Ico.moreVert(16)}
+          triggerClassName="h-7 w-7 justify-center rounded-md hover:bg-surface-2"
         />
       </div>
     </Card>
   );
+}
+
+// Shared item list for the card and list-row overflow menus: Edit, the
+// Pause/Resume toggle, then Delete (danger) under a divider. Delete routes to
+// the surface's confirm flow (a ConfirmModal) rather than deleting inline.
+export function taskMenuItems({ task, onEdit, onPause, onResume, onDelete }) {
+  return [
+    { id: 'edit', label: 'Edit', icon: Ico.edit ? Ico.edit(14) : null, onClick: () => onEdit?.(task) },
+    task.enabled
+      ? { id: 'pause', label: 'Pause', icon: Ico.pause ? Ico.pause(14) : null, onClick: () => onPause?.(task) }
+      : { id: 'resume', label: 'Resume', icon: Ico.power ? Ico.power(14) : null, onClick: () => onResume?.(task) },
+    { separator: true },
+    { id: 'delete', label: 'Delete', icon: Ico.trash ? Ico.trash(14) : null, danger: true, onClick: () => onDelete?.(task) },
+  ];
 }
 
 
