@@ -230,7 +230,7 @@ function ActiveList({ tasks, onSelect, onClear }) {
 export default function HomeView({
   greeting, showDots,
   activeTasks, onSelectTask, onClearActive,
-  onSend, project, onProjectChange, model, onModelChange, projects, models,
+  onSend, project, onProjectChange, model, onModelChange, projects, models, modelMeta,
   attachments, connectors, onAttachFiles, onRemoveAttachment,
   onAddGoogleDriveFiles,
   disabledConnections = [],
@@ -536,6 +536,7 @@ export default function HomeView({
               onModelChange={onModelChange}
               projects={projects}
               models={models}
+              modelMeta={modelMeta}
               attachments={attachments}
               connectors={connectors}
               onNavigateToConnectors={onNavigateToConnectors}

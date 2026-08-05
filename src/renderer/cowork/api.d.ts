@@ -21,6 +21,14 @@ export interface RecommendedModels {
   modelEnabled?: Record<string, boolean>;
   /** MindsHub's display label per model id. Absent ⇒ derive from the id. */
   modelLabels?: Record<string, string>;
+  /** MindsHub's authoritative maker per model id, deciding the picker section. */
+  modelProviders?: Record<string, string>;
+  /**
+   * The moving alias each model belongs to. `modelFamilies[id] === id` means the
+   * version behind that alias moves (tagged "latest"); anything else names the
+   * moving alias this entry is a frozen version of.
+   */
+  modelFamilies?: Record<string, string>;
   [key: string]: unknown;
 }
 

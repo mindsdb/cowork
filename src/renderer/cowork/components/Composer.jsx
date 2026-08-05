@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Ico from './Icons';
 import NewProjectModal from './project/NewProjectModal';
@@ -9,6 +9,8 @@ import {
   parseOpenerLine,
 } from './composerFences';
 import { HighlightOverlay } from './composerHighlight';
+import { groupModelOptions, modelMaker } from '../lib/modelCatalog';
+import ProviderIcon from './ProviderIcon.jsx';
 import { useFileDrop, FileDropOverlay, extractClipboardFiles } from '../lib/useFileDrop';
 import { AttachmentThumbnail } from './AttachmentThumbnail';
 import { useSkills } from '../lib/skillsStore';
@@ -58,6 +60,61 @@ function AttachmentChip({ attachment, onRemove }) {
   );
 }
 
+// Shared by the menu's own "Model" label and each section heading, so a grouped
+// and an ungrouped menu can't drift apart visually.
+const MODEL_HEADING = {
+  padding: '6px 10px',
+  fontSize: 11,
+  fontWeight: 600,
+  color: 'var(--frost-600)',
+  textTransform: 'uppercase',
+  letterSpacing: '0.04em',
+};
+
+/**
+ * One row of the composer's model menu.
+ *
+ * `latest` marks an alias whose version moves — picking it always gets the newest
+ * release. A locked model is one the org's wallet can't currently pay for; it
+ * renders disabled with the same "Add credits to unlock" wording the Settings
+ * picker uses, so a model that would fail at send time can't be chosen here.
+ */
+function ModelMenuItem({ item, selected, onSelect }) {
+  return (
+    <button
+      className={`menu-item${selected ? ' checked' : ''}`}
+      disabled={item.locked}
+      title={item.locked ? 'Add credits to unlock this model' : undefined}
+      onClick={onSelect}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+        paddingLeft: item.pinned ? 24 : undefined,
+        opacity: item.locked ? 0.55 : undefined,
+        cursor: item.locked ? 'not-allowed' : undefined,
+      }}
+    >
+      <ProviderIcon maker={item.maker} className="text-ink-2" />
+      <span style={{
+        flex: 1,
+        fontWeight: item.pinned ? 400 : 500,
+        color: item.pinned ? 'var(--frost-700)' : undefined,
+      }}>{item.name}</span>
+      {item.moving && (
+        <span
+          title="This model always points at the newest version."
+          style={{
+            fontSize: 10, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase',
+            padding: '1px 5px', borderRadius: 4,
+            background: 'var(--surface-2)', color: 'var(--frost-600)',
+          }}
+        >latest</span>
+      )}
+      {item.locked && <span style={{ fontSize: 11, color: 'var(--frost-600)' }}>Add credits to unlock</span>}
+      {selected && <span style={{ color: 'var(--primary-700)' }}>{Ico.check(14)}</span>}
+    </button>
+  );
+}
+
 export default function Composer({
   onSend,
   project,
@@ -66,6 +123,13 @@ export default function Composer({
   onModelChange,
   projects,
   models,
+  /**
+   * Picker metadata: `{modelProviders, modelFamilies, modelEnabled}` from
+   * settings. Optional — without it the menu renders the flat, ungrouped list it
+   * always has, which is what a one-item list (ChatView's read-only picker) and
+   * every BYOK provider get.
+   */
+  modelMeta,
   attachments = [],
   connectors = [],
   onNavigateToConnectors,
@@ -213,6 +277,53 @@ export default function Composer({
   // Caret and key handlers branch off `parsedFences.fences` instead of reparsing
   // on every keystroke / selection event.
   const parsedFences = useMemo(() => parseFences(value), [value]);
+
+  // Model menu sections. Grouped here rather than by the caller because ChatView
+  // passes its own one-item list, which must stay ungrouped — and with no
+  // metadata `groupModelOptions` returns exactly one unnamed section holding the
+  // input, so the flat menu needs no separate branch below.
+  const modelSections = useMemo(() => {
+    const { modelProviders = {}, modelFamilies = {}, modelEnabled = {} } = modelMeta || {};
+    const hasFamilies = Object.keys(modelFamilies).length > 0;
+    const familyOf = (id) => modelFamilies[id] || id;
+    const list = models || [];
+    // A frozen version is listed directly under the alias it froze. Heads keep
+    // their place in the server's order (it is meaningful upstream — the gateway
+    // lists the free/baseline model first); only the pins move to follow them.
+    const ordered = [];
+    const seen = new Set();
+    for (const m of list) {
+      const pinned = hasFamilies && familyOf(m.id) !== m.id;
+      if (pinned && list.some((o) => o.id === familyOf(m.id))) continue;
+      if (!seen.has(m.id)) { ordered.push(m); seen.add(m.id); }
+      for (const other of list) {
+        if (hasFamilies && familyOf(other.id) === m.id && other.id !== m.id && !seen.has(other.id)) {
+          ordered.push(other);
+          seen.add(other.id);
+        }
+      }
+    }
+    const items = ordered.map((m) => ({
+      value: m.id,
+      // `label` feeds groupModelOptions' maker inference; `name` is what renders.
+      label: m.name,
+      name: m.name,
+      provider: modelProviders[m.id],
+      maker: modelMaker(m.id, m.name).key,
+      moving: hasFamilies && familyOf(m.id) === m.id,
+      pinned: hasFamilies && familyOf(m.id) !== m.id,
+      locked: modelEnabled[m.id] === false,
+    }));
+    // Group only when the server actually told us who makes these models. With no
+    // provider metadata — an older cowork-server, any BYOK provider, ChatView's
+    // one-item list — a single unnamed section renders today's flat menu exactly.
+    // An empty list takes that path too: grouping nothing yields no sections at
+    // all, and a menu with neither heading nor rows reads as broken rather than
+    // as still-loading.
+    return items.length && Object.keys(modelProviders).length
+      ? groupModelOptions(items)
+      : [{ key: 'all', name: null, items }];
+  }, [models, modelMeta]);
 
   // Auto-resize the textarea up to a max height; past that it scrolls.
   // The overlay is absolutely positioned with `inset: 0`, so it follows
@@ -1265,20 +1376,24 @@ export default function Composer({
 
       {openMenu === 'model' && !metaReadOnly && (
         <div className="menu" style={{ right: 8, top: 'calc(100% + 6px)', minWidth: 260 }}>
-          <div style={{ padding: '6px 10px', fontSize: 11, fontWeight: 600, color: 'var(--frost-600)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Model</div>
-          {models.map((m) => (
-            <button
-              key={m.id}
-              className={`menu-item${model?.id === m.id ? ' checked' : ''}`}
-              onClick={() => { onModelChange(m); setOpenMenu(null); }}
-              style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%' }}>
-                <span style={{ flex: 1, fontWeight: 500 }}>{m.name}</span>
-                {model?.id === m.id && <span style={{ color: 'var(--primary-700)' }}>{Ico.check(14)}</span>}
-              </div>
-              <div style={{ fontSize: 11.5, color: 'var(--frost-600)' }}>{m.desc}</div>
-            </button>
+          {/* One unnamed section is the flat case (no metadata, or ChatView's
+              single-item list): keep the "Model" heading this menu has always
+              shown rather than repeating a section name per row. */}
+          {modelSections.length === 1 && !modelSections[0].name && (
+            <div style={MODEL_HEADING}>Model</div>
+          )}
+          {modelSections.map((section) => (
+            <Fragment key={section.key}>
+              {section.name && <div style={MODEL_HEADING}>{section.name}</div>}
+              {section.items.map((item) => (
+                <ModelMenuItem
+                  key={item.value}
+                  item={item}
+                  selected={model?.id === item.value}
+                  onSelect={() => { onModelChange({ id: item.value, name: item.name }); setOpenMenu(null); }}
+                />
+              ))}
+            </Fragment>
           ))}
         </div>
       )}

@@ -54,11 +54,32 @@ describe('modelMaker', () => {
 describe('groupModelOptions', () => {
   const options = CATALOG.map(([value, label]) => ({ value, label }));
 
-  it('groups by maker in declaration order, MindsHub first, Other absent when empty', () => {
+  it('groups into sections in declaration order, MindsHub first', () => {
+    // Sections, not one group per maker: the labs users pick by name get their
+    // own, the open-weight models collect into one, and xAI is not among them
+    // (Grok isn't open weight) so it falls through to Other.
     const groups = groupModelOptions(options);
     expect(groups.map((g) => g.key)).toEqual([
-      'mindshub', 'openai', 'anthropic', 'google', 'xai', 'moonshot', 'alibaba', 'deepseek', 'zai',
+      'mindshub', 'anthropic', 'openai', 'google', 'open-weight', 'other',
     ]);
+    expect(groups.map((g) => g.name)).toEqual([
+      'MindsHub', 'Anthropic', 'OpenAI', 'Google', 'Open Weight', 'Other',
+    ]);
+  });
+
+  it('collects the open-weight makers into one section', () => {
+    const groups = groupModelOptions(options);
+    const openWeight = groups.find((g) => g.key === 'open-weight');
+    // Moonshot / Alibaba / DeepSeek / Z.ai models share a heading; each keeps its
+    // own maker, so each still gets its own icon.
+    expect(openWeight.items.length).toBeGreaterThan(1);
+    expect(new Set(openWeight.items.map((o) => modelMaker(o.value, o.label).key)).size)
+      .toBeGreaterThan(1);
+  });
+
+  it('leaves xAI out of Open Weight', () => {
+    const groups = groupModelOptions([{ value: 'grok', label: 'Grok 4.5' }]);
+    expect(groups.map((g) => g.key)).toEqual(['other']);
   });
 
   it('keeps option order within a group', () => {
@@ -82,25 +103,39 @@ describe('groupModelOptions', () => {
     expect(groups.map((g) => g.key)).toEqual(['mindshub']);
   });
 
-  it('gives an explicit but unrecognised maker its own group (dynamic maker, ENG-1111)', () => {
+  it('puts a maker no section claims into Other rather than its own heading', () => {
+    // Replaces the earlier per-maker "dynamic group" behaviour: with a fixed set
+    // of sections, an unrecognised maker or provider is listed under Other. Still
+    // no app release needed for a new one to appear — just not its own heading.
     const groups = groupModelOptions([
-      { value: 'x', label: 'X', maker: 'somebody-new', makerName: 'Somebody New' },
+      { value: 'x', label: 'X', maker: 'somebody-new' },
       { value: 'y', label: 'Y', maker: 'acme' },
     ]);
-    expect(groups.map((g) => g.key)).toEqual(['somebody-new', 'acme']);
-    expect(groups.map((g) => g.name)).toEqual(['Somebody New', 'Acme']);
+    expect(groups.map((g) => g.key)).toEqual(['other']);
+    expect(groups[0].items.map((o) => o.value)).toEqual(['x', 'y']);
   });
 
-  it('orders dynamic makers after known makers and before Other', () => {
+  it('sections by the backend provider, which outranks alias inference', () => {
+    // `provider` is MindsHub's authoritative field. `fireworks` is a host that
+    // serves several open-weight models, which is why it maps to a section rather
+    // than to a maker/icon.
     const groups = groupModelOptions([
-      { value: 'muse-spark', label: 'Muse Spark 1.1' },
-      { value: 'x', label: 'X', maker: 'acme' },
-      { value: 'sonnet', label: 'Claude Sonnet 5' },
+      { value: 'some-alias', label: 'Some Alias', provider: 'fireworks' },
+      { value: 'another', label: 'Another', provider: 'gemini' },
     ]);
-    expect(groups.map((g) => g.key)).toEqual(['anthropic', 'acme', 'other']);
+    expect(groups.map((g) => g.key)).toEqual(['google', 'open-weight']);
   });
 
-  it('routes an explicit maker of "other" to the Other group, not a duplicate', () => {
+  it('keeps a MindsHub-branded model in MindsHub whatever provider the backend reports', () => {
+    // Air is sold as MindsHub's own model and the engine behind it is expected to
+    // change, so it must not follow whichever vendor currently serves it.
+    const groups = groupModelOptions([
+      { value: 'mindshub_air', label: 'MindsHub Air', provider: 'anthropic' },
+    ]);
+    expect(groups.map((g) => g.key)).toEqual(['mindshub']);
+  });
+
+  it('routes an explicit maker of "other" to the Other section, not a duplicate', () => {
     const groups = groupModelOptions([
       { value: 'muse-spark', label: 'Muse Spark 1.1' },
       { value: 'x', label: 'X', maker: 'other' },

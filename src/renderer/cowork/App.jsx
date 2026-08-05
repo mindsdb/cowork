@@ -1136,8 +1136,16 @@ function AppCore() {
   const models = useMemo(() => {
     const providerType = providerValueToType(settings.planningProvider) || 'minds-cloud';
     return recommendedModelOptions(settings.recommendedModels, providerType, settings.modelLabels)
-      .map((o) => ({ id: o.id, name: o.label, desc: '' }));
+      .map((o) => ({ id: o.id, name: o.label }));
   }, [settings.recommendedModels, settings.planningProvider, settings.modelLabels]);
+  // Picker metadata for the composer's model menu, passed as one bag so the
+  // components in between don't grow a prop each. The composer groups rather than
+  // App because ChatView builds its own single-item list, which stays ungrouped.
+  const modelMeta = useMemo(() => ({
+    modelProviders: settings.modelProviders,
+    modelFamilies: settings.modelFamilies,
+    modelEnabled: settings.modelEnabled,
+  }), [settings.modelProviders, settings.modelFamilies, settings.modelEnabled]);
   // The user's preferred collapsed state for the sidebar. Effective
   // collapsed-ness is derived below — we only honor this value while
   // viewing a chat task; every other surface (home, projects,
@@ -3942,6 +3950,7 @@ function AppCore() {
             onModelChange={setSelectedModel}
             projects={projects}
             models={modelOptions}
+            modelMeta={modelMeta}
             attachments={composerAttachments}
             connectors={connectors}
             onNavigateToConnectors={() => navigate('customize')}
@@ -4025,6 +4034,7 @@ function AppCore() {
             scheduled={scheduled}
             scheduleRunsIndex={scheduleRunsIndex}
             models={modelOptions}
+            modelMeta={modelMeta}
             onSelectProject={(p) => setSelectedProject(p)}
             onCreateProject={handleCreateProject}
             onSendInProject={(text) => {

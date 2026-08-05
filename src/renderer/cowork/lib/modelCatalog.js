@@ -28,6 +28,75 @@ const MAKERS = [
 
 export const OTHER_MAKER = { key: 'other', name: 'Other' };
 
+// ─── Picker sections ────────────────────────────────────────────────
+//
+// Makers are the *icon* identity (one mark per company). Sections are the
+// coarser thing the picker actually lists under a heading: the labs that most
+// users pick by name get their own section, and the open-weight models are
+// collected into one, because "which lab trained this open-weight model" is a
+// finer distinction than the choice a user is making at this menu.
+//
+// xAI is deliberately NOT in Open Weight — Grok isn't open weight — so it falls
+// through to Other along with anything we don't recognise.
+//
+// Declaration order = section display order.
+const SECTIONS = [
+  { key: 'mindshub', name: 'MindsHub', makers: ['mindshub'] },
+  { key: 'anthropic', name: 'Anthropic', makers: ['anthropic'] },
+  { key: 'openai', name: 'OpenAI', makers: ['openai'] },
+  { key: 'google', name: 'Google', makers: ['google'] },
+  {
+    key: 'open-weight',
+    name: 'Open Weight',
+    makers: ['moonshot', 'alibaba', 'deepseek', 'zai', 'mistral', 'meta'],
+  },
+];
+
+export const OTHER_SECTION = { key: 'other', name: 'Other' };
+
+/** maker key → section, for every maker a section claims. */
+const SECTION_BY_MAKER = new Map(
+  SECTIONS.flatMap((section) => section.makers.map((maker) => [maker, section])),
+);
+
+// Backend `provider` values (MindsHub's policy) → the section they belong to.
+// `fireworks` is a *host*, not a maker — it serves several open-weight models —
+// which is exactly why the backend field decides the section while the icon
+// keeps coming from the per-model maker inference below.
+const SECTION_BY_PROVIDER = new Map([
+  ['anthropic', 'anthropic'],
+  ['openai', 'openai'],
+  ['gemini', 'google'],
+  ['fireworks', 'open-weight'],
+  ['moonshot', 'open-weight'],
+  ['meta', 'open-weight'],
+]);
+
+/**
+ * The picker section an option belongs under.
+ *
+ * Precedence, and the reason for it:
+ *
+ *   1. A model whose maker infers as MindsHub stays in the MindsHub section
+ *      whatever the backend says its provider is. MindsHub Air is sold as
+ *      MindsHub's own model and the engine behind it is expected to change, so
+ *      filing it under whichever vendor currently serves it would be unstable
+ *      and beside the point.
+ *   2. The backend `provider` (authoritative — it comes from MindsHub's policy).
+ *   3. Inference from the alias/label, for every provider that publishes no
+ *      `provider` field at all (BYOK endpoints, older cowork-server).
+ *
+ * An unrecognised provider or maker lands in Other, so a new one appearing in
+ * the policy never needs an app release to be listed somewhere sensible.
+ */
+export function modelSection(option) {
+  const maker = option?.maker || modelMaker(option?.value, option?.label).key;
+  if (maker === 'mindshub') return SECTION_BY_MAKER.get('mindshub');
+  const byProvider = option?.provider && SECTION_BY_PROVIDER.get(option.provider);
+  if (byProvider) return SECTIONS.find((s) => s.key === byProvider);
+  return SECTION_BY_MAKER.get(maker) || OTHER_SECTION;
+}
+
 /**
  * Infer the maker of a model from its id/alias and display label.
  * First declared match wins. Unknown → OTHER_MAKER.
@@ -48,41 +117,28 @@ export function modelMaker(id, label = '') {
 }
 
 /**
- * Group flat picker options by maker, ready for the ModelSelect popup.
+ * Group flat picker options into sections, ready for the ModelSelect popup.
  *
- * @param {Array<{value: string, label: string, maker?: string, makerName?: string}>} options
- *   Flat option list. An option carrying an explicit `maker` key (the
- *   future ENG-1111 backend field) is trusted verbatim; otherwise the
- *   maker is inferred from value + label. A `maker` we ship no MAKERS
- *   entry for still gets its own group — named by `makerName` (falling
- *   back to a capitalised key) with ProviderIcon's placeholder mark — so
- *   a new backend maker never needs a frontend release to group correctly.
+ * @param {Array<{value: string, label: string, provider?: string, maker?: string}>} options
+ *   Flat option list. `provider` is MindsHub's authoritative maker field (the
+ *   ENG-1111 contract) and decides the section; `maker`, explicit or inferred,
+ *   stays the *icon* identity, so collapsing several makers into one section
+ *   never costs a model its own mark.
  * @returns {Array<{key: string, name: string, items: object[]}>}
- *   Groups in MAKERS declaration order, then dynamic makers in first-seen
- *   order, Other last; empty groups dropped; option order preserved within
- *   each group.
+ *   Sections in declaration order, Other last; empty sections dropped; option
+ *   order preserved within each section — the server's order is meaningful
+ *   upstream (the gateway lists the free/baseline model first), so grouping
+ *   never re-ranks.
  */
 export function groupModelOptions(options) {
   const byKey = new Map();
-  const dynamic = new Map();
   for (const opt of options || []) {
     if (!opt) continue;
-    let maker;
-    if (opt.maker && opt.maker !== OTHER_MAKER.key) {
-      maker = MAKERS.find((m) => m.key === opt.maker) || dynamic.get(opt.maker);
-      if (!maker) {
-        maker = { key: opt.maker, name: opt.makerName || opt.maker.charAt(0).toUpperCase() + opt.maker.slice(1) };
-        dynamic.set(maker.key, maker);
-      }
-    } else if (opt.maker) {
-      maker = OTHER_MAKER;
-    } else {
-      maker = modelMaker(opt.value, opt.label);
-    }
-    if (!byKey.has(maker.key)) byKey.set(maker.key, []);
-    byKey.get(maker.key).push(opt);
+    const section = modelSection(opt);
+    if (!byKey.has(section.key)) byKey.set(section.key, []);
+    byKey.get(section.key).push(opt);
   }
-  return [...MAKERS, ...dynamic.values(), OTHER_MAKER]
-    .filter((m) => byKey.has(m.key))
-    .map((m) => ({ key: m.key, name: m.name, items: byKey.get(m.key) }));
+  return [...SECTIONS, OTHER_SECTION]
+    .filter((s) => byKey.has(s.key))
+    .map((s) => ({ key: s.key, name: s.name, items: byKey.get(s.key) }));
 }

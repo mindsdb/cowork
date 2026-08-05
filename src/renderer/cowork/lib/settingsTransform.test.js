@@ -438,3 +438,114 @@ describe('clampBudgetValue / clampBudgets', () => {
     expect(out.harness).toBe('anton');
   });
 });
+
+// ─── buildModelOptions: version tags + section metadata (ENG-1287) ───
+//
+// `modelFamilies[id] === id` means the version behind that alias moves, so
+// picking it always gets the newest release. `modelProviders[id]` is MindsHub's
+// authoritative maker field, which decides the picker section instead of the
+// alias-inference in lib/modelCatalog.
+
+const FAMILY_META = {
+  modelProviders: { sonnet: 'anthropic', 'sonnet-4-5': 'anthropic', kimi: 'moonshot' },
+  modelFamilies: { sonnet: 'sonnet', 'sonnet-4-5': 'sonnet', kimi: 'kimi' },
+};
+const FAMILY_LABELS = {
+  sonnet: 'Claude Sonnet 5',
+  'sonnet-4-5': 'Claude Sonnet 4.5',
+  kimi: 'Kimi K3',
+};
+
+describe('buildModelOptions — moving vs pinned versions', () => {
+  it('tags an alias whose family is itself as "latest"', () => {
+    const options = buildModelOptions('sonnet', ['sonnet', 'kimi'], false, false, {}, FAMILY_LABELS, FAMILY_META);
+    const byValue = Object.fromEntries(options.map((o) => [o.value, o]));
+    // Plain text, not a pill: ModelSelect resolves the trigger's displayed text
+    // from these label strings, so markup here wouldn't survive selection.
+    expect(byValue.sonnet.label).toBe('Claude Sonnet 5 (latest)');
+    expect(byValue.kimi.label).toBe('Kimi K3 (latest)');
+  });
+
+  it('marks a frozen version as an older version and never as latest', () => {
+    const options = buildModelOptions(
+      'sonnet', ['sonnet', 'sonnet-4-5'], false, false, {}, FAMILY_LABELS, FAMILY_META,
+    );
+    const pin = options.find((o) => o.value === 'sonnet-4-5');
+    expect(pin.label).toBe('Claude Sonnet 4.5 — older version');
+    expect(pin.label).not.toContain('latest');
+  });
+
+  it('lists a frozen version directly under the alias it froze', () => {
+    // The gateway's order is meaningful upstream (free/baseline model first), so
+    // heads keep their positions and only the pin moves to follow its head.
+    const options = buildModelOptions(
+      'sonnet', ['sonnet', 'kimi', 'sonnet-4-5'], false, false, {}, FAMILY_LABELS, FAMILY_META,
+    );
+    expect(options.map((o) => o.value)).toEqual(['sonnet', 'sonnet-4-5', 'kimi']);
+  });
+
+  it('keeps an orphaned pin listed, untagged, in its own position', () => {
+    // A typo'd family in the policy, or a head filtered out upstream. The model is
+    // still selectable so it must not vanish — but it must not claim to be latest.
+    const options = buildModelOptions('sonnet-4-5', ['sonnet-4-5'], false, false, {}, FAMILY_LABELS, {
+      modelProviders: { 'sonnet-4-5': 'anthropic' },
+      modelFamilies: { 'sonnet-4-5': 'sonet' },
+    });
+    expect(options.map((o) => o.value)).toEqual(['sonnet-4-5']);
+    expect(options[0].label).toBe('Claude Sonnet 4.5 — older version');
+  });
+
+  it('carries the backend provider through so the picker stops inferring it', () => {
+    const options = buildModelOptions('sonnet', ['sonnet', 'kimi'], false, false, {}, FAMILY_LABELS, FAMILY_META);
+    expect(options.find((o) => o.value === 'sonnet').provider).toBe('anthropic');
+    expect(options.find((o) => o.value === 'kimi').provider).toBe('moonshot');
+  });
+
+  it('tags nothing and sets no provider without the metadata', () => {
+    // A BYOK provider, or a cowork-server too old to send it: every model renders
+    // exactly as it does today rather than claiming to be "latest".
+    const options = buildModelOptions('claude-opus-4-8', ANTHROPIC_LIST, true, false);
+    for (const o of options) {
+      expect(o.label || '').not.toContain('latest');
+      expect(o.provider).toBeUndefined();
+    }
+  });
+
+  it('still marks a locked model, and a locked pin independently of its head', () => {
+    const options = buildModelOptions(
+      'sonnet', ['sonnet', 'sonnet-4-5'], false, false,
+      { 'sonnet-4-5': false }, FAMILY_LABELS, FAMILY_META,
+    );
+    const byValue = Object.fromEntries(options.map((o) => [o.value, o]));
+    expect(byValue.sonnet.disabled).toBe(false);
+    expect(byValue['sonnet-4-5'].disabled).toBe(true);
+    expect(byValue['sonnet-4-5'].label).toBe('Claude Sonnet 4.5 — older version — Add credits to unlock');
+  });
+
+  it('keeps the __stale__ and "Other…" entries pinned outside the sections', () => {
+    const options = buildModelOptions('latest:sonnet', ['sonnet'], true, true, {}, FAMILY_LABELS, FAMILY_META);
+    expect(options[0]).toMatchObject({ value: '__stale__', pin: 'top' });
+    expect(options[options.length - 1]).toMatchObject({ value: '__custom__', pin: 'bottom' });
+  });
+});
+
+describe('mergeRecommendedModels — the section/version maps', () => {
+  it('overlays modelProviders and modelFamilies when the server sends them', () => {
+    const merged = mergeRecommendedModels({}, {
+      modelProviders: { sonnet: 'anthropic' },
+      modelFamilies: { sonnet: 'sonnet' },
+    });
+    expect(merged.modelProviders).toEqual({ sonnet: 'anthropic' });
+    expect(merged.modelFamilies).toEqual({ sonnet: 'sonnet' });
+  });
+
+  it('keeps what we hold when the server sends them empty or omits them', () => {
+    // An older cowork-server, a BYOK provider, or a failed MindsHub fetch — the
+    // endpoint still answers 200. Wiping would flatten the picker until restart.
+    const held = { modelProviders: { sonnet: 'anthropic' }, modelFamilies: { sonnet: 'sonnet' } };
+    expect(mergeRecommendedModels(held, { modelProviders: {}, modelFamilies: {} }).modelProviders)
+      .toEqual(held.modelProviders);
+    expect(mergeRecommendedModels(held, { recommendedModels: {} }).modelFamilies)
+      .toEqual(held.modelFamilies);
+  });
+});

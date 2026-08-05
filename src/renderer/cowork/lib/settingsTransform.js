@@ -262,6 +262,12 @@ export function mergeRecommendedModels(prev, rec) {
     modelEfforts: overlayMap(base.modelEfforts, rec.modelEfforts),
     modelEnabled: overlayMap(base.modelEnabled, rec.modelEnabled),
     modelLabels: overlayMap(base.modelLabels, rec.modelLabels),
+    // Picker grouping metadata, same rule: an empty map from the server (older
+    // cowork-server, BYOK provider, failed fetch) must not wipe what we hold.
+    // Losing these degrades the picker to inferred sections and no "latest"
+    // tags rather than breaking it.
+    modelProviders: overlayMap(base.modelProviders, rec.modelProviders),
+    modelFamilies: overlayMap(base.modelFamilies, rec.modelFamilies),
   };
 }
 
@@ -329,10 +335,67 @@ export function resolveModelPickerValue(curModel, modelList, allowOther, forceCu
  *   model missing here (every direct provider; a minds-cloud model with no
  *   label) falls back to modelLabel()'s id-derived label.
  */
-export function buildModelOptions(curModel, modelList, allowOther, showStalePin, modelEnabled = {}, modelLabels = {}) {
+export function buildModelOptions(
+  curModel,
+  modelList,
+  allowOther,
+  showStalePin,
+  modelEnabled = {},
+  modelLabels = {},
+  meta = {},
+) {
   const list = Array.isArray(modelList) ? modelList : [];
   const isLocked = (m) => modelEnabled[m] === false;
   const labelFor = (m) => displayModelLabel(m, modelLabels);
+
+  const { modelProviders = {}, modelFamilies = {} } = meta || {};
+  // `families[id] === id` means the version behind that alias moves, so picking
+  // it always gets the newest release — that's what earns the "latest" tag.
+  // Anything else names the moving alias this entry is a frozen version of.
+  //
+  // Only tagged when the metadata is actually present: a BYOK provider (or a
+  // cowork-server too old to send it) publishes no families, and every model
+  // then renders exactly as it does today rather than claiming to be "latest".
+  const hasFamilies = Object.keys(modelFamilies).length > 0;
+  const familyOf = (m) => modelFamilies[m] || m;
+  const isMoving = (m) => hasFamilies && familyOf(m) === m;
+  const isPinned = (m) => hasFamilies && familyOf(m) !== m;
+
+  // Display-only ordering: a frozen version is listed directly under the alias
+  // it froze, wherever that alias sits in the server's order. The server's order
+  // is meaningful upstream (the gateway lists the free/baseline model first), so
+  // heads keep their positions and only the pins move to follow them.
+  const ordered = [];
+  const claimed = new Set();
+  for (const m of list) {
+    if (isPinned(m) && list.includes(familyOf(m))) continue; // placed under its head
+    ordered.push(m);
+    claimed.add(m);
+    for (const pin of list) {
+      if (isPinned(pin) && familyOf(pin) === m && !claimed.has(pin)) {
+        ordered.push(pin);
+        claimed.add(pin);
+      }
+    }
+  }
+
+  const modelOption = (m) => ({
+    value: m,
+    label: [
+      labelFor(m),
+      // Plain text, not a rendered pill: ModelSelect resolves the trigger's
+      // displayed text from these label strings, so markup here wouldn't survive
+      // selection.
+      isMoving(m) ? ' (latest)' : '',
+      isPinned(m) ? ' — older version' : '',
+      isLocked(m) ? ' — Add credits to unlock' : '',
+    ].join(''),
+    disabled: isLocked(m),
+    // MindsHub's authoritative maker field, which decides the picker section.
+    // Absent for every BYOK provider, where the section falls back to inference.
+    ...(modelProviders[m] ? { provider: modelProviders[m] } : {}),
+  });
+
   return [
     ...(showStalePin
       // Labeled "legacy — re-select" (not "current") so it reads as an
@@ -351,11 +414,7 @@ export function buildModelOptions(curModel, modelList, allowOther, showStalePin,
       : []),
     // Wallet-based access (ENG-412, #434): a locked model is one the org's
     // wallet can't currently pay for — prompt to add credits, not upgrade.
-    ...list.map((m) => ({
-      value: m,
-      label: `${labelFor(m)}${isLocked(m) ? ' — Add credits to unlock' : ''}`,
-      disabled: isLocked(m),
-    })),
+    ...ordered.map(modelOption),
     ...(allowOther ? [{ value: '__custom__', label: 'Other…', pin: 'bottom' }] : []),
   ];
 }

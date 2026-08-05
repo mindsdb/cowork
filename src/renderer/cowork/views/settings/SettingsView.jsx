@@ -1601,7 +1601,15 @@ export default function SettingsView({
                             // longer wedges the control into a no-op "Saved" (ENG-739).
                             const { showStalePin, inputMode, selectValue } =
                               resolveModelPickerValue(curModel, modelList, allowOther, modelInputMode[role]);
-                            const modelOptions = buildModelOptions(curModel, modelList, allowOther, showStalePin, modelEnabled, settings.modelLabels || {});
+                            // The trailing bag carries MindsHub's authoritative
+                            // maker field (so the picker's sections stop being
+                            // inferred from the alias) plus the family metadata
+                            // that tags the moving aliases "latest".
+                            const modelOptions = buildModelOptions(
+                              curModel, modelList, allowOther, showStalePin, modelEnabled,
+                              settings.modelLabels || {},
+                              { modelProviders: settings.modelProviders, modelFamilies: settings.modelFamilies },
+                            );
                             return (
                               <label style={{ display: 'grid', gap: 4 }}>
                                 {fieldLabel('Model')}

@@ -79,3 +79,121 @@ describe('Composer — prefill selection (ENG-1137)', () => {
     expect(ta.selectionEnd).toBe(text.length);
   });
 });
+
+// ─── Model menu sections (ENG-1287) ─────────────────────────────────
+//
+// The composer's menu was the one picker ENG-1096 left flat. It now groups by the
+// same sections as Settings and tags the aliases whose version moves. The
+// ungrouped case matters just as much: ChatView passes a one-item list, and an app
+// newer than its server gets no metadata — both keep the flat menu.
+
+const MODEL_META = {
+  modelProviders: { mindshub_air: 'anthropic', sonnet: 'anthropic', kimi: 'moonshot' },
+  modelFamilies: { mindshub_air: 'mindshub_air', sonnet: 'sonnet', kimi: 'kimi' },
+};
+const MODELS = [
+  { id: 'mindshub_air', name: 'MindsHub Air' },
+  { id: 'sonnet', name: 'Claude Sonnet 5' },
+  { id: 'kimi', name: 'Kimi K3' },
+];
+
+const openModelMenu = (user) => user.click(screen.getByTitle('Choose model'));
+
+describe('Composer — model menu sections', () => {
+  it('renders a heading per section, MindsHub first', async () => {
+    const user = userEvent.setup();
+    renderComposer({ models: MODELS, modelMeta: MODEL_META, hideModel: false, model: MODELS[0] });
+    await openModelMenu(user);
+
+    for (const title of ['MindsHub', 'Anthropic', 'Open Weight']) {
+      expect(screen.getByText(title)).toBeTruthy();
+    }
+    // The flat menu's single "Model" heading is replaced by the section headings.
+    expect(screen.queryByText('Model')).toBeNull();
+  });
+
+  it('keeps MindsHub Air out of the vendor section serving it', async () => {
+    // The fixture reports Air's provider as the same vendor as the Claude models
+    // precisely so this proves the branding rule wins over the reported provider.
+    const user = userEvent.setup();
+    renderComposer({ models: MODELS, modelMeta: MODEL_META, hideModel: false, model: MODELS[0] });
+    await openModelMenu(user);
+
+    expect(MODEL_META.modelProviders.mindshub_air).toBe(MODEL_META.modelProviders.sonnet);
+    expect(screen.getByText('MindsHub')).toBeTruthy();
+  });
+
+  it('keeps the single "Model" heading for a one-item list (ChatView)', async () => {
+    const user = userEvent.setup();
+    renderComposer({ models: [MODELS[1]], hideModel: false, model: MODELS[1] });
+    await openModelMenu(user);
+
+    expect(screen.getByText('Model')).toBeTruthy();
+    expect(screen.queryByText('Anthropic')).toBeNull();
+  });
+
+  it('renders the flat menu when the server sends no section metadata', async () => {
+    const user = userEvent.setup();
+    renderComposer({ models: MODELS, hideModel: false, model: MODELS[0] });
+    await openModelMenu(user);
+
+    expect(screen.getByText('Model')).toBeTruthy();
+    expect(screen.queryByText('Open Weight')).toBeNull();
+    // getAllByText: the selected model's name also renders in the trigger pill.
+    for (const m of MODELS) expect(screen.getAllByText(m.name).length).toBeGreaterThan(0);
+  });
+
+  it('tags every moving alias "latest" and a frozen version not at all', async () => {
+    const user = userEvent.setup();
+    renderComposer({
+      models: [...MODELS, { id: 'sonnet-4-5', name: 'Claude Sonnet 4.5' }],
+      modelMeta: {
+        modelProviders: { ...MODEL_META.modelProviders, 'sonnet-4-5': 'anthropic' },
+        modelFamilies: { ...MODEL_META.modelFamilies, 'sonnet-4-5': 'sonnet' },
+      },
+      hideModel: false,
+      model: MODELS[1],
+    });
+    await openModelMenu(user);
+
+    // Four models, one of which is a frozen version.
+    expect(screen.getAllByText('latest')).toHaveLength(3);
+    expect(screen.getByText('Claude Sonnet 4.5')).toBeTruthy();
+  });
+
+  it('disables a wallet-locked model with the add-credits wording', async () => {
+    const user = userEvent.setup();
+    const props = renderComposer({
+      models: MODELS,
+      modelMeta: { ...MODEL_META, modelEnabled: { sonnet: false } },
+      hideModel: false,
+      model: MODELS[0],
+      onModelChange: vi.fn(),
+    });
+    await openModelMenu(user);
+
+    expect(screen.getByText('Add credits to unlock')).toBeTruthy();
+    // A turn that would fail at send time can't be started from here — matching
+    // what the Settings picker already does.
+    await user.click(screen.getByText('Claude Sonnet 5'));
+    expect(props.onModelChange).not.toHaveBeenCalled();
+  });
+
+  it('selects by id and label', async () => {
+    const user = userEvent.setup();
+    const props = renderComposer({
+      models: MODELS, modelMeta: MODEL_META, hideModel: false, model: MODELS[0], onModelChange: vi.fn(),
+    });
+    await openModelMenu(user);
+    await user.click(screen.getByText('Kimi K3'));
+
+    expect(props.onModelChange).toHaveBeenCalledWith({ id: 'kimi', name: 'Kimi K3' });
+  });
+
+  it('keeps the "Model" heading when the list is still empty (settings loading)', async () => {
+    const user = userEvent.setup();
+    renderComposer({ models: [], modelMeta: MODEL_META, hideModel: false, model: null });
+    await openModelMenu(user);
+    expect(screen.getByText('Model')).toBeTruthy();
+  });
+});
