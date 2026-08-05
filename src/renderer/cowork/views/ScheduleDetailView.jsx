@@ -481,7 +481,11 @@ export default function ScheduleDetailView({
         busyLabel="Deleting…"
         onConfirm={() => withBusy(async () => {
           await onDelete?.(task.id);
-          // Host navigates back to the list on delete (onDelete → setRoute).
+          // Close on success rather than relying on the host to unmount this
+          // view via navigation (onDelete → setRoute); if a future onDelete
+          // resolves without navigating away, the modal still dismisses and
+          // can't linger over an already-deleted task.
+          setConfirmDeleteOpen(false);
         })}
         onClose={() => { if (!busy) setConfirmDeleteOpen(false); }}
       />
