@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import Ico from '../components/Icons';
-import { Alert, Button, Card, EmptyState as UiEmptyState, Select, Input, Textarea } from '../components/ui';
+import { Alert, Button, Card, Field, EmptyState as UiEmptyState, Select, Input, Textarea } from '../components/ui';
 import { PageHeader as CollectionPageHeader } from '../components/collection';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import { copyText } from '../lib/clipboard';
@@ -456,10 +456,12 @@ function ConnectView({ data, setData, setStatus }) {
           </div>
         )}
         {fields.length ? fields.map((field) => (
-          <label key={field.name} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-strong)' }}>
-              {fieldLabel(field.name)}{field.required ? ' *' : ''}
-            </span>
+          <Field
+            key={field.name}
+            label={fieldLabel(field.name)}
+            required={field.required}
+            help={field.description || undefined}
+          >
             {shouldUseTextarea(field) ? (
               <Textarea
                 value={credentialValues[field.name] ?? ''}
@@ -478,8 +480,7 @@ function ConnectView({ data, setData, setStatus }) {
                 style={inputStyle}
               />
             )}
-            {field.description && <small style={{ fontSize: 11.5, color: 'var(--frost-600)' }}>{field.description}</small>}
-          </label>
+          </Field>
         )) : (
           <div style={{ padding: 12, border: '1px solid var(--border-01)', borderRadius: 8, color: 'var(--frost-600)', fontSize: 12.5 }}>
             This engine does not expose editable credential fields in the installed registry.
