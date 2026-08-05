@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import Ico from '../components/Icons';
-import { Message, Button, Card, EmptyState as UiEmptyState, Select, Input, Textarea } from '../components/ui';
+import { Alert, Button, Card, EmptyState as UiEmptyState, Select, Input, Textarea } from '../components/ui';
 import { PageHeader as CollectionPageHeader } from '../components/collection';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import { copyText } from '../lib/clipboard';
@@ -88,7 +88,7 @@ export default function UtilitiesView({ kind, project, onRefreshArtifacts }) {
       {/* MemoryView renders its own header. For the legacy kinds we
           keep the plain header here. */}
       {!isMemoryKind && <CollectionPageHeader title={title} subtitle={subtitle} />}
-      {status && <Message role="status" aria-live="polite" style={{ margin: '16px 28px 0', fontSize: 12.5 }}>{status}</Message>}
+      {status && <Alert variant="danger" role="status" aria-live="polite" style={{ margin: '16px 28px 0', fontSize: 12.5 }}>{status}</Alert>}
       {!data ? <EmptyState>Loading…</EmptyState> : null}
       {data && kind === 'memory' && (
         <MemoryView
@@ -520,9 +520,9 @@ function PublishView({ data, setData, setStatus, onRefreshArtifacts }) {
   return (
     <div style={{ padding: 28, display: 'flex', flexDirection: 'column', gap: 10 }}>
       {!data.publishReady && (
-        <Message variant="warning">
+        <Alert variant="warning">
           Configure a Minds API key in Settings before sharing.
-        </Message>
+        </Alert>
       )}
       {(data.artifacts || []).length ? (data.artifacts || []).map((artifact) => (
         <div key={artifact.path} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 12, border: '1px solid var(--border-01)', borderRadius: 9 }}>
