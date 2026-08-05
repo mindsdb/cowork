@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import Ico from './Icons';
+import { Badge } from './ui';
 
 function ResultIcon({ type }) {
   if (type === 'project') return Ico.folder(15);
@@ -79,7 +80,7 @@ export default function SearchModal({ open, onClose, onSearch, onSelect }) {
                 <strong>{result.title}</strong>
                 <small>{result.subtitle}</small>
               </span>
-              <span className="search-result-type">{result.type}</span>
+              <Badge variant="muted" size="xs" className="capitalize">{result.type}</Badge>
             </button>
           ))}
           {busy && <div className="search-empty">Searching...</div>}

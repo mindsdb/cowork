@@ -10,8 +10,12 @@
 export interface CustomTheme {
   /** Accent / brand color (hex). */
   accent: string;
-  /** Base background (hex), or null to follow the light/dark theme. */
-  bg: string | null;
+  /** Base background while the Light theme is active (hex), or null to
+   *  follow Light's default. */
+  bgLight: string | null;
+  /** Base background while the Dark theme is active (hex), or null to
+   *  follow Dark's default. */
+  bgDark: string | null;
   /** Base corner radius in px (drives --r-sm/--r/--r-lg/--r-xl). */
   radius: number;
   font: 'standard' | 'mono';
@@ -20,7 +24,8 @@ export interface CustomTheme {
 
 export const DEFAULT_CUSTOM_THEME: CustomTheme = {
   accent: '#a78bfa',
-  bg: null,
+  bgLight: null,
+  bgDark: null,
   radius: 6,
   font: 'standard',
   scanlines: false,
@@ -33,9 +38,13 @@ export function loadCustomTheme(): CustomTheme {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return { ...DEFAULT_CUSTOM_THEME };
     const parsed = JSON.parse(raw);
+    // Migrate the old single shared `bg` field (pre-light/dark split) into
+    // both slots so an existing custom background isn't silently dropped.
+    const legacyBg = typeof parsed.bg === 'string' ? parsed.bg : null;
     return {
       accent: typeof parsed.accent === 'string' ? parsed.accent : DEFAULT_CUSTOM_THEME.accent,
-      bg: typeof parsed.bg === 'string' ? parsed.bg : null,
+      bgLight: typeof parsed.bgLight === 'string' ? parsed.bgLight : legacyBg,
+      bgDark: typeof parsed.bgDark === 'string' ? parsed.bgDark : legacyBg,
       radius: Number.isFinite(parsed.radius) ? Math.max(0, Math.min(16, parsed.radius)) : DEFAULT_CUSTOM_THEME.radius,
       font: parsed.font === 'mono' ? 'mono' : 'standard',
       scanlines: Boolean(parsed.scanlines),
@@ -92,12 +101,17 @@ const MONO_STACK = "'JetBrains Mono', ui-monospace, 'SF Mono', SFMono-Regular, M
 
 /**
  * Apply (or with null, clear) a custom theme as inline body properties.
- * Safe to call repeatedly; always clears before applying.
+ * Safe to call repeatedly; always clears before applying. `theme` picks
+ * which of bgLight/bgDark is in effect — defaults to 'dark'.
  */
-export function applyCustomTheme(t: CustomTheme | null): void {
+export function applyCustomTheme(t: CustomTheme | null, theme: 'light' | 'dark' = 'dark'): void {
   const body = document.body;
   for (const p of MANAGED_PROPS) body.style.removeProperty(p);
-  body.classList.remove('custom-scanlines');
+  // Not a custom property (kept out of MANAGED_PROPS, which is documented as
+  // the --custom-property list) — cleared explicitly so removing/clearing
+  // the theme hands the window background back to .gf-theme-light/dark.
+  body.style.removeProperty('background');
+  body.classList.remove('custom-scanlines', 'custom-bg-active');
   if (!t) return;
 
   const accent = hexToRgb(t.accent);
@@ -110,8 +124,14 @@ export function applyCustomTheme(t: CustomTheme | null): void {
     body.style.setProperty('--ring', `0 0 0 3px ${rgba(accent, 0.32)}`);
   }
 
-  const bg = t.bg ? hexToRgb(t.bg) : null;
+  const bgHex = theme === 'light' ? t.bgLight : t.bgDark;
+  const bg = bgHex ? hexToRgb(bgHex) : null;
   if (bg) {
+    // A flat custom color reads as a mistake next to any decorative
+    // glow/gradient designed for the stock theme's palette — see
+    // .custom-bg-active in globals.css, which flattens the sidebar's
+    // accent-glow wordmark shadow (and any skin halo) while this is set.
+    body.classList.add('custom-bg-active');
     // Derive the neutral ramp from the chosen background: surfaces step
     // toward the opposite pole of the bg's luminance; ink flips to
     // whichever pole keeps text readable.
@@ -130,6 +150,14 @@ export function applyCustomTheme(t: CustomTheme | null): void {
     body.style.setProperty('--ink-3', rgbToHex(mix(inkPole, bg, 0.45)));
     body.style.setProperty('--ink-4', rgbToHex(mix(inkPole, bg, 0.60)));
     body.style.setProperty('--ink-5', rgbToHex(mix(inkPole, bg, 0.75)));
+    // The window-level background (outside the sidebar) is otherwise
+    // hardcoded per stock theme by .gf-theme-light/.gf-theme-dark
+    // (styles.css) — those class rules never look at --bg at all. Setting
+    // `background` here directly as an inline style beats them on
+    // specificity, so a custom background actually reaches beyond the
+    // sidebar. A bit darker than the picked color gives the sidebar some
+    // depth against it rather than reading as one flat slab.
+    body.style.setProperty('background', rgbToHex(mix(bg, BLACK, 0.10)));
   }
 
   const r = Math.max(0, Math.min(16, t.radius));

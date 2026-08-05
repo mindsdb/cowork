@@ -16,6 +16,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
+import { Button } from '../ui';
 import { DataVaultForm } from './DataVaultForm';
 import {
   clearForm, getForm, patchForm, subscribe,
@@ -26,48 +27,20 @@ import { saveConnector, fetchDatasources, startConnectorOAuth, pollConnectorOAut
 import { host } from '../../../platform/host';
 import { trackDataSourceConnected } from '../../lib/analytics';
 
-const ENGINE_TO_OAUTH_SERVICE = {
-  google_drive: 'google-drive',
-  google_calendar: 'google-calendar',
-  gmail: 'gmail',
-  google_ads: 'google-ads',
-  google_analytics_4: 'google-analytics',
-};
-const BROWSER_OAUTH_TITLE = {
-  google_drive: 'Google Drive connected',
-  google_calendar: 'Google Calendar connected',
-  gmail: 'Gmail connected',
-  google_ads: 'Google Ads connected',
-  google_analytics_4: 'Google Analytics connected',
-};
 import { submitDataVaultForm } from '../../api';
 
 const BROWSER_OAUTH_POLL_MS    = 3000;
 const BROWSER_OAUTH_TIMEOUT_MS = 2 * 60 * 1000;
 
-const FONT_BODY = 'var(--font-body)';
+// The web-fallback OAuth routes' "service" slug and the "X connected"
+// success title both come from the connector's own spec (oauth.service_id,
+// label) rather than a hardcoded per-engine map, so any OAuth-builtin
+// connector works here without a code change.
+function getBrowserOAuthMethod(spec) {
+  return (Array.isArray(spec?.methods) ? spec.methods.find((m) => m.id === 'browser_oauth_builtin') : null) || null;
+}
 
-// One-shot keyframes used by the form: appearance animation on the
-// panel + the small spinner inside the live status row. Mounting
-// these once at the module level (rather than per-component) keeps
-// the DOM clean and ensures the rules are present before either
-// child renders.
-let _DVF_KEYFRAMES_INJECTED = false;
-function _ensureKeyframes() {
-  if (_DVF_KEYFRAMES_INJECTED) return;
-  if (typeof document === 'undefined') return;
-  const style = document.createElement('style');
-  style.setAttribute('data-dvf-keyframes', '');
-  style.textContent = `
-@keyframes dvf-spin { to { transform: rotate(360deg); } }
-@keyframes dvf-appear {
-  from { opacity: 0; transform: translateY(6px) scale(0.985); }
-  to   { opacity: 1; transform: translateY(0)   scale(1); }
-}
-`;
-  document.head.appendChild(style);
-  _DVF_KEYFRAMES_INJECTED = true;
-}
+const FONT_BODY = 'var(--font-body)';
 
 export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNavigateToConnectors, highlighted = false }) {
   const [spec, setSpec] = useState(() => getForm(conversationId));
@@ -96,7 +69,6 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
     () => (conversationId ? getSelectedMethod(conversationId) : null)
   );
 
-  useEffect(() => { _ensureKeyframes(); }, []);
   useEffect(() => () => { if (oauthPollRef.current) clearInterval(oauthPollRef.current); }, []);
 
   useEffect(() => {
@@ -169,7 +141,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
           patchForm(conversationId, {
             form_id: formId,
             _is_probing: false,
-            form_error: outcome.error || 'Google sign-in failed. Please try again.',
+            form_error: outcome.error || 'Sign-in failed. Please try again.',
             _is_success: false,
           });
         }
@@ -230,7 +202,8 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
     // required fields (e.g. developer token for Google Ads).
     if (authMethod === 'browser_oauth_builtin' && kind === 'primary') {
       const engine = spec.engine || spec._connector_id || 'google_drive';
-      const successTitle = BROWSER_OAUTH_TITLE[engine] || 'Connected';
+      const providerLabel = spec.label || 'Provider';
+      const successTitle = `${providerLabel} connected`;
       setBusy(true);
       setError('');
 
@@ -240,7 +213,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
         patchForm(conversationId, {
           form_id: spec.form_id,
           _is_probing: true,
-          status_text: 'Waiting for Google sign-in…',
+          status_text: `Waiting for ${providerLabel} sign-in…`,
           form_error: null,
         });
         try {
@@ -265,16 +238,16 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
       }
 
       // Web fallback — server-side redirect flow.
-      const serviceId = ENGINE_TO_OAUTH_SERVICE[engine];
+      const serviceId = getBrowserOAuthMethod(spec)?.oauth?.service_id;
       if (!serviceId) { setError(`No OAuth configuration for "${engine}".`); setBusy(false); return; }
       try {
         const result = await startConnectorOAuth(serviceId, { extraFields: values || {} });
-        if (!result?.authUrl || !result?.state) throw new Error('Could not start Google sign-in. Is the server running?');
+        if (!result?.authUrl || !result?.state) throw new Error(`Could not start ${providerLabel} sign-in. Is the server running?`);
         window.open(result.authUrl, '_blank');
-        patchForm(conversationId, { form_id: spec.form_id, _is_probing: true, status_text: 'Waiting for Google sign-in…', form_error: null });
+        patchForm(conversationId, { form_id: spec.form_id, _is_probing: true, status_text: `Waiting for ${providerLabel} sign-in…`, form_error: null });
         startBrowserOAuthPoll(result.state, successTitle, spec.form_id);
       } catch (e) {
-        patchForm(conversationId, { form_id: spec.form_id, _is_probing: false, form_error: e?.message || 'Could not start Google sign-in.' });
+        patchForm(conversationId, { form_id: spec.form_id, _is_probing: false, form_error: e?.message || `Could not start ${providerLabel} sign-in.` });
         setBusy(false);
       }
       return;
@@ -422,6 +395,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
           clientSecret,
           scopes: oauthMeta.scopes,
           extraAuthParams: oauthMeta.extra_auth_params,
+          redirectPort: oauthMeta.redirect_port,
         });
         if (!result || result.ok === false) {
           setError(result?.reason || 'OAuth flow failed.');
@@ -675,7 +649,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
             display: 'flex', alignItems: 'center',
             padding: '0 14px',
             fontFamily: FONT_BODY, fontSize: 13, fontWeight: 600,
-            color: 'var(--ink)', letterSpacing: '-0.005em',
+            color: 'var(--ink)', letterSpacing: '0',
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>
             Connect
@@ -719,7 +693,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
                 borderRadius: '50%',
                 border: '2.5px solid color-mix(in srgb, var(--accent) 25%, transparent)',
                 borderTopColor: 'var(--accent)',
-                animation: 'dvf-spin 720ms linear infinite',
+                animation: 'spin 720ms linear infinite',
               }}
             />
             <span style={{ color: 'var(--ink-2)', fontSize: 13, textAlign: 'center' }}>
@@ -746,8 +720,8 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
                 </div>
               )}
             </div>
-            <button
-              type="button"
+            <Button
+              variant="primary"
               onClick={() => {
                 const fieldsPatch = {};
                 if (Array.isArray(spec.fields)) {
@@ -777,19 +751,10 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
                   ...(Object.keys(methodsPatch).length ? { methods: methodsPatch } : {}),
                 });
               }}
-              style={{
-                alignSelf: 'flex-start',
-                padding: '6px 14px', borderRadius: 7,
-                background: 'var(--accent)', border: 0,
-                color: '#fff', fontSize: 13, fontWeight: 600,
-                cursor: 'pointer', fontFamily: FONT_BODY,
-                transition: 'opacity 140ms ease',
-              }}
-              onMouseOver={(e) => { e.currentTarget.style.opacity = '0.85'; }}
-              onMouseOut={(e) => { e.currentTarget.style.opacity = '1'; }}
+              style={{ alignSelf: 'flex-start' }}
             >
               Try again
-            </button>
+            </Button>
           </div>
         ) : (
           /* Normal / success / parse-error state — render the form as usual. */
@@ -814,7 +779,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
                     borderRadius: '50%',
                     border: '2px solid color-mix(in srgb, var(--accent) 30%, transparent)',
                     borderTopColor: 'var(--accent)',
-                    animation: 'dvf-spin 720ms linear infinite',
+                    animation: 'spin 720ms linear infinite',
                   }}
                 />
                 <span style={{ minWidth: 0, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -852,12 +817,13 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
                 if (method?.fields?.length) return;
                 // No fields — auto-start immediately on method selection.
                 const engine = spec.engine || spec._connector_id || 'google_drive';
-                const successTitle = BROWSER_OAUTH_TITLE[engine] || 'Connected';
+                const providerLabel = spec.label || 'Provider';
+                const successTitle = `${providerLabel} connected`;
                 setBusy(true);
                 setError('');
 
                 if (host.isElectron) {
-                  patchForm(conversationId, { form_id: spec.form_id, _is_probing: true, status_text: 'Waiting for Google sign-in…', form_error: null });
+                  patchForm(conversationId, { form_id: spec.form_id, _is_probing: true, status_text: `Waiting for ${providerLabel} sign-in…`, form_error: null });
                   try {
                     const result = await host.oauthConnect({ engine, name: '' });
                     if (!result || result.ok === false) throw new Error(result?.reason || 'OAuth flow failed.');
@@ -873,16 +839,16 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
                 }
 
                 // Web fallback
-                const serviceId = ENGINE_TO_OAUTH_SERVICE[engine];
+                const serviceId = method?.oauth?.service_id;
                 if (!serviceId) { setError(`No OAuth configuration for "${engine}".`); setBusy(false); return; }
                 try {
                   const result = await startConnectorOAuth(serviceId);
-                  if (!result?.authUrl || !result?.state) throw new Error('Could not start Google sign-in. Is the server running?');
+                  if (!result?.authUrl || !result?.state) throw new Error(`Could not start ${providerLabel} sign-in. Is the server running?`);
                   window.open(result.authUrl, '_blank');
-                  patchForm(conversationId, { form_id: spec.form_id, _is_probing: true, status_text: 'Waiting for Google sign-in…', form_error: null });
+                  patchForm(conversationId, { form_id: spec.form_id, _is_probing: true, status_text: `Waiting for ${providerLabel} sign-in…`, form_error: null });
                   startBrowserOAuthPoll(result.state, successTitle, spec.form_id);
                 } catch (e) {
-                  patchForm(conversationId, { form_id: spec.form_id, _is_probing: false, form_error: e?.message || 'Could not start Google sign-in.' });
+                  patchForm(conversationId, { form_id: spec.form_id, _is_probing: false, form_error: e?.message || `Could not start ${providerLabel} sign-in.` });
                   setBusy(false);
                 }
               }}

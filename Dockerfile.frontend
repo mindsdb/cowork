@@ -1,0 +1,67 @@
+# Cowork frontend image: static SPA served by nginx. No API handling.
+#
+# In web mode the SPA calls the cowork-server API same-origin at /api/v1/*, so
+# the ingress in front of this image must route /api/v1 to the cowork-server
+# Service. This image serves ONLY the built SPA. (The all-in-one SPA+server
+# image is the separate cowork/Dockerfile; this one does not replace it.)
+#
+# Build (context = the cowork repo root; run from the cowork/ directory):
+#     docker build -f Dockerfile.frontend -t cowork-frontend:dev .
+#     # Target a specific environment (Vite bakes these at build time):
+#     docker build -f Dockerfile.frontend -t cowork-frontend:prod \
+#       --build-arg VITE_MINDS_API_URL=https://api.mindshub.ai \
+#       --build-arg VITE_KEYCLOAK_URL=https://auth.mindshub.ai/auth .
+#
+# Run:
+#     docker run -p 8080:8080 cowork-frontend:dev
+#     # Browse http://localhost:8080. Calls to /api/v1 will 404 unless an
+#     # upstream (ingress) routes them to cowork-server.
+
+# Stage 1: build the SPA.
+FROM node:22-slim AS spa-builder
+WORKDIR /build
+
+# Lockfile-only install first, so the dependency layer is cached when only
+# source changes.
+COPY package.json package-lock.json ./
+# --ignore-scripts skips native postinstall hooks; the web SPA has none.
+RUN npm ci --ignore-scripts
+
+COPY . ./
+
+# Vite bakes VITE_-prefixed vars into the bundle at build time. Leave the URL
+# vars unset by default: the SPA then derives the MindsHub API/auth hosts from
+# its own serving origin at runtime by swapping the leading `cowork` host token
+# for `api`/`auth` (static: cowork.<env>.mindshub.ai -> api.<env>.mindshub.ai,
+# cowork.mindshub.ai -> api.mindshub.ai; PR: cowork-<pr>.dev.mindshub.ai ->
+# api-<pr>.dev.mindshub.ai), so one image serves every environment. Override per
+# environment only to pin an explicit host.
+ARG VITE_MINDS_API_URL=
+ARG VITE_KEYCLOAK_URL=
+ARG VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN=
+ARG VITE_APP_VERSION=
+ENV VITE_MINDS_API_URL=${VITE_MINDS_API_URL} \
+    VITE_KEYCLOAK_URL=${VITE_KEYCLOAK_URL} \
+    VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN=${VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN} \
+    VITE_APP_VERSION=${VITE_APP_VERSION}
+RUN npm run build:web
+# Output: /build/dist/renderer-web/ (shell index-web.html, relative asset base)
+
+# Stage 2: runtime. nginx serving the static SPA, non-root on 8080.
+# Pinned to the current stable line on Alpine 3.24, which ships patched
+# openssl/libxml2/libpng/expat. The older 1.27-alpine tag is stuck on Alpine
+# 3.21 with known CVEs. Bump this tag when a newer stable release lands rather
+# than patching packages in-image.
+FROM nginxinc/nginx-unprivileged:1.30-alpine AS runtime
+
+LABEL org.opencontainers.image.title="cowork-frontend"
+LABEL org.opencontainers.image.source="https://github.com/mindsdb/cowork"
+LABEL org.opencontainers.image.description="MindsHub Cowork SPA (static, nginx)"
+
+COPY scripts/nginx-frontend.conf /etc/nginx/conf.d/default.conf
+COPY --from=spa-builder /build/dist/renderer-web/ /usr/share/nginx/html/
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD ["sh", "-c", "wget -q -O /dev/null http://127.0.0.1:8080/healthz || exit 1"]

@@ -1,6 +1,6 @@
 /* Anton Chat — Direction A: Conservative.
    Near-1:1 port of docs/design-guidelines/chat.html (ChatConservative).
-   Editorial, document-like. Inter body, Josefin display, mono for operator
+   Editorial, document-like. Inter body, Inter headings, mono for operator
    metadata. Centered ~720px column, OrbitMorph-led Anton turns, floating
    composer, right rail with collapsible cards.
 
@@ -12,7 +12,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalS
 import { createPortal } from 'react-dom';
 import Ico from '../components/Icons';
 import Composer from '../components/Composer';
-import { Message } from '../components/ui';
+import { Message, Card } from '../components/ui';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import { ThinkingBlock } from '../components/thinking/ThinkingBlock';
 import { WorkingIndicator } from '../components/thinking/WorkingIndicator';
@@ -29,12 +29,15 @@ import { FormErrorBoundary } from '../components/datavault/FormErrorBoundary';
 import { revealArtifact, exportArtifact, attachmentRawUrl, fetchHealth } from '../api';
 import { AttachmentThumbnail } from '../components/AttachmentThumbnail';
 import { normalizeArtifactRecord } from '../lib/artifactPaths';
+import { latestSkillCardIndexByKey } from '../lib/skillCards';
 import { host, isWeb } from '../../platform/host';
 import { Crumb as CrumbButton, CrumbSep } from '../components/ui/Crumb';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { harnessLabel } from '../lib/agentLabel';
 import { modelLabel } from '../lib/settingsTransform';
+import { providerOverloadedButtons } from '../lib/turnErrorActions';
+import { isThinkingActive } from '../lib/thinkingActive';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 
 // Token shorthand mapped to our globals.css custom properties so the same
@@ -54,8 +57,8 @@ const T = {
   success:  '#1F8F5F',
 };
 
-const FONT_DISPLAY = "'Josefin Sans', sans-serif";
-const FONT_MONO    = "'JetBrains Mono', monospace";
+const FONT_DISPLAY = "var(--font-display, 'Inter', sans-serif)";
+const FONT_MONO    = "var(--font-mono)";
 const FONT_BODY    = "'Inter', system-ui, sans-serif";
 
 // ─── small shared atoms ──────────────────────────────────────────────────
@@ -222,7 +225,7 @@ function ConnectIntroBubble({ title, connector, onHoverChange, modify = false, o
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
             <span style={{
               fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 14,
-              color: T.ink, letterSpacing: '-0.005em',
+              color: T.ink, letterSpacing: '0',
             }}>{title}</span>
             <span style={{
               fontFamily: FONT_BODY, fontSize: 12.5, color: T.ink3,
@@ -480,13 +483,18 @@ function StepArtifacts({ steps, onOpen, projectPath }) {
 // Renders any badge='Skill' steps as inline SkillCards — a skill the agent
 // BUILT this turn. Sibling of StepArtifacts, but explicitly NOT the artifact
 // system: a skill is a draft the user saves or downloads from the card.
-function StepSkills({ steps }) {
-  const skills = steps?.filter((s) => s.badge === 'Skill') || [];
+function StepSkills({ steps, latestByKey, messageIndex, projectName }) {
+  let skills = steps?.filter((s) => s.badge === 'Skill') || [];
+  // Show a skill card only at the latest turn that emitted its slug — earlier
+  // (superseded) copies are hidden so the chat holds one card per skill.
+  if (latestByKey && messageIndex != null) {
+    skills = skills.filter((s) => latestByKey.get(s._skillKey || s.data?.slug || s.id) === messageIndex);
+  }
   if (skills.length === 0) return null;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 4 }}>
       {skills.map((s) => (
-        <SkillCard key={s.id} skill={s.data || {}} />
+        <SkillCard key={s.id} skill={s.data || {}} projectName={projectName} />
       ))}
     </div>
   );
@@ -615,34 +623,14 @@ function ArtifactCard({ artifact, onOpen }) {
   // behaviour. Cursor + hover lift mark the entire surface as
   // interactive at a glance.
   return (
-    <div
-      role="button"
-      tabIndex={canAct ? 0 : -1}
+    <Card
+      as="div"
+      interactive={canAct}
+      padding="cozy"
+      onActivate={canAct ? handleOpen : undefined}
       aria-label={canAct ? `Open preview: ${artifact.title}` : disabledReason || 'No file path'}
-      onClick={() => { if (canAct) handleOpen(); }}
-      onKeyDown={(e) => {
-        if (!canAct) return;
-        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleOpen(); }
-      }}
       style={{
         display: 'grid', gridTemplateColumns: '64px 1fr auto', alignItems: 'center', gap: 16,
-        background: T.surface, border: `1px solid ${T.line}`,
-        borderRadius: 14, padding: '14px 16px',
-        boxShadow: '0 1px 0 rgba(15,16,17,0.02), 0 8px 20px rgba(15,16,17,0.04)',
-        cursor: canAct ? 'pointer' : 'default',
-        transition: 'border-color 140ms ease, transform 140ms ease, box-shadow 140ms ease',
-        outline: 'none',
-      }}
-      onMouseOver={(e) => {
-        if (!canAct) return;
-        e.currentTarget.style.borderColor = T.accent;
-        e.currentTarget.style.transform = 'translateY(-1px)';
-        e.currentTarget.style.boxShadow = '0 1px 0 rgba(15,16,17,0.02), 0 12px 26px rgba(15,16,17,0.06)';
-      }}
-      onMouseOut={(e) => {
-        e.currentTarget.style.borderColor = T.line;
-        e.currentTarget.style.transform = 'translateY(0)';
-        e.currentTarget.style.boxShadow = '0 1px 0 rgba(15,16,17,0.02), 0 8px 20px rgba(15,16,17,0.04)';
       }}
     >
       <div style={{
@@ -666,7 +654,7 @@ function ArtifactCard({ artifact, onOpen }) {
             all: 'unset',
             cursor: canAct ? 'pointer' : 'not-allowed',
             fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 16, color: T.ink,
-            letterSpacing: '0.01em',
+            letterSpacing: '0',
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             display: 'block', minWidth: 0,
             transition: 'color 120ms ease',
@@ -717,8 +705,9 @@ function ArtifactCard({ artifact, onOpen }) {
                 role="menu"
                 style={{
                   position: 'absolute', top: 'calc(100% + 4px)', right: 0, zIndex: 20,
-                  background: T.surface, border: `1px solid ${T.line}`, borderRadius: 10,
-                  boxShadow: '0 8px 24px rgba(15,16,17,0.12)', padding: 4, minWidth: 140,
+                  // No border — floats on --sh-popup alone (ENG-790).
+                  background: T.surface, borderRadius: 10,
+                  boxShadow: 'var(--sh-popup)', padding: 4, minWidth: 140,
                   display: 'flex', flexDirection: 'column', gap: 2,
                 }}
               >
@@ -751,7 +740,7 @@ function ArtifactCard({ artifact, onOpen }) {
           </SmallBtn>
         )}
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -817,6 +806,59 @@ async function waitForServerReady(timeoutMs = 8000) {
 // gateway sees is invalid (revoked / rotated / never provisioned / org drift),
 // so chat calls 401.
 //
+// ── ActionCard: the shared shell for inline "actionable error" cards ───────
+// One chrome for the reconnect / token-limit / model-403 / provider-required
+// cards (previously four byte-identical copies of this scaffolding, drifting
+// one tweak at a time — ENG-650). Callers own copy + button wiring; the shell
+// owns layout and button styling.
+const ACTION_CARD_BTN = {
+  borderRadius: 8, padding: '8px 14px',
+  fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500, cursor: 'pointer',
+};
+// bg=ink / text=bg so the label keeps contrast in BOTH themes: light → dark
+// button / light text, dark → light button / dark text. A hardcoded #fff went
+// invisible in dark mode (ink is near-white there → white-on-white).
+const ACTION_CARD_BTN_PRIMARY = {
+  ...ACTION_CARD_BTN, border: 'none', background: T.ink, color: 'var(--bg)',
+};
+const ACTION_CARD_BTN_SECONDARY = {
+  ...ACTION_CARD_BTN, border: `1px solid ${T.line}`, background: 'transparent', color: T.ink,
+};
+
+// buttons: [{ label, onClick, primary, disabled, style }] — `style` overlays
+// the base for per-button tweaks (e.g. the reconnect busy state). An empty
+// list hides the row (e.g. reconnect's "done" state).
+function ActionCard({ time, agentLabel, title, body, buttons = [] }) {
+  return (
+    <AnswerTurn state="done" time={time} showActions={false} agentLabel={agentLabel}>
+      <div style={{
+        border: `1px solid ${T.line}`, background: T.surface, borderRadius: 12,
+        padding: '16px 18px', maxWidth: 520, display: 'flex', flexDirection: 'column', gap: 10,
+      }}>
+        <div className="s-h3" style={{ color: T.ink }}>
+          {title}
+        </div>
+        <div style={{ fontFamily: FONT_BODY, fontSize: 13.5, lineHeight: 1.55, color: T.ink2 }}>
+          {body}
+        </div>
+        {buttons.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
+            {buttons.map((b, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={b.onClick}
+                disabled={b.disabled}
+                style={{ ...(b.primary ? ACTION_CARD_BTN_PRIMARY : ACTION_CARD_BTN_SECONDARY), ...b.style }}
+              >{b.label}</button>
+            ))}
+          </div>
+        )}
+      </div>
+    </AnswerTurn>
+  );
+}
+
 // For **MindsHub** (`reconnectable`), the fix is to re-provision the key in
 // place via mindshubFinalize (the same step login runs) — no logout. For a
 // **BYOK** provider, only the user can fix their own key, so we point them to
@@ -878,65 +920,47 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
             : `Your ${providerLabel || 'provider'} API key is no longer valid. Update it in Settings to continue.`
       );
 
-  const primaryStyle = {
-    border: 'none', background: T.ink, color: 'var(--bg)',
-    borderRadius: 8, padding: '8px 14px',
-    fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500,
-  };
-  const secondaryStyle = {
-    border: `1px solid ${T.line}`, background: 'transparent', color: T.ink,
-    borderRadius: 8, padding: '8px 14px',
-    fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500, cursor: 'pointer',
-  };
-
   return (
-    <AnswerTurn state="done" time={time} showActions={false} agentLabel={agentLabel}>
-      <div style={{
-        border: `1px solid ${T.line}`, background: T.surface, borderRadius: 12,
-        padding: '16px 18px', maxWidth: 520, display: 'flex', flexDirection: 'column', gap: 10,
-      }}>
-        <div style={{ fontFamily: FONT_DISPLAY, fontSize: 15, letterSpacing: '0.02em', color: T.ink }}>
-          {title}
-        </div>
-        <div style={{ fontFamily: FONT_BODY, fontSize: 13.5, lineHeight: 1.55, color: T.ink2 }}>
-          {body}
-        </div>
-        {!done && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
-            {canReconnect && (
-              <button
-                type="button"
-                onClick={reconnect}
-                disabled={busy}
-                style={{ ...primaryStyle, cursor: busy ? 'progress' : 'pointer', opacity: busy ? 0.7 : 1 }}
-              >{busy ? 'Reconnecting…' : 'Reconnect'}</button>
-            )}
-            <button
-              type="button"
-              onClick={() => onOpenSettings?.('agent')}
-              style={canReconnect ? secondaryStyle : { ...primaryStyle, cursor: 'pointer' }}
-            >Open Settings</button>
-          </div>
-        )}
-      </div>
-    </AnswerTurn>
+    <ActionCard
+      time={time}
+      agentLabel={agentLabel}
+      title={title}
+      body={body}
+      buttons={done ? [] : [
+        ...(canReconnect ? [{
+          label: busy ? 'Reconnecting…' : 'Reconnect',
+          onClick: reconnect,
+          primary: true,
+          disabled: busy,
+          style: { cursor: busy ? 'progress' : 'pointer', opacity: busy ? 0.7 : 1 },
+        }] : []),
+        // Settings is the primary action when Reconnect isn't available
+        // (BYOK key, or web where the IPC flow doesn't exist).
+        { label: 'Open Settings', onClick: () => onOpenSettings?.('agent'), primary: !canReconnect },
+      ]}
+    />
   );
 }
 
-// Mid-conversation model-403 (`model_access_denied` / `model_disabled`): the
-// credential is FINE — the gateway rejected the requested MODEL. Two flavors,
-// keyed on the gateway's structured code:
-//
-// - `model_access_denied` — plan gate: the account's tier doesn't include the
-//   model. An upgrade genuinely fixes it, so lead with Upgrade.
-// - `model_disabled` — hedged until the gateway distinguishes tier locks from
-//   admin kill switches everywhere (ENG-596): it can be either, so offer both
-//   Switch-model and Upgrade without promising the upgrade fixes it.
-//
-// The body is the server's curated copy (anton's message, passed through
-// verbatim) — unlike ReconnectCard there's no web-only affordance to work
-// around: Upgrade is just a billing link (host.openExternal window.opens on
-// web), and Switch model routes to Settings on both shells.
+/*
+ * Legacy model-403 (`model_access_denied` / `model_disabled`): back-compat
+ * only. The current gateway never emits a 403 model denial — a wallet that
+ * can't pay comes back as 402 `wallet_empty`, which the server maps to
+ * `token_limit` and the out-of-credits card renders. These codes only arrive
+ * from older pre-wallet gateway/anton versions, so the branch stays. Two
+ * flavors, keyed on the structured code:
+ *
+ * - `model_access_denied` — old gateways sent this when the account couldn't
+ *   cover the model, so lead with Add credits.
+ * - `model_disabled` — an admin turned the model off; credits don't unlock
+ *   it, so lead with Switch model (Add credits stays as a secondary escape
+ *   hatch since some old gateways used this code for credit locks too).
+ *
+ * The body is the server's curated copy (anton's message, passed through
+ * verbatim) — unlike ReconnectCard there's no web-only affordance to work
+ * around: Add credits is just a billing link (host.openExternal window.opens
+ * on web), and Switch model routes to Settings on both shells.
+ */
 function ModelUnavailableCard({ time, agentLabel, onOpenSettings, code, failedModel, errorText }) {
   // modelLabel finishes multi-part ids (Claude Sonnet, GPT-5.5 Mini) and
   // deliberately lowercases some heads (o4 Mini) — never re-case those. Only a
@@ -947,46 +971,60 @@ function ModelUnavailableCard({ time, agentLabel, onOpenSettings, code, failedMo
   const label = /\s/.test(raw) ? raw : raw.charAt(0).toUpperCase() + raw.slice(1);
   const denied = code === 'model_access_denied';
   const title = denied
-    ? `${label} isn't included in your plan`
+    ? `${label} needs credits`
     : `${label} isn't available right now`;
 
-  const primaryStyle = {
-    border: 'none', background: T.ink, color: 'var(--bg)',
-    borderRadius: 8, padding: '8px 14px',
-    fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500, cursor: 'pointer',
-  };
-  const secondaryStyle = {
-    border: `1px solid ${T.line}`, background: 'transparent', color: T.ink,
-    borderRadius: 8, padding: '8px 14px',
-    fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500, cursor: 'pointer',
-  };
+  return (
+    <ActionCard
+      time={time}
+      agentLabel={agentLabel}
+      title={title}
+      body={errorText || (denied
+        ? 'This model needs credits. Add credits to unlock it, or switch to another model in Settings.'
+        : 'This model is currently unavailable. Switch to another model in Settings.')}
+      buttons={[
+        /* Credits denial → lead with Add credits; admin-disabled → lead with Switch. */
+        { label: 'Add credits', onClick: () => host.openExternal(MINDS_BILLING_URL), primary: denied },
+        { label: 'Switch model', onClick: () => onOpenSettings?.('agent'), primary: !denied },
+      ]}
+    />
+  );
+}
+
+// Mid-conversation transient provider incident (`provider_overloaded`,
+// ENG-673): the provider (or an upstream it routes to) was overloaded/erroring
+// mid-stream and anton's backoff-retry ran out of time. Unlike the model-403
+// cases this is TRANSIENT, so **Retry** is the primary action (resend the last
+// message).
+//
+// The MindsHub angle depends on how the user is set up (the `reconnectable`
+// flag = "already on MindsHub Cloud"):
+//  - On MindsHub Cloud → the cross-provider failover already applied and the
+//    whole set was down; there's nothing to switch to, so just Retry.
+//  - BYOK/direct → surface MindsHub's failover as the durable fix: informational
+//    in the body, plus a "Set up MindsHub" route to Settings. Deliberately NOT a
+//    raw "Subscribe" button — that would mis-nudge a user who already subscribes
+//    but chose BYOK (the ENG-514 lesson); Settings is where connect / switch /
+//    subscribe are resolved for real.
+function ProviderOverloadedCard({
+  time, agentLabel, onOpenSettings, onRetry, reconnectable, providerLabel, errorText,
+}) {
+  const onManaged = Boolean(reconnectable);
+  const who = onManaged ? 'MindsHub' : (providerLabel || 'The model provider');
+  const base = errorText
+    || `${who} had a temporary incident and didn't recover in time. Try again in a moment.`;
+  const body = onManaged
+    ? base
+    : `${base} MindsHub automatically routes around provider outages like this, so tasks keep running.`;
 
   return (
-    <AnswerTurn state="done" time={time} showActions={false} agentLabel={agentLabel}>
-      <div style={{
-        border: `1px solid ${T.line}`, background: T.surface, borderRadius: 12,
-        padding: '16px 18px', maxWidth: 520, display: 'flex', flexDirection: 'column', gap: 10,
-      }}>
-        <div style={{ fontFamily: FONT_DISPLAY, fontSize: 15, letterSpacing: '0.02em', color: T.ink }}>
-          {title}
-        </div>
-        <div style={{ fontFamily: FONT_BODY, fontSize: 13.5, lineHeight: 1.55, color: T.ink2 }}>
-          {errorText || 'Switch models in Settings, or upgrade your plan to unlock it.'}
-        </div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
-          <button
-            type="button"
-            onClick={() => host.openExternal(MINDS_BILLING_URL)}
-            style={denied ? primaryStyle : secondaryStyle}
-          >Upgrade plan</button>
-          <button
-            type="button"
-            onClick={() => onOpenSettings?.('agent')}
-            style={denied ? secondaryStyle : primaryStyle}
-          >Switch model</button>
-        </div>
-      </div>
-    </AnswerTurn>
+    <ActionCard
+      time={time}
+      agentLabel={agentLabel}
+      title={`${who} is having a temporary issue`}
+      body={body}
+      buttons={providerOverloadedButtons({ reconnectable: onManaged, onRetry, onOpenSettings })}
+    />
   );
 }
 
@@ -1000,6 +1038,10 @@ export default function ChatView({
   attachments,
   connectors,
   onAttachFiles,
+  onAddGoogleDriveFiles,
+  onAddGoogleDriveProjectFiles,
+  onFetchGoogleDriveProjectFiles,
+  onRemoveGoogleDriveProjectFile,
   disabledConnections,
   onUpdateConnectorMute,
   onRemoveAttachment,
@@ -1018,7 +1060,6 @@ export default function ChatView({
   onOpenSettings,
   onStop,
   projects = [],
-  sidebarCollapsed = false,
   // Messages the user typed while Anton was mid-turn. Displayed as
   // pills above the Composer; drain into onSend automatically when
   // the active turn finishes.
@@ -1167,6 +1208,14 @@ export default function ChatView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visibleMessages, streamingMsg]);
 
+  // One inline skill card per slug — shown only at the LATEST turn that emitted
+  // it, so a refined skill's card moves down to the newest version and earlier
+  // copies disappear. Streaming message is last in chronological order.
+  const latestSkillCardByKey = useMemo(
+    () => latestSkillCardIndexByKey(streamingMsg ? [...visibleMessages, streamingMsg] : visibleMessages),
+    [visibleMessages, streamingMsg],
+  );
+
   useLayoutEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [task.messages.length, isStreaming]);
@@ -1179,14 +1228,17 @@ export default function ChatView({
   const convRef = useRef(null);
 
   // The orb anchors to the WorkingIndicator box (pre-step placeholder,
-  // then the ThinkingBlock header) while the turn is in its thinking
-  // phase. Once body text streams the StreamCursor takes over as the
-  // moving part, and when the turn is done the hover meta replaces it —
-  // exactly one in-progress indicator at any moment.
+  // then the ThinkingBlock header) for as long as there's real work
+  // going on — steps and thoughts keep streaming above the growing
+  // answer text throughout, so the orb stays put for the whole turn
+  // rather than handing off once body text starts. Shares
+  // isThinkingActive with ThinkingBlock's own header so the two can't
+  // drift out of sync again the way they did before (ENG-1107/1109):
+  // whatever keeps the steps panel expanded is exactly what should keep
+  // the orb anchored.
   const orbView = useMemo(() => {
     if (!streamingMsg) return { state: null, activeSlot: null };
-    const status = streamingMsg.streamStatus;
-    if (status === 'done' || status === 'streaming') return { state: null, activeSlot: null };
+    if (!isThinkingActive(streamingMsg.streamStatus)) return { state: null, activeSlot: null };
     return { state: 'thinking', activeSlot: 'header:streaming' };
   }, [streamingMsg]);
 
@@ -1269,16 +1321,16 @@ export default function ChatView({
           {Ico.panelExpandLeft(15)}
         </button>
 
-        {/* Header — when the sidebar is overlay/collapsed, the floating
-            hamburger button occupies some left space; push the header
-            content right to avoid overlap. On web, the hamburger is at
-            left: 18 (no traffic lights), so 60px clears it. On Electron,
-            left: 97, so 130px clears the traffic lights + hamburger. */}
+        {/* Header — reserve the shell-owned titlebar-safe inset on top so the
+            breadcrumbs drop below the macOS traffic lights (and the floating
+            open-sidebar button) whenever the sidebar isn't docked over that
+            corner, staying left-aligned with the transcript below. `--titlebar-
+            safe-top` is set on <main> by the shell and is 0 when the sidebar/
+            rail covers the zone, so max() keeps the normal 14px padding then. */}
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: sidebarCollapsed
-            ? `14px 28px 14px ${host.isWeb ? 60 : 130}px`
-            : '14px 28px',
+          paddingTop: 'max(14px, var(--titlebar-safe-top, 0px))', paddingBottom: 14, paddingRight: 28,
+          paddingLeft: 28,
           borderBottom: `1px solid ${T.line}`,
           background: 'transparent',
           flexShrink: 0,
@@ -1373,8 +1425,12 @@ export default function ChatView({
                   autoCorrect="off"
                   style={{
                     flex: '1 1 0', minWidth: 0,
-                    fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 14,
-                    letterSpacing: '0.04em', color: T.ink,
+                    // Match the breadcrumb links (Crumb = 13px) — this is the
+                    // current crumb, so it's a CrumbCurrent sibling in every
+                    // way but its interactivity (click opens the task menu,
+                    // dbl-click edits), hence not the component itself.
+                    fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 13,
+                    letterSpacing: '0', color: T.ink,
                     background: 'var(--surface-2)',
                     border: '1px solid var(--accent)',
                     borderRadius: 5, padding: '2px 6px', outline: 'none',
@@ -1401,8 +1457,8 @@ export default function ChatView({
                     }
                   }}
                   style={{
-                    fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 14,
-                    letterSpacing: '0.04em', color: T.ink,
+                    fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 13,
+                    letterSpacing: '0', color: T.ink,
                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                     overflowWrap: 'anywhere',
                     minWidth: 0, flex: '0 1 auto',
@@ -1632,50 +1688,24 @@ export default function ChatView({
                 );
               }
               if (m.role === 'error') {
-                // Out-of-credits: render an actionable card (Add credits /
-                // Bring your own keys) instead of a plain error. Reused for
-                // ANY turn that fails with the `token_limit` code — the
-                // first message on a fresh account that's spent its free
-                // tokens, or a mid-session exhaustion.
+                // Out-of-credits: render an actionable card instead of a
+                // plain error. Reused for ANY turn that fails with the
+                // `token_limit` code — the first message on a fresh account
+                // that's spent its free tokens, or a mid-session exhaustion.
+                // Single CTA on purpose (ENG-1169): the out-of-credits
+                // moment funnels to top-up; BYOK setup stays in Settings.
                 if (m.code === 'token_limit') {
                   return (
-                    <AnswerTurn key={i} state="done" time={formatMetaTime(m.createdAt)} showActions={false} agentLabel={agentLabel}>
-                      <div style={{
-                        border: `1px solid ${T.line}`,
-                        background: T.surface,
-                        borderRadius: 12,
-                        padding: '16px 18px',
-                        maxWidth: 520,
-                        display: 'flex', flexDirection: 'column', gap: 10,
-                      }}>
-                        <div style={{ fontFamily: FONT_DISPLAY, fontSize: 15, letterSpacing: '0.02em', color: T.ink }}>
-                          You're out of credits
-                        </div>
-                        <div style={{ fontFamily: FONT_BODY, fontSize: 13.5, lineHeight: 1.55, color: T.ink2 }}>
-                          {m.content || "You've used your MindsHub credits. Add more to keep using managed models, or bring your own LLM provider key in Settings."}
-                        </div>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
-                          <button
-                            type="button"
-                            onClick={() => host.openExternal(MINDS_BILLING_URL)}
-                            style={{
-                              border: 'none', background: T.ink, color: 'var(--bg)',
-                              borderRadius: 8, padding: '8px 14px',
-                              fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500, cursor: 'pointer',
-                            }}
-                          >Add credits</button>
-                          <button
-                            type="button"
-                            onClick={() => onOpenSettings?.('agent')}
-                            style={{
-                              border: `1px solid ${T.line}`, background: 'transparent', color: T.ink,
-                              borderRadius: 8, padding: '8px 14px',
-                              fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500, cursor: 'pointer',
-                            }}
-                          >Bring your own keys</button>
-                        </div>
-                      </div>
-                    </AnswerTurn>
+                    <ActionCard
+                      key={i}
+                      time={formatMetaTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      title="You're out of credits"
+                      body={m.content || "You've used your MindsHub credits. Add more to keep working."}
+                      buttons={[
+                        { label: 'Add credits', onClick: () => host.openExternal(MINDS_BILLING_URL), primary: true },
+                      ]}
+                    />
                   );
                 }
                 // Provider auth failure mid-conversation → offer Reconnect
@@ -1692,9 +1722,10 @@ export default function ChatView({
                     />
                   );
                 }
-                // Model-403 mid-conversation: the plan doesn't include the
-                // model (or it's admin-disabled) → offer Upgrade / Switch
-                // model, never "try again".
+                /* Legacy model-403 (pre-wallet gateways only): current
+                 * gateways report wallet denials as `token_limit`, rendered
+                 * by the out-of-credits card above. Offer Add credits /
+                 * Switch model, never "try again". */
                 if (m.code === 'model_access_denied' || m.code === 'model_disabled') {
                   return (
                     <ModelUnavailableCard
@@ -1708,6 +1739,28 @@ export default function ChatView({
                     />
                   );
                 }
+                // Transient provider incident that outlasted anton's retry
+                // budget → Retry (resend the last user message), plus a MindsHub
+                // failover nudge for BYOK users (ENG-673).
+                if (m.code === 'provider_overloaded') {
+                  let prevUserText = '';
+                  for (let j = i - 1; j >= 0; j--) {
+                    const c = visibleMessages[j]?.role === 'user' && visibleMessages[j].content;
+                    if (typeof c === 'string' && c) { prevUserText = c; break; }
+                  }
+                  return (
+                    <ProviderOverloadedCard
+                      key={i}
+                      time={formatMetaTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      onOpenSettings={onOpenSettings}
+                      onRetry={prevUserText ? () => onSend?.(prevUserText) : undefined}
+                      reconnectable={m.reconnectable}
+                      providerLabel={m.providerLabel}
+                      errorText={m.content}
+                    />
+                  );
+                }
                 return (
                   <AnswerTurn key={i} state="done" time={formatMetaTime(m.createdAt)} showActions={false} agentLabel={agentLabel}>
                     <Message>{m.content}</Message>
@@ -1716,68 +1769,16 @@ export default function ChatView({
               }
               if (m.role === 'provider_required') {
                 return (
-                  <AnswerTurn key={i} state="done" time={formatMetaTime(m.createdAt)} showActions={false}>
-                    <div style={{
-                      border: `1px solid ${T.line}`,
-                      background: T.surface,
-                      borderRadius: 12,
-                      padding: '16px 18px',
-                      maxWidth: 520,
-                      display: 'flex', flexDirection: 'column', gap: 10,
-                    }}>
-                      <div style={{
-                        fontFamily: FONT_DISPLAY,
-                        fontSize: 15,
-                        letterSpacing: '0.02em',
-                        color: T.ink,
-                      }}>Connect a provider to start chatting</div>
-                      <div style={{
-                        fontFamily: FONT_BODY,
-                        fontSize: 13.5,
-                        lineHeight: 1.55,
-                        color: T.ink2,
-                      }}>
-                        Cowork needs an LLM provider. Subscribe with MindsHub for managed access, or add your own provider key in Settings.
-                      </div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
-                        <button
-                          type="button"
-                          onClick={() => host.openExternal(MINDS_BILLING_URL)}
-                          style={{
-                            // bg=ink / text=bg so the label keeps contrast in
-                            // BOTH themes: light → dark button / light text,
-                            // dark → light button / dark text. A hardcoded
-                            // #fff went invisible in dark mode (ink is near-
-                            // white there → white-on-white).
-                            border: 'none',
-                            background: T.ink,
-                            color: 'var(--bg)',
-                            borderRadius: 8,
-                            padding: '8px 14px',
-                            fontFamily: FONT_BODY,
-                            fontSize: 13,
-                            fontWeight: 500,
-                            cursor: 'pointer',
-                          }}
-                        >Subscribe with MindsHub</button>
-                        <button
-                          type="button"
-                          onClick={() => onOpenSettings?.('agent')}
-                          style={{
-                            border: `1px solid ${T.line}`,
-                            background: 'transparent',
-                            color: T.ink,
-                            borderRadius: 8,
-                            padding: '8px 14px',
-                            fontFamily: FONT_BODY,
-                            fontSize: 13,
-                            fontWeight: 500,
-                            cursor: 'pointer',
-                          }}
-                        >Open Settings</button>
-                      </div>
-                    </div>
-                  </AnswerTurn>
+                  <ActionCard
+                    key={i}
+                    time={formatMetaTime(m.createdAt)}
+                    title="Connect a provider to start chatting"
+                    body="Cowork needs an LLM provider. Subscribe with MindsHub for managed access, or add your own provider key in Settings."
+                    buttons={[
+                      { label: 'Subscribe with MindsHub', onClick: () => host.openExternal(MINDS_BILLING_URL), primary: true },
+                      { label: 'Open Settings', onClick: () => onOpenSettings?.('agent') },
+                    ]}
+                  />
                 );
               }
               assistantTurnIdx += 1;
@@ -1815,7 +1816,7 @@ export default function ChatView({
                     />
                   )}
                   <StepArtifacts steps={m.steps} onOpen={handleArtifactOpen} projectPath={artifactProjectPath} />
-                  <StepSkills steps={m.steps} />
+                  <StepSkills steps={m.steps} latestByKey={latestSkillCardByKey} messageIndex={i} projectName={project?.name} />
                 </AnswerTurn>
               );
               });
@@ -1823,13 +1824,20 @@ export default function ChatView({
 
             {streamingMsg ? (
               <AnswerTurn state="thinking" showActions={false}>
-                {streamingMsg.steps?.length > 0 && (
+                {(streamingMsg.steps?.length > 0 || streamingMsg.currentThought?.text) && (
                   <ThinkingBlock
                     steps={streamingMsg.steps}
                     startedAt={streamingMsg.startedAt}
-                    isActive={streamingMsg.streamStatus !== 'done' && streamingMsg.streamStatus !== 'streaming'}
+                    isActive={isThinkingActive(streamingMsg.streamStatus)}
                     slotId="header:streaming"
+                    currentThought={streamingMsg.currentThought}
                     currentLabel={(() => {
+                      // The header stays the WORKING message (active step
+                      // label, else "Thinking…") — never the live thought
+                      // text. The thought has its own distinct line at the
+                      // bottom of the steps; letting it also drive the
+                      // header made the working message flicker/overwrite
+                      // as each reasoning delta streamed in.
                       const active = [...(streamingMsg.steps || [])].reverse().find(s => s.status === 'in_progress');
                       return active?.label || null;
                     })()}
@@ -1838,15 +1846,16 @@ export default function ChatView({
                 )}
                 {/* Bridge state: between the first stream event arriving
                     (which strips the activity placeholder) and the first
-                    step or body chunk landing, the AnswerTurn would
-                    otherwise render empty — the user sees the message
-                    "appear, vanish, then come back" once scratchpad
-                    output starts. Keep the working indicator visible
-                    whenever there are no steps and no body text yet.
-                    `_placeholderLabel` is set by the pre-first-event
-                    stub in App.jsx `withThinkingPlaceholder` ("Creating
-                    task…" for new tasks, "Thinking…" for replies). */}
-                {!streamingMsg.steps?.length && !streamingMsg.content && (
+                    step, thought, or body chunk landing, the AnswerTurn
+                    would otherwise render empty — the user sees the
+                    message "appear, vanish, then come back" once
+                    scratchpad output starts. Keep the working indicator
+                    visible whenever there's nothing else occupying the
+                    same slot yet. `_placeholderLabel` is set by the
+                    pre-first-event stub in App.jsx
+                    `withThinkingPlaceholder` ("Creating task…" for new
+                    tasks, "Thinking…" for replies). */}
+                {!streamingMsg.steps?.length && !streamingMsg.currentThought?.text && !streamingMsg.content && (
                   <WorkingIndicator
                     slotId="header:streaming"
                     label={streamingMsg._placeholderLabel || 'Thinking…'}
@@ -1859,7 +1868,7 @@ export default function ChatView({
                   </div>
                 )}
                 <StepArtifacts steps={streamingMsg.steps} onOpen={handleArtifactOpen} projectPath={artifactProjectPath} />
-                <StepSkills steps={streamingMsg.steps} />
+                <StepSkills steps={streamingMsg.steps} latestByKey={latestSkillCardByKey} messageIndex={visibleMessages.length} projectName={project?.name} />
               </AnswerTurn>
             ) : isStreaming && (
               <AnswerTurn state="thinking" showActions={false}>
@@ -1971,6 +1980,7 @@ export default function ChatView({
             connectors={connectors}
             onNavigateToConnectors={onNavigateToConnectors}
             onAttachFiles={onAttachFiles}
+            onAddGoogleDriveFiles={onAddGoogleDriveFiles}
             conversationId={task.id}
             disabledConnections={disabledConnections ?? task.disabledConnections ?? []}
             onUpdateConnectorMute={onUpdateConnectorMute}
@@ -2073,6 +2083,9 @@ export default function ChatView({
           project={project}
           conversationId={task?.id}
           refreshKey={contextRefreshKey}
+          onAddGoogleDriveFiles={onAddGoogleDriveProjectFiles}
+          onFetchGoogleDriveFiles={onFetchGoogleDriveProjectFiles}
+          onRemoveGoogleDriveFile={onRemoveGoogleDriveProjectFile}
         />
       </aside>
 

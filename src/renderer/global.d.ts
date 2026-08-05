@@ -18,12 +18,13 @@ interface AntonTronAPI {
     Promise<{ ok: boolean; error?: string }>;
 
   // UI Updates
-  checkForUpdate: () => Promise<{ updateAvailable: boolean; applied: boolean; newVersion?: string }>;
+  checkForUpdate: () => Promise<import('../shared/update-types').UpdateCheckSummary>;
   applyUpdate: () => Promise<boolean>;
-  onUpdateStatus: (cb: (status: { phase: string; version?: string }) => void) => () => void;
+  onUpdateStatus: (cb: (status: { phase: string; version?: string; currentVersion?: string; downloadUrl?: string }) => void) => () => void;
+  getShellUpdate: () => Promise<{ available: boolean; currentVersion?: string; latestVersion?: string; downloadUrl?: string | null }>;
 
   getPlatform: () => string;
-  getUIVersion: () => Promise<{ app: string; ui: string }>;
+  getUIVersion: () => Promise<{ app: string; ui: string | null; source: 'ota' | 'bundled' }>;
   openExternal: (url: string) => Promise<void>;
   openPath: (path: string) => Promise<{ ok: boolean; reason?: string }>;
   showItemInFolder: (path: string) => Promise<{ ok: boolean; reason?: string }>;
@@ -35,13 +36,16 @@ interface AntonTronAPI {
     starting: boolean;
     port: number;
     lastError: string | null;
+    lastErrorKind: 'spawn-error' | 'exited' | 'timeout' | 'not-installed' | null;
+    portHolderPid: number | null;
     lastExitCode: number | null;
     lastStartAt: number | null;
     recentLog: string;
+    lastStopIntentional: boolean | null;
   }>;
   oauthConnect: (opts:
     | { engine: string; name?: string }
-    | { authUrl: string; tokenUrl: string; clientId: string; clientSecret?: string; scopes: string[]; extraAuthParams?: Record<string, string> }
+    | { authUrl: string; tokenUrl: string; clientId: string; clientSecret?: string; scopes: string[]; extraAuthParams?: Record<string, string>; redirectPort?: number }
   ) => Promise<{
     ok: boolean;
     reason?: string;
@@ -56,7 +60,22 @@ interface AntonTronAPI {
   oauthCancel: () => Promise<boolean>;
   keychainRevoke: (opts: { engine: string; name: string; accountEmail: string }) => Promise<{ ok: boolean; reason?: string }>;
   onOAuthRefreshError: (cb: (payload: { engine: string; name: string; accountEmail: string; permanent: boolean }) => void) => () => void;
+  oauthPickDriveFiles: (opts: { engine: string; name: string; accountEmail: string; fileIds?: string[]; projectName?: string }) => Promise<{
+    ok: boolean;
+    reason?: string;
+    files?: Array<{ id: string; name: string; mimeType?: string; iconUrl?: string; url?: string; resourceKey?: string | null; projects?: string[] }>;
+    newFiles?: Array<{ id: string; name: string; mimeType?: string; iconUrl?: string; url?: string; resourceKey?: string | null; projects?: string[] }>;
+    failed?: Array<{ id: string; name: string; reason: string }>;
+  }>;
+  oauthCancelPicker: () => Promise<boolean>;
   mindshubLogin: () => Promise<{
+    ok: boolean;
+    reason?: string;
+    access_token?: string;
+    refresh_token?: string;
+    expires_in?: number;
+  }>;
+  mindshubSignup: () => Promise<{
     ok: boolean;
     reason?: string;
     access_token?: string;
@@ -66,6 +85,7 @@ interface AntonTronAPI {
   mindshubRefresh: () => Promise<{ ok: boolean; reason?: string; access_token?: string }>;
   mindshubFinalize: () => Promise<{ ok: boolean; reason?: string; upgradeRequired?: boolean; apiKey?: string }>;
   mindshubGetCachedToken: () => Promise<{ access_token: string | null }>;
+  onMindsHubAuthChanged: (cb: (payload: { authenticated: boolean }) => void) => () => void;
   getAccessToken: () => Promise<string | null>;
   logout: () => Promise<void>;
   getKeychainPref: () => Promise<{ enabled: boolean }>;

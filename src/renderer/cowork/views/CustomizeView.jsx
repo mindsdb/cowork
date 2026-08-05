@@ -9,8 +9,10 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Ico from '../components/Icons';
+import { Button, EmptyState } from '../components/ui';
 import { CONNECTIONS_VAULT_KEEP, deleteDatasource, fetchConnector, fetchDatasources, fetchSavedConnection } from '../api';
 import { host } from '../../platform/host';
+import Spinner from '../components/ui/Spinner';
 import ConnectWorkflowView from './ConnectWorkflowView';
 import {
   PageHeader,
@@ -28,14 +30,13 @@ const FONT_MONO    = "var(--font-mono)";
 
 function ConnectButton({ onClick, large = false }) {
   return (
-    <button
-      type="button"
-      className="btn-primary"
+    <Button
+      variant="primary"
       onClick={onClick}
       style={large ? { fontSize: 13.5 } : undefined}
     >
       {Ico.plus(14)} Connect
-    </button>
+    </Button>
   );
 }
 
@@ -160,7 +161,7 @@ function ConnectionCard({ connection, onDelete, onModify }) {
         <span style={{
           flex: 1, minWidth: 0,
           fontFamily: FONT_DISPLAY, fontSize: 16, fontWeight: 600,
-          letterSpacing: '-0.005em', color: 'var(--ink)',
+          letterSpacing: '0', color: 'var(--ink)',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }} title={displayName !== name ? name : undefined}>{displayName}</span>
         <span style={{
@@ -197,52 +198,21 @@ function ConnectionCard({ connection, onDelete, onModify }) {
         }}>
           {updated ? `updated ${updated}` : 'connected'}
         </span>
-        <button
-          type="button"
+        <Button
+          variant="danger"
+          size="sm"
           onClick={handleRemove}
           disabled={busy}
           title="Disconnect"
-          style={{
-            background: 'transparent',
-            border: '1px solid color-mix(in srgb, var(--danger) 30%, transparent)',
-            color: 'var(--danger)',
-            padding: '4px 10px', borderRadius: 7,
-            fontFamily: FONT_BODY, fontSize: 11.5, fontWeight: 500,
-            cursor: busy ? 'progress' : 'pointer',
-            opacity: busy ? 0.6 : 1,
-          }}
         >
           {busy ? 'Removing…' : 'Disconnect'}
-        </button>
+        </Button>
       </div>
     </div>
   );
 }
 
 // ─── Empty state ─────────────────────────────────────────────────────────
-
-function EmptyState({ onConnectNew, agentLabel = 'the agent' }) {
-  return (
-    <div style={{
-      flex: 1, minHeight: 360,
-      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-      gap: 14, padding: '40px 24px',
-    }}>
-      <span style={{ display: 'inline-flex', color: 'var(--ink-4)' }}>{Ico.link(32)}</span>
-      <div style={{ fontFamily: FONT_DISPLAY, fontSize: 18, fontWeight: 600, color: 'var(--ink)' }}>
-        No apps connected yet
-      </div>
-      <div style={{
-        fontFamily: FONT_BODY, fontSize: 13.5, color: 'var(--ink-3)',
-        maxWidth: 380, textAlign: 'center', lineHeight: 1.5,
-      }}>
-        Connectors shape how {agentLabel} works with you. Hook up the apps and
-        databases you already use, and {agentLabel} will automate work there.
-      </div>
-      <ConnectButton onClick={onConnectNew} large />
-    </div>
-  );
-}
 
 // ─── Connection detail panel ──────────────────────────────────────────────
 
@@ -278,12 +248,23 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
   const [spec, setSpec] = useState(null);
   const [saved, setSaved] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [pickerState, setPickerState] = useState({ status: 'idle' });
+  // Bumped by both handleCancelPicker AND every new handlePickFiles call, so
+  // a pick attempt's own continuation can tell whether it's still the
+  // active one — a single shared boolean "was cancel ever clicked" flag
+  // let a fast cancel-then-repick have the FIRST attempt's stale resolution
+  // clobber the second attempt's live state, since resetting the flag for
+  // the new attempt made the old attempt's cancelled-check pass too. Must
+  // be declared before the `if (!connection) return null;` below — every
+  // render must call the same hooks (Rules of Hooks).
+  const pickerAttemptRef = useRef(0);
 
   useEffect(() => {
     if (!connection) return;
     setLoading(true);
     setSpec(null);
     setSaved(null);
+    setPickerState({ status: 'idle' });
     Promise.all([
       fetchConnector(connection.engine).catch(() => null),
       fetchSavedConnection(connection.engine, connection.name).catch(() => null),
@@ -291,6 +272,15 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
       setSpec(connSpec);
       setSaved(savedData);
       setLoading(false);
+      const rawPicked = savedData?.fields?._picked_files;
+      if (rawPicked) {
+        try {
+          setPickerState({ status: 'done', files: JSON.parse(rawPicked) });
+        } catch {
+          // Malformed field — behave as if nothing was picked yet rather
+          // than crash the panel.
+        }
+      }
     });
   }, [connection?.engine, connection?.name]);
 
@@ -312,6 +302,38 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
   const specFields = bestMethod?.fields || spec?.form?.fields || [];
   const specKeys = new Set(specFields.map((f) => f.name));
 
+  const handlePickFiles = async () => {
+    const accountEmail = vaultFields.account_email;
+    if (!accountEmail) {
+      setPickerState({ status: 'error', reason: 'No account email on file for this connection — try reconnecting.' });
+      return;
+    }
+    // Claim this attempt's own id — a stale attempt's continuation (below)
+    // checks this against the CURRENT ref value, not a shared "was cancel
+    // ever clicked" boolean, so a fast cancel-then-repick can't have the
+    // first attempt's late resolution clobber the second attempt's state.
+    const attemptId = ++pickerAttemptRef.current;
+    setPickerState({ status: 'waiting' });
+    try {
+      const result = await host.pickDriveFiles(connection.engine, connection.name, accountEmail);
+      if (pickerAttemptRef.current !== attemptId) return; // superseded — cancelled or a newer pick started
+      if (!result.ok) {
+        setPickerState({ status: 'error', reason: result.reason || 'Could not open the Drive picker.' });
+        return;
+      }
+      setPickerState({ status: 'done', files: result.files || [], failed: result.failed || [] });
+    } catch (err) {
+      if (pickerAttemptRef.current !== attemptId) return;
+      setPickerState({ status: 'error', reason: err?.message || String(err) });
+    }
+  };
+
+  const handleCancelPicker = () => {
+    pickerAttemptRef.current++; // invalidates the in-flight attempt's eventual resolution
+    host.cancelDrivePicker();
+    setPickerState({ status: 'idle' });
+  };
+
   // Display list: spec fields in order (vault value where available),
   // followed by any vault fields not covered by the spec.
   const displayFields = [
@@ -323,7 +345,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
         || secureKeys.has(f.name) || vaultFields[f.name] === CONNECTIONS_VAULT_KEEP,
     })),
     ...Object.entries(vaultFields)
-      .filter(([k]) => !specKeys.has(k))
+      .filter(([k]) => !specKeys.has(k) && k !== '_picked_files')
       .map(([key, value]) => ({
         key,
         label: humanLabel(key),
@@ -376,9 +398,8 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
             }
           </span>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{
-              fontFamily: FONT_DISPLAY, fontSize: 16, fontWeight: 600,
-              color: 'var(--ink)', letterSpacing: '-0.005em',
+            <div className="s-h3" style={{
+              color: 'var(--ink)',
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}>
               {spec?.label || connection.engine}
@@ -463,6 +484,98 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
                   </div>
                 </>
               )}
+
+              {/* Drive file access — drive.file only grants the app files
+                  it creates itself; picking files here grants access to
+                  existing ones without widening the OAuth scope. */}
+              {connection.engine === 'google_drive' && (
+                <>
+                  <div style={{
+                    fontFamily: FONT_BODY, fontSize: 11, fontWeight: 600,
+                    letterSpacing: '0.05em', textTransform: 'uppercase',
+                    color: 'var(--ink-3)', marginBottom: 8,
+                  }}>
+                    Drive files
+                  </div>
+                  <div style={{
+                    border: '1px solid var(--line)', borderRadius: 8,
+                    padding: '12px 14px', marginBottom: 20,
+                    display: 'flex', flexDirection: 'column', gap: 10,
+                  }}>
+                    <div style={{ fontSize: 12, color: 'var(--ink-3)', lineHeight: 1.5 }}>
+                      This connection can only read files it created itself. Select any files below —
+                      including several at once, or whole Shared Drives — to grant access to them too.
+                    </div>
+                    {pickerState.status === 'waiting' ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                        <Spinner style={{ color: 'var(--ink-3)' }} />
+                        <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>
+                          Opened in your browser — pick your files there, then come back. Confirming access can take a few seconds after you return.
+                        </span>
+                        <Button variant="subtle" size="sm" onClick={handleCancelPicker}>
+                          Cancel
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button
+                        size="sm"
+                        onClick={handlePickFiles}
+                        style={{ alignSelf: 'flex-start' }}
+                      >
+                        Select files from Google Drive
+                      </Button>
+                    )}
+                    {pickerState.status === 'error' && (
+                      <div style={{ fontSize: 12, color: 'var(--danger)' }}>{pickerState.reason}</div>
+                    )}
+                    {pickerState.status === 'done' && pickerState.failed?.length > 0 && (
+                      <div style={{
+                        fontSize: 12, color: 'var(--danger)', lineHeight: 1.5,
+                        padding: '8px 10px', borderRadius: 7,
+                        background: 'color-mix(in srgb, var(--danger) 8%, var(--surface))',
+                        border: '1px solid color-mix(in srgb, var(--danger) 25%, transparent)',
+                      }}>
+                        Google didn't actually grant access to {pickerState.failed.length === 1 ? 'this file' : 'these files'} —
+                        try picking {pickerState.failed.length === 1 ? 'it' : 'them'} again:
+                        <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+                          {pickerState.failed.map((f) => (
+                            <li key={f.id}>{f.name} ({f.reason})</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {pickerState.status === 'done' && pickerState.files.length === 0 && (
+                      <div style={{ fontSize: 12, color: 'var(--ink-4)', fontStyle: 'italic' }}>No files selected.</div>
+                    )}
+                    {pickerState.status === 'done' && pickerState.files.length > 0 && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <div style={{ fontSize: 12, color: 'var(--ink-3)' }}>
+                          Granted access to {pickerState.files.length} file{pickerState.files.length === 1 ? '' : 's'}:
+                        </div>
+                        {pickerState.files.map((f) => (
+                          <a
+                            key={f.id}
+                            href={f.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: 8,
+                              fontSize: 12, color: 'var(--ink)',
+                              textDecoration: 'none',
+                              padding: '4px 6px', borderRadius: 6,
+                              background: 'var(--surface-2)',
+                              overflow: 'hidden',
+                            }}
+                          >
+                            {f.iconUrl && <img src={f.iconUrl} alt="" style={{ width: 14, height: 14, flexShrink: 0 }} />}
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
+                          </a>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
             </>
           )}
         </div>
@@ -482,13 +595,12 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
               fontSize: 12, color: 'var(--ink-2)', lineHeight: 1.5,
             }}>
               <strong style={{ display: 'block', marginBottom: 4 }}>Reconnection required</strong>
-              The refresh token for this connection has expired. Reconnect to restore access, or remove the connection.
+              Access for this connection has expired or was revoked. Reconnect to restore access, or remove the connection.
             </div>
           )}
           {spec && (
-            <button
-              type="button"
-              className="btn-primary"
+            <Button
+              variant="primary"
               onClick={() => {
                 if (!window.confirm(
                   `The existing ${spec.label || connection.engine} connection will be removed and you'll connect it again from scratch. Continue?`
@@ -498,27 +610,20 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
               style={{ width: '100%', justifyContent: 'center' }}
             >
               Reconnect
-            </button>
+            </Button>
           )}
-          <button
-            type="button"
+          <Button
+            variant="danger"
+            block
             onClick={() => {
               if (!window.confirm(`Disconnect ${connection.engine}/${connection.name}?`)) return;
               onDisconnect?.(connection, saved);
               onClose();
             }}
-            style={{
-              width: '100%',
-              background: 'transparent',
-              border: '1px solid color-mix(in srgb, var(--danger) 35%, transparent)',
-              color: 'var(--danger)',
-              padding: '8px 12px', borderRadius: 7,
-              fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500,
-              cursor: 'pointer',
-            }}
           >
+            {Ico.trash(14)}
             Remove
-          </button>
+          </Button>
         </div>
       </div>
     </>
@@ -635,6 +740,10 @@ export default function CustomizeView({
           const next = Array.isArray(fresh?.connections) ? fresh.connections : [];
           setList(next);
           onConnectionsSyncedRef.current?.(next);
+          // Project files' Context card holds its own Google Drive file
+          // list and has no other way to learn a connection just vanished
+          // (and with it, that connection's _picked_files grant).
+          window.dispatchEvent(new CustomEvent('anton:connections-changed'));
           return;
         }
       }
@@ -643,6 +752,7 @@ export default function CustomizeView({
       const next = Array.isArray(fresh?.connections) ? fresh.connections : [];
       setList(next);
       onConnectionsSyncedRef.current?.(next);
+      window.dispatchEvent(new CustomEvent('anton:connections-changed'));
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error('[connectors] delete failed', e);
@@ -696,7 +806,6 @@ export default function CustomizeView({
         actions={<ConnectButton onClick={handleConnectNew} />}
       />
 
-      <div style={{ height: 18 }} />
 
       {total > 0 && (
         <FilterRow
@@ -716,7 +825,13 @@ export default function CustomizeView({
       )}
 
       {total === 0 ? (
-        <EmptyState onConnectNew={handleConnectNew} agentLabel={agentLabel} />
+        <EmptyState
+          icon={<span style={{ display: 'inline-flex', color: 'var(--ink-4)' }}>{Ico.link(32)}</span>}
+          title="No apps connected yet"
+          description={`Connectors shape how ${agentLabel} works with you. Hook up the apps and databases you already use, and ${agentLabel} will automate work there.`}
+          action={<ConnectButton onClick={handleConnectNew} large />}
+          style={{ flex: 1 }}
+        />
       ) : (
         <div style={{
           padding: '6px 32px 60px',

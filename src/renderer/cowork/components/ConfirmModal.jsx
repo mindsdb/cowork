@@ -1,11 +1,15 @@
-// In-app confirmation modal — replaces the native window.confirm
-// alert popup so destructive flows match the rest of the UX.
+// In-app confirmation modal — a thin wrapper over the shared <Modal>
+// primitive (Base UI). Portal, focus trap + restore, body-scroll lock,
+// Esc + backdrop dismissal, and ARIA all come from Modal; Enter-to-confirm
+// is confirm-specific so it stays here. Replaces the native window.confirm
+// alert so destructive flows match the rest of the UX.
 //
 // Usage pattern: lift state for `open` + `payload` to the parent, then
-// call onConfirm(payload) from inside this modal. Esc and backdrop
-// click both dismiss without confirming.
+// call onConfirm(payload) from inside this modal.
 
 import { useEffect } from 'react';
+import { Modal, ModalHeader, ModalBody, ModalFooter } from './ui/Modal';
+import { Button } from './ui';
 
 export function ConfirmModal({
   open,
@@ -14,122 +18,67 @@ export function ConfirmModal({
   confirmLabel = 'Confirm',
   cancelLabel = 'Cancel',
   destructive = false,
-  // While truthy the modal is locked: both buttons disable, the
-  // confirm button shows a spinner + `busyLabel`, and Esc / Enter /
-  // backdrop dismissal are all suppressed. Stops repeat-fires of an
-  // in-flight async action (e.g. a second sign-out request).
+  // While truthy the modal is locked: both buttons disable, the confirm
+  // button shows a spinner + `busyLabel`, and Esc / Enter / backdrop
+  // dismissal are all suppressed. Stops repeat-fires of an in-flight
+  // async action (e.g. a second sign-out request).
   busy = false,
   busyLabel,
   onConfirm,
   onClose,
 }) {
+  // Enter-to-confirm. Esc + backdrop dismissal are Modal's job (disabled
+  // while busy via closeOnEsc / closeOnBackdrop below).
   useEffect(() => {
-    if (!open) return;
-    const onKey = (e) => {
-      if (busy) return;
-      if (e.key === 'Escape') onClose?.();
-      if (e.key === 'Enter') onConfirm?.();
-    };
+    if (!open || busy) return undefined;
+    const onKey = (e) => { if (e.key === 'Enter') onConfirm?.(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [open, busy, onClose, onConfirm]);
-
-  if (!open) return null;
+  }, [open, busy, onConfirm]);
 
   return (
-    <div
-      onMouseDown={(e) => { if (!busy && e.target === e.currentTarget) onClose?.(); }}
-      style={{
-        position: 'fixed', inset: 0, zIndex: 80,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: 'rgba(0,0,0,0.4)',
-        backdropFilter: 'blur(2px)',
-        WebkitBackdropFilter: 'blur(2px)',
-        WebkitAppRegion: 'no-drag',
-      }}
+    <Modal
+      open={open}
+      onClose={onClose}
+      size="sm"
+      // Confirm dialogs are deliberately narrow — keep the prior 420px.
+      width="min(420px, 92vw)"
+      labelledBy="confirm-modal-title"
+      closeOnBackdrop={!busy}
+      closeOnEsc={!busy}
     >
-      <div
-        role="alertdialog"
-        aria-modal="true"
-        style={{
-          width: 'min(420px, 92vw)',
-          background: 'var(--surface)',
-          border: '1px solid var(--line)',
-          borderRadius: 12,
-          boxShadow: '0 24px 60px rgba(15,16,17,0.25), 0 1px 0 rgba(15,16,17,0.04)',
-          padding: '20px 22px 16px',
-          fontFamily: "'Inter', sans-serif",
-        }}
-        onMouseDown={(e) => e.stopPropagation()}
-      >
-        <div style={{
-          fontFamily: "'Josefin Sans', sans-serif",
-          fontSize: 16, fontWeight: 600, color: 'var(--ink)',
-          letterSpacing: '0.01em',
-        }}>
-          {title}
-        </div>
-        {message && (
-          <div style={{
-            marginTop: 10,
-            fontSize: 13.5, lineHeight: 1.55, color: 'var(--ink-2)',
-          }}>
-            {message}
-          </div>
-        )}
-        <div style={{
-          marginTop: 18,
-          display: 'flex', justifyContent: 'flex-end', gap: 8,
-        }}>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={busy}
-            style={{
-              all: 'unset', cursor: busy ? 'default' : 'pointer',
-              padding: '8px 14px', borderRadius: 8,
-              border: '1px solid var(--line)',
-              fontSize: 13, fontWeight: 500, color: 'var(--ink-2)',
-              background: 'transparent',
-              opacity: busy ? 0.45 : 1,
-            }}
-            onMouseOver={(e) => { if (busy) return; e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink)'; }}
-            onMouseOut={(e) => { if (busy) return; e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-2)'; }}
-          >
-            {cancelLabel}
-          </button>
-          <button
-            type="button"
-            onClick={() => { if (!busy) onConfirm?.(); }}
-            disabled={busy}
-            autoFocus
-            style={{
-              all: 'unset', cursor: busy ? 'progress' : 'pointer',
-              padding: '8px 14px', borderRadius: 8,
-              fontSize: 13, fontWeight: 600,
-              color: '#fff',
-              background: destructive ? 'var(--danger)' : 'var(--accent)',
-              border: `1px solid ${destructive ? 'var(--danger)' : 'var(--accent)'}`,
-              opacity: busy ? 0.8 : 1,
-              display: 'inline-flex', alignItems: 'center', gap: 7,
-            }}
-          >
-            {busy && (
-              <span
-                aria-hidden="true"
-                style={{
-                  width: 13, height: 13, borderRadius: '50%',
-                  border: '2px solid rgba(255,255,255,0.4)',
-                  borderTopColor: '#fff',
-                  display: 'inline-block',
-                  animation: 'spin 0.7s linear infinite',
-                }}
-              />
-            )}
-            {busy ? (busyLabel || confirmLabel) : confirmLabel}
-          </button>
-        </div>
-      </div>
-    </div>
+      <ModalHeader id="confirm-modal-title" title={title} />
+      {/* ModalBody sets no text typography — carry the muted body style
+          (matches ModalHeader's s-h3) so the message stays 14px/--ink-2
+          rather than inheriting the larger, darker root default. */}
+      {message && <ModalBody><div className="s-body">{message}</div></ModalBody>}
+      <ModalFooter>
+        <Button variant="subtle" onClick={onClose} disabled={busy}>
+          {cancelLabel}
+        </Button>
+        <Button
+          // The deliberate "yes, do it" moment: destructive confirms use the
+          // escalated solid-red variant; everything else, the accent CTA.
+          variant={destructive ? 'danger-solid' : 'primary'}
+          onClick={() => { if (!busy) onConfirm?.(); }}
+          disabled={busy}
+          autoFocus
+        >
+          {busy && (
+            <span
+              aria-hidden="true"
+              style={{
+                width: 13, height: 13, borderRadius: '50%',
+                border: '2px solid rgba(255,255,255,0.4)',
+                borderTopColor: '#fff',
+                display: 'inline-block',
+                animation: 'spin 0.7s linear infinite',
+              }}
+            />
+          )}
+          {busy ? (busyLabel || confirmLabel) : confirmLabel}
+        </Button>
+      </ModalFooter>
+    </Modal>
   );
 }

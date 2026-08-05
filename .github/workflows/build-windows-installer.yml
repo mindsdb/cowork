@@ -12,11 +12,31 @@ on:
         required: false
         type: string
         default: ""
-      minds_api_url:
-        description: "MindsHub API base URL (empty = https://api.mindshub.ai)"
+      server_channel:
+        description: >-
+          Optional override of the cowork-server install channel. Empty (the
+          default) derives from build_kind: every packaged kind
+          (prod/preview/stable) installs from PyPI, mirroring the runtime
+          default in server-source.ts. Pass 'git' (lowercase) to force a
+          git-branch install for a build (rare). 'pypi' installs the published
+          wheel floored at the latest release.
         required: false
         type: string
         default: ""
+      minds_api_url:
+        description: >-
+          MindsHub API base URL, e.g. https://api.mindshub.ai (prod) or
+          https://api.staging.mindshub.ai. Required, and deliberately without a
+          default: this one value is baked into BOTH halves of the app
+          (gen-build-channel for main, Vite for the renderer) and is the only
+          thing keeping them on the same environment. The renderer cannot see
+          build_kind, so an absent value makes it fall back to production while
+          main falls back on build_kind, and a build whose two halves disagree
+          can never complete a login. A default would only make that silent:
+          the wrong value does not fail a build, it ships a signed installer
+          pointed at the wrong environment.
+        required: true
+        type: string
       app_version:
         description: >-
           App display version baked into the renderer as __APP_VERSION__.
@@ -57,7 +77,16 @@ on:
         required: false
       GOOGLE_ANALYTICS_CLIENT_SECRET:
         required: false
-
+      GOOGLE_PICKER_API_KEY:
+        required: false
+      LINEAR_CLIENT_ID:
+        required: false
+      LINEAR_CLIENT_SECRET:
+        required: false
+      GH_OAUTH_CLIENT_ID:
+        required: false
+      GH_OAUTH_CLIENT_SECRET:
+        required: false
       VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN:
         required: false
 
@@ -100,6 +129,12 @@ jobs:
           GOOGLE_ADS_CLIENT_SECRET: ${{ secrets.GOOGLE_ADS_CLIENT_SECRET }}
           GOOGLE_ANALYTICS_CLIENT_ID: ${{ secrets.GOOGLE_ANALYTICS_CLIENT_ID }}
           GOOGLE_ANALYTICS_CLIENT_SECRET: ${{ secrets.GOOGLE_ANALYTICS_CLIENT_SECRET }}
+          GOOGLE_PICKER_API_KEY: ${{ secrets.GOOGLE_PICKER_API_KEY }}
+          LINEAR_CLIENT_ID: ${{ secrets.LINEAR_CLIENT_ID }}
+          LINEAR_CLIENT_SECRET: ${{ secrets.LINEAR_CLIENT_SECRET }}
+          GITHUB_CLIENT_ID: ${{ secrets.GH_OAUTH_CLIENT_ID }}
+          GITHUB_CLIENT_SECRET: ${{ secrets.GH_OAUTH_CLIENT_SECRET }}
+
         run: |
           python -c "
           import os, json
@@ -109,6 +144,9 @@ jobs:
             'GMAIL_CLIENT_ID', 'GMAIL_CLIENT_SECRET',
             'GOOGLE_ADS_CLIENT_ID', 'GOOGLE_ADS_CLIENT_SECRET',
             'GOOGLE_ANALYTICS_CLIENT_ID', 'GOOGLE_ANALYTICS_CLIENT_SECRET',
+            'GOOGLE_PICKER_API_KEY',
+            'LINEAR_CLIENT_ID', 'LINEAR_CLIENT_SECRET',
+            'GITHUB_CLIENT_ID', 'GITHUB_CLIENT_SECRET',
           ]}
           with open('server-credentials.json', 'w') as f:
               json.dump(creds, f)
@@ -117,6 +155,51 @@ jobs:
       - name: Write build config (controls which cowork data home the app uses)
         shell: bash
         run: echo '{"buildKind":"${{ inputs.build_kind }}"}' > build-config.json
+
+      # cowork-server install channel: an explicit server_channel input wins;
+      # otherwise every packaged build kind installs from PyPI (prod = stable
+      # stream, preview/stable = rc stream). Mirrors server-source.ts
+      # (_channelForBuildKind) so the floor step and the baked channel agree
+      # with what the app resolves at runtime.
+      - name: Resolve install channel
+        id: channel
+        shell: bash
+        run: |
+          set -euo pipefail
+          CH="${{ inputs.server_channel }}"
+          if [ -z "$CH" ]; then
+            case "${{ inputs.build_kind }}" in
+              prod|preview|stable) CH=pypi ;;
+              *) CH='' ;;
+            esac
+          fi
+          echo "channel=$CH" >> "$GITHUB_OUTPUT"
+          echo "Install channel: ${CH:-git} (build_kind=${{ inputs.build_kind }})"
+
+      # PyPI-channel builds bake the latest published cowork-server version
+      # as the install floor: every fresh install starts from a release that
+      # existed (and was presumably healthy) at build time, while the
+      # auto-updater still moves installs forward as new versions publish.
+      # Failing the build on a PyPI outage is deliberate — better than
+      # shipping an unknown floor.
+      - name: Resolve cowork-server version floor (pypi channel only)
+        if: steps.channel.outputs.channel == 'pypi'
+        id: server_floor
+        shell: bash
+        run: |
+          set -euo pipefail
+          JSON=$(curl -fsSL --retry 3 https://pypi.org/pypi/cowork-server/json)
+          if [ "${{ inputs.build_kind }}" = "prod" ]; then
+            # Stable floor: PyPI's info.version excludes pre-releases.
+            VERSION=$(echo "$JSON" | jq -r '.info.version')
+          else
+            # Staging rc stream: newest non-yanked upload, pre-releases
+            # included (upload recency stands in for PEP 440 ordering).
+            VERSION=$(echo "$JSON" | jq -r '[.releases | to_entries[] | select(.key | test("^[0-9]+(\\.[0-9]+)*(rc[0-9]+)?$")) | select((.value | length) > 0) | select(any(.value[]; .yanked != true)) | {v: .key, t: ([.value[].upload_time_iso_8601] | max)}] | sort_by(.t) | last | .v')
+          fi
+          test -n "$VERSION" && test "$VERSION" != "null"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Baking cowork-server floor $VERSION (build_kind=${{ inputs.build_kind }})"
 
       - name: Build Windows installer (unsigned)
         run: npm run dist:win
@@ -129,8 +212,14 @@ jobs:
           # does not require any per-branch pin in cowork-server's pyproject.
           COWORK_SERVER_REF: ${{ inputs.server_ref }}
           ANTON_REF: ${{ inputs.server_ref }}
+          COWORK_SERVER_CHANNEL: ${{ steps.channel.outputs.channel }}
+          COWORK_SERVER_MIN_VERSION: ${{ steps.server_floor.outputs.version }}
           VITE_MINDS_API_URL: ${{ inputs.minds_api_url }}
           VITE_APP_VERSION: ${{ inputs.app_version }}
+          # Activates the build-time channel guard in gen-build-channel.mjs:
+          # fail the build if this kind and VITE_MINDS_API_URL target different
+          # environments (e.g. preview baked against the prod API).
+          COWORK_BUILD_KIND: ${{ inputs.build_kind }}
 
       - name: Resolve installer path
         id: installer

@@ -34,7 +34,7 @@ export function RailCard({
     <div style={{
       background: 'var(--surface)',
       border: '1px solid var(--line)',
-      borderRadius: 12,
+      borderRadius: 'var(--card-radius)',
       overflow: 'hidden',
       flexShrink: 0,
     }}>
@@ -48,7 +48,7 @@ export function RailCard({
         }}>
           <span style={{
             fontFamily: FONT_BODY, fontSize: 13, fontWeight: 600,
-            color: 'var(--ink)', letterSpacing: '-0.005em',
+            color: 'var(--ink)', letterSpacing: '0',
             minWidth: 0, flex: 1,
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>
@@ -75,7 +75,7 @@ export function RailCard({
         >
           <span style={{
             fontFamily: FONT_BODY, fontSize: 13, fontWeight: 600,
-            color: 'var(--ink)', letterSpacing: '-0.005em',
+            color: 'var(--ink)', letterSpacing: '0',
             minWidth: 0, flex: 1,
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>

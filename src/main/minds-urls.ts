@@ -1,21 +1,19 @@
-// Environment-aware MindsHub URL family for the main (Node) process.
+// Environment-aware MindsHub URL family for the main (Node) process. Unlike the
+// renderer mirror (which reads Vite's baked import.meta.env), main is compiled
+// with plain `tsc` and reads the value baked into build-channel.gen.ts.
 //
-// The renderer has its own mirror (src/renderer/lib/mindsUrls.ts) that reads
-// import.meta.env, which Vite bakes at build time. The main process is
-// compiled with plain `tsc` and does NOT inline env vars, so a build-time
-// VITE_MINDS_API_URL is gone by the time a packaged app runs on a user's
-// machine. We therefore read the value the same way as the server ref: baked
-// into build-channel.gen.ts by scripts/gen-build-channel.mjs at build time.
+// Resolution order (highest priority first):
+//   process.env.MINDS_API_HOST     — explicit runtime override (dev / tests)
+//   BUILD_MINDS_API_URL            — baked at build time (packaged apps)
+//   CHANNELS[buildKind()].apiHost  — the resolved channel's canonical host
 //
-// Resolution order:
-//   process.env.MINDS_API_HOST  — explicit runtime override (dev / tests)
-//   BUILD_MINDS_API_URL         — baked at build time (packaged apps)
-//   'https://api.mindshub.ai'   — prod fallback
-//
-// URL pattern:
-//   prod:    api.mindshub.ai    / auth.mindshub.ai    / console.mindshub.ai
-//   staging: api.staging.mindshub.ai / auth.staging.mindshub.ai / console.staging.mindshub.ai
-//   dev:     api.dev.mindshub.ai     / auth.dev.mindshub.ai     / console.dev.mindshub.ai
+// That last step lets the channel model drive MAIN, not just the renderer:
+// `npm run dev` bakes nothing, and main used to hard-code a PROD fallback while
+// the renderer fell back to staging (a split-brain). prod is unchanged either
+// way. Hosts follow api/auth/console.<env>.mindshub.ai (bare for prod).
+
+import { CHANNELS } from './channels';
+import { buildKind, type BuildKind } from './cowork-home';
 
 function bakedApiUrl(): string {
   try {
@@ -38,9 +36,14 @@ function toOrigin(u: string): string {
   }
 }
 
-const API_HOST = toOrigin(
-  process.env.MINDS_API_HOST || bakedApiUrl() || 'https://api.mindshub.ai',
-);
+// Pure so the resolution (incl. the "clean npm run dev" case) is unit-testable
+// without electron/module-load gymnastics.
+export function resolveApiHost(envHost: string, bakedUrl: string, kind: BuildKind): string {
+  const chosen = envHost.trim() || bakedUrl.trim() || CHANNELS[kind].apiHost;
+  return toOrigin(chosen);
+}
+
+const API_HOST = resolveApiHost(process.env.MINDS_API_HOST ?? '', bakedApiUrl(), buildKind());
 
 export const MINDS_API_HOST = API_HOST;
 export const MINDS_AUTH_HOST = API_HOST.replace('://api.', '://auth.');

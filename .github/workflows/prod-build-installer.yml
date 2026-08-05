@@ -21,7 +21,11 @@ jobs:
     uses: ./.github/workflows/build-macos-pkg.yml
     with:
       build_kind: prod
+      minds_api_url: https://api.mindshub.ai
       app_version: ${{ inputs.tag }}
+      # Channel derived from build_kind in the build workflow (prod → PyPI
+      # stable stream: immutable, versioned, yankable, no git/Xcode on
+      # first-run). Override with server_channel only to force git.
     secrets: inherit
 
   upload-macos:
@@ -36,7 +40,9 @@ jobs:
     uses: ./.github/workflows/build-windows-installer.yml
     with:
       build_kind: prod
+      minds_api_url: https://api.mindshub.ai
       app_version: ${{ inputs.tag }}
+      # Channel derived from build_kind (prod → PyPI) in the build workflow.
     secrets: inherit
 
   upload-windows:

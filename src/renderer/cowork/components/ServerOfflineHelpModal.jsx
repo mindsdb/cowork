@@ -6,7 +6,10 @@
 
 import { useEffect, useState } from 'react';
 import Ico from './Icons';
+import { Button } from './ui';
+import { Modal } from './ui/Modal';
 import { host } from '../../platform/host';
+import { backendFailureCopy, exitCodeLabel } from '../../../shared/server-status';
 
 const FONT_BODY = "var(--font-body, 'Inter', system-ui, sans-serif)";
 const FONT_MONO = "var(--font-mono, 'JetBrains Mono', monospace)";
@@ -50,22 +53,30 @@ export default function ServerOfflineHelpModal({
     return () => { cancelled = true; };
   }, [open]);
 
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e) => { if (e.key === 'Escape') onClose?.(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
-
-  if (!open) return null;
+  // Esc + backdrop dismissal are handled by <Modal>.
 
   const error = diag?.lastError;
   const log = (diag?.recentLog || '').trim();
   const port = diag?.port;
-  const exitCode = diag?.lastExitCode;
+  const errorKind = diag?.lastErrorKind ?? null;
   const startedAt = diag?.lastStartAt
     ? new Date(diag.lastStartAt).toLocaleTimeString()
     : null;
+  // "never started" is wrong for a backend that was still importing when we
+  // stopped waiting for it (the most common failure on a slow machine's first
+  // launch), and equally wrong for one the user deliberately stopped — a
+  // signal kill leaves no exit code, so both used to land on that string.
+  const exitLabel = exitCodeLabel({
+    kind: errorKind,
+    exitCode: diag?.lastExitCode ?? null,
+    stopIntentional: diag?.lastStopIntentional ?? null,
+  });
+  const failureCopy = backendFailureCopy({
+    kind: errorKind,
+    hasLog: log.length > 0,
+    port: port ?? null,
+    portHolderPid: diag?.portHolderPid ?? null,
+  });
 
   // Live state → title + header colour + subtitle. The same modal is
   // used in every state — clicking the status pill while the backend
@@ -190,30 +201,14 @@ export default function ServerOfflineHelpModal({
   };
 
   return (
-    <div
-      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }}
-      style={{
-        position: 'fixed', inset: 0, zIndex: 90,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: 'rgba(0,0,0,0.45)',
-        backdropFilter: 'blur(2px)',
-        WebkitBackdropFilter: 'blur(2px)',
-        WebkitAppRegion: 'no-drag',
-      }}
+    <Modal
+      open={open}
+      onClose={onClose}
+      size="md"
+      width="min(640px, 92vw)"
+      maxHeight="min(640px, 88vh)"
+      ariaLabel={HEADER.title}
     >
-      <div
-        onMouseDown={(e) => e.stopPropagation()}
-        style={{
-          width: 'min(640px, 92vw)',
-          maxHeight: 'min(640px, 88vh)',
-          background: 'var(--surface)',
-          border: '1px solid var(--line)',
-          borderRadius: 14,
-          boxShadow: '0 24px 60px rgba(15,16,17,0.30)',
-          display: 'flex', flexDirection: 'column', overflow: 'hidden',
-          fontFamily: FONT_BODY,
-        }}
-      >
         <div style={{
           display: 'flex', alignItems: 'flex-start', gap: 12,
           padding: '16px 18px',
@@ -278,7 +273,7 @@ export default function ServerOfflineHelpModal({
                 background: 'var(--surface-2)', border: '1px solid var(--line)',
               }}>
                 <div style={{ color: 'var(--ink-4)', textTransform: 'uppercase', letterSpacing: '0.06em', fontSize: 10 }}>Exit code</div>
-                <div style={{ color: 'var(--ink)', marginTop: 2 }}>{exitCode ?? 'never started'}</div>
+                <div style={{ color: 'var(--ink)', marginTop: 2 }}>{exitLabel}</div>
               </div>
             )}
             <div style={{
@@ -336,11 +331,17 @@ export default function ServerOfflineHelpModal({
             }}>{log || '(no log captured yet)'}</pre>
           </div>
 
-          {state === 'offline' && (
+          {/* What actually happened + what to do about it. Driven by the
+              failure kind, so the panel never asks for a log in the state
+              where no log can exist. */}
+          {state === 'offline' && offlineKind === 'failed' && (
             <div style={{
               fontSize: 12, color: 'var(--ink-3)', lineHeight: 1.5,
             }}>
-              Common causes: a stale process holding port {port ?? 26866}, a missing Python interpreter (re-run the installer), or a crash in a route handler. Restart the backend below — if it keeps failing, copy the log and share it for support.
+              <div style={{ color: 'var(--ink-2)', fontWeight: 600, marginBottom: 4 }}>{failureCopy.headline}</div>
+              <ul style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                {failureCopy.hints.map((hint) => <li key={hint}>{hint}</li>)}
+              </ul>
             </div>
           )}
         </div>
@@ -352,17 +353,10 @@ export default function ServerOfflineHelpModal({
           borderTop: '1px solid var(--line)',
           background: 'var(--surface)',
         }}>
-          <button
-            type="button"
+          <Button
+            variant="subtle"
             onClick={onClose}
-            style={{
-              cursor: 'pointer',
-              background: 'transparent', border: '1px solid var(--line)',
-              color: 'var(--ink-2)',
-              padding: '7px 14px', borderRadius: 7,
-              fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 500,
-            }}
-          >Close</button>
+          >Close</Button>
           {/* Action buttons — split by intent so the user can stop
               the backend without it immediately restarting:
                 * online   → [Stop] [Restart]   (Restart = stop + start)
@@ -374,64 +368,35 @@ export default function ServerOfflineHelpModal({
           {(onStart || onStop) ? (
             <>
               {state !== 'offline' && (
-                <button
-                  type="button"
+                <Button
                   onClick={handleStop}
                   disabled={busy || serverBusy || !onStop}
-                  style={{
-                    cursor: (busy || serverBusy) ? 'progress' : 'pointer',
-                    background: 'transparent',
-                    border: '1px solid var(--line)',
-                    color: 'var(--ink-2)',
-                    padding: '7px 14px', borderRadius: 7,
-                    fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 500,
-                    opacity: (busy || serverBusy) ? 0.7 : 1,
-                  }}
                 >
                   {(busy && serverBusyKind === 'stopping') ? 'Stopping…' : 'Stop backend'}
-                </button>
+                </Button>
               )}
-              <button
-                type="button"
+              <Button
+                variant="primary"
                 onClick={state === 'offline' ? handleStart : handleRestart}
                 disabled={busy || serverBusy || (state === 'offline' ? !onStart : !(onStart && onStop))}
-                style={{
-                  cursor: (busy || serverBusy) ? 'progress' : 'pointer',
-                  background: 'var(--accent)',
-                  border: '1px solid var(--accent)',
-                  color: '#fff',
-                  padding: '7px 14px', borderRadius: 7,
-                  fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 600,
-                  opacity: (busy || serverBusy) ? 0.7 : 1,
-                }}
               >
                 {busy
                   ? (state === 'offline' ? 'Starting…' : 'Restarting…')
                   : (state === 'offline' ? 'Start backend' : 'Restart backend')}
-              </button>
+              </Button>
             </>
           ) : (
-            <button
-              type="button"
+            <Button
+              variant="primary"
               onClick={handleRetry}
               disabled={busy || serverBusy}
-              style={{
-                cursor: (busy || serverBusy) ? 'progress' : 'pointer',
-                background: 'var(--accent)',
-                border: '1px solid var(--accent)',
-                color: '#fff',
-                padding: '7px 14px', borderRadius: 7,
-                fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 600,
-                opacity: (busy || serverBusy) ? 0.7 : 1,
-              }}
             >
               {busy
                 ? (state === 'offline' ? 'Starting…' : 'Restarting…')
                 : (state === 'offline' ? 'Start backend' : 'Restart backend')}
-            </button>
+            </Button>
           )}
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

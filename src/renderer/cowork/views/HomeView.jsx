@@ -1,7 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import Composer from '../components/Composer';
-import { OrbitMorph } from '../components/ui';
+import HomeSuggestions from '../components/onboarding/HomeSuggestions';
+import { completeStep } from '../components/onboarding/onboardingStore';
+import { HABIT_TRACKER_PREFIX } from '../components/onboarding/steps';
+import { OrbitMorph, Button } from '../components/ui';
 import { host } from '../../platform/host';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 
@@ -57,23 +60,10 @@ const SETTLE_MS    = 520;
 // 42px. No constants extracted because each value is referenced
 // exactly once.)
 
-// One-shot keyframe injection — adds the boot fade rule once per
-// page load, alongside the global `fadein-up` that already lives in
-// styles/globals.css. (The earlier caret-blink keyframe was dropped
-// when we removed the typewriter cursor in favour of letters
-// appearing letter-by-letter beside the idle orb.)
-let _BOOT_KEYFRAMES_INJECTED = false;
-function _ensureBootKeyframes() {
-  if (_BOOT_KEYFRAMES_INJECTED) return;
-  if (typeof document === 'undefined') return;
-  const style = document.createElement('style');
-  style.setAttribute('data-home-boot-keyframes', '');
-  style.textContent = `
-@keyframes boot-fadein { from { opacity: 0; transform: translateY(4px) } to { opacity: 1; transform: translateY(0) } }
-`;
-  document.head.appendChild(style);
-  _BOOT_KEYFRAMES_INJECTED = true;
-}
+// `boot-fadein` lives in globals.css alongside the global `fadein-up`
+// (and every other keyframe in the app). (The earlier caret-blink
+// keyframe was dropped when we removed the typewriter cursor in favour
+// of letters appearing letter-by-letter beside the idle orb.)
 
 function useBootPhase({ serverOnline, configReady, greeting, skipIntro = false }) {
   // Phases: loading → collapsing → traveling → morphing → typing →
@@ -196,12 +186,7 @@ function ActiveList({ tasks, onSelect, onClear }) {
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8, padding: '0 4px' }}>
         <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--frost-700)', letterSpacing: '0.02em' }}>Active</div>
         <div style={{ flex: 1 }} />
-        <button
-          onClick={onClear}
-          style={{ border: 0, background: 'transparent', cursor: 'pointer', fontSize: 12, color: 'var(--frost-600)' }}
-          onMouseOver={(e) => (e.currentTarget.style.color = 'var(--text-strong)')}
-          onMouseOut={(e) => (e.currentTarget.style.color = 'var(--frost-600)')}
-        >Clear active</button>
+        <Button variant="subtle" onClick={onClear}>Clear active</Button>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         {tasks.map((t) => (
@@ -227,7 +212,7 @@ function ActiveList({ tasks, onSelect, onClear }) {
           >
             <span
               className="pulse-dot"
-              style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: 'var(--primary-400)', marginTop: 7 }}
+              style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: 'var(--accent)', marginTop: 7 }}
             />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-strong)' }}>{t.title}</div>
@@ -247,6 +232,7 @@ export default function HomeView({
   activeTasks, onSelectTask, onClearActive,
   onSend, project, onProjectChange, model, onModelChange, projects, models,
   attachments, connectors, onAttachFiles, onRemoveAttachment,
+  onAddGoogleDriveFiles,
   disabledConnections = [],
   onUpdateConnectorMute,
   onNavigateToConnectors,
@@ -256,11 +242,25 @@ export default function HomeView({
   skipIntro = false,
   agentLabel,
   prefill = null,
+  // First-run suggestion chips (ENG-1137): total counts decide chip
+  // visibility (both zero = brand-new account); onPrefill drops a chip's
+  // prompt into the composer with its [placeholder] range selected.
+  tasksCount = 0,
+  artifactsCount = 0,
+  onPrefill,
 }) {
-  useEffect(() => { _ensureBootKeyframes(); }, []);
-
   const greetingText = greeting || GREETING_FALLBACK;
   const blocked = configReady === false;
+
+  // Sending the habit-tracker prompt completes onboarding step 1 no
+  // matter which surface filled the composer (suggestion chip, sidebar
+  // checklist, or the user typing it by hand).
+  const sendTracked = (text) => {
+    if (typeof text === 'string' && text.trim().startsWith(HABIT_TRACKER_PREFIX)) {
+      completeStep('see-it-work');
+    }
+    return onSend(text);
+  };
 
   const { phase, typedCount } = useBootPhase({
     serverOnline, configReady,
@@ -364,8 +364,16 @@ export default function HomeView({
       }}
     >
       <h1 className="home-greeting-row" style={{
+        // Deliberate exception to the .s-* ladder. This is the home hero,
+        // and the ladder has no rung between s-h1 (28px) and s-display
+        // (44px): 28px is dwarfed by the 42px orb, and 44px wraps the
+        // greeting to two lines in the 640px column. So it sits at a
+        // bespoke 36px, balanced against the orb. Tracking is nearly
+        // neutral (-0.004em): relaxed alongside the .s-* ladder (which
+        // eased off its old Josefin-era values) — a long Inter sentence
+        // at this size reads airier and less cramped near 0.
         fontFamily: 'var(--font-display)',
-        fontSize: 36, fontWeight: 700, letterSpacing: '-0.02em',
+        fontSize: 36, fontWeight: 600, letterSpacing: '-0.004em',
         color: 'var(--text-strong)',
         margin: '0 0 28px',
         width: '100%', maxWidth: 'var(--composer-max-width, 640px)',
@@ -496,43 +504,31 @@ export default function HomeView({
           animation: 'boot-fadein 500ms ease-out both',
         }}>
           {blocked ? (
-            <div style={{
-              width: '100%', maxWidth: 640,
-              background: 'var(--surface-0)',
-              border: '1px solid var(--border-01)',
-              borderRadius: 12,
-              boxShadow: 'var(--shadow-sm)',
-              padding: 18,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 14,
-            }}>
+            <div className="home-connect-card">
               <span style={{
                 width: 36, height: 36, borderRadius: 9,
                 display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                 background: 'var(--primary-50)', color: 'var(--primary-700)', flexShrink: 0,
               }}>{Ico.key(18)}</span>
-              <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="home-connect-card__body">
                 <div style={{ fontSize: 14, fontWeight: 650, color: 'var(--text-strong)' }}>Connect a provider to start chatting</div>
                 <div style={{ fontSize: 12.5, color: 'var(--frost-700)', marginTop: 3 }}>Subscribe with MindsHub for managed access, or bring your own provider key (Anthropic, OpenAI, or any OpenAI-compatible endpoint) in Settings.</div>
               </div>
-              <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                <button
-                  type="button"
-                  className="btn-primary"
+              <div className="home-connect-card__actions">
+                <Button
+                  variant="primary"
                   onClick={() => host.openExternal(MINDS_BILLING_URL)}
-                >Subscribe</button>
-                <button
-                  type="button"
-                  className="btn-primary"
+                >Subscribe</Button>
+                <Button
+                  variant="primary"
                   onClick={() => onOpenSettings?.('agent')}
                   style={{ background: 'transparent', color: 'var(--primary-700)', border: '1px solid var(--primary-700)' }}
-                >Settings</button>
+                >Settings</Button>
               </div>
             </div>
           ) : (
             <Composer
-              onSend={onSend}
+              onSend={sendTracked}
               prefill={prefill}
               project={project}
               onProjectChange={onProjectChange}
@@ -544,12 +540,20 @@ export default function HomeView({
               connectors={connectors}
               onNavigateToConnectors={onNavigateToConnectors}
               onAttachFiles={onAttachFiles}
+              onAddGoogleDriveFiles={onAddGoogleDriveFiles}
               onRemoveAttachment={onRemoveAttachment}
               disabledConnections={disabledConnections}
               onUpdateConnectorMute={onUpdateConnectorMute}
               onCreateProject={onCreateProject}
               hideModel
               onTypingChange={setIsTyping}
+            />
+          )}
+          {!blocked && onPrefill && (
+            <HomeSuggestions
+              tasksCount={tasksCount}
+              artifactsCount={artifactsCount}
+              onPick={onPrefill}
             />
           )}
           <ActiveList tasks={activeTasks} onSelect={onSelectTask} onClear={onClearActive} />

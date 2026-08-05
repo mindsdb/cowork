@@ -260,6 +260,13 @@
 .arc-btn-ghost:hover { color: var(--arc-ink); border-color: var(--arc-dim); }
 .arc-btn-ghost:focus-visible { outline: 2px dashed var(--arc-cyan); outline-offset: 3px; }
 
+/* Ghost button stacked directly under an .arc-btn (sign-in card): match the
+   primary's corner radius and height instead of the pill, so the pair reads
+   as one button group. */
+.arc-btn-ghost.arc-btn-ghost-stacked { border-radius: 3px; padding: 11px 16px; }
+body[data-arcade-preset="midnight"] .arc-btn-ghost.arc-btn-ghost-stacked,
+body[data-arcade-preset="daylight"] .arc-btn-ghost.arc-btn-ghost-stacked { border-radius: 10px; }
+
 /* Plain inline "link" */
 .arc-link {
   font-family: inherit;
@@ -704,6 +711,11 @@
   border-radius: 6px;
   padding: 10px 12px;
   text-align: left;
+  /* Opt back into text selection: .arc-root sets user-select:none, but
+     users need to copy/paste install errors from these logs (ENG-340). */
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
 }
 
 .arc-console pre {
@@ -1043,11 +1055,11 @@ body[data-arcade-preset="daylight"] .arc-btn:disabled {
 }
 
 /* Welcome orb caption — matches the app's hero greeting (home-greeting-row):
-   var(--font-display) at 36/700/-0.02em, sentence case. The 8-bit skin maps
+   var(--font-display) at 36/600/-0.02em, sentence case. The 8-bit skin maps
    --font-display to its mono face, so this tracks the greeting in every mode. */
 .arc-welcome-title {
   font-family: var(--font-display);
-  font-weight: 700;
+  font-weight: 600;
   font-size: 36px;
   letter-spacing: -0.02em;
   text-transform: none;
@@ -1055,12 +1067,12 @@ body[data-arcade-preset="daylight"] .arc-btn:disabled {
 }
 
 /* Standard presets: match the app's hero greeting (home-greeting-row in
-   HomeView): font-display, 36px, weight 700, tight tracking, sentence case —
+   HomeView): font-display, 36px, weight 600, tight tracking, sentence case —
    no arcade tracking/glow. */
 body[data-arcade-preset="midnight"] .arc-hud-title,
 body[data-arcade-preset="daylight"] .arc-hud-title {
   font-family: var(--font-display);
-  font-weight: 700;
+  font-weight: 600;
   font-size: 36px;
   letter-spacing: -0.02em;
   text-indent: 0;
@@ -1094,4 +1106,47 @@ body[data-arcade-preset="daylight"] .arc-panel {
 body[data-arcade-preset="gameboy"] .arc-btn:disabled,
 body[data-arcade-preset="daylight"] .arc-btn:disabled {
   box-shadow: 0 4px 0 0 rgba(15, 16, 17, 0.22);
+}
+
+/* Floating corner toggles (theme + 8-bit style) shown on the onboarding
+   pages only — CoworkApp hasn't mounted yet here, so there's no sidebar
+   footer to host them (that's where the in-app equivalent lives; see
+   Sidebar.jsx). Uses the app's shared design tokens, not the --arc-*
+   onboarding palette, so it doesn't clash once the user lands in the
+   real app. */
+.arcade-theme-toggle {
+  position: fixed;
+  right: 18px;
+  bottom: 16px;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-8);
+  color: var(--ink-2);
+  cursor: pointer;
+  z-index: 50;
+  box-shadow: var(--sh-1);
+  transition: background .15s, color .15s, transform .15s, box-shadow .2s;
+}
+.arcade-theme-toggle:hover {
+  color: var(--ink);
+  transform: translateY(-1px);
+}
+body[data-theme="dark"] .arcade-theme-toggle:hover {
+  color: var(--accent);
+  box-shadow: 0 0 18px rgba(34,211,238,0.3);
+}
+
+/* Skin (Style) toggle — same chrome as the theme toggle, stacked above
+   it in the corner. Lit accent while any non-default skin is active. */
+.arcade-skin-toggle {
+  bottom: 54px;
+}
+body:not([data-skin="normal"]) .arcade-skin-toggle {
+  color: var(--accent);
+  border-color: var(--accent);
 }

@@ -1,4 +1,5 @@
 import Ico from '../components/Icons';
+import { Badge, Button } from '../components/ui';
 
 function buildQrCells() {
   const size = 25;
@@ -102,19 +103,14 @@ export default function DispatchView({ onSetUpLater, agentLabel = 'the agent' })
           </div>
 
           <div className="dispatch-actions">
-            <button
-              type="button"
-              className="dispatch-btn dispatch-btn-primary"
-              disabled
-              aria-disabled="true"
-            >
+            <Button variant="primary" size="xl" disabled aria-disabled="true">
               {Ico.check(16)}
               <span>I'm signed in on my phone</span>
-              <span className="dispatch-button-badge">Coming soon</span>
-            </button>
-            <button type="button" className="dispatch-btn dispatch-btn-ghost" onClick={onSetUpLater}>
+              <Badge variant="inverse" size="sm">Coming soon</Badge>
+            </Button>
+            <Button variant="subtle" size="xl" onClick={onSetUpLater}>
               Set up later
-            </button>
+            </Button>
           </div>
         </section>
       </main>

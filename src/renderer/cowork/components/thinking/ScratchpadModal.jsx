@@ -11,6 +11,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
 import Ico from '../Icons';
+import { Badge } from '../ui';
+import { Modal } from '../ui/Modal';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { CodeBlock } from './CodeBlock';
 
 function fmtMs(ms) {
@@ -39,6 +42,8 @@ function detectLanguage(data, isToolCall) {
 const UNNAMED_TAB_KEY = '__unnamed__';
 
 export function ScratchpadModal({ open, onClose, steps = [], focusStepId = null }) {
+  const { isNarrow } = useBreakpoint();
+
   // Group cells by their canonical tab id (anton's `name` field).
   // Trim + validate so the empty string and whitespace-only strings
   // don't silently land in a "" group. Unnamed cells flow into a
@@ -77,30 +82,26 @@ export function ScratchpadModal({ open, onClose, steps = [], focusStepId = null 
 
   const activeTab = tabs.find((t) => t.id === activeTabId) || tabs[0];
 
-  // Esc closes.
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e) => { if (e.key === 'Escape') onClose?.(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
-
-  if (!open) return null;
+  // Esc + backdrop dismissal are handled by <Modal>.
 
   return (
-    <div
-      onClick={(e) => { if (e.target === e.currentTarget) onClose?.(); }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
-      style={{ WebkitAppRegion: 'no-drag' }}
+    <Modal
+      open={open}
+      onClose={onClose}
+      size="lg"
+      width="min(1040px, 94vw)"
+      height="82vh"
+      fullBleed={isNarrow}
+      ariaLabel="Scratchpad"
     >
-      <div className="scratchpad-modal flex h-[82vh] w-[min(1040px,94vw)] flex-col overflow-hidden rounded-xl border border-line bg-surface shadow-2xl">
+      <div className="scratchpad-modal flex h-full flex-col overflow-hidden">
 
         {/* Modal header — title + close. Per-cell `step x/y` already
             says the count, so we don't repeat it here. */}
         <div className="flex flex-none items-center justify-between border-b border-line px-5 py-3.5">
           <div className="flex items-center gap-2.5">
             <span className="inline-flex text-ink-3">{Ico.code(15)}</span>
-            <span className="font-display text-[15px] font-semibold tracking-tight text-ink">
+            <span className="s-h3 text-ink">
               Scratchpad
             </span>
           </div>
@@ -147,7 +148,7 @@ export function ScratchpadModal({ open, onClose, steps = [], focusStepId = null 
                     fontFamily: 'var(--font-display)',
                     fontSize: 12.5,
                     fontWeight: 500,
-                    letterSpacing: '-0.005em',
+                    letterSpacing: '0',
                     color: active ? 'var(--ink)' : 'var(--ink-3)',
                     transition: 'color 120ms ease',
                   }}
@@ -162,20 +163,11 @@ export function ScratchpadModal({ open, onClose, steps = [], focusStepId = null 
                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                     maxWidth: 180,
                   }} title={t.name}>{t.name}</span>
-                  <span style={{
-                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                    minWidth: 18, height: 18,
-                    padding: '0 6px',
-                    borderRadius: 999,
-                    background: active
-                      ? 'color-mix(in srgb, var(--accent) 15%, transparent)'
-                      : 'var(--surface-2)',
-                    color: active ? 'var(--accent)' : 'var(--ink-4)',
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: 10.5,
-                    fontWeight: 500,
-                    fontVariantNumeric: 'tabular-nums',
-                  }}>{t.cells.length}</span>
+                  <Badge
+                    variant={active ? 'accent' : 'muted'}
+                    size="xs"
+                    className="min-w-[18px] justify-center font-mono tabular-nums"
+                  >{t.cells.length}</Badge>
                   {active && (
                     <span aria-hidden style={{
                       position: 'absolute',
@@ -208,7 +200,7 @@ export function ScratchpadModal({ open, onClose, steps = [], focusStepId = null 
           )}
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -310,7 +302,7 @@ function CellView({ cell, index, total, focused = false }) {
               hitting "Code" lands at eye level, not floated above
               the badge. */}
           <div className="flex items-baseline justify-between gap-3">
-            <span className="truncate font-display text-[14px] font-semibold tracking-tight text-ink">
+            <span className="truncate font-display text-[14px] font-semibold text-ink">
               {data.one_line_description || cell.label || 'Untitled'}
             </span>
             {code && (

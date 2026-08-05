@@ -12,6 +12,7 @@
 
 import { useEffect, useState } from 'react';
 import Ico from '../components/Icons';
+import { Badge, Button } from '../components/ui';
 import ChannelBindings from './ChannelBindings';
 import {
   fetchChannelPlugins,
@@ -103,12 +104,11 @@ function ChannelLogo({ type, size = 26 }) {
 
 function StatusBadge({ active, configured }) {
   const label = active ? 'Active' : configured ? 'Configured' : 'Not connected';
-  const tone = active ? 'ok' : configured ? 'warn' : 'idle';
+  // Active and Configured are both "healthy" states (green) — Configured
+  // just means set-but-not-necessarily-live, not a warning.
+  const variant = (active || configured) ? 'success' : 'muted';
   return (
-    <span className={`channels-badge channels-badge-${tone}`}>
-      <span className="channels-led" aria-hidden="true" />
-      {label}
-    </span>
+    <Badge variant={variant} dot size="xs">{label}</Badge>
   );
 }
 
@@ -205,7 +205,7 @@ function ChannelCard({ plugin, status, onChanged }) {
             <label key={f.name} className="channels-field">
               <span className="channels-field-label">
                 {f.label}{f.required ? <em className="channels-req"> *</em> : null}
-                {isSet ? <span className="channels-set">set</span> : null}
+                {isSet ? <Badge variant="muted" size="xs">set</Badge> : null}
               </span>
               <input
                 type={f.secret ? 'password' : 'text'}
@@ -236,13 +236,13 @@ function ChannelCard({ plugin, status, onChanged }) {
       {notice ? <p className="channels-notice">{notice}</p> : null}
 
       <div className="channels-actions">
-        <button type="button" className="channels-btn channels-btn-primary" onClick={connect} disabled={busy}>
+        <Button variant="primary" onClick={connect} disabled={busy}>
           {Ico.power(15)}<span>{configured ? 'Save & reconnect' : 'Connect'}</span>
-        </button>
+        </Button>
         {configured ? (
-          <button type="button" className="channels-btn channels-btn-ghost" onClick={disconnect} disabled={busy}>
+          <Button variant="danger" onClick={disconnect} disabled={busy}>
             Disconnect
-          </button>
+          </Button>
         ) : null}
       </div>
     </section>
@@ -271,9 +271,9 @@ export default function ChannelsView() {
     <div className="channels-view">
       <header className="channels-top">
         <span>Channels</span>
-        <button type="button" className="channels-btn channels-btn-ghost" onClick={refresh} title="Refresh">
+        <Button variant="subtle" icon onClick={refresh} title="Refresh" aria-label="Refresh">
           {Ico.refresh(15)}
-        </button>
+        </Button>
       </header>
       <div className="channels-lede">
         <p className="channels-intro">

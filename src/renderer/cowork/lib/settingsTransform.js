@@ -34,6 +34,12 @@ export const SETTINGS_KEY_MAP = {
   coding_provider: 'codingProvider',
   coding_model: 'codingModel',
   coding_reasoning_effort: 'codingReasoningEffort',
+  // Router (anton's "thalamus" role) — the cheap front-model that gates each
+  // turn respond-vs-delegate AND runs history summarization. Selectable so
+  // users can point routing+summarization at a cheap model (defaults per
+  // provider: MindsHub→kimi, else smallest).
+  router_provider: 'routerProvider',
+  router_model: 'routerModel',
   openai_base_url: 'openaiBaseUrl',
   model_mode: 'modelMode',
   model_overrides: 'modelOverrides',
@@ -43,13 +49,19 @@ export const SETTINGS_KEY_MAP = {
   auto_pin: 'autoPin',
   show_dots: 'showDots',
   show_counters: 'showCounters',
+  nav_title: 'navTitle',
+  nav_title_color: 'navTitleColor',
+  nav_logo: 'navLogo',
+  show_theme_toggle: 'showThemeToggle',
+  show_8bit_toggle: 'show8bitToggle',
   accent_variant: 'accentVariant',
   memory_enabled: 'memoryEnabled',
   memory_mode: 'memoryMode',
   episodic_memory: 'episodicMemory',
   proactive_dashboards: 'proactiveDashboards',
   act_first: 'actFirst',
-  ui_update_mode: 'uiUpdateMode',
+  max_tool_rounds: 'maxToolRounds',
+  max_continuations: 'maxContinuations',
   publish_url: 'publishUrl',
   greeting: 'greeting',
   tone: 'tone',
@@ -74,7 +86,7 @@ const PROVIDER_TO_SERVER = {
   'minds-cloud': 'minds_cloud',
 };
 
-const PROVIDER_FIELDS = new Set(['planningProvider', 'codingProvider']);
+const PROVIDER_FIELDS = new Set(['planningProvider', 'codingProvider', 'routerProvider']);
 
 export function providerValueToType(value) {
   if (!value) return '';
@@ -84,6 +96,36 @@ export function providerValueToType(value) {
 export function providerTypeToServerValue(value) {
   if (!value) return '';
   return PROVIDER_TO_SERVER[value] || value;
+}
+
+// ─── Effective (server-executed) role config ────────────────────────
+//
+// ENG-739: the model/provider a role ACTUALLY runs on comes from the
+// canonical planning_model / coding_model (+ *_provider) settings — the flat
+// fields cowork-server resolves from at turn time. `model_overrides` is
+// orphaned renderer state the server stopped reading (resolution moved off the
+// nested blob and its reader, cowork/runtime/inference.py, was removed). The
+// picker used to source its "current model" from `model_overrides`, so a stale
+// planning_model pin — e.g. a login-written `latest:sonnet` — was invisible in
+// the picker: it showed the override's model as already-selected, offered no
+// change to save, and a stuck free-tier user had no self-serve recovery. These
+// helpers read the executed field so the pin surfaces (via the stale
+// placeholder in resolveModelPickerValue) and picking an enabled model is a
+// real, savable change — matching what a direct PUT /settings/planning_model
+// does. Never consult `model_overrides` for the current value.
+export function effectiveRoleModel(settings, role) {
+  const s = settings || {};
+  if (role === 'planning') return s.planningModel ?? s.defaultModel ?? '';
+  if (role === 'router') return s.routerModel ?? '';
+  return s.codingModel ?? '';
+}
+
+export function effectiveRoleProvider(settings, role) {
+  const s = settings || {};
+  const raw = role === 'planning' ? s.planningProvider
+    : role === 'router' ? s.routerProvider
+    : s.codingProvider;
+  return providerValueToType(raw) || 'minds-cloud';
 }
 
 // ─── Static metadata ────────────────────────────────────────────────
@@ -108,9 +150,12 @@ export const STATIC_SETTINGS = {
   recommendedModels: {
     'minds-cloud': [], anthropic: [], openai: [], gemini: [], 'openai-compatible': [],
   },
-  // Per-provider (planning, coding) default pair (filled at runtime).
+  // Per-provider default model tuple (filled at runtime by the backend
+  // overlay). Historically [planning, coding]; extended to
+  // [planning, coding, router]. A missing 3rd slot falls back to the coding
+  // default in the UI, so an un-upgraded backend still works.
   recommendedPair: {
-    'minds-cloud': ['', ''], anthropic: ['', ''], openai: ['', ''], gemini: ['', ''], 'openai-compatible': ['', ''],
+    'minds-cloud': ['', '', ''], anthropic: ['', '', ''], openai: ['', '', ''], gemini: ['', '', ''], 'openai-compatible': ['', '', ''],
   },
 };
 
@@ -152,12 +197,167 @@ export function modelLabel(id) {
 }
 
 /**
+ * The display name for a model id: MindsHub's policy-supplied label when we
+ * have one, else the id-derived form above. One rule, used by every picker, so
+ * the composer and the Settings dropdown can't disagree about a model's name.
+ *
+ * `modelLabels` only ever covers minds-cloud (direct providers don't publish
+ * labels), so the fallback is the normal case, not an error path.
+ */
+export function displayModelLabel(id, modelLabels = {}) {
+  return (modelLabels && modelLabels[id]) || modelLabel(id);
+}
+
+/**
  * Map a provider's runtime model-id list to `{id, label}` options for
  * dropdowns. `recommendedModels` is the backend-overlaid map from settings.
  */
-export function recommendedModelOptions(recommendedModels, providerType) {
+export function recommendedModelOptions(recommendedModels, providerType, modelLabels = {}) {
   const ids = (recommendedModels && recommendedModels[providerType]) || [];
-  return ids.map((id) => ({ id, label: modelLabel(id) }));
+  return ids.map((id) => ({ id, label: displayModelLabel(id, modelLabels) }));
+}
+
+/**
+ * Merge a `/settings/recommended-models` response into the settings we already
+ * hold, returning just the keys it owns. Used by both the mount-time load and
+ * the picker's on-open refresh so there is one rule for this, not two.
+ *
+ * Nothing empty from the server ever overwrites something we have:
+ *
+ *   - a per-provider list is replaced only when the live one is non-empty. An
+ *     unconfigured provider comes back `[]` (`RECOMMENDED_MODELS['minds-cloud']`
+ *     is an empty placeholder server-side), and so does a *failed* MindsHub
+ *     fetch — the endpoint still answers 200. Overwriting on that empties the
+ *     picker until the app restarts.
+ *   - the id-keyed maps are replaced only when the live one is non-empty, for
+ *     the same reason. An empty `modelEnabled` reads as "everything is
+ *     available" and would silently unlock paid models; cowork-server refuses
+ *     to persist an empty map for exactly this reason.
+ *
+ * The cost of that is a stale entry outliving a model's removal from the
+ * policy, which self-corrects on the next successful fetch. Losing the list
+ * does not self-correct, so this is the right way round.
+ *
+ * @param {object} prev current settings (or the freshly transformed rows)
+ * @param {object|null} rec the endpoint's response, or null when it failed
+ * @returns {object|null} the subset of settings keys to apply, null if nothing
+ *   is usable (caller leaves what it has alone)
+ */
+export function mergeRecommendedModels(prev, rec) {
+  if (!rec || typeof rec !== 'object') return null;
+  const base = prev || {};
+  const overlayLists = (current, live) => {
+    const merged = { ...current };
+    for (const [k, v] of Object.entries(live || {})) {
+      if (Array.isArray(v) && v.length) merged[k] = v;
+    }
+    return merged;
+  };
+  const overlayMap = (current, live) => (
+    live && typeof live === 'object' && Object.keys(live).length ? live : (current || {})
+  );
+  return {
+    recommendedModels: overlayLists(base.recommendedModels, rec.recommendedModels),
+    recommendedPair: overlayLists(base.recommendedPair, rec.recommendedPair),
+    modelEfforts: overlayMap(base.modelEfforts, rec.modelEfforts),
+    modelEnabled: overlayMap(base.modelEnabled, rec.modelEnabled),
+    modelLabels: overlayMap(base.modelLabels, rec.modelLabels),
+  };
+}
+
+// ─── Model picker select-value resolution ───────────────────────────
+
+/**
+ * Resolve the controlled <select> value + mode for the Agent-Models model
+ * picker, given the currently-stored model and the provider's recommended
+ * list. Pure so the desync rule is unit-tested directly (SettingsView.jsx
+ * inlines the JSX around this).
+ *
+ * The invariant this enforces: the returned `selectValue` must always match a
+ * rendered <option>, or selection silently breaks. A stored value that isn't
+ * in `modelList` splits two ways:
+ *
+ *   - `allowOther` provider (anthropic/openai/…): it's a user-typed custom id →
+ *     free-text mode (`__custom__`, with a text input).
+ *   - minds-cloud (no free text): it's a stale pin, e.g. the login-written
+ *     `latest:sonnet` → show it as a disabled placeholder (`__stale__`) so
+ *     re-picking a listed model is a real change event that writes the model.
+ *     Routing it through `__custom__` (never rendered for minds-cloud) is the
+ *     ENG-739 bug: value matches no option → "Saved" changes nothing.
+ *
+ * @param {string} curModel   currently-stored model id ('' when unset)
+ * @param {string[]} modelList provider's recommended model ids
+ * @param {boolean} allowOther whether the provider accepts a free-text id
+ * @param {boolean} forceCustom user has explicitly toggled "Other…" mode
+ */
+export function resolveModelPickerValue(curModel, modelList, allowOther, forceCustom = false) {
+  const list = Array.isArray(modelList) ? modelList : [];
+  const savedNotListed = !!curModel && !list.includes(curModel);
+  const savedIsCustom = savedNotListed && allowOther;
+  const showStalePin = savedNotListed && !allowOther;
+  // Free-text mode requires a provider that accepts it. Gating on `allowOther`
+  // keeps the invariant "selectValue always matches a rendered option" true
+  // even when `forceCustom` lingers from a prior provider: toggling "Other…"
+  // on Anthropic then repointing to minds-cloud (which renders neither a
+  // `__custom__` option nor a text input) would otherwise wedge the control
+  // into a blank, unwritable select — the same "Saved but not applied" bug via
+  // a different door.
+  const inputMode = (!!forceCustom || savedIsCustom) && allowOther;
+  const selectValue = inputMode
+    ? '__custom__'
+    : (showStalePin ? '__stale__' : curModel);
+  return { savedIsCustom, showStalePin, inputMode, selectValue };
+}
+
+/**
+ * Build the model `<Select>` option list for the Agent-Models picker, given
+ * `resolveModelPickerValue`'s `showStalePin` flag. Pairs with it: every
+ * value `resolveModelPickerValue` can return (`selectValue`) has a matching
+ * entry here, which is what keeps the ENG-739 invariant true end-to-end —
+ * a stored pin or a locked model is always a real, rendered (if disabled)
+ * option, never a value the control can silently desync on.
+ *
+ * @param {string} curModel     currently-stored model id
+ * @param {string[]} modelList  provider's recommended model ids
+ * @param {boolean} allowOther  whether to append the "Other…" custom-id entry
+ * @param {boolean} showStalePin from resolveModelPickerValue
+ * @param {Record<string, boolean>} modelEnabled per-model availability map
+ *   (settings.modelEnabled); a model mapped to `false` renders locked.
+ * @param {Record<string, string>} modelLabels per-model display label
+ *   (settings.modelLabels, MindsHub-supplied). Display-only — the id/alias
+ *   passed as `value` is still what's saved/resolved everywhere else. A
+ *   model missing here (every direct provider; a minds-cloud model with no
+ *   label) falls back to modelLabel()'s id-derived label.
+ */
+export function buildModelOptions(curModel, modelList, allowOther, showStalePin, modelEnabled = {}, modelLabels = {}) {
+  const list = Array.isArray(modelList) ? modelList : [];
+  const isLocked = (m) => modelEnabled[m] === false;
+  const labelFor = (m) => displayModelLabel(m, modelLabels);
+  return [
+    ...(showStalePin
+      // Labeled "legacy — re-select" (not "current") so it reads as an
+      // action to take, not a selection: the same model may also appear
+      // below as a real "— Add credits to unlock" row, and a bare "(current)"
+      // would look like two identical, already-selected entries (ENG-739
+      // review).
+      ? [{
+          value: '__stale__',
+          label: `${labelFor(curModel.replace(/^latest:/, ''))} (legacy — re-select a model)`,
+          disabled: true,
+          // `pin` keeps the special entries out of ModelSelect's provider
+          // groups: 'top'/'bottom' render unheaded above/below the groups.
+          pin: 'top',
+        }]
+      : []),
+    // Wallet-based access (ENG-412, #434): a locked model is one the org's
+    // wallet can't currently pay for — prompt to add credits, not upgrade.
+    ...list.map((m) => ({
+      value: m,
+      label: `${labelFor(m)}${isLocked(m) ? ' — Add credits to unlock' : ''}`,
+      disabled: isLocked(m),
+    })),
+    ...(allowOther ? [{ value: '__custom__', label: 'Other…', pin: 'bottom' }] : []),
+  ];
 }
 
 // ─── Row → client transform ─────────────────────────────────────────
@@ -283,6 +483,14 @@ export function diffSettingsForWrite(patch, lastFetched) {
     const serverKey = CLIENT_TO_SERVER[clientKey];
     if (!serverKey) continue;
     if (value === '***') continue;
+    // Budget keys are writable only when the server serves them: the server
+    // returns a row for every settings field, so absence from the fetched
+    // snapshot means an older server that would 400 the write (and fail the
+    // whole multi-key save with it). Deliberately budget-scoped: lastFetched
+    // is {} until the first successful fetch, so as a global rule this would
+    // silently drop the first save of a session. For budget keys the trade
+    // is worth it — absence really does mean a server that can't take them.
+    if (clientKey in BUDGET_FIELDS && !(clientKey in lastFetched)) continue;
     const prev = lastFetched[clientKey];
     if (prev === value) continue;
     if (typeof value === 'object' && JSON.stringify(prev) === JSON.stringify(value)) continue;
@@ -295,6 +503,71 @@ export function diffSettingsForWrite(patch, lastFetched) {
     }
   }
   return writes;
+}
+
+// ─── Agent budget clamping ───────────────────────────────────────────
+//
+// The server bounds these (pydantic ge/le) and 422s anything outside, and a
+// failed key fails the whole multi-key save — so the client must never PUT
+// an out-of-range value. Values are STRINGS end-to-end (server rows are
+// strings; the page-wide dirty compare is a JSON diff, so types must survive
+// the save → re-fetch round trip unchanged).
+
+export const BUDGET_FIELDS = {
+  maxToolRounds: { min: 5, max: 500, fallback: 50 },
+  maxContinuations: { min: 0, max: 25, fallback: 5 },
+};
+
+/**
+ * Clamp one budget value into its range, as a string.
+ *
+ * Number() (not parseInt) so number-input-legal forms like "5e2" mean 500,
+ * not 5. Unparseable/empty input falls back to `prev` (the last committed
+ * value — clearing a field to retype must not silently reset a saved 500 to
+ * the factory default) and only then to the spec fallback.
+ */
+export function clampBudgetValue(raw, spec, prev = null) {
+  const { min, max, fallback } = spec;
+  let n = Math.round(Number(raw));
+  if (raw == null || String(raw).trim() === '' || Number.isNaN(n)) {
+    const p = Math.round(Number(prev));
+    n = (prev != null && String(prev).trim() !== '' && !Number.isNaN(p)) ? p : fallback;
+  }
+  return String(Math.min(max, Math.max(min, n)));
+}
+
+/**
+ * Return `settings` with any present budget keys clamped into range, and
+ * empty/unparseable drafts DROPPED from the write entirely.
+ *
+ * Safety net for values that skipped the input's blur clamp (e.g. the
+ * settings modal dismissed with Escape mid-edit — React fires no blur on
+ * unmount, and the raw draft survives in App state). Two rules:
+ *   * Keys the server never sent stay absent: materializing them here would
+ *     create a phantom write — and a failing one on an older server. (Also
+ *     enforced structurally: the Settings UI only renders the budget section
+ *     when the fetched snapshot has the keys, and diffSettingsForWrite skips
+ *     budget keys absent from it.)
+ *   * An empty or unparseable draft is "no instruction", not "reset to
+ *     default": clamping '' to the factory fallback here would silently
+ *     overwrite the user's saved value (this function has no access to it).
+ *     Dropping the key means diffSettingsForWrite writes nothing and the
+ *     server keeps what it has; the post-save re-fetch heals the input.
+ */
+export function clampBudgets(settings) {
+  let out = settings;
+  for (const [key, spec] of Object.entries(BUDGET_FIELDS)) {
+    const v = settings?.[key];
+    if (v == null) continue;
+    if (String(v).trim() === '' || Number.isNaN(Math.round(Number(v)))) {
+      const { [key]: _dropped, ...rest } = out;
+      out = rest;
+      continue;
+    }
+    const clamped = clampBudgetValue(v, spec);
+    if (clamped !== String(v)) out = { ...out, [key]: clamped };
+  }
+  return out;
 }
 
 // ─── Provider card ↔ individual key mapping ──────────────────────────

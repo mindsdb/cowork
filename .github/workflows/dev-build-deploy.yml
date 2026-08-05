@@ -1,0 +1,76 @@
+# Builds the cowork web SPA image (Dockerfile.frontend) and, when the PR is
+# labeled `deploy`, rolls out a per-PR environment via ArgoCD.
+#
+# Unit tests are NOT invoked here: cowork's tests-unit.yml already runs on every
+# pull_request, so gating/duplication is unnecessary (cowork-server calls its
+# tests-unit as a reusable workflow because that one runs on workflow_call only).
+#
+# The SPA is env-agnostic: it derives every MindsHub service URL from the page
+# origin at runtime (src/renderer/lib/mindsUrls.ts), so one image serves every
+# dev namespace and every PR env with no VITE build args.
+
+name: Dev - Build and Deploy on PR
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, labeled]
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+# Cancel any existing runs of this workflow on the same branch/pr
+# We always want to build/deploy/test a new commit over an older one
+concurrency:
+  group: ${{ github.workflow_ref }}
+  cancel-in-progress: true
+
+jobs:
+
+  build:
+    runs-on: mdb-dev
+    outputs:
+      image: ${{ steps.build.outputs.image }}
+    env:
+      AWS_REGION: us-east-1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mindsdb/github-actions/setup-env@main
+      - id: build
+        uses: mindsdb/github-actions/build-push-ecr@main
+        with:
+          # Repo-slug default image name (mindsdb-cowork); the web SPA is the
+          # only image the cowork repo pushes to ECR. `-f Dockerfile.frontend`
+          # selects the SPA build (not the all-in-one ./Dockerfile).
+          module-name: ${{ env.CI_REPOSITORY_SLUG }}
+          extra-build-args: '-f Dockerfile.frontend'
+          build-for-environment: development
+
+
+  scan:
+    runs-on: mdb-dev
+    needs: [build]
+    name: Scan Minds Image
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mindsdb/github-actions/snyk-docker-scan@main
+        with:
+          image: ${{ needs.build.outputs.image }}
+          snyk-token: ${{ secrets.SNYK_TOKEN }}
+
+
+  deploy-pr-env:
+    runs-on: mdb-dev
+    needs: [build]
+    if: contains(github.event.pull_request.labels.*.name, 'deploy')
+    environment:
+      name: pr-cowork-${{ github.event.pull_request.number }}
+      url: https://pr-cowork-${{ github.event.pull_request.number }}.dev.mindshub.ai
+    steps:
+      - uses: mindsdb/github-actions/argocd-pr-env-deploy@main
+        with:
+          argocd-token: ${{ secrets.ARGOCD_AUTH_TOKEN }}
+          gh-token:     ${{ secrets.GH_PULL_REQUEST_READ_TOKEN }}

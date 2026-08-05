@@ -1,6 +1,6 @@
 // Live artifacts page — mirrors the Projects header / filter pattern.
 //
-// Header:    "Live artifacts" Josefin title + Inter subtitle (no CTA —
+// Header:    "Live artifacts" Inter title + Inter subtitle (no CTA —
 //            artifacts are produced by Anton, not authored here).
 // Filter:    search (⌘K) · sort pill · count · grid/list toggle.
 // Sort:      default "Published first", then Recent · Oldest · Title · Type.
@@ -12,7 +12,10 @@
 
 import { forwardRef, useEffect, useMemo, useRef, useState } from 'react';
 import Ico from '../components/Icons';
-import { Toast } from '../components/ui/Toast';
+import { Card } from '../components/ui/Card';
+import { useToastManager } from '../components/ui/Toast';
+import { EmptyState } from '../components/ui/EmptyState';
+import { Button } from '../components/ui';
 import {
   revealArtifact, publishArtifact, unpublishArtifact, updateArtifact,
   deleteArtifact,
@@ -20,7 +23,7 @@ import {
 } from '../api';
 import { copyText } from '../lib/clipboard';
 import { downloadArtifactFile } from '../lib/artifactDownload';
-import { isHtmlArtifact, isPublishableArtifact, isBackendArtifact } from '../lib/artifactKinds';
+import { isHtmlArtifact, isPublishableArtifact, isBackendArtifact, publishBlockedReason } from '../lib/artifactKinds';
 import { trackArtifactPublished } from '../lib/analytics';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
 import { ArtifactViewer } from '../components/artifact';
@@ -30,7 +33,7 @@ import {
   isAccessDraftValid,
   buildAccessPayload,
 } from '../components/artifact/publish/AccessChooser';
-import { ArtifactIcon, splitArtifactName } from '../components/artifacts/ArtifactIcon';
+import { ArtifactIcon, splitArtifactName, displayTitle, fileNameOf, isWebAppArtifact } from '../components/artifacts/ArtifactIcon';
 import { ArtifactStatus } from '../components/artifacts/ArtifactStatus';
 import {
   PageHeader,
@@ -53,7 +56,7 @@ const EMPTY_ARTIFACTS = [];
 // Sort options for the artifacts collection. Per-page (publishing
 // state isn't relevant to other collections).
 const SORT_OPTIONS = [
-  { id: 'published', label: 'Published first' },
+  { id: 'published', label: 'Shared first' },
   { id: 'recent', label: 'Recent' },
   { id: 'oldest', label: 'Oldest' },
   { id: 'title', label: 'Title (A–Z)' },
@@ -106,16 +109,12 @@ function isInlinePreviewable(a) {
   return false;
 }
 
-// "Updated" is already pre-formatted by the server (e.g. "3h ago",
-// "Yesterday"). For sorting we need a numeric stamp — fall back to the
-// raw `updatedAt` / `mtime` if present, otherwise 0 so unknown items
-// sink to the bottom.
-function timestampOf(a) {
-  const raw = a.updatedAt || a.updated_at || a.mtime || a.modified;
-  if (raw == null) return 0;
-  if (typeof raw === 'number') return raw;
-  const t = Date.parse(raw);
-  return Number.isFinite(t) ? t : 0;
+// "Updated" is pre-formatted by the server (e.g. "3h ago") from the same
+// content_mtime this sorts by (ENG-1123 Bug 2) — so the sort order and the
+// printed age can no longer disagree. a.mtime is always a plain number of
+// seconds (content_mtime) or absent/0 — never a string, so no Date.parse.
+export function timestampOf(a) {
+  return a.mtime || 0;
 }
 
 // Kind pill — short uppercase tag for the file type. Pulls from
@@ -124,6 +123,29 @@ function kindOf(a) {
   if (a.kind) return String(a.kind).toLowerCase();
   const ext = (a.ext || '').replace(/^\./, '').toLowerCase();
   return ext || 'file';
+}
+
+// Shared by both comparison levels below, so a numeric-aware order (v2
+// before v10) applies consistently to the primary compare AND the filename
+// tie-break — using different collator options per level would let the
+// tie-break re-introduce the wrong order it's supposed to help fix.
+// Locale pinned to 'en' (not `undefined`, i.e. not the runtime's default
+// locale) so digit-vs-letter collation order — and therefore this file's
+// own test fixtures — can't vary between a developer's machine and CI.
+// No `sensitivity: 'base'`: default sensitivity treats "Report" and "report"
+// as unequal, which matters here — the tie-break must only ever run when the
+// primary text is truly identical on screen, not merely case/accent-equivalent.
+const NAME_COLLATOR = new Intl.Collator('en', { numeric: true });
+
+export function titleCompare(a, b) {
+  const t = NAME_COLLATOR.compare(displayTitle(a), displayTitle(b));
+  if (t !== 0) return t;
+  // Tie-break only when a visible secondary line exists on both sides —
+  // web-app artifacts render no secondary line, so there is nothing on
+  // screen to justify breaking the tie by (falling back to fileNameOf here
+  // would reintroduce the exact "invisible sort key" bug this fixes).
+  if (isWebAppArtifact(a) || isWebAppArtifact(b)) return 0;
+  return NAME_COLLATOR.compare(fileNameOf(a), fileNameOf(b));
 }
 
 // Publish visibility chooser — a thin wrapper over the shared
@@ -141,7 +163,7 @@ function PublishDialog({ artifact, onCancel, onConfirm }) {
     <Modal open onClose={onCancel} size="sm" width="min(440px, 94vw)" maxHeight="min(600px, 90vh)" labelledBy="publish-dialog-title">
       <ModalHeader
         id="publish-dialog-title"
-        title="Publish to the Web"
+        title="Share to the Web"
         subtitle={artifact.title || artifact.path?.split('/').pop()}
         onClose={onCancel}
       />
@@ -152,18 +174,10 @@ function PublishDialog({ artifact, onCancel, onConfirm }) {
         <AccessChooser value={draft} onChange={setDraft} onSubmit={submit} />
       </ModalBody>
       <ModalFooter>
-        <button type="button" onClick={onCancel} style={{
-          cursor: 'pointer', background: 'transparent', border: '1px solid var(--line)',
-          color: 'var(--ink-2)', padding: '8px 14px', borderRadius: 8, fontFamily: FONT_BODY, fontSize: 13,
-        }}>Cancel</button>
-        <button type="button" onClick={submit} disabled={!canConfirm} style={{
-          cursor: canConfirm ? 'pointer' : 'not-allowed',
-          background: 'var(--accent)', border: '1px solid var(--accent)', color: '#fff',
-          padding: '8px 16px', borderRadius: 8, fontFamily: FONT_BODY, fontWeight: 600, fontSize: 13,
-          opacity: canConfirm ? 1 : 0.5,
-        }}>
-          {draft.mode === 'password' ? 'Publish protected' : draft.mode === 'restricted' ? 'Publish restricted' : 'Publish'}
-        </button>
+        <Button variant="subtle" onClick={onCancel}>Cancel</Button>
+        <Button variant="primary" onClick={submit} disabled={!canConfirm}>
+          {draft.mode === 'password' ? 'Share protected' : draft.mode === 'restricted' ? 'Share restricted' : 'Share'}
+        </Button>
       </ModalFooter>
     </Modal>
   );
@@ -241,7 +255,7 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
   // is a "file" (shows its extension) yet still publishable. The name renders
   // base-truncated with the extension always visible.
   const publishable = isPublishableArtifact(artifact);
-  const { base, ext: nameExt } = splitArtifactName(artifact);
+  const { base, secondary } = splitArtifactName(artifact);
   // ↗ — open the live thing: published URL, else served URL, else local file.
   const onOpenExternal = (e) => {
     e.stopPropagation();
@@ -251,47 +265,51 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
   };
 
   return (
-    <div
+    <Card
+      as="div"
+      interactive
+      padding="none"
       className="cw-artifact-card"
-      role="button"
-      tabIndex={0}
       {...hoverProps}
-      onClick={() => (canPreview ? onOpenViewer(artifact) : openArtifactFile(artifact))}
-      onKeyDown={(e) => { if (e.key === 'Enter') (canPreview ? onOpenViewer(artifact) : openArtifactFile(artifact)); }}
+      onActivate={() => (canPreview ? onOpenViewer(artifact) : openArtifactFile(artifact))}
       style={{
-        cursor: 'pointer',
-        background: 'var(--surface)',
-        border: '1px solid var(--line)',
-        borderRadius: 12,
         display: 'flex', flexDirection: 'column',
         overflow: 'hidden',
-        transition: 'border-color 160ms ease, box-shadow 200ms ease, transform 160ms ease',
-        boxShadow: '0 1px 0 rgba(15,16,17,0.02)',
-      }}
-      onMouseOver={(e) => {
-        e.currentTarget.style.borderColor = 'var(--accent)';
-        e.currentTarget.style.boxShadow = '0 1px 0 rgba(15,16,17,0.02), 0 12px 28px rgba(15,16,17,0.08)';
-        e.currentTarget.style.transform = 'translateY(-1px)';
-      }}
-      onMouseOut={(e) => {
-        e.currentTarget.style.borderColor = 'var(--line)';
-        e.currentTarget.style.boxShadow = '0 1px 0 rgba(15,16,17,0.02)';
-        e.currentTarget.style.transform = 'translateY(0)';
       }}
     >
       {/* Body — icon + name·ext + actions, then the status row. */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '14px 16px', flex: 1 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-          <span style={{ display: 'inline-flex', flexShrink: 0 }}>
+          <span style={{ display: 'inline-flex', flexShrink: 0, alignSelf: 'flex-start', marginTop: 2 }}>
             <ArtifactIcon artifact={artifact} size={18} />
           </span>
-          {/* Name: base truncates, extension stays pinned + visible. */}
-          <div style={{
-            display: 'flex', alignItems: 'baseline', minWidth: 0, flex: 1,
-            fontFamily: FONT_DISPLAY, fontSize: 14, fontWeight: 600, lineHeight: 1.2,
-          }} title={artifact.title}>
-            <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--ink)' }}>{base}</span>
-            {nameExt && <span style={{ flexShrink: 0, color: 'var(--ink-3)' }}>{nameExt}</span>}
+          {/* Name: title primary, filename secondary (ENG-1123 Bug 1) — the
+              secondary line always renders (empty for web apps) so row
+              height stays uniform whether or not there's a filename. */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, flex: 1 }}>
+            <div
+              style={{
+                display: 'flex', alignItems: 'baseline', minWidth: 0,
+                fontFamily: FONT_DISPLAY, fontSize: 14, fontWeight: 600, lineHeight: 1.2,
+              }}
+              title={base}
+            >
+              <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--ink)' }}>{base}</span>
+            </div>
+            <div
+              style={{
+                display: 'flex', alignItems: 'baseline', minWidth: 0,
+                fontFamily: FONT_BODY, fontSize: 12, lineHeight: 1.2, minHeight: '1.2em',
+              }}
+              title={secondary ? secondary.name + secondary.ext : undefined}
+            >
+              {secondary && (
+                <>
+                  <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--ink-3)' }}>{secondary.name}</span>
+                  <span style={{ flexShrink: 0, color: 'var(--ink-4)' }}>{secondary.ext}</span>
+                </>
+              )}
+            </div>
           </div>
           {/* Actions — open-in-browser + ⋯ menu. */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
@@ -341,7 +359,7 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
           fontFamily: FONT_BODY, fontSize: 12, color: 'var(--ink-4)',
         }}>{artifact.updated || '—'}</span>
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -381,6 +399,9 @@ function ListHeaderRow() {
 function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onReveal, onDownload, onCopyUrl, onPublish, onUnpublish, onUpdate, onDelete, isMacPlatform = false }) {
   const isHtml = isHtmlArtifact(artifact);
   const published = !!artifact.publishedUrl;
+  // Non-empty when this artifact's type may never be published (e.g.
+  // fullstack-stateful-app). Keeps the item visible but disabled.
+  const publishBlock = publishBlockedReason(artifact);
   const items = [
     {
       id: 'open',
@@ -412,15 +433,19 @@ function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onReveal, onDown
       icon: Ico.refresh(13),
       onClick: onUpdate,
     },
-    isPublishableArtifact(artifact) && !published && {
+    // Show Share for blocked types too (e.g. fullstack-stateful-app) so it
+    // renders disabled with a reason tooltip rather than vanishing.
+    !published && (isPublishableArtifact(artifact) || publishBlock) && {
       id: 'publish',
-      label: 'Publish',
+      label: 'Share',
       icon: Ico.upload(13),
       onClick: onPublish,
+      disabled: !!publishBlock,
+      title: publishBlock || undefined,
     },
     published && {
       id: 'unpublish',
-      label: 'Unpublish',
+      label: 'Stop sharing',
       icon: Ico.upload(13),
       onClick: onUnpublish,
     },
@@ -455,7 +480,7 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
   const published = !!artifact.publishedUrl;
   const publishable = isPublishableArtifact(artifact);   // HTML + Markdown — see ArtifactBubble note
   const privateUrl = host.isWeb ? artifactServeUrl(artifact) : '';
-  const { base, ext: nameExt } = splitArtifactName(artifact);
+  const { base, secondary } = splitArtifactName(artifact);
   const project = projectNameOf(artifact, projects);
   const projectMatch = projectOf(artifact, projects);
   const canOpenProject = !!(projectMatch && typeof onOpenProject === 'function');
@@ -499,20 +524,35 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
           outline: 'none',
         }}
       >
-        {/* Name — icon + base (truncates) + extension (pinned, subtle). */}
+        {/* Name — title primary, filename secondary (ENG-1123 Bug 1). */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-          <span style={{ display: 'inline-flex', flexShrink: 0 }}>
+          <span style={{ display: 'inline-flex', flexShrink: 0, alignSelf: 'flex-start', marginTop: 2 }}>
             <ArtifactIcon artifact={artifact} size={16} />
           </span>
-          <div
-            title={artifact.title}
-            style={{
-              display: 'flex', alignItems: 'baseline', minWidth: 0,
-              fontFamily: FONT_DISPLAY, fontSize: 14, fontWeight: 600, lineHeight: 1.2,
-            }}
-          >
-            <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--ink)' }}>{base}</span>
-            {nameExt && <span style={{ flexShrink: 0, color: 'var(--ink-3)' }}>{nameExt}</span>}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+            <div
+              style={{
+                display: 'flex', alignItems: 'baseline', minWidth: 0,
+                fontFamily: FONT_DISPLAY, fontSize: 14, fontWeight: 600, lineHeight: 1.2,
+              }}
+              title={base}
+            >
+              <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--ink)' }}>{base}</span>
+            </div>
+            <div
+              style={{
+                display: 'flex', alignItems: 'baseline', minWidth: 0,
+                fontFamily: FONT_BODY, fontSize: 12, lineHeight: 1.2, minHeight: '1.2em',
+              }}
+              title={secondary ? secondary.name + secondary.ext : undefined}
+            >
+              {secondary && (
+                <>
+                  <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--ink-3)' }}>{secondary.name}</span>
+                  <span style={{ flexShrink: 0, color: 'var(--ink-4)' }}>{secondary.ext}</span>
+                </>
+              )}
+            </div>
           </div>
         </div>
 
@@ -576,26 +616,6 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
   );
 }
 
-// ─── Empty state ─────────────────────────────────────────────────────────
-
-function EmptyState({ agentLabel = 'the agent' }) {
-  return (
-    <div style={{
-      flex: 1, minHeight: 360,
-      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-      gap: 12, padding: '40px 24px',
-    }}>
-      <span style={{ display: 'inline-flex', color: 'var(--ink-5)' }}>{Ico.sparkle(32)}</span>
-      <div style={{ fontFamily: FONT_DISPLAY, fontSize: 18, fontWeight: 600, color: 'var(--ink)' }}>
-        No artifacts yet
-      </div>
-      <div style={{ fontFamily: FONT_BODY, fontSize: 13.5, color: 'var(--ink-3)', maxWidth: 380, textAlign: 'center' }}>
-        When {agentLabel} creates documents, dashboards, or code outputs they'll appear here.
-      </div>
-    </div>
-  );
-}
-
 // ─── Composed view ───────────────────────────────────────────────────────
 
 export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, projects = [], onOpenProject, agentLabel = 'the agent' }) {
@@ -634,7 +654,8 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
   const isMacPlatform = host.isMac() || /Mac|iPhone|iPod|iPad/.test(typeof navigator !== 'undefined' ? navigator.userAgent : '');
   // Toast surfaces publish/unpublish results — primarily so failures
   // don't disappear into the console.
-  const [toast, setToast] = useState(null); // { kind: 'ok'|'error', message }
+  const toastManager = useToastManager();
+  const showToast = ({ kind, message }) => toastManager.add({ title: message, type: kind === 'ok' ? 'success' : 'danger' });
   const searchRef = useRef(null);
 
   // Reflect parent refreshes exactly. The parent refetches when the
@@ -701,8 +722,13 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
   // a protected artifact pre-fills its existing password.
   const handlePublish = (artifact) => {
     if (!artifact?.path || busyPaths.has(artifact.path)) return Promise.resolve();
+    const blocked = publishBlockedReason(artifact);
+    if (blocked) {
+      showToast({ kind: 'error', message: blocked });
+      return Promise.resolve();
+    }
     if (!isPublishableArtifact(artifact)) {
-      setToast({ kind: 'error', message: 'Only HTML and Markdown artifacts can be published.' });
+      showToast({ kind: 'error', message: 'Only HTML and Markdown artifacts can be shared.' });
       return Promise.resolve();
     }
     // Settle any prior unresolved flow before starting a new one so a
@@ -736,22 +762,22 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
         setPhase(artifact.path, null);
         const label = m === 'password' ? 'password protected' : m === 'restricted' ? 'restricted' : null;
         trackArtifactPublished(r.report_id || artifact.id || '', m);
-        setToast({
+        showToast({
           kind: 'ok',
-          message: label ? `Published (${label}) — ${r.url}` : `Published — ${r.url}`,
+          message: label ? `Shared (${label}) — ${r.url}` : `Shared — ${r.url}`,
         });
       } else {
         setPhase(artifact.path, 'failed');
-        setToast({ kind: 'error', message: 'Publish returned no URL.' });
+        showToast({ kind: 'error', message: 'Sharing returned no URL.' });
       }
     } catch (e) {
       const msg = e?.message || String(e);
       // Map the most common failure to a clearer next step.
       const friendly = /minds_api_key/i.test(msg) || /minds api key/i.test(msg)
-        ? 'Set your Minds API key in Settings to publish artifacts.'
-        : `Publish failed: ${msg}`;
+        ? 'Set your Minds API key in Settings to share artifacts.'
+        : `Sharing failed: ${msg}`;
       setPhase(artifact.path, 'failed');
-      setToast({ kind: 'error', message: friendly });
+      showToast({ kind: 'error', message: friendly });
     } finally {
       setBusy(artifact.path, false);
       settlePublish();
@@ -765,9 +791,9 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
     try {
       await unpublishArtifact(publishTargetPath(artifact));
       updateOne({ ...artifact, publishedUrl: '' });
-      setToast({ kind: 'ok', message: 'Unpublished from MindsHub.' });
+      showToast({ kind: 'ok', message: 'Stopped sharing on MindsHub.' });
     } catch (e) {
-      setToast({ kind: 'error', message: `Unpublish failed: ${e?.message || e}` });
+      showToast({ kind: 'error', message: `Couldn't stop sharing: ${e?.message || e}` });
     } finally {
       setBusy(artifact.path, false);
       setPhase(artifact.path, null);
@@ -783,9 +809,9 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
       // Server refreshed last_md5 + published_mtime, so the artifact is no
       // longer "modified". Reflect it locally without a refetch.
       updateOne({ ...artifact, modified: false, publishedUrl: r?.url || artifact.publishedUrl });
-      setToast({ kind: 'ok', message: 'Updated published version.' });
+      showToast({ kind: 'ok', message: 'Updated the shared version.' });
     } catch (e) {
-      setToast({ kind: 'error', message: `Update failed: ${e?.message || e}` });
+      showToast({ kind: 'error', message: `Update failed: ${e?.message || e}` });
     } finally {
       setBusy(artifact.path, false);
       setPhase(artifact.path, null);
@@ -804,9 +830,9 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
       }
       await deleteArtifact(artifact.folder || artifact.path);
       removeOne(artifact.path);
-      setToast({ kind: 'ok', message: 'Deleted.' });
+      showToast({ kind: 'ok', message: 'Deleted.' });
     } catch (e) {
-      setToast({ kind: 'error', message: `Delete failed: ${e?.message || e}` });
+      showToast({ kind: 'error', message: `Delete failed: ${e?.message || e}` });
     } finally {
       setBusy(artifact.path, false);
     }
@@ -826,7 +852,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
       switch (sort) {
         case 'recent': return timestampOf(b) - timestampOf(a);
         case 'oldest': return timestampOf(a) - timestampOf(b);
-        case 'title': return (a.title || '').localeCompare(b.title || '');
+        case 'title': return titleCompare(a, b);
         case 'type': return kindOf(a).localeCompare(kindOf(b));
         case 'published':
         default: {
@@ -855,22 +881,13 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
     }}>
       <PageHeader
         title="Live Artifacts"
-        subtitle={`Documents, dashboards, and code ${agentLabel} produces. Publish to share a live URL.`}
+        subtitle={`Documents, dashboards, and code ${agentLabel} produces. Share to get a live URL.`}
         // 20px below the subtitle text so the page reads with a
         // little air before the search-row begins. The 20px spacer
         // below the header still adds the standard between-section
         // rhythm — together they make Live Artifacts breathe a touch
         // more than other collection pages, where the action button
         // already anchors the lower edge of the header.
-        subtitleBottom={20}
-      />
-
-      <Toast
-        type={toast?.kind === 'ok' ? 'success' : 'error'}
-        message={toast?.message}
-        onClose={() => setToast(null)}
-        duration={5000}
-        align="right"
       />
 
       {/* Subtitle → search-row gap. Set to 20px per the design;
@@ -890,12 +907,17 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
             />
           }
           sort={<SortPill value={sort} onChange={setSort} options={SORT_OPTIONS} />}
-          view={<span className="artifacts-view-toggle"><ToggleGroup value={view} onValueChange={setView} size="sm" aria-label="View" options={[{ value: 'grid', label: 'Grid', icon: Ico.grid(12) }, { value: 'list', label: 'List', icon: Ico.list(12) }]} /></span>}
+          view={<span className="artifacts-view-toggle"><ToggleGroup value={view} onValueChange={setView} size="md" aria-label="View" options={[{ value: 'grid', label: 'Grid', icon: Ico.grid(13) }, { value: 'list', label: 'List', icon: Ico.list(13) }]} /></span>}
         />
       )}
 
       {total === 0 ? (
-        <EmptyState agentLabel={agentLabel} />
+        <EmptyState
+          icon={<span style={{ display: 'inline-flex', color: 'var(--ink-5)' }}>{Ico.sparkle(32)}</span>}
+          title="No artifacts yet"
+          description={`When ${agentLabel} creates documents, dashboards, or code outputs they'll appear here.`}
+          style={{ flex: 1 }}
+        />
       ) : effectiveView === 'grid' ? (
         <div className="artifacts-grid" style={{
           // Grid layout (display + responsive columns + gap) lives in CSS
@@ -985,15 +1007,21 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
             }
             items.push({
               id: 'unpublish',
-              label: busyA ? 'Working…' : 'Unpublish',
+              label: busyA ? 'Working…' : 'Stop sharing',
               icon: Ico.power(13),
               onClick: () => handleUnpublish(a),
             });
           } else if (isHtml) {
+            // Forbidden types (e.g. fullstack-stateful-app) keep the item
+            // visible but disabled so the user sees why; handlePublish guards
+            // it too. A disabled item never fires onClick.
+            const blocked = publishBlockedReason(a);
             items.push({
               id: 'publish',
-              label: busyA ? 'Publishing…' : 'Publish',
+              label: busyA ? 'Sharing…' : 'Share',
               icon: Ico.power(13),
+              disabled: !!blocked,
+              title: blocked || undefined,
               onClick: () => handlePublish(a),
             });
           }

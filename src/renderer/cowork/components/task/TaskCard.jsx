@@ -1,6 +1,6 @@
 // Task bubble button — used in project view's task list and any
 // future "list of conversations" surface. Inter throughout (no
-// monospace), Josefin reserved for the small "turns" badge if we ever
+// monospace), Inter reserved for the small "turns" badge if we ever
 // want to display it as an eyebrow.
 //
 // Hover surfaces a kebab in the right meta column (keeping row width
@@ -10,6 +10,7 @@
 
 import { useRef, useState } from 'react';
 import Ico from '../Icons';
+import { Badge, Card } from '../ui';
 import { TaskMenu } from '../TaskMenu';
 import { useRevealOnHover } from '../../hooks/useRevealOnHover';
 import { relativeAge } from '../../lib/formatTime';
@@ -67,33 +68,15 @@ export function TaskCard({
       style={{ position: 'relative' }}
       {...hoverProps}
     >
-      <button
-        type="button"
-        onClick={onClick}
+      <Card
+        as="div"
+        interactive
+        padding="cozy"
+        onActivate={onClick}
         style={{
-          cursor: 'pointer',
-          background: 'var(--surface)',
-          border: '1px solid var(--line)',
-          borderRadius: 12,
-          padding: '14px 16px',
           width: '100%',
           display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto',
           gap: 14, alignItems: 'flex-start',
-          textAlign: 'left',
-          font: 'inherit',
-          color: 'inherit',
-          boxShadow: '0 1px 0 rgba(15,16,17,0.02)',
-          transition: 'border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease',
-        }}
-        onMouseOver={(e) => {
-          e.currentTarget.style.borderColor = 'var(--accent)';
-          e.currentTarget.style.boxShadow = '0 1px 0 rgba(15,16,17,0.02), 0 6px 18px rgba(15,16,17,0.06)';
-          e.currentTarget.style.transform = 'translateY(-1px)';
-        }}
-        onMouseOut={(e) => {
-          e.currentTarget.style.borderColor = 'var(--line)';
-          e.currentTarget.style.boxShadow = '0 1px 0 rgba(15,16,17,0.02)';
-          e.currentTarget.style.transform = 'translateY(0)';
         }}
       >
         <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -127,19 +110,12 @@ export function TaskCard({
               {task.title || 'Untitled'}
             </span>
             {task._scheduleGroup && (
-              <span
+              <Badge
                 title={`Schedule with ${task._scheduleGroup.runs} run${task._scheduleGroup.runs === 1 ? '' : 's'}`}
-                style={{
-                  fontFamily: FONT_BODY,
-                  fontSize: 10.5, fontWeight: 700, letterSpacing: '0.04em',
-                  textTransform: 'uppercase',
-                  color: 'var(--accent, #7CC4B6)',
-                  background: 'rgba(124,196,182,0.14)',
-                  border: '1px solid rgba(124,196,182,0.40)',
-                  padding: '1px 7px', borderRadius: 999,
-                  flexShrink: 0,
-                }}
-              >Schedule · {task._scheduleGroup.runs}</span>
+                variant="accent"
+                size="sm"
+                className="shrink-0 uppercase tracking-[0.04em]"
+              >Schedule · {task._scheduleGroup.runs}</Badge>
             )}
           </span>
           {subtitle && (
@@ -202,7 +178,7 @@ export function TaskCard({
             </span>
           )}
         </div>
-      </button>
+      </Card>
 
       <TaskMenu
         task={task}

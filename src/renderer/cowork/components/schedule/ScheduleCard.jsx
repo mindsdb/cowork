@@ -1,8 +1,8 @@
 // `<ScheduleCard>` — grid view tile for one scheduled task.
 //
-// Width matches the projects-grid minimum (280px); height runs taller
-// (~220-240) to make room for the prompt preview, the cadence/status
-// pills, the next-run line, and the run-now/pause/edit hover row.
+// Width matches the projects-grid minimum (280px). Row 1 pairs the
+// title with a status badge; a cadence + next-run line and the
+// run-now/pause/edit hover row follow.
 //
 // Click anywhere on the card body opens the detail page. Hover reveals
 // inline actions (Run now, Pause/Resume, Edit) at the bottom — they
@@ -10,33 +10,12 @@
 
 import { useState } from 'react';
 import Ico from '../Icons';
+import { Card, Button } from '../ui';
+import { relativeTime } from '../../lib/formatTime';
+import { ScheduleStatusBadge } from './ScheduleStatusBadge';
 
 const FONT_BODY    = 'var(--font-body)';
 const FONT_DISPLAY = 'var(--font-display)';
-
-// Format an ISO timestamp into a relative phrase ("in 3 hours", "5
-// minutes ago"). Fall back to a clean date if it's far away. Keep it
-// punchy — cards are scannable, not paragraphs.
-function relativeTime(iso) {
-  if (!iso) return '—';
-  const t = Date.parse(iso);
-  if (!Number.isFinite(t)) return '—';
-  const now = Date.now();
-  const diff = t - now; // negative = past
-  const abs = Math.abs(diff);
-  const minute = 60_000, hour = 60 * minute, day = 24 * hour;
-  let value, unit;
-  if (abs < minute)        { value = Math.round(abs / 1000);  unit = 's'; }
-  else if (abs < hour)     { value = Math.round(abs / minute); unit = 'm'; }
-  else if (abs < day)      { value = Math.round(abs / hour);   unit = 'h'; }
-  else if (abs < 30 * day) { value = Math.round(abs / day);    unit = 'd'; }
-  else {
-    return new Date(iso).toLocaleDateString(undefined, {
-      month: 'short', day: 'numeric',
-    });
-  }
-  return diff >= 0 ? `in ${value}${unit}` : `${value}${unit} ago`;
-}
 
 function absoluteTime(iso) {
   if (!iso) return '';
@@ -48,72 +27,18 @@ function absoluteTime(iso) {
   });
 }
 
-function StatusPill({ task }) {
-  if (!task.enabled)  return <Pill color="muted" label="Paused" />;
-  if (task.lastError) return <Pill color="danger" label="Last failed" />;
-  return <Pill color="success" label="Active" />;
-}
-
-function Pill({ color, label }) {
-  const bg = {
-    success: 'color-mix(in srgb, var(--success) 14%, transparent)',
-    danger:  'color-mix(in srgb, var(--danger) 14%, transparent)',
-    amber:   'color-mix(in srgb, var(--accent) 14%, transparent)',
-    muted:   'var(--surface-2)',
-  }[color];
-  const fg = {
-    success: 'var(--success)',
-    danger:  'var(--danger)',
-    amber:   'var(--accent)',
-    muted:   'var(--ink-3)',
-  }[color];
-  const bd = {
-    success: 'color-mix(in srgb, var(--success) 35%, transparent)',
-    danger:  'color-mix(in srgb, var(--danger) 35%, transparent)',
-    amber:   'color-mix(in srgb, var(--accent) 35%, transparent)',
-    muted:   'var(--line)',
-  }[color];
-  return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center', gap: 6,
-      padding: '3px 8px', borderRadius: 999,
-      background: bg, border: `1px solid ${bd}`,
-      color: fg,
-      fontFamily: FONT_BODY, fontSize: 11, fontWeight: 600,
-      letterSpacing: '0.01em', whiteSpace: 'nowrap',
-    }}>
-      {color === 'success' && <span style={{
-        display: 'inline-block', width: 6, height: 6, borderRadius: '50%',
-        background: fg,
-      }} />}
-      {label}
-    </span>
-  );
-}
-
-function CadencePill({ cadence }) {
-  const label = {
+// Cadence → display label. Was CadencePill; hoisted to a plain
+// function now that the cadence reads inline in the footer meta row
+// instead of its own pill.
+function cadenceLabel(cadence) {
+  return {
     once:     'One-off',
     hourly:   'Hourly',
     daily:    'Daily',
     weekdays: 'Weekdays',
     weekly:   'Weekly',
   }[cadence] || cadence;
-  return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center', gap: 5,
-      padding: '3px 8px', borderRadius: 999,
-      background: 'var(--surface-2)',
-      border: '1px solid var(--line)',
-      color: 'var(--ink-2)',
-      fontFamily: FONT_BODY, fontSize: 11, fontWeight: 500,
-    }}>
-      {Ico.clock ? Ico.clock(11) : null}
-      {label}
-    </span>
-  );
 }
-
 
 export default function ScheduleCard({
   task, busy = false,
@@ -137,50 +62,38 @@ export default function ScheduleCard({
   const canOpenProject = !!(projectMatch && typeof onOpenProject === 'function');
 
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={open}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
-      }}
+    <Card
+      as="div"
+      interactive
+      padding="cozy"
+      onActivate={open}
+      // `hover` still drives the action-row opacity reveal below; the card's
+      // own lift/shadow now comes from `.card.interactive:hover` (CSS).
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
         position: 'relative',
         display: 'flex', flexDirection: 'column', gap: 10,
-        padding: '14px 16px',
-        minHeight: 220,
-        background: 'var(--surface)',
-        border: `1px solid ${hover ? 'var(--accent)' : 'var(--line)'}`,
-        borderRadius: 12,
-        cursor: 'pointer',
-        font: 'inherit', color: 'inherit', textAlign: 'left',
-        outline: 'none',
-        transition: 'border-color 140ms ease, transform 140ms ease, box-shadow 140ms ease',
-        transform: hover ? 'translateY(-1px)' : 'translateY(0)',
-        boxShadow: hover ? '0 6px 22px rgba(15,16,17,0.06)' : 'none',
       }}
     >
-      {/* Top row — cadence pill (left) + status pill (right). */}
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        gap: 8,
-      }}>
-        <CadencePill cadence={task.cadence} />
-        <StatusPill task={task} />
-      </div>
-
-      {/* Title + prompt preview. Title in display font, prompt in body
-          font with a 2-line clamp so cards align in the grid. */}
+      {/* Title + prompt preview. Row 1 pairs the title (display font,
+          2-line clamp so cards align in the grid) with the status
+          badge on the right; prompt preview sits below. */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1, minHeight: 0 }}>
         <div style={{
-          fontFamily: FONT_DISPLAY, fontSize: 15, fontWeight: 600,
-          color: 'var(--ink)', letterSpacing: '-0.005em', lineHeight: 1.3,
-          overflow: 'hidden', textOverflow: 'ellipsis',
-          display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2,
+          display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
+          gap: 8,
         }}>
-          {task.title || 'Untitled schedule'}
+          <div className="s-h3" style={{
+            color: 'var(--ink)',
+            overflow: 'hidden', textOverflow: 'ellipsis',
+            display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2,
+          }}>
+            {task.title || 'Untitled schedule'}
+          </div>
+          <span style={{ flexShrink: 0 }}>
+            <ScheduleStatusBadge task={task} size="sm" />
+          </span>
         </div>
         {task.prompt && (
           <div style={{
@@ -248,8 +161,10 @@ export default function ScheduleCard({
         </div>
       )}
 
-      {/* Meta row — next run + relative time. Tooltip carries the
-          absolute timestamp for users who want it precise. */}
+      {/* Meta row — cadence + next run, or just cadence when paused
+          (the badge above already says "Paused" — no need to repeat
+          it here). Tooltip carries the absolute timestamp for users
+          who want it precise. */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         gap: 8,
@@ -259,12 +174,12 @@ export default function ScheduleCard({
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}>
           {task.enabled
-            ? <>Next run · <strong style={{ color: 'var(--ink-2)', fontWeight: 500 }}>{relativeTime(task.nextRunAt)}</strong></>
-            : <>Paused</>}
+            ? <>{cadenceLabel(task.cadence)} · Next run <strong style={{ color: 'var(--ink-2)', fontWeight: 500 }}>{relativeTime(task.nextRunAt) ?? '—'}</strong></>
+            : <>{cadenceLabel(task.cadence)}</>}
         </span>
         {task.lastRunAt && (
           <span title={absoluteTime(task.lastRunAt)} style={{ color: 'var(--ink-4)' }}>
-            Last · {relativeTime(task.lastRunAt)}
+            Last · {relativeTime(task.lastRunAt) ?? '—'}
           </span>
         )}
       </div>
@@ -325,41 +240,16 @@ export default function ScheduleCard({
           busy={busy}
         />
       </div>
-    </div>
+    </Card>
   );
 }
 
 
 function ActionButton({ icon, label, onClick, busy }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={busy}
-      style={{
-        display: 'inline-flex', alignItems: 'center', gap: 5,
-        padding: '5px 9px', borderRadius: 6,
-        background: 'var(--surface-2)',
-        border: '1px solid var(--line)',
-        color: 'var(--ink-2)',
-        fontFamily: FONT_BODY, fontSize: 11.5, fontWeight: 500,
-        cursor: busy ? 'not-allowed' : 'pointer',
-        opacity: busy ? 0.6 : 1,
-        transition: 'background 120ms ease, color 120ms ease, border-color 120ms ease',
-      }}
-      onMouseOver={(e) => {
-        e.currentTarget.style.background = 'var(--surface)';
-        e.currentTarget.style.borderColor = 'var(--accent)';
-        e.currentTarget.style.color = 'var(--ink)';
-      }}
-      onMouseOut={(e) => {
-        e.currentTarget.style.background = 'var(--surface-2)';
-        e.currentTarget.style.borderColor = 'var(--line)';
-        e.currentTarget.style.color = 'var(--ink-2)';
-      }}
-    >
-      <span style={{ display: 'inline-flex', color: 'currentColor' }}>{icon}</span>
+    <Button onClick={onClick} disabled={busy}>
+      {icon}
       {label}
-    </button>
+    </Button>
   );
 }

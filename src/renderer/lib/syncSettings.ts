@@ -6,7 +6,7 @@
  * writes to .env (host.saveSettings) should also call one of these
  * helpers so the DB stays in sync.
  */
-import { BASE } from '../cowork/api';
+import { BASE, authFetch } from '../cowork/api';
 
 // Env-var names (ANTON_FOO_BAR) → backend DB setting keys (foo_bar).
 const ENV_TO_SETTING: Record<string, string> = {
@@ -17,8 +17,13 @@ const ENV_TO_SETTING: Record<string, string> = {
   ANTON_MINDS_URL: 'minds_url',
   ANTON_PLANNING_PROVIDER: 'planning_provider',
   ANTON_CODING_PROVIDER: 'coding_provider',
-  ANTON_PLANNING_MODEL: 'planning_model',
-  ANTON_CODING_MODEL: 'coding_model',
+  // ANTON_PLANNING_MODEL / ANTON_CODING_MODEL are deliberately absent (ENG-739).
+  // This helper runs on every login, post-install, and web token-refresh from
+  // the *full* .env, so mapping the model keys here re-pins a user who just
+  // recovered via the picker (their .env still holds the legacy `latest:` line,
+  // which we now preserve). Models enter the DB only via explicit writes —
+  // the Settings picker, or onboarding's dedicated model PUT. .env model lines
+  // are CLI-only.
   ANTON_MEMORY_MODE: 'memory_mode',
   ANTON_EPISODIC_MEMORY: 'episodic_memory',
 };
@@ -55,7 +60,7 @@ export async function syncSettingsToDb(lines: string[]): Promise<boolean> {
       }
     }
     try {
-      const res = await fetch(`${BASE}/settings/${encodeURIComponent(settingKey)}`, {
+      const res = await authFetch(`${BASE}/settings/${encodeURIComponent(settingKey)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ value: dbValue }),
@@ -66,4 +71,92 @@ export async function syncSettingsToDb(lines: string[]): Promise<boolean> {
     }
   }
   return allOk;
+}
+
+// Model env keys → their dedicated DB setting keys. Intentionally SEPARATE from
+// ENV_TO_SETTING (ENG-739): models must NEVER ride the bulk .env re-sync, or a
+// routine login/token-refresh would re-pin a picker choice from the stale .env
+// `latest:` line. See the ENG-739 note on ENV_TO_SETTING above.
+const MODEL_ENV_TO_SETTING: Record<string, string> = {
+  ANTON_PLANNING_MODEL: 'planning_model',
+  ANTON_CODING_MODEL: 'coding_model',
+};
+
+// Own-key check — NOT `key in MODEL_ENV_TO_SETTING` / bracket access, which also
+// match inherited Object.prototype names (`toString`, `constructor`, …) and
+// would treat a stray `toString=…` line as a model key with a function value.
+const isModelEnvKey = (key: string): boolean =>
+  Object.prototype.hasOwnProperty.call(MODEL_ENV_TO_SETTING, key);
+
+/** The `ANTON_*_MODEL` lines from a set of "KEY=value" lines. */
+export function modelLinesFrom(lines: string[]): string[] {
+  return lines.filter((l) => {
+    const eq = l.indexOf('=');
+    return eq > 0 && isModelEnvKey(l.slice(0, eq));
+  });
+}
+
+/**
+ * Explicitly write the model chosen during onboarding to the DB via the
+ * dedicated PUT /settings/:key — the ONLY non-picker path allowed to set a model
+ * (ENG-739). Callers must invoke this only for a genuine explicit choice
+ * (onboarding), NEVER from the recurring login/post-install/token-refresh bulk
+ * sync — doing so would reopen the ENG-739 picker-clobber. A minds onboarding
+ * writes no model line, so this is a vacuous success there (the backend resolves
+ * the tier-aware default). Kept alongside syncSettingsToDb so both model-write
+ * and bulk-write logic live in one place (ENG-922).
+ *
+ * Returns true iff every model PUT it attempted received a 2xx (or there was
+ * nothing to write). Callers MUST check this before dropping their retry payload:
+ * a failed model write is NOT self-healing — model keys are excluded from the
+ * bulk .env re-sync (ENG-739) AND the backend's startup migration, so a silently
+ * dropped write leaves a fresh install permanently config-not-ready (#455 review).
+ */
+export async function syncModelsToDb(lines: string[]): Promise<boolean> {
+  let allOk = true;
+  for (const line of lines) {
+    const eq = line.indexOf('=');
+    if (eq <= 0) continue;
+    const envKey = line.slice(0, eq);
+    if (!isModelEnvKey(envKey)) continue;
+    const settingKey = MODEL_ENV_TO_SETTING[envKey];
+    const value = line.slice(eq + 1);
+    if (!value) continue;
+    try {
+      const res = await authFetch(`${BASE}/settings/${encodeURIComponent(settingKey)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value }),
+      });
+      if (!res.ok) allOk = false;
+    } catch {
+      allOk = false;
+    }
+  }
+  return allOk;
+}
+
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * syncModelsToDb with a few retries and exponential backoff — for the
+ * post-install replay (ENG-922). The cowork-server has just been
+ * installed/started, so a lone failed request is usually a transient settling
+ * blip; the backoff gives it a moment to come up rather than hammering it
+ * back-to-back (#455 review). Returns true once a full write succeeds (or
+ * there's nothing to write), false if every attempt failed — on false the caller
+ * MUST keep its retry payload (see the syncModelsToDb note on why a dropped model
+ * doesn't self-heal). `baseDelayMs` is 0 in tests to keep them fast.
+ */
+export async function syncModelsToDbWithRetry(
+  lines: string[],
+  attempts = 3,
+  baseDelayMs = 500,
+): Promise<boolean> {
+  const n = Math.max(1, attempts);
+  for (let i = 0; i < n; i++) {
+    if (await syncModelsToDb(lines)) return true;
+    if (i < n - 1 && baseDelayMs > 0) await sleep(baseDelayMs * 2 ** i);
+  }
+  return false;
 }

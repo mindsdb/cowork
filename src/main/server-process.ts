@@ -17,7 +17,13 @@ import * as path from 'path';
 import { app } from 'electron';
 import { coworkHome, buildKind } from './cowork-home';
 import { MINDS_ENV_SLUG } from './minds-urls';
-import { getEnvPath, findUv, getCoworkServerBinary } from './uv-paths';
+import { withServerLifecycle } from './server-lifecycle';
+import { decideStartWait, startFailureMessage } from './update-logic';
+import { getEnvPath, findUv, coworkServerBinCandidates } from './uv-paths';
+import {
+  SERVER_START_CAP_MS,
+  type ServerStartErrorKind,
+} from '../shared/server-status';
 
 const DEFAULT_PORT = 26866; // legacy port (ANTON on T9 keypad)
 const SERVER_HOST = '127.0.0.1';
@@ -126,14 +132,31 @@ let serverStarted = false;
 // (which would race for the same port and the second would fail).
 let pendingStart: Promise<StartServerResult> | null = null;
 
+/**
+ * Run a complete server-maintenance transaction exclusively with starts and
+ * stops. This must be entered before source inspection or a stop/install/start
+ * sequence, rather than only around the `uv` subprocess.
+ */
+export async function withServerMaintenance<T>(fn: () => Promise<T>): Promise<T> {
+  return withServerLifecycle(fn);
+}
+
 // Diagnostics — captured so the renderer can surface them in a help
 // modal when the user wonders why the backend is offline. We keep
-// the most recent start failure reason and a rolling tail of stderr
-// (latest ~32 KB) since the python crash trace usually lives in the
-// last few lines. Flushed on a successful start.
+// the most recent start failure reason and a rolling tail of stdout/stderr
+// (latest ~32 KB) for the current start attempt; the Python crash trace
+// usually lives in its last few lines.
 const STDERR_BUFFER_BYTES = 32 * 1024;
 let recentStderr = '';
 let lastStartError: string | null = null;
+// Which kind of failure produced `lastStartError`. The renderer picks its
+// explanation from this discriminant rather than string-matching the message,
+// so the copy and the message can change independently.
+let lastStartErrorKind: ServerStartErrorKind | null = null;
+// A process found holding our port after a failed start — real evidence for
+// the panel, which otherwise can only guess that "something may be on the
+// port". Null when the port is free (the normal case).
+let lastPortHolderPid: number | null = null;
 let lastStartAt: number | null = null;
 let lastExitCode: number | null = null;
 // Whether the most-recent transition to "not running" was caused by
@@ -162,11 +185,16 @@ function appendStderr(chunk: string) {
 let logStream: fs.WriteStream | null = null;
 
 export function getServerLogPath(): string {
-  /* getPath('logs') resolves to ~/Library/Logs/<AppName> on macOS,
-     %APPDATA%/<AppName>/logs on Windows, ~/.config/<AppName>/logs on Linux.
+  /* Non-prod channels log under their isolated data home so launching one
+     build kind never truncates another's log — every kind shares one
+     app.getPath('logs') because they share a productName, and the stream opens
+     with flags:'w'. prod keeps the historical getPath('logs') location
+     (~/Library/Logs/<AppName> on macOS, %APPDATA%/<AppName>/logs on Windows,
+     ~/.config/<AppName>/logs on Linux).
      Pure getter — the directory is created lazily in openLogStream(), so
      callers that only need the path (e.g. the Help > Reveal Logs menu item)
      don't trigger a filesystem write on every invocation. */
+  if (buildKind() !== 'prod') return path.join(coworkHome(), 'logs', 'cowork-server.log');
   return path.join(app.getPath('logs'), 'cowork-server.log');
 }
 
@@ -177,9 +205,20 @@ function openLogStream(): void {
     /* Electron does not guarantee the logs directory exists; create it
        here, at the one point we actually open the stream for writing. */
     fs.mkdirSync(path.dirname(logPath), { recursive: true });
-    logStream = fs.createWriteStream(logPath, { flags: 'w' });
+    const stream = fs.createWriteStream(logPath, { flags: 'w' });
+    /* A failure to open surfaces ASYNCHRONOUSLY as an 'error' event, not as a
+       throw from createWriteStream — so the try/catch alone never sees it. With
+       no 'error' listener Node re-raises it as an uncaught exception, which
+       Electron turns into a fatal "A JavaScript error occurred in the main
+       process" dialog and blocks the whole app from starting (ENG-1187: EPERM =
+       ERROR_ACCESS_DENIED on the log file — a read-only/ACL condition, a
+       delete-pending file from a prior install's still-open handle, or AV
+       controlled-folder protection). Logging to disk is best-effort: degrade to
+       no disk log, keeping the in-memory recentStderr tail and the running app. */
+    stream.on('error', () => { if (logStream === stream) logStream = null; });
+    logStream = stream;
   } catch {
-    /* Logging to disk is best-effort — never let it block server startup. */
+    /* Synchronous failures (e.g. mkdir denied) — same best-effort stance. */
     logStream = null;
   }
 }
@@ -188,62 +227,116 @@ function writeLog(text: string): void {
   logStream?.write(text);
 }
 
-// Kill a child process and its entire process group (POSIX). When we
-// spawn with detached:true the child leads its own group, so
-// process.kill(-pid) reaches grandchildren (e.g. python spawned by uv).
-// Falls back to child.kill() on Windows or if the group kill fails.
+// Kill a child process and its entire process tree. When we spawn with
+// detached:true (POSIX) the child leads its own group, so process.kill(-pid)
+// reaches grandchildren (e.g. python spawned by uv).
+//
+// Windows has no process groups to signal, and the thing we spawn is a
+// launcher that runs python as a child — so proc.kill() terminates the
+// launcher and leaves python importing, unsupervised. It then binds our port
+// behind the app's back: the app has no handle on it, its own
+// isServerRunning() says nothing is up, and only a fresh app launch recovers
+// via the adopt path. `taskkill /T` walks the tree, which is the whole point.
+//
+// /F (force) is used for the graceful phase too, because on Windows there is
+// no polite form to try. Not because the sidecar can't answer one — uvicorn
+// installs a SIGBREAK handler on win32 — but because nothing can deliver it as
+// the child is spawned: `detached` is false on Windows so it never gets
+// CREATE_NEW_PROCESS_GROUP, Electron main is a GUI process with no console to
+// raise the event from, and the packaged target is a shim that would have to
+// re-raise it into python anyway. Attempting it would cost a stall on every
+// Stop and change nothing. The pre-existing behaviour here (TerminateProcess
+// on the launcher) was never graceful either; this only widens it to the tree.
+//
+// What that costs, honestly: the DB is fine either way (SQLite runs its default
+// rollback journal, and a TerminateProcess is gentler than the power cut it is
+// already safe against). What is lost is the work the sidecar does in Python on
+// the way down — an in-flight turn is written by a single persist() reached
+// only from its own terminal handlers, so a hard kill mid-turn drops it. That
+// gap is not specific to Windows and not created here: POSIX runs uvicorn with
+// no graceful-shutdown timeout, so it waits unbounded on the open stream and
+// takes the SIGKILL below instead. Closing it needs a cancel-then-stop
+// handshake over loopback, which is its own change.
 function killTree(proc: ChildProcess, signal: NodeJS.Signals): void {
-  if (process.platform !== 'win32' && proc.pid) {
+  if (process.platform === 'win32') {
+    const pid = proc.pid;
+    if (pid) {
+      // Numeric PID via execFile — no shell, nothing interpolated.
+      execFile('taskkill', ['/F', '/T', '/PID', String(pid)], { timeout: 4000 }, (err) => {
+        // taskkill also errors when the tree is already gone; the fallback is
+        // a no-op then. Only reached when taskkill itself is unusable.
+        if (err) { try { proc.kill(signal); } catch {} }
+      });
+      return;
+    }
+  } else if (proc.pid) {
     try { process.kill(-proc.pid, signal); return; } catch {}
   }
   try { proc.kill(signal); } catch {}
 }
 
-// Find and kill the process listening on a port. Used to reap orphaned
-// servers that we adopted but don't have a ChildProcess handle for.
-// Best-effort — failures are silently ignored.
-async function killProcessOnPort(port: number): Promise<boolean> {
-  // Windows: lsof isn't available, so parse `netstat -ano` for the PID
-  // LISTENING on our port and force-kill it (and its child tree). This is
-  // the orphaned-server case that otherwise surfaces as WinError 10048
-  // ("only one usage of each socket address") on every restart, because the
-  // OS — and sometimes our own quit — doesn't reap the prior python.
+// PIDs currently listening on a port. Best-effort — an empty array means
+// "nothing found", including the case where the lookup itself failed.
+function findPortHolders(port: number): Promise<number[]> {
   if (process.platform === 'win32') {
-    return new Promise<boolean>((resolve) => {
+    // lsof isn't available; parse `netstat -ano`.
+    //
+    // Nothing about the state column can be trusted. The word is localized
+    // (ABHÖREN on a German Windows, ESCUCHANDO on a Spanish one), so matching
+    // "LISTENING" made the whole orphan reap a silent no-op outside English
+    // installs — on exactly the machines this matters for. Worse, some locales
+    // render it as TWO words (Italian "IN ASCOLTO", French "À L'ÉCOUTE"), which
+    // shifts every later column, so a fixed PID index is wrong there too.
+    //
+    // Two things that are NOT localized carry the whole match instead: the
+    // foreign-address column, where a listening socket is the only TCP row with
+    // an all-zero peer, and the PID, which is always the last column.
+    return new Promise<number[]>((resolve) => {
       execFile('netstat', ['-ano'], { timeout: 4000 }, (err, stdout) => {
-        if (err || !stdout) { resolve(false); return; }
+        if (err || !stdout) { resolve([]); return; }
         const pids = new Set<number>();
         for (const line of stdout.split(/\r?\n/)) {
-          // columns: proto  local-addr  foreign-addr  state  pid
+          // columns: proto  local-addr  foreign-addr  state…  pid
           const cols = line.trim().split(/\s+/);
-          if (cols.length >= 5 && cols[3] === 'LISTENING' && cols[1].endsWith(`:${port}`)) {
-            const pid = Number(cols[4]);
-            if (pid > 0) pids.add(pid);
-          }
+          if (cols.length < 5) continue; // UDP rows have no state column
+          if (!/^TCP/i.test(cols[0])) continue;
+          if (!cols[1].endsWith(`:${port}`)) continue;
+          if (cols[2] !== '0.0.0.0:0' && cols[2] !== '[::]:0') continue;
+          const pid = Number(cols[cols.length - 1]);
+          if (pid > 0) pids.add(pid);
         }
-        if (pids.size === 0) { resolve(false); return; }
-        let pending = pids.size;
-        for (const pid of pids) {
-          execFile('taskkill', ['/F', '/T', '/PID', String(pid)], { timeout: 4000 }, () => {
-            if (--pending <= 0) resolve(true);
-          });
-        }
+        resolve([...pids]);
       });
     });
   }
-  return new Promise<boolean>((resolve) => {
+  return new Promise<number[]>((resolve) => {
     execFile('lsof', ['-ti', `tcp:${port}`, '-sTCP:LISTEN'], { timeout: 3000 }, (err, stdout) => {
-      if (err || !stdout.trim()) { resolve(false); return; }
-      let killed = false;
-      for (const pidStr of stdout.trim().split('\n')) {
-        const pid = Number(pidStr);
-        if (pid > 0) {
-          try { process.kill(pid, 'SIGTERM'); killed = true; } catch {}
-        }
-      }
-      resolve(killed);
+      if (err || !stdout.trim()) { resolve([]); return; }
+      const pids = stdout.trim().split('\n').map(Number).filter((pid) => pid > 0);
+      resolve([...new Set(pids)]);
     });
   });
+}
+
+// Find and kill whatever is listening on a port, returning the PIDs it went
+// after. Used to reap orphaned servers we have no ChildProcess handle for —
+// otherwise they surface as WinError 10048 / EADDRINUSE on every restart,
+// because neither the OS nor our own quit always reaps the prior python.
+// Best-effort — failures are silently ignored.
+async function killProcessOnPort(port: number): Promise<number[]> {
+  const pids = await findPortHolders(port);
+  if (pids.length === 0) return [];
+  if (process.platform === 'win32') {
+    await Promise.all(pids.map((pid) => new Promise<void>((resolve) => {
+      execFile('taskkill', ['/F', '/T', '/PID', String(pid)], { timeout: 4000 }, () => resolve());
+    })));
+    return pids;
+  }
+  const killed: number[] = [];
+  for (const pid of pids) {
+    try { process.kill(pid, 'SIGTERM'); killed.push(pid); } catch {}
+  }
+  return killed;
 }
 
 export function getServerPort(): number {
@@ -266,34 +359,25 @@ function getDevServerDir(): string | null {
 }
 
 function getCoworkServerBin(): string | null {
-  const bin = getCoworkServerBinary();
-  if (fs.existsSync(bin)) return bin;
-  if (process.platform === 'win32' && process.env.LOCALAPPDATA) {
-    const winCandidate = path.join(process.env.LOCALAPPDATA, 'bin', 'cowork-server.exe');
-    if (fs.existsSync(winCandidate)) return winCandidate;
+  // Candidate order — including the prod-only Windows %LOCALAPPDATA% global
+  // fallback — lives in uv-paths.coworkServerBinCandidates so it is unit-tested
+  // alongside the rest of the per-channel binary isolation.
+  for (const candidate of coworkServerBinCandidates()) {
+    if (fs.existsSync(candidate)) return candidate;
   }
   return null;
 }
 
-async function probeHealth(timeoutMs: number): Promise<boolean> {
-  const startedAt = Date.now();
-  while (Date.now() - startedAt < timeoutMs) {
-    const ok = await new Promise<boolean>((resolve) => {
-      const req = http.get(
-        { hostname: SERVER_HOST, port: serverPort, path: '/api/v1/health/', timeout: 1000 },
-        (res) => {
-          res.resume();
-          resolve(res.statusCode === 200);
-        },
-      );
-      req.on('error', () => resolve(false));
-      req.on('timeout', () => { req.destroy(); resolve(false); });
-    });
-    if (ok) return true;
-    await new Promise((r) => setTimeout(r, 250));
-  }
-  console.warn(`[server] health check failed after ${timeoutMs}ms on port ${serverPort}`);
-  return false;
+// Gap between health polls during a start, and the per-request timeout. The
+// gap is short because the win case is "notice the moment it's up"; the
+// request timeout is generous because a machine slow enough to need this fix
+// is also slow to answer a loopback request. A missed probe just costs one
+// more iteration.
+const HEALTH_POLL_INTERVAL_MS = 250;
+const HEALTH_PROBE_TIMEOUT_MS = 1000;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 // Single-shot /health probe that also reads the `owner` token, so the
@@ -316,6 +400,38 @@ function probeHealthOnce(port: number, timeoutMs: number): Promise<{ ok: boolean
     req.on('error', () => resolve({ ok: false, owner: null }));
     req.on('timeout', () => { req.destroy(); resolve({ ok: false, owner: null }); });
   });
+}
+
+// One-shot read of the server's /health payload. Best-effort — resolves null
+// on any failure.
+function fetchHealth(timeoutMs = 800): Promise<{ server_version?: string; anton_version?: string } | null> {
+  return new Promise((resolve) => {
+    const req = http.get(
+      { hostname: SERVER_HOST, port: serverPort, path: '/api/v1/health/', timeout: timeoutMs },
+      (res) => {
+        if (res.statusCode !== 200) { res.resume(); resolve(null); return; }
+        let body = '';
+        res.on('data', (c) => { body += c; });
+        res.on('end', () => {
+          try { resolve(JSON.parse(body)); }
+          catch { resolve(null); }
+        });
+      },
+    );
+    req.on('error', () => resolve(null));
+    req.on('timeout', () => { req.destroy(); resolve(null); });
+  });
+}
+
+// Reported CalVers of both hot-updated backend components in a single /health
+// read, so the About panel can fold server AND agent into the unified version.
+// The renderer's Settings view is the authoritative surface and reads the same
+// fields directly.
+export function fetchServerVersions(timeoutMs = 800): Promise<{ server: string | null; anton: string | null }> {
+  return fetchHealth(timeoutMs).then((h) => ({
+    server: h?.server_version ?? null,
+    anton: h?.anton_version ?? null,
+  }));
 }
 
 // True when resolveServerPort() found a healthy server that proved to be
@@ -369,6 +485,10 @@ export interface StartServerResult {
 }
 
 export async function startServer(opts: { port?: number; readyTimeoutMs?: number } = {}): Promise<StartServerResult> {
+  return withServerLifecycle(() => startServerUnlocked(opts));
+}
+
+async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: number }): Promise<StartServerResult> {
   if (serverStarted) return { ok: true, port: serverPort };
   // If a start is already in progress (e.g. from app boot), reuse it
   // instead of spawning a second python that would clash on the port.
@@ -394,6 +514,8 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
       serverStarted = true;
       _adoptedExternal = true;
       lastStartError = null;
+      lastStartErrorKind = null;
+      lastPortHolderPid = null;
       console.log(`[server] adopted our own existing instance on port ${serverPort}`);
       return { ok: true, port: serverPort };
     }
@@ -404,20 +526,28 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
   // Windows). If so, our spawn would fail to bind with WinError 10048 /
   // EADDRINUSE. Reap any non-responsive listener first (no-op if the port is
   // actually free), then give the OS a moment to release the socket.
-  if (await killProcessOnPort(serverPort)) {
-    console.log(`[server] reaped an orphan holding port ${serverPort} before spawn`);
-    await new Promise((r) => setTimeout(r, 500));
+  const reaped = await killProcessOnPort(serverPort);
+  if (reaped.length > 0) {
+    console.log(`[server] reaped an orphan holding port ${serverPort} before spawn (pid ${reaped.join(', ')})`);
+    await sleep(500);
   }
 
-  // 15s is plenty for a normal packaged boot (typically <2s). Dev mode
-  // runs `uv run` against the sibling source dir, and the FIRST boot
-  // builds a fresh .venv — resolving and downloading the dependency
-  // tree can take a couple of minutes on a cold cache, so give it room.
+  // Hard cap on the wait — not an expected duration. The wait itself tracks
+  // the child's liveness, so this only bounds a process that is still alive
+  // and still starting. One cap for every build: a dev-only allowance would
+  // mean a start that passes locally can still be killed in a packaged build,
+  // so the failure would only ever reproduce on a customer's machine.
   const devServerDir = getDevServerDir();
   const isDevSource = Boolean(devServerDir && fs.existsSync(path.join(devServerDir, 'pyproject.toml')));
-  const readyTimeoutMs = opts.readyTimeoutMs ?? (isDevSource ? 180_000 : 15000);
+  const startCapMs = opts.readyTimeoutMs ?? SERVER_START_CAP_MS;
 
   lastStartAt = Date.now();
+  // The repair classifier must only inspect output from this attempt. A prior
+  // failed start may contain an import error while this one fails for an
+  // unrelated reason (migration, port, or config).
+  recentStderr = '';
+  lastStartErrorKind = null;
+  lastPortHolderPid = null;
   // A new start attempt invalidates the prior stop attribution —
   // whether the previous death was intentional or a crash, the
   // user is now asking for a fresh boot. Reset so the next
@@ -440,6 +570,7 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
     const uvCmd = findUv();
     if (!uvCmd) {
       lastStartError = 'uv not found. Install uv first: https://docs.astral.sh/uv/getting-started/installation/';
+      lastStartErrorKind = 'not-installed';
       return { ok: false, reason: lastStartError };
     }
     spawnCmd = uvCmd;
@@ -450,6 +581,7 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
     const bin = getCoworkServerBin();
     if (!bin) {
       lastStartError = 'cowork-server not installed. Run the installer to set up the backend.';
+      lastStartErrorKind = 'not-installed';
       return { ok: false, reason: lastStartError };
     }
     spawnCmd = bin;
@@ -476,8 +608,27 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
       ...loadBundledServerCredentials(),
       PATH: getEnvPath(),
       PYTHONUNBUFFERED: '1',
+      // Both port names: COWORK_SERVER_PORT for every shipped server and
+      // COWORK_LISTEN_PORT (the server's newer primary alias) so a future
+      // alias cleanup server-side can never strand this app again.
+      // Force Python UTF-8 mode so cowork-server (and the anton scratchpad it
+      // spawns) never fall back to the host code page — e.g. GBK/cp936 on
+      // Chinese Windows, which crashes on non-ASCII file reads / output
+      // (ENG-824). UTF-8 mode already makes open()/filesystem/stdio UTF-8 with
+      // the lenient surrogateescape handler; we deliberately do NOT set
+      // PYTHONIOENCODING (a bare value downgrades stdio to strict). Respect an
+      // explicit operator override if one is already set.
+      PYTHONUTF8: process.env.PYTHONUTF8 || '1',
       COWORK_SERVER_PORT: String(serverPort),
+      COWORK_LISTEN_PORT: String(serverPort),
       COWORK_SERVER_HOST: SERVER_HOST,
+      // The server builds OAuth redirect URIs from server_origin, which
+      // otherwise defaults to the fixed :26866. Since ENG-439 the packaged
+      // server listens on a per-user derived port, so without this the
+      // redirect points at a dead :26866 and "Allow" lands on an unreachable
+      // page. Pin the origin to the port we actually spawned on. Google does
+      // not validate the port for loopback (127.0.0.1) redirect URIs.
+      COWORK_SERVER_ORIGIN: getServerOrigin(),
       ...(kind !== 'prod' ? { COWORK_HOME: dataHome } : {}),
       // ENG-439: stamp the server we spawn with our owner token so a future
       // launch (ours) can tell this server is ours and adopt it, while another
@@ -519,7 +670,29 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
       writeLog(text);
       process.stderr.write(`[cowork-server] ${text}`);
     });
+    // Whether this attempt's child is done, and why. Local to the attempt so a
+    // late event from a previous child can't decide this one's outcome.
+    let childExited = false;
+    let childExitCode: number | null = null;
+    let spawnError: string | null = null;
+
+    // A spawn that never happens (EPERM from antivirus, ENOENT on a broken uv
+    // shim) emits 'error' and nothing else — no stdout, no stderr, no exit.
+    // Without this listener that whole class of failure was invisible and got
+    // reported as a health timeout with an empty log, which sent users looking
+    // for a slow backend when the program had not run at all. Node also throws
+    // an unhandled 'error' when nothing is listening.
+    child.on('error', (err) => {
+      spawnError = err instanceof Error ? err.message : String(err);
+      // Put it where the diagnostics tail and the on-disk log will show it, so
+      // "no log captured" stops being the only evidence of a launch failure.
+      appendStderr(`spawn failed: ${spawnError}\n`);
+      writeLog(`[cowork-server] spawn failed: ${spawnError}\n`);
+      console.error(`[cowork-server] spawn failed: ${spawnError}`);
+    });
     child.on('exit', (code) => {
+      childExited = true;
+      childExitCode = code;
       serverStarted = false;
       serverProcess = null;
       lastExitCode = code;
@@ -540,24 +713,60 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
 
     serverProcess = child;
 
-    const ready = await probeHealth(readyTimeoutMs);
-    if (!ready) {
-      lastStartError = `Server did not respond on /health within ${readyTimeoutMs}ms.`;
+    // Wait on the child's liveness, not on a fixed timer: poll /health for as
+    // long as the process is alive and still starting, up to the hard cap. A
+    // slow machine gets the time it needs; a sidecar that dies is reported the
+    // moment it dies rather than after the full budget.
+    const waitStartedAt = Date.now();
+    let step = decideStartWait({ healthy: false, spawnError, exited: childExited, elapsedMs: 0, capMs: startCapMs });
+    while (step.action === 'poll') {
+      await sleep(HEALTH_POLL_INTERVAL_MS);
+      const probe = await probeHealthOnce(serverPort, HEALTH_PROBE_TIMEOUT_MS);
+      step = decideStartWait({
+        healthy: probe.ok,
+        spawnError,
+        exited: childExited,
+        elapsedMs: Date.now() - waitStartedAt,
+        capMs: startCapMs,
+      });
+    }
+
+    if (step.action === 'fail') {
+      const elapsedMs = Date.now() - waitStartedAt;
+      lastStartErrorKind = step.kind;
+      lastStartError = startFailureMessage({
+        kind: step.kind,
+        exitCode: childExitCode,
+        spawnError,
+        elapsedMs,
+      });
+      console.error(`[server] start failed on port ${serverPort}: ${lastStartError}`);
       // Reap the spawned child instead of leaving it as a zombie
       // pinning the port. If we don't, every failed restart leaks a
-      // python that still owns 26866, so subsequent restart attempts
+      // python that still owns the port, so subsequent restart attempts
       // bind-collide and fail the same way — making the "stop +
       // start" cycle look broken from the user's side. SIGTERM with
       // a SIGKILL fallback so a hung uvicorn boot can't outlive us.
-      killTree(child, 'SIGTERM');
-      const exited = new Promise<void>((resolve) => {
-        child.once('exit', () => resolve());
-      });
-      await Promise.race([exited, new Promise<void>((r) => setTimeout(r, 2_000))]);
-      if (child.exitCode === null && !child.killed) {
-        killTree(child, 'SIGKILL');
-        await Promise.race([exited, new Promise<void>((r) => setTimeout(r, 1_000))]);
+      //
+      // Skipped when the spawn itself failed: there is no process to reap, and
+      // Node never emits 'exit' for one that never existed, so the wait below
+      // would spend its full 2s on an event that cannot arrive — on the one
+      // failure path whose entire point is that it reports immediately.
+      if (!childExited && !spawnError) {
+        killTree(child, 'SIGTERM');
+        const exited = new Promise<void>((resolve) => {
+          child.once('exit', () => resolve());
+        });
+        await Promise.race([exited, sleep(2_000)]);
+        if (child.exitCode === null && !child.killed) {
+          killTree(child, 'SIGKILL');
+          await Promise.race([exited, sleep(1_000)]);
+        }
       }
+      // Whatever still holds the port after the reap is a real, nameable
+      // cause the user can act on — as opposed to the panel's old guess that
+      // "a stale process" might be involved.
+      lastPortHolderPid = (await findPortHolders(serverPort))[0] ?? null;
       if (serverProcess === child) serverProcess = null;
       return {
         ok: false,
@@ -566,9 +775,21 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
       };
     }
     serverStarted = true;
+    // /health answered from a server whose launcher has already exited — the
+    // process handed off and there is no child left to supervise. Track it the
+    // same way as a server we adopted, so isServerRunning() doesn't call a
+    // healthy backend dead and stopServer() still reaps it by port.
+    if (childExited) _adoptedExternal = true;
+    // How long the start actually took. Only failures used to say anything,
+    // which meant a slow-but-successful boot — the case this budget exists for
+    // — left no trace at all, and a support log could not distinguish "came up
+    // in 2s" from "came up in 80s and nearly missed the cap".
+    console.log(`[server] healthy on port ${serverPort} after ${Date.now() - waitStartedAt}ms`);
     // Successful start — clear the previous failure note but keep
     // the rolling stderr in case downstream code wants to inspect.
     lastStartError = null;
+    lastStartErrorKind = null;
+    lastPortHolderPid = null;
     return { ok: true, port: serverPort };
   })();
 
@@ -586,11 +807,20 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
 // surfacing as a 15s /health timeout instead of an obvious failure.
 //
 // Three phases:
-//   1. SIGTERM, wait up to 3s for graceful shutdown.
+//   1. SIGTERM, wait up to 6s for graceful shutdown. Sized to outlast the
+//      sidecar's own shutdown work rather than picked round: its channel
+//      drain alone budgets 3s, so the previous 3s here could never let the
+//      rest of its teardown finish. The wait ends the moment the child exits,
+//      so a healthy stop still returns in milliseconds and only a genuinely
+//      slow shutdown spends the extra time.
 //   2. SIGKILL, wait up to 1.5s for hard kill.
 //   3. Clear the slot regardless — if the OS truly orphaned the child,
 //      we'd rather lose track of it than block app quit forever.
 export async function stopServer(): Promise<void> {
+  return withServerLifecycle(stopServerUnlocked);
+}
+
+async function stopServerUnlocked(): Promise<void> {
   // Allow the next start to re-resolve the port (re-derive the per-user port
   // and re-check whether anything is running there). ENG-439.
   _portResolved = false;
@@ -630,7 +860,7 @@ export async function stopServer(): Promise<void> {
 
   await Promise.race([
     exited,
-    new Promise<void>((resolve) => setTimeout(resolve, 3_000)),
+    new Promise<void>((resolve) => setTimeout(resolve, 6_000)),
   ]);
 
   // Still alive? Force-kill. `proc.exitCode === null` means the child
@@ -650,6 +880,25 @@ export async function stopServer(): Promise<void> {
   if (serverProcess === proc) {
     serverProcess = null;
   }
+}
+
+// Last-resort reap that does NOT take the lifecycle lock.
+//
+// stopServer() queues behind whatever holds that lock, and a start holds it for
+// as long as the sidecar is still coming up. On quit that means the polite stop
+// can lose its race and the app exits with a python still importing, which then
+// binds the port with nobody supervising it — the exact orphan the quit drain
+// exists to prevent. This kills what we have a handle on and whatever holds the
+// port, and is only for the path where stopServer() has already timed out.
+export async function forceReapServer(): Promise<void> {
+  const proc = serverProcess;
+  if (proc) {
+    _stopRequested = true; // the death is ours; don't report it as a crash
+    killTree(proc, 'SIGKILL');
+  }
+  serverStarted = false;
+  await killProcessOnPort(serverPort);
+  if (serverProcess === proc) serverProcess = null;
 }
 
 // Track whether we adopted an external server (no child process to manage)
@@ -681,6 +930,12 @@ export interface ServerDiagnostics {
   port: number;
   /** Last failure reason from startServer(); null after a successful start. */
   lastError: string | null;
+  /** Which kind of failure `lastError` describes, so the renderer can explain
+   *  it without parsing the message. Null when there is no failure. */
+  lastErrorKind: ServerStartErrorKind | null;
+  /** PID found holding the port after the last failed start, or null when the
+   *  port was free (the normal case). */
+  portHolderPid: number | null;
   /** Last exit code if the process has died. */
   lastExitCode: number | null;
   /** Wall-clock ms of the last start attempt; null until first attempt. */
@@ -703,6 +958,8 @@ export function getServerDiagnostics(): ServerDiagnostics {
     starting: isServerStarting(),
     port: serverPort,
     lastError: lastStartError,
+    lastErrorKind: lastStartErrorKind,
+    portHolderPid: lastPortHolderPid,
     lastExitCode,
     lastStartAt,
     recentLog: recentStderr,

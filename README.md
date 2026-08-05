@@ -86,11 +86,64 @@ When testing a packaged build (`npm run pack`), the `DEV_MODE` variable in `~/.a
 |-------|----------|
 | `live` | Load from Vite dev server (`localhost:5173`) — requires `npm run dev:renderer` running separately |
 | `full` | Load the bundled renderer only — skips OTA cache entirely |
-| _(unset)_ | Production mode — loads OTA-cached UI if available, otherwise bundled |
+| _(unset)_ | Production mode — loads OTA-cached UI if available (`prod` builds only — see [Over-the-Air Updates](#over-the-air-updates)), otherwise bundled |
 
 To set it, add `DEV_MODE=full` (or `live`) to `~/.anton/.env`. Remove the line to return to production behavior. When `DEV_MODE` is set, the OTA update check is skipped entirely.
 
 > **Tip**: If you build the app and it looks outdated, the OTA cache may be serving an older published bundle. Either set `DEV_MODE=full` to bypass it, or clear the cache: `rm -rf ~/Library/Application\ Support/anton/ui-cache/current`
+
+### Fresh-install reset (macOS)
+
+To test first-run onboarding you need a true fresh-install state. App state lives in six places: the cowork homes (`~/.cowork` plus per-build-kind variants), the legacy `~/.anton` home, the Electron userData dir, the log dir, the uv-managed tool installs, and the macOS Keychain (connector OAuth tokens). This zsh function wipes them all — drop it in `~/.zshrc`:
+
+```zsh
+# Reset MindsHub Cowork to a fresh-install state: kills the app, wipes
+# per-user state (API keys, chat history, .env, DB, OTA cache, keychain
+# tokens), and uninstalls the uv-managed packages so the .app runs full
+# onboarding on next launch.
+# Usage: anton-reset [--deep]   (--deep also removes uv itself + shims)
+anton-reset() {
+  local deep=0
+  [[ "$1" == "--deep" ]] && deep=1
+
+  echo "About to wipe Cowork state for $(whoami) (HOME: $HOME)"
+  (( deep )) && echo "Deep mode: also removes uv and ~/.local/share/uv"
+  read -q "?Proceed? [y/N] " || { echo; echo "Aborted."; return 1; }
+  echo
+
+  # Stop the app (current product name, plus older builds)
+  killall "MindsHub Cowork" 2>/dev/null
+  killall Anton 2>/dev/null
+  sleep 1
+
+  # Per-user runtime state — all build kinds (prod uses ~/.cowork;
+  # dev/preview/stable use suffixed homes)
+  rm -rf "$HOME/Library/Application Support/anton" \
+         "$HOME/Library/Logs/anton" \
+         "$HOME/.anton" \
+         "$HOME/.cowork" "$HOME/.cowork-dev" "$HOME/.cowork-preview" "$HOME/.cowork-stable"
+  rm -f  "$HOME/Library/Preferences/com.anton.app.plist"
+
+  # Connector OAuth tokens live in the macOS Keychain, not on disk
+  while security delete-generic-password -s cowork-oauth >/dev/null 2>&1; do :; done
+
+  # uv-installed packages (the installer re-installs these on next run)
+  uv tool uninstall anton anton-agent cowork-server 2>/dev/null
+
+  # Deep clean: force the installer to bootstrap uv itself too
+  if (( deep )); then
+    rm -f  "$HOME/.local/bin/uv" "$HOME/.local/bin/uvx" "$HOME/.local/bin/anton"
+    rm -rf "$HOME/.local/share/uv" "$HOME/.cache/uv"
+  fi
+
+  # Verify the key file is actually gone (the critical check)
+  if [[ -e "$HOME/.anton/.env" || -e "$HOME/.cowork/.env" ]]; then
+    echo "STILL THERE: a .env survived the wipe"
+    return 1
+  fi
+  echo "GONE: all Cowork state removed. Relaunch the .app for fresh onboarding."
+}
+```
 
 ---
 
@@ -171,7 +224,7 @@ unset (the Electron path), behavior is byte-identical to before.
 src/
   main/                  # Electron main process (Node.js)
     index.ts             # Window creation, IPC handlers, menu
-    installer.ts         # First-run installer for cowork-server (uv + git + Xcode CLT)
+    installer.ts         # First-run installer for cowork-server (uv; plus git + Xcode CLT on git-channel builds only)
     server-process.ts    # FastAPI sidecar lifecycle (start/stop/health)
     server-updater.ts    # OTA server update (PyPI check, upgrade, rollback)
     ui-updater.ts        # OTA UI update system (fetch, verify, cache, rollback)
@@ -255,11 +308,18 @@ The GUI provides a visual `/connect` flow:
 
 ## Over-the-Air Updates
 
-MindsHub Cowork has two independent OTA update channels so both the React frontend and the Python backend can be updated without shipping a new `.dmg` or `.exe`. The Electron shell itself changes rarely and is updated via the traditional installer release flow.
+MindsHub Cowork has two independent OTA update channels so both the React frontend and the Python backend can be updated without shipping a new `.dmg` or `.exe`. The Electron shell itself (everything in `src/main/` and the preload) is **not** covered by OTA and only updates via a new installer.
 
-### Server updates (PyPI)
+UI OTA is gated by build kind (ENG-670): enabled in **`prod` builds only** — `stable`, `preview`, and `dev` builds always run their bundled renderer so testers see the branch under test. For *when* updates apply (boot vs. periodic checks, the server-down recovery exception, the `UI_UPDATE_MODE` escape hatch), see [docs/update-behavior.md](docs/update-behavior.md).
 
-After the server boots successfully, the main process checks [PyPI](https://pypi.org/project/cowork-server/) for a newer `cowork-server` version. If one exists, it stops the server, upgrades via `uv tool install --upgrade --reinstall cowork-server`, restarts, and probes `/health`. If the health check fails, the previous version is reinstalled automatically (rollback). Set `COWORK_SERVER_DISABLE_AUTOUPDATE=1` to opt out.
+### Server updates (source-aware)
+
+The server updater detects how `cowork-server` was installed (from the tool venv's `direct_url.json`) and updates accordingly:
+
+- **git install** — re-pulls the configured branch/tag HEAD for `cowork-server` **and** `anton` (trigger: changed remote commit SHA via `git ls-remote`)
+- **PyPI install** — version comparison against [PyPI](https://pypi.org/project/cowork-server/), then `uv tool install --upgrade`
+
+After an upgrade the server is restarted and probed via `/health`; on failure the previous version is reinstalled automatically, and the rollback itself is health-verified (a still-broken rollback raises a critical notification rather than being reported as recovered). If the server is **down**, an available server update is applied immediately regardless of update mode — recovery, not routine maintenance. Set `COWORK_SERVER_DISABLE_AUTOUPDATE=1` to opt out.
 
 See `src/main/server-updater.ts` for the implementation.
 
@@ -273,7 +333,7 @@ The React UI updates via a separate public repo: [`mindsdb/antontron-releases`](
 │                                     │        │  (PUBLIC)                        │
 │  source code lives here             │        │                                  │
 │                                     │  push  │  GitHub Releases:                │
-│  .github/workflows/publish-ui.yml ──┼───────▶│    ui-v1.2.0/ui-bundle.tar.gz   │
+│  .github/workflows/publish-ui.yml ──┼───────▶│    ui-v2.26.7.16.1/…tar.gz      │
 │                                     │        │                                  │
 │                                     │        │  GitHub Pages (gh-pages branch): │
 │                                     │        │    latest.json                   │
@@ -289,35 +349,22 @@ The React UI updates via a separate public repo: [`mindsdb/antontron-releases`](
 
 How it works:
 
-1. Code is merged to `main` (or a `ui-v*` tag is pushed)
-2. The `publish-ui` workflow builds the renderer and creates a `.tar.gz` bundle with a SHA-256 checksum
+1. Code is merged to `main` — **every** push to `main` runs the auto-release workflow (`release.yml`), which computes a CalVer version (e.g. `2.26.7.16.1`) via the shared `calver-release.yml` reusable in [mindsdb/github-actions](https://github.com/mindsdb/github-actions), tags it, builds the prod installer, and calls `publish-ui` with that exact version, so the UI bundle and the prod app installer always publish the **same** version
+2. The `publish-ui` workflow builds the renderer (with the version baked into `__APP_VERSION__`) and creates a `.tar.gz` bundle with a SHA-256 checksum
 3. Using a `RELEASES_TOKEN`, it pushes the bundle as a GitHub Release and updates `latest.json` on GitHub Pages — both on the public `antontron-releases` repo
-4. On every launch, the app fetches `latest.json` (static file, no auth, no API rate limits)
-5. If a newer version exists, the bundle is downloaded, SHA-256 verified, and cached
-6. In **auto** mode the UI reloads silently; in **manual** mode a sidebar banner lets the user choose when to apply. The preference is configurable in Settings → Updates.
+4. The app checks `latest.json` at launch and every 4 hours (static file, no auth, no API rate limits)
+5. An update is taken only if it passes the safety gates: strictly newer than the installed UI (no downgrades), SHA-256 verified, the server-first coupling held (a failed server update defers the UI), and any declared `min_server_version` floor satisfied
+6. **The update is applied automatically at boot** — the UI reloads silently, no user choice involved. There is no manual/auto setting in Settings anymore (ENG-858); `UI_UPDATE_MODE` in `~/.anton/.env` remains as an env-only support/QA escape hatch, not a user-facing preference. A mid-session periodic check (every 4h) still only surfaces a banner and never auto-applies, so a long-running session can always see and apply an update without an unplanned reload. A freshly-swapped bundle must finish loading within 15s or it is rolled back and quarantined. See [docs/update-behavior.md](docs/update-behavior.md) for the full timing rules.
 
-#### Automatic deployment
+#### Publishing
 
-The workflow triggers automatically on three events:
+| Trigger | When | Version |
+| --- | --- | --- |
+| **Push to `main`** (normal path) | Every merge — the release train's auto-release calls `publish-ui` | Canonical CalVer, identical to the prod installer (e.g. `2.26.7.16.1`) |
+| **Manual dispatch** | [Actions UI](https://github.com/mindsdb/cowork/actions/workflows/publish-ui.yml) → Run workflow — re-publish/backfill | Entered version, or derived from `git describe` if empty |
+| **Tag push** | `git tag ui-v2.26.7.16.2 && git push origin ui-v2.26.7.16.2` — UI-only release | From the tag |
 
-| Trigger | When | Version format | Example |
-| --- | --- | --- | --- |
-| **Push to `main`** | Any merge that changes `src/renderer/`, `src/shared/`, or `package.json` | `{pkg.version}-{sha}` | `1.0.1-a3b4c5d` |
-| **Tag push** | `git tag ui-v1.2.0 && git push origin ui-v1.2.0` | Clean version from tag | `1.2.0` |
-| **Manual dispatch** | [Actions UI](https://github.com/mindsdb/cowork/actions/workflows/publish-ui.yml) → Run workflow | Whatever you enter (or pkg.version + sha if empty) | `1.2.0` |
-
-Every merge to `main` that touches UI files automatically deploys to all users — no manual tagging required. Use explicit tags (`ui-v*`) for milestone releases. The workflow checks for duplicate versions and skips if already published.
-
-#### Publishing manually
-
-```bash
-# Option A: tag
-git tag ui-v1.2.0 && git push origin ui-v1.2.0
-
-# Option B: GitHub Actions UI → Publish UI Bundle → Run workflow
-
-# Option C: just merge to main (auto-publishes if renderer files changed)
-```
+The workflow checks for duplicate versions and skips if already published. Because the client refuses downgrades, un-shipping a bad bundle means publishing a **newer** fixed version, not re-pointing `latest.json` at an older one.
 
 #### Verifying a deploy
 
@@ -329,7 +376,9 @@ git tag ui-v1.2.0 && git push origin ui-v1.2.0
 
 - Every UI bundle is integrity-checked with **SHA-256** before extraction
 - Checksum mismatch → update discarded, app loads last known good UI
-- Previous UI version kept on disk for automatic **rollback**
+- Previous UI version kept on disk for automatic **rollback**; a bundle that fails its post-swap load check is rolled back and **quarantined** (never re-applied)
+- Cache slots carry versioned provenance (`.ota-meta.json`) and are served only when strictly **newer than the bundled renderer** — a stale or legacy cache can never downgrade the UI
+- OTA runs only in `prod` builds; the gate fails safe to OFF if the packaged build kind is missing or unrecognized
 - All downloads over HTTPS
 - `RELEASES_TOKEN` only has write access to the public releases repo — source code is never exposed
 
@@ -339,11 +388,14 @@ git tag ui-v1.2.0 && git push origin ui-v1.2.0
 App starts
   ├─ If DEV_MODE is set → load Vite dev server or bundled renderer, skip OTA
   ├─ Load cached UI (instant, no network needed)
-  │   └─ Falls back to bundled renderer if no cache
-  ├─ Start cowork-server (spawn process, wait for /health)
-  │   └─ After healthy: background PyPI check for server updates
-  └─ After renderer loads:
-      └─ Background: check GitHub Pages for UI updates
+  │   └─ Served only if: OTA enabled (prod build) + valid provenance
+  │      + strictly newer than bundled + server-compat floor verified;
+  │      otherwise the bundled renderer loads
+  ├─ Start cowork-server (spawn process, poll /health while the child lives)
+  └─ After renderer loads: boot update check (UI manifest + server, in parallel)
+      ├─ apply now (server first, then UI, health-checked reload) — unless the
+      │   UI_UPDATE_MODE=manual escape hatch is set (support/QA only), then banner only
+      └─ then re-check every 4h (banner only, never auto-applies)
 ```
 
 The app **never blocks on a network request** — it always loads immediately from cache or bundled files.
@@ -513,7 +565,7 @@ Installers are built on GitHub-hosted runners (required for Apple notarization a
 | Flavor | Trigger | S3 destination |
 | --- | --- | --- |
 | **preview** | PR with `signed-macos-pkg` or `signed-windows-ev` label | `s3://anton-installer/anton/{mac,windows}/previews/` |
-| **stable** | Push to `main` | `s3://anton-installer/anton/{mac,windows}/snapshots/` |
+| **stable** | Push to `staging` | `s3://anton-installer/anton/{mac,windows}/snapshots/` |
 | **prod** | Push tag `v*` | `s3://anton-installer/anton/{mac,windows}/anton-{version}.{pkg,exe}` + `anton-latest.{pkg,exe}` |
 
 Prod is gated: the upload job asserts `package.json` version matches the release tag.
@@ -590,7 +642,7 @@ The [`upload-installer-to-s3.yml`](.github/workflows/upload-installer-to-s3.yml)
 | --- | --- | --- |
 | [`release.yml`](.github/workflows/release.yml) | Version bump merged to `main` | Creates git tag + GitHub release |
 | [`dev-build-installer.yml`](.github/workflows/dev-build-installer.yml) | PR with label | Preview builds |
-| [`staging-build-installer.yml`](.github/workflows/staging-build-installer.yml) | Push to `main` | Stable builds |
+| [`staging-build-installer.yml`](.github/workflows/staging-build-installer.yml) | Push to `staging` | Stable builds |
 | [`prod-build-installer.yml`](.github/workflows/prod-build-installer.yml) | Push tag `v*` | Prod builds |
 | [`build-macos-pkg.yml`](.github/workflows/build-macos-pkg.yml) | Called | Build + sign + notarize `.pkg` |
 | [`build-windows-installer.yml`](.github/workflows/build-windows-installer.yml) | Called | Build + sign `.exe` |
@@ -655,7 +707,7 @@ Source SVG is in `assets/icon.svg`. The script renders to PNG then creates `.icn
 | `ANTON_MEMORY_MODE` | Settings | Memory mode (autopilot/copilot/off) |
 | `ANTON_LANGFUSE_HEADERS` | Manual | Set to `1` to emit Langfuse-* headers on LLM calls |
 | `DEV_MODE` | Manual | Renderer source override (`live` = Vite dev server, `full` = bundled only, unset = production with OTA) |
-| `UI_UPDATE_MODE` | Settings | OTA UI update behavior (`auto` / `manual`; default `auto`) |
+| `UI_UPDATE_MODE` | Manual | OTA UI update behavior (`auto` / `manual`; default `auto`). Env-only support/QA escape hatch — no Settings UI control (ENG-858) |
 | `COWORK_SERVER_DISABLE_AUTOUPDATE` | Manual | Set to `1` to skip automatic server updates on launch |
 | `COWORK_SERVER_PACKAGE` | Manual | Override install source with a literal `uv` spec (local path, custom URL, etc.) — wins over all channel/ref logic |
 | `ANTON_PACKAGE` | Manual | Override anton install source (local path / uv spec); only honoured when `COWORK_SERVER_PACKAGE` is also set |
@@ -674,6 +726,50 @@ ls dist/renderer/index.html
 ### Server shows "Disconnected" immediately after launch
 
 The packaged `.app` doesn't inherit shell PATH. Ensure cowork-server is installed: `uv tool install cowork-server`. Check that `~/.local/bin/cowork-server` exists.
+
+### Backend takes a long time to come up on a first launch (Windows)
+
+Expected, and it is waited out rather than killed. The first execution of a
+freshly installed uv venv makes Windows Defender scan hundreds of MB of DLLs
+and `.pyd` files, which can push the pre-uvicorn import phase past half a
+minute; every launch after that is warm and takes a couple of seconds.
+
+The start wait is progress-aware: `/health` is polled for as long as the child
+process is alive, up to a hard cap (`SERVER_START_CAP_MS`, 180s, in
+[src/shared/server-status.ts](src/shared/server-status.ts)). A sidecar that
+dies is reported the moment it exits, with its exit code and stderr, rather
+than after the full budget. The renderer's status poll is derived from the same
+cap so the UI cannot declare the backend offline while the main process is
+still waiting.
+
+One cap covers every build and platform, deliberately. A dev-only allowance
+means a start that passes locally can still be killed in a packaged build, so
+the failure would only ever reproduce on a customer's machine. The cap is
+therefore sized for the slowest case any build can hit (a dev source tree
+building a fresh `.venv` on a cold cache) and everything else inherits it. It
+costs nothing in the normal case: the wait ends the moment `/health` answers or
+the process dies, so the cap only ever bounds a process that is genuinely still
+alive and still starting.
+
+Failures are classified rather than collapsed into one timeout message:
+
+| Diagnostics `lastErrorKind` | Means |
+|---|---|
+| `spawn-error` | The OS refused to launch the program (`EPERM` from antivirus, `ENOENT` from a broken shim). Nothing ran, so there is no log. |
+| `exited` | It ran and died during boot. Exit code + captured output are the evidence. |
+| `timeout` | Still alive and still silent at the cap. Almost always a very slow first import. |
+| `not-installed` | The backend or `uv` isn't on disk; re-run the installer. |
+
+After a failed start the whole process tree is killed (`taskkill /F /T` on
+Windows, process-group signal elsewhere), so a retry never collides with a
+leftover `python.exe` holding the port. If something else still holds it, the
+diagnostics name the PID.
+
+Finding that PID on Windows means parsing `netstat -ano`, where the state
+column is both translated and variable in length (`ABHÖREN` on German,
+`IN ASCOLTO` on Italian, and a two-word state shifts every column after it).
+The lookup reads none of it: a listening socket is the only TCP row with an
+all-zero foreign address, and the PID is always the last column.
 
 ### macOS Gatekeeper blocks unsigned app
 

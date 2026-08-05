@@ -29,6 +29,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
+import { Button } from '../ui';
+import { Modal } from '../ui/Modal';
 import {
   readProjectFile,
   writeProjectFile,
@@ -42,12 +44,12 @@ import { MarkdownContent } from '../markdown/MarkdownContent';
 import { host } from '../../../platform/host';
 
 const FONT_BODY    = "var(--font-body, 'Inter', system-ui, sans-serif)";
-const FONT_DISPLAY = "var(--font-display, 'Josefin Sans', system-ui, sans-serif)";
+const FONT_DISPLAY = "var(--font-display, 'Inter', system-ui, sans-serif)";
 const FONT_MONO    = "var(--font-mono, 'JetBrains Mono', monospace)";
 
 
 // Join a project root + relative path into a forward-slash absolute
-// path so `window.antontron.openPath(...)` resolves correctly even
+// path so `host.openPath(...)` resolves correctly even
 // when the relative side carries embedded slashes.
 function joinAbs(root, rel) {
   if (!root || !rel) return '';
@@ -95,39 +97,21 @@ function FileAccessButton({ projectPath, projectName, filePath, rawUrl }) {
   return (
     <div style={{ display: 'inline-flex', gap: 4 }}>
       {hasProjectFile && (
-        <button
-          type="button"
-          onClick={() => abs && window.antontron?.showItemInFolder?.(abs)}
+        <Button
+          onClick={() => abs && host.showItemInFolder(abs)}
           title="Reveal in Finder"
-          style={{
-            cursor: 'pointer',
-            background: 'transparent', border: '1px solid var(--line)',
-            color: 'var(--ink-2)',
-            padding: '6px 12px', borderRadius: 6,
-            fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 500,
-            display: 'inline-flex', alignItems: 'center', gap: 6,
-          }}
-        >{Ico.folder ? Ico.folder(13) : '📁'} Reveal</button>
+        >{Ico.folder ? Ico.folder(13) : '📁'} Reveal</Button>
       )}
-      <button
-        type="button"
+      <Button
         onClick={() => {
           // Prefer the raw URL (attachments + anything that passed one)
           // via the OS shell; fall back to opening the local project
           // file in the default app.
           if (rawUrl) host.openExternal(rawUrl);
-          else if (abs) window.antontron?.openPath?.(abs);
+          else if (abs) host.openPath(abs);
         }}
         title="Open in default app"
-        style={{
-          cursor: 'pointer',
-          background: 'transparent', border: '1px solid var(--line)',
-          color: 'var(--ink-2)',
-          padding: '6px 12px', borderRadius: 6,
-          fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 500,
-          display: 'inline-flex', alignItems: 'center', gap: 6,
-        }}
-      >{Ico.externalLink ? Ico.externalLink(13) : '↗'} Open</button>
+      >{Ico.externalLink ? Ico.externalLink(13) : '↗'} Open</Button>
     </div>
   );
 }
@@ -376,13 +360,7 @@ export default function ContextFileModal({
     return () => { cancelled = true; };
   }, [open, filePath, projectName, initialContent, isAnton, loader, genericMode, startInEditMode, isImage, rawUrl]);
 
-  // Esc closes when not busy.
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e) => { if (e.key === 'Escape' && !busy) onClose?.(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, busy, onClose]);
+  // Esc + backdrop dismissal are handled by <Modal> (suppressed while busy).
 
   // Focus the textarea when entering edit mode.
   useEffect(() => {
@@ -390,8 +368,6 @@ export default function ContextFileModal({
     const id = requestAnimationFrame(() => textareaRef.current?.focus());
     return () => cancelAnimationFrame(id);
   }, [editing]);
-
-  if (!open) return null;
 
   const save = async () => {
     setBusy(true);
@@ -438,44 +414,26 @@ export default function ContextFileModal({
   };
 
   return (
-    <div
-      onMouseDown={(e) => { if (e.target === e.currentTarget && !busy) onClose?.(); }}
-      style={{
-        position: 'fixed', inset: 0, zIndex: 92,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: 'rgba(0,0,0,0.45)',
-        backdropFilter: 'blur(2px)',
-        WebkitBackdropFilter: 'blur(2px)',
-        WebkitAppRegion: 'no-drag',
-      }}
+    <Modal
+      open={open}
+      onClose={onClose}
+      size="md"
+      width="min(720px, 92vw)"
+      // FIXED height — toggling view↔edit must feel like the same modal
+      // (textarea + preview both flex:1 to fill it, no jump-on-cancel).
+      height="min(720px, 88vh)"
+      ariaLabel={headerTitle}
+      closeOnBackdrop={!busy}
+      closeOnEsc={!busy}
     >
-      <div
-        onMouseDown={(e) => e.stopPropagation()}
-        style={{
-          width: 'min(720px, 92vw)',
-          // FIXED height — not maxHeight. Toggling between view and
-          // edit must feel like the same modal, just with the body
-          // swapped, so the container size has to stay constant. The
-          // textarea + preview inside both `flex: 1` to fill this
-          // height identically (no jump-on-cancel).
-          height: 'min(720px, 88vh)',
-          background: 'var(--surface)',
-          border: '1px solid var(--line)',
-          borderRadius: 14,
-          boxShadow: '0 24px 60px rgba(15,16,17,0.30)',
-          display: 'flex', flexDirection: 'column', overflow: 'hidden',
-          fontFamily: FONT_BODY,
-        }}
-      >
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           padding: '14px 18px',
         }}>
           <div style={{ minWidth: 0, flex: 1, display: 'flex', alignItems: 'baseline', gap: 10 }}>
-            <h2 style={{
+            <h2 className="s-h3" style={{
               margin: 0,
-              fontFamily: FONT_DISPLAY, fontSize: 17, fontWeight: 600,
-              letterSpacing: '-0.005em', color: 'var(--ink)',
+              color: 'var(--ink)',
               minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}>{headerTitle}</h2>
             {headerSubtitle && (
@@ -487,19 +445,10 @@ export default function ContextFileModal({
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             {mode === 'text' && !editing && !loading && (
-              <button
-                type="button"
-                className="hover-tint hover-tint-text"
+              <Button
                 onClick={() => setEditing(true)}
                 title="Edit"
-                style={{
-                  cursor: 'pointer',
-                  background: 'transparent', border: '1px solid var(--line)',
-                  color: 'var(--ink-2)',
-                  padding: '6px 12px', borderRadius: 6,
-                  fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 500,
-                }}
-              >Edit</button>
+              >Edit</Button>
             )}
             {/* HTML / image / binary modes all expose a "Reveal" /
                 "Open" / "Download" affordance in the header so the user
@@ -668,26 +617,17 @@ export default function ContextFileModal({
         }}>
           <div>
             {canDelete && !editing && !loading && (
-              <button
-                type="button"
+              <Button
+                variant="danger"
                 onClick={handleDelete}
                 disabled={busy}
-                className="hover-tint"
-                style={{
-                  cursor: busy ? 'not-allowed' : 'pointer',
-                  background: 'transparent', border: 0,
-                  color: 'var(--danger)',
-                  padding: '7px 14px', borderRadius: 7,
-                  fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 500,
-                  opacity: busy ? 0.5 : 1,
-                }}
-              >Delete</button>
+              >{Ico.trash ? Ico.trash(13) : null}Delete</Button>
             )}
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             {editing && (
-              <button
-                type="button"
+              <Button
+                variant="subtle"
                 onClick={() => {
                   // Cancel edit — restore the persisted content. If
                   // anton.md is still empty after cancel, kick the
@@ -696,43 +636,25 @@ export default function ContextFileModal({
                   setEditing(false);
                 }}
                 disabled={busy}
-                className="hover-tint hover-tint-text"
-                style={{
-                  cursor: busy ? 'not-allowed' : 'pointer',
-                  background: 'transparent', border: 0,
-                  color: 'var(--ink-3)',
-                  padding: '7px 14px', borderRadius: 7,
-                  fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500,
-                }}
-              >Cancel</button>
+              >Cancel</Button>
             )}
             {editing && (
-              <button
-                type="button"
-                className="btn-primary"
+              <Button
+                variant="primary"
                 onClick={save}
                 disabled={busy}
               >
                 {busy ? 'Saving…' : 'Save'}
-              </button>
+              </Button>
             )}
             {!editing && !loading && (
-              <button
-                type="button"
+              <Button
+                variant="subtle"
                 onClick={() => onClose?.()}
-                className="hover-tint hover-tint-text"
-                style={{
-                  cursor: 'pointer',
-                  background: 'transparent', border: 0,
-                  color: 'var(--ink-3)',
-                  padding: '7px 14px', borderRadius: 7,
-                  fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500,
-                }}
-              >Close</button>
+              >Close</Button>
             )}
           </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

@@ -24,4 +24,12 @@ export const OAUTH_CREDENTIALS: Record<string, OAuthCredentials> = {
     clientIdVar: 'GOOGLE_ANALYTICS_CLIENT_ID',
     clientSecretVar: 'GOOGLE_ANALYTICS_CLIENT_SECRET',
   },
+  linear: {
+    clientIdVar: 'LINEAR_CLIENT_ID',
+    clientSecretVar: 'LINEAR_CLIENT_SECRET',
+  },
+  github: {
+    clientIdVar: 'GITHUB_CLIENT_ID',
+    clientSecretVar: 'GITHUB_CLIENT_SECRET',
+  },
 };

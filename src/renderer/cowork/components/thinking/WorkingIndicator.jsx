@@ -10,9 +10,15 @@
 
 import { useOrbitSlot } from '../../lib/orbitRegistry';
 
-// Matches ChatView's CHAT_ORB_SIZE / the OrbitProvider `size` prop —
-// the box must be the orb's size so the morph centers on it exactly.
-const ORB_BOX = 22;
+// The orb anchors to the CENTRE of this box (the OrbitProvider positions
+// the morph over the slot's bounding-box centre, independent of the box's
+// own size). Sized 16×16 to match a ThinkingStep's icon gutter (`w-4`, a
+// 16px column with the icon centred at 8px) so the orb lines up in the
+// same vertical column as the step icons below it, and the status label
+// starts at the same x as the step labels — the orb reads as the live
+// head of the same timeline. The rendered orb is larger than this anchor
+// and simply overflows it symmetrically, still centred on 8px.
+const ORB_BOX = 16;
 
 export function WorkingIndicator({ slotId, label }) {
   const slotRef = useOrbitSlot(slotId ?? '__working_indicator_inert__');

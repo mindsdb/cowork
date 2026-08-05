@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Ico from './Icons';
+import NewProjectModal from './project/NewProjectModal';
 import {
   parseFences,
   fenceCtxAtParsed,
@@ -25,7 +27,7 @@ function detectSlashToken(text, caret) {
 function AttachmentChip({ attachment, onRemove }) {
   const src = attachment.source || attachment.kind || 'file';
   const isImage = attachment.mime && String(attachment.mime).startsWith('image/');
-  const label = src === 'connector' ? 'Connector' : isImage ? 'Image' : 'File';
+  const label = src === 'connector' ? 'Connector' : src === 'gdrive' ? 'Google Drive' : isImage ? 'Image' : 'File';
   const status = attachment.pendingFile
     ? 'Queued'
     : (attachment.extractionStatus && attachment.extractionStatus !== 'ready'
@@ -39,8 +41,9 @@ function AttachmentChip({ attachment, onRemove }) {
       <span className="attachment-chip-icon">
         {showThumb ? <AttachmentThumbnail file={attachment.pendingFile} cover size={30} alt={attachment.name || 'Image'} />
           : src === 'connector' ? Ico.link(13)
-            : isImage ? Ico.image(13)
-              : Ico.doc(13)}
+            : src === 'gdrive' ? Ico.googleDrive(13)
+              : isImage ? Ico.image(13)
+                : Ico.doc(13)}
       </span>
       <span className="attachment-chip-body">
         <span className="attachment-chip-name">{attachment.name || label}</span>
@@ -67,6 +70,7 @@ export default function Composer({
   connectors = [],
   onNavigateToConnectors,
   onAttachFiles,
+  onAddGoogleDriveFiles,
   /** When set with `onUpdateConnectorMute`, Connectors submenu toggles mute (applied when you send). */
   conversationId = null,
   disabledConnections = [],
@@ -94,10 +98,12 @@ export default function Composer({
   // of the same text still re-fill the input.
   prefill = null,
   // Optional — when supplied, the project menu shows a "+ New project"
-  // row that swaps into an inline input on click. Receives `{ name }`
-  // and is expected to resolve to the created project record; we then
-  // call `onProjectChange` with it so the new project is pre-selected
-  // for the task being composed. When omitted, the row is hidden.
+  // row (opens the "Start a new project" modal; with search text and
+  // no match it creates inline). Receives `{ name }` (plus
+  // `_alreadyCreated` from the modal path) and is expected to resolve
+  // to the created project record; we then call `onProjectChange`
+  // with it so the new project is pre-selected for the task being
+  // composed. When omitted, the row is hidden.
   onCreateProject = null,
 }) {
   const [value, setValue] = useState('');
@@ -113,12 +119,14 @@ export default function Composer({
   const [projectSearch, setProjectSearch] = useState('');
   const [projectMenuBusy, setProjectMenuBusy] = useState(false);
   const [projectMenuError, setProjectMenuError] = useState('');
+  const [newProjectOpen, setNewProjectOpen] = useState(false);
   const projectSearchRef = useRef(null);
   const projectPillRef = useRef(null);
   const projectMenuRef = useRef(null);
   /** Attach menu opens above the composer by default; flip down when clipped (e.g. project view composer at scroll top). */
   const [attachMenuBelow, setAttachMenuBelow] = useState(false);
   const [connectorsOpen, setConnectorsOpen] = useState(false);
+  const [gdrivePickerBusy, setGdrivePickerBusy] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [listening, setListening] = useState(false);
@@ -226,7 +234,13 @@ export default function Composer({
     if (!ta) return;
     if (pendingCaretRef.current != null) {
       const target = pendingCaretRef.current;
-      ta.selectionStart = ta.selectionEnd = target;
+      // A [start, end] tuple selects a range (prefill placeholder
+      // highlighting); a bare number parks a collapsed caret.
+      if (Array.isArray(target)) {
+        try { ta.setSelectionRange(target[0], target[1]); } catch { /* out-of-range: skip */ }
+      } else {
+        ta.selectionStart = ta.selectionEnd = target;
+      }
       pendingCaretRef.current = null;
     }
     const pos = ta.selectionStart;
@@ -376,19 +390,30 @@ export default function Composer({
   // text into the composer and focus the textarea so the user can
   // immediately tweak + send. Guarded on `bump > 0` so the initial
   // `{text: '', bump: 0}` doesn't clobber a draft on mount.
+  //
+  // Optional `prefill.select = [start, end]` pre-selects that range
+  // instead of parking the caret at the end — the home suggestion chips
+  // use it to highlight their [type here] placeholder so the first
+  // keystroke replaces it.
   useEffect(() => {
     if (!prefill || !prefill.bump) return;
-    setValue(prefill.text || '');
+    const text = prefill.text || '';
+    const sel = Array.isArray(prefill.select) ? prefill.select : [text.length, text.length];
+    const ta = taRef.current;
     setError('');
-    requestAnimationFrame(() => {
-      const ta = taRef.current;
-      if (!ta) return;
+    if (ta && ta.value === text) {
+      // Same text re-prefilled — no re-render coming, so the layout
+      // effect won't fire; apply the selection directly.
       ta.focus();
-      try {
-        const end = (prefill.text || '').length;
-        ta.setSelectionRange(end, end);
-      } catch {}
-    });
+      try { ta.setSelectionRange(sel[0], sel[1]); } catch {}
+    } else {
+      // Queue the selection for the post-commit layout effect. Setting
+      // it via rAF raced React's value commit (the range clamped to the
+      // still-empty textarea and collapsed to 0).
+      pendingCaretRef.current = sel;
+      setValue(text);
+      ta?.focus();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefill?.bump]);
 
@@ -513,6 +538,20 @@ export default function Composer({
       setError(err.message || 'Could not attach files.');
     } finally {
       if (fileRef.current) fileRef.current.value = '';
+    }
+  }
+
+  async function handleAddGoogleDriveFiles() {
+    if (!onAddGoogleDriveFiles || gdrivePickerBusy) return;
+    setError('');
+    setGdrivePickerBusy(true);
+    setOpenMenu(null);
+    try {
+      await Promise.resolve(onAddGoogleDriveFiles(project?.name));
+    } catch (err) {
+      setError(err.message || 'Could not add Google Drive files.');
+    } finally {
+      setGdrivePickerBusy(false);
     }
   }
 
@@ -856,6 +895,15 @@ export default function Composer({
                   <button className="menu-item" onClick={() => fileRef.current?.click()}>
                     {Ico.attach(14)} Attach files or photos
                   </button>
+                  {onAddGoogleDriveFiles && (
+                    <button
+                      className="menu-item"
+                      onClick={handleAddGoogleDriveFiles}
+                      disabled={gdrivePickerBusy}
+                    >
+                      {Ico.googleDrive(14)} {gdrivePickerBusy ? 'Opening Google Drive…' : 'Add files from Google Drive'}
+                    </button>
+                  )}
                   <button
                     className="menu-item"
                     onClick={() => setConnectorsOpen((o) => !o)}
@@ -1153,8 +1201,9 @@ export default function Composer({
                         the previous "footer only when no match"
                         rule hid). Label adapts to the search state:
                           - empty            → "New project"
-                                                (focuses the search
-                                                 input on click).
+                                                (opens the full
+                                                 "Start a new project"
+                                                 modal).
                           - typed, no match  → "Create '<text>'"
                                                 (calls create).
                           - typed, exact     → hidden (no duplicates).
@@ -1169,7 +1218,8 @@ export default function Composer({
                             if (_canCreateFromSearch) {
                               createProjectFromSearch();
                             } else {
-                              projectSearchRef.current?.focus();
+                              setOpenMenu(null);
+                              setNewProjectOpen(true);
                             }
                           }}
                           style={{ color: 'var(--primary-700)' }}
@@ -1231,6 +1281,29 @@ export default function Composer({
             </button>
           ))}
         </div>
+      )}
+
+      {/* Portaled to <body>: the composer sits inside the boot-fadein
+          wrapper whose persistent transform would otherwise make this
+          fixed-position overlay anchor to the card, not the viewport. */}
+      {newProjectOpen && createPortal(
+        <NewProjectModal
+          open={newProjectOpen}
+          onClose={() => setNewProjectOpen(false)}
+          onCreated={async (result) => {
+            const name = result?.name;
+            if (!name) return;
+            let created = { name };
+            try {
+              created = (await onCreateProject?.({ name, _alreadyCreated: true })) || created;
+            } catch {
+              // Project exists on the server; only the list refresh
+              // failed — still select it by name.
+            }
+            onProjectChange?.(created);
+          }}
+        />,
+        document.body,
       )}
     </div>
   );

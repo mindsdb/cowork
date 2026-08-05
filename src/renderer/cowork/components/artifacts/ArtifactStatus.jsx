@@ -10,60 +10,36 @@
 // phase: 'publishing' | 'updating' | 'unpublishing' | 'failed' | undefined(idle)
 
 import Ico from '../Icons';
+import { Badge } from '../ui';
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
 
-// Semantic tones (status colors are intentionally semantic, matching the
-// design): published = green, pending changes = amber, in-flight = accent,
-// failed = danger. Neutral pills (Draft / Unpublished) use the surface tint.
-const TONE = {
-  green: '#16A34A',
-  amber: '#F5A623',
-  info: 'var(--accent)',
-  danger: 'var(--danger)',
+// One mode-aware badge per published artifact (ENG-1212). ONLY a genuinely
+// public artifact gets the green "success" treatment — password/restricted
+// are neutral so a protected artifact can never read as "Shared / available
+// to all". Every badge carries a `dot` (the "this is live" affordance that the
+// old green "Shared" pill provided — draft/"Not shared" has none) plus an icon,
+// so the label may collapse to icon-only on a narrow card (see .cw-access-label
+// @container) without going blank.
+const ACCESS_BADGE = {
+  public: { variant: 'success', icon: Ico.globe(11), label: 'Public' },
+  password: { variant: 'default', icon: Ico.lock(11), label: 'Password' },
+  restricted: { variant: 'default', icon: Ico.people(11), label: 'Restricted' },
 };
 
-// One tinted pill. `tone` omitted → neutral grey. `dot` adds a leading status
-// dot; `icon` a leading glyph.
-function Pill({ tone, label, dot = false, icon = null, title }) {
-  const c = TONE[tone];
-  return (
-    <span
-      title={title}
-      style={{
-        display: 'inline-flex', alignItems: 'center', gap: 5,
-        padding: '2px 8px', borderRadius: 999,
-        fontFamily: FONT_BODY, fontSize: 11, fontWeight: 600, lineHeight: 1.3,
-        whiteSpace: 'nowrap', flexShrink: 0,
-        color: c || 'var(--ink-3)',
-        background: c ? `color-mix(in srgb, ${c} 12%, transparent)` : 'var(--surface-2)',
-        border: `1px solid ${c ? `color-mix(in srgb, ${c} 30%, transparent)` : 'var(--line)'}`,
-      }}
-    >
-      {dot && <span style={{ width: 5, height: 5, borderRadius: 99, background: c, flexShrink: 0 }} />}
-      {icon && <span style={{ display: 'inline-flex' }}>{icon}</span>}
-      {label}
-    </span>
-  );
-}
+// Fail CLOSED: only a positively-recognised mode gets its badge, and only
+// `public` is ever green. An unrecognised mode (server adds `org`/`link`/… ),
+// or an artifact whose access state hasn't loaded (neither accessMode nor the
+// legacy accessProtected flag — e.g. a synthesized chat-bubble stub, cf.
+// usePublish `hasServerAccess`), must NEVER read as "available to all", so it
+// resolves to a neutral protected pill instead of defaulting to Public.
+// `Object.hasOwn` (not `mode in`/`ACCESS_BADGE[mode]`) also stops a mode string
+// like `constructor`/`__proto__` from yielding a blank inherited-property pill.
+const UNKNOWN_BADGE = { variant: 'default', icon: Ico.lock(11), label: 'Restricted' };
 
-// Neutral access chip beside the Published pill (Public / Password / Restricted).
-function AccessChip({ mode }) {
-  const m = mode === 'password'
-    ? { icon: Ico.lock(11), label: 'Password' }
-    : mode === 'restricted'
-      ? { icon: Ico.people(11), label: 'Restricted' }
-      : { icon: Ico.globe(11), label: 'Public' };
-  return (
-    <span title={m.label} style={{
-      display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap',
-      fontFamily: FONT_BODY, fontSize: 11, fontWeight: 500, color: 'var(--ink-3)',
-    }}>
-      <span style={{ display: 'inline-flex', color: 'var(--ink-4)' }}>{m.icon}</span>
-      {/* Drops to icon-only on a narrow card (see .cw-access-label @container). */}
-      <span className="cw-access-label">{m.label}</span>
-    </span>
-  );
+function accessBadge(artifact) {
+  const mode = artifact.accessMode || (artifact.accessProtected ? 'password' : null);
+  return mode && Object.hasOwn(ACCESS_BADGE, mode) ? ACCESS_BADGE[mode] : UNKNOWN_BADGE;
 }
 
 // `inlineChanges` — list view flows the "Unpublished changes" pill inline
@@ -73,9 +49,9 @@ export function ArtifactStatus({ artifact, phase, publishable = true, onRetry, i
   if (phase === 'failed') {
     return (
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-        <Pill tone="danger" label="Publish failed" />
+        <Badge variant="danger" size="sm">Sharing failed</Badge>
         <span style={{ fontFamily: FONT_BODY, fontSize: 12, color: 'var(--ink-3)', whiteSpace: 'nowrap' }}>
-          Couldn't publish.{onRetry ? ' ' : ''}
+          Couldn't share.{onRetry ? ' ' : ''}
           {onRetry && (
             <button
               type="button"
@@ -88,26 +64,28 @@ export function ArtifactStatus({ artifact, phase, publishable = true, onRetry, i
       </span>
     );
   }
-  if (phase === 'publishing') return <Pill tone="info" label="Publishing…" />;
-  if (phase === 'updating') return <Pill tone="info" label="Updating…" />;
-  if (phase === 'unpublishing') return <Pill label="Unpublishing…" />;
+  if (phase === 'publishing') return <Badge variant="accent" size="sm">Sharing…</Badge>;
+  if (phase === 'updating') return <Badge variant="accent" size="sm">Updating…</Badge>;
+  if (phase === 'unpublishing') return <Badge variant="default" size="sm">Stopping sharing…</Badge>;
 
   // Idle — persisted state.
   if (!artifact?.publishedUrl) {
-    return <Pill label={publishable ? 'Unpublished' : 'Draft'} />;
+    return <Badge variant="default" size="sm">{publishable ? 'Not shared' : 'Draft'}</Badge>;
   }
-  const mode = artifact.accessMode || (artifact.accessProtected ? 'password' : 'public');
+  const badge = accessBadge(artifact);
   return (
-    // Fills the status area: Published + access on the left, the
-    // "Unpublished changes" warning pushed to the right (margin-left:auto).
-    // On a tight card it wraps to its own line, still right-aligned there.
+    // Fills the status area: access badge on the left, the "Unpublished
+    // changes" warning pushed to the right (margin-left:auto). On a tight
+    // card it wraps to its own line, still right-aligned there.
     <span style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', minWidth: 0, flexWrap: 'wrap' }}>
-      <Pill tone="green" dot label="Published" />
-      <AccessChip mode={mode} />
+      <Badge variant={badge.variant} size="sm" dot icon={badge.icon} title={badge.label}>
+        {/* Drops to icon-only on a narrow card (see .cw-access-label @container). */}
+        <span className="cw-access-label">{badge.label}</span>
+      </Badge>
       {artifact.modified && (
         inlineChanges
-          ? <Pill tone="amber" dot label="Unpublished changes" />
-          : <span style={{ marginLeft: 'auto', display: 'inline-flex' }}><Pill tone="amber" dot label="Unpublished changes" /></span>
+          ? <Badge variant="warning" size="sm" dot>Unshared changes</Badge>
+          : <span style={{ marginLeft: 'auto', display: 'inline-flex' }}><Badge variant="warning" size="sm" dot>Unshared changes</Badge></span>
       )}
     </span>
   );

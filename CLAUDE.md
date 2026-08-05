@@ -46,12 +46,45 @@ npm run build:web   # → dist/renderer-web/
 ### Type checking
 
 ```sh
-# Main process (Electron/Node)
-npx tsc -p tsconfig.main.json --noEmit
-
-# Renderer (React/Vite) — tsc doesn't emit, Vite handles bundling
-npx tsc --noEmit
+npm run typecheck   # main (tsconfig.main.json) + renderer (tsconfig.json) + tests (tsconfig.test.json)
 ```
+
+### Testing
+
+Vitest runs two projects — `main`
+(node env, `src/main` + `src/shared`) and `renderer` (happy-dom env,
+`src/renderer`). Tests are **colocated** (`foo.test.ts` beside `foo.ts`);
+shared setup lives in `tests/` (autouse env scrub, `TZ=UTC`, network deny —
+`fetch` throws unless a test installs its own mock).
+
+```sh
+npm test                     # unit + component (fast, no Electron/network)
+npm run test:watch           # local TDD loop
+npm run test:coverage        # + enforces coverage floors (vitest.config.ts)
+npm run test:e2e             # Playwright Electron boot smoke (needs npm run build)
+npm run check:cowork-purity  # no direct window.antontron outside platform/host.ts
+```
+
+**Norms:**
+
+- **A PR that fixes a bug adds a regression test for it. A PR that adds logic
+  adds tests for that logic.** Decision logic goes in pure functions
+  (`src/main/update-logic.ts` pattern) tested directly; orchestration gets at
+  most 1–2 integration-style tests with mocks.
+- Coverage floors in [vitest.config.ts](vitest.config.ts) are **ratcheted from
+  measured values — raise them when coverage grows, never lower them to make a
+  failing PR pass**. `update-logic.ts` and `server-source.ts` are locked at
+  100%.
+- Never touch `window.antontron` inside `src/renderer/cowork/` — go through
+  [src/renderer/platform/host.ts](src/renderer/platform/host.ts). CI enforces
+  this.
+- Test files never ship: production tsconfigs exclude `**/*.test.*`; keep it
+  that way.
+- CI: `tests-unit.yml` gates PRs (typecheck + purity + coverage + renderer
+  build); `pack-smoke.yml` and `tests-e2e.yml` run nightly, non-blocking.
+- The IPC channel map is snapshot-locked
+  (`src/shared/__snapshots__/`) — renaming a channel is a **breaking protocol
+  change** (OTA renderers can lag main), not a refactor.
 
 ### Python server
 
@@ -80,11 +113,14 @@ When `COWORK_REQUIRE_AUTH=true` and `COWORK_AUTH_TOKEN` is empty, the server gen
 
 Where cowork-server **and** its `anton-agent` dependency are installed from is centralized in [src/main/server-source.ts](src/main/server-source.ts) — shared by the installer and the auto-updater so they can't disagree (a PyPI updater must never clobber a git install, and vice-versa).
 
-Default: **git, branch `main`** for both. Override via env (the parent `minds` repo sets these while developing; a release pins a tag or flips to PyPI):
+Default: **git, branch `main`** for both — except **prod-kind builds, which default to `pypi`** (code fallback in `getChannel()`, plus `prod-build-installer.yml` bakes `server_channel: pypi` explicitly): they install the published wheel floored at the latest release version resolved at build time, never invoke git, and therefore skip the Xcode CLT step on macOS. The auto-updater still moves pypi installs to newer releases as they publish (the floor pins the install, not the ceiling). Note: local `npm run pack` builds are prod-kind (`build-config.json`), so they also default to pypi — export `COWORK_SERVER_CHANNEL=git` to exercise the git-channel installer from a local pack.
+
+**Stable (staging-ring) builds also use pypi**, following the **rc pre-release stream**: cowork-server's `publish-staging.yml` publishes a PEP 440 pre-release (`0.YY.M.DD.SEQrcN`) on every staging push, pinning `anton-agent==<latest anton staging rc>` into the wheel for exact pairing, and `staging-build-installer.yml` passes `server_channel: pypi`. Installer and updater both resolve an exact target version (stream-aware: prod = latest stable via `info.version`, staging = latest incl. rc) and install `cowork-server==<target>`, restating the wheel's anton pin as a direct `--with anton-agent==<rc>` requirement — uv honors pre-release markers only in DIRECT requirements, so a transitive rc pin alone cannot resolve. No resolution-wide prerelease flag is ever set, so transitive deps can never drift onto alphas/betas. PyPI's `info.version` excludes pre-releases and prod never names an rc in a specifier, so **prod builds can never be offered an rc**; the updater scans pre-releases only for preview/stable build kinds. Dev/preview builds stay on the git channel. Override via env (the parent `minds` repo sets these while developing):
 
 | Env var | Default | Effect |
 |---|---|---|
-| `COWORK_SERVER_CHANNEL` | `git` | `git` = install from repo; `pypi` = published wheel (release) |
+| `COWORK_SERVER_CHANNEL` | `git` (prod builds bake `pypi`) | `git` = install from repo; `pypi` = published wheel |
+| `COWORK_SERVER_MIN_VERSION` | `0.1.10` static floor | pypi channel: minimum version for install/verify; release builds bake the latest published version |
 | `COWORK_SERVER_REF` | `main` | cowork-server branch / tag / commit (git channel) |
 | `ANTON_REF` | `main` | anton branch / tag / commit — applied via `uv ... --with`, overriding cowork-server's `tool.uv.sources` pin |
 | `COWORK_SERVER_PACKAGE` | — | escape hatch: a literal `uv` spec (local path, custom URL); wins over all |
@@ -143,7 +179,9 @@ The app ships as both an Electron desktop app and a headless web SPA (served by 
 2. Terms consent → Setup wizard (installer) → Onboarding (provider selection)
 3. IntroSequence → CoworkApp (main chat UI)
 
-The installer ([src/main/installer.ts](src/main/installer.ts)) handles first-run: Xcode CLT, git, uv, cowork-server, verify, start. Minimum server version: `0.1.10`.
+The installer ([src/main/installer.ts](src/main/installer.ts)) handles first-run: Xcode CLT (git channel on macOS only), git (hard requirement on the git channel; warning-only on pypi), uv, cowork-server, verify, start. Step planning lives in `installerStepPlan` ([src/main/update-logic.ts](src/main/update-logic.ts)). Minimum server version: resolved by `getMinServerVersion()` (env > build-baked floor > `0.1.10` static fallback).
+
+Note: the server updater is source-aware and never converts an existing git install to pypi (or vice versa) — a machine that installed from git keeps updating from git even under a pypi-channel build (`getInstallSpec` returns a git spec whenever the updater passes explicit refs). One exception, by design: a git install whose version has fallen below the release floor fails `checkCoworkServerInstalled` and gets re-installed from PyPI through the setup flow — a one-time migration for badly stale installs. Bulk migration of healthy git installs is a deliberate, separate step.
 
 ### OTA updates
 

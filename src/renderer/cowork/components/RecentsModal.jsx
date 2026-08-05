@@ -8,7 +8,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Ico from './Icons';
-import { timeAgo } from '../lib/formatTime';
+import { relativeAge } from '../lib/formatTime';
 
 const FONT_BODY = "var(--font-body, 'Inter', system-ui, sans-serif)";
 const FONT_MONO = "var(--font-mono, 'JetBrains Mono', monospace)";
@@ -69,7 +69,7 @@ function Row({ task, onSelect, onDelete }) {
           color: 'var(--ink-4)', letterSpacing: '0.02em',
           whiteSpace: 'nowrap',
         }}>
-          {timeAgo(task.updatedAt || task.subtitle)}
+          {relativeAge(task.updatedAt || task.subtitle) || task.subtitle || ''}
         </span>
       )}
     </div>
@@ -160,7 +160,7 @@ export default function RecentsModal({ open, onClose, tasks = [], onSelect, onDe
           background: 'var(--surface)',
           borderBottom: '1px solid var(--line)',
           borderRadius: 0,
-          boxShadow: '0 14px 32px rgba(15, 16, 17, 0.22)',
+          boxShadow: 'var(--sh-popup)',
           display: 'flex', flexDirection: 'column', overflow: 'hidden',
           fontFamily: FONT_BODY,
         }}

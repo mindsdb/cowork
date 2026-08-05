@@ -17,6 +17,8 @@
 
 import { useMemo, useRef, useState } from 'react';
 import Ico from '../components/Icons';
+import { Badge, CardRow, EmptyState, Button } from '../components/ui';
+import { relativeAge } from '../lib/formatTime';
 import {
   PageHeader,
   FilterRow,
@@ -40,18 +42,6 @@ const SORT_OPTIONS = [
 // shifting between hover/non-hover so the trash icon doesn't
 // shove the timestamp left when it appears.
 const LIST_GRID = '24px minmax(0, 2.4fr) minmax(0, 1.2fr) 110px 28px';
-
-function relAge(input) {
-  if (!input) return '—';
-  const ts = typeof input === 'number' ? input : Date.parse(input);
-  if (!Number.isFinite(ts)) return '—';
-  const diff = Date.now() - ts;
-  if (diff < 60_000)         return 'just now';
-  if (diff < 3_600_000)      return `${Math.floor(diff / 60_000)}m ago`;
-  if (diff < 86_400_000)     return `${Math.floor(diff / 3_600_000)}h ago`;
-  if (diff < 7 * 86_400_000) return `${Math.floor(diff / 86_400_000)}d ago`;
-  return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-}
 
 function ListHeaderRow() {
   const Cell = ({ children, align }) => (
@@ -98,25 +88,18 @@ function TaskRow({
   // Prefer the same field the rest of the app uses for "last seen"
   // (updatedAt). Fall back to subtitle (legacy mock-time string)
   // when the server hasn't stamped the conversation yet.
-  const updated = relAge(task.updatedAt || task.subtitle || task.created_at);
+  const updated = relativeAge(task.updatedAt || task.subtitle || task.created_at) || '—';
 
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={() => onOpen?.(task)}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen?.(task); } }}
+    <CardRow
+      as="div"
+      onActivate={() => onOpen?.(task)}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
         display: 'grid', gridTemplateColumns: LIST_GRID, gap: 14,
         padding: '12px 14px',
-        background: hover ? 'var(--surface)' : 'transparent',
-        cursor: 'pointer',
-        transition: 'background .12s ease',
         alignItems: 'center',
-        outline: 'none',
-        borderRadius: 8,
       }}
     >
       {/* Status dot */}
@@ -137,7 +120,7 @@ function TaskRow({
       <div style={{ minWidth: 0 }}>
         <div style={{
           fontFamily: FONT_DISPLAY, fontSize: 14, fontWeight: 600,
-          color: 'var(--ink)', letterSpacing: '-0.005em',
+          color: 'var(--ink)', letterSpacing: '0',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}>{task.title || 'Untitled task'}</div>
         {task.subtitle && task.subtitle !== updated && (
@@ -198,29 +181,18 @@ function TaskRow({
         transition: 'opacity 140ms ease',
         pointerEvents: hover ? 'auto' : 'none',
       }}>
-        <button
-          type="button"
+        <Button
+          variant="danger"
+          icon
           onClick={() => onDelete?.(task.id)}
           aria-label="Delete task"
           title="Delete task"
-          className="icon-btn"
-          style={{
-            width: 26, height: 26, borderRadius: 6,
-            color: 'var(--ink-3)',
-          }}
-          onMouseOver={(e) => {
-            e.currentTarget.style.background = 'color-mix(in srgb, var(--danger) 12%, transparent)';
-            e.currentTarget.style.color = 'var(--danger)';
-          }}
-          onMouseOut={(e) => {
-            e.currentTarget.style.background = 'transparent';
-            e.currentTarget.style.color = 'var(--ink-3)';
-          }}
+          style={{ width: 26, height: 26 }}
         >
           {Ico.trash(14)}
-        </button>
+        </Button>
       </div>
-    </div>
+    </CardRow>
   );
 }
 
@@ -249,31 +221,21 @@ function ScheduleGroupRow({
   const latest = runs.reduce((max, r) =>
     ts(r.updatedAt || r.subtitle) > ts(max?.updatedAt || max?.subtitle) ? r : max,
   runs[0]);
-  const updated = relAge(latest?.updatedAt || latest?.subtitle || schedule?.lastRunAt);
+  const updated = relativeAge(latest?.updatedAt || latest?.subtitle || schedule?.lastRunAt) || '—';
 
   const isAnyActive = runs.some((r) => r.status === 'active');
 
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={onOpenSchedule}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpenSchedule?.(); } }}
+    <CardRow
+      as="div"
+      className="grouped"
+      onActivate={onOpenSchedule}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
         display: 'grid', gridTemplateColumns: LIST_GRID, gap: 14,
         padding: '12px 14px',
-        // Group rows get a slightly tinted bg so they read as a
-        // distinct unit from the lone-task rows around them.
-        background: hover
-          ? 'var(--surface)'
-          : 'color-mix(in srgb, var(--accent) 4%, transparent)',
-        cursor: 'pointer',
-        transition: 'background .12s ease',
         alignItems: 'center',
-        outline: 'none',
-        borderRadius: 8,
       }}
     >
       <div style={{ display: 'flex', justifyContent: 'center' }}>
@@ -287,21 +249,17 @@ function ScheduleGroupRow({
       <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
         <span style={{
           fontFamily: FONT_DISPLAY, fontSize: 14, fontWeight: 600,
-          color: 'var(--ink)', letterSpacing: '-0.005em',
+          color: 'var(--ink)', letterSpacing: '0',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           minWidth: 0,
         }}>{schedule?.title || latest?.title || 'Scheduled task'}</span>
-        <span style={{
-          fontFamily: FONT_MONO, fontSize: 10.5,
-          color: 'var(--accent)', letterSpacing: '0.06em',
-          textTransform: 'uppercase',
-          padding: '2px 7px', borderRadius: 999,
-          background: 'color-mix(in srgb, var(--accent) 12%, transparent)',
-          border: '1px solid color-mix(in srgb, var(--accent) 30%, transparent)',
-          flexShrink: 0,
-        }}>
+        <Badge
+          variant="accent"
+          size="sm"
+          className="shrink-0 font-mono uppercase tracking-[0.06em]"
+        >
           {runs.length} {runs.length === 1 ? 'run' : 'runs'}
-        </span>
+        </Badge>
       </div>
 
       <div style={{
@@ -352,29 +310,18 @@ function ScheduleGroupRow({
         transition: 'opacity 140ms ease',
         pointerEvents: hover ? 'auto' : 'none',
       }}>
-        <button
-          type="button"
+        <Button
+          variant="subtle"
+          icon
           onClick={onOpenLatest}
           aria-label="Open latest run"
           title="Open latest run"
-          className="icon-btn"
-          style={{
-            width: 26, height: 26, borderRadius: 6,
-            color: 'var(--ink-3)',
-          }}
-          onMouseOver={(e) => {
-            e.currentTarget.style.background = 'var(--surface-2)';
-            e.currentTarget.style.color = 'var(--accent)';
-          }}
-          onMouseOut={(e) => {
-            e.currentTarget.style.background = 'transparent';
-            e.currentTarget.style.color = 'var(--ink-3)';
-          }}
+          style={{ width: 26, height: 26 }}
         >
           {Ico.externalLink(13)}
-        </button>
+        </Button>
       </div>
-    </div>
+    </CardRow>
   );
 }
 
@@ -546,9 +493,6 @@ export default function TasksView({
         subtitle="Every conversation across every project. Sort, filter, and jump straight in."
       />
 
-      {/* Subtitle → search spacer. 32px (was 18) gives the search
-          bar room to breathe under the subtitle on this view. */}
-      <div style={{ height: 32 }} />
 
       {tasks.length > 0 && (
         <FilterRow
@@ -582,7 +526,13 @@ export default function TasksView({
       )}
 
       {tasks.length === 0 ? (
-        <EmptyState />
+        <EmptyState
+          bordered
+          icon={<span style={{ display: 'inline-flex', color: 'var(--ink-4)' }}>{Ico.chats(28)}</span>}
+          title="No tasks yet"
+          description="Start a conversation from the home screen — every chat shows up here."
+          style={{ margin: '40px 28px' }}
+        />
       ) : (
         <div style={{ padding: '8px 28px 28px' }}>
           <ListHeaderRow />
@@ -628,27 +578,6 @@ export default function TasksView({
           )}
         </div>
       )}
-    </div>
-  );
-}
-
-function EmptyState() {
-  return (
-    <div style={{
-      margin: '40px 28px', padding: '40px 28px',
-      borderRadius: 14,
-      border: '1px dashed var(--line-2)',
-      background: 'var(--surface)',
-      display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center',
-      gap: 10,
-    }}>
-      <span style={{ display: 'inline-flex', color: 'var(--ink-4)' }}>{Ico.chats(28)}</span>
-      <div style={{ fontFamily: FONT_DISPLAY, fontSize: 16, fontWeight: 600, color: 'var(--ink)' }}>
-        No tasks yet
-      </div>
-      <div style={{ fontFamily: FONT_BODY, fontSize: 13, color: 'var(--ink-3)', maxWidth: 320 }}>
-        Start a conversation from the home screen — every chat shows up here.
-      </div>
     </div>
   );
 }

@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import Ico from './Icons';
-import { Spinner } from './ui';
+import { Spinner, Kbd, Badge, Input, Button } from './ui';
 import { TaskMenu } from './TaskMenu';
 import RecentsModal from './RecentsModal';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { host } from '../../platform/host';
-import { timeAgo } from '../lib/formatTime';
+import { relativeAge } from '../lib/formatTime';
+import OnboardingChecklist from './onboarding/OnboardingChecklist';
+import FirstArtifactTip from './onboarding/FirstArtifactTip';
 
 // Platform-aware modifier symbol for keyboard hints. Mac uses ⌘ glyph,
 // Windows/Linux use Ctrl+ literal.
@@ -13,10 +15,11 @@ const IS_MAC = host.isMac() || /Mac|iPhone|iPod|iPad/.test(typeof navigator !== 
 const MOD_LABEL = IS_MAC ? '⌘' : 'Ctrl+';
 const shortcut = (key) => `${MOD_LABEL}${key}`;
 
-function NavItem({ icon, label, active, onClick, badge, comingSoon, compact }) {
+function NavItem({ icon, label, active, onClick, badge, comingSoon, elementRef }) {
   return (
     <button
-      className={`nav-item${active ? ' active' : ''}${compact ? ' compact' : ''}`}
+      ref={elementRef}
+      className={`nav-item${active ? ' active' : ''}`}
       onClick={comingSoon ? undefined : onClick}
       aria-label={label}
       data-coming-soon={comingSoon ? '' : undefined}
@@ -25,20 +28,39 @@ function NavItem({ icon, label, active, onClick, badge, comingSoon, compact }) {
       <span className="nav-row__icon" style={{ display: 'inline-flex', flexShrink: 0, alignItems: 'center' }}>{icon}</span>
       <span className="nav-row__label" style={{ flex: 1 }}>{label}</span>
       {badge != null && (
-        <span className="nav-row__badge pill muted" style={{ fontSize: 10 }}>{badge}</span>
+        <Badge variant="muted" size="xs">{badge}</Badge>
       )}
       {comingSoon && (
-        <span className="pill muted" style={{ fontSize: 10 }}>Soon</span>
+        <Badge variant="muted" size="xs">Soon</Badge>
       )}
     </button>
   );
 }
 
-function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelete, onMoveToProject, showTimestamp = true, isActive = false, agentLabel }) {
+function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelete, onMoveToProject, showTimestamp = true, isActive = false, selected = false, agentLabel }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [anchorRect, setAnchorRect] = useState(null);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
   const triggerRef = useRef(null);
+  // One-shot latch: Enter commits once (the trailing unmount-blur is a
+  // no-op), and Escape arms it so the same blur can't commit the cancel.
+  const renameDone = useRef(false);
   const { revealed: showKebab, hoverProps } = useRevealOnHover(menuOpen);
+
+  const startRename = () => {
+    setDraft(task.title || '');
+    renameDone.current = false;
+    setEditing(true);
+  };
+  const submitRename = () => {
+    if (renameDone.current) return;
+    renameDone.current = true;
+    setEditing(false);
+    const next = draft.trim();
+    if (!next || next === (task.title || '').trim()) return;
+    onRename?.(task.id, next);
+  };
 
   const openMenu = (e) => {
     e.stopPropagation();
@@ -61,7 +83,32 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
       style={{ position: 'relative', display: 'flex' }}
       {...hoverProps}
     >
-      <button className="recent-item" onClick={onClick} aria-label={task.title} style={{ flex: 1, minWidth: 0 }}>
+      {editing ? (
+        <Input
+          size="sm"
+          value={draft}
+          onChange={setDraft}
+          aria-label="Rename task"
+          autoFocus
+          onFocus={(e) => { try { e.target.select(); } catch {} }}
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => {
+            e.stopPropagation();
+            if (e.key === 'Enter') { e.preventDefault(); submitRename(); }
+            else if (e.key === 'Escape') {
+              e.preventDefault();
+              renameDone.current = true;
+              setEditing(false);
+            }
+          }}
+          onBlur={submitRename}
+          spellCheck={false}
+          autoCapitalize="none"
+          autoCorrect="off"
+          style={{ flex: 1, minWidth: 0 }}
+        />
+      ) : (
+      <button className={`recent-item${selected ? ' is-selected' : ''}`} onClick={onClick} aria-label={task.title} style={{ flex: 1, minWidth: 0 }}>
         <span className="recent-row__title" style={{
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           flex: 1, paddingRight: 8,
@@ -99,8 +146,8 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
           <span style={{
             position: 'absolute', inset: 0,
             display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end',
-            fontFamily: 'var(--font-mono)', fontSize: 10,
-            color: 'var(--ink-4)', letterSpacing: '0.02em',
+            fontFamily: 'var(--font-sans)', fontSize: 11,
+            color: 'var(--ink-4)',
             opacity: (showKebab || (!showTimestamp && !isActive)) ? 0 : 1,
             transition: 'opacity 120ms ease',
             gap: 6,
@@ -118,7 +165,7 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
                 }}
               />
             ) : (
-              showTimestamp ? timeAgo(task.updatedAt || task.subtitle) : ''
+              showTimestamp ? (relativeAge(task.updatedAt || task.subtitle) || task.subtitle || '') : ''
             )}
           </span>
           <span
@@ -145,6 +192,7 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
           </span>
         </span>
       </button>
+      )}
 
       <TaskMenu
         task={task}
@@ -155,10 +203,8 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
         onClose={() => setMenuOpen(false)}
         onPin={() => onPin?.(task)}
         onUnpin={() => onUnpin?.(task.id)}
-        onRename={() => {
-          const next = window.prompt('Rename task', task.title || '');
-          if (next != null) onRename?.(task.id, next);
-        }}
+        hideRename={!onRename}
+        onRename={startRename}
         onDelete={() => onDelete?.(task.id)}
         hideMoveToProject={!onMoveToProject}
         onMoveToProject={() => onMoveToProject?.(task)}
@@ -202,13 +248,50 @@ export default function Sidebar({
   onToggleServer,
   onShowServerHelp,
   updateAvailable = null, // { version: string } or null
+  // Set when an apply attempt failed (phase 'error'); surfaces a retry so the
+  // sidebar doesn't go silent on failure the way it used to (ENG-849 QA find).
+  updateError = null, // { version?: string } or null
   onApplyUpdate,
+  // Download-only shell update notice.
+  shellUpdate = null,
+  onDownloadShellUpdate,
+  onDismissShellUpdate,
   agentLabel,
+  // Light/dark theme + 8-bit skin toggles — the sidebar footer hosts
+  // both switches (relocated from the old floating bottom-right
+  // buttons; see App.jsx). Defaults keep the buttons harmless if a
+  // caller (e.g. a test) doesn't wire them up.
+  theme = 'dark',
+  onToggleTheme,
+  skin = 'normal',
+  onToggleSkin,
+  // Whether the 8-bit button should render "on". While skin === 'custom',
+  // the caller repurposes onToggleSkin to flip the mono font instead of
+  // skin itself, so "on" needs to track that font choice, not `skin`.
+  // Defaults to the plain skin-based reading for callers that don't pass it.
+  is8bitActive,
+  // Settings → Appearance → Theme/8-bit toggle buttons. Hide either
+  // footer button independently; both default to shown.
+  showThemeToggle = true,
+  show8bitToggle = true,
   settingsActive = false,
   // Settings → Personalization → Show nav-panel counters. When
   // false, hide the per-nav badge counts AND the time-since slot
   // on each Recent row. Default true.
   showCounters = true,
+  // Settings → Appearance → Sidebar title/logo. Replaces the "MindsHub"
+  // wordmark; null/empty falls back to the default (text-only, no logo).
+  navTitle = null,
+  navLogo = null,
+  // Onboarding — "Get to know Cowork" checklist. Each step seeds a new
+  // chat via this handler (App's send-from-home). Omit to hide the card
+  // (tests, web shells that don't wire it).
+  onStartChat = null,
+  // First-artifact tip — App arms it (0 → 1 artifacts transition) and
+  // owns the persistent dismissal; the sidebar anchors it to the Live
+  // Artifacts nav row and adds the "clicking the row dismisses" path.
+  artifactTipOpen = false,
+  onArtifactTipDismiss,
 }) {
   // Decorate every task with its pinned state. Tasks come from the
   // conversations endpoint which doesn't know about pins (they live
@@ -327,6 +410,10 @@ export default function Sidebar({
 
   const [recentsModalOpen, setRecentsModalOpen] = useState(false);
 
+  // Anchor for the first-artifact tip — the Live Artifacts nav row (the
+  // count badge sits at its right edge, where the tip's arrow points).
+  const artifactsNavRef = useRef(null);
+
 
   const pinnedTasks = (pins || [])
     .filter((pin) => pin.item_type === 'conversation')
@@ -337,6 +424,12 @@ export default function Sidebar({
         : { id: pin.item_id, title: pin.title || pin.item_id, status: 'idle', pinned: true };
     })
     .slice(0, 8);
+
+  // "On" state for the 8-bit button: while skin === 'custom', onToggleSkin
+  // is repurposed to flip the mono font (see App.jsx) rather than skin
+  // itself, so the caller passes is8bitActive to track that. Falls back to
+  // the plain skin-based reading for callers that don't pass it (tests).
+  const resolved8bitActive = is8bitActive ?? (skin !== 'normal');
 
   return (
     <aside
@@ -461,7 +554,15 @@ export default function Sidebar({
               userSelect: 'none',
             }}
           >·</span>
-          <div className="anton-sidebar__wordmark">MindsHub</div>
+          {navLogo && (
+            <img
+              src={navLogo}
+              alt=""
+              aria-hidden="true"
+              className="anton-sidebar__logo"
+            />
+          )}
+          <div className="anton-sidebar__wordmark">{navTitle || 'MindsHub'}</div>
         </div>
       </div>
 
@@ -483,24 +584,39 @@ export default function Sidebar({
               `${collapsed ? '0ms' : '80ms'}`,
         }}
       >
-        {/* New task CTA — outlined neon button */}
+        {/* New task CTA — the tinted (accent-wash) variant, full width. */}
         <div className="anton-sidebar__cta-wrap">
-          <button
-            className="btn-new-task"
+          <Button
+            variant="tinted"
+            block
+            size="lg"
             onClick={onNewTask}
             title={`New task  (${shortcut('N')})`}
+            style={{ gap: 10 }}
           >
-            <span style={{ display: 'inline-flex' }}>{Ico.plus(14)}</span>
-            <span className="btn-new-task__label">New task</span>
-            <span className="kbd">{shortcut('N')}</span>
-          </button>
+            {Ico.plus(14)}
+            <span style={{ flex: 1, textAlign: 'left', fontWeight: 500 }}>New task</span>
+            <Kbd>{shortcut('N')}</Kbd>
+          </Button>
         </div>
 
         {/* Primary nav */}
         <div className="nav-list" style={{ padding: '0 10px', display: 'flex', flexDirection: 'column', gap: 1 }}>
           <NavItem icon={Ico.folder(15)}  label="Projects"        onClick={() => onNavigate('projects')}  active={activeRoute === 'projects'}  badge={showCounters ? (projectsCount  || null) : null} />
           <NavItem icon={Ico.clock(15)}   label="Scheduled Tasks" onClick={() => onNavigate('scheduled')} active={activeRoute === 'scheduled'} badge={showCounters ? (scheduledCount || null) : null} />
-          <NavItem icon={Ico.sparkle(15)} label="Live Artifacts"  onClick={() => onNavigate('artifacts')} active={activeRoute === 'artifacts'} badge={showCounters ? (artifactsCount || null) : null} />
+          <NavItem
+            icon={Ico.sparkle(15)}
+            label="Live Artifacts"
+            elementRef={artifactsNavRef}
+            onClick={() => {
+              // Opening the artifacts view IS the tip's goal — count it
+              // as a dismissal, same as "Got it" / "Show me".
+              if (artifactTipOpen) onArtifactTipDismiss?.();
+              onNavigate('artifacts');
+            }}
+            active={activeRoute === 'artifacts'}
+            badge={showCounters ? (artifactsCount || null) : null}
+          />
           {/* Connect Apps and Data — replaces "Customize". Reuses the
               `customize` route key so existing in-flight links still
               work. The page now lists connected apps + datasources in
@@ -515,22 +631,24 @@ export default function Sidebar({
             active={activeRoute === 'customize'}
             badge={showCounters ? (connectorsCount || null) : null}
           />
+          {/* Channels used to have a standalone entry here, web-only, purely
+              because the web shell hid Settings entirely — Channels lives
+              under Settings on desktop. Settings is now reachable on web
+              (ENG-932), so the workaround is removed and both platforms find
+              Channels in the same place. The `channels` route in App.jsx is
+              left intact so existing deep links still resolve. */}
         </div>
 
-        {/* Brain-style nav — visually grouped panel.
-            Order: Memories → Skills library → Settings. Labels read
-            as the things the user OWNS (plural collections) rather
-            than the abstract concepts the engine names them after.
-            No heading: the agent name (e.g. "Anton") read as
-            inconsistent branding here, and the bordered panel already
-            sets the group apart on its own. marginTop gives the group
-            a deliberate top gap (matching the breathing room below it,
-            before the Pinned label) in place of the removed heading —
-            a touch tighter than the heading's own footprint, which
-            avoids leaving an empty heading-sized void. */}
-        <div className="anton-group" style={{ marginTop: 18 }}>
-          <NavItem icon={Ico.brain(15)} label="Memories"       onClick={() => onNavigate('memory')} active={activeRoute === 'memory'} compact />
-          <NavItem icon={Ico.cube(15)}  label="Skills library" onClick={() => onNavigate('skills')} active={activeRoute === 'skills'} compact />
+        {/* Agent — the agent's own brain: what it remembers (Memories)
+            and what it can do (Skills library). Pulled out of the old
+            bordered inset and presented as a labeled group, so it reads
+            as a category alongside Pinned / Recent instead of a drawn
+            box (fewer edges). Labels name what the user OWNS (plural
+            collections) rather than the engine's abstract concepts. */}
+        <div className="section-label">Agent</div>
+        <div className="nav-list" style={{ padding: '0 10px', display: 'flex', flexDirection: 'column', gap: 1 }}>
+          <NavItem icon={Ico.brain(15)} label="Memories"       onClick={() => onNavigate('memory')} active={activeRoute === 'memory'} />
+          <NavItem icon={Ico.cube(15)}  label="Skills library" onClick={() => onNavigate('skills')} active={activeRoute === 'skills'} />
         </div>
 
         {/* Pinned — only rendered when there are pinned tasks; an empty
@@ -552,6 +670,7 @@ export default function Sidebar({
                   onMoveToProject={onMoveTaskToProject}
                   showTimestamp={showCounters}
                   isActive={activeTaskIds.has(task.id)}
+                  selected={activeTaskId === task.id}
                   agentLabel={agentLabel}
                 />
               ))}
@@ -627,6 +746,7 @@ export default function Sidebar({
                 onMoveToProject={isGroup ? undefined : onMoveTaskToProject}
                 showTimestamp={showCounters}
                 isActive={!isGroup && activeTaskIds.has(t.id)}
+                selected={!isGroup && activeTaskId === t.id}
                 agentLabel={agentLabel}
               />
             );
@@ -668,8 +788,12 @@ export default function Sidebar({
           )}
         </div>
 
-        {/* Update available banner */}
-        {updateAvailable && (
+        {/* Onboarding tracker — docked above the footer on every screen.
+            Hides itself once dismissed (post-completion). */}
+        {onStartChat && <OnboardingChecklist onStartChat={onStartChat} />}
+
+        {/* A shell reinstall supersedes the OTA banner until dismissed. */}
+        {updateAvailable && !shellUpdate && (
           <button
             type="button"
             style={{
@@ -699,7 +823,7 @@ export default function Sidebar({
               flex: 1, fontSize: 11.5, color: 'var(--text-strong)',
               fontFamily: 'var(--font-sans)',
             }}>
-              Update available{updateAvailable.version ? ` (${updateAvailable.version})` : ''}
+              Update ready{updateAvailable.version ? ` (${updateAvailable.version})` : ''}
             </span>
             <span style={{
               fontSize: 10, color: 'var(--sage-500, #5D9287)',
@@ -708,73 +832,224 @@ export default function Sidebar({
               textTransform: 'uppercase',
               fontWeight: 600,
             }}>
-              Install
+              Restart
             </span>
           </button>
         )}
 
-        {/* Footer — Electron-only. Web shell omits this entirely since the
-            FastAPI process IS the host (start/stop/diagnostics don't apply).
+        {/* A failed apply keeps the banner (as a retry) instead of silently
+            vanishing until the next poll — mirrors Settings → Software updates. */}
+        {updateError && !shellUpdate && (
+          <button
+            type="button"
+            style={{
+              margin: '0 10px 6px',
+              padding: '8px 12px',
+              background: 'rgba(196,127,0,0.12)',
+              border: '1px solid rgba(196,127,0,0.30)',
+              borderRadius: 8,
+              display: 'flex', alignItems: 'center', gap: 8,
+              cursor: 'pointer',
+              transition: 'background 120ms ease',
+              width: 'calc(100% - 20px)',
+              textAlign: 'left',
+              fontFamily: 'inherit',
+              WebkitAppRegion: 'no-drag',
+            }}
+            onClick={onApplyUpdate}
+            onMouseOver={(e) => { e.currentTarget.style.background = 'rgba(196,127,0,0.22)'; }}
+            onMouseOut={(e) => { e.currentTarget.style.background = 'rgba(196,127,0,0.12)'; }}
+          >
+            <span style={{
+              width: 6, height: 6, borderRadius: '50%',
+              background: 'var(--warning, #c47f00)',
+              flexShrink: 0,
+            }} />
+            <span style={{
+              flex: 1, fontSize: 11.5, color: 'var(--text-strong)',
+              fontFamily: 'var(--font-sans)',
+            }}>
+              Update failed{updateError.version ? ` (${updateError.version})` : ''}
+            </span>
+            <span style={{
+              fontSize: 10, color: 'var(--warning, #c47f00)',
+              fontFamily: 'var(--font-mono)',
+              letterSpacing: '0.03em',
+              textTransform: 'uppercase',
+              fontWeight: 600,
+            }}>
+              Try again
+            </span>
+          </button>
+        )}
+
+        {/* Shell updates are download-only and dismissible per version. */}
+        {shellUpdate && (
+          <div
+            style={{
+              margin: '0 10px 6px',
+              padding: '8px 12px',
+              background: 'rgba(93,146,135,0.12)',
+              border: '1px solid rgba(93,146,135,0.30)',
+              borderRadius: 8,
+              display: 'flex', alignItems: 'center', gap: 8,
+              width: 'calc(100% - 20px)',
+              WebkitAppRegion: 'no-drag',
+            }}
+          >
+            <button
+              type="button"
+              onClick={onDownloadShellUpdate}
+              title={`A new version of MindsHub Cowork is available${shellUpdate.version ? ` (${shellUpdate.version})` : ''} — download the installer, then quit the app and open it to update`}
+              style={{
+                flex: 1, display: 'flex', alignItems: 'center', gap: 8,
+                background: 'none', border: 'none', padding: 0, margin: 0,
+                cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+              }}
+            >
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--sage-500, #5D9287)', flexShrink: 0 }} />
+              <span style={{ flex: 1, fontSize: 11.5, color: 'var(--text-strong)', fontFamily: 'var(--font-sans)' }}>
+                New version available{shellUpdate.version ? ` (${shellUpdate.version})` : ''}
+              </span>
+              <span style={{
+                fontSize: 10, color: 'var(--sage-500, #5D9287)', fontFamily: 'var(--font-mono)',
+                letterSpacing: '0.03em', textTransform: 'uppercase', fontWeight: 600,
+              }}>
+                Download
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={onDismissShellUpdate}
+              aria-label="Dismiss update notice"
+              title="Dismiss"
+              style={{
+                background: 'none', border: 'none', padding: '0 2px', margin: 0,
+                cursor: 'pointer', color: 'var(--text-muted)', fontSize: 14, lineHeight: 1, flexShrink: 0,
+              }}
+            >
+              ×
+            </button>
+          </div>
+        )}
+
+        {/* Footer — always rendered so the theme toggle (relocated here
+            from the old floating bottom-right button) is reachable on
+            both Electron and the hosted web shell. The settings /
+            backend-status controls stay Electron-only: the FastAPI
+            process IS the host on web, so start/stop/diagnostics don't
+            apply. Settings itself is NOT Electron-only any more — the web
+            shell used to hide it entirely, which also hid the only
+            workaround for ENG-1042; see the gate below (ENG-932).
 
             Normal state: a settings nav row — no server noise when everything
             is working fine.
             Disconnected / busy: the status pill replaces the settings row so
             the problem is immediately visible. */}
-        {!host.isWeb && (
         <div className="anton-sidebar__footer">
-          {(!serverOnline || serverBusy) ? (
-            <>
+          {/* The status-pill variant is Electron-only — on web the FastAPI
+              process IS the host, so there is no local server lifecycle to
+              report on. But Settings itself must be reachable on web
+              (ENG-932): it holds the reasoning-effort control, which is the
+              only user-side workaround for a turn that burns its whole
+              output budget and returns nothing (ENG-1042). So web always
+              gets the plain Settings row; only the pill is gated. */}
+          {(!host.isWeb && (!serverOnline || serverBusy)) ? (
+              <>
+                <button
+                  type="button"
+                  className={
+                    'backend-status-control is-clickable' +
+                    (serverBusy ? ' is-busy' : '')
+                  }
+                  onClick={onShowServerHelp}
+                  title="Backend status — click for details"
+                  aria-label="Backend status — click for details"
+                  style={{ WebkitAppRegion: 'no-drag', flex: 1 }}
+                >
+                  <span className={'status-dot' + (serverBusy ? ' busy' : ' offline')} />
+                  <span className="status-text">
+                    <span className="status-text__faded">backend ·</span>{' '}
+                    {serverBusy ? (
+                      <>
+                        <span className="status-text__live">{serverBusyKind}</span>{' '}
+                        <Spinner />
+                      </>
+                    ) : (
+                      <span className="status-text__faded">offline</span>
+                    )}
+                  </span>
+                </button>
+                <button
+                  className={'chrome-btn--small' + (settingsActive ? ' is-on' : '')}
+                  onClick={() => onNavigate('settings:backend')}
+                  title="Settings"
+                  aria-label="Settings"
+                  style={{ WebkitAppRegion: 'no-drag', flexShrink: 0 }}
+                >
+                  {Ico.settings(13)}
+                </button>
+              </>
+            ) : (
               <button
-                type="button"
-                className={
-                  'status-pill is-clickable' +
-                  (serverBusy ? ' is-busy' : '')
-                }
-                onClick={onShowServerHelp}
-                title="Backend status — click for details"
-                aria-label="Backend status — click for details"
-                style={{ WebkitAppRegion: 'no-drag', flex: 1 }}
-              >
-                <span className={'status-dot' + (serverBusy ? ' busy' : ' offline')} />
-                <span className="status-text">
-                  <span className="status-text__faded">backend ·</span>{' '}
-                  {serverBusy ? (
-                    <>
-                      <span className="status-text__live">{serverBusyKind}</span>{' '}
-                      <Spinner />
-                    </>
-                  ) : (
-                    <span className="status-text__faded">offline</span>
-                  )}
-                </span>
-              </button>
-              <button
-                className={'chrome-btn--small' + (settingsActive ? ' is-on' : '')}
-                onClick={() => onNavigate('settings:backend')}
+                className={'anton-sidebar__footer-settings' + (settingsActive ? ' is-on' : '')}
+                onClick={() => onNavigate('settings:agent')}
                 title="Settings"
                 aria-label="Settings"
-                style={{ WebkitAppRegion: 'no-drag', flexShrink: 0 }}
+                style={{ WebkitAppRegion: 'no-drag', flex: 1, minWidth: 0 }}
               >
-                {Ico.settings(13)}
+                <span style={{ display: 'inline-flex', flexShrink: 0 }}>{Ico.settings(13)}</span>
+                <span>Settings</span>
               </button>
-            </>
-          ) : (
+            )}
+          {(show8bitToggle || showThemeToggle) && (
+            // Marks these as quick display toggles, not settings — separate
+            // from the Settings/backend-status controls to the left.
+            <span
+              aria-hidden="true"
+              className="anton-sidebar__footer-divider"
+              style={{ WebkitAppRegion: 'no-drag', marginLeft: 'auto' }}
+            />
+          )}
+          {show8bitToggle && (
             <button
-              className={'anton-sidebar__footer-settings' + (settingsActive ? ' is-on' : '')}
-              onClick={() => onNavigate('settings:agent')}
-              title="Settings"
-              aria-label="Settings"
-              style={{ WebkitAppRegion: 'no-drag' }}
+              className={'chrome-btn--small' + (resolved8bitActive ? ' is-on' : '')}
+              onClick={onToggleSkin}
+              title={skin === 'custom' ? '8-bit font' : '8-bit style'}
+              aria-label={skin === 'custom' ? 'Toggle 8-bit font' : 'Toggle 8-bit style'}
+              style={{ WebkitAppRegion: 'no-drag', flexShrink: 0 }}
             >
-              <span style={{ display: 'inline-flex', flexShrink: 0 }}>{Ico.settings(13)}</span>
-              <span>Settings</span>
+              {Ico.gamepad(15)}
+            </button>
+          )}
+          {showThemeToggle && (
+            <button
+              className="chrome-btn--small"
+              onClick={onToggleTheme}
+              title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
+              aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
+              style={{ WebkitAppRegion: 'no-drag', flexShrink: 0 }}
+            >
+              {theme === 'dark' ? Ico.sun(15) : Ico.moon(15)}
             </button>
           )}
         </div>
-        )}
 
         {/* Version is shown on the Settings page — no need to repeat here. */}
       </div>
+
+      <FirstArtifactTip
+        // Hold the tip while the sidebar is collapsed — the anchor is
+        // invisible (opacity 0) and the popover would point at nothing.
+        // The arm state survives, so it shows on the next expand.
+        open={artifactTipOpen && !collapsed}
+        anchorRef={artifactsNavRef}
+        onGotIt={() => onArtifactTipDismiss?.()}
+        onShowMe={() => {
+          onArtifactTipDismiss?.();
+          onNavigate('artifacts');
+        }}
+      />
 
       <RecentsModal
         open={recentsModalOpen}

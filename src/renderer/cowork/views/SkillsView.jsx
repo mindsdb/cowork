@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import { PageHeader, FilterRow, SearchInput, SortPill } from '../components/collection';
-import { Menu } from '../components/ui';
+import { Menu, Button, Card, Select, Input, Textarea } from '../components/ui';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
-import { Crumb, CrumbSep } from '../components/ui/Crumb';
-import { Toast } from '../components/ui/Toast';
+import { Switch } from '../components/ui/Switch';
+import { useToastManager } from '../components/ui/Toast';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import OverflowMenu from '../components/OverflowMenu';
@@ -17,31 +17,18 @@ function EmptyState({ children }) {
 }
 
 
-const CARD_SHADOW = '0px 0px 0px 0.5px rgba(39,39,42,0.15), 0px 1px 2px rgba(0,0,0,0.05), 0px 0.5px 0px rgba(0,0,0,0.08)';
-
 function SkillGridCard({ skill, onClick }) {
-  const [hovered, setHovered] = useState(false);
   const age = relativeAge(skill.updatedAt);
   const project = skill.projects?.[0] || skill.project;
   return (
-    <div
-      role="button"
-      tabIndex={0}
+    <Card
+      as="button"
+      interactive
+      padding="none"
       onClick={() => onClick(skill)}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(skill); } }}
       style={{
-        cursor: 'pointer',
-        background: hovered ? 'var(--surface-2)' : 'var(--surface)',
-        border: `1px solid ${hovered ? 'var(--line-2)' : 'var(--line)'}`,
-        boxShadow: CARD_SHADOW,
-        borderRadius: 8,
         padding: '12px 0 0',
         display: 'flex', flexDirection: 'column', gap: 12,
-        transition: 'background .15s ease',
-        outline: 'none',
-        font: 'inherit', color: 'inherit',
         overflow: 'hidden',
       }}
     >
@@ -52,7 +39,7 @@ function SkillGridCard({ skill, onClick }) {
           <span style={{
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
             flexShrink: 0, width: 20, height: 20, borderRadius: 4,
-            boxShadow: CARD_SHADOW,
+            boxShadow: 'var(--sh-1)',
             fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 500,
             color: 'var(--ink-3)',
           }}>/</span>
@@ -75,7 +62,9 @@ function SkillGridCard({ skill, onClick }) {
           )}
         </div>
         <span style={{
-          fontFamily: 'var(--font-body)', fontSize: 14, lineHeight: '24px',
+          // Matches the page-header subtitle (13.5 / 1.5) so the card copy
+          // reads as the same "muted body" voice, not a looser 14/24 block.
+          fontFamily: 'var(--font-body)', fontSize: 13.5, lineHeight: 1.5,
           color: 'var(--ink-3)',
           display: '-webkit-box',
           WebkitLineClamp: 2,
@@ -101,34 +90,9 @@ function SkillGridCard({ skill, onClick }) {
         </span>
         {age && <span>Updated {age}</span>}
       </div>
-    </div>
+    </Card>
   );
 }
-
-function Toggle({ checked, onChange }) {
-  return (
-    <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}>
-      <input type="checkbox" checked={checked} onChange={onChange} style={{ display: 'none' }} />
-      <div style={{
-        width: 36, height: 20, borderRadius: 10,
-        background: checked ? 'var(--accent)' : 'var(--line-2)',
-        position: 'relative',
-        transition: 'background .2s ease',
-        flexShrink: 0,
-      }}>
-        <div style={{
-          position: 'absolute',
-          top: 2, left: checked ? 18 : 2,
-          width: 16, height: 16, borderRadius: '50%',
-          background: 'white',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
-          transition: 'left .2s ease',
-        }} />
-      </div>
-    </label>
-  );
-}
-
 
 const fieldStyle = {
   width: '100%',
@@ -202,10 +166,10 @@ function SkillModal({ open, onClose, onSaved, onError, initial = null, projects 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div>
             <FieldLabel>Label</FieldLabel>
-            <input
+            <Input
               aria-label="Label"
               value={draft.label}
-              onChange={(e) => setField('label', e.target.value)}
+              onChange={(v) => setField('label', v)}
               placeholder="weekly-status-report"
               readOnly={isEdit}
               style={{ ...fieldStyle, height: 34, resize: 'none', ...(isEdit && { opacity: 0.5, cursor: 'default' }) }}
@@ -214,34 +178,33 @@ function SkillModal({ open, onClose, onSaved, onError, initial = null, projects 
           </div>
           <div>
             <FieldLabel>Scope</FieldLabel>
-            <select
-              aria-label="Scope"
+            <Select
+              ariaLabel="Scope"
               value={draft.project}
-              onChange={(e) => setField('project', e.target.value)}
-              style={{ ...fieldStyle, height: 34, resize: 'none', cursor: 'pointer' }}
-            >
-              <option value="">All projects</option>
-              {projects.map((p) => (
-                <option key={p.id ?? p.name} value={p.name}>{p.name}</option>
-              ))}
-            </select>
+              onValueChange={(v) => setField('project', v)}
+              style={{ ...fieldStyle, height: 34 }}
+              options={[
+                { value: '', label: 'All projects' },
+                ...projects.map((p) => ({ value: p.name, label: p.name })),
+              ]}
+            />
           </div>
           <div>
             <FieldLabel>Description</FieldLabel>
-            <textarea
+            <Textarea
               aria-label="Description"
               value={draft.description}
-              onChange={(e) => setField('description', e.target.value)}
+              onChange={(v) => setField('description', v)}
               placeholder="Generate weekly status reports from recent work. Use when asked for updates or progress summaries."
               style={{ ...fieldStyle, height: 80 }}
             />
           </div>
           <div>
             <FieldLabel>Instructions</FieldLabel>
-            <textarea
+            <Textarea
               aria-label="Instructions"
               value={draft.declarative}
-              onChange={(e) => setField('declarative', e.target.value)}
+              onChange={(v) => setField('declarative', v)}
               placeholder="Summarize my recent work in three sections: wins, blockers, and next steps. Keep the tone professional but not stiff..."
               style={{ ...fieldStyle, height: 198, fontFamily: 'var(--font-mono)', fontSize: 12.5 }}
             />
@@ -249,10 +212,11 @@ function SkillModal({ open, onClose, onSaved, onError, initial = null, projects 
         </div>
       </ModalBody>
       <ModalFooter>
-        <button type="button" className="btn-secondary" onClick={handleClose}>Cancel</button>
-        <button type="button" className="btn-primary" disabled={!canSubmit} onClick={submit}>
+        <Button variant="subtle" onClick={handleClose}>Cancel</Button>
+        <Button variant="primary" disabled={!canSubmit} onClick={submit}>
+          {!isEdit && !busy && Ico.plus(14)}
           {busy ? 'Saving…' : isEdit ? 'Save' : 'Create'}
-        </button>
+        </Button>
       </ModalFooter>
     </Modal>
   );
@@ -319,13 +283,12 @@ function UploadSkillModal({ open, onClose, onSaved, onError }) {
                 <span style={{ fontSize: 12, fontFamily: 'var(--font-body)', color: 'var(--ink-4)' }}>
                   {(file.size / 1024).toFixed(1)} KB
                 </span>
-                <button
-                  type="button"
+                <Button
+                  variant="subtle"
                   onClick={(e) => { e.stopPropagation(); setFile(null); }}
-                  style={{ background: 'none', border: 0, color: 'var(--ink-4)', cursor: 'pointer', fontSize: 12, fontFamily: 'var(--font-body)' }}
                 >
                   Remove
-                </button>
+                </Button>
               </>
             ) : (
               <>
@@ -356,11 +319,12 @@ function UploadSkillModal({ open, onClose, onSaved, onError }) {
         </div>
       </ModalBody>
       <ModalFooter align="space-between">
-        <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
+        <Button variant="subtle" onClick={onClose}>Cancel</Button>
         {file && (
-          <button type="button" className="btn-primary" disabled={busy} onClick={upload}>
+          <Button variant="primary" disabled={busy} onClick={upload}>
+            {!busy && Ico.upload(14)}
             {busy ? 'Uploading…' : 'Upload'}
-          </button>
+          </Button>
         )}
       </ModalFooter>
     </Modal>
@@ -376,15 +340,14 @@ function CreateSkillDropdown({ onWrite, onUpload, onCowork }) {
     { id: 'write',  label: 'Write Skill Instructions', icon: Ico.edit(14),    onClick: onWrite },
   ];
   const trigger = (
-    <button
-      type="button"
-      className="btn-primary"
+    <Button
+      variant="primary"
       style={{ display: 'inline-flex', alignItems: 'center', gap: 8, paddingRight: 10 }}
     >
       {Ico.plus(14)}
       <span>Create skill</span>
       <span style={{ display: 'inline-flex', color: 'inherit', opacity: 0.7 }}>{Ico.chevDown(11)}</span>
-    </button>
+    </Button>
   );
   return <Menu trigger={trigger} items={items} align="end" width={220} />;
 }
@@ -402,7 +365,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
   const [selected, setSelected]       = useState(null);
   const [modalSkill, setModalSkill]   = useState(null); // null = closed, undefined = new, skill = edit
   const [uploadOpen, setUploadOpen]   = useState(false);
-  const [toast, setToast]             = useState(null); // { message, type }
+  const toastManager = useToastManager();
   const [search, setSearch]           = useState('');
   const [sortBy, setSortBy]           = useState('name');
   const [view, setView]               = useState(() => localStorage.getItem('anton:skills-view') === 'list' ? 'list' : 'grid');
@@ -410,7 +373,8 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
 
   const handleViewChange = (v) => { setView(v); localStorage.setItem('anton:skills-view', v); };
 
-  const showToast = (msg, type = 'error') => setToast({ message: msg, type });
+  // type: 'success' | 'error' (mapped to the shared Toast's 'danger').
+  const showToast = (msg, type = 'error') => toastManager.add({ title: msg, type: type === 'error' ? 'danger' : type });
 
   useEffect(() => {
     fetchProjects().then(setProjects);
@@ -459,47 +423,42 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
     <div className="scroll-clean" style={{ flex: 1, overflowY: 'auto', paddingBottom: 40 }}>
       {selected ? (
         // ── Detail view ────────────────────────────────────────────────────
-        <div style={{ padding: 32 }}>
-
-
-          {/* Header */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-            <Crumb label="Skills" onClick={() => setSelected(null)} />
-            <CrumbSep />
-            <span style={{
-              fontFamily: 'var(--font-display)', fontSize: 13, fontWeight: 600,
-              color: 'var(--ink)', letterSpacing: '0.04em',
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>
-              {selected.label}
-            </span>
-            <div style={{ flex: 1 }} />
-            <Toggle checked={selected.enabled ?? true} onChange={async (e) => {
-              const next = e.target.checked;
-              setSelected((prev) => ({ ...prev, enabled: next }));
-              try {
-                const saved = await saveSkillAndSync({ label: selected.label, enabled: next }, true);
-                setSelected(saved);
-              } catch (err) {
-                setSelected((prev) => ({ ...prev, enabled: !next }));
-                showToast(err.message || 'Could not update skill.');
-              }
-            }} />
-            <OverflowMenu
-              items={[
-                { id: 'try',       label: 'Try in chat', icon: Ico.chats(14),  onClick: () => onTryInChat?.(`/${selected.label}`, selected.projects?.[0]) },
-                { id: 'edit',      label: 'Edit',        icon: Ico.edit(14),   onClick: () => startEdit(selected) },
-                { divider: true },
-                { id: 'uninstall', label: 'Uninstall',   icon: Ico.trash(14),  danger: true, onClick: () => remove(selected) },
-              ]}
-            />
-          </div>
+        <>
+          <PageHeader
+            crumbs={[{ label: 'Skills', onClick: () => setSelected(null) }]}
+            current={selected.label}
+            actions={
+              <>
+                <Switch
+                  checked={selected.enabled ?? true}
+                  aria-label="Skill enabled"
+                  onCheckedChange={async (next) => {
+                    setSelected((prev) => ({ ...prev, enabled: next }));
+                    try {
+                      const saved = await saveSkillAndSync({ label: selected.label, enabled: next }, true);
+                      setSelected(saved);
+                    } catch (err) {
+                      setSelected((prev) => ({ ...prev, enabled: !next }));
+                      showToast(err.message || 'Could not update skill.');
+                    }
+                  }}
+                />
+                <OverflowMenu
+                  items={[
+                    { id: 'try',       label: 'Try in chat', icon: Ico.chats(14),  onClick: () => onTryInChat?.(`/${selected.label}`, selected.projects?.[0]) },
+                    { id: 'edit',      label: 'Edit',        icon: Ico.edit(14),   onClick: () => startEdit(selected) },
+                    { divider: true },
+                    { id: 'uninstall', label: 'Uninstall',   icon: Ico.trash(14),  danger: true, onClick: () => remove(selected) },
+                  ]}
+                />
+              </>
+            }
+          />
+          <div style={{ padding: '24px 32px 32px' }}>
 
           {/* Scope */}
           <div style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 11.5, fontWeight: 500, color: 'var(--ink-3)', marginBottom: 4, fontFamily: 'var(--font-mono)', letterSpacing: '0.04em' }}>
-              Scope
-            </div>
+            <h3 className="s-h3" style={{ margin: '0 0 4px' }}>Scope</h3>
             <p style={{ margin: 0, fontSize: 13.5, color: 'var(--ink)', lineHeight: 1.5, userSelect: 'text' }}>
               {selected.projects?.[0]}
             </p>
@@ -508,9 +467,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
           {/* Description */}
           {selected.description && (
             <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 11.5, fontWeight: 500, color: 'var(--ink-3)', marginBottom: 4, fontFamily: 'var(--font-mono)', letterSpacing: '0.04em' }}>
-                Description
-              </div>
+              <h3 className="s-h3" style={{ margin: '0 0 4px' }}>Description</h3>
               <p style={{ margin: 0, fontSize: 13.5, color: 'var(--ink)', lineHeight: 1.5, userSelect: 'text' }}>
                 {selected.description}
               </p>
@@ -534,6 +491,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
             />
           </div>
         </div>
+        </>
       ) : (
         // ── Grid ───────────────────────────────────────────────────────────
         <>
@@ -546,7 +504,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
           <FilterRow
             search={<SearchInput inputRef={searchRef} value={search} onChange={setSearch} placeholder="Search skills" shortcut={null} />}
             sort={<SortPill value={sortBy} onChange={setSortBy} options={SORT_OPTIONS} />}
-            view={<span className="proj-view-toggle"><ToggleGroup value={view} onValueChange={handleViewChange} size="sm" aria-label="View" options={[{ value: 'grid', label: 'Grid', icon: Ico.grid(12) }, { value: 'list', label: 'List', icon: Ico.list(12) }]} /></span>}
+            view={<span className="proj-view-toggle"><ToggleGroup value={view} onValueChange={handleViewChange} size="md" aria-label="View" options={[{ value: 'grid', label: 'Grid', icon: Ico.grid(13) }, { value: 'list', label: 'List', icon: Ico.list(13) }]} /></span>}
           />
           {skills === null ? (
             <EmptyState>Loading…</EmptyState>
@@ -604,7 +562,6 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
         initial={modalSkill ?? null}
         projects={projects}
       />
-      <Toast message={toast?.message} type={toast?.type} onClose={() => setToast(null)} />
     </div>
   );
 }
