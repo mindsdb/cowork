@@ -703,14 +703,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
         ) : spec.form_error && !spec._is_error ? (
           /* Probe returned failure — show error card + Try again. */
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '4px 0 2px' }}>
-            <div style={{
-              padding: '12px 14px', borderRadius: 8,
-              background: 'color-mix(in srgb, var(--danger) 8%, var(--surface))',
-              border: '1px solid color-mix(in srgb, var(--danger) 30%, transparent)',
-            }}>
-              <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--danger)', marginBottom: 5 }}>
-                Connection failed
-              </div>
+            <Alert variant="danger" title="Connection failed">
               <div style={{ fontSize: 12.5, color: 'var(--ink-2)', lineHeight: 1.55 }}>
                 {spec.form_error}
               </div>
@@ -719,7 +712,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
                   {spec.subtitle}
                 </div>
               )}
-            </div>
+            </Alert>
             <Button
               variant="primary"
               onClick={() => {
