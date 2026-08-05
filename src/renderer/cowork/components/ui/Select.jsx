@@ -69,7 +69,7 @@ export const triggerVariants = cva(
     'hover:border-line-2',
     'focus-visible:border-accent focus-visible:shadow-[var(--ring)]',
     'data-[disabled]:opacity-55 data-[disabled]:cursor-not-allowed',
-    'aria-[invalid=true]:border-[#E07060] aria-[invalid=true]:shadow-[0_0_0_1px_rgba(224,112,96,0.45)]',
+    'aria-[invalid=true]:border-[var(--danger)] aria-[invalid=true]:shadow-[0_0_0_1px_var(--danger)]',
   ],
   {
     variants: {

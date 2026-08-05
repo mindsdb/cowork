@@ -80,10 +80,10 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
         {/* Avatar circle with initials */}
         <div style={{
           width: 44, height: 44, borderRadius: '50%', flexShrink: 0,
-          background: 'color-mix(in srgb, var(--accent, #5d9287) 18%, var(--surface))',
-          border: '1px solid color-mix(in srgb, var(--accent, #5d9287) 35%, transparent)',
+          background: 'color-mix(in srgb, var(--accent) 18%, var(--surface))',
+          border: '1px solid color-mix(in srgb, var(--accent) 35%, transparent)',
           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 16, fontWeight: 700, color: 'var(--accent, #5d9287)',
+          fontSize: 16, fontWeight: 700, color: 'var(--accent)',
           userSelect: 'none',
         }} aria-hidden="true">
           {accountUser.name
@@ -113,10 +113,10 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
           rel="noopener noreferrer"
           style={{
             flexShrink: 0, fontSize: 12, fontWeight: 500,
-            color: 'var(--accent, #5d9287)', textDecoration: 'none',
+            color: 'var(--accent)', textDecoration: 'none',
             padding: '5px 10px', borderRadius: 6,
-            border: '1px solid color-mix(in srgb, var(--accent, #5d9287) 40%, transparent)',
-            background: 'color-mix(in srgb, var(--accent, #5d9287) 8%, transparent)',
+            border: '1px solid color-mix(in srgb, var(--accent) 40%, transparent)',
+            background: 'color-mix(in srgb, var(--accent) 8%, transparent)',
           }}
         >MindsHub ↗</a>
       </div>
@@ -149,8 +149,8 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
       ...CARD,
       padding: '32px 28px 28px',
       display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 24,
-      background: 'color-mix(in srgb, var(--accent, #5d9287) 5%, var(--surface-glass))',
-      borderColor: 'color-mix(in srgb, var(--accent, #5d9287) 28%, transparent)',
+      background: 'color-mix(in srgb, var(--accent) 5%, var(--surface-glass))',
+      borderColor: 'color-mix(in srgb, var(--accent) 28%, transparent)',
     }}>
       {/* Header */}
       <div>
@@ -173,7 +173,7 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
           <div key={label} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
             <span style={{
               fontSize: 16, lineHeight: 1,
-              color: 'var(--accent, #5d9287)',
+              color: 'var(--accent)',
               marginTop: 2, flexShrink: 0,
               display: 'inline-flex', alignItems: 'center',
             }}>{icon}</span>

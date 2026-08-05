@@ -132,7 +132,7 @@ export default function UpdatesSection({ footer, serverOnline = false, shellUpda
                   {outOfSync && (
                     <span
                       title={`Underlying components span ${unified.skewDays} days — a component is lagging. See details.`}
-                      style={{ color: 'var(--warning, #c47f00)', fontSize: 11.5, fontWeight: 600 }}
+                      style={{ color: 'var(--warning)', fontSize: 11.5, fontWeight: 600 }}
                     >
                       ⚠ out of sync
                     </span>
@@ -239,7 +239,7 @@ export default function UpdatesSection({ footer, serverOnline = false, shellUpda
                       {checkingUpdates ? 'Checking…' : 'Check for updates'}
                     </Button>
                     {status && (
-                      <span style={{ fontSize: 12.5, color: isError ? 'var(--warning, #c47f00)' : 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: 12.5, color: isError ? 'var(--warning)' : 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                         {isUpToDate && Ico.check ? Ico.check(14) : null}
                         {status}
                       </span>
@@ -285,7 +285,7 @@ export default function UpdatesSection({ footer, serverOnline = false, shellUpda
                     </div>
                   )}
                   {applyError && (
-                    <span style={{ fontSize: 12.5, color: 'var(--warning, #c47f00)' }}>
+                    <span style={{ fontSize: 12.5, color: 'var(--warning)' }}>
                       Couldn't apply the update. Please try again.
                     </span>
                   )}

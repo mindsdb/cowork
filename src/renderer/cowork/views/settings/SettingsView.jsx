@@ -382,9 +382,9 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
                 padding: '3px 8px',
                 fontSize: 10.5, fontWeight: 600, letterSpacing: '0.04em',
                 textTransform: 'uppercase',
-                color: copyState === 'failed' ? 'var(--danger, #e5484d)' : '#7CC4B6',
+                color: copyState === 'failed' ? 'var(--danger)' : 'var(--accent)',
                 background: 'rgba(20,28,28,0.92)',
-                border: copyState === 'failed' ? '1px solid color-mix(in srgb, var(--danger, #e5484d) 45%, transparent)' : '1px solid rgba(124,196,182,0.45)',
+                border: copyState === 'failed' ? '1px solid color-mix(in srgb, var(--danger) 45%, transparent)' : '1px solid color-mix(in srgb, var(--accent) 45%, transparent)',
                 borderRadius: 6,
                 whiteSpace: 'nowrap',
                 pointerEvents: 'none',
@@ -1171,8 +1171,8 @@ export default function SettingsView({
         style={{ flex: 1, fontSize: 13, fontWeight: 500, color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: 6 }}
       >
         {testing && <span aria-hidden="true" className="spinner" style={{ width: 12, height: 12 }} />}
-        {!testing && tested && configReady && <span aria-hidden="true" style={{ color: 'var(--sage-500, #5d9287)', display: 'inline-flex' }}>{Ico.check(13)}</span>}
-        {!testing && saved && !tested && <span aria-hidden="true" style={{ color: 'var(--sage-500, #5d9287)', display: 'inline-flex' }}>{Ico.check(13)}</span>}
+        {!testing && tested && configReady && <span aria-hidden="true" style={{ color: 'var(--sage-500)', display: 'inline-flex' }}>{Ico.check(13)}</span>}
+        {!testing && saved && !tested && <span aria-hidden="true" style={{ color: 'var(--sage-500)', display: 'inline-flex' }}>{Ico.check(13)}</span>}
         <span>
           {testing ? 'Testing configuration…'
             : tested ? (configReady ? 'Test passed — provider, model, and credentials look good.' : (configError || 'Test reported a problem.'))
@@ -1274,11 +1274,11 @@ export default function SettingsView({
                             aria-required="true"
                             style={{
                               width: 220, fontSize: 13.5, fontWeight: 600,
-                              borderColor: nameEmpty ? 'rgba(224,112,96,0.55)' : undefined,
+                              borderColor: nameEmpty ? 'color-mix(in srgb, var(--danger) 55%, transparent)' : undefined,
                             }}
                           />
                           {nameEmpty && (
-                            <span id={errorId} style={{ fontSize: 10.5, color: '#E07060' }}>Name required</span>
+                            <span id={errorId} style={{ fontSize: 10.5, color: 'var(--danger)' }}>Name required</span>
                           )}
                         </div>
                       );
@@ -1356,7 +1356,7 @@ export default function SettingsView({
                               target="_blank"
                               rel="noreferrer noopener"
                               title={`Open ${GET_KEY_URL[p.type].replace(/^https?:\/\//, '')} in your browser.`}
-                              style={{ color: 'var(--accent-500, #7CC4B6)' }}
+                              style={{ color: 'var(--accent)' }}
                             >{GET_KEY_URL[p.type].replace(/^https?:\/\//, '')} →</a>
                           </div>
                         )}
@@ -1368,12 +1368,12 @@ export default function SettingsView({
                               target="_blank"
                               rel="noreferrer noopener"
                               title="Open the MindsHub sign-up page in your browser."
-                              style={{ color: 'var(--accent-500, #7CC4B6)' }}
+                              style={{ color: 'var(--accent)' }}
                             >Sign up →</a>
                           </div>
                         )}
                         {status === 'fail' && friendlyError && (
-                          <div style={{ fontSize: 11.5, color: '#E07060', display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+                          <div style={{ fontSize: 11.5, color: 'var(--danger)', display: 'flex', alignItems: 'flex-start', gap: 6 }}>
                             <span style={{ flexShrink: 0, marginTop: 1 }}>{Ico.key ? Ico.key(11) : '!'}</span>
                             <span>{friendlyError}</span>
                           </div>
@@ -1383,7 +1383,7 @@ export default function SettingsView({
                       // Status pill replaces the key input after a test result
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: mobile ? 'flex-start' : 'flex-end', padding: '5px 0', gap: 10 }}>
                         {status === 'fail' && friendlyError && (
-                          <span style={{ fontSize: 11.5, color: '#E07060' }}>{friendlyError}</span>
+                          <span style={{ fontSize: 11.5, color: 'var(--danger)' }}>{friendlyError}</span>
                         )}
                         {statusPill}
                       </div>
@@ -1582,11 +1582,11 @@ export default function SettingsView({
 
                   const noCreditsNotice = isNoCredits ? (
                     <div style={{ fontSize: 12, lineHeight: 1.6 }}>
-                      <span style={{ color: '#E07060', fontWeight: 600 }}>No credits available. </span>
+                      <span style={{ color: 'var(--danger)', fontWeight: 600 }}>No credits available. </span>
                       <button
                         type="button"
                         onClick={() => host.openExternal ? host.openExternal(MINDS_BILLING_URL) : window.open(MINDS_BILLING_URL, '_blank')}
-                        style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--accent, #7CC4B6)', textDecoration: 'underline', fontSize: 'inherit', fontFamily: 'inherit' }}
+                        style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--accent)', textDecoration: 'underline', fontSize: 'inherit', fontFamily: 'inherit' }}
                       >Top up credits →</button>
                       <span style={{ color: 'var(--text-muted)' }}>{' '}or add your own provider and API key below.</span>
                     </div>
@@ -1718,7 +1718,7 @@ export default function SettingsView({
                           </div>
                         )}
                         {providerUnusable && (
-                          <div id={providerWarnId} style={{ fontSize: 11.5, color: '#E07060' }}>
+                          <div id={providerWarnId} style={{ fontSize: 11.5, color: 'var(--warning)' }}>
                             {providerUnconfigured
                               ? (provider
                                 ? `${providerDisplayName(provider)} isn't configured — add its credentials under LLM Providers above, or pick another provider.`
@@ -1906,10 +1906,10 @@ export default function SettingsView({
       return <span style={{ ...fadeStyle, fontSize: 11.5, color: 'var(--ink-4)', marginLeft: 8 }}>Saving…</span>;
     }
     if (status.state === 'error') {
-      return <span style={{ ...fadeStyle, fontSize: 11.5, color: 'var(--danger, #e5484d)', marginLeft: 8 }}>Couldn't save</span>;
+      return <span style={{ ...fadeStyle, fontSize: 11.5, color: 'var(--danger)', marginLeft: 8 }}>Couldn't save</span>;
     }
     return (
-      <span style={{ ...fadeStyle, fontSize: 11.5, color: 'var(--ok, #3aa876)', marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+      <span style={{ ...fadeStyle, fontSize: 11.5, color: 'var(--ok)', marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
         {Ico.check(11)} Saved
       </span>
     );
@@ -2144,7 +2144,7 @@ export default function SettingsView({
             <AutoSaveTag settingKey="navLogo" />
           </div>
           {logoError && (
-            <div style={{ fontSize: 12, color: 'var(--danger, #e5484d)', marginTop: 6 }}>{logoError}</div>
+            <div style={{ fontSize: 12, color: 'var(--danger)', marginTop: 6 }}>{logoError}</div>
           )}
         </Section>
         <div className="settings-hide-mobile">

@@ -74,7 +74,7 @@ export function SettingsSectionPanel({ children, footer, autoSaved = false }) {
           <div style={{ ...barStyle, gap: 10 }}>{footer}</div>
         ) : autoSaved ? (
           <div style={{ ...barStyle, color: 'var(--text-muted)', fontSize: 12.5 }}>
-            <span aria-hidden="true" style={{ display: 'inline-flex', color: 'var(--ok, #3aa876)' }}>
+            <span aria-hidden="true" style={{ display: 'inline-flex', color: 'var(--ok)' }}>
               {Ico.check ? Ico.check(13) : '✓'}
             </span>
             <span>Changes are saved automatically.</span>
