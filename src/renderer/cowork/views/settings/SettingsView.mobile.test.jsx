@@ -10,13 +10,13 @@ const spies = vi.hoisted(() => ({
 // SettingsView reaches for the API, the platform host bridge, analytics, and
 // the Channels sub-view on mount. Stub them so this stays focused on the
 // mobile master-detail shell and its section-driven loading (ENG-990/ENG-991).
-vi.mock('../api', () => ({
+vi.mock('../../api', () => ({
   fetchHealth: vi.fn(async () => ({})),
   validateSettings: vi.fn(async () => ({ ok: true })),
   revealSettingKey: vi.fn(async () => ''),
   testProviders: vi.fn(async () => ({})),
 }));
-vi.mock('../../platform/host', () => ({
+vi.mock('../../../platform/host', () => ({
   host: {
     isElectron: false,
     isMac: () => false,
@@ -28,11 +28,11 @@ vi.mock('../../platform/host', () => ({
   isElectron: false,
   getAccessToken: spies.getAccessToken,
 }));
-vi.mock('../lib/analytics', () => ({
+vi.mock('../../lib/analytics', () => ({
   trackHarnessSwapped: vi.fn(),
   resetDeviceIdentity: vi.fn(),
 }));
-vi.mock('./ChannelsView', () => ({ default: () => <div data-testid="channels-stub" /> }));
+vi.mock('../ChannelsView', () => ({ default: () => <div data-testid="channels-stub" /> }));
 
 import SettingsView from './SettingsView';
 

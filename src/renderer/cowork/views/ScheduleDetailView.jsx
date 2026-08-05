@@ -10,7 +10,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Ico from '../components/Icons';
-import { Crumb as CrumbButton, CrumbSep, CrumbCurrent } from '../components/ui/Crumb';
+import { PageHeader } from '../components/collection';
 import { Button } from '../components/ui';
 import { Switch } from '../components/ui/Switch';
 import { fetchScheduleRuns } from '../api';
@@ -270,16 +270,10 @@ export default function ScheduleDetailView({
       display: 'flex', flexDirection: 'column',
       fontFamily: FONT_BODY,
     }}>
-      {/* Breadcrumb header — matches ProjectsView typography exactly
-          so drilldown surfaces feel like one family. */}
-      <div className="sched-crumb" style={{
-        padding: '14px 28px 8px',
-        display: 'flex', alignItems: 'center', gap: 4,
-      }}>
-        <CrumbButton label="Scheduled Tasks" onClick={onBack} title="All scheduled tasks" />
-        <CrumbSep />
-        <CrumbCurrent label={task.title || 'Untitled schedule'} maxWidth={360} />
-      </div>
+      <PageHeader
+        crumbs={[{ label: 'Scheduled Tasks', onClick: onBack, title: 'All scheduled tasks' }]}
+        current={task.title || 'Untitled schedule'}
+      />
 
       <div className="sched-body" style={{ padding: '6px 28px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
 

@@ -6,14 +6,14 @@ import { describe, it, expect, vi } from 'vitest';
 // decision is under test. `navItemsForHost` takes `isWeb` as an argument rather
 // than reading `host` itself, precisely so it can be tested directly without
 // re-mocking the module per case.
-vi.mock('../api', () => ({
+vi.mock('../../api', () => ({
   fetchHealth: vi.fn(async () => ({})),
   validateSettings: vi.fn(async () => ({ ok: true })),
   revealSettingKey: vi.fn(async () => ''),
   testProviders: vi.fn(async () => ({})),
   fetchRecommendedModels: vi.fn(async () => ({})),
 }));
-vi.mock('../../platform/host', () => ({
+vi.mock('../../../platform/host', () => ({
   host: {
     isWeb: false,
     isElectron: true,
@@ -27,7 +27,7 @@ vi.mock('../../platform/host', () => ({
   isElectron: true,
   getAccessToken: vi.fn(async () => null),
 }));
-vi.mock('../lib/analytics', () => ({
+vi.mock('../../lib/analytics', () => ({
   trackHarnessSwapped: vi.fn(),
   resetDeviceIdentity: vi.fn(),
 }));

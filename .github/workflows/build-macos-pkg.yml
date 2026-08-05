@@ -254,6 +254,10 @@ jobs:
           COWORK_SERVER_MIN_VERSION: ${{ steps.server_floor.outputs.version }}
           VITE_MINDS_API_URL: ${{ inputs.minds_api_url }}
           VITE_APP_VERSION: ${{ inputs.app_version }}
+          # Activates the build-time channel guard in gen-build-channel.mjs:
+          # fail the build if this kind and VITE_MINDS_API_URL target different
+          # environments (e.g. preview baked against the prod API).
+          COWORK_BUILD_KIND: ${{ inputs.build_kind }}
         run: npm run release:mac:pkg:notarized
 
       - name: Compute artifact name

@@ -1060,7 +1060,6 @@ export default function ChatView({
   onOpenSettings,
   onStop,
   projects = [],
-  sidebarCollapsed = false,
   // Messages the user typed while Anton was mid-turn. Displayed as
   // pills above the Composer; drain into onSend automatically when
   // the active turn finishes.
@@ -1322,16 +1321,16 @@ export default function ChatView({
           {Ico.panelExpandLeft(15)}
         </button>
 
-        {/* Header — when the sidebar is overlay/collapsed, the floating
-            hamburger button occupies some left space; push the header
-            content right to avoid overlap. On web, the hamburger is at
-            left: 18 (no traffic lights), so 60px clears it. On Electron,
-            left: 97, so 130px clears the traffic lights + hamburger. */}
+        {/* Header — reserve the shell-owned titlebar-safe inset on top so the
+            breadcrumbs drop below the macOS traffic lights (and the floating
+            open-sidebar button) whenever the sidebar isn't docked over that
+            corner, staying left-aligned with the transcript below. `--titlebar-
+            safe-top` is set on <main> by the shell and is 0 when the sidebar/
+            rail covers the zone, so max() keeps the normal 14px padding then. */}
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: sidebarCollapsed
-            ? `14px 28px 14px ${host.isWeb ? 60 : 130}px`
-            : '14px 28px',
+          paddingTop: 'max(14px, var(--titlebar-safe-top, 0px))', paddingBottom: 14, paddingRight: 28,
+          paddingLeft: 28,
           borderBottom: `1px solid ${T.line}`,
           background: 'transparent',
           flexShrink: 0,

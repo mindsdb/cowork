@@ -107,7 +107,13 @@ async function reloadWithUiHealthCheck(getWindow: GetWindow): Promise<void> {
   if (await loadAndVerify(win, getRendererPath())) return;
 
   console.error('[updater] new UI bundle failed to load — rolling back');
-  rollbackUI();
+  // Don't let an exhausted-retry rollback error skip the fallback reload below —
+  // the user would be stranded on a broken renderer with no status (Medium 4).
+  try {
+    await rollbackUI();
+  } catch (err) {
+    console.error('[updater] UI rollback failed — falling back anyway', err);
+  }
   const win2 = liveWindow(getWindow);
   if (!win2) return;
   win2.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'rolled-back' });
