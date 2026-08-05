@@ -161,6 +161,45 @@ describe('Composer — model menu sections', () => {
     expect(screen.getByText('Claude Sonnet 4.5')).toBeTruthy();
   });
 
+  it('renders a provider icon on every row, in every section', async () => {
+    // The Open Weight and Other sections were the concern: collapsing several
+    // makers under one heading must not cost a model its mark, because the icon
+    // comes from the per-model maker and not from the section. `glm` still shows
+    // the neutral placeholder — Z.ai has no svg yet (ENG-1112) — but a placeholder
+    // is a rendered mark, not a missing one.
+    const user = userEvent.setup();
+    renderComposer({
+      models: [
+        { id: 'sonnet', name: 'Claude Sonnet 5' },     // Anthropic → has a mark
+        { id: 'kimi', name: 'Kimi K3' },               // Open Weight → Moonshot mark
+        { id: 'glm', name: 'GLM 5.2' },                // Open Weight → placeholder
+        { id: 'muse-spark', name: 'Muse Spark 1.1' },  // Other → Meta mark
+        { id: 'grok', name: 'Grok 4.5' },              // Other → xAI mark
+      ],
+      modelMeta: {
+        modelProviders: {
+          sonnet: 'anthropic', kimi: 'moonshot', glm: 'fireworks',
+          'muse-spark': 'meta', grok: 'xai',
+        },
+        modelFamilies: {
+          sonnet: 'sonnet', kimi: 'kimi', glm: 'glm', 'muse-spark': 'muse-spark', grok: 'grok',
+        },
+      },
+      hideModel: false,
+      model: { id: 'sonnet', name: 'Claude Sonnet 5' },
+    });
+    await openModelMenu(user);
+
+    // Both collapsed sections are present, and every row carries an icon.
+    expect(screen.getByText('Open Weight')).toBeTruthy();
+    expect(screen.getByText('Other')).toBeTruthy();
+    const rows = [...document.querySelectorAll('.menu .menu-item')];
+    expect(rows).toHaveLength(5);
+    for (const row of rows) {
+      expect(row.querySelector('svg')).toBeTruthy();
+    }
+  });
+
   it('disables a wallet-locked model with the add-credits wording', async () => {
     const user = userEvent.setup();
     const props = renderComposer({

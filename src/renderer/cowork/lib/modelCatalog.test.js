@@ -40,8 +40,15 @@ describe('modelMaker', () => {
   });
 
   it('sends unknown models to Other instead of guessing wrong', () => {
-    expect(modelMaker('muse-spark', 'Muse Spark 1.1')).toBe(OTHER_MAKER);
+    // `muse-spark` used to be the example here. It now matches Meta deliberately —
+    // it is Meta's model, and matching it is what earns it a real icon instead of
+    // the placeholder — so this needs a genuinely unrecognisable alias.
+    expect(modelMaker('zephyr-base', 'Zephyr Base 2')).toBe(OTHER_MAKER);
     expect(modelMaker('', '')).toBe(OTHER_MAKER);
+  });
+
+  it('infers Meta for Muse Spark, so it gets a mark rather than the placeholder', () => {
+    expect(modelMaker('muse-spark', 'Muse Spark 1.1').key).toBe('meta');
   });
 
   it('does not read "o" words as OpenAI o-series', () => {
@@ -80,6 +87,25 @@ describe('groupModelOptions', () => {
   it('leaves xAI out of Open Weight', () => {
     const groups = groupModelOptions([{ value: 'grok', label: 'Grok 4.5' }]);
     expect(groups.map((g) => g.key)).toEqual(['other']);
+  });
+
+  it('leaves Meta out of Open Weight', () => {
+    // The section is a claim about the model, not the company: Meta publishes
+    // open-weight models AND proprietary ones, and the Meta model MindsHub serves
+    // is Muse Spark, which is not open weight.
+    const groups = groupModelOptions([
+      { value: 'muse-spark', label: 'Muse Spark 1.1', provider: 'meta' },
+    ]);
+    expect(groups.map((g) => g.key)).toEqual(['other']);
+  });
+
+  it('sections muse-spark from the backend provider and still gives it Meta\'s icon', () => {
+    // The case ENG-1111 named as unguessable. Section and icon are separate
+    // signals: `provider: meta` puts it in Other, while the maker gives it a real
+    // mark instead of the neutral placeholder.
+    const opt = { value: 'muse-spark', label: 'Muse Spark 1.1', provider: 'meta' };
+    expect(groupModelOptions([opt]).map((g) => g.key)).toEqual(['other']);
+    expect(modelMaker(opt.value, opt.label).key).toBe('meta');
   });
 
   it('keeps option order within a group', () => {

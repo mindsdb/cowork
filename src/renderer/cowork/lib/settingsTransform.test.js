@@ -492,7 +492,10 @@ describe('buildModelOptions — moving vs pinned versions', () => {
       modelFamilies: { 'sonnet-4-5': 'sonet' },
     });
     expect(options.map((o) => o.value)).toEqual(['sonnet-4-5']);
-    expect(options[0].label).toBe('Claude Sonnet 4.5 — older version');
+    // No tag at all: "older version" is relative to a newer one, and the head is
+    // not in this list, so there is nothing for the user to read it against.
+    expect(options[0].label).toBe('Claude Sonnet 4.5');
+    expect(options[0].label).not.toContain('latest');
   });
 
   it('carries the backend provider through so the picker stops inferring it', () => {

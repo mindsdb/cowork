@@ -303,17 +303,25 @@ export default function Composer({
         }
       }
     }
-    const items = ordered.map((m) => ({
-      value: m.id,
-      // `label` feeds groupModelOptions' maker inference; `name` is what renders.
-      label: m.name,
-      name: m.name,
-      provider: modelProviders[m.id],
-      maker: modelMaker(m.id, m.name).key,
-      moving: hasFamilies && familyOf(m.id) === m.id,
-      pinned: hasFamilies && familyOf(m.id) !== m.id,
-      locked: modelEnabled[m.id] === false,
-    }));
+    const items = ordered.map((m) => {
+      const pinned = hasFamilies && familyOf(m.id) !== m.id;
+      // A pin whose head isn't in this list reads as a top-level model: indenting
+      // it under nothing, or calling it an older version of a model the user can't
+      // see, is worse than listing it plainly. It is never `moving`, so it also
+      // never claims to be the latest.
+      const orphan = pinned && !list.some((o) => o.id === familyOf(m.id));
+      return {
+        value: m.id,
+        // `label` feeds groupModelOptions' maker inference; `name` is what renders.
+        label: m.name,
+        name: m.name,
+        provider: modelProviders[m.id],
+        maker: modelMaker(m.id, m.name).key,
+        moving: hasFamilies && familyOf(m.id) === m.id,
+        pinned: pinned && !orphan,
+        locked: modelEnabled[m.id] === false,
+      };
+    });
     // Group only when the server actually told us who makes these models. With no
     // provider metadata — an older cowork-server, any BYOK provider, ChatView's
     // one-item list — a single unnamed section renders today's flat menu exactly.

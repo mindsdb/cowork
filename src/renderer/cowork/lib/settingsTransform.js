@@ -360,6 +360,13 @@ export function buildModelOptions(
   const familyOf = (m) => modelFamilies[m] || m;
   const isMoving = (m) => hasFamilies && familyOf(m) === m;
   const isPinned = (m) => hasFamilies && familyOf(m) !== m;
+  // A pin whose head isn't in this list — a typo'd `family` in the policy, or a
+  // head filtered out upstream. It is listed (a selectable model must not vanish)
+  // but carries no tag at all: "older version" is a claim relative to a newer one,
+  // and with no head present there is nothing for the user to read it against. It
+  // is not `isMoving` either, so it never claims to be the latest of anything.
+  const isOrphan = (m) => isPinned(m) && !list.includes(familyOf(m));
+  const isPinnedUnderHead = (m) => isPinned(m) && !isOrphan(m);
 
   // Display-only ordering: a frozen version is listed directly under the alias
   // it froze, wherever that alias sits in the server's order. The server's order
@@ -387,7 +394,7 @@ export function buildModelOptions(
       // displayed text from these label strings, so markup here wouldn't survive
       // selection.
       isMoving(m) ? ' (latest)' : '',
-      isPinned(m) ? ' — older version' : '',
+      isPinnedUnderHead(m) ? ' — older version' : '',
       isLocked(m) ? ' — Add credits to unlock' : '',
     ].join(''),
     disabled: isLocked(m),
