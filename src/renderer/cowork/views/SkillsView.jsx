@@ -12,6 +12,15 @@ import { fetchProjects, uploadSkillFile } from '../api';
 import { useSkills, saveSkillAndSync, deleteSkillAndSync } from '../lib/skillsStore';
 import { relativeAge } from '../lib/formatTime';
 
+// Sentinel for the "All projects" scope choice in the Scope <Select>. It must
+// be a non-empty string: Base UI's <Select.Value> treats an empty-string value
+// as "nothing selected" and shows the placeholder, so an option with value ''
+// would render as the "Select…" placeholder on the closed control even though
+// its item still carries a checkmark (ENG-1246). This value never reaches
+// storage — `submit` maps it back to an empty `projects` array, and it can't
+// collide with a real project name.
+const ALL_PROJECTS = '__all_projects__';
+
 function EmptyState({ children }) {
   return <div style={{ padding: 32, color: 'var(--frost-600)', fontSize: 13 }}>{children}</div>;
 }
@@ -118,15 +127,15 @@ function FieldLabel({ children }) {
 
 function SkillModal({ open, onClose, onSaved, onError, initial = null, projects = [] }) {
   const isEdit = initial !== null;
-  const [draft, setDraft] = useState({ label: '', description: '', declarative: '', project: 'general' });
+  const [draft, setDraft] = useState({ label: '', description: '', declarative: '', project: ALL_PROJECTS });
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     if (initial) {
-      setDraft({ label: initial.label || '', description: initial.description || '', declarative: initial.declarative || '', project: initial.projects?.[0] || '' });
+      setDraft({ label: initial.label || '', description: initial.description || '', declarative: initial.declarative || '', project: initial.projects?.[0] || ALL_PROJECTS });
     } else {
-      setDraft({ label: '', description: '', declarative: '', project: '' });
+      setDraft({ label: '', description: '', declarative: '', project: ALL_PROJECTS });
     }
   }, [open]);
 
@@ -142,7 +151,8 @@ function SkillModal({ open, onClose, onSaved, onError, initial = null, projects 
     if (!label || !draft.declarative.trim()) return;
     setBusy(true);
     try {
-      const saved = await saveSkillAndSync({ label, description: draft.description, declarative: draft.declarative, projects: draft.project ? [draft.project] : [] }, isEdit);
+      const scopedProject = draft.project && draft.project !== ALL_PROJECTS ? [draft.project] : [];
+      const saved = await saveSkillAndSync({ label, description: draft.description, declarative: draft.declarative, projects: scopedProject }, isEdit);
       handleClose();
       await onSaved(saved);
     } catch (err) {
@@ -184,7 +194,7 @@ function SkillModal({ open, onClose, onSaved, onError, initial = null, projects 
               onValueChange={(v) => setField('project', v)}
               style={{ ...fieldStyle, height: 34 }}
               options={[
-                { value: '', label: 'All projects' },
+                { value: ALL_PROJECTS, label: 'All projects' },
                 ...projects.map((p) => ({ value: p.name, label: p.name })),
               ]}
             />
@@ -460,7 +470,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
           <div style={{ marginBottom: 16 }}>
             <h3 className="s-h3" style={{ margin: '0 0 4px' }}>Scope</h3>
             <p style={{ margin: 0, fontSize: 13.5, color: 'var(--ink)', lineHeight: 1.5, userSelect: 'text' }}>
-              {selected.projects?.[0]}
+              {selected.projects?.[0] || 'All projects'}
             </p>
           </div>
 

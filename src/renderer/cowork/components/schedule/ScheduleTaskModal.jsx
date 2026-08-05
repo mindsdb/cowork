@@ -13,6 +13,15 @@ import Ico from '../Icons';
 
 const FONT_BODY = 'var(--font-body)';
 
+// Sentinel for the "All projects" (no specific project) choice in the Project
+// <Select>. It must be a non-empty string: Base UI's <Select.Value> treats an
+// empty-string value as "nothing selected" and renders the placeholder, so an
+// option with value '' shows "Select…" on the closed control even while its
+// item carries a checkmark (ENG-1246). This value never reaches the server —
+// `handleSubmit` resolves it to `project: null`, and it can't collide with a
+// real project path.
+const ALL_PROJECTS = '__all_projects__';
+
 function toLocalInput(value) {
   if (!value) return '';
   const date = new Date(value);
@@ -100,7 +109,7 @@ export default function ScheduleTaskModal({
         prompt:      task.prompt || '',
         cadence:     task.cadence || 'once',
         nextRunAt:   toLocalInput(task.nextRunAt) || defaultNextRun(),
-        projectPath: taskProjectPath || defaultProjectPath || '',
+        projectPath: taskProjectPath || defaultProjectPath || ALL_PROJECTS,
         enabled:     task.enabled !== false,
       });
     } else {
@@ -131,7 +140,10 @@ export default function ScheduleTaskModal({
     // dropped — every schedule landed with `project: null`, breaking
     // the project-pivoted card / list / count. Resolve the form's
     // path back to a name via `projects` and send the right field.
-    const projectMatch = projects.find((p) => p.path === form.projectPath);
+    // The "All projects" sentinel resolves to no project (`null`).
+    const projectMatch = form.projectPath === ALL_PROJECTS
+      ? null
+      : projects.find((p) => p.path === form.projectPath);
     const payload = {
       title:        form.title.trim() || form.prompt.trim().slice(0, 80),
       prompt:       form.prompt,
@@ -228,7 +240,7 @@ export default function ScheduleTaskModal({
               ariaLabel="Project"
               style={fieldSelectStyle}
               options={[
-                { value: '', label: 'No project' },
+                { value: ALL_PROJECTS, label: 'All projects' },
                 ...projects.map((p) => ({ value: p.path, label: p.name })),
               ]}
             />
@@ -334,7 +346,7 @@ function emptyForm({ defaultProjectPath }) {
     prompt: '',
     cadence: 'once',
     nextRunAt: defaultNextRun(),
-    projectPath: defaultProjectPath || '',
+    projectPath: defaultProjectPath || ALL_PROJECTS,
     enabled: true,
   };
 }

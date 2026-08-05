@@ -221,7 +221,12 @@ export function Select({
         {variant === 'pill' && (label || ariaLabel) && (
           <span className="text-ink-4 text-[11.5px]">{label || ariaLabel}:</span>
         )}
-        <BaseSelect.Value placeholder={placeholder} className="truncate" />
+        {/* Base UI stamps `data-placeholder` on this span when nothing is
+            selected — mute it to `text-ink-4` so an unselected control reads as
+            a prompt, not a value (matches Combobox's `placeholder:text-ink-4`).
+            Without this the placeholder inherited full-strength `text-ink` and
+            looked identical to a real selection. */}
+        <BaseSelect.Value placeholder={placeholder} className="truncate data-[placeholder]:text-ink-4" />
         <BaseSelect.Icon className="inline-flex shrink-0 text-ink-3">
           {loading ? <Spinner style={{ color: 'currentColor' }} /> : CHEVRON_DOWN}
         </BaseSelect.Icon>
