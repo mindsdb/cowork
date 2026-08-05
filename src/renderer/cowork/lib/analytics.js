@@ -441,6 +441,28 @@ export function trackFirstQuery() {
   return firstQueryInFlight;
 }
 
+// Map a first query's terminal state to a first_response (outcome, reason), or
+// null when there is no terminal outcome to record. Kept pure and app-agnostic
+// so the classification is unit-tested here rather than in the React send
+// handlers that call it (ENG-736). Callers pass what they observed:
+//   - a failed turn (response.failed / network error) → error, with its wire
+//     code, or config_required for an auth/config failure, else unknown
+//   - a turn that never reached a server completion (`completed` false — e.g. a
+//     reconnect whose buffer was already evicted, or a stream that closed
+//     without a completion event) → null: the outcome is unknown, so record
+//     nothing and let the next query settle it rather than guess
+//   - a completed turn whose body is really a wrapped config/auth error → error
+//   - any other completed turn → success (a completed turn is a real answer; an
+//     empty body is fine — e.g. an artifact-only turn is still activation)
+export function classifyFirstResponse({ failed = false, completed = false, code, isConfigError = false } = {}) {
+  if (failed) {
+    return { outcome: 'error', reason: code || (isConfigError ? 'config_required' : 'unknown') };
+  }
+  if (!completed) return null;
+  if (isConfigError) return { outcome: 'error', reason: 'config_required' };
+  return { outcome: 'success', reason: undefined };
+}
+
 // The activation gate (ENG-736). `first_query` fires when a first message is
 // *sent*; this fires when that first query reaches a terminal *outcome*, so the
 // funnel can count activation only on a real answer and can see why a first

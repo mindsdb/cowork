@@ -186,6 +186,16 @@ describe('trackFirstResponse activation gate (ENG-736)', () => {
     expect(window.localStorage.getItem(FIRST_RESPONSE_KEY)).toBe('1');
   });
 
+  it('deduplicates concurrent calls while delivery is in flight', async () => {
+    const fetchMock = mockFetch();
+    const { trackFirstResponse } = await importAnalytics();
+
+    await Promise.all([trackFirstResponse('success'), trackFirstResponse('error', 'model_access_denied')]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(window.localStorage.getItem(FIRST_RESPONSE_KEY)).toBe('1');
+  });
+
   it('carries the failure reason on outcome=error so failures break down by reason', async () => {
     const fetchMock = mockFetch();
     const { trackFirstResponse } = await importAnalytics();
@@ -229,6 +239,49 @@ describe('trackFirstResponse activation gate (ENG-736)', () => {
     await trackFirstResponse('success');
     expect(ok).toHaveBeenCalledTimes(1);
     expect(window.localStorage.getItem(FIRST_RESPONSE_KEY)).toBe('1');
+  });
+});
+
+describe('classifyFirstResponse outcome mapping (ENG-736)', () => {
+  it('maps a completed turn to success (no reason)', async () => {
+    const { classifyFirstResponse } = await importAnalytics();
+    expect(classifyFirstResponse({ completed: true })).toEqual({ outcome: 'success', reason: undefined });
+  });
+
+  it('counts a completed turn with an empty body as success (e.g. an artifact-only turn)', async () => {
+    const { classifyFirstResponse } = await importAnalytics();
+    // completed is true but no body content — still a real answer, so activation.
+    expect(classifyFirstResponse({ completed: true })).toEqual({ outcome: 'success', reason: undefined });
+  });
+
+  it('maps a config/auth error wrapped into a completed 200 body to error/config_required', async () => {
+    const { classifyFirstResponse } = await importAnalytics();
+    expect(classifyFirstResponse({ completed: true, isConfigError: true }))
+      .toEqual({ outcome: 'error', reason: 'config_required' });
+  });
+
+  it('records nothing (null) when no completion was observed — e.g. a reconnect whose buffer was evicted', async () => {
+    const { classifyFirstResponse } = await importAnalytics();
+    // Neither failed nor completed: the outcome is unknown, so do not guess.
+    expect(classifyFirstResponse({ completed: false })).toBeNull();
+    expect(classifyFirstResponse({})).toBeNull();
+  });
+
+  it('maps a failed turn to error with its wire code', async () => {
+    const { classifyFirstResponse } = await importAnalytics();
+    expect(classifyFirstResponse({ failed: true, code: 'model_access_denied' }))
+      .toEqual({ outcome: 'error', reason: 'model_access_denied' });
+  });
+
+  it('maps a failed config error without a code to error/config_required', async () => {
+    const { classifyFirstResponse } = await importAnalytics();
+    expect(classifyFirstResponse({ failed: true, isConfigError: true }))
+      .toEqual({ outcome: 'error', reason: 'config_required' });
+  });
+
+  it('falls back to reason=unknown for a codeless, non-config failure (e.g. a network drop)', async () => {
+    const { classifyFirstResponse } = await importAnalytics();
+    expect(classifyFirstResponse({ failed: true })).toEqual({ outcome: 'error', reason: 'unknown' });
   });
 });
 
