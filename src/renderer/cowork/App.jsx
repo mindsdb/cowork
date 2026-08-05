@@ -3435,6 +3435,10 @@ function AppCore() {
       .filter((t) => t.projectName === project.name || t.projectPath === project.path)
       .map((t) => t.id);
     doomedTaskIds.forEach((id) => deletedTaskIdsRef.current.add(id));
+    // The project's own composer draft, plus every draft belonging to a
+    // conversation the server is about to cascade-delete.
+    clearDraft(`project:${project.id || project.name}`);
+    doomedTaskIds.forEach((id) => clearDraft(id));
     // Optimistic — drop locally before the round-trip.
     setProjects((prev) => prev.filter((p) => p.name !== project.name));
     setTasks((prev) => prev.filter((t) =>

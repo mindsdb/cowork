@@ -876,7 +876,9 @@ function ProjectDetail({
               hideModel
               metaReadOnly
               placeholder={`Start a new task in ${project.name}…`}
-              draftKey={`project:${project.name}`}
+              // Keyed on the id, not the name: renaming a project must not
+              // orphan the draft the user is in the middle of typing.
+              draftKey={`project:${project.id || project.name}`}
             />
 
             <TaskList
