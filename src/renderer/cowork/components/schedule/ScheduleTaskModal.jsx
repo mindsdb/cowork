@@ -77,7 +77,7 @@ const fieldSelectStyle = {
 };
 
 export default function ScheduleTaskModal({
-  open, onClose, onSubmit, onDelete,
+  open, onClose, onSubmit,
   task,                    // when set → edit mode
   projects = [],
   defaultProjectPath = '',
@@ -88,7 +88,6 @@ export default function ScheduleTaskModal({
 
   const [form, setForm] = useState(() => emptyForm({ defaultProjectPath }));
   const [error, setError] = useState('');
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   // Whenever the modal opens (or the editing target changes), reset
   // form state so reopening doesn't show stale fields from a previous
@@ -96,7 +95,6 @@ export default function ScheduleTaskModal({
   useEffect(() => {
     if (!open) return;
     setError('');
-    setConfirmingDelete(false);
     if (task) {
       // The server keys the project association by `projectId` (a UUID) and
       // the form's Project select uses the project PATH as its value. Hydrate
@@ -163,17 +161,6 @@ export default function ScheduleTaskModal({
       onClose?.();
     } catch (err) {
       setError(err?.message || 'Could not save schedule.');
-    }
-  }
-
-  async function handleDelete() {
-    if (!task?.id) return;
-    setError('');
-    try {
-      await onDelete?.(task.id);
-      onClose?.();
-    } catch (err) {
-      setError(err?.message || 'Could not delete schedule.');
     }
   }
 
@@ -306,26 +293,10 @@ export default function ScheduleTaskModal({
           )}
         </div>
       </ModalBody>
-      <ModalFooter align={isEdit ? 'space-between' : 'flex-end'}>
-        {isEdit && onDelete && (
-          confirmingDelete ? (
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 12.5, color: 'var(--ink-3)' }}>Delete this schedule?</span>
-              <Button variant="subtle" onClick={() => setConfirmingDelete(false)} disabled={busy}>
-                Cancel
-              </Button>
-              <Button variant="danger-solid" onClick={handleDelete} disabled={busy}>
-                Delete
-              </Button>
-            </div>
-          ) : (
-            <Button variant="danger" onClick={() => setConfirmingDelete(true)} disabled={busy}>
-              {Ico.trash ? Ico.trash(13) : null}
-              Delete
-            </Button>
-          )
-        )}
-        {!isEdit && <span />}
+      {/* Footer is edit/create only — deleting a schedule lives on the task
+          card/detail overflow menu (with its own confirm), not inside this
+          form, so the footer never carries a destructive action. */}
+      <ModalFooter align="flex-end">
         <div style={{ display: 'inline-flex', gap: 8 }}>
           <Button variant="subtle" onClick={onClose} disabled={busy}>
             Cancel

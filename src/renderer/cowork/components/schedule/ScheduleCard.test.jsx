@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import ScheduleCard from './ScheduleCard';
+import ScheduleCard, { taskMenuItems } from './ScheduleCard';
 
 // ENG-1255: the card displays the schedule's project by resolving the stored
 // `task.projectId` (a UUID the server returns as `projectId`) against the
@@ -55,5 +55,44 @@ describe('ScheduleCard — project display (ENG-1255)', () => {
     render(<ScheduleCard task={baseTask} projects={PROJECTS} onOpenProject={vi.fn()} />);
 
     expect(screen.queryByText(/project:/i)).not.toBeInTheDocument();
+  });
+});
+
+// The overflow-menu composition shared by the grid card and list row
+// (ENG-1245). Delete moved out of the edit form into this menu; it must route
+// to the caller's confirm flow (onDelete) rather than deleting inline.
+describe('taskMenuItems', () => {
+  const handlers = () => ({
+    onEdit: vi.fn(), onPause: vi.fn(), onResume: vi.fn(), onDelete: vi.fn(),
+  });
+
+  it('offers Edit, Pause (when enabled), and a danger Delete under a divider', () => {
+    const items = taskMenuItems({ task: { id: 's1', enabled: true }, ...handlers() });
+    expect(items.filter((i) => i.label).map((i) => i.label)).toEqual(['Edit', 'Pause', 'Delete']);
+    expect(items.some((i) => i.separator)).toBe(true);
+    expect(items.find((i) => i.id === 'delete').danger).toBe(true);
+  });
+
+  it('shows Resume instead of Pause when the task is paused', () => {
+    const items = taskMenuItems({ task: { id: 's1', enabled: false }, ...handlers() });
+    expect(items.filter((i) => i.label).map((i) => i.label)).toEqual(['Edit', 'Resume', 'Delete']);
+  });
+
+  it('routes Delete to onDelete with the task (no inline delete)', () => {
+    const h = handlers();
+    const task = { id: 's1', enabled: true };
+    taskMenuItems({ task, ...h }).find((i) => i.id === 'delete').onClick();
+    expect(h.onDelete).toHaveBeenCalledWith(task);
+    expect(h.onEdit).not.toHaveBeenCalled();
+  });
+
+  it('routes Edit and Pause/Resume to their handlers', () => {
+    const h = handlers();
+    const task = { id: 's1', enabled: true };
+    const items = taskMenuItems({ task, ...h });
+    items.find((i) => i.id === 'edit').onClick();
+    items.find((i) => i.id === 'pause').onClick();
+    expect(h.onEdit).toHaveBeenCalledWith(task);
+    expect(h.onPause).toHaveBeenCalledWith(task);
   });
 });

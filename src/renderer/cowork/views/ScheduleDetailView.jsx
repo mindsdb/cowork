@@ -13,6 +13,8 @@ import Ico from '../components/Icons';
 import { PageHeader } from '../components/collection';
 import { Alert, Button } from '../components/ui';
 import { Switch } from '../components/ui/Switch';
+import OverflowMenu from '../components/OverflowMenu';
+import { ConfirmModal } from '../components/ConfirmModal';
 import { fetchScheduleRuns } from '../api';
 import ScheduleTaskModal from '../components/schedule/ScheduleTaskModal';
 import { ScheduleStatusBadge } from '../components/schedule/ScheduleStatusBadge';
@@ -214,6 +216,7 @@ export default function ScheduleDetailView({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [editOpen, setEditOpen] = useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
 
   const taskId = task?.id;
 
@@ -319,12 +322,6 @@ export default function ScheduleDetailView({
                 })}
               />
               <Button
-                onClick={() => setEditOpen(true)}
-                disabled={busy}
-              >
-                {Ico.edit ? Ico.edit(13) : null} Edit
-              </Button>
-              <Button
                 variant="primary"
                 onClick={() => withBusy(() => onRunNow?.(task.id))}
                 disabled={busy}
@@ -333,6 +330,16 @@ export default function ScheduleDetailView({
                 {Ico.send ? Ico.send(13) : null}
                 {busy ? 'Running…' : 'Run now'}
               </Button>
+              {/* Edit + Delete live in the overflow — Delete opens a confirm,
+                  and never sits inside the edit form (ENG-1245). */}
+              <OverflowMenu
+                disabled={busy}
+                items={[
+                  { id: 'edit', label: 'Edit', icon: Ico.edit ? Ico.edit(14) : null, onClick: () => setEditOpen(true) },
+                  { separator: true },
+                  { id: 'delete', label: 'Delete', icon: Ico.trash ? Ico.trash(14) : null, danger: true, onClick: () => setConfirmDeleteOpen(true) },
+                ]}
+              />
             </div>
           </div>
 
@@ -458,13 +465,25 @@ export default function ScheduleDetailView({
         open={editOpen}
         onClose={() => setEditOpen(false)}
         onSubmit={async (payload, id) => onUpdate?.(id, payload)}
-        onDelete={async (id) => {
-          await onDelete?.(id);
-          // Host should setRoute('scheduled') on delete via onDelete.
-        }}
         task={task}
         projects={projects}
         agentLabel={agentLabel}
+      />
+
+      <ConfirmModal
+        open={confirmDeleteOpen}
+        title="Delete scheduled task?"
+        message={`"${task.title || 'Untitled schedule'}" will be permanently deleted. This can't be undone.`}
+        confirmLabel="Delete"
+        cancelLabel="Keep"
+        destructive
+        busy={busy}
+        busyLabel="Deleting…"
+        onConfirm={() => withBusy(async () => {
+          await onDelete?.(task.id);
+          // Host navigates back to the list on delete (onDelete → setRoute).
+        })}
+        onClose={() => { if (!busy) setConfirmDeleteOpen(false); }}
       />
     </div>
   );

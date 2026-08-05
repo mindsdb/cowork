@@ -4,11 +4,12 @@
 // Click on a card → host opens the schedule detail page (set via
 // onOpenSchedule prop, wired in App.jsx to setRoute('schedule-detail')).
 //
-// Create + edit happen in <ScheduleTaskModal>; delete is handled
-// inside the edit modal as a confirm flow.
+// Create + edit happen in <ScheduleTaskModal>. Per-task actions (Edit,
+// Pause/Resume, Delete) live in an overflow menu on each card/row; Delete
+// opens a <ConfirmModal> here rather than deleting from inside the edit form.
 //
-// Run-now / Pause / Resume happen inline (no modal) — optimistic UI
-// at the host via the existing onPause/onResume/onRunNow handlers.
+// Run-now happens inline (no modal) — optimistic UI at the host via the
+// existing onRunNow handler.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Ico from '../components/Icons';
@@ -18,8 +19,10 @@ import {
 } from '../components/collection';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
 import { Alert, Button, CardRow, EmptyState } from '../components/ui';
+import OverflowMenu from '../components/OverflowMenu';
+import { ConfirmModal } from '../components/ConfirmModal';
 import ScheduleTaskModal from '../components/schedule/ScheduleTaskModal';
-import ScheduleCard from '../components/schedule/ScheduleCard';
+import ScheduleCard, { taskMenuItems } from '../components/schedule/ScheduleCard';
 
 const FONT_BODY = 'var(--font-body)';
 
@@ -73,6 +76,10 @@ export default function ScheduledView({
   const [busyId, setBusyId] = useState(null);
   const [error, setError] = useState('');
   const [viewMode, setViewMode] = useState(loadViewMode);
+  // Delete confirmation is a standalone ConfirmModal (not part of the edit
+  // form). `deletingTask` holds the task awaiting confirmation.
+  const [deletingTask, setDeletingTask] = useState(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   // Persist the view-mode choice — same toggle should still feel set
   // when the user comes back to this surface tomorrow.
@@ -135,8 +142,18 @@ export default function ScheduledView({
     else await onCreate(payload);
   }
 
-  async function handleDelete(id) {
-    await onDelete(id);
+  async function confirmDelete() {
+    if (!deletingTask) return;
+    setDeleteBusy(true);
+    setError('');
+    try {
+      await onDelete(deletingTask.id);
+      setDeletingTask(null);
+    } catch (err) {
+      setError(err?.message || 'Could not delete schedule.');
+    } finally {
+      setDeleteBusy(false);
+    }
   }
 
   async function runAction(id, action) {
@@ -235,6 +252,7 @@ export default function ScheduledView({
               onPause={() => runAction(task.id, onPause)}
               onResume={() => runAction(task.id, onResume)}
               onEdit={() => openEdit(task)}
+              onDelete={() => setDeletingTask(task)}
               onOpenProject={onOpenProject}
             />
           ))}
@@ -253,6 +271,7 @@ export default function ScheduledView({
               onPause={() => runAction(task.id, onPause)}
               onResume={() => runAction(task.id, onResume)}
               onEdit={() => openEdit(task)}
+              onDelete={() => setDeletingTask(task)}
               onOpenProject={onOpenProject}
             />
           ))}
@@ -263,11 +282,25 @@ export default function ScheduledView({
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         onSubmit={handleSubmit}
-        onDelete={handleDelete}
         task={editing}
         projects={projects}
         defaultProjectPath={selectedProject?.path || ''}
         agentLabel={agentLabel}
+      />
+
+      <ConfirmModal
+        open={!!deletingTask}
+        title="Delete scheduled task?"
+        message={deletingTask
+          ? `"${deletingTask.title || 'Untitled schedule'}" will be permanently deleted. This can't be undone.`
+          : ''}
+        confirmLabel="Delete"
+        cancelLabel="Keep"
+        destructive
+        busy={deleteBusy}
+        busyLabel="Deleting…"
+        onConfirm={confirmDelete}
+        onClose={() => { if (!deleteBusy) setDeletingTask(null); }}
       />
     </div>
   );
@@ -329,9 +362,10 @@ function ListHeaderRow() {
 
 function ScheduleListRow({
   task, busy, projects = [], onOpen,
-  onRunNow, onPause, onResume, onEdit, onOpenProject,
+  onRunNow, onPause, onResume, onEdit, onDelete, onOpenProject,
 }) {
   const [hover, setHover] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const open = () => onOpen?.(task);
   const stop = (e) => { e.stopPropagation(); };
 
@@ -464,16 +498,18 @@ function ScheduleListRow({
         style={{
           display: 'inline-flex', alignItems: 'center', gap: 6,
           justifyContent: 'flex-end',
-          opacity: hover ? 1 : 0,
+          opacity: (hover || menuOpen) ? 1 : 0,
           transition: 'opacity 140ms ease',
-          pointerEvents: hover ? 'auto' : 'none',
+          pointerEvents: (hover || menuOpen) ? 'auto' : 'none',
         }}
       >
         <RowAction icon={Ico.send(12)} label="Run" onClick={onRunNow} busy={busy} />
-        {task.enabled
-          ? <RowAction icon={Ico.pause(12)} label="Pause" onClick={onPause} busy={busy} />
-          : <RowAction icon={Ico.power(12)} label="Resume" onClick={onResume} busy={busy} />}
-        <RowAction icon={Ico.edit(12)} label="Edit" onClick={onEdit} busy={busy} />
+        <OverflowMenu
+          items={taskMenuItems({ task, onEdit, onPause, onResume, onDelete })}
+          disabled={busy}
+          open={menuOpen}
+          onOpenChange={setMenuOpen}
+        />
       </div>
     </CardRow>
   );

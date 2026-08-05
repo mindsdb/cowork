@@ -129,4 +129,19 @@ describe('ScheduleTaskModal — S7 fixes', () => {
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
     expect(onSubmit.mock.calls[0][0].project_id).toBeNull();
   });
+
+  // Regression (ENG-1245): the edit form no longer owns a destructive Delete,
+  // so its footer can't show a second "Cancel" next to it. Delete moved to the
+  // task overflow menu + a ConfirmModal.
+  it('edit-mode footer has no Delete and exactly one Cancel', () => {
+    renderModal({ task: {
+      id: 's1', title: 'Weekly', prompt: 'summarize', cadence: 'weekly',
+      nextRunAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      project: 'Metrics', enabled: true,
+    } });
+
+    expect(screen.queryByRole('button', { name: /^Delete$/ })).toBeNull();
+    expect(screen.getAllByRole('button', { name: /^Cancel$/ })).toHaveLength(1);
+    expect(screen.getByRole('button', { name: /Save changes/i })).toBeInTheDocument();
+  });
 });
