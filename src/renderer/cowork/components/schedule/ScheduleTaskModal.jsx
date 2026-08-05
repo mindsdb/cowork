@@ -13,6 +13,15 @@ import Ico from '../Icons';
 
 const FONT_BODY = 'var(--font-body)';
 
+// Sentinel for the "No project" (unassigned) choice in the Project <Select>.
+// It must be a non-empty string: Base UI's <Select.Value> treats an
+// empty-string value as "nothing selected" and renders the placeholder, so an
+// option with value '' shows "Select…" on the closed control even while its
+// item carries a checkmark (ENG-1246). This value never reaches the server —
+// `handleSubmit` resolves it to `project: null`, and it can't collide with a
+// real project path.
+const NO_PROJECT = '__no_project__';
+
 function toLocalInput(value) {
   if (!value) return '';
   const date = new Date(value);
@@ -90,7 +99,7 @@ export default function ScheduleTaskModal({
         prompt:      task.prompt || '',
         cadence:     task.cadence || 'once',
         nextRunAt:   toLocalInput(task.nextRunAt) || defaultNextRun(),
-        projectPath: taskProjectPath || defaultProjectPath || '',
+        projectPath: taskProjectPath || defaultProjectPath || NO_PROJECT,
         enabled:     task.enabled !== false,
       });
     } else {
@@ -121,7 +130,10 @@ export default function ScheduleTaskModal({
     // dropped — every schedule landed with `project: null`, breaking
     // the project-pivoted card / list / count. Resolve the form's
     // path back to a name via `projects` and send the right field.
-    const projectMatch = projects.find((p) => p.path === form.projectPath);
+    // The "No project" sentinel resolves to no project (`null`).
+    const projectMatch = form.projectPath === NO_PROJECT
+      ? null
+      : projects.find((p) => p.path === form.projectPath);
     const payload = {
       title:        form.title.trim() || form.prompt.trim().slice(0, 80),
       prompt:       form.prompt,
@@ -218,7 +230,10 @@ export default function ScheduleTaskModal({
               ariaLabel="Project"
               style={fieldSelectStyle}
               options={[
-                { value: '', label: 'No project' },
+                // "No project" is the unassigned mode, not a project — divide
+                // it from the real projects (which map 1:1 to the projects page).
+                { value: NO_PROJECT, label: 'No project' },
+                { separator: true },
                 ...projects.map((p) => ({ value: p.path, label: p.name })),
               ]}
             />
@@ -319,7 +334,7 @@ function emptyForm({ defaultProjectPath }) {
     prompt: '',
     cadence: 'once',
     nextRunAt: defaultNextRun(),
-    projectPath: defaultProjectPath || '',
+    projectPath: defaultProjectPath || NO_PROJECT,
     enabled: true,
   };
 }
