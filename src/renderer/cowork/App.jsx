@@ -151,12 +151,9 @@ function normalizeAntonError(message, event) {
   return text || 'Could not complete this task.';
 }
 
-// Activation gate (ENG-736). Fired from the chat send/reply terminal handlers —
-// NOT the shared stream reducer, which also drives non-chat data-vault probes
-// and runs on historical replay. trackFirstResponse dedupes to once per user,
-// so the first terminal outcome of the user's first query wins. The outcome is
-// classified by the pure classifyFirstResponse (unit-tested in analytics);
-// wrapped so analytics can never break the turn.
+// Activation gate (ENG-736): fire from the chat send/reply terminal handlers,
+// not the shared reducer (it also drives non-chat probes and replay).
+// trackFirstResponse dedupes once per user; wrapped so analytics can't break the turn.
 function fireFirstResponse(result) {
   if (!result) return; // no terminal outcome observed — record nothing
   try {
@@ -1074,9 +1071,8 @@ function AppCore() {
 
   const handleStreamError = useCallback(async (taskIds, cid, message, event) => {
     if (event?.code === 'cancelled') return;
-    // Activation gate (ENG-736): a chat turn failed. This is the shared sink for
-    // every chat send/reply/reconnect error (response.failed carries a code;
-    // network errors don't), so a failed first query is recorded with its reason.
+    // Activation gate (ENG-736): chat turn failed. Shared sink for every chat
+    // send/reply/reconnect error, so a failed first query records its reason.
     fireFirstResponse(classifyFirstResponse({
       failed: true,
       code: event?.code,
@@ -1890,10 +1886,9 @@ function AppCore() {
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;
         const configErrorInBody = finalContent && isAntonConfigError(finalContent, null);
-        // Activation gate (ENG-736): record the first query's outcome only when
-        // the turn reached a server completion (status 'done'). A completed turn
-        // is a real answer (success) unless a config/auth error was wrapped into
-        // its 200 body; a reconnect that observed no completion records nothing.
+        // Activation gate (ENG-736): a completed turn (status 'done') is a real
+        // answer (success), unless a config error was wrapped into its 200 body.
+        // A reconnect that saw no completion records nothing.
         fireFirstResponse(classifyFirstResponse({
           completed: streamState.status === 'done',
           isConfigError: !!configErrorInBody,
@@ -2796,10 +2791,9 @@ function AppCore() {
         // and replace the assistant turn with the provider_required
         // card instead of rendering the raw SDK message.
         const configErrorInBody = finalContent && isAntonConfigError(finalContent, null);
-        // Activation gate (ENG-736): record the first query's outcome only when
-        // the turn reached a server completion (status 'done'). A completed turn
-        // is a real answer (success) unless a config/auth error was wrapped into
-        // its 200 body; a reconnect that observed no completion records nothing.
+        // Activation gate (ENG-736): a completed turn (status 'done') is a real
+        // answer (success), unless a config error was wrapped into its 200 body.
+        // A reconnect that saw no completion records nothing.
         fireFirstResponse(classifyFirstResponse({
           completed: streamState.status === 'done',
           isConfigError: !!configErrorInBody,
@@ -3062,10 +3056,9 @@ function AppCore() {
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;
         const configErrorInBody = finalContent && isAntonConfigError(finalContent, null);
-        // Activation gate (ENG-736): record the first query's outcome only when
-        // the turn reached a server completion (status 'done'). A completed turn
-        // is a real answer (success) unless a config/auth error was wrapped into
-        // its 200 body; a reconnect that observed no completion records nothing.
+        // Activation gate (ENG-736): a completed turn (status 'done') is a real
+        // answer (success), unless a config error was wrapped into its 200 body.
+        // A reconnect that saw no completion records nothing.
         fireFirstResponse(classifyFirstResponse({
           completed: streamState.status === 'done',
           isConfigError: !!configErrorInBody,

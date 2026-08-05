@@ -442,18 +442,12 @@ export function trackFirstQuery() {
 }
 
 // Map a first query's terminal state to a first_response (outcome, reason), or
-// null when there is no terminal outcome to record. Kept pure and app-agnostic
-// so the classification is unit-tested here rather than in the React send
-// handlers that call it (ENG-736). Callers pass what they observed:
-//   - a failed turn (response.failed / network error) → error, with its wire
-//     code, or config_required for an auth/config failure, else unknown
-//   - a turn that never reached a server completion (`completed` false — e.g. a
-//     reconnect whose buffer was already evicted, or a stream that closed
-//     without a completion event) → null: the outcome is unknown, so record
-//     nothing and let the next query settle it rather than guess
-//   - a completed turn whose body is really a wrapped config/auth error → error
-//   - any other completed turn → success (a completed turn is a real answer; an
-//     empty body is fine — e.g. an artifact-only turn is still activation)
+// null when there's nothing to record. Pure so it's unit-tested here, not in the
+// React send handlers (ENG-736):
+//   - failed turn → error (wire code, else config_required for auth, else unknown)
+//   - no completion observed → null: outcome unknown, let the next query settle it
+//   - completed with a config error in the body → error
+//   - any other completed turn → success (empty body is fine, e.g. artifact-only)
 export function classifyFirstResponse({ failed = false, completed = false, code, isConfigError = false } = {}) {
   if (failed) {
     return { outcome: 'error', reason: code || (isConfigError ? 'config_required' : 'unknown') };
@@ -463,17 +457,12 @@ export function classifyFirstResponse({ failed = false, completed = false, code,
   return { outcome: 'success', reason: undefined };
 }
 
-// The activation gate (ENG-736). `first_query` fires when a first message is
-// *sent*; this fires when that first query reaches a terminal *outcome*, so the
-// funnel can count activation only on a real answer and can see why a first
-// query failed. `outcome` is 'success' (a completed response — real assistant
-// tokens, no 4xx) or 'error'; on error, `reason` carries the stable failure
-// code (e.g. model_access_denied, token_limit) so a failed cohort — the 6-12
-// July free-tier break — reads as broken, not as weak interest.
-//
-// Once per user, keyed independently of first_query: the UI runs one stream at
-// a time, so the first terminal outcome we observe is the first query's. Same
-// deliver-then-mark discipline as trackFirstQuery so a dropped send can retry.
+// The activation gate (ENG-736). first_query fires when a first message is sent;
+// this fires when it reaches a terminal outcome, so the funnel counts activation
+// only on a real answer and can see why one failed. On error, `reason` carries
+// the failure code (e.g. model_access_denied) so a failed cohort reads as broken,
+// not as weak interest. Once per user; same deliver-then-mark discipline as
+// trackFirstQuery so a dropped send can retry.
 const FIRST_RESPONSE_STORAGE_KEY = 'mdb_first_response_tracked';
 let firstResponseInFlight = null;
 export function trackFirstResponse(outcome, reason) {
