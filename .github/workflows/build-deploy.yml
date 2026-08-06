@@ -1,0 +1,127 @@
+# The cowork web SPA image build, defined once.
+#
+# The three per-env workflows each carried the same build and scan, differing only
+# in the tag prefix, plus a per-PR environment rollout on the dev one. The static
+# dev/staging/prod Helm rollout has never been switched on here (it is handled
+# outside these workflows), so the commented block at the bottom is kept once
+# rather than three times.
+#
+# The SPA is env-agnostic: it derives every MindsHub service URL from the page
+# origin at runtime (src/renderer/lib/mindsUrls.ts), so one image serves every dev
+# namespace and every PR env with no VITE build args. `-f Dockerfile.frontend`
+# selects the SPA build rather than the all-in-one ./Dockerfile.
+#
+# ON PERMISSIONS. A called workflow can never exceed its caller's grant, and that
+# cap is checked when the workflow FILE IS LOADED, not when a job runs. A job here
+# naming a scope any one caller does not grant rejects that caller's whole run as a
+# `startup_failure` with zero jobs, and with no job in the run no notify job can
+# report it. So: declare only what EVERY caller grants. Nothing here declares a PR
+# scope — the environment comment lives in the pull-request caller, where the grant
+# belongs. The shared `workflow-lint.yml` gate checks this on every PR.
+
+name: Build and Deploy
+
+on:
+  workflow_call:
+    inputs:
+      build-environment:
+        description: "Image tag prefix in ECR (development | staging | production)"
+        type: string
+        required: true
+      build-runner:
+        description: "Runner label for the build and scan"
+        type: string
+        default: mdb-dev
+      pr-environment:
+        description: "Run the per-PR environment rollout"
+        type: boolean
+        default: false
+    outputs:
+      pr-env-deployed:
+        description: >-
+          "true" only when the per-PR environment actually rolled out. The pipeline
+          succeeding does not mean one exists: without the `deploy` label the
+          rollout is skipped and everything else still passes, so a caller keying
+          off the pipeline result advertises a URL for an environment nobody
+          created.
+        value: ${{ jobs.deploy-pr-env.outputs.deployed }}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    runs-on: ${{ inputs.build-runner }}
+    outputs:
+      image: ${{ steps.build.outputs.image }}
+    env:
+      AWS_REGION: us-east-1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mindsdb/github-actions/setup-env@main
+      - id: build
+        uses: mindsdb/github-actions/build-push-ecr@main
+        with:
+          # Repo-slug default image name (mindsdb-cowork); the web SPA is the only
+          # image this repo pushes to ECR.
+          module-name: ${{ env.CI_REPOSITORY_SLUG }}
+          extra-build-args: '-f Dockerfile.frontend'
+          build-for-environment: ${{ inputs.build-environment }}
+
+  scan:
+    runs-on: ${{ inputs.build-runner }}
+    needs: [build]
+    name: Scan Minds Image
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mindsdb/github-actions/snyk-docker-scan@main
+        with:
+          image: ${{ needs.build.outputs.image }}
+          snyk-token: ${{ secrets.SNYK_TOKEN }}
+          # Advisory on a PR, blocking on a deploy branch: an upstream CVE should
+          # not stop someone iterating, and should stop a release.
+          allow-vulns: ${{ inputs.pr-environment && 'true' || '' }}
+
+  deploy-pr-env:
+    runs-on: ${{ inputs.build-runner }}
+    needs: [build]
+    if: inputs.pr-environment && contains(github.event.pull_request.labels.*.name, 'deploy')
+    environment:
+      name: pr-cowork-${{ github.event.pull_request.number }}
+      url: https://pr-cowork-${{ github.event.pull_request.number }}.dev.mindshub.ai
+    outputs:
+      deployed: ${{ steps.rollout.outputs.deployed }}
+    steps:
+      - uses: mindsdb/github-actions/argocd-pr-env-deploy@main
+        with:
+          argocd-token: ${{ secrets.ARGOCD_AUTH_TOKEN }}
+          gh-token: ${{ secrets.GH_PULL_REQUEST_READ_TOKEN }}
+      - name: Record that the environment is up
+        id: rollout
+        run: echo "deployed=true" >> "$GITHUB_OUTPUT"
+
+  # The static Helm rollout has never run from here — dev/staging/prod are rolled
+  # outside these workflows. Kept as one commented block rather than the two
+  # near-identical copies it used to be, so switching it on means filling in a
+  # deploy-envs input here instead of reconstructing it in each caller.
+  #
+  # deploy:
+  #   runs-on: ${{ inputs.build-runner }}
+  #   needs: [build, scan]
+  #   environment:
+  #     name: <env>
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: mindsdb/github-actions/setup-env@main
+  #     - uses: DevOps-Nirvana/aws-helm-multi-deploy-nodocker@v6
+  #       with:
+  #         environment-slug: <env>
+  #         k8s-namespace: <env>
+  #         image-tag: ${{ inputs.build-environment }}-${{ env.SLUG }}
+  #         timeout: 600s
+  #         wait: "true"
+  #     # rollout status, not `wait ... pod -l <selector>`: the selector also
+  #     # matches the old ReplicaSet's terminating pods, and `wait` fails when one
+  #     # disappears mid-wait even though the deploy succeeded.
+  #     - run: kubectl -n <env> rollout status deployment/cowork-frontend --timeout=10m

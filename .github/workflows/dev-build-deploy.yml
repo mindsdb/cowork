@@ -1,19 +1,16 @@
-# Builds the cowork web SPA image (Dockerfile.frontend) and, when the PR is
-# labeled `deploy`, rolls out a per-PR environment via ArgoCD.
-#
-# Unit tests are NOT invoked here: cowork's tests-unit.yml already runs on every
-# pull_request, so gating/duplication is unnecessary (cowork-server calls its
-# tests-unit as a reusable workflow because that one runs on workflow_call only).
-#
-# The SPA is env-agnostic: it derives every MindsHub service URL from the page
-# origin at runtime (src/renderer/lib/mindsUrls.ts), so one image serves every
-# dev namespace and every PR env with no VITE build args.
-
 name: Dev - Build and Deploy on PR
+
+# THE pull-request pipeline. Everything a PR triggers lands in this one run tree:
+# unit tests, the web SPA image, the per-PR environment, and — when the PR asks for
+# them by label — the signed desktop installers.
+#
+# It used to be three separate runs on the same event (this file, tests-unit.yml,
+# and dev-build-installer.yml), so "did this commit pass" had three answers in three
+# places and the installers finished with nobody told.
 
 on:
   pull_request:
-    types: [opened, reopened, synchronize, labeled]
+    types: [opened, reopened, synchronize, labeled, unlabeled]
 
 permissions:
   contents: read
@@ -29,48 +26,165 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-
-  build:
-    runs-on: mdb-dev
+  # One gate answering "should the cluster-side pipeline run at all", for two
+  # reasons that were previously handled in different places or not at all.
+  #
+  # FORK PRs. This repo is PUBLIC and `mdb-dev` is a pod inside the newdev cluster
+  # with IRSA into the build/ECR account, so without a guard a pull request from
+  # any GitHub account executes its own code there. Fork PRs get no secrets and a
+  # read-only token, but the runner itself is the prize: cloud credentials, a
+  # network position inside the cluster, and a tool cache later internal jobs
+  # reuse. GitHub's first-time-contributor approval does not cover anyone with a
+  # merged PR.
+  #
+  # PROMOTION PRs. A `staging` -> `main` PR promotes commits the staging pipeline
+  # already built. This cannot be a trigger filter: for `pull_request`, GitHub's
+  # `branches` filters match the pull request's BASE branch, and the only lever on
+  # the head branch is a job-level conditional.
+  gate:
+    runs-on: ubuntu-latest
     outputs:
-      image: ${{ steps.build.outputs.image }}
-    env:
-      AWS_REGION: us-east-1
+      run: ${{ steps.decide.outputs.run }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: mindsdb/github-actions/setup-env@main
-      - id: build
-        uses: mindsdb/github-actions/build-push-ecr@main
-        with:
-          # Repo-slug default image name (mindsdb-cowork); the web SPA is the
-          # only image the cowork repo pushes to ECR. `-f Dockerfile.frontend`
-          # selects the SPA build (not the all-in-one ./Dockerfile).
-          module-name: ${{ env.CI_REPOSITORY_SLUG }}
-          extra-build-args: '-f Dockerfile.frontend'
-          build-for-environment: development
+      - name: Decide whether this PR needs the cluster-side pipeline
+        id: decide
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          THIS_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [ "$HEAD_REPO" != "$THIS_REPO" ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "### Build skipped: fork pull request"
+              echo
+              echo "The image and installer builds run on self-hosted runners inside our"
+              echo "infrastructure, so they do not execute code from a fork. The unit tests"
+              echo "below still run."
+            } >> "$GITHUB_STEP_SUMMARY"
+          elif [ "$HEAD_REF" = "staging" ] || [ "$HEAD_REF" = "main" ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "### Build skipped: promotion PR"
+              echo
+              echo "\`$HEAD_REF\` -> \`$BASE_REF\` promotes commits the \`$HEAD_REF\`"
+              echo "pipeline already built and tested."
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
 
+  run-unit-tests:
+    # Deliberately ungated: ubuntu-latest, no secrets, so a fork contributor gets
+    # the CI that matters to them.
+    uses: ./.github/workflows/tests-unit.yml
+    secrets: inherit
 
-  scan:
-    runs-on: mdb-dev
-    needs: [build]
-    name: Scan Minds Image
+  workflow-lint:
+    # actionlint, the caller/callee permission check, and a zizmor audit, shared
+    # with every other service repo. Ungated for the same reason as the tests.
+    permissions:
+      contents: read
+    uses: mindsdb/github-actions/.github/workflows/workflow-lint.yml@main
+    with:
+      default-permissions: read
+    secrets: inherit
+
+  build-deploy:
+    needs: [gate]
+    if: needs.gate.outputs.run == 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/build-deploy.yml
+    with:
+      build-environment: development
+      pr-environment: true
+    secrets: inherit
+
+  pr-env-comment:
+    # Only when an environment actually exists — `build-deploy` succeeding does not
+    # mean one does, since the rollout is skipped without the `deploy` label.
+    #
+    # This repo is PUBLIC, so the shared reusable drops the runbook link and the
+    # notes by itself; the hosts stay because they are what a reviewer came for.
+    needs: [gate, build-deploy]
+    if: ${{ !cancelled() && needs.gate.outputs.run == 'true' }}
+    permissions:
+      contents: read
+      pull-requests: write
+    uses: mindsdb/github-actions/.github/workflows/pr-env-comment.yml@main
+    with:
+      env-name: pr-cowork-${{ github.event.pull_request.number }}
+      status: ${{ needs.build-deploy.outputs.pr-env-deployed == 'true' && 'up' || 'absent' }}
+    secrets: inherit
+
+  # Signed installers, per platform, by label. Each is expensive and needs signing
+  # material, so a PR opts in rather than paying for both every push.
+  build-installers:
+    needs: [gate]
+    if: >-
+      ${{ needs.gate.outputs.run == 'true'
+          && (contains(github.event.pull_request.labels.*.name, 'signed-macos-pkg')
+              || contains(github.event.pull_request.labels.*.name, 'signed-windows-ev')) }}
+    uses: ./.github/workflows/build-installers.yml
+    with:
+      build_kind: preview
+      # A PR build tests staging. Stating it keeps main and the renderer on one
+      # environment; leaving it to the default splits them and login can never
+      # succeed.
+      minds_api_url: https://api.staging.mindshub.ai
+      # Kept for machines already carrying a GIT install of cowork-server (the
+      # updater is source-aware). Fresh installs follow the PyPI rc stream that
+      # build_kind implies.
+      server_ref: staging
+      macos: ${{ contains(github.event.pull_request.labels.*.name, 'signed-macos-pkg') }}
+      windows: ${{ contains(github.event.pull_request.labels.*.name, 'signed-windows-ev') }}
+    secrets: inherit
+
+  # The installers are the deliverable on a desktop PR, and they used to land in an
+  # S3 bucket whose URL was written only into a job summary. Put them in front of
+  # the reviewer.
+  #
+  # Split in two because a `uses:` job cannot have steps: this composes the link
+  # list (either platform may be absent), the next posts it.
+  compose-installer-links:
+    needs: [build-installers]
+    if: ${{ !cancelled() && needs.build-installers.result == 'success' }}
+    runs-on: ubuntu-latest
+    outputs:
+      links: ${{ steps.compose.outputs.links }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: mindsdb/github-actions/snyk-docker-scan@main
-        with:
-          image: ${{ needs.build.outputs.image }}
-          snyk-token: ${{ secrets.SNYK_TOKEN }}
+      - id: compose
+        env:
+          MAC_URL: ${{ needs.build-installers.outputs.macos_download_url }}
+          WIN_URL: ${{ needs.build-installers.outputs.windows_download_url }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          # jq builds it, so a file name carrying a quote or a space cannot produce
+          # malformed JSON the comment job would then fail to parse.
+          jq -cn \
+            --arg mac "${MAC_URL:-}" --arg win "${WIN_URL:-}" --arg run "$RUN_URL" '
+              [ ( if $mac != "" then {label: "macOS installer (.pkg)", url: $mac} else empty end ),
+                ( if $win != "" then {label: "Windows installer (.exe)", url: $win} else empty end ),
+                {label: "Build run", url: $run} ]
+            ' | tee links.json
+          echo "links=$(cat links.json)" >> "$GITHUB_OUTPUT"
 
-
-  deploy-pr-env:
-    runs-on: mdb-dev
-    needs: [build]
-    if: contains(github.event.pull_request.labels.*.name, 'deploy')
-    environment:
-      name: pr-cowork-${{ github.event.pull_request.number }}
-      url: https://pr-cowork-${{ github.event.pull_request.number }}.dev.mindshub.ai
-    steps:
-      - uses: mindsdb/github-actions/argocd-pr-env-deploy@main
-        with:
-          argocd-token: ${{ secrets.ARGOCD_AUTH_TOKEN }}
-          gh-token:     ${{ secrets.GH_PULL_REQUEST_READ_TOKEN }}
+  installer-comment:
+    needs: [compose-installer-links]
+    permissions:
+      contents: read
+      pull-requests: write
+    uses: mindsdb/github-actions/.github/workflows/pr-env-comment.yml@main
+    with:
+      heading: "Installers built"
+      env-name: preview
+      # Not an environment: no service table, no default-tag note.
+      standard-links: false
+      # Its own marker, so it rolls independently of the environment comment.
+      marker: pr-installer-artifacts
+      links: ${{ needs.compose-installer-links.outputs.links }}
+    secrets: inherit

@@ -1,18 +1,22 @@
 name: Tests (unit)
 
-# Fast PR check: typecheck + unit/component tests + a real renderer build.
+# Typecheck + unit/component tests + a real renderer build.
+#
+# `workflow_call` only. It used to carry its own `pull_request` and `push`
+# triggers, which meant every PR and every merge produced a SECOND run tree
+# beside the pipeline's — two places to look for "did this commit pass", and the
+# second one is the one nobody looks at. Each pipeline now calls it, so the whole
+# event lands in one run.
+#
+# Concurrency and the terminal failure alert both moved to the callers with it: a
+# called workflow inherits the caller's event, so those belong where the trigger
+# is, and a notify job here would double up with the pipeline's own.
 
 on:
-  pull_request:
-  push:
-    branches: [main, staging]
+  workflow_call:
 
 permissions:
   contents: read
-
-concurrency: # cancel superseded PR runs; never cancel main
-  group: ci-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:
@@ -73,21 +77,3 @@ jobs:
         with:
           command: npm ci
       - run: npm run build:renderer
-
-  notify:
-    # Alert the eng channel if unit tests or the renderer build fail on a direct
-    # push to main/staging. PR runs are skipped — the author sees those directly.
-    # One job covers both outcomes: a `uses:` job cannot branch on status, so
-    # the aggregate result picks the failed or recovered message, and a
-    # cancelled run stays silent.
-    needs: [test, build]
-    if: ${{ !cancelled() && !contains(needs.*.result, 'cancelled') && github.event_name == 'push' }}
-    permissions:
-      contents: read
-      actions: read  # the prior-run lookup behind the recovery message
-    uses: mindsdb/github-actions/.github/workflows/notify-main-failure.yml@main
-    with:
-      env-name: "unit tests"
-      status: ${{ contains(needs.*.result, 'failure') && 'failed' || 'recovered' }}
-      runs-on: ubuntu-latest
-    secrets: inherit
