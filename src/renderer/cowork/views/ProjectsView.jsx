@@ -270,7 +270,7 @@ function NewProjectCard({ onCreate, creating, onCreatingChange }) {
   if (editing) {
     return (
       <div
-        className="min-h-[120px] rounded-card px-4 py-[14px] bg-surface border border-accent flex flex-col gap-[10px] justify-center font-[var(--font-body)]"
+        className="min-h-[120px] rounded-card px-4 py-4 bg-surface border border-accent flex flex-col gap-3 justify-center font-[var(--font-body)]"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-2">
@@ -301,10 +301,10 @@ function NewProjectCard({ onCreate, creating, onCreatingChange }) {
               if (val) submit();
               else cancel();
             }}
-            className="flex-1 min-w-0 font-[var(--font-display)] text-[16px] font-semibold tracking-[0] text-ink bg-surface-2 border border-line rounded-[6px] px-2 py-1 outline-none"
+            className="flex-1 min-w-0 font-[var(--font-display)] text-[16px] font-semibold tracking-[0] text-ink bg-surface-2 border border-line rounded-card-row px-2 py-1 outline-none"
           />
         </div>
-        <div className="font-mono text-[10.5px] text-ink-4 tracking-[0.04em]">
+        <div className="font-mono text-xs text-ink-4 tracking-[0.04em]">
           {busy ? 'Creating…' : '↵ create · esc cancel'}
         </div>
       </div>
@@ -317,14 +317,14 @@ function NewProjectCard({ onCreate, creating, onCreatingChange }) {
       onClick={() => setEditing(true)}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      className="min-h-[120px] rounded-card px-4 py-[14px] bg-transparent flex flex-col items-center justify-center gap-2 cursor-pointer [transition:border-color_.15s_ease,color_.15s_ease]"
+      className="min-h-[120px] rounded-card px-4 py-4 bg-transparent flex flex-col items-center justify-center gap-2 cursor-pointer [transition:border-color_.15s_ease,color_.15s_ease]"
       style={{
         border: `1px dashed ${hover ? 'var(--accent)' : 'var(--line-2)'}`,
         color: hover ? 'var(--accent)' : 'var(--ink-3)',
       }}
     >
       <span className="inline-flex">{Ico.plus(16)}</span>
-      <span className="font-[var(--font-body)] text-[13px] font-medium">New project</span>
+      <span className="font-[var(--font-body)] text-sm font-medium">New project</span>
     </button>
   );
 }
@@ -344,10 +344,10 @@ const LIST_GRID = '3fr 1.2fr 64px 64px 64px 64px 64px 36px';
 
 function ListHeader() {
   const Cell = ({ children, align }) => (
-    <div className="font-mono text-[10.5px] text-ink-4 tracking-[0.10em] uppercase" style={{ textAlign: align || 'left' }}>{children}</div>
+    <div className="font-mono text-xs text-ink-4 tracking-[0.10em] uppercase" style={{ textAlign: align || 'left' }}>{children}</div>
   );
   return (
-    <div className="grid gap-[14px] px-[14px] py-[10px] border-b border-line" style={{ gridTemplateColumns: LIST_GRID }}>
+    <div className="grid gap-4 px-4 py-3 border-b border-line" style={{ gridTemplateColumns: LIST_GRID }}>
       <Cell>Name</Cell>
       <Cell>Last activity</Cell>
       <Cell align="right">Tasks</Cell>
@@ -363,7 +363,7 @@ function ListHeader() {
 function D1Num({ value }) {
   const isZero = !value;
   return (
-    <span className="font-mono text-[12px] text-right tabular-nums" style={{ color: isZero ? 'var(--ink-5)' : 'var(--ink)' }}>{value ?? 0}</span>
+    <span className="font-mono text-sm text-right tabular-nums" style={{ color: isZero ? 'var(--ink-5)' : 'var(--ink)' }}>{value ?? 0}</span>
   );
 }
 
@@ -373,7 +373,7 @@ function D1Num({ value }) {
 function ActiveNum({ value }) {
   const isZero = !value;
   return (
-    <span className="inline-flex items-center justify-end gap-[6px] font-mono text-[12px] text-right tabular-nums" style={{ color: isZero ? 'var(--ink-5)' : 'var(--accent)' }}>
+    <span className="inline-flex items-center justify-end gap-2 font-mono text-sm text-right tabular-nums" style={{ color: isZero ? 'var(--ink-5)' : 'var(--accent)' }}>
       {!isZero && (
         <span aria-hidden className="pulse-dot" style={{
           width: 6, height: 6, borderRadius: '50%',
@@ -503,7 +503,7 @@ function ListRow({
             }}
           />
         ) : (
-          <span className="font-[var(--font-display)] text-[14.5px] font-semibold text-ink min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{project.name}</span>
+          <span className="font-[var(--font-display)] text-base font-semibold text-ink min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{project.name}</span>
         )}
         {pinned && !editing && (
           <span className="inline-flex text-accent shrink-0">
@@ -559,9 +559,9 @@ function ListRow({
 
 function SkeletonCard() {
   return (
-    <div className="min-h-[120px] rounded-card px-4 py-[14px] border border-line bg-surface flex flex-col gap-[10px]">
+    <div className="min-h-[120px] rounded-card px-4 py-4 border border-line bg-surface flex flex-col gap-3">
       <div className="proj-shimmer h-[14px] w-[60%] bg-surface-2 rounded-[4px]" />
-      <div className="flex-1 flex flex-col gap-[6px]">
+      <div className="flex-1 flex flex-col gap-2">
         <div className="proj-shimmer h-[11px] w-[90%] bg-surface-2 rounded-[4px]" />
         <div className="proj-shimmer h-[11px] w-[70%] bg-surface-2 rounded-[4px]" />
       </div>
@@ -1121,7 +1121,7 @@ export default function ProjectsView({
       />
 
       {loading ? (
-        <div className="pt-[6px] px-8 pb-[60px] grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-[14px] mt-[18px]">
+        <div className="pt-2 px-8 pb-[60px] grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4 mt-5">
           {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
         </div>
       ) : projects.length === 0 ? (
@@ -1133,7 +1133,7 @@ export default function ProjectsView({
           style={{ flex: 1 }}
         />
       ) : effectiveView === 'grid' ? (
-        <div className="pt-[6px] px-8 pb-[60px] grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-[14px] mt-[18px]">
+        <div className="pt-2 px-8 pb-[60px] grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4 mt-5">
           {visibleProjects.map((p) => (
             <ProjectCard
               key={p.name || p.path}
@@ -1158,7 +1158,7 @@ export default function ProjectsView({
           <button
             type="button"
             onClick={handleNewProject}
-            className="proj-new-tile min-h-[120px] rounded-card px-4 py-[14px] bg-transparent border border-dashed border-line-2 text-ink-3 flex flex-col items-center justify-center gap-2 cursor-pointer [transition:border-color_.15s_ease,color_.15s_ease] font-[inherit]"
+            className="proj-new-tile min-h-[120px] rounded-card px-4 py-4 bg-transparent border border-dashed border-line-2 text-ink-3 flex flex-col items-center justify-center gap-2 cursor-pointer [transition:border-color_.15s_ease,color_.15s_ease] font-[inherit]"
             onMouseOver={(e) => {
               e.currentTarget.style.borderColor = 'var(--accent)';
               e.currentTarget.style.color = 'var(--accent)';
@@ -1169,13 +1169,13 @@ export default function ProjectsView({
             }}
           >
             <span className="inline-flex">{Ico.plus(16)}</span>
-            <span className="font-[var(--font-body)] text-[13px] font-medium">
+            <span className="font-[var(--font-body)] text-sm font-medium">
               New project
             </span>
           </button>
         </div>
       ) : (
-        <div className="pt-[6px] px-8 pb-[60px] mt-[18px]">
+        <div className="pt-2 px-8 pb-[60px] mt-5">
           <ListHeader />
           {visibleProjects.map((p) => (
             <ListRow
