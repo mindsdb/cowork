@@ -1480,7 +1480,14 @@ function AppCore() {
   // to re-read or else it keeps pointing at the old project.
   useEffect(() => {
     const handler = () => {
-      fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); });
+      fetchProjects().then((data) => {
+        if (!Array.isArray(data)) return;
+        setProjects(data);
+        // A rename leaves selectedProject holding the old name; re-anchor
+        // it by id so in-project sends and the breadcrumb pick up the
+        // current name instead of 404ing on the stale one (ENG-1028).
+        setSelectedProject((prev) => (prev?.id && data.find((p) => p.id === prev.id)) || prev);
+      });
       fetchSessions().then((data) => {
       if (Array.isArray(data)) setTasks((prev) => mergeTasksFromServer(data, prev).filter((t) => !deletedTaskIdsRef.current.has(t.id)));
     });
@@ -2583,9 +2590,11 @@ function AppCore() {
     // instead of routing through anton's LLM path.
     if (!(await ensureProviderReady())) {
       const taskId = `tmp-${Date.now()}`;
+      const generalFallback = projects.find((p) => p.name === 'general');
       const effectiveProjectName = selectedProject?.name || 'general';
+      const effectiveProjectId = (selectedProject ? selectedProject.id : generalFallback?.id) || null;
       const effectiveProjectPath = selectedProject?.path
-        || projects.find((p) => p.name === 'general')?.path
+        || generalFallback?.path
         || null;
       setTasks((prev) => [{
         id: taskId,
@@ -2598,6 +2607,7 @@ function AppCore() {
         ],
         projectPath: effectiveProjectPath,
         projectName: effectiveProjectName,
+        projectId: effectiveProjectId,
         model: selectedModel?.id ?? null,
         attachments: [],
         disabledConnections: [],
@@ -2626,6 +2636,7 @@ function AppCore() {
       }
     }
     const effectiveProjectName = selectedProject?.name || 'general';
+    const effectiveProjectId = (selectedProject ? selectedProject.id : generalProject?.id) || null;
     const effectiveProjectPath = selectedProject?.path || generalProject?.path || null;
 
     const disabledForSend = normalizeComposerDisabledConnections(composerDisabledConnections);
@@ -2662,6 +2673,7 @@ function AppCore() {
       messages: [],
       projectPath: effectiveProjectPath,
       projectName: effectiveProjectName,
+      projectId: effectiveProjectId,
       model: selectedModel?.id ?? null,
       attachments: sendingAttachments,
       disabledConnections: disabledForSend,
@@ -2747,6 +2759,7 @@ function AppCore() {
     const streamNewSessionFn = () => streamNewSession(sendText, {
       conversationId: hasPendingFiles ? taskId : undefined,
       projectName: effectiveProjectName,
+      projectId: effectiveProjectId,
       projectPath: effectiveProjectPath,
       model: selectedModel?.id,
       attachmentIds,
@@ -2912,6 +2925,9 @@ function AppCore() {
     const taskProjectName = currentTask.projectName
       || (currentTaskProject?.name)
       || null;
+    const taskProjectId = currentTask.projectId
+      || currentTaskProject?.id
+      || null;
     const taskProjectPath = currentTask.projectPath
       || currentTaskProject?.path
       || null;
@@ -3028,6 +3044,7 @@ function AppCore() {
     const streamGen = activeStreamGenerationRef.current;
     activeStreamCtrlRef.current = streamMessage(id, sendText, {
       projectName: taskProjectName,
+      projectId: taskProjectId,
       projectPath: taskProjectPath,
       model: taskModel,
       attachmentIds,
