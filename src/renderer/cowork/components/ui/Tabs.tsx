@@ -44,7 +44,9 @@ export function Tab({ className, ...rest }: TabProps) {
         'relative -mb-px cursor-pointer border-0 border-b-2 border-transparent bg-transparent px-3 py-1.5',
         'text-sm text-ink-3 transition-colors hover:text-ink',
         'aria-[selected=true]:border-accent aria-[selected=true]:text-ink',
-        'disabled:cursor-not-allowed disabled:opacity-50',
+        // Base UI keeps a disabled tab focusable, so it emits data-disabled
+        // (not the native `disabled` attr); `disabled:` would never match.
+        'data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50',
         className,
       )}
       {...rest}

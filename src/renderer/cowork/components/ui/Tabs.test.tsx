@@ -63,12 +63,26 @@ describe('Tabs', () => {
     expect(screen.getByRole('tabpanel').textContent).toBe('overview panel');
   });
 
-  it('applies layout-only classNames to each part', () => {
-    render(<Fixture defaultValue="overview" className="mt-4" />);
+  it('forwards a custom className on every part alongside its base classes', () => {
+    render(
+      <Tabs defaultValue="overview" className="mt-4">
+        <TabList className="gap-6">
+          <Tab value="overview" className="uppercase">Overview</Tab>
+        </TabList>
+        <TabPanel value="overview" className="pl-6">overview panel</TabPanel>
+      </Tabs>,
+    );
+    const list = screen.getByRole('tablist');
     // Root carries the passed className alongside the base w-full.
-    const root = screen.getByRole('tablist').parentElement!;
-    expect(root.className).toContain('mt-4');
-    expect(screen.getByRole('tab', { name: 'Overview' }).className).toContain('border-b-2');
-    expect(screen.getByRole('tabpanel').className).toContain('pt-3');
+    expect(list.parentElement!.className).toContain('mt-4');
+    // Each part merges its custom className with its base classes.
+    expect(list.className).toContain('gap-6');
+    expect(list.className).toContain('border-b'); // base retained
+    const tab = screen.getByRole('tab', { name: 'Overview' });
+    expect(tab.className).toContain('uppercase');
+    expect(tab.className).toContain('border-b-2'); // base retained
+    const panel = screen.getByRole('tabpanel');
+    expect(panel.className).toContain('pl-6');
+    expect(panel.className).toContain('pt-3'); // base retained
   });
 });
