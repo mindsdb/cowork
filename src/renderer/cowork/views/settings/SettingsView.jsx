@@ -107,7 +107,7 @@ function SettingsGroup({ title, children }) {
   // below, separated from the next group by spacing.
   if (mobile) {
     return (
-      <div className="mb-[6px]">
+      <div className="mb-2">
         <h2 className={`${headingClass} pt-3 px-[2px] pb-2`}>{title}</h2>
         <div className="px-[2px] pb-1">{children}</div>
       </div>
@@ -115,9 +115,9 @@ function SettingsGroup({ title, children }) {
   }
 
   return (
-    <div className="overflow-hidden rounded-card border border-line bg-surface-glass [backdrop-filter:blur(var(--surface-glass-blur))] [-webkit-backdrop-filter:blur(var(--surface-glass-blur))] mb-[14px]">
-      <h2 className={`${headingClass} pt-[14px] px-[18px] pb-0`}>{title}</h2>
-      <div className="px-[18px] pt-[10px] pb-2">{children}</div>
+    <div className="overflow-hidden rounded-card border border-line bg-surface-glass [backdrop-filter:blur(var(--surface-glass-blur))] [-webkit-backdrop-filter:blur(var(--surface-glass-blur))] mb-4">
+      <h2 className={`${headingClass} pt-4 px-5 pb-0`}>{title}</h2>
+      <div className="px-5 pt-3 pb-2">{children}</div>
     </div>
   );
 }
@@ -156,7 +156,7 @@ function ClearableTextInput({ value, onChange, placeholder, ariaLabel }) {
           onClick={() => onChange('')}
           title="Clear (commits on Save settings)"
           aria-label="Clear value"
-          className="absolute right-[4px] top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-[28px] h-[26px] rounded-[6px] border-0 bg-transparent cursor-pointer text-ink-3 p-0"
+          className="absolute right-[4px] top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-[28px] h-[26px] rounded-card-row border-0 bg-transparent cursor-pointer text-ink-3 p-0"
         >
           {Ico.close(13)}
         </button>
@@ -580,9 +580,9 @@ function SettingsNav({ section, onSectionChange, serverOnline = true }) {
     <nav
       role="navigation"
       aria-label="Settings sections"
-      className="w-[180px] shrink-0 border-r border-line px-[10px] py-5 flex flex-col gap-[2px]"
+      className="w-[180px] shrink-0 border-r border-line px-3 py-5 flex flex-col gap-[2px]"
     >
-      <div className="text-2xs tracking-[0.08em] uppercase text-ink-4 px-[10px] pb-[6px] font-semibold">Settings</div>
+      <div className="text-2xs tracking-[0.08em] uppercase text-ink-4 px-3 pb-2 font-semibold">Settings</div>
       {navItemsForHost(host.isWeb).map((item) => {
         const active = section === item.id;
         // `!host.isWeb &&`: the offline-disable exists because a dead local
@@ -1097,7 +1097,7 @@ export default function SettingsView({
   const testButtonLabel = testing
     ? 'Testing…'
     : tested
-      ? (<><span className="inline-flex mr-[6px] align-middle">{Ico.check(13)}</span>Tested</>)
+      ? (<><span className="inline-flex mr-2 align-middle">{Ico.check(13)}</span>Tested</>)
       : 'Test';
 
   // ───────────────────────── Shared footer/banner helpers ─────────────────────────
@@ -1106,7 +1106,7 @@ export default function SettingsView({
     <>
       <div
         role="status" aria-live="polite" aria-atomic="true"
-        className="flex-1 text-[13px] font-medium text-muted inline-flex items-center gap-[6px]"
+        className="flex-1 text-sm font-medium text-muted inline-flex items-center gap-2"
       >
         {testing && <span aria-hidden="true" className="spinner w-[12px] h-[12px]" />}
         {!testing && tested && configReady && <span aria-hidden="true" className="text-sage-500 inline-flex">{Ico.check(13)}</span>}
@@ -1213,7 +1213,7 @@ export default function SettingsView({
                             }}
                           />
                           {nameEmpty && (
-                            <span id={errorId} className="text-[10.5px] text-danger">Name required</span>
+                            <span id={errorId} className="text-xs text-danger">Name required</span>
                           )}
                         </div>
                       );
@@ -1246,7 +1246,7 @@ export default function SettingsView({
                     <div>
                       {titleNode}
                       {PROVIDER_TYPE_DESC[p.type] && (
-                        <div className="text-[12px] text-muted mt-[6px] max-w-[380px] leading-[1.45]">
+                        <div className="text-sm text-muted mt-2 max-w-[380px] leading-[1.45]">
                           {PROVIDER_TYPE_DESC[p.type]}
                         </div>
                       )}
@@ -1254,7 +1254,7 @@ export default function SettingsView({
 
                     {/* Middle: status pill (tested) OR key input (editing / untested) */}
                     {showKeyInput ? (
-                      <div className="grid gap-[6px]">
+                      <div className="grid gap-2">
                         {ssoMindsHub ? (
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: mobile ? 'flex-start' : 'flex-end', padding: '5px 0' }}>
                             {statusPill}
@@ -1281,7 +1281,7 @@ export default function SettingsView({
                           />
                         )}
                         {GET_KEY_URL[p.type] && !ssoMindsHub && (
-                          <div className="text-[11.5px] text-muted">
+                          <div className="text-xs text-muted">
                             Get your API key at{' '}
                             <a
                               href={GET_KEY_URL[p.type]}
@@ -1293,7 +1293,7 @@ export default function SettingsView({
                           </div>
                         )}
                         {p.type === 'minds-cloud' && !isSsoConnected && (
-                          <div className="text-[11.5px] text-muted">
+                          <div className="text-xs text-muted">
                             Don't have an account?{' '}
                             <a
                               href={MINDS_REGISTER_URL}
@@ -1305,7 +1305,7 @@ export default function SettingsView({
                           </div>
                         )}
                         {status === 'fail' && friendlyError && (
-                          <div className="text-[11.5px] text-danger flex items-start gap-[6px]">
+                          <div className="text-xs text-danger flex items-start gap-2">
                             <span className="shrink-0 mt-[1px]">{Ico.key ? Ico.key(11) : '!'}</span>
                             <span>{friendlyError}</span>
                           </div>
@@ -1315,7 +1315,7 @@ export default function SettingsView({
                       // Status pill replaces the key input after a test result
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: mobile ? 'flex-start' : 'flex-end', padding: '5px 0', gap: 10 }}>
                         {status === 'fail' && friendlyError && (
-                          <span className="text-[11.5px] text-danger">{friendlyError}</span>
+                          <span className="text-xs text-danger">{friendlyError}</span>
                         )}
                         {statusPill}
                       </div>
@@ -1346,7 +1346,7 @@ export default function SettingsView({
                   </div>
                 );
               })}
-              <div className="relative pt-[14px] pb-1 min-h-[50px]">
+              <div className="relative pt-4 pb-1 min-h-[50px]">
                 {/* Idle: + Add provider button. Fades + slides down when
               the picker opens. */}
                 <Button
@@ -1504,7 +1504,7 @@ export default function SettingsView({
                   );
 
                   const noCreditsNotice = isNoCredits ? (
-                    <div className="text-[12px] leading-[1.6]">
+                    <div className="text-sm leading-[1.6]">
                       <span className="text-danger font-semibold">No credits available. </span>
                       <button
                         type="button"
@@ -1521,7 +1521,7 @@ export default function SettingsView({
                         : role === 'router' ? 'fast respond-or-delegate gating on each turn, and history summarization'
                         : 'scratchpad code generation'
                     }.`} notice={noCreditsNotice}>
-                      <div className="grid gap-[6px]">
+                      <div className="grid gap-2">
                         {multipleProviders && (
                           <label className="grid gap-1">
                             {fieldLabel('Provider')}
@@ -1635,13 +1635,13 @@ export default function SettingsView({
                           </label>
                         )}
                         {providerCheckingNotice && (
-                          <div id={providerWarnId} aria-live="polite" className="text-[11.5px] text-muted flex items-center gap-[6px]">
+                          <div id={providerWarnId} aria-live="polite" className="text-xs text-muted flex items-center gap-2">
                             <Spinner intervalMs={90} />
                             Checking {providerDisplayName(provider)} connection…
                           </div>
                         )}
                         {providerUnusable && (
-                          <div id={providerWarnId} className="text-[11.5px] text-warning">
+                          <div id={providerWarnId} className="text-xs text-warning">
                             {providerUnconfigured
                               ? (provider
                                 ? `${providerDisplayName(provider)} isn't configured — add its credentials under LLM Providers above, or pick another provider.`
@@ -1872,7 +1872,7 @@ export default function SettingsView({
             options={SKINS.map((s) => ({
               value: s.id,
               label: s.icon && Ico[s.icon]
-                ? (<span className="inline-flex items-center gap-[6px]">{Ico[s.icon](13)} {s.label}</span>)
+                ? (<span className="inline-flex items-center gap-2">{Ico[s.icon](13)} {s.label}</span>)
                 : s.label,
               'aria-label': `${s.label} style`,
               title: s.title,
@@ -1887,13 +1887,13 @@ export default function SettingsView({
             options={[
               {
                 value: 'light',
-                label: (<span className="inline-flex items-center gap-[6px]">{Ico.sun(13)} Light</span>),
+                label: (<span className="inline-flex items-center gap-2">{Ico.sun(13)} Light</span>),
                 'aria-label': 'Light theme',
                 title: 'Use the light theme.',
               },
               {
                 value: 'dark',
-                label: (<span className="inline-flex items-center gap-[6px]">{Ico.moon(13)} Dark</span>),
+                label: (<span className="inline-flex items-center gap-2">{Ico.moon(13)} Dark</span>),
                 'aria-label': 'Dark theme',
                 title: 'Use the dark theme.',
               },
@@ -1908,7 +1908,7 @@ export default function SettingsView({
                 value={customTheme.accent}
                 onChange={(e) => onCustomThemeChange?.({ ...customTheme, accent: e.target.value })}
                 aria-label="Custom accent color"
-                className="w-[64px] h-[32px] p-[2px] border border-line-2 rounded-[6px] bg-surface cursor-pointer"
+                className="w-[64px] h-[32px] p-[2px] border border-line-2 rounded-card-row bg-surface cursor-pointer"
               />
             </Section>
             <Section title="Background — Light mode" subtitle="Pick a base color for Light — surfaces and text shades derive from it — or use Light's default.">
@@ -2038,7 +2038,7 @@ export default function SettingsView({
               <img
                 src={settings.navLogo}
                 alt=""
-                className="w-[32px] h-[32px] object-contain rounded-[6px] border border-line-2 bg-surface"
+                className="w-[32px] h-[32px] object-contain rounded-card-row border border-line-2 bg-surface"
               />
             )}
             <Button
@@ -2067,7 +2067,7 @@ export default function SettingsView({
             <AutoSaveTag settingKey="navLogo" />
           </div>
           {logoError && (
-            <div className="text-[12px] text-danger mt-[6px]">{logoError}</div>
+            <div className="text-sm text-danger mt-2">{logoError}</div>
           )}
         </Section>
         <div className="settings-hide-mobile">

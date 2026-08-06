@@ -83,7 +83,7 @@ export default function BackendSection({
   if (host.isWeb) {
     return (
       <SettingsSectionPanel>
-        <div className="flex flex-col items-center justify-center gap-[10px] py-8 text-center text-[13px] text-muted">
+        <div className="flex flex-col items-center justify-center gap-3 py-8 text-center text-sm text-muted">
           <span className="text-[32px] leading-none">☁</span>
           <div className="text-base font-semibold text-strong">Backend is managed server-side</div>
           <div className="max-w-[320px]">The Python backend runs on the server — it isn't controllable from this interface.</div>
@@ -154,15 +154,15 @@ export default function BackendSection({
 
   return (
     <SettingsSectionPanel footer={backendFooter}>
-      <div className="flex flex-col gap-[14px]">
+      <div className="flex flex-col gap-4">
 
         {/* Status card — status header + port + logs */}
         <div className="overflow-hidden rounded-card border border-line bg-surface-glass [backdrop-filter:blur(var(--surface-glass-blur))] [-webkit-backdrop-filter:blur(var(--surface-glass-blur))]">
-          <div className="border-b border-line px-4 py-[10px] text-[10.5px] font-semibold uppercase tracking-[0.07em] text-ink-4">Status</div>
+          <div className="border-b border-line px-4 py-3 text-xs font-semibold uppercase tracking-[0.07em] text-ink-4">Status</div>
 
           {/* Status summary row */}
-          <div className="flex items-start gap-3 px-4 py-[14px]">
-            <span className="inline-grid shrink-0 place-items-center w-[34px] h-[34px] rounded-[8px]" style={{
+          <div className="flex items-start gap-3 px-4 py-4">
+            <span className="inline-grid shrink-0 place-items-center w-[34px] h-[34px] rounded-card-row" style={{
               background: `color-mix(in srgb, ${STATUS_META.iconBgMix} 14%, var(--surface))`,
               color: STATUS_META.iconColor,
               border: `1px solid color-mix(in srgb, ${STATUS_META.iconBgMix} 35%, transparent)`,
@@ -170,26 +170,26 @@ export default function BackendSection({
               {Ico.power ? Ico.power(16) : '⏻'}
             </span>
             <div className="flex-1 min-w-0">
-              <div className="text-[13.5px] font-semibold text-ink">{STATUS_META.title}</div>
-              <div className="mt-[2px] text-[12px] leading-[1.5] text-ink-3">{STATUS_META.subtitle}</div>
+              <div className="text-base font-semibold text-ink">{STATUS_META.title}</div>
+              <div className="mt-[2px] text-sm leading-[1.5] text-ink-3">{STATUS_META.subtitle}</div>
             </div>
           </div>
 
           {/* Port + exit code + last attempt chips */}
-          <div className="flex gap-2 px-4 pb-[14px] font-mono text-xs">
-            <div className="rounded-[6px] border border-line bg-surface-2 px-[10px] py-[6px]">
-              <span className="mr-[6px] text-[9.5px] uppercase tracking-[0.06em] text-ink-4">Port</span>
+          <div className="flex gap-2 px-4 pb-4 font-mono text-xs">
+            <div className="rounded-card-row border border-line bg-surface-2 px-3 py-2">
+              <span className="mr-2 text-2xs uppercase tracking-[0.06em] text-ink-4">Port</span>
               <span className="text-ink">{port ?? '—'}</span>
             </div>
             {state === 'offline' && (
-              <div className="rounded-[6px] border border-line bg-surface-2 px-[10px] py-[6px]">
-                <span className="mr-[6px] text-[9.5px] uppercase tracking-[0.06em] text-ink-4">Exit</span>
+              <div className="rounded-card-row border border-line bg-surface-2 px-3 py-2">
+                <span className="mr-2 text-2xs uppercase tracking-[0.06em] text-ink-4">Exit</span>
                 <span className="text-ink">{exitLabel}</span>
               </div>
             )}
             {startedAt && (
-              <div className="rounded-[6px] border border-line bg-surface-2 px-[10px] py-[6px]">
-                <span className="mr-[6px] text-[9.5px] uppercase tracking-[0.06em] text-ink-4">Started</span>
+              <div className="rounded-card-row border border-line bg-surface-2 px-3 py-2">
+                <span className="mr-2 text-2xs uppercase tracking-[0.06em] text-ink-4">Started</span>
                 <span className="text-ink">{startedAt}</span>
               </div>
             )}
@@ -197,24 +197,24 @@ export default function BackendSection({
 
           {/* Headline error inside card — offline + start-failure */}
           {state === 'offline' && offlineKind === 'failed' && (
-            <div className="px-4 pb-[14px]">
+            <div className="px-4 pb-4">
               {error ? (
                 <Alert variant="danger" style={{ fontFamily: FONT_MONO, wordBreak: 'break-word' }}>{error}</Alert>
               ) : (
-                <div className="rounded-[8px] border border-line bg-surface-2 px-3 py-[10px] text-sm leading-[1.5] text-ink-3">No specific start error was captured. Check the log tail — the process may have died after starting.</div>
+                <div className="rounded-card-row border border-line bg-surface-2 px-3 py-3 text-sm leading-[1.5] text-ink-3">No specific start error was captured. Check the log tail — the process may have died after starting.</div>
               )}
             </div>
           )}
 
           {/* Recent log */}
-          <div className="border-t border-line px-4 pt-[10px] pb-[14px]">
-            <div className="mb-[6px] font-mono text-2xs uppercase tracking-[0.1em] text-ink-4">Log</div>
+          <div className="border-t border-line px-4 pt-3 pb-4">
+            <div className="mb-2 font-mono text-2xs uppercase tracking-[0.1em] text-ink-4">Log</div>
             {/* ENG-1320: grow to fill the modal instead of a fixed 200px cap
                 that squeezed a long log into a tiny scroller while the panel
                 had room to spare. Viewport-relative so it scales with the
                 modal (min(820px, 88vh)); still capped + scrollable so a very
                 long log can't push the section controls off-screen. */}
-            <pre className="m-0 max-h-[min(520px,52vh)] overflow-auto whitespace-pre-wrap break-words rounded-[8px] border border-line bg-surface-2 px-3 py-[10px] font-mono text-[11.5px] leading-[1.55] text-ink-2 select-text">{log || '(no log captured yet)'}</pre>
+            <pre className="m-0 max-h-[min(520px,52vh)] overflow-auto whitespace-pre-wrap break-words rounded-card-row border border-line bg-surface-2 px-3 py-3 font-mono text-xs leading-[1.55] text-ink-2 select-text">{log || '(no log captured yet)'}</pre>
           </div>
         </div>
 
@@ -222,9 +222,9 @@ export default function BackendSection({
             failure kind, so the panel never asks for a log in the state
             where no log can exist. */}
         {state === 'offline' && offlineKind === 'failed' && (
-          <div className="text-[12px] leading-[1.5] text-ink-3">
+          <div className="text-sm leading-[1.5] text-ink-3">
             <div className="mb-1 font-semibold text-ink-2">{failureCopy.headline}</div>
-            <ul className="m-0 flex flex-col gap-[3px] pl-[18px]">
+            <ul className="m-0 flex flex-col gap-[3px] pl-5">
               {failureCopy.hints.map((hint) => <li key={hint}>{hint}</li>)}
             </ul>
           </div>
