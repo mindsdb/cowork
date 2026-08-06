@@ -16,7 +16,9 @@ export function isAntonConfigError(message, event) {
 
 export function normalizeAntonError(message, event) {
   if (isAntonConfigError(message, event)) {
-    return 'No LLM provider is configured for this account. Subscribe with MindsHub or add your own provider in Settings.';
+    // Pay-as-you-go wording (ENG-1305): there is no subscription to sell —
+    // a MindsHub account starts on the free monthly Air grant.
+    return 'No LLM provider is connected for this account. Start free with MindsHub or add your own provider in Settings.';
   }
   const text = String(message || '');
   return text || 'Could not complete this task.';

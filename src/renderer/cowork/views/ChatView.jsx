@@ -1792,9 +1792,9 @@ export default function ChatView({
                     key={i}
                     time={formatMetaTime(m.createdAt)}
                     title="Connect a provider to start chatting"
-                    body="Cowork needs an LLM provider. Subscribe with MindsHub for managed access, or add your own provider key in Settings."
+                    body="Start with MindsHub and get free monthly tokens on MindsHub Air, then pay as you go. Or add your own API key in Settings."
                     buttons={[
-                      { label: 'Subscribe with MindsHub', onClick: () => host.openExternal(MINDS_BILLING_URL), primary: true },
+                      { label: 'Start for free', onClick: () => host.openExternal(MINDS_BILLING_URL), primary: true },
                       { label: 'Open Settings', onClick: () => onOpenSettings?.('agent') },
                     ]}
                   />
