@@ -65,12 +65,12 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
   // Shared card chrome. Static, so it lives as a className string; sections
   // that override background/border do it inline (a dynamic color-mix) and win
   // over the class by specificity.
-  const CARD = 'overflow-hidden rounded-card border border-line bg-surface-glass [backdrop-filter:blur(var(--surface-glass-blur))] [-webkit-backdrop-filter:blur(var(--surface-glass-blur))] mb-[14px]';
+  const CARD = 'overflow-hidden rounded-card border border-line bg-surface-glass [backdrop-filter:blur(var(--surface-glass-blur))] [-webkit-backdrop-filter:blur(var(--surface-glass-blur))] mb-4';
 
   // User info card — shown on both Electron and web if we have a token
   const userCard = accountUser && (
     <div className={CARD}>
-      <div className="flex items-center gap-[14px] px-[18px] py-4">
+      <div className="flex items-center gap-4 px-5 py-4">
         {/* Avatar circle with initials */}
         <div className="w-[44px] h-[44px] rounded-full shrink-0 inline-flex items-center justify-center text-[16px] font-bold text-accent select-none" style={{
           background: 'color-mix(in srgb, var(--accent) 18%, var(--surface))',
@@ -89,7 +89,7 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
             </div>
           )}
           {accountUser.email && (
-            <div className="text-[13px] text-ink-3 overflow-hidden text-ellipsis whitespace-nowrap" style={{ marginTop: accountUser.name ? 2 : 0 }}>
+            <div className="text-sm text-ink-3 overflow-hidden text-ellipsis whitespace-nowrap" style={{ marginTop: accountUser.name ? 2 : 0 }}>
               {accountUser.email}
             </div>
           )}
@@ -101,7 +101,7 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
           href={MINDS_CONSOLE_URL}
           target="_blank"
           rel="noopener noreferrer"
-          className="shrink-0 text-[12px] font-medium text-accent no-underline px-[10px] py-[5px] rounded-[6px]"
+          className="shrink-0 text-sm font-medium text-accent no-underline px-3 py-[5px] rounded-card-row"
           style={{
             border: '1px solid color-mix(in srgb, var(--accent) 40%, transparent)',
             background: 'color-mix(in srgb, var(--accent) 8%, transparent)',
@@ -110,17 +110,17 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
       </div>
       {/* Extra rows for username / org if present */}
       {(accountUser.username || accountUser.org) && (
-        <div className="border-t border-line px-[18px] py-[10px] flex gap-5">
+        <div className="border-t border-line px-5 py-3 flex gap-5">
           {accountUser.username && (
             <div>
               <div className="text-2xs font-semibold tracking-[0.07em] uppercase text-ink-4 mb-[2px]">Username</div>
-              <div className="text-[13px] text-ink-2 font-mono">{accountUser.username}</div>
+              <div className="text-sm text-ink-2 font-mono">{accountUser.username}</div>
             </div>
           )}
           {accountUser.org && (
             <div>
               <div className="text-2xs font-semibold tracking-[0.07em] uppercase text-ink-4 mb-[2px]">Organization</div>
-              <div className="text-[13px] text-ink-2">{accountUser.org}</div>
+              <div className="text-sm text-ink-2">{accountUser.org}</div>
             </div>
           )}
         </div>
@@ -135,32 +135,32 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
     }}>
       {/* Header */}
       <div>
-        <div className="text-[18px] font-bold text-strong leading-[1.25] mb-[6px]">
+        <div className="text-[18px] font-bold text-strong leading-[1.25] mb-2">
           Enable cloud capabilities
         </div>
-        <div className="text-[13.5px] text-muted leading-[1.6] max-w-[440px]">
+        <div className="text-base text-muted leading-[1.6] max-w-[440px]">
           Sign in with MindsHub to access every model, cloud execution, and publishing — all in one place.
         </div>
       </div>
 
       {/* Feature grid */}
-      <div className="grid grid-cols-[1fr_1fr] gap-y-[10px] gap-x-5 w-full">
+      <div className="grid grid-cols-[1fr_1fr] gap-y-3 gap-x-5 w-full">
         {[
           { icon: '⇌', label: 'Seamless model router', desc: 'The simplest way to use all models in one place — Claude, GPT, DeepSeek, Kimi, and more.' },
           { icon: '⟁', label: 'Remote tasks', desc: 'Run code and long tasks on managed infrastructure, not your laptop.', soon: true },
           { icon: <svg width="17" height="13" viewBox="0 0 20 14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15.5 12H5a4 4 0 0 1-.5-7.97A5 5 0 0 1 14.5 6h1a3 3 0 0 1 0 6Z" /></svg>, label: 'Share & collaborate', desc: 'Share dashboards, reports, and artifacts — and work on them together.' },
           { icon: '⊹', label: 'Unified account', desc: 'One login, one bill — no juggling API keys across providers.' },
         ].map(({ icon, label, desc, soon }) => (
-          <div key={label} className="flex gap-[10px] items-start">
+          <div key={label} className="flex gap-3 items-start">
             <span className="text-[16px] leading-none text-accent mt-[2px] shrink-0 inline-flex items-center">{icon}</span>
             <div>
-              <div className="text-[13px] font-[650] text-strong mb-[2px] flex items-center gap-[6px]">
+              <div className="text-sm font-[650] text-strong mb-[2px] flex items-center gap-2">
                 {label}
                 {soon && (
-                  <span className="text-[9.5px] font-semibold tracking-[0.05em] uppercase px-[5px] py-[1px] rounded-[99px] bg-[rgba(127,127,127,0.1)] border border-[rgba(127,127,127,0.2)] text-muted">coming soon</span>
+                  <span className="text-2xs font-semibold tracking-[0.05em] uppercase px-[5px] py-[1px] rounded-[99px] bg-[rgba(127,127,127,0.1)] border border-[rgba(127,127,127,0.2)] text-muted">coming soon</span>
                 )}
               </div>
-              <div className="text-[12px] text-muted leading-[1.5]">{desc}</div>
+              <div className="text-sm text-muted leading-[1.5]">{desc}</div>
             </div>
           </div>
         ))}
@@ -207,7 +207,7 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
       <>
         <SettingsSectionPanel>
           {userCard || (
-            <div className="py-8 flex flex-col items-center justify-center gap-[10px] text-center text-muted text-[13px]">
+            <div className="py-8 flex flex-col items-center justify-center gap-3 text-center text-muted text-sm">
               <div className="font-semibold text-strong text-base">Managed via MindsHub</div>
               <div className="max-w-[320px]">Account management is handled through MindsHub for the web version.</div>
             </div>
@@ -223,7 +223,7 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
       <SettingsSectionPanel>
         {signInCard}
         {userCard}
-        {accountUser && <div className={`${CARD} px-[18px] pb-2`}>
+        {accountUser && <div className={`${CARD} px-5 pb-2`}>
           <Section title="Sign out" subtitle="Disconnect from MindsHub and remove every stored credential on this device. Cowork will return to the onboarding flow on the next launch.">
             <div className="flex justify-end">
               <Button variant="danger" onClick={() => setLogoutConfirmOpen(true)} disabled={loggingOut} title="Sign out and clear stored credentials">

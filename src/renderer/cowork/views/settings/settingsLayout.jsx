@@ -85,7 +85,7 @@ export function SettingsSectionPanel({ children, footer, autoSaved = false }) {
         <div className="max-w-[820px]">{children}</div>
       </div>
       {footer && (
-        <div className="flex items-center gap-[10px] px-[22px] py-3 bg-surface-glass [backdrop-filter:blur(var(--surface-glass-blur))] [-webkit-backdrop-filter:blur(var(--surface-glass-blur))] border-t border-line shrink-0">
+        <div className="flex items-center gap-3 px-[22px] py-3 bg-surface-glass [backdrop-filter:blur(var(--surface-glass-blur))] [-webkit-backdrop-filter:blur(var(--surface-glass-blur))] border-t border-line shrink-0">
           {footer}
         </div>
       )}

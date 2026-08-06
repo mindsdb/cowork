@@ -9,7 +9,7 @@ import { Section, SettingsSectionPanel } from './settingsLayout';
 
 // The green "update ready" cards use the sage accent at low alpha — no token
 // for a translucent sage, so the rgba stays as an arbitrary value.
-const UPDATE_CARD_STYLE = 'flex items-center gap-3 flex-wrap px-3 py-[10px] border border-[rgba(93,146,135,0.30)] bg-[rgba(93,146,135,0.12)] rounded-card-row';
+const UPDATE_CARD_STYLE = 'flex items-center gap-3 flex-wrap px-3 py-3 border border-[rgba(93,146,135,0.30)] bg-[rgba(93,146,135,0.12)] rounded-card-row';
 const UPDATE_CARD_BODY_STYLE = 'flex flex-col gap-[2px] flex-1 min-w-[160px]';
 
 // The Updates settings section: current-version readout plus the on-demand
@@ -86,7 +86,7 @@ export default function UpdatesSection({ footer, serverOnline = false, shellUpda
 
   return (
     <SettingsSectionPanel footer={footer}>
-      <div className="border border-line rounded-card bg-surface-glass [backdrop-filter:blur(var(--surface-glass-blur))] [-webkit-backdrop-filter:blur(var(--surface-glass-blur))] mb-[14px] overflow-hidden px-[18px] pb-2">
+      <div className="border border-line rounded-card bg-surface-glass [backdrop-filter:blur(var(--surface-glass-blur))] [-webkit-backdrop-filter:blur(var(--surface-glass-blur))] mb-4 overflow-hidden px-5 pb-2">
         <Section
           title="Current version"
           subtitle="The version currently running. Server and UI updates are applied automatically at launch; components under the hood are shown in details."
@@ -124,17 +124,17 @@ export default function UpdatesSection({ footer, serverOnline = false, shellUpda
                   {outOfSync && (
                     <span
                       title={`Underlying components span ${unified.skewDays} days — a component is lagging. See details.`}
-                      className="text-warning text-[11.5px] font-semibold"
+                      className="text-warning text-xs font-semibold"
                     >
                       ⚠ out of sync
                     </span>
                   )}
                   {unified && (
-                    <span className="text-muted text-[11.5px]">built {unified.buildDate}</span>
+                    <span className="text-muted text-xs">built {unified.buildDate}</span>
                   )}
                 </div>
                 {isElectron && (
-                  <span className="font-mono text-muted text-[12px]">
+                  <span className="font-mono text-muted text-sm">
                     <span className="mr-1">App shell</span>{shellVer || '—'}
                   </span>
                 )}
@@ -147,15 +147,15 @@ export default function UpdatesSection({ footer, serverOnline = false, shellUpda
                     // copy" isn't waiting the next time details are reopened.
                     setVersionCopyState('idle');
                   }}
-                  className="self-start [background:none] border-0 p-0 cursor-pointer text-accent text-[11.5px]"
+                  className="self-start [background:none] border-0 p-0 cursor-pointer text-accent text-xs"
                 >
                   {showVersionDetails ? 'Hide details' : 'Details'}
                 </button>
                 {showVersionDetails && (
-                  <div className="flex flex-col gap-1 font-mono text-[12px] px-[10px] py-2 border border-line rounded-card-row bg-surface-glass">
+                  <div className="flex flex-col gap-1 font-mono text-sm px-3 py-2 border border-line rounded-card-row bg-surface-glass">
                     {rows.map(([k, v]) => (
                       <span key={k} className="select-text">
-                        <span className="text-muted mr-[6px] inline-block min-w-[64px]">{k}</span>{v}
+                        <span className="text-muted mr-2 inline-block min-w-[64px]">{k}</span>{v}
                       </span>
                     ))}
                     {/* role="status"/aria-live wraps the button itself (unlike
@@ -221,7 +221,7 @@ export default function UpdatesSection({ footer, serverOnline = false, shellUpda
                 if (r.uiUpdateAvailable) parts.push(`UI → ${r.uiVersion || 'new version'}`);
               }
               return (
-                <div className="flex flex-col gap-[10px]">
+                <div className="flex flex-col gap-3">
                   <div className="flex items-center gap-3 flex-wrap">
                     <Button
                       onClick={handleCheckForUpdates}
@@ -231,7 +231,7 @@ export default function UpdatesSection({ footer, serverOnline = false, shellUpda
                       {checkingUpdates ? 'Checking…' : 'Check for updates'}
                     </Button>
                     {status && (
-                      <span className="text-sm inline-flex items-center gap-[6px]" style={{ color: isError ? 'var(--warning)' : 'var(--text-muted)' }}>
+                      <span className="text-sm inline-flex items-center gap-2" style={{ color: isError ? 'var(--warning)' : 'var(--text-muted)' }}>
                         {isUpToDate && Ico.check ? Ico.check(14) : null}
                         {status}
                       </span>
@@ -241,7 +241,7 @@ export default function UpdatesSection({ footer, serverOnline = false, shellUpda
                     <div className={UPDATE_CARD_STYLE}>
                       <div className={UPDATE_CARD_BODY_STYLE}>
                         <span className="text-sm font-semibold text-strong">Update ready</span>
-                        <span className="text-[11.5px] text-muted">
+                        <span className="text-xs text-muted">
                           Restart the app to apply it{parts.length > 0 ? ` (${parts.join(', ')})` : ''}.
                         </span>
                       </div>
@@ -261,7 +261,7 @@ export default function UpdatesSection({ footer, serverOnline = false, shellUpda
                         <span className="text-sm font-semibold text-strong">
                           {shellVersion ? `New app version ${shellVersion}` : 'New app version available'}
                         </span>
-                        <span className="text-[11.5px] text-muted">
+                        <span className="text-xs text-muted">
                           {shellDownloadStarted
                             ? "Installer downloading — when it's done, quit MindsHub Cowork and open the installer to finish updating."
                             : "Download the installer, then quit MindsHub Cowork and open it to finish updating."}
