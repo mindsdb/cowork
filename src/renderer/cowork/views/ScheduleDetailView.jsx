@@ -360,7 +360,7 @@ export default function ScheduleDetailView({
             )}
           </div>
           {runs.length === 0 && !loadingRuns ? (
-            <div className="p-[18px] rounded-card border border-dashed border-line-2 text-ink-4 text-center text-sm">No runs yet. Click <strong>Run now</strong> to fire a manual one.</div>
+            <div className="p-5 rounded-card border border-dashed border-line-2 text-ink-4 text-center text-sm">No runs yet. Click <strong>Run now</strong> to fire a manual one.</div>
           ) : (
             runs.map((run) => (
               <RunRow
