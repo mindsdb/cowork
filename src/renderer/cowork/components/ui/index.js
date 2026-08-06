@@ -9,6 +9,7 @@ export { default as Eyebrow } from './Eyebrow.tsx';
 export { default as Badge } from './Badge.tsx';
 export { default as Alert } from './Alert.tsx';
 export { default as Field } from './Field.tsx';
+export { default as Collapsible } from './Collapsible.tsx';
 export { default as Spinner } from './Spinner.tsx';
 export { default as OrbitMorph } from './OrbitMorph.jsx';
 export { default as Menu } from './Menu.jsx';
