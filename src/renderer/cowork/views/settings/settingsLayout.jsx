@@ -30,13 +30,9 @@ export function Section({ title, subtitle, notice, children }) {
           query), so the inter-column gutters (paddingRight/Left: 24) would
           just indent the stacked label + control for no reason — drop them. */}
       <div style={{ paddingRight: mobile ? 0 : 24 }}>
-        <h3 style={{
-          margin: 0, padding: 0,
-          fontSize: 14, fontWeight: 600, color: 'var(--text-strong)',
-          fontFamily: 'inherit', lineHeight: 1.3,
-        }}>{title}</h3>
-        {subtitle && <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginTop: 4 }}>{subtitle}</div>}
-        {notice && <div style={{ marginTop: 8 }}>{notice}</div>}
+        <h3 className="m-0 p-0 text-base font-semibold text-strong font-[inherit] leading-[1.3]">{title}</h3>
+        {subtitle && <div className="text-sm text-muted mt-1">{subtitle}</div>}
+        {notice && <div className="mt-2">{notice}</div>}
       </div>
       <div style={{ paddingLeft: mobile ? 0 : 24 }}>{children}</div>
     </div>
@@ -84,23 +80,12 @@ export function SettingsSectionPanel({ children, footer, autoSaved = false }) {
     );
   }
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
-      <div
-        className="scroll-clean settings-scroll"
-        style={{ flex: 1, overflowY: 'auto', padding: '24px 28px' }}
-      >
-        <div style={{ maxWidth: 820 }}>{children}</div>
+    <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+      <div className="scroll-clean settings-scroll flex-1 overflow-y-auto px-[28px] py-6">
+        <div className="max-w-[820px]">{children}</div>
       </div>
       {footer && (
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 10,
-          padding: '12px 22px',
-          background: 'var(--surface-glass)',
-          WebkitBackdropFilter: 'blur(var(--surface-glass-blur))',
-          backdropFilter: 'blur(var(--surface-glass-blur))',
-          borderTop: '1px solid var(--border-subtle)',
-          flexShrink: 0,
-        }}>
+        <div className="flex items-center gap-[10px] px-[22px] py-3 bg-surface-glass [backdrop-filter:blur(var(--surface-glass-blur))] [-webkit-backdrop-filter:blur(var(--surface-glass-blur))] border-t border-line shrink-0">
           {footer}
         </div>
       )}

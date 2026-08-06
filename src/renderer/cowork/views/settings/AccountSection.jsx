@@ -62,29 +62,19 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
     }
   };
 
-  const CARD = {
-    border: '1px solid var(--border-subtle)', borderRadius: 'var(--card-radius)',
-    background: 'var(--surface-glass)',
-    WebkitBackdropFilter: 'blur(var(--surface-glass-blur))',
-    backdropFilter: 'blur(var(--surface-glass-blur))',
-    marginBottom: 14, overflow: 'hidden',
-  };
+  // Shared card chrome. Static, so it lives as a className string; sections
+  // that override background/border do it inline (a dynamic color-mix) and win
+  // over the class by specificity.
+  const CARD = 'overflow-hidden rounded-card border border-line bg-surface-glass [backdrop-filter:blur(var(--surface-glass-blur))] [-webkit-backdrop-filter:blur(var(--surface-glass-blur))] mb-[14px]';
 
   // User info card — shown on both Electron and web if we have a token
   const userCard = accountUser && (
-    <div style={{ ...CARD }}>
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 14,
-        padding: '16px 18px',
-      }}>
+    <div className={CARD}>
+      <div className="flex items-center gap-[14px] px-[18px] py-4">
         {/* Avatar circle with initials */}
-        <div style={{
-          width: 44, height: 44, borderRadius: '50%', flexShrink: 0,
+        <div className="w-[44px] h-[44px] rounded-full shrink-0 inline-flex items-center justify-center text-[16px] font-bold text-accent select-none" style={{
           background: 'color-mix(in srgb, var(--accent) 18%, var(--surface))',
           border: '1px solid color-mix(in srgb, var(--accent) 35%, transparent)',
-          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 16, fontWeight: 700, color: 'var(--accent)',
-          userSelect: 'none',
         }} aria-hidden="true">
           {accountUser.name
             ? accountUser.name.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase()
@@ -92,29 +82,27 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
               ? accountUser.email[0].toUpperCase()
               : '?'}
         </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="flex-1 min-w-0">
           {accountUser.name && (
-            <div style={{ fontSize: 15, fontWeight: 650, color: 'var(--ink)', lineHeight: 1.25, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <div className="text-md font-[650] text-ink leading-[1.25] overflow-hidden text-ellipsis whitespace-nowrap">
               {accountUser.name}
             </div>
           )}
           {accountUser.email && (
-            <div style={{ fontSize: 13, color: 'var(--ink-3)', marginTop: accountUser.name ? 2 : 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <div className="text-[13px] text-ink-3 overflow-hidden text-ellipsis whitespace-nowrap" style={{ marginTop: accountUser.name ? 2 : 0 }}>
               {accountUser.email}
             </div>
           )}
           {!accountUser.name && !accountUser.email && accountUser.username && (
-            <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>{accountUser.username}</div>
+            <div className="text-base font-semibold text-ink">{accountUser.username}</div>
           )}
         </div>
         <a
           href={MINDS_CONSOLE_URL}
           target="_blank"
           rel="noopener noreferrer"
+          className="shrink-0 text-[12px] font-medium text-accent no-underline px-[10px] py-[5px] rounded-[6px]"
           style={{
-            flexShrink: 0, fontSize: 12, fontWeight: 500,
-            color: 'var(--accent)', textDecoration: 'none',
-            padding: '5px 10px', borderRadius: 6,
             border: '1px solid color-mix(in srgb, var(--accent) 40%, transparent)',
             background: 'color-mix(in srgb, var(--accent) 8%, transparent)',
           }}
@@ -122,21 +110,17 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
       </div>
       {/* Extra rows for username / org if present */}
       {(accountUser.username || accountUser.org) && (
-        <div style={{
-          borderTop: '1px solid var(--line)',
-          padding: '10px 18px',
-          display: 'flex', gap: 20,
-        }}>
+        <div className="border-t border-line px-[18px] py-[10px] flex gap-5">
           {accountUser.username && (
             <div>
-              <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--ink-4)', marginBottom: 2 }}>Username</div>
-              <div style={{ fontSize: 13, color: 'var(--ink-2)', fontFamily: 'var(--font-mono)' }}>{accountUser.username}</div>
+              <div className="text-2xs font-semibold tracking-[0.07em] uppercase text-ink-4 mb-[2px]">Username</div>
+              <div className="text-[13px] text-ink-2 font-mono">{accountUser.username}</div>
             </div>
           )}
           {accountUser.org && (
             <div>
-              <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--ink-4)', marginBottom: 2 }}>Organization</div>
-              <div style={{ fontSize: 13, color: 'var(--ink-2)' }}>{accountUser.org}</div>
+              <div className="text-2xs font-semibold tracking-[0.07em] uppercase text-ink-4 mb-[2px]">Organization</div>
+              <div className="text-[13px] text-ink-2">{accountUser.org}</div>
             </div>
           )}
         </div>
@@ -145,51 +129,38 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
   );
 
   const signInCard = !accountUser && onSsoSignIn && (
-    <div style={{
-      ...CARD,
-      padding: '32px 28px 28px',
-      display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 24,
+    <div className={`${CARD} pt-8 px-[28px] pb-[28px] flex flex-col items-start gap-6`} style={{
       background: 'color-mix(in srgb, var(--accent) 5%, var(--surface-glass))',
       borderColor: 'color-mix(in srgb, var(--accent) 28%, transparent)',
     }}>
       {/* Header */}
       <div>
-        <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-strong)', lineHeight: 1.25, marginBottom: 6 }}>
+        <div className="text-[18px] font-bold text-strong leading-[1.25] mb-[6px]">
           Enable cloud capabilities
         </div>
-        <div style={{ fontSize: 13.5, color: 'var(--text-muted)', lineHeight: 1.6, maxWidth: 440 }}>
+        <div className="text-[13.5px] text-muted leading-[1.6] max-w-[440px]">
           Sign in with MindsHub to access every model, cloud execution, and publishing — all in one place.
         </div>
       </div>
 
       {/* Feature grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 20px', width: '100%' }}>
+      <div className="grid grid-cols-[1fr_1fr] gap-y-[10px] gap-x-5 w-full">
         {[
           { icon: '⇌', label: 'Seamless model router', desc: 'The simplest way to use all models in one place — Claude, GPT, DeepSeek, Kimi, and more.' },
           { icon: '⟁', label: 'Remote tasks', desc: 'Run code and long tasks on managed infrastructure, not your laptop.', soon: true },
           { icon: <svg width="17" height="13" viewBox="0 0 20 14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15.5 12H5a4 4 0 0 1-.5-7.97A5 5 0 0 1 14.5 6h1a3 3 0 0 1 0 6Z" /></svg>, label: 'Share & collaborate', desc: 'Share dashboards, reports, and artifacts — and work on them together.' },
           { icon: '⊹', label: 'Unified account', desc: 'One login, one bill — no juggling API keys across providers.' },
         ].map(({ icon, label, desc, soon }) => (
-          <div key={label} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-            <span style={{
-              fontSize: 16, lineHeight: 1,
-              color: 'var(--accent)',
-              marginTop: 2, flexShrink: 0,
-              display: 'inline-flex', alignItems: 'center',
-            }}>{icon}</span>
+          <div key={label} className="flex gap-[10px] items-start">
+            <span className="text-[16px] leading-none text-accent mt-[2px] shrink-0 inline-flex items-center">{icon}</span>
             <div>
-              <div style={{ fontSize: 13, fontWeight: 650, color: 'var(--text-strong)', marginBottom: 2, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div className="text-[13px] font-[650] text-strong mb-[2px] flex items-center gap-[6px]">
                 {label}
                 {soon && (
-                  <span style={{
-                    fontSize: 9.5, fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase',
-                    padding: '1px 5px', borderRadius: 99,
-                    background: 'rgba(127,127,127,0.1)', border: '1px solid rgba(127,127,127,0.2)',
-                    color: 'var(--text-muted)',
-                  }}>coming soon</span>
+                  <span className="text-[9.5px] font-semibold tracking-[0.05em] uppercase px-[5px] py-[1px] rounded-[99px] bg-[rgba(127,127,127,0.1)] border border-[rgba(127,127,127,0.2)] text-muted">coming soon</span>
                 )}
               </div>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>{desc}</div>
+              <div className="text-[12px] text-muted leading-[1.5]">{desc}</div>
             </div>
           </div>
         ))}
@@ -236,9 +207,9 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
       <>
         <SettingsSectionPanel>
           {userCard || (
-            <div style={{ padding: '32px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
-              <div style={{ fontWeight: 600, color: 'var(--text-strong)', fontSize: 14 }}>Managed via MindsHub</div>
-              <div style={{ maxWidth: 320 }}>Account management is handled through MindsHub for the web version.</div>
+            <div className="py-8 flex flex-col items-center justify-center gap-[10px] text-center text-muted text-[13px]">
+              <div className="font-semibold text-strong text-base">Managed via MindsHub</div>
+              <div className="max-w-[320px]">Account management is handled through MindsHub for the web version.</div>
             </div>
           )}
         </SettingsSectionPanel>
@@ -252,9 +223,9 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
       <SettingsSectionPanel>
         {signInCard}
         {userCard}
-        {accountUser && <div style={{ ...CARD, padding: '0 18px 8px' }}>
+        {accountUser && <div className={`${CARD} px-[18px] pb-2`}>
           <Section title="Sign out" subtitle="Disconnect from MindsHub and remove every stored credential on this device. Cowork will return to the onboarding flow on the next launch.">
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <div className="flex justify-end">
               <Button variant="danger" onClick={() => setLogoutConfirmOpen(true)} disabled={loggingOut} title="Sign out and clear stored credentials">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
