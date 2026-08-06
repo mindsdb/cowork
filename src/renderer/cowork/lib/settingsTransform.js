@@ -354,13 +354,13 @@ export function buildModelOptions(curModel, modelList, allowOther, showStalePin,
     // wall moves to use time, where the top-up card offers a way out. A
     // disabled row was a dead end (click did nothing, no route to credits),
     // and the label suffix ate the width (truncated "…Add credits to unl.").
-    // The row carries a compact right-aligned tag instead, and `needsCredits`
-    // lets the picker's call site render its top-up hint on selection.
+    // The row carries a compact right-aligned tag instead; the call site
+    // derives its own top-up hint from the same modelEnabled map.
     ...list.map((m) => ({
       value: m,
       label: labelFor(m),
       disabled: false,
-      ...(isLocked(m) ? { tag: 'Needs credits', needsCredits: true } : {}),
+      ...(isLocked(m) ? { tag: 'Needs credits' } : {}),
     })),
     ...(allowOther ? [{ value: '__custom__', label: 'Other…', pin: 'bottom' }] : []),
   ];

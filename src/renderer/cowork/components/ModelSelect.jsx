@@ -14,7 +14,7 @@
 //     onValueChange={setModelId}
 //     options={[
 //       { value: 'sonnet', label: 'Claude Sonnet 5' },
-//       { value: 'opus', label: 'Claude Opus 5', tag: 'Needs credits', needsCredits: true },
+//       { value: 'opus', label: 'Claude Opus 5', tag: 'Needs credits' },
 //       { value: '__custom__', label: 'Other…', pin: 'bottom' },
 //     ]}
 //   />

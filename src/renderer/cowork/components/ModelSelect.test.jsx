@@ -7,7 +7,7 @@ const OPTIONS = [
   { value: 'mindshub_air', label: 'MindsHub Air' },
   { value: 'gpt-codex', label: 'GPT 5.3 Codex' },
   { value: 'sonnet', label: 'Claude Sonnet 5' },
-  { value: 'opus', label: 'Claude Opus 5', tag: 'Needs credits', needsCredits: true },
+  { value: 'opus', label: 'Claude Opus 5', tag: 'Needs credits' },
   { value: '__custom__', label: 'Other…', pin: 'bottom' },
 ];
 
