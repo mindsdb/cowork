@@ -61,6 +61,14 @@ import { recommendedModelOptions, providerValueToType,
          mergeRecommendedModels } from './lib/settingsTransform';
 import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery, trackFirstResponse, classifyFirstResponse, trackKeyProvisioningRefused } from './lib/analytics';
 import { MODEL_ROUTER_ID, MODEL_ROUTER } from './lib/modelCatalog';
+import {
+  CoworkProvider,
+  CoworkRouterProvider,
+  createCoworkRouter,
+  initialNavState,
+  markOptimisticConversation,
+} from './CoworkRouter';
+import { Outlet } from 'react-router-dom';
 
 // One-of-ten encouraging follow-ups picked when a connect task is
 // created. Reads as a friendly nudge after the connect-intro card —
@@ -1786,7 +1794,15 @@ function AppCore() {
     document.body.classList.toggle('gf-dots-off', settings.showDots === false);
   }, [settings.showDots]);
 
-  const [route, setRoute] = useState('home');         // home | task | projects | scheduled | schedule-detail | artifacts | customize
+  // Seed nav state from the address bar so a web deep-link / refresh paints
+  // the right view on first render instead of flashing Home (ENG-1233).
+  // Electron's memory router always starts at `/` → home.
+  const initialNav = useRef(initialNavState()).current;
+  // The router is created once (memory router on Electron, browser router on
+  // web). It's stateless w.r.t. AppCore — nav state flows through context.
+  const routerRef = useRef(null);
+  if (!routerRef.current) routerRef.current = createCoworkRouter();
+  const [route, setRoute] = useState(initialNav.route); // home | task | projects | scheduled | schedule-detail | artifacts | channels | customize
   // Keep a ref of the live route so the keydown listener (bound
   // once on mount) can read it without a re-bind on every nav.
   routeRef.current = route;
@@ -1806,7 +1822,7 @@ function AppCore() {
   // at a collapsed width.
   const sidebarCollapsedEffective =
     !sidebarPopout && sidebarCollapsibleRoutes.has(route) && sidebarCollapsed;
-  const [activeTaskId, setActiveTaskId] = useState(null);
+  const [activeTaskId, setActiveTaskId] = useState(initialNav.activeTaskId);
   const [selectedScheduleId, setSelectedScheduleId] = useState(null);
   const [selectedProject, setSelectedProject] = useState(null);
   // Defaults to "Model Router" — defer to whatever this account's Settings
@@ -2480,77 +2496,70 @@ function AppCore() {
     return true;
   }, [markInFlight, markInFlightDone, handleStreamError]);
 
+  // Navigation intent only. Setting activeTaskId + route flips the state
+  // the URL bridge mirrors into `/c/:id`, which mounts the conversation
+  // route; that route's loader fetches the conversation and
+  // openConversation() (below) hydrates it + reattaches the stream. The
+  // heavy lifting moved out of here (ENG-1233) so every entry point —
+  // sidebar click, deep link, refresh, Back/Forward — runs the same path.
   const selectTask = (id) => {
     if (sidebarPopout) setNavPopoutOpen(false);
-    const task = tasks.find((t) => t.id === id);
-    if (task) {
-      // Record the visit for recents ordering, but never auto-pin.
-      // Pin/unpin is now an explicit action via the task menu.
-      recordTaskVisit(task, false).then(() => {
-        fetchPins().then((data) => setPins(data.pins || []));
-        fetchSessions().then((data) => {
-      if (Array.isArray(data)) setTasks((prev) => mergeTasksFromServer(data, prev).filter((t) => !deletedTaskIdsRef.current.has(t.id)));
-    });
-      }).catch(() => {});
-
-      // Is this conversation actually mid-stream right now? If yes,
-      // we LEAVE running indicators alone. If no, reconcile strips
-      // zombie placeholders and collapses stale step state.
-      const isLive = activeStreamingTaskIdRef.current === id;
-
-      // Cross-client cache (Option B): when the server says this
-      // conversation's producer is still running, skip the "things
-      // stopped" continuation prompt. The reconnect path below will
-      // attach to the live tail within ~50ms; showing the stopped
-      // message in between would flicker.
-      const isServerInFlight = inFlightSetRef.current.has(id);
-
-      // If this task didn't get its messages preloaded (we only fan
-      // out to the recent N at startup), fetch them now so the chat
-      // view doesn't render empty.
-      if (!task.messages || task.messages.length === 0) {
-        fetchSession(id).then((fresh) => {
-          if (!fresh || !Array.isArray(fresh.messages)) return;
-          // Server-in-flight conversations may have no messages yet
-          // (e.g. a scheduled task that just started). Don't bail —
-          // reconcile will inject a thinking placeholder.
-          if (fresh.messages.length === 0 && !isServerInFlight) return;
-          // Two layers of restoration, in order of trust:
-          //   1. Server sidecar (`{cid}_turns.json`) — events for each
-          //      assistant turn, replayed through the same reducer the
-          //      live stream uses. Survives any client reset and
-          //      anyone reading the conversation gets the same view.
-          //   2. localStorage sidecar — legacy fallback for turns
-          //      created before the server sidecar shipped.
-          const reconciled = applySessionMessages(id, fresh.messages, { isLive, isServerInFlight });
-          const dc = Array.isArray(fresh.disabledConnections) ? fresh.disabledConnections : undefined;
-          setTasks((prev) => prev.map((t) =>
-            t.id === id ? {
-              ...t,
-              messages: reconciled,
-              ...(dc !== undefined ? { disabledConnections: dc } : {}),
-            } : t
-          ));
-        }).catch(() => {});
-      } else {
-        // Already preloaded — still hydrate once so reopening surfaces
-        // any data persisted in a prior session.
-        setTasks((prev) => prev.map((t) => {
-          if (t.id !== id) return t;
-          return { ...t, messages: applySessionMessages(id, t.messages, { isLive, isServerInFlight }) };
-        }));
-      }
-    }
-    setComposerAttachments([]);
     setActiveTaskId(id);
     setRoute('task');
-    // Phase 2 reconnect — fire-and-forget. If a turn is still running
-    // server-side for this conversation (closed-tab-came-back, or
-    // opened from another tab/device), this re-attaches the live SSE
-    // stream and replays from seq 0. Cheap no-op when the producer
-    // isn't running.
-    reconnectInFlight(id).catch(() => { /* probe failures are silent */ });
   };
+
+  // Hydrate + reattach the conversation the `/c/:id` route just resolved.
+  // `loaded` is the route loader's result: `{ task }` for a real
+  // conversation, or `{ optimistic: true }` for a new-chat send still in
+  // flight (its messages live in local state — don't clobber them).
+  const openConversation = useCallback((id, loaded) => {
+    setActiveTaskId(id);
+    setRoute('task');
+    setComposerAttachments([]);
+    // Phase 2 reconnect — fire-and-forget. If a turn is still running
+    // server-side for this conversation (closed-tab-came-back, or opened
+    // from another tab/device), this re-attaches the live SSE stream and
+    // replays from seq 0. Cheap no-op when the producer isn't running.
+    reconnectInFlight(id).catch(() => { /* probe failures are silent */ });
+    if (!loaded || loaded.optimistic || !loaded.task) return;
+    const fresh = loaded.task;
+    // Is this conversation actually mid-stream right now? If yes, we LEAVE
+    // running indicators alone. If no, reconcile strips zombie placeholders
+    // and collapses stale step state.
+    const isLive = activeStreamingTaskIdRef.current === id;
+    // Cross-client cache (Option B): when the server says this
+    // conversation's producer is still running, skip the "things stopped"
+    // continuation prompt — the reconnect above attaches to the live tail.
+    const isServerInFlight = inFlightSetRef.current.has(id);
+
+    // Empty and not mid-flight: surface the record so a capped-list deep
+    // link (conversation absent from the recents fetch) still renders, but
+    // don't wipe any locally-restored messages.
+    if ((!Array.isArray(fresh.messages) || fresh.messages.length === 0) && !isServerInFlight) {
+      setTasks((prev) => (prev.some((t) => t.id === id) ? prev : [fresh, ...prev]));
+      return;
+    }
+
+    // Record the visit for recents ordering (never auto-pin), then refresh
+    // pins + the capped recents list.
+    recordTaskVisit(fresh, false).then(() => {
+      fetchPins().then((data) => setPins(data.pins || []));
+      fetchSessions().then((data) => {
+        if (Array.isArray(data)) setTasks((prev) => mergeTasksFromServer(data, prev).filter((t) => !deletedTaskIdsRef.current.has(t.id)));
+      });
+    }).catch(() => {});
+
+    // Two layers of restoration, in order of trust: the server sidecar
+    // (`{cid}_turns.json`) replayed through the live-stream reducer, then a
+    // legacy localStorage sidecar. Merge into recents, inserting the
+    // conversation if it wasn't in the capped fetch.
+    const reconciled = applySessionMessages(id, Array.isArray(fresh.messages) ? fresh.messages : [], { isLive, isServerInFlight });
+    const dc = Array.isArray(fresh.disabledConnections) ? fresh.disabledConnections : undefined;
+    const patch = (t) => ({ ...t, messages: reconciled, ...(dc !== undefined ? { disabledConnections: dc } : {}) });
+    setTasks((prev) => (prev.some((t) => t.id === id)
+      ? prev.map((t) => (t.id === id ? patch(t) : t))
+      : [patch(fresh), ...prev]));
+  }, [reconnectInFlight]);
 
   const newTask = () => {
     if (sidebarPopout) setNavPopoutOpen(false);
@@ -3092,24 +3101,16 @@ function AppCore() {
       openSettings(key.includes(':') ? key.split(':')[1] : null);
       return;
     }
-    if (key === 'artifacts') {
-      fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
-    }
     if (key === 'projects') {
-      fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); });
-      // Clicking "Projects" in the sidebar should always land on the
-      // grid of all projects, not the previously-selected project's
-      // detail. Clear the selection so ProjectsView starts in grid
-      // mode. The chat-header crumb routes through onOpenProject
-      // (which sets selectedProject AFTER routing) so it's unaffected.
+      // Clicking "Projects" in the sidebar should always land on the grid of
+      // all projects, not the previously-selected project's detail. Clearing
+      // here (not in enterRoute) keeps the chat-header crumb path — which
+      // routes through onOpenProject and sets selectedProject AFTER routing —
+      // unaffected.
       setSelectedProject(null);
     }
-    if (key === 'scheduled') {
-      fetchSchedules().then((data) => {
-      setScheduled(data.schedules || []);
-      setScheduleRunsIndex(data.runs_index || {});
-    });
-    }
+    // Flip route state; the URL bridge mirrors it and the route element's
+    // enterRoute() (re)fetches that view's data.
     setRoute(key);
   };
 
@@ -3132,6 +3133,28 @@ function AppCore() {
       setSettingsSection('agent');
     }
   }, [orgMode, settingsSection]);
+
+  // URL → state sync for the router's route elements (ENG-1233). enterRoute
+  // is the single place a view's entry data is (re)fetched, so it runs the
+  // same whether the route was entered by in-app navigation, a deep link, a
+  // refresh, or Back/Forward.
+  const enterHome = useCallback(() => {
+    setRoute('home');
+  }, []);
+
+  const enterRoute = useCallback((key) => {
+    setRoute(key);
+    if (key === 'artifacts') {
+      fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
+    } else if (key === 'projects') {
+      fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); });
+    } else if (key === 'scheduled') {
+      fetchSchedules().then((data) => {
+        setScheduled(data.schedules || []);
+        setScheduleRunsIndex(data.runs_index || {});
+      });
+    }
+  }, []);
 
   const attachmentProjectPath = currentTask?.projectPath || selectedProject?.path || null;
   const attachmentProjectName = currentTask?.projectName || selectedProject?.name || null;
@@ -3335,6 +3358,10 @@ function AppCore() {
     const rawComposer = composerAttachments;
     const hasPendingFiles = rawComposer.some(isPendingFileAttachment);
     const taskId = hasPendingFiles ? allocateConversationId() : `tmp-${Date.now()}`;
+    // Route to /c/<taskId> before the server has persisted the conversation;
+    // flag it so the route loader renders from local state instead of 404ing
+    // home (ENG-1233).
+    markOptimisticConversation(taskId);
 
     const { merged: sendingAttachments, attachmentIds, reference } = await resolveComposerAttachmentsForSend(
       effectiveProjectName,
@@ -3391,6 +3418,9 @@ function AppCore() {
       resolvedId = sid;
       // Carry over a reply the user started typing under the tmp- id.
       moveDraft(previousId, sid);
+      // The server's canonical id is also not yet loadable via fetchSession
+      // when we route to it, so keep the loader off it (ENG-1233).
+      markOptimisticConversation(sid);
       setTasks((prev) => prev.map((t) => (
         t.id === previousId || t.id === taskId ? { ...t, id: sid } : t
       )));
@@ -3825,6 +3855,7 @@ function AppCore() {
       resolvedId = sid;
       // Carry over a reply the user started typing under the tmp- id.
       moveDraft(previousId, sid);
+      markOptimisticConversation(sid);
       setTasks((prev) => prev.map((t) => (
         t.id === previousId || t.id === id ? { ...t, id: sid } : t
       )));
@@ -4029,6 +4060,7 @@ function AppCore() {
       resolvedId = sid;
       // Carry over a reply the user started typing under the tmp- id.
       moveDraft(previousId, sid);
+      markOptimisticConversation(sid);
       setTasks((prev) => prev.map((t) => (
         t.id === previousId || t.id === id ? { ...t, id: sid } : t
       )));
@@ -4698,7 +4730,11 @@ function AppCore() {
     },
   };
 
-  return (
+  // The app chrome — sidebar, content column, and modals. It still contains
+  // the `route`-keyed view switch (rendered from AppCore state) plus the
+  // router's <Outlet/>, which mounts the child route element that syncs that
+  // state to the URL. Handed to the router via context (ENG-1233).
+  const shell = (
     <div style={{
       ...appStyle, ...accentCss,
       display: 'flex', gap: 9, padding: 9,
@@ -4940,6 +4976,10 @@ function AppCore() {
         onOpenSidebar={sidebarPopout ? () => setNavPopoutOpen(true) : () => setSidebarCollapsed(false)}
         mobileShellProps={mobileShellProps}
       >
+        {/* Mounts the matched child route element, which syncs `route` /
+            `activeTaskId` to the URL. It renders no visible output — the
+            active view is still chosen by the `route`-keyed switch below. */}
+        <Outlet />
         {route === 'home' && (
           <HomeView
             greeting={settings.greeting}
@@ -5567,5 +5607,23 @@ function AppCore() {
         </div>
       )}
     </div>
+  );
+
+  // Hand the shell + current nav state + URL→state sync handlers to the
+  // router. CoworkLayout renders `shell` (with its <Outlet/>); the child
+  // route elements consume the handlers (ENG-1233).
+  const coworkValue = {
+    shell,
+    route,
+    activeTaskId,
+    enterHome,
+    enterRoute,
+    openConversation,
+  };
+
+  return (
+    <CoworkProvider value={coworkValue}>
+      <CoworkRouterProvider router={routerRef.current} />
+    </CoworkProvider>
   );
 }
