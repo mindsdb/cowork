@@ -83,9 +83,9 @@ export default function BackendSection({
   if (host.isWeb) {
     return (
       <SettingsSectionPanel>
-        <div className="flex flex-col items-center justify-center gap-[10px] py-[32px] text-center text-[13px] text-[var(--text-muted)]">
+        <div className="flex flex-col items-center justify-center gap-[10px] py-8 text-center text-[13px] text-muted">
           <span className="text-[32px] leading-none">☁</span>
-          <div className="text-[14px] font-semibold text-[var(--text-strong)]">Backend is managed server-side</div>
+          <div className="text-base font-semibold text-strong">Backend is managed server-side</div>
           <div className="max-w-[320px]">The Python backend runs on the server — it isn't controllable from this interface.</div>
         </div>
       </SettingsSectionPanel>
@@ -157,11 +157,11 @@ export default function BackendSection({
       <div className="flex flex-col gap-[14px]">
 
         {/* Status card — status header + port + logs */}
-        <div className="overflow-hidden rounded-card border border-[var(--border-subtle)] bg-[var(--surface-glass)] [backdrop-filter:blur(var(--surface-glass-blur))] [-webkit-backdrop-filter:blur(var(--surface-glass-blur))]">
-          <div className="border-b border-line px-[16px] py-[10px] text-[10.5px] font-semibold uppercase tracking-[0.07em] text-ink-4">Status</div>
+        <div className="overflow-hidden rounded-card border border-line bg-surface-glass [backdrop-filter:blur(var(--surface-glass-blur))] [-webkit-backdrop-filter:blur(var(--surface-glass-blur))]">
+          <div className="border-b border-line px-4 py-[10px] text-[10.5px] font-semibold uppercase tracking-[0.07em] text-ink-4">Status</div>
 
           {/* Status summary row */}
-          <div className="flex items-start gap-[12px] px-[16px] py-[14px]">
+          <div className="flex items-start gap-3 px-4 py-[14px]">
             <span className="inline-grid shrink-0 place-items-center w-[34px] h-[34px] rounded-[8px]" style={{
               background: `color-mix(in srgb, ${STATUS_META.iconBgMix} 14%, var(--surface))`,
               color: STATUS_META.iconColor,
@@ -176,7 +176,7 @@ export default function BackendSection({
           </div>
 
           {/* Port + exit code + last attempt chips */}
-          <div className="flex gap-[8px] px-[16px] pb-[14px] font-mono text-[11px]">
+          <div className="flex gap-2 px-4 pb-[14px] font-mono text-xs">
             <div className="rounded-[6px] border border-line bg-surface-2 px-[10px] py-[6px]">
               <span className="mr-[6px] text-[9.5px] uppercase tracking-[0.06em] text-ink-4">Port</span>
               <span className="text-ink">{port ?? '—'}</span>
@@ -197,24 +197,24 @@ export default function BackendSection({
 
           {/* Headline error inside card — offline + start-failure */}
           {state === 'offline' && offlineKind === 'failed' && (
-            <div className="px-[16px] pb-[14px]">
+            <div className="px-4 pb-[14px]">
               {error ? (
                 <Alert variant="danger" style={{ fontFamily: FONT_MONO, wordBreak: 'break-word' }}>{error}</Alert>
               ) : (
-                <div className="rounded-[8px] border border-line bg-surface-2 px-[12px] py-[10px] text-[12.5px] leading-[1.5] text-ink-3">No specific start error was captured. Check the log tail — the process may have died after starting.</div>
+                <div className="rounded-[8px] border border-line bg-surface-2 px-3 py-[10px] text-sm leading-[1.5] text-ink-3">No specific start error was captured. Check the log tail — the process may have died after starting.</div>
               )}
             </div>
           )}
 
           {/* Recent log */}
-          <div className="border-t border-line px-[16px] pt-[10px] pb-[14px]">
-            <div className="mb-[6px] font-mono text-[10px] uppercase tracking-[0.1em] text-ink-4">Log</div>
+          <div className="border-t border-line px-4 pt-[10px] pb-[14px]">
+            <div className="mb-[6px] font-mono text-2xs uppercase tracking-[0.1em] text-ink-4">Log</div>
             {/* ENG-1320: grow to fill the modal instead of a fixed 200px cap
                 that squeezed a long log into a tiny scroller while the panel
                 had room to spare. Viewport-relative so it scales with the
                 modal (min(820px, 88vh)); still capped + scrollable so a very
                 long log can't push the section controls off-screen. */}
-            <pre className="m-0 max-h-[min(520px,52vh)] overflow-auto whitespace-pre-wrap break-words rounded-[8px] border border-line bg-surface-2 px-[12px] py-[10px] font-mono text-[11.5px] leading-[1.55] text-ink-2 select-text">{log || '(no log captured yet)'}</pre>
+            <pre className="m-0 max-h-[min(520px,52vh)] overflow-auto whitespace-pre-wrap break-words rounded-[8px] border border-line bg-surface-2 px-3 py-[10px] font-mono text-[11.5px] leading-[1.55] text-ink-2 select-text">{log || '(no log captured yet)'}</pre>
           </div>
         </div>
 
@@ -223,7 +223,7 @@ export default function BackendSection({
             where no log can exist. */}
         {state === 'offline' && offlineKind === 'failed' && (
           <div className="text-[12px] leading-[1.5] text-ink-3">
-            <div className="mb-[4px] font-semibold text-ink-2">{failureCopy.headline}</div>
+            <div className="mb-1 font-semibold text-ink-2">{failureCopy.headline}</div>
             <ul className="m-0 flex flex-col gap-[3px] pl-[18px]">
               {failureCopy.hints.map((hint) => <li key={hint}>{hint}</li>)}
             </ul>

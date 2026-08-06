@@ -101,23 +101,23 @@ function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSett
 // navigation. Mobile stays flat, as it already was (ENG-990).
 function SettingsGroup({ title, children }) {
   const { mobile } = useContext(SettingsLayoutContext);
-  const headingClass = 'm-0 font-[var(--font-sans)] text-[12.5px] font-semibold tracking-[0.04em] uppercase text-[var(--text-muted)]';
+  const headingClass = 'm-0 font-[var(--font-sans)] text-sm font-semibold tracking-[0.04em] uppercase text-muted';
   // Mobile (ENG-990): the master-detail screen already isolates one section,
   // so render the group title as a plain header with its content flowing
   // below, separated from the next group by spacing.
   if (mobile) {
     return (
       <div className="mb-[6px]">
-        <h2 className={`${headingClass} pt-[12px] px-[2px] pb-[8px]`}>{title}</h2>
-        <div className="px-[2px] pb-[4px]">{children}</div>
+        <h2 className={`${headingClass} pt-3 px-[2px] pb-2`}>{title}</h2>
+        <div className="px-[2px] pb-1">{children}</div>
       </div>
     );
   }
 
   return (
-    <div className="overflow-hidden rounded-card border border-[var(--border-subtle)] bg-[var(--surface-glass)] [backdrop-filter:blur(var(--surface-glass-blur))] [-webkit-backdrop-filter:blur(var(--surface-glass-blur))] mb-[14px]">
+    <div className="overflow-hidden rounded-card border border-line bg-surface-glass [backdrop-filter:blur(var(--surface-glass-blur))] [-webkit-backdrop-filter:blur(var(--surface-glass-blur))] mb-[14px]">
       <h2 className={`${headingClass} pt-[14px] px-[18px] pb-0`}>{title}</h2>
-      <div className="px-[18px] pt-[10px] pb-[8px]">{children}</div>
+      <div className="px-[18px] pt-[10px] pb-2">{children}</div>
     </div>
   );
 }
@@ -530,7 +530,7 @@ function CredentialRow({ title, subtitle, status, hasValue, children }) {
   // the glow stays meaningful: "this is what's authenticating you now."
   const setActive = hasValue && (status === 'required' || status === 'auto');
   const titleNode = (
-    <span className="inline-flex items-center flex-wrap gap-y-[4px]">
+    <span className="inline-flex items-center flex-wrap gap-y-1">
       {title}
       <RelevanceBadge status={status} />
       <SetBadge hasValue={hasValue} active={setActive} />
@@ -580,9 +580,9 @@ function SettingsNav({ section, onSectionChange, serverOnline = true }) {
     <nav
       role="navigation"
       aria-label="Settings sections"
-      className="w-[180px] shrink-0 border-r border-line px-[10px] py-[20px] flex flex-col gap-[2px]"
+      className="w-[180px] shrink-0 border-r border-line px-[10px] py-5 flex flex-col gap-[2px]"
     >
-      <div className="text-[10px] tracking-[0.08em] uppercase text-ink-4 px-[10px] pb-[6px] font-semibold">Settings</div>
+      <div className="text-2xs tracking-[0.08em] uppercase text-ink-4 px-[10px] pb-[6px] font-semibold">Settings</div>
       {navItemsForHost(host.isWeb).map((item) => {
         const active = section === item.id;
         // `!host.isWeb &&`: the offline-disable exists because a dead local
@@ -1106,11 +1106,11 @@ export default function SettingsView({
     <>
       <div
         role="status" aria-live="polite" aria-atomic="true"
-        className="flex-1 text-[13px] font-medium text-[var(--text-muted)] inline-flex items-center gap-[6px]"
+        className="flex-1 text-[13px] font-medium text-muted inline-flex items-center gap-[6px]"
       >
         {testing && <span aria-hidden="true" className="spinner w-[12px] h-[12px]" />}
-        {!testing && tested && configReady && <span aria-hidden="true" className="text-[var(--sage-500)] inline-flex">{Ico.check(13)}</span>}
-        {!testing && saved && !tested && <span aria-hidden="true" className="text-[var(--sage-500)] inline-flex">{Ico.check(13)}</span>}
+        {!testing && tested && configReady && <span aria-hidden="true" className="text-sage-500 inline-flex">{Ico.check(13)}</span>}
+        {!testing && saved && !tested && <span aria-hidden="true" className="text-sage-500 inline-flex">{Ico.check(13)}</span>}
         <span>
           {testing ? 'Testing configuration…'
             : tested ? (configReady ? 'Test passed — provider, model, and credentials look good.' : (configError || 'Test reported a problem.'))
@@ -1186,12 +1186,12 @@ export default function SettingsView({
                 // <h3> uses the `.sr-only` utility (its text is the current
                 // name or a sensible fallback) — keeps the visual unchanged
                 // while making the row reachable by H/4 navigation.
-                const headingBaseClass = 'm-0 p-0 font-[inherit] leading-[1.3] text-[14px] font-semibold text-[var(--text-strong)]';
+                const headingBaseClass = 'm-0 p-0 font-[inherit] leading-[1.3] text-base font-semibold text-strong';
                 const customHeadingText = p.type === 'openai-compatible'
                   ? ((p.name || '').trim() || 'Custom OpenAI-compatible provider')
                   : null;
                 const titleNode = (
-                  <span className="inline-flex items-center flex-wrap gap-[8px]">
+                  <span className="inline-flex items-center flex-wrap gap-2">
                     {p.type === 'openai-compatible' ? (() => {
                       const nameEmpty = !(p.name || '').trim();
                       const errorId = `provider-name-error-${p.type}`;
@@ -1246,7 +1246,7 @@ export default function SettingsView({
                     <div>
                       {titleNode}
                       {PROVIDER_TYPE_DESC[p.type] && (
-                        <div className="text-[12px] text-[var(--text-muted)] mt-[6px] max-w-[380px] leading-[1.45]">
+                        <div className="text-[12px] text-muted mt-[6px] max-w-[380px] leading-[1.45]">
                           {PROVIDER_TYPE_DESC[p.type]}
                         </div>
                       )}
@@ -1281,7 +1281,7 @@ export default function SettingsView({
                           />
                         )}
                         {GET_KEY_URL[p.type] && !ssoMindsHub && (
-                          <div className="text-[11.5px] text-[var(--text-muted)]">
+                          <div className="text-[11.5px] text-muted">
                             Get your API key at{' '}
                             <a
                               href={GET_KEY_URL[p.type]}
@@ -1293,7 +1293,7 @@ export default function SettingsView({
                           </div>
                         )}
                         {p.type === 'minds-cloud' && !isSsoConnected && (
-                          <div className="text-[11.5px] text-[var(--text-muted)]">
+                          <div className="text-[11.5px] text-muted">
                             Don't have an account?{' '}
                             <a
                               href={MINDS_REGISTER_URL}
@@ -1346,7 +1346,7 @@ export default function SettingsView({
                   </div>
                 );
               })}
-              <div className="relative pt-[14px] pb-[4px] min-h-[50px]">
+              <div className="relative pt-[14px] pb-1 min-h-[50px]">
                 {/* Idle: + Add provider button. Fades + slides down when
               the picker opens. */}
                 <Button
@@ -1375,7 +1375,7 @@ export default function SettingsView({
                   pointerEvents: addPickerOpen ? 'auto' : 'none',
                   position: 'absolute', top: 14, left: 0, right: 0,
                 }}>
-                  <strong className="text-[12.5px] text-[var(--text-strong)] mr-[4px]">Choose Provider:</strong>
+                  <strong className="text-sm text-strong mr-1">Choose Provider:</strong>
                   {availableTypesForAdd.map((t) => (
                     <Button
                       key={t}
@@ -1500,7 +1500,7 @@ export default function SettingsView({
                   // Plain bold field label. Note: no dotted underline — that reads as
                   // a "hover for a tooltip" affordance, and none is wired here.
                   const fieldLabel = (text) => (
-                    <span className="text-[11px] font-bold text-[var(--text-strong)] tracking-[0.02em]">{text}:</span>
+                    <span className="text-xs font-bold text-strong tracking-[0.02em]">{text}:</span>
                   );
 
                   const noCreditsNotice = isNoCredits ? (
@@ -1511,7 +1511,7 @@ export default function SettingsView({
                         onClick={() => host.openExternal ? host.openExternal(MINDS_BILLING_URL) : window.open(MINDS_BILLING_URL, '_blank')}
                         className="[background:none] border-0 p-0 cursor-pointer text-accent underline text-[inherit] font-[inherit]"
                       >Top up credits →</button>
-                      <span className="text-[var(--text-muted)]">{' '}or add your own provider and API key below.</span>
+                      <span className="text-muted">{' '}or add your own provider and API key below.</span>
                     </div>
                   ) : null;
 
@@ -1523,7 +1523,7 @@ export default function SettingsView({
                     }.`} notice={noCreditsNotice}>
                       <div className="grid gap-[6px]">
                         {multipleProviders && (
-                          <label className="grid gap-[4px]">
+                          <label className="grid gap-1">
                             {fieldLabel('Provider')}
                             <Select
                               value={curType}
@@ -1551,7 +1551,7 @@ export default function SettingsView({
                               resolveModelPickerValue(curModel, modelList, allowOther, modelInputMode[role]);
                             const modelOptions = buildModelOptions(curModel, modelList, allowOther, showStalePin, modelEnabled, settings.modelLabels || {});
                             return (
-                              <label className="grid gap-[4px]">
+                              <label className="grid gap-1">
                                 {fieldLabel('Model')}
                                 <ModelSelect
                                   value={selectValue || firstEnabledModel}
@@ -1613,7 +1613,7 @@ export default function SettingsView({
                             );
                           })()
                         ) : (
-                          <label className="grid gap-[4px]">
+                          <label className="grid gap-1">
                             {fieldLabel('Model')}
                             <TextInput
                               value={curModel}
@@ -1624,7 +1624,7 @@ export default function SettingsView({
                           </label>
                         )}
                         {showEffort && (
-                          <label className="grid gap-[4px]">
+                          <label className="grid gap-1">
                             {fieldLabel('Reasoning effort')}
                             <Select
                               value={effortValue}
@@ -1635,7 +1635,7 @@ export default function SettingsView({
                           </label>
                         )}
                         {providerCheckingNotice && (
-                          <div id={providerWarnId} aria-live="polite" className="text-[11.5px] text-[var(--text-muted)] flex items-center gap-[6px]">
+                          <div id={providerWarnId} aria-live="polite" className="text-[11.5px] text-muted flex items-center gap-[6px]">
                             <Spinner intervalMs={90} />
                             Checking {providerDisplayName(provider)} connection…
                           </div>
@@ -1912,7 +1912,7 @@ export default function SettingsView({
               />
             </Section>
             <Section title="Background — Light mode" subtitle="Pick a base color for Light — surfaces and text shades derive from it — or use Light's default.">
-              <div className="flex items-center gap-[12px]">
+              <div className="flex items-center gap-3">
                 <input
                   type="color"
                   value={customTheme.bgLight || '#fafafa'}
@@ -1921,7 +1921,7 @@ export default function SettingsView({
                   aria-label="Custom background color — Light mode"
                   style={{ width: 64, height: 32, padding: 2, border: '1px solid var(--line-2)', borderRadius: 6, background: 'var(--surface)', cursor: 'pointer', opacity: customTheme.bgLight === null ? 0.45 : 1 }}
                 />
-                <label className="inline-flex items-center gap-[8px] text-[12.5px] text-[var(--text-muted)] cursor-pointer">
+                <label className="inline-flex items-center gap-2 text-sm text-muted cursor-pointer">
                   <Checkbox
                     checked={customTheme.bgLight === null}
                     onCheckedChange={(v) => onCustomThemeChange?.({ ...customTheme, bgLight: v ? null : '#fafafa' })}
@@ -1932,7 +1932,7 @@ export default function SettingsView({
               </div>
             </Section>
             <Section title="Background — Dark mode" subtitle="Pick a base color for Dark — surfaces and text shades derive from it — or use Dark's default.">
-              <div className="flex items-center gap-[12px]">
+              <div className="flex items-center gap-3">
                 <input
                   type="color"
                   value={customTheme.bgDark || '#080d18'}
@@ -1941,7 +1941,7 @@ export default function SettingsView({
                   aria-label="Custom background color — Dark mode"
                   style={{ width: 64, height: 32, padding: 2, border: '1px solid var(--line-2)', borderRadius: 6, background: 'var(--surface)', cursor: 'pointer', opacity: customTheme.bgDark === null ? 0.45 : 1 }}
                 />
-                <label className="inline-flex items-center gap-[8px] text-[12.5px] text-[var(--text-muted)] cursor-pointer">
+                <label className="inline-flex items-center gap-2 text-sm text-muted cursor-pointer">
                   <Checkbox
                     checked={customTheme.bgDark === null}
                     onCheckedChange={(v) => onCustomThemeChange?.({ ...customTheme, bgDark: v ? null : '#080d18' })}
@@ -1985,7 +1985,7 @@ export default function SettingsView({
           </>
         )}
         <Section title="Greeting" subtitle="The line shown when you start a new task.">
-          <div className="flex items-center gap-[4px]">
+          <div className="flex items-center gap-1">
             <div className="flex-1">
               <TextInput
                 value={settings.greeting}
@@ -1998,7 +1998,7 @@ export default function SettingsView({
           </div>
         </Section>
         <Section title="Sidebar title" subtitle="Shown at the top of the left-hand nav panel. Leave blank for the default, MindsHub.">
-          <div className="flex items-center gap-[4px]">
+          <div className="flex items-center gap-1">
             <div className="flex-1">
               <TextInput
                 value={settings.navTitle || ''}
@@ -2012,7 +2012,7 @@ export default function SettingsView({
           </div>
         </Section>
         <Section title="Sidebar title color" subtitle="Pick a color for the sidebar title, or follow the theme's default text color.">
-          <div className="flex items-center gap-[12px]">
+          <div className="flex items-center gap-3">
             <input
               type="color"
               value={settings.navTitleColor || '#e8e8ec'}
@@ -2021,7 +2021,7 @@ export default function SettingsView({
               aria-label="Sidebar title color"
               style={{ width: 64, height: 32, padding: 2, border: '1px solid var(--line-2)', borderRadius: 6, background: 'var(--surface)', cursor: 'pointer', opacity: settings.navTitleColor ? 1 : 0.45 }}
             />
-            <label className="inline-flex items-center gap-[8px] text-[12.5px] text-[var(--text-muted)] cursor-pointer">
+            <label className="inline-flex items-center gap-2 text-sm text-muted cursor-pointer">
               <Checkbox
                 checked={!settings.navTitleColor}
                 onCheckedChange={(v) => autoSaveSetting('navTitleColor', v ? '' : '#e8e8ec')}
@@ -2033,7 +2033,7 @@ export default function SettingsView({
           </div>
         </Section>
         <Section title="Sidebar logo" subtitle="An icon shown next to the sidebar title. PNG, JPG, or SVG, under 300 KB.">
-          <div className="flex items-center gap-[12px]">
+          <div className="flex items-center gap-3">
             {settings.navLogo && (
               <img
                 src={settings.navLogo}
@@ -2215,7 +2215,7 @@ export default function SettingsView({
                       style={disabled ? { opacity: 0.4, cursor: 'default' } : undefined}
                     >
                       {icon && (
-                        <span aria-hidden="true" className="inline-flex shrink-0 text-[var(--text-muted)]">
+                        <span aria-hidden="true" className="inline-flex shrink-0 text-muted">
                           {icon}
                         </span>
                       )}

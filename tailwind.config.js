@@ -86,6 +86,16 @@ export default {
         'surface-02':   'var(--surface-2)',
         'border-01':    'var(--line)',
         'border-02':    'var(--line-2)',
+
+        // Semantic aliases used directly in inline styles across app surfaces
+        // (ENG-1017 inline→Tailwind migration) — exposing them as utilities
+        // lets the migration drop arbitrary [var(--…)] classes and keep the
+        // semantic name the source used. muted/strong resolve to ink-3/ink
+        // today; surface-glass/sage-500 have no nearest ink token.
+        muted:            'var(--text-muted)',
+        strong:           'var(--text-strong)',
+        'surface-glass':  'var(--surface-glass)',
+        'sage-500':       'var(--sage-500)',
       },
       fontFamily: {
         body:    ['Inter', 'system-ui', 'sans-serif'],
