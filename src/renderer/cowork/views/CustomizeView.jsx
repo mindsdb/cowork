@@ -67,14 +67,14 @@ function NewConnectionCard({ onClick }) {
       onClick={onClick}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      className="min-h-[120px] rounded-[10px] px-4 py-[14px] bg-transparent flex flex-col items-center justify-center gap-2 cursor-pointer [transition:border-color_.15s_ease,color_.15s_ease] font-[inherit]"
+      className="min-h-[120px] rounded-[10px] px-4 py-4 bg-transparent flex flex-col items-center justify-center gap-2 cursor-pointer [transition:border-color_.15s_ease,color_.15s_ease] font-[inherit]"
       style={{
         border: `1px dashed ${hover ? 'var(--accent)' : 'var(--line-2)'}`,
         color: hover ? 'var(--accent)' : 'var(--ink-3)',
       }}
     >
       <span className="inline-flex">{Ico.plus(16)}</span>
-      <span className="font-[var(--font-body)] text-[13px] font-medium">
+      <span className="font-[var(--font-body)] text-sm font-medium">
         New connection
       </span>
     </button>
@@ -122,7 +122,7 @@ function ConnectionCard({ connection, onDelete, onModify }) {
       onKeyDown={canModify ? (e) => { if (e.key === 'Enter') handleCardClick(); } : undefined}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      className="rounded-[10px] px-4 py-[14px] min-h-[120px] flex flex-col gap-[10px] [transition:background_.15s_ease,border-color_.15s_ease] relative outline-none"
+      className="rounded-[10px] px-4 py-4 min-h-[120px] flex flex-col gap-3 [transition:background_.15s_ease,border-color_.15s_ease] relative outline-none"
       style={{
         background: needsReconnect
           ? 'color-mix(in srgb, var(--warning, #f5a623) 8%, var(--surface))'
@@ -142,19 +142,19 @@ function ConnectionCard({ connection, onDelete, onModify }) {
             : Ico.database(14)}
         </span>
         <span className="flex-1 min-w-0 font-[var(--font-display)] text-[16px] font-semibold tracking-[0] text-ink overflow-hidden text-ellipsis whitespace-nowrap" title={displayName !== name ? name : undefined}>{displayName}</span>
-        <span className="shrink-0 font-mono text-[10.5px] text-ink-4 tracking-[0.04em] uppercase px-[7px] py-[2px] rounded-[99px] bg-surface-3 border border-line">{engine}</span>
+        <span className="shrink-0 font-mono text-xs text-ink-4 tracking-[0.04em] uppercase px-[7px] py-[2px] rounded-[99px] bg-surface-3 border border-line">{engine}</span>
       </div>
 
       <div className="flex-1" />
 
       {needsReconnect && (
-        <div className="font-[var(--font-body)] text-[12px] font-medium text-warning">
+        <div className="font-[var(--font-body)] text-sm font-medium text-warning">
           Reconnection required — click to fix
         </div>
       )}
 
-      <div className="flex items-center gap-[10px] border-t border-line pt-[10px]">
-        <span className="flex-1 font-mono text-[10.5px] text-ink-4 tracking-[0.04em]">
+      <div className="flex items-center gap-3 border-t border-line pt-3">
+        <span className="flex-1 font-mono text-xs text-ink-4 tracking-[0.04em]">
           {updated ? `updated ${updated}` : 'connected'}
         </span>
         <Button
@@ -191,8 +191,8 @@ function humanLabel(name) {
 function MetaRow({ label, value }) {
   return (
     <div className="flex items-baseline gap-2">
-      <span className="w-[100px] shrink-0 font-[var(--font-body)] text-[12px] text-ink-4">{label}</span>
-      <span className="font-mono text-[12px] text-ink overflow-hidden text-ellipsis whitespace-nowrap">{value || '—'}</span>
+      <span className="w-[100px] shrink-0 font-[var(--font-body)] text-sm text-ink-4">{label}</span>
+      <span className="font-mono text-sm text-ink overflow-hidden text-ellipsis whitespace-nowrap">{value || '—'}</span>
     </div>
   );
 }
@@ -323,7 +323,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
         className="fixed top-0 right-0 bottom-0 z-[71] w-[min(400px,92vw)] bg-surface border-l border-line [box-shadow:-12px_0_40px_rgba(0,0,0,0.12)] flex flex-col font-[var(--font-body)]"
       >
         {/* Header */}
-        <div className="flex items-center gap-3 pt-[18px] px-5 pb-4 border-b border-line shrink-0">
+        <div className="flex items-center gap-3 pt-5 px-5 pb-4 border-b border-line shrink-0">
           <span className="inline-grid place-items-center w-[36px] h-[36px] rounded-card-row bg-surface-2 shrink-0">
             {spec?.logo_url
               ? <img src={spec.logo_url} alt="" className="w-[22px] h-[22px] object-contain" />
@@ -342,18 +342,18 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="bg-transparent border-0 text-ink-3 cursor-pointer w-[28px] h-[28px] rounded-[6px] inline-grid place-items-center text-[18px] leading-none shrink-0"
+            className="bg-transparent border-0 text-ink-3 cursor-pointer w-[28px] h-[28px] rounded-card-row inline-grid place-items-center text-[18px] leading-none shrink-0"
           >×</button>
         </div>
 
         {/* Body */}
-        <div className="scroll-clean flex-1 overflow-y-auto px-5 py-[18px]">
+        <div className="scroll-clean flex-1 overflow-y-auto px-5 py-5">
           {loading ? (
-            <div className="text-[13px] text-ink-4">Loading…</div>
+            <div className="text-sm text-ink-4">Loading…</div>
           ) : (
             <>
               {/* Meta */}
-              <div className="px-[14px] py-3 mb-5 bg-surface-2 rounded-card-row border border-line flex flex-col gap-2">
+              <div className="px-4 py-3 mb-5 bg-surface-2 rounded-card-row border border-line flex flex-col gap-2">
                 <MetaRow label="Engine" value={connection.engine} />
                 {saved?.updatedAt && <MetaRow label="Last updated" value={fmtDate(saved.updatedAt)} />}
                 {saved?.createdAt && <MetaRow label="Connected" value={fmtDate(saved.createdAt)} />}
@@ -369,15 +369,15 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
                     {displayFields.map((f, i) => (
                       <div
                         key={f.key}
-                        className="flex items-center gap-[10px] px-[14px] py-[10px] bg-surface"
+                        className="flex items-center gap-3 px-4 py-3 bg-surface"
                         style={{
                           borderBottom: i < displayFields.length - 1 ? '1px solid var(--line)' : 'none',
                         }}
                       >
-                        <span className="w-[120px] shrink-0 font-[var(--font-body)] text-[12px] text-ink-3 font-medium">
+                        <span className="w-[120px] shrink-0 font-[var(--font-body)] text-sm text-ink-3 font-medium">
                           {f.label}
                         </span>
-                        <span className="flex-1 font-mono text-[12px] overflow-hidden text-ellipsis whitespace-nowrap" style={{
+                        <span className="flex-1 font-mono text-sm overflow-hidden text-ellipsis whitespace-nowrap" style={{
                           color: f.isSecret ? 'var(--ink-4)' : (f.value ? 'var(--ink)' : 'var(--ink-4)'),
                           fontStyle: (!f.isSecret && !f.value) ? 'italic' : 'normal',
                         }}>
@@ -397,15 +397,15 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
                   <div className="font-[var(--font-body)] text-xs font-semibold tracking-[0.05em] uppercase text-ink-3 mb-2">
                     Drive files
                   </div>
-                  <div className="border border-line rounded-card-row px-[14px] py-3 mb-5 flex flex-col gap-[10px]">
-                    <div className="text-[12px] text-ink-3 leading-[1.5]">
+                  <div className="border border-line rounded-card-row px-4 py-3 mb-5 flex flex-col gap-3">
+                    <div className="text-sm text-ink-3 leading-[1.5]">
                       This connection can only read files it created itself. Select any files below —
                       including several at once, or whole Shared Drives — to grant access to them too.
                     </div>
                     {pickerState.status === 'waiting' ? (
-                      <div className="flex items-center gap-[10px] flex-wrap">
+                      <div className="flex items-center gap-3 flex-wrap">
                         <Spinner style={{ color: 'var(--ink-3)' }} />
-                        <span className="text-[12px] text-ink-3">
+                        <span className="text-sm text-ink-3">
                           Opened in your browser — pick your files there, then come back. Confirming access can take a few seconds after you return.
                         </span>
                         <Button variant="subtle" size="sm" onClick={handleCancelPicker}>
@@ -422,7 +422,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
                       </Button>
                     )}
                     {pickerState.status === 'error' && (
-                      <div className="text-[12px] text-danger">{pickerState.reason}</div>
+                      <div className="text-sm text-danger">{pickerState.reason}</div>
                     )}
                     {pickerState.status === 'done' && pickerState.failed?.length > 0 && (
                       <Alert variant="danger">
@@ -436,11 +436,11 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
                       </Alert>
                     )}
                     {pickerState.status === 'done' && pickerState.files.length === 0 && (
-                      <div className="text-[12px] text-ink-4 italic">No files selected.</div>
+                      <div className="text-sm text-ink-4 italic">No files selected.</div>
                     )}
                     {pickerState.status === 'done' && pickerState.files.length > 0 && (
-                      <div className="flex flex-col gap-[6px]">
-                        <div className="text-[12px] text-ink-3">
+                      <div className="flex flex-col gap-2">
+                        <div className="text-sm text-ink-3">
                           Granted access to {pickerState.files.length} file{pickerState.files.length === 1 ? '' : 's'}:
                         </div>
                         {pickerState.files.map((f) => (
@@ -449,7 +449,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
                             href={f.url}
                             target="_blank"
                             rel="noreferrer"
-                            className="flex items-center gap-2 text-[12px] text-ink no-underline px-[6px] py-1 rounded-[6px] bg-surface-2 overflow-hidden"
+                            className="flex items-center gap-2 text-sm text-ink no-underline px-2 py-1 rounded-card-row bg-surface-2 overflow-hidden"
                           >
                             {f.iconUrl && <img src={f.iconUrl} alt="" className="w-[14px] h-[14px] shrink-0" />}
                             <span className="overflow-hidden text-ellipsis whitespace-nowrap">{f.name}</span>
@@ -465,7 +465,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-[14px] border-t border-line flex flex-col gap-2 shrink-0">
+        <div className="px-5 py-4 border-t border-line flex flex-col gap-2 shrink-0">
           {saved?.fields?.status === 'needs_reconnect' && (
             <Alert variant="warning" title="Reconnection required">
               Access for this connection has expired or was revoked. Reconnect to restore access, or remove the connection.
@@ -703,7 +703,7 @@ export default function CustomizeView({
           style={{ flex: 1 }}
         />
       ) : (
-        <div className="pt-[6px] px-8 pb-[60px] grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-[14px] mt-[18px]">
+        <div className="pt-2 px-8 pb-[60px] grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4 mt-5">
           {visible.map((c) => (
             <ConnectionCard
               key={`${c.engine}-${c.name}`}
