@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, useReducer } from 'react';
 import { flushSync } from 'react-dom';
 import Ico from './components/Icons';
 import MoveToProjectModal from './components/MoveToProjectModal';
@@ -35,6 +35,7 @@ import { loadCustomTheme, persistCustomTheme, applyCustomTheme } from '../lib/cu
 import { applyNavTitleColor } from '../lib/navBranding';
 import { getAgentLabel } from './lib/agentLabel';
 import { parseUrlState } from './lib/urlState';
+import { navReducer, initialNav, navPatch } from './lib/navState';
 import { useWebNavUrlSync } from './hooks/useWebNavUrlSync';
 import { loadCachedSettings } from './lib/settingsCache';
 import { useBreakpoint } from './hooks/useBreakpoint';
@@ -816,13 +817,21 @@ function AppCore() {
   const [composerDisabledConnections, setComposerDisabledConnections] = useState([]);
   const [composerPrefill, setComposerPrefill] = useState(null);
   const [searchOpen, setSearchOpen] = useState(false);
-  // Settings is a modal overlay (not a route); on web it can be deep-linked /
-  // survive refresh via `?settings=<section>` — bootNav.settingsPane is null when
-  // closed, '' when open with no section, or the section name (ENG-1233).
-  const [settingsOpen, setSettingsOpen] = useState(bootNav?.settingsPane != null);
-  // null = no section selected: the mobile master-detail shows its section
-  // list; desktop (no list) falls back to 'agent' where it's read.
-  const [settingsSection, setSettingsSection] = useState(bootNav?.settingsPane || null);
+  // Navigation model (route + open entity + settings overlay) as one reducer, so
+  // it threads to useWebNavUrlSync as (nav, dispatch) instead of a dozen useState
+  // pairs. Seeds from the boot URL; on Electron bootNav is null and it collapses to
+  // the home defaults. Field docs live in lib/navState.
+  const [nav, dispatch] = useReducer(navReducer, bootNav, initialNav);
+  const { route, activeTaskId, selectedProject, selectedScheduleId, settingsOpen, settingsSection } = nav;
+  // Thin compat setters: existing call sites keep their useState-style API (incl.
+  // functional updaters) while the store moves to the reducer — a bridge toward a
+  // nav context / router, not the destination.
+  const setRoute = (v) => dispatch(navPatch({ route: v }));
+  const setActiveTaskId = (v) => dispatch(navPatch({ activeTaskId: v }));
+  const setSelectedProject = (v) => dispatch(navPatch({ selectedProject: v }));
+  const setSelectedScheduleId = (v) => dispatch(navPatch({ selectedScheduleId: v }));
+  const setSettingsOpen = (v) => dispatch(navPatch({ settingsOpen: v }));
+  const setSettingsSection = (v) => dispatch(navPatch({ settingsSection: v }));
   const [ssoConnected, setSsoConnected] = useState(false);
   // Last sign-in failure, painted on the Settings account card. Cleared
   // on retry and on any authenticated push from main (ENG-761).
@@ -1327,11 +1336,6 @@ function AppCore() {
     document.body.classList.toggle('gf-dots-off', settings.showDots === false);
   }, [settings.showDots]);
 
-  // Seed the route from the boot URL (web deep-link / refresh). A bare `?view=task`
-  // with no conversation id can't be restored, so it falls back to home. ENG-1233;
-  // see useWebNavUrlSync for the rest of the URL wiring.
-  const bootRoute = bootNav?.route === 'task' && !bootNav?.taskId ? 'home' : (bootNav?.route || 'home');
-  const [route, setRoute] = useState(bootRoute);  // home | task | projects | scheduled | schedule-detail | artifacts | channels | customize
   // Keep a ref of the live route so the keydown listener (bound
   // once on mount) can read it without a re-bind on every nav.
   routeRef.current = route;
@@ -1348,9 +1352,6 @@ function AppCore() {
   // stays expanded — gives the user permanent access to the nav.
   const sidebarCollapsedEffective =
     !isNarrow && sidebarCollapsibleRoutes.has(route) && sidebarCollapsed;
-  const [activeTaskId, setActiveTaskId] = useState(bootNav?.taskId || null);
-  const [selectedScheduleId, setSelectedScheduleId] = useState(bootNav?.scheduleId || null);
-  const [selectedProject, setSelectedProject] = useState(null);
   // Data-readiness flags the URL deep-link resolvers (useWebNavUrlSync) watch: they
   // flip true when the authoritative session / project lists first load, so a
   // deep-linked id that never appears is abandoned instead of guessed at.
@@ -2513,18 +2514,31 @@ function AppCore() {
     setRoute(key);
   };
 
+  // Cold deep-link: seeding `route` from the URL skips the fetch normal navigation
+  // would do, so kick the destination's fetch once on mount (web only; harmless if
+  // the boot load also fetches these). ENG-1233.
+  useEffect(() => {
+    if (!host.isWeb || !bootNav) return;
+    if (bootNav.route === 'artifacts') {
+      fetchArtifacts().then((d) => { if (Array.isArray(d)) setArtifacts(d); });
+    } else if (bootNav.route === 'projects') {
+      fetchProjects().then((d) => { if (Array.isArray(d)) setProjects(d); });
+    } else if (bootNav.route === 'scheduled' || bootNav.route === 'schedule-detail') {
+      fetchSchedules().then((d) => { setScheduled(d.schedules || []); setScheduleRunsIndex(d.runs_index || {}); });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ENG-1233: keep the web URL in step with nav state and reflect refresh /
   // Back / Forward back into it (web-only; no-ops under Electron). Called here so
   // it closes over the navigation primitives (selectTask / navigate / openSettings)
   // defined above — a restored URL runs the same primitives a click would.
-  useWebNavUrlSync({
-    bootNav,
-    route, activeTaskId, selectedProject, selectedScheduleId, settingsOpen, settingsSection,
-    tasks, projects, sessionsLoaded, projectsLoaded,
-    setRoute, setActiveTaskId, setSelectedProject, setSelectedScheduleId, setSettingsOpen,
-    selectTask, navigate, openSettings,
-    fetchArtifacts, setArtifacts, fetchProjects, setProjects, fetchSchedules, setScheduled, setScheduleRunsIndex,
-  });
+  useWebNavUrlSync(
+    nav,
+    dispatch,
+    { bootNav, tasks, projects, sessionsLoaded, projectsLoaded },
+    { selectTask, navigate, openSettings },
+  );
 
   const attachmentProjectPath = currentTask?.projectPath || selectedProject?.path || null;
   const attachmentProjectName = currentTask?.projectName || selectedProject?.name || null;

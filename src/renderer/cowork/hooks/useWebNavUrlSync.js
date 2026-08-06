@@ -1,34 +1,37 @@
 import { useState, useEffect, useRef } from 'react';
 import { host } from '../../platform/host';
 import { parseUrlState, buildSearch, historyWriteKind } from '../lib/urlState';
+import { navPatch } from '../lib/navState';
 
 // ENG-1233 — keep the web shell's URL query string in step with the app's nav
 // state, and reflect refresh / deep-links / Back / Forward back into it. Web only:
 // every effect here no-ops under Electron (there's no address bar). The pure
-// state<->query mapping lives in lib/urlState.js; this hook is the React glue.
+// state<->query mapping lives in lib/urlState.js; the nav model in lib/navState.js;
+// this hook is the React glue.
 //
-// It owns three things: an OUTBOUND effect (nav state -> URL), an INBOUND popstate
-// handler (URL -> nav state), and two DEEP-LINK resolvers that apply an id/name
-// from the boot URL once its async list (sessions / projects) has loaded.
+// It owns an OUTBOUND effect (nav state -> URL), an INBOUND popstate handler
+// (URL -> nav state, via dispatch + the passed navigation primitives), and two
+// DEEP-LINK resolvers that apply an id/name from the boot URL once its async list
+// (sessions / projects) loads.
 //
-// Called late in AppCore so it can close over the navigation primitives
-// (selectTask / navigate / openSettings) it dispatches through — restoring a URL
-// runs the exact same primitives a click would, so restored state == clicked state.
-export function useWebNavUrlSync({
-  bootNav,
-  route, activeTaskId, selectedProject, selectedScheduleId, settingsOpen, settingsSection,
-  tasks, projects, sessionsLoaded, projectsLoaded,
-  setRoute, setActiveTaskId, setSelectedProject, setSelectedScheduleId, setSettingsOpen,
-  selectTask, navigate, openSettings,
-  fetchArtifacts, setArtifacts, fetchProjects, setProjects, fetchSchedules, setScheduled, setScheduleRunsIndex,
-}) {
+//   nav        the navigation model (see lib/navState)
+//   dispatch   its reducer dispatch
+//   deps       { bootNav, tasks, projects, sessionsLoaded, projectsLoaded }
+//   primitives { selectTask, navigate, openSettings } — side-effectful nav actions
+//              that do more than set state, so a restored URL runs the exact same
+//              path a click would (restored state == clicked state)
+export function useWebNavUrlSync(nav, dispatch, deps, primitives) {
+  const { route, activeTaskId, selectedProject, selectedScheduleId, settingsOpen, settingsSection } = nav;
+  const { bootNav, tasks, projects, sessionsLoaded, projectsLoaded } = deps;
+  const { selectTask, navigate, openSettings } = primitives;
+
   const firstUrlSyncRef = useRef(true);
   const prevContentSigRef = useRef(null);
   const forceReplaceRef = useRef(false);
-  // Bumping this makes the outbound effect run even when the nav-state setters
-  // paired with a forced replace are no-ops (e.g. reconciling to home when already
-  // home). Otherwise the flag would strand as true and later downgrade a genuine
-  // push into a replace, silently dropping a Back/Forward entry.
+  // Bumping this makes the outbound effect run even when the nav dispatch paired
+  // with a forced replace is a no-op (e.g. reconciling to home when already home).
+  // Otherwise the flag would strand as true and later downgrade a genuine push into
+  // a replace, silently dropping a Back/Forward entry.
   const [urlSyncTick, setUrlSyncTick] = useState(0);
   const forceUrlReplace = () => { forceReplaceRef.current = true; setUrlSyncTick((n) => n + 1); };
 
@@ -72,20 +75,6 @@ export function useWebNavUrlSync({
     else window.history.replaceState(null, '', url);
   }, [route, activeTaskId, selectedProject, selectedScheduleId, settingsOpen, settingsSection, urlSyncTick]);
 
-  // Cold deep-link: seeding `route` skips the fetch normal navigation would do, so
-  // kick the destination's fetch once on mount. Harmless if boot also fetches it.
-  useEffect(() => {
-    if (!host.isWeb || !bootNav) return;
-    if (bootNav.route === 'artifacts') {
-      fetchArtifacts().then((d) => { if (Array.isArray(d)) setArtifacts(d); });
-    } else if (bootNav.route === 'projects') {
-      fetchProjects().then((d) => { if (Array.isArray(d)) setProjects(d); });
-    } else if (bootNav.route === 'scheduled' || bootNav.route === 'schedule-detail') {
-      fetchSchedules().then((d) => { setScheduled(d.schedules || []); setScheduleRunsIndex(d.runs_index || {}); });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   // Resolve a deep-linked conversation once sessions load. Only hydrate if the user
   // is STILL on the link (a late fetch mustn't yank them back); if the id never
   // appears (deleted / stale / wrong workspace), abandon it to home via a replace.
@@ -100,8 +89,7 @@ export function useWebNavUrlSync({
       pendingTaskIdRef.current = null;
       if (route === 'task' && activeTaskId === id) {
         forceUrlReplace();
-        setActiveTaskId(null);
-        setRoute('home');
+        dispatch(navPatch({ route: 'home', activeTaskId: null }));
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -121,7 +109,7 @@ export function useWebNavUrlSync({
       pendingProjectNameRef.current = null;
       if (route === 'projects' && !selectedProject) {
         forceUrlReplace();
-        setSelectedProject(p);
+        dispatch(navPatch({ selectedProject: p }));
       }
     } else if (projectsLoaded) {
       pendingProjectNameRef.current = null;
@@ -143,7 +131,7 @@ export function useWebNavUrlSync({
     const s = parseUrlState(window.location.search);
     // Settings is an overlay orthogonal to the content route.
     if (s.settingsPane != null) openSettings(s.settingsPane || null);
-    else setSettingsOpen(false);
+    else dispatch(navPatch({ settingsOpen: false }));
     if (s.route === 'task') {
       // Only restore a conversation that still exists; a missing id would otherwise
       // fall through to tasks[0]. Defer if sessions haven't loaded; else go home.
@@ -151,18 +139,15 @@ export function useWebNavUrlSync({
         selectTask(s.taskId);
       } else if (s.taskId && !sessionsLoaded) {
         pendingTaskIdRef.current = s.taskId;
-        setActiveTaskId(s.taskId);
-        setRoute('task');
+        dispatch(navPatch({ route: 'task', activeTaskId: s.taskId }));
       } else {
         forceUrlReplace();
-        setActiveTaskId(null);
-        setRoute('home');
+        dispatch(navPatch({ route: 'home', activeTaskId: null }));
       }
       return;
     }
     if (s.route === 'schedule-detail') {
-      setSelectedScheduleId(s.scheduleId);
-      setRoute('schedule-detail');
+      dispatch(navPatch({ route: 'schedule-detail', selectedScheduleId: s.scheduleId }));
       return;
     }
     if (s.route === 'projects') {
@@ -170,15 +155,14 @@ export function useWebNavUrlSync({
       // hasn't loaded; the grid is the right fallback for a missing project.
       const p = s.projectName ? projects.find((x) => x.name === s.projectName) : null;
       if (p) {
-        setSelectedProject(p);
+        dispatch(navPatch({ route: 'projects', selectedProject: p }));
       } else if (s.projectName && !projectsLoaded) {
         pendingProjectNameRef.current = s.projectName;
         forceUrlReplace();
-        setSelectedProject(null);
+        dispatch(navPatch({ route: 'projects', selectedProject: null }));
       } else {
-        setSelectedProject(null);
+        dispatch(navPatch({ route: 'projects', selectedProject: null }));
       }
-      setRoute('projects');
       return;
     }
     navigate(s.route);
