@@ -3,6 +3,7 @@ import { flushSync } from 'react-dom';
 import Ico from './components/Icons';
 import MoveToProjectModal from './components/MoveToProjectModal';
 import { pickConnectWelcome } from './lib/connectWelcomes';
+import { isAntonConfigError, normalizeAntonError } from './lib/antonErrors';
 // OnboardingShell removed — the desktop shell's renderer handles terms/install/
 // provider setup. The cowork app is mounted by CoworkApp.tsx only after
 // those gates pass, so AppCore renders unconditionally here.
@@ -131,24 +132,6 @@ function isPendingFileAttachment(a) {
 // resolved to an upload or sent as a real attachment id.
 function isReferenceOnlyAttachment(a) {
   return !!(a && a.source === 'gdrive');
-}
-
-function isAntonConfigError(message, event) {
-  const text = String(message || '');
-  return (
-    event?.code === 'config_required' ||
-    /Configure ANTON_/i.test(text) ||
-    /Could not resolve authentication method/i.test(text) ||
-    /Expected one of api_key, auth_token, or credentials/i.test(text)
-  );
-}
-
-function normalizeAntonError(message, event) {
-  if (isAntonConfigError(message, event)) {
-    return 'No LLM provider is configured for this account. Subscribe with MindsHub or add your own provider in Settings.';
-  }
-  const text = String(message || '');
-  return text || 'Could not complete this task.';
 }
 
 // Activation gate (ENG-736): fire from the chat send/reply terminal handlers,
@@ -1793,6 +1776,24 @@ function AppCore() {
     ? (models.find((m) => m.id === currentTask.model) || { id: currentTask.model, name: currentTask.model, desc: 'Configured planning model' })
     : selectedModel;
 
+  // "Switch to MindsHub Air" escape hatch on the model-denial card
+  // (ENG-1304): offered only while Air itself is payable — the free monthly
+  // grant covers Air, so it's the one model an empty wallet can usually
+  // still run. `modelEnabled` is the same availability map the Settings
+  // picker tags rows with (absent id ⇒ available).
+  const AIR_MODEL_ID = 'mindshub_air';
+  const airAvailableForSwitch =
+    (settings.recommendedModels?.['minds-cloud'] || []).includes(AIR_MODEL_ID)
+    && (settings.modelEnabled || {})[AIR_MODEL_ID] !== false;
+  const handleSwitchToAirAndResend = (text) => {
+    if (!currentTask || !text) return;
+    // Persist the switch on the task so follow-up sends stay on Air, and
+    // override the same send explicitly — the state write isn't visible to
+    // handleSendInTask's closure within this tick.
+    setTasks((prev) => prev.map((t) => (t.id === currentTask.id ? { ...t, model: AIR_MODEL_ID } : t)));
+    handleSendInTask(text, null, { modelOverride: AIR_MODEL_ID });
+  };
+
   useEffect(() => {
     const prev = prevRouteForComposerMuteRef.current;
     prevRouteForComposerMuteRef.current = route;
@@ -2851,7 +2852,7 @@ function AppCore() {
   };
 
   // Send inside an existing task
-  const handleSendInTask = async (text, queuedAttachments = null) => {
+  const handleSendInTask = async (text, queuedAttachments = null, opts = {}) => {
     if (!currentTask) return;
     const id = currentTask.id;
 
@@ -2915,7 +2916,11 @@ function AppCore() {
     const taskProjectPath = currentTask.projectPath
       || currentTaskProject?.path
       || null;
-    const taskModel = currentTask.model || selectedModel?.id || null;
+    // opts.modelOverride carries a same-tick model switch (the "Switch to
+    // MindsHub Air" card action, ENG-1304) — currentTask is a render-scope
+    // closure, so a setTasks({...model}) just before this call would not be
+    // visible here yet.
+    const taskModel = opts.modelOverride || currentTask.model || selectedModel?.id || null;
 
     let sendingAttachments, attachmentIds, driveReference;
     try {
@@ -3952,6 +3957,7 @@ function AppCore() {
           <ChatView
             task={currentTask}
             onSend={handleSendInTask}
+            onSwitchToAirAndResend={airAvailableForSwitch ? handleSwitchToAirAndResend : undefined}
             onOpenSettings={openSettings}
             queuedMessages={messageQueue[currentTask?.id] || []}
             onRemoveFromQueue={(itemId) => removeFromQueue(currentTask?.id, itemId)}

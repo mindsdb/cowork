@@ -956,12 +956,12 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
  *   it, so lead with Switch model (Add credits stays as a secondary escape
  *   hatch since some old gateways used this code for credit locks too).
  *
- * The body is the server's curated copy (anton's message, passed through
- * verbatim) — unlike ReconnectCard there's no web-only affordance to work
- * around: Add credits is just a billing link (host.openExternal window.opens
- * on web), and Switch model routes to Settings on both shells.
+ * The body is OUR copy, never the server's error string — old gateways word
+ * these as access problems, which under pay as you go misdescribes an empty
+ * wallet (ENG-1304). Top up balance is just a billing link (host.openExternal
+ * window.opens on web); Open Settings routes there on both shells.
  */
-function ModelUnavailableCard({ time, agentLabel, onOpenSettings, code, failedModel, errorText }) {
+export function ModelUnavailableCard({ time, agentLabel, onOpenSettings, code, failedModel, onSwitchToAir }) {
   // modelLabel finishes multi-part ids (Claude Sonnet, GPT-5.5 Mini) and
   // deliberately lowercases some heads (o4 Mini) — never re-case those. Only a
   // bare single-token alias ("sonnet") comes back lowercase, and it reads
@@ -974,19 +974,29 @@ function ModelUnavailableCard({ time, agentLabel, onOpenSettings, code, failedMo
     ? `${label} needs credits`
     : `${label} isn't available right now`;
 
+  // Fixed copy, not the server's error string (ENG-1304): old gateways word
+  // these denials as access problems ("your workspace does not have access"),
+  // which under pay as you go misdescribes an empty wallet.
   return (
     <ActionCard
       time={time}
       agentLabel={agentLabel}
       title={title}
-      body={errorText || (denied
-        ? 'This model needs credits. Add credits to unlock it, or switch to another model in Settings.'
-        : 'This model is currently unavailable. Switch to another model in Settings.')}
-      buttons={[
-        /* Credits denial → lead with Add credits; admin-disabled → lead with Switch. */
-        { label: 'Add credits', onClick: () => host.openExternal(MINDS_BILLING_URL), primary: denied },
-        { label: 'Switch model', onClick: () => onOpenSettings?.('agent'), primary: !denied },
-      ]}
+      body={denied
+        ? "You don't have enough credits for this model. Top up your balance to use it."
+        : 'This model is turned off for your workspace. Choose another model in Settings.'}
+      buttons={denied
+        ? [
+            { label: 'Top up balance', onClick: () => host.openExternal(MINDS_BILLING_URL), primary: true },
+            // Only while Air can still run (free monthly grant or a payable
+            // wallet) — a switch offer into another locked model is the same
+            // dead end this card exists to close.
+            ...(onSwitchToAir ? [{ label: 'Switch to MindsHub Air', onClick: onSwitchToAir }] : []),
+          ]
+        : [
+            { label: 'Open Settings', onClick: () => onOpenSettings?.('agent'), primary: true },
+            { label: 'Top up balance', onClick: () => host.openExternal(MINDS_BILLING_URL) },
+          ]}
     />
   );
 }
@@ -1032,6 +1042,7 @@ function ProviderOverloadedCard({
 export default function ChatView({
   task,
   onSend,
+  onSwitchToAirAndResend,
   onBack,
   project,
   model,
@@ -1701,9 +1712,11 @@ export default function ChatView({
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
                       title="You're out of credits"
-                      body={m.content || "You've used your MindsHub credits. Add more to keep working."}
+                      // Fixed copy, not the server string (ENG-1304) — the
+                      // gateway's wording predates pay as you go.
+                      body="You've used your available MindsHub tokens. Top up your balance to keep working."
                       buttons={[
-                        { label: 'Add credits', onClick: () => host.openExternal(MINDS_BILLING_URL), primary: true },
+                        { label: 'Top up balance', onClick: () => host.openExternal(MINDS_BILLING_URL), primary: true },
                       ]}
                     />
                   );
@@ -1724,9 +1737,15 @@ export default function ChatView({
                 }
                 /* Legacy model-403 (pre-wallet gateways only): current
                  * gateways report wallet denials as `token_limit`, rendered
-                 * by the out-of-credits card above. Offer Add credits /
-                 * Switch model, never "try again". */
+                 * by the out-of-credits card above. Offer Top up balance and,
+                 * while Air is payable, a one-click switch that resends the
+                 * failed message on it — never "try again". */
                 if (m.code === 'model_access_denied' || m.code === 'model_disabled') {
+                  let deniedPrevUserText = '';
+                  for (let j = i - 1; j >= 0; j--) {
+                    const c = visibleMessages[j]?.role === 'user' && visibleMessages[j].content;
+                    if (typeof c === 'string' && c) { deniedPrevUserText = c; break; }
+                  }
                   return (
                     <ModelUnavailableCard
                       key={i}
@@ -1735,7 +1754,11 @@ export default function ChatView({
                       onOpenSettings={onOpenSettings}
                       code={m.code}
                       failedModel={m.failedModel}
-                      errorText={m.content}
+                      onSwitchToAir={
+                        onSwitchToAirAndResend && deniedPrevUserText
+                          ? () => onSwitchToAirAndResend(deniedPrevUserText)
+                          : undefined
+                      }
                     />
                   );
                 }
@@ -1782,6 +1805,16 @@ export default function ChatView({
                 );
               }
               assistantTurnIdx += 1;
+              // A turn that failed before producing anything hydrates as an
+              // assistant message with no content and no steps, followed by
+              // its error (or provider_required) card. Rendering the empty
+              // bubble put a large blank block above every billing card
+              // (ENG-1304) — skip it. Counted first so turn indexing is
+              // unchanged.
+              const nextRole = visibleMessages[i + 1]?.role;
+              if (!m.content && !(m.steps?.length) && (nextRole === 'error' || nextRole === 'provider_required')) {
+                return null;
+              }
               // The server keys delete_turn by USER-INPUT index, not
               // by assistant index. With orphans (stop before any
               // assistant) those can drift apart, so we use the most
