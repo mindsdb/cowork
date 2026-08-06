@@ -18,7 +18,12 @@ vi.mock('fs');
 vi.mock('child_process');
 
 import { startServer } from './server-process';
-import { maybeUpdateServer, repairServerInstall } from './server-updater';
+import {
+  maybeUpdateServer,
+  repairServerInstall,
+  checkForServerUpdate,
+  recreateVenvIfUnsupportedPython,
+} from './server-updater';
 
 afterEach(() => {
   vi.clearAllMocks();
@@ -33,12 +38,16 @@ describe('maybeUpdateServer (orchestration)', () => {
     await expect(maybeUpdateServer()).resolves.toEqual({ updated: false });
   });
 
-  it('reports (never throws) when uv cannot be found', async () => {
+  it('reports loudly (never throws) when uv cannot be found', async () => {
     vi.mocked(fs.existsSync).mockReturnValue(false); // no uv binary anywhere
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     await expect(maybeUpdateServer()).resolves.toEqual({
       updated: false,
       error: 'uv not found',
     });
+    // A machine whose uv lives outside the probed dirs gets NO updates — that
+    // must be loud in the logs, not an info-level shrug.
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('uv not found'));
   });
 
   it('git update that fails health check rolls back by pinning the EXACT prior commits', async () => {
@@ -124,6 +133,28 @@ describe('maybeUpdateServer (orchestration)', () => {
   });
 });
 
+describe('findUv-null bails are loud', () => {
+  // Every recovery/update entry point no-ops when uv is missing from the
+  // probed locations. Each bail must warn: these paths run unattended, and a
+  // silent no-op looks identical to "nothing to do" in a support log.
+  it('checkForServerUpdate flags the error and warns', async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await expect(checkForServerUpdate()).resolves.toEqual({
+      updateAvailable: false,
+      error: true,
+    });
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('uv not found'));
+  });
+
+  it('recreateVenvIfUnsupportedPython returns false and warns', async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await expect(recreateVenvIfUnsupportedPython()).resolves.toBe(false);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('uv not found'));
+  });
+});
+
 describe('repairServerInstall (orchestration)', () => {
   // Regression: a venv that's installed, current, and on a supported Python but
   // still won't boot (corrupt/partial env — e.g. FastAPI's annotated-doc landed
@@ -163,9 +194,13 @@ describe('repairServerInstall (orchestration)', () => {
     expect(execCalls.filter((c) => c[1] === 'tool' && c[2] === 'install')).toHaveLength(0);
   });
 
-  it('returns false (never throws) when uv cannot be found', async () => {
+  it('returns false and warns (never throws) when uv cannot be found', async () => {
     vi.mocked(fs.existsSync).mockReturnValue(false); // no uv binary anywhere
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     await expect(repairServerInstall(BROKEN)).resolves.toBe(false);
+    // A repairable broken install that silently isn't repaired is
+    // undiagnosable from the logs — the bail must say why.
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('uv not found'));
   });
 
   it('reinstalls from PyPI and returns true when the venv has no vcs_info', async () => {
