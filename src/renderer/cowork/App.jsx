@@ -2486,18 +2486,20 @@ function AppCore() {
   // fetches its data on entry, so navigate() and the cold deep-link path don't
   // duplicate it. Shaped like a router loader map — becomes each route's `loader`
   // when a real router drops in. Only routes with entry data have an entry.
-  // A Map (not a plain object) so the URL/user-controlled route key can't reach an
-  // inherited Object.prototype method via routeLoaders[key]() — no dynamic dispatch.
   const loadSchedules = () => fetchSchedules().then((d) => {
     setScheduled(d.schedules || []);
     setScheduleRunsIndex(d.runs_index || {});
   });
-  const routeLoaders = new Map([
-    ['artifacts', () => fetchArtifacts().then((d) => { if (Array.isArray(d)) setArtifacts(d); })],
-    ['projects', () => fetchProjects().then((d) => { if (Array.isArray(d)) setProjects(d); })],
-    ['scheduled', loadSchedules],
-    ['schedule-detail', loadSchedules],
-  ]);
+  const routeLoaders = {
+    artifacts: () => fetchArtifacts().then((d) => { if (Array.isArray(d)) setArtifacts(d); }),
+    projects: () => fetchProjects().then((d) => { if (Array.isArray(d)) setProjects(d); }),
+    scheduled: loadSchedules,
+    'schedule-detail': loadSchedules,
+  };
+  // Own-property guard before the dynamic call so a URL/user-controlled route key
+  // can't reach an inherited Object.prototype method (CodeQL
+  // js/unvalidated-dynamic-method-call) — same guard as SettingsView's renderers.
+  const runRouteLoader = (r) => { if (Object.hasOwn(routeLoaders, r)) routeLoaders[r](); };
 
   const navigate = (key) => {
     if (isNarrow) setNavPopoutOpen(false);
@@ -2507,7 +2509,7 @@ function AppCore() {
       openSettings(key.includes(':') ? key.split(':')[1] : null);
       return;
     }
-    routeLoaders.get(key)?.();
+    runRouteLoader(key);
     if (key === 'projects') {
       // Clicking "Projects" in the sidebar should always land on the grid of all
       // projects, not the previously-selected project's detail — clear the
@@ -2522,7 +2524,7 @@ function AppCore() {
   // so run its loader once on mount (web only; harmless if boot also fetches).
   useEffect(() => {
     if (!host.isWeb || !bootNav) return;
-    routeLoaders.get(bootNav.route)?.();
+    runRouteLoader(bootNav.route);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
