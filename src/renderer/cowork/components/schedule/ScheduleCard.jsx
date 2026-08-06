@@ -1,22 +1,24 @@
 // `<ScheduleCard>` — grid view tile for one scheduled task.
 //
-// Width matches the projects-grid minimum (280px). Row 1 pairs the
-// title with a status badge; a cadence + next-run line and the
-// run-now/pause/edit hover row follow.
+// Width matches the projects-grid minimum (280px). The header row pairs
+// the title with a top-right cluster — status badge, a "Run now" button,
+// and the ⋮ overflow menu (Edit / Pause-Resume / Delete). A cadence +
+// next-run line and a "last run" caption follow.
 //
-// Click anywhere on the card body opens the detail page. Hover reveals
-// inline actions (Run now, Pause/Resume, Edit) at the bottom — they
-// don't navigate, so they stop propagation.
+// Actions live top-right and are ALWAYS visible (not hover-revealed): the
+// old hover-only row was unreachable by keyboard focus and by touch/web
+// (no hover), and hid the surface's primary verb. Calm comes from low
+// emphasis (quiet ghost buttons), not from hiding. Click anywhere on the
+// card body opens the detail page; the action cluster stops propagation so
+// its controls don't also navigate.
 
-import { useState } from 'react';
 import Ico from '../Icons';
-import { Alert, Card, Button } from '../ui';
+import { Alert, Card, Button, Spinner } from '../ui';
 import OverflowMenu from '../OverflowMenu';
 import { relativeTime } from '../../lib/formatTime';
 import { ScheduleStatusBadge } from './ScheduleStatusBadge';
 
-const FONT_BODY    = 'var(--font-body)';
-const FONT_DISPLAY = 'var(--font-display)';
+const FONT_BODY = 'var(--font-body)';
 
 function absoluteTime(iso) {
   if (!iso) return '';
@@ -51,12 +53,6 @@ export default function ScheduleCard({
   onOpenProject,
   onOpen, onRunNow, onPause, onResume, onEdit, onDelete,
 }) {
-  const [hover, setHover] = useState(false);
-  // Keep the action row revealed while the overflow menu is open (controlled),
-  // so the trigger doesn't fade out from under the open popup — the in-card
-  // menu pattern used by ContextCard.
-  const [menuOpen, setMenuOpen] = useState(false);
-
   const open  = () => onOpen?.(task);
   const stop  = (e) => { e.stopPropagation(); };
 
@@ -75,45 +71,56 @@ export default function ScheduleCard({
       interactive
       padding="cozy"
       onActivate={open}
-      // `hover` still drives the action-row opacity reveal below; the card's
-      // own lift/shadow now comes from `.card.interactive:hover` (CSS).
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
+      // The card's own lift/shadow comes from `.card.interactive:hover` (CSS).
       style={{
         position: 'relative',
         display: 'flex', flexDirection: 'column', gap: 10,
       }}
     >
-      {/* Title + prompt preview. Row 1 pairs the title (display font,
-          2-line clamp so cards align in the grid) with the status
-          badge on the right; prompt preview sits below. */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1, minHeight: 0 }}>
-        <div style={{
-          display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
-          gap: 8,
+      {/* Header row — title (2-line clamp) paired with the top-right actions:
+          Run now + the ⋮ menu. Status has moved down to the meta row so this
+          corner isn't three-up and cramped. Actions stop propagation so they
+          don't also open the card; they're always visible so keyboard and
+          touch/web reach them and the primary verb stays discoverable. */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+        <div className="s-h3" style={{
+          flex: 1, minWidth: 0,
+          color: 'var(--ink)',
+          overflow: 'hidden', textOverflow: 'ellipsis',
+          display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2,
         }}>
-          <div className="s-h3" style={{
-            color: 'var(--ink)',
-            overflow: 'hidden', textOverflow: 'ellipsis',
-            display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2,
-          }}>
-            {task.title || 'Untitled schedule'}
-          </div>
-          <span style={{ flexShrink: 0 }}>
-            <ScheduleStatusBadge task={task} size="sm" />
-          </span>
+          {task.title || 'Untitled schedule'}
         </div>
-        {task.prompt && (
-          <div style={{
-            fontFamily: FONT_BODY, fontSize: 12.5,
-            color: 'var(--ink-3)', lineHeight: 1.45,
-            overflow: 'hidden', textOverflow: 'ellipsis',
-            display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 3,
-          }}>
-            {task.prompt}
-          </div>
-        )}
+
+        <div
+          onClick={stop}
+          onMouseDown={stop}
+          style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 2 }}
+        >
+          <RunNowButton onClick={() => onRunNow?.(task)} busy={busy} />
+          <OverflowMenu
+            items={taskMenuItems({ task, onEdit, onPause, onResume, onDelete })}
+            disabled={busy}
+            align="end"
+            // Quiet-but-present ghost icon button: muted at rest, gains a
+            // hover surface + darker ink on hover — the same 28px hit
+            // target the Live-artifacts / project cards use.
+            icon={Ico.moreVert(16)}
+            triggerClassName="h-7 w-7 justify-center rounded-md text-ink-4 hover:text-ink hover:bg-surface-2"
+          />
+        </div>
       </div>
+
+      {task.prompt && (
+        <div style={{
+          fontFamily: FONT_BODY, fontSize: 12.5,
+          color: 'var(--ink-3)', lineHeight: 1.45,
+          overflow: 'hidden', textOverflow: 'ellipsis',
+          display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2,
+        }}>
+          {task.prompt}
+        </div>
+      )}
 
       {task.lastError && (
         <Alert variant="danger" className="p-2 text-xs">
@@ -123,117 +130,79 @@ export default function ScheduleCard({
         </Alert>
       )}
 
-      {/* Project label — mirrors ArtifactBubble's `project: <name>`.
-          Clickable when we can resolve the name to a project object;
-          otherwise rendered plainly. Hidden entirely when the task
-          has no project (older schedules pre-fix all hit this). */}
-      {projectName && (
-        <div style={{
-          fontFamily: 'var(--font-mono)', fontSize: 11,
-          color: 'var(--ink-4)', letterSpacing: '0.04em',
-          display: 'flex', alignItems: 'baseline', gap: 4,
-          minWidth: 0,
-        }}>
-          <span style={{ flexShrink: 0 }}>project:</span>
-          {canOpenProject ? (
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); onOpenProject(projectMatch); }}
-              title={`Open ${projectMatch.name}`}
-              style={{
-                all: 'unset', cursor: 'pointer',
-                color: 'var(--ink-3)', minWidth: 0,
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                transition: 'color 120ms ease',
-              }}
-              onMouseOver={(e) => {
-                e.currentTarget.style.color = 'var(--accent)';
-                e.currentTarget.style.textDecoration = 'underline';
-                e.currentTarget.style.textUnderlineOffset = '2px';
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.color = 'var(--ink-3)';
-                e.currentTarget.style.textDecoration = 'none';
-              }}
-            >{projectName}</button>
-          ) : (
-            <span style={{
-              color: 'var(--ink-3)', minWidth: 0,
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>{projectName}</span>
-          )}
-        </div>
-      )}
-
-      {/* Meta row — cadence + next run, or just cadence when paused
-          (the badge above already says "Paused" — no need to repeat
-          it here). Tooltip carries the absolute timestamp for users
-          who want it precise. */}
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        gap: 8,
-        fontFamily: FONT_BODY, fontSize: 11.5, color: 'var(--ink-3)',
-      }}>
-        <span title={absoluteTime(task.nextRunAt)} style={{
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>
-          {task.enabled
-            ? <>{cadenceLabel(task.cadence)} · Next run <strong style={{ color: 'var(--ink-2)', fontWeight: 500 }}>{relativeTime(task.nextRunAt) ?? '—'}</strong></>
-            : <>{cadenceLabel(task.cadence)}</>}
-        </span>
-        {task.lastRunAt && (
-          <span title={absoluteTime(task.lastRunAt)} style={{ color: 'var(--ink-4)' }}>
-            Last · {relativeTime(task.lastRunAt) ?? '—'}
-          </span>
-        )}
-      </div>
-
-      {/* Missed-runs note — appears under the meta row only when the
-          schedule slipped one or more cycles while the app was off.
-          Cleared automatically on the next successful run; purely
-          informational, no action required. */}
+      {/* Missed-runs note — shown only when the schedule slipped one or more
+          cycles while the app was off. Cleared on the next successful run;
+          purely informational. */}
       {Number(task.missedRuns) > 0 && (
-        <div style={{
-          fontFamily: FONT_BODY, fontSize: 11, color: 'var(--ink-4)',
-          marginTop: -4,
-        }}>
+        <div style={{ fontFamily: FONT_BODY, fontSize: 11, color: 'var(--ink-4)' }}>
           Missed {task.missedRuns} run{task.missedRuns === 1 ? '' : 's'} while the app was closed.
         </div>
       )}
 
-      {/* Hover-revealed action row. Always rendered to keep layout
-          stable; opacity fades up on hover so the card stays calm at
-          rest. Click handlers stop propagation so action buttons
-          don't trigger the card's open. */}
-      <div
-        onClick={stop}
-        onMouseDown={stop}
-        style={{
-          display: 'flex', alignItems: 'center', gap: 6,
-          paddingTop: 4, marginTop: 'auto',
-          opacity: (hover || menuOpen) ? 1 : 0,
-          transition: 'opacity 140ms ease',
-          pointerEvents: (hover || menuOpen) ? 'auto' : 'none',
-        }}
-      >
-        <ActionButton
-          icon={Ico.send ? Ico.send(12) : '▶'}
-          label="Run now"
-          onClick={() => onRunNow?.(task)}
-          busy={busy}
-        />
-        <OverflowMenu
-          items={taskMenuItems({ task, onEdit, onPause, onResume, onDelete })}
-          disabled={busy}
-          open={menuOpen}
-          onOpenChange={setMenuOpen}
-          align="start"
-          // Give the trigger a real hit target + hover surface (a ghost icon
-          // button, the pattern the Live-artifacts card uses) rather than the
-          // bare icon-sized default — a tiny kebab was hard to hit and to see.
-          icon={Ico.moreVert(16)}
-          triggerClassName="h-7 w-7 justify-center rounded-md hover:bg-surface-2"
-        />
+      {/* Meta row — the card's metadata under a hairline (the Project-card
+          idiom). Project origin on the LEFT (the ArtifactBubble footer
+          convention: origin left, temporal info right); status badge +
+          schedule on the right. `marginTop: auto` drops the row to the card's
+          baseline so meta rows align across a grid row. Enabled cards lead
+          with the next run (the actionable fact); paused cards show the
+          cadence instead — the badge already says "Paused", and there is no
+          next run. Cadence for enabled tasks + last-run + absolute times live
+          on the detail page. */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8,
+        borderTop: '1px solid var(--line)', paddingTop: 11, marginTop: 'auto',
+        minWidth: 0,
+      }}>
+        {projectName && (
+          <span style={{
+            minWidth: 0, flex: '0 1 auto',
+            display: 'flex', alignItems: 'center', gap: 6,
+          }}>
+            <span style={{ display: 'inline-flex', flexShrink: 0, color: 'var(--ink-4)' }}>{Ico.folder(13)}</span>
+            {canOpenProject ? (
+              <button
+                type="button"
+                onMouseDown={stop}
+                onClick={(e) => { e.stopPropagation(); onOpenProject(projectMatch); }}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); onOpenProject(projectMatch); } }}
+                title={`Open ${projectMatch.name}`}
+                style={{
+                  all: 'unset', cursor: 'pointer',
+                  fontFamily: FONT_BODY, fontSize: 12, color: 'var(--ink-3)',
+                  minWidth: 0,
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  transition: 'color 120ms ease',
+                }}
+                onMouseOver={(e) => { e.currentTarget.style.color = 'var(--accent)'; e.currentTarget.style.textDecoration = 'underline'; e.currentTarget.style.textUnderlineOffset = '2px'; }}
+                onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-3)'; e.currentTarget.style.textDecoration = 'none'; }}
+              >{projectName}</button>
+            ) : (
+              <span title={projectName} style={{
+                fontFamily: FONT_BODY, fontSize: 12, color: 'var(--ink-3)',
+                minWidth: 0,
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>{projectName}</span>
+            )}
+          </span>
+        )}
+
+        <span style={{
+          marginLeft: projectName ? 'auto' : 0, flexShrink: 0,
+          display: 'flex', alignItems: 'center', gap: 8,
+        }}>
+          <ScheduleStatusBadge task={task} size="sm" />
+          <span
+            title={task.enabled ? absoluteTime(task.nextRunAt) : undefined}
+            style={{
+              fontFamily: FONT_BODY, fontSize: 12, color: 'var(--ink-4)',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {task.enabled
+              ? <>Next run <strong style={{ color: 'var(--ink-3)', fontWeight: 500 }}>{relativeTime(task.nextRunAt) ?? '—'}</strong></>
+              : cadenceLabel(task.cadence)}
+          </span>
+        </span>
       </div>
     </Card>
   );
@@ -254,11 +223,23 @@ export function taskMenuItems({ task, onEdit, onPause, onResume, onDelete }) {
 }
 
 
-function ActionButton({ icon, label, onClick, busy }) {
+// Primary verb of the surface. Kept LABELED (not a mystery-meat icon) and
+// always visible — it's the one thing people come to this page to do. The
+// `subtle` variant is a borderless ghost that only firms up on hover, so a
+// grid of these reads calm at rest. Busy swaps the send glyph for a spinner
+// and disables the click while a run is in flight.
+function RunNowButton({ onClick, busy }) {
   return (
-    <Button onClick={onClick} disabled={busy}>
-      {icon}
-      {label}
+    <Button
+      variant="subtle"
+      size="sm"
+      onClick={onClick}
+      disabled={busy}
+      title="Run now"
+      aria-label="Run now"
+    >
+      {busy ? <Spinner /> : (Ico.send ? Ico.send(13) : '▶')}
+      Run now
     </Button>
   );
 }
