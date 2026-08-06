@@ -1996,6 +1996,16 @@ function AppCore() {
     reconnectInFlight(id).catch(() => { /* probe failures are silent */ });
   };
 
+  // Deep-link support (ENG-1233): the boot session list is capped (fetchSessions,
+  // limit 200), so a refresh/shared link to an older conversation isn't in `tasks`.
+  // Fetch it by id directly — works for any conversation — and inject it so the
+  // resolver can restore it. Returns the task, or null if the server says it's gone.
+  const ensureConversation = async (id) => {
+    const task = await fetchSession(id);
+    if (task) setTasks((prev) => (prev.some((t) => t.id === task.id) ? prev : [task, ...prev]));
+    return task;
+  };
+
   const newTask = () => {
     if (isNarrow) setNavPopoutOpen(false);
     setActiveTaskId(null);
@@ -2521,7 +2531,7 @@ function AppCore() {
     nav,
     dispatch,
     { bootNav, tasks, projects, sessionsLoaded, projectsLoaded },
-    { selectTask, navigate, openSettings },
+    { selectTask, navigate, openSettings, ensureConversation },
   );
 
   const attachmentProjectPath = currentTask?.projectPath || selectedProject?.path || null;

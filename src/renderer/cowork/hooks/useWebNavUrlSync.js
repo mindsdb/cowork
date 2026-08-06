@@ -9,7 +9,11 @@ import { navPatch } from '../lib/navState';
 export function useWebNavUrlSync(nav, dispatch, deps, primitives) {
   const { route, activeTaskId, selectedProject, selectedScheduleId, settingsOpen, settingsSection } = nav;
   const { bootNav, tasks, projects, sessionsLoaded, projectsLoaded } = deps;
-  const { selectTask, navigate, openSettings } = primitives;
+  const { selectTask, navigate, openSettings, ensureConversation } = primitives;
+
+  // Current nav, readable from async callbacks whose effect closure has gone stale.
+  const navRef = useRef(nav);
+  navRef.current = nav;
 
   const firstUrlSyncRef = useRef(true);
   const prevContentSigRef = useRef(null);
@@ -23,6 +27,7 @@ export function useWebNavUrlSync(nav, dispatch, deps, primitives) {
   // Deep-linked id/name awaiting its async list; seeded from the boot URL.
   const pendingTaskIdRef = useRef(bootNav?.route === 'task' ? bootNav.taskId : null);
   const pendingProjectNameRef = useRef(bootNav?.route === 'projects' ? bootNav.projectName : null);
+  const resolvingTaskRef = useRef(false);
 
   const navHandlerRef = useRef(() => {});
 
@@ -66,11 +71,21 @@ export function useWebNavUrlSync(nav, dispatch, deps, primitives) {
       pendingTaskIdRef.current = null;
       if (route === 'task' && activeTaskId === id) selectTask(id);
     } else if (sessionsLoaded) {
-      pendingTaskIdRef.current = null;
-      if (route === 'task' && activeTaskId === id) {
-        forceUrlReplace();
-        dispatch(navPatch({ route: 'home', activeTaskId: null }));
-      }
+      // Not in the capped session list — it may still exist (older than the list
+      // window, or a shared link). Fetch it by id: ensureConversation injects it so
+      // this effect re-runs into the branch above. Only abandon to home once the
+      // server confirms it's gone (and only if still on the broken link).
+      if (resolvingTaskRef.current) return;
+      resolvingTaskRef.current = true;
+      ensureConversation(id).then((task) => {
+        resolvingTaskRef.current = false;
+        if (task) return;
+        pendingTaskIdRef.current = null;
+        if (navRef.current.route === 'task' && navRef.current.activeTaskId === id) {
+          forceUrlReplace();
+          dispatch(navPatch({ route: 'home', activeTaskId: null }));
+        }
+      });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tasks, sessionsLoaded]);
