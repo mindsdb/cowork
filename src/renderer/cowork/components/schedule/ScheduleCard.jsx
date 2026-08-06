@@ -18,8 +18,6 @@ import OverflowMenu from '../OverflowMenu';
 import { relativeTime } from '../../lib/formatTime';
 import { ScheduleStatusBadge } from './ScheduleStatusBadge';
 
-const FONT_BODY = 'var(--font-body)';
-
 function absoluteTime(iso) {
   if (!iso) return '';
   const d = new Date(iso);
@@ -71,31 +69,23 @@ export default function ScheduleCard({
       interactive
       padding="cozy"
       onActivate={open}
-      // The card's own lift/shadow comes from `.card.interactive:hover` (CSS).
-      style={{
-        position: 'relative',
-        display: 'flex', flexDirection: 'column', gap: 10,
-      }}
+      // Layout only; the card's lift/shadow comes from `.card.interactive:hover` (CSS).
+      className="relative flex flex-col gap-2.5"
     >
       {/* Header row — title (2-line clamp) paired with the top-right actions:
           Run now + the ⋮ menu. Status has moved down to the meta row so this
           corner isn't three-up and cramped. Actions stop propagation so they
           don't also open the card; they're always visible so keyboard and
           touch/web reach them and the primary verb stays discoverable. */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-        <div className="s-h3" style={{
-          flex: 1, minWidth: 0,
-          color: 'var(--ink)',
-          overflow: 'hidden', textOverflow: 'ellipsis',
-          display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2,
-        }}>
+      <div className="flex items-start gap-2.5">
+        <div className="s-h3 line-clamp-2 min-w-0 flex-1">
           {task.title || 'Untitled schedule'}
         </div>
 
         <div
           onClick={stop}
           onMouseDown={stop}
-          style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 2 }}
+          className="flex shrink-0 items-center gap-0.5"
         >
           <RunNowButton onClick={() => onRunNow?.(task)} busy={busy} />
           <OverflowMenu
@@ -112,12 +102,7 @@ export default function ScheduleCard({
       </div>
 
       {task.prompt && (
-        <div style={{
-          fontFamily: FONT_BODY, fontSize: 12.5,
-          color: 'var(--ink-3)', lineHeight: 1.45,
-          overflow: 'hidden', textOverflow: 'ellipsis',
-          display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2,
-        }}>
+        <div className="line-clamp-2 font-body text-sm leading-[1.45] text-ink-3">
           {task.prompt}
         </div>
       )}
@@ -134,7 +119,7 @@ export default function ScheduleCard({
           cycles while the app was off. Cleared on the next successful run;
           purely informational. */}
       {Number(task.missedRuns) > 0 && (
-        <div style={{ fontFamily: FONT_BODY, fontSize: 11, color: 'var(--ink-4)' }}>
+        <div className="font-body text-xs text-ink-4">
           Missed {task.missedRuns} run{task.missedRuns === 1 ? '' : 's'} while the app was closed.
         </div>
       )}
@@ -142,23 +127,16 @@ export default function ScheduleCard({
       {/* Meta row — the card's metadata under a hairline (the Project-card
           idiom). Project origin on the LEFT (the ArtifactBubble footer
           convention: origin left, temporal info right); status badge +
-          schedule on the right. `marginTop: auto` drops the row to the card's
-          baseline so meta rows align across a grid row. Enabled cards lead
-          with the next run (the actionable fact); paused cards show the
-          cadence instead — the badge already says "Paused", and there is no
-          next run. Cadence for enabled tasks + last-run + absolute times live
-          on the detail page. */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 8,
-        borderTop: '1px solid var(--line)', paddingTop: 11, marginTop: 'auto',
-        minWidth: 0,
-      }}>
+          schedule on the right. `mt-auto` drops the row to the card's baseline
+          so meta rows align across a grid row. Enabled cards lead with the
+          next run (the actionable fact); paused cards show the cadence instead
+          — the badge already says "Paused", and there is no next run. Cadence
+          for enabled tasks + last-run + absolute times live on the detail
+          page. */}
+      <div className="mt-auto flex min-w-0 items-center gap-2 border-t border-line pt-[11px]">
         {projectName && (
-          <span style={{
-            minWidth: 0, flex: '0 1 auto',
-            display: 'flex', alignItems: 'center', gap: 6,
-          }}>
-            <span style={{ display: 'inline-flex', flexShrink: 0, color: 'var(--ink-4)' }}>{Ico.folder(13)}</span>
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="inline-flex shrink-0 text-ink-4">{Ico.folder(13)}</span>
             {canOpenProject ? (
               <button
                 type="button"
@@ -166,40 +144,22 @@ export default function ScheduleCard({
                 onClick={(e) => { e.stopPropagation(); onOpenProject(projectMatch); }}
                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); onOpenProject(projectMatch); } }}
                 title={`Open ${projectMatch.name}`}
-                style={{
-                  all: 'unset', cursor: 'pointer',
-                  fontFamily: FONT_BODY, fontSize: 12, color: 'var(--ink-3)',
-                  minWidth: 0,
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  transition: 'color 120ms ease',
-                }}
-                onMouseOver={(e) => { e.currentTarget.style.color = 'var(--accent)'; e.currentTarget.style.textDecoration = 'underline'; e.currentTarget.style.textUnderlineOffset = '2px'; }}
-                onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-3)'; e.currentTarget.style.textDecoration = 'none'; }}
+                className="m-0 min-w-0 cursor-pointer appearance-none truncate border-0 bg-transparent p-0 text-left font-body text-[12px] text-ink-3 transition-colors hover:text-accent hover:underline hover:underline-offset-2"
               >{projectName}</button>
             ) : (
-              <span title={projectName} style={{
-                fontFamily: FONT_BODY, fontSize: 12, color: 'var(--ink-3)',
-                minWidth: 0,
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              }}>{projectName}</span>
+              <span title={projectName} className="min-w-0 truncate font-body text-[12px] text-ink-3">{projectName}</span>
             )}
           </span>
         )}
 
-        <span style={{
-          marginLeft: projectName ? 'auto' : 0, flexShrink: 0,
-          display: 'flex', alignItems: 'center', gap: 8,
-        }}>
+        <span className={`flex shrink-0 items-center gap-2 ${projectName ? 'ml-auto' : ''}`}>
           <ScheduleStatusBadge task={task} size="sm" />
           <span
             title={task.enabled ? absoluteTime(task.nextRunAt) : undefined}
-            style={{
-              fontFamily: FONT_BODY, fontSize: 12, color: 'var(--ink-4)',
-              whiteSpace: 'nowrap',
-            }}
+            className="whitespace-nowrap font-body text-[12px] text-ink-4"
           >
             {task.enabled
-              ? <>Next run <strong style={{ color: 'var(--ink-3)', fontWeight: 500 }}>{relativeTime(task.nextRunAt) ?? '—'}</strong></>
+              ? <>Next run <strong className="font-medium text-ink-3">{relativeTime(task.nextRunAt) ?? '—'}</strong></>
               : cadenceLabel(task.cadence)}
           </span>
         </span>
