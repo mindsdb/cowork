@@ -99,7 +99,9 @@ export default function ScheduleCard({
 
       {/* Meta row (hairline): project origin left, status + schedule right.
           Enabled tasks show the next run; paused tasks show the cadence. */}
-      <div className="mt-auto flex min-w-0 items-center gap-2 border-t border-line pt-[11px]">
+      {/* border-x-0/border-b-0 zero the other sides: preflight is disabled, so
+          border-solid would otherwise reveal their default (medium) width. */}
+      <div className="mt-auto flex min-w-0 items-center gap-2 border-x-0 border-b-0 border-t border-solid border-line pt-[11px]">
         {projectName && (
           <span className="flex min-w-0 items-center gap-1.5">
             <span className="inline-flex shrink-0 text-ink-4">{Ico.folder(13)}</span>
