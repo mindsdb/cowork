@@ -25,7 +25,7 @@ const TITLES = {
 };
 
 function EmptyState({ children }) {
-  return <div className="p-8 text-[var(--frost-600)] text-[13px]">{children}</div>;
+  return <div className="p-8 text-[var(--frost-600)] text-sm">{children}</div>;
 }
 
 function credentialTemplate(engineDef) {
@@ -226,12 +226,12 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
         <div className="scroll-clean overflow-y-auto min-h-0">
           {editing === 'edit' && selected ? (
             <>
-              <div className="flex items-center gap-[10px] mb-[10px]">
+              <div className="flex items-center gap-3 mb-3">
                 <div className="flex-1">
                   <div className="text-base font-[650] text-strong">
                     {labelCategory(selected.category)}
                   </div>
-                  <div className="text-[12px] text-[var(--frost-600)]">
+                  <div className="text-sm text-[var(--frost-600)]">
                     {selected.scope === 'Project' && selected.projectName
                       ? `Project · ${selected.projectName}`
                       : selected.scope}
@@ -248,12 +248,12 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
             </>
           ) : displayed ? (
             <>
-              <div className="flex items-center gap-[10px] mb-[10px]">
+              <div className="flex items-center gap-3 mb-3">
                 <div className="flex-1">
                   <div className="text-base font-[650] text-strong">
                     {labelCategory(displayed.category)}
                   </div>
-                  <div className="text-[12px] text-[var(--frost-600)]">
+                  <div className="text-sm text-[var(--frost-600)]">
                     {displayed.scope === 'Project' && displayed.projectName
                       ? `Project · ${displayed.projectName}`
                       : displayed.scope}
@@ -285,17 +285,17 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
 function MemorySectionList({ heading, files, selected, onSelect, isActive }) {
   return (
     <div className="flex flex-col gap-px">
-      <div className="font-mono text-[10.5px] tracking-[0.14em] uppercase text-ink-4 font-semibold px-1 pb-1 flex items-center gap-[6px]">
+      <div className="font-mono text-xs tracking-[0.14em] uppercase text-ink-4 font-semibold px-1 pb-1 flex items-center gap-2">
         <span>{heading}</span>
-        {isActive && <span className="text-accent tracking-[0] normal-case font-[var(--font-body)] text-[10.5px]">· active</span>}
+        {isActive && <span className="text-accent tracking-[0] normal-case font-[var(--font-body)] text-xs">· active</span>}
         <span className="ml-auto text-ink-4 tracking-[0] normal-case font-[var(--font-body)]">{files.length}</span>
       </div>
       {files.length === 0 ? (
-        <div className="px-[6px] py-[2px] text-ink-4 text-[12px]">—</div>
+        <div className="px-2 py-[2px] text-ink-4 text-sm">—</div>
       ) : files.map((file) => (
         <button
           key={file.path}
-          className={`recent-item${selected?.path === file.path ? ' active' : ''} h-auto min-h-[26px] px-[10px] py-1 text-sm`}
+          className={`recent-item${selected?.path === file.path ? ' active' : ''} h-auto min-h-[26px] px-3 py-1 text-sm`}
           onClick={() => onSelect(file)}
         >
           <span className="text-[var(--primary-700)] inline-flex">{Ico.doc(13)}</span>
@@ -410,18 +410,18 @@ function ConnectView({ data, setData, setStatus }) {
   return (
     <div className="util-publish p-[28px] grid grid-cols-[1fr_360px] gap-6">
       <div>
-        <div className="text-[13px] font-[650] text-strong mb-[10px]">Saved connections</div>
+        <div className="text-sm font-[650] text-strong mb-3">Saved connections</div>
         {(data.connections || []).length ? (data.connections || []).map((conn) => (
-          <div key={`${conn.engine}-${conn.name}`} className="flex items-center gap-[10px] py-[10px] border-b border-[var(--border-0)] text-[13px]">
+          <div key={`${conn.engine}-${conn.name}`} className="flex items-center gap-3 py-3 border-b border-[var(--border-0)] text-sm">
             <div className="flex-1">
               <strong className="text-strong">{conn.displayName || conn.engine}</strong> / {conn.name}
-              <div className="text-[11.5px] text-[var(--frost-600)]">{conn.testAvailable ? 'Ready for datasource tools' : 'Saved in data vault'}</div>
+              <div className="text-xs text-[var(--frost-600)]">{conn.testAvailable ? 'Ready for datasource tools' : 'Saved in data vault'}</div>
             </div>
             <Button variant="subtle" onClick={() => remove(conn)}>Remove</Button>
           </div>
         )) : <EmptyState>No data vault connections found.</EmptyState>}
       </div>
-      <form onSubmit={save} className="flex flex-col gap-[10px]">
+      <form onSubmit={save} className="flex flex-col gap-3">
         <Select
           ariaLabel="Engine"
           value={engine}
@@ -440,7 +440,7 @@ function ConnectView({ data, setData, setStatus }) {
         )}
         <Input aria-label="Connection name (optional)" value={name} onChange={(v) => setName(v)} placeholder="connection name (optional)" style={inputStyle} />
         {fields.length > 0 && (
-          <div className="text-[11.5px] text-[var(--frost-600)]">
+          <div className="text-xs text-[var(--frost-600)]">
             Required: {fields.filter((field) => field.required).map((field) => field.name).join(', ') || 'none'}
           </div>
         )}
@@ -475,7 +475,7 @@ function ConnectView({ data, setData, setStatus }) {
             This engine does not expose editable credential fields in the installed registry.
           </div>
         )}
-        {validation && <div className="text-[12px] text-[var(--frost-700)]">{validation}</div>}
+        {validation && <div className="text-sm text-[var(--frost-700)]">{validation}</div>}
         <Button variant="subtle" disabled={!engine.trim() || busy} onClick={validate}>
           {busyAction === 'check' ? 'Checking' : 'Check fields'}
         </Button>
@@ -508,7 +508,7 @@ function PublishView({ data, setData, setStatus, onRefreshArtifacts }) {
   };
 
   return (
-    <div className="p-[28px] flex flex-col gap-[10px]">
+    <div className="p-[28px] flex flex-col gap-3">
       {!data.publishReady && (
         <Alert variant="warning">
           Configure a Minds API key in Settings before sharing.
@@ -518,9 +518,9 @@ function PublishView({ data, setData, setStatus, onRefreshArtifacts }) {
         <div key={artifact.path} className="flex items-center gap-3 p-3 border border-[var(--border-01)] rounded-[9px]">
           <span className="text-[var(--primary-700)] inline-flex">{Ico.upload(15)}</span>
           <div className="flex-1 min-w-0">
-            <div className="text-[13.5px] font-[650] text-strong">{artifact.title}</div>
-            <div className="text-[11.5px] text-[var(--frost-600)] whitespace-nowrap overflow-hidden text-ellipsis">{artifact.path}</div>
-            {artifact.publishedUrl && <div className="text-[12px] text-[var(--sage-700)] mt-1 select-text">{artifact.publishedUrl}</div>}
+            <div className="text-base font-[650] text-strong">{artifact.title}</div>
+            <div className="text-xs text-[var(--frost-600)] whitespace-nowrap overflow-hidden text-ellipsis">{artifact.path}</div>
+            {artifact.publishedUrl && <div className="text-sm text-[var(--sage-700)] mt-1 select-text">{artifact.publishedUrl}</div>}
           </div>
           {artifact.publishedUrl && <Button variant="subtle" onClick={() => copyUrl(artifact.publishedUrl)}>Copy URL</Button>}
           {artifact.publishedUrl && <Button variant="subtle" onClick={() => window.open(artifact.publishedUrl, '_blank', 'noopener,noreferrer')}>Open</Button>}
@@ -528,8 +528,8 @@ function PublishView({ data, setData, setStatus, onRefreshArtifacts }) {
         </div>
       )) : <EmptyState>No HTML artifacts found in output folders.</EmptyState>}
       {(data.history || []).length > 0 && (
-        <div className="mt-[18px]">
-          <div className="text-[13px] font-[650] text-strong mb-2">Share history</div>
+        <div className="mt-5">
+          <div className="text-sm font-[650] text-strong mb-2">Share history</div>
           {(data.history || []).slice(0, 10).map((item) => (
             <div key={`${item.artifact}-${item.publishedAt}`} className="py-2 border-t border-[var(--border-0)] text-sm">
               <strong>{item.artifactName}</strong>
@@ -566,4 +566,4 @@ const memoryEditorClass = 'w-full min-h-[520px] border border-[var(--border-01)]
 // and edit doesn't shift the layout. Body styling (font, line-height,
 // colours) is left to MarkdownContent itself so headings, lists, and
 // code fences render with the same chat-column rhythm.
-const memoryViewerClass = 'min-h-[520px] px-[14px] py-3 border border-[var(--border-01)] rounded-[7px] bg-[var(--surface-0)] select-text overflow-y-auto';
+const memoryViewerClass = 'min-h-[520px] px-4 py-3 border border-[var(--border-01)] rounded-[7px] bg-[var(--surface-0)] select-text overflow-y-auto';
