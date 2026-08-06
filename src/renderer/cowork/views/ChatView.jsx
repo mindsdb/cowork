@@ -37,6 +37,7 @@ import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { harnessLabel } from '../lib/agentLabel';
 import { modelLabel } from '../lib/settingsTransform';
 import { providerOverloadedButtons } from '../lib/turnErrorActions';
+import { isSkippedFailedAssistant, isOrphanUser as isOrphanUserPure } from '../lib/turnVisibility';
 import { isThinkingActive } from '../lib/thinkingActive';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 
@@ -951,10 +952,11 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
  * flavors, keyed on the structured code:
  *
  * - `model_access_denied` — old gateways sent this when the account couldn't
- *   cover the model, so lead with Add credits.
+ *   cover the model, so lead with Top up balance (plus the conditional
+ *   Switch to MindsHub Air escape hatch).
  * - `model_disabled` — an admin turned the model off; credits don't unlock
- *   it, so lead with Switch model (Add credits stays as a secondary escape
- *   hatch since some old gateways used this code for credit locks too).
+ *   it, so lead with Open Settings (Top up balance stays as a secondary
+ *   escape hatch since some old gateways used this code for credit locks).
  *
  * The body is OUR copy, never the server's error string — old gateways word
  * these as access problems, which under pay as you go misdescribes an empty
@@ -1595,17 +1597,11 @@ export default function ChatView({
               // affordance with the right turn index.
               let assistantTurnIdx = -1;
               let userInputIdx = -1;
-              const isOrphanUser = (atIdx) => {
-                // Walk forward from this user message — if we hit
-                // another user before any assistant, this one is an
-                // orphan. End-of-list with no assistant → orphan.
-                for (let j = atIdx + 1; j < visibleMessages.length; j++) {
-                  const role = visibleMessages[j]?.role;
-                  if (role === 'user') return true;
-                  if (role === 'assistant') return false;
-                }
-                return true;
-              };
+              // Skip + orphan rules live together in lib/turnVisibility so a
+              // user message whose only assistant bubble is skipped keeps the
+              // delete affordance the hidden bubble used to carry (ENG-1304,
+              // PR #580 review).
+              const isOrphanUser = (atIdx) => isOrphanUserPure(visibleMessages, atIdx);
               // Index of the last user or assistant message — its actions
               // stay always-visible (Claude pattern: most recent exchange
               // shows its toolbar). When streaming, nothing needs isLast
@@ -1805,14 +1801,11 @@ export default function ChatView({
                 );
               }
               assistantTurnIdx += 1;
-              // A turn that failed before producing anything hydrates as an
-              // assistant message with no content and no steps, followed by
-              // its error (or provider_required) card. Rendering the empty
-              // bubble put a large blank block above every billing card
-              // (ENG-1304) — skip it. Counted first so turn indexing is
-              // unchanged.
-              const nextRole = visibleMessages[i + 1]?.role;
-              if (!m.content && !(m.steps?.length) && (nextRole === 'error' || nextRole === 'provider_required')) {
+              // A turn that failed before producing anything renders no
+              // bubble — the blank block above billing cards (ENG-1304).
+              // Counted first so turn indexing is unchanged; the same
+              // predicate keeps isOrphanUser's delete affordance honest.
+              if (isSkippedFailedAssistant(visibleMessages, i)) {
                 return null;
               }
               // The server keys delete_turn by USER-INPUT index, not
