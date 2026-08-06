@@ -2613,6 +2613,11 @@ body[data-theme="dark"] .btn.danger-solid:focus-visible {
   opacity: 0.55;
   cursor: not-allowed;
 }
+/* The wrapper owns the disabled dim; keep the inner input at full opacity so
+   the two don't compound (`.field-input:disabled` also sets 0.55). */
+.field-group > .field-input:disabled {
+  opacity: 1;
+}
 .field-group > .field-input {
   flex: 1;
   min-width: 0;
