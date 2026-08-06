@@ -25,24 +25,31 @@ describe('normalizeAntonError', () => {
   });
 });
 
-// Copy contract: subscriptions are gone, so no user-facing string may sell
-// one. Sweeps the renderer sources (not tests, not identifiers like
-// loadAndSubscribe — only quoted strings are checked).
+// Copy contract: subscriptions are gone, so no user-facing wording may sell
+// one. Sweeps every renderer source for the word Subscribe outside comments —
+// a plain word match, not a quoted-string match, because the HomeView
+// occurrences this guards against were JSX text children ("&gt;Subscribe&lt;/Button&gt;"),
+// which carry no quotes (PR #581 review). The word boundary skips identifiers
+// like loadAndSubscribe on its own; comment strips cover the code comments
+// that legitimately quote the old wording.
 describe('no Subscribe wording anywhere (ENG-1305)', () => {
-  it('renderer source strings never say Subscribe', () => {
-    const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+  it('renderer sources never say Subscribe outside comments', () => {
+    const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
     const offenders = [];
     const walk = (dir) => {
       for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
         const p = path.join(dir, e.name);
         if (e.isDirectory()) { walk(p); continue; }
         if (!/\.(jsx?|tsx?)$/.test(e.name) || /\.test\./.test(e.name)) continue;
-        // ponytail: line-comment strip only — an inline trailing comment
-        // quoting Subscribe would still match, which fails safe (a human
-        // looks) rather than silently passing.
-        const src = fs.readFileSync(p, 'utf8').replace(/^\s*\/\/.*$/gm, '');
-        for (const m of src.matchAll(/(["'`])((?:(?!\1).)*Subscribe(?:(?!\1).)*)\1/g)) {
-          offenders.push(`${p}: ${m[2]}`);
+        // ponytail: full-line // strip plus /* */ strip — an inline trailing
+        // // comment quoting Subscribe would still match, which fails safe
+        // (a human looks) rather than silently passing.
+        const src = fs.readFileSync(p, 'utf8')
+          .replace(/\/\*[\s\S]*?\*\//g, '')
+          .replace(/^\s*\/\/.*$/gm, '');
+        for (const m of src.matchAll(/\bSubscribe/g)) {
+          const line = src.slice(0, m.index).split('\n').length;
+          offenders.push(`${p}:${line}`);
         }
       }
     };
