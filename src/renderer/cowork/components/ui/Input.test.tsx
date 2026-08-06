@@ -40,6 +40,17 @@ describe('Input', () => {
     expect(container.querySelectorAll('.field-group__addon')).toHaveLength(1);
   });
 
+  it('treats a falsy adornment as absent (no empty group / addon)', () => {
+    // The `leading={cond && <Icon/>}` idiom yields `false` when off — it must
+    // render the bare input, not a group with an empty gap-consuming addon.
+    const { container } = render(
+      <Input value="" onChange={() => {}} leading={false} trailing={null} />,
+    );
+    expect(container.querySelector('.field-group')).toBeNull();
+    expect(container.querySelectorAll('.field-group__addon')).toHaveLength(0);
+    expect(container.querySelector('input.field-input')).toBeTruthy();
+  });
+
   it('still fires onChange when adorned and forwards native attrs (type) through', () => {
     const onChange = vi.fn();
     const { container } = render(

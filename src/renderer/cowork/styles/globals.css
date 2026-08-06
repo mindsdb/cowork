@@ -2597,9 +2597,21 @@ body[data-theme="dark"] .btn.danger-solid:focus-visible {
   gap: 8px;
   height: 34px; /* mirrors `.field-input` */
 }
+.field-group:hover {
+  border-color: var(--line-2);
+}
 .field-group:focus-within {
   border-color: var(--accent);
   box-shadow: var(--ring);
+}
+/* Keyboard focus gets the stronger 1px ring, matching `.field-input:focus-visible` (WCAG 2.4.7). */
+.field-group:focus-within:has(.field-input:focus-visible) {
+  box-shadow: 0 0 0 1px var(--accent);
+}
+/* Disabled dims the whole box (border + adornments), not just the inner input. */
+.field-group:has(.field-input:disabled) {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 .field-group > .field-input {
   flex: 1;
@@ -2627,6 +2639,7 @@ body[data-theme="dark"] .btn.danger-solid:focus-visible {
   height: 28px;
   padding: 4px 10px;
   border-radius: var(--r-sm);
+  font-size: var(--text-sm);
 }
 
 /* Field label group helper */

@@ -61,8 +61,13 @@ export const Input = forwardRef<ComponentRef<typeof BaseInput>, InputProps>(func
     />
   );
 
-  // No adornments → render exactly as before (backward compatible).
-  if (leading == null && trailing == null) return control;
+  // No adornments → render exactly as before (backward compatible). Test for
+  // truthiness, not `!= null`: the common `leading={cond && <Icon/>}` idiom
+  // yields `false` when off, which must NOT open the group or render an empty
+  // (gap-consuming) addon slot.
+  const hasLeading = Boolean(leading);
+  const hasTrailing = Boolean(trailing);
+  if (!hasLeading && !hasTrailing) return control;
 
   const groupClasses = [
     'field-group',
@@ -71,9 +76,9 @@ export const Input = forwardRef<ComponentRef<typeof BaseInput>, InputProps>(func
   ].filter(Boolean).join(' ');
   return (
     <span className={groupClasses}>
-      {leading != null && <span className="field-group__addon">{leading}</span>}
+      {hasLeading && <span className="field-group__addon">{leading}</span>}
       {control}
-      {trailing != null && <span className="field-group__addon">{trailing}</span>}
+      {hasTrailing && <span className="field-group__addon">{trailing}</span>}
     </span>
   );
 });
