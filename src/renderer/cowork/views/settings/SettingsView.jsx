@@ -93,26 +93,27 @@ function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSett
   );
 }
 
-// Collapsible group of sections. Defaults to open; click the header to
-// toggle. Uses the theme tokens so it reads well in light + dark.
-function CollapsibleGroup({ title, defaultOpen = true, children }) {
+// A titled group of settings sections. Since ENG-1320 these no longer
+// collapse: the settings subnav already isolates one section per screen, so a
+// second collapse level inside a section just hid content behind an extra
+// click for no benefit. The group is now a static titled card whose content is
+// always visible. The heading is kept so groups still surface in SR heading
+// navigation. Mobile stays flat, as it already was (ENG-990).
+function SettingsGroup({ title, children }) {
   const { mobile } = useContext(SettingsLayoutContext);
-  const [open, setOpen] = useState(defaultOpen);
-  const panelId = useId();
-  const headingId = useId();
-  // Mobile (ENG-990): flat and non-collapsible. The master-detail screen
-  // already isolates one section, so a second collapse level just adds
-  // confusion — render the group title as a plain header with its content
-  // always visible, separated from the next group by spacing.
+  const headingStyle = {
+    margin: 0,
+    fontFamily: 'var(--font-sans)', fontSize: 12.5, fontWeight: 600,
+    letterSpacing: '0.04em', textTransform: 'uppercase',
+    color: 'var(--text-muted)',
+  };
+  // Mobile (ENG-990): the master-detail screen already isolates one section,
+  // so render the group title as a plain header with its content flowing
+  // below, separated from the next group by spacing.
   if (mobile) {
     return (
       <div style={{ marginBottom: 6 }}>
-        <h2 style={{
-          margin: 0, padding: '12px 2px 8px',
-          fontFamily: 'var(--font-sans)', fontSize: 12.5, fontWeight: 600,
-          letterSpacing: '0.04em', textTransform: 'uppercase',
-          color: 'var(--text-muted)',
-        }}>{title}</h2>
+        <h2 style={{ ...headingStyle, padding: '12px 2px 8px' }}>{title}</h2>
         <div style={{ padding: '0 2px 4px' }}>{children}</div>
       </div>
     );
@@ -128,34 +129,8 @@ function CollapsibleGroup({ title, defaultOpen = true, children }) {
       marginBottom: 14,
       overflow: 'hidden',
     }}>
-      {/* W3C "Accordion" pattern: heading wraps the toggle button so the
-          group surfaces in SR heading navigation, while the button still
-          owns interaction. h3 margin reset to keep the visual layout. */}
-      <h2 id={headingId} style={{ margin: 0, padding: 0, fontWeight: 'inherit', fontSize: 'inherit' }}>
-        <button
-          onClick={() => setOpen((o) => !o)}
-          aria-expanded={open}
-          aria-controls={panelId}
-          style={{
-            width: '100%', display: 'flex', alignItems: 'center', gap: 8,
-            padding: '14px 18px', background: 'transparent', border: 0,
-            fontFamily: 'var(--font-sans)', fontSize: 12.5, fontWeight: 600,
-            letterSpacing: '0.04em', textTransform: 'uppercase',
-            color: 'var(--text-muted)', cursor: 'pointer', textAlign: 'left',
-          }}
-        >
-          <span aria-hidden="true" style={{
-            display: 'inline-flex', width: 14, height: 14,
-            color: 'var(--text-muted)',
-            transform: open ? 'rotate(90deg)' : 'rotate(0deg)',
-            transition: 'transform 180ms cubic-bezier(0.32, 0.72, 0, 1)',
-          }}>{Ico.chevronRight ? Ico.chevronRight(12) : '›'}</span>
-          <span style={{ flex: 1 }}>{title}</span>
-        </button>
-      </h2>
-      {open && (
-        <div id={panelId} role="region" aria-labelledby={headingId} style={{ padding: '0 18px 8px' }}>{children}</div>
-      )}
+      <h2 style={{ ...headingStyle, padding: '14px 18px 0' }}>{title}</h2>
+      <div style={{ padding: '10px 18px 8px' }}>{children}</div>
     </div>
   );
 }
@@ -1200,7 +1175,7 @@ export default function SettingsView({
       <SettingsSectionPanel footer={renderSaveFooter()}>
         <div style={{ display: 'flex', flexDirection: 'column' }}>
           <div style={{ order: anyProviderConfigured ? 2 : 0 }}>
-            <CollapsibleGroup title="LLM Providers">
+            <SettingsGroup title="LLM Providers">
               {providers.map((p) => {
                 const configured = providerConfigured(p);
                 const label = typeLabels[p.type] || p.type;
@@ -1470,10 +1445,10 @@ export default function SettingsView({
                   >{Ico.close(13)}</Button>
                 </div>
               </div>
-            </CollapsibleGroup>
+            </SettingsGroup>
           </div>
           <div style={{ order: anyProviderConfigured ? 1 : 0 }}>
-            <CollapsibleGroup title="Agent Models">
+            <SettingsGroup title="Agent Models">
               {(() => {
                 // The default-mode provider is the implicit fallback for
                 // any role that hasn't been explicitly assigned an
@@ -1738,11 +1713,11 @@ export default function SettingsView({
                   </>
                 );
               })()}
-            </CollapsibleGroup>
+            </SettingsGroup>
           </div>
         </div>
 
-        <CollapsibleGroup title="Agent Harness">
+        <SettingsGroup title="Agent Harness">
           <Section title="Harness" subtitle={`Which AI agent powers your tasks. ${agentLabel || 'Anton'} is the default; Hermes is an alternative agent with its own tool and memory system.`}>
             <ToggleGroup
               value={settings.harness || 'anton'}
@@ -1754,9 +1729,9 @@ export default function SettingsView({
               ]}
             />
           </Section>
-        </CollapsibleGroup>
+        </SettingsGroup>
 
-        <CollapsibleGroup title="Memory" defaultOpen={false}>
+        <SettingsGroup title="Memory">
           <Section title="Memory mode" subtitle={`How ${agentLabel || 'Anton'} updates its long-term memory.`}>
             <ToggleGroup
               value={settings.memoryMode ?? 'autopilot'}
@@ -1793,10 +1768,10 @@ export default function SettingsView({
               aria-label="Act first, ask later"
             />
           </Section>
-        </CollapsibleGroup>
+        </SettingsGroup>
 
         {hasBudgetSettings && (
-          <CollapsibleGroup title="Advanced Settings" defaultOpen={false}>
+          <SettingsGroup title="Advanced Settings">
             <Section
               title="Max steps per task"
               subtitle={`How many actions (running code, reading files, searching) ${agentLabel || 'Anton'} may take on one request before pausing to check in with you. Raise it so big tasks finish in one go; lower it for a tighter leash on time and cost.`}
@@ -1823,7 +1798,7 @@ export default function SettingsView({
                 setSetting={setSetting}
               />
             </Section>
-          </CollapsibleGroup>
+          </SettingsGroup>
         )}
       </SettingsSectionPanel>
     );
@@ -1940,7 +1915,7 @@ export default function SettingsView({
     // `autoSaved` surfaces a quiet "saves automatically" note on mobile so the
     // page doesn't read as "no way to save" next to Save-button sections.
     <SettingsSectionPanel autoSaved>
-      <CollapsibleGroup title="Appearance">
+      <SettingsGroup title="Appearance">
         <Section title="Style" subtitle="Normal, 8-Bit, or design your own with Custom. Combines with light and dark.">
           <ToggleGroup
             value={normalizeSkin(skin)}
@@ -2193,7 +2168,7 @@ export default function SettingsView({
             </div>
           </Section>
         </div>
-      </CollapsibleGroup>
+      </SettingsGroup>
     </SettingsSectionPanel>
   );
 
@@ -2233,8 +2208,8 @@ export default function SettingsView({
 
   // Mobile (ENG-990): master-detail. The surface is a list of the six
   // sections; tapping one drills into a focused full-screen page for just
-  // that section (sub-groups render flat — see CollapsibleGroup — so there's
-  // no nested collapsing). The top-bar back control returns to the list; from
+  // that section (sub-groups render flat — see SettingsGroup — and no longer
+  // collapse on either platform). The top-bar back control returns to the list; from
   // the list it closes Settings (onClose). Only the open section mounts, so
   // its effects/dropdowns don't all run at once.
   if (mobile) {
