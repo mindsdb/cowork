@@ -77,7 +77,10 @@ export function Collapsible({
         className={cn(
           'group flex w-full cursor-pointer items-center justify-between gap-2',
           'rounded-md border-0 bg-transparent py-1.5 text-left',
-          'text-ink-2 hover:text-ink disabled:cursor-not-allowed disabled:opacity-50',
+          // Base UI marks disabled with data-disabled (it keeps the trigger
+          // focusable), NOT the native `disabled` attr — so `disabled:` would
+          // never match. Drive the disabled affordance off data-disabled.
+          'text-ink-2 hover:text-ink data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50',
           triggerClassName,
         )}
       >
@@ -86,7 +89,9 @@ export function Collapsible({
       </BaseCollapsible.Trigger>
       {/* Base UI publishes the measured height as `--collapsible-panel-height`
           and flags enter/exit with data-starting/ending-style, so height
-          animates both ways; it also defers unmount until the animation ends. */}
+          animates both ways; it also defers unmount until the animation ends.
+          Note: `overflow-hidden` is a permanent clip box — an adopter nesting a
+          non-portaled popover/tooltip inside the panel should portal it out. */}
       <BaseCollapsible.Panel
         className={cn(
           'h-[var(--collapsible-panel-height)] overflow-hidden transition-[height] duration-200 ease-out',

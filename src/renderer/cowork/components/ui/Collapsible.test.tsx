@@ -20,8 +20,29 @@ describe('Collapsible', () => {
         <p>panel body</p>
       </Collapsible>,
     );
-    expect(screen.getByRole('button', { name: /advanced/i }).getAttribute('aria-expanded')).toBe('true');
+    const trigger = screen.getByRole('button', { name: /advanced/i });
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+    // The chevron rotation + any adopter styling hangs off this attribute.
+    expect(trigger.hasAttribute('data-panel-open')).toBe(true);
     expect(screen.getByText('panel body')).toBeTruthy();
+  });
+
+  it('reflects a controlled close (open=true → false)', () => {
+    const onOpenChange = vi.fn();
+    const { rerender } = render(
+      <Collapsible title="Advanced" open onOpenChange={onOpenChange}>
+        <p>panel body</p>
+      </Collapsible>,
+    );
+    expect(screen.getByText('panel body')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /advanced/i }));
+    expect(onOpenChange).toHaveBeenCalledWith(false, expect.anything());
+    rerender(
+      <Collapsible title="Advanced" open={false} onOpenChange={onOpenChange}>
+        <p>panel body</p>
+      </Collapsible>,
+    );
+    expect(screen.queryByText('panel body')).toBeNull();
   });
 
   it('toggles open on trigger click (uncontrolled)', () => {
@@ -65,8 +86,10 @@ describe('Collapsible', () => {
     );
     const trigger = screen.getByRole('button', { name: /advanced/i });
     // Base UI marks disabled accessibly (aria-disabled + data-disabled) rather
-    // than with the native attribute, so the control stays focusable.
+    // than with the native attribute, so the control stays focusable. The
+    // disabled affordance styling keys off data-disabled, not `:disabled`.
     expect(trigger.getAttribute('aria-disabled')).toBe('true');
+    expect(trigger.hasAttribute('data-disabled')).toBe(true);
     fireEvent.click(trigger);
     expect(trigger.getAttribute('aria-expanded')).toBe('false');
     expect(screen.queryByText('panel body')).toBeNull();
