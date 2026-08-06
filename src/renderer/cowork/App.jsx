@@ -755,11 +755,9 @@ export default function App() {
 }
 
 function AppCore() {
-  // Web deep-link / refresh seed (ENG-1233): the query string is the source of
-  // truth for "where you are" on the web shell, so the initial nav state is read
-  // from it. Desktop has no address bar — bootNav stays null and every URL hook
-  // below is gated on host.isWeb, leaving Electron behaviour untouched.
-  // Parsed once via lazy init (not on every render).
+  // Web deep-link / refresh seed (ENG-1233): parse the nav state out of the URL
+  // once. Desktop has no address bar, so bootNav stays null and every URL hook is
+  // host.isWeb-gated, leaving Electron untouched.
   const [bootNav] = useState(() => (host.isWeb ? parseUrlState(window.location.search) : null));
 
   // Seed from the read-through cache of the last settings fetch, not a literal
@@ -817,15 +815,11 @@ function AppCore() {
   const [composerDisabledConnections, setComposerDisabledConnections] = useState([]);
   const [composerPrefill, setComposerPrefill] = useState(null);
   const [searchOpen, setSearchOpen] = useState(false);
-  // Navigation model (route + open entity + settings overlay) as one reducer, so
-  // it threads to useWebNavUrlSync as (nav, dispatch) instead of a dozen useState
-  // pairs. Seeds from the boot URL; on Electron bootNav is null and it collapses to
-  // the home defaults. Field docs live in lib/navState.
+  // Navigation model (route + open entity + settings overlay) as one reducer — see
+  // lib/navState. The compat setters below keep the useState-style call sites
+  // unchanged while the store moves to the reducer.
   const [nav, dispatch] = useReducer(navReducer, bootNav, initialNav);
   const { route, activeTaskId, selectedProject, selectedScheduleId, settingsOpen, settingsSection } = nav;
-  // Thin compat setters: existing call sites keep their useState-style API (incl.
-  // functional updaters) while the store moves to the reducer — a bridge toward a
-  // nav context / router, not the destination.
   const setRoute = (v) => dispatch(navPatch({ route: v }));
   const setActiveTaskId = (v) => dispatch(navPatch({ activeTaskId: v }));
   const setSelectedProject = (v) => dispatch(navPatch({ selectedProject: v }));
@@ -1352,9 +1346,8 @@ function AppCore() {
   // stays expanded — gives the user permanent access to the nav.
   const sidebarCollapsedEffective =
     !isNarrow && sidebarCollapsibleRoutes.has(route) && sidebarCollapsed;
-  // Data-readiness flags the URL deep-link resolvers (useWebNavUrlSync) watch: they
-  // flip true when the authoritative session / project lists first load, so a
-  // deep-linked id that never appears is abandoned instead of guessed at.
+  // Set once the session / project lists first load; useWebNavUrlSync watches these
+  // to abandon a deep-linked id that never appears rather than guess.
   const [sessionsLoaded, setSessionsLoaded] = useState(false);
   const [projectsLoaded, setProjectsLoaded] = useState(false);
   // Set from the configured planning model once settings load.
@@ -1653,13 +1646,9 @@ function AppCore() {
   // upgrades from an older build that didn't have that.
   const generalDefaultRef = useRef(false);
   useEffect(() => {
-    // ENG-1233: while the user is on the Projects surface (a web project deep link,
-    // or the bare `?view=projects` grid), don't force the composer's default
-    // project onto `selectedProject` — it fires in the same effect flush as the URL
-    // restore, sees the same stale `selectedProject === null`, and its write would
-    // win, clobbering the deep-linked project (or pushing the bare grid into
-    // General's detail pane). Return WITHOUT claiming the once-per-session ref, so
-    // it still runs later when the user leaves the Projects route.
+    // ENG-1233: don't force the default project while on the Projects surface — it
+    // would race the URL restore and clobber the deep-linked project. Return without
+    // claiming the once-per-session ref so it still runs after leaving the route.
     if (route === 'projects') return;
     if (selectedProject) return;        // user has picked something — don't override
     if (!serverOnline) return;          // wait for server
@@ -1780,11 +1769,9 @@ function AppCore() {
   }, [settings]);
 
   const activeTasks = tasks.filter((t) => t.status === 'active');
-  // Fall back to tasks[0] only when there's genuinely NO open conversation id.
-  // A truthy activeTaskId that isn't in `tasks` means a stale/deleted deep link
-  // (ENG-1233: seeded from `?view=task&c=<id>` before `tasks` loads) mid-resolution
-  // — showing tasks[0] there would flash an unrelated conversation for a frame
-  // before the resolver resets to home, so render nothing until it does.
+  // Fall back to tasks[0] only when there's no open id at all. A truthy activeTaskId
+  // absent from `tasks` is a stale/deleted deep link mid-resolution (ENG-1233) —
+  // rendering tasks[0] would flash an unrelated conversation, so show nothing.
   const currentTask = tasks.find((t) => t.id === activeTaskId) || (route === 'task' && !activeTaskId ? tasks[0] : null);
   // Tasks belong to one project for life. Resolve via projectName
   // first (server's canonical id), then projectPath, then fall back
@@ -2514,9 +2501,8 @@ function AppCore() {
     setRoute(key);
   };
 
-  // Cold deep-link: seeding `route` from the URL skips the fetch normal navigation
-  // would do, so kick the destination's fetch once on mount (web only; harmless if
-  // the boot load also fetches these). ENG-1233.
+  // Cold deep-link: a URL-seeded route skips the fetch normal navigation would do,
+  // so kick it once on mount (web only; harmless if boot also fetches). ENG-1233.
   useEffect(() => {
     if (!host.isWeb || !bootNav) return;
     if (bootNav.route === 'artifacts') {
@@ -2529,10 +2515,8 @@ function AppCore() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ENG-1233: keep the web URL in step with nav state and reflect refresh /
-  // Back / Forward back into it (web-only; no-ops under Electron). Called here so
-  // it closes over the navigation primitives (selectTask / navigate / openSettings)
-  // defined above — a restored URL runs the same primitives a click would.
+  // ENG-1233: sync nav state <-> URL (web only). Called here so it closes over the
+  // navigation primitives (selectTask / navigate / openSettings) defined above.
   useWebNavUrlSync(
     nav,
     dispatch,

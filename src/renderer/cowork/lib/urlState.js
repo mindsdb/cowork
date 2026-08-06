@@ -1,44 +1,25 @@
-// URL <-> navigation-state mapping for the web shell (ENG-1233).
-//
-// The cowork SPA keeps "where you are" in React state only — a `route` string
-// plus a few entity ids (open conversation, project, schedule) and the settings
-// modal. On the desktop shell that's fine (one resident process), but on web a
-// refresh wipes it: you lose your place, links aren't shareable, and Back/Forward
-// walk out of the app. This module is the pure core of the fix — it projects that
-// state onto the query string and parses it back — so App.jsx only has to sync.
-//
-// Design choices:
-//  - Query string on the CURRENT path (never the pathname), so a hard refresh of
-//    a deep link always hits the SPA — no server-side catch-all route needed.
-//  - Only the keys below are "managed"; any other query params (e.g. a lingering
-//    Keycloak `code`/`state`) are preserved untouched by buildSearch.
-//  - `home` is the empty URL (no params) so the root stays clean.
-//
-// Kept framework-free and window-free so it's unit-tested directly (urlState.test.js).
+// URL <-> navigation-state mapping for the web shell (ENG-1233). Pure and
+// window-free so it's unit-tested directly (urlState.test.js); App.jsx just syncs.
+// The query string rides on the current path (not the pathname) so a hard refresh
+// of a deep link always hits the SPA — no server catch-all route needed.
 
-// Content routes that map to a `view=` value. `home` is intentionally absent —
-// it's represented by the ABSENCE of `view`. An unknown `view` degrades to home.
+// Routes that map to a `view=` value. `home` is the absence of `view`; an unknown
+// `view` degrades to home.
 export const KNOWN_ROUTES = new Set([
   'task', 'projects', 'scheduled', 'schedule-detail', 'artifacts',
   'tasks', 'channels', 'customize', 'skills', 'memory', 'publish',
 ]);
 
-// Every query key this module owns. buildSearch clears these before re-writing
-// them, and preserves anything else already on the URL.
+// Keys this module owns; buildSearch rewrites these and preserves everything else
+// (e.g. a lingering Keycloak `code`/`state`).
 const MANAGED_KEYS = ['view', 'c', 'p', 's', 'settings'];
 
-// Sentinel for "settings modal open with no specific section" (mobile bare-open,
-// or desktop's last-section fallback). A real section is never named this.
+// Sentinel for "settings open, no section" (a real section is never named this).
 const SETTINGS_OPEN = 'on';
 
-/**
- * Parse a `location.search` string into the navigation state it encodes.
- *
- * Returns a stable shape with home defaults:
- *   { route, taskId, projectName, scheduleId, settingsPane }
- * where entity ids are only surfaced for the route that owns them, and
- * `settingsPane` is: null = closed, '' = open (no section), 'x' = open at x.
- */
+// Parse `location.search` into { route, taskId, projectName, scheduleId,
+// settingsPane }. Entity ids surface only for their owning route; settingsPane is
+// null = closed, '' = open (no section), 'x' = open at x.
 export function parseUrlState(search) {
   const q = new URLSearchParams(search || '');
   const view = q.get('view') || 'home';
@@ -58,15 +39,9 @@ export function parseUrlState(search) {
   };
 }
 
-/**
- * Build the canonical `location.search` (leading '?' or '') for a nav state,
- * preserving any non-managed params already present on `currentSearch`.
- *
- * Rules mirror parseUrlState: home omits `view`; entity ids attach only to their
- * owning route; a `tmp-` conversation id is never written (it's an ephemeral
- * client id swapped for the server UUID moments later). Running this twice on its
- * own output is a no-op — the equality check in App.jsx relies on that.
- */
+// Build the canonical `location.search` for a nav state, preserving non-managed
+// params. home omits `view`; a `tmp-` conversation id is never written (ephemeral
+// client id). Idempotent — the outbound sync's equality check relies on that.
 export function buildSearch(state, currentSearch = '') {
   const q = new URLSearchParams(currentSearch || '');
   MANAGED_KEYS.forEach((k) => q.delete(k));
@@ -83,16 +58,10 @@ export function buildSearch(state, currentSearch = '') {
   return s ? `?${s}` : '';
 }
 
-/**
- * Decide whether a nav-state change should push a new history entry or replace the
- * current one (ENG-1233). Callers still short-circuit on an unchanged URL before
- * this; here we only choose push vs replace.
- *
- * 'replace' for: the first sync of a page life, a change that isn't a content
- * navigation (settings overlay only), and the `tmp-`→real conversation-id
- * adoption — when a fresh chat's temporary id is swapped for the server UUID,
- * which must not add a second entry. 'push' for a genuine content navigation.
- */
+// Push a new history entry or replace the current one (callers already short-circuit
+// on an unchanged URL). Replace for: the first sync, a non-content change (settings
+// overlay only), and the tmp- -> real conversation-id adoption (must not add a
+// second entry).
 export function historyWriteKind({ contentChanged, isFirst, route, prevTaskId, taskId }) {
   if (isFirst || !contentChanged) return 'replace';
   const isTmpAdoption = route === 'task'

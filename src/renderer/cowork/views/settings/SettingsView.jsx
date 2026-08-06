@@ -2267,9 +2267,8 @@ export default function SettingsView({
         <div className="settings-mobile__body scroll-clean">
           {inDetail ? (
             <div className="settings-detail">
-              {/* Own-property guard: `section` is URL-controlled (ENG-1233), so a
-                  bare renderers[section]() could dispatch to an inherited method
-                  like toString/constructor. Restrict to the known section keys. */}
+              {/* `section` is URL-controlled (ENG-1233); own-property guard keeps a
+                  bare renderers[section]() off inherited methods (toString, etc.). */}
               {Object.hasOwn(renderers, section) ? renderers[section]() : null}
             </div>
           ) : (

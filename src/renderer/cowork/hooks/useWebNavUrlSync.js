@@ -3,23 +3,9 @@ import { host } from '../../platform/host';
 import { parseUrlState, buildSearch, historyWriteKind } from '../lib/urlState';
 import { navPatch } from '../lib/navState';
 
-// ENG-1233 — keep the web shell's URL query string in step with the app's nav
-// state, and reflect refresh / deep-links / Back / Forward back into it. Web only:
-// every effect here no-ops under Electron (there's no address bar). The pure
-// state<->query mapping lives in lib/urlState.js; the nav model in lib/navState.js;
-// this hook is the React glue.
-//
-// It owns an OUTBOUND effect (nav state -> URL), an INBOUND popstate handler
-// (URL -> nav state, via dispatch + the passed navigation primitives), and two
-// DEEP-LINK resolvers that apply an id/name from the boot URL once its async list
-// (sessions / projects) loads.
-//
-//   nav        the navigation model (see lib/navState)
-//   dispatch   its reducer dispatch
-//   deps       { bootNav, tasks, projects, sessionsLoaded, projectsLoaded }
-//   primitives { selectTask, navigate, openSettings } — side-effectful nav actions
-//              that do more than set state, so a restored URL runs the exact same
-//              path a click would (restored state == clicked state)
+// ENG-1233 — sync the web shell's nav state to the URL and reflect refresh /
+// deep-links / Back / Forward back into it. Web only; no-ops on Electron. Pure
+// state<->query mapping is in lib/urlState; the nav model in lib/navState.
 export function useWebNavUrlSync(nav, dispatch, deps, primitives) {
   const { route, activeTaskId, selectedProject, selectedScheduleId, settingsOpen, settingsSection } = nav;
   const { bootNav, tasks, projects, sessionsLoaded, projectsLoaded } = deps;
@@ -28,31 +14,26 @@ export function useWebNavUrlSync(nav, dispatch, deps, primitives) {
   const firstUrlSyncRef = useRef(true);
   const prevContentSigRef = useRef(null);
   const forceReplaceRef = useRef(false);
-  // Bumping this makes the outbound effect run even when the nav dispatch paired
-  // with a forced replace is a no-op (e.g. reconciling to home when already home).
-  // Otherwise the flag would strand as true and later downgrade a genuine push into
-  // a replace, silently dropping a Back/Forward entry.
+  // Forces the outbound effect to run so it consumes forceReplaceRef even when the
+  // paired dispatch is a no-op (reconciling to a state already in place) — else the
+  // flag strands and later downgrades a genuine push to a replace, losing an entry.
   const [urlSyncTick, setUrlSyncTick] = useState(0);
   const forceUrlReplace = () => { forceReplaceRef.current = true; setUrlSyncTick((n) => n + 1); };
 
-  // A deep-linked id/name that can't be applied until its list loads — seeded from
-  // the boot URL, cleared once resolved or abandoned.
+  // Deep-linked id/name awaiting its async list; seeded from the boot URL.
   const pendingTaskIdRef = useRef(bootNav?.route === 'task' ? bootNav.taskId : null);
   const pendingProjectNameRef = useRef(bootNav?.route === 'projects' ? bootNav.projectName : null);
 
   const navHandlerRef = useRef(() => {});
 
-  // Outbound: mirror nav state into the query string. The first write of a page
-  // life replaces (so a reload/deep-link adds no history entry); a content change
-  // pushes (Back/Forward walk real destinations); the settings overlay only ever
-  // replaces (browsing settings shouldn't bury the page under Back-eating entries).
-  // Idempotent by construction, so a popstate-driven state change won't re-push.
+  // Outbound: nav state -> query string. First write of a page life replaces (no
+  // history entry on reload/deep-link); content changes push; the settings overlay
+  // only replaces. Idempotent, so a popstate-driven change won't re-push.
   useEffect(() => {
     if (!host.isWeb) return;
     const isFirst = firstUrlSyncRef.current;
     firstUrlSyncRef.current = false;
-    // Read-and-clear up front so the flag can't survive the unchanged-URL early
-    // return and taint a later genuine navigation.
+    // Read-and-clear up front so the flag can't survive the unchanged-URL return.
     const forceReplace = forceReplaceRef.current;
     forceReplaceRef.current = false;
     const prevSig = prevContentSigRef.current;
@@ -75,9 +56,8 @@ export function useWebNavUrlSync(nav, dispatch, deps, primitives) {
     else window.history.replaceState(null, '', url);
   }, [route, activeTaskId, selectedProject, selectedScheduleId, settingsOpen, settingsSection, urlSyncTick]);
 
-  // Resolve a deep-linked conversation once sessions load. Only hydrate if the user
-  // is STILL on the link (a late fetch mustn't yank them back); if the id never
-  // appears (deleted / stale / wrong workspace), abandon it to home via a replace.
+  // Resolve a deep-linked conversation once sessions load — only if the user is
+  // still on the link; abandon to home (replace) if the id never shows up.
   useEffect(() => {
     if (!host.isWeb) return;
     const id = pendingTaskIdRef.current;
@@ -96,10 +76,9 @@ export function useWebNavUrlSync(nav, dispatch, deps, primitives) {
   }, [tasks, sessionsLoaded]);
 
   // Resolve a deep-linked project once projects load (same still-on-the-link guard).
-  // selectedProject is the async-loaded object, so the first URL sync already ran
-  // with it null and wrote `?view=projects`; force this restore to replace so it
-  // edits that entry in place instead of pushing a phantom bare-grid step. Give up
-  // if the name never loads, so a later refetch can't fire a surprise selection.
+  // Force replace so restoring the async-resolved project edits the first
+  // `?view=projects` entry in place rather than pushing a phantom bare-grid step.
+  // Give up if the name never loads.
   useEffect(() => {
     if (!host.isWeb) return;
     const name = pendingProjectNameRef.current;
@@ -117,8 +96,7 @@ export function useWebNavUrlSync(nav, dispatch, deps, primitives) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projects, projectsLoaded]);
 
-  // Inbound: bind popstate once and dispatch through navHandlerRef so it always
-  // runs the latest closure.
+  // Inbound: bind popstate once, dispatch through navHandlerRef for fresh closures.
   useEffect(() => {
     if (!host.isWeb) return;
     const onPop = () => navHandlerRef.current();
@@ -126,15 +104,13 @@ export function useWebNavUrlSync(nav, dispatch, deps, primitives) {
     return () => window.removeEventListener('popstate', onPop);
   }, []);
 
-  // Reassigned every render for fresh closures.
   navHandlerRef.current = () => {
     const s = parseUrlState(window.location.search);
-    // Settings is an overlay orthogonal to the content route.
     if (s.settingsPane != null) openSettings(s.settingsPane || null);
     else dispatch(navPatch({ settingsOpen: false }));
     if (s.route === 'task') {
-      // Only restore a conversation that still exists; a missing id would otherwise
-      // fall through to tasks[0]. Defer if sessions haven't loaded; else go home.
+      // Restore only a conversation that still exists (a missing id would fall
+      // through to tasks[0]); defer if sessions haven't loaded, else go home.
       if (s.taskId && tasks.some((t) => t.id === s.taskId)) {
         selectTask(s.taskId);
       } else if (s.taskId && !sessionsLoaded) {
@@ -151,7 +127,7 @@ export function useWebNavUrlSync(nav, dispatch, deps, primitives) {
       return;
     }
     if (s.route === 'projects') {
-      // Set the selection directly (navigate() would clear it). Defer if the list
+      // Set the selection directly (navigate() would clear it); defer if the list
       // hasn't loaded; the grid is the right fallback for a missing project.
       const p = s.projectName ? projects.find((x) => x.name === s.projectName) : null;
       if (p) {

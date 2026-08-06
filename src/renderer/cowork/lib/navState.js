@@ -1,20 +1,9 @@
 // ENG-1233 — the web shell's navigation model as one reducer, so it threads to
-// useWebNavUrlSync as (nav, dispatch) instead of a fistful of useState pairs, and
-// gives us a single place to grow toward a nav context / router.
-//
-// Shape:
-//   route            home | task | projects | scheduled | schedule-detail | artifacts | channels | customize
-//   activeTaskId     open conversation id (null = none)
-//   selectedProject  open project OBJECT (null; resolved async from the list)
-//   selectedScheduleId
-//   settingsOpen     the settings overlay is a modal, orthogonal to route
-//   settingsSection  null (mobile shows its section list; desktop falls back to 'agent') | '' (open, no section) | name
+// useWebNavUrlSync as (nav, dispatch) instead of a fistful of useState pairs.
 
-// Seed from the boot URL (parsed into `bootNav`). On Electron bootNav is null and
-// this collapses to the plain home defaults, so the desktop shell is untouched.
+// Seed from the boot URL. Electron passes bootNav = null -> plain home defaults.
 export function initialNav(bootNav) {
-  // A bare `?view=task` (no conversation id — a tmp-/unsent chat is never written
-  // to the URL) can't be restored, so it lands on home.
+  // Bare `?view=task` (no conversation id) can't be restored -> home.
   const route = bootNav?.route === 'task' && !bootNav?.taskId ? 'home' : (bootNav?.route || 'home');
   return {
     route,
@@ -26,10 +15,9 @@ export function initialNav(bootNav) {
   };
 }
 
-// `patch` is the only action: merge the given fields, each a value or a
-// useState-style updater fn. Return the SAME state object when nothing actually
-// changed so React bails out of the render exactly as useState would — several of
-// the URL/history guards rely on that no-op behaviour.
+// Merge the patched fields (each a value or an updater fn). Returns the SAME object
+// when nothing changed, so React bails out exactly as useState would — the
+// URL/history no-op guards depend on that.
 export function navReducer(state, action) {
   if (action.type !== 'patch') return state;
   let changed = false;
