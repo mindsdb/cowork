@@ -228,7 +228,7 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
             <>
               <div className="flex items-center gap-3 mb-3">
                 <div className="flex-1">
-                  <div className="text-base font-[650] text-strong">
+                  <div className="text-base font-[650] text-ink">
                     {labelCategory(selected.category)}
                   </div>
                   <div className="text-sm text-[var(--frost-600)]">
@@ -250,7 +250,7 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
             <>
               <div className="flex items-center gap-3 mb-3">
                 <div className="flex-1">
-                  <div className="text-base font-[650] text-strong">
+                  <div className="text-base font-[650] text-ink">
                     {labelCategory(displayed.category)}
                   </div>
                   <div className="text-sm text-[var(--frost-600)]">
@@ -410,11 +410,11 @@ function ConnectView({ data, setData, setStatus }) {
   return (
     <div className="util-publish p-[28px] grid grid-cols-[1fr_360px] gap-6">
       <div>
-        <div className="text-sm font-[650] text-strong mb-3">Saved connections</div>
+        <div className="text-sm font-[650] text-ink mb-3">Saved connections</div>
         {(data.connections || []).length ? (data.connections || []).map((conn) => (
           <div key={`${conn.engine}-${conn.name}`} className="flex items-center gap-3 py-3 border-b border-[var(--border-0)] text-sm">
             <div className="flex-1">
-              <strong className="text-strong">{conn.displayName || conn.engine}</strong> / {conn.name}
+              <strong className="text-ink">{conn.displayName || conn.engine}</strong> / {conn.name}
               <div className="text-xs text-[var(--frost-600)]">{conn.testAvailable ? 'Ready for datasource tools' : 'Saved in data vault'}</div>
             </div>
             <Button variant="subtle" onClick={() => remove(conn)}>Remove</Button>
@@ -518,7 +518,7 @@ function PublishView({ data, setData, setStatus, onRefreshArtifacts }) {
         <div key={artifact.path} className="flex items-center gap-3 p-3 border border-[var(--border-01)] rounded-[9px]">
           <span className="text-[var(--primary-700)] inline-flex">{Ico.upload(15)}</span>
           <div className="flex-1 min-w-0">
-            <div className="text-base font-[650] text-strong">{artifact.title}</div>
+            <div className="text-base font-[650] text-ink">{artifact.title}</div>
             <div className="text-xs text-[var(--frost-600)] whitespace-nowrap overflow-hidden text-ellipsis">{artifact.path}</div>
             {artifact.publishedUrl && <div className="text-sm text-[var(--sage-700)] mt-1 select-text">{artifact.publishedUrl}</div>}
           </div>
@@ -529,7 +529,7 @@ function PublishView({ data, setData, setStatus, onRefreshArtifacts }) {
       )) : <EmptyState>No HTML artifacts found in output folders.</EmptyState>}
       {(data.history || []).length > 0 && (
         <div className="mt-5">
-          <div className="text-sm font-[650] text-strong mb-2">Share history</div>
+          <div className="text-sm font-[650] text-ink mb-2">Share history</div>
           {(data.history || []).slice(0, 10).map((item) => (
             <div key={`${item.artifact}-${item.publishedAt}`} className="py-2 border-t border-[var(--border-0)] text-sm">
               <strong>{item.artifactName}</strong>
