@@ -139,22 +139,22 @@ function HealthSparkline({ runs }) {
 function RunRow({ run, onOpen }) {
   const isErr = run.status === 'failed';
   return (
-    <div className="grid grid-cols-[12px_1fr_auto_auto] items-center gap-3 px-[14px] py-[10px] bg-surface border border-line rounded-card">
+    <div className="grid grid-cols-[12px_1fr_auto_auto] items-center gap-3 px-4 py-3 bg-surface border border-line rounded-card">
       <span aria-hidden className="w-2 h-2 rounded-full" style={{
         background: runColor(run),
       }} />
       <div className="min-w-0">
-        <div className="font-[var(--font-body)] text-[13px] font-medium text-ink overflow-hidden text-ellipsis whitespace-nowrap" title={absoluteTime(run.startedAt)}>
+        <div className="font-[var(--font-body)] text-sm font-medium text-ink overflow-hidden text-ellipsis whitespace-nowrap" title={absoluteTime(run.startedAt)}>
           {absoluteTime(run.startedAt) || '—'}
-          {run.isManual && <span className="ml-2 px-[6px] py-[1px] rounded-[4px] text-accent text-[10.5px] font-semibold" style={{
+          {run.isManual && <span className="ml-2 px-2 py-[1px] rounded-[4px] text-accent text-xs font-semibold" style={{
             background: 'color-mix(in srgb, var(--accent) 12%, transparent)',
           }}>MANUAL</span>}
         </div>
         {isErr && run.error && (
-          <div className="font-[var(--font-body)] text-[11.5px] text-danger mt-[2px] overflow-hidden text-ellipsis whitespace-nowrap" title={run.error}>{run.error}</div>
+          <div className="font-[var(--font-body)] text-xs text-danger mt-[2px] overflow-hidden text-ellipsis whitespace-nowrap" title={run.error}>{run.error}</div>
         )}
       </div>
-      <span className="font-[var(--font-body)] text-[11.5px] text-ink-3 whitespace-nowrap">{formatDuration(run.durationMs)}</span>
+      <span className="font-[var(--font-body)] text-xs text-ink-3 whitespace-nowrap">{formatDuration(run.durationMs)}</span>
       {run.conversationId ? (
         <Button onClick={() => onOpen?.(run)}>Open task</Button>
       ) : <span />}
@@ -242,25 +242,25 @@ export default function ScheduleDetailView({
         current={task.title || 'Untitled schedule'}
       />
 
-      <div className="sched-body pt-[6px] px-[28px] pb-6 flex flex-col gap-4">
+      <div className="sched-body pt-2 px-[28px] pb-6 flex flex-col gap-4">
 
         {error && (
           <Alert variant="danger">{error}</Alert>
         )}
 
         {/* Hero card — title, status, run-now, enable toggle, next-run */}
-        <div className="sched-hero py-[18px] px-[22px] bg-surface border border-line rounded-card flex flex-col gap-[14px]">
+        <div className="sched-hero py-5 px-[22px] bg-surface border border-line rounded-card flex flex-col gap-4">
           <div className="sched-hero-top flex items-start gap-3">
             <div className="flex-1 min-w-0">
               <div className="s-h2 text-ink line-clamp-2">{task.title}</div>
-              <div className="flex items-center gap-[10px] mt-2">
+              <div className="flex items-center gap-3 mt-2">
                 <ScheduleStatusBadge task={task} failedLabel="Last run failed" size="lg" dot />
-                <span className="font-[var(--font-body)] text-[12px] text-ink-3">
+                <span className="font-[var(--font-body)] text-sm text-ink-3">
                   {task.cadence === 'once' ? 'One-off run' : `Runs ${task.cadence}`}
                 </span>
               </div>
             </div>
-            <div className="sched-hero-actions inline-flex items-center gap-[10px] shrink-0">
+            <div className="sched-hero-actions inline-flex items-center gap-3 shrink-0">
               <EnableToggle
                 enabled={task.enabled}
                 busy={busy}
@@ -298,11 +298,11 @@ export default function ScheduleDetailView({
 
           {/* Prompt preview. */}
           {task.prompt && (
-            <div className="px-[14px] py-3 bg-surface-2 border border-line rounded-card-row font-[var(--font-body)] text-[13px] text-ink-2 leading-[1.55] whitespace-pre-wrap max-h-[168px] overflow-y-auto">{task.prompt}</div>
+            <div className="px-4 py-3 bg-surface-2 border border-line rounded-card-row font-[var(--font-body)] text-sm text-ink-2 leading-[1.55] whitespace-pre-wrap max-h-[168px] overflow-y-auto">{task.prompt}</div>
           )}
 
           {/* Next + last run summary. */}
-          <div className="grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-[14px]">
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-4">
             <SummaryStat
               label="Next run"
               value={task.enabled ? (relativeTime(task.nextRunAt) ?? '—') : 'Paused'}
@@ -326,13 +326,13 @@ export default function ScheduleDetailView({
         </div>
 
         {/* Health card. */}
-        <div className="sched-health py-[18px] px-[22px] bg-surface border border-line rounded-card flex flex-col gap-[14px]">
+        <div className="sched-health py-5 px-[22px] bg-surface border border-line rounded-card flex flex-col gap-4">
           <div className="sched-health-top flex items-start justify-between gap-3">
             <div>
               <div className="font-[var(--font-display)] text-base font-semibold text-ink">Health</div>
-              <div className="font-[var(--font-body)] text-[12px] text-ink-3 mt-[2px]">Last {Math.min(stats.total, 30)} runs · success rate, duration, error frequency.</div>
+              <div className="font-[var(--font-body)] text-sm text-ink-3 mt-[2px]">Last {Math.min(stats.total, 30)} runs · success rate, duration, error frequency.</div>
             </div>
-            <div className="sched-health-metrics inline-flex items-center gap-[14px]">
+            <div className="sched-health-metrics inline-flex items-center gap-4">
               <Metric label="Total runs" value={stats.total} />
               <Metric
                 label="Success rate"
@@ -353,10 +353,10 @@ export default function ScheduleDetailView({
           <div className="flex items-center justify-between px-[2px] py-1">
             <div className="font-[var(--font-display)] text-base font-semibold text-ink">
               Recent runs
-              <span className="ml-2 font-medium text-ink-4 text-[12px]">{runs.length}</span>
+              <span className="ml-2 font-medium text-ink-4 text-sm">{runs.length}</span>
             </div>
             {loadingRuns && (
-              <span className="text-[12px] text-ink-4">Loading…</span>
+              <span className="text-sm text-ink-4">Loading…</span>
             )}
           </div>
           {runs.length === 0 && !loadingRuns ? (
