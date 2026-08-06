@@ -14,12 +14,12 @@
 //     onValueChange={setModelId}
 //     options={[
 //       { value: 'sonnet', label: 'Claude Sonnet 5' },
-//       { value: 'opus', label: 'Claude Opus 5', disabled: true },
+//       { value: 'opus', label: 'Claude Opus 5', tag: 'Needs credits', needsCredits: true },
 //       { value: '__custom__', label: 'Other…', pin: 'bottom' },
 //     ]}
 //   />
 //
-// Option shape: { value, label, disabled?, title?, maker?, makerName?, pin? }.
+// Option shape: { value, label, disabled?, title?, tag?, maker?, makerName?, pin? }.
 //   - `maker` / `makerName`: explicit maker key + display name (trusted
 //     over inference when present — the ENG-1111 backend contract).
 //   - `pin: 'top' | 'bottom'`: render outside the maker groups, unheaded,

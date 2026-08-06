@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef, useContext } from 'react';
 import { useId } from 'react';
 import Ico from '../../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchRecommendedModels } from '../../api';
-import { providerTypeToKeyField, providerValueToType, resolveModelPickerValue, buildModelOptions, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, clampBudgetValue, clampBudgets, BUDGET_FIELDS } from '../../lib/settingsTransform';
+import { providerTypeToKeyField, providerValueToType, resolveModelPickerValue, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, clampBudgetValue, clampBudgets, BUDGET_FIELDS } from '../../lib/settingsTransform';
 import { trackHarnessSwapped } from '../../lib/analytics';
 import { copyText as copyToClipboard } from '../../lib/clipboard';
 import { deriveProviderStatus, friendlyProviderError } from '../../lib/providerStatus';
@@ -1580,15 +1580,21 @@ export default function SettingsView({
                     }}>{text}:</span>
                   );
 
+                  // Two stacked lines (ENG-1248): the credit state + top-up
+                  // action reads first on its own line, the BYOK escape hatch
+                  // sits under it. Inline, the escape hatch diluted the one
+                  // action that matters when the wallet is empty.
                   const noCreditsNotice = isNoCredits ? (
-                    <div style={{ fontSize: 12, lineHeight: 1.6 }}>
-                      <span style={{ color: 'var(--danger)', fontWeight: 600 }}>No credits available. </span>
-                      <button
-                        type="button"
-                        onClick={() => host.openExternal ? host.openExternal(MINDS_BILLING_URL) : window.open(MINDS_BILLING_URL, '_blank')}
-                        style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--accent)', textDecoration: 'underline', fontSize: 'inherit', fontFamily: 'inherit' }}
-                      >Top up credits →</button>
-                      <span style={{ color: 'var(--text-muted)' }}>{' '}or add your own provider and API key below.</span>
+                    <div style={{ fontSize: 12, lineHeight: 1.6, display: 'grid', gap: 1 }}>
+                      <div>
+                        <span style={{ color: 'var(--danger)', fontWeight: 600 }}>No credits available. </span>
+                        <button
+                          type="button"
+                          onClick={() => host.openExternal ? host.openExternal(MINDS_BILLING_URL) : window.open(MINDS_BILLING_URL, '_blank')}
+                          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--accent)', textDecoration: 'underline', fontSize: 'inherit', fontFamily: 'inherit' }}
+                        >Top up balance →</button>
+                      </div>
+                      <div style={{ color: 'var(--text-muted)' }}>Or add your own provider and API key below.</div>
                     </div>
                   ) : null;
 
@@ -1685,6 +1691,21 @@ export default function SettingsView({
                                     placeholder="Type a model id"
                                     title="Free-form model id sent verbatim to the provider."
                                   />
+                                )}
+                                {/* Needs-credits rows stay selectable (ENG-1248) —
+                                    this hint is the informed-consent half: the
+                                    choice is respected, the cost is named, and
+                                    the top-up route is one click away. */}
+                                {!inputMode && !!curModel && isLocked(curModel) && (
+                                  <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
+                                    {displayModelLabel(curModel, settings.modelLabels || {})} needs credits.{' '}
+                                    <button
+                                      type="button"
+                                      onClick={() => host.openExternal ? host.openExternal(MINDS_BILLING_URL) : window.open(MINDS_BILLING_URL, '_blank')}
+                                      style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--accent)', textDecoration: 'underline', fontSize: 'inherit', fontFamily: 'inherit' }}
+                                    >Top up your balance</button>
+                                    {' '}to use it.
+                                  </div>
                                 )}
                               </label>
                             );

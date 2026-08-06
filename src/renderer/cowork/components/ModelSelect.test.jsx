@@ -7,7 +7,7 @@ const OPTIONS = [
   { value: 'mindshub_air', label: 'MindsHub Air' },
   { value: 'gpt-codex', label: 'GPT 5.3 Codex' },
   { value: 'sonnet', label: 'Claude Sonnet 5' },
-  { value: 'opus', label: 'Claude Opus 5 — Add credits to unlock', disabled: true },
+  { value: 'opus', label: 'Claude Opus 5', tag: 'Needs credits', needsCredits: true },
   { value: '__custom__', label: 'Other…', pin: 'bottom' },
 ];
 
@@ -58,15 +58,29 @@ describe('ModelSelect', () => {
     expect(onValueChange).toHaveBeenCalledWith('gpt-codex');
   });
 
-  it('does not fire onValueChange for a locked (disabled) model', async () => {
+  // ENG-1248: needs-credits models are selectable — the wall moved from the
+  // picker row (a silent no-op) to use time, where a top-up route exists.
+  it('fires onValueChange for a needs-credits model and shows its tag', async () => {
     const user = userEvent.setup();
     const onValueChange = vi.fn();
     render(<Harness onValueChange={onValueChange} />);
 
     await user.click(screen.getByRole('combobox'));
-    await user.click(screen.getByRole('option', { name: /Add credits to unlock/ }));
+    const row = screen.getByRole('option', { name: /Claude Opus 5/ });
+    expect(row).toHaveTextContent('Needs credits');
+    await user.click(row);
 
-    expect(onValueChange).not.toHaveBeenCalled();
+    expect(onValueChange).toHaveBeenCalledWith('opus');
+  });
+
+  it('still matches a tagged model when searching its bare name', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+
+    await user.click(screen.getByRole('combobox'));
+    await user.keyboard('opus');
+
+    expect(screen.getByRole('option', { name: /Claude Opus 5/ })).toBeInTheDocument();
   });
 
   it('filters across every group and hides groups with no matches', async () => {

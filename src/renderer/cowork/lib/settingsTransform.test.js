@@ -149,11 +149,13 @@ describe('buildModelOptions', () => {
     expect(options.some((o) => o.value === '__stale__')).toBe(false);
   });
 
-  it('lists every model in the recommended list, disabling locked ones', () => {
+  // ENG-1248: a model the wallet can't pay for stays selectable — a disabled
+  // row was a dead-end click. The row carries a tag + needsCredits instead.
+  it('lists every model in the recommended list, tagging needs-credits ones but keeping them selectable', () => {
     const options = buildModelOptions('sonnet', MINDS_LIST, false, false, { opus: false });
     const byValue = Object.fromEntries(options.map((o) => [o.value, o]));
     expect(byValue.sonnet).toEqual({ value: 'sonnet', label: 'sonnet', disabled: false });
-    expect(byValue.opus).toEqual({ value: 'opus', label: 'opus — Add credits to unlock', disabled: true });
+    expect(byValue.opus).toEqual({ value: 'opus', label: 'opus', disabled: false, tag: 'Needs credits', needsCredits: true });
   });
 
   it('appends an "Other…" entry only when allowOther is true', () => {
@@ -198,10 +200,10 @@ describe('buildModelOptions', () => {
     expect(byValue.sonnet.label).toBe('sonnet');
   });
 
-  it('keeps the locked suffix on a labelled model', () => {
+  it('keeps the bare label on a labelled needs-credits model, moving the wallet state to the tag', () => {
     const options = buildModelOptions('sonnet', MINDS_LIST, false, false, { opus: false }, { opus: 'Claude Opus 5' });
     const opus = options.find((o) => o.value === 'opus');
-    expect(opus).toEqual({ value: 'opus', label: 'Claude Opus 5 — Add credits to unlock', disabled: true });
+    expect(opus).toEqual({ value: 'opus', label: 'Claude Opus 5', disabled: false, tag: 'Needs credits', needsCredits: true });
   });
 
   it('labels the legacy placeholder from the label map too', () => {

@@ -322,7 +322,8 @@ export function resolveModelPickerValue(curModel, modelList, allowOther, forceCu
  * @param {boolean} allowOther  whether to append the "Other…" custom-id entry
  * @param {boolean} showStalePin from resolveModelPickerValue
  * @param {Record<string, boolean>} modelEnabled per-model availability map
- *   (settings.modelEnabled); a model mapped to `false` renders locked.
+ *   (settings.modelEnabled); a model mapped to `false` renders selectable
+ *   with a "Needs credits" tag + `needsCredits: true` (ENG-1248).
  * @param {Record<string, string>} modelLabels per-model display label
  *   (settings.modelLabels, MindsHub-supplied). Display-only — the id/alias
  *   passed as `value` is still what's saved/resolved everywhere else. A
@@ -337,9 +338,8 @@ export function buildModelOptions(curModel, modelList, allowOther, showStalePin,
     ...(showStalePin
       // Labeled "legacy — re-select" (not "current") so it reads as an
       // action to take, not a selection: the same model may also appear
-      // below as a real "— Add credits to unlock" row, and a bare "(current)"
-      // would look like two identical, already-selected entries (ENG-739
-      // review).
+      // below as a real selectable row, and a bare "(current)" would look
+      // like two identical, already-selected entries (ENG-739 review).
       ? [{
           value: '__stale__',
           label: `${labelFor(curModel.replace(/^latest:/, ''))} (legacy — re-select a model)`,
@@ -349,12 +349,18 @@ export function buildModelOptions(curModel, modelList, allowOther, showStalePin,
           pin: 'top',
         }]
       : []),
-    // Wallet-based access (ENG-412, #434): a locked model is one the org's
-    // wallet can't currently pay for — prompt to add credits, not upgrade.
+    // Wallet-based access (ENG-412, #434), pay-as-you-go shape (ENG-1248): a
+    // model the org's wallet can't currently pay for stays SELECTABLE — the
+    // wall moves to use time, where the top-up card offers a way out. A
+    // disabled row was a dead end (click did nothing, no route to credits),
+    // and the label suffix ate the width (truncated "…Add credits to unl.").
+    // The row carries a compact right-aligned tag instead, and `needsCredits`
+    // lets the picker's call site render its top-up hint on selection.
     ...list.map((m) => ({
       value: m,
-      label: `${labelFor(m)}${isLocked(m) ? ' — Add credits to unlock' : ''}`,
-      disabled: isLocked(m),
+      label: labelFor(m),
+      disabled: false,
+      ...(isLocked(m) ? { tag: 'Needs credits', needsCredits: true } : {}),
     })),
     ...(allowOther ? [{ value: '__custom__', label: 'Other…', pin: 'bottom' }] : []),
   ];
