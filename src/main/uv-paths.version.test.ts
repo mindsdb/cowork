@@ -12,7 +12,7 @@ vi.mock('./cowork-home', () => ({
   buildKind: () => 'prod',
 }));
 
-import { getInstalledVersion } from './uv-paths';
+import { getInstalledVersion, resolveUv } from './uv-paths';
 
 afterEach(() => {
   vi.clearAllMocks();
@@ -63,5 +63,40 @@ describe('getInstalledVersion — uv discovery', () => {
     await expect(getInstalledVersion()).resolves.toBeNull();
     // The PATH fallback must at least be attempted before giving up.
     expect(cp.execFile).toHaveBeenCalled();
+  });
+});
+
+describe('resolveUv', () => {
+  const whichCmd = process.platform === 'win32' ? 'where' : 'which';
+
+  it('returns the probed location without consulting PATH', async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    await expect(resolveUv()).resolves.toMatch(/uv(\.exe)?$/);
+    expect(cp.execFile).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the where/which result when the probes miss', async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    vi.mocked(cp.execFile).mockImplementation(((
+      cmd: string, args: string[], _opts: unknown, cb: ExecCb,
+    ) => {
+      if (cmd === whichCmd && args[0] === 'uv') cb(null, '/custom/tools/uv\n', '');
+      else cb(new Error('not found'), '', '');
+      return {} as never;
+    }) as never);
+
+    await expect(resolveUv()).resolves.toBe('/custom/tools/uv');
+  });
+
+  it('resolves null when uv is neither probed nor on PATH', async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    vi.mocked(cp.execFile).mockImplementation(((
+      _cmd: string, _args: string[], _opts: unknown, cb: ExecCb,
+    ) => {
+      cb(new Error('not found'), '', '');
+      return {} as never;
+    }) as never);
+
+    await expect(resolveUv()).resolves.toBeNull();
   });
 });

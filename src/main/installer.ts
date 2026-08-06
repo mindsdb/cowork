@@ -13,6 +13,8 @@ import {
   getEnvPath,
   getCoworkServerBinary,
   findUv,
+  findOnPath,
+  resolveUv,
   getInstalledVersion,
   writeUvOverrides,
 } from './uv-paths';
@@ -121,22 +123,6 @@ function runCommand(
     proc.on('error', (err) => {
       sendLog(win, `Error: ${err.message}\n`);
       finish(1, stdout, err.message);
-    });
-  });
-}
-
-/** Resolve a command via where/which on the installer's PATH. Returns the
- *  first resolved location (null when absent) so the install log can show
- *  WHICH binary a machine uses — e.g. a preinstalled uv from winget/scoop
- *  living outside the dirs findUv probes. */
-function findOnPath(cmd: string): Promise<string | null> {
-  return new Promise((resolve) => {
-    const env = { ...process.env, PATH: getEnvPath() };
-    const whichCmd = process.platform === 'win32' ? 'where' : 'which';
-    execFile(whichCmd, [cmd], { env }, (err, stdout) => {
-      if (err) { resolve(null); return; }
-      const first = String(stdout).split(/\r?\n/).map((l) => l.trim()).find(Boolean);
-      resolve(first ?? null);
     });
   });
 }
@@ -419,7 +405,7 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
     sendLog(win, '\n--- Checking for uv ---\n');
     // Probed locations first (that is the binary the install step runs);
     // PATH fallback so a package-manager uv still reports its real location.
-    let uvPath = findUv() ?? await findOnPath('uv');
+    let uvPath = await resolveUv();
 
     if (!uvPath) {
       sendLog(win, 'uv not found. Installing...\n');
@@ -451,7 +437,7 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
           return false;
         }
       }
-      uvPath = findUv() ?? await findOnPath('uv');
+      uvPath = await resolveUv();
       if (!uvPath) {
         setStep('uv', 'error');
         sendLog(win, 'ERROR: uv installation completed but binary not found.\n');

@@ -30,6 +30,20 @@ afterEach(() => {
   delete process.env.UV_TOOL_DIR; // not covered by the setup-env scrub patterns
 });
 
+/** execFile stub for the no-uv tests: where/which (and everything else)
+ *  fails, so the PATH fallback comes up empty too — uv is truly absent. */
+function mockUvUnresolvable() {
+  vi.mocked(cp.execFile).mockImplementation(((
+    _cmd: string,
+    _args: string[],
+    _opts: unknown,
+    cb: (err: Error | null, stdout: string, stderr: string) => void,
+  ) => {
+    cb(new Error('not found'), '', '');
+    return {} as never;
+  }) as never);
+}
+
 describe('maybeUpdateServer (orchestration)', () => {
   it('is a no-op when COWORK_SERVER_DISABLE_AUTOUPDATE is set', async () => {
     // setup-env scrubs COWORK_SERVER_* before every test, so setting it here
@@ -40,6 +54,7 @@ describe('maybeUpdateServer (orchestration)', () => {
 
   it('reports loudly (never throws) when uv cannot be found', async () => {
     vi.mocked(fs.existsSync).mockReturnValue(false); // no uv binary anywhere
+    mockUvUnresolvable(); // and not on PATH either
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     await expect(maybeUpdateServer()).resolves.toEqual({
       updated: false,
@@ -133,12 +148,14 @@ describe('maybeUpdateServer (orchestration)', () => {
   });
 });
 
-describe('findUv-null bails are loud', () => {
+describe('uv-unresolvable bails are loud', () => {
   // Every recovery/update entry point no-ops when uv is missing from the
-  // probed locations. Each bail must warn: these paths run unattended, and a
-  // silent no-op looks identical to "nothing to do" in a support log.
+  // probed locations AND from PATH. Each bail must warn: these paths run
+  // unattended, and a silent no-op looks identical to "nothing to do" in a
+  // support log.
   it('checkForServerUpdate flags the error and warns', async () => {
     vi.mocked(fs.existsSync).mockReturnValue(false);
+    mockUvUnresolvable();
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     await expect(checkForServerUpdate()).resolves.toEqual({
       updateAvailable: false,
@@ -149,6 +166,7 @@ describe('findUv-null bails are loud', () => {
 
   it('recreateVenvIfUnsupportedPython returns false and warns', async () => {
     vi.mocked(fs.existsSync).mockReturnValue(false);
+    mockUvUnresolvable();
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     await expect(recreateVenvIfUnsupportedPython()).resolves.toBe(false);
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('uv not found'));
@@ -196,11 +214,47 @@ describe('repairServerInstall (orchestration)', () => {
 
   it('returns false and warns (never throws) when uv cannot be found', async () => {
     vi.mocked(fs.existsSync).mockReturnValue(false); // no uv binary anywhere
+    mockUvUnresolvable(); // and not on PATH either
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     await expect(repairServerInstall(BROKEN)).resolves.toBe(false);
     // A repairable broken install that silently isn't repaired is
     // undiagnosable from the logs — the bail must say why.
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('uv not found'));
+  });
+
+  it('repairs using a PATH-only uv when the probed locations are empty', async () => {
+    // uv preinstalled via winget/scoop/pip: nothing at the probed dirs, but
+    // where/which resolves it — the repair must run with that uv, not bail.
+    const PATH_UV = '/custom/tools/uv';
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    const execCalls: string[][] = [];
+    vi.mocked(cp.execFile).mockImplementation(((
+      cmd: string,
+      args: string[],
+      _opts: unknown,
+      cb: (err: Error | null, stdout: string, stderr: string) => void,
+    ) => {
+      execCalls.push([cmd, ...args]);
+      if (cmd === 'which' || cmd === 'where') {
+        if (args[0] === 'uv') cb(null, `${PATH_UV}\n`, '');
+        else cb(new Error(`${args[0]} not found`), '', '');
+      } else if (args[0] === 'tool' && args[1] === 'dir') {
+        cb(null, '/fake/uv/tools\n', '');
+      } else if (args[0] === 'tool' && args[1] === 'list') {
+        cb(null, 'cowork-server v0.26.8.2.1\n- cowork-server\n', '');
+      } else {
+        cb(null, '', ''); // uv tool install → success
+      }
+      return {} as never;
+    }) as never);
+
+    await expect(repairServerInstall(BROKEN)).resolves.toBe(true);
+
+    const installs = execCalls.filter((c) => c[1] === 'tool' && c[2] === 'install');
+    expect(installs).toHaveLength(1);
+    // The reinstall ran with the PATH-resolved uv, pinned to the installed version.
+    expect(installs[0][0]).toBe(PATH_UV);
+    expect(installs[0]).toContain('cowork-server==0.26.8.2.1');
   });
 
   it('reinstalls from PyPI and returns true when the venv has no vcs_info', async () => {

@@ -46,7 +46,7 @@ import {
 import {
   PYTHON_RANGE,
   getEnvPath,
-  findUv,
+  resolveUv,
   getInstalledVersion,
   isSupportedPython,
   writeUvOverrides,
@@ -232,9 +232,9 @@ export async function recreateVenvIfUnsupportedPython(): Promise<boolean> {
   try {
     const disable = (process.env[DISABLE_VAR] || '').toLowerCase();
     if (disable === '1' || disable === 'true') return false;
-    const uv = findUv();
+    const uv = await resolveUv();
     if (!uv) {
-      console.warn('[server-updater] uv not found in any probed location; skipping venv Python check');
+      console.warn('[server-updater] uv not found on the system; skipping venv Python check');
       return false;
     }
     return await withServerMaintenance(async () => {
@@ -311,9 +311,9 @@ export async function repairServerInstall(failureLog?: string): Promise<boolean>
       console.log('[server-updater] start failure is not a broken install; skipping repair reinstall');
       return false;
     }
-    const uv = findUv();
+    const uv = await resolveUv();
     if (!uv) {
-      console.warn('[server-updater] uv not found in any probed location; cannot repair the server install');
+      console.warn('[server-updater] uv not found on the system; cannot repair the server install');
       return false;
     }
     return await withServerMaintenance(async () => {
@@ -437,9 +437,9 @@ export async function checkForServerUpdate(): Promise<ServerUpdateCheckResult> {
     const disable = (process.env[DISABLE_VAR] || '').toLowerCase();
     if (disable === '1' || disable === 'true') return { updateAvailable: false };
 
-    const uv = findUv();
+    const uv = await resolveUv();
     if (!uv) {
-      console.warn('[server-updater] uv not found in any probed location; update check unavailable');
+      console.warn('[server-updater] uv not found on the system; update check unavailable');
       return { updateAvailable: false, error: true };
     }
 
@@ -495,9 +495,9 @@ export async function maybeUpdateServer(): Promise<ServerUpdateResult> {
       console.log('[server-updater] disabled via', DISABLE_VAR);
       return { updated: false };
     }
-    const uv = findUv();
+    const uv = await resolveUv();
     if (!uv) {
-      console.warn('[server-updater] uv not found in any probed location; skipping server update');
+      console.warn('[server-updater] uv not found on the system; skipping server update');
       return { updated: false, error: 'uv not found' };
     }
     // Source-aware: a git install updates on git; otherwise PyPI.
