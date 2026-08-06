@@ -233,7 +233,10 @@ export async function recreateVenvIfUnsupportedPython(): Promise<boolean> {
     const disable = (process.env[DISABLE_VAR] || '').toLowerCase();
     if (disable === '1' || disable === 'true') return false;
     const uv = findUv();
-    if (!uv) return false;
+    if (!uv) {
+      console.warn('[server-updater] uv not found in any probed location; skipping venv Python check');
+      return false;
+    }
     return await withServerMaintenance(async () => {
       const toolsDir = await uvToolsDir(uv);
       if (!toolsDir) return false;
@@ -309,7 +312,10 @@ export async function repairServerInstall(failureLog?: string): Promise<boolean>
       return false;
     }
     const uv = findUv();
-    if (!uv) return false;
+    if (!uv) {
+      console.warn('[server-updater] uv not found in any probed location; cannot repair the server install');
+      return false;
+    }
     return await withServerMaintenance(async () => {
       // Resolve the tools dir via uv so source detection uses the real layout;
       // null is fine — reinstallFromSource falls back to the platform heuristic.
@@ -432,7 +438,10 @@ export async function checkForServerUpdate(): Promise<ServerUpdateCheckResult> {
     if (disable === '1' || disable === 'true') return { updateAvailable: false };
 
     const uv = findUv();
-    if (!uv) return { updateAvailable: false, error: true };
+    if (!uv) {
+      console.warn('[server-updater] uv not found in any probed location; update check unavailable');
+      return { updateAvailable: false, error: true };
+    }
 
     const coworkVcs = readVcsInfo('cowork_server');
     if (coworkVcs) {
@@ -488,7 +497,7 @@ export async function maybeUpdateServer(): Promise<ServerUpdateResult> {
     }
     const uv = findUv();
     if (!uv) {
-      console.log('[server-updater] uv not found, skipping update check');
+      console.warn('[server-updater] uv not found in any probed location; skipping server update');
       return { updated: false, error: 'uv not found' };
     }
     // Source-aware: a git install updates on git; otherwise PyPI.
