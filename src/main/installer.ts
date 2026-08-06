@@ -125,12 +125,18 @@ function runCommand(
   });
 }
 
-function commandExists(cmd: string): Promise<boolean> {
+/** Resolve a command via where/which on the installer's PATH. Returns the
+ *  first resolved location (null when absent) so the install log can show
+ *  WHICH binary a machine uses — e.g. a preinstalled uv from winget/scoop
+ *  living outside the dirs findUv probes. */
+function findOnPath(cmd: string): Promise<string | null> {
   return new Promise((resolve) => {
     const env = { ...process.env, PATH: getEnvPath() };
     const whichCmd = process.platform === 'win32' ? 'where' : 'which';
-    execFile(whichCmd, [cmd], { env }, (err) => {
-      resolve(!err);
+    execFile(whichCmd, [cmd], { env }, (err, stdout) => {
+      if (err) { resolve(null); return; }
+      const first = String(stdout).split(/\r?\n/).map((l) => l.trim()).find(Boolean);
+      resolve(first ?? null);
     });
   });
 }
@@ -226,7 +232,7 @@ export async function checkCoworkServerInstalled(): Promise<boolean> {
       : path.join(__dirname, '..', '..', '..', '..', 'cowork-server');
     if (fileExists(path.join(devDir, 'pyproject.toml'))) return true;
   }
-  const hasBinary = fileExists(getCoworkServerBinary()) || await commandExists('cowork-server');
+  const hasBinary = fileExists(getCoworkServerBinary()) || !!(await findOnPath('cowork-server'));
   if (!hasBinary) return false;
 
   // Binary exists — verify the installed version meets the minimum.
@@ -338,8 +344,8 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
       setStep('git', 'running');
       sendLog(win, '--- Checking for git ---\n');
       let gitStatus: InstallStep['status'] = 'done';
-      const hasGit = await commandExists('git');
-      if (!hasGit) {
+      const gitPath = await findOnPath('git');
+      if (!gitPath) {
         if (!plan.gitRequired) {
           sendLog(win, 'git not found. Not required for this install; agent features that use git will be limited until it is installed.\n');
           gitStatus = 'warning';
@@ -393,7 +399,7 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
           if (!process.env.PATH?.includes(gitCmdPath)) {
             process.env.PATH = `${gitCmdPath}${path.delimiter}${process.env.PATH ?? ''}`;
           }
-          if (!(await commandExists('git'))) {
+          if (!(await findOnPath('git'))) {
             setStep('git', 'error');
             sendLog(win, '\nERROR: git was installed but is still not resolvable on PATH.\n');
             sendInstallError(win, 'git not resolvable after install.');
@@ -402,7 +408,7 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
           sendLog(win, 'git installed successfully.\n');
         }
       } else {
-        sendLog(win, 'git found.\n');
+        sendLog(win, `git found at ${gitPath}.\n`);
       }
       setStep('git', gitStatus);
     }
@@ -411,9 +417,11 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
     if (abortIfRequested()) return false;
     setStep('uv', 'running');
     sendLog(win, '\n--- Checking for uv ---\n');
-    let hasUv = await commandExists('uv') || !!findUv();
+    // Probed locations first (that is the binary the install step runs);
+    // PATH fallback so a package-manager uv still reports its real location.
+    let uvPath = findUv() ?? await findOnPath('uv');
 
-    if (!hasUv) {
+    if (!uvPath) {
       sendLog(win, 'uv not found. Installing...\n');
       if (process.platform === 'win32') {
         const result = await runCommand(
@@ -443,16 +451,16 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
           return false;
         }
       }
-      hasUv = await commandExists('uv') || !!findUv();
-      if (!hasUv) {
+      uvPath = findUv() ?? await findOnPath('uv');
+      if (!uvPath) {
         setStep('uv', 'error');
         sendLog(win, 'ERROR: uv installation completed but binary not found.\n');
         sendInstallError(win, 'uv installation failed');
         return false;
       }
-      sendLog(win, 'uv installed successfully.\n');
+      sendLog(win, `uv installed at ${uvPath}.\n`);
     } else {
-      sendLog(win, 'uv found.\n');
+      sendLog(win, `uv found at ${uvPath}.\n`);
     }
     setStep('uv', 'done');
 
@@ -537,6 +545,10 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
       sendInstallError(win, 'Verification failed');
       return false;
     }
+    const serverBin = fileExists(getCoworkServerBinary())
+      ? getCoworkServerBinary()
+      : await findOnPath('cowork-server');
+    if (serverBin) sendLog(win, `cowork-server found at ${serverBin}\n`);
     sendLog(win, 'cowork-server is ready!\n');
     setStep('verify', 'done');
 
