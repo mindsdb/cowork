@@ -41,12 +41,12 @@ describe('no Subscribe wording anywhere (ENG-1305)', () => {
         const p = path.join(dir, e.name);
         if (e.isDirectory()) { walk(p); continue; }
         if (!/\.(jsx?|tsx?)$/.test(e.name) || /\.test\./.test(e.name)) continue;
-        // ponytail: full-line // strip plus /* */ strip — an inline trailing
-        // // comment quoting Subscribe would still match, which fails safe
-        // (a human looks) rather than silently passing.
-        const src = fs.readFileSync(p, 'utf8')
-          .replace(/\/\*[\s\S]*?\*\//g, '')
-          .replace(/^\s*\/\/.*$/gm, '');
+        // ponytail: full-line // strip only. A /* */ strip is deliberately
+        // absent — a line comment ending in a URL glob ("… /v1/*.") opens a
+        // fake block that swallows real code up to the next */ (15KB of
+        // api.js, measured). Any unstripped comment quoting Subscribe fails
+        // the test toward a human look, which is the safe direction.
+        const src = fs.readFileSync(p, 'utf8').replace(/^\s*\/\/.*$/gm, '');
         for (const m of src.matchAll(/\bSubscribe/g)) {
           const line = src.slice(0, m.index).split('\n').length;
           offenders.push(`${p}:${line}`);
