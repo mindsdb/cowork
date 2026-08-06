@@ -237,11 +237,16 @@ export default function BackendSection({
               fontFamily: FONT_MONO, fontSize: 10, color: 'var(--ink-4)',
               letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 6,
             }}>Log</div>
+            {/* ENG-1320: grow to fill the modal instead of a fixed 200px cap
+                that squeezed a long log into a tiny scroller while the panel
+                had room to spare. Viewport-relative so it scales with the
+                modal (min(820px, 88vh)); still capped + scrollable so a very
+                long log can't push the section controls off-screen. */}
             <pre style={{
               margin: 0, padding: '10px 12px',
               background: 'var(--surface-2)', border: '1px solid var(--line)',
               borderRadius: 8, fontFamily: FONT_MONO, fontSize: 11.5, lineHeight: 1.55,
-              color: 'var(--ink-2)', maxHeight: 200, overflow: 'auto',
+              color: 'var(--ink-2)', maxHeight: 'min(520px, 52vh)', overflow: 'auto',
               whiteSpace: 'pre-wrap', wordBreak: 'break-word', userSelect: 'text',
             }}>{log || '(no log captured yet)'}</pre>
           </div>
