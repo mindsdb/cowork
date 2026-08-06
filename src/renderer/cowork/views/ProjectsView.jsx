@@ -159,7 +159,7 @@ function ProjectsCounts({ search, total, filtered, pinnedCount }) {
       {pinnedCount > 0 && (
         <>
           {' · '}
-          <span style={{ color: 'var(--accent)' }}>{pinnedCount} pinned</span>
+          <span className="text-accent">{pinnedCount} pinned</span>
         </>
       )}
     </>
@@ -270,18 +270,11 @@ function NewProjectCard({ onCreate, creating, onCreatingChange }) {
   if (editing) {
     return (
       <div
-        style={{
-          minHeight: 120, borderRadius: 'var(--card-radius)',
-          padding: '14px 16px',
-          background: 'var(--surface)',
-          border: '1px solid var(--accent)',
-          display: 'flex', flexDirection: 'column', gap: 10, justifyContent: 'center',
-          fontFamily: FONT_BODY,
-        }}
+        className="min-h-[120px] rounded-card px-4 py-[14px] bg-surface border border-accent flex flex-col gap-[10px] justify-center font-[var(--font-body)]"
         onClick={(e) => e.stopPropagation()}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ display: 'inline-flex', flexShrink: 0, color: 'var(--ink-3)' }}>
+        <div className="flex items-center gap-2">
+          <span className="inline-flex shrink-0 text-ink-3">
             {Ico.folder(14)}
           </span>
           <input
@@ -308,22 +301,10 @@ function NewProjectCard({ onCreate, creating, onCreatingChange }) {
               if (val) submit();
               else cancel();
             }}
-            style={{
-              flex: 1, minWidth: 0,
-              fontFamily: FONT_DISPLAY, fontSize: 16, fontWeight: 600,
-              letterSpacing: '0', color: 'var(--ink)',
-              background: 'var(--surface-2)',
-              border: '1px solid var(--line)',
-              borderRadius: 6,
-              padding: '4px 8px',
-              outline: 'none',
-            }}
+            className="flex-1 min-w-0 font-[var(--font-display)] text-[16px] font-semibold tracking-[0] text-ink bg-surface-2 border border-line rounded-[6px] px-2 py-1 outline-none"
           />
         </div>
-        <div style={{
-          fontFamily: FONT_MONO, fontSize: 10.5,
-          color: 'var(--ink-4)', letterSpacing: '0.04em',
-        }}>
+        <div className="font-mono text-[10.5px] text-ink-4 tracking-[0.04em]">
           {busy ? 'Creating…' : '↵ create · esc cancel'}
         </div>
       </div>
@@ -336,19 +317,14 @@ function NewProjectCard({ onCreate, creating, onCreatingChange }) {
       onClick={() => setEditing(true)}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
+      className="min-h-[120px] rounded-card px-4 py-[14px] bg-transparent flex flex-col items-center justify-center gap-2 cursor-pointer [transition:border-color_.15s_ease,color_.15s_ease]"
       style={{
-        minHeight: 120, borderRadius: 'var(--card-radius)',
-        padding: '14px 16px',
-        background: 'transparent',
         border: `1px dashed ${hover ? 'var(--accent)' : 'var(--line-2)'}`,
         color: hover ? 'var(--accent)' : 'var(--ink-3)',
-        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-        gap: 8, cursor: 'pointer',
-        transition: 'border-color .15s ease, color .15s ease',
       }}
     >
-      <span style={{ display: 'inline-flex' }}>{Ico.plus(16)}</span>
-      <span style={{ fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500 }}>New project</span>
+      <span className="inline-flex">{Ico.plus(16)}</span>
+      <span className="font-[var(--font-body)] text-[13px] font-medium">New project</span>
     </button>
   );
 }
@@ -368,19 +344,10 @@ const LIST_GRID = '3fr 1.2fr 64px 64px 64px 64px 64px 36px';
 
 function ListHeader() {
   const Cell = ({ children, align }) => (
-    <div style={{
-      fontFamily: FONT_MONO, fontSize: 10.5,
-      color: 'var(--ink-4)', letterSpacing: '0.10em',
-      textTransform: 'uppercase',
-      textAlign: align || 'left',
-    }}>{children}</div>
+    <div className="font-mono text-[10.5px] text-ink-4 tracking-[0.10em] uppercase" style={{ textAlign: align || 'left' }}>{children}</div>
   );
   return (
-    <div style={{
-      display: 'grid', gridTemplateColumns: LIST_GRID, gap: 14,
-      padding: '10px 14px',
-      borderBottom: '1px solid var(--line)',
-    }}>
+    <div className="grid gap-[14px] px-[14px] py-[10px] border-b border-line" style={{ gridTemplateColumns: LIST_GRID }}>
       <Cell>Name</Cell>
       <Cell>Last activity</Cell>
       <Cell align="right">Tasks</Cell>
@@ -396,12 +363,7 @@ function ListHeader() {
 function D1Num({ value }) {
   const isZero = !value;
   return (
-    <span style={{
-      fontFamily: FONT_MONO, fontSize: 12,
-      color: isZero ? 'var(--ink-5)' : 'var(--ink)',
-      textAlign: 'right',
-      fontVariantNumeric: 'tabular-nums',
-    }}>{value ?? 0}</span>
+    <span className="font-mono text-[12px] text-right tabular-nums" style={{ color: isZero ? 'var(--ink-5)' : 'var(--ink)' }}>{value ?? 0}</span>
   );
 }
 
@@ -411,14 +373,7 @@ function D1Num({ value }) {
 function ActiveNum({ value }) {
   const isZero = !value;
   return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end',
-      gap: 6,
-      fontFamily: FONT_MONO, fontSize: 12,
-      color: isZero ? 'var(--ink-5)' : 'var(--accent)',
-      textAlign: 'right',
-      fontVariantNumeric: 'tabular-nums',
-    }}>
+    <span className="inline-flex items-center justify-end gap-[6px] font-mono text-[12px] text-right tabular-nums" style={{ color: isZero ? 'var(--ink-5)' : 'var(--accent)' }}>
       {!isZero && (
         <span aria-hidden className="pulse-dot" style={{
           width: 6, height: 6, borderRadius: '50%',
@@ -514,14 +469,14 @@ function ListRow({
       }}
     >
       {/* Name */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+      <div className="flex items-center gap-2 min-w-0">
         <span aria-hidden style={{
           width: 6, height: 6, borderRadius: 99,
           background: active ? 'var(--success)' : 'var(--ink-5)',
           boxShadow: active ? '0 0 6px var(--success-glow)' : 'none',
           flexShrink: 0,
         }} />
-        <span style={{ display: 'inline-flex', color: 'var(--ink-3)', flexShrink: 0 }}>
+        <span className="inline-flex text-ink-3 shrink-0">
           {Ico.folder(13)}
         </span>
         {editing ? (
@@ -548,26 +503,18 @@ function ListRow({
             }}
           />
         ) : (
-          <span style={{
-            fontFamily: FONT_DISPLAY, fontSize: 14.5, fontWeight: 600,
-            color: 'var(--ink)', minWidth: 0,
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>{project.name}</span>
+          <span className="font-[var(--font-display)] text-[14.5px] font-semibold text-ink min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{project.name}</span>
         )}
         {pinned && !editing && (
-          <span style={{ display: 'inline-flex', color: 'var(--accent)', flexShrink: 0 }}>
+          <span className="inline-flex text-accent shrink-0">
             {Ico.pin(11)}
           </span>
         )}
       </div>
 
       {/* Last activity */}
-      <div style={{
-        fontFamily: FONT_BODY, fontSize: 12.5,
-        color: 'var(--ink-2)',
-        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-      }}>
-        {summary?.title || <span style={{ color: 'var(--ink-4)', fontStyle: 'italic' }}>No activity yet</span>}
+      <div className="font-[var(--font-body)] text-sm text-ink-2 overflow-hidden text-ellipsis whitespace-nowrap">
+        {summary?.title || <span className="text-ink-4 italic">No activity yet</span>}
       </div>
 
       {/* Number cells */}
@@ -578,7 +525,7 @@ function ListRow({
       <D1Num value={art} />
 
       {/* ⋯ menu */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+      <div className="flex justify-end">
         <button
           ref={triggerRef}
           type="button"
@@ -612,17 +559,13 @@ function ListRow({
 
 function SkeletonCard() {
   return (
-    <div style={{
-      minHeight: 120, borderRadius: 'var(--card-radius)', padding: '14px 16px',
-      border: '1px solid var(--line)', background: 'var(--surface)',
-      display: 'flex', flexDirection: 'column', gap: 10,
-    }}>
-      <div style={{ height: 14, width: '60%', background: 'var(--surface-2)', borderRadius: 4 }} className="proj-shimmer" />
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <div style={{ height: 11, width: '90%', background: 'var(--surface-2)', borderRadius: 4 }} className="proj-shimmer" />
-        <div style={{ height: 11, width: '70%', background: 'var(--surface-2)', borderRadius: 4 }} className="proj-shimmer" />
+    <div className="min-h-[120px] rounded-card px-4 py-[14px] border border-line bg-surface flex flex-col gap-[10px]">
+      <div className="proj-shimmer h-[14px] w-[60%] bg-surface-2 rounded-[4px]" />
+      <div className="flex-1 flex flex-col gap-[6px]">
+        <div className="proj-shimmer h-[11px] w-[90%] bg-surface-2 rounded-[4px]" />
+        <div className="proj-shimmer h-[11px] w-[70%] bg-surface-2 rounded-[4px]" />
       </div>
-      <div style={{ height: 12, width: '50%', background: 'var(--surface-2)', borderRadius: 4 }} className="proj-shimmer" />
+      <div className="proj-shimmer h-[12px] w-[50%] bg-surface-2 rounded-[4px]" />
     </div>
   );
 }
@@ -851,16 +794,8 @@ function ProjectDetail({
           onDelete={() => onDelete?.(project)}
         />
 
-        <div data-scroll="true" style={{
-          minHeight: 0, overflowY: 'auto', overflowX: 'hidden',
-          padding: '32px 28px 60px',
-          background: 'transparent',
-          WebkitAppRegion: 'no-drag',
-        }}>
-          <div style={{
-            maxWidth: 720, margin: '0 auto',
-            display: 'flex', flexDirection: 'column', gap: 28,
-          }}>
+        <div data-scroll="true" className="min-h-0 overflow-y-auto overflow-x-hidden pt-8 px-[28px] pb-[60px] bg-transparent [-webkit-app-region:no-drag]">
+          <div className="max-w-[720px] mx-auto flex flex-col gap-[28px]">
             <Composer
               onSend={onSend}
               project={project}
@@ -908,10 +843,7 @@ function ProjectDetail({
         minWidth: 0,
         WebkitAppRegion: 'no-drag',
       }}>
-        <div className="project-detail-rail-toggle-row" style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
-          flexShrink: 0,
-        }}>
+        <div className="project-detail-rail-toggle-row flex items-center justify-end shrink-0">
           <button
             type="button"
             className="project-detail-rail-toggle"
@@ -1189,27 +1121,19 @@ export default function ProjectsView({
       />
 
       {loading ? (
-        <div style={{
-          padding: '6px 32px 60px',
-          display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14,
-          marginTop: 18,
-        }}>
+        <div className="pt-[6px] px-8 pb-[60px] grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-[14px] mt-[18px]">
           {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
         </div>
       ) : projects.length === 0 ? (
         <EmptyState
-          icon={<span style={{ display: 'inline-flex', color: 'var(--ink-4)' }}>{Ico.folder(32)}</span>}
+          icon={<span className="inline-flex text-ink-4">{Ico.folder(32)}</span>}
           title="No projects yet"
           description="Create your first project to start grouping conversations and outputs."
           action={<NewProjectButton onClick={handleNewProject} />}
           style={{ flex: 1 }}
         />
       ) : effectiveView === 'grid' ? (
-        <div style={{
-          padding: '6px 32px 60px',
-          display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14,
-          marginTop: 18,
-        }}>
+        <div className="pt-[6px] px-8 pb-[60px] grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-[14px] mt-[18px]">
           {visibleProjects.map((p) => (
             <ProjectCard
               key={p.name || p.path}
@@ -1234,18 +1158,7 @@ export default function ProjectsView({
           <button
             type="button"
             onClick={handleNewProject}
-            className="proj-new-tile"
-            style={{
-              minHeight: 120, borderRadius: 'var(--card-radius)',
-              padding: '14px 16px',
-              background: 'transparent',
-              border: '1px dashed var(--line-2)',
-              color: 'var(--ink-3)',
-              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-              gap: 8, cursor: 'pointer',
-              transition: 'border-color .15s ease, color .15s ease',
-              font: 'inherit',
-            }}
+            className="proj-new-tile min-h-[120px] rounded-card px-4 py-[14px] bg-transparent border border-dashed border-line-2 text-ink-3 flex flex-col items-center justify-center gap-2 cursor-pointer [transition:border-color_.15s_ease,color_.15s_ease] font-[inherit]"
             onMouseOver={(e) => {
               e.currentTarget.style.borderColor = 'var(--accent)';
               e.currentTarget.style.color = 'var(--accent)';
@@ -1255,14 +1168,14 @@ export default function ProjectsView({
               e.currentTarget.style.color = 'var(--ink-3)';
             }}
           >
-            <span style={{ display: 'inline-flex' }}>{Ico.plus(16)}</span>
-            <span style={{ fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500 }}>
+            <span className="inline-flex">{Ico.plus(16)}</span>
+            <span className="font-[var(--font-body)] text-[13px] font-medium">
               New project
             </span>
           </button>
         </div>
       ) : (
-        <div style={{ padding: '6px 32px 60px', marginTop: 18 }}>
+        <div className="pt-[6px] px-8 pb-[60px] mt-[18px]">
           <ListHeader />
           {visibleProjects.map((p) => (
             <ListRow
