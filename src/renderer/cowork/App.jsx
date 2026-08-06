@@ -2482,6 +2482,21 @@ function AppCore() {
     setSettingsOpen(true);
   };
 
+  // Router shim (ENG-1233), step 1 — loaders: one place declaring how each route
+  // fetches its data on entry, so navigate() and the cold deep-link path don't
+  // duplicate it. Shaped like a router loader map — becomes each route's `loader`
+  // when a real router drops in. Only routes with entry data have an entry.
+  const loadSchedules = () => fetchSchedules().then((d) => {
+    setScheduled(d.schedules || []);
+    setScheduleRunsIndex(d.runs_index || {});
+  });
+  const routeLoaders = {
+    artifacts: () => fetchArtifacts().then((d) => { if (Array.isArray(d)) setArtifacts(d); }),
+    projects: () => fetchProjects().then((d) => { if (Array.isArray(d)) setProjects(d); }),
+    scheduled: loadSchedules,
+    'schedule-detail': loadSchedules,
+  };
+
   const navigate = (key) => {
     if (isNarrow) setNavPopoutOpen(false);
     if (key === 'settings' || key.startsWith('settings:')) {
@@ -2490,38 +2505,22 @@ function AppCore() {
       openSettings(key.includes(':') ? key.split(':')[1] : null);
       return;
     }
-    if (key === 'artifacts') {
-      fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
-    }
+    routeLoaders[key]?.();
     if (key === 'projects') {
-      fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); });
-      // Clicking "Projects" in the sidebar should always land on the
-      // grid of all projects, not the previously-selected project's
-      // detail. Clear the selection so ProjectsView starts in grid
-      // mode. The chat-header crumb routes through onOpenProject
-      // (which sets selectedProject AFTER routing) so it's unaffected.
+      // Clicking "Projects" in the sidebar should always land on the grid of all
+      // projects, not the previously-selected project's detail — clear the
+      // selection so ProjectsView starts in grid mode. (The chat-header crumb
+      // routes through onOpenProject, which sets selectedProject AFTER routing.)
       setSelectedProject(null);
-    }
-    if (key === 'scheduled') {
-      fetchSchedules().then((data) => {
-      setScheduled(data.schedules || []);
-      setScheduleRunsIndex(data.runs_index || {});
-    });
     }
     setRoute(key);
   };
 
   // Cold deep-link: a URL-seeded route skips the fetch normal navigation would do,
-  // so kick it once on mount (web only; harmless if boot also fetches). ENG-1233.
+  // so run its loader once on mount (web only; harmless if boot also fetches).
   useEffect(() => {
     if (!host.isWeb || !bootNav) return;
-    if (bootNav.route === 'artifacts') {
-      fetchArtifacts().then((d) => { if (Array.isArray(d)) setArtifacts(d); });
-    } else if (bootNav.route === 'projects') {
-      fetchProjects().then((d) => { if (Array.isArray(d)) setProjects(d); });
-    } else if (bootNav.route === 'scheduled' || bootNav.route === 'schedule-detail') {
-      fetchSchedules().then((d) => { setScheduled(d.schedules || []); setScheduleRunsIndex(d.runs_index || {}); });
-    }
+    routeLoaders[bootNav.route]?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
