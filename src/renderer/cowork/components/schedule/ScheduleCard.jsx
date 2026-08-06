@@ -1,16 +1,9 @@
-// `<ScheduleCard>` — grid view tile for one scheduled task.
+// `<ScheduleCard>` — grid tile for one scheduled task.
 //
-// Width matches the projects-grid minimum (280px). The header row pairs
-// the title with a top-right cluster — status badge, a "Run now" button,
-// and the ⋮ overflow menu (Edit / Pause-Resume / Delete). A cadence +
-// next-run line and a "last run" caption follow.
-//
-// Actions live top-right and are ALWAYS visible (not hover-revealed): the
-// old hover-only row was unreachable by keyboard focus and by touch/web
-// (no hover), and hid the surface's primary verb. Calm comes from low
-// emphasis (quiet ghost buttons), not from hiding. Click anywhere on the
-// card body opens the detail page; the action cluster stops propagation so
-// its controls don't also navigate.
+// Actions (Run now + ⋮ menu) sit top-right and are always visible, not
+// hover-revealed — a hover-only row is unreachable by keyboard focus and by
+// touch/web. Clicking the card body opens the detail page; the action cluster
+// stops propagation so its controls don't also navigate.
 
 import Ico from '../Icons';
 import { Alert, Card, Button, Spinner } from '../ui';
@@ -28,9 +21,6 @@ function absoluteTime(iso) {
   });
 }
 
-// Cadence → display label. Was CadencePill; hoisted to a plain
-// function now that the cadence reads inline in the footer meta row
-// instead of its own pill.
 function cadenceLabel(cadence) {
   return {
     once:     'One-off',
@@ -43,10 +33,6 @@ function cadenceLabel(cadence) {
 
 export default function ScheduleCard({
   task, busy = false,
-  // `projects` + `onOpenProject` are optional — when both are
-  // supplied the card surfaces a clickable "project: <name>" label
-  // that routes to the project's detail page. Mirrors the pattern
-  // ArtifactBubble uses on the Live artifacts page.
   projects = [],
   onOpenProject,
   onOpen, onRunNow, onPause, onResume, onEdit, onDelete,
@@ -54,9 +40,7 @@ export default function ScheduleCard({
   const open  = () => onOpen?.(task);
   const stop  = (e) => { e.stopPropagation(); };
 
-  // The server keys the schedule's project by id (a UUID) — resolve the name
-  // to display from `projects` (ENG-1255). `task.project`/`projectName` were
-  // never sent by the server, so reading them showed a blank field.
+  // Resolve the project name from the stored id (server keys by UUID, ENG-1255).
   const projectMatch = task.projectId
     ? projects.find((p) => p.id === task.projectId) || null
     : null;
@@ -69,14 +53,8 @@ export default function ScheduleCard({
       interactive
       padding="cozy"
       onActivate={open}
-      // Layout only; the card's lift/shadow comes from `.card.interactive:hover` (CSS).
       className="relative flex flex-col gap-2.5"
     >
-      {/* Header row — title (2-line clamp) paired with the top-right actions:
-          Run now + the ⋮ menu. Status has moved down to the meta row so this
-          corner isn't three-up and cramped. Actions stop propagation so they
-          don't also open the card; they're always visible so keyboard and
-          touch/web reach them and the primary verb stays discoverable. */}
       <div className="flex items-start gap-2.5">
         <div className="s-h3 line-clamp-2 min-w-0 flex-1">
           {task.title || 'Untitled schedule'}
@@ -92,9 +70,6 @@ export default function ScheduleCard({
             items={taskMenuItems({ task, onEdit, onPause, onResume, onDelete })}
             disabled={busy}
             align="end"
-            // Quiet-but-present ghost icon button: muted at rest, gains a
-            // hover surface + darker ink on hover — the same 28px hit
-            // target the Live-artifacts / project cards use.
             icon={Ico.moreVert(16)}
             triggerClassName="h-7 w-7 justify-center rounded-md text-ink-4 hover:text-ink hover:bg-surface-2"
           />
@@ -115,24 +90,15 @@ export default function ScheduleCard({
         </Alert>
       )}
 
-      {/* Missed-runs note — shown only when the schedule slipped one or more
-          cycles while the app was off. Cleared on the next successful run;
-          purely informational. */}
+      {/* Shown only when runs slipped while the app was closed; cleared on the next run. */}
       {Number(task.missedRuns) > 0 && (
         <div className="font-body text-xs text-ink-4">
           Missed {task.missedRuns} run{task.missedRuns === 1 ? '' : 's'} while the app was closed.
         </div>
       )}
 
-      {/* Meta row — the card's metadata under a hairline (the Project-card
-          idiom). Project origin on the LEFT (the ArtifactBubble footer
-          convention: origin left, temporal info right); status badge +
-          schedule on the right. `mt-auto` drops the row to the card's baseline
-          so meta rows align across a grid row. Enabled cards lead with the
-          next run (the actionable fact); paused cards show the cadence instead
-          — the badge already says "Paused", and there is no next run. Cadence
-          for enabled tasks + last-run + absolute times live on the detail
-          page. */}
+      {/* Meta row (hairline): project origin left, status + schedule right.
+          Enabled tasks show the next run; paused tasks show the cadence. */}
       <div className="mt-auto flex min-w-0 items-center gap-2 border-t border-line pt-[11px]">
         {projectName && (
           <span className="flex min-w-0 items-center gap-1.5">
@@ -168,9 +134,8 @@ export default function ScheduleCard({
   );
 }
 
-// Shared item list for the card and list-row overflow menus: Edit, the
-// Pause/Resume toggle, then Delete (danger) under a divider. Delete routes to
-// the surface's confirm flow (a ConfirmModal) rather than deleting inline.
+// Overflow-menu items shared by the card and the list row. Delete routes to the
+// caller's confirm flow (a ConfirmModal), not an inline delete.
 export function taskMenuItems({ task, onEdit, onPause, onResume, onDelete }) {
   return [
     { id: 'edit', label: 'Edit', icon: Ico.edit ? Ico.edit(14) : null, onClick: () => onEdit?.(task) },
@@ -182,12 +147,8 @@ export function taskMenuItems({ task, onEdit, onPause, onResume, onDelete }) {
   ];
 }
 
-
-// Primary verb of the surface. Kept LABELED (not a mystery-meat icon) and
-// always visible — it's the one thing people come to this page to do. The
-// `subtle` variant is a borderless ghost that only firms up on hover, so a
-// grid of these reads calm at rest. Busy swaps the send glyph for a spinner
-// and disables the click while a run is in flight.
+// Primary action — labeled (not icon-only); `subtle` is a quiet ghost. Busy
+// shows a spinner and disables the click.
 function RunNowButton({ onClick, busy }) {
   return (
     <Button
