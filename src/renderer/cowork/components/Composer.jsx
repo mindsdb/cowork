@@ -623,7 +623,7 @@ export default function Composer({
   }, []);
 
   return (
-    <div ref={wrapRef} {...fileDropHandlers} style={{ width: '100%', maxWidth: 'var(--composer-max-width, 640px)', position: 'relative' }}>
+    <div ref={wrapRef} {...fileDropHandlers} className="w-full max-w-[var(--composer-max-width,640px)] relative">
       <FileDropOverlay active={filesDragging} label="Drop files to attach" />
       <input
         ref={fileRef}
@@ -633,23 +633,24 @@ export default function Composer({
         onChange={(event) => handleAttachFiles(event.target.files)}
       />
 
-      <div style={{ width: '100%' }}>
-        <div className={`composer-wrap${focused ? ' focused' : ''}${inFence ? ' in-fence' : ''}`} style={{ position: 'relative' }}>
+      <div className="w-full">
+        <div className={`composer-wrap${focused ? ' focused' : ''}${inFence ? ' in-fence' : ''} relative`}>
 
           {/* "/" slash-command menu — anchored to composer-wrap so it appears
               just above/below the textarea, not below the toolbar. */}
           {slashOpen && slashItems.length > 0 && (
             <div
-              className="menu"
+              className="menu left-0 right-0 max-h-[min(50vh,320px)] overflow-y-auto"
               role="listbox"
               aria-label="Skills and actions"
               onMouseDown={(e) => e.preventDefault()}
               style={{
-                position: 'absolute', left: 0, right: 0,
+                // top/bottom stay inline (app-state flip); padding + zIndex
+                // override `.menu` which wins the cascade, so keep them inline.
                 ...(slashMenuBelow
                   ? { top: 'calc(100% + 8px)', bottom: 'auto' }
                   : { top: 'auto', bottom: 'calc(100% + 8px)' }),
-                maxHeight: 'min(50vh, 320px)', overflowY: 'auto', padding: '4px 0', zIndex: 40,
+                padding: '4px 0', zIndex: 40,
               }}
             >
               {slashItems.map((item, i) => {
@@ -665,14 +666,14 @@ export default function Composer({
                     onClick={() => acceptSlash(item)}
                     style={active ? { background: 'var(--surface-2)' } : undefined}
                   >
-                    <span style={{ display: 'inline-flex', color: 'var(--frost-700, var(--ink-3))' }}>
+                    <span className="inline-flex text-[var(--frost-700,var(--ink-3))]">
                       {item.kind === 'action' ? Ico.upload(15) : Ico.cube(15)}
                     </span>
-                    <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left' }}>
+                    <span className="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-left">
                       {item.label}
                     </span>
                     {item.hint && (
-                      <span style={{ color: 'var(--ink-3)', fontSize: 11.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '46%' }}>
+                      <span className="text-ink-3 text-[11.5px] overflow-hidden text-ellipsis whitespace-nowrap max-w-[46%]">
                         {item.hint}
                       </span>
                     )}
@@ -859,7 +860,7 @@ export default function Composer({
           <div className="composer-toolbar">
             <span
               ref={attachAnchorRef}
-              style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}
+              className="relative inline-flex items-center"
             >
               <button
                 className="composer-icon"
@@ -883,9 +884,9 @@ export default function Composer({
               {openMenu === 'attach' && (
                 <div
                   ref={attachMenuRef}
-                  className={`menu${attachMenuBelow ? ' menu--drop-down' : ''}`}
+                  className={`menu left-0${attachMenuBelow ? ' menu--drop-down' : ''}`}
                   style={{
-                    left: 0,
+                    // minWidth overrides `.menu` (200px) which wins the cascade — keep inline.
                     minWidth: 240,
                     ...(attachMenuBelow
                       ? { top: 'calc(100% + 6px)' }
@@ -910,8 +911,8 @@ export default function Composer({
                     aria-expanded={connectorsOpen}
                   >
                     {Ico.link(14)}
-                    <span style={{ flex: 1 }}>Connectors</span>
-                    <span style={{ display: 'inline-flex', color: 'var(--frost-500)' }}>
+                    <span className="flex-1">Connectors</span>
+                    <span className="inline-flex text-[var(--frost-500)]">
                       {connectorsOpen ? Ico.chevDown(12) : Ico.chevRight(12)}
                     </span>
                   </button>
@@ -925,23 +926,13 @@ export default function Composer({
                         inert={!connectorsOpen || undefined}
                       >
                         {connectors.length === 0 ? (
-                          <div style={{ padding: '8px 14px', fontSize: 12.5, color: 'var(--frost-600)' }}>
+                          <div className="py-2 px-[14px] text-sm text-[var(--frost-600)]">
                             No connectors yet. Add one in{' '}
                             {onNavigateToConnectors ? (
                               <button
                                 type="button"
                                 onClick={navigateToConnectors}
-                                style={{
-                                  margin: 0,
-                                  padding: 0,
-                                  border: 0,
-                                  background: 'transparent',
-                                  color: 'var(--accent)',
-                                  font: 'inherit',
-                                  cursor: 'pointer',
-                                  textDecoration: 'underline',
-                                  textUnderlineOffset: 2,
-                                }}
+                                className="m-0 p-0 border-0 bg-transparent text-accent [font:inherit] cursor-pointer underline [text-underline-offset:2px]"
                               >
                                 Connect Apps and Data
                               </button>
@@ -956,30 +947,21 @@ export default function Composer({
                             return (
                               <div
                                 key={`${c.engine}:${c.name}`}
-                                className="menu-item"
+                                className="menu-item flex-nowrap"
                                 style={{
+                                  // paddingLeft/Right + cursor override `.menu-item`
+                                  // (padding 8px 10px, cursor pointer) which wins
+                                  // the cascade — keep them inline.
                                   paddingLeft: 12,
                                   paddingRight: 12,
                                   cursor: 'default',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: 10,
-                                  flexWrap: 'nowrap',
                                 }}
                                 onMouseDown={(e) => e.stopPropagation()}
                               >
-                                <span style={{ display: 'inline-flex', color: 'var(--frost-700)', flexShrink: 0 }}>{Ico.link(13)}</span>
-                                <span style={{
-                                  flex: '1 1 120px',
-                                  minWidth: 0,
-                                  display: 'flex',
-                                  flexDirection: 'column',
-                                  alignItems: 'flex-start',
-                                  gap: 2,
-                                }}
-                                >
-                                  <span style={{ fontWeight: 500 }}>{c.name}</span>
-                                  <span style={{ fontSize: 11, color: 'var(--frost-600)' }}>{c.displayName || c.engine}</span>
+                                <span className="inline-flex text-[var(--frost-700)] shrink-0">{Ico.link(13)}</span>
+                                <span className="flex-[1_1_120px] min-w-0 flex flex-col items-start gap-[2px]">
+                                  <span className="font-medium">{c.name}</span>
+                                  <span className="text-xs text-[var(--frost-600)]">{c.displayName || c.engine}</span>
                                 </span>
                                 {canMuteConnectors ? (
                                   <button
@@ -987,9 +969,8 @@ export default function Composer({
                                     role="switch"
                                     aria-checked={!muted}
                                     aria-label={muted ? `Enable ${c.name} for this chat` : `Disable ${c.name} for this chat`}
-                                    className={`toggle${!muted ? ' on' : ''}`}
+                                    className={`toggle shrink-0${!muted ? ' on' : ''}`}
                                     disabled={busy}
-                                    style={{ flexShrink: 0 }}
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       setConnectorUseInChat(c, muted);
@@ -1006,12 +987,12 @@ export default function Composer({
                     </div>
                   </div>
                   {error && (
-                    <div style={{ padding: '6px 14px', fontSize: 12, color: 'var(--danger-600, #b3261e)' }}>{error}</div>
+                    <div className="py-[6px] px-[14px] text-[12px] text-[var(--danger-600,#b3261e)]">{error}</div>
                   )}
                 </div>
               )}
             </span>
-            <div style={{ flex: 1 }} />
+            <div className="flex-1" />
             {/* Mic / voice input intentionally hidden — voice flow isn't
                 wired through anton yet. We keep speechSupported state
                 around so we can reinstate later by re-rendering the
@@ -1084,7 +1065,7 @@ export default function Composer({
                   the ENTIRE composer rather than just above the pill.
                   An inline-block span hugs the pill's box exactly. */}
               <span
-                style={{ position: 'relative', display: 'inline-flex' }}
+                className="relative inline-flex"
               >
                 <button
                   ref={projectPillRef}
@@ -1094,13 +1075,13 @@ export default function Composer({
                 >
                   {Ico.folder(14)}
                   <span>{project ? project.name : 'Work in a project'}</span>
-                  <span style={{ display: 'inline-flex', color: 'var(--frost-500)' }}>{Ico.chevDown(13)}</span>
+                  <span className="inline-flex text-[var(--frost-500)]">{Ico.chevDown(13)}</span>
                 </button>
 
                 {openMenu === 'project' && !metaReadOnly && (
                   <div
                     ref={projectMenuRef}
-                    className="menu menu--drop-down"
+                    className="menu menu--drop-down left-0 top-[calc(100%+6px)] max-h-[min(60vh,360px)] flex flex-col overflow-hidden"
                     style={{
                       // Always drop downward from the pill. The
                       // earlier flip-up was over-engineering: the
@@ -1111,25 +1092,16 @@ export default function Composer({
                       // projects view) has plenty of room below. The
                       // menu's max-height + internal scroll caps it
                       // if the viewport is unusually short.
-                      left: 0,
-                      top: 'calc(100% + 6px)',
+                      // minWidth kept inline: `.menu` sets 200px and wins the cascade.
                       minWidth: 260,
-                      maxHeight: 'min(60vh, 360px)',
-                      display: 'flex', flexDirection: 'column',
-                      overflow: 'hidden',
                     }}
                     onClick={(e) => e.stopPropagation()}
                   >
                     {/* Search input — sticky header (first flex
                         child of a non-scrolling container). */}
-                    <div style={{ padding: '4px 6px 6px' }}>
-                      <div style={{
-                        display: 'flex', alignItems: 'center', gap: 6,
-                        background: 'var(--surface-2)',
-                        border: '1px solid var(--line)',
-                        borderRadius: 6, padding: '4px 8px',
-                      }}>
-                        <span style={{ display: 'inline-flex', color: 'var(--frost-600)' }}>{Ico.folder(13)}</span>
+                    <div className="pt-1 px-[6px] pb-[6px]">
+                      <div className="flex items-center gap-[6px] bg-surface-2 border border-solid border-line rounded-[6px] py-1 px-2">
+                        <span className="inline-flex text-[var(--frost-600)]">{Ico.folder(13)}</span>
                         <input
                           ref={projectSearchRef}
                           type="text"
@@ -1154,29 +1126,17 @@ export default function Composer({
                               else setOpenMenu(null);
                             }
                           }}
-                          style={{
-                            flex: 1, minWidth: 0,
-                            background: 'transparent', border: 0, outline: 'none',
-                            color: 'var(--ink)', fontSize: 13,
-                          }}
+                          className="flex-1 min-w-0 bg-transparent border-0 outline-none text-ink text-[13px]"
                         />
                       </div>
                     </div>
 
                     {/* Filtered project list — only scrollable region. */}
                     <div
-                      className="project-menu-list"
-                      style={{
-                        flex: 1, minHeight: 0,
-                        overflowY: 'auto',
-                        padding: '2px 0',
-                      }}
+                      className="project-menu-list flex-1 min-h-0 overflow-y-auto py-[2px]"
                     >
                       {_filteredProjects.length === 0 ? (
-                        <div style={{
-                          padding: '10px 12px', fontSize: 12,
-                          color: 'var(--frost-600)',
-                        }}>
+                        <div className="py-[10px] px-3 text-[12px] text-[var(--frost-600)]">
                           {_projectSearchTrimmed
                             ? `No project matches “${_projectSearchTrimmed}”.`
                             : 'No projects yet.'}
@@ -1187,9 +1147,9 @@ export default function Composer({
                           className={`menu-item${project?.name === p.name ? ' checked' : ''}`}
                           onClick={() => { onProjectChange(p); setOpenMenu(null); }}
                         >
-                          <span style={{ display: 'inline-flex', color: 'var(--frost-700)' }}>{Ico.folder(14)}</span>
-                          <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
-                          {project?.name === p.name && <span style={{ color: 'var(--primary-700)' }}>{Ico.check(14)}</span>}
+                          <span className="inline-flex text-[var(--frost-700)]">{Ico.folder(14)}</span>
+                          <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{p.name}</span>
+                          {project?.name === p.name && <span className="text-[var(--primary-700)]">{Ico.check(14)}</span>}
                         </button>
                       ))}
                     </div>
@@ -1210,7 +1170,7 @@ export default function Composer({
                     */}
                     {onCreateProject && !_projectExactMatch && (
                       <>
-                        <div style={{ height: 1, background: 'var(--border-0)', margin: '2px 0' }} />
+                        <div className="h-px bg-[var(--border-0)] my-[2px]" />
                         <button
                           className="menu-item"
                           disabled={projectMenuBusy}
@@ -1224,12 +1184,12 @@ export default function Composer({
                           }}
                           style={{ color: 'var(--primary-700)' }}
                         >
-                          <span style={{ display: 'inline-flex', color: 'var(--primary-700)' }}>{Ico.plus(14)}</span>
-                          <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          <span className="inline-flex text-[var(--primary-700)]">{Ico.plus(14)}</span>
+                          <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
                             {projectMenuBusy
                               ? 'Creating…'
                               : (_canCreateFromSearch
-                                  ? <>Create <strong style={{ fontWeight: 600 }}>“{_projectSearchTrimmed}”</strong></>
+                                  ? <>Create <strong className="font-semibold">“{_projectSearchTrimmed}”</strong></>
                                   : 'New project')}
                           </span>
                         </button>
@@ -1237,11 +1197,7 @@ export default function Composer({
                     )}
 
                     {projectMenuError && (
-                      <div style={{
-                        padding: '6px 10px', fontSize: 11.5,
-                        color: 'var(--danger)',
-                        borderTop: '1px solid var(--border-0)',
-                      }}>
+                      <div className="py-[6px] px-[10px] text-[11.5px] text-danger border-t border-solid border-t-[var(--border-0)]">
                         {projectMenuError}
                       </div>
                     )}
@@ -1255,7 +1211,7 @@ export default function Composer({
                   title="Choose model"
                 >
                   <span>{model?.name ?? 'Select model'}</span>
-                  <span style={{ display: 'inline-flex', color: 'var(--frost-500)' }}>{Ico.chevDown(13)}</span>
+                  <span className="inline-flex text-[var(--frost-500)]">{Ico.chevDown(13)}</span>
                 </button>
               )}
             </>
@@ -1264,8 +1220,8 @@ export default function Composer({
       )}
 
       {openMenu === 'model' && !metaReadOnly && (
-        <div className="menu" style={{ right: 8, top: 'calc(100% + 6px)', minWidth: 260 }}>
-          <div style={{ padding: '6px 10px', fontSize: 11, fontWeight: 600, color: 'var(--frost-600)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Model</div>
+        <div className="menu right-2 top-[calc(100%+6px)]" style={{ minWidth: 260 }}>
+          <div className="py-[6px] px-[10px] text-xs font-semibold text-[var(--frost-600)] uppercase tracking-[0.04em]">Model</div>
           {models.map((m) => (
             <button
               key={m.id}
@@ -1273,11 +1229,11 @@ export default function Composer({
               onClick={() => { onModelChange(m); setOpenMenu(null); }}
               style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%' }}>
-                <span style={{ flex: 1, fontWeight: 500 }}>{m.name}</span>
-                {model?.id === m.id && <span style={{ color: 'var(--primary-700)' }}>{Ico.check(14)}</span>}
+              <div className="flex items-center gap-2 w-full">
+                <span className="flex-1 font-medium">{m.name}</span>
+                {model?.id === m.id && <span className="text-[var(--primary-700)]">{Ico.check(14)}</span>}
               </div>
-              <div style={{ fontSize: 11.5, color: 'var(--frost-600)' }}>{m.desc}</div>
+              <div className="text-[11.5px] text-[var(--frost-600)]">{m.desc}</div>
             </button>
           ))}
         </div>
