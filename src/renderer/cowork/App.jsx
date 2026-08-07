@@ -3,6 +3,8 @@ import { flushSync } from 'react-dom';
 import Ico from './components/Icons';
 import MoveToProjectModal from './components/MoveToProjectModal';
 import { pickConnectWelcome } from './lib/connectWelcomes';
+import { isAntonConfigError, normalizeAntonError } from './lib/antonErrors';
+import { mergeTasksFromServer } from './lib/mergeTasks';
 // OnboardingShell removed — the desktop shell's renderer handles terms/install/
 // provider setup. The cowork app is mounted by CoworkApp.tsx only after
 // those gates pass, so AppCore renders unconditionally here.
@@ -131,24 +133,6 @@ function isPendingFileAttachment(a) {
 // resolved to an upload or sent as a real attachment id.
 function isReferenceOnlyAttachment(a) {
   return !!(a && a.source === 'gdrive');
-}
-
-function isAntonConfigError(message, event) {
-  const text = String(message || '');
-  return (
-    event?.code === 'config_required' ||
-    /Configure ANTON_/i.test(text) ||
-    /Could not resolve authentication method/i.test(text) ||
-    /Expected one of api_key, auth_token, or credentials/i.test(text)
-  );
-}
-
-function normalizeAntonError(message, event) {
-  if (isAntonConfigError(message, event)) {
-    return 'No LLM provider is configured for this account. Subscribe with MindsHub or add your own provider in Settings.';
-  }
-  const text = String(message || '');
-  return text || 'Could not complete this task.';
 }
 
 // Activation gate (ENG-736): fire from the chat send/reply terminal handlers,
@@ -647,71 +631,6 @@ function mergeConvTurns(cid, messages) {
 // project / status / order), but for each task that exists locally
 // AND is mid-stream OR has unsaved messages, keep the local
 // messages array.
-function mergeTasksFromServer(serverTasks, localTasks) {
-  const local = Array.isArray(localTasks) ? localTasks : [];
-  if (!Array.isArray(serverTasks)) return local;
-  const localById = new Map(local.map((t) => [t.id, t]));
-  // Take whichever of (local, server) updatedAt is newer. When a turn
-  // is in flight, handleSendInTask / handleSendFromHome stamp a fresh
-  // client updatedAt the instant the user sends, but the server's value
-  // only catches up once the turn's messages persist (the server derives
-  // updated_at from the latest message — ENG-961). Keeping the newer of
-  // the two stops a fetchSessions mid-stream from sliding the just-revived
-  // task back down the list before the server value lands.
-  const _newerUpdatedAt = (a, b) => {
-    const aa = Date.parse(a || '') || 0;
-    const bb = Date.parse(b || '') || 0;
-    return aa >= bb ? a : b;
-  };
-  const merged = serverTasks.map((server) => {
-    const l = localById.get(server.id);
-    if (!l) return server;
-    const lMessages = Array.isArray(l.messages) ? l.messages : [];
-    const sMessages = Array.isArray(server.messages) ? server.messages : [];
-    const isStreaming = lMessages.some((m) => m?.role === '_streaming');
-    const hasLocalContent = lMessages.length > 0;
-    const countAssistants = (msgs) => (msgs || []).filter((m) => m?.role === 'assistant').length;
-    if (!isStreaming && !hasLocalContent) {
-      // Even without live messages, prefer the locally-bumped
-      // updatedAt if it's newer — handleSendInTask stamps the task
-      // before any stream events arrive, so a fetchSessions that
-      // races between user-click-send and the first SSE event must
-      // not overwrite the bump.
-      return { ...server, updatedAt: _newerUpdatedAt(l.updatedAt, server.updatedAt) };
-    }
-    if (!isStreaming && countAssistants(sMessages) > countAssistants(lMessages)) {
-      return {
-        ...server,
-        updatedAt: _newerUpdatedAt(l.updatedAt, server.updatedAt),
-        disabledConnections: l.disabledConnections ?? server.disabledConnections ?? [],
-        attachments: lMessages.length && Array.isArray(l.attachments) && l.attachments.length
-          ? l.attachments
-          : server.attachments,
-      };
-    }
-    return {
-      ...server,
-      // Local wins for the live conversation surface.
-      messages: lMessages,
-      status: l.status || server.status,
-      // Preserve in-flight attachments tracked client-side.
-      attachments: lMessages.length && Array.isArray(l.attachments) && l.attachments.length
-        ? l.attachments
-        : server.attachments,
-      // Muted-datasource toggles can change while a turn streams; keep
-      // the client list when present.
-      disabledConnections: l.disabledConnections ?? server.disabledConnections ?? [],
-      updatedAt: _newerUpdatedAt(l.updatedAt, server.updatedAt),
-    };
-  });
-  // Carry over local-only tasks the server hasn't seen yet (e.g. a
-  // tmp-id task whose first stream hasn't resolved a real cid).
-  const serverIds = new Set(serverTasks.map((t) => t.id));
-  for (const t of local) {
-    if (!serverIds.has(t.id)) merged.unshift(t);
-  }
-  return merged;
-}
 
 function appendActivity(messages, event) {
   const content = describeActivity(event);
@@ -1800,6 +1719,24 @@ function AppCore() {
     ? (models.find((m) => m.id === currentTask.model) || { id: currentTask.model, name: currentTask.model, desc: 'Configured planning model' })
     : selectedModel;
 
+  // "Switch to MindsHub Air" escape hatch on the model-denial card
+  // (ENG-1304): offered only while Air itself is payable — the free monthly
+  // grant covers Air, so it's the one model an empty wallet can usually
+  // still run. `modelEnabled` is the same availability map the Settings
+  // picker tags rows with (absent id ⇒ available).
+  const AIR_MODEL_ID = 'mindshub_air';
+  const airAvailableForSwitch =
+    (settings.recommendedModels?.['minds-cloud'] || []).includes(AIR_MODEL_ID)
+    && (settings.modelEnabled || {})[AIR_MODEL_ID] !== false;
+  const handleSwitchToAirAndResend = (text) => {
+    if (!currentTask || !text) return;
+    // Persist the switch on the task so follow-up sends stay on Air, and
+    // override the same send explicitly — the state write isn't visible to
+    // handleSendInTask's closure within this tick.
+    setTasks((prev) => prev.map((t) => (t.id === currentTask.id ? { ...t, model: AIR_MODEL_ID } : t)));
+    handleSendInTask(text, null, { modelOverride: AIR_MODEL_ID });
+  };
+
   useEffect(() => {
     const prev = prevRouteForComposerMuteRef.current;
     prevRouteForComposerMuteRef.current = route;
@@ -2864,7 +2801,7 @@ function AppCore() {
   };
 
   // Send inside an existing task
-  const handleSendInTask = async (text, queuedAttachments = null) => {
+  const handleSendInTask = async (text, queuedAttachments = null, opts = {}) => {
     if (!currentTask) return;
     const id = currentTask.id;
 
@@ -2931,7 +2868,11 @@ function AppCore() {
     const taskProjectPath = currentTask.projectPath
       || currentTaskProject?.path
       || null;
-    const taskModel = currentTask.model || selectedModel?.id || null;
+    // opts.modelOverride carries a same-tick model switch (the "Switch to
+    // MindsHub Air" card action, ENG-1304) — currentTask is a render-scope
+    // closure, so a setTasks({...model}) just before this call would not be
+    // visible here yet.
+    const taskModel = opts.modelOverride || currentTask.model || selectedModel?.id || null;
 
     let sendingAttachments, attachmentIds, driveReference;
     try {
@@ -3969,6 +3910,7 @@ function AppCore() {
           <ChatView
             task={currentTask}
             onSend={handleSendInTask}
+            onSwitchToAirAndResend={airAvailableForSwitch ? handleSwitchToAirAndResend : undefined}
             onOpenSettings={openSettings}
             queuedMessages={messageQueue[currentTask?.id] || []}
             onRemoveFromQueue={(itemId) => removeFromQueue(currentTask?.id, itemId)}
