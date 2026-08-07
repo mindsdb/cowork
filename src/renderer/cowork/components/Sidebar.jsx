@@ -25,8 +25,8 @@ function NavItem({ icon, label, active, onClick, badge, comingSoon, elementRef }
       data-coming-soon={comingSoon ? '' : undefined}
       style={comingSoon ? { opacity: 0.55, cursor: 'default' } : undefined}
     >
-      <span className="nav-row__icon" style={{ display: 'inline-flex', flexShrink: 0, alignItems: 'center' }}>{icon}</span>
-      <span className="nav-row__label" style={{ flex: 1 }}>{label}</span>
+      <span className="nav-row__icon inline-flex shrink-0 items-center">{icon}</span>
+      <span className="nav-row__label flex-1">{label}</span>
       {badge != null && (
         <Badge variant="muted" size="xs">{badge}</Badge>
       )}
@@ -80,7 +80,7 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
   // or not — no jumping when moving between rows.
   return (
     <div
-      style={{ position: 'relative', display: 'flex' }}
+      className="relative flex"
       {...hoverProps}
     >
       {editing ? (
@@ -108,11 +108,8 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
           style={{ flex: 1, minWidth: 0 }}
         />
       ) : (
-      <button className={`recent-item${selected ? ' is-selected' : ''}`} onClick={onClick} aria-label={task.title} style={{ flex: 1, minWidth: 0 }}>
-        <span className="recent-row__title" style={{
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          flex: 1, paddingRight: 8,
-        }}>
+      <button className={`recent-item${selected ? ' is-selected' : ''} flex-1 min-w-0`} onClick={onClick} aria-label={task.title}>
+        <span className="recent-row__title overflow-hidden text-ellipsis whitespace-nowrap flex-1 pr-2">
           {task.title || 'Untitled'}
           {/* Schedule-group entries — append a muted "· N runs"
               suffix so the title still reads clean while the count
@@ -122,13 +119,8 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
           {task._scheduleGroup && (() => {
             const n = task._scheduleGroup.runs;
             return (
-              <span style={{
-                color: 'var(--ink-4)',
-                fontWeight: 400,
-                marginLeft: 6,
-                whiteSpace: 'nowrap',
-              }}>
-                <span style={{ color: 'var(--ink-5)', marginRight: 4 }}>·</span>
+              <span className="text-ink-4 font-normal ml-[6px] whitespace-nowrap">
+                <span className="text-ink-5 mr-1">·</span>
                 {n} {n === 1 ? 'run' : 'runs'}
               </span>
             );
@@ -136,33 +128,15 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
         </span>
 
         {/* Right-side fixed slot — 22px wide, holds timestamp OR kebab */}
-        <span style={{
-          position: 'relative',
-          width: 50, height: 18,
-          flexShrink: 0,
-          display: 'inline-flex',
-          alignItems: 'center', justifyContent: 'flex-end',
-        }}>
-          <span style={{
-            position: 'absolute', inset: 0,
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end',
-            fontFamily: 'var(--font-sans)', fontSize: 11,
-            color: 'var(--ink-4)',
+        <span className="relative w-[50px] h-[18px] shrink-0 inline-flex items-center justify-end">
+          <span className="absolute inset-0 inline-flex items-center justify-end font-[var(--font-sans)] text-xs text-ink-4 [transition:opacity_120ms_ease] gap-[6px]" style={{
             opacity: (showKebab || (!showTimestamp && !isActive)) ? 0 : 1,
-            transition: 'opacity 120ms ease',
-            gap: 6,
           }}>
             {isActive ? (
               <span
-                className="pulse-dot"
+                className="pulse-dot inline-block w-[7px] h-[7px] rounded-full bg-accent [box-shadow:0_0_0_2px_rgba(93,146,135,0.18)]"
                 title={`${agentLabel || 'Anton'} is working on this task`}
                 aria-label="Active"
-                style={{
-                  display: 'inline-block',
-                  width: 7, height: 7, borderRadius: '50%',
-                  background: 'var(--accent, #5d9287)',
-                  boxShadow: '0 0 0 2px rgba(93,146,135,0.18)',
-                }}
               />
             ) : (
               showTimestamp ? (relativeAge(task.updatedAt || task.subtitle) || task.subtitle || '') : ''
@@ -173,20 +147,11 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
             role="button"
             aria-label="Task menu"
             onClick={openMenu}
+            className="absolute right-0 top-1/2 -translate-y-1/2 inline-flex w-[22px] h-[22px] items-center justify-center text-ink-3 rounded-[5px] cursor-pointer [transition:opacity_120ms_ease,background_120ms_ease,color_120ms_ease] hover:bg-surface-2 hover:text-ink"
             style={{
-              position: 'absolute', right: 0, top: '50%',
-              transform: 'translateY(-50%)',
-              display: 'inline-flex',
-              width: 22, height: 22,
-              alignItems: 'center', justifyContent: 'center',
-              color: 'var(--ink-3)', borderRadius: 5,
-              cursor: 'pointer',
               opacity: showKebab ? 1 : 0,
               pointerEvents: showKebab ? 'auto' : 'none',
-              transition: 'opacity 120ms ease, background 120ms ease, color 120ms ease',
             }}
-            onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink)'; }}
-            onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-3)'; }}
           >
             {Ico.moreVert(13)}
           </span>
@@ -471,12 +436,11 @@ export default function Sidebar({
           5px upward, so they line up with the macOS traffic lights at
           their new (x:18, y:22) position. */}
       <div
-        className="anton-sidebar__chrome drag-region"
+        className="anton-sidebar__chrome drag-region shrink-0"
         style={{
           // 88px left clears the macOS traffic lights in Electron.
           // On web there are no traffic lights so 14px suffices.
           padding: `9px 14px 8px ${host.isWeb ? 14 : 88}px`,
-          flexShrink: 0,
         }}
       >
         {/* Right-aligned cluster: collapse + search icons, then a
@@ -484,8 +448,8 @@ export default function Sidebar({
             existing `justify-content: space-between` pushes the whole
             cluster against the right edge (the left half is empty space
             past the traffic-light pad). */}
-        <div style={{ flex: 1 }} />
-        <div className="anton-sidebar__chrome-left" style={{ marginLeft: 'auto', gap: 4 }}>
+        <div className="flex-1" />
+        <div className="anton-sidebar__chrome-left ml-auto gap-1">
           <div className="anton-sidebar__chrome-buttons">
             {/* Collapse button — always mounted so the search icon
                 next to it never shifts when the host route changes
@@ -536,23 +500,17 @@ export default function Sidebar({
               );
             })()}
             <button
-              className="icon-btn"
+              className="icon-btn [-webkit-app-region:no-drag]"
               onClick={onOpenSearch}
               title={`Search  (${shortcut('K')})`}
               aria-label="Search"
-              style={{ WebkitAppRegion: 'no-drag' }}
             >
               {Ico.search(15)}
             </button>
           </div>
           <span
             aria-hidden="true"
-            style={{
-              color: 'var(--text-muted)',
-              opacity: 0.5,
-              fontSize: 13,
-              userSelect: 'none',
-            }}
+            className="text-ink-3 opacity-50 text-[13px] select-none"
           >·</span>
           {navLogo && (
             <img
@@ -595,13 +553,13 @@ export default function Sidebar({
             style={{ gap: 10 }}
           >
             {Ico.plus(14)}
-            <span style={{ flex: 1, textAlign: 'left', fontWeight: 500 }}>New task</span>
+            <span className="flex-1 text-left font-medium">New task</span>
             <Kbd>{shortcut('N')}</Kbd>
           </Button>
         </div>
 
         {/* Primary nav */}
-        <div className="nav-list" style={{ padding: '0 10px', display: 'flex', flexDirection: 'column', gap: 1 }}>
+        <div className="nav-list px-[10px] flex flex-col gap-px">
           <NavItem icon={Ico.folder(15)}  label="Projects"        onClick={() => onNavigate('projects')}  active={activeRoute === 'projects'}  badge={showCounters ? (projectsCount  || null) : null} />
           <NavItem icon={Ico.clock(15)}   label="Scheduled Tasks" onClick={() => onNavigate('scheduled')} active={activeRoute === 'scheduled'} badge={showCounters ? (scheduledCount || null) : null} />
           <NavItem
@@ -646,7 +604,7 @@ export default function Sidebar({
             box (fewer edges). Labels name what the user OWNS (plural
             collections) rather than the engine's abstract concepts. */}
         <div className="section-label">Agent</div>
-        <div className="nav-list" style={{ padding: '0 10px', display: 'flex', flexDirection: 'column', gap: 1 }}>
+        <div className="nav-list px-[10px] flex flex-col gap-px">
           <NavItem icon={Ico.brain(15)} label="Memories"       onClick={() => onNavigate('memory')} active={activeRoute === 'memory'} />
           <NavItem icon={Ico.cube(15)}  label="Skills library" onClick={() => onNavigate('skills')} active={activeRoute === 'skills'} />
         </div>
@@ -656,7 +614,7 @@ export default function Sidebar({
         {pinnedTasks.length > 0 && (
           <>
             <div className="section-label">Pinned</div>
-            <div style={{ padding: '0 10px', display: 'flex', flexDirection: 'column', gap: 1 }}>
+            <div className="px-[10px] flex flex-col gap-px">
               {pinnedTasks.map((task) => (
                 <RecentItem
                   key={task.id}
@@ -688,28 +646,17 @@ export default function Sidebar({
             non-receptive. The span flex-grows to fill the row so
             the heading itself owns the empty space too. */}
         <div
-          className="section-label recents-heading"
-          style={{
-            display: 'flex',
-            alignItems: 'baseline',
-            gap: 8,
-            cursor: 'default',
-            width: '100%',
-          }}
+          className="section-label recents-heading flex items-baseline gap-2 cursor-default w-full"
           onMouseEnter={() => setRecentsHeadingHover(true)}
           onMouseLeave={() => setRecentsHeadingHover(false)}
         >
-          <span style={{ flex: 1 }}>RECENT TASKS</span>
+          <span className="flex-1">RECENT TASKS</span>
           <button
             type="button"
-            className="recents-viewall"
+            className="recents-viewall bg-transparent border-0 p-0 font-[var(--font-body)] text-xs tracking-[0.02em] normal-case"
             onClick={() => onNavigate?.('tasks')}
             style={{
-              background: 'transparent', border: 0, padding: 0,
               cursor: recentsHeadingHover ? 'pointer' : 'default',
-              fontFamily: 'var(--font-body)', fontSize: 11,
-              letterSpacing: '0.02em',
-              textTransform: 'none',
               opacity: recentsHeadingHover ? 1 : 0,
               transform: recentsHeadingHover ? 'translateX(0)' : 'translateX(2px)',
               pointerEvents: recentsHeadingHover ? 'auto' : 'none',
@@ -719,10 +666,7 @@ export default function Sidebar({
             View all →
           </button>
         </div>
-        <div className="scroll-clean" style={{
-          padding: '0 10px', flex: 1, minHeight: 0, overflowY: 'auto',
-          display: 'flex', flexDirection: 'column', gap: 1,
-        }}>
+        <div className="scroll-clean px-[10px] flex-1 min-h-0 overflow-y-auto flex flex-col gap-px">
           {recents.map((t) => {
             // Synthetic schedule-group entries route to the schedule
             // detail view (where the per-run history lives). Lone
@@ -755,33 +699,10 @@ export default function Sidebar({
             <button
               type="button"
               onClick={() => setRecentsModalOpen(true)}
-              className="recents-show-more"
-              style={{
-                margin: '6px 0 4px',
-                padding: '7px 10px',
-                background: 'transparent',
-                border: '1px dashed var(--line-2)',
-                borderRadius: 7,
-                color: 'var(--ink-3)',
-                fontFamily: 'var(--font-body)', fontSize: 12,
-                cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                gap: 8,
-                transition: 'background 120ms ease, color 120ms ease, border-color 120ms ease',
-              }}
-              onMouseOver={(e) => {
-                e.currentTarget.style.background = 'var(--surface-2)';
-                e.currentTarget.style.color = 'var(--ink)';
-                e.currentTarget.style.borderColor = 'var(--line)';
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.background = 'transparent';
-                e.currentTarget.style.color = 'var(--ink-3)';
-                e.currentTarget.style.borderColor = 'var(--line-2)';
-              }}
+              className="recents-show-more mt-[6px] mb-1 px-[10px] py-[7px] bg-transparent border border-dashed border-line-2 rounded-[7px] text-ink-3 font-[var(--font-body)] text-[12px] cursor-pointer flex items-center justify-between gap-2 [transition:background_120ms_ease,color_120ms_ease,border-color_120ms_ease] hover:bg-surface-2 hover:text-ink hover:border-line"
             >
               <span>Show more</span>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--ink-4)' }}>
+              <span className="font-mono text-[10.5px] text-ink-4">
                 +{recentsAll.length - recents.length}
               </span>
             </button>
@@ -796,42 +717,14 @@ export default function Sidebar({
         {updateAvailable && !shellUpdate && (
           <button
             type="button"
-            style={{
-              margin: '0 10px 6px',
-              padding: '8px 12px',
-              background: 'rgba(93,146,135,0.12)',
-              border: '1px solid rgba(93,146,135,0.30)',
-              borderRadius: 8,
-              display: 'flex', alignItems: 'center', gap: 8,
-              cursor: 'pointer',
-              transition: 'background 120ms ease',
-              width: 'calc(100% - 20px)',
-              textAlign: 'left',
-              fontFamily: 'inherit',
-              WebkitAppRegion: 'no-drag',
-            }}
+            className="mx-[10px] mb-[6px] px-3 py-2 bg-[rgba(93,146,135,0.12)] border border-[rgba(93,146,135,0.30)] rounded-card-row flex items-center gap-2 cursor-pointer [transition:background_120ms_ease] w-[calc(100%-20px)] text-left font-[inherit] [-webkit-app-region:no-drag] hover:bg-[rgba(93,146,135,0.22)]"
             onClick={onApplyUpdate}
-            onMouseOver={(e) => { e.currentTarget.style.background = 'rgba(93,146,135,0.22)'; }}
-            onMouseOut={(e) => { e.currentTarget.style.background = 'rgba(93,146,135,0.12)'; }}
           >
-            <span style={{
-              width: 6, height: 6, borderRadius: '50%',
-              background: 'var(--sage-500, #5D9287)',
-              flexShrink: 0,
-            }} />
-            <span style={{
-              flex: 1, fontSize: 11.5, color: 'var(--text-strong)',
-              fontFamily: 'var(--font-sans)',
-            }}>
+            <span className="w-[6px] h-[6px] rounded-full bg-[var(--sage-500,#5D9287)] shrink-0" />
+            <span className="flex-1 text-[11.5px] text-ink font-[var(--font-sans)]">
               Update ready{updateAvailable.version ? ` (${updateAvailable.version})` : ''}
             </span>
-            <span style={{
-              fontSize: 10, color: 'var(--sage-500, #5D9287)',
-              fontFamily: 'var(--font-mono)',
-              letterSpacing: '0.03em',
-              textTransform: 'uppercase',
-              fontWeight: 600,
-            }}>
+            <span className="text-2xs text-[var(--sage-500,#5D9287)] font-mono tracking-[0.03em] uppercase font-semibold">
               Restart
             </span>
           </button>
@@ -842,42 +735,14 @@ export default function Sidebar({
         {updateError && !shellUpdate && (
           <button
             type="button"
-            style={{
-              margin: '0 10px 6px',
-              padding: '8px 12px',
-              background: 'rgba(196,127,0,0.12)',
-              border: '1px solid rgba(196,127,0,0.30)',
-              borderRadius: 8,
-              display: 'flex', alignItems: 'center', gap: 8,
-              cursor: 'pointer',
-              transition: 'background 120ms ease',
-              width: 'calc(100% - 20px)',
-              textAlign: 'left',
-              fontFamily: 'inherit',
-              WebkitAppRegion: 'no-drag',
-            }}
+            className="mx-[10px] mb-[6px] px-3 py-2 bg-[rgba(196,127,0,0.12)] border border-[rgba(196,127,0,0.30)] rounded-card-row flex items-center gap-2 cursor-pointer [transition:background_120ms_ease] w-[calc(100%-20px)] text-left font-[inherit] [-webkit-app-region:no-drag] hover:bg-[rgba(196,127,0,0.22)]"
             onClick={onApplyUpdate}
-            onMouseOver={(e) => { e.currentTarget.style.background = 'rgba(196,127,0,0.22)'; }}
-            onMouseOut={(e) => { e.currentTarget.style.background = 'rgba(196,127,0,0.12)'; }}
           >
-            <span style={{
-              width: 6, height: 6, borderRadius: '50%',
-              background: 'var(--warning, #c47f00)',
-              flexShrink: 0,
-            }} />
-            <span style={{
-              flex: 1, fontSize: 11.5, color: 'var(--text-strong)',
-              fontFamily: 'var(--font-sans)',
-            }}>
+            <span className="w-[6px] h-[6px] rounded-full bg-[var(--warning,#c47f00)] shrink-0" />
+            <span className="flex-1 text-[11.5px] text-ink font-[var(--font-sans)]">
               Update failed{updateError.version ? ` (${updateError.version})` : ''}
             </span>
-            <span style={{
-              fontSize: 10, color: 'var(--warning, #c47f00)',
-              fontFamily: 'var(--font-mono)',
-              letterSpacing: '0.03em',
-              textTransform: 'uppercase',
-              fontWeight: 600,
-            }}>
+            <span className="text-2xs text-[var(--warning,#c47f00)] font-mono tracking-[0.03em] uppercase font-semibold">
               Try again
             </span>
           </button>
@@ -886,35 +751,19 @@ export default function Sidebar({
         {/* Shell updates are download-only and dismissible per version. */}
         {shellUpdate && (
           <div
-            style={{
-              margin: '0 10px 6px',
-              padding: '8px 12px',
-              background: 'rgba(93,146,135,0.12)',
-              border: '1px solid rgba(93,146,135,0.30)',
-              borderRadius: 8,
-              display: 'flex', alignItems: 'center', gap: 8,
-              width: 'calc(100% - 20px)',
-              WebkitAppRegion: 'no-drag',
-            }}
+            className="mx-[10px] mb-[6px] px-3 py-2 bg-[rgba(93,146,135,0.12)] border border-[rgba(93,146,135,0.30)] rounded-card-row flex items-center gap-2 w-[calc(100%-20px)] [-webkit-app-region:no-drag]"
           >
             <button
               type="button"
               onClick={onDownloadShellUpdate}
               title={`A new version of MindsHub Cowork is available${shellUpdate.version ? ` (${shellUpdate.version})` : ''} — download the installer, then quit the app and open it to update`}
-              style={{
-                flex: 1, display: 'flex', alignItems: 'center', gap: 8,
-                background: 'none', border: 'none', padding: 0, margin: 0,
-                cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
-              }}
+              className="flex-1 flex items-center gap-2 [background:none] border-none p-0 m-0 cursor-pointer text-left font-[inherit]"
             >
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--sage-500, #5D9287)', flexShrink: 0 }} />
-              <span style={{ flex: 1, fontSize: 11.5, color: 'var(--text-strong)', fontFamily: 'var(--font-sans)' }}>
+              <span className="w-[6px] h-[6px] rounded-full bg-[var(--sage-500,#5D9287)] shrink-0" />
+              <span className="flex-1 text-[11.5px] text-ink font-[var(--font-sans)]">
                 New version available{shellUpdate.version ? ` (${shellUpdate.version})` : ''}
               </span>
-              <span style={{
-                fontSize: 10, color: 'var(--sage-500, #5D9287)', fontFamily: 'var(--font-mono)',
-                letterSpacing: '0.03em', textTransform: 'uppercase', fontWeight: 600,
-              }}>
+              <span className="text-2xs text-[var(--sage-500,#5D9287)] font-mono tracking-[0.03em] uppercase font-semibold">
                 Download
               </span>
             </button>
@@ -923,10 +772,7 @@ export default function Sidebar({
               onClick={onDismissShellUpdate}
               aria-label="Dismiss update notice"
               title="Dismiss"
-              style={{
-                background: 'none', border: 'none', padding: '0 2px', margin: 0,
-                cursor: 'pointer', color: 'var(--text-muted)', fontSize: 14, lineHeight: 1, flexShrink: 0,
-              }}
+              className="[background:none] border-none px-[2px] py-0 m-0 cursor-pointer text-ink-3 text-base leading-none shrink-0"
             >
               ×
             </button>
@@ -959,13 +805,12 @@ export default function Sidebar({
                 <button
                   type="button"
                   className={
-                    'backend-status-control is-clickable' +
+                    'backend-status-control is-clickable [-webkit-app-region:no-drag] flex-1' +
                     (serverBusy ? ' is-busy' : '')
                   }
                   onClick={onShowServerHelp}
                   title="Backend status — click for details"
                   aria-label="Backend status — click for details"
-                  style={{ WebkitAppRegion: 'no-drag', flex: 1 }}
                 >
                   <span className={'status-dot' + (serverBusy ? ' busy' : ' offline')} />
                   <span className="status-text">
@@ -981,24 +826,22 @@ export default function Sidebar({
                   </span>
                 </button>
                 <button
-                  className={'chrome-btn--small' + (settingsActive ? ' is-on' : '')}
+                  className={'chrome-btn--small [-webkit-app-region:no-drag] shrink-0' + (settingsActive ? ' is-on' : '')}
                   onClick={() => onNavigate('settings:backend')}
                   title="Settings"
                   aria-label="Settings"
-                  style={{ WebkitAppRegion: 'no-drag', flexShrink: 0 }}
                 >
                   {Ico.settings(13)}
                 </button>
               </>
             ) : (
               <button
-                className={'anton-sidebar__footer-settings' + (settingsActive ? ' is-on' : '')}
+                className={'anton-sidebar__footer-settings [-webkit-app-region:no-drag] flex-1 min-w-0' + (settingsActive ? ' is-on' : '')}
                 onClick={() => onNavigate('settings:agent')}
                 title="Settings"
                 aria-label="Settings"
-                style={{ WebkitAppRegion: 'no-drag', flex: 1, minWidth: 0 }}
               >
-                <span style={{ display: 'inline-flex', flexShrink: 0 }}>{Ico.settings(13)}</span>
+                <span className="inline-flex shrink-0">{Ico.settings(13)}</span>
                 <span>Settings</span>
               </button>
             )}
@@ -1007,28 +850,25 @@ export default function Sidebar({
             // from the Settings/backend-status controls to the left.
             <span
               aria-hidden="true"
-              className="anton-sidebar__footer-divider"
-              style={{ WebkitAppRegion: 'no-drag', marginLeft: 'auto' }}
+              className="anton-sidebar__footer-divider [-webkit-app-region:no-drag] ml-auto"
             />
           )}
           {show8bitToggle && (
             <button
-              className={'chrome-btn--small' + (resolved8bitActive ? ' is-on' : '')}
+              className={'chrome-btn--small [-webkit-app-region:no-drag] shrink-0' + (resolved8bitActive ? ' is-on' : '')}
               onClick={onToggleSkin}
               title={skin === 'custom' ? '8-bit font' : '8-bit style'}
               aria-label={skin === 'custom' ? 'Toggle 8-bit font' : 'Toggle 8-bit style'}
-              style={{ WebkitAppRegion: 'no-drag', flexShrink: 0 }}
             >
               {Ico.gamepad(15)}
             </button>
           )}
           {showThemeToggle && (
             <button
-              className="chrome-btn--small"
+              className="chrome-btn--small [-webkit-app-region:no-drag] shrink-0"
               onClick={onToggleTheme}
               title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
               aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
-              style={{ WebkitAppRegion: 'no-drag', flexShrink: 0 }}
             >
               {theme === 'dark' ? Ico.sun(15) : Ico.moon(15)}
             </button>
