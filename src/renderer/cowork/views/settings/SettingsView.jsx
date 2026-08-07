@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef, useContext } from 'react';
 import { useId } from 'react';
 import Ico from '../../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchRecommendedModels } from '../../api';
-import { providerTypeToKeyField, providerValueToType, resolveModelPickerValue, buildModelOptions, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, clampBudgetValue, clampBudgets, BUDGET_FIELDS } from '../../lib/settingsTransform';
+import { providerTypeToKeyField, providerValueToType, resolveModelPickerValue, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, clampBudgetValue, clampBudgets, BUDGET_FIELDS } from '../../lib/settingsTransform';
 import { trackHarnessSwapped } from '../../lib/analytics';
 import { copyText as copyToClipboard } from '../../lib/clipboard';
 import { deriveProviderStatus, friendlyProviderError } from '../../lib/providerStatus';
@@ -1487,10 +1487,10 @@ export default function SettingsView({
                   const modelList = recommendedModels[curType] || [];
                   /* Per-model availability (settings.modelEnabled, sourced from MindsHub
                    * /v1/models). A model the org's wallet can't currently pay for (or
-                   * whose free allowance is spent) is listed here as false so we render
-                   * it greyed + non-selectable, with an "add credits to unlock" prompt.
-                   * Absent id ⇒ available (backwards compatible; direct providers have
-                   * no such flag). */
+                   * whose free allowance is spent) is listed here as false — it stays
+                   * selectable with a "Needs credits" tag, and picking it shows the
+                   * top-up hint below (ENG-1248). Absent id ⇒ available (backwards
+                   * compatible; direct providers have no such flag). */
                   const modelEnabled = settings.modelEnabled || {};
                   const isLocked = (m) => modelEnabled[m] === false;
                   const firstEnabledModel = modelList.find((m) => !isLocked(m)) || modelList[0] || '';
@@ -1555,15 +1555,21 @@ export default function SettingsView({
                     }}>{text}:</span>
                   );
 
+                  // Two stacked lines (ENG-1248): the credit state + top-up
+                  // action reads first on its own line, the BYOK escape hatch
+                  // sits under it. Inline, the escape hatch diluted the one
+                  // action that matters when the wallet is empty.
                   const noCreditsNotice = isNoCredits ? (
-                    <div style={{ fontSize: 12, lineHeight: 1.6 }}>
-                      <span style={{ color: 'var(--danger)', fontWeight: 600 }}>No credits available. </span>
-                      <button
-                        type="button"
-                        onClick={() => host.openExternal ? host.openExternal(MINDS_BILLING_URL) : window.open(MINDS_BILLING_URL, '_blank')}
-                        style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--accent)', textDecoration: 'underline', fontSize: 'inherit', fontFamily: 'inherit' }}
-                      >Top up credits →</button>
-                      <span style={{ color: 'var(--text-muted)' }}>{' '}or add your own provider and API key below.</span>
+                    <div style={{ fontSize: 12, lineHeight: 1.6, display: 'grid', gap: 1 }}>
+                      <div>
+                        <span style={{ color: 'var(--danger)', fontWeight: 600 }}>No credits available. </span>
+                        <button
+                          type="button"
+                          onClick={() => host.openExternal ? host.openExternal(MINDS_BILLING_URL) : window.open(MINDS_BILLING_URL, '_blank')}
+                          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--accent)', textDecoration: 'underline', fontSize: 'inherit', fontFamily: 'inherit' }}
+                        >Top up balance →</button>
+                      </div>
+                      <div style={{ color: 'var(--text-muted)' }}>Or add your own provider and API key below.</div>
                     </div>
                   ) : null;
 
@@ -1603,6 +1609,7 @@ export default function SettingsView({
                               resolveModelPickerValue(curModel, modelList, allowOther, modelInputMode[role]);
                             const modelOptions = buildModelOptions(curModel, modelList, allowOther, showStalePin, modelEnabled, settings.modelLabels || {});
                             return (
+                              <>
                               <label style={{ display: 'grid', gap: 4 }}>
                                 {fieldLabel('Model')}
                                 <ModelSelect
@@ -1662,7 +1669,24 @@ export default function SettingsView({
                                   />
                                 )}
                               </label>
-                            );
+                              {/* Needs-credits rows stay selectable (ENG-1248) —
+                                  this hint is the informed-consent half: the
+                                  choice is respected, the cost is named, and the
+                                  top-up route is one click away. Outside the
+                                  <label> so it doesn't leak into the combobox's
+                                  accessible name (PR #579 review). */}
+                              {!inputMode && !!curModel && isLocked(curModel) && (
+                                <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
+                                  {displayModelLabel(curModel, settings.modelLabels || {})} needs credits.{' '}
+                                  <button
+                                    type="button"
+                                    onClick={() => host.openExternal ? host.openExternal(MINDS_BILLING_URL) : window.open(MINDS_BILLING_URL, '_blank')}
+                                    style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--accent)', textDecoration: 'underline', fontSize: 'inherit', fontFamily: 'inherit' }}
+                                  >Top up your balance</button>
+                                  {' '}to use it.
+                                </div>
+                              )}
+                            </>);
                           })()
                         ) : (
                           <label style={{ display: 'grid', gap: 4 }}>
