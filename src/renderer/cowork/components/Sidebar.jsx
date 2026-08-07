@@ -119,7 +119,7 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
           {task._scheduleGroup && (() => {
             const n = task._scheduleGroup.runs;
             return (
-              <span className="text-ink-4 font-normal ml-[6px] whitespace-nowrap">
+              <span className="text-ink-4 font-normal ml-2 whitespace-nowrap">
                 <span className="text-ink-5 mr-1">·</span>
                 {n} {n === 1 ? 'run' : 'runs'}
               </span>
@@ -129,7 +129,7 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
 
         {/* Right-side fixed slot — 22px wide, holds timestamp OR kebab */}
         <span className="relative w-[50px] h-[18px] shrink-0 inline-flex items-center justify-end">
-          <span className="absolute inset-0 inline-flex items-center justify-end font-[var(--font-sans)] text-xs text-ink-4 [transition:opacity_120ms_ease] gap-[6px]" style={{
+          <span className="absolute inset-0 inline-flex items-center justify-end font-[var(--font-sans)] text-xs text-ink-4 [transition:opacity_120ms_ease] gap-2" style={{
             opacity: (showKebab || (!showTimestamp && !isActive)) ? 0 : 1,
           }}>
             {isActive ? (
@@ -510,7 +510,7 @@ export default function Sidebar({
           </div>
           <span
             aria-hidden="true"
-            className="text-ink-3 opacity-50 text-[13px] select-none"
+            className="text-ink-3 opacity-50 text-sm select-none"
           >·</span>
           {navLogo && (
             <img
@@ -559,7 +559,7 @@ export default function Sidebar({
         </div>
 
         {/* Primary nav */}
-        <div className="nav-list px-[10px] flex flex-col gap-px">
+        <div className="nav-list px-3 flex flex-col gap-px">
           <NavItem icon={Ico.folder(15)}  label="Projects"        onClick={() => onNavigate('projects')}  active={activeRoute === 'projects'}  badge={showCounters ? (projectsCount  || null) : null} />
           <NavItem icon={Ico.clock(15)}   label="Scheduled Tasks" onClick={() => onNavigate('scheduled')} active={activeRoute === 'scheduled'} badge={showCounters ? (scheduledCount || null) : null} />
           <NavItem
@@ -604,7 +604,7 @@ export default function Sidebar({
             box (fewer edges). Labels name what the user OWNS (plural
             collections) rather than the engine's abstract concepts. */}
         <div className="section-label">Agent</div>
-        <div className="nav-list px-[10px] flex flex-col gap-px">
+        <div className="nav-list px-3 flex flex-col gap-px">
           <NavItem icon={Ico.brain(15)} label="Memories"       onClick={() => onNavigate('memory')} active={activeRoute === 'memory'} />
           <NavItem icon={Ico.cube(15)}  label="Skills library" onClick={() => onNavigate('skills')} active={activeRoute === 'skills'} />
         </div>
@@ -614,7 +614,7 @@ export default function Sidebar({
         {pinnedTasks.length > 0 && (
           <>
             <div className="section-label">Pinned</div>
-            <div className="px-[10px] flex flex-col gap-px">
+            <div className="px-3 flex flex-col gap-px">
               {pinnedTasks.map((task) => (
                 <RecentItem
                   key={task.id}
@@ -666,7 +666,7 @@ export default function Sidebar({
             View all →
           </button>
         </div>
-        <div className="scroll-clean px-[10px] flex-1 min-h-0 overflow-y-auto flex flex-col gap-px">
+        <div className="scroll-clean px-3 flex-1 min-h-0 overflow-y-auto flex flex-col gap-px">
           {recents.map((t) => {
             // Synthetic schedule-group entries route to the schedule
             // detail view (where the per-run history lives). Lone
@@ -699,10 +699,10 @@ export default function Sidebar({
             <button
               type="button"
               onClick={() => setRecentsModalOpen(true)}
-              className="recents-show-more mt-[6px] mb-1 px-[10px] py-[7px] bg-transparent border border-dashed border-line-2 rounded-[7px] text-ink-3 font-[var(--font-body)] text-[12px] cursor-pointer flex items-center justify-between gap-2 [transition:background_120ms_ease,color_120ms_ease,border-color_120ms_ease] hover:bg-surface-2 hover:text-ink hover:border-line"
+              className="recents-show-more mt-2 mb-1 px-3 py-[7px] bg-transparent border border-dashed border-line-2 rounded-[7px] text-ink-3 font-[var(--font-body)] text-sm cursor-pointer flex items-center justify-between gap-2 [transition:background_120ms_ease,color_120ms_ease,border-color_120ms_ease] hover:bg-surface-2 hover:text-ink hover:border-line"
             >
               <span>Show more</span>
-              <span className="font-mono text-[10.5px] text-ink-4">
+              <span className="font-mono text-xs text-ink-4">
                 +{recentsAll.length - recents.length}
               </span>
             </button>
@@ -717,11 +717,11 @@ export default function Sidebar({
         {updateAvailable && !shellUpdate && (
           <button
             type="button"
-            className="mx-[10px] mb-[6px] px-3 py-2 bg-[rgba(93,146,135,0.12)] border border-[rgba(93,146,135,0.30)] rounded-card-row flex items-center gap-2 cursor-pointer [transition:background_120ms_ease] w-[calc(100%-20px)] text-left font-[inherit] [-webkit-app-region:no-drag] hover:bg-[rgba(93,146,135,0.22)]"
+            className="mx-3 mb-2 px-3 py-2 bg-[rgba(93,146,135,0.12)] border border-[rgba(93,146,135,0.30)] rounded-card-row flex items-center gap-2 cursor-pointer [transition:background_120ms_ease] w-[calc(100%-20px)] text-left font-[inherit] [-webkit-app-region:no-drag] hover:bg-[rgba(93,146,135,0.22)]"
             onClick={onApplyUpdate}
           >
             <span className="w-[6px] h-[6px] rounded-full bg-[var(--sage-500,#5D9287)] shrink-0" />
-            <span className="flex-1 text-[11.5px] text-ink font-[var(--font-sans)]">
+            <span className="flex-1 text-xs text-ink font-[var(--font-sans)]">
               Update ready{updateAvailable.version ? ` (${updateAvailable.version})` : ''}
             </span>
             <span className="text-2xs text-[var(--sage-500,#5D9287)] font-mono tracking-[0.03em] uppercase font-semibold">
@@ -735,11 +735,11 @@ export default function Sidebar({
         {updateError && !shellUpdate && (
           <button
             type="button"
-            className="mx-[10px] mb-[6px] px-3 py-2 bg-[rgba(196,127,0,0.12)] border border-[rgba(196,127,0,0.30)] rounded-card-row flex items-center gap-2 cursor-pointer [transition:background_120ms_ease] w-[calc(100%-20px)] text-left font-[inherit] [-webkit-app-region:no-drag] hover:bg-[rgba(196,127,0,0.22)]"
+            className="mx-3 mb-2 px-3 py-2 bg-[rgba(196,127,0,0.12)] border border-[rgba(196,127,0,0.30)] rounded-card-row flex items-center gap-2 cursor-pointer [transition:background_120ms_ease] w-[calc(100%-20px)] text-left font-[inherit] [-webkit-app-region:no-drag] hover:bg-[rgba(196,127,0,0.22)]"
             onClick={onApplyUpdate}
           >
             <span className="w-[6px] h-[6px] rounded-full bg-[var(--warning,#c47f00)] shrink-0" />
-            <span className="flex-1 text-[11.5px] text-ink font-[var(--font-sans)]">
+            <span className="flex-1 text-xs text-ink font-[var(--font-sans)]">
               Update failed{updateError.version ? ` (${updateError.version})` : ''}
             </span>
             <span className="text-2xs text-[var(--warning,#c47f00)] font-mono tracking-[0.03em] uppercase font-semibold">
@@ -751,7 +751,7 @@ export default function Sidebar({
         {/* Shell updates are download-only and dismissible per version. */}
         {shellUpdate && (
           <div
-            className="mx-[10px] mb-[6px] px-3 py-2 bg-[rgba(93,146,135,0.12)] border border-[rgba(93,146,135,0.30)] rounded-card-row flex items-center gap-2 w-[calc(100%-20px)] [-webkit-app-region:no-drag]"
+            className="mx-3 mb-2 px-3 py-2 bg-[rgba(93,146,135,0.12)] border border-[rgba(93,146,135,0.30)] rounded-card-row flex items-center gap-2 w-[calc(100%-20px)] [-webkit-app-region:no-drag]"
           >
             <button
               type="button"
@@ -760,7 +760,7 @@ export default function Sidebar({
               className="flex-1 flex items-center gap-2 [background:none] border-none p-0 m-0 cursor-pointer text-left font-[inherit]"
             >
               <span className="w-[6px] h-[6px] rounded-full bg-[var(--sage-500,#5D9287)] shrink-0" />
-              <span className="flex-1 text-[11.5px] text-ink font-[var(--font-sans)]">
+              <span className="flex-1 text-xs text-ink font-[var(--font-sans)]">
                 New version available{shellUpdate.version ? ` (${shellUpdate.version})` : ''}
               </span>
               <span className="text-2xs text-[var(--sage-500,#5D9287)] font-mono tracking-[0.03em] uppercase font-semibold">
