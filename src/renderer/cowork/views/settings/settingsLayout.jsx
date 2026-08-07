@@ -26,7 +26,7 @@ export function Section({ title, subtitle, notice, children }) {
           query), so the inter-column gutters (pr-6/pl-6) would just indent
           the stacked label + control for no reason — drop them. */}
       <div className={mobile ? undefined : 'pr-6'}>
-        <h3 className="m-0 p-0 text-base font-semibold text-ink [font-family:inherit] leading-[1.3]">{title}</h3>
+        <h3 className="m-0 p-0 text-base font-semibold text-ink leading-[1.3]">{title}</h3>
         {subtitle && <div className="text-sm text-ink-3 mt-1">{subtitle}</div>}
         {notice && <div className="mt-2">{notice}</div>}
       </div>

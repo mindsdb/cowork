@@ -9,7 +9,7 @@ import { Section, SettingsSectionPanel } from './settingsLayout';
 
 const UPDATE_CARD_CLASS =
   'flex items-center gap-3 flex-wrap py-2.5 px-3 border border-solid ' +
-  'border-[rgba(93,146,135,0.30)] bg-[rgba(93,146,135,0.12)] rounded-lg';
+  'border-[color-mix(in_srgb,var(--sage-500)_30%,transparent)] bg-[color-mix(in_srgb,var(--sage-500)_12%,transparent)] rounded-lg';
 const UPDATE_CARD_BODY_CLASS = 'flex flex-col gap-0.5 flex-1 min-w-[160px]';
 
 // The Updates settings section: current-version readout plus the on-demand
@@ -271,8 +271,7 @@ export default function UpdatesSection({ footer, serverOnline = false, shellUpda
                       <Button
                         variant={shellDownloadStarted ? 'subtle' : 'primary'}
                         onClick={() => { onDownloadShellUpdate(shellUrl); if (shellVersion) setShellDownloadedVersion(shellVersion); }}
-                        className="cursor-pointer"
-                      >
+                                              >
                         {shellDownloadStarted ? 'Download again' : 'Download installer'}
                       </Button>
                     </div>

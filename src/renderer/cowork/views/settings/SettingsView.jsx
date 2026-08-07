@@ -427,7 +427,7 @@ function SetBadge({ hasValue, active }) {
       className={`ml-2 align-middle uppercase tracking-[0.04em] ${active ? 'set-badge-pulse' : ''}`}
       icon={<span aria-hidden className={`w-1.5 h-1.5 rounded-full bg-current ${active
         ? 'shadow-[0_0_8px_currentColor,0_0_14px_rgba(124,196,182,0.6)]'
-        : 'shadow-[0_0_4px_rgba(93,146,135,0.45)]'}`} />}
+        : 'shadow-[0_0_4px_color-mix(in_srgb,var(--sage-500)_45%,transparent)]'}`} />}
       style={{
         // When active, the box-shadow comes from the set-badge-pulse
         // keyframes; the static value would never paint. When inactive
@@ -1163,7 +1163,7 @@ export default function SettingsView({
                 // name or a sensible fallback) — keeps the visual unchanged
                 // while making the row reachable by H/4 navigation.
                 const headingBaseClass =
-                  'm-0 p-0 [font-family:inherit] leading-[1.3] text-base font-semibold text-ink';
+                  'm-0 p-0 leading-[1.3] text-base font-semibold text-ink';
                 const customHeadingText = p.type === 'openai-compatible'
                   ? ((p.name || '').trim() || 'Custom OpenAI-compatible provider')
                   : null;
@@ -1921,7 +1921,7 @@ export default function SettingsView({
                   disabled={customTheme.bgLight === null}
                   aria-label="Custom background color — Light mode"
                   className={COLOR_SWATCH_INPUT}
-              style={{ opacity: customTheme.bgLight === null ? 0.45 : 1 }}
+                  style={{ opacity: customTheme.bgLight === null ? 0.45 : 1 }}
                 />
                 <label className="inline-flex items-center gap-2 text-sm text-ink-3 cursor-pointer">
                   <Checkbox
@@ -1942,7 +1942,7 @@ export default function SettingsView({
                   disabled={customTheme.bgDark === null}
                   aria-label="Custom background color — Dark mode"
                   className={COLOR_SWATCH_INPUT}
-              style={{ opacity: customTheme.bgDark === null ? 0.45 : 1 }}
+                  style={{ opacity: customTheme.bgDark === null ? 0.45 : 1 }}
                 />
                 <label className="inline-flex items-center gap-2 text-sm text-ink-3 cursor-pointer">
                   <Checkbox
