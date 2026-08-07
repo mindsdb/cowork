@@ -49,10 +49,12 @@ import { fetchSessions, fetchSession, fetchConversationList, fetchProjects, fetc
          renameConversation, deleteConversation, deleteConversationTurn, moveConversation, moveTaskToProject,
          deleteProject, cancelScratchpad, cancelResponse, fetchConnector,
          fetchSavedConnection, deleteDatasource, deletePickedFile,
-         fetchInFlightStatus, tailInFlight, fetchInFlightList } from './api';
+         fetchInFlightStatus, tailInFlight, fetchInFlightList,
+         fetchRecommendedModels } from './api';
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
 import { isArtifactTipDismissed, dismissArtifactTip, dismissIfUntouched } from './components/onboarding/onboardingStore';
-import { modelLabel, recommendedModelOptions, providerValueToType } from './lib/settingsTransform';
+import { modelLabel, recommendedModelOptions, providerValueToType,
+         mergeRecommendedModels } from './lib/settingsTransform';
 import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery, trackFirstResponse, classifyFirstResponse } from './lib/analytics';
 
 // One-of-ten encouraging follow-ups picked when a connect task is
@@ -1055,8 +1057,34 @@ function AppCore() {
   const models = useMemo(() => {
     const providerType = providerValueToType(settings.planningProvider) || 'minds-cloud';
     return recommendedModelOptions(settings.recommendedModels, providerType, settings.modelLabels)
-      .map((o) => ({ id: o.id, name: o.label, desc: '' }));
+      .map((o) => ({ id: o.id, name: o.label }));
   }, [settings.recommendedModels, settings.planningProvider, settings.modelLabels]);
+  // Picker metadata for the composer's model menu, passed as one bag so the
+  // components in between don't grow a prop each. The composer groups rather than
+  // App because ChatView builds its own single-item list, which stays ungrouped.
+  // Re-check wallet availability when the composer's model menu opens, so a top-up
+  // made outside the app unlocks its models without a restart. This is what makes
+  // it safe for the composer to DISABLE a locked model at all: `modelEnabled` is
+  // otherwise refreshed only by the Settings picker, so a user who hits "Add
+  // credits" (which opens an external browser), tops up and comes back would find
+  // the row still greyed until they visited Settings or restarted. Settings has had
+  // this since ENG-412; this is parity with it.
+  //
+  // A failed refresh leaves the map we hold in place — mergeRecommendedModels never
+  // lets an empty response overwrite it, and a model absent from the map counts as
+  // available — so this can never lock the picker.
+  const refreshModelAvailability = useCallback(async () => {
+    const data = await fetchRecommendedModels({ refresh: true });
+    const merged = mergeRecommendedModels(settings, data);
+    if (merged) setSettings((prev) => ({ ...prev, ...merged }));
+  }, [settings]);
+
+  const modelMeta = useMemo(() => ({
+    modelProviders: settings.modelProviders,
+    modelFamilies: settings.modelFamilies,
+    modelEnabled: settings.modelEnabled,
+    onRefresh: refreshModelAvailability,
+  }), [settings.modelProviders, settings.modelFamilies, settings.modelEnabled, refreshModelAvailability]);
   // The user's preferred collapsed state for the sidebar. Effective
   // collapsed-ness is derived below — we only honor this value while
   // viewing a chat task; every other surface (home, projects,
@@ -3883,6 +3911,7 @@ function AppCore() {
             onModelChange={setSelectedModel}
             projects={projects}
             models={modelOptions}
+            modelMeta={modelMeta}
             attachments={composerAttachments}
             connectors={connectors}
             onNavigateToConnectors={() => navigate('customize')}
@@ -3967,6 +3996,7 @@ function AppCore() {
             scheduled={scheduled}
             scheduleRunsIndex={scheduleRunsIndex}
             models={modelOptions}
+            modelMeta={modelMeta}
             onSelectProject={(p) => setSelectedProject(p)}
             onCreateProject={handleCreateProject}
             onSendInProject={(text) => {

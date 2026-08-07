@@ -636,7 +636,7 @@ function SkeletonCard() {
 // wants the in-page detail view to stay.
 
 function ProjectDetail({
-  project, projects, tasks, scheduled, scheduleRunsIndex = {}, models, onSend, onSelectTask,
+  project, projects, tasks, scheduled, scheduleRunsIndex = {}, models, modelMeta, onSend, onSelectTask,
   onDeleteTask, onMoveTaskToProject, onShowAll,
   attachments = [],
   connectors = [],
@@ -869,6 +869,7 @@ function ProjectDetail({
               onModelChange={() => {}}
               projects={projects || []}
               models={models || []}
+              modelMeta={modelMeta}
               attachments={attachments}
               connectors={connectors}
               onNavigateToConnectors={onNavigateToConnectors}
@@ -956,6 +957,7 @@ export default function ProjectsView({
   // TasksView does.
   scheduleRunsIndex = {},
   models = [],
+  modelMeta,
   loading = false,
   onSelectProject,
   onCreateProject,
@@ -1113,6 +1115,7 @@ export default function ProjectsView({
         scheduled={scheduled}
         scheduleRunsIndex={scheduleRunsIndex}
         models={models}
+        modelMeta={modelMeta}
         onSend={onSendInProject}
         onSelectTask={onSelectTask}
         onDeleteTask={onDeleteTask}

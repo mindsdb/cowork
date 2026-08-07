@@ -138,6 +138,31 @@ describe('ModelSelect', () => {
     expect(screen.queryByText('Other')).not.toBeInTheDocument();
   });
 
+  it('renders a row tag as its own pill, which the search does not match', async () => {
+    const user = userEvent.setup();
+    render(<Harness initial="sonnet" options={[
+      { value: 'sonnet', label: 'Claude Sonnet 5', tag: 'Latest' },
+      { value: 'sonnet-4-5', label: 'Claude Sonnet 4.5', tag: 'Older version' },
+    ]} />);
+
+    await user.click(screen.getByRole('combobox'));
+    expect(screen.getByText('Latest')).toBeInTheDocument();
+    expect(screen.getByText('Older version')).toBeInTheDocument();
+
+    // The pill is not part of what the filter reads, so a marker can't stand in for
+    // a model name: typing one matches nothing rather than every tagged row.
+    await user.keyboard('Latest');
+    expect(screen.queryAllByRole('option')).toHaveLength(0);
+  });
+
+  it('keeps a row tag off the closed trigger', () => {
+    // The trigger is fixed-width and renders the selected label verbatim, which is
+    // why the marker is a row pill and never a label suffix.
+    render(<Harness initial="sonnet" options={[{ value: 'sonnet', label: 'Claude Sonnet 5', tag: 'Latest' }]} />);
+    expect(screen.getByRole('combobox')).toHaveTextContent('Claude Sonnet 5');
+    expect(screen.getByRole('combobox')).not.toHaveTextContent('Latest');
+  });
+
   it('still shows a label on the trigger when the value is missing from options', () => {
     render(<Harness initial="ghost-model" />);
     expect(screen.getByRole('combobox')).toHaveTextContent('ghost-model');

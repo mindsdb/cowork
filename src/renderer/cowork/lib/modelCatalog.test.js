@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { modelMaker, groupModelOptions, OTHER_MAKER } from './modelCatalog';
+import {
+  modelMaker, groupModelOptions, hasFrozenVersions, orderByFamily, OTHER_MAKER,
+} from './modelCatalog';
 
 // The live minds-cloud catalog as of ENG-1096 (alias → MindsHub label).
 const CATALOG = [
@@ -40,8 +42,15 @@ describe('modelMaker', () => {
   });
 
   it('sends unknown models to Other instead of guessing wrong', () => {
-    expect(modelMaker('muse-spark', 'Muse Spark 1.1')).toBe(OTHER_MAKER);
+    // `muse-spark` used to be the example here. It now matches Meta deliberately —
+    // it is Meta's model, and matching it is what earns it a real icon instead of
+    // the placeholder — so this needs a genuinely unrecognisable alias.
+    expect(modelMaker('zephyr-base', 'Zephyr Base 2')).toBe(OTHER_MAKER);
     expect(modelMaker('', '')).toBe(OTHER_MAKER);
+  });
+
+  it('infers Meta for Muse Spark, so it gets a mark rather than the placeholder', () => {
+    expect(modelMaker('muse-spark', 'Muse Spark 1.1').key).toBe('meta');
   });
 
   it('does not read "o" words as OpenAI o-series', () => {
@@ -54,11 +63,51 @@ describe('modelMaker', () => {
 describe('groupModelOptions', () => {
   const options = CATALOG.map(([value, label]) => ({ value, label }));
 
-  it('groups by maker in declaration order, MindsHub first, Other absent when empty', () => {
+  it('groups into sections in declaration order, MindsHub first', () => {
+    // Sections, not one group per maker: the labs users pick by name get their
+    // own, the open-weight models collect into one, and xAI is not among them
+    // (Grok isn't open weight) so it falls through to Other.
     const groups = groupModelOptions(options);
     expect(groups.map((g) => g.key)).toEqual([
-      'mindshub', 'openai', 'anthropic', 'google', 'xai', 'moonshot', 'alibaba', 'deepseek', 'zai',
+      'mindshub', 'anthropic', 'openai', 'google', 'open-weight', 'other',
     ]);
+    expect(groups.map((g) => g.name)).toEqual([
+      'MindsHub', 'Anthropic', 'OpenAI', 'Google', 'Open Weight', 'Other',
+    ]);
+  });
+
+  it('collects the open-weight makers into one section', () => {
+    const groups = groupModelOptions(options);
+    const openWeight = groups.find((g) => g.key === 'open-weight');
+    // Moonshot / Alibaba / DeepSeek / Z.ai models share a heading; each keeps its
+    // own maker, so each still gets its own icon.
+    expect(openWeight.items.length).toBeGreaterThan(1);
+    expect(new Set(openWeight.items.map((o) => modelMaker(o.value, o.label).key)).size)
+      .toBeGreaterThan(1);
+  });
+
+  it('leaves xAI out of Open Weight', () => {
+    const groups = groupModelOptions([{ value: 'grok', label: 'Grok 4.5' }]);
+    expect(groups.map((g) => g.key)).toEqual(['other']);
+  });
+
+  it('leaves Meta out of Open Weight', () => {
+    // The section is a claim about the model, not the company: Meta publishes
+    // open-weight models AND proprietary ones, and the Meta model MindsHub serves
+    // is Muse Spark, which is not open weight.
+    const groups = groupModelOptions([
+      { value: 'muse-spark', label: 'Muse Spark 1.1', provider: 'meta' },
+    ]);
+    expect(groups.map((g) => g.key)).toEqual(['other']);
+  });
+
+  it('sections muse-spark from the backend provider and still gives it Meta\'s icon', () => {
+    // The case ENG-1111 named as unguessable. Section and icon are separate
+    // signals: `provider: meta` puts it in Other, while the maker gives it a real
+    // mark instead of the neutral placeholder.
+    const opt = { value: 'muse-spark', label: 'Muse Spark 1.1', provider: 'meta' };
+    expect(groupModelOptions([opt]).map((g) => g.key)).toEqual(['other']);
+    expect(modelMaker(opt.value, opt.label).key).toBe('meta');
   });
 
   it('keeps option order within a group', () => {
@@ -82,25 +131,39 @@ describe('groupModelOptions', () => {
     expect(groups.map((g) => g.key)).toEqual(['mindshub']);
   });
 
-  it('gives an explicit but unrecognised maker its own group (dynamic maker, ENG-1111)', () => {
+  it('puts a maker no section claims into Other rather than its own heading', () => {
+    // Replaces the earlier per-maker "dynamic group" behaviour: with a fixed set
+    // of sections, an unrecognised maker or provider is listed under Other. Still
+    // no app release needed for a new one to appear — just not its own heading.
     const groups = groupModelOptions([
-      { value: 'x', label: 'X', maker: 'somebody-new', makerName: 'Somebody New' },
+      { value: 'x', label: 'X', maker: 'somebody-new' },
       { value: 'y', label: 'Y', maker: 'acme' },
     ]);
-    expect(groups.map((g) => g.key)).toEqual(['somebody-new', 'acme']);
-    expect(groups.map((g) => g.name)).toEqual(['Somebody New', 'Acme']);
+    expect(groups.map((g) => g.key)).toEqual(['other']);
+    expect(groups[0].items.map((o) => o.value)).toEqual(['x', 'y']);
   });
 
-  it('orders dynamic makers after known makers and before Other', () => {
+  it('sections by the backend provider, which outranks alias inference', () => {
+    // `provider` is MindsHub's authoritative field. `fireworks` is a host that
+    // serves several open-weight models, which is why it maps to a section rather
+    // than to a maker/icon.
     const groups = groupModelOptions([
-      { value: 'muse-spark', label: 'Muse Spark 1.1' },
-      { value: 'x', label: 'X', maker: 'acme' },
-      { value: 'sonnet', label: 'Claude Sonnet 5' },
+      { value: 'some-alias', label: 'Some Alias', provider: 'fireworks' },
+      { value: 'another', label: 'Another', provider: 'gemini' },
     ]);
-    expect(groups.map((g) => g.key)).toEqual(['anthropic', 'acme', 'other']);
+    expect(groups.map((g) => g.key)).toEqual(['google', 'open-weight']);
   });
 
-  it('routes an explicit maker of "other" to the Other group, not a duplicate', () => {
+  it('keeps a MindsHub-branded model in MindsHub whatever provider the backend reports', () => {
+    // Air is sold as MindsHub's own model and the engine behind it is expected to
+    // change, so it must not follow whichever vendor currently serves it.
+    const groups = groupModelOptions([
+      { value: 'mindshub_air', label: 'MindsHub Air', provider: 'anthropic' },
+    ]);
+    expect(groups.map((g) => g.key)).toEqual(['mindshub']);
+  });
+
+  it('routes an explicit maker of "other" to the Other section, not a duplicate', () => {
     const groups = groupModelOptions([
       { value: 'muse-spark', label: 'Muse Spark 1.1' },
       { value: 'x', label: 'X', maker: 'other' },
@@ -112,5 +175,60 @@ describe('groupModelOptions', () => {
   it('ignores null/undefined entries', () => {
     expect(groupModelOptions([null, undefined])).toEqual([]);
     expect(groupModelOptions()).toEqual([]);
+  });
+});
+
+// ─── Families: which alias moves, and which version sits under which head ───
+//
+// Both pickers read these, so a rule that disagrees with itself shows up twice.
+
+describe('hasFrozenVersions', () => {
+  it('is true when a listed version froze a listed head', () => {
+    expect(hasFrozenVersions(['sonnet', 'sonnet-4-5'], { sonnet: 'sonnet', 'sonnet-4-5': 'sonnet' })).toBe(true);
+  });
+
+  it('ignores a pin whose head is not in the list', () => {
+    // A typo'd family in the policy, or a head filtered out upstream. The pin renders
+    // with no marker of its own, so it must not turn the moving-alias marker on for
+    // the rows around it either.
+    expect(hasFrozenVersions(['sonnet', 'sonnet-4-5'], { sonnet: 'sonnet', 'sonnet-4-5': 'sonet' })).toBe(false);
+  });
+
+  it('is false for an all-moving list, and with no families at all', () => {
+    expect(hasFrozenVersions(['sonnet', 'kimi'], { sonnet: 'sonnet', kimi: 'kimi' })).toBe(false);
+    expect(hasFrozenVersions(['sonnet', 'kimi'])).toBe(false);
+    expect(hasFrozenVersions()).toBe(false);
+  });
+});
+
+describe('orderByFamily', () => {
+  it('nests a chain under the alias at the top of it', () => {
+    // Two levels: `sonnet-4-1` froze `sonnet-4-5`, which froze `sonnet`. Walking one
+    // level left the deepest version to the final sweep, which appended it after the
+    // unrelated `opus` family — under a sibling it has nothing to do with.
+    expect(orderByFamily(
+      ['sonnet', 'sonnet-4-5', 'sonnet-4-1', 'opus', 'opus-4-1'],
+      {
+        sonnet: 'sonnet', 'sonnet-4-5': 'sonnet', 'sonnet-4-1': 'sonnet-4-5',
+        opus: 'opus', 'opus-4-1': 'opus',
+      },
+    )).toEqual(['sonnet', 'sonnet-4-5', 'sonnet-4-1', 'opus', 'opus-4-1']);
+  });
+
+  it('keeps heads in the incoming order and moves only the versions', () => {
+    // The gateway's order is meaningful upstream (free/baseline model first).
+    expect(orderByFamily(
+      ['sonnet', 'kimi', 'sonnet-4-5'],
+      { sonnet: 'sonnet', kimi: 'kimi', 'sonnet-4-5': 'sonnet' },
+    )).toEqual(['sonnet', 'sonnet-4-5', 'kimi']);
+  });
+
+  it('stays a permutation on a cycle, where nothing roots the walk', () => {
+    // A dropped id is a model the user can no longer select, and for a persisted
+    // selection a desync. Cycles reach the app through a Statsig edit with no deploy
+    // and no validation of the family target.
+    expect(orderByFamily(['a', 'b'], { a: 'b', b: 'a' })).toEqual(['a', 'b']);
+    expect(orderByFamily(['a', 'b', 'c'], { a: 'b', b: 'a', c: 'a' }).slice().sort())
+      .toEqual(['a', 'b', 'c']);
   });
 });
