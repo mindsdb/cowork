@@ -171,8 +171,9 @@ describe('runInstaller — uv discovery scenarios', () => {
     // uv was detected (with its real location) — never re-installed.
     expect(log).toContain(`uv found at ${PATH_ONLY_UV}`);
     expect(spawnCalls).toHaveLength(1);
-    // findUv() misses, so the install runs the PATH fallback, not a probed path.
-    expect(spawnCalls[0].slice(0, 3)).toEqual(['uv', 'tool', 'install']);
+    // The install spawns the SAME binary the check resolved and logged —
+    // "uv found at X" and the executed uv must never diverge.
+    expect(spawnCalls[0].slice(0, 3)).toEqual([PATH_ONLY_UV, 'tool', 'install']);
     expect(spawnCalls[0]).toContain('cowork-server==0.26.8.2.1');
     // Verification succeeds and reports where the binary landed.
     expect(log).toContain(`cowork-server found at ${SERVER_BIN}`);
@@ -256,7 +257,7 @@ describe('runInstaller — failure and fallback scenarios', () => {
     expect(errors).toEqual([]);
   });
 
-  it('verification rejects an installed server below the minimum version', async () => {
+  it('verification rejects an installed server below the minimum version and says so', async () => {
     // The binary exists and uv is fine, but `uv tool list` reports a version
     // under the floor — e.g. a stale install shadowing the fresh one.
     setupMachine({
@@ -264,9 +265,37 @@ describe('runInstaller — failure and fallback scenarios', () => {
       toolListVersion: '0.20.0',
     });
 
-    const { win, errors, events } = fakeWindow();
+    const { win, logs, errors, events } = fakeWindow();
     await expect(runInstaller(win)).resolves.toBe(false);
 
+    const log = logs.join('');
+    // The failure names what was actually wrong: the version and where the
+    // binary is — it must NOT claim the binary is missing.
+    expect(log).toContain('0.20.0');
+    expect(log).toContain(SERVER_BIN);
+    expect(log).toContain('below the required minimum');
+    expect(log).not.toContain('binary not found');
+    expect(errors).toEqual(['Verification failed']);
+    expect(events).not.toContain(IPC.INSTALL_DONE);
+  });
+
+  it('verification failure from an undeterminable version names the binary it found', async () => {
+    // The regression that hid the real cause from the reporter for days: the
+    // binary IS there, but uv reports no version for it — the message must say
+    // exactly that instead of "binary not found".
+    setupMachine({
+      uvOnPath: PATH_ONLY_UV,
+      // uv tool list never reports cowork-server (e.g. a different tool dir).
+      toolListVersion: undefined,
+    });
+
+    const { win, logs, errors, events } = fakeWindow();
+    await expect(runInstaller(win)).resolves.toBe(false);
+
+    const log = logs.join('');
+    expect(log).toContain(`cowork-server was found at ${SERVER_BIN}`);
+    expect(log).toContain('version could not be determined');
+    expect(log).not.toContain('binary not found');
     expect(errors).toEqual(['Verification failed']);
     expect(events).not.toContain(IPC.INSTALL_DONE);
   });

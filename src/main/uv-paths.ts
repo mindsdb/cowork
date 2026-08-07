@@ -156,13 +156,13 @@ export async function resolveUv(): Promise<string | null> {
 export { compareVersions } from './update-logic';
 
 /** Get the installed cowork-server version from `uv tool list`. */
-export function getInstalledVersion(uv?: string): Promise<string | null> {
-  // Fall back to a PATH lookup (mirroring the installer's `findUv() || 'uv'`):
-  // uv installed via winget/scoop/pip lives outside every probed dir but still
-  // resolves on PATH. Without the fallback the post-install verification
-  // reported "binary not found" for a perfectly good install. If uv is truly
-  // absent, execFile fails and this resolves null exactly as before.
-  const uvBin = uv ?? findUv() ?? 'uv';
+export async function getInstalledVersion(uv?: string): Promise<string | null> {
+  // resolveUv covers uv installed via winget/scoop/pip, which lives outside
+  // every probed dir but still resolves on PATH. Without the fallback the
+  // post-install verification reported "binary not found" for a perfectly
+  // good install (ENG-1293). Null when uv is truly absent, exactly as before.
+  const uvBin = uv ?? await resolveUv();
+  if (!uvBin) return null;
   return new Promise((resolve) => {
     // NO_COLOR: a forced-color env (concurrently sets FORCE_COLOR in dev)
     // makes uv emit ANSI codes that break the parser's anchored regex.
