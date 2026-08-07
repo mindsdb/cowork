@@ -228,7 +228,6 @@ function ProjectMenu({ open, anchorRect, project, pinned, isReserved, undeletabl
 // affordance on the regular cards. Replaces the previous
 // `window.prompt` flow which Electron renderers can silently disable.
 function NewProjectCard({ onCreate, creating, onCreatingChange }) {
-  const [hover, setHover] = useState(false);
   // Parent-driven editing state so the page header / empty-state CTA
   // can flip the card open without it having to be clicked first.
   const editing = !!creating;
@@ -315,13 +314,7 @@ function NewProjectCard({ onCreate, creating, onCreatingChange }) {
     <button
       type="button"
       onClick={() => setEditing(true)}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      className="min-h-[120px] rounded-card px-4 py-4 bg-transparent flex flex-col items-center justify-center gap-2 cursor-pointer [transition:border-color_.15s_ease,color_.15s_ease]"
-      style={{
-        border: `1px dashed ${hover ? 'var(--accent)' : 'var(--line-2)'}`,
-        color: hover ? 'var(--accent)' : 'var(--ink-3)',
-      }}
+      className="min-h-[120px] rounded-card px-4 py-4 bg-transparent flex flex-col items-center justify-center gap-2 cursor-pointer [transition:border-color_.15s_ease,color_.15s_ease] border border-dashed border-line-2 text-ink-3 hover:border-accent hover:text-accent"
     >
       <span className="inline-flex">{Ico.plus(16)}</span>
       <span className="font-[var(--font-body)] text-sm font-medium">New project</span>
@@ -535,18 +528,11 @@ function ListRow({
             onMenuOpen?.(project, rect);
           }}
           aria-label="Project menu"
+          className="w-[26px] h-[26px] rounded-[6px] bg-transparent border-0 text-ink-3 place-items-center cursor-pointer [transition:opacity_.15s_ease,color_.15s_ease,background_.15s_ease] hover:bg-surface-2 hover:text-ink"
           style={{
-            width: 26, height: 26, borderRadius: 6,
-            background: 'transparent', border: 0,
-            color: 'var(--ink-3)',
             opacity: revealed || isReserved ? 1 : 0,
             display: isReserved ? 'none' : 'inline-grid',
-            placeItems: 'center',
-            cursor: 'pointer',
-            transition: 'opacity .15s ease, color .15s ease, background .15s ease',
           }}
-          onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink)'; }}
-          onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-3)'; }}
         >
           {Ico.moreVert(15)}
         </button>
@@ -670,17 +656,13 @@ function ProjectDetail({
             width: 28, height: 28, borderRadius: 6,
             display: 'inline-grid', placeItems: 'center',
             cursor: 'pointer', background: 'transparent', border: 0,
-            color: 'var(--ink-3)',
             opacity: railOpen ? 0 : 1,
             transform: railOpen ? 'translateX(8px)' : 'translateX(0)',
             pointerEvents: railOpen ? 'none' : 'auto',
             transition:
               `opacity 280ms cubic-bezier(0.32,0.72,0,1) ${railOpen ? '0ms' : '120ms'}, ` +
               `transform 360ms cubic-bezier(0.32,0.72,0,1) ${railOpen ? '0ms' : '80ms'}`,
-            WebkitAppRegion: 'no-drag',
           }}
-          onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
-          onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-3)'; e.currentTarget.style.background = 'transparent'; }}
         >
           {Ico.panelExpandLeft(15)}
         </button>
@@ -758,20 +740,11 @@ function ProjectDetail({
                     const rect = kebabRef.current?.getBoundingClientRect();
                     setMenuRect(rect || null);
                   }}
+                  className="w-[22px] h-[22px] rounded-[5px] bg-transparent border-0 text-ink-3 inline-grid place-items-center shrink-0 cursor-pointer [transition:opacity_.15s_ease,color_.15s_ease,background_.15s_ease] [-webkit-app-region:no-drag] hover:bg-surface-2 hover:text-ink"
                   style={{
-                    width: 22, height: 22, borderRadius: 5,
-                    background: 'transparent', border: 0,
-                    color: 'var(--ink-3)',
-                    display: 'inline-grid', placeItems: 'center',
-                    flexShrink: 0,
                     opacity: showKebab ? 1 : 0,
                     pointerEvents: showKebab ? 'auto' : 'none',
-                    cursor: 'pointer',
-                    transition: 'opacity .15s ease, color .15s ease, background .15s ease',
-                    WebkitAppRegion: 'no-drag',
                   }}
-                  onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink)'; }}
-                  onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-3)'; }}
                 >
                   {Ico.moreVert(13)}
                 </button>
@@ -850,15 +823,7 @@ function ProjectDetail({
             onClick={() => setRailOpen(false)}
             title="Collapse panel"
             aria-label="Collapse panel"
-            style={{
-              cursor: 'pointer', background: 'transparent', border: 0,
-              width: 26, height: 26, borderRadius: 6,
-              display: 'inline-grid', placeItems: 'center',
-              color: 'var(--ink-3)',
-              WebkitAppRegion: 'no-drag',
-            }}
-            onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
-            onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-3)'; e.currentTarget.style.background = 'transparent'; }}
+            className="cursor-pointer bg-transparent border-0 w-[26px] h-[26px] rounded-[6px] inline-grid place-items-center text-ink-3 [-webkit-app-region:no-drag] hover:text-ink hover:bg-surface-2"
           >
             {Ico.panelCollapseRight(15)}
           </button>
@@ -1158,15 +1123,7 @@ export default function ProjectsView({
           <button
             type="button"
             onClick={handleNewProject}
-            className="proj-new-tile min-h-[120px] rounded-card px-4 py-4 bg-transparent border border-dashed border-line-2 text-ink-3 flex flex-col items-center justify-center gap-2 cursor-pointer [transition:border-color_.15s_ease,color_.15s_ease] font-[inherit]"
-            onMouseOver={(e) => {
-              e.currentTarget.style.borderColor = 'var(--accent)';
-              e.currentTarget.style.color = 'var(--accent)';
-            }}
-            onMouseOut={(e) => {
-              e.currentTarget.style.borderColor = 'var(--line-2)';
-              e.currentTarget.style.color = 'var(--ink-3)';
-            }}
+            className="proj-new-tile min-h-[120px] rounded-card px-4 py-4 bg-transparent border border-dashed border-line-2 text-ink-3 flex flex-col items-center justify-center gap-2 cursor-pointer [transition:border-color_.15s_ease,color_.15s_ease] font-[inherit] hover:border-accent hover:text-accent"
           >
             <span className="inline-flex">{Ico.plus(16)}</span>
             <span className="font-[var(--font-body)] text-sm font-medium">
