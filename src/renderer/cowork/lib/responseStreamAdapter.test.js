@@ -234,6 +234,39 @@ describe('tool_call.progress / tool_call.end (ENG-763 stage 2 — generic tool p
     expect(state.steps[0].status).toBe('completed');
   });
 
+  it('marks the step cellStatus "error" when tool_call.end carries ok: false', () => {
+    // Without this, a failed tool call renders identically to a
+    // successful one — tool_done/tool_call.end fires unconditionally by
+    // design, so "it closed" was the only signal the UI had (anton PR
+    // #304 review).
+    const state = reduceAll([
+      { type: 'response.created', response: { id: 'r1' } },
+      { type: 'response.in_progress', thought_role: 'thought.tool_call.progress', tool_use_id: 'tc_1', tool_name: 'streaming_probe', content: 'step 1' },
+      { type: 'response.in_progress', thought_role: 'thought.tool_call.end', tool_use_id: 'tc_1', ok: false },
+    ], initialStreamState(), now);
+
+    expect(state.steps[0].status).toBe('completed');
+    expect(state.steps[0].cellStatus).toBe('error');
+  });
+
+  it('leaves cellStatus unset when tool_call.end has no ok field or ok: true', () => {
+    const state = reduceAll([
+      { type: 'response.created', response: { id: 'r1' } },
+      { type: 'response.in_progress', thought_role: 'thought.tool_call.progress', tool_use_id: 'tc_1', tool_name: 'streaming_probe', content: 'step 1' },
+      { type: 'response.in_progress', thought_role: 'thought.tool_call.end', tool_use_id: 'tc_1' },
+    ], initialStreamState(), now);
+
+    expect(state.steps[0].cellStatus).toBeUndefined();
+
+    const state2 = reduceAll([
+      { type: 'response.created', response: { id: 'r1' } },
+      { type: 'response.in_progress', thought_role: 'thought.tool_call.progress', tool_use_id: 'tc_2', tool_name: 'streaming_probe', content: 'step 1' },
+      { type: 'response.in_progress', thought_role: 'thought.tool_call.end', tool_use_id: 'tc_2', ok: true },
+    ], initialStreamState(), now);
+
+    expect(state2.steps[0].cellStatus).toBeUndefined();
+  });
+
   it('sets executionDurationMs from eta_seconds on tool_call.end', () => {
     const state = reduceAll([
       { type: 'response.created', response: { id: 'r1' } },

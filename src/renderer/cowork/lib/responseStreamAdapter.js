@@ -551,6 +551,15 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       completedAt: eventTs,
       output: typeof event.content === 'string' ? event.content.slice(0, 2048) : null,
       ...(etaSeconds != null ? { executionDurationMs: Math.max(0, Math.round(etaSeconds * 1000)) } : null),
+      // Tool's own verdict (anton ToolOutcome.ok, ENG-1276) — reuses the
+      // same cellStatus/'error' convention ThinkingStep.jsx already
+      // renders for a failed scratchpad cell, rather than inventing a
+      // second failure indicator. undefined/true stay unmarked (rendered
+      // as success) — only an explicit false marks the step failed.
+      // Without this, tool_done firing (unconditional by design, even on
+      // a handler exception) rendered as success everywhere (PR #304
+      // review, anton repo).
+      ...(event.ok === false ? { cellStatus: 'error' } : null),
     };
     return { ...state, steps };
   }
