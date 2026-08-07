@@ -323,7 +323,7 @@ export function resolveModelPickerValue(curModel, modelList, allowOther, forceCu
  * @param {boolean} showStalePin from resolveModelPickerValue
  * @param {Record<string, boolean>} modelEnabled per-model availability map
  *   (settings.modelEnabled); a model mapped to `false` renders selectable
- *   with a "Needs credits" tag + `needsCredits: true` (ENG-1248).
+ *   with a "Needs credits" tag (ENG-1248).
  * @param {Record<string, string>} modelLabels per-model display label
  *   (settings.modelLabels, MindsHub-supplied). Display-only — the id/alias
  *   passed as `value` is still what's saved/resolved everywhere else. A
