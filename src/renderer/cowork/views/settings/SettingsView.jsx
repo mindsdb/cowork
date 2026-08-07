@@ -578,7 +578,7 @@ function SettingsNav({ section, onSectionChange, serverOnline = true }) {
     <nav
       role="navigation"
       aria-label="Settings sections"
-      className="w-[180px] shrink-0 border-r border-solid border-line py-5 px-2.5 flex flex-col gap-0.5"
+      className="w-[180px] shrink-0 border-r border-y-0 border-l-0 border-solid border-line py-5 px-2.5 flex flex-col gap-0.5"
     >
       <div className="text-2xs tracking-[0.08em] uppercase text-ink-4 pt-0 px-2.5 pb-1.5 font-semibold">Settings</div>
       {navItemsForHost(host.isWeb).map((item) => {

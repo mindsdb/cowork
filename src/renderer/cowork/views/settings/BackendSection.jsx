@@ -161,7 +161,7 @@ export default function BackendSection({
 
         {/* Status card — status header + port + logs */}
         <div className="border border-solid border-line rounded-card bg-[var(--surface-glass)] backdrop-blur-[var(--surface-glass-blur)] overflow-hidden">
-          <div className="py-2.5 px-4 border-b border-solid border-line text-[10.5px] font-semibold tracking-[0.07em] uppercase text-ink-4">Status</div>
+          <div className="py-2.5 px-4 border-b border-x-0 border-t-0 border-solid border-line text-[10.5px] font-semibold tracking-[0.07em] uppercase text-ink-4">Status</div>
 
           {/* Status summary row */}
           <div className="flex items-start gap-3 py-[14px] px-4">
@@ -213,7 +213,7 @@ export default function BackendSection({
           )}
 
           {/* Recent log */}
-          <div className="border-t border-solid border-line pt-2.5 px-4 pb-[14px]">
+          <div className="border-t border-x-0 border-b-0 border-solid border-line pt-2.5 px-4 pb-[14px]">
             <div className="font-[family-name:var(--font-mono)] text-2xs text-ink-4 tracking-[0.1em] uppercase mb-1.5">Log</div>
             {/* ENG-1320: grow to fill the modal instead of a fixed 200px cap
                 that squeezed a long log into a tiny scroller while the panel

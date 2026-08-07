@@ -107,7 +107,7 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
       </div>
       {/* Extra rows for username / org if present */}
       {(accountUser.username || accountUser.org) && (
-        <div className="border-t border-solid border-line py-2.5 px-[18px] flex gap-5">
+        <div className="border-t border-x-0 border-b-0 border-solid border-line py-2.5 px-[18px] flex gap-5">
           {accountUser.username && (
             <div>
               <div className="text-[10px] font-semibold tracking-[0.07em] uppercase text-ink-4 mb-0.5">Username</div>
