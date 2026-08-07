@@ -1,0 +1,75 @@
+#!/bin/bash
+# pkgbuild postinstall (ENG-1241) — runs as root immediately after the .pkg
+# payload is laid down in /Applications.
+#
+# Stages the 15 OAuth client id/secret values — packaged into this same
+# --scripts directory as server-credentials.json by
+# release-mac-pkg-notarized.sh, never inside the signed .app bundle — into a
+# location the app can both read AND delete after provisioning them into
+# Keychain. Contents/Resources inside the bundle is root-owned, so a copy
+# left there could never be cleaned up by the app itself; that's the whole
+# reason this lives outside it.
+#
+# Never fails the overall package install. Worst case if staging fails here
+# for any reason: no file gets staged, and the app's own provisioning check
+# (credential-provisioning.ts) simply finds nothing on every future launch,
+# same as it would in dev mode.
+set -u
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SRC_FILE="$SCRIPT_DIR/server-credentials.json"
+
+log() {
+  echo "[cowork-postinstall] $*" >&2
+}
+
+if [ ! -f "$SRC_FILE" ]; then
+  log "no server-credentials.json packaged alongside postinstall — nothing to stage (dev/unsigned build?)"
+  exit 0
+fi
+
+# Resolves a user's home directory via dscl rather than `eval echo ~user`,
+# which would otherwise inject an unsanitized value into the shell.
+home_dir_for() {
+  dscl . -read "/Users/$1" NFSHomeDirectory 2>/dev/null | awk '{print $2}'
+}
+
+stage_for_console_user() {
+  local user="$1" home="$2"
+  local dest_dir="$home/.cowork-provision"
+  local dest_file="$dest_dir/server-credentials.json"
+  install -d -o "$user" -g staff -m 700 "$dest_dir" \
+    && cp "$SRC_FILE" "$dest_file" \
+    && chown "$user" "$dest_file" \
+    && chmod 600 "$dest_file"
+}
+
+stage_shared_fallback() {
+  # No console user could be identified (headless/MDM/pre-login install) —
+  # group-readable rather than user-exclusive, since there's no specific
+  # user's home to place this under. Weaker than the normal path, but still
+  # a real narrowing from the 0644 this replaces, and still consumed and
+  # deleted by whichever account eventually launches the app.
+  local dest_dir="/Library/Application Support/MindsHub Cowork/.provision"
+  local dest_file="$dest_dir/server-credentials.json"
+  install -d -o root -g staff -m 750 "$dest_dir" \
+    && cp "$SRC_FILE" "$dest_file" \
+    && chown root:staff "$dest_file" \
+    && chmod 640 "$dest_file"
+}
+
+CONSOLE_USER="$(stat -f%Su /dev/console 2>/dev/null || true)"
+CONSOLE_HOME=""
+if [ -n "$CONSOLE_USER" ] && [ "$CONSOLE_USER" != "root" ]; then
+  CONSOLE_HOME="$(home_dir_for "$CONSOLE_USER")"
+fi
+
+if [ -n "$CONSOLE_HOME" ] && [ -d "$CONSOLE_HOME" ] && stage_for_console_user "$CONSOLE_USER" "$CONSOLE_HOME"; then
+  log "staged credentials for console user $CONSOLE_USER"
+elif stage_shared_fallback; then
+  log "no usable console user session — staged credentials at the shared fallback location"
+else
+  log "failed to stage credentials anywhere — connectors will need manual reconfiguration until this is fixed"
+fi
+
+exit 0
