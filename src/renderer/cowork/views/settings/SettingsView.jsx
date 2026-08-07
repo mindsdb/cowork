@@ -492,11 +492,6 @@ const GET_KEY_URL = {
 
 const PROTECTED_PROVIDER_TYPES = new Set(['minds-cloud']);
 
-// How long data from the model dropdown's on-open refresh counts as fresh.
-// Re-opening inside this window skips the round trip and opens immediately;
-// it only has to be short next to the 5-minute cache it stands in for.
-
-
 function makeEmptyProvider(type) {
   const base = { type, apiKey: '', isDefault: false };
   if (type === 'openai-compatible') base.baseUrl = '';
@@ -727,8 +722,11 @@ export default function SettingsView({
   const [initialProviderTestDone, setInitialProviderTestDone] = useState(false);
   // Per-role note of when the refresh above last landed fresh data, so
   // re-opening the dropdown doesn't re-pay a round trip that just completed.
+  // -Infinity, not 0: performance.now() is already well past 0 by first render, so a
+  // 0 sentinel reads as "refreshed at page load" and skips the first open of the
+  // session — the one open where the wallet state is most likely to be stale.
   const modelOpenState = useRef({});
-  const modelOpenFor = (role) => (modelOpenState.current[role] ||= { refreshedAt: 0 });
+  const modelOpenFor = (role) => (modelOpenState.current[role] ||= { refreshedAt: -Infinity });
   // Whether the refresh token lives in the macOS keychain (vs a file under
   // ~/.cowork). Mac-only; read from main on mount.
   const [keychainPref, setKeychainPref] = useState(false);

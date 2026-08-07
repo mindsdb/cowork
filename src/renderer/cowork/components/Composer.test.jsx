@@ -18,6 +18,11 @@ vi.mock('../api', async (importOriginal) => {
   };
 });
 
+// `hideModel: true` matches every production call site: the home and projects
+// composers pass it bare and ChatView passes `hideMeta`, so no shipped surface
+// renders the model pill. The model-menu tests below override it to false because
+// that is the only way to exercise the menu at all — read them as coverage of the
+// menu's logic, not of a surface a user can currently reach.
 const renderComposer = (overrides = {}) => {
   const props = {
     onSend: vi.fn(),
@@ -99,28 +104,45 @@ const MODELS = [
 
 const openModelMenu = (user) => user.click(screen.getByTitle('Choose model'));
 
+/**
+ * The open menu's sections in document order: heading text → its rows' text.
+ * Headings are the menu's only <div> children; every row is a <button>.
+ */
+const menuSections = () => {
+  const sections = new Map();
+  let heading = null;
+  for (const el of document.querySelector('.menu').children) {
+    if (el.tagName === 'DIV') sections.set((heading = el.textContent), []);
+    else if (heading !== null) sections.get(heading).push(el.textContent);
+  }
+  return sections;
+};
+
 describe('Composer — model menu sections', () => {
-  it('renders a heading per section, MindsHub first', async () => {
+  it('renders the section headings in order, MindsHub first', async () => {
     const user = userEvent.setup();
     renderComposer({ models: MODELS, modelMeta: MODEL_META, hideModel: false, model: MODELS[0] });
     await openModelMenu(user);
 
-    for (const title of ['MindsHub', 'Anthropic', 'Open Weight']) {
-      expect(screen.getByText(title)).toBeTruthy();
-    }
-    // The flat menu's single "Model" heading is replaced by the section headings.
-    expect(screen.queryByText('Model')).toBeNull();
+    // Read out of the DOM in document order: the order is the design, and three
+    // presence checks pass whatever order the sections come out in. The flat menu's
+    // single "Model" heading is replaced by these, so it must not be among them.
+    expect([...menuSections().keys()]).toEqual(['MindsHub', 'Anthropic', 'Open Weight']);
   });
 
   it('keeps MindsHub Air out of the vendor section serving it', async () => {
-    // The fixture reports Air's provider as the same vendor as the Claude models
-    // precisely so this proves the branding rule wins over the reported provider.
+    // The whole point rests on the fixture reporting Air under the same vendor as
+    // the Claude models, so assert that rather than trusting it: edit the fixture
+    // and this test would otherwise still pass while proving nothing.
+    expect(MODEL_META.modelProviders.mindshub_air).toBe(MODEL_META.modelProviders.sonnet);
+
     const user = userEvent.setup();
     renderComposer({ models: MODELS, modelMeta: MODEL_META, hideModel: false, model: MODELS[0] });
     await openModelMenu(user);
 
-    expect(MODEL_META.modelProviders.mindshub_air).toBe(MODEL_META.modelProviders.sonnet);
-    expect(screen.getByText('MindsHub')).toBeTruthy();
+    const sections = menuSections();
+    expect(sections.get('MindsHub')).toEqual(['MindsHub Air']);
+    expect(sections.get('Anthropic')).toEqual(['Claude Sonnet 5']);
   });
 
   it('keeps the single "Model" heading for a one-item list (ChatView)', async () => {
@@ -195,9 +217,16 @@ describe('Composer — model menu sections', () => {
     expect(screen.getByText('Other')).toBeTruthy();
     const rows = [...document.querySelectorAll('.menu .menu-item')];
     expect(rows).toHaveLength(5);
-    for (const row of rows) {
-      expect(row.querySelector('svg')).toBeTruthy();
-    }
+    // The mark itself, not just "an svg": ProviderIcon always returns the <svg>
+    // wrapper and only switches its children on the maker, so a constant maker for
+    // every row would pass a presence check. Four distinct makers plus Z.ai's
+    // placeholder means five distinct mark bodies.
+    const markOf = (name) => rows.find((row) => row.textContent.includes(name)).querySelector('svg').innerHTML;
+    const marks = ['Claude Sonnet 5', 'Kimi K3', 'GLM 5.2', 'Muse Spark 1.1', 'Grok 4.5'].map(markOf);
+    expect(new Set(marks).size).toBe(rows.length);
+    // And the one without an svg yet is the placeholder, not a wrong company's mark.
+    expect(markOf('GLM 5.2')).toContain('<circle');
+    expect(markOf('Kimi K3')).toContain('<path');
   });
 
   it('tags no BYOK model when the metadata covers only MindsHub ids', async () => {
@@ -221,6 +250,11 @@ describe('Composer — model menu sections', () => {
     await openModelMenu(user);
 
     expect(screen.queryByText('latest')).toBeNull();
+    // And it stays flat: the metadata mentions none of these ids, so there is nothing
+    // authoritative to section them by. Grouping on a non-empty map alone filed them
+    // under sections decided by alias inference, which is the guess the backend field
+    // exists to replace.
+    expect([...menuSections().keys()]).toEqual(['Model']);
   });
 
   it('tags nothing until a frozen version is listed', async () => {

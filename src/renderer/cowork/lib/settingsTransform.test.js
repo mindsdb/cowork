@@ -442,9 +442,11 @@ describe('clampBudgetValue / clampBudgets', () => {
 // ─── buildModelOptions: version tags + section metadata (ENG-1287) ───
 //
 // `modelFamilies[id] === id` means the version behind that alias moves, so
-// picking it always gets the newest release. `modelProviders[id]` is MindsHub's
-// authoritative maker field, which decides the picker section instead of the
-// alias-inference in lib/modelCatalog.
+// picking it always gets the newest release. Version state rides on `tag`, the
+// row's right-aligned pill, never on `label`: the label is what the collapsed
+// trigger shows and what the search matches. `modelProviders[id]` is MindsHub's
+// authoritative serving-vendor field, which decides the picker section instead of
+// the alias-inference in lib/modelCatalog.
 
 const FAMILY_META = {
   modelProviders: { sonnet: 'anthropic', 'sonnet-4-5': 'anthropic', kimi: 'moonshot' },
@@ -458,28 +460,29 @@ const FAMILY_LABELS = {
 
 describe('buildModelOptions — moving vs pinned versions', () => {
   it('tags nothing when no model in the list is a frozen version', () => {
-    // The tag distinguishes a moving alias from a frozen one. With nothing frozen
-    // in the list it would sit on every row and distinguish nothing — and it
-    // leaks: ModelSelect renders the selected label verbatim in the collapsed
-    // trigger and filters on it, so a permanent suffix would show in the closed
-    // control and make typing "latest" match every row.
+    // The tag distinguishes a moving alias from a frozen one. With nothing frozen in
+    // the list it would sit on every row and distinguish nothing.
     const options = buildModelOptions('sonnet', ['sonnet', 'kimi'], false, false, {}, FAMILY_LABELS, FAMILY_META);
     const byValue = Object.fromEntries(options.map((o) => [o.value, o]));
-    expect(byValue.sonnet.label).toBe('Claude Sonnet 5');
-    expect(byValue.kimi.label).toBe('Kimi K3');
+    expect(byValue.sonnet).toEqual({ value: 'sonnet', label: 'Claude Sonnet 5', disabled: false, provider: 'anthropic' });
+    expect(byValue.kimi).toEqual({ value: 'kimi', label: 'Kimi K3', disabled: false, provider: 'moonshot' });
   });
 
-  it('tags the moving aliases as "latest" once a frozen version is listed', () => {
+  it('tags the moving aliases "Latest" once a frozen version is listed', () => {
     const options = buildModelOptions(
       'sonnet', ['sonnet', 'sonnet-4-5', 'kimi'], false, false, {}, FAMILY_LABELS, FAMILY_META,
     );
     const byValue = Object.fromEntries(options.map((o) => [o.value, o]));
-    // Plain text, not a pill: ModelSelect resolves the trigger's displayed text
-    // from these label strings, so markup here wouldn't survive selection.
-    expect(byValue.sonnet.label).toBe('Claude Sonnet 5 (latest)');
+    expect(byValue.sonnet.tag).toBe('Latest');
     // Every moving alias, not only the one that has a pin — the tag is a claim
     // about that alias, and it is now readable against a row that lacks it.
-    expect(byValue.kimi.label).toBe('Kimi K3 (latest)');
+    expect(byValue.kimi.tag).toBe('Latest');
+    // And the marker stays out of the label: ModelSelect renders the selected
+    // option's label verbatim in the collapsed trigger and filters on that same
+    // string, so a suffix here would show permanently in the closed control and make
+    // typing "latest" match every row.
+    expect(byValue.sonnet.label).toBe('Claude Sonnet 5');
+    expect(byValue.kimi.label).toBe('Kimi K3');
   });
 
   it('tags no BYOK model when the metadata covers only MindsHub ids', () => {
@@ -492,8 +495,9 @@ describe('buildModelOptions — moving vs pinned versions', () => {
       { modelProviders: { sonnet: 'anthropic' }, modelFamilies: { sonnet: 'sonnet' } },
     );
     for (const o of options) {
+      expect(o.tag).toBeUndefined();
       expect(o.label || '').not.toContain('latest');
-      expect(o.label || '').not.toContain('older version');
+      expect(o.label || '').not.toContain('version');
     }
   });
 
@@ -523,8 +527,8 @@ describe('buildModelOptions — moving vs pinned versions', () => {
       'sonnet', ['sonnet', 'sonnet-4-5'], false, false, {}, FAMILY_LABELS, FAMILY_META,
     );
     const pin = options.find((o) => o.value === 'sonnet-4-5');
-    expect(pin.label).toBe('Claude Sonnet 4.5 — older version');
-    expect(pin.label).not.toContain('latest');
+    expect(pin.tag).toBe('Older version');
+    expect(pin.label).toBe('Claude Sonnet 4.5');
   });
 
   it('lists a frozen version directly under the alias it froze', () => {
@@ -544,10 +548,21 @@ describe('buildModelOptions — moving vs pinned versions', () => {
       modelFamilies: { 'sonnet-4-5': 'sonet' },
     });
     expect(options.map((o) => o.value)).toEqual(['sonnet-4-5']);
-    // No tag at all: "older version" is relative to a newer one, and the head is
+    // No tag at all: "Older version" is relative to a newer one, and the head is
     // not in this list, so there is nothing for the user to read it against.
+    expect(options[0].tag).toBeUndefined();
     expect(options[0].label).toBe('Claude Sonnet 4.5');
-    expect(options[0].label).not.toContain('latest');
+  });
+
+  it('leaves the other rows untagged when the only pin in the list is an orphan', () => {
+    // The orphan carries no marker itself, so it must not turn "Latest" on for the
+    // rows around it either: every row would claim to be the newest with nothing
+    // rendered anywhere to read that against.
+    const options = buildModelOptions('sonnet', ['sonnet', 'kimi', 'sonnet-4-5'], false, false, {}, FAMILY_LABELS, {
+      modelProviders: FAMILY_META.modelProviders,
+      modelFamilies: { sonnet: 'sonnet', kimi: 'kimi', 'sonnet-4-5': 'sonet' },
+    });
+    for (const o of options) expect(o.tag).toBeUndefined();
   });
 
   it('carries the backend provider through so the picker stops inferring it', () => {
@@ -561,7 +576,7 @@ describe('buildModelOptions — moving vs pinned versions', () => {
     // exactly as it does today rather than claiming to be "latest".
     const options = buildModelOptions('claude-opus-4-8', ANTHROPIC_LIST, true, false);
     for (const o of options) {
-      expect(o.label || '').not.toContain('latest');
+      expect(o.tag).toBeUndefined();
       expect(o.provider).toBeUndefined();
     }
   });
@@ -574,7 +589,20 @@ describe('buildModelOptions — moving vs pinned versions', () => {
     const byValue = Object.fromEntries(options.map((o) => [o.value, o]));
     expect(byValue.sonnet.disabled).toBe(false);
     expect(byValue['sonnet-4-5'].disabled).toBe(true);
-    expect(byValue['sonnet-4-5'].label).toBe('Claude Sonnet 4.5 — older version — Add credits to unlock');
+    // Both facts stay readable on the same row: the wallet state in the label, the
+    // version state in the tag.
+    expect(byValue['sonnet-4-5'].label).toBe('Claude Sonnet 4.5 — Add credits to unlock');
+    expect(byValue['sonnet-4-5'].tag).toBe('Older version');
+  });
+
+  it('keeps the version tag on a locked moving alias', () => {
+    const options = buildModelOptions(
+      'sonnet', ['sonnet', 'sonnet-4-5'], false, false,
+      { sonnet: false }, FAMILY_LABELS, FAMILY_META,
+    );
+    const head = options.find((o) => o.value === 'sonnet');
+    expect(head.label).toBe('Claude Sonnet 5 — Add credits to unlock');
+    expect(head.tag).toBe('Latest');
   });
 
   it('keeps the __stale__ and "Other…" entries pinned outside the sections', () => {

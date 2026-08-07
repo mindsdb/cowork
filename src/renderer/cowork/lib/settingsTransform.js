@@ -363,12 +363,9 @@ export function buildModelOptions(
   // nothing for the user to read it against.
   const isPinnedUnderHead = (m) => isFrozenAlias(m, modelFamilies) && list.includes(modelFamilies[m]);
 
-  // The "(latest)" tag only earns its place once something in this list is NOT the
-  // latest. On a catalog of all-moving aliases it would sit on every row, which
-  // distinguishes nothing — and it leaks past the list: ModelSelect renders the
-  // selected option's label verbatim in the collapsed trigger and filters on that
-  // same string, so a permanent suffix would show in the closed control and make
-  // typing "latest" match every row.
+  // The moving-alias marker only earns its place once something in this list is NOT
+  // the latest. On a catalog of all-moving aliases it would sit on every row, which
+  // distinguishes nothing.
   const tagMoving = hasFrozenVersions(list, modelFamilies);
 
   // Display-only ordering: a frozen version is listed directly under the alias it
@@ -376,22 +373,38 @@ export function buildModelOptions(
   // `showStalePin === false` with no rendered option, the ENG-739 desync class.
   const ordered = orderByFamily(list, modelFamilies);
 
-  const modelOption = (m) => ({
-    value: m,
-    label: [
-      labelFor(m),
-      // Plain text, not a rendered pill: ModelSelect resolves the trigger's
-      // displayed text from these label strings, so markup here wouldn't survive
-      // selection.
-      tagMoving && isMoving(m) ? ' (latest)' : '',
-      isPinnedUnderHead(m) ? ' — older version' : '',
-      isLocked(m) ? ' — Add credits to unlock' : '',
-    ].join(''),
-    disabled: isLocked(m),
-    // MindsHub's authoritative maker field, which decides the picker section.
-    // Absent for every BYOK provider, where the section falls back to inference.
-    ...(modelProviders[m] ? { provider: modelProviders[m] } : {}),
-  });
+  // Version state rides on `tag`, the row's right-aligned pill (see ui/Combobox),
+  // never in `label`: ModelSelect renders the selected option's label verbatim in a
+  // fixed-width trigger and filters on that same string, so a marker in the label
+  // showed permanently in the closed control and made typing "latest" or "version"
+  // match rows by their marker instead of by their name.
+  //
+  // A row has one pill slot, so markers JOIN into it in the order below rather than
+  // one displacing another: an alias either moves or is frozen, and whatever else
+  // ends up in the slot (the wallet's "Needs credits" state) reads after the version
+  // state, so no marker can hide another.
+  //
+  // Both pickers read the same family rules from lib/modelCatalog, so they always
+  // agree on which alias moves. They render that differently on purpose: this one
+  // words both states in the pill, while the composer's menu shows a "latest" pill
+  // and marks a frozen version by indenting it under its head instead.
+  const tagFor = (m) => [
+    tagMoving && isMoving(m) ? 'Latest' : '',
+    isPinnedUnderHead(m) ? 'Older version' : '',
+  ].filter(Boolean).join(' · ');
+
+  const modelOption = (m) => {
+    const tag = tagFor(m);
+    return {
+      value: m,
+      label: isLocked(m) ? `${labelFor(m)} — Add credits to unlock` : labelFor(m),
+      disabled: isLocked(m),
+      ...(tag ? { tag } : {}),
+      // MindsHub's authoritative serving-vendor field, which decides the picker
+      // section. Absent for every BYOK provider, where it falls back to inference.
+      ...(modelProviders[m] ? { provider: modelProviders[m] } : {}),
+    };
+  };
 
   return [
     ...(showStalePin

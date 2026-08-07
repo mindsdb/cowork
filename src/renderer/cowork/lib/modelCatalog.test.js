@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { modelMaker, groupModelOptions, OTHER_MAKER } from './modelCatalog';
+import {
+  modelMaker, groupModelOptions, hasFrozenVersions, orderByFamily, OTHER_MAKER,
+} from './modelCatalog';
 
 // The live minds-cloud catalog as of ENG-1096 (alias → MindsHub label).
 const CATALOG = [
@@ -173,5 +175,60 @@ describe('groupModelOptions', () => {
   it('ignores null/undefined entries', () => {
     expect(groupModelOptions([null, undefined])).toEqual([]);
     expect(groupModelOptions()).toEqual([]);
+  });
+});
+
+// ─── Families: which alias moves, and which version sits under which head ───
+//
+// Both pickers read these, so a rule that disagrees with itself shows up twice.
+
+describe('hasFrozenVersions', () => {
+  it('is true when a listed version froze a listed head', () => {
+    expect(hasFrozenVersions(['sonnet', 'sonnet-4-5'], { sonnet: 'sonnet', 'sonnet-4-5': 'sonnet' })).toBe(true);
+  });
+
+  it('ignores a pin whose head is not in the list', () => {
+    // A typo'd family in the policy, or a head filtered out upstream. The pin renders
+    // with no marker of its own, so it must not turn the moving-alias marker on for
+    // the rows around it either.
+    expect(hasFrozenVersions(['sonnet', 'sonnet-4-5'], { sonnet: 'sonnet', 'sonnet-4-5': 'sonet' })).toBe(false);
+  });
+
+  it('is false for an all-moving list, and with no families at all', () => {
+    expect(hasFrozenVersions(['sonnet', 'kimi'], { sonnet: 'sonnet', kimi: 'kimi' })).toBe(false);
+    expect(hasFrozenVersions(['sonnet', 'kimi'])).toBe(false);
+    expect(hasFrozenVersions()).toBe(false);
+  });
+});
+
+describe('orderByFamily', () => {
+  it('nests a chain under the alias at the top of it', () => {
+    // Two levels: `sonnet-4-1` froze `sonnet-4-5`, which froze `sonnet`. Walking one
+    // level left the deepest version to the final sweep, which appended it after the
+    // unrelated `opus` family — under a sibling it has nothing to do with.
+    expect(orderByFamily(
+      ['sonnet', 'sonnet-4-5', 'sonnet-4-1', 'opus', 'opus-4-1'],
+      {
+        sonnet: 'sonnet', 'sonnet-4-5': 'sonnet', 'sonnet-4-1': 'sonnet-4-5',
+        opus: 'opus', 'opus-4-1': 'opus',
+      },
+    )).toEqual(['sonnet', 'sonnet-4-5', 'sonnet-4-1', 'opus', 'opus-4-1']);
+  });
+
+  it('keeps heads in the incoming order and moves only the versions', () => {
+    // The gateway's order is meaningful upstream (free/baseline model first).
+    expect(orderByFamily(
+      ['sonnet', 'kimi', 'sonnet-4-5'],
+      { sonnet: 'sonnet', kimi: 'kimi', 'sonnet-4-5': 'sonnet' },
+    )).toEqual(['sonnet', 'sonnet-4-5', 'kimi']);
+  });
+
+  it('stays a permutation on a cycle, where nothing roots the walk', () => {
+    // A dropped id is a model the user can no longer select, and for a persisted
+    // selection a desync. Cycles reach the app through a Statsig edit with no deploy
+    // and no validation of the family target.
+    expect(orderByFamily(['a', 'b'], { a: 'b', b: 'a' })).toEqual(['a', 'b']);
+    expect(orderByFamily(['a', 'b', 'c'], { a: 'b', b: 'a', c: 'a' }).slice().sort())
+      .toEqual(['a', 'b', 'c']);
   });
 });

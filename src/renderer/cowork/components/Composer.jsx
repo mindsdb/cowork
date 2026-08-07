@@ -128,9 +128,12 @@ export default function Composer({
   models,
   /**
    * Picker metadata: `{modelProviders, modelFamilies, modelEnabled}` from
-   * settings. Optional — without it the menu renders the flat, ungrouped list it
-   * always has, which is what a one-item list (ChatView's read-only picker) and
-   * every BYOK provider get.
+   * settings. Optional — without it, or when it describes none of the models
+   * listed, the menu renders the flat, ungrouped list it always has. That is what
+   * a one-item list (ChatView's read-only picker) gets, and what a role pointed at
+   * a BYOK provider gets: `modelProviders` is keyed by model id and only ever
+   * covers MindsHub's own catalog, so it says nothing about the ids a BYOK role
+   * lists even when a MindsHub key is configured.
    */
   modelMeta,
   attachments = [],
@@ -327,13 +330,17 @@ export default function Composer({
       pinned: isFrozenAlias(m.id, modelFamilies) && byId.has(modelFamilies[m.id]),
       locked: modelEnabled[m.id] === false,
     }));
-    // Group only when the server actually told us who serves these models. With no
-    // provider metadata — an older cowork-server, any BYOK provider, ChatView's
-    // one-item list — a single unnamed section renders today's flat menu exactly.
-    // An empty list takes that path too: grouping nothing yields no sections at
-    // all, and a menu with neither heading nor rows reads as broken rather than
-    // as still-loading.
-    return items.length && Object.keys(modelProviders).length
+    // Group only when the server told us who serves the models THESE rows are, not
+    // merely that it knows about some model somewhere: `modelProviders` is global to
+    // the settings blob and keyed by model id, so a MindsHub key populates it even
+    // for a role pointed at BYOK Anthropic, whose ids it never mentions. Gating on
+    // the map being non-empty grouped that list by inference alone. With nothing
+    // known about any listed id — an older cowork-server, a BYOK provider,
+    // ChatView's one-item list — a single unnamed section renders today's flat menu
+    // exactly. An empty list takes that path too: grouping nothing yields no
+    // sections at all, and a menu with neither heading nor rows reads as broken
+    // rather than as still-loading.
+    return items.length && ids.some((id) => modelProviders[id])
       ? groupModelOptions(items)
       : [{ key: 'all', name: null, items }];
   }, [models, modelMeta]);

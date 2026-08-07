@@ -1,14 +1,15 @@
 // Model → maker (the company that trains the model) inference + grouping
 // for the model picker (ENG-1096).
 //
-// The backend doesn't tell us who makes a model yet: a `/v1/models` row
-// carries id/label/enabled/efforts but no maker field (ENG-1111 asks for
-// one). Until that lands, the maker is inferred from the alias + label the
-// same way `modelLabel` derives display names — pure, family-aware, and
-// resilient to new versions. An alias that matches nothing (`muse-spark`)
-// lands in the "Other" bucket rather than a wrong group. When ENG-1111
-// ships, options can carry an explicit `maker` key and the guessing here
-// stops applying to them.
+// The backend names the vendor that serves a model, not the company that
+// trained it: a `/v1/models` row carries MindsHub's policy `provider`
+// (`anthropic`, `fireworks`, `meta`, …), which is what decides the picker
+// section (see SECTION_BY_PROVIDER). The maker stays inferred from the alias +
+// label the same way `modelLabel` derives display names — pure, family-aware,
+// and resilient to new versions — because a host like `fireworks` serves
+// several companies' models and so cannot supply the mark. An alias that
+// matches nothing lands in the "Other" bucket rather than a wrong group, and an
+// option carrying an explicit `maker` key skips the inference entirely.
 
 // Declaration order = group display order in the picker (mirrors the
 // design: MindsHub first, then the frontier labs, Other last).
@@ -68,6 +69,13 @@ const SECTIONS = [
 export const OTHER_SECTION = { key: 'other', name: 'Other' };
 
 /**
+ * MindsHub Air's model id, named once so a rename is one edit rather than a hunt
+ * for string literals that must all agree. App.jsx carries its own copy for the
+ * "Switch to MindsHub Air" escape hatch and should import this one instead.
+ */
+export const MINDSHUB_AIR_MODEL_ID = 'mindshub_air';
+
+/**
  * MindsHub's own models, by id.
  *
  * Keyed on id rather than inferred from the name because auth cannot tell us:
@@ -76,7 +84,7 @@ export const OTHER_SECTION = { key: 'other', name: 'Other' };
  * one-line edit; the alternative — matching our name against the id and label — is
  * a rule that silently stops working the day a branded model isn't named after us.
  */
-export const MINDSHUB_MODEL_IDS = new Set(['mindshub_air']);
+export const MINDSHUB_MODEL_IDS = new Set([MINDSHUB_AIR_MODEL_ID]);
 
 /** Every section a lookup can resolve to, Other included. */
 const ALL_SECTIONS = [...SECTIONS, OTHER_SECTION];
@@ -161,10 +169,10 @@ export function modelMaker(id, label = '') {
  * Group flat picker options into sections, ready for the ModelSelect popup.
  *
  * @param {Array<{value: string, label: string, provider?: string, maker?: string}>} options
- *   Flat option list. `provider` is MindsHub's authoritative maker field (the
- *   ENG-1111 contract) and decides the section; `maker`, explicit or inferred,
- *   stays the *icon* identity, so collapsing several makers into one section
- *   never costs a model its own mark.
+ *   Flat option list. `provider` is MindsHub's authoritative serving-vendor field
+ *   (the ENG-1111 contract) and decides the section; `maker`, explicit or
+ *   inferred, stays the *icon* identity, so collapsing several makers into one
+ *   section never costs a model its own mark.
  * @returns {Array<{key: string, name: string, items: object[]}>}
  *   Sections in declaration order, Other last; empty sections dropped; option
  *   order preserved within each section — the server's order is meaningful
@@ -215,9 +223,19 @@ export function isFrozenAlias(id, families = {}) {
   return !!families && !!families[id] && families[id] !== id;
 }
 
-/** True when at least one id in `ids` is a frozen version of another. */
+/**
+ * True when at least one id in `ids` is a frozen version of a head that is ALSO in
+ * `ids`.
+ *
+ * The head has to be listed, so this agrees with the rule the callers use to decide
+ * a pin sits under its head. An orphaned pin — a typo'd `family`, or a head filtered
+ * out upstream — renders with no marker of its own, so counting it here turned the
+ * moving-alias marker on for every other row while the pin that triggered it showed
+ * nothing.
+ */
 export function hasFrozenVersions(ids, families = {}) {
-  return (ids || []).some((id) => isFrozenAlias(id, families));
+  const list = ids || [];
+  return list.some((id) => isFrozenAlias(id, families) && list.includes(families[id]));
 }
 
 /**
@@ -245,16 +263,26 @@ export function orderByFamily(ids, families = {}) {
     placed.add(id);
     out.push(id);
   };
+  // Every version that froze `head`, then the versions that froze those. The walk
+  // is transitive so a chain (`c → b → a`) nests under the alias at the top of it;
+  // one level deep left `c` for the sweep below, which appended it in input order
+  // under an unrelated sibling.
+  const takeVersionsOf = (head) => {
+    for (const other of list) {
+      if (other === head || placed.has(other) || families[other] !== head) continue;
+      take(other);
+      takeVersionsOf(other);
+    }
+  };
   for (const id of list) {
     // A frozen version whose head is also in this list waits for its head.
     if (isFrozenAlias(id, families) && list.includes(families[id])) continue;
     take(id);
-    for (const other of list) {
-      if (families[other] === id && other !== id) take(other);
-    }
+    takeVersionsOf(id);
   }
-  // Anything the pass above could not place: a chain deeper than one level, or a
-  // cycle. Appended in input order so the output stays a permutation.
+  // What is left is a cycle, plus anything hanging off one: no member of a cycle is
+  // a head, so none of them roots a walk. Appended in input order so the output
+  // stays a permutation.
   for (const id of list) take(id);
   return out;
 }
