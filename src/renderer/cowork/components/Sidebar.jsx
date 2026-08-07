@@ -735,7 +735,7 @@ export default function Sidebar({
         {updateError && !shellUpdate && (
           <button
             type="button"
-            className="mt-0 mx-2.5 mb-1.5 py-2 px-3 bg-[color-mix(in_srgb,var(--warning)_12%,transparent)] border border-solid border-[color-mix(in_srgb,var(--warning)_30%,transparent)] rounded-lg flex items-center gap-2 cursor-pointer w-[calc(100%-20px)] text-left font-[inherit] [-webkit-app-region:no-drag] hover:bg-[color-mix(in_srgb,var(--warning)_22%,transparent)] [transition:background_120ms_ease]"
+            className="mt-0 mx-2.5 mb-1.5 py-2 px-3 bg-[rgba(196,127,0,0.12)] border border-solid border-[rgba(196,127,0,0.30)] rounded-lg flex items-center gap-2 cursor-pointer w-[calc(100%-20px)] text-left font-[inherit] [-webkit-app-region:no-drag] hover:bg-[rgba(196,127,0,0.22)] [transition:background_120ms_ease]"
             onClick={onApplyUpdate}
           >
             <span className="w-1.5 h-1.5 rounded-full bg-[var(--warning,#c47f00)] shrink-0" />
