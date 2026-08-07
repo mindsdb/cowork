@@ -11,7 +11,7 @@ import {
   PYTHON_RANGE,
   getLocalBin,
   getEnvPath,
-  getCoworkServerBinary,
+  coworkServerBinCandidates,
   findOnPath,
   resolveUv,
   getInstalledVersion,
@@ -227,9 +227,12 @@ export async function inspectCoworkServerInstall(): Promise<ServerInstallCheck> 
       : path.join(__dirname, '..', '..', '..', '..', 'cowork-server');
     if (fileExists(path.join(devDir, 'pyproject.toml'))) return { installed: true, binary: null };
   }
-  const binary = fileExists(getCoworkServerBinary())
-    ? getCoworkServerBinary()
-    : await findOnPath('cowork-server');
+  // Same candidate list server-process.getCoworkServerBin() starts from (the
+  // prod+win32 %LOCALAPPDATA%\bin fallback included) — otherwise this check
+  // and the thing it's gating could disagree: a prod Windows install whose
+  // binary sits only at the legacy location, off PATH, would start fine but
+  // report binary-missing here and trigger a needless reinstall.
+  const binary = coworkServerBinCandidates().find(fileExists) ?? await findOnPath('cowork-server');
   if (!binary) return { installed: false, reason: 'binary-missing' };
 
   // Binary exists — verify the installed version meets the minimum.

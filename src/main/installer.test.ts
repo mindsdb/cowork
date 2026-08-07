@@ -40,7 +40,7 @@ vi.mock('./server-updater', () => ({
 
 import { IPC } from '../shared/ipc-channels';
 import { resolvePypiInstallTarget } from './server-updater';
-import { runInstaller } from './installer';
+import { runInstaller, inspectCoworkServerInstall } from './installer';
 
 const EXT = process.platform === 'win32' ? '.exe' : '';
 // Where the astral bootstrap script / findUv probe expects uv, and where
@@ -311,5 +311,45 @@ describe('runInstaller — failure and fallback scenarios', () => {
     expect(events).not.toContain(IPC.INSTALL_DONE);
     // Cancel is not an error — no error banner for the renderer.
     expect(errors).toEqual([]);
+  });
+});
+
+describe('inspectCoworkServerInstall — binary candidate resolution', () => {
+  // Regression: inspectCoworkServerInstall and server-process.getCoworkServerBin
+  // used to disagree on where the binary may live. A prod Windows install whose
+  // binary sits only at the legacy %LOCALAPPDATA%\bin fallback (not on PATH)
+  // starts fine via server-process, but this check fell through to findOnPath
+  // and missed it — reporting binary-missing and triggering a needless reinstall.
+  const originalPlatform = process.platform;
+  const originalLocalAppData = process.env.LOCALAPPDATA;
+  const LOCALAPPDATA = 'C:\\Users\\u\\AppData\\Local';
+
+  afterEach(() => {
+    Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
+    if (originalLocalAppData === undefined) delete process.env.LOCALAPPDATA;
+    else process.env.LOCALAPPDATA = originalLocalAppData;
+  });
+
+  it('finds a prod Windows binary at the legacy %LOCALAPPDATA%\\bin fallback even when off PATH', async () => {
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+    process.env.LOCALAPPDATA = LOCALAPPDATA;
+    const legacyBin = path.join(LOCALAPPDATA, 'bin', 'cowork-server.exe');
+
+    // Only the legacy candidate exists on disk; nothing is on PATH either
+    // (where/which fails for cowork-server — the fallback must never be reached).
+    vi.mocked(fs.existsSync).mockImplementation((p) => String(p) === legacyBin);
+    vi.mocked(cp.execFile).mockImplementation(((
+      cmd: string,
+      args: string[],
+      _opts: unknown,
+      cb: (err: Error | null, stdout: string, stderr: string) => void,
+    ) => {
+      if (cmd === 'where' && args[0] === 'uv') cb(null, 'C:\\custom\\tools\\uv.exe\n', '');
+      else if (args[0] === 'tool' && args[1] === 'list') cb(null, 'cowork-server v0.26.8.2.1\n- cowork-server\n', '');
+      else cb(new Error(`unexpected execFile: ${cmd} ${args.join(' ')}`), '', '');
+      return {} as never;
+    }) as never);
+
+    await expect(inspectCoworkServerInstall()).resolves.toEqual({ installed: true, binary: legacyBin });
   });
 });
