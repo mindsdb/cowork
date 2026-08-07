@@ -102,13 +102,15 @@ contextBridge.exposeInMainWorld('antontron', {
   getAccessToken: () => ipcRenderer.invoke(IPC.AUTH_GET_ACCESS_TOKEN),
   logout: () => ipcRenderer.invoke(IPC.AUTH_LOGOUT),
 
+  // Onboarding funnel analytics forwarder (ENG-1127) — relocated from the
+  // removed SETTINGS_SAVE handler; forwards an allowlisted ANTONAPP_* event.
+  onboardingAnalytics: (action: string) => ipcRenderer.invoke(IPC.ONBOARDING_ANALYTICS, action),
+
   // Keychain preference (Electron-only, mac-relevant)
   getKeychainPref: () => ipcRenderer.invoke(IPC.KEYCHAIN_PREF_GET),
   setKeychainPref: (enabled: boolean) => ipcRenderer.invoke(IPC.KEYCHAIN_PREF_SET, enabled),
 
   // Settings / Onboarding
-  readSettings: () => ipcRenderer.invoke(IPC.SETTINGS_READ),
-  saveSettings: (content: string) => ipcRenderer.invoke(IPC.SETTINGS_SAVE, content),
   checkConfigured: () => ipcRenderer.invoke(IPC.SETTINGS_CHECK_CONFIGURED),
   validateProvider: (provider: string, apiKey: string, baseUrl?: string, model?: string) =>
     ipcRenderer.invoke(IPC.SETTINGS_VALIDATE, provider, apiKey, baseUrl, model),

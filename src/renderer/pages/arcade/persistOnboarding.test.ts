@@ -3,68 +3,46 @@ import { persistOnboarding, resolveFinalizeOutcome, type PersistDeps } from './O
 
 function makeDeps(over: Partial<PersistDeps> = {}): PersistDeps {
   return {
-    saveSettings: vi.fn(async () => true),
-    syncToDb: vi.fn(async () => true),
-    syncModels: vi.fn(async () => {}),
+    pushToServer: vi.fn(async () => true),
     syncHarness: vi.fn(async () => {}),
     ...over,
   };
 }
 
+// ENG-1127: persistOnboarding takes a DB-keyed values object (not `.env` lines).
+const VALUES = { anthropic_api_key: 'sk-ant', planning_provider: 'anthropic' };
+
 describe('persistOnboarding', () => {
   it('returns ok when every step succeeds', async () => {
-    await expect(persistOnboarding(makeDeps(), ['ANTON_X=1'])).resolves.toEqual({ ok: true });
+    await expect(persistOnboarding(makeDeps(), VALUES)).resolves.toEqual({ ok: true });
   });
 
-  // ENG-817 review (pnewsam): a failed AUTHORITATIVE DB write must NOT let
-  // onboarding advance to success — the config didn't actually persist.
-  it('fails when the DB sync returns false, and skips the best-effort follow-ups', async () => {
-    const d = makeDeps({ syncToDb: vi.fn(async () => false) });
-    const res = await persistOnboarding(d, ['ANTON_X=1']);
+  it('hands the DB-keyed values object straight to the bulk push', async () => {
+    const pushToServer = vi.fn(async () => true);
+    await persistOnboarding(makeDeps({ pushToServer }), VALUES);
+    expect(pushToServer).toHaveBeenCalledWith(VALUES);
+  });
+
+  // ENG-1127: the single bulk push is the ONLY write and is authoritative — a
+  // `false` means settings did NOT persist, so onboarding must not advance to
+  // success (ENG-817), and the best-effort harness sync is skipped.
+  it('fails when the bulk push returns false, and skips the best-effort harness sync', async () => {
+    const syncHarness = vi.fn(async () => {});
+    const d = makeDeps({ pushToServer: vi.fn(async () => false), syncHarness });
+    const res = await persistOnboarding(d, VALUES);
     expect(res.ok).toBe(false);
     // dbSyncFailed distinguishes "the write was rejected/unreachable" from a
     // thrown error, so finalizeSettings can defer to the install check
     // instead of erroring when the server just isn't up yet.
     if (!res.ok) expect(res.dbSyncFailed).toBe(true);
-    expect(d.syncModels).not.toHaveBeenCalled();
-    expect(d.syncHarness).not.toHaveBeenCalled();
+    expect(syncHarness).not.toHaveBeenCalled();
   });
 
-  // A real .env write error (non-403, which host.saveSettings now propagates)
-  // surfaces to the user rather than being swallowed.
-  it('fails and surfaces the message when the .env write throws', async () => {
-    const d = makeDeps({ saveSettings: vi.fn(async () => { throw new Error('HTTP 500'); }) });
-    const res = await persistOnboarding(d, ['ANTON_X=1']);
-    expect(res.ok).toBe(false);
-    if (!res.ok) {
-      expect(res.error).toContain('500');
-      // Not a DB-sync rejection — a thrown .env error must always be a real,
-      // user-facing failure, never deferred.
-      expect(res.dbSyncFailed).toBeUndefined();
-    }
-  });
-
-  // The expected web loopback 403 makes host.saveSettings return false (best-
-  // effort .env), which must NOT block success as long as the DB write lands.
-  it('still succeeds when the best-effort .env write returns false but the DB write succeeds', async () => {
-    const d = makeDeps({ saveSettings: vi.fn(async () => false) });
-    await expect(persistOnboarding(d, ['ANTON_X=1'])).resolves.toEqual({ ok: true });
-  });
-
-  // ENG-848: syncModels/syncHarness run AFTER the authoritative DB write and are
-  // best-effort — a throw there must not bounce a user whose config already
-  // persisted to the onboarding error screen.
-  it('still succeeds when syncModels throws after the DB write lands', async () => {
-    const d = makeDeps({ syncModels: vi.fn(async () => { throw new Error('model sync flaked'); }) });
-    await expect(persistOnboarding(d, ['ANTON_X=1'])).resolves.toEqual({ ok: true });
-    // The two best-effort syncs are independent (#435 review): a throwing
-    // syncModels must not skip the harness write.
-    expect(d.syncHarness).toHaveBeenCalled();
-  });
-
-  it('still succeeds when syncHarness throws after the DB write lands', async () => {
+  // ENG-848: syncHarness runs AFTER the authoritative bulk push and is
+  // best-effort — a throw must not bounce a user whose config already persisted.
+  it('still succeeds when syncHarness throws after the push lands', async () => {
     const d = makeDeps({ syncHarness: vi.fn(async () => { throw new Error('harness sync flaked'); }) });
-    await expect(persistOnboarding(d, ['ANTON_X=1'])).resolves.toEqual({ ok: true });
+    await expect(persistOnboarding(d, VALUES)).resolves.toEqual({ ok: true });
   });
 });
 

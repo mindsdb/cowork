@@ -6,11 +6,10 @@ import CoworkApp from './CoworkApp';
 import OrbitMorph from './cowork/components/ui/OrbitMorph';
 import { host } from './platform/host';
 import { loadSkin, persistSkin } from './lib/skins';
-import { syncSettingsToDb, syncModelsToDbWithRetry } from './lib/syncSettings';
+import { pushSettingsToDbWithRetry } from './lib/pushSettings';
 import { resolveBootTarget } from './lib/bootTarget';
 import { trackBootScreenResolved } from './cowork/lib/analytics';
 import { hasBootedBefore, rememberBooted, welcomeFloorMs } from './lib/bootWelcome';
-import { runPostAuthHandshake } from './lib/postAuth';
 import type { SpriteName } from './pages/arcade/sprites';
 import './styles.css';
 
@@ -20,8 +19,8 @@ import './styles.css';
 //   look (arcade ↔ normal) is toggled via the corner controller button.
 type Page = 'loading' | 'auth' | 'setup' | 'setupError' | 'terminal';
 
-// Per-browser terms-consent flag (web). Desktop also records consent in
-// ~/.anton/.env (ANTON_TERMS_CONSENT), written when auth completes.
+// Per-machine terms-consent flag (localStorage). ENG-1127: consent is no longer
+// written to ~/.cowork/.env — this flag is the sole client record for now.
 const TERMS_CONSENT_KEY = 'anton.termsConsent';
 const COWORKER_KEY = 'anton.coworker';
 // Minimum time the welcome orb stays up so it doesn't flash on fast boots.
@@ -95,12 +94,12 @@ function MoonIcon({ size = 15 }: { size?: number }) {
 export default function App() {
   const [page, setPage] = useState<Page>('loading');
   const [coworker] = useState(recallCoworker);
-  // ENG-922: model lines handed up by OnboardingScreen when it deferred to the
-  // setup/install screen (server wasn't up to take the DB write). Consumed once
-  // by handlePostAuth after install. A ref (not state) — it drives a one-shot
-  // side effect, not a render; it also must survive the auth→setup→install page
+  // ENG-922/ENG-1127: the FULL chosen settings (DB-keyed values) handed up by
+  // OnboardingScreen when it deferred to setup (server wasn't up for the write).
+  // Consumed once by handlePostAuth after install via the bulk PUT. A ref (not
+  // state) — a one-shot side effect that must survive the auth→setup→install
   // transitions without re-rendering.
-  const deferredModelRef = useRef<string[] | null>(null);
+  const pendingSettingsRef = useRef<Record<string, string> | null>(null);
   // Guards the setupError Retry button so a double-click can't fan out redundant
   // concurrent handshakes.
   const [retrying, setRetrying] = useState(false);
@@ -142,9 +141,8 @@ export default function App() {
       // rarely re-mounts anyway — only on things like a sign-out reload).
       const bootedBefore = hasBootedBefore();
       // Boot-routing decision lives in a pure, tested unit (resolveBootTarget).
-      // readSettings() is best-effort there, so a hosted-web /settings/raw 403
-      // (ENG-817) can't abort the gate and strand a configured instance on the
-      // auth screen; config_ready (health) drives the real decision.
+      // config_ready (health) drives readiness; consent comes only from the
+      // localStorage flag (ENG-1127 — no `.env`/`/settings/raw` read).
       // hasLocalTermsConsent() is internally try/caught (returns false on any
       // localStorage error), so calling it outside resolveBootTarget's guard is
       // safe — it can't throw and escape init() (ENG-848 review note).
@@ -179,33 +177,35 @@ export default function App() {
     init();
   }, []);
 
-  // Common final step for every path that leads to the chat UI:
-  // push any credentials sitting in ~/.cowork/.env into the server DB so
-  // config_ready is true on first mount. Called from both the already-installed
-  // login path and the post-install path so the handshake is never skipped.
+  // Common final step for every path into the chat UI: push any settings
+  // onboarding deferred (server wasn't up) via the bulk PUT, so config_ready is
+  // true on first mount. Called from both the login and post-install paths so
+  // the push is never skipped. ENG-1127: no `.env` read or model-replay here.
   const handlePostAuth = async () => {
-    // Push .env credentials into the DB, then replay any deferred onboarding
-    // model (see deferredModelRef). Decision extracted to runPostAuthHandshake
-    // so the exhausted-retry transition — route to a retryable error instead of
-    // silently entering the app config-not-ready — is unit-tested without
-    // rendering App (ENG-922, #455 review).
-    const res = await runPostAuthHandshake({
-      readSettings: () => host.readSettings(),
-      syncSettingsToDb,
-      replayModels: (lines) => syncModelsToDbWithRetry(lines),
-      deferredModelLines: deferredModelRef.current,
-    });
-    if (res.clearDeferred) deferredModelRef.current = null;
-    setPage(res.next);
+    const pending = pendingSettingsRef.current;
+    // Nothing owed (server already took the write during onboarding) → enter.
+    if (!pending || Object.keys(pending).length === 0) {
+      setPage('terminal');
+      return;
+    }
+    // One push with retry/backoff. On failure KEEP the payload and route to the
+    // retryable error screen rather than strand a fresh install (#455 review).
+    const ok = await pushSettingsToDbWithRetry(pending);
+    if (ok) {
+      pendingSettingsRef.current = null;
+      setPage('terminal');
+    } else {
+      setPage('setupError');
+    }
   };
 
-  // After login (SSO or BYOK): consent is recorded and a provider is saved.
-  // Ensure the backend is installed, then run the credential handshake.
-  // `deferredModelLines` is present only when onboarding deferred to setup (the
-  // fresh-install/server-not-up race, ENG-922); stashed for handlePostAuth to
-  // replay once install finishes.
-  const handleAuthComplete = async (deferredModelLines?: string[]) => {
-    deferredModelRef.current = deferredModelLines ?? null;
+  // After login (SSO or BYOK): consent recorded, provider chosen. Ensure the
+  // backend is installed, then run the post-auth push. `deferredValues` is set
+  // only when onboarding deferred to setup (server-not-up race, ENG-922),
+  // stashed for handlePostAuth. restartServer is now optional/harmless — a
+  // credential written via the settings API takes effect next request.
+  const handleAuthComplete = async (deferredValues?: Record<string, string>) => {
+    pendingSettingsRef.current = deferredValues ?? null;
     rememberTermsConsent();
     try { await host.restartServer(); } catch {}
     try {
@@ -260,7 +260,7 @@ export default function App() {
           <OrbitMorph state="thinking" size={72} />
           <div className="arc-welcome-title">Couldn't finish setup</div>
           <div style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--arc-muted)', maxWidth: 380 }}>
-            Your provider is saved, but we couldn't apply your model. Check your connection, then try again.
+            We couldn't save your settings. Check your connection, then try again.
           </div>
           <button
             className="arc-btn"

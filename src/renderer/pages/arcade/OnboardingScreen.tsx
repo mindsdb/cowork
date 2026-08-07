@@ -1,16 +1,13 @@
-// Provider onboarding ("POWER UP"), arcade edition.
-//
-// The logic is a 1:1 port of the previous Onboarding page — same phase
-// machine (choose / validating / minds-no-llm / success / error), same
-// host calls, same .env lines, same backend sync — re-skinned as the
-// stage where you plug a power source into the coworker you just chose.
+// Provider onboarding ("POWER UP"), arcade edition. ENG-1127: settings are
+// written ONLY via the single bulk PUT /settings/ (pushSettingsToDb) — no
+// `.env` write, no sync.
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { host } from '../../platform/host';
 import { BASE, authFetch, fetchRecommendedModels } from '../../cowork/api';
 import { recommendedModelOptions, type ProviderModel } from '../../cowork/lib/settingsTransform';
 import { MINDS_API_BASE, MINDS_REGISTER_URL } from '../../lib/mindsUrls';
-import { syncSettingsToDb, syncModelsToDb, modelLinesFrom } from '../../lib/syncSettings';
+import { pushSettingsToDb } from '../../lib/pushSettings';
 import { ArcadeShell, PixelMarquee } from './components';
 import { PixelSprite, type SpriteName } from './sprites';
 import { LegalViewer } from './TermsScreen';
@@ -59,42 +56,43 @@ async function syncHarness(harnessId: string): Promise<void> {
   } catch {}
 }
 
-// The onboarding model write lives in lib/syncSettings as `syncModelsToDb` — the
-// only non-picker path allowed to set a model (ENG-739) — so both onboarding and
-// the post-install replay (ENG-922) share one implementation.
+// Onboarding funnel analytics (ANTONAPP_*) used to fire as a side effect of the
+// removed `.env`-write handler (SETTINGS_SAVE, ENG-1127). Fire them here via
+// host.onboardingAnalytics — no-op on web, best-effort. This covers the
+// finalizeSettings moment; the two non-finalize moments (minds-no-LLM; upgrade
+// required) fire at their own call sites.
+function fireOnboardingAnalytics(values: Record<string, string>): void {
+  host.onboardingAnalytics('ANTONAPP_TERMS_ACCEPTED');
+  if (values.planning_provider === 'minds_cloud') host.onboardingAnalytics('ANTONAPP_MINDSLLM');
+  else if (values.anthropic_api_key || values.openai_api_key) host.onboardingAnalytics('ANTONAPP_BYOK');
+}
 
 export interface PersistDeps {
-  /** .env write — best-effort in web (loopback-gated, ENG-817), throws on a real error. */
-  saveSettings: (content: string) => Promise<boolean>;
-  /** Authoritative DB write (PUT /settings/:key). Returns false if any key failed. */
-  syncToDb: (lines: string[]) => Promise<boolean>;
-  /** Best-effort model write here (result ignored on the success path — server
-   *  is up); the return type is widened so syncModelsToDb's boolean fits. */
-  syncModels: (lines: string[]) => Promise<unknown>;
+  /** Authoritative bulk PUT /settings/ with a DB-keyed values object. Returns
+   *  false if rejected or the server was unreachable. */
+  pushToServer: (values: Record<string, string>) => Promise<boolean>;
   syncHarness: () => Promise<void>;
 }
 
 export type PersistResult =
   | { ok: true }
-  // dbSyncFailed marks specifically a `syncToDb` false, as opposed to a
-  // thrown error — so callers can tell "the write was rejected/unreachable"
-  // apart from a real .env/IPC failure (see resolveFinalizeOutcome).
+  // dbSyncFailed marks a `pushToServer` false (write rejected/unreachable — the
+  // expected onboarding/install race) vs a thrown error (see
+  // resolveFinalizeOutcome).
   | { ok: false; error: string; dbSyncFailed?: true };
 
-// Run the onboarding persist sequence and report whether the config actually
-// landed. The .env write is best-effort (host.saveSettings tolerates the web
-// loopback 403; ENG-817), but the DB write is AUTHORITATIVE — a `false` there
-// means the settings did NOT persist, so onboarding must not advance to
-// success over an unsaved config (raised in ENG-817 review). Exported pure so
-// the success/failure decision is unit-tested without rendering the component.
+// Run the onboarding persist sequence and report whether the config landed. The
+// bulk DB write is AUTHORITATIVE — a `false` means settings did NOT persist, so
+// onboarding must not advance to success over an unsaved config (ENG-817). All
+// keys ride the one bulk PUT (ENG-1127). Exported pure so the decision is
+// unit-tested without rendering.
 export async function persistOnboarding(
   deps: PersistDeps,
-  lines: string[],
+  values: Record<string, string>,
 ): Promise<PersistResult> {
   const GENERIC = 'Could not save your settings. Please try again.';
   try {
-    await deps.saveSettings(lines.join('\n'));
-    const dbOk = await deps.syncToDb(lines);
+    const dbOk = await deps.pushToServer(values);
     if (!dbOk) {
       return {
         ok: false,
@@ -102,19 +100,8 @@ export async function persistOnboarding(
         dbSyncFailed: true,
       };
     }
-    // syncModels writes the model keys the bulk DB sync intentionally skips
-    // (ENG-739); harness records the chosen cartridge. Both are best-effort:
-    // the config has ALREADY persisted authoritatively (dbOk), so a flaky
-    // model/harness sync must NOT bounce the user to the error screen over a
-    // saved config (ENG-848). Each gets its own catch so one failing can't
-    // skip the other (#435 review). Logged because a dropped model write does
-    // NOT self-heal (model keys ride neither the bulk re-sync nor the startup
-    // migration — ENG-739/922).
-    try {
-      await deps.syncModels(lines);
-    } catch (e) {
-      console.error('[onboarding] best-effort model sync failed', e);
-    }
+    // harness records the chosen cartridge. Best-effort: config already
+    // persisted (dbOk), so a flaky harness sync must NOT bounce to error (ENG-848).
     try {
       await deps.syncHarness();
     } catch (e) {
@@ -168,36 +155,40 @@ function resolveValidationTarget(
   return { provider, baseUrl };
 }
 
+// Build the DB-keyed values a BYOK provider choice writes (ENG-1127 — keys are
+// backend setting names directly, no map/normalization). Routing unchanged:
+// gemini, openai and openai-compatible all use the openai slot with provider
+// `openai_compatible`; only anthropic uses its own slot.
 function buildProviderEnv(
   bp: ByokProvider,
   key: string,
   customBaseUrl: string,
   model: string,
 ): Record<string, string> {
-  const env: Record<string, string> = {};
+  const values: Record<string, string> = {};
   if (bp === 'anthropic') {
-    env.ANTON_ANTHROPIC_API_KEY = key;
-    env.ANTON_PLANNING_PROVIDER = 'anthropic';
-    env.ANTON_CODING_PROVIDER = 'anthropic';
+    values.anthropic_api_key = key;
+    values.planning_provider = 'anthropic';
+    values.coding_provider = 'anthropic';
   } else if (bp === 'gemini') {
-    env.ANTON_OPENAI_API_KEY = key;
-    env.ANTON_OPENAI_BASE_URL = GEMINI_BASE_URL;
-    env.ANTON_PLANNING_PROVIDER = 'openai-compatible';
-    env.ANTON_CODING_PROVIDER = 'openai-compatible';
+    values.openai_api_key = key;
+    values.openai_base_url = GEMINI_BASE_URL;
+    values.planning_provider = 'openai_compatible';
+    values.coding_provider = 'openai_compatible';
   } else if (bp === 'openai-compatible') {
-    env.ANTON_OPENAI_API_KEY = key || 'not-needed';
-    env.ANTON_OPENAI_BASE_URL = customBaseUrl.trim();
-    env.ANTON_PLANNING_PROVIDER = 'openai-compatible';
-    env.ANTON_CODING_PROVIDER = 'openai-compatible';
+    values.openai_api_key = key || 'not-needed';
+    values.openai_base_url = customBaseUrl.trim();
+    values.planning_provider = 'openai_compatible';
+    values.coding_provider = 'openai_compatible';
   } else {
-    env.ANTON_OPENAI_API_KEY = key;
-    env.ANTON_OPENAI_BASE_URL = 'https://api.openai.com/v1';
-    env.ANTON_PLANNING_PROVIDER = 'openai-compatible';
-    env.ANTON_CODING_PROVIDER = 'openai-compatible';
+    values.openai_api_key = key;
+    values.openai_base_url = 'https://api.openai.com/v1';
+    values.planning_provider = 'openai_compatible';
+    values.coding_provider = 'openai_compatible';
   }
-  env.ANTON_PLANNING_MODEL = model;
-  env.ANTON_CODING_MODEL = model;
-  return env;
+  values.planning_model = model;
+  values.coding_model = model;
+  return values;
 }
 
 export default function OnboardingScreen({
@@ -209,11 +200,10 @@ export default function OnboardingScreen({
   coworker: { id: string; label: string; sprite: SpriteName };
   /**
    * Advance out of onboarding. On the setup-deferral path (fresh install, server
-   * not up yet) the caller receives the just-chosen `ANTON_*_MODEL` lines so the
-   * post-install handshake can replay them once (ENG-922); omitted on every
-   * other path.
+   * not up yet) the caller receives the FULL just-chosen DB-keyed values for the
+   * post-install push (ENG-922/ENG-1127); omitted otherwise.
    */
-  onComplete: (deferredModelLines?: string[]) => void;
+  onComplete: (pendingValues?: Record<string, string>) => void;
   /** Optional — returns to the coworker-select screen. */
   onBack?: () => void;
 }) {
@@ -343,15 +333,16 @@ export default function OnboardingScreen({
   // stranding the user on a "could not save" error mid-download (see
   // resolveFinalizeOutcome). Any other failure surfaces as a retryable error.
   // Shared by every finalize path so they can't drift.
-  const finalizeSettings = async (lines: string[]) => {
+  const finalizeSettings = async (values: Record<string, string>) => {
+    // Fire analytics before the push (like the old .env handler, regardless of
+    // outcome) so a deferred/failed push still records the choice.
+    fireOnboardingAnalytics(values);
     const res = await persistOnboarding(
       {
-        saveSettings: (c) => host.saveSettings(c),
-        syncToDb: syncSettingsToDb,
-        syncModels: syncModelsToDb,
+        pushToServer: pushSettingsToDb,
         syncHarness: () => syncHarness(coworker.id),
       },
-      lines,
+      values,
     );
     const installStatus = res.ok ? null : await host.checkInstall().catch(() => null);
     const outcome = resolveFinalizeOutcome(res, installStatus);
@@ -362,27 +353,23 @@ export default function OnboardingScreen({
       return;
     }
     if (outcome.action === 'defer') {
-      // Server isn't up yet — skip the "success" flash (misleading here) and
-      // let onComplete's checkInstall gate show the setup/install screen.
-      // persistOnboarding stopped at the failed DB sync, BEFORE syncModels, so
-      // the chosen model never reached the DB and the post-install bulk .env
-      // re-sync deliberately excludes model keys (ENG-739). Hand the just-chosen
-      // model lines up so the post-install handshake replays them once —
-      // otherwise a non-Anthropic BYOK user lands config-not-ready ("Select a
-      // model"). In-memory choice, never a .env re-read (ENG-922).
-      onComplete(modelLinesFrom(lines));
+      // Server isn't up yet — skip the "success" flash and let onComplete's
+      // checkInstall gate show the setup screen. The push never reached the DB,
+      // so hand the FULL DB values up for the post-install push
+      // (ENG-922/ENG-1127) — otherwise config-not-ready. Never a .env re-read.
+      onComplete(values);
       return;
     }
     setPhase('success');
     setTimeout(onComplete, 2000);
   };
 
-  const saveFinal = async (lines: string[]) => {
+  const saveFinal = async (values: Record<string, string>) => {
     if (finalizedRef.current) return; // guard double-finalize (see finalizedRef)
     finalizedRef.current = true;
-    lines.push('ANTON_MEMORY_MODE=autopilot');
-    lines.push('ANTON_EPISODIC_MEMORY=true');
-    await finalizeSettings(lines);
+    values.memory_mode = 'autopilot';
+    values.episodic_memory = 'true';
+    await finalizeSettings(values);
   };
 
   const handleConnect = async () => {
@@ -398,12 +385,12 @@ export default function OnboardingScreen({
         return;
       }
 
-      const mindsLines = [
-        'ANTON_TERMS_CONSENT=true',
-        `ANTON_MINDS_ENABLED=true`,
-        `ANTON_MINDS_API_KEY=${apiKey.trim()}`,
-        `ANTON_MINDS_URL=${mindsBase}`,
-      ];
+      // DB-keyed Stage-1 MindsHub values (ENG-1127). No terms_consent /
+      // minds_enabled — not DB settings (consent = localStorage in App).
+      const mindsValues: Record<string, string> = {
+        minds_api_key: apiKey.trim(),
+        minds_url: mindsBase,
+      };
 
       // The probe model is the backend's recommended minds-cloud coding
       // model — fetched, never hardcoded here, so model names live only in
@@ -419,14 +406,19 @@ export default function OnboardingScreen({
         // Set only the provider; the backend resolves the default
         // planning/coding model on load and reports it back to the UI
         // (apply_model_defaults), so we never write model names.
-        const lines = [
-          ...mindsLines,
-          'ANTON_PLANNING_PROVIDER=minds-cloud',
-          'ANTON_CODING_PROVIDER=minds-cloud',
-        ];
-        await saveFinal(lines);
+        const values = {
+          ...mindsValues,
+          planning_provider: 'minds_cloud',
+          coding_provider: 'minds_cloud',
+        };
+        await saveFinal(values);
       } else {
-        await host.saveSettings(mindsLines.join('\n'));
+        // No LLM credits. Stage-1 keys stay in component state (apiKey/mindsUrl)
+        // and fold into the final push when a BYOK provider is connected — no
+        // interim .env write (ENG-1127). Fire analytics here so the
+        // "minds-no-LLM" event isn't lost if the user abandons (terms + MindsLLM).
+        host.onboardingAnalytics('ANTONAPP_TERMS_ACCEPTED');
+        host.onboardingAnalytics('ANTONAPP_MINDSLLM');
         setStep('byok');
         setPhase('minds-no-llm');
       }
@@ -447,9 +439,8 @@ export default function OnboardingScreen({
         return;
       }
 
-      const env = buildProviderEnv(byokProvider, apiKey.trim(), customBaseUrl, resolvedModel);
-      const lines = ['ANTON_TERMS_CONSENT=true', ...Object.entries(env).map(([k, v]) => `${k}=${v}`)];
-      await saveFinal(lines);
+      const values = buildProviderEnv(byokProvider, apiKey.trim(), customBaseUrl, resolvedModel);
+      await saveFinal(values);
     }
   };
 
@@ -483,23 +474,28 @@ export default function OnboardingScreen({
       return;
     }
 
-    // Merge the new LLM vars onto the existing settings (the MindsHub
-    // keys saved in Stage 1 stay intact for publishing/connectors).
-    const existing = await host.readSettings();
+    // Merge the new LLM vars onto the Stage-1 MindsHub keys (kept for
+    // publishing/connectors). ENG-1127: Stage-1 values live in component state —
+    // no `.env` re-read. A minds key is present only on the "valid key, no LLM
+    // credits" path; SSO-no-credits and "continue without an account" carry
+    // none. The chosen provider stays the BYOK provider's own DB enum — NOT
+    // re-tagged minds_cloud just because a minds key rides alongside.
+    const stage1: Record<string, string> = {};
+    const mindsKey = apiKey.trim();
+    if (mindsKey) {
+      stage1.minds_api_key = mindsKey;
+      stage1.minds_url = mindsUrl.trim().replace(/\/+$/, '');
+    }
     const merged: Record<string, string> = {
-      ...existing,
+      ...stage1,
       ...buildProviderEnv(byokProvider, key, customBaseUrl, resolvedModel),
     };
-    merged.ANTON_MEMORY_MODE = merged.ANTON_MEMORY_MODE || 'autopilot';
-    merged.ANTON_EPISODIC_MEMORY = merged.ANTON_EPISODIC_MEMORY || 'true';
-    // Continuing past the auth screen records terms consent (the standalone
-    // terms screen is gone — consent is implicit per the "by continuing" line).
-    merged.ANTON_TERMS_CONSENT = 'true';
+    merged.memory_mode = merged.memory_mode || 'autopilot';
+    merged.episodic_memory = merged.episodic_memory || 'true';
 
     if (finalizedRef.current) return;
     finalizedRef.current = true;
-    const lines = Object.entries(merged).map(([k, v]) => `${k}=${v}`);
-    await finalizeSettings(lines);
+    await finalizeSettings(merged);
   };
 
   const handleMindsSSO = async () => {
@@ -572,9 +568,9 @@ export default function OnboardingScreen({
     // No LLM credits — account authenticated but key wasn't provisioned.
     // Save terms consent and redirect to BYOK so the user can pick a provider.
     if (finalizeResult.upgradeRequired) {
-      // Best-effort in web (loopback-gated; consent also persists client-side
-      // on completion). See host.saveSettings / ENG-817.
-      await host.saveSettings('ANTON_TERMS_CONSENT=true');
+      // Consent persists client-side (localStorage in App); no .env write here
+      // (ENG-1127). Fire the terms-accepted event the removed .env write did.
+      host.onboardingAnalytics('ANTONAPP_TERMS_ACCEPTED');
       setMindsNoCredits(true);
       setStep('byok');
       setPhase('minds-no-llm');
@@ -586,21 +582,19 @@ export default function OnboardingScreen({
       return;
     }
     // Provider only — the backend resolves the default model on load.
-    const lines = [
-      'ANTON_TERMS_CONSENT=true',
-      'ANTON_MINDS_ENABLED=true',
-      `ANTON_MINDS_URL=${MINDS_API_BASE}`,
-      'ANTON_PLANNING_PROVIDER=minds-cloud',
-      'ANTON_CODING_PROVIDER=minds-cloud',
-    ];
+    const values: Record<string, string> = {
+      minds_url: MINDS_API_BASE,
+      planning_provider: 'minds_cloud',
+      coding_provider: 'minds_cloud',
+    };
     if (finalizeResult.apiKey) {
       // ENG-436: write ONLY the dedicated minds slot. minds-cloud
       // resolves from minds_api_key/minds_url everywhere (main agent +
       // scratchpad), so we no longer copy the minds key into the OpenAI
       // slot — that left a user's own OpenAI key clobbered.
-      lines.push(`ANTON_MINDS_API_KEY=${finalizeResult.apiKey}`);
+      values.minds_api_key = finalizeResult.apiKey;
     }
-    await saveFinal(lines);
+    await saveFinal(values);
   };
 
   // Web: ReactKeycloakProvider with onLoad:'login-required' redirected to
@@ -617,13 +611,11 @@ export default function OnboardingScreen({
       if (cancelled || finalizedRef.current || !keycloak.authenticated) return;
       setAutoFinalizing(true); // drive the boot returns via state, not the ref
       // Provider only — the backend resolves the default model on load.
-      saveFinal([
-        'ANTON_TERMS_CONSENT=true',
-        'ANTON_MINDS_ENABLED=true',
-        `ANTON_MINDS_URL=${MINDS_API_BASE}`,
-        'ANTON_PLANNING_PROVIDER=minds-cloud',
-        'ANTON_CODING_PROVIDER=minds-cloud',
-      ]);
+      saveFinal({
+        minds_url: MINDS_API_BASE,
+        planning_provider: 'minds_cloud',
+        coding_provider: 'minds_cloud',
+      });
     });
     return () => { cancelled = true; };
   }, [provider]); // eslint-disable-line react-hooks/exhaustive-deps
