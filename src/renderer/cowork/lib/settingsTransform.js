@@ -329,7 +329,8 @@ export function resolveModelPickerValue(curModel, modelList, allowOther, forceCu
  * @param {boolean} allowOther  whether to append the "Other…" custom-id entry
  * @param {boolean} showStalePin from resolveModelPickerValue
  * @param {Record<string, boolean>} modelEnabled per-model availability map
- *   (settings.modelEnabled); a model mapped to `false` renders locked.
+ *   (settings.modelEnabled); a model mapped to `false` renders selectable
+ *   with a "Needs credits" tag (ENG-1248).
  * @param {Record<string, string>} modelLabels per-model display label
  *   (settings.modelLabels, MindsHub-supplied). Display-only — the id/alias
  *   passed as `value` is still what's saved/resolved everywhere else. A
@@ -391,14 +392,19 @@ export function buildModelOptions(
   const tagFor = (m) => [
     tagMoving && isMoving(m) ? 'Latest' : '',
     isPinnedUnderHead(m) ? 'Older version' : '',
+    isLocked(m) ? 'Needs credits' : '',
   ].filter(Boolean).join(' · ');
 
   const modelOption = (m) => {
     const tag = tagFor(m);
     return {
       value: m,
-      label: isLocked(m) ? `${labelFor(m)} — Add credits to unlock` : labelFor(m),
-      disabled: isLocked(m),
+      label: labelFor(m),
+      // A model the wallet can't currently pay for stays selectable: the wall
+      // moves to use time, where the top-up card offers a way out. A disabled
+      // row was a dead end, and the call site derives its own top-up hint from
+      // the same modelEnabled map.
+      disabled: false,
       ...(tag ? { tag } : {}),
       // MindsHub's authoritative serving-vendor field, which decides the picker
       // section. Absent for every BYOK provider, where it falls back to inference.
@@ -410,9 +416,8 @@ export function buildModelOptions(
     ...(showStalePin
       // Labeled "legacy — re-select" (not "current") so it reads as an
       // action to take, not a selection: the same model may also appear
-      // below as a real "— Add credits to unlock" row, and a bare "(current)"
-      // would look like two identical, already-selected entries (ENG-739
-      // review).
+      // below as a real selectable row, and a bare "(current)" would look
+      // like two identical, already-selected entries (ENG-739 review).
       ? [{
           value: '__stale__',
           label: `${labelFor(curModel.replace(/^latest:/, ''))} (legacy — re-select a model)`,
@@ -422,8 +427,12 @@ export function buildModelOptions(
           pin: 'top',
         }]
       : []),
-    // Wallet-based access (ENG-412, #434): a locked model is one the org's
-    // wallet can't currently pay for — prompt to add credits, not upgrade.
+    // Wallet-based access (ENG-412, #434), pay-as-you-go shape (ENG-1248): a
+    // model the org's wallet can't currently pay for stays selectable, and the
+    // "Needs credits" state rides in the same pill as the version state rather
+    // than in the label. A disabled row was a dead end (click did nothing, no
+    // route to credits), and the label suffix ate the width (truncated
+    // "…Add credits to unl.").
     ...ordered.map(modelOption),
     ...(allowOther ? [{ value: '__custom__', label: 'Other…', pin: 'bottom' }] : []),
   ];

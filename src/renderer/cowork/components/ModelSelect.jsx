@@ -14,7 +14,7 @@
 //     onValueChange={setModelId}
 //     options={[
 //       { value: 'sonnet', label: 'Claude Sonnet 5' },
-//       { value: 'opus', label: 'Claude Opus 5', disabled: true },
+//       { value: 'opus', label: 'Claude Opus 5', tag: 'Needs credits' },
 //       { value: '__custom__', label: 'Other…', pin: 'bottom' },
 //     ]}
 //   />
@@ -24,8 +24,9 @@
 //     contract), which decides the section.
 //   - `maker`: explicit maker key, trusted over inference when present. It is
 //     the icon identity only, never the section.
-//   - `tag`: compact right-aligned pill on the row (a model's version state),
-//     kept out of the label so the trigger and the search see the bare name.
+//   - `tag`: compact right-aligned pill on the row (the version state, the
+//     "Needs credits" wallet state, or both), kept out of the label so the
+//     trigger and the search see the bare name.
 //   - `pin: 'top' | 'bottom'`: render outside the maker groups, unheaded,
 //     at the top/bottom of the list (stale-pin and "Other…" entries).
 //     Pinned entries also bypass the search filter: "Other…" is the escape

@@ -21,9 +21,9 @@
 // Group shape:  { key, name, items }  — `name: null` renders unheaded.
 // Item shape:   { value, label, disabled?, title?, tag?, ... }  — extra fields
 //   pass through untouched, so domain filters/renderers can read them.
-//   `tag` renders as a compact right-aligned pill on the row (e.g. a model's
-//   version state) without touching the label, so search still matches the
-//   bare name and nothing truncates.
+//   `tag` renders as a compact right-aligned pill on the row (a model's version
+//   state, the "Needs credits" wallet state, or both) without touching the
+//   label, so search still matches the bare model name and nothing truncates.
 //
 // Optional hooks for domain pickers:
 //   - `filter(item, query, contains)`: replaces the default match on

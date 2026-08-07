@@ -149,11 +149,13 @@ describe('buildModelOptions', () => {
     expect(options.some((o) => o.value === '__stale__')).toBe(false);
   });
 
-  it('lists every model in the recommended list, disabling locked ones', () => {
+  // ENG-1248: a model the wallet can't pay for stays selectable — a disabled
+  // row was a dead-end click. The row carries a right-aligned tag instead.
+  it('lists every model in the recommended list, tagging needs-credits ones but keeping them selectable', () => {
     const options = buildModelOptions('sonnet', MINDS_LIST, false, false, { opus: false });
     const byValue = Object.fromEntries(options.map((o) => [o.value, o]));
     expect(byValue.sonnet).toEqual({ value: 'sonnet', label: 'sonnet', disabled: false });
-    expect(byValue.opus).toEqual({ value: 'opus', label: 'opus — Add credits to unlock', disabled: true });
+    expect(byValue.opus).toEqual({ value: 'opus', label: 'opus', disabled: false, tag: 'Needs credits' });
   });
 
   it('appends an "Other…" entry only when allowOther is true', () => {
@@ -198,10 +200,10 @@ describe('buildModelOptions', () => {
     expect(byValue.sonnet.label).toBe('sonnet');
   });
 
-  it('keeps the locked suffix on a labelled model', () => {
+  it('keeps the bare label on a labelled needs-credits model, moving the wallet state to the tag', () => {
     const options = buildModelOptions('sonnet', MINDS_LIST, false, false, { opus: false }, { opus: 'Claude Opus 5' });
     const opus = options.find((o) => o.value === 'opus');
-    expect(opus).toEqual({ value: 'opus', label: 'Claude Opus 5 — Add credits to unlock', disabled: true });
+    expect(opus).toEqual({ value: 'opus', label: 'Claude Opus 5', disabled: false, tag: 'Needs credits' });
   });
 
   it('labels the legacy placeholder from the label map too', () => {
@@ -581,18 +583,20 @@ describe('buildModelOptions — moving vs pinned versions', () => {
     }
   });
 
-  it('still marks a locked model, and a locked pin independently of its head', () => {
+  it('marks a locked pin independently of its head, and keeps both rows selectable', () => {
     const options = buildModelOptions(
       'sonnet', ['sonnet', 'sonnet-4-5'], false, false,
       { 'sonnet-4-5': false }, FAMILY_LABELS, FAMILY_META,
     );
     const byValue = Object.fromEntries(options.map((o) => [o.value, o]));
+    // A model the wallet can't pay for stays selectable: the wall is at use time.
     expect(byValue.sonnet.disabled).toBe(false);
-    expect(byValue['sonnet-4-5'].disabled).toBe(true);
-    // Both facts stay readable on the same row: the wallet state in the label, the
-    // version state in the tag.
-    expect(byValue['sonnet-4-5'].label).toBe('Claude Sonnet 4.5 — Add credits to unlock');
-    expect(byValue['sonnet-4-5'].tag).toBe('Older version');
+    expect(byValue['sonnet-4-5'].disabled).toBe(false);
+    // Both facts stay readable on the same row, and the label stays the bare name
+    // so the closed trigger and the search never see a marker.
+    expect(byValue['sonnet-4-5'].label).toBe('Claude Sonnet 4.5');
+    expect(byValue['sonnet-4-5'].tag).toBe('Older version · Needs credits');
+    expect(byValue.sonnet.tag).toBe('Latest');
   });
 
   it('keeps the version tag on a locked moving alias', () => {
@@ -601,8 +605,10 @@ describe('buildModelOptions — moving vs pinned versions', () => {
       { sonnet: false }, FAMILY_LABELS, FAMILY_META,
     );
     const head = options.find((o) => o.value === 'sonnet');
-    expect(head.label).toBe('Claude Sonnet 5 — Add credits to unlock');
-    expect(head.tag).toBe('Latest');
+    expect(head.label).toBe('Claude Sonnet 5');
+    expect(head.disabled).toBe(false);
+    // Version state reads first, so the wallet state can never hide it.
+    expect(head.tag).toBe('Latest · Needs credits');
   });
 
   it('keeps the __stale__ and "Other…" entries pinned outside the sections', () => {

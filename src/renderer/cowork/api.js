@@ -5,6 +5,7 @@
 // origin. Routing through host keeps the port in one place.
 
 import { initialStreamState, reduceStream, iterateSSE } from './lib/responseStreamAdapter';
+import { isAntonConfigError } from './lib/antonErrors';
 import { host } from '../platform/host';
 import { relativeAge } from './lib/formatTime';
 import { transformSettingsRows, diffSettingsForWrite, mergeRecommendedModels } from './lib/settingsTransform';
@@ -183,14 +184,22 @@ function _hydrateAssistantEvents(messages) {
     });
     if (state.status === 'error') {
       const failed = _failedEventMeta(m.events);
-      out.push({
-        role: 'error',
-        content: failed?.message || 'An unexpected error occurred.',
-        code: failed?.code || null,
-        reconnectable: failed?.reconnectable ?? null,
-        providerLabel: failed?.providerLabel ?? null,
-        failedModel: failed?.failedModel ?? null,
-      });
+      // Same mapping as App.jsx's live-stream path (lib/antonErrors): a
+      // config/auth failure renders the connect-a-provider card. Before
+      // ENG-1304 only the live path mapped it, so reopening a conversation
+      // downgraded the card to a raw error string.
+      if (isAntonConfigError(failed?.message, { code: failed?.code })) {
+        out.push({ role: 'provider_required' });
+      } else {
+        out.push({
+          role: 'error',
+          content: failed?.message || 'An unexpected error occurred.',
+          code: failed?.code || null,
+          reconnectable: failed?.reconnectable ?? null,
+          providerLabel: failed?.providerLabel ?? null,
+          failedModel: failed?.failedModel ?? null,
+        });
+      }
     }
   }
   return out;
