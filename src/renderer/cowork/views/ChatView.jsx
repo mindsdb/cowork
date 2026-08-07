@@ -37,7 +37,7 @@ import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { harnessLabel } from '../lib/agentLabel';
 import { modelLabel } from '../lib/settingsTransform';
 import { providerOverloadedButtons } from '../lib/turnErrorActions';
-import { isSkippedFailedAssistant, isOrphanUser as isOrphanUserPure } from '../lib/turnVisibility';
+import { isSkippedFailedAssistant, isOrphanUser as isOrphanUserPure, lastVisibleTurnIdx } from '../lib/turnVisibility';
 import { isThinkingActive } from '../lib/thinkingActive';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 
@@ -1602,17 +1602,13 @@ export default function ChatView({
               // delete affordance the hidden bubble used to carry (ENG-1304,
               // PR #580 review).
               const isOrphanUser = (atIdx) => isOrphanUserPure(visibleMessages, atIdx);
-              // Index of the last user or assistant message — its actions
-              // stay always-visible (Claude pattern: most recent exchange
-              // shows its toolbar). When streaming, nothing needs isLast
-              // since the streaming turn has no actions yet.
-              let lastTurnIdx = -1;
-              if (!streamingMsg) {
-                for (let j = visibleMessages.length - 1; j >= 0; j--) {
-                  const r = visibleMessages[j]?.role;
-                  if (r === 'user' || r === 'assistant') { lastTurnIdx = j; break; }
-                }
-              }
+              // Index of the last user or assistant message that renders —
+              // its actions stay always-visible (Claude pattern: most recent
+              // exchange shows its toolbar). Skipped failed-assistant bubbles
+              // don't count (PR #580 review), so a final failed turn keeps
+              // the toolbar on the user message. When streaming, nothing
+              // needs isLast since the streaming turn has no actions yet.
+              const lastTurnIdx = streamingMsg ? -1 : lastVisibleTurnIdx(visibleMessages);
               return visibleMessages.map((m, i) => {
               if (m.role === 'user') {
                 userInputIdx += 1;

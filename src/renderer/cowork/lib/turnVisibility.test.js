@@ -1,7 +1,7 @@
 // ENG-1304 (PR #580 review): the skipped empty bubble and the orphan rule
 // must agree, or a failed turn loses its delete affordance.
 import { describe, it, expect } from 'vitest';
-import { isSkippedFailedAssistant, isOrphanUser } from './turnVisibility';
+import { isSkippedFailedAssistant, isOrphanUser, lastVisibleTurnIdx } from './turnVisibility';
 
 const user = (content = 'hi') => ({ role: 'user', content });
 const assistant = (over = {}) => ({ role: 'assistant', content: '', ...over });
@@ -42,5 +42,22 @@ describe('isOrphanUser', () => {
   it('a user with no following assistant is an orphan', () => {
     expect(isOrphanUser([user()], 0)).toBe(true);
     expect(isOrphanUser([user(), user()], 0)).toBe(true);
+  });
+});
+
+describe('lastVisibleTurnIdx', () => {
+  it('points at the user message when the final turn failed with a skipped bubble', () => {
+    const msgs = [user(), assistant({ content: 'answer' }), user(), assistant(), error()];
+    expect(lastVisibleTurnIdx(msgs)).toBe(2);
+  });
+
+  it('points at the last real assistant bubble', () => {
+    const msgs = [user(), assistant({ content: 'answer' })];
+    expect(lastVisibleTurnIdx(msgs)).toBe(1);
+  });
+
+  it('returns -1 when nothing renders', () => {
+    expect(lastVisibleTurnIdx([])).toBe(-1);
+    expect(lastVisibleTurnIdx([{ role: 'activity' }])).toBe(-1);
   });
 });

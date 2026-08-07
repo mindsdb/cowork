@@ -15,6 +15,18 @@ export function isSkippedFailedAssistant(messages, atIdx) {
   return next === 'error' || next === 'provider_required';
 }
 
+// Index of the last user/assistant row that actually renders — skipped
+// failed-assistant bubbles don't count, so when the final turn fails the
+// always-visible toolbar follows the user message instead of a null row.
+export function lastVisibleTurnIdx(messages) {
+  for (let j = messages.length - 1; j >= 0; j--) {
+    const role = messages[j]?.role;
+    if (role === 'user') return j;
+    if (role === 'assistant' && !isSkippedFailedAssistant(messages, j)) return j;
+  }
+  return -1;
+}
+
 // A user message is an orphan when no assistant bubble will render for its
 // turn — either none exists (stopped before any response) or the one that
 // exists is skipped. Orphans carry their own delete affordance.
