@@ -673,7 +673,7 @@ export default function Composer({
                       {item.label}
                     </span>
                     {item.hint && (
-                      <span className="text-ink-3 text-[11.5px] overflow-hidden text-ellipsis whitespace-nowrap max-w-[46%]">
+                      <span className="text-ink-3 text-xs overflow-hidden text-ellipsis whitespace-nowrap max-w-[46%]">
                         {item.hint}
                       </span>
                     )}
@@ -926,7 +926,7 @@ export default function Composer({
                         inert={!connectorsOpen || undefined}
                       >
                         {connectors.length === 0 ? (
-                          <div className="py-2 px-[14px] text-sm text-[var(--frost-600)]">
+                          <div className="py-2 px-4 text-sm text-[var(--frost-600)]">
                             No connectors yet. Add one in{' '}
                             {onNavigateToConnectors ? (
                               <button
@@ -987,7 +987,7 @@ export default function Composer({
                     </div>
                   </div>
                   {error && (
-                    <div className="py-[6px] px-[14px] text-[12px] text-[var(--danger-600,#b3261e)]">{error}</div>
+                    <div className="py-2 px-4 text-sm text-[var(--danger-600,#b3261e)]">{error}</div>
                   )}
                 </div>
               )}
@@ -1099,8 +1099,8 @@ export default function Composer({
                   >
                     {/* Search input — sticky header (first flex
                         child of a non-scrolling container). */}
-                    <div className="pt-1 px-[6px] pb-[6px]">
-                      <div className="flex items-center gap-[6px] bg-surface-2 border border-solid border-line rounded-[6px] py-1 px-2">
+                    <div className="pt-1 px-2 pb-2">
+                      <div className="flex items-center gap-2 bg-surface-2 border border-solid border-line rounded-card-row py-1 px-2">
                         <span className="inline-flex text-[var(--frost-600)]">{Ico.folder(13)}</span>
                         <input
                           ref={projectSearchRef}
@@ -1126,7 +1126,7 @@ export default function Composer({
                               else setOpenMenu(null);
                             }
                           }}
-                          className="flex-1 min-w-0 bg-transparent border-0 outline-none text-ink text-[13px]"
+                          className="flex-1 min-w-0 bg-transparent border-0 outline-none text-ink text-sm"
                         />
                       </div>
                     </div>
@@ -1136,7 +1136,7 @@ export default function Composer({
                       className="project-menu-list flex-1 min-h-0 overflow-y-auto py-[2px]"
                     >
                       {_filteredProjects.length === 0 ? (
-                        <div className="py-[10px] px-3 text-[12px] text-[var(--frost-600)]">
+                        <div className="py-3 px-3 text-sm text-[var(--frost-600)]">
                           {_projectSearchTrimmed
                             ? `No project matches “${_projectSearchTrimmed}”.`
                             : 'No projects yet.'}
@@ -1197,7 +1197,7 @@ export default function Composer({
                     )}
 
                     {projectMenuError && (
-                      <div className="py-[6px] px-[10px] text-[11.5px] text-danger border-t border-solid border-t-[var(--border-0)]">
+                      <div className="py-2 px-3 text-xs text-danger border-t border-solid border-t-[var(--border-0)]">
                         {projectMenuError}
                       </div>
                     )}
@@ -1221,7 +1221,7 @@ export default function Composer({
 
       {openMenu === 'model' && !metaReadOnly && (
         <div className="menu right-2 top-[calc(100%+6px)]" style={{ minWidth: 260 }}>
-          <div className="py-[6px] px-[10px] text-xs font-semibold text-[var(--frost-600)] uppercase tracking-[0.04em]">Model</div>
+          <div className="py-2 px-3 text-xs font-semibold text-[var(--frost-600)] uppercase tracking-[0.04em]">Model</div>
           {models.map((m) => (
             <button
               key={m.id}
@@ -1233,7 +1233,7 @@ export default function Composer({
                 <span className="flex-1 font-medium">{m.name}</span>
                 {model?.id === m.id && <span className="text-[var(--primary-700)]">{Ico.check(14)}</span>}
               </div>
-              <div className="text-[11.5px] text-[var(--frost-600)]">{m.desc}</div>
+              <div className="text-xs text-[var(--frost-600)]">{m.desc}</div>
             </button>
           ))}
         </div>
