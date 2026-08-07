@@ -67,6 +67,17 @@ const SECTIONS = [
 
 export const OTHER_SECTION = { key: 'other', name: 'Other' };
 
+/**
+ * MindsHub's own models, by id.
+ *
+ * Keyed on id rather than inferred from the name because auth cannot tell us:
+ * `mindshub` is not a member of the policy's `provider` enum, so no value of that
+ * field ever means "this one is ours". Adding a branded model here is a deliberate
+ * one-line edit; the alternative — matching our name against the id and label — is
+ * a rule that silently stops working the day a branded model isn't named after us.
+ */
+export const MINDSHUB_MODEL_IDS = new Set(['mindshub_air']);
+
 /** Every section a lookup can resolve to, Other included. */
 const ALL_SECTIONS = [...SECTIONS, OTHER_SECTION];
 
@@ -110,6 +121,14 @@ const SECTION_BY_PROVIDER = new Map([
  */
 export function modelSection(option) {
   const maker = option?.maker || modelMaker(option?.value, option?.label).key;
+  // Our own models are matched by id first. `mindshub` is NOT a value auth's
+  // provider enum can carry, so auth structurally cannot say "this model is
+  // ours" — and falling back to the maker regex means the MindsHub section works
+  // only because our models happen to be named after us. Rename Air, or add a
+  // sibling whose id and label don't say "mindshub", and our flagship would file
+  // under whichever vendor currently serves it. The id is the stable thing: it is
+  // the public API contract and cannot change without breaking callers.
+  if (MINDSHUB_MODEL_IDS.has(option?.value)) return SECTION_BY_MAKER.get('mindshub');
   if (maker === 'mindshub') return SECTION_BY_MAKER.get('mindshub');
   // Resolved against ALL_SECTIONS, not SECTIONS: a provider may map to Other
   // deliberately (`meta`), and that has to find a section rather than fall
@@ -163,4 +182,79 @@ export function groupModelOptions(options) {
   return ALL_SECTIONS
     .filter((s) => byKey.has(s.key))
     .map((s) => ({ key: s.key, name: s.name, items: byKey.get(s.key) }));
+}
+
+// ─── Model families (moving aliases vs frozen versions) ─────────────
+//
+// One implementation, used by both pickers. These rules lived twice — once over
+// id strings in settingsTransform and once over `{id, name}` objects in the
+// composer — and the duplication is how they drifted: a fix had to be written in
+// two shapes, so the bug below was live in both.
+//
+// `families` maps a model id to the moving alias it belongs to. cowork-server
+// emits it densely for every model it describes, so:
+//
+//   families[id] === id   → a moving alias; picking it always gets the newest
+//   families[id] !== id   → a frozen version of families[id]
+//   families[id] absent   → NOT DESCRIBED by this map at all
+//
+// That last case is the one that matters and the one that was wrong. The map is
+// global to the settings blob while the list rendered is per-provider, so for a
+// BYOK role every id is absent. Deriving "moving" from `families[id] || id`
+// treats absent as "is its own head" and tags every BYOK model as the latest —
+// including dated snapshots that provably never move. Presence is the signal;
+// global non-emptiness is not.
+
+/** True when `id` is a moving alias according to `families`. */
+export function isMovingAlias(id, families = {}) {
+  return !!families && families[id] === id;
+}
+
+/** True when `id` is a frozen version of some other alias. */
+export function isFrozenAlias(id, families = {}) {
+  return !!families && !!families[id] && families[id] !== id;
+}
+
+/** True when at least one id in `ids` is a frozen version of another. */
+export function hasFrozenVersions(ids, families = {}) {
+  return (ids || []).some((id) => isFrozenAlias(id, families));
+}
+
+/**
+ * Order ids so each frozen version follows the alias it froze.
+ *
+ * Heads keep their position in the incoming order, which is meaningful upstream
+ * (the gateway lists the free/baseline model first); only frozen versions move, to
+ * sit under their head.
+ *
+ * **Total by construction.** Every input id appears exactly once in the output, so
+ * the result is always a permutation of the input. That is load-bearing rather than
+ * tidy: `resolveModelPickerValue` resolves the stored model against the unordered
+ * list, so an id dropped here yields `showStalePin === false` with no rendered
+ * option — the ENG-739 desync class. A family chain (`c → b → a`) or a two-key
+ * cycle (`a → b → a`) both dropped models before the final sweep existed, and a
+ * Statsig edit reaches the app with no deploy and no cross-reference validation on
+ * the target, so neither shape is merely theoretical.
+ */
+export function orderByFamily(ids, families = {}) {
+  const list = ids || [];
+  const out = [];
+  const placed = new Set();
+  const take = (id) => {
+    if (placed.has(id)) return;
+    placed.add(id);
+    out.push(id);
+  };
+  for (const id of list) {
+    // A frozen version whose head is also in this list waits for its head.
+    if (isFrozenAlias(id, families) && list.includes(families[id])) continue;
+    take(id);
+    for (const other of list) {
+      if (families[other] === id && other !== id) take(other);
+    }
+  }
+  // Anything the pass above could not place: a chain deeper than one level, or a
+  // cycle. Appended in input order so the output stays a permutation.
+  for (const id of list) take(id);
+  return out;
 }

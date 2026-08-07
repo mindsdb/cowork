@@ -3,6 +3,7 @@ import { useId } from 'react';
 import Ico from '../../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchRecommendedModels } from '../../api';
 import { providerTypeToKeyField, providerValueToType, resolveModelPickerValue, buildModelOptions, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, clampBudgetValue, clampBudgets, BUDGET_FIELDS } from '../../lib/settingsTransform';
+import { MODEL_REFRESH_TTL_MS } from '../../lib/modelRefresh';
 import { trackHarnessSwapped } from '../../lib/analytics';
 import { copyText as copyToClipboard } from '../../lib/clipboard';
 import { deriveProviderStatus, friendlyProviderError } from '../../lib/providerStatus';
@@ -494,7 +495,7 @@ const PROTECTED_PROVIDER_TYPES = new Set(['minds-cloud']);
 // How long data from the model dropdown's on-open refresh counts as fresh.
 // Re-opening inside this window skips the round trip and opens immediately;
 // it only has to be short next to the 5-minute cache it stands in for.
-const MODEL_REFRESH_TTL_MS = 5000;
+
 
 function makeEmptyProvider(type) {
   const base = { type, apiKey: '', isDefault: false };

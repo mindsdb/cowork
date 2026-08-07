@@ -200,6 +200,60 @@ describe('Composer — model menu sections', () => {
     }
   });
 
+  it('tags no BYOK model when the metadata covers only MindsHub ids', async () => {
+    // The shape every call site produces: modelFamilies is global to the settings
+    // blob while `models` is the selected provider's list. A user with a MindsHub
+    // key who points a role at Anthropic previously saw every row tagged "latest",
+    // including a dated snapshot that provably never moves.
+    const user = userEvent.setup();
+    renderComposer({
+      models: [
+        { id: 'claude-opus-4-8', name: 'Claude Opus 4.8' },
+        { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5' },
+      ],
+      modelMeta: {
+        modelProviders: { sonnet: 'anthropic' },
+        modelFamilies: { sonnet: 'sonnet' },
+      },
+      hideModel: false,
+      model: { id: 'claude-opus-4-8', name: 'Claude Opus 4.8' },
+    });
+    await openModelMenu(user);
+
+    expect(screen.queryByText('latest')).toBeNull();
+  });
+
+  it('tags nothing until a frozen version is listed', async () => {
+    const user = userEvent.setup();
+    renderComposer({ models: MODELS, modelMeta: MODEL_META, hideModel: false, model: MODELS[0] });
+    await openModelMenu(user);
+    expect(screen.queryByText('latest')).toBeNull();
+  });
+
+  it('never drops a row on a family chain or a cycle', async () => {
+    // Options must stay a permutation of the input; a dropped id is a model the
+    // user can no longer select and, for a persisted selection, a desync.
+    const user = userEvent.setup();
+    const chain = [
+      { id: 'sonnet', name: 'Claude Sonnet 5' },
+      { id: 'sonnet-4-5', name: 'Claude Sonnet 4.5' },
+      { id: 'sonnet-4-1', name: 'Claude Sonnet 4.1' },
+    ];
+    renderComposer({
+      models: chain,
+      modelMeta: {
+        modelProviders: { sonnet: 'anthropic', 'sonnet-4-5': 'anthropic', 'sonnet-4-1': 'anthropic' },
+        modelFamilies: { sonnet: 'sonnet', 'sonnet-4-5': 'sonnet', 'sonnet-4-1': 'sonnet-4-5' },
+      },
+      hideModel: false,
+      model: chain[0],
+    });
+    await openModelMenu(user);
+
+    expect([...document.querySelectorAll('.menu .menu-item')]).toHaveLength(3);
+    for (const m of chain) expect(screen.getAllByText(m.name).length).toBeGreaterThan(0);
+  });
+
   it('disables a wallet-locked model with the add-credits wording', async () => {
     const user = userEvent.setup();
     const props = renderComposer({
@@ -227,6 +281,34 @@ describe('Composer — model menu sections', () => {
     await user.click(screen.getByText('Kimi K3'));
 
     expect(props.onModelChange).toHaveBeenCalledWith({ id: 'kimi', name: 'Kimi K3' });
+  });
+
+  it('re-checks wallet availability when the menu opens, once per window', async () => {
+    // Parity with the Settings picker. Without it, a user who hits "Add credits"
+    // (external browser), tops up and returns finds the row still greyed until they
+    // visit Settings or restart — which would make disabling locked models here
+    // worse than not disabling them at all.
+    const user = userEvent.setup();
+    const onRefresh = vi.fn(async () => {});
+    renderComposer({
+      models: MODELS,
+      modelMeta: { ...MODEL_META, onRefresh },
+      hideModel: false,
+      model: MODELS[0],
+    });
+
+    await openModelMenu(user);
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+    await openModelMenu(user); // close
+    await openModelMenu(user); // reopen inside the freshness window
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens normally when no refresh callback is supplied', async () => {
+    const user = userEvent.setup();
+    renderComposer({ models: MODELS, modelMeta: MODEL_META, hideModel: false, model: MODELS[0] });
+    await openModelMenu(user);
+    expect(screen.getByText('Anthropic')).toBeTruthy();
   });
 
   it('keeps the "Model" heading when the list is still empty (settings loading)', async () => {

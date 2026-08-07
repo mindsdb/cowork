@@ -9,7 +9,10 @@ import {
   parseOpenerLine,
 } from './composerFences';
 import { HighlightOverlay } from './composerHighlight';
-import { groupModelOptions, modelMaker } from '../lib/modelCatalog';
+import {
+  groupModelOptions, modelMaker, isMovingAlias, isFrozenAlias, hasFrozenVersions, orderByFamily,
+} from '../lib/modelCatalog';
+import { MODEL_REFRESH_TTL_MS } from '../lib/modelRefresh';
 import ProviderIcon from './ProviderIcon.jsx';
 import { useFileDrop, FileDropOverlay, extractClipboardFiles } from '../lib/useFileDrop';
 import { AttachmentThumbnail } from './AttachmentThumbnail';
@@ -282,47 +285,49 @@ export default function Composer({
   // passes its own one-item list, which must stay ungrouped — and with no
   // metadata `groupModelOptions` returns exactly one unnamed section holding the
   // input, so the flat menu needs no separate branch below.
+  // Don't re-pay the round trip for a menu reopened moments later. -Infinity, not
+  // 0: performance.now() is already well past 0 by first render, so a 0 sentinel
+  // would read as "refreshed at page load" and skip the first open of the session.
+  const modelRefreshedAt = useRef(-Infinity);
+  const openModelMenu = useCallback(() => {
+    if (!modelMeta?.onRefresh) return;
+    if (performance.now() - modelRefreshedAt.current < MODEL_REFRESH_TTL_MS) return;
+    modelRefreshedAt.current = performance.now();
+    // Fire and forget: the menu opens on the list we already hold and reconciles
+    // when the response lands. A click that produces nothing for the length of a
+    // network round trip reads as a broken control.
+    Promise.resolve(modelMeta.onRefresh()).catch(() => {});
+  }, [modelMeta]);
+
   const modelSections = useMemo(() => {
     const { modelProviders = {}, modelFamilies = {}, modelEnabled = {} } = modelMeta || {};
-    const hasFamilies = Object.keys(modelFamilies).length > 0;
-    const familyOf = (id) => modelFamilies[id] || id;
     const list = models || [];
-    // A frozen version is listed directly under the alias it froze. Heads keep
-    // their place in the server's order (it is meaningful upstream — the gateway
-    // lists the free/baseline model first); only the pins move to follow them.
-    const ordered = [];
-    const seen = new Set();
-    for (const m of list) {
-      const pinned = hasFamilies && familyOf(m.id) !== m.id;
-      if (pinned && list.some((o) => o.id === familyOf(m.id))) continue;
-      if (!seen.has(m.id)) { ordered.push(m); seen.add(m.id); }
-      for (const other of list) {
-        if (hasFamilies && familyOf(other.id) === m.id && other.id !== m.id && !seen.has(other.id)) {
-          ordered.push(other);
-          seen.add(other.id);
-        }
-      }
-    }
-    const items = ordered.map((m) => {
-      const pinned = hasFamilies && familyOf(m.id) !== m.id;
-      // A pin whose head isn't in this list reads as a top-level model: indenting
-      // it under nothing, or calling it an older version of a model the user can't
-      // see, is worse than listing it plainly. It is never `moving`, so it also
-      // never claims to be the latest.
-      const orphan = pinned && !list.some((o) => o.id === familyOf(m.id));
-      return {
-        value: m.id,
-        // `label` feeds groupModelOptions' maker inference; `name` is what renders.
-        label: m.name,
-        name: m.name,
-        provider: modelProviders[m.id],
-        maker: modelMaker(m.id, m.name).key,
-        moving: hasFamilies && familyOf(m.id) === m.id,
-        pinned: pinned && !orphan,
-        locked: modelEnabled[m.id] === false,
-      };
-    });
-    // Group only when the server actually told us who makes these models. With no
+    const ids = list.map((m) => m.id);
+    // Family rules come from lib/modelCatalog, shared with the Settings picker.
+    // They used to be reimplemented here over `{id, name}` objects while
+    // settingsTransform had its own copy over id strings, which is how the two
+    // drifted — the BYOK "(latest)" bug was live in both and had to be fixed twice.
+    const byId = new Map(list.map((m) => [m.id, m]));
+    const ordered = orderByFamily(ids, modelFamilies).map((id) => byId.get(id));
+    // Only tag once something listed is NOT the latest; on an all-moving catalog the
+    // tag would sit on every row and distinguish nothing.
+    const tagMoving = hasFrozenVersions(ids, modelFamilies);
+    const items = ordered.map((m) => ({
+      value: m.id,
+      // `label` feeds modelSection's maker inference; `name` is what renders.
+      label: m.name,
+      name: m.name,
+      provider: modelProviders[m.id],
+      maker: modelMaker(m.id, m.name).key,
+      moving: tagMoving && isMovingAlias(m.id, modelFamilies),
+      // Indented under its head only when the head is actually listed. An orphan
+      // reads as a top-level model: indenting it under nothing, or calling it an
+      // older version of a model the user cannot see, is worse than listing it
+      // plainly. It is never `moving` either, so it claims nothing.
+      pinned: isFrozenAlias(m.id, modelFamilies) && byId.has(modelFamilies[m.id]),
+      locked: modelEnabled[m.id] === false,
+    }));
+    // Group only when the server actually told us who serves these models. With no
     // provider metadata — an older cowork-server, any BYOK provider, ChatView's
     // one-item list — a single unnamed section renders today's flat menu exactly.
     // An empty list takes that path too: grouping nothing yields no sections at
@@ -1370,7 +1375,11 @@ export default function Composer({
               {!hideModel && (
                 <button
                   className="meta-pill"
-                  onClick={() => setOpenMenu(openMenu === 'model' ? null : 'model')}
+                  onClick={() => {
+                    const opening = openMenu !== 'model';
+                    setOpenMenu(opening ? 'model' : null);
+                    if (opening) openModelMenu();
+                  }}
                   title="Choose model"
                 >
                   <span>{model?.name ?? 'Select model'}</span>

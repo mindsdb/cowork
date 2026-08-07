@@ -17,6 +17,7 @@
  */
 
 import { MINDS_API_BASE } from '../../lib/mindsUrls';
+import { isMovingAlias, isFrozenAlias, hasFrozenVersions, orderByFamily } from './modelCatalog';
 
 // ─── Key maps ──────────────────────────────────────────────────────────
 
@@ -349,42 +350,31 @@ export function buildModelOptions(
   const labelFor = (m) => displayModelLabel(m, modelLabels);
 
   const { modelProviders = {}, modelFamilies = {} } = meta || {};
-  // `families[id] === id` means the version behind that alias moves, so picking
-  // it always gets the newest release — that's what earns the "latest" tag.
-  // Anything else names the moving alias this entry is a frozen version of.
-  //
-  // Only tagged when the metadata is actually present: a BYOK provider (or a
-  // cowork-server too old to send it) publishes no families, and every model
-  // then renders exactly as it does today rather than claiming to be "latest".
-  const hasFamilies = Object.keys(modelFamilies).length > 0;
-  const familyOf = (m) => modelFamilies[m] || m;
-  const isMoving = (m) => hasFamilies && familyOf(m) === m;
-  const isPinned = (m) => hasFamilies && familyOf(m) !== m;
-  // A pin whose head isn't in this list — a typo'd `family` in the policy, or a
-  // head filtered out upstream. It is listed (a selectable model must not vanish)
-  // but carries no tag at all: "older version" is a claim relative to a newer one,
-  // and with no head present there is nothing for the user to read it against. It
-  // is not `isMoving` either, so it never claims to be the latest of anything.
-  const isOrphan = (m) => isPinned(m) && !list.includes(familyOf(m));
-  const isPinnedUnderHead = (m) => isPinned(m) && !isOrphan(m);
+  // Family rules come from lib/modelCatalog so this picker and the composer cannot
+  // disagree about them. Presence in `modelFamilies` is the signal, NOT the map
+  // being non-empty: the map is global to the settings blob while `modelList` is
+  // per-provider, so for a BYOK role every id is absent from it. Reading absent as
+  // "is its own head" tagged every BYOK model "(latest)", including dated
+  // snapshots that provably never move.
+  const isMoving = (m) => isMovingAlias(m, modelFamilies);
+  // A frozen version whose head is also listed. An orphan — a typo'd `family`, or a
+  // head filtered out upstream — is listed but carries no tag at all: "older
+  // version" is a claim relative to a newer one, and with no head present there is
+  // nothing for the user to read it against.
+  const isPinnedUnderHead = (m) => isFrozenAlias(m, modelFamilies) && list.includes(modelFamilies[m]);
 
-  // Display-only ordering: a frozen version is listed directly under the alias
-  // it froze, wherever that alias sits in the server's order. The server's order
-  // is meaningful upstream (the gateway lists the free/baseline model first), so
-  // heads keep their positions and only the pins move to follow them.
-  const ordered = [];
-  const claimed = new Set();
-  for (const m of list) {
-    if (isPinned(m) && list.includes(familyOf(m))) continue; // placed under its head
-    ordered.push(m);
-    claimed.add(m);
-    for (const pin of list) {
-      if (isPinned(pin) && familyOf(pin) === m && !claimed.has(pin)) {
-        ordered.push(pin);
-        claimed.add(pin);
-      }
-    }
-  }
+  // The "(latest)" tag only earns its place once something in this list is NOT the
+  // latest. On a catalog of all-moving aliases it would sit on every row, which
+  // distinguishes nothing — and it leaks past the list: ModelSelect renders the
+  // selected option's label verbatim in the collapsed trigger and filters on that
+  // same string, so a permanent suffix would show in the closed control and make
+  // typing "latest" match every row.
+  const tagMoving = hasFrozenVersions(list, modelFamilies);
+
+  // Display-only ordering: a frozen version is listed directly under the alias it
+  // froze. Total by construction — see orderByFamily; a dropped id would give
+  // `showStalePin === false` with no rendered option, the ENG-739 desync class.
+  const ordered = orderByFamily(list, modelFamilies);
 
   const modelOption = (m) => ({
     value: m,
@@ -393,7 +383,7 @@ export function buildModelOptions(
       // Plain text, not a rendered pill: ModelSelect resolves the trigger's
       // displayed text from these label strings, so markup here wouldn't survive
       // selection.
-      isMoving(m) ? ' (latest)' : '',
+      tagMoving && isMoving(m) ? ' (latest)' : '',
       isPinnedUnderHead(m) ? ' — older version' : '',
       isLocked(m) ? ' — Add credits to unlock' : '',
     ].join(''),

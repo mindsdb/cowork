@@ -457,13 +457,65 @@ const FAMILY_LABELS = {
 };
 
 describe('buildModelOptions — moving vs pinned versions', () => {
-  it('tags an alias whose family is itself as "latest"', () => {
+  it('tags nothing when no model in the list is a frozen version', () => {
+    // The tag distinguishes a moving alias from a frozen one. With nothing frozen
+    // in the list it would sit on every row and distinguish nothing — and it
+    // leaks: ModelSelect renders the selected label verbatim in the collapsed
+    // trigger and filters on it, so a permanent suffix would show in the closed
+    // control and make typing "latest" match every row.
     const options = buildModelOptions('sonnet', ['sonnet', 'kimi'], false, false, {}, FAMILY_LABELS, FAMILY_META);
+    const byValue = Object.fromEntries(options.map((o) => [o.value, o]));
+    expect(byValue.sonnet.label).toBe('Claude Sonnet 5');
+    expect(byValue.kimi.label).toBe('Kimi K3');
+  });
+
+  it('tags the moving aliases as "latest" once a frozen version is listed', () => {
+    const options = buildModelOptions(
+      'sonnet', ['sonnet', 'sonnet-4-5', 'kimi'], false, false, {}, FAMILY_LABELS, FAMILY_META,
+    );
     const byValue = Object.fromEntries(options.map((o) => [o.value, o]));
     // Plain text, not a pill: ModelSelect resolves the trigger's displayed text
     // from these label strings, so markup here wouldn't survive selection.
     expect(byValue.sonnet.label).toBe('Claude Sonnet 5 (latest)');
+    // Every moving alias, not only the one that has a pin — the tag is a claim
+    // about that alias, and it is now readable against a row that lacks it.
     expect(byValue.kimi.label).toBe('Kimi K3 (latest)');
+  });
+
+  it('tags no BYOK model when the metadata covers only MindsHub ids', () => {
+    // The shape every call site actually produces: `modelFamilies` is global to the
+    // settings blob, `modelList` is per-provider. A user with a MindsHub key who
+    // points a role at Anthropic previously saw every row tagged "(latest)",
+    // including `claude-haiku-4-5-20251001`, a dated snapshot that never moves.
+    const options = buildModelOptions(
+      'claude-opus-4-8', ANTHROPIC_LIST, true, false, {}, {},
+      { modelProviders: { sonnet: 'anthropic' }, modelFamilies: { sonnet: 'sonnet' } },
+    );
+    for (const o of options) {
+      expect(o.label || '').not.toContain('latest');
+      expect(o.label || '').not.toContain('older version');
+    }
+  });
+
+  it('never drops a model, on a family chain or a cycle', () => {
+    // Options must stay a permutation of modelList: resolveModelPickerValue
+    // resolves the stored model against the unordered list, so a dropped id gives
+    // showStalePin === false with no rendered option (the ENG-739 desync class).
+    // A Statsig edit reaches the app with no deploy and auth does not validate the
+    // family target, so neither shape is theoretical.
+    const chain = ['sonnet', 'sonnet-4-5', 'sonnet-4-1'];
+    const chainOpts = buildModelOptions('sonnet', chain, false, false, {}, {}, {
+      modelProviders: { sonnet: 'anthropic', 'sonnet-4-5': 'anthropic', 'sonnet-4-1': 'anthropic' },
+      modelFamilies: { sonnet: 'sonnet', 'sonnet-4-5': 'sonnet', 'sonnet-4-1': 'sonnet-4-5' },
+    });
+    expect(chainOpts.map((o) => o.value).sort()).toEqual([...chain].sort());
+
+    const cycle = ['a', 'b'];
+    const cycleOpts = buildModelOptions('a', cycle, false, false, {}, {}, {
+      modelProviders: { a: 'anthropic', b: 'anthropic' },
+      modelFamilies: { a: 'b', b: 'a' },
+    });
+    expect(cycleOpts.map((o) => o.value).sort()).toEqual([...cycle].sort());
   });
 
   it('marks a frozen version as an older version and never as latest', () => {
