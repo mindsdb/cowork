@@ -793,7 +793,7 @@ export default function Composer({
                     type="button"
                     role="option"
                     aria-selected={active}
-                    className={`menu-item${active ? ' bg-surface-2' : ''}`}
+                    className={`menu-item${active ? ' !bg-surface-2' : ''}`}
                     onMouseEnter={() => setSlashIndex(i)}
                     onClick={() => acceptSlash(item)}
                   >
@@ -1242,7 +1242,7 @@ export default function Composer({
                     {/* Search input — sticky header (first flex
                         child of a non-scrolling container). */}
                     <div className="pt-1 px-[6px] pb-[6px]">
-                      <div className="flex items-center gap-[6px] bg-surface-2 border border-line rounded-md py-1 px-2">
+                      <div className="flex items-center gap-[6px] bg-surface-2 border border-solid border-line rounded-md py-1 px-2">
                         <span className="inline-flex text-ink-3">{Ico.folder(13)}</span>
                         <input
                           ref={projectSearchRef}
@@ -1342,7 +1342,7 @@ export default function Composer({
                     )}
 
                     {projectMenuError && (
-                      <div className="py-[6px] px-[10px] text-[11.5px] text-danger border-t border-line">
+                      <div className="py-[6px] px-[10px] text-[11.5px] text-danger border-t border-x-0 border-b-0 border-solid border-line">
                         {projectMenuError}
                       </div>
                     )}
@@ -1368,9 +1368,9 @@ export default function Composer({
         </div>
       )}
 
+      {/* cascade-forced: legacy .menu sets min-width:200px; a same-property
+          Tailwind utility would lose to it (loads after Tailwind). */}
       {openMenu === 'model' && !metaReadOnly && (
-        {/* cascade-forced: legacy .menu sets min-width:200px; a same-property
-            Tailwind utility would lose to it (loads after Tailwind). */}
         <div className="menu right-2 top-[calc(100%_+_6px)]" style={{ minWidth: 260 }}>
           {/* One unnamed section is the flat case (no metadata, or ChatView's
               single-item list): keep the "Model" heading this menu has always
