@@ -18,7 +18,16 @@ const UPDATE_CARD_BODY_CLASS = 'flex flex-col gap-0.5 flex-1 min-w-[160px]';
 // here leaks into the rest of SettingsView. The Save `footer` is rendered by
 // the parent and passed through, and the shell (installer) update hand-off
 // comes in via `shellUpdate` / `onDownloadShellUpdate`.
-export default function UpdatesSection({ footer, serverOnline = false, shellUpdate = null, onDownloadShellUpdate }) {
+export default function UpdatesSection({
+  footer,
+  serverOnline = false,
+  shellUpdate = null,
+  onDownloadShellUpdate,
+  shellAutoUpdate = null,
+  onDownloadShellAutoUpdate,
+  onInstallShellAutoUpdate,
+  onRetryShellAutoUpdate,
+}) {
   const [versionInfo, setVersionInfo] = useState({ app: '', ui: null, source: 'web' });
   const [serverVersion, setServerVersion] = useState('');
   const [antonVersion, setAntonVersion] = useState('');
@@ -201,6 +210,12 @@ export default function UpdatesSection({ footer, serverOnline = false, shellUpda
               const shellVersion = r?.shellVersion || shellUpdate?.version;
               const shellUrl = r?.shellDownloadUrl || shellUpdate?.downloadUrl;
               const shellDownloadStarted = shellPending && !!shellVersion && shellDownloadedVersion === shellVersion;
+              // Auto-update (electron-updater) drives the primary card. The
+              // manual installer-download card only surfaces as a fallback when
+              // auto-update isn't running or has failed (ENG-850).
+              const autoPhase = shellAutoUpdate?.phase;
+              const autoVisible = !!autoPhase && !['disabled', 'idle', 'complete'].includes(autoPhase);
+              const manualFallback = shellPending && (!autoVisible || autoPhase === 'failed');
               let status = null;
               if (!checkingUpdates && r) {
                 if (!r.ok) {
@@ -256,16 +271,55 @@ export default function UpdatesSection({ footer, serverOnline = false, shellUpda
                       </Button>
                     </div>
                   )}
-                  {shellPending && (
+                  {autoVisible && (
+                    <div className={UPDATE_CARD_CLASS}>
+                      <div className={UPDATE_CARD_BODY_CLASS}>
+                        <span className="text-sm font-semibold text-ink">
+                          {autoPhase === 'checking'
+                            ? 'Checking for an app update…'
+                            : autoPhase === 'available'
+                              ? 'New app version available'
+                              : autoPhase === 'downloading'
+                                ? `Downloading app update${shellAutoUpdate.progress?.percent != null ? ` — ${Math.round(shellAutoUpdate.progress.percent)}%` : '…'}`
+                                : autoPhase === 'ready-to-install'
+                                  ? 'App update ready'
+                                  : autoPhase === 'installing'
+                                    ? 'Installing app update…'
+                                    : 'App update failed'}
+                        </span>
+                        <span className={`text-[11.5px] ${autoPhase === 'failed' ? 'text-warning' : 'text-ink-3'}`}>
+                          {autoPhase === 'ready-to-install'
+                            ? 'Restart Cowork to finish installing the downloaded update.'
+                            : autoPhase === 'failed'
+                              ? (shellAutoUpdate.errorMessage || 'The automatic update could not be completed. Your current installation is still usable.')
+                              : autoPhase === 'available'
+                                ? (shellAutoUpdate.mode === 'manual' ? 'Download it when you are ready.' : 'The update is ready to download.')
+                                : 'You can continue working while Cowork prepares the update.'}
+                        </span>
+                      </div>
+                      {autoPhase === 'available' && (
+                        <Button variant="primary" onClick={onDownloadShellAutoUpdate}>Download update</Button>
+                      )}
+                      {autoPhase === 'ready-to-install' && (
+                        <Button variant="primary" onClick={onInstallShellAutoUpdate}>Restart now</Button>
+                      )}
+                      {autoPhase === 'failed' && shellAutoUpdate.recoverable && (
+                        <Button variant="primary" onClick={onRetryShellAutoUpdate}>Retry</Button>
+                      )}
+                    </div>
+                  )}
+                  {manualFallback && (
                     <div className={UPDATE_CARD_CLASS}>
                       <div className={UPDATE_CARD_BODY_CLASS}>
                         <span className="text-sm font-semibold text-ink">
                           {shellVersion ? `New app version ${shellVersion}` : 'New app version available'}
                         </span>
                         <span className="text-[11.5px] text-ink-3">
-                          {shellDownloadStarted
-                            ? "Installer downloading — when it's done, quit MindsHub Cowork and open the installer to finish updating."
-                            : "Download the installer, then quit MindsHub Cowork and open it to finish updating."}
+                          {autoPhase === 'failed'
+                            ? 'You can still download the installer manually.'
+                            : shellDownloadStarted
+                              ? "Installer downloading — when it's done, quit MindsHub Cowork and open the installer to finish updating."
+                              : "Download the installer, then quit MindsHub Cowork and open it to finish updating."}
                         </span>
                       </div>
                       <Button

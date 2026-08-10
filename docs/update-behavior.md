@@ -77,8 +77,35 @@ installer. So the app can't apply a shell update; it can only *notice* one:
 - Banner dismissal is **per-version** (localStorage) — a dismissed notice
   reappears when a newer shell ships. Settings always shows the current state.
 
-Auto-download / install-on-relaunch (electron-updater) is a separate,
-out-of-scope effort (ENG-850).
+## Shell automatic update lifecycle (ENG-850)
+
+Eligible packaged prod/stable builds contain a channel-specific
+`electron-updater` feed. Stable is the first automatic-update rollout ring;
+prod remains disabled by default until stable completes signed N → N+1 smoke
+testing and its observation window. `SHELL_AUTO_UPDATE_ENABLED=false` is the
+emergency stable kill switch, while `true` explicitly opts prod into QA. The
+ENG-849 manual installer notice remains the disabled/failure fallback.
+
+When enabled, main owns one immutable shell-update snapshot:
+
+`idle → checking → available → downloading → ready-to-install → installing`
+
+- Auto mode downloads after detection and installs on normal app quit. Manual
+  mode waits for an explicit download and explicit restart. Either way the quit
+  path first drains any in-flight UI/server apply (bounded) before the process
+  terminates, so the on-quit install cannot overlap an apply.
+- Concurrent boot, periodic, and manual checks coalesce into one operation.
+- The renderer pulls the snapshot on mount and subscribes to full snapshot
+  changes, so a UI reload cannot lose progress/readiness state.
+- A downloaded target is persisted as small durable evidence. The next launch
+  compares the running internal SemVer with that target and reports a
+  recoverable `install-not-applied` failure if relaunch stayed on the old shell.
+- UI/server apply and shell install share a maintenance gate; shell install
+  also waits for active server lifecycle work. The explicit in-app install
+  enters the gate directly; the auto-mode on-quit install is serialized by the
+  quit drain above.
+- Signature/checksum failures are terminal for automatic update, while the
+  existing manual installer URL remains available.
 
 ## Build kinds
 

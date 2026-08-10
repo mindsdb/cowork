@@ -217,6 +217,8 @@ export default function Sidebar({
   onApplyUpdate,
   // Download-only shell update notice.
   shellUpdate = null,
+  shellAutoUpdate = null,
+  onShellAutoUpdateAction,
   onDownloadShellUpdate,
   onDismissShellUpdate,
   agentLabel,
@@ -748,8 +750,44 @@ export default function Sidebar({
           </button>
         )}
 
-        {/* Shell updates are download-only and dismissible per version. */}
-        {shellUpdate && (
+        {/* Shell auto-update (electron-updater): background download, install on
+            relaunch. Rendered for the active phases; the action is phase-driven
+            (download / restart / retry) and disabled while work is in flight. */}
+        {shellAutoUpdate && ['available', 'downloading', 'ready-to-install', 'installing', 'failed'].includes(shellAutoUpdate.phase) && (
+          <button
+            type="button"
+            onClick={onShellAutoUpdateAction}
+            disabled={shellAutoUpdate.phase === 'downloading' || shellAutoUpdate.phase === 'installing'}
+            className="mt-0 mx-2.5 mb-1.5 py-2 px-3 bg-[color-mix(in_srgb,var(--sage-500)_12%,transparent)] border border-solid border-[color-mix(in_srgb,var(--sage-500)_30%,transparent)] rounded-lg flex items-center gap-2 w-[calc(100%-20px)] [-webkit-app-region:no-drag] font-[inherit] cursor-pointer disabled:cursor-default"
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-[var(--sage-500,#5D9287)] shrink-0" />
+            <span className="flex-1 text-[11.5px] text-left text-ink font-[family-name:var(--font-sans)]">
+              {shellAutoUpdate.phase === 'downloading'
+                ? `Downloading update${shellAutoUpdate.progress?.percent != null ? ` (${Math.round(shellAutoUpdate.progress.percent)}%)` : '…'}`
+                : shellAutoUpdate.phase === 'ready-to-install'
+                  ? 'App update ready'
+                  : shellAutoUpdate.phase === 'installing'
+                    ? 'Installing update…'
+                    : shellAutoUpdate.phase === 'failed'
+                      ? 'App update failed'
+                      : 'New app version available'}
+            </span>
+            <span className="text-2xs text-[var(--sage-500,#5D9287)] font-[family-name:var(--font-mono)] tracking-[0.03em] uppercase font-semibold">
+              {shellAutoUpdate.phase === 'ready-to-install'
+                ? 'Restart'
+                : shellAutoUpdate.phase === 'failed'
+                  ? (shellAutoUpdate.recoverable ? 'Retry' : 'Download')
+                  : shellAutoUpdate.phase === 'available'
+                    ? 'Download'
+                    : ''}
+            </span>
+          </button>
+        )}
+
+        {/* Shell (installer) update notice — the app itself is newer than what's
+            installed; the shell can't hot-update, so this links to the download
+            and is dismissible per-version (ENG-849). */}
+        {shellUpdate && (!shellAutoUpdate || shellAutoUpdate.phase === 'disabled') && (
           <div className="mt-0 mx-2.5 mb-1.5 py-2 px-3 bg-[color-mix(in_srgb,var(--sage-500)_12%,transparent)] border border-solid border-[color-mix(in_srgb,var(--sage-500)_30%,transparent)] rounded-lg flex items-center gap-2 w-[calc(100%-20px)] [-webkit-app-region:no-drag]">
             <button
               type="button"

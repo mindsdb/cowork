@@ -262,6 +262,7 @@ jobs:
           # Activates the build-time channel guard in gen-build-channel.mjs:
           # fail the build if this kind and VITE_MINDS_API_URL target different
           # environments (e.g. preview baked against the prod API).
+          # Also consumed by run-electron-builder.mjs to resolve the shell update feed.
           COWORK_BUILD_KIND: ${{ inputs.build_kind }}
         run: npm run release:mac:pkg:notarized
 
@@ -302,6 +303,20 @@ jobs:
           mkdir -p out
           NAME="${{ steps.name.outputs.artifact_name }}"
           mv release/*.pkg "out/${NAME}"
+
+      - name: Collect shell updater artifacts
+        if: inputs.build_kind == 'prod' || inputs.build_kind == 'stable'
+        run: |
+          set -euo pipefail
+          mkdir -p out/updater
+          ZIP=$(find release -maxdepth 1 -type f -name 'mindshub-cowork-update-*.zip' -print -quit)
+          test -n "$ZIP"
+          test -f release/latest-mac.yml
+          cp "$ZIP" out/updater/
+          cp release/latest-mac.yml out/updater/
+          if [ -f "${ZIP}.blockmap" ]; then
+            cp "${ZIP}.blockmap" out/updater/
+          fi
 
       - name: Upload pkg artifact
         uses: actions/upload-artifact@v4

@@ -73,6 +73,47 @@ describe('SettingsView desktop — shell reinstall download (ENG-849)', () => {
   });
 });
 
+describe('SettingsView desktop — shell auto-update lifecycle (ENG-850)', () => {
+  it('shows download progress without offering a conflicting manual reinstall', () => {
+    render(
+      <SettingsView
+        {...baseProps}
+        shellUpdate={{ version: '2.26.7.20.1', downloadUrl: 'https://x/y.pkg' }}
+        shellAutoUpdate={{
+          phase: 'downloading',
+          mode: 'auto',
+          channel: 'prod',
+          currentVersion: '2.260713.1',
+          targetVersion: '2.260720.1',
+          progress: { transferred: 50, total: 100, percent: 50 },
+        }}
+        onDownloadShellUpdate={vi.fn()}
+      />
+    );
+    expect(screen.getByText(/Downloading app update — 50%/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Download update/ })).toBeNull();
+  });
+
+  it('offers restart only after the verified download is ready', () => {
+    const onInstallShellAutoUpdate = vi.fn();
+    render(
+      <SettingsView
+        {...baseProps}
+        shellAutoUpdate={{
+          phase: 'ready-to-install',
+          mode: 'auto',
+          channel: 'prod',
+          currentVersion: '2.260713.1',
+          targetVersion: '2.260720.1',
+        }}
+        onInstallShellAutoUpdate={onInstallShellAutoUpdate}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Restart now/ }));
+    expect(onInstallShellAutoUpdate).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('SettingsView desktop — UI/server updates framed as a restart', () => {
   it('presents a pending UI/server update as "Restart now", not the shell\'s download/version wording', async () => {
     host.checkForUpdates.mockResolvedValueOnce({

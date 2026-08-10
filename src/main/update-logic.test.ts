@@ -22,6 +22,7 @@ import {
   startFailureMessage,
   shellUpdateIsNewer,
   shellDownloadUrl,
+  shellAutoUpdateIsActive,
   summarizeUpdateCheck,
 } from './update-logic';
 
@@ -727,6 +728,22 @@ describe('shellDownloadUrl (ENG-849)', () => {
     ['', 'prod', null],
   ])('%s / %s', (platform, kind, expected) => {
     expect(shellDownloadUrl(platform, kind)).toBe(expected);
+  });
+});
+
+describe('shellAutoUpdateIsActive', () => {
+  it.each([
+    ['available', true],
+    ['downloading', true],
+    ['ready-to-install', true],
+    ['disabled', false],
+    ['idle', false],
+    ['checking', false],
+    ['installing', false],
+    ['complete', false],
+    ['failed', false],
+  ])('%s → %s', (phase, expected) => {
+    expect(shellAutoUpdateIsActive(phase)).toBe(expected);
   });
 });
 
