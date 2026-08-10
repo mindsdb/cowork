@@ -30,15 +30,21 @@ function Harness({ taskId = 't1', onConsumed }) {
   const [mounted, setMounted] = useState(true);
   const [openTaskId, setOpenTaskId] = useState('t1');
   const bump = useRef(0);
-  const fire = (tid, text) => setRedirects((prev) => {
+  const fire = (tid, text, attachments) => setRedirects((prev) => {
     bump.current += 1;
-    return { ...prev, [tid]: { text, bump: bump.current } };
+    return { ...prev, [tid]: { text, attachments, bump: bump.current } };
   });
   return (
     <>
       <button type="button" onClick={() => fire(taskId, 'queued one')}>fire redirect</button>
       <button type="button" onClick={() => fire('t-other', 'other task text')}>
         fire other redirect
+      </button>
+      <button
+        type="button"
+        onClick={() => fire(taskId, 'queued one', [{ id: 'a1', name: 'notes.txt' }])}
+      >
+        fire redirect with files
       </button>
       <button type="button" onClick={() => setMounted((m) => !m)}>toggle mount</button>
       <button type="button" onClick={() => setOpenTaskId((t) => (t === 't1' ? 't-other' : 't1'))}>
@@ -49,8 +55,8 @@ function Harness({ taskId = 't1', onConsumed }) {
           task={task(openTaskId)}
           onSend={vi.fn()}
           composerRedirects={redirects}
-          onComposerRedirectConsumed={(tid) => {
-            onConsumed?.(tid);
+          onComposerRedirectConsumed={(tid, attachments) => {
+            onConsumed?.(tid, attachments);
             setRedirects((prev) => {
               if (!prev[tid]) return prev;
               const next = { ...prev };
@@ -96,6 +102,20 @@ describe('ChatView composer redirect', () => {
 
     await waitFor(() => expect(composer().value).toBe('half-written thought\nqueued one'));
     expect(onConsumed).toHaveBeenCalledTimes(1);
+  });
+
+  it('hands the drained files to the parent when it consumes the entry', async () => {
+    // The files ride the same per-task entry as the text: the app-wide staged
+    // list is not keyed by task, so staging them any earlier would put them on
+    // whichever conversation is open.
+    const user = userEvent.setup();
+    const onConsumed = vi.fn();
+    render(<Harness onConsumed={onConsumed} />);
+
+    await user.click(screen.getByText('fire redirect with files'));
+
+    await waitFor(() => expect(onConsumed).toHaveBeenCalledTimes(1));
+    expect(onConsumed).toHaveBeenCalledWith('t1', [{ id: 'a1', name: 'notes.txt' }]);
   });
 
   it('ignores a redirect aimed at a task that is not on screen', async () => {

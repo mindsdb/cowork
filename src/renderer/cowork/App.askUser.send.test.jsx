@@ -461,6 +461,39 @@ describe('queue drain when a question appears', () => {
   });
 });
 
+describe('a background task draining files while another is on screen', () => {
+  it('stages the files only when that task\'s composer is opened', async () => {
+    const user = userEvent.setup();
+    // Both conversations have a live producer, so opening either reattaches.
+    spies.fetchInFlightStatus.mockImplementation(async () => ({ in_flight: true }));
+    render(<App />);
+
+    let composer = await openByTitle(user, 'Beta task');
+    const streamB = await waitForStream();
+    // Queued behind Beta's running turn, carrying a file.
+    await attach(user, 'beta-notes.txt');
+    await send(user, composer, 'queued for beta');
+    expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
+    expect(screen.queryByText('beta-notes.txt')).toBeNull();
+
+    composer = await openByTitle(user, 'Alpha task');
+    await waitForStream(streamB);
+
+    // Beta drains while Alpha is on screen. Staging into the app-wide list would
+    // put Beta's file on Alpha's composer as a chip — and sending in Alpha would
+    // upload and send it against Alpha's conversation.
+    await emitOn(streamB, { ...ASK_EVENT, question_id: 'ask:beta' });
+    await waitFor(() => expect(composer.value).toBe(''));
+    expect(screen.queryByText('beta-notes.txt')).toBeNull();
+
+    // The file is not lost either: it comes back with the text when Beta is
+    // opened, which is the only composer it may be sent from.
+    composer = await openByTitle(user, 'Beta task');
+    await waitFor(() => expect(composer.value).toBe('queued for beta'));
+    expect(await screen.findByText('beta-notes.txt')).toBeInTheDocument();
+  });
+});
+
 describe('reconnected background stream (tailInFlight)', () => {
   it('releases a pending question when the reattached stream dies', async () => {
     const user = userEvent.setup();

@@ -1165,24 +1165,23 @@ function AppCore() {
     // Only the newly restored batch, and only under this task's key — never
     // accumulated (that re-injects an earlier drain's text) and never into a
     // shared slot (that discards an earlier drain's text).
+    //
+    // The files those queued messages were carrying ride the SAME entry as the
+    // text, because they have to travel together: `clearQueueForTask` above
+    // deletes the only other reference to them, while `composerAttachments` is a
+    // single app-wide list that is not keyed by task. Staging them here would
+    // therefore put task A's files on whatever task happens to be on screen, and
+    // sending from there would upload and send them against the wrong
+    // conversation. They are staged when — and only when — this task's redirect
+    // is consumed, by the ChatView actually showing this task.
     setComposerRedirects((prev) => ({
       ...prev,
-      [plan.taskId]: { text: plan.text, bump: composerRedirectBumpRef.current },
+      [plan.taskId]: {
+        text: plan.text,
+        attachments: plan.attachments,
+        bump: composerRedirectBumpRef.current,
+      },
     }));
-    // The files those queued messages were carrying come back too. Only the
-    // text is per task (`composerRedirects` is keyed by task id); staged
-    // attachments are a single app-wide list by design — `composerAttachments`
-    // is not keyed by task and survives switching tasks — so re-staging is
-    // app-wide by construction, not a new asymmetry introduced here. What
-    // matters is that `clearQueueForTask` below no longer deletes the only
-    // reference to the user's files.
-    if (plan.attachments.length > 0) {
-      setComposerAttachments((prev) => {
-        const have = new Set(prev.map((a) => a.id));
-        const back = plan.attachments.filter((a) => !have.has(a.id));
-        return back.length > 0 ? [...prev, ...back] : prev;
-      });
-    }
   };
 
   // Drops any pending question these conversations were blocked on, so the
@@ -4416,12 +4415,28 @@ function AppCore() {
             agentLabel={agentLabel}
             inFlightSet={inFlightSet}
             composerRedirects={composerRedirects}
-            onComposerRedirectConsumed={(taskId) => setComposerRedirects((prev) => {
-              if (!taskId || !prev[taskId]) return prev;
-              const next = { ...prev };
-              delete next[taskId];
-              return next;
-            })}
+            onComposerRedirectConsumed={(taskId, attachments) => {
+              // The drained files are staged here, at consumption time, and never
+              // at drain time: `composerAttachments` is app-wide, so staging a
+              // background task's files early would show them as chips on
+              // whatever conversation is open and send them there. The consumer
+              // hands them back because it is the one that knows the redirect was
+              // for the task on screen.
+              const back = Array.isArray(attachments) ? attachments : [];
+              if (back.length > 0) {
+                setComposerAttachments((prev) => {
+                  const have = new Set(prev.map((a) => a.id));
+                  const fresh = back.filter((a) => a && !have.has(a.id));
+                  return fresh.length > 0 ? [...prev, ...fresh] : prev;
+                });
+              }
+              setComposerRedirects((prev) => {
+                if (!taskId || !prev[taskId]) return prev;
+                const next = { ...prev };
+                delete next[taskId];
+                return next;
+              });
+            }}
             onQuestionAnswered={(result, conversationId, questionId) => {
               // Keyed off the conversation the card was rendered with, not the
               // currently-open task — the card knows which conversation it

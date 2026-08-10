@@ -1088,6 +1088,11 @@ function ProviderOverloadedCard({
  * can drain task A's queue while the user is looking at task B, and A's text
  * must neither land in B's composer nor be dropped while it waits for A to be
  * opened again. Hence a per-task map rather than one shared slot.
+ *
+ * The entry carries the drained `attachments` alongside the text for the same
+ * reason: the staged-attachment list in App.jsx is app-wide, so files staged at
+ * drain time would appear on — and be sent from — whichever conversation is
+ * open. They are handed to the parent only when this task's entry is consumed.
  */
 export function redirectForTask(redirects, taskId) {
   if (!redirects || !taskId) return null;
@@ -1140,11 +1145,13 @@ export default function ChatView({
   // click on one with no live run behind it would 404.
   inFlightSet,
   // Pending composer redirects from App.jsx, keyed by conversation id:
-  // {[taskId]: {text, bump}}. A question appeared while messages were queued
-  // for that task, so their text is handed back to its composer instead of
-  // being auto-sent as the answer or left queued to deadlock. Only this task's
-  // entry is read, and consuming it calls onComposerRedirectConsumed(taskId)
-  // so the parent deletes it and it cannot re-fire on a later remount.
+  // {[taskId]: {text, attachments, bump}}. A question appeared while messages
+  // were queued for that task, so their text and files are handed back to its
+  // composer instead of being auto-sent as the answer or left queued to
+  // deadlock. Only this task's entry is read, and consuming it calls
+  // onComposerRedirectConsumed(taskId, attachments) so the parent stages the
+  // files against THIS task and deletes the entry, which is also what stops it
+  // re-firing on a later remount.
   composerRedirects,
   onComposerRedirectConsumed,
   // Lets App.jsx release a dead question's grip on the composer (see
@@ -1179,7 +1186,10 @@ export default function ChatView({
         append: true,
       }));
     }
-    onComposerRedirectConsumed?.(task?.id);
+    // The files travel with the text on the same entry, so they are staged by
+    // the parent here — once, for the task actually on screen — rather than
+    // app-wide at drain time.
+    onComposerRedirectConsumed?.(task?.id, redirect.attachments);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [composerRedirects, task?.id]);
   // Inline rail only active on wide screens.
