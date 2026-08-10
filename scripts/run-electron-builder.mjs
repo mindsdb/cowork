@@ -82,8 +82,11 @@ if (feed && !skipFeedConfig) {
     '-c.publish.provider=generic',
     `-c.publish.url=${feed.url}`,
   );
+  // publisherName on the publish config (win.publisherName is rejected by
+  // electron-builder 26's schema); electron-builder writes it into the
+  // generated resources/app-update.yml.
   publisherNames.forEach((name, i) => {
-    builderArgs.push(`-c.win.publisherName.${i}=${name}`);
+    builderArgs.push(`-c.publish.publisherName.${i}=${name}`);
   });
 }
 

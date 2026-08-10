@@ -45,18 +45,24 @@ export function shellUpdaterCacheDirName(channel: ShellUpdateFeed['channel']): s
 export const WINDOWS_PUBLISHER_CN = 'Mindsdb, Inc.';
 
 /**
- * `publisherName` values for the Windows app-update.yml. electron-updater's
- * NsisUpdater SKIPS signature verification entirely when this field is absent
- * (electron-updater 6.8.9 `verifySignature` returns null on a null
- * publisherName), so a compromised feed could ship any executable — it must be
- * pinned. builder-util-runtime's `parseDn` splits the signer subject on commas,
- * so a CN containing ", Inc." is observed as the full `Mindsdb, Inc.` (Windows
- * quotes the RDN) on some hosts and a truncated `Mindsdb` (RFC2253 comma-split)
- * on others. Emit BOTH forms so the pin matches whichever the client sees —
- * both denote the same CN, so this narrows to our cert without weakening it.
+ * `publisherName` for the Windows app-update.yml. electron-updater's NsisUpdater
+ * SKIPS signature verification entirely when this field is absent (6.8.9
+ * `verifySignature` returns null on a null publisherName), so a compromised feed
+ * could ship any executable — it must be pinned to our exact certificate.
+ *
+ * The verification path is deterministic: both the client and the CI build gate
+ * read `(Get-AuthenticodeSignature).SignerCertificate.Subject`, which .NET emits
+ * with comma-bearing RDNs double-quoted (`CN="Mindsdb, Inc.", ...`), so
+ * builder-util-runtime's `parseDn` keeps the CN whole → `Mindsdb, Inc.`. The
+ * exact full CN therefore matches on the real path and, being the complete
+ * common name, uniquely identifies our EV certificate. We deliberately do NOT
+ * emit a bare comma-truncated form (`Mindsdb`): a bare publisher string is
+ * matched CN-only, which would also admit an unrelated cert whose CN happens to
+ * be `Mindsdb` (e.g. `CN=Mindsdb, O=Unrelated Company`). The truncated form only
+ * arises from non-Windows tooling (e.g. openssl on the build host) and never on
+ * the Get-AuthenticodeSignature path; verify-win-publisher.mjs fails the build,
+ * printing the observed subject, if the real signature ever fails to match.
  */
 export function resolveWindowsPublisherNames(cn?: string | null): string[] {
-  const primary = (cn && cn.trim()) || WINDOWS_PUBLISHER_CN;
-  const truncated = primary.split(',')[0].trim();
-  return primary === truncated ? [primary] : [primary, truncated];
+  return [(cn && cn.trim()) || WINDOWS_PUBLISHER_CN];
 }

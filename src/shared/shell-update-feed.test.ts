@@ -41,30 +41,27 @@ describe('shellUpdaterCacheDirName', () => {
 });
 
 describe('resolveWindowsPublisherNames', () => {
-  it('emits both the full CN and the comma-truncated CN for our cert', () => {
-    expect(resolveWindowsPublisherNames()).toEqual(['Mindsdb, Inc.', 'Mindsdb']);
+  it('pins the exact full CN of our cert — no comma-truncated fallback', () => {
+    expect(resolveWindowsPublisherNames()).toEqual(['Mindsdb, Inc.']);
     expect(WINDOWS_PUBLISHER_CN).toBe('Mindsdb, Inc.');
   });
 
   it('honours an override and trims it', () => {
-    expect(resolveWindowsPublisherNames('  Acme, LLC  ')).toEqual(['Acme, LLC', 'Acme']);
-  });
-
-  it('returns a single entry when the CN has no comma', () => {
-    expect(resolveWindowsPublisherNames('Acme Corp')).toEqual(['Acme Corp']);
+    expect(resolveWindowsPublisherNames('  Acme, LLC  ')).toEqual(['Acme, LLC']);
   });
 
   it('falls back to the default for blank/empty overrides', () => {
-    expect(resolveWindowsPublisherNames('')).toEqual(['Mindsdb, Inc.', 'Mindsdb']);
-    expect(resolveWindowsPublisherNames('   ')).toEqual(['Mindsdb, Inc.', 'Mindsdb']);
-    expect(resolveWindowsPublisherNames(null)).toEqual(['Mindsdb, Inc.', 'Mindsdb']);
+    expect(resolveWindowsPublisherNames('')).toEqual(['Mindsdb, Inc.']);
+    expect(resolveWindowsPublisherNames('   ')).toEqual(['Mindsdb, Inc.']);
+    expect(resolveWindowsPublisherNames(null)).toEqual(['Mindsdb, Inc.']);
   });
 });
 
-// Guards the Blocking finding: prove the pinned publisherNames actually satisfy
+// Guards the signer pin: prove the pinned publisherName satisfies
 // electron-updater's own signature matching (builder-util-runtime's parseDn) for
-// BOTH ways a host can format our signer subject, and REJECT a foreign signer.
-// This is the "wrong-signer is rejected" smoke, runnable in CI without Windows.
+// the subject the client actually observes, and REJECTS both a foreign signer
+// AND a near-match with the same short CN but a different identity. Runs in CI
+// without Windows.
 describe('windows publisher pin (electron-updater parseDn semantics)', () => {
   const require = createRequire(import.meta.url);
   // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -84,19 +81,54 @@ describe('windows publisher pin (electron-updater parseDn semantics)', () => {
 
   const pin = resolveWindowsPublisherNames();
 
-  // openssl / RFC2253 splits the unquoted comma → CN parses to "Mindsdb".
-  const RFC2253_SUBJECT =
-    'C=US, ST=California, L=San Francisco, O=Mindsdb, Inc., serialNumber=6520534, CN=Mindsdb, Inc., businessCategory=Private Organization';
-  // Windows Get-AuthenticodeSignature.Subject quotes the RDN → CN = "Mindsdb, Inc.".
+  // What the client actually sees: Get-AuthenticodeSignature.Subject, which .NET
+  // emits with the comma-bearing RDN double-quoted → CN parses to "Mindsdb, Inc.".
   const WINDOWS_SUBJECT = 'CN="Mindsdb, Inc.", O="Mindsdb, Inc.", L=San Francisco, S=California, C=US';
 
-  it('accepts our real signer subject in both comma-quoting forms', () => {
-    expect(accepts(pin, RFC2253_SUBJECT)).toBe(true);
+  it('accepts our real signer subject (the .NET quoted form the client observes)', () => {
     expect(accepts(pin, WINDOWS_SUBJECT)).toBe(true);
   });
 
   it('rejects a valid signature from a different publisher', () => {
     expect(accepts(pin, 'CN="Acme, Inc.", O="Acme, Inc.", C=US')).toBe(false);
-    expect(accepts(pin, 'C=US, O=Acme, Inc., CN=Acme, Inc.')).toBe(false);
+  });
+
+  it('rejects a near-match: same short CN but a distinct identity', () => {
+    // A cert whose CN is the bare "Mindsdb" (not our full "Mindsdb, Inc.") under
+    // an unrelated org. The dropped comma-truncated fallback would have admitted
+    // this; the exact-CN pin does not.
+    expect(accepts(pin, 'CN=Mindsdb, O=Unrelated Company, C=US')).toBe(false);
+    expect(accepts(pin, 'CN="Mindsdb", O="Unrelated Company"')).toBe(false);
+  });
+});
+
+// Guards the Blocking config finding: electron-builder 26's schema rejects
+// win.publisherName but accepts it on the publish provider config (where the
+// generated app-update.yml reads it). If this contract ever changes, eligible
+// Windows builds would fail validateConfiguration before packaging — catch it here.
+describe('electron-builder publisherName config contract (v26 schema)', () => {
+  const require = createRequire(import.meta.url);
+  /* eslint-disable @typescript-eslint/no-var-requires */
+  const Ajv = require('ajv') as typeof import('ajv').default;
+  const nodePath = require('node:path') as typeof import('node:path');
+  const { readFileSync } = require('node:fs') as typeof import('node:fs');
+  /* eslint-enable @typescript-eslint/no-var-requires */
+
+  const schemePath = nodePath.join(
+    nodePath.dirname(require.resolve('app-builder-lib/package.json')),
+    'scheme.json',
+  );
+  const ajv = new Ajv({ allErrors: true, strict: false, allowUnionTypes: true });
+  const validate = ajv.compile(JSON.parse(readFileSync(schemePath, 'utf8')));
+
+  it('rejects win.publisherName (the regression) and accepts publish.publisherName', () => {
+    expect(validate({ win: { publisherName: resolveWindowsPublisherNames() } })).toBe(false);
+    expect(validate({
+      publish: {
+        provider: 'generic',
+        url: 'https://downloads.mindshub.ai/mindshub-cowork/updates/stable/windows',
+        publisherName: resolveWindowsPublisherNames(),
+      },
+    })).toBe(true);
   });
 });

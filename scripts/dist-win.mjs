@@ -94,10 +94,11 @@ if (id) {
   console.log('[dist-win] no channel identity override (prod/dev) — using electron-builder.yml');
 }
 if (feed) {
-  config.publish = { provider: 'generic', url: feed.url };
-  // Also set it on the builder config so builder's own generated app-update.yml
-  // (if it wins over the extraResources copy) carries the pin too.
-  config.win = { ...(config.win || {}), publisherName: publisherNames };
+  // publisherName goes on the PUBLISH config, not `win`: electron-builder 26's
+  // schema rejects win.publisherName (it lives under win.signtoolOptions or on
+  // the publish provider), and its afterPack hook regenerates the authoritative
+  // resources/app-update.yml from this publish config — so the pin ships there.
+  config.publish = { provider: 'generic', url: feed.url, publisherName: publisherNames };
 }
 
 console.log(

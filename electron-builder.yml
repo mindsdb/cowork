@@ -82,5 +82,5 @@ extraResources:
   - from: build-config.json
     to: build-config.json
 
-afterPack: scripts/strip-xattrs.js
+afterPack: scripts/after-pack.js
 afterSign: scripts/notarize.js
