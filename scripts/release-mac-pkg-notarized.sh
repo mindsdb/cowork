@@ -123,8 +123,14 @@ pkgbuild --analyze --root "$(dirname "$APP_PATH")" "$COMPONENT_PLIST"
 /usr/libexec/PlistBuddy -c "Set :0:BundleIsRelocatable false" "$COMPONENT_PLIST"
 
 echo "==> Building component pkg (non-relocatable)"
+# --scripts (ENG-1241): runs build/pkg-scripts/postinstall as root right
+# after the payload lands, to stage the OAuth credentials CI writes to
+# build/pkg-scripts/server-credentials.json (see build-macos-pkg.yml) outside
+# the signed .app bundle, where the app can later delete it after
+# provisioning them into Keychain.
 pkgbuild \
   --root "$(dirname "$APP_PATH")" \
+  --scripts build/pkg-scripts \
   --install-location /Applications \
   --component-plist "$COMPONENT_PLIST" \
   "$COMPONENT_PKG"
