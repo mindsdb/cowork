@@ -9,10 +9,18 @@
 //   <Input value={v} onChange={(next) => ...} placeholder="..." />
 //   <Input variant="mono" size="sm" />
 //   <Textarea value={v} onChange={(next) => ...} rows={4} />
+//
+// Input-group (ENG-1035): pass `leading`/`trailing` to place an icon, shortcut
+// hint, or reveal button inside the same box as the control. When present, a
+// `.field-group` wrapper carries the chrome and the inner input goes
+// borderless; with neither, the input renders exactly as before.
+//
+//   <Input leading={<SearchIcon/>} trailing={<Kbd>⌘K</Kbd>} value={q} onChange={setQ} />
+//   <Input type="password" trailing={<RevealButton/>} value={pw} onChange={setPw} />
 
 import { forwardRef } from 'react';
 import { Input as BaseInput } from '@base-ui/react/input';
-import type { ChangeEvent, ComponentPropsWithoutRef, ComponentRef } from 'react';
+import type { ChangeEvent, ComponentPropsWithoutRef, ComponentRef, ReactNode } from 'react';
 
 export type InputVariant = 'mono';
 export type InputSize = 'sm';
@@ -24,11 +32,18 @@ export interface InputProps
   onChange?: (value: string, event: ChangeEvent<HTMLInputElement>) => void;
   variant?: InputVariant;
   size?: InputSize;
+  // Applies to the <input> in every case (unchanged with or without adornments).
   className?: string;
+  // Optional in-field adornments. Any value renders the input-group wrapper.
+  leading?: ReactNode;
+  trailing?: ReactNode;
+  // Layout-only class for the group wrapper (e.g. a flex-basis). Only used when
+  // `leading`/`trailing` is set; ignored otherwise.
+  wrapperClassName?: string;
 }
 
 export const Input = forwardRef<ComponentRef<typeof BaseInput>, InputProps>(function Input(
-  { value, onChange, variant, size, className = '', ...rest }, ref,
+  { value, onChange, variant, size, className = '', leading, trailing, wrapperClassName = '', ...rest }, ref,
 ) {
   const classes = [
     'field-input',
@@ -36,7 +51,7 @@ export const Input = forwardRef<ComponentRef<typeof BaseInput>, InputProps>(func
     size === 'sm' ? 'sm' : '',
     className,
   ].filter(Boolean).join(' ');
-  return (
+  const control = (
     <BaseInput
       ref={ref}
       className={classes}
@@ -44,6 +59,27 @@ export const Input = forwardRef<ComponentRef<typeof BaseInput>, InputProps>(func
       onChange={(e) => onChange?.(e.target.value, e)}
       {...rest}
     />
+  );
+
+  // No adornments → render exactly as before (backward compatible). Test for
+  // truthiness, not `!= null`: the common `leading={cond && <Icon/>}` idiom
+  // yields `false` when off, which must NOT open the group or render an empty
+  // (gap-consuming) addon slot.
+  const hasLeading = Boolean(leading);
+  const hasTrailing = Boolean(trailing);
+  if (!hasLeading && !hasTrailing) return control;
+
+  const groupClasses = [
+    'field-group',
+    size === 'sm' ? 'sm' : '',
+    wrapperClassName,
+  ].filter(Boolean).join(' ');
+  return (
+    <span className={groupClasses}>
+      {hasLeading && <span className="field-group__addon">{leading}</span>}
+      {control}
+      {hasTrailing && <span className="field-group__addon">{trailing}</span>}
+    </span>
   );
 });
 Input.displayName = 'Input';

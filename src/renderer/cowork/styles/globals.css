@@ -429,6 +429,7 @@ a[href],
 .scroll-clean,
 .field-input,
 .field-textarea,
+.field-group,
 /* Any surface that needs to receive wheel/scroll events. Without this,
    the cowork shell's outer `-webkit-app-region: drag` swallows wheel
    events and the inner overflow:auto element never sees the scroll. */
@@ -2529,7 +2530,8 @@ body[data-theme="dark"] .btn.danger-solid:focus-visible {
 
 /* ─── Form fields ──────────────────────────────────────────────────────── */
 .field-input,
-.field-textarea {
+.field-textarea,
+.field-group {
   width: 100%;
   background: var(--surface);
   color: var(--ink);
@@ -2581,6 +2583,69 @@ body[data-theme="dark"] .btn.danger-solid:focus-visible {
 
 /* Compact size */
 .field-input.sm { height: 28px; padding: 4px 10px; font-size: var(--text-sm); border-radius: var(--r-sm); }
+
+/* Input group (ENG-1035) — a wrapper that carries the field chrome (border/bg/
+   radius/padding come from the shared `.field-input` rule above) so leading/
+   trailing adornments sit inside the same box as the control. The inner input
+   sheds its own chrome; the focus ring lands on the wrapper, not the input, so
+   the rounded surface stays intact (WCAG 2.4.7, same approach as
+   `.focus-within-ring`). With no adornments, `Input` renders a plain
+   `.field-input` as before — this path is opt-in. */
+.field-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px; /* mirrors `.field-input` */
+}
+.field-group:hover {
+  border-color: var(--line-2);
+}
+.field-group:focus-within {
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+}
+/* Keyboard focus gets the stronger 1px ring, matching `.field-input:focus-visible` (WCAG 2.4.7). */
+.field-group:focus-within:has(.field-input:focus-visible) {
+  box-shadow: 0 0 0 1px var(--accent);
+}
+/* Disabled dims the whole box (border + adornments), not just the inner input. */
+.field-group:has(.field-input:disabled) {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+/* The wrapper owns the disabled dim; keep the inner input at full opacity so
+   the two don't compound (`.field-input:disabled` also sets 0.55). */
+.field-group > .field-input:disabled {
+  opacity: 1;
+}
+.field-group > .field-input {
+  flex: 1;
+  min-width: 0;
+  height: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+/* Inner input never paints its own ring — the wrapper owns focus feedback. */
+.field-group > .field-input:focus,
+.field-group > .field-input:focus-visible {
+  box-shadow: none;
+}
+/* Adornments — quiet, non-interactive glyphs/labels by default; interactive
+   children (e.g. a password reveal button) bring their own styling. */
+.field-group__addon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: var(--ink-3);
+}
+/* Compact size — mirrors `.field-input.sm`. */
+.field-group.sm {
+  height: 28px;
+  padding: 4px 10px;
+  border-radius: var(--r-sm);
+  font-size: var(--text-sm);
+}
 
 /* Field label group helper */
 .field-label {
