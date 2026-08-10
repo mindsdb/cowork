@@ -287,15 +287,19 @@ function MemorySectionList({ heading, files, selected, onSelect, isActive }) {
     <div className="flex flex-col gap-px">
       <div className="font-mono text-xs tracking-[0.14em] uppercase text-ink-4 font-semibold px-1 pb-1 flex items-center gap-2">
         <span>{heading}</span>
-        {isActive && <span className="text-accent tracking-[0] normal-case font-[var(--font-body)] text-xs">· active</span>}
-        <span className="ml-auto text-ink-4 tracking-[0] normal-case font-[var(--font-body)]">{files.length}</span>
+        {isActive && <span className="text-accent tracking-[0] normal-case font-[family-name:var(--font-body)] text-xs">· active</span>}
+        <span className="ml-auto text-ink-4 tracking-[0] normal-case font-[family-name:var(--font-body)]">{files.length}</span>
       </div>
       {files.length === 0 ? (
         <div className="px-2 py-[2px] text-ink-4 text-sm">—</div>
       ) : files.map((file) => (
         <button
           key={file.path}
-          className={`recent-item${selected?.path === file.path ? ' active' : ''} h-auto min-h-[26px] px-3 py-1 text-sm`}
+          className={`recent-item${selected?.path === file.path ? ' active' : ''}`}
+          // These three must beat the unlayered `.recent-item` globals rule
+          // (height:26px; padding:0 10px), which wins specificity ties against
+          // Tailwind utilities — so they stay inline. Lets multi-line labels grow.
+          style={{ height: 'auto', minHeight: 26, padding: '4px 10px' }}
           onClick={() => onSelect(file)}
         >
           <span className="text-[var(--primary-700)] inline-flex">{Ico.doc(13)}</span>
@@ -412,7 +416,7 @@ function ConnectView({ data, setData, setStatus }) {
       <div>
         <div className="text-sm font-[650] text-ink mb-3">Saved connections</div>
         {(data.connections || []).length ? (data.connections || []).map((conn) => (
-          <div key={`${conn.engine}-${conn.name}`} className="flex items-center gap-3 py-3 border-b border-[var(--border-0)] text-sm">
+          <div key={`${conn.engine}-${conn.name}`} className="flex items-center gap-3 py-3 border-b border-solid border-[var(--border-0)] text-sm">
             <div className="flex-1">
               <strong className="text-ink">{conn.displayName || conn.engine}</strong> / {conn.name}
               <div className="text-xs text-[var(--frost-600)]">{conn.testAvailable ? 'Ready for datasource tools' : 'Saved in data vault'}</div>
@@ -471,7 +475,7 @@ function ConnectView({ data, setData, setStatus }) {
             )}
           </Field>
         )) : (
-          <div className="p-3 border border-[var(--border-01)] rounded-card-row text-[var(--frost-600)] text-sm">
+          <div className="p-3 border border-solid border-[var(--border-01)] rounded-card-row text-[var(--frost-600)] text-sm">
             This engine does not expose editable credential fields in the installed registry.
           </div>
         )}
@@ -515,7 +519,7 @@ function PublishView({ data, setData, setStatus, onRefreshArtifacts }) {
         </Alert>
       )}
       {(data.artifacts || []).length ? (data.artifacts || []).map((artifact) => (
-        <div key={artifact.path} className="flex items-center gap-3 p-3 border border-[var(--border-01)] rounded-[9px]">
+        <div key={artifact.path} className="flex items-center gap-3 p-3 border border-solid border-[var(--border-01)] rounded-[9px]">
           <span className="text-[var(--primary-700)] inline-flex">{Ico.upload(15)}</span>
           <div className="flex-1 min-w-0">
             <div className="text-base font-[650] text-ink">{artifact.title}</div>
@@ -531,7 +535,7 @@ function PublishView({ data, setData, setStatus, onRefreshArtifacts }) {
         <div className="mt-5">
           <div className="text-sm font-[650] text-ink mb-2">Share history</div>
           {(data.history || []).slice(0, 10).map((item) => (
-            <div key={`${item.artifact}-${item.publishedAt}`} className="py-2 border-t border-[var(--border-0)] text-sm">
+            <div key={`${item.artifact}-${item.publishedAt}`} className="py-2 border-t border-solid border-[var(--border-0)] text-sm">
               <strong>{item.artifactName}</strong>
               {item.url && <span className="ml-2 text-[var(--sage-700)] select-text">{item.url}</span>}
             </div>
@@ -559,11 +563,11 @@ const inputStyle = {
 // keeps the text readable in both light and dark themes (the bug
 // before this change was relying on the browser default text color,
 // which rendered black-on-dark in dark mode).
-const memoryEditorClass = 'w-full min-h-[520px] border border-[var(--border-01)] rounded-[7px] p-3 font-mono text-sm leading-[1.55] outline-none bg-[var(--surface-0)] text-ink resize-y select-text';
+const memoryEditorClass = 'w-full min-h-[520px] border border-solid border-[var(--border-01)] rounded-[7px] p-3 font-mono text-sm leading-[1.55] outline-none bg-[var(--surface-0)] text-ink resize-y select-text';
 
 // Container for the MarkdownContent renderer in view mode. Keeps the
 // minHeight matched to the editor textarea so flipping between read
 // and edit doesn't shift the layout. Body styling (font, line-height,
 // colours) is left to MarkdownContent itself so headings, lists, and
 // code fences render with the same chat-column rhythm.
-const memoryViewerClass = 'min-h-[520px] px-4 py-3 border border-[var(--border-01)] rounded-[7px] bg-[var(--surface-0)] select-text overflow-y-auto';
+const memoryViewerClass = 'min-h-[520px] px-4 py-3 border border-solid border-[var(--border-01)] rounded-[7px] bg-[var(--surface-0)] select-text overflow-y-auto';
