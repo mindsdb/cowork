@@ -280,6 +280,28 @@ describe('composer send while a question is pending', () => {
     expect(screen.queryByLabelText('Remove from queue')).toBeNull();
   });
 
+  it('blocks the send for a select-only question and keeps the text', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+
+    await send(user, composer, 'first message');
+    // allow_custom:false — the card renders no place to type, so the composer is
+    // where the user goes, and what they type is often not an answer at all.
+    await emit({ ...ASK_EVENT, allow_custom: false });
+
+    await send(user, composer, 'wait, show me the table schema first');
+
+    // Nothing was submitted, so no 400 and no "that answer was rejected" toast
+    // about a message that was never an answer.
+    expect(spies.submitAnswer).not.toHaveBeenCalled();
+    expect(await screen.findByText(/one of the options above/i)).toBeInTheDocument();
+    // The words are kept — the user can still copy them out or press Skip.
+    expect(composer.value).toBe('wait, show me the table schema first');
+    // And it was not smuggled into the queue behind the blocked turn either.
+    expect(spies.streamMessage).toHaveBeenCalledTimes(1);
+    expect(screen.queryByLabelText('Remove from queue')).toBeNull();
+  });
+
   it('does not survive Stop — the next send is a normal send', async () => {
     const user = userEvent.setup();
     const composer = await openTask(user);

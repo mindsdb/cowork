@@ -155,13 +155,22 @@ function fireFirstResponse(result) {
  * Derived from the live stream steps rather than tracked separately, so it
  * cannot drift: the answered state arrives on an event and clears this by
  * construction.
+ *
+ * `allow_custom` travels with it because the composer has to know whether typed
+ * text can be an answer at all. Absent means true — the same permissive default
+ * the adapter applies (`event.allow_custom !== false`), so only an explicit
+ * `false` counts as select-only.
  */
 export function pendingQuestionFor(steps) {
   const pending = (steps || []).filter(
     (s) => s.badge === 'AskUser' && !s.data?.answer,
   );
   if (pending.length === 0) return null;
-  return { question_id: pending[pending.length - 1].data.question_id };
+  const last = pending[pending.length - 1];
+  return {
+    question_id: last.data.question_id,
+    allow_custom: last.data.allow_custom !== false,
+  };
 }
 
 /**
@@ -280,11 +289,29 @@ export function planQueueDrain(steps, taskIds, queues, drainedQuestionIds) {
  *   - `fail`     — the submit failed in a way the user can retry. The caller
  *                  throws `message` so the composer surfaces it and keeps the
  *                  typed text (see Composer's handleSend).
+ *   - `blocked`  — the question does not take typed answers, so nothing is sent
+ *                  at all. Handled exactly like `fail` by the caller (message
+ *                  surfaced, text kept), but decided before any network call.
  */
 export async function resolvePendingAnswer({ steps, conversationId, text, submit }) {
   const pending = pendingQuestionFor(steps);
   if (!pending) return { action: 'send' };
-  const result = await submit(conversationId, pending.question_id, { text });
+  const payload = { text };
+  // A select-only question rejects free text server-side (INVALID_OPTION → 400),
+  // and its card deliberately renders no place to type — so the composer is the
+  // only place left, and what lands here is usually not an answer at all
+  // ("cancel, I changed my mind"). Submitting it produced a 400 and a toast
+  // saying the answer was rejected, about a message that was never an answer,
+  // with no way out. Decide it here instead, before any network call, and say
+  // what does work. Sending it as a normal message is not an option: it would
+  // queue behind the turn this question is blocking.
+  if (pending.allow_custom === false && payload.text && !payload.values) {
+    return {
+      action: 'blocked',
+      message: 'This question needs one of the options above. Pick one, or press Skip if you want to type something else.',
+    };
+  }
+  const result = await submit(conversationId, pending.question_id, payload);
   const status = result?.status;
   if (status === 'not_found' || status === 'already_answered') {
     // The question died with its run (or someone else answered it). The typed
@@ -3192,12 +3219,15 @@ function AppCore() {
       }
       return;
     }
-    if (answerOutcome.action === 'fail') {
+    if (answerOutcome.action === 'fail' || answerOutcome.action === 'blocked') {
       // Two mechanisms, both already used in this file: a toast so the user
       // actually sees the failure, and a throw so Composer's handleSend keeps
       // the typed text instead of clearing it (it only clears after onSend
       // resolves). The interception stays armed — liveStepsRef is untouched —
       // so the retry goes to the same question.
+      //
+      // `blocked` (a select-only question) rides the same path on purpose: the
+      // user's text must survive so they can copy it out, and nothing was sent.
       toastManager.add({ type: 'danger', title: answerOutcome.message });
       throw new Error(answerOutcome.message);
     }

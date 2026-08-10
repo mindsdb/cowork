@@ -148,7 +148,16 @@ export default function AskUserCard({ step, conversationId, onAnswered, expired 
             <span className="text-[11px] text-ink-4">
               …or type your own answer below.
             </span>
-          ) : null}
+          ) : (
+            // Select-only: the composer refuses to send typed text while this
+            // question is up (it would be rejected as an answer, and it cannot
+            // be sent as a message without deadlocking the blocked turn). Say so
+            // here, so the user learns it before hitting it.
+            <span className="text-[11px] text-ink-4">
+              Pick an option above — a typed reply won&apos;t be accepted. Skip to type
+              something else.
+            </span>
+          )}
         </div>
       ) : null}
 

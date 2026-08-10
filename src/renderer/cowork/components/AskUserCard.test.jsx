@@ -89,6 +89,22 @@ describe('AskUserCard', () => {
     expect(submitAnswer).toHaveBeenCalledWith('conv-1', 'ask:1', { skipped: true });
   });
 
+  it('says typing is accepted when the question allows a custom answer', () => {
+    renderCard({ allow_custom: true });
+    expect(screen.getByText(/type your own answer below/i)).toBeInTheDocument();
+  });
+
+  it('says typing will not work when the question is select-only', () => {
+    // Without this line the card shows nothing where the free-text hint would
+    // be, so the user's only way to learn that the composer refuses their text
+    // is to type it and be told no.
+    renderCard({ allow_custom: false });
+    expect(screen.queryByText(/type your own answer below/i)).toBeNull();
+    const hint = screen.getByText(/won.t be accepted/i);
+    expect(hint).toBeInTheDocument();
+    expect(hint.textContent).toMatch(/skip/i);
+  });
+
   it('hides Skip and the options once answered, and highlights the choice', () => {
     renderCard({ answer: { status: 'answered', values: ['pg'], text: '' } });
     expect(screen.queryByRole('button', { name: /skip/i })).toBeNull();

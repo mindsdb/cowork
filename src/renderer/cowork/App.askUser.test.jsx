@@ -16,7 +16,18 @@ const askStep = (over = {}) => ({
 
 describe('pendingQuestionFor', () => {
   it('finds an unanswered question in the live steps', () => {
-    expect(pendingQuestionFor([askStep()])).toEqual({ question_id: 'ask:1' });
+    expect(pendingQuestionFor([askStep()])).toEqual({
+      question_id: 'ask:1',
+      allow_custom: true,
+    });
+  });
+
+  it('carries allow_custom, defaulting to true when absent', () => {
+    // The composer needs it to decide whether typed text can be an answer at
+    // all; absent must stay permissive (the adapter's own default).
+    expect(pendingQuestionFor([askStep({ allow_custom: false })])?.allow_custom).toBe(false);
+    expect(pendingQuestionFor([askStep({ allow_custom: true })])?.allow_custom).toBe(true);
+    expect(pendingQuestionFor([askStep()])?.allow_custom).toBe(true);
   });
 
   it('ignores an answered one', () => {
@@ -33,7 +44,10 @@ describe('pendingQuestionFor', () => {
 
   it('returns the last pending question when several exist', () => {
     const steps = [askStep(), askStep({ question_id: 'ask:2' })];
-    expect(pendingQuestionFor(steps)).toEqual({ question_id: 'ask:2' });
+    expect(pendingQuestionFor(steps)).toEqual({
+      question_id: 'ask:2',
+      allow_custom: true,
+    });
   });
 });
 
@@ -151,7 +165,10 @@ describe('retireQuestionFromSteps', () => {
       .toEqual(['ask:2']);
     // And it is still a pending question afterwards, which is what the composer
     // interception reads.
-    expect(pendingQuestionFor(next)).toEqual({ question_id: 'ask:2' });
+    expect(pendingQuestionFor(next)).toEqual({
+      question_id: 'ask:2',
+      allow_custom: true,
+    });
   });
 
   it('keeps non-question steps', () => {
@@ -182,6 +199,34 @@ describe('resolvePendingAnswer', () => {
 
   it('consumes the send when the answer is accepted', async () => {
     await expect(call([askStep()], { accepted: true })).resolves.toEqual({ action: 'consumed' });
+  });
+
+  it('blocks the send for a select-only question, without submitting', async () => {
+    // allow_custom:false means the card renders nowhere to type, the server
+    // rejects free text with INVALID_OPTION, and the user's words are usually
+    // not an answer at all. Decided before the network call.
+    const submit = vi.fn();
+    const outcome = await resolvePendingAnswer({
+      steps: [askStep({ allow_custom: false })],
+      conversationId: 'conv-a',
+      text: 'wait, show me the schema first',
+      submit,
+    });
+    expect(outcome.action).toBe('blocked');
+    expect(outcome.message).toMatch(/one of the options above/i);
+    expect(outcome.message).toMatch(/skip/i);
+    expect(submit).not.toHaveBeenCalled();
+  });
+
+  it('still submits typed text when the question allows it', async () => {
+    const submit = vi.fn(async () => ({ accepted: true }));
+    await resolvePendingAnswer({
+      steps: [askStep({ allow_custom: true })],
+      conversationId: 'conv-a',
+      text: 'my own words',
+      submit,
+    });
+    expect(submit).toHaveBeenCalledWith('conv-a', 'ask:1', { text: 'my own words' });
   });
 
   it('releases and falls through when the question is gone', async () => {
