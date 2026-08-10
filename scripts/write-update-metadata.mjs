@@ -2,7 +2,6 @@
 
 import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
-import { spawnSync } from 'node:child_process';
 import { readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, resolve } from 'node:path';
 
@@ -25,17 +24,15 @@ if (platform !== 'mac' && platform !== 'windows') {
 const blockmapIndex = process.argv.indexOf('--blockmap-output');
 if (blockmapIndex !== -1) {
   const blockmapOutput = resolve(value('--blockmap-output'));
+  // electron-builder v26 dropped the app-builder Go binary (`app-builder-bin`);
+  // blockmap generation now lives in pure JS inside app-builder-lib. Reuse its
+  // own implementation so this post-sign blockmap is byte-format identical to
+  // the one electron-builder emits pre-sign — gzip + separate output file
+  // mirrors createBlockmap() in app-builder-lib's differentialUpdateInfoBuilder.
+  // Deep-import path is coupled to the pinned electron-builder major version.
   const require = createRequire(import.meta.url);
-  const { appBuilderPath } = require('app-builder-bin');
-  const result = spawnSync(
-    appBuilderPath,
-    ['blockmap', '--input', artifact, '--output', blockmapOutput],
-    { stdio: 'inherit' },
-  );
-  if (result.error) throw result.error;
-  if (result.status !== 0) {
-    throw new Error(`app-builder blockmap failed with exit code ${result.status}`);
-  }
+  const { buildBlockMap } = require('app-builder-lib/out/targets/blockmap/blockmap.js');
+  await buildBlockMap(artifact, 'gzip', blockmapOutput);
 }
 
 const bytes = readFileSync(artifact);
