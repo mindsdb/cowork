@@ -8,7 +8,7 @@
    plus _streaming) and our real Composer + project/model state. Tokens come
    from CSS vars so the panel reads correctly in both light and dark themes. */
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import Ico from '../components/Icons';
 import Composer from '../components/Composer';
@@ -1170,20 +1170,40 @@ export default function ChatView({
   // Composer's sync effect runs even when re-editing/re-redirecting the same
   // text.
   const [composerPrefill, setComposerPrefill] = useState({ text: '', bump: 0 });
+  // Which conversation the text now sitting in the composer belongs to. App
+  // renders ONE ChatView (and so one Composer) for every conversation, so the
+  // textarea value survives a task switch — without this, opening a task with a
+  // pending redirect appended ITS queued messages onto the draft the user was
+  // writing in the previous conversation, producing `B-draft\nA-restored`.
+  // Restored text may only ever join a draft belonging to the same task.
+  //
+  // Updated from the Composer's own value changes rather than from task switches,
+  // because a switch does not touch the box: the draft keeps belonging to
+  // whichever task was open when it was last edited.
+  const draftTaskRef = useRef(task?.id);
+  const noteDraftChanged = useCallback(() => {
+    draftTaskRef.current = task?.id;
+  }, [task?.id]);
   // Forward App.jsx's redirect for THIS task into the same prefill state Edit
-  // uses, so Composer only has to react to one prefill prop — but with
-  // append:true, because a drain hands text BACK to the user and must not
-  // destroy the draft they are mid-typing. Consuming the entry (deleting it in
-  // the parent) is what stops a stale drain re-applying on remount.
+  // uses, so Composer only has to react to one prefill prop — appending when the
+  // draft on screen is this task's own (a drain hands text BACK to the user and
+  // must not destroy what they are mid-typing) and replacing when it is not.
+  // Consuming the entry (deleting it in the parent) is what stops a stale drain
+  // re-applying on remount.
   useEffect(() => {
     const redirect = redirectForTask(composerRedirects, task?.id);
     if (!redirect) return;
     const restored = redirect.text || '';
     if (restored) {
+      // An adoption (tmp-… → the server's id) renames the same conversation, so
+      // a draft attributed to the tmp- id is still this task's.
+      const draftTask = draftTaskRef.current;
+      const ownDraft = draftTask === task?.id
+        || String(draftTask || '').startsWith('tmp-');
       setComposerPrefill((prev) => ({
         text: restored,
         bump: (prev?.bump || 0) + 1,
-        append: true,
+        append: ownDraft,
       }));
     }
     // The files travel with the text on the same entry, so they are staged by
@@ -2138,6 +2158,7 @@ export default function ChatView({
             streaming={isStreaming}
             onStop={onStop}
             prefill={composerPrefill}
+            onDraftChange={noteDraftChanged}
           />
         </div>
       </div>

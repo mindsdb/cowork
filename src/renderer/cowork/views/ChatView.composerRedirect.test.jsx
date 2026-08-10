@@ -150,6 +150,55 @@ describe('ChatView composer redirect', () => {
     await waitFor(() => expect(composer().value).toBe('other task text'));
   });
 
+  it('does not append one task\'s restored text onto another task\'s draft', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+
+    // A draft typed in t1 — which is still in the box after switching, because
+    // App keeps one Composer instance for every conversation.
+    await user.click(composer());
+    await user.keyboard('draft for t1');
+
+    // t-other drained while t1 was on screen, and only reaches its composer when
+    // the user opens it. Appending there would splice another conversation's
+    // queued messages into what the user was writing.
+    await user.click(screen.getByText('fire other redirect'));
+    await user.click(screen.getByText('switch task'));
+
+    await waitFor(() => expect(composer().value).toBe('other task text'));
+  });
+
+  it('replaces a carried-over draft even when the task is opened first', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+
+    // The other order: switch first, then the drain lands. The draft in the box
+    // still belongs to t1, so ownership cannot be inferred from "did the task id
+    // change on this run".
+    await user.click(composer());
+    await user.keyboard('draft for t1');
+    await user.click(screen.getByText('switch task'));
+    expect(composer().value).toBe('draft for t1');
+
+    await user.click(screen.getByText('fire other redirect'));
+
+    await waitFor(() => expect(composer().value).toBe('other task text'));
+  });
+
+  it('still appends to a draft the user typed in this task', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+
+    // The property the append exists for: a drain hands text BACK to the user,
+    // so it must not destroy the draft they are mid-typing in THIS conversation.
+    await user.click(screen.getByText('switch task'));
+    await user.click(composer());
+    await user.keyboard('typed in t-other');
+    await user.click(screen.getByText('fire other redirect'));
+
+    await waitFor(() => expect(composer().value).toBe('typed in t-other\nother task text'));
+  });
+
   it('does not re-apply a consumed redirect when ChatView remounts', async () => {
     const user = userEvent.setup();
     render(<Harness />);

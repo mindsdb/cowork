@@ -558,7 +558,9 @@ describe('two tasks draining while only one is on screen', () => {
     await emitOn(streamA, { ...ASK_EVENT, question_id: 'ask:alpha' });
     await waitFor(() => expect(composer.value).toBe('queued for alpha'));
 
-    await user.clear(composer);
+    // One Composer instance serves every conversation, so Alpha's restored text
+    // is still in the box when Beta is opened. Beta's own restored text must
+    // REPLACE it, not be appended to another conversation's draft.
     composer = await openByTitle(user, 'Beta task');
 
     await waitFor(() => expect(composer.value).toBe('queued for beta'));
