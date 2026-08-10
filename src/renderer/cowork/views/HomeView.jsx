@@ -230,7 +230,7 @@ function ActiveList({ tasks, onSelect, onClear }) {
 export default function HomeView({
   greeting, showDots,
   activeTasks, onSelectTask, onClearActive,
-  onSend, project, onProjectChange, model, onModelChange, projects, models,
+  onSend, project, onProjectChange, model, onModelChange, projects, models, modelMeta,
   attachments, connectors, onAttachFiles, onRemoveAttachment,
   onAddGoogleDriveFiles,
   disabledConnections = [],
@@ -512,18 +512,18 @@ export default function HomeView({
               }}>{Ico.key(18)}</span>
               <div className="home-connect-card__body">
                 <div style={{ fontSize: 14, fontWeight: 650, color: 'var(--text-strong)' }}>Connect a provider to start chatting</div>
-                <div style={{ fontSize: 12.5, color: 'var(--frost-700)', marginTop: 3 }}>Subscribe with MindsHub for managed access, or bring your own provider key (Anthropic, OpenAI, or any OpenAI-compatible endpoint) in Settings.</div>
+                <div style={{ fontSize: 12.5, color: 'var(--frost-700)', marginTop: 3 }}>Start with MindsHub and get free monthly tokens on MindsHub Air, then pay as you go. Or add your own API key (Anthropic, OpenAI, or any OpenAI-compatible endpoint) in Settings.</div>
               </div>
               <div className="home-connect-card__actions">
                 <Button
                   variant="primary"
                   onClick={() => host.openExternal(MINDS_BILLING_URL)}
-                >Subscribe</Button>
+                >Start for free</Button>
                 <Button
                   variant="primary"
                   onClick={() => onOpenSettings?.('agent')}
                   style={{ background: 'transparent', color: 'var(--primary-700)', border: '1px solid var(--primary-700)' }}
-                >Settings</Button>
+                >Open Settings</Button>
               </div>
             </div>
           ) : (
@@ -536,6 +536,7 @@ export default function HomeView({
               onModelChange={onModelChange}
               projects={projects}
               models={models}
+              modelMeta={modelMeta}
               attachments={attachments}
               connectors={connectors}
               onNavigateToConnectors={onNavigateToConnectors}

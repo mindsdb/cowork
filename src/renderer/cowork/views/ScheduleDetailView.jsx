@@ -11,8 +11,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import Ico from '../components/Icons';
 import { PageHeader } from '../components/collection';
-import { Button } from '../components/ui';
+import { Alert, Button } from '../components/ui';
 import { Switch } from '../components/ui/Switch';
+import OverflowMenu from '../components/OverflowMenu';
+import { ConfirmModal } from '../components/ConfirmModal';
 import { fetchScheduleRuns } from '../api';
 import ScheduleTaskModal from '../components/schedule/ScheduleTaskModal';
 import { ScheduleStatusBadge } from '../components/schedule/ScheduleStatusBadge';
@@ -214,6 +216,7 @@ export default function ScheduleDetailView({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [editOpen, setEditOpen] = useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
 
   const taskId = task?.id;
 
@@ -264,6 +267,10 @@ export default function ScheduleDetailView({
     finally     { setBusy(false); }
   }
 
+  // Resolve the project name from the stored id (ENG-1255) — the schedule
+  // response keys the project by id (a UUID), not a name.
+  const projectName = projects.find((p) => p.id === task.projectId)?.name || '';
+
   return (
     <div className="scroll-clean" style={{
       flex: 1, overflowY: 'auto',
@@ -278,12 +285,7 @@ export default function ScheduleDetailView({
       <div className="sched-body" style={{ padding: '6px 28px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
         {error && (
-          <div style={{
-            padding: '8px 10px', borderRadius: 7,
-            background: 'color-mix(in srgb, var(--danger) 12%, var(--surface))',
-            border: '1px solid color-mix(in srgb, var(--danger) 35%, transparent)',
-            color: 'var(--danger)', fontSize: 12.5,
-          }}>{error}</div>
+          <Alert variant="danger">{error}</Alert>
         )}
 
         {/* Hero card — title, status, run-now, enable toggle, next-run */}
@@ -320,12 +322,6 @@ export default function ScheduleDetailView({
                 })}
               />
               <Button
-                onClick={() => setEditOpen(true)}
-                disabled={busy}
-              >
-                {Ico.edit ? Ico.edit(13) : null} Edit
-              </Button>
-              <Button
                 variant="primary"
                 onClick={() => withBusy(() => onRunNow?.(task.id))}
                 disabled={busy}
@@ -334,6 +330,21 @@ export default function ScheduleDetailView({
                 {Ico.send ? Ico.send(13) : null}
                 {busy ? 'Running…' : 'Run now'}
               </Button>
+              {/* Edit + Delete live in the overflow — Delete opens a confirm,
+                  and never sits inside the edit form (ENG-1245). */}
+              <OverflowMenu
+                disabled={busy}
+                // Ghost icon button sized to the neighbouring "Run now" (32px)
+                // so the overflow reads as a real, hittable control — not a
+                // bare kebab — while staying lighter than the primary action.
+                icon={Ico.moreVert(16)}
+                triggerClassName="h-8 w-8 justify-center rounded-lg hover:bg-surface-2"
+                items={[
+                  { id: 'edit', label: 'Edit', icon: Ico.edit ? Ico.edit(14) : null, onClick: () => setEditOpen(true) },
+                  { separator: true },
+                  { id: 'delete', label: 'Delete', icon: Ico.trash ? Ico.trash(14) : null, danger: true, onClick: () => setConfirmDeleteOpen(true) },
+                ]}
+              />
             </div>
           </div>
 
@@ -369,8 +380,8 @@ export default function ScheduleDetailView({
             />
             <SummaryStat
               label="Project"
-              value={task.project || '—'}
-              hint={task.project || ''}
+              value={projectName || '—'}
+              hint={projectName}
             />
             <SummaryStat
               label="Model"
@@ -459,13 +470,29 @@ export default function ScheduleDetailView({
         open={editOpen}
         onClose={() => setEditOpen(false)}
         onSubmit={async (payload, id) => onUpdate?.(id, payload)}
-        onDelete={async (id) => {
-          await onDelete?.(id);
-          // Host should setRoute('scheduled') on delete via onDelete.
-        }}
         task={task}
         projects={projects}
         agentLabel={agentLabel}
+      />
+
+      <ConfirmModal
+        open={confirmDeleteOpen}
+        title="Delete scheduled task?"
+        message={`"${task.title || 'Untitled schedule'}" will be permanently deleted. This can't be undone.`}
+        confirmLabel="Delete"
+        cancelLabel="Keep"
+        destructive
+        busy={busy}
+        busyLabel="Deleting…"
+        onConfirm={() => withBusy(async () => {
+          await onDelete?.(task.id);
+          // Close on success rather than relying on the host to unmount this
+          // view via navigation (onDelete → setRoute); if a future onDelete
+          // resolves without navigating away, the modal still dismisses and
+          // can't linger over an already-deleted task.
+          setConfirmDeleteOpen(false);
+        })}
+        onClose={() => { if (!busy) setConfirmDeleteOpen(false); }}
       />
     </div>
   );

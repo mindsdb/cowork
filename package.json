@@ -37,8 +37,8 @@
     "dist:mac:dmg-custom": "bash ./scripts/dist-mac-dmg-custom.sh",
     "release:mac:dmg-custom:notarized": "bash ./scripts/release-mac-custom-notarized.sh",
     "release:mac:pkg:notarized": "bash ./scripts/release-mac-pkg-notarized.sh",
-    "dist:win": "npm run build && electron-builder --win --x64 --publish never",
-    "dist:win:all": "npm run build && electron-builder --win --publish never",
+    "dist:win": "npm run build && node scripts/dist-win.mjs",
+    "dist:win:all": "npm run build && node scripts/dist-win.mjs --all",
     "release:win:local": "npm run dist:win",
     "rebuild": "electron-rebuild",
     "dist:linux": "npm run build && electron-builder --linux --publish never"

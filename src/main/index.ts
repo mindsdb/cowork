@@ -1,3 +1,6 @@
+// MUST be first: sets the per-channel Electron app name (→ userData dir) before
+// any module that reads app.getPath('userData') at load time (e.g. token-store).
+import './app-identity';
 import { app, BrowserWindow, ipcMain, Menu, nativeImage, net, powerMonitor, session, shell } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -25,6 +28,7 @@ import { getRendererPath, getBundledPath, checkForUIUpdate, applyUIUpdate, hasIn
 import type { UpdateCheckResult } from './ui-updater';
 import { coworkHome, coworkEnvPath, coworkStatePath, migrateLegacyHome, readEnvFile, buildKind } from './cowork-home';
 import { checkChannelConsistency } from './channels';
+import { resolveChannelIconPath } from './app-icon';
 import { applyChannelUvIsolation } from './uv-paths';
 import { getServerAuthToken, authHeader, resetServerAuthTokenCache } from './server-auth';
 import { getAppDisplayVersion } from './server-source';
@@ -290,11 +294,14 @@ function ensureDefaultProject() {
 }
 
 // ─── Icons ───────────────────────────────────────────────────
+// Channel-aware: non-prod builds show their badged icon (icon-<kind>.png) in the
+// window/dock/taskbar, not the prod icon. Selection logic (+ fallback) lives in
+// app-icon.ts so it's unit-tested; here we only resolve the assets dir.
 function getIconPath(): string {
-  if (app.isPackaged) {
-    return path.join(process.resourcesPath, 'assets', 'icon.png');
-  }
-  return path.join(__dirname, '..', '..', '..', 'assets', 'icon.png');
+  const assetsDir = app.isPackaged
+    ? path.join(process.resourcesPath, 'assets')
+    : path.join(__dirname, '..', '..', '..', 'assets');
+  return resolveChannelIconPath(buildKind(), assetsDir, fs.existsSync);
 }
 
 let mainWindow: BrowserWindow | null = null;

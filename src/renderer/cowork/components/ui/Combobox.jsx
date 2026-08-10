@@ -19,8 +19,11 @@
 //   />
 //
 // Group shape:  { key, name, items }  — `name: null` renders unheaded.
-// Item shape:   { value, label, disabled?, title?, ... }  — extra fields
+// Item shape:   { value, label, disabled?, title?, tag?, ... }  — extra fields
 //   pass through untouched, so domain filters/renderers can read them.
+//   `tag` renders as a compact right-aligned pill on the row (a model's version
+//   state, the "Needs credits" wallet state, or both) without touching the
+//   label, so search still matches the bare model name and nothing truncates.
 //
 // Optional hooks for domain pickers:
 //   - `filter(item, query, contains)`: replaces the default match on
@@ -183,7 +186,8 @@ export function Combobox({
                         disabled={item.disabled}
                         title={item.title}
                         className={cn(
-                          'grid grid-cols-[16px_1fr] items-center gap-[6px]',
+                          'grid items-center gap-[6px]',
+                          item.tag ? 'grid-cols-[16px_1fr_auto]' : 'grid-cols-[16px_1fr]',
                           'w-[calc(100%-8px)] mx-[4px] px-[10px] py-[7px] rounded-[5px]',
                           'text-[13px] text-ink-2 cursor-pointer select-none outline-none box-border',
                           'data-[highlighted]:bg-surface-2',
@@ -194,6 +198,11 @@ export function Combobox({
                           <BaseCombobox.ItemIndicator>{CHECK}</BaseCombobox.ItemIndicator>
                         </span>
                         <span className="min-w-0 truncate">{item.label}</span>
+                        {item.tag && (
+                          <span className="shrink-0 rounded-full border border-line px-[7px] py-[1px] text-[10.5px] leading-[15px] text-ink-4 select-none">
+                            {item.tag}
+                          </span>
+                        )}
                       </BaseCombobox.Item>
                     )}
                   </BaseCombobox.Collection>

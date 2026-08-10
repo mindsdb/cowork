@@ -46,7 +46,7 @@ import {
 import {
   PYTHON_RANGE,
   getEnvPath,
-  findUv,
+  resolveUv,
   getInstalledVersion,
   isSupportedPython,
   writeUvOverrides,
@@ -232,8 +232,11 @@ export async function recreateVenvIfUnsupportedPython(): Promise<boolean> {
   try {
     const disable = (process.env[DISABLE_VAR] || '').toLowerCase();
     if (disable === '1' || disable === 'true') return false;
-    const uv = findUv();
-    if (!uv) return false;
+    const uv = await resolveUv();
+    if (!uv) {
+      console.warn('[server-updater] uv not found on the system; skipping venv Python check');
+      return false;
+    }
     return await withServerMaintenance(async () => {
       const toolsDir = await uvToolsDir(uv);
       if (!toolsDir) return false;
@@ -308,8 +311,11 @@ export async function repairServerInstall(failureLog?: string): Promise<boolean>
       console.log('[server-updater] start failure is not a broken install; skipping repair reinstall');
       return false;
     }
-    const uv = findUv();
-    if (!uv) return false;
+    const uv = await resolveUv();
+    if (!uv) {
+      console.warn('[server-updater] uv not found on the system; cannot repair the server install');
+      return false;
+    }
     return await withServerMaintenance(async () => {
       // Resolve the tools dir via uv so source detection uses the real layout;
       // null is fine — reinstallFromSource falls back to the platform heuristic.
@@ -431,8 +437,11 @@ export async function checkForServerUpdate(): Promise<ServerUpdateCheckResult> {
     const disable = (process.env[DISABLE_VAR] || '').toLowerCase();
     if (disable === '1' || disable === 'true') return { updateAvailable: false };
 
-    const uv = findUv();
-    if (!uv) return { updateAvailable: false, error: true };
+    const uv = await resolveUv();
+    if (!uv) {
+      console.warn('[server-updater] uv not found on the system; update check unavailable');
+      return { updateAvailable: false, error: true };
+    }
 
     const coworkVcs = readVcsInfo('cowork_server');
     if (coworkVcs) {
@@ -486,9 +495,9 @@ export async function maybeUpdateServer(): Promise<ServerUpdateResult> {
       console.log('[server-updater] disabled via', DISABLE_VAR);
       return { updated: false };
     }
-    const uv = findUv();
+    const uv = await resolveUv();
     if (!uv) {
-      console.log('[server-updater] uv not found, skipping update check');
+      console.warn('[server-updater] uv not found on the system; skipping server update');
       return { updated: false, error: 'uv not found' };
     }
     // Source-aware: a git install updates on git; otherwise PyPI.

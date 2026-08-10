@@ -147,7 +147,8 @@ jobs:
           # gh-pages git steps below use `|| fallback` idioms that are
           # fine with unset edge cases.)
           set -eo pipefail
-          export SHA256="$(cat ui-bundle.sha256)"
+          SHA256="$(cat ui-bundle.sha256)"
+          export SHA256
           export DOWNLOAD_URL="https://github.com/mindsdb/antontron-releases/releases/download/${TAG}/ui-bundle.tar.gz"
           # Optional min cowork-server CalVer this UI requires: explicit dispatch
           # input, else package.json `minServerVersion`, else none. Only emitted
@@ -155,7 +156,8 @@ jobs:
           if [ -n "$MIN_SERVER_VERSION_INPUT" ]; then
             export MIN_SERVER_VERSION="$MIN_SERVER_VERSION_INPUT"
           else
-            export MIN_SERVER_VERSION="$(node -p "require('./package.json').minServerVersion || ''" 2>/dev/null || echo '')"
+            MIN_SERVER_VERSION="$(node -p "require('./package.json').minServerVersion || ''" 2>/dev/null || echo '')"
+            export MIN_SERVER_VERSION
           fi
           echo "Min server version: ${MIN_SERVER_VERSION:-'(none)'}"
 

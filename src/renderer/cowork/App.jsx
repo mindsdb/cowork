@@ -3,6 +3,8 @@ import { flushSync } from 'react-dom';
 import Ico from './components/Icons';
 import MoveToProjectModal from './components/MoveToProjectModal';
 import { pickConnectWelcome } from './lib/connectWelcomes';
+import { isAntonConfigError, normalizeAntonError } from './lib/antonErrors';
+import { mergeTasksFromServer } from './lib/mergeTasks';
 // OnboardingShell removed — the desktop shell's renderer handles terms/install/
 // provider setup. The cowork app is mounted by CoworkApp.tsx only after
 // those gates pass, so AppCore renders unconditionally here.
@@ -47,11 +49,13 @@ import { fetchSessions, fetchSession, fetchConversationList, fetchProjects, fetc
          renameConversation, deleteConversation, deleteConversationTurn, moveConversation, moveTaskToProject,
          deleteProject, cancelScratchpad, cancelResponse, fetchConnector,
          fetchSavedConnection, deleteDatasource, deletePickedFile,
-         fetchInFlightStatus, tailInFlight, fetchInFlightList } from './api';
+         fetchInFlightStatus, tailInFlight, fetchInFlightList,
+         fetchRecommendedModels } from './api';
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
 import { isArtifactTipDismissed, dismissArtifactTip, dismissIfUntouched } from './components/onboarding/onboardingStore';
-import { modelLabel, recommendedModelOptions, providerValueToType } from './lib/settingsTransform';
-import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery } from './lib/analytics';
+import { modelLabel, recommendedModelOptions, providerValueToType,
+         mergeRecommendedModels } from './lib/settingsTransform';
+import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery, trackFirstResponse, classifyFirstResponse } from './lib/analytics';
 
 // One-of-ten encouraging follow-ups picked when a connect task is
 // created. Reads as a friendly nudge after the connect-intro card —
@@ -133,22 +137,16 @@ function isReferenceOnlyAttachment(a) {
   return !!(a && a.source === 'gdrive');
 }
 
-function isAntonConfigError(message, event) {
-  const text = String(message || '');
-  return (
-    event?.code === 'config_required' ||
-    /Configure ANTON_/i.test(text) ||
-    /Could not resolve authentication method/i.test(text) ||
-    /Expected one of api_key, auth_token, or credentials/i.test(text)
-  );
-}
-
-function normalizeAntonError(message, event) {
-  if (isAntonConfigError(message, event)) {
-    return 'No LLM provider is configured for this account. Subscribe with MindsHub or add your own provider in Settings.';
+// Activation gate (ENG-736): fire from the chat send/reply terminal handlers,
+// not the shared reducer (it also drives non-chat probes and replay).
+// trackFirstResponse dedupes once per user; wrapped so analytics can't break the turn.
+function fireFirstResponse(result) {
+  if (!result) return; // no terminal outcome observed — record nothing
+  try {
+    trackFirstResponse(result.outcome, result.reason);
+  } catch {
+    /* analytics must never break the turn */
   }
-  const text = String(message || '');
-  return text || 'Could not complete this task.';
 }
 
 async function resolveComposerAttachmentsForSend(projectName, sessionId, attachments) {
@@ -635,71 +633,6 @@ function mergeConvTurns(cid, messages) {
 // project / status / order), but for each task that exists locally
 // AND is mid-stream OR has unsaved messages, keep the local
 // messages array.
-function mergeTasksFromServer(serverTasks, localTasks) {
-  const local = Array.isArray(localTasks) ? localTasks : [];
-  if (!Array.isArray(serverTasks)) return local;
-  const localById = new Map(local.map((t) => [t.id, t]));
-  // Take whichever of (local, server) updatedAt is newer. When a turn
-  // is in flight, handleSendInTask / handleSendFromHome stamp a fresh
-  // client updatedAt the instant the user sends, but the server's value
-  // only catches up once the turn's messages persist (the server derives
-  // updated_at from the latest message — ENG-961). Keeping the newer of
-  // the two stops a fetchSessions mid-stream from sliding the just-revived
-  // task back down the list before the server value lands.
-  const _newerUpdatedAt = (a, b) => {
-    const aa = Date.parse(a || '') || 0;
-    const bb = Date.parse(b || '') || 0;
-    return aa >= bb ? a : b;
-  };
-  const merged = serverTasks.map((server) => {
-    const l = localById.get(server.id);
-    if (!l) return server;
-    const lMessages = Array.isArray(l.messages) ? l.messages : [];
-    const sMessages = Array.isArray(server.messages) ? server.messages : [];
-    const isStreaming = lMessages.some((m) => m?.role === '_streaming');
-    const hasLocalContent = lMessages.length > 0;
-    const countAssistants = (msgs) => (msgs || []).filter((m) => m?.role === 'assistant').length;
-    if (!isStreaming && !hasLocalContent) {
-      // Even without live messages, prefer the locally-bumped
-      // updatedAt if it's newer — handleSendInTask stamps the task
-      // before any stream events arrive, so a fetchSessions that
-      // races between user-click-send and the first SSE event must
-      // not overwrite the bump.
-      return { ...server, updatedAt: _newerUpdatedAt(l.updatedAt, server.updatedAt) };
-    }
-    if (!isStreaming && countAssistants(sMessages) > countAssistants(lMessages)) {
-      return {
-        ...server,
-        updatedAt: _newerUpdatedAt(l.updatedAt, server.updatedAt),
-        disabledConnections: l.disabledConnections ?? server.disabledConnections ?? [],
-        attachments: lMessages.length && Array.isArray(l.attachments) && l.attachments.length
-          ? l.attachments
-          : server.attachments,
-      };
-    }
-    return {
-      ...server,
-      // Local wins for the live conversation surface.
-      messages: lMessages,
-      status: l.status || server.status,
-      // Preserve in-flight attachments tracked client-side.
-      attachments: lMessages.length && Array.isArray(l.attachments) && l.attachments.length
-        ? l.attachments
-        : server.attachments,
-      // Muted-datasource toggles can change while a turn streams; keep
-      // the client list when present.
-      disabledConnections: l.disabledConnections ?? server.disabledConnections ?? [],
-      updatedAt: _newerUpdatedAt(l.updatedAt, server.updatedAt),
-    };
-  });
-  // Carry over local-only tasks the server hasn't seen yet (e.g. a
-  // tmp-id task whose first stream hasn't resolved a real cid).
-  const serverIds = new Set(serverTasks.map((t) => t.id));
-  for (const t of local) {
-    if (!serverIds.has(t.id)) merged.unshift(t);
-  }
-  return merged;
-}
 
 function appendActivity(messages, event) {
   const content = describeActivity(event);
@@ -1059,6 +992,13 @@ function AppCore() {
 
   const handleStreamError = useCallback(async (taskIds, cid, message, event) => {
     if (event?.code === 'cancelled') return;
+    // Activation gate (ENG-736): chat turn failed. Shared sink for every chat
+    // send/reply/reconnect error, so a failed first query records its reason.
+    fireFirstResponse(classifyFirstResponse({
+      failed: true,
+      code: event?.code,
+      isConfigError: isAntonConfigError(message, event),
+    }));
     activeStreamCtrlRef.current = null;
     activeScratchpadRef.current = null;
     activeStreamingTaskIdRef.current = null;
@@ -1117,8 +1057,34 @@ function AppCore() {
   const models = useMemo(() => {
     const providerType = providerValueToType(settings.planningProvider) || 'minds-cloud';
     return recommendedModelOptions(settings.recommendedModels, providerType, settings.modelLabels)
-      .map((o) => ({ id: o.id, name: o.label, desc: '' }));
+      .map((o) => ({ id: o.id, name: o.label }));
   }, [settings.recommendedModels, settings.planningProvider, settings.modelLabels]);
+  // Picker metadata for the composer's model menu, passed as one bag so the
+  // components in between don't grow a prop each. The composer groups rather than
+  // App because ChatView builds its own single-item list, which stays ungrouped.
+  // Re-check wallet availability when the composer's model menu opens, so a top-up
+  // made outside the app unlocks its models without a restart. This is what makes
+  // it safe for the composer to DISABLE a locked model at all: `modelEnabled` is
+  // otherwise refreshed only by the Settings picker, so a user who hits "Add
+  // credits" (which opens an external browser), tops up and comes back would find
+  // the row still greyed until they visited Settings or restarted. Settings has had
+  // this since ENG-412; this is parity with it.
+  //
+  // A failed refresh leaves the map we hold in place — mergeRecommendedModels never
+  // lets an empty response overwrite it, and a model absent from the map counts as
+  // available — so this can never lock the picker.
+  const refreshModelAvailability = useCallback(async () => {
+    const data = await fetchRecommendedModels({ refresh: true });
+    const merged = mergeRecommendedModels(settings, data);
+    if (merged) setSettings((prev) => ({ ...prev, ...merged }));
+  }, [settings]);
+
+  const modelMeta = useMemo(() => ({
+    modelProviders: settings.modelProviders,
+    modelFamilies: settings.modelFamilies,
+    modelEnabled: settings.modelEnabled,
+    onRefresh: refreshModelAvailability,
+  }), [settings.modelProviders, settings.modelFamilies, settings.modelEnabled, refreshModelAvailability]);
   // The user's preferred collapsed state for the sidebar. Effective
   // collapsed-ness is derived below — we only honor this value while
   // viewing a chat task; every other surface (home, projects,
@@ -1461,7 +1427,14 @@ function AppCore() {
   // to re-read or else it keeps pointing at the old project.
   useEffect(() => {
     const handler = () => {
-      fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); });
+      fetchProjects().then((data) => {
+        if (!Array.isArray(data)) return;
+        setProjects(data);
+        // A rename leaves selectedProject holding the old name; re-anchor
+        // it by id so in-project sends and the breadcrumb pick up the
+        // current name instead of 404ing on the stale one (ENG-1028).
+        setSelectedProject((prev) => (prev?.id && data.find((p) => p.id === prev.id)) || prev);
+      });
       fetchSessions().then((data) => {
       if (Array.isArray(data)) setTasks((prev) => mergeTasksFromServer(data, prev).filter((t) => !deletedTaskIdsRef.current.has(t.id)));
     });
@@ -1774,6 +1747,24 @@ function AppCore() {
     ? (models.find((m) => m.id === currentTask.model) || { id: currentTask.model, name: currentTask.model, desc: 'Configured planning model' })
     : selectedModel;
 
+  // "Switch to MindsHub Air" escape hatch on the model-denial card
+  // (ENG-1304): offered only while Air itself is payable — the free monthly
+  // grant covers Air, so it's the one model an empty wallet can usually
+  // still run. `modelEnabled` is the same availability map the Settings
+  // picker tags rows with (absent id ⇒ available).
+  const AIR_MODEL_ID = 'mindshub_air';
+  const airAvailableForSwitch =
+    (settings.recommendedModels?.['minds-cloud'] || []).includes(AIR_MODEL_ID)
+    && (settings.modelEnabled || {})[AIR_MODEL_ID] !== false;
+  const handleSwitchToAirAndResend = (text) => {
+    if (!currentTask || !text) return;
+    // Persist the switch on the task so follow-up sends stay on Air, and
+    // override the same send explicitly — the state write isn't visible to
+    // handleSendInTask's closure within this tick.
+    setTasks((prev) => prev.map((t) => (t.id === currentTask.id ? { ...t, model: AIR_MODEL_ID } : t)));
+    handleSendInTask(text, null, { modelOverride: AIR_MODEL_ID });
+  };
+
   useEffect(() => {
     const prev = prevRouteForComposerMuteRef.current;
     prevRouteForComposerMuteRef.current = route;
@@ -1867,6 +1858,13 @@ function AppCore() {
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;
         const configErrorInBody = finalContent && isAntonConfigError(finalContent, null);
+        // Activation gate (ENG-736): a completed turn (status 'done') is a real
+        // answer (success), unless a config error was wrapped into its 200 body.
+        // A reconnect that saw no completion records nothing.
+        fireFirstResponse(classifyFirstResponse({
+          completed: streamState.status === 'done',
+          isConfigError: !!configErrorInBody,
+        }));
         let assistantTurnIndex = 0;
         setTasks((prev) => prev.map((t) => {
           if (t.id !== taskId) return t;
@@ -2176,6 +2174,7 @@ function AppCore() {
           _modify: true,
           _existing_name: connection.name,
           name: connection.name,
+          user_label: saved.user_label || null,
           logo: full.form.logo || full.logo,
           logo_color: full.form.logo_color || full.logo_color,
         };
@@ -2192,6 +2191,7 @@ function AppCore() {
           _modify: true,
           _existing_name: connection.name,
           name: connection.name,
+          user_label: saved.user_label || null,
           logo: full.form.logo || full.logo,
           logo_color: full.form.logo_color || full.logo_color,
         };
@@ -2557,9 +2557,11 @@ function AppCore() {
     // instead of routing through anton's LLM path.
     if (!(await ensureProviderReady())) {
       const taskId = `tmp-${Date.now()}`;
+      const generalFallback = projects.find((p) => p.name === 'general');
       const effectiveProjectName = selectedProject?.name || 'general';
+      const effectiveProjectId = (selectedProject ? selectedProject.id : generalFallback?.id) || null;
       const effectiveProjectPath = selectedProject?.path
-        || projects.find((p) => p.name === 'general')?.path
+        || generalFallback?.path
         || null;
       setTasks((prev) => [{
         id: taskId,
@@ -2572,6 +2574,7 @@ function AppCore() {
         ],
         projectPath: effectiveProjectPath,
         projectName: effectiveProjectName,
+        projectId: effectiveProjectId,
         model: selectedModel?.id ?? null,
         attachments: [],
         disabledConnections: [],
@@ -2600,6 +2603,7 @@ function AppCore() {
       }
     }
     const effectiveProjectName = selectedProject?.name || 'general';
+    const effectiveProjectId = (selectedProject ? selectedProject.id : generalProject?.id) || null;
     const effectiveProjectPath = selectedProject?.path || generalProject?.path || null;
 
     const disabledForSend = normalizeComposerDisabledConnections(composerDisabledConnections);
@@ -2636,6 +2640,7 @@ function AppCore() {
       messages: [],
       projectPath: effectiveProjectPath,
       projectName: effectiveProjectName,
+      projectId: effectiveProjectId,
       model: selectedModel?.id ?? null,
       attachments: sendingAttachments,
       disabledConnections: disabledForSend,
@@ -2721,6 +2726,7 @@ function AppCore() {
     const streamNewSessionFn = () => streamNewSession(sendText, {
       conversationId: hasPendingFiles ? taskId : undefined,
       projectName: effectiveProjectName,
+      projectId: effectiveProjectId,
       projectPath: effectiveProjectPath,
       model: selectedModel?.id,
       attachmentIds,
@@ -2765,6 +2771,13 @@ function AppCore() {
         // and replace the assistant turn with the provider_required
         // card instead of rendering the raw SDK message.
         const configErrorInBody = finalContent && isAntonConfigError(finalContent, null);
+        // Activation gate (ENG-736): a completed turn (status 'done') is a real
+        // answer (success), unless a config error was wrapped into its 200 body.
+        // A reconnect that saw no completion records nothing.
+        fireFirstResponse(classifyFirstResponse({
+          completed: streamState.status === 'done',
+          isConfigError: !!configErrorInBody,
+        }));
         let assistantTurnIndex = 0;
         setTasks((prev) => prev.map((t) => {
           if (t.id !== finalId && t.id !== resolvedId && t.id !== taskId) return t;
@@ -2818,7 +2831,7 @@ function AppCore() {
   };
 
   // Send inside an existing task
-  const handleSendInTask = async (text, queuedAttachments = null) => {
+  const handleSendInTask = async (text, queuedAttachments = null, opts = {}) => {
     if (!currentTask) return;
     const id = currentTask.id;
 
@@ -2879,10 +2892,17 @@ function AppCore() {
     const taskProjectName = currentTask.projectName
       || (currentTaskProject?.name)
       || null;
+    const taskProjectId = currentTask.projectId
+      || currentTaskProject?.id
+      || null;
     const taskProjectPath = currentTask.projectPath
       || currentTaskProject?.path
       || null;
-    const taskModel = currentTask.model || selectedModel?.id || null;
+    // opts.modelOverride carries a same-tick model switch (the "Switch to
+    // MindsHub Air" card action, ENG-1304) — currentTask is a render-scope
+    // closure, so a setTasks({...model}) just before this call would not be
+    // visible here yet.
+    const taskModel = opts.modelOverride || currentTask.model || selectedModel?.id || null;
 
     let sendingAttachments, attachmentIds, driveReference;
     try {
@@ -2995,6 +3015,7 @@ function AppCore() {
     const streamGen = activeStreamGenerationRef.current;
     activeStreamCtrlRef.current = streamMessage(id, sendText, {
       projectName: taskProjectName,
+      projectId: taskProjectId,
       projectPath: taskProjectPath,
       model: taskModel,
       attachmentIds,
@@ -3023,6 +3044,13 @@ function AppCore() {
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;
         const configErrorInBody = finalContent && isAntonConfigError(finalContent, null);
+        // Activation gate (ENG-736): a completed turn (status 'done') is a real
+        // answer (success), unless a config error was wrapped into its 200 body.
+        // A reconnect that saw no completion records nothing.
+        fireFirstResponse(classifyFirstResponse({
+          completed: streamState.status === 'done',
+          isConfigError: !!configErrorInBody,
+        }));
         let assistantTurnIndex = 0;
         setTasks((prev) => prev.map((t) => {
           if (t.id !== id && t.id !== resolvedId) return t;
@@ -3885,6 +3913,7 @@ function AppCore() {
             onModelChange={setSelectedModel}
             projects={projects}
             models={modelOptions}
+            modelMeta={modelMeta}
             attachments={composerAttachments}
             connectors={connectors}
             onNavigateToConnectors={() => navigate('customize')}
@@ -3912,6 +3941,7 @@ function AppCore() {
           <ChatView
             task={currentTask}
             onSend={handleSendInTask}
+            onSwitchToAirAndResend={airAvailableForSwitch ? handleSwitchToAirAndResend : undefined}
             onOpenSettings={openSettings}
             queuedMessages={messageQueue[currentTask?.id] || []}
             onRemoveFromQueue={(itemId) => removeFromQueue(currentTask?.id, itemId)}
@@ -3968,6 +3998,7 @@ function AppCore() {
             scheduled={scheduled}
             scheduleRunsIndex={scheduleRunsIndex}
             models={modelOptions}
+            modelMeta={modelMeta}
             onSelectProject={(p) => setSelectedProject(p)}
             onCreateProject={handleCreateProject}
             onSendInProject={(text) => {

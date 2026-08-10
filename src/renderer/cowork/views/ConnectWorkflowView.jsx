@@ -535,7 +535,7 @@ function ConnectorsPage({
     : `You are not connected to ${connectorName} yet.`;
   const connectLabel = selectedConnections.length ? `Connect another ${connectorName}` : `Connect ${connectorName}`;
   const connectionSummary = selectedConnections
-    .map((connection) => connection.label || connection.subtitle || connection.name)
+    .map((connection) => connection.user_label || connection.name)
     .filter(Boolean)
     .slice(0, 2)
     .join(', ');

@@ -2,7 +2,8 @@ import { useState, useEffect, useMemo, useRef, useContext } from 'react';
 import { useId } from 'react';
 import Ico from '../../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchRecommendedModels } from '../../api';
-import { providerTypeToKeyField, providerValueToType, resolveModelPickerValue, buildModelOptions, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, clampBudgetValue, clampBudgets, BUDGET_FIELDS } from '../../lib/settingsTransform';
+import { providerTypeToKeyField, providerValueToType, resolveModelPickerValue, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, clampBudgetValue, clampBudgets, BUDGET_FIELDS } from '../../lib/settingsTransform';
+import { MODEL_REFRESH_TTL_MS } from '../../lib/modelRefresh';
 import { trackHarnessSwapped } from '../../lib/analytics';
 import { copyText as copyToClipboard } from '../../lib/clipboard';
 import { deriveProviderStatus, friendlyProviderError } from '../../lib/providerStatus';
@@ -93,26 +94,27 @@ function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSett
   );
 }
 
-// Collapsible group of sections. Defaults to open; click the header to
-// toggle. Uses the theme tokens so it reads well in light + dark.
-function CollapsibleGroup({ title, defaultOpen = true, children }) {
+// A titled group of settings sections. Since ENG-1320 these no longer
+// collapse: the settings subnav already isolates one section per screen, so a
+// second collapse level inside a section just hid content behind an extra
+// click for no benefit. The group is now a static titled card whose content is
+// always visible. The heading is kept so groups still surface in SR heading
+// navigation. Mobile stays flat, as it already was (ENG-990).
+function SettingsGroup({ title, children }) {
   const { mobile } = useContext(SettingsLayoutContext);
-  const [open, setOpen] = useState(defaultOpen);
-  const panelId = useId();
-  const headingId = useId();
-  // Mobile (ENG-990): flat and non-collapsible. The master-detail screen
-  // already isolates one section, so a second collapse level just adds
-  // confusion — render the group title as a plain header with its content
-  // always visible, separated from the next group by spacing.
+  const headingStyle = {
+    margin: 0,
+    fontFamily: 'var(--font-sans)', fontSize: 12.5, fontWeight: 600,
+    letterSpacing: '0.04em', textTransform: 'uppercase',
+    color: 'var(--text-muted)',
+  };
+  // Mobile (ENG-990): the master-detail screen already isolates one section,
+  // so render the group title as a plain header with its content flowing
+  // below, separated from the next group by spacing.
   if (mobile) {
     return (
       <div style={{ marginBottom: 6 }}>
-        <h2 style={{
-          margin: 0, padding: '12px 2px 8px',
-          fontFamily: 'var(--font-sans)', fontSize: 12.5, fontWeight: 600,
-          letterSpacing: '0.04em', textTransform: 'uppercase',
-          color: 'var(--text-muted)',
-        }}>{title}</h2>
+        <h2 style={{ ...headingStyle, padding: '12px 2px 8px' }}>{title}</h2>
         <div style={{ padding: '0 2px 4px' }}>{children}</div>
       </div>
     );
@@ -128,34 +130,8 @@ function CollapsibleGroup({ title, defaultOpen = true, children }) {
       marginBottom: 14,
       overflow: 'hidden',
     }}>
-      {/* W3C "Accordion" pattern: heading wraps the toggle button so the
-          group surfaces in SR heading navigation, while the button still
-          owns interaction. h3 margin reset to keep the visual layout. */}
-      <h2 id={headingId} style={{ margin: 0, padding: 0, fontWeight: 'inherit', fontSize: 'inherit' }}>
-        <button
-          onClick={() => setOpen((o) => !o)}
-          aria-expanded={open}
-          aria-controls={panelId}
-          style={{
-            width: '100%', display: 'flex', alignItems: 'center', gap: 8,
-            padding: '14px 18px', background: 'transparent', border: 0,
-            fontFamily: 'var(--font-sans)', fontSize: 12.5, fontWeight: 600,
-            letterSpacing: '0.04em', textTransform: 'uppercase',
-            color: 'var(--text-muted)', cursor: 'pointer', textAlign: 'left',
-          }}
-        >
-          <span aria-hidden="true" style={{
-            display: 'inline-flex', width: 14, height: 14,
-            color: 'var(--text-muted)',
-            transform: open ? 'rotate(90deg)' : 'rotate(0deg)',
-            transition: 'transform 180ms cubic-bezier(0.32, 0.72, 0, 1)',
-          }}>{Ico.chevronRight ? Ico.chevronRight(12) : '›'}</span>
-          <span style={{ flex: 1 }}>{title}</span>
-        </button>
-      </h2>
-      {open && (
-        <div id={panelId} role="region" aria-labelledby={headingId} style={{ padding: '0 18px 8px' }}>{children}</div>
-      )}
+      <h2 style={{ ...headingStyle, padding: '14px 18px 0' }}>{title}</h2>
+      <div style={{ padding: '10px 18px 8px' }}>{children}</div>
     </div>
   );
 }
@@ -382,9 +358,9 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
                 padding: '3px 8px',
                 fontSize: 10.5, fontWeight: 600, letterSpacing: '0.04em',
                 textTransform: 'uppercase',
-                color: copyState === 'failed' ? 'var(--danger, #e5484d)' : '#7CC4B6',
+                color: copyState === 'failed' ? 'var(--danger)' : 'var(--accent)',
                 background: 'rgba(20,28,28,0.92)',
-                border: copyState === 'failed' ? '1px solid color-mix(in srgb, var(--danger, #e5484d) 45%, transparent)' : '1px solid rgba(124,196,182,0.45)',
+                border: copyState === 'failed' ? '1px solid color-mix(in srgb, var(--danger) 45%, transparent)' : '1px solid color-mix(in srgb, var(--accent) 45%, transparent)',
                 borderRadius: 6,
                 whiteSpace: 'nowrap',
                 pointerEvents: 'none',
@@ -515,11 +491,6 @@ const GET_KEY_URL = {
 };
 
 const PROTECTED_PROVIDER_TYPES = new Set(['minds-cloud']);
-
-// How long data from the model dropdown's on-open refresh counts as fresh.
-// Re-opening inside this window skips the round trip and opens immediately;
-// it only has to be short next to the 5-minute cache it stands in for.
-const MODEL_REFRESH_TTL_MS = 5000;
 
 function makeEmptyProvider(type) {
   const base = { type, apiKey: '', isDefault: false };
@@ -751,8 +722,11 @@ export default function SettingsView({
   const [initialProviderTestDone, setInitialProviderTestDone] = useState(false);
   // Per-role note of when the refresh above last landed fresh data, so
   // re-opening the dropdown doesn't re-pay a round trip that just completed.
+  // -Infinity, not 0: performance.now() is already well past 0 by first render, so a
+  // 0 sentinel reads as "refreshed at page load" and skips the first open of the
+  // session — the one open where the wallet state is most likely to be stale.
   const modelOpenState = useRef({});
-  const modelOpenFor = (role) => (modelOpenState.current[role] ||= { refreshedAt: 0 });
+  const modelOpenFor = (role) => (modelOpenState.current[role] ||= { refreshedAt: -Infinity });
   // Whether the refresh token lives in the macOS keychain (vs a file under
   // ~/.cowork). Mac-only; read from main on mount.
   const [keychainPref, setKeychainPref] = useState(false);
@@ -1171,8 +1145,8 @@ export default function SettingsView({
         style={{ flex: 1, fontSize: 13, fontWeight: 500, color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: 6 }}
       >
         {testing && <span aria-hidden="true" className="spinner" style={{ width: 12, height: 12 }} />}
-        {!testing && tested && configReady && <span aria-hidden="true" style={{ color: 'var(--sage-500, #5d9287)', display: 'inline-flex' }}>{Ico.check(13)}</span>}
-        {!testing && saved && !tested && <span aria-hidden="true" style={{ color: 'var(--sage-500, #5d9287)', display: 'inline-flex' }}>{Ico.check(13)}</span>}
+        {!testing && tested && configReady && <span aria-hidden="true" style={{ color: 'var(--sage-500)', display: 'inline-flex' }}>{Ico.check(13)}</span>}
+        {!testing && saved && !tested && <span aria-hidden="true" style={{ color: 'var(--sage-500)', display: 'inline-flex' }}>{Ico.check(13)}</span>}
         <span>
           {testing ? 'Testing configuration…'
             : tested ? (configReady ? 'Test passed — provider, model, and credentials look good.' : (configError || 'Test reported a problem.'))
@@ -1200,7 +1174,7 @@ export default function SettingsView({
       <SettingsSectionPanel footer={renderSaveFooter()}>
         <div style={{ display: 'flex', flexDirection: 'column' }}>
           <div style={{ order: anyProviderConfigured ? 2 : 0 }}>
-            <CollapsibleGroup title="LLM Providers">
+            <SettingsGroup title="LLM Providers">
               {providers.map((p) => {
                 const configured = providerConfigured(p);
                 const label = typeLabels[p.type] || p.type;
@@ -1274,11 +1248,11 @@ export default function SettingsView({
                             aria-required="true"
                             style={{
                               width: 220, fontSize: 13.5, fontWeight: 600,
-                              borderColor: nameEmpty ? 'rgba(224,112,96,0.55)' : undefined,
+                              borderColor: nameEmpty ? 'color-mix(in srgb, var(--danger) 55%, transparent)' : undefined,
                             }}
                           />
                           {nameEmpty && (
-                            <span id={errorId} style={{ fontSize: 10.5, color: '#E07060' }}>Name required</span>
+                            <span id={errorId} style={{ fontSize: 10.5, color: 'var(--danger)' }}>Name required</span>
                           )}
                         </div>
                       );
@@ -1356,7 +1330,7 @@ export default function SettingsView({
                               target="_blank"
                               rel="noreferrer noopener"
                               title={`Open ${GET_KEY_URL[p.type].replace(/^https?:\/\//, '')} in your browser.`}
-                              style={{ color: 'var(--accent-500, #7CC4B6)' }}
+                              style={{ color: 'var(--accent)' }}
                             >{GET_KEY_URL[p.type].replace(/^https?:\/\//, '')} →</a>
                           </div>
                         )}
@@ -1368,12 +1342,12 @@ export default function SettingsView({
                               target="_blank"
                               rel="noreferrer noopener"
                               title="Open the MindsHub sign-up page in your browser."
-                              style={{ color: 'var(--accent-500, #7CC4B6)' }}
+                              style={{ color: 'var(--accent)' }}
                             >Sign up →</a>
                           </div>
                         )}
                         {status === 'fail' && friendlyError && (
-                          <div style={{ fontSize: 11.5, color: '#E07060', display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+                          <div style={{ fontSize: 11.5, color: 'var(--danger)', display: 'flex', alignItems: 'flex-start', gap: 6 }}>
                             <span style={{ flexShrink: 0, marginTop: 1 }}>{Ico.key ? Ico.key(11) : '!'}</span>
                             <span>{friendlyError}</span>
                           </div>
@@ -1383,7 +1357,7 @@ export default function SettingsView({
                       // Status pill replaces the key input after a test result
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: mobile ? 'flex-start' : 'flex-end', padding: '5px 0', gap: 10 }}>
                         {status === 'fail' && friendlyError && (
-                          <span style={{ fontSize: 11.5, color: '#E07060' }}>{friendlyError}</span>
+                          <span style={{ fontSize: 11.5, color: 'var(--danger)' }}>{friendlyError}</span>
                         )}
                         {statusPill}
                       </div>
@@ -1470,10 +1444,10 @@ export default function SettingsView({
                   >{Ico.close(13)}</Button>
                 </div>
               </div>
-            </CollapsibleGroup>
+            </SettingsGroup>
           </div>
           <div style={{ order: anyProviderConfigured ? 1 : 0 }}>
-            <CollapsibleGroup title="Agent Models">
+            <SettingsGroup title="Agent Models">
               {(() => {
                 // The default-mode provider is the implicit fallback for
                 // any role that hasn't been explicitly assigned an
@@ -1512,10 +1486,10 @@ export default function SettingsView({
                   const modelList = recommendedModels[curType] || [];
                   /* Per-model availability (settings.modelEnabled, sourced from MindsHub
                    * /v1/models). A model the org's wallet can't currently pay for (or
-                   * whose free allowance is spent) is listed here as false so we render
-                   * it greyed + non-selectable, with an "add credits to unlock" prompt.
-                   * Absent id ⇒ available (backwards compatible; direct providers have
-                   * no such flag). */
+                   * whose free allowance is spent) is listed here as false — it stays
+                   * selectable with a "Needs credits" tag, and picking it shows the
+                   * top-up hint below (ENG-1248). Absent id ⇒ available (backwards
+                   * compatible; direct providers have no such flag). */
                   const modelEnabled = settings.modelEnabled || {};
                   const isLocked = (m) => modelEnabled[m] === false;
                   const firstEnabledModel = modelList.find((m) => !isLocked(m)) || modelList[0] || '';
@@ -1580,15 +1554,21 @@ export default function SettingsView({
                     }}>{text}:</span>
                   );
 
+                  // Two stacked lines (ENG-1248): the credit state + top-up
+                  // action reads first on its own line, the BYOK escape hatch
+                  // sits under it. Inline, the escape hatch diluted the one
+                  // action that matters when the wallet is empty.
                   const noCreditsNotice = isNoCredits ? (
-                    <div style={{ fontSize: 12, lineHeight: 1.6 }}>
-                      <span style={{ color: '#E07060', fontWeight: 600 }}>No credits available. </span>
-                      <button
-                        type="button"
-                        onClick={() => host.openExternal ? host.openExternal(MINDS_BILLING_URL) : window.open(MINDS_BILLING_URL, '_blank')}
-                        style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--accent, #7CC4B6)', textDecoration: 'underline', fontSize: 'inherit', fontFamily: 'inherit' }}
-                      >Top up credits →</button>
-                      <span style={{ color: 'var(--text-muted)' }}>{' '}or add your own provider and API key below.</span>
+                    <div style={{ fontSize: 12, lineHeight: 1.6, display: 'grid', gap: 1 }}>
+                      <div>
+                        <span style={{ color: 'var(--danger)', fontWeight: 600 }}>No credits available. </span>
+                        <button
+                          type="button"
+                          onClick={() => host.openExternal ? host.openExternal(MINDS_BILLING_URL) : window.open(MINDS_BILLING_URL, '_blank')}
+                          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--accent)', textDecoration: 'underline', fontSize: 'inherit', fontFamily: 'inherit' }}
+                        >Top up balance →</button>
+                      </div>
+                      <div style={{ color: 'var(--text-muted)' }}>Or add your own provider and API key below.</div>
                     </div>
                   ) : null;
 
@@ -1626,8 +1606,17 @@ export default function SettingsView({
                             // longer wedges the control into a no-op "Saved" (ENG-739).
                             const { showStalePin, inputMode, selectValue } =
                               resolveModelPickerValue(curModel, modelList, allowOther, modelInputMode[role]);
-                            const modelOptions = buildModelOptions(curModel, modelList, allowOther, showStalePin, modelEnabled, settings.modelLabels || {});
+                            // The trailing bag carries MindsHub's authoritative
+                            // maker field (so the picker's sections stop being
+                            // inferred from the alias) plus the family metadata
+                            // that tags the moving aliases "latest".
+                            const modelOptions = buildModelOptions(
+                              curModel, modelList, allowOther, showStalePin, modelEnabled,
+                              settings.modelLabels || {},
+                              { modelProviders: settings.modelProviders, modelFamilies: settings.modelFamilies },
+                            );
                             return (
+                              <>
                               <label style={{ display: 'grid', gap: 4 }}>
                                 {fieldLabel('Model')}
                                 <ModelSelect
@@ -1687,7 +1676,24 @@ export default function SettingsView({
                                   />
                                 )}
                               </label>
-                            );
+                              {/* Needs-credits rows stay selectable (ENG-1248) —
+                                  this hint is the informed-consent half: the
+                                  choice is respected, the cost is named, and the
+                                  top-up route is one click away. Outside the
+                                  <label> so it doesn't leak into the combobox's
+                                  accessible name (PR #579 review). */}
+                              {!inputMode && !!curModel && isLocked(curModel) && (
+                                <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
+                                  {displayModelLabel(curModel, settings.modelLabels || {})} needs credits.{' '}
+                                  <button
+                                    type="button"
+                                    onClick={() => host.openExternal ? host.openExternal(MINDS_BILLING_URL) : window.open(MINDS_BILLING_URL, '_blank')}
+                                    style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--accent)', textDecoration: 'underline', fontSize: 'inherit', fontFamily: 'inherit' }}
+                                  >Top up your balance</button>
+                                  {' '}to use it.
+                                </div>
+                              )}
+                            </>);
                           })()
                         ) : (
                           <label style={{ display: 'grid', gap: 4 }}>
@@ -1718,7 +1724,7 @@ export default function SettingsView({
                           </div>
                         )}
                         {providerUnusable && (
-                          <div id={providerWarnId} style={{ fontSize: 11.5, color: '#E07060' }}>
+                          <div id={providerWarnId} style={{ fontSize: 11.5, color: 'var(--warning)' }}>
                             {providerUnconfigured
                               ? (provider
                                 ? `${providerDisplayName(provider)} isn't configured — add its credentials under LLM Providers above, or pick another provider.`
@@ -1738,11 +1744,11 @@ export default function SettingsView({
                   </>
                 );
               })()}
-            </CollapsibleGroup>
+            </SettingsGroup>
           </div>
         </div>
 
-        <CollapsibleGroup title="Agent Harness">
+        <SettingsGroup title="Agent Harness">
           <Section title="Harness" subtitle={`Which AI agent powers your tasks. ${agentLabel || 'Anton'} is the default; Hermes is an alternative agent with its own tool and memory system.`}>
             <ToggleGroup
               value={settings.harness || 'anton'}
@@ -1754,9 +1760,9 @@ export default function SettingsView({
               ]}
             />
           </Section>
-        </CollapsibleGroup>
+        </SettingsGroup>
 
-        <CollapsibleGroup title="Memory" defaultOpen={false}>
+        <SettingsGroup title="Memory">
           <Section title="Memory mode" subtitle={`How ${agentLabel || 'Anton'} updates its long-term memory.`}>
             <ToggleGroup
               value={settings.memoryMode ?? 'autopilot'}
@@ -1793,10 +1799,10 @@ export default function SettingsView({
               aria-label="Act first, ask later"
             />
           </Section>
-        </CollapsibleGroup>
+        </SettingsGroup>
 
         {hasBudgetSettings && (
-          <CollapsibleGroup title="Advanced Settings" defaultOpen={false}>
+          <SettingsGroup title="Advanced Settings">
             <Section
               title="Max steps per task"
               subtitle={`How many actions (running code, reading files, searching) ${agentLabel || 'Anton'} may take on one request before pausing to check in with you. Raise it so big tasks finish in one go; lower it for a tighter leash on time and cost.`}
@@ -1823,7 +1829,7 @@ export default function SettingsView({
                 setSetting={setSetting}
               />
             </Section>
-          </CollapsibleGroup>
+          </SettingsGroup>
         )}
       </SettingsSectionPanel>
     );
@@ -1906,10 +1912,10 @@ export default function SettingsView({
       return <span style={{ ...fadeStyle, fontSize: 11.5, color: 'var(--ink-4)', marginLeft: 8 }}>Saving…</span>;
     }
     if (status.state === 'error') {
-      return <span style={{ ...fadeStyle, fontSize: 11.5, color: 'var(--danger, #e5484d)', marginLeft: 8 }}>Couldn't save</span>;
+      return <span style={{ ...fadeStyle, fontSize: 11.5, color: 'var(--danger)', marginLeft: 8 }}>Couldn't save</span>;
     }
     return (
-      <span style={{ ...fadeStyle, fontSize: 11.5, color: 'var(--ok, #3aa876)', marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+      <span style={{ ...fadeStyle, fontSize: 11.5, color: 'var(--ok)', marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
         {Ico.check(11)} Saved
       </span>
     );
@@ -1940,7 +1946,7 @@ export default function SettingsView({
     // `autoSaved` surfaces a quiet "saves automatically" note on mobile so the
     // page doesn't read as "no way to save" next to Save-button sections.
     <SettingsSectionPanel autoSaved>
-      <CollapsibleGroup title="Appearance">
+      <SettingsGroup title="Appearance">
         <Section title="Style" subtitle="Normal, 8-Bit, or design your own with Custom. Combines with light and dark.">
           <ToggleGroup
             value={normalizeSkin(skin)}
@@ -2144,7 +2150,7 @@ export default function SettingsView({
             <AutoSaveTag settingKey="navLogo" />
           </div>
           {logoError && (
-            <div style={{ fontSize: 12, color: 'var(--danger, #e5484d)', marginTop: 6 }}>{logoError}</div>
+            <div style={{ fontSize: 12, color: 'var(--danger)', marginTop: 6 }}>{logoError}</div>
           )}
         </Section>
         <div className="settings-hide-mobile">
@@ -2193,7 +2199,7 @@ export default function SettingsView({
             </div>
           </Section>
         </div>
-      </CollapsibleGroup>
+      </SettingsGroup>
     </SettingsSectionPanel>
   );
 
@@ -2233,8 +2239,8 @@ export default function SettingsView({
 
   // Mobile (ENG-990): master-detail. The surface is a list of the six
   // sections; tapping one drills into a focused full-screen page for just
-  // that section (sub-groups render flat — see CollapsibleGroup — so there's
-  // no nested collapsing). The top-bar back control returns to the list; from
+  // that section (sub-groups render flat — see SettingsGroup — and no longer
+  // collapse on either platform). The top-bar back control returns to the list; from
   // the list it closes Settings (onClose). Only the open section mounts, so
   // its effects/dropdowns don't all run at once.
   if (mobile) {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Ico from './Icons';
 import NewProjectModal from './project/NewProjectModal';
@@ -9,6 +9,11 @@ import {
   parseOpenerLine,
 } from './composerFences';
 import { HighlightOverlay } from './composerHighlight';
+import {
+  groupModelOptions, modelMaker, isMovingAlias, isFrozenAlias, hasFrozenVersions, orderByFamily,
+} from '../lib/modelCatalog';
+import { MODEL_REFRESH_TTL_MS } from '../lib/modelRefresh';
+import ProviderIcon from './ProviderIcon.jsx';
 import { useFileDrop, FileDropOverlay, extractClipboardFiles } from '../lib/useFileDrop';
 import { AttachmentThumbnail } from './AttachmentThumbnail';
 import { useSkills } from '../lib/skillsStore';
@@ -58,6 +63,61 @@ function AttachmentChip({ attachment, onRemove }) {
   );
 }
 
+// Shared by the menu's own "Model" label and each section heading, so a grouped
+// and an ungrouped menu can't drift apart visually.
+const MODEL_HEADING = {
+  padding: '6px 10px',
+  fontSize: 11,
+  fontWeight: 600,
+  color: 'var(--frost-600)',
+  textTransform: 'uppercase',
+  letterSpacing: '0.04em',
+};
+
+/**
+ * One row of the composer's model menu.
+ *
+ * `latest` marks an alias whose version moves — picking it always gets the newest
+ * release. A locked model is one the org's wallet can't currently pay for; it
+ * renders disabled with the same "Add credits to unlock" wording the Settings
+ * picker uses, so a model that would fail at send time can't be chosen here.
+ */
+function ModelMenuItem({ item, selected, onSelect }) {
+  return (
+    <button
+      className={`menu-item${selected ? ' checked' : ''}`}
+      disabled={item.locked}
+      title={item.locked ? 'Add credits to unlock this model' : undefined}
+      onClick={onSelect}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+        paddingLeft: item.pinned ? 24 : undefined,
+        opacity: item.locked ? 0.55 : undefined,
+        cursor: item.locked ? 'not-allowed' : undefined,
+      }}
+    >
+      <ProviderIcon maker={item.maker} className="text-ink-2" />
+      <span style={{
+        flex: 1,
+        fontWeight: item.pinned ? 400 : 500,
+        color: item.pinned ? 'var(--frost-700)' : undefined,
+      }}>{item.name}</span>
+      {item.moving && (
+        <span
+          title="This model always points at the newest version."
+          style={{
+            fontSize: 10, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase',
+            padding: '1px 5px', borderRadius: 4,
+            background: 'var(--surface-2)', color: 'var(--frost-600)',
+          }}
+        >latest</span>
+      )}
+      {item.locked && <span style={{ fontSize: 11, color: 'var(--frost-600)' }}>Add credits to unlock</span>}
+      {selected && <span style={{ color: 'var(--primary-700)' }}>{Ico.check(14)}</span>}
+    </button>
+  );
+}
+
 export default function Composer({
   onSend,
   project,
@@ -66,6 +126,16 @@ export default function Composer({
   onModelChange,
   projects,
   models,
+  /**
+   * Picker metadata: `{modelProviders, modelFamilies, modelEnabled}` from
+   * settings. Optional — without it, or when it describes none of the models
+   * listed, the menu renders the flat, ungrouped list it always has. That is what
+   * a one-item list (ChatView's read-only picker) gets, and what a role pointed at
+   * a BYOK provider gets: `modelProviders` is keyed by model id and only ever
+   * covers MindsHub's own catalog, so it says nothing about the ids a BYOK role
+   * lists even when a MindsHub key is configured.
+   */
+  modelMeta,
   attachments = [],
   connectors = [],
   onNavigateToConnectors,
@@ -213,6 +283,67 @@ export default function Composer({
   // Caret and key handlers branch off `parsedFences.fences` instead of reparsing
   // on every keystroke / selection event.
   const parsedFences = useMemo(() => parseFences(value), [value]);
+
+  // Model menu sections. Grouped here rather than by the caller because ChatView
+  // passes its own one-item list, which must stay ungrouped — and with no
+  // metadata `groupModelOptions` returns exactly one unnamed section holding the
+  // input, so the flat menu needs no separate branch below.
+  // Don't re-pay the round trip for a menu reopened moments later. -Infinity, not
+  // 0: performance.now() is already well past 0 by first render, so a 0 sentinel
+  // would read as "refreshed at page load" and skip the first open of the session.
+  const modelRefreshedAt = useRef(-Infinity);
+  const openModelMenu = useCallback(() => {
+    if (!modelMeta?.onRefresh) return;
+    if (performance.now() - modelRefreshedAt.current < MODEL_REFRESH_TTL_MS) return;
+    modelRefreshedAt.current = performance.now();
+    // Fire and forget: the menu opens on the list we already hold and reconciles
+    // when the response lands. A click that produces nothing for the length of a
+    // network round trip reads as a broken control.
+    Promise.resolve(modelMeta.onRefresh()).catch(() => {});
+  }, [modelMeta]);
+
+  const modelSections = useMemo(() => {
+    const { modelProviders = {}, modelFamilies = {}, modelEnabled = {} } = modelMeta || {};
+    const list = models || [];
+    const ids = list.map((m) => m.id);
+    // Family rules come from lib/modelCatalog, shared with the Settings picker.
+    // They used to be reimplemented here over `{id, name}` objects while
+    // settingsTransform had its own copy over id strings, which is how the two
+    // drifted — the BYOK "(latest)" bug was live in both and had to be fixed twice.
+    const byId = new Map(list.map((m) => [m.id, m]));
+    const ordered = orderByFamily(ids, modelFamilies).map((id) => byId.get(id));
+    // Only tag once something listed is NOT the latest; on an all-moving catalog the
+    // tag would sit on every row and distinguish nothing.
+    const tagMoving = hasFrozenVersions(ids, modelFamilies);
+    const items = ordered.map((m) => ({
+      value: m.id,
+      // `label` feeds modelSection's maker inference; `name` is what renders.
+      label: m.name,
+      name: m.name,
+      provider: modelProviders[m.id],
+      maker: modelMaker(m.id, m.name).key,
+      moving: tagMoving && isMovingAlias(m.id, modelFamilies),
+      // Indented under its head only when the head is actually listed. An orphan
+      // reads as a top-level model: indenting it under nothing, or calling it an
+      // older version of a model the user cannot see, is worse than listing it
+      // plainly. It is never `moving` either, so it claims nothing.
+      pinned: isFrozenAlias(m.id, modelFamilies) && byId.has(modelFamilies[m.id]),
+      locked: modelEnabled[m.id] === false,
+    }));
+    // Group only when the server told us who serves the models THESE rows are, not
+    // merely that it knows about some model somewhere: `modelProviders` is global to
+    // the settings blob and keyed by model id, so a MindsHub key populates it even
+    // for a role pointed at BYOK Anthropic, whose ids it never mentions. Gating on
+    // the map being non-empty grouped that list by inference alone. With nothing
+    // known about any listed id — an older cowork-server, a BYOK provider,
+    // ChatView's one-item list — a single unnamed section renders today's flat menu
+    // exactly. An empty list takes that path too: grouping nothing yields no
+    // sections at all, and a menu with neither heading nor rows reads as broken
+    // rather than as still-loading.
+    return items.length && ids.some((id) => modelProviders[id])
+      ? groupModelOptions(items)
+      : [{ key: 'all', name: null, items }];
+  }, [models, modelMeta]);
 
   // Auto-resize the textarea up to a max height; past that it scrolls.
   // The overlay is absolutely positioned with `inset: 0`, so it follows
@@ -1251,7 +1382,11 @@ export default function Composer({
               {!hideModel && (
                 <button
                   className="meta-pill"
-                  onClick={() => setOpenMenu(openMenu === 'model' ? null : 'model')}
+                  onClick={() => {
+                    const opening = openMenu !== 'model';
+                    setOpenMenu(opening ? 'model' : null);
+                    if (opening) openModelMenu();
+                  }}
                   title="Choose model"
                 >
                   <span>{model?.name ?? 'Select model'}</span>
@@ -1265,20 +1400,24 @@ export default function Composer({
 
       {openMenu === 'model' && !metaReadOnly && (
         <div className="menu" style={{ right: 8, top: 'calc(100% + 6px)', minWidth: 260 }}>
-          <div style={{ padding: '6px 10px', fontSize: 11, fontWeight: 600, color: 'var(--frost-600)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Model</div>
-          {models.map((m) => (
-            <button
-              key={m.id}
-              className={`menu-item${model?.id === m.id ? ' checked' : ''}`}
-              onClick={() => { onModelChange(m); setOpenMenu(null); }}
-              style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%' }}>
-                <span style={{ flex: 1, fontWeight: 500 }}>{m.name}</span>
-                {model?.id === m.id && <span style={{ color: 'var(--primary-700)' }}>{Ico.check(14)}</span>}
-              </div>
-              <div style={{ fontSize: 11.5, color: 'var(--frost-600)' }}>{m.desc}</div>
-            </button>
+          {/* One unnamed section is the flat case (no metadata, or ChatView's
+              single-item list): keep the "Model" heading this menu has always
+              shown rather than repeating a section name per row. */}
+          {modelSections.length === 1 && !modelSections[0].name && (
+            <div style={MODEL_HEADING}>Model</div>
+          )}
+          {modelSections.map((section) => (
+            <Fragment key={section.key}>
+              {section.name && <div style={MODEL_HEADING}>{section.name}</div>}
+              {section.items.map((item) => (
+                <ModelMenuItem
+                  key={item.value}
+                  item={item}
+                  selected={model?.id === item.value}
+                  onSelect={() => { onModelChange({ id: item.value, name: item.name }); setOpenMenu(null); }}
+                />
+              ))}
+            </Fragment>
           ))}
         </div>
       )}

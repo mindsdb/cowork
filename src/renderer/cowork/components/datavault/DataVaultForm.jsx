@@ -31,7 +31,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
-import { Badge, Button, Checkbox, Select, Input, Textarea } from '../ui';
+import { Alert, Badge, Button, Checkbox, Select, Input, Textarea } from '../ui';
 import {
   setFormState,
   setSelectedMethod,
@@ -173,7 +173,10 @@ function FieldInput({ field, value, onChange, disabled }) {
   );
 }
 
-export function DataVaultForm({ spec, busy = false, onAction, onMethodChange, conversationId }) {
+export function DataVaultForm({
+  spec, busy = false, onAction, onMethodChange, conversationId,
+  userLabel, onUserLabelChange,
+}) {
   // ── Multi-method shape ──────────────────────────────────────────
   // A form can either be single-method (top-level `fields[]` array,
   // legacy shape) or multi-method (`methods[]` array of method
@@ -332,17 +335,9 @@ export function DataVaultForm({ spec, busy = false, onAction, onMethodChange, co
           </div>
         </div>
         {(spec.engine === 'google_drive' || spec._connector_id === 'google_drive') && (
-          <div style={{
-            padding: '10px 12px', borderRadius: 8,
-            background: 'var(--info-bg)',
-            border: '1px solid var(--info-border)',
-            display: 'flex', gap: 8, alignItems: 'flex-start',
-          }}>
-            <span style={{ fontSize: 14, flexShrink: 0, lineHeight: 1.4 }}>ℹ️</span>
-            <span style={{ fontSize: 12.5, color: 'var(--info-text)', lineHeight: 1.55 }}>
-              This connection can access files it created, plus any you pick yourself — use "Add files from Google Drive" in a chat's + menu, or "Select files from Google Drive" in this connection's settings.
-            </span>
-          </div>
+          <Alert variant="info" icon="ℹ️">
+            This connection can access files it created, plus any you pick yourself — use "Add files from Google Drive" in a chat's + menu, or "Select files from Google Drive" in this connection's settings.
+          </Alert>
         )}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
           {/* On success we always offer two routes:
@@ -438,6 +433,29 @@ export function DataVaultForm({ spec, busy = false, onAction, onMethodChange, co
         </div>
       )}
 
+      {/* Generic "name this connection" field — applies to every connector
+          regardless of method, so it renders right under the title rather
+          than inside the per-method fields list below. Hidden on success
+          (host passes `userLabel={undefined}` in that case) and while the
+          user is still on the method picker (nothing to label yet). */}
+      {userLabel !== undefined && !(isMultiMethod && !activeMethod) && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <label htmlFor="connection-user-label" style={{
+            fontSize: 12, color: 'var(--ink-3)', fontWeight: 500,
+          }}>
+            Label
+          </label>
+          <Input
+            id="connection-user-label"
+            type="text"
+            value={userLabel}
+            onChange={(v) => onUserLabelChange?.(v)}
+            disabled={busy}
+            placeholder={spec.engine || spec._connector_id || 'e.g. prod-db'}
+          />
+        </div>
+      )}
+
       {/* Note: live status (`status_text`) is rendered as a
           dismissible TOAST by DataVaultFormPanel — sitting outside
           the form body so per-step status updates don't displace
@@ -470,20 +488,10 @@ export function DataVaultForm({ spec, busy = false, onAction, onMethodChange, co
       {(!isMultiMethod || activeMethod) && <>
       {/* Form-level banners */}
       {spec.form_error && (
-        <div style={{
-          padding: '8px 10px', borderRadius: 7,
-          background: 'color-mix(in srgb, var(--danger) 12%, var(--surface))',
-          border: '1px solid color-mix(in srgb, var(--danger) 35%, transparent)',
-          color: 'var(--danger)', fontSize: 12.5,
-        }}>{spec.form_error}</div>
+        <Alert variant="danger">{spec.form_error}</Alert>
       )}
       {spec.form_warning && (
-        <div style={{
-          padding: '8px 10px', borderRadius: 7,
-          background: 'color-mix(in srgb, var(--accent) 8%, var(--surface))',
-          border: '1px solid color-mix(in srgb, var(--accent) 30%, transparent)',
-          color: 'var(--ink-2)', fontSize: 12.5,
-        }}>{spec.form_warning}</div>
+        <Alert variant="warning">{spec.form_warning}</Alert>
       )}
 
       {/* Fields — always rendered. While a probe is in flight the

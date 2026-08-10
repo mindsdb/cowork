@@ -17,6 +17,7 @@
  */
 
 import { MINDS_API_BASE } from '../../lib/mindsUrls';
+import { isMovingAlias, isFrozenAlias, hasFrozenVersions, orderByFamily } from './modelCatalog';
 
 // ─── Key maps ──────────────────────────────────────────────────────────
 
@@ -262,6 +263,12 @@ export function mergeRecommendedModels(prev, rec) {
     modelEfforts: overlayMap(base.modelEfforts, rec.modelEfforts),
     modelEnabled: overlayMap(base.modelEnabled, rec.modelEnabled),
     modelLabels: overlayMap(base.modelLabels, rec.modelLabels),
+    // Picker grouping metadata, same rule: an empty map from the server (older
+    // cowork-server, BYOK provider, failed fetch) must not wipe what we hold.
+    // Losing these degrades the picker to inferred sections and no "latest"
+    // tags rather than breaking it.
+    modelProviders: overlayMap(base.modelProviders, rec.modelProviders),
+    modelFamilies: overlayMap(base.modelFamilies, rec.modelFamilies),
   };
 }
 
@@ -322,24 +329,95 @@ export function resolveModelPickerValue(curModel, modelList, allowOther, forceCu
  * @param {boolean} allowOther  whether to append the "Other…" custom-id entry
  * @param {boolean} showStalePin from resolveModelPickerValue
  * @param {Record<string, boolean>} modelEnabled per-model availability map
- *   (settings.modelEnabled); a model mapped to `false` renders locked.
+ *   (settings.modelEnabled); a model mapped to `false` renders selectable
+ *   with a "Needs credits" tag (ENG-1248).
  * @param {Record<string, string>} modelLabels per-model display label
  *   (settings.modelLabels, MindsHub-supplied). Display-only — the id/alias
  *   passed as `value` is still what's saved/resolved everywhere else. A
  *   model missing here (every direct provider; a minds-cloud model with no
  *   label) falls back to modelLabel()'s id-derived label.
  */
-export function buildModelOptions(curModel, modelList, allowOther, showStalePin, modelEnabled = {}, modelLabels = {}) {
+export function buildModelOptions(
+  curModel,
+  modelList,
+  allowOther,
+  showStalePin,
+  modelEnabled = {},
+  modelLabels = {},
+  meta = {},
+) {
   const list = Array.isArray(modelList) ? modelList : [];
   const isLocked = (m) => modelEnabled[m] === false;
   const labelFor = (m) => displayModelLabel(m, modelLabels);
+
+  const { modelProviders = {}, modelFamilies = {} } = meta || {};
+  // Family rules come from lib/modelCatalog so this picker and the composer cannot
+  // disagree about them. Presence in `modelFamilies` is the signal, NOT the map
+  // being non-empty: the map is global to the settings blob while `modelList` is
+  // per-provider, so for a BYOK role every id is absent from it. Reading absent as
+  // "is its own head" tagged every BYOK model "(latest)", including dated
+  // snapshots that provably never move.
+  const isMoving = (m) => isMovingAlias(m, modelFamilies);
+  // A frozen version whose head is also listed. An orphan — a typo'd `family`, or a
+  // head filtered out upstream — is listed but carries no tag at all: "older
+  // version" is a claim relative to a newer one, and with no head present there is
+  // nothing for the user to read it against.
+  const isPinnedUnderHead = (m) => isFrozenAlias(m, modelFamilies) && list.includes(modelFamilies[m]);
+
+  // The moving-alias marker only earns its place once something in this list is NOT
+  // the latest. On a catalog of all-moving aliases it would sit on every row, which
+  // distinguishes nothing.
+  const tagMoving = hasFrozenVersions(list, modelFamilies);
+
+  // Display-only ordering: a frozen version is listed directly under the alias it
+  // froze. Total by construction — see orderByFamily; a dropped id would give
+  // `showStalePin === false` with no rendered option, the ENG-739 desync class.
+  const ordered = orderByFamily(list, modelFamilies);
+
+  // Version state rides on `tag`, the row's right-aligned pill (see ui/Combobox),
+  // never in `label`: ModelSelect renders the selected option's label verbatim in a
+  // fixed-width trigger and filters on that same string, so a marker in the label
+  // showed permanently in the closed control and made typing "latest" or "version"
+  // match rows by their marker instead of by their name.
+  //
+  // A row has one pill slot, so markers JOIN into it in the order below rather than
+  // one displacing another: an alias either moves or is frozen, and whatever else
+  // ends up in the slot (the wallet's "Needs credits" state) reads after the version
+  // state, so no marker can hide another.
+  //
+  // Both pickers read the same family rules from lib/modelCatalog, so they always
+  // agree on which alias moves. They render that differently on purpose: this one
+  // words both states in the pill, while the composer's menu shows a "latest" pill
+  // and marks a frozen version by indenting it under its head instead.
+  const tagFor = (m) => [
+    tagMoving && isMoving(m) ? 'Latest' : '',
+    isPinnedUnderHead(m) ? 'Older version' : '',
+    isLocked(m) ? 'Needs credits' : '',
+  ].filter(Boolean).join(' · ');
+
+  const modelOption = (m) => {
+    const tag = tagFor(m);
+    return {
+      value: m,
+      label: labelFor(m),
+      // A model the wallet can't currently pay for stays selectable: the wall
+      // moves to use time, where the top-up card offers a way out. A disabled
+      // row was a dead end, and the call site derives its own top-up hint from
+      // the same modelEnabled map.
+      disabled: false,
+      ...(tag ? { tag } : {}),
+      // MindsHub's authoritative serving-vendor field, which decides the picker
+      // section. Absent for every BYOK provider, where it falls back to inference.
+      ...(modelProviders[m] ? { provider: modelProviders[m] } : {}),
+    };
+  };
+
   return [
     ...(showStalePin
       // Labeled "legacy — re-select" (not "current") so it reads as an
       // action to take, not a selection: the same model may also appear
-      // below as a real "— Add credits to unlock" row, and a bare "(current)"
-      // would look like two identical, already-selected entries (ENG-739
-      // review).
+      // below as a real selectable row, and a bare "(current)" would look
+      // like two identical, already-selected entries (ENG-739 review).
       ? [{
           value: '__stale__',
           label: `${labelFor(curModel.replace(/^latest:/, ''))} (legacy — re-select a model)`,
@@ -349,13 +427,13 @@ export function buildModelOptions(curModel, modelList, allowOther, showStalePin,
           pin: 'top',
         }]
       : []),
-    // Wallet-based access (ENG-412, #434): a locked model is one the org's
-    // wallet can't currently pay for — prompt to add credits, not upgrade.
-    ...list.map((m) => ({
-      value: m,
-      label: `${labelFor(m)}${isLocked(m) ? ' — Add credits to unlock' : ''}`,
-      disabled: isLocked(m),
-    })),
+    // Wallet-based access (ENG-412, #434), pay-as-you-go shape (ENG-1248): a
+    // model the org's wallet can't currently pay for stays selectable, and the
+    // "Needs credits" state rides in the same pill as the version state rather
+    // than in the label. A disabled row was a dead end (click did nothing, no
+    // route to credits), and the label suffix ate the width (truncated
+    // "…Add credits to unl.").
+    ...ordered.map(modelOption),
     ...(allowOther ? [{ value: '__custom__', label: 'Other…', pin: 'bottom' }] : []),
   ];
 }

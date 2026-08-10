@@ -16,7 +16,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
-import { Button } from '../ui';
+import { Alert, Button } from '../ui';
 import { DataVaultForm } from './DataVaultForm';
 import {
   clearForm, getForm, patchForm, subscribe,
@@ -68,8 +68,33 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
   const [activeMethodId, setActiveMethodId] = useState(
     () => (conversationId ? getSelectedMethod(conversationId) : null)
   );
+  // Generic "name this connection" label — submitted as `user_label`
+  // alongside whatever per-connector fields the form collects.
+  const [userLabel, setUserLabel] = useState(spec?.user_label || '');
 
   useEffect(() => () => { if (oauthPollRef.current) clearInterval(oauthPollRef.current); }, []);
+
+  // `useState`'s initial value is only read on mount. This panel is reused
+  // across different connections without unmounting (e.g. the store swaps
+  // `spec` under it), so `spec.user_label` changing on its own wouldn't
+  // update `userLabel` — it would keep showing whatever the *first*
+  // connection's value was. Reset explicitly whenever the underlying
+  // connection identity changes (mirrors how `spec._existing_name` already
+  // identifies "which connection is this panel for").
+  useEffect(() => {
+    setUserLabel(spec?.user_label || '');
+  }, [spec?._existing_name]);
+
+  // After a successful save, prefer the authoritative label the server
+  // resolved (may differ from what was typed — e.g. de-duplicated with a
+  // " 2" suffix, or a computed default when none was typed) over the
+  // locally-typed value. Only overwrites when the store actually carries
+  // one; no-op until whatever patched the form in also threads it through.
+  useEffect(() => {
+    if (spec?._is_success && spec?.user_label) {
+      setUserLabel(spec.user_label);
+    }
+  }, [spec?._is_success, spec?.user_label]);
 
   useEffect(() => {
     setSpec(getForm(conversationId));
@@ -412,6 +437,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
           access_token: result.access_token || '',
           scope: result.scope || (oauthMeta.scopes || []).join(' '),
           token_type: result.token_type || 'Bearer',
+          user_label: userLabel,
         };
         // OAuth submits go through the connector-aware save endpoint —
         // not the legacy datasources path that validates against
@@ -436,6 +462,10 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
               name: connectionName,
               values: oauthValues,
             });
+            // Reconcile with the authoritative value — the server may
+            // have de-duplicated it (e.g. appended " 2") or computed a
+            // default when none was typed.
+            if (saved.user_label) setUserLabel(saved.user_label);
             // Flip the form into its success branch so the user gets
             // a clear "connected" affordance + the standard
             // Close / View connectors actions.
@@ -500,7 +530,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
           formSpec: wireMethodId
             ? { ...spec, auth_method: wireMethodId, selected_method: wireMethodId }
             : spec,
-          values: values || {},
+          values: { ...(values || {}), user_label: userLabel },
           skipped: skipped || [],
           name: connectionName,
           method: wireMethodId || null,
@@ -516,7 +546,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
           formId: spec.form_id,
           conversationId,
           formSpec: spec,
-          values: values || {},
+          values: { ...(values || {}), user_label: userLabel },
           skipped: skipped || [],
           name: connectionName,
           method: wireMethodId || null,
@@ -703,14 +733,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
         ) : spec.form_error && !spec._is_error ? (
           /* Probe returned failure — show error card + Try again. */
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '4px 0 2px' }}>
-            <div style={{
-              padding: '12px 14px', borderRadius: 8,
-              background: 'color-mix(in srgb, var(--danger) 8%, var(--surface))',
-              border: '1px solid color-mix(in srgb, var(--danger) 30%, transparent)',
-            }}>
-              <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--danger)', marginBottom: 5 }}>
-                Connection failed
-              </div>
+            <Alert variant="danger" title="Connection failed">
               <div style={{ fontSize: 12.5, color: 'var(--ink-2)', lineHeight: 1.55 }}>
                 {spec.form_error}
               </div>
@@ -719,7 +742,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
                   {spec.subtitle}
                 </div>
               )}
-            </div>
+            </Alert>
             <Button
               variant="primary"
               onClick={() => {
@@ -810,6 +833,8 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
               busy={busy}
               onAction={handleAction}
               conversationId={conversationId}
+              userLabel={!spec._is_success ? userLabel : undefined}
+              onUserLabelChange={setUserLabel}
               onMethodChange={async (methodId) => {
                 if (methodId !== 'browser_oauth_builtin') return;
                 // Methods with fields wait for Submit — handleAction takes over.
@@ -854,12 +879,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
               }}
             />
             {error && (
-              <div style={{
-                marginTop: 10, padding: '8px 10px', borderRadius: 7,
-                background: 'color-mix(in srgb, var(--danger) 12%, var(--surface))',
-                border: '1px solid color-mix(in srgb, var(--danger) 35%, transparent)',
-                color: 'var(--danger)', fontSize: 12,
-              }}>{error}</div>
+              <Alert variant="danger" className="mt-2.5">{error}</Alert>
             )}
           </>
         )}

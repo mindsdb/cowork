@@ -31,5 +31,6 @@ custom animation or Electron drag-region is essential; genuine icon actions else
 `<Button icon>`.
 
 Structural affordances are **not** buttons in this sense and stay as raw elements: menu items
-(use `Menu`), list/nav rows, tabs and toggles (use `ToggleGroup`), the composer send control,
+(use `Menu`), list/nav rows, panel-switching tab bars (use `Tabs`), segmented toggles (use
+`ToggleGroup`), the composer send control,
 and modal/panel close-`×` chrome.
