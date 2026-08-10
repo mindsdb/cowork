@@ -56,7 +56,6 @@ note in `Badge.tsx` for the full explanation.
 | Spinner, Crumb | n/a | ✅ | ✅ | retrofitted (ENG-1018); variant-free |
 | Button, Input | n/a | — | ✅ | `.tsx`, forwardRef; hand-join legacy `.btn`/`.field-*` classes by design |
 | Card | ✅ | ✅ | ✅ | retrofitted (ENG-1018) — cva variants incl. a `selected`+`tinted` compound; exact-string test kept green |
-| Message | ✅ | ✅ | ✅ | retrofitted (ENG-1018) — variants → cva |
 | Kbd, Eyebrow | n/a | ✅ | ✅ | retrofitted (ENG-1018); variant-free |
 | Toast | n/a | ✅ | ✅ | retrofitted (ENG-1018) — type variants via Base UI `data-[type]`; no cva needed |
 | Modal, EmptyState | ⬜ | partial | ⬜ | remaining (Modal = the ENG-1014 shell work; EmptyState's debt is ENG-1017 inline styles) |

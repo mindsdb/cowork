@@ -1,6 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import Composer from '../components/Composer';
+import HomeSuggestions from '../components/onboarding/HomeSuggestions';
+import { completeStep } from '../components/onboarding/onboardingStore';
+import { HABIT_TRACKER_PREFIX } from '../components/onboarding/steps';
 import { OrbitMorph, Button } from '../components/ui';
 import { host } from '../../platform/host';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
@@ -227,7 +230,7 @@ function ActiveList({ tasks, onSelect, onClear }) {
 export default function HomeView({
   greeting, showDots,
   activeTasks, onSelectTask, onClearActive,
-  onSend, project, onProjectChange, model, onModelChange, projects, models,
+  onSend, project, onProjectChange, model, onModelChange, projects, models, modelMeta,
   attachments, connectors, onAttachFiles, onRemoveAttachment,
   onAddGoogleDriveFiles,
   disabledConnections = [],
@@ -239,9 +242,25 @@ export default function HomeView({
   skipIntro = false,
   agentLabel,
   prefill = null,
+  // First-run suggestion chips (ENG-1137): total counts decide chip
+  // visibility (both zero = brand-new account); onPrefill drops a chip's
+  // prompt into the composer with its [placeholder] range selected.
+  tasksCount = 0,
+  artifactsCount = 0,
+  onPrefill,
 }) {
   const greetingText = greeting || GREETING_FALLBACK;
   const blocked = configReady === false;
+
+  // Sending the habit-tracker prompt completes onboarding step 1 no
+  // matter which surface filled the composer (suggestion chip, sidebar
+  // checklist, or the user typing it by hand).
+  const sendTracked = (text) => {
+    if (typeof text === 'string' && text.trim().startsWith(HABIT_TRACKER_PREFIX)) {
+      completeStep('see-it-work');
+    }
+    return onSend(text);
+  };
 
   const { phase, typedCount } = useBootPhase({
     serverOnline, configReady,
@@ -493,23 +512,23 @@ export default function HomeView({
               }}>{Ico.key(18)}</span>
               <div className="home-connect-card__body">
                 <div style={{ fontSize: 14, fontWeight: 650, color: 'var(--text-strong)' }}>Connect a provider to start chatting</div>
-                <div style={{ fontSize: 12.5, color: 'var(--frost-700)', marginTop: 3 }}>Subscribe with MindsHub for managed access, or bring your own provider key (Anthropic, OpenAI, or any OpenAI-compatible endpoint) in Settings.</div>
+                <div style={{ fontSize: 12.5, color: 'var(--frost-700)', marginTop: 3 }}>Start with MindsHub and get free monthly tokens on MindsHub Air, then pay as you go. Or add your own API key (Anthropic, OpenAI, or any OpenAI-compatible endpoint) in Settings.</div>
               </div>
               <div className="home-connect-card__actions">
                 <Button
                   variant="primary"
                   onClick={() => host.openExternal(MINDS_BILLING_URL)}
-                >Subscribe</Button>
+                >Start for free</Button>
                 <Button
                   variant="primary"
                   onClick={() => onOpenSettings?.('agent')}
                   style={{ background: 'transparent', color: 'var(--primary-700)', border: '1px solid var(--primary-700)' }}
-                >Settings</Button>
+                >Open Settings</Button>
               </div>
             </div>
           ) : (
             <Composer
-              onSend={onSend}
+              onSend={sendTracked}
               prefill={prefill}
               project={project}
               onProjectChange={onProjectChange}
@@ -517,6 +536,7 @@ export default function HomeView({
               onModelChange={onModelChange}
               projects={projects}
               models={models}
+              modelMeta={modelMeta}
               attachments={attachments}
               connectors={connectors}
               onNavigateToConnectors={onNavigateToConnectors}
@@ -528,6 +548,13 @@ export default function HomeView({
               onCreateProject={onCreateProject}
               hideModel
               onTypingChange={setIsTyping}
+            />
+          )}
+          {!blocked && onPrefill && (
+            <HomeSuggestions
+              tasksCount={tasksCount}
+              artifactsCount={artifactsCount}
+              onPick={onPrefill}
             />
           )}
           <ActiveList tasks={activeTasks} onSelect={onSelectTask} onClear={onClearActive} />

@@ -1055,10 +1055,12 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
   min-width: 0;
 }
 
-.customize-serif {
-  font-family: "Times New Roman", Georgia, serif;
-  font-weight: 500;
-  letter-spacing: -0.02em;
+.customize-heading {
+  /* Was a Times New Roman serif — the one heading off the Inter system.
+     Now on the display font so it reads as part of the app (ENG-1038). */
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.01em;
   color: var(--ink);
 }
 
@@ -2124,19 +2126,11 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
 .bar { height: 4px; background: var(--stone-150); border-radius: var(--r-pill); overflow: hidden; }
 .bar > span { display: block; height: 100%; background: var(--primary-500); border-radius: var(--r-pill); transition: width .4s ease; }
 
-/* ─── Page header ────────────────────────────────────────────────────────── */
-.page-header {
-  display: flex; align-items: flex-end; gap: 16px;
-  padding: 28px 32px 16px;
-  border-bottom: 1px solid var(--border-0);
-}
-.page-title {
-  /* On the .s-h1 rung of the Inter ladder (28/600/-0.007em) so page titles
-     match the rest of the app's headings. */
-  font-family: var(--font-display);
-  font-size: 28px; font-weight: 600; letter-spacing: -0.007em;
-  color: var(--text-strong); margin: 0;
-}
+/* ─── Page header ──────────────────────────────────────────────────────────
+   Page headers now render via components/collection/PageHeader (title + trail
+   shapes, with the shell's titlebar-safe inset baked in). The old
+   .page-header / .page-title classes were retired in the ENG-1038 header
+   consolidation. */
 
 /* ─── Coming soon tooltip ────────────────────────────────────────────────── */
 [data-coming-soon] {
@@ -2787,21 +2781,155 @@ body.custom-bg-active .app-sidebar::before {
 .app-sidebar { position: relative; }
 .app-sidebar > * { position: relative; z-index: 1; }
 
+/* Onboarding "Get to know Cowork" card.
+   Light: the layered inset-highlight shadow from the design spec, on a
+   white surface that reads as a raised card against the grey sidebar.
+   Dark: the #FFF inset blows out, so swap to an elevated surface with a
+   crisp ring + soft drop shadow and only a whisper of top highlight. */
+.onboarding-card {
+  background: var(--surface-0);
+  border-radius: var(--r-lg);
+  box-shadow:
+    0 -1px 0 -0.5px rgba(0, 0, 0, 0.08) inset,
+    0 2px 2px -1px rgba(0, 0, 0, 0.06),
+    0 0 0 0.5px rgba(39, 39, 42, 0.10) inset,
+    0 1px 1px 0.5px #FFF inset;
+}
+body[data-theme="dark"] .onboarding-card {
+  background: var(--surface-3);
+  box-shadow:
+    0 0 0 1px var(--line-2),
+    0 8px 22px rgba(0, 0, 0, 0.45),
+    0 1px 0 0 rgba(255, 255, 255, 0.05) inset;
+}
+
+/* Collapsible sidebar tracker header — hover affordance in CSS (not React
+   state) so it can't get stuck and costs no re-render. Base lives here too
+   so the button's inline styles don't out-specify the :hover rule. */
+.onboarding-collapse-toggle { background: transparent; transition: background 140ms ease; }
+.onboarding-collapse-toggle:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+
+/* Checklist step rows. Ink-tinted hover works on any card background
+   (darkens in light mode, lightens in dark). Done rows collapse their
+   description and reveal it again on hover via the 0fr→1fr grid idiom. */
+.onboarding-step-row { background: transparent; transition: background 140ms ease; }
+.onboarding-step-row:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.onboarding-step-desc {
+  display: grid;
+  min-height: 0;
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transition: grid-template-rows 200ms ease, opacity 200ms ease;
+}
+.onboarding-step-row[data-done] .onboarding-step-desc { grid-template-rows: 0fr; opacity: 0; }
+.onboarding-step-row[data-done]:hover .onboarding-step-desc { grid-template-rows: 1fr; opacity: 1; }
+
+/* Home starter chips — icon tile lifts on hover, label darkens. */
+.home-suggestion-chip__tile {
+  width: 34px; height: 34px; border-radius: 9px; flex-shrink: 0;
+  display: grid; place-items: center;
+  color: var(--frost-600);
+  background: var(--surface-0);
+  border: 1px solid var(--line-2);
+  box-shadow: var(--sh-1);
+  transform: translateY(0);
+  transition: box-shadow 160ms ease, transform 160ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+.home-suggestion-chip__label {
+  font-size: 14px; font-weight: 500;
+  color: var(--frost-700);
+  transition: color 140ms ease;
+}
+.home-suggestion-chip:hover .home-suggestion-chip__tile { box-shadow: var(--sh-2); transform: translateY(-1px); }
+.home-suggestion-chip:hover .home-suggestion-chip__label { color: var(--text-strong); }
+.home-suggestion-chip:active .home-suggestion-chip__tile { transform: translateY(0) scale(0.96); }
+
+/* First-artifact tip buttons — the tip sits on an inverted ink surface,
+   so the shared Button variants get an on-ink skin here. body-prefixed
+   to outrank the theme-keyed `.btn.default` / `.btn.primary` rules
+   above (same specificity, later in source). */
+body .first-artifact-tip .btn {
+  border: 0;
+  box-shadow: none;
+  font-weight: 600;
+}
+body .first-artifact-tip .btn.default {
+  background: color-mix(in srgb, var(--surface) 14%, transparent);
+  color: var(--surface);
+}
+body .first-artifact-tip .btn.default:hover {
+  background: color-mix(in srgb, var(--surface) 24%, transparent);
+  color: var(--surface);
+  box-shadow: none;
+  text-shadow: none;
+}
+body .first-artifact-tip .btn.default:active {
+  background: color-mix(in srgb, var(--surface) 30%, transparent);
+  box-shadow: none;
+}
+body .first-artifact-tip .btn.primary {
+  background: var(--surface);
+  color: var(--ink);
+}
+body .first-artifact-tip .btn.primary:hover {
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  color: var(--ink);
+  box-shadow: none;
+  text-shadow: none;
+}
+body .first-artifact-tip .btn.primary:active {
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  box-shadow: none;
+}
+/* Rest-state shadows: the shared block above is 0-2-1 and loses to the
+   theme-keyed variant rules (0-3-1), so kill the shadow at variant
+   specificity. Focus ring comes last so it wins the source-order tie. */
+body .first-artifact-tip .btn.default,
+body .first-artifact-tip .btn.primary { box-shadow: none; }
+body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surface); }
+
+/* First-artifact tip arrow — a rotated square poking out of the popup's
+   anchor-facing edge. Base UI positions it along the popup edge and stamps
+   data-side; we supply the perpendicular offset per side. */
+.first-artifact-tip-arrow {
+  width: 10px; height: 10px;
+  background: var(--ink);
+  transform: rotate(45deg);
+}
+.first-artifact-tip-arrow[data-side="right"]  { left: -5px; }
+.first-artifact-tip-arrow[data-side="left"]   { right: -5px; }
+.first-artifact-tip-arrow[data-side="top"]    { bottom: -5px; }
+.first-artifact-tip-arrow[data-side="bottom"] { top: -5px; }
+
 /* New task CTA wrapper — the button itself is the tinted variant,
    full width (<Button variant="tinted" block size="lg">). */
-.anton-sidebar__cta-wrap { padding: 6px 10px 14px; }
+.anton-sidebar__cta-wrap { padding: 8px 10px 10px; }
+/* The New task CTA aligns to the rail gutter, not the standard .btn.lg inset.
+   Nav rows sit at padding 0 10px (content 20px from the sidebar edge); the
+   default .btn.lg carries 0 16px, which pushed the +/label 6px past the nav
+   icons below it and its ⌘N past the nav badges. Tighten the horizontal
+   padding 16→10 so the CTA's content and shortcut line up exactly with the
+   denser nav rows (ENG-1038). A deliberately non-standard, rail-scoped button. */
+.anton-sidebar__cta-wrap .btn.lg {
+  padding-left: 10px;
+  padding-right: 10px;
+  /* Match the nav rows' 13px body (the standard .btn.lg is 14px) so the CTA
+     reads as part of the same rail, not a heavier element above it. The label
+     weight is set on the span in Sidebar.jsx. */
+  font-size: 13px;
+}
 
 /* Override existing .nav-item rules to follow the guideline shape */
 .app-sidebar .nav-item {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 10px;
-  /* Uniform, roomier rows (ENG-640): a fixed min-height keeps every row
-     the same height whether or not it carries a count badge (the badge
-     was stretching auto-height rows unevenly), and gives the rail a
-     considered rhythm. */
-  min-height: 34px;
+  gap: 9px;
+  /* Uniform, dense rows: a fixed min-height keeps every row the same height
+     whether or not it carries a count badge (the badge was stretching
+     auto-height rows unevenly). Tightened 34→30 (ENG-1038) for a denser,
+     more structured rail. */
+  min-height: 30px;
   padding: 0 10px;
   border-radius: var(--r-lg);
   color: var(--ink-2);
@@ -2834,11 +2962,13 @@ body.custom-bg-active .app-sidebar::before {
 .app-sidebar .section-label {
   font-family: var(--font-sans);
   font-size: var(--text-2xs);
-  letter-spacing: 0.16em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--ink-4);
   font-weight: 600;
-  padding: 18px 14px 6px;
+  /* Tighter top gap so each group reads as attached to its heading, and a
+     10px left edge lined up with the nav-list gutter for structure. */
+  padding: 12px 10px 6px;
   margin: 0;
 }
 
@@ -2888,8 +3018,8 @@ body[data-theme="dark"] .app-sidebar .sidebar-empty {
   justify-content: space-between;
   gap: 8px;
   /* Match .nav-item exactly so nav rows and task/pinned rows read as one
-     consistent list (they were 32 vs 34 — a 2px mismatch that looked off). */
-  min-height: 34px;
+     consistent list, matched to the nav rows (ENG-1038: both tightened to 30). */
+  min-height: 30px;
   padding: 0 10px;
   border-radius: var(--r-8);
   font-family: var(--font-sans);
@@ -3137,41 +3267,11 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
 }
 .orbit-morph[data-state="idle"] svg { opacity: 0.7; }
 
-@media (max-width: 700px) {
-  .app-sidebar {
-    width: 104px !important;
-  }
-  .app-sidebar .section-label,
-  .app-sidebar .recent-item span:last-child,
-  .app-sidebar .nav-item span:nth-child(2),
-  .app-sidebar .nav-item span:nth-child(3),
-  .app-sidebar .nav-item span:nth-child(4) {
-    display: none !important;
-  }
-  .app-sidebar .nav-item,
-  .app-sidebar .recent-item {
-    justify-content: center;
-    padding: 0;
-  }
-}
-
-/* Sidebar in overlay/drawer mode — always shows full content regardless of
-   viewport width, overriding the compact @media rules above. */
-.sidebar-overlay-wrap .app-sidebar {
-  width: clamp(240px, 80vw, 320px) !important;
-}
-.sidebar-overlay-wrap .app-sidebar .section-label,
-.sidebar-overlay-wrap .app-sidebar .recent-item span:last-child,
-.sidebar-overlay-wrap .app-sidebar .nav-item span:nth-child(2),
-.sidebar-overlay-wrap .app-sidebar .nav-item span:nth-child(3),
-.sidebar-overlay-wrap .app-sidebar .nav-item span:nth-child(4) {
-  display: revert !important;
-}
-.sidebar-overlay-wrap .app-sidebar .nav-item,
-.sidebar-overlay-wrap .app-sidebar .recent-item {
-  justify-content: revert !important;
-  padding: revert !important;
-}
+/* Sidebar is a docked flex item across the whole desktop + tablet range
+   (≥640px); below 640 MobileShell replaces it. The old max-width:700 icon-rail
+   and the .sidebar-overlay-wrap tablet-drawer overrides were removed in the
+   ENG-1038 shell simplification (the tablet band no longer uses an overlay).
+   See lib/breakpoints.js for the shared 640 / 900 / 1280 scale. */
 
 /* ─── Toggle ─────────────────────────────────────────────────────────────── */
 .toggle {
@@ -3188,23 +3288,22 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
 }
 .toggle.on .toggle-thumb { left: 18px; }
 
-/* ─── Settings "Set" badge pulse ─────────────────────────────────────────
-   Drives the soft glow on credential rows that are stored AND on the
-   active provider's hot path. Pulses the box-shadow halo only — the
-   pill itself stays still, so the effect reads as breathing rather
-   than flicker. */
+/* ─── Settings badge pulse ────────────────────────────────────────────────
+   Drives the soft glow on active settings badges. The halo follows the
+   badge's semantic text color, so success stays green and pending stays
+   amber. The pill itself stays still, so the effect reads as breathing. */
 @keyframes set-badge-pulse {
   0%, 100% {
     box-shadow:
-      0 0 0 1px rgba(124,196,182,0.20),
-      0 0 10px rgba(124,196,182,0.32),
-      0 0 22px rgba(93,146,135,0.18);
+      0 0 0 1px color-mix(in srgb, currentColor 20%, transparent),
+      0 0 10px color-mix(in srgb, currentColor 32%, transparent),
+      0 0 22px color-mix(in srgb, currentColor 18%, transparent);
   }
   50% {
     box-shadow:
-      0 0 0 1px rgba(124,196,182,0.30),
-      0 0 18px rgba(124,196,182,0.55),
-      0 0 34px rgba(93,146,135,0.32);
+      0 0 0 1px color-mix(in srgb, currentColor 30%, transparent),
+      0 0 18px color-mix(in srgb, currentColor 55%, transparent),
+      0 0 34px color-mix(in srgb, currentColor 32%, transparent);
   }
 }
 
@@ -3223,9 +3322,9 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
   @keyframes set-badge-pulse {
     0%, 100% {
       box-shadow:
-        0 0 0 1px rgba(124,196,182,0.25),
-        0 0 14px rgba(124,196,182,0.45),
-        0 0 28px rgba(93,146,135,0.25);
+        0 0 0 1px color-mix(in srgb, currentColor 25%, transparent),
+        0 0 14px color-mix(in srgb, currentColor 45%, transparent),
+        0 0 28px color-mix(in srgb, currentColor 25%, transparent);
     }
   }
 }
@@ -3239,6 +3338,14 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
   12%  { opacity: 1; transform: translate(-50%, 0)   scale(1);    }
   78%  { opacity: 1; transform: translate(-50%, 0)   scale(1);    }
   100% { opacity: 0; transform: translate(-50%, -2px) scale(0.98);}
+}
+
+/* Failure variant: pops in like `copied-pop` but holds instead of fading out —
+   an error needs to stay legible until the user dismisses it (next attempt or
+   blur), not vanish on the same 1.5s clock as a success confirmation. */
+@keyframes failed-pop {
+  0%   { opacity: 0; transform: translate(-50%, 4px) scale(0.92); }
+  100% { opacity: 1; transform: translate(-50%, 0)   scale(1);    }
 }
 
 /* ─── Coming soon banner ─────────────────────────────────────────────────── */
@@ -4660,9 +4767,6 @@ body[data-theme="dark"] .mshell__drawer-title {
      one row, and the Health card puts three metric tiles inline
      with the description. Both go to two-row stacked layouts on a
      phone. Outer gutters tighten too. */
-  .sched-crumb {
-    padding: 12px 14px 6px !important;
-  }
   .sched-body {
     padding: 4px 14px calc(96px + env(safe-area-inset-bottom, 0)) !important;
   }

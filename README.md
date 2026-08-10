@@ -349,7 +349,7 @@ The React UI updates via a separate public repo: [`mindsdb/antontron-releases`](
 
 How it works:
 
-1. Code is merged to `main` — **every** push to `main` runs the auto-release workflow (`release.yml`), which computes a CalVer version (e.g. `2.26.7.16.1`) via the shared `calver-release.yml` reusable in [mindsdb/github-actions](https://github.com/mindsdb/github-actions), tags it, builds the prod installer, and calls `publish-ui` with that exact version, so the UI bundle and the prod app installer always publish the **same** version
+1. Code is merged to `main` — **every** push to `main` runs the prod pipeline (`prod-build-deploy.yml`), whose `auto-release` job computes a CalVer version (e.g. `2.26.7.16.1`) via the shared `calver-release.yml` reusable in [mindsdb/github-actions](https://github.com/mindsdb/github-actions), tags it, builds the prod installer, and calls `publish-ui` with that exact version, so the UI bundle and the prod app installer always publish the **same** version
 2. The `publish-ui` workflow builds the renderer (with the version baked into `__APP_VERSION__`) and creates a `.tar.gz` bundle with a SHA-256 checksum
 3. Using a `RELEASES_TOKEN`, it pushes the bundle as a GitHub Release and updates `latest.json` on GitHub Pages — both on the public `antontron-releases` repo
 4. The app checks `latest.json` at launch and every 4 hours (static file, no auth, no API rate limits)
@@ -432,7 +432,7 @@ The single source of truth for the app version is [`package.json`](package.json)
 
 1. Open a PR that bumps `"version"` in `package.json` (e.g. `2.0.5` → `2.0.6`).
 2. Merge to `main`.
-3. [`.github/workflows/release.yml`](.github/workflows/release.yml) automatically creates the git tag and GitHub release. The `v*` tag triggers [`prod-build-installer.yml`](.github/workflows/prod-build-installer.yml), which builds, signs, and uploads installers to S3.
+3. [`.github/workflows/prod-build-deploy.yml`](.github/workflows/prod-build-deploy.yml) automatically creates the git tag and GitHub release, then cuts the installers from it in the same run via [`build-installers.yml`](.github/workflows/build-installers.yml), which builds, signs, and uploads them to S3.
 
 **Don't:**
 - Create GitHub releases manually — the `v*` tag namespace is locked via a repo ruleset.
@@ -565,7 +565,7 @@ Installers are built on GitHub-hosted runners (required for Apple notarization a
 | Flavor | Trigger | S3 destination |
 | --- | --- | --- |
 | **preview** | PR with `signed-macos-pkg` or `signed-windows-ev` label | `s3://anton-installer/anton/{mac,windows}/previews/` |
-| **stable** | Push to `main` | `s3://anton-installer/anton/{mac,windows}/snapshots/` |
+| **stable** | Push to `staging` | `s3://anton-installer/anton/{mac,windows}/snapshots/` |
 | **prod** | Push tag `v*` | `s3://anton-installer/anton/{mac,windows}/anton-{version}.{pkg,exe}` + `anton-latest.{pkg,exe}` |
 
 Prod is gated: the upload job asserts `package.json` version matches the release tag.
@@ -640,10 +640,12 @@ The [`upload-installer-to-s3.yml`](.github/workflows/upload-installer-to-s3.yml)
 
 | Workflow | Trigger | Purpose |
 | --- | --- | --- |
-| [`release.yml`](.github/workflows/release.yml) | Version bump merged to `main` | Creates git tag + GitHub release |
-| [`dev-build-installer.yml`](.github/workflows/dev-build-installer.yml) | PR with label | Preview builds |
-| [`staging-build-installer.yml`](.github/workflows/staging-build-installer.yml) | Push to `main` | Stable builds |
-| [`prod-build-installer.yml`](.github/workflows/prod-build-installer.yml) | Push tag `v*` | Prod builds |
+| [`dev-build-deploy.yml`](.github/workflows/dev-build-deploy.yml) | Pull request | Tests, PR env, and label-gated preview installers |
+| [`staging-build-deploy.yml`](.github/workflows/staging-build-deploy.yml) | Push to `staging` | Tests, staging image + rollout, stable installers |
+| [`prod-build-deploy.yml`](.github/workflows/prod-build-deploy.yml) | Push to `main` | Tests, prod image, CalVer tag + release, prod installers, OTA UI bundle |
+| [`build-deploy.yml`](.github/workflows/build-deploy.yml) | Called | Build + push the web SPA image, then roll it out |
+| [`build-installers.yml`](.github/workflows/build-installers.yml) | Called | Both platforms' installers: build, sign, upload |
+| [`pipeline-watchdog.yml`](.github/workflows/pipeline-watchdog.yml) | Scheduled | Alerts on runs that never started (`startup_failure`) |
 | [`build-macos-pkg.yml`](.github/workflows/build-macos-pkg.yml) | Called | Build + sign + notarize `.pkg` |
 | [`build-windows-installer.yml`](.github/workflows/build-windows-installer.yml) | Called | Build + sign `.exe` |
 | [`upload-installer-to-s3.yml`](.github/workflows/upload-installer-to-s3.yml) | Called | Upload to S3 |

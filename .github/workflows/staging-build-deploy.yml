@@ -1,12 +1,8 @@
-# Builds and pushes the staging-tagged cowork web SPA image on push to staging.
-# The static-env deploy step is left commented (as in cowork-server): static
-# dev/staging/prod rollout is handled outside this workflow.
-#
-# Unit tests run via cowork's own tests-unit.yml (on: push staging), so they are
-# not re-invoked here. The SPA is env-agnostic (URLs derived from page origin at
-# runtime), so one image serves every environment with no VITE build args.
-
 name: Staging - Build and Deploy on push to staging
+
+# THE staging pipeline. Unit tests, the web SPA image, and both signed installers
+# in one run tree — it used to be three separate runs on the same push, so a merge
+# had three places to check and the installers reported to nobody.
 
 on:
   push:
@@ -27,73 +23,57 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  run-unit-tests:
+    uses: ./.github/workflows/tests-unit.yml
+    secrets: inherit
 
-  build:
-    runs-on: mdb-dev
-    outputs:
-      image: ${{ steps.build.outputs.image }}
-    env:
-      AWS_REGION: us-east-1
-    steps:
-      - uses: actions/checkout@v4
-      - uses: mindsdb/github-actions/setup-env@main
-      - id: build
-        uses: mindsdb/github-actions/build-push-ecr@main
-        with:
-          module-name: ${{ env.CI_REPOSITORY_SLUG }}
-          extra-build-args: '-f Dockerfile.frontend'
-          build-for-environment: staging
+  build-deploy:
+    needs: [run-unit-tests]
+    permissions:
+      contents: read
+    uses: ./.github/workflows/build-deploy.yml
+    with:
+      build-environment: staging
+    secrets: inherit
 
-  scan:
-    runs-on: mdb-dev
-    needs: [ build ]
-    name: Scan Minds Image
-    steps:
-      - uses: actions/checkout@v4
-      - uses: mindsdb/github-actions/snyk-docker-scan@main
-        with:
-          image: ${{ needs.build.outputs.image }}
-          snyk-token: ${{ secrets.SNYK_TOKEN }}
+  build-installers:
+    needs: [run-unit-tests]
+    uses: ./.github/workflows/build-installers.yml
+    with:
+      # stable -> the PyPI rc stream, following cowork-server's publish-staging
+      # track. That track has to be live and to have published an rc; otherwise the
+      # floor resolves to the latest MAIN release.
+      build_kind: stable
+      minds_api_url: https://api.staging.mindshub.ai
+      # Still matters for machines already carrying a GIT install of cowork-server:
+      # the source-aware updater keeps them on git@staging. Fresh installs use the
+      # rc stream above.
+      server_ref: staging
+    secrets: inherit
 
-  # deploy:
-  #   runs-on: mdb-dev
-  #   needs: [build, scan]
-  #   environment:
-  #     name: staging
-  #     url: ${{ vars.MDB_ENV_URL }}
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - uses: mindsdb/github-actions/setup-env@main
-  #     - name: Notify of deployment starting
-  #       id: slack
-  #       uses: mindsdb/github-actions/slack-deploy-msg@main
-  #       with:
-  #         channel-id: ${{ secrets.SLACK_DEPLOYMENTS_CHANNEL_ID }}
-  #         status: "started"
-  #         color: "#0099CC"
-  #         env-name: "staging"
-  #         env-url: ${{ vars.MDB_ENV_URL }}
-  #         slack-token: ${{ secrets.GH_ACTIONS_SLACK_BOT_TOKEN }}
-  #     - uses: DevOps-Nirvana/aws-helm-multi-deploy-nodocker@v6
-  #       with:
-  #         environment-slug: staging
-  #         k8s-namespace: staging
-  #         image-tag: staging-${{ env.SLUG }}
-  #         timeout: 600s
-  #         wait: "true"  # Wait till the deployment is finished
-  #     - name: Wait for Deployment to be ready
-  #       run: |
-  #         export NAMESPACE=staging
-  #         kubectl -n $NAMESPACE wait --for=condition=ready --timeout=10m pod -l app=cowork-frontend
-  #     - name: Notify of deployment finish
-  #       uses: mindsdb/github-actions/slack-deploy-msg@main
-  #       # Run this even if the deployment fails
-  #       if: always()
-  #       with:
-  #         channel-id: ${{ secrets.SLACK_DEPLOYMENTS_CHANNEL_ID }}
-  #         status: "${{ job.status == 'success' && 'finished' || 'failed' }}"
-  #         color: "${{ job.status == 'success' && '#00C851' || '#FF4444' }}"
-  #         env-name: "staging"
-  #         env-url: ${{ vars.MDB_ENV_URL }}
-  #         slack-token: ${{ secrets.GH_ACTIONS_SLACK_BOT_TOKEN }}
-  #         update-message-id: ${{ steps.slack.outputs.ts }}
+  notify:
+    # Alert the eng channel if ANY job in the staging pipeline fails. A called
+    # workflow reports failure when any job inside it failed, so three entries
+    # cover the whole graph.
+    # One job covers both outcomes: a `uses:` job cannot branch on status, so
+    # the aggregate result picks the failed or recovered message, and a
+    # cancelled run stays silent.
+    #
+    # It cannot cover a run that never started (`startup_failure`, zero jobs) —
+    # there is no job to put it in. pipeline-watchdog.yml covers that from outside.
+    needs: [run-unit-tests, build-deploy, build-installers]
+    if: ${{ !cancelled() && !contains(needs.*.result, 'cancelled') }}
+    permissions:
+      contents: read
+      actions: read # the prior-run lookup behind the recovery message
+    uses: mindsdb/github-actions/.github/workflows/notify-main-failure.yml@main
+    with:
+      env-name: "staging build + installers"
+      status: ${{ contains(needs.*.result, 'failure') && 'failed' || 'recovered' }}
+      # A staging failure is release-blocking once the freeze window is open, and
+      # an ordinary integration-branch red before it. `freeze-scoped` keeps the
+      # red alert for the former and drops the latter to a muted notice, so the
+      # alert still means "look now" when it is styled to say so.
+      freeze-scoped: true
+      runs-on: ubuntu-latest
+    secrets: inherit

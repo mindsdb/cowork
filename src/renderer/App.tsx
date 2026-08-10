@@ -8,6 +8,8 @@ import { host } from './platform/host';
 import { loadSkin, persistSkin } from './lib/skins';
 import { syncSettingsToDb, syncModelsToDbWithRetry } from './lib/syncSettings';
 import { resolveBootTarget } from './lib/bootTarget';
+import { trackBootScreenResolved } from './cowork/lib/analytics';
+import { hasBootedBefore, rememberBooted, welcomeFloorMs } from './lib/bootWelcome';
 import { runPostAuthHandshake } from './lib/postAuth';
 import type { SpriteName } from './pages/arcade/sprites';
 import './styles.css';
@@ -133,6 +135,12 @@ export default function App() {
   useEffect(() => {
     async function init() {
       const started = Date.now();
+      // Whether this browser has booted before is read up front: the web SPA
+      // re-mounts on every refresh, and a returning session shouldn't replay the
+      // artificial welcome floor (ENG-1232). welcomeFloorMs gates purely on
+      // isWeb, so Electron always keeps the floor regardless of this flag (it
+      // rarely re-mounts anyway — only on things like a sign-out reload).
+      const bootedBefore = hasBootedBefore();
       // Boot-routing decision lives in a pure, tested unit (resolveBootTarget).
       // readSettings() is best-effort there, so a hosted-web /settings/raw 403
       // (ENG-817) can't abort the gate and strand a configured instance on the
@@ -141,11 +149,31 @@ export default function App() {
       // localStorage error), so calling it outside resolveBootTarget's guard is
       // safe — it can't throw and escape init() (ENG-848 review note).
       const target: Page = await resolveBootTarget(host, hasLocalTermsConsent());
-      // Keep the welcome orb up briefly so it doesn't flash on fast boots.
-      const elapsed = Date.now() - started;
-      if (elapsed < WELCOME_MIN_MS) {
-        await new Promise((r) => setTimeout(r, WELCOME_MIN_MS - elapsed));
+      // ENG-921: record the resolved first screen + ground-truth server-install
+      // state before sign-in, so first-run breakage between download and a
+      // healthy server is measurable (app_installed only fires once the server
+      // is healthy). Desktop-only and fire-and-forget — it never blocks boot.
+      void trackBootScreenResolved(target);
+      // Keep the welcome orb up briefly so it doesn't flash on a genuine cold
+      // start — but skip that floor on a web refresh, where it was pure latency
+      // on every reload (ENG-1232).
+      const floor = welcomeFloorMs({
+        isWeb: host.isWeb,
+        bootedBefore,
+        elapsedMs: Date.now() - started,
+        minMs: WELCOME_MIN_MS,
+      });
+      if (floor > 0) {
+        await new Promise((r) => setTimeout(r, floor));
       }
+      // Mark this browser "booted" on every boot, including boots that land on
+      // 'auth': the login screen is a place web users sit and refresh, and
+      // gating the flag on the target would replay the floor on every such
+      // refresh — exactly the latency ENG-1232 removes. The only cost is
+      // cosmetic: if the very first boot ever errored to 'auth' (server
+      // unreachable), the next boot skips the floor, which is fine — a second
+      // mount is not a genuine cold start.
+      rememberBooted();
       setPage(target);
     }
     init();

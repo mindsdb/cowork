@@ -6,6 +6,8 @@ import RecentsModal from './RecentsModal';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { host } from '../../platform/host';
 import { relativeAge } from '../lib/formatTime';
+import OnboardingChecklist from './onboarding/OnboardingChecklist';
+import FirstArtifactTip from './onboarding/FirstArtifactTip';
 
 // Platform-aware modifier symbol for keyboard hints. Mac uses ⌘ glyph,
 // Windows/Linux use Ctrl+ literal.
@@ -13,9 +15,10 @@ const IS_MAC = host.isMac() || /Mac|iPhone|iPod|iPad/.test(typeof navigator !== 
 const MOD_LABEL = IS_MAC ? '⌘' : 'Ctrl+';
 const shortcut = (key) => `${MOD_LABEL}${key}`;
 
-function NavItem({ icon, label, active, onClick, badge, comingSoon }) {
+function NavItem({ icon, label, active, onClick, badge, comingSoon, elementRef }) {
   return (
     <button
+      ref={elementRef}
       className={`nav-item${active ? ' active' : ''}`}
       onClick={comingSoon ? undefined : onClick}
       aria-label={label}
@@ -280,6 +283,15 @@ export default function Sidebar({
   // wordmark; null/empty falls back to the default (text-only, no logo).
   navTitle = null,
   navLogo = null,
+  // Onboarding — "Get to know Cowork" checklist. Each step seeds a new
+  // chat via this handler (App's send-from-home). Omit to hide the card
+  // (tests, web shells that don't wire it).
+  onStartChat = null,
+  // First-artifact tip — App arms it (0 → 1 artifacts transition) and
+  // owns the persistent dismissal; the sidebar anchors it to the Live
+  // Artifacts nav row and adds the "clicking the row dismisses" path.
+  artifactTipOpen = false,
+  onArtifactTipDismiss,
 }) {
   // Decorate every task with its pinned state. Tasks come from the
   // conversations endpoint which doesn't know about pins (they live
@@ -397,6 +409,10 @@ export default function Sidebar({
   const hasMoreRecents = false;
 
   const [recentsModalOpen, setRecentsModalOpen] = useState(false);
+
+  // Anchor for the first-artifact tip — the Live Artifacts nav row (the
+  // count badge sits at its right edge, where the tip's arrow points).
+  const artifactsNavRef = useRef(null);
 
 
   const pinnedTasks = (pins || [])
@@ -579,7 +595,7 @@ export default function Sidebar({
             style={{ gap: 10 }}
           >
             {Ico.plus(14)}
-            <span style={{ flex: 1, textAlign: 'left', fontWeight: 600 }}>New task</span>
+            <span style={{ flex: 1, textAlign: 'left', fontWeight: 500 }}>New task</span>
             <Kbd>{shortcut('N')}</Kbd>
           </Button>
         </div>
@@ -588,7 +604,19 @@ export default function Sidebar({
         <div className="nav-list" style={{ padding: '0 10px', display: 'flex', flexDirection: 'column', gap: 1 }}>
           <NavItem icon={Ico.folder(15)}  label="Projects"        onClick={() => onNavigate('projects')}  active={activeRoute === 'projects'}  badge={showCounters ? (projectsCount  || null) : null} />
           <NavItem icon={Ico.clock(15)}   label="Scheduled Tasks" onClick={() => onNavigate('scheduled')} active={activeRoute === 'scheduled'} badge={showCounters ? (scheduledCount || null) : null} />
-          <NavItem icon={Ico.sparkle(15)} label="Live Artifacts"  onClick={() => onNavigate('artifacts')} active={activeRoute === 'artifacts'} badge={showCounters ? (artifactsCount || null) : null} />
+          <NavItem
+            icon={Ico.sparkle(15)}
+            label="Live Artifacts"
+            elementRef={artifactsNavRef}
+            onClick={() => {
+              // Opening the artifacts view IS the tip's goal — count it
+              // as a dismissal, same as "Got it" / "Show me".
+              if (artifactTipOpen) onArtifactTipDismiss?.();
+              onNavigate('artifacts');
+            }}
+            active={activeRoute === 'artifacts'}
+            badge={showCounters ? (artifactsCount || null) : null}
+          />
           {/* Connect Apps and Data — replaces "Customize". Reuses the
               `customize` route key so existing in-flight links still
               work. The page now lists connected apps + datasources in
@@ -759,6 +787,10 @@ export default function Sidebar({
             </button>
           )}
         </div>
+
+        {/* Onboarding tracker — docked above the footer on every screen.
+            Hides itself once dismissed (post-completion). */}
+        {onStartChat && <OnboardingChecklist onStartChat={onStartChat} />}
 
         {/* A shell reinstall supersedes the OTA banner until dismissed. */}
         {updateAvailable && !shellUpdate && (
@@ -1005,6 +1037,19 @@ export default function Sidebar({
 
         {/* Version is shown on the Settings page — no need to repeat here. */}
       </div>
+
+      <FirstArtifactTip
+        // Hold the tip while the sidebar is collapsed — the anchor is
+        // invisible (opacity 0) and the popover would point at nothing.
+        // The arm state survives, so it shows on the next expand.
+        open={artifactTipOpen && !collapsed}
+        anchorRef={artifactsNavRef}
+        onGotIt={() => onArtifactTipDismiss?.()}
+        onShowMe={() => {
+          onArtifactTipDismiss?.();
+          onNavigate('artifacts');
+        }}
+      />
 
       <RecentsModal
         open={recentsModalOpen}

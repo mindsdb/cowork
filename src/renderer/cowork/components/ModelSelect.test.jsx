@@ -7,7 +7,7 @@ const OPTIONS = [
   { value: 'mindshub_air', label: 'MindsHub Air' },
   { value: 'gpt-codex', label: 'GPT 5.3 Codex' },
   { value: 'sonnet', label: 'Claude Sonnet 5' },
-  { value: 'opus', label: 'Claude Opus 5 — Add credits to unlock', disabled: true },
+  { value: 'opus', label: 'Claude Opus 5', tag: 'Needs credits' },
   { value: '__custom__', label: 'Other…', pin: 'bottom' },
 ];
 
@@ -58,15 +58,29 @@ describe('ModelSelect', () => {
     expect(onValueChange).toHaveBeenCalledWith('gpt-codex');
   });
 
-  it('does not fire onValueChange for a locked (disabled) model', async () => {
+  // ENG-1248: needs-credits models are selectable — the wall moved from the
+  // picker row (a silent no-op) to use time, where a top-up route exists.
+  it('fires onValueChange for a needs-credits model and shows its tag', async () => {
     const user = userEvent.setup();
     const onValueChange = vi.fn();
     render(<Harness onValueChange={onValueChange} />);
 
     await user.click(screen.getByRole('combobox'));
-    await user.click(screen.getByRole('option', { name: /Add credits to unlock/ }));
+    const row = screen.getByRole('option', { name: /Claude Opus 5/ });
+    expect(row).toHaveTextContent('Needs credits');
+    await user.click(row);
 
-    expect(onValueChange).not.toHaveBeenCalled();
+    expect(onValueChange).toHaveBeenCalledWith('opus');
+  });
+
+  it('still matches a tagged model when searching its bare name', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+
+    await user.click(screen.getByRole('combobox'));
+    await user.keyboard('opus');
+
+    expect(screen.getByRole('option', { name: /Claude Opus 5/ })).toBeInTheDocument();
   });
 
   it('filters across every group and hides groups with no matches', async () => {
@@ -122,6 +136,31 @@ describe('ModelSelect', () => {
 
     expect(screen.getByRole('option', { name: 'Other…' })).toBeInTheDocument();
     expect(screen.queryByText('Other')).not.toBeInTheDocument();
+  });
+
+  it('renders a row tag as its own pill, which the search does not match', async () => {
+    const user = userEvent.setup();
+    render(<Harness initial="sonnet" options={[
+      { value: 'sonnet', label: 'Claude Sonnet 5', tag: 'Latest' },
+      { value: 'sonnet-4-5', label: 'Claude Sonnet 4.5', tag: 'Older version' },
+    ]} />);
+
+    await user.click(screen.getByRole('combobox'));
+    expect(screen.getByText('Latest')).toBeInTheDocument();
+    expect(screen.getByText('Older version')).toBeInTheDocument();
+
+    // The pill is not part of what the filter reads, so a marker can't stand in for
+    // a model name: typing one matches nothing rather than every tagged row.
+    await user.keyboard('Latest');
+    expect(screen.queryAllByRole('option')).toHaveLength(0);
+  });
+
+  it('keeps a row tag off the closed trigger', () => {
+    // The trigger is fixed-width and renders the selected label verbatim, which is
+    // why the marker is a row pill and never a label suffix.
+    render(<Harness initial="sonnet" options={[{ value: 'sonnet', label: 'Claude Sonnet 5', tag: 'Latest' }]} />);
+    expect(screen.getByRole('combobox')).toHaveTextContent('Claude Sonnet 5');
+    expect(screen.getByRole('combobox')).not.toHaveTextContent('Latest');
   });
 
   it('still shows a label on the trigger when the value is missing from options', () => {

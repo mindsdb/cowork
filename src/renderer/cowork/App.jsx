@@ -3,11 +3,13 @@ import { flushSync } from 'react-dom';
 import Ico from './components/Icons';
 import MoveToProjectModal from './components/MoveToProjectModal';
 import { pickConnectWelcome } from './lib/connectWelcomes';
+import { isAntonConfigError, normalizeAntonError } from './lib/antonErrors';
+import { mergeTasksFromServer } from './lib/mergeTasks';
 // OnboardingShell removed — the desktop shell's renderer handles terms/install/
 // provider setup. The cowork app is mounted by CoworkApp.tsx only after
 // those gates pass, so AppCore renders unconditionally here.
 import Sidebar from './components/Sidebar';
-import MobileShell from './components/MobileShell';
+import AppShell from './components/AppShell';
 import { ConfirmModal } from './components/ConfirmModal';
 import { Modal, ModalHeader, ModalBody } from './components/ui/Modal';
 import { ToastProvider, useToastManager } from './components/ui/Toast';
@@ -20,7 +22,7 @@ import ScheduleDetailView from './views/ScheduleDetailView';
 import ArtifactsView from './views/ArtifactsView';
 import ChannelsView from './views/ChannelsView';
 import CustomizeView from './views/CustomizeView';
-import SettingsView from './views/SettingsView';
+import SettingsView from './views/settings/SettingsView';
 import UtilitiesView from './views/UtilitiesView';
 import SkillsView from './views/SkillsView';
 import SearchModal from './components/SearchModal';
@@ -47,10 +49,13 @@ import { fetchSessions, fetchSession, fetchConversationList, fetchProjects, fetc
          renameConversation, deleteConversation, deleteConversationTurn, moveConversation, moveTaskToProject,
          deleteProject, cancelScratchpad, cancelResponse, fetchConnector,
          fetchSavedConnection, deleteDatasource, deletePickedFile,
-         fetchInFlightStatus, tailInFlight, fetchInFlightList, submitAnswer } from './api';
+         fetchInFlightStatus, tailInFlight, fetchInFlightList, submitAnswer,
+         fetchRecommendedModels } from './api';
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
-import { modelLabel, recommendedModelOptions, providerValueToType } from './lib/settingsTransform';
-import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery } from './lib/analytics';
+import { isArtifactTipDismissed, dismissArtifactTip, dismissIfUntouched } from './components/onboarding/onboardingStore';
+import { modelLabel, recommendedModelOptions, providerValueToType,
+         mergeRecommendedModels } from './lib/settingsTransform';
+import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery, trackFirstResponse, classifyFirstResponse } from './lib/analytics';
 
 // One-of-ten encouraging follow-ups picked when a connect task is
 // created. Reads as a friendly nudge after the connect-intro card —
@@ -132,22 +137,16 @@ function isReferenceOnlyAttachment(a) {
   return !!(a && a.source === 'gdrive');
 }
 
-function isAntonConfigError(message, event) {
-  const text = String(message || '');
-  return (
-    event?.code === 'config_required' ||
-    /Configure ANTON_/i.test(text) ||
-    /Could not resolve authentication method/i.test(text) ||
-    /Expected one of api_key, auth_token, or credentials/i.test(text)
-  );
-}
-
-function normalizeAntonError(message, event) {
-  if (isAntonConfigError(message, event)) {
-    return 'No LLM provider is configured for this account. Subscribe with MindsHub or add your own provider in Settings.';
+// Activation gate (ENG-736): fire from the chat send/reply terminal handlers,
+// not the shared reducer (it also drives non-chat probes and replay).
+// trackFirstResponse dedupes once per user; wrapped so analytics can't break the turn.
+function fireFirstResponse(result) {
+  if (!result) return; // no terminal outcome observed — record nothing
+  try {
+    trackFirstResponse(result.outcome, result.reason);
+  } catch {
+    /* analytics must never break the turn */
   }
-  const text = String(message || '');
-  return text || 'Could not complete this task.';
 }
 
 /**
@@ -790,71 +789,6 @@ function mergeConvTurns(cid, messages) {
 // project / status / order), but for each task that exists locally
 // AND is mid-stream OR has unsaved messages, keep the local
 // messages array.
-function mergeTasksFromServer(serverTasks, localTasks) {
-  const local = Array.isArray(localTasks) ? localTasks : [];
-  if (!Array.isArray(serverTasks)) return local;
-  const localById = new Map(local.map((t) => [t.id, t]));
-  // Take whichever of (local, server) updatedAt is newer. When a turn
-  // is in flight, handleSendInTask / handleSendFromHome stamp a fresh
-  // client updatedAt the instant the user sends, but the server's value
-  // only catches up once the turn's messages persist (the server derives
-  // updated_at from the latest message — ENG-961). Keeping the newer of
-  // the two stops a fetchSessions mid-stream from sliding the just-revived
-  // task back down the list before the server value lands.
-  const _newerUpdatedAt = (a, b) => {
-    const aa = Date.parse(a || '') || 0;
-    const bb = Date.parse(b || '') || 0;
-    return aa >= bb ? a : b;
-  };
-  const merged = serverTasks.map((server) => {
-    const l = localById.get(server.id);
-    if (!l) return server;
-    const lMessages = Array.isArray(l.messages) ? l.messages : [];
-    const sMessages = Array.isArray(server.messages) ? server.messages : [];
-    const isStreaming = lMessages.some((m) => m?.role === '_streaming');
-    const hasLocalContent = lMessages.length > 0;
-    const countAssistants = (msgs) => (msgs || []).filter((m) => m?.role === 'assistant').length;
-    if (!isStreaming && !hasLocalContent) {
-      // Even without live messages, prefer the locally-bumped
-      // updatedAt if it's newer — handleSendInTask stamps the task
-      // before any stream events arrive, so a fetchSessions that
-      // races between user-click-send and the first SSE event must
-      // not overwrite the bump.
-      return { ...server, updatedAt: _newerUpdatedAt(l.updatedAt, server.updatedAt) };
-    }
-    if (!isStreaming && countAssistants(sMessages) > countAssistants(lMessages)) {
-      return {
-        ...server,
-        updatedAt: _newerUpdatedAt(l.updatedAt, server.updatedAt),
-        disabledConnections: l.disabledConnections ?? server.disabledConnections ?? [],
-        attachments: lMessages.length && Array.isArray(l.attachments) && l.attachments.length
-          ? l.attachments
-          : server.attachments,
-      };
-    }
-    return {
-      ...server,
-      // Local wins for the live conversation surface.
-      messages: lMessages,
-      status: l.status || server.status,
-      // Preserve in-flight attachments tracked client-side.
-      attachments: lMessages.length && Array.isArray(l.attachments) && l.attachments.length
-        ? l.attachments
-        : server.attachments,
-      // Muted-datasource toggles can change while a turn streams; keep
-      // the client list when present.
-      disabledConnections: l.disabledConnections ?? server.disabledConnections ?? [],
-      updatedAt: _newerUpdatedAt(l.updatedAt, server.updatedAt),
-    };
-  });
-  // Carry over local-only tasks the server hasn't seen yet (e.g. a
-  // tmp-id task whose first stream hasn't resolved a real cid).
-  const serverIds = new Set(serverTasks.map((t) => t.id));
-  for (const t of local) {
-    if (!serverIds.has(t.id)) merged.unshift(t);
-  }
-  return merged;
-}
 
 function appendActivity(messages, event) {
   const content = describeActivity(event);
@@ -926,6 +860,29 @@ function AppCore() {
   const [projects, setProjects] = useState([]);
   const [moveModalTask, setMoveModalTask] = useState(null);  // task pending a move-to-project
   const [artifacts, setArtifacts] = useState([]);
+  // First-artifact tip (ENG-1137). Armed only when the FIRST artifacts
+  // fetch of the session comes back empty — an account that already has
+  // artifacts is not a first-run and must never see the tip. Once armed,
+  // the 0 → ≥1 transition (the user's first artifact finishing) opens it.
+  //   null  = undecided (fetch hasn't resolved yet)
+  //   true  = armed (fresh account, watching for the first artifact)
+  //   false = decided-off (existing account, or already fired)
+  const artifactTipArmedRef = useRef(null);
+  const [artifactTipOpen, setArtifactTipOpen] = useState(false);
+  // Same shape, for the sidebar checklist: flipped by the session's first
+  // sessions fetch (see refreshData) so the freshness call is taken once.
+  const onboardingFreshnessResolvedRef = useRef(false);
+  useEffect(() => {
+    if (artifactTipArmedRef.current !== true) return;
+    if (artifacts.length >= 1) {
+      artifactTipArmedRef.current = false;
+      setArtifactTipOpen(true);
+    }
+  }, [artifacts.length]);
+  const handleArtifactTipDismiss = useCallback(() => {
+    setArtifactTipOpen(false);
+    dismissArtifactTip();
+  }, []);
   const [scheduled, setScheduled] = useState([]);
   // Flat session→schedule map sourced from `GET /v1/schedules`.
   // Lets TasksView collapse all conversations belonging to one
@@ -1323,6 +1280,13 @@ function AppCore() {
     // ever answer. Deliberately BEFORE the `cancelled` bail-out.
     releaseLiveSteps(ids);
     if (event?.code === 'cancelled') return;
+    // Activation gate (ENG-736): chat turn failed. Shared sink for every chat
+    // send/reply/reconnect error, so a failed first query records its reason.
+    fireFirstResponse(classifyFirstResponse({
+      failed: true,
+      code: event?.code,
+      isConfigError: isAntonConfigError(message, event),
+    }));
     activeStreamCtrlRef.current = null;
     activeScratchpadRef.current = null;
     activeStreamingTaskIdRef.current = null;
@@ -1380,8 +1344,34 @@ function AppCore() {
   const models = useMemo(() => {
     const providerType = providerValueToType(settings.planningProvider) || 'minds-cloud';
     return recommendedModelOptions(settings.recommendedModels, providerType, settings.modelLabels)
-      .map((o) => ({ id: o.id, name: o.label, desc: '' }));
+      .map((o) => ({ id: o.id, name: o.label }));
   }, [settings.recommendedModels, settings.planningProvider, settings.modelLabels]);
+  // Picker metadata for the composer's model menu, passed as one bag so the
+  // components in between don't grow a prop each. The composer groups rather than
+  // App because ChatView builds its own single-item list, which stays ungrouped.
+  // Re-check wallet availability when the composer's model menu opens, so a top-up
+  // made outside the app unlocks its models without a restart. This is what makes
+  // it safe for the composer to DISABLE a locked model at all: `modelEnabled` is
+  // otherwise refreshed only by the Settings picker, so a user who hits "Add
+  // credits" (which opens an external browser), tops up and comes back would find
+  // the row still greyed until they visited Settings or restarted. Settings has had
+  // this since ENG-412; this is parity with it.
+  //
+  // A failed refresh leaves the map we hold in place — mergeRecommendedModels never
+  // lets an empty response overwrite it, and a model absent from the map counts as
+  // available — so this can never lock the picker.
+  const refreshModelAvailability = useCallback(async () => {
+    const data = await fetchRecommendedModels({ refresh: true });
+    const merged = mergeRecommendedModels(settings, data);
+    if (merged) setSettings((prev) => ({ ...prev, ...merged }));
+  }, [settings]);
+
+  const modelMeta = useMemo(() => ({
+    modelProviders: settings.modelProviders,
+    modelFamilies: settings.modelFamilies,
+    modelEnabled: settings.modelEnabled,
+    onRefresh: refreshModelAvailability,
+  }), [settings.modelProviders, settings.modelFamilies, settings.modelEnabled, refreshModelAvailability]);
   // The user's preferred collapsed state for the sidebar. Effective
   // collapsed-ness is derived below — we only honor this value while
   // viewing a chat task; every other surface (home, projects,
@@ -1390,6 +1380,17 @@ function AppCore() {
   // means the collapse affordance is hidden in those views too.
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const { isMobile, isNarrow } = useBreakpoint();
+  // Narrow band (640–900): the docked sidebar becomes an off-canvas popout
+  // opened by the floating hamburger. Docked ≥900; MobileShell owns <640.
+  const [navPopoutOpen, setNavPopoutOpen] = useState(false);
+  // Close the popout on Escape (no-op outside the narrow band, where it stays
+  // closed). Backdrop-click and navigation close it too (below).
+  useEffect(() => {
+    if (!navPopoutOpen) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape') setNavPopoutOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [navPopoutOpen]);
 
   // iOS Safari (and Android Chrome) auto-zoom the page in when a text
   // input with font-size < 16px gets focus, and don't zoom back out
@@ -1449,8 +1450,6 @@ function AppCore() {
     };
   }, [isMobile]);
 
-  // On narrow screens (< 900px), sidebar is a slide-over overlay — track open state separately.
-  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   // Routes where the user can collapse the sidebar. Currently:
   // chat task only.
   const sidebarCollapsibleRoutes = useMemo(() => new Set(['task']), []);
@@ -1633,10 +1632,34 @@ function AppCore() {
       setServerOnline(h.status === 'ok');
     });
     fetchSessions().then((data) => {
-      if (Array.isArray(data)) setTasks((prev) => mergeTasksFromServer(data, prev).filter((t) => !deletedTaskIdsRef.current.has(t.id)));
+      if (!Array.isArray(data)) return;
+      // One-time freshness decision for the onboarding checklist, taken on
+      // the session's first successful fetch (refreshData also polls, hence
+      // the ref guard): an account that already has tasks is not a first
+      // run, and would otherwise sit on a permanent, undismissable 0/4 card.
+      if (!onboardingFreshnessResolvedRef.current) {
+        onboardingFreshnessResolvedRef.current = true;
+        if (data.length > 0) dismissIfUntouched();
+      }
+      setTasks((prev) => mergeTasksFromServer(data, prev).filter((t) => !deletedTaskIdsRef.current.has(t.id)));
     });
     fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); });
-    fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
+    fetchArtifacts().then((data) => {
+      if (!Array.isArray(data)) return;
+      // One-time arm/disarm decision for the first-artifact tip, taken on
+      // the session's first successful fetch: empty list = fresh account
+      // (watch for the first artifact); anything else = existing account
+      // (flag it dismissed so no later session shows the tip either).
+      if (artifactTipArmedRef.current === null) {
+        if (data.length === 0 && !isArtifactTipDismissed()) {
+          artifactTipArmedRef.current = true;
+        } else {
+          artifactTipArmedRef.current = false;
+          if (data.length > 0) dismissArtifactTip();
+        }
+      }
+      setArtifacts(data);
+    });
     fetchPins().then((data) => setPins(data.pins || []));
     fetchSchedules().then((data) => {
       setScheduled(data.schedules || []);
@@ -1691,7 +1714,14 @@ function AppCore() {
   // to re-read or else it keeps pointing at the old project.
   useEffect(() => {
     const handler = () => {
-      fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); });
+      fetchProjects().then((data) => {
+        if (!Array.isArray(data)) return;
+        setProjects(data);
+        // A rename leaves selectedProject holding the old name; re-anchor
+        // it by id so in-project sends and the breadcrumb pick up the
+        // current name instead of 404ing on the stale one (ENG-1028).
+        setSelectedProject((prev) => (prev?.id && data.find((p) => p.id === prev.id)) || prev);
+      });
       fetchSessions().then((data) => {
       if (Array.isArray(data)) setTasks((prev) => mergeTasksFromServer(data, prev).filter((t) => !deletedTaskIdsRef.current.has(t.id)));
     });
@@ -2004,6 +2034,24 @@ function AppCore() {
     ? (models.find((m) => m.id === currentTask.model) || { id: currentTask.model, name: currentTask.model, desc: 'Configured planning model' })
     : selectedModel;
 
+  // "Switch to MindsHub Air" escape hatch on the model-denial card
+  // (ENG-1304): offered only while Air itself is payable — the free monthly
+  // grant covers Air, so it's the one model an empty wallet can usually
+  // still run. `modelEnabled` is the same availability map the Settings
+  // picker tags rows with (absent id ⇒ available).
+  const AIR_MODEL_ID = 'mindshub_air';
+  const airAvailableForSwitch =
+    (settings.recommendedModels?.['minds-cloud'] || []).includes(AIR_MODEL_ID)
+    && (settings.modelEnabled || {})[AIR_MODEL_ID] !== false;
+  const handleSwitchToAirAndResend = (text) => {
+    if (!currentTask || !text) return;
+    // Persist the switch on the task so follow-up sends stay on Air, and
+    // override the same send explicitly — the state write isn't visible to
+    // handleSendInTask's closure within this tick.
+    setTasks((prev) => prev.map((t) => (t.id === currentTask.id ? { ...t, model: AIR_MODEL_ID } : t)));
+    handleSendInTask(text, null, { modelOverride: AIR_MODEL_ID });
+  };
+
   useEffect(() => {
     const prev = prevRouteForComposerMuteRef.current;
     prevRouteForComposerMuteRef.current = route;
@@ -2099,6 +2147,13 @@ function AppCore() {
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;
         const configErrorInBody = finalContent && isAntonConfigError(finalContent, null);
+        // Activation gate (ENG-736): a completed turn (status 'done') is a real
+        // answer (success), unless a config error was wrapped into its 200 body.
+        // A reconnect that saw no completion records nothing.
+        fireFirstResponse(classifyFirstResponse({
+          completed: streamState.status === 'done',
+          isConfigError: !!configErrorInBody,
+        }));
         let assistantTurnIndex = 0;
         setTasks((prev) => prev.map((t) => {
           if (t.id !== taskId) return t;
@@ -2140,7 +2195,7 @@ function AppCore() {
   }, [markInFlight, markInFlightDone, handleStreamError]);
 
   const selectTask = (id) => {
-    if (isNarrow) setMobileSidebarOpen(false);
+    if (isNarrow) setNavPopoutOpen(false);
     const task = tasks.find((t) => t.id === id);
     if (task) {
       // Record the visit for recents ordering, but never auto-pin.
@@ -2212,7 +2267,7 @@ function AppCore() {
   };
 
   const newTask = () => {
-    if (isNarrow) setMobileSidebarOpen(false);
+    if (isNarrow) setNavPopoutOpen(false);
     setActiveTaskId(null);
     setComposerAttachments([]);
     setComposerPrefill(null);
@@ -2414,6 +2469,7 @@ function AppCore() {
           _modify: true,
           _existing_name: connection.name,
           name: connection.name,
+          user_label: saved.user_label || null,
           logo: full.form.logo || full.logo,
           logo_color: full.form.logo_color || full.logo_color,
         };
@@ -2430,6 +2486,7 @@ function AppCore() {
           _modify: true,
           _existing_name: connection.name,
           name: connection.name,
+          user_label: saved.user_label || null,
           logo: full.form.logo || full.logo,
           logo_color: full.form.logo_color || full.logo_color,
         };
@@ -2688,13 +2745,13 @@ function AppCore() {
   };
 
   const navigate = (key) => {
+    if (isNarrow) setNavPopoutOpen(false);
     if (key === 'settings' || key.startsWith('settings:')) {
       // Targeted (settings:backend) opens that section; a bare `settings`
       // opens the mobile section list (null) / desktop's last section.
       openSettings(key.includes(':') ? key.split(':')[1] : null);
       return;
     }
-    if (isNarrow) setMobileSidebarOpen(false);
     if (key === 'artifacts') {
       fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
     }
@@ -2795,9 +2852,11 @@ function AppCore() {
     // instead of routing through anton's LLM path.
     if (!(await ensureProviderReady())) {
       const taskId = `tmp-${Date.now()}`;
+      const generalFallback = projects.find((p) => p.name === 'general');
       const effectiveProjectName = selectedProject?.name || 'general';
+      const effectiveProjectId = (selectedProject ? selectedProject.id : generalFallback?.id) || null;
       const effectiveProjectPath = selectedProject?.path
-        || projects.find((p) => p.name === 'general')?.path
+        || generalFallback?.path
         || null;
       setTasks((prev) => [{
         id: taskId,
@@ -2810,6 +2869,7 @@ function AppCore() {
         ],
         projectPath: effectiveProjectPath,
         projectName: effectiveProjectName,
+        projectId: effectiveProjectId,
         model: selectedModel?.id ?? null,
         attachments: [],
         disabledConnections: [],
@@ -2838,6 +2898,7 @@ function AppCore() {
       }
     }
     const effectiveProjectName = selectedProject?.name || 'general';
+    const effectiveProjectId = (selectedProject ? selectedProject.id : generalProject?.id) || null;
     const effectiveProjectPath = selectedProject?.path || generalProject?.path || null;
 
     const disabledForSend = normalizeComposerDisabledConnections(composerDisabledConnections);
@@ -2874,6 +2935,7 @@ function AppCore() {
       messages: [],
       projectPath: effectiveProjectPath,
       projectName: effectiveProjectName,
+      projectId: effectiveProjectId,
       model: selectedModel?.id ?? null,
       attachments: sendingAttachments,
       disabledConnections: disabledForSend,
@@ -2959,6 +3021,7 @@ function AppCore() {
     const streamNewSessionFn = () => streamNewSession(sendText, {
       conversationId: hasPendingFiles ? taskId : undefined,
       projectName: effectiveProjectName,
+      projectId: effectiveProjectId,
       projectPath: effectiveProjectPath,
       model: selectedModel?.id,
       attachmentIds,
@@ -3005,6 +3068,13 @@ function AppCore() {
         // and replace the assistant turn with the provider_required
         // card instead of rendering the raw SDK message.
         const configErrorInBody = finalContent && isAntonConfigError(finalContent, null);
+        // Activation gate (ENG-736): a completed turn (status 'done') is a real
+        // answer (success), unless a config error was wrapped into its 200 body.
+        // A reconnect that saw no completion records nothing.
+        fireFirstResponse(classifyFirstResponse({
+          completed: streamState.status === 'done',
+          isConfigError: !!configErrorInBody,
+        }));
         let assistantTurnIndex = 0;
         setTasks((prev) => prev.map((t) => {
           if (t.id !== finalId && t.id !== resolvedId && t.id !== taskId) return t;
@@ -3059,7 +3129,7 @@ function AppCore() {
   };
 
   // Send inside an existing task
-  const handleSendInTask = async (text, queuedAttachments = null) => {
+  const handleSendInTask = async (text, queuedAttachments = null, opts = {}) => {
     if (!currentTask) return;
     const id = currentTask.id;
 
@@ -3171,10 +3241,17 @@ function AppCore() {
     const taskProjectName = currentTask.projectName
       || (currentTaskProject?.name)
       || null;
+    const taskProjectId = currentTask.projectId
+      || currentTaskProject?.id
+      || null;
     const taskProjectPath = currentTask.projectPath
       || currentTaskProject?.path
       || null;
-    const taskModel = currentTask.model || selectedModel?.id || null;
+    // opts.modelOverride carries a same-tick model switch (the "Switch to
+    // MindsHub Air" card action, ENG-1304) — currentTask is a render-scope
+    // closure, so a setTasks({...model}) just before this call would not be
+    // visible here yet.
+    const taskModel = opts.modelOverride || currentTask.model || selectedModel?.id || null;
 
     let sendingAttachments, attachmentIds, driveReference;
     try {
@@ -3287,6 +3364,7 @@ function AppCore() {
     const streamGen = activeStreamGenerationRef.current;
     activeStreamCtrlRef.current = streamMessage(id, sendText, {
       projectName: taskProjectName,
+      projectId: taskProjectId,
       projectPath: taskProjectPath,
       model: taskModel,
       attachmentIds,
@@ -3317,6 +3395,13 @@ function AppCore() {
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;
         const configErrorInBody = finalContent && isAntonConfigError(finalContent, null);
+        // Activation gate (ENG-736): a completed turn (status 'done') is a real
+        // answer (success), unless a config error was wrapped into its 200 body.
+        // A reconnect that saw no completion records nothing.
+        fireFirstResponse(classifyFirstResponse({
+          completed: streamState.status === 'done',
+          isConfigError: !!configErrorInBody,
+        }));
         let assistantTurnIndex = 0;
         setTasks((prev) => prev.map((t) => {
           if (t.id !== id && t.id !== resolvedId) return t;
@@ -3964,9 +4049,69 @@ function AppCore() {
   const appStyle = { width: '100vw', height: '100vh', background: 'transparent' };
 
   const mainBg = 'transparent';
+
+  // One shell-owned top inset the content header uses to clear the macOS
+  // traffic lights and the floating open-sidebar button when neither is
+  // covered by a docked sidebar: the tablet band (640–900, sidebar is an
+  // off-canvas popout) and a collapsed sidebar on the chat route. Reserving
+  // the space on TOP (not the left) keeps every header's title/crumb aligned
+  // with the body beneath it and uses the full width, instead of shoving the
+  // header right into a lopsided gutter. Both the lights and the hamburger
+  // sit within the top ~44px, so 52 clears them on either platform (web has
+  // no lights but still floats the hamburger). Exposed as `--titlebar-safe-top`
+  // on <main> and consumed by PageHeader / view headers.
+  const contentChromeExposed = isNarrow || sidebarCollapsedEffective;
+  const titlebarSafeTop = contentChromeExposed ? 52 : 0;
+
   const modelOptions = selectedModel && !models.some((m) => m.id === selectedModel.id)
     ? [selectedModel, ...models]
     : models;
+
+  // Props for the mobile drawer (MobileShell), which AppShell renders below
+  // the phone breakpoint. Kept here (not in AppShell) because every handler
+  // closes over App's navigation state.
+  const mobileShellProps = {
+    route,
+    currentTask,
+    selectedProject,
+    tasks,
+    projects,
+    scheduled,
+    artifacts,
+    onNavigate: navigate,
+    onSelectTask: selectTask,
+    onSelectProject: (p) => {
+      // Drawer → project tap with tasks: show the project's task list
+      // (ProjectsView in detail mode). MobileShell only dispatches here when
+      // there ARE tasks; the empty-project case routes through
+      // onNewTaskInProject instead.
+      if (p) setSelectedProject(p);
+      setRoute('projects');
+    },
+    onNewTaskInProject: (p) => {
+      // Empty project → drop into the composer with the project preselected.
+      if (p) setSelectedProject(p);
+      setActiveTaskId(null);
+      setRoute('home');
+    },
+    onOpenSchedule: (scheduleId) => {
+      setSelectedScheduleId(scheduleId);
+      setRoute('schedule-detail');
+    },
+    onNewTask: newTask,
+    onNewProject: () => {
+      // Mobile FAB → "New project". The modal lives inside ProjectsView, so
+      // navigate there (on the grid, not detail), then dispatch the event
+      // ProjectsView listens for once mounted.
+      setSelectedProject(null);
+      setRoute('projects');
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('anton:open-new-project'));
+      }, 60);
+    },
+    navTitle: settings.navTitle || null,
+    navLogo: settings.navLogo || null,
+  };
 
   return (
     <div style={{
@@ -3979,72 +4124,40 @@ function AppCore() {
       // intercept drag on their own surface.
       WebkitAppRegion: 'drag',
     }}>
-      {/* Mobile backdrop — dims content behind the open drawer. Suppressed
-          on isMobile widths where MobileShell renders its own scrim. */}
+      {/*
+        Sidebar — a docked flex item across the whole desktop + tablet range
+        (≥640). `display: contents` makes the wrapper transparent to the flex
+        layout so Sidebar participates as a direct flex child. Suppressed on
+        isMobile — MobileShell replaces it with a mobile drawer below 640.
+      */}
+      {/* Narrow-band popout backdrop — dims content behind the slid-in
+          sidebar. Same 320ms curve as the drawer so the two read as one
+          motion (the old overlay used mismatched 280/380ms durations). */}
       {isNarrow && !isMobile && (
         <div
-          onClick={() => setMobileSidebarOpen(false)}
+          onClick={() => setNavPopoutOpen(false)}
+          aria-hidden="true"
           style={{
             position: 'fixed', inset: 0, zIndex: 100,
             background: 'rgba(0,0,0,0.35)',
             backdropFilter: 'blur(2px)',
             WebkitAppRegion: 'no-drag',
-            opacity: mobileSidebarOpen ? 1 : 0,
-            pointerEvents: mobileSidebarOpen ? 'auto' : 'none',
-            transition: 'opacity 280ms cubic-bezier(0.32, 0.72, 0, 1)',
+            opacity: navPopoutOpen ? 1 : 0,
+            pointerEvents: navPopoutOpen ? 'auto' : 'none',
+            transition: 'opacity 320ms cubic-bezier(0.32, 0.72, 0, 1)',
           }}
         />
       )}
 
-      {/*
-        Floating hamburger — on desktop: visible when sidebar is collapsed
-        (chat route only). On narrow desktop: opens the slide-over sidebar.
-        Suppressed entirely on isMobile — MobileShell has its own hamburger.
-      */}
-      {!isMobile && (
-      <button
-        onClick={() => isNarrow ? setMobileSidebarOpen(true) : setSidebarCollapsed(false)}
-        title="Open sidebar"
-        className="icon-btn"
-        style={{
-          position: 'absolute',
-          // On Electron, left: 97 clears the macOS traffic lights (which end ~x:80).
-          // On web there are no traffic lights so left: 18 sits flush with the app edge.
-          top: 18, left: host.isWeb ? 18 : 97,
-          zIndex: 10,
-          WebkitAppRegion: 'no-drag',
-          opacity: isNarrow
-            ? (mobileSidebarOpen ? 0 : 1)
-            : (sidebarCollapsedEffective ? 1 : 0),
-          transform: (isNarrow ? !mobileSidebarOpen : sidebarCollapsedEffective)
-            ? 'translateX(0)' : 'translateX(-8px)',
-          pointerEvents: (isNarrow ? !mobileSidebarOpen : sidebarCollapsedEffective)
-            ? 'auto' : 'none',
-          transition:
-            'opacity 280ms cubic-bezier(0.32, 0.72, 0, 1) 120ms, ' +
-            'transform 360ms cubic-bezier(0.32, 0.72, 0, 1) 80ms',
-        }}
-      >
-        {Ico.sidebarExpandRight(15)}
-      </button>
-      )}
-
-      {/*
-        Sidebar — on narrow desktop it's a fixed overlay drawer; on desktop
-        it's a normal flex item. `display: contents` makes the wrapper
-        transparent to the flex layout so Sidebar participates as a direct
-        flex child. Suppressed entirely on isMobile — MobileShell replaces
-        the desktop sidebar with a mobile-native drawer.
-      */}
       {!isMobile && (
       <div
-        className={isNarrow ? 'sidebar-overlay-wrap' : undefined}
         style={isNarrow ? {
-          position: 'fixed',
-          top: 9, bottom: 9, left: 9,
-          zIndex: 101,
-          transform: mobileSidebarOpen ? 'translateX(0)' : 'translateX(calc(-100% - 18px))',
-          transition: 'transform 380ms cubic-bezier(0.22, 1, 0.36, 1)',
+          // Popout: off-canvas fixed drawer, slid in on navPopoutOpen. Same
+          // 320ms curve as the scrim above. Docked (display:contents) ≥900.
+          position: 'fixed', top: 9, bottom: 9, left: 9, zIndex: 101,
+          transform: navPopoutOpen ? 'translateX(0)' : 'translateX(calc(-100% - 18px))',
+          transition: 'transform 320ms cubic-bezier(0.32, 0.72, 0, 1)',
+          willChange: 'transform',
           WebkitAppRegion: 'no-drag',
         } : { display: 'contents' }}
       >
@@ -4089,7 +4202,7 @@ function AppCore() {
           collapsed={sidebarCollapsedEffective}
           onToggleCollapsed={
             isNarrow
-              ? () => setMobileSidebarOpen(false)
+              ? () => setNavPopoutOpen(false)
               : (sidebarCollapsibleRoutes.has(route)
                   ? () => setSidebarCollapsed((c) => !c)
                   : undefined)
@@ -4103,7 +4216,7 @@ function AppCore() {
           schedules={scheduled}
           scheduleRunsIndex={scheduleRunsIndex}
           onOpenSchedule={(scheduleId) => {
-            if (isNarrow) setMobileSidebarOpen(false);
+            if (isNarrow) setNavPopoutOpen(false);
             setSelectedScheduleId(scheduleId);
             setRoute('schedule-detail');
           }}
@@ -4118,6 +4231,19 @@ function AppCore() {
           shellUpdate={shellUpdate && shellUpdate.version !== shellUpdateDismissed ? shellUpdate : null}
           onDownloadShellUpdate={handleDownloadShellUpdate}
           onDismissShellUpdate={dismissShellUpdate}
+          onStartChat={(text) => {
+            // On narrow desktop the sidebar is an overlay drawer. Close it
+            // like navigate/onOpenSchedule do, so the new task isn't buried
+            // under it.
+            if (isNarrow) setMobileSidebarOpen(false);
+            handleSendFromHome(text);
+          }}
+          // Hold the tip while the narrow-desktop drawer is shut: Sidebar
+          // sees collapsed={false} there, but the whole wrapper is
+          // translated off-screen, so its anchor is invisible. The armed
+          // state survives — it opens when the drawer does.
+          artifactTipOpen={artifactTipOpen && !(isNarrow && !mobileSidebarOpen)}
+          onArtifactTipDismiss={handleArtifactTipDismiss}
           onShowServerHelp={() => openSettings('backend')}
           onToggleServer={async () => {
             if (serverBusy) return;
@@ -4153,21 +4279,14 @@ function AppCore() {
       </div>
       )}
 
-      {(() => {
-      const mainEl = (
-      <main style={{
-        flex: 1, minWidth: 0, minHeight: 0,
-        display: 'flex', flexDirection: 'column',
-        background: mainBg,
-        // Opt the whole content column out of the window drag region.
-        // Without this, the empty canvas inherits the root's
-        // `-webkit-app-region: drag` (App container), and Electron then
-        // swallows mouse events over it — so clicking the canvas never
-        // reaches any outside-click handler and dropdowns can't dismiss
-        // (desktop only; the web build has no drag regions). The window
-        // still drags via the sidebar header and the window's top strip.
-        WebkitAppRegion: 'no-drag',
-      }}>
+      <AppShell
+        isMobile={isMobile}
+        mainBg={mainBg}
+        titlebarSafeTop={titlebarSafeTop}
+        showFloatingHamburger={isNarrow ? !navPopoutOpen : sidebarCollapsedEffective}
+        onOpenSidebar={isNarrow ? () => setNavPopoutOpen(true) : () => setSidebarCollapsed(false)}
+        mobileShellProps={mobileShellProps}
+      >
         {route === 'home' && (
           <HomeView
             greeting={settings.greeting}
@@ -4182,6 +4301,7 @@ function AppCore() {
             onModelChange={setSelectedModel}
             projects={projects}
             models={modelOptions}
+            modelMeta={modelMeta}
             attachments={composerAttachments}
             connectors={connectors}
             onNavigateToConnectors={() => navigate('customize')}
@@ -4199,6 +4319,9 @@ function AppCore() {
             onShowServerHelp={() => openSettings('backend')}
             skipIntro={bootIntroDone}
             prefill={composerPrefill}
+            tasksCount={tasks.length}
+            artifactsCount={artifacts.length}
+            onPrefill={(text, select) => setComposerPrefill({ text, bump: Date.now(), select })}
           />
         )}
 
@@ -4206,6 +4329,7 @@ function AppCore() {
           <ChatView
             task={currentTask}
             onSend={handleSendInTask}
+            onSwitchToAirAndResend={airAvailableForSwitch ? handleSwitchToAirAndResend : undefined}
             onOpenSettings={openSettings}
             queuedMessages={messageQueue[currentTask?.id] || []}
             onRemoveFromQueue={(itemId) => removeFromQueue(currentTask?.id, itemId)}
@@ -4250,7 +4374,6 @@ function AppCore() {
               setRoute('projects');
             }}
             projects={projects}
-            sidebarCollapsed={isNarrow || sidebarCollapsedEffective}
             agentLabel={agentLabel}
             inFlightSet={inFlightSet}
             composerRedirects={composerRedirects}
@@ -4282,6 +4405,7 @@ function AppCore() {
             scheduled={scheduled}
             scheduleRunsIndex={scheduleRunsIndex}
             models={modelOptions}
+            modelMeta={modelMeta}
             onSelectProject={(p) => setSelectedProject(p)}
             onCreateProject={handleCreateProject}
             onSendInProject={(text) => {
@@ -4530,63 +4654,7 @@ function AppCore() {
             agentLabel={agentLabel}
           />
         )}
-      </main>
-      );
-      return isMobile ? (
-        <MobileShell
-          route={route}
-          currentTask={currentTask}
-          selectedProject={selectedProject}
-          tasks={tasks}
-          projects={projects}
-          scheduled={scheduled}
-          artifacts={artifacts}
-          onNavigate={navigate}
-          onSelectTask={selectTask}
-          onSelectProject={(p) => {
-            // Drawer → project tap with tasks: show the project's task
-            // list (ProjectsView in detail mode). MobileShell only
-            // dispatches here when there ARE tasks; the empty-project
-            // case routes through onNewTaskInProject instead. On a
-            // mobile viewport, project-detail's rail (Working folder,
-            // Context, Scheduled) stacks below the task list — see
-            // the @media block in globals.css.
-            if (p) setSelectedProject(p);
-            setRoute('projects');
-          }}
-          onNewTaskInProject={(p) => {
-            // Empty project → drop the user into the composer with
-            // this project preselected. HomeView's first send creates
-            // the task on the server with projectName attached.
-            if (p) setSelectedProject(p);
-            setActiveTaskId(null);
-            setRoute('home');
-          }}
-          onOpenSchedule={(scheduleId) => {
-            setSelectedScheduleId(scheduleId);
-            setRoute('schedule-detail');
-          }}
-          onNewTask={newTask}
-          onNewProject={() => {
-            // Mobile FAB → "New project". The modal lives inside
-            // ProjectsView, so navigate there first (clearing any
-            // selected project so we land on the grid, not detail),
-            // then dispatch the event ProjectsView listens for. The
-            // small delay lets React commit ProjectsView's mount
-            // before the listener attaches.
-            setSelectedProject(null);
-            setRoute('projects');
-            setTimeout(() => {
-              window.dispatchEvent(new CustomEvent('anton:open-new-project'));
-            }, 60);
-          }}
-          navTitle={settings.navTitle || null}
-          navLogo={settings.navLogo || null}
-        >
-          {mainEl}
-        </MobileShell>
-      ) : mainEl;
-      })()}
+      </AppShell>
       <SearchModal
         open={searchOpen}
         onClose={() => setSearchOpen(false)}

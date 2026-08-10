@@ -1,11 +1,11 @@
 // `<ModelSelect>` — searchable, provider-grouped model picker (ENG-1096).
 //
-// The domain half of the picker: provider grouping (`lib/modelCatalog`,
-// maker inferred from alias+label until the backend ships an explicit
-// field — ENG-1111), provider marks (`ProviderIcon`, neutral placeholder
-// for makers without an svg — ENG-1112), and the pin semantics for the
-// stale-pin / "Other…" entries. All Base UI wiring and styling live in the
-// generic `ui/Combobox` this composes.
+// The domain half of the picker: sections from the backend's `provider` field
+// with the maker inferred from alias+label for the icon (`lib/modelCatalog`,
+// which explains why one field can't do both), provider marks (`ProviderIcon`,
+// neutral placeholder for makers without an svg — ENG-1112), and the pin
+// semantics for the stale-pin / "Other…" entries. All Base UI wiring and
+// styling live in the generic `ui/Combobox` this composes.
 //
 // API mirrors `Select` where the two overlap, so call sites swap 1:1:
 //
@@ -14,14 +14,19 @@
 //     onValueChange={setModelId}
 //     options={[
 //       { value: 'sonnet', label: 'Claude Sonnet 5' },
-//       { value: 'opus', label: 'Claude Opus 5', disabled: true },
+//       { value: 'opus', label: 'Claude Opus 5', tag: 'Needs credits' },
 //       { value: '__custom__', label: 'Other…', pin: 'bottom' },
 //     ]}
 //   />
 //
-// Option shape: { value, label, disabled?, title?, maker?, makerName?, pin? }.
-//   - `maker` / `makerName`: explicit maker key + display name (trusted
-//     over inference when present — the ENG-1111 backend contract).
+// Option shape: { value, label, disabled?, title?, tag?, maker?, provider?, pin? }.
+//   - `provider`: MindsHub's serving-vendor field (the ENG-1111 backend
+//     contract), which decides the section.
+//   - `maker`: explicit maker key, trusted over inference when present. It is
+//     the icon identity only, never the section.
+//   - `tag`: compact right-aligned pill on the row (the version state, the
+//     "Needs credits" wallet state, or both), kept out of the label so the
+//     trigger and the search see the bare name.
 //   - `pin: 'top' | 'bottom'`: render outside the maker groups, unheaded,
 //     at the top/bottom of the list (stale-pin and "Other…" entries).
 //     Pinned entries also bypass the search filter: "Other…" is the escape

@@ -1,16 +1,9 @@
-# Builds and pushes the production-tagged cowork web SPA image on push to main.
-# The static-env deploy step is left commented (as in cowork-server): static
-# rollout is handled outside this workflow.
-#
-# NOTE: unlike cowork-server (whose prod build is currently commented out), this
-# activates build+scan so a production-<sha> image exists for the argocd-envs
-# parent chart's `tags.cowork: production` fallback and for static prod rollout.
-#
-# Unit tests run via cowork's own tests-unit.yml (on: push main). The SPA is
-# env-agnostic (URLs derived from page origin at runtime), so one image serves
-# every environment with no VITE build args.
-
 name: Prod - Build and Deploy on push to main
+
+# THE prod pipeline. Unit tests, the web SPA image, the CalVer release, both signed
+# installers cut from that release, and the OTA UI bundle — one run tree. It used to
+# be three runs on the same push (this file, tests-unit.yml, and release.yml), which
+# is how a release could be tagged in one run while another quietly failed.
 
 on:
   push:
@@ -32,72 +25,82 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  run-unit-tests:
+    uses: ./.github/workflows/tests-unit.yml
+    secrets: inherit
 
-  build:
-    runs-on: mdb-dev
-    outputs:
-      image: ${{ steps.build.outputs.image }}
-    env:
-      AWS_REGION: us-east-1
-    steps:
-      - uses: actions/checkout@v4
-      - uses: mindsdb/github-actions/setup-env@main
-      - id: build
-        uses: mindsdb/github-actions/build-push-ecr@main
-        with:
-          module-name: ${{ env.CI_REPOSITORY_SLUG }}
-          extra-build-args: '-f Dockerfile.frontend'
-          build-for-environment: production
+  build-deploy:
+    # A production-<sha> image so the argocd-envs parent chart's
+    # `tags.cowork: production` fallback resolves, and for static prod rollout.
+    needs: [run-unit-tests]
+    permissions:
+      contents: read
+    uses: ./.github/workflows/build-deploy.yml
+    with:
+      build-environment: production
+    secrets: inherit
 
-  scan:
-    runs-on: mdb-dev
-    needs: [ build ]
-    name: Scan Minds Image
-    steps:
-      - uses: actions/checkout@v4
-      - uses: mindsdb/github-actions/snyk-docker-scan@main
-        with:
-          image: ${{ needs.build.outputs.image }}
-          snyk-token: ${{ secrets.SNYK_TOKEN }}
+  auto-release:
+    # The CalVer tag, which the installers and the UI bundle below are both cut
+    # from — so an OTA user never sees a UI version that differs from the app.
+    needs: [run-unit-tests]
+    permissions:
+      contents: write # tag push + release creation
+    uses: mindsdb/github-actions/.github/workflows/calver-release.yml@main
+    with:
+      calver-major: "2"
+      runs-on: ubuntu-latest
+    secrets: inherit
 
-  # deploy:
-  #   runs-on: mdb-prod
-  #   needs: [build, scan]
-  #   environment:
-  #     name: prod
-  #     url: ${{ vars.MDB_ENV_URL }}
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - uses: mindsdb/github-actions/setup-env@main
-  #     - name: Notify of deployment starting
-  #       id: slack
-  #       uses: mindsdb/github-actions/slack-deploy-msg@main
-  #       with:
-  #         channel-id: ${{ secrets.SLACK_DEPLOYMENTS_CHANNEL_ID }}
-  #         status: "started"
-  #         color: "#0099CC"
-  #         env-name: "prod"
-  #         env-url: ${{ vars.MDB_ENV_URL }}
-  #         slack-token: ${{ secrets.GH_ACTIONS_SLACK_BOT_TOKEN }}
-  #     - uses: DevOps-Nirvana/aws-helm-multi-deploy-nodocker@v6
-  #       with:
-  #         environment-slug: prod
-  #         k8s-namespace: prod
-  #         image-tag: production-${{ env.SLUG }}
-  #         timeout: 600s
-  #         wait: "true"  # Wait till the deployment is finished
-  #     - name: Wait for Deployment to be ready
-  #       run: |
-  #         export NAMESPACE=prod
-  #         kubectl -n $NAMESPACE wait --for=condition=ready --timeout=10m pod -l app=cowork-frontend
-  #     - name: Notify of deployment finish
-  #       uses: mindsdb/github-actions/slack-deploy-msg@main
-  #       if: always()
-  #       with:
-  #         channel-id: ${{ secrets.SLACK_DEPLOYMENTS_CHANNEL_ID }}
-  #         status: "${{ job.status == 'success' && 'finished' || 'failed' }}"
-  #         color: "${{ job.status == 'success' && '#00C851' || '#FF4444' }}"
-  #         env-name: "prod"
-  #         env-url: ${{ vars.MDB_ENV_URL }}
-  #         slack-token: ${{ secrets.GH_ACTIONS_SLACK_BOT_TOKEN }}
-  #         update-message-id: ${{ steps.slack.outputs.ts }}
+  build-installers:
+    needs: [auto-release]
+    uses: ./.github/workflows/build-installers.yml
+    with:
+      # prod -> the PyPI stable stream: immutable, versioned, yankable, and no
+      # git or Xcode on first run.
+      build_kind: prod
+      minds_api_url: https://api.mindshub.ai
+      app_version: ${{ needs.auto-release.outputs.tag }}
+    secrets: inherit
+
+  publish-ui:
+    # Waits on build-installers, not just the tag: the manifest names that
+    # installer as the latest shell version, so publishing before the installer
+    # exists — or after its build failed — would advertise a reinstall the
+    # download URL can't serve.
+    needs: [auto-release, build-installers]
+    # `contents: write` because publish-ui.yml declares it at workflow level (it
+    # pushes the bundle and updates the release). Without this the whole prod run
+    # is rejected at file load as a startup_failure — the permission gate caught
+    # exactly that before this ever ran.
+    permissions:
+      contents: write
+    uses: ./.github/workflows/publish-ui.yml
+    with:
+      version: ${{ needs.auto-release.outputs.version }}
+      # The prod installer build-installers just shipped, at the same CalVer as
+      # the installer and the UI bundle.
+      shell_version: ${{ needs.auto-release.outputs.version }}
+    secrets: inherit
+
+  notify:
+    # Alert the eng channel if ANY job in the prod pipeline fails — the tag, the
+    # image, the installers, or the UI publish. A called workflow reports failure
+    # when any job inside it failed, so five entries cover the whole graph.
+    # One job covers both outcomes: a `uses:` job cannot branch on status, so
+    # the aggregate result picks the failed or recovered message, and a
+    # cancelled run stays silent.
+    #
+    # It cannot cover a run that never started (`startup_failure`, zero jobs) —
+    # there is no job to put it in. pipeline-watchdog.yml covers that from outside.
+    needs: [run-unit-tests, build-deploy, auto-release, build-installers, publish-ui]
+    if: ${{ !cancelled() && !contains(needs.*.result, 'cancelled') }}
+    permissions:
+      contents: read
+      actions: read # the prior-run lookup behind the recovery message
+    uses: mindsdb/github-actions/.github/workflows/notify-main-failure.yml@main
+    with:
+      env-name: "prod release + installers"
+      status: ${{ contains(needs.*.result, 'failure') && 'failed' || 'recovered' }}
+      runs-on: ubuntu-latest
+    secrets: inherit

@@ -1,3 +1,6 @@
+// MUST be first: sets the per-channel Electron app name (→ userData dir) before
+// any module that reads app.getPath('userData') at load time (e.g. token-store).
+import './app-identity';
 import { app, BrowserWindow, ipcMain, Menu, nativeImage, net, powerMonitor, session, shell } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -18,11 +21,15 @@ import { openDrivePickerFlow, cancelCurrentDrivePicker, isValidDriveFileIds } fr
 import { getPickedFiles, savePickedFiles, verifyPickedFiles, type PickedFile } from './picked-files';
 import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefreshTokenStore, isAccessTokenExpired } from './token-store';
 import { refreshTokensOnly, writeMindsKeyToEnvAndRestart, provisionAntonApiKey, scheduleRefresh, cancelScheduledRefresh, endKeycloakSession, KEYCLOAK_AUTH_URL, KEYCLOAK_REGISTRATION_URL, KEYCLOAK_TOKEN_URL, SIGNUP_CALLBACK_TIMEOUT_MS } from './minds-auth';
+import { scrubEnvCredentials } from './logout-env';
 import { MINDS_API_HOST } from './minds-urls';
 import { sendEvent } from './analytics';
 import { getRendererPath, getBundledPath, checkForUIUpdate, applyUIUpdate, hasInternet, getCachedVersion, isServingOta, rollbackUI } from './ui-updater';
 import type { UpdateCheckResult } from './ui-updater';
-import { coworkHome, coworkEnvPath, coworkStatePath, migrateLegacyHome, readEnvFile } from './cowork-home';
+import { coworkHome, coworkEnvPath, coworkStatePath, migrateLegacyHome, readEnvFile, buildKind } from './cowork-home';
+import { checkChannelConsistency } from './channels';
+import { resolveChannelIconPath } from './app-icon';
+import { applyChannelUvIsolation } from './uv-paths';
 import { getServerAuthToken, authHeader, resetServerAuthTokenCache } from './server-auth';
 import { getAppDisplayVersion } from './server-source';
 import { extractProviderError, classifyOpenAICompatibleResult } from './provider-error';
@@ -56,7 +63,8 @@ function clearStoredProviderState(): void {
   }
 }
 
-/** Read DEV_MODE from ~/.anton/.env. Returns 'live', 'full', or null.
+/** Read DEV_MODE from the Cowork config home's .env (coworkEnvPath()).
+ *  Returns 'live', 'full', or null.
  *
  * Defaults to null (OTA enabled). Set `DEV_MODE=live` for the Vite
  * dev-server flow, `DEV_MODE=full` to force the bundled renderer
@@ -69,7 +77,7 @@ function getDevMode(): string | null {
   return val; // 'live' or 'full'
 }
 
-/** Read UI_UPDATE_MODE from ~/.anton/.env. Defaults to 'auto'.
+/** Read UI_UPDATE_MODE from the Cowork config home's .env. Defaults to 'auto'.
  *
  * ENG-858: this is now an env-only escape hatch, not a user-facing setting —
  * there is no Settings UI control for it. It exists for support (pin a user
@@ -286,11 +294,14 @@ function ensureDefaultProject() {
 }
 
 // ─── Icons ───────────────────────────────────────────────────
+// Channel-aware: non-prod builds show their badged icon (icon-<kind>.png) in the
+// window/dock/taskbar, not the prod icon. Selection logic (+ fallback) lives in
+// app-icon.ts so it's unit-tested; here we only resolve the assets dir.
 function getIconPath(): string {
-  if (app.isPackaged) {
-    return path.join(process.resourcesPath, 'assets', 'icon.png');
-  }
-  return path.join(__dirname, '..', '..', '..', 'assets', 'icon.png');
+  const assetsDir = app.isPackaged
+    ? path.join(process.resourcesPath, 'assets')
+    : path.join(__dirname, '..', '..', '..', 'assets');
+  return resolveChannelIconPath(buildKind(), assetsDir, fs.existsSync);
 }
 
 let mainWindow: BrowserWindow | null = null;
@@ -330,7 +341,11 @@ function armOtaBootSelfHeal(win: BrowserWindow) {
   const recover = (why: string) => {
     disarm();
     console.error(`[main] OTA renderer ${why} at boot — rolling back to bundled`);
-    rollbackUI();
+    // Fire-and-forget: rollbackUI records the quarantine synchronously before
+    // its first await, and the bundled renderer we load below doesn't depend on
+    // the async cache shuffle. Swallow a rejected cleanup so it can't become an
+    // unhandled rejection and take down the main process mid-self-heal.
+    void rollbackUI().catch((err) => console.error('[main] UI rollback failed', err));
     if (!win.isDestroyed()) win.loadFile(getBundledPath());
   };
   const onOk = () => disarm();
@@ -354,8 +369,13 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
-    minWidth: 800,
-    minHeight: 500,
+    // 640 is the floor of the tablet popout band (see lib/breakpoints.js):
+    // it lets the window shrink far enough to reveal the off-canvas sidebar
+    // popout, but never into the phone layout (< 640), whose MobileShell top
+    // bar would collide with the embedded traffic lights. The web build has
+    // no minimum and no traffic lights, so it keeps the phone layout safely.
+    minWidth: 640,
+    minHeight: 440,
     icon,
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     // Embed the macOS traffic lights inside the sidebar header. Coordinates
@@ -1000,40 +1020,30 @@ function setupIPC() {
       }
     }
 
-    // Strip .env (for the standalone anton CLI and next-boot migration).
-    const LOGOUT_ENV_KEYS = [
-      'ANTON_MINDS_API_KEY',
-      'ANTON_MINDS_URL',
-      'ANTON_MINDS_ENABLED',
-      'ANTON_OPENAI_API_KEY',
-      'ANTON_OPENAI_BASE_URL',
-      'ANTON_OPENAI_API_KEY_CUSTOM',
-      'ANTON_ANTHROPIC_API_KEY',
-      'ANTON_GEMINI_API_KEY',
-      'ANTON_PLANNING_PROVIDER',
-      'ANTON_CODING_PROVIDER',
-      // ANTON_PLANNING_MODEL / ANTON_CODING_MODEL are intentionally NOT stripped
-      // on logout (ENG-739). Preserving them on sign-in but deleting them on
-      // sign-out would break the same "a `latest:` value may be a deliberate
-      // choice — never silently mutate it" rule the sign-in path now follows.
-      // A model is CLI-only in .env; the DB (product) is cleared separately.
-    ];
-    const envPath = getAntonEnvPath();
-    if (fs.existsSync(envPath)) {
-      const lines = fs.readFileSync(envPath, 'utf-8').split('\n')
-        .filter((l) => !LOGOUT_ENV_KEYS.some((k) => l.startsWith(k + '=')));
-      fs.writeFileSync(envPath, lines.join('\n'), 'utf-8');
-      for (const key of LOGOUT_ENV_KEYS) {
-        delete process.env[key];
-      }
+    // Scrub credential keys from the shared .env (see logout-env.ts). Since the
+    // ENG-941 settings refactor the DB — not the .env — is authoritative for
+    // credentials and config_ready: the .env→DB seed is one-time and
+    // sentinel-guarded, so a restart never re-reads the .env, and the DB clear
+    // above (POST /settings/logout) is what actually signs the user out. This
+    // scrub is therefore best-effort hygiene: it keeps stale keys from the
+    // standalone anton CLI, but a failure does NOT mean the user is still
+    // signed in. scrubEnvCredentials retries transient Windows share-mode locks
+    // (ENG-1209) and always clears process.env; if the write still can't land we
+    // log and press on rather than fail an otherwise-complete sign-out or trap
+    // the renderer's "Signing out…" spinner (the original ENG-1206 hang). The
+    // renderer keeps its own recovery path for a genuinely rejected logout.
+    try {
+      await scrubEnvCredentials(getAntonEnvPath());
+    } catch (err) {
+      console.warn('[logout] failed to scrub credential keys from .env (best-effort):', err);
     }
     clearStoredProviderState();
 
-    // Restart the server so in-memory caches (settings, provider objects)
-    // are flushed. If the DB clear failed (server was down, timed out),
-    // the restart re-reads the cleaned .env as the sole credential source.
-    // Without this, the Python process could still hold credentials in
-    // memory and report config_ready: true after the UI says "signed out".
+    // Restart the server so in-memory caches (settings, provider objects) are
+    // flushed. The DB clear above already dropped the credential rows and
+    // invalidated the settings cache, so config_ready is false without this —
+    // the restart is belt-and-suspenders against any provider object still held
+    // in memory reporting config_ready: true after the UI says "signed out".
     if (isServerRunning() || isServerStarting()) {
       try {
         await stopServer();
@@ -1288,6 +1298,30 @@ app.whenReady().then(async () => {
     if (getRefreshToken() && isAccessTokenExpired()) void refreshTokensOnly();
   });
 
+  // Isolate this channel's uv tool install (cowork-server binary + venv) so
+  // build kinds on one machine don't share one binary. Must run before the
+  // installer's presence check and before the server starts.
+  applyChannelUvIsolation();
+
+  // Guard the two environment axes against silent disagreement: the build kind
+  // (data home / branch) must target the API host the canonical channel model
+  // says it should. A mismatch means a build was wired to talk to the wrong
+  // backend (e.g. a preview build pointed at the prod API) — log it loudly
+  // rather than let it write to the wrong environment unnoticed.
+  {
+    const c = checkChannelConsistency(buildKind(), MINDS_API_HOST);
+    if (!c.ok) {
+      console.warn(
+        `[channels] BUILD/ENV MISMATCH: build kind "${c.kind}" expects the ` +
+          `"${c.expectedSlug || 'prod'}" backend (${c.expectedApiHost}) but this build ` +
+          `points at "${c.actualSlug || 'prod'}" (${c.actualApiHost}). ` +
+          `Check the CI minds_api_url / build_kind inputs.`,
+      );
+    } else {
+      console.log(`[channels] build kind "${c.kind}" → ${c.actualApiHost} (consistent)`);
+    }
+  }
+
   // Purge any plaintext API keys older builds cached to disk (ENG-462).
   // Fire-and-forget: version-gated + idempotent, and current responses send
   // no-store so nothing new re-caches while this runs.
@@ -1321,7 +1355,7 @@ app.whenReady().then(async () => {
             {
               label: 'About MindsHub Cowork',
               click: async () => {
-                // Unified headline = ISO week of the newest hot-updated
+                // Unified headline = release week of the newest hot-updated
                 // component (UI + server + agent); the App shell is shown
                 // separately since it updates via a different channel.
                 // Per-component versions go in credits as a lightweight

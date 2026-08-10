@@ -636,7 +636,7 @@ function SkeletonCard() {
 // wants the in-page detail view to stay.
 
 function ProjectDetail({
-  project, projects, tasks, scheduled, scheduleRunsIndex = {}, models, onSend, onSelectTask,
+  project, projects, tasks, scheduled, scheduleRunsIndex = {}, models, modelMeta, onSend, onSelectTask,
   onDeleteTask, onMoveTaskToProject, onShowAll,
   attachments = [],
   connectors = [],
@@ -742,10 +742,14 @@ function ProjectDetail({
           {Ico.panelExpandLeft(15)}
         </button>
 
-        {/* Header — Projects › [project] crumb */}
+        {/* Header — Projects › [project] crumb. Top padding honours the
+            shell's --titlebar-safe-top so the crumb drops below the traffic
+            lights when the sidebar isn't docked (0 → normal 14px), staying
+            left-aligned with the detail below. */}
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '14px 28px',
+          paddingTop: 'max(14px, var(--titlebar-safe-top, 0px))', paddingBottom: 14, paddingRight: 28,
+          paddingLeft: 28,
           borderBottom: '1px solid var(--line)',
           background: 'transparent',
           flexShrink: 0,
@@ -865,6 +869,7 @@ function ProjectDetail({
               onModelChange={() => {}}
               projects={projects || []}
               models={models || []}
+              modelMeta={modelMeta}
               attachments={attachments}
               connectors={connectors}
               onNavigateToConnectors={onNavigateToConnectors}
@@ -952,6 +957,7 @@ export default function ProjectsView({
   // TasksView does.
   scheduleRunsIndex = {},
   models = [],
+  modelMeta,
   loading = false,
   onSelectProject,
   onCreateProject,
@@ -1109,6 +1115,7 @@ export default function ProjectsView({
         scheduled={scheduled}
         scheduleRunsIndex={scheduleRunsIndex}
         models={models}
+        modelMeta={modelMeta}
         onSend={onSendInProject}
         onSelectTask={onSelectTask}
         onDeleteTask={onDeleteTask}

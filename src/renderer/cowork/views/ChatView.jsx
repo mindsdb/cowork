@@ -12,7 +12,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalS
 import { createPortal } from 'react-dom';
 import Ico from '../components/Icons';
 import Composer from '../components/Composer';
-import { Message, Card } from '../components/ui';
+import { Alert, Card } from '../components/ui';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import { ThinkingBlock } from '../components/thinking/ThinkingBlock';
 import { WorkingIndicator } from '../components/thinking/WorkingIndicator';
@@ -38,6 +38,7 @@ import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { harnessLabel } from '../lib/agentLabel';
 import { modelLabel } from '../lib/settingsTransform';
 import { providerOverloadedButtons } from '../lib/turnErrorActions';
+import { isSkippedFailedAssistant, isOrphanUser as isOrphanUserPure, lastVisibleTurnIdx } from '../lib/turnVisibility';
 import { isThinkingActive } from '../lib/thinkingActive';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 
@@ -992,17 +993,18 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
  * flavors, keyed on the structured code:
  *
  * - `model_access_denied` — old gateways sent this when the account couldn't
- *   cover the model, so lead with Add credits.
+ *   cover the model, so lead with Top up balance (plus the conditional
+ *   Switch to MindsHub Air escape hatch).
  * - `model_disabled` — an admin turned the model off; credits don't unlock
- *   it, so lead with Switch model (Add credits stays as a secondary escape
- *   hatch since some old gateways used this code for credit locks too).
+ *   it, so lead with Open Settings (Top up balance stays as a secondary
+ *   escape hatch since some old gateways used this code for credit locks).
  *
- * The body is the server's curated copy (anton's message, passed through
- * verbatim) — unlike ReconnectCard there's no web-only affordance to work
- * around: Add credits is just a billing link (host.openExternal window.opens
- * on web), and Switch model routes to Settings on both shells.
+ * The body is OUR copy, never the server's error string — old gateways word
+ * these as access problems, which under pay as you go misdescribes an empty
+ * wallet (ENG-1304). Top up balance is just a billing link (host.openExternal
+ * window.opens on web); Open Settings routes there on both shells.
  */
-function ModelUnavailableCard({ time, agentLabel, onOpenSettings, code, failedModel, errorText }) {
+export function ModelUnavailableCard({ time, agentLabel, onOpenSettings, code, failedModel, onSwitchToAir }) {
   // modelLabel finishes multi-part ids (Claude Sonnet, GPT-5.5 Mini) and
   // deliberately lowercases some heads (o4 Mini) — never re-case those. Only a
   // bare single-token alias ("sonnet") comes back lowercase, and it reads
@@ -1015,19 +1017,29 @@ function ModelUnavailableCard({ time, agentLabel, onOpenSettings, code, failedMo
     ? `${label} needs credits`
     : `${label} isn't available right now`;
 
+  // Fixed copy, not the server's error string (ENG-1304): old gateways word
+  // these denials as access problems ("your workspace does not have access"),
+  // which under pay as you go misdescribes an empty wallet.
   return (
     <ActionCard
       time={time}
       agentLabel={agentLabel}
       title={title}
-      body={errorText || (denied
-        ? 'This model needs credits. Add credits to unlock it, or switch to another model in Settings.'
-        : 'This model is currently unavailable. Switch to another model in Settings.')}
-      buttons={[
-        /* Credits denial → lead with Add credits; admin-disabled → lead with Switch. */
-        { label: 'Add credits', onClick: () => host.openExternal(MINDS_BILLING_URL), primary: denied },
-        { label: 'Switch model', onClick: () => onOpenSettings?.('agent'), primary: !denied },
-      ]}
+      body={denied
+        ? "You don't have enough credits for this model. Top up your balance to use it."
+        : 'This model is turned off for your workspace. Choose another model in Settings.'}
+      buttons={denied
+        ? [
+            { label: 'Top up balance', onClick: () => host.openExternal(MINDS_BILLING_URL), primary: true },
+            // Only while Air can still run (free monthly grant or a payable
+            // wallet) — a switch offer into another locked model is the same
+            // dead end this card exists to close.
+            ...(onSwitchToAir ? [{ label: 'Switch to MindsHub Air', onClick: onSwitchToAir }] : []),
+          ]
+        : [
+            { label: 'Open Settings', onClick: () => onOpenSettings?.('agent'), primary: true },
+            { label: 'Top up balance', onClick: () => host.openExternal(MINDS_BILLING_URL) },
+          ]}
     />
   );
 }
@@ -1086,6 +1098,7 @@ export function redirectForTask(redirects, taskId) {
 export default function ChatView({
   task,
   onSend,
+  onSwitchToAirAndResend,
   onBack,
   project,
   model,
@@ -1114,7 +1127,6 @@ export default function ChatView({
   onOpenSettings,
   onStop,
   projects = [],
-  sidebarCollapsed = false,
   // Messages the user typed while Anton was mid-turn. Displayed as
   // pills above the Composer; drain into onSend automatically when
   // the active turn finishes.
@@ -1415,16 +1427,16 @@ export default function ChatView({
           {Ico.panelExpandLeft(15)}
         </button>
 
-        {/* Header — when the sidebar is overlay/collapsed, the floating
-            hamburger button occupies some left space; push the header
-            content right to avoid overlap. On web, the hamburger is at
-            left: 18 (no traffic lights), so 60px clears it. On Electron,
-            left: 97, so 130px clears the traffic lights + hamburger. */}
+        {/* Header — reserve the shell-owned titlebar-safe inset on top so the
+            breadcrumbs drop below the macOS traffic lights (and the floating
+            open-sidebar button) whenever the sidebar isn't docked over that
+            corner, staying left-aligned with the transcript below. `--titlebar-
+            safe-top` is set on <main> by the shell and is 0 when the sidebar/
+            rail covers the zone, so max() keeps the normal 14px padding then. */}
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: sidebarCollapsed
-            ? `14px 28px 14px ${host.isWeb ? 60 : 130}px`
-            : '14px 28px',
+          paddingTop: 'max(14px, var(--titlebar-safe-top, 0px))', paddingBottom: 14, paddingRight: 28,
+          paddingLeft: 28,
           borderBottom: `1px solid ${T.line}`,
           background: 'transparent',
           flexShrink: 0,
@@ -1678,28 +1690,18 @@ export default function ChatView({
               // affordance with the right turn index.
               let assistantTurnIdx = -1;
               let userInputIdx = -1;
-              const isOrphanUser = (atIdx) => {
-                // Walk forward from this user message — if we hit
-                // another user before any assistant, this one is an
-                // orphan. End-of-list with no assistant → orphan.
-                for (let j = atIdx + 1; j < visibleMessages.length; j++) {
-                  const role = visibleMessages[j]?.role;
-                  if (role === 'user') return true;
-                  if (role === 'assistant') return false;
-                }
-                return true;
-              };
-              // Index of the last user or assistant message — its actions
-              // stay always-visible (Claude pattern: most recent exchange
-              // shows its toolbar). When streaming, nothing needs isLast
-              // since the streaming turn has no actions yet.
-              let lastTurnIdx = -1;
-              if (!streamingMsg) {
-                for (let j = visibleMessages.length - 1; j >= 0; j--) {
-                  const r = visibleMessages[j]?.role;
-                  if (r === 'user' || r === 'assistant') { lastTurnIdx = j; break; }
-                }
-              }
+              // Skip + orphan rules live together in lib/turnVisibility so a
+              // user message whose only assistant bubble is skipped keeps the
+              // delete affordance the hidden bubble used to carry (ENG-1304,
+              // PR #580 review).
+              const isOrphanUser = (atIdx) => isOrphanUserPure(visibleMessages, atIdx);
+              // Index of the last user or assistant message that renders —
+              // its actions stay always-visible (Claude pattern: most recent
+              // exchange shows its toolbar). Skipped failed-assistant bubbles
+              // don't count (PR #580 review), so a final failed turn keeps
+              // the toolbar on the user message. When streaming, nothing
+              // needs isLast since the streaming turn has no actions yet.
+              const lastTurnIdx = streamingMsg ? -1 : lastVisibleTurnIdx(visibleMessages);
               return visibleMessages.map((m, i) => {
               if (m.role === 'user') {
                 userInputIdx += 1;
@@ -1795,9 +1797,11 @@ export default function ChatView({
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
                       title="You're out of credits"
-                      body={m.content || "You've used your MindsHub credits. Add more to keep working."}
+                      // Fixed copy, not the server string (ENG-1304) — the
+                      // gateway's wording predates pay as you go.
+                      body="You've used your available MindsHub tokens. Top up your balance to keep working."
                       buttons={[
-                        { label: 'Add credits', onClick: () => host.openExternal(MINDS_BILLING_URL), primary: true },
+                        { label: 'Top up balance', onClick: () => host.openExternal(MINDS_BILLING_URL), primary: true },
                       ]}
                     />
                   );
@@ -1818,9 +1822,15 @@ export default function ChatView({
                 }
                 /* Legacy model-403 (pre-wallet gateways only): current
                  * gateways report wallet denials as `token_limit`, rendered
-                 * by the out-of-credits card above. Offer Add credits /
-                 * Switch model, never "try again". */
+                 * by the out-of-credits card above. Offer Top up balance and,
+                 * while Air is payable, a one-click switch that resends the
+                 * failed message on it — never "try again". */
                 if (m.code === 'model_access_denied' || m.code === 'model_disabled') {
+                  let deniedPrevUserText = '';
+                  for (let j = i - 1; j >= 0; j--) {
+                    const c = visibleMessages[j]?.role === 'user' && visibleMessages[j].content;
+                    if (typeof c === 'string' && c) { deniedPrevUserText = c; break; }
+                  }
                   return (
                     <ModelUnavailableCard
                       key={i}
@@ -1829,7 +1839,11 @@ export default function ChatView({
                       onOpenSettings={onOpenSettings}
                       code={m.code}
                       failedModel={m.failedModel}
-                      errorText={m.content}
+                      onSwitchToAir={
+                        onSwitchToAirAndResend && deniedPrevUserText
+                          ? () => onSwitchToAirAndResend(deniedPrevUserText)
+                          : undefined
+                      }
                     />
                   );
                 }
@@ -1857,7 +1871,7 @@ export default function ChatView({
                 }
                 return (
                   <AnswerTurn key={i} state="done" time={formatMetaTime(m.createdAt)} showActions={false} agentLabel={agentLabel}>
-                    <Message>{m.content}</Message>
+                    <Alert variant="danger">{m.content}</Alert>
                   </AnswerTurn>
                 );
               }
@@ -1867,15 +1881,22 @@ export default function ChatView({
                     key={i}
                     time={formatMetaTime(m.createdAt)}
                     title="Connect a provider to start chatting"
-                    body="Cowork needs an LLM provider. Subscribe with MindsHub for managed access, or add your own provider key in Settings."
+                    body="Start with MindsHub and get free monthly tokens on MindsHub Air, then pay as you go. Or add your own API key in Settings."
                     buttons={[
-                      { label: 'Subscribe with MindsHub', onClick: () => host.openExternal(MINDS_BILLING_URL), primary: true },
+                      { label: 'Start for free', onClick: () => host.openExternal(MINDS_BILLING_URL), primary: true },
                       { label: 'Open Settings', onClick: () => onOpenSettings?.('agent') },
                     ]}
                   />
                 );
               }
               assistantTurnIdx += 1;
+              // A turn that failed before producing anything renders no
+              // bubble — the blank block above billing cards (ENG-1304).
+              // Counted first so turn indexing is unchanged; the same
+              // predicate keeps isOrphanUser's delete affordance honest.
+              if (isSkippedFailedAssistant(visibleMessages, i)) {
+                return null;
+              }
               // The server keys delete_turn by USER-INPUT index, not
               // by assistant index. With orphans (stop before any
               // assistant) those can drift apart, so we use the most

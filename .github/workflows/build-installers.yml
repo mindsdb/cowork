@@ -1,0 +1,101 @@
+# Build (and upload) the desktop installers for both platforms, defined once.
+#
+# The three per-event installer workflows each wired up the same four jobs —
+# build-macos, upload-macos, build-windows, upload-windows — differing only in
+# `build_kind`, the API host, and whether a PR label gated them. That is twelve
+# jobs' worth of boilerplate expressing three inputs.
+#
+# mac and windows stay SEPARATE called workflows rather than a matrix, because
+# they genuinely differ below the surface: different runner OS, different signing
+# material, different notarisation and EV steps. A matrix would have to branch on
+# `matrix.platform` in every step, which is the duplication moved rather than
+# removed. What is shared is the shape — build, then upload, then hand back a URL —
+# and that is what lives here.
+#
+# Each platform is independently switchable, because a pull request builds only
+# what its labels ask for, while a staging or prod run builds both.
+
+name: Build installers
+
+on:
+  workflow_call:
+    inputs:
+      build_kind:
+        description: "preview (PR) | stable (staging rc stream) | prod"
+        type: string
+        required: true
+      minds_api_url:
+        description: >-
+          Which MindsHub environment the app talks to. Must be stated: it feeds
+          BOTH halves of the app (main bakes it via gen-build-channel, Vite bakes
+          it for the renderer), and only main knows the build kind — so when it is
+          absent main falls back on build_kind while the renderer, which cannot see
+          the build kind, falls back to prod. The app then runs Keycloak against one
+          environment and the session against the other, and login can never succeed.
+        type: string
+        required: true
+      server_ref:
+        description: >-
+          cowork-server branch for machines that already carry a GIT install (the
+          updater is source-aware). Fresh installs follow the PyPI stream that
+          build_kind implies, so this is a no-op for them.
+        type: string
+        default: ""
+      app_version:
+        description: "Explicit version, for a prod build cut from a release tag."
+        type: string
+        default: ""
+      macos:
+        description: "Build and upload the macOS .pkg"
+        type: boolean
+        default: true
+      windows:
+        description: "Build and upload the Windows .exe"
+        type: boolean
+        default: true
+    outputs:
+      macos_download_url:
+        description: "Public CloudFront URL of the uploaded .pkg, empty when not built"
+        value: ${{ jobs.upload-macos.outputs.download_url }}
+      windows_download_url:
+        description: "Public CloudFront URL of the uploaded .exe, empty when not built"
+        value: ${{ jobs.upload-windows.outputs.download_url }}
+
+jobs:
+  build-macos:
+    if: inputs.macos
+    uses: ./.github/workflows/build-macos-pkg.yml
+    with:
+      build_kind: ${{ inputs.build_kind }}
+      minds_api_url: ${{ inputs.minds_api_url }}
+      server_ref: ${{ inputs.server_ref }}
+      app_version: ${{ inputs.app_version }}
+    secrets: inherit
+
+  upload-macos:
+    needs: build-macos
+    uses: ./.github/workflows/upload-installer-to-s3.yml
+    with:
+      platform: mac
+      build_kind: ${{ inputs.build_kind }}
+      artifact_name: ${{ needs.build-macos.outputs.artifact_name }}
+    secrets: inherit
+
+  build-windows:
+    if: inputs.windows
+    uses: ./.github/workflows/build-windows-installer.yml
+    with:
+      build_kind: ${{ inputs.build_kind }}
+      minds_api_url: ${{ inputs.minds_api_url }}
+      server_ref: ${{ inputs.server_ref }}
+      app_version: ${{ inputs.app_version }}
+    secrets: inherit
+
+  upload-windows:
+    needs: build-windows
+    uses: ./.github/workflows/upload-installer-to-s3.yml
+    with:
+      platform: windows
+      build_kind: ${{ inputs.build_kind }}
+      artifact_name: ${{ needs.build-windows.outputs.artifact_name }}
+    secrets: inherit

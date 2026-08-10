@@ -6,6 +6,19 @@ cd "$ROOT_DIR"
 
 VERSION="$(node -p "require('./package.json').version")"
 PRODUCT_NAME="$(node -e "const fs=require('fs'); const pkg=require('./package.json'); let productName=pkg.productName; try { const builderConfig=fs.readFileSync('./electron-builder.yml', 'utf8'); const match=builderConfig.match(/^\\s*productName:\\s*(.+)\\s*$/m); if (match) productName=match[1].trim().replace(/^['\\\"]|['\\\"]$/g, ''); } catch (error) {} process.stdout.write(productName || pkg.name);")"
+# Per-channel bundle identity (empty for prod/dev/unset → electron-builder.yml
+# defaults, i.e. prod is unchanged). Mirrors src/main/channels.ts via
+# scripts/channel-identity.mjs. When set, PRODUCT_NAME is overridden so APP_PATH
+# below points at the actual built .app, and the values are passed to
+# electron-builder via -c overrides at the --dir step.
+CHANNEL_PRODUCT_NAME="$(node scripts/channel-identity.mjs value productName)"
+CHANNEL_APP_ID="$(node scripts/channel-identity.mjs value appId)"
+CHANNEL_MAC_ICON="$(node scripts/channel-identity.mjs value macIcon)"
+if [[ -n "$CHANNEL_PRODUCT_NAME" ]]; then
+  PRODUCT_NAME="$CHANNEL_PRODUCT_NAME"
+  echo "==> Channel bundle identity: appId=$CHANNEL_APP_ID productName=$PRODUCT_NAME icon=$CHANNEL_MAC_ICON"
+fi
+
 ARTIFACT_NAME="${PRODUCT_NAME// /-}"
 APP_PATH="release/mac-universal/${PRODUCT_NAME}.app"
 APP_ZIP="release/${ARTIFACT_NAME}.app.zip"
@@ -86,7 +99,15 @@ if is_truthy "$MAC_PKG_UNSIGNED"; then
 else
   echo "==> Building signed universal app bundle"
 fi
-npx electron-builder --mac --universal --dir -c.afterSign=scripts/after-sign-noop.js
+if [[ -n "$CHANNEL_PRODUCT_NAME" ]]; then
+  npx electron-builder --mac --universal --dir \
+    -c.afterSign=scripts/after-sign-noop.js \
+    -c.appId="$CHANNEL_APP_ID" \
+    -c.productName="$CHANNEL_PRODUCT_NAME" \
+    -c.mac.icon="$CHANNEL_MAC_ICON"
+else
+  npx electron-builder --mac --universal --dir -c.afterSign=scripts/after-sign-noop.js
+fi
 
 if [[ ! -d "$APP_PATH" ]]; then
   echo "Error: app bundle not found at $APP_PATH" >&2

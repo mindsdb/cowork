@@ -158,3 +158,60 @@ describe('revealSettingKey — web gate (ENG-932)', () => {
     expect(await revealSettingKey('anthropic')).toBe('');
   });
 });
+
+// ─── ENG-1304: history hydration maps config/auth failures to the
+// connect-a-provider card, matching the live-stream path (lib/antonErrors).
+// Before this, reopening a conversation downgraded the card to a raw error.
+describe('fetchSession error hydration (ENG-1304)', () => {
+  const conversationMeta = { id: 'c1', title: 'T', project: null };
+  const failedTurn = (code, error) => ([
+    { role: 'user', content: 'hi' },
+    { role: 'assistant', content: '', events: [
+      { type: 'response.created' },
+      { type: 'response.failed', code, error },
+    ] },
+  ]);
+
+  const stubEndpoints = (items) => {
+    vi.stubGlobal('fetch', vi.fn(async (url) => {
+      const u = String(url);
+      const body = u.endsWith('/items') ? items : conversationMeta;
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: () => 'application/json' },
+        json: async () => body,
+      };
+    }));
+  };
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('maps a config_required failure to a provider_required row, not an error row', async () => {
+    stubEndpoints(failedTurn('config_required', 'Could not resolve authentication method.'));
+    const { fetchSession } = await import('./api');
+    const task = await fetchSession('c1');
+    const roles = task.messages.map((m) => m.role);
+    expect(roles).toContain('provider_required');
+    expect(roles).not.toContain('error');
+  });
+
+  it('maps a config-shaped error MESSAGE (no code) the same way', async () => {
+    stubEndpoints(failedTurn(null, 'Could not resolve authentication method'));
+    const { fetchSession } = await import('./api');
+    const task = await fetchSession('c1');
+    expect(task.messages.map((m) => m.role)).toContain('provider_required');
+  });
+
+  it('keeps billing failures as error rows with their code intact', async () => {
+    stubEndpoints(failedTurn('token_limit', 'no tokens left'));
+    const { fetchSession } = await import('./api');
+    const task = await fetchSession('c1');
+    const err = task.messages.find((m) => m.role === 'error');
+    expect(err).toBeTruthy();
+    expect(err.code).toBe('token_limit');
+    expect(task.messages.map((m) => m.role)).not.toContain('provider_required');
+  });
+});

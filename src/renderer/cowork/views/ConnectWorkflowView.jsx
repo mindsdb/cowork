@@ -482,7 +482,7 @@ function HomePage({ onOpenDirectory }) {
           </svg>
         </div>
 
-        <h1 className="customize-serif">Customize your agent</h1>
+        <h1 className="customize-heading">Customize your agent</h1>
         <p className="customize-home-subtitle">Connectors and plugins shape how the agent works with you.</p>
 
         <div className="customize-home-cards">
@@ -535,7 +535,7 @@ function ConnectorsPage({
     : `You are not connected to ${connectorName} yet.`;
   const connectLabel = selectedConnections.length ? `Connect another ${connectorName}` : `Connect ${connectorName}`;
   const connectionSummary = selectedConnections
-    .map((connection) => connection.label || connection.subtitle || connection.name)
+    .map((connection) => connection.user_label || connection.name)
     .filter(Boolean)
     .slice(0, 2)
     .join(', ');
@@ -713,7 +713,7 @@ function DirectoryModal({ mode, onChangeMode, onClose, onChooseConnector }) {
     <div className="customize-modal-overlay" onClick={(event) => event.target === event.currentTarget && onClose()}>
       <div className="customize-modal" role="dialog" aria-modal="true" aria-label="Customize directory">
         <div className="customize-modal-header">
-          <h2 className="customize-serif">
+          <h2 className="customize-heading">
             {mode === DIRECTORY_MODE_PLUGINS ? 'Plugins Directory' : 'Connectors Directory'}
           </h2>
           <button className="icon-btn" type="button" aria-label="Close directory" onClick={onClose}>

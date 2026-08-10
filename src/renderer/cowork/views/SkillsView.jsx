@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import { PageHeader, FilterRow, SearchInput, SortPill } from '../components/collection';
-import { Menu, Button, Card, Select, Input, Textarea } from '../components/ui';
+import { Menu, Button, Card, Field, Select, Input, Textarea } from '../components/ui';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
 import { Switch } from '../components/ui/Switch';
-import { Crumb, CrumbSep, CrumbCurrent } from '../components/ui/Crumb';
 import { useToastManager } from '../components/ui/Toast';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
@@ -12,6 +11,15 @@ import OverflowMenu from '../components/OverflowMenu';
 import { fetchProjects, uploadSkillFile } from '../api';
 import { useSkills, saveSkillAndSync, deleteSkillAndSync } from '../lib/skillsStore';
 import { relativeAge } from '../lib/formatTime';
+
+// Sentinel for the "All projects" scope choice in the Scope <Select>. It must
+// be a non-empty string: Base UI's <Select.Value> treats an empty-string value
+// as "nothing selected" and shows the placeholder, so an option with value ''
+// would render as the "Select…" placeholder on the closed control even though
+// its item still carries a checkmark (ENG-1246). This value never reaches
+// storage — `submit` maps it back to an empty `projects` array, and it can't
+// collide with a real project name.
+const ALL_PROJECTS = '__all_projects__';
 
 function EmptyState({ children }) {
   return <div style={{ padding: 32, color: 'var(--frost-600)', fontSize: 13 }}>{children}</div>;
@@ -109,25 +117,17 @@ const fieldStyle = {
   boxSizing: 'border-box',
 };
 
-function FieldLabel({ children }) {
-  return (
-    <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink-2)', marginBottom: 4 }}>
-      {children}
-    </div>
-  );
-}
-
 function SkillModal({ open, onClose, onSaved, onError, initial = null, projects = [] }) {
   const isEdit = initial !== null;
-  const [draft, setDraft] = useState({ label: '', description: '', declarative: '', project: 'general' });
+  const [draft, setDraft] = useState({ label: '', description: '', declarative: '', project: ALL_PROJECTS });
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     if (initial) {
-      setDraft({ label: initial.label || '', description: initial.description || '', declarative: initial.declarative || '', project: initial.projects?.[0] || '' });
+      setDraft({ label: initial.label || '', description: initial.description || '', declarative: initial.declarative || '', project: initial.projects?.[0] || ALL_PROJECTS });
     } else {
-      setDraft({ label: '', description: '', declarative: '', project: '' });
+      setDraft({ label: '', description: '', declarative: '', project: ALL_PROJECTS });
     }
   }, [open]);
 
@@ -143,7 +143,8 @@ function SkillModal({ open, onClose, onSaved, onError, initial = null, projects 
     if (!label || !draft.declarative.trim()) return;
     setBusy(true);
     try {
-      const saved = await saveSkillAndSync({ label, description: draft.description, declarative: draft.declarative, projects: draft.project ? [draft.project] : [] }, isEdit);
+      const scopedProject = draft.project && draft.project !== ALL_PROJECTS ? [draft.project] : [];
+      const saved = await saveSkillAndSync({ label, description: draft.description, declarative: draft.declarative, projects: scopedProject }, isEdit);
       handleClose();
       await onSaved(saved);
     } catch (err) {
@@ -165,8 +166,7 @@ function SkillModal({ open, onClose, onSaved, onError, initial = null, projects 
       />
       <ModalBody padding="20px">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div>
-            <FieldLabel>Label</FieldLabel>
+          <Field label="Label">
             <Input
               aria-label="Label"
               value={draft.label}
@@ -176,22 +176,24 @@ function SkillModal({ open, onClose, onSaved, onError, initial = null, projects 
               style={{ ...fieldStyle, height: 34, resize: 'none', ...(isEdit && { opacity: 0.5, cursor: 'default' }) }}
               autoFocus={!isEdit}
             />
-          </div>
-          <div>
-            <FieldLabel>Scope</FieldLabel>
+          </Field>
+          <Field label="Scope">
             <Select
               ariaLabel="Scope"
               value={draft.project}
               onValueChange={(v) => setField('project', v)}
               style={{ ...fieldStyle, height: 34 }}
               options={[
-                { value: '', label: 'All projects' },
+                // The global scope is a mode, not a project — set it apart from
+                // the real projects (which map 1:1 to the projects page) with a
+                // leading icon and a divider.
+                { value: ALL_PROJECTS, label: 'All projects', icon: Ico.globe(14) },
+                { separator: true },
                 ...projects.map((p) => ({ value: p.name, label: p.name })),
               ]}
             />
-          </div>
-          <div>
-            <FieldLabel>Description</FieldLabel>
+          </Field>
+          <Field label="Description">
             <Textarea
               aria-label="Description"
               value={draft.description}
@@ -199,9 +201,8 @@ function SkillModal({ open, onClose, onSaved, onError, initial = null, projects 
               placeholder="Generate weekly status reports from recent work. Use when asked for updates or progress summaries."
               style={{ ...fieldStyle, height: 80 }}
             />
-          </div>
-          <div>
-            <FieldLabel>Instructions</FieldLabel>
+          </Field>
+          <Field label="Instructions">
             <Textarea
               aria-label="Instructions"
               value={draft.declarative}
@@ -209,7 +210,7 @@ function SkillModal({ open, onClose, onSaved, onError, initial = null, projects 
               placeholder="Summarize my recent work in three sections: wins, blockers, and next steps. Keep the tone professional but not stiff..."
               style={{ ...fieldStyle, height: 198, fontFamily: 'var(--font-mono)', fontSize: 12.5 }}
             />
-          </div>
+          </Field>
         </div>
       </ModalBody>
       <ModalFooter>
@@ -424,44 +425,44 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
     <div className="scroll-clean" style={{ flex: 1, overflowY: 'auto', paddingBottom: 40 }}>
       {selected ? (
         // ── Detail view ────────────────────────────────────────────────────
-        <div style={{ padding: 32 }}>
-
-
-          {/* Header */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-            <Crumb label="Skills" onClick={() => setSelected(null)} />
-            <CrumbSep />
-            <CrumbCurrent label={selected.label} />
-            <div style={{ flex: 1 }} />
-            <Switch
-              checked={selected.enabled ?? true}
-              aria-label="Skill enabled"
-              onCheckedChange={async (next) => {
-                setSelected((prev) => ({ ...prev, enabled: next }));
-                try {
-                  const saved = await saveSkillAndSync({ label: selected.label, enabled: next }, true);
-                  setSelected(saved);
-                } catch (err) {
-                  setSelected((prev) => ({ ...prev, enabled: !next }));
-                  showToast(err.message || 'Could not update skill.');
-                }
-              }}
-            />
-            <OverflowMenu
-              items={[
-                { id: 'try',       label: 'Try in chat', icon: Ico.chats(14),  onClick: () => onTryInChat?.(`/${selected.label}`, selected.projects?.[0]) },
-                { id: 'edit',      label: 'Edit',        icon: Ico.edit(14),   onClick: () => startEdit(selected) },
-                { divider: true },
-                { id: 'uninstall', label: 'Uninstall',   icon: Ico.trash(14),  danger: true, onClick: () => remove(selected) },
-              ]}
-            />
-          </div>
+        <>
+          <PageHeader
+            crumbs={[{ label: 'Skills', onClick: () => setSelected(null) }]}
+            current={selected.label}
+            actions={
+              <>
+                <Switch
+                  checked={selected.enabled ?? true}
+                  aria-label="Skill enabled"
+                  onCheckedChange={async (next) => {
+                    setSelected((prev) => ({ ...prev, enabled: next }));
+                    try {
+                      const saved = await saveSkillAndSync({ label: selected.label, enabled: next }, true);
+                      setSelected(saved);
+                    } catch (err) {
+                      setSelected((prev) => ({ ...prev, enabled: !next }));
+                      showToast(err.message || 'Could not update skill.');
+                    }
+                  }}
+                />
+                <OverflowMenu
+                  items={[
+                    { id: 'try',       label: 'Try in chat', icon: Ico.chats(14),  onClick: () => onTryInChat?.(`/${selected.label}`, selected.projects?.[0]) },
+                    { id: 'edit',      label: 'Edit',        icon: Ico.edit(14),   onClick: () => startEdit(selected) },
+                    { divider: true },
+                    { id: 'uninstall', label: 'Uninstall',   icon: Ico.trash(14),  danger: true, onClick: () => remove(selected) },
+                  ]}
+                />
+              </>
+            }
+          />
+          <div style={{ padding: '24px 32px 32px' }}>
 
           {/* Scope */}
           <div style={{ marginBottom: 16 }}>
             <h3 className="s-h3" style={{ margin: '0 0 4px' }}>Scope</h3>
             <p style={{ margin: 0, fontSize: 13.5, color: 'var(--ink)', lineHeight: 1.5, userSelect: 'text' }}>
-              {selected.projects?.[0]}
+              {selected.projects?.[0] || 'All projects'}
             </p>
           </div>
 
@@ -492,6 +493,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
             />
           </div>
         </div>
+        </>
       ) : (
         // ── Grid ───────────────────────────────────────────────────────────
         <>
