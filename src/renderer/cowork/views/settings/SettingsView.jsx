@@ -9,7 +9,7 @@ import { copyText as copyToClipboard } from '../../lib/clipboard';
 import { deriveProviderStatus, friendlyProviderError } from '../../lib/providerStatus';
 import { ToggleGroup } from '../../components/ui/ToggleGroup';
 import { Switch } from '../../components/ui/Switch';
-import { Badge, Button, Input, Checkbox, Select } from '../../components/ui';
+import { Badge, Button, Input, Checkbox, Select, Tooltip } from '../../components/ui';
 import Spinner from '../../components/ui/Spinner';
 import ModelSelect from '../../components/ModelSelect.jsx';
 import { host } from '../../../platform/host';
@@ -173,15 +173,16 @@ function ClearableTextInput({ value, onChange, placeholder, ariaLabel }) {
         style={hasValue ? { paddingRight: 36 } : undefined}
       />
       {hasValue && (
-        <button
-          type="button"
-          onClick={() => onChange('')}
-          title="Clear (commits on Save settings)"
-          aria-label="Clear value"
-          className={FIELD_ICON_BTN}
-        >
-          {Ico.close(13)}
-        </button>
+        <Tooltip content="Clear (commits on Save settings)">
+          <button
+            type="button"
+            onClick={() => onChange('')}
+            aria-label="Clear value"
+            className={FIELD_ICON_BTN}
+          >
+            {Ico.close(13)}
+          </button>
+        </Tooltip>
       )}
     </div>
   );
@@ -326,22 +327,23 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
       />
       <div className="absolute right-1 top-1/2 -translate-y-1/2 inline-flex items-center gap-0.5">
         <span className="relative inline-flex">
-          <button
-            type="button"
-            onClick={onCopy}
-            onBlur={() => { if (copyState === 'failed') setCopyState('idle'); }}
-            disabled={!canCopy}
-            title={
-              isDisplayingSentinel ? 'Reveal the key first to copy it'
-                : copyState === 'copied' ? 'Copied'
-                  : copyState === 'failed' ? "Couldn't copy — select the key to copy manually"
-                    : 'Copy to clipboard'
-            }
-            aria-label={copyState === 'copied' ? 'Copied to clipboard' : 'Copy key to clipboard'}
-            className={canCopy ? btnClass : btnClassDisabled}
-          >
-            {copyState === 'copied' ? Ico.check(13) : Ico.copy(13)}
-          </button>
+          <Tooltip content={
+            isDisplayingSentinel ? 'Reveal the key first to copy it'
+              : copyState === 'copied' ? 'Copied'
+                : copyState === 'failed' ? "Couldn't copy — select the key to copy manually"
+                  : 'Copy to clipboard'
+          }>
+            <button
+              type="button"
+              onClick={onCopy}
+              onBlur={() => { if (copyState === 'failed') setCopyState('idle'); }}
+              disabled={!canCopy}
+              aria-label={copyState === 'copied' ? 'Copied to clipboard' : 'Copy key to clipboard'}
+              className={canCopy ? btnClass : btnClassDisabled}
+            >
+              {copyState === 'copied' ? Ico.check(13) : Ico.copy(13)}
+            </button>
+          </Tooltip>
           {(copyState === 'copied' || copyState === 'failed') && (
             <span
               role="status"
@@ -358,27 +360,29 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
             >{copyState === 'failed' ? "Couldn't copy — select the key to copy manually" : 'Copied'}</span>
           )}
         </span>
-        <button
-          type="button"
-          onClick={onToggleShow}
-          disabled={revealing}
-          title={show ? 'Hide key' : (revealing ? 'Revealing…' : 'Reveal key')}
-          aria-label={show ? 'Hide key' : 'Reveal key'}
-          aria-pressed={show}
-          className={show ? btnClassActive : btnClass}
-        >
-          {show ? Ico.eyeOff(13) : Ico.eye(13)}
-        </button>
-        <button
-          type="button"
-          onClick={onClearField}
-          disabled={!hasValue}
-          title="Clear this key (commits on Save settings)"
-          aria-label="Clear key"
-          className={hasValue ? btnClass : btnClassDisabled}
-        >
-          {Ico.close(13)}
-        </button>
+        <Tooltip content={show ? 'Hide key' : (revealing ? 'Revealing…' : 'Reveal key')}>
+          <button
+            type="button"
+            onClick={onToggleShow}
+            disabled={revealing}
+            aria-label={show ? 'Hide key' : 'Reveal key'}
+            aria-pressed={show}
+            className={show ? btnClassActive : btnClass}
+          >
+            {show ? Ico.eyeOff(13) : Ico.eye(13)}
+          </button>
+        </Tooltip>
+        <Tooltip content="Clear this key (commits on Save settings)">
+          <button
+            type="button"
+            onClick={onClearField}
+            disabled={!hasValue}
+            aria-label="Clear key"
+            className={hasValue ? btnClass : btnClassDisabled}
+          >
+            {Ico.close(13)}
+          </button>
+        </Tooltip>
       </div>
     </div>
   );
@@ -1098,15 +1102,16 @@ export default function SettingsView({
                   : 'Changes apply on save.'}
         </span>
       </div>
-      <Button
-        variant="primary" onClick={save}
-        disabled={(!settingsDirty && !anyProviderFailed) || testing || missingCustomNames}
-        title={missingCustomNames ? 'Each custom provider needs a name' : testing ? 'Saving…' : (!settingsDirty && !anyProviderFailed) ? 'No unsaved changes' : anyProviderFailed ? 'Re-test failed providers.' : 'Save changes and re-run provider tests.'}
-        className="w-[140px] inline-flex items-center justify-center gap-1.5"
-        style={{ opacity: ((!settingsDirty && !anyProviderFailed) || testing || missingCustomNames) ? 0.55 : 1, cursor: ((!settingsDirty && !anyProviderFailed) || testing || missingCustomNames) ? 'default' : 'pointer' }}
-      >
-        {testing ? 'Saving…' : (settingsDirty || anyProviderFailed) ? 'Save settings' : <>{Ico.check(14)} Saved</>}
-      </Button>
+      <Tooltip content={missingCustomNames ? 'Each custom provider needs a name' : testing ? 'Saving…' : (!settingsDirty && !anyProviderFailed) ? 'No unsaved changes' : anyProviderFailed ? 'Re-test failed providers.' : 'Save changes and re-run provider tests.'}>
+        <Button
+          variant="primary" onClick={save}
+          disabled={(!settingsDirty && !anyProviderFailed) || testing || missingCustomNames}
+          className="w-[140px] inline-flex items-center justify-center gap-1.5"
+          style={{ opacity: ((!settingsDirty && !anyProviderFailed) || testing || missingCustomNames) ? 0.55 : 1, cursor: ((!settingsDirty && !anyProviderFailed) || testing || missingCustomNames) ? 'default' : 'pointer' }}
+        >
+          {testing ? 'Saving…' : (settingsDirty || anyProviderFailed) ? 'Save settings' : <>{Ico.check(14)} Saved</>}
+        </Button>
+      </Tooltip>
     </>
   );
 
@@ -1259,25 +1264,27 @@ export default function SettingsView({
                         {GET_KEY_URL[p.type] && !ssoMindsHub && (
                           <div className="text-[11.5px] text-ink-3">
                             Get your API key at{' '}
-                            <a
-                              href={GET_KEY_URL[p.type]}
-                              target="_blank"
-                              rel="noreferrer noopener"
-                              title={`Open ${GET_KEY_URL[p.type].replace(/^https?:\/\//, '')} in your browser.`}
-                              className="text-accent"
-                            >{GET_KEY_URL[p.type].replace(/^https?:\/\//, '')} →</a>
+                            <Tooltip content={`Open ${GET_KEY_URL[p.type].replace(/^https?:\/\//, '')} in your browser.`}>
+                              <a
+                                href={GET_KEY_URL[p.type]}
+                                target="_blank"
+                                rel="noreferrer noopener"
+                                className="text-accent"
+                              >{GET_KEY_URL[p.type].replace(/^https?:\/\//, '')} →</a>
+                            </Tooltip>
                           </div>
                         )}
                         {p.type === 'minds-cloud' && !isSsoConnected && (
                           <div className="text-[11.5px] text-ink-3">
                             Don't have an account?{' '}
-                            <a
-                              href={MINDS_REGISTER_URL}
-                              target="_blank"
-                              rel="noreferrer noopener"
-                              title="Open the MindsHub sign-up page in your browser."
-                              className="text-accent"
-                            >Sign up →</a>
+                            <Tooltip content="Open the MindsHub sign-up page in your browser.">
+                              <a
+                                href={MINDS_REGISTER_URL}
+                                target="_blank"
+                                rel="noreferrer noopener"
+                                className="text-accent"
+                              >Sign up →</a>
+                            </Tooltip>
                           </div>
                         )}
                         {status === 'fail' && friendlyError && (
@@ -1300,23 +1307,25 @@ export default function SettingsView({
                     {/* Right (desktop) / inline row (mobile): trash + edit */}
                     <div className={`flex gap-1.5 ${mobile ? 'flex-row w-auto' : 'flex-col w-[30px]'}`}>
                       {!PROTECTED_PROVIDER_TYPES.has(p.type) && (
-                        <Button
-                          variant="danger"
-                          icon
-                          size="sm"
-                          onClick={() => removeProvider(p.type)}
-                          title="Remove this provider"
-                          aria-label="Remove this provider"
-                        >{Ico.trash(13)}</Button>
+                        <Tooltip content="Remove this provider">
+                          <Button
+                            variant="danger"
+                            icon
+                            size="sm"
+                            onClick={() => removeProvider(p.type)}
+                            aria-label="Remove this provider"
+                          >{Ico.trash(13)}</Button>
+                        </Tooltip>
                       )}
                       {!showKeyInput && (
-                        <Button
-                          icon
-                          size="sm"
-                          onClick={() => setEditingProviders((prev) => new Set([...prev, p.type]))}
-                          title="Edit API key"
-                          aria-label="Edit API key"
-                        >{Ico.edit(13)}</Button>
+                        <Tooltip content="Edit API key">
+                          <Button
+                            icon
+                            size="sm"
+                            onClick={() => setEditingProviders((prev) => new Set([...prev, p.type]))}
+                            aria-label="Edit API key"
+                          >{Ico.edit(13)}</Button>
+                        </Tooltip>
                       )}
                     </div>
                   </div>
@@ -1325,19 +1334,20 @@ export default function SettingsView({
               <div className="relative pt-[14px] px-0 pb-1 min-h-[50px]">
                 {/* Idle: + Add provider button. Fades + slides down when
               the picker opens. */}
-                <Button
-                  variant="subtle"
-                  onClick={() => setAddPickerOpen(true)}
-                  disabled={availableTypesForAdd.length === 0}
-                  title={availableTypesForAdd.length === 0 ? 'All provider types are already configured' : 'Add another provider'}
-                  className="absolute top-[14px] left-0 inline-flex items-center gap-1.5 [transition:opacity_200ms_ease,transform_200ms_ease]"
-                  style={{
-                    opacity: addPickerOpen ? 0 : (availableTypesForAdd.length === 0 ? 0.45 : 1),
-                    transform: addPickerOpen ? 'translateY(6px)' : 'translateY(0)',
-                    pointerEvents: addPickerOpen ? 'none' : (availableTypesForAdd.length === 0 ? 'none' : 'auto'),
-                    cursor: availableTypesForAdd.length === 0 ? 'not-allowed' : 'pointer',
-                  }}
-                >{Ico.plus(13)} Add provider</Button>
+                <Tooltip content={availableTypesForAdd.length === 0 ? 'All provider types are already configured' : 'Add another provider'}>
+                  <Button
+                    variant="subtle"
+                    onClick={() => setAddPickerOpen(true)}
+                    disabled={availableTypesForAdd.length === 0}
+                    className="absolute top-[14px] left-0 inline-flex items-center gap-1.5 [transition:opacity_200ms_ease,transform_200ms_ease]"
+                    style={{
+                      opacity: addPickerOpen ? 0 : (availableTypesForAdd.length === 0 ? 0.45 : 1),
+                      transform: addPickerOpen ? 'translateY(6px)' : 'translateY(0)',
+                      pointerEvents: addPickerOpen ? 'none' : (availableTypesForAdd.length === 0 ? 'none' : 'auto'),
+                      cursor: availableTypesForAdd.length === 0 ? 'not-allowed' : 'pointer',
+                    }}
+                  >{Ico.plus(13)} Add provider</Button>
+                </Tooltip>
 
                 {/* Open: Choose Provider: <chip> <chip> · Cancel.
               Fades + slides up from below as it appears. */}
@@ -1350,23 +1360,24 @@ export default function SettingsView({
                   }}>
                   <strong className="text-sm text-ink mr-1">Choose Provider:</strong>
                   {availableTypesForAdd.map((t) => (
-                    <Button
-                      key={t}
-                      variant="subtle"
-                      onClick={() => addProviderOfType(t)}
-                      title={PROVIDER_TYPE_DESC[t]}
-                      style={{ fontSize: 12.5, padding: '4px 10px', fontWeight: 400 }}
-                    >{typeLabels[t] || t}</Button>
+                    <Tooltip key={t} content={PROVIDER_TYPE_DESC[t]}>
+                      <Button
+                        variant="subtle"
+                        onClick={() => addProviderOfType(t)}
+                        style={{ fontSize: 12.5, padding: '4px 10px', fontWeight: 400 }}
+                      >{typeLabels[t] || t}</Button>
+                    </Tooltip>
                   ))}
-                  <Button
-                    variant="subtle"
-                    icon
-                    size="sm"
-                    onClick={() => setAddPickerOpen(false)}
-                    title="Hide the provider picker."
-                    aria-label="Close provider picker"
-                    className="ml-1"
-                  >{Ico.close(13)}</Button>
+                  <Tooltip content="Hide the provider picker.">
+                    <Button
+                      variant="subtle"
+                      icon
+                      size="sm"
+                      onClick={() => setAddPickerOpen(false)}
+                      aria-label="Close provider picker"
+                      className="ml-1"
+                    >{Ico.close(13)}</Button>
+                  </Tooltip>
                 </div>
               </div>
             </SettingsGroup>
@@ -1701,7 +1712,6 @@ export default function SettingsView({
             <Switch
               checked={settings.episodicMemory ?? true}
               onCheckedChange={(v) => setSetting('episodicMemory', v)}
-              title={`Save conversation history so ${agentLabel || 'Anton'} can recall past tasks.`}
               aria-label="Episodic memory"
             />
           </Section>
@@ -1709,7 +1719,6 @@ export default function SettingsView({
             <Switch
               checked={settings.proactiveDashboards ?? false}
               onCheckedChange={(v) => setSetting('proactiveDashboards', v)}
-              title="Auto-generate HTML reports from scratchpad output."
               aria-label="Proactive dashboards"
             />
           </Section>
@@ -1717,7 +1726,6 @@ export default function SettingsView({
             <Switch
               checked={settings.actFirst ?? true}
               onCheckedChange={(v) => setSetting('actFirst', v)}
-              title={`${agentLabel || 'Anton'} acts on sensible defaults and surfaces its assumptions as it goes, instead of pausing to ask.`}
               aria-label="Act first, ask later"
             />
           </Section>
@@ -1985,7 +1993,6 @@ export default function SettingsView({
               <Switch
                 checked={customTheme.scanlines}
                 onCheckedChange={(v) => onCustomThemeChange?.({ ...customTheme, scanlines: v })}
-                title="Toggle the CRT scanline overlay."
                 aria-label="Scanline overlay"
               />
             </Section>
@@ -2052,7 +2059,6 @@ export default function SettingsView({
             <Button
               variant="subtle"
               onClick={() => logoInputRef.current?.click()}
-              title="Choose a logo image."
             >
               {settings.navLogo ? 'Change logo' : 'Upload logo'}
             </Button>
@@ -2084,7 +2090,6 @@ export default function SettingsView({
               <Switch
                 checked={settings.showDots}
                 onCheckedChange={(v) => autoSaveSetting('showDots', v)}
-                title="Toggle the animated grid background."
                 aria-label="Animated background"
               />
               <AutoSaveTag settingKey="showDots" />
@@ -2095,7 +2100,6 @@ export default function SettingsView({
               <Switch
                 checked={settings.showCounters !== false}
                 onCheckedChange={(v) => autoSaveSetting('showCounters', v)}
-                title="Show badge counts on Projects, Scheduled, Artifacts and Connected apps."
                 aria-label="Nav-panel counters"
               />
               <AutoSaveTag settingKey="showCounters" />
@@ -2106,7 +2110,6 @@ export default function SettingsView({
               <Switch
                 checked={settings.showThemeToggle !== false}
                 onCheckedChange={(v) => autoSaveSetting('showThemeToggle', v)}
-                title="Show or hide the sidebar's light/dark theme toggle."
                 aria-label="Theme toggle button"
               />
               <AutoSaveTag settingKey="showThemeToggle" />
@@ -2117,7 +2120,6 @@ export default function SettingsView({
               <Switch
                 checked={settings.show8bitToggle !== false}
                 onCheckedChange={(v) => autoSaveSetting('show8bitToggle', v)}
-                title="Show or hide the sidebar's 8-bit style toggle."
                 aria-label="8-bit style toggle button"
               />
               <AutoSaveTag settingKey="show8bitToggle" />
