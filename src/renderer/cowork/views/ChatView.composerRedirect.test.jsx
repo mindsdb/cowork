@@ -17,7 +17,13 @@ vi.mock('../../platform/host', () => ({
 
 import ChatView, { redirectForTask } from './ChatView';
 
-const task = (id) => ({ id, title: `Task ${id}`, messages: [], status: 'idle' });
+const task = (id, adoptedFromId) => ({
+  id,
+  title: `Task ${id}`,
+  messages: [],
+  status: 'idle',
+  ...(adoptedFromId ? { adoptedFromId } : {}),
+});
 
 /**
  * Mirrors App.jsx's ownership of the redirect map: the parent holds it,
@@ -29,6 +35,10 @@ function Harness({ taskId = 't1', onConsumed }) {
   const [redirects, setRedirects] = useState({});
   const [mounted, setMounted] = useState(true);
   const [openTaskId, setOpenTaskId] = useState('t1');
+  // A brand-new task before the server has minted its id, and the rename that
+  // follows. App.jsx's adoptServerId stamps `adoptedFromId` so a rename can be
+  // told apart from a switch to a different conversation.
+  const [adoptedFrom, setAdoptedFrom] = useState(null);
   const bump = useRef(0);
   const fire = (tid, text, attachments) => setRedirects((prev) => {
     bump.current += 1;
@@ -50,9 +60,21 @@ function Harness({ taskId = 't1', onConsumed }) {
       <button type="button" onClick={() => setOpenTaskId((t) => (t === 't1' ? 't-other' : 't1'))}>
         switch task
       </button>
+      <button
+        type="button"
+        onClick={() => { setAdoptedFrom(null); setOpenTaskId('tmp-9'); }}
+      >
+        open brand-new task
+      </button>
+      <button
+        type="button"
+        onClick={() => { setAdoptedFrom('tmp-9'); setOpenTaskId('conv-9'); }}
+      >
+        adopt server id
+      </button>
       {mounted ? (
         <ChatView
-          task={task(openTaskId)}
+          task={task(openTaskId, adoptedFrom)}
           onSend={vi.fn()}
           composerRedirects={redirects}
           onComposerRedirectConsumed={(tid, attachments) => {
@@ -183,6 +205,42 @@ describe('ChatView composer redirect', () => {
     await user.click(screen.getByText('fire other redirect'));
 
     await waitFor(() => expect(composer().value).toBe('other task text'));
+  });
+
+  it('does not treat a brand-new task\'s draft as belonging to another task', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+
+    // The draft was typed in a task whose id is still the pre-adoption `tmp-…`
+    // form. That says it was typed in SOME brand-new conversation — not in the
+    // one being opened next, which is what a bare `tmp-` prefix check assumed.
+    await user.click(screen.getByText('open brand-new task'));
+    await user.click(composer());
+    await user.keyboard('draft in the brand-new task');
+    await user.click(screen.getByText('fire redirect'));
+
+    // Opening t1, which has a pending redirect: its restored text must replace
+    // the other conversation's draft, not be spliced onto it.
+    await user.click(screen.getByText('switch task'));
+
+    await waitFor(() => expect(composer().value).toBe('queued one'));
+  });
+
+  it('keeps a pre-adoption draft when the server renames the conversation', async () => {
+    const user = userEvent.setup();
+    render(<Harness taskId="conv-9" />);
+
+    // Typed before `response.created`, so it is attributed to the tmp- id…
+    await user.click(screen.getByText('open brand-new task'));
+    await user.click(composer());
+    await user.keyboard('typed before adoption');
+
+    // …and the rename must carry that attribution over, or this task's own drain
+    // would wipe the draft it is supposed to be handed back alongside.
+    await user.click(screen.getByText('adopt server id'));
+    await user.click(screen.getByText('fire redirect'));
+
+    await waitFor(() => expect(composer().value).toBe('typed before adoption\nqueued one'));
   });
 
   it('still appends to a draft the user typed in this task', async () => {

@@ -1184,6 +1184,23 @@ export default function ChatView({
   const noteDraftChanged = useCallback(() => {
     draftTaskRef.current = task?.id;
   }, [task?.id]);
+  // A rename of the same conversation (`adoptServerId`, tmp-… → the id the server
+  // minted) changes `task.id` exactly like a switch to another conversation does,
+  // and only App can tell them apart — so it says which id this one used to be.
+  // Move the attribution across rather than inferring it from the id's shape at
+  // read time: a `tmp-` prefix says a draft was typed in SOME brand-new task, not
+  // that it was typed in this one, and treating any tmp- draft as ours put another
+  // conversation's draft back in scope for appending.
+  //
+  // Declared before the redirect effect so a rename and a drain arriving in the
+  // same commit are attributed in that order. Independent of whether the draft is
+  // empty: an empty draft typed into later must still be attributed correctly.
+  useEffect(() => {
+    const adoptedFrom = task?.adoptedFromId;
+    if (adoptedFrom && draftTaskRef.current === adoptedFrom) {
+      draftTaskRef.current = task?.id;
+    }
+  }, [task?.id, task?.adoptedFromId]);
   // Forward App.jsx's redirect for THIS task into the same prefill state Edit
   // uses, so Composer only has to react to one prefill prop — appending when the
   // draft on screen is this task's own (a drain hands text BACK to the user and
@@ -1195,11 +1212,9 @@ export default function ChatView({
     if (!redirect) return;
     const restored = redirect.text || '';
     if (restored) {
-      // An adoption (tmp-… → the server's id) renames the same conversation, so
-      // a draft attributed to the tmp- id is still this task's.
-      const draftTask = draftTaskRef.current;
-      const ownDraft = draftTask === task?.id
-        || String(draftTask || '').startsWith('tmp-');
+      // Plain equality: the adoption effect above has already moved a renamed
+      // conversation's attribution onto its new id, so there is nothing to guess.
+      const ownDraft = draftTaskRef.current === task?.id;
       setComposerPrefill((prev) => ({
         text: restored,
         bump: (prev?.bump || 0) + 1,

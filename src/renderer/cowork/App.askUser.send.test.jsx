@@ -676,14 +676,19 @@ describe('a queue filed under a pre-adoption tmp- id', () => {
     await send(user, composer, 'queued before adoption');
     expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
 
+    // …and the user is mid-way through another line, still under the tmp- id.
+    await user.click(composer);
+    await user.keyboard('still typing this');
+
     // The server mints the canonical id; the task is renamed but the queue key
     // is not.
     await emitOn(handle, { type: 'response.created', conversation_id: 'conv-new' });
     await emitOn(handle, ASK_EVENT);
 
     // The drain has to find the queue under the dead tmp- key and still hand
-    // the text back to conv-new, which is the id ChatView renders.
-    await waitFor(() => expect(composer.value).toBe('queued before adoption'));
+    // the text back to conv-new, which is the id ChatView renders — joining the
+    // draft, because the rename did not make it another conversation's.
+    await waitFor(() => expect(composer.value).toBe('still typing this\nqueued before adoption'));
   });
 });
 
