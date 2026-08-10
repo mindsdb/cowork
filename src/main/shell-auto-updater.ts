@@ -1,4 +1,5 @@
-import electronUpdater, {
+import {
+  autoUpdater,
   type AppUpdater,
   type ProgressInfo,
   type UpdateInfo,
@@ -195,9 +196,12 @@ export function adaptElectronUpdater(updater: AppUpdater): ShellUpdaterAdapter {
 export function createDefaultElectronUpdaterAdapter(
   autoInstallOnAppQuit: boolean,
 ): ShellUpdaterAdapter {
-  // electron-updater is CommonJS; destructuring the default import is the
-  // interop form recommended by its TypeScript documentation.
-  const { autoUpdater } = electronUpdater;
+  // electron-updater is a CommonJS module that exposes `autoUpdater` as a named
+  // (lazy) export and has NO default export. Under tsc's esModuleInterop the
+  // default import resolves to `undefined`, so the old `const { autoUpdater } =
+  // electronUpdater` form threw `Cannot destructure … of '…default' as it is
+  // undefined` in every packaged build — silently disabling the whole feature.
+  // Import the named export directly (accessed lazily here, not at module load).
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = autoInstallOnAppQuit;
   autoUpdater.allowDowngrade = false;

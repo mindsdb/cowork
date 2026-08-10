@@ -1,9 +1,25 @@
 import { EventEmitter } from 'node:events';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  createDefaultElectronUpdaterAdapter,
   createShellAutoUpdater,
   type ShellUpdaterAdapter,
 } from './shell-auto-updater';
+
+// Mirror electron-updater's real module shape: a CommonJS module exposing
+// `autoUpdater` as a named export, `__esModule: true`, and NO default export.
+// This is what makes the default-import interop form resolve `.default` to
+// undefined and throw in the packaged app (see createDefaultElectronUpdaterAdapter).
+const fakeAutoUpdater = vi.hoisted(() => ({
+  autoDownload: true,
+  autoInstallOnAppQuit: false,
+  allowDowngrade: true,
+  on: vi.fn(),
+}));
+vi.mock('electron-updater', () => ({
+  __esModule: true,
+  autoUpdater: fakeAutoUpdater,
+}));
 
 class FakeAdapter extends EventEmitter implements ShellUpdaterAdapter {
   checkForUpdates = vi.fn(async () => undefined);
@@ -149,5 +165,27 @@ describe('createShellAutoUpdater', () => {
     const unsubscribe = updater.subscribe(listener);
     expect(listener).toHaveBeenCalledWith(expect.objectContaining({ phase: 'idle' }));
     unsubscribe();
+  });
+});
+
+describe('createDefaultElectronUpdaterAdapter', () => {
+  // Regression guard for the packaged-build crash: importing electron-updater's
+  // (absent) default export and destructuring `autoUpdater` off it threw
+  // "Cannot destructure property 'autoUpdater' of '…default' as it is undefined",
+  // which silently disabled shell auto-update in every signed build. The unit
+  // suite missed it because every other test injects a FakeAdapter and never
+  // constructs the real electron-updater-backed adapter.
+  it('builds an adapter from the named autoUpdater export without crashing', () => {
+    const adapter = createDefaultElectronUpdaterAdapter(true);
+    expect(adapter).toBeDefined();
+    expect(typeof adapter.checkForUpdates).toBe('function');
+    expect(typeof adapter.downloadUpdate).toBe('function');
+  });
+
+  it('applies the safe auto-update defaults to the real autoUpdater', () => {
+    createDefaultElectronUpdaterAdapter(true);
+    expect(fakeAutoUpdater.autoDownload).toBe(false);
+    expect(fakeAutoUpdater.allowDowngrade).toBe(false);
+    expect(fakeAutoUpdater.autoInstallOnAppQuit).toBe(true);
   });
 });
