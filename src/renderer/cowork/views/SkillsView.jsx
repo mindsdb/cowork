@@ -46,9 +46,9 @@ function SkillGridCard({ skill, onClick }) {
         <div className="flex items-center gap-2 min-w-0">
           {/* Slash badge */}
           <span className="inline-flex items-center justify-center shrink-0 w-5 h-5 rounded-[4px] shadow-sh-1 font-mono text-sm font-medium text-ink-3">/</span>
-          <span className="flex-1 min-w-0 font-[var(--font-body)] text-base font-medium text-ink overflow-hidden text-ellipsis whitespace-nowrap">{skill.label}</span>
+          <span className="flex-1 min-w-0 font-[family-name:var(--font-body)] text-base font-medium text-ink overflow-hidden text-ellipsis whitespace-nowrap">{skill.label}</span>
           {skill.enabled === false && (
-            <span className="shrink-0 inline-flex items-center h-5 px-2 rounded-[4px] border border-line text-ink-3 font-[var(--font-body)] text-xs font-medium" style={{
+            <span className="shrink-0 inline-flex items-center h-5 px-2 rounded-[4px] border border-solid border-line text-ink-3 font-[family-name:var(--font-body)] text-xs font-medium" style={{
               background: 'color-mix(in srgb, var(--ink) 6%, transparent)',
             }}>Disabled</span>
           )}
@@ -56,14 +56,14 @@ function SkillGridCard({ skill, onClick }) {
         <span
           // Matches the page-header subtitle (13.5 / 1.5) so the card copy
           // reads as the same "muted body" voice, not a looser 14/24 block.
-          className="font-[var(--font-body)] text-base leading-[1.5] text-ink-3 line-clamp-2"
+          className="font-[family-name:var(--font-body)] text-base leading-[1.5] text-ink-3 line-clamp-2"
         >
           {skill.description || skill.declarative?.slice(0, 120) || '—'}
         </span>
       </div>
 
       {/* Footer */}
-      <div className="flex items-center justify-between px-3 py-2 bg-bg font-[var(--font-body)] text-sm text-ink-3" style={{
+      <div className="flex items-center justify-between px-3 py-2 bg-bg font-[family-name:var(--font-body)] text-sm text-ink-3" style={{
         boxShadow: 'inset 0px 0.5px 0px rgba(39,39,42,0.06), inset 0px 1px 1px -0.5px rgba(39,39,42,0.06), inset 0px 2px 2px -1px rgba(39,39,42,0.06)',
       }}>
         <span className="inline-flex items-center gap-1">
@@ -249,10 +249,10 @@ function UploadSkillModal({ open, onClose, onSaved, onError }) {
             {file ? (
               <>
                 <span className="text-accent">{Ico.upload(32)}</span>
-                <span className="text-base font-[var(--font-body)] text-ink-2 font-medium">
+                <span className="text-base font-[family-name:var(--font-body)] text-ink-2 font-medium">
                   {file.name}
                 </span>
-                <span className="text-sm font-[var(--font-body)] text-ink-4">
+                <span className="text-sm font-[family-name:var(--font-body)] text-ink-4">
                   {(file.size / 1024).toFixed(1)} KB
                 </span>
                 <Button
@@ -265,7 +265,7 @@ function UploadSkillModal({ open, onClose, onSaved, onError }) {
             ) : (
               <>
                 <span className="text-ink-4">{Ico.upload(32)}</span>
-                <span className="text-base font-[var(--font-body)] text-ink-3">
+                <span className="text-base font-[family-name:var(--font-body)] text-ink-3">
                   Drag and drop or click to upload
                 </span>
               </>
@@ -280,7 +280,7 @@ function UploadSkillModal({ open, onClose, onSaved, onError }) {
           </div>
 
           {/* File requirements */}
-          <div className="text-sm leading-[16px] text-ink-3 font-[var(--font-body)]">
+          <div className="text-sm leading-[16px] text-ink-3 font-[family-name:var(--font-body)]">
             <div className="font-medium mb-1">File requirements</div>
             <ul className="m-0 pl-5">
               <li>.md or .skill file must contain skill name and description formatted in YAML</li>
@@ -447,7 +447,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
           )}
 
           {/* Content card */}
-          <div className="rounded-[20px] border border-line p-6 flex flex-col gap-4 bg-surface select-text">
+          <div className="rounded-[20px] border border-solid border-line p-6 flex flex-col gap-4 bg-surface select-text">
             <MarkdownContent
               text={selected.declarative || ''}
               id={`skill-${selected.label}`}
@@ -477,7 +477,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
             <EmptyState>{search ? 'No skills match your search.' : 'No saved skills yet.'}</EmptyState>
           ) : view === 'list' ? (
             <div className="pt-4 px-8 pb-[60px]">
-              <div className="grid grid-cols-[1fr_2fr_auto_auto] gap-x-4 border-b border-line px-2 pb-2 mb-1">
+              <div className="grid grid-cols-[1fr_2fr_auto_auto] gap-x-4 border-b border-solid border-line px-2 pb-2 mb-1">
                 {['Name', 'Description', 'Project', 'Updated'].map((h) => (
                   <span key={h} className="font-mono text-xs text-ink-4 tracking-[0.10em] uppercase">{h}</span>
                 ))}
@@ -492,13 +492,13 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
                     tabIndex={0}
                     onClick={() => setSelected(skill)}
                     onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelected(skill); } }}
-                    className="grid grid-cols-[1fr_2fr_auto_auto] gap-x-4 px-2 py-3 border-b border-line cursor-pointer rounded-card-row outline-none"
+                    className="grid grid-cols-[1fr_2fr_auto_auto] gap-x-4 px-2 py-3 border-b border-solid border-line cursor-pointer rounded-card-row outline-none"
                     onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; }}
                     onMouseLeave={(e) => { e.currentTarget.style.background = ''; }}
                   >
-                    <span className="font-[var(--font-body)] text-sm font-medium text-ink overflow-hidden text-ellipsis whitespace-nowrap">{skill.label}</span>
-                    <span className="font-[var(--font-body)] text-sm text-ink-3 overflow-hidden text-ellipsis whitespace-nowrap">{skill.description || '—'}</span>
-                    <span className="font-[var(--font-body)] text-sm text-ink-3 whitespace-nowrap">{project || '—'}</span>
+                    <span className="font-[family-name:var(--font-body)] text-sm font-medium text-ink overflow-hidden text-ellipsis whitespace-nowrap">{skill.label}</span>
+                    <span className="font-[family-name:var(--font-body)] text-sm text-ink-3 overflow-hidden text-ellipsis whitespace-nowrap">{skill.description || '—'}</span>
+                    <span className="font-[family-name:var(--font-body)] text-sm text-ink-3 whitespace-nowrap">{project || '—'}</span>
                     <span className="font-mono text-xs text-ink-4 whitespace-nowrap">{age || '—'}</span>
                   </div>
                 );
