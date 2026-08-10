@@ -1,0 +1,51 @@
+# Temporary test harness for build-linux-deb.yml — delete before merging.
+#
+# `push` (not workflow_dispatch) is the trigger that works from a branch that
+# has never run: gh and the API resolve dispatches against workflows registered
+# on the default branch, but a push simply runs whatever is on the pushed
+# commit. workflow_dispatch is included anyway so `gh workflow run` starts
+# working the moment this file lands on the default branch (or after the first
+# push run registers the workflow).
+
+name: Test Linux deb build
+
+on:
+  push:
+    branches: [feature/debian-package-builder]
+  workflow_dispatch:
+    inputs:
+      build_kind:
+        description: preview | stable | prod
+        type: choice
+        options: [preview, stable, prod]
+        default: preview
+
+jobs:
+  # The PR's current build-linux-deb.yml contains BOTH arch jobs internally,
+  # so a single call builds amd64 + arm64. On push events `inputs` is empty,
+  # hence the || 'preview' fallback.
+  build:
+    uses: ./.github/workflows/build-linux-deb.yml
+    with:
+      build_kind: ${{ inputs.build_kind || 'preview' }}
+      minds_api_url: https://api.staging.mindshub.ai
+    secrets: inherit
+
+  # If you switch to the arch-parameterized rewrite of build-linux-deb.yml,
+  # replace the job above with one call per arch:
+  #
+  # build-amd64:
+  #   uses: ./.github/workflows/build-linux-deb.yml
+  #   with:
+  #     arch: amd64
+  #     build_kind: ${{ inputs.build_kind || 'preview' }}
+  #     minds_api_url: https://api.staging.mindshub.ai
+  #   secrets: inherit
+  #
+  # build-arm64:
+  #   uses: ./.github/workflows/build-linux-deb.yml
+  #   with:
+  #     arch: arm64
+  #     build_kind: ${{ inputs.build_kind || 'preview' }}
+  #     minds_api_url: https://api.staging.mindshub.ai
+  #   secrets: inherit
