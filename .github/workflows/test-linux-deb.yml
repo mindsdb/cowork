@@ -20,32 +20,22 @@ on:
         options: [preview, stable, prod]
         default: preview
 
+# One call per arch — build-linux-deb.yml is arch-parameterized and lands each
+# call on the matching native runner. On push events `inputs` is empty, hence
+# the || 'preview' fallback.
 jobs:
-  # The PR's current build-linux-deb.yml contains BOTH arch jobs internally,
-  # so a single call builds amd64 + arm64. On push events `inputs` is empty,
-  # hence the || 'preview' fallback.
-  build:
+  build-amd64:
     uses: ./.github/workflows/build-linux-deb.yml
     with:
+      arch: amd64
       build_kind: ${{ inputs.build_kind || 'preview' }}
       minds_api_url: https://api.staging.mindshub.ai
     secrets: inherit
 
-  # If you switch to the arch-parameterized rewrite of build-linux-deb.yml,
-  # replace the job above with one call per arch:
-  #
-  # build-amd64:
-  #   uses: ./.github/workflows/build-linux-deb.yml
-  #   with:
-  #     arch: amd64
-  #     build_kind: ${{ inputs.build_kind || 'preview' }}
-  #     minds_api_url: https://api.staging.mindshub.ai
-  #   secrets: inherit
-  #
-  # build-arm64:
-  #   uses: ./.github/workflows/build-linux-deb.yml
-  #   with:
-  #     arch: arm64
-  #     build_kind: ${{ inputs.build_kind || 'preview' }}
-  #     minds_api_url: https://api.staging.mindshub.ai
-  #   secrets: inherit
+  build-arm64:
+    uses: ./.github/workflows/build-linux-deb.yml
+    with:
+      arch: arm64
+      build_kind: ${{ inputs.build_kind || 'preview' }}
+      minds_api_url: https://api.staging.mindshub.ai
+    secrets: inherit
