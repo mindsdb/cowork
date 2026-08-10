@@ -7,12 +7,10 @@ import { host, getVersionInfo, isElectron } from '../../../platform/host';
 import { unifiedVersion, SKEW_WARN_DAYS } from '../../../../shared/version';
 import { Section, SettingsSectionPanel } from './settingsLayout';
 
-const UPDATE_CARD_STYLE = {
-  display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
-  padding: '10px 12px', border: '1px solid rgba(93,146,135,0.30)',
-  background: 'rgba(93,146,135,0.12)', borderRadius: 8,
-};
-const UPDATE_CARD_BODY_STYLE = { display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 160 };
+const UPDATE_CARD_CLASS =
+  'flex items-center gap-3 flex-wrap py-2.5 px-3 border border-solid ' +
+  'border-[color-mix(in_srgb,var(--sage-500)_30%,transparent)] bg-[color-mix(in_srgb,var(--sage-500)_12%,transparent)] rounded-lg';
+const UPDATE_CARD_BODY_CLASS = 'flex flex-col gap-0.5 flex-1 min-w-[160px]';
 
 // The Updates settings section: current-version readout plus the on-demand
 // update check/apply flow. Self-contained — it owns every piece of state its
@@ -88,13 +86,7 @@ export default function UpdatesSection({ footer, serverOnline = false, shellUpda
 
   return (
     <SettingsSectionPanel footer={footer}>
-      <div style={{
-        border: '1px solid var(--border-subtle)', borderRadius: 'var(--card-radius)',
-        background: 'var(--surface-glass)',
-        WebkitBackdropFilter: 'blur(var(--surface-glass-blur))',
-        backdropFilter: 'blur(var(--surface-glass-blur))',
-        marginBottom: 14, overflow: 'hidden', padding: '0 18px 8px',
-      }}>
+      <div className="border border-solid border-line rounded-card bg-[var(--surface-glass)] backdrop-blur-[var(--surface-glass-blur)] mb-[14px] overflow-hidden pt-0 px-[18px] pb-2">
         <Section
           title="Current version"
           subtitle="The version currently running. Server and UI updates are applied automatically at launch; components under the hood are shown in details."
@@ -124,26 +116,26 @@ export default function UpdatesSection({ footer, serverOnline = false, shellUpda
             ];
             const copyText = rows.map(([k, v]) => `${k}: ${v}`).join('\n');
             return (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 12.5, color: 'var(--text-strong)' }}>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-                  <span title={unified ? `Release week ${unified.cycleRange}` : undefined} style={{ fontFamily: 'var(--font-mono)', fontSize: 15, fontWeight: 600 }}>
+              <div className="flex flex-col gap-2 text-sm text-ink">
+                <div className="flex items-baseline gap-2 flex-wrap">
+                  <span title={unified ? `Release week ${unified.cycleRange}` : undefined} className="font-[family-name:var(--font-mono)] text-md font-semibold">
                     {unified ? unified.label : (shellVer || '—')}
                   </span>
                   {outOfSync && (
                     <span
                       title={`Underlying components span ${unified.skewDays} days — a component is lagging. See details.`}
-                      style={{ color: 'var(--warning)', fontSize: 11.5, fontWeight: 600 }}
+                      className="text-warning text-[11.5px] font-semibold"
                     >
                       ⚠ out of sync
                     </span>
                   )}
                   {unified && (
-                    <span style={{ color: 'var(--text-muted)', fontSize: 11.5 }}>built {unified.buildDate}</span>
+                    <span className="text-ink-3 text-[11.5px]">built {unified.buildDate}</span>
                   )}
                 </div>
                 {isElectron && (
-                  <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', fontSize: 12 }}>
-                    <span style={{ marginRight: 4 }}>App shell</span>{shellVer || '—'}
+                  <span className="font-[family-name:var(--font-mono)] text-ink-3 text-[12px]">
+                    <span className="mr-1">App shell</span>{shellVer || '—'}
                   </span>
                 )}
                 <button
@@ -155,15 +147,15 @@ export default function UpdatesSection({ footer, serverOnline = false, shellUpda
                     // copy" isn't waiting the next time details are reopened.
                     setVersionCopyState('idle');
                   }}
-                  style={{ alignSelf: 'flex-start', background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--accent)', fontSize: 11.5 }}
+                  className="self-start bg-transparent border-none p-0 cursor-pointer text-accent text-[11.5px]"
                 >
                   {showVersionDetails ? 'Hide details' : 'Details'}
                 </button>
                 {showVersionDetails && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontFamily: 'var(--font-mono)', fontSize: 12, padding: '8px 10px', border: '1px solid var(--border-subtle)', borderRadius: 8, background: 'var(--surface-glass)' }}>
+                  <div className="flex flex-col gap-1 font-[family-name:var(--font-mono)] text-[12px] py-2 px-2.5 border border-solid border-line rounded-lg bg-[var(--surface-glass)]">
                     {rows.map(([k, v]) => (
-                      <span key={k} style={{ userSelect: 'text' }}>
-                        <span style={{ color: 'var(--text-muted)', marginRight: 6, display: 'inline-block', minWidth: 64 }}>{k}</span>{v}
+                      <span key={k} className="select-text">
+                        <span className="text-ink-3 mr-1.5 inline-block min-w-[64px]">{k}</span>{v}
                       </span>
                     ))}
                     {/* role="status"/aria-live wraps the button itself (unlike
@@ -171,7 +163,7 @@ export default function UpdatesSection({ footer, serverOnline = false, shellUpda
                         here IS the button's label — without a live region a
                         screen reader has no guarantee it announces a focused
                         button's label changing out from under it. */}
-                    <span role="status" aria-live="polite" style={{ alignSelf: 'flex-start' }}>
+                    <span role="status" aria-live="polite" className="self-start">
                       <Button
                         onClick={async () => {
                           const ok = await copyToClipboard(copyText);
@@ -187,7 +179,7 @@ export default function UpdatesSection({ footer, serverOnline = false, shellUpda
                           }
                         }}
                         onBlur={() => { if (versionCopyState === 'failed') setVersionCopyState('idle'); }}
-                        style={{ marginTop: 4 }}
+                        className="mt-1"
                       >
                         {versionCopyState === 'copied' ? 'Copied' : versionCopyState === 'failed' ? "Couldn't copy — select the details above to copy manually" : 'Copy'}
                       </Button>
@@ -229,27 +221,28 @@ export default function UpdatesSection({ footer, serverOnline = false, shellUpda
                 if (r.uiUpdateAvailable) parts.push(`UI → ${r.uiVersion || 'new version'}`);
               }
               return (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <div className="flex flex-col gap-2.5">
+                  <div className="flex items-center gap-3 flex-wrap">
                     <Button
                       onClick={handleCheckForUpdates}
                       disabled={busy}
-                      style={{ minWidth: 150, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.7 : 1 }}
+                      className="min-w-[150px] inline-flex items-center justify-center gap-1.5"
+                      style={{ cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.7 : 1 }}
                     >
                       {checkingUpdates ? 'Checking…' : 'Check for updates'}
                     </Button>
                     {status && (
-                      <span style={{ fontSize: 12.5, color: isError ? 'var(--warning)' : 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      <span className={`text-sm inline-flex items-center gap-1.5 ${isError ? 'text-warning' : 'text-ink-3'}`}>
                         {isUpToDate && Ico.check ? Ico.check(14) : null}
                         {status}
                       </span>
                     )}
                   </div>
                   {applyAvailable && (
-                    <div style={UPDATE_CARD_STYLE}>
-                      <div style={UPDATE_CARD_BODY_STYLE}>
-                        <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-strong)' }}>Update ready</span>
-                        <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
+                    <div className={UPDATE_CARD_CLASS}>
+                      <div className={UPDATE_CARD_BODY_CLASS}>
+                        <span className="text-sm font-semibold text-ink">Update ready</span>
+                        <span className="text-[11.5px] text-ink-3">
                           Restart the app to apply it{parts.length > 0 ? ` (${parts.join(', ')})` : ''}.
                         </span>
                       </div>
@@ -264,12 +257,12 @@ export default function UpdatesSection({ footer, serverOnline = false, shellUpda
                     </div>
                   )}
                   {shellPending && (
-                    <div style={UPDATE_CARD_STYLE}>
-                      <div style={UPDATE_CARD_BODY_STYLE}>
-                        <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-strong)' }}>
+                    <div className={UPDATE_CARD_CLASS}>
+                      <div className={UPDATE_CARD_BODY_CLASS}>
+                        <span className="text-sm font-semibold text-ink">
                           {shellVersion ? `New app version ${shellVersion}` : 'New app version available'}
                         </span>
-                        <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
+                        <span className="text-[11.5px] text-ink-3">
                           {shellDownloadStarted
                             ? "Installer downloading — when it's done, quit MindsHub Cowork and open the installer to finish updating."
                             : "Download the installer, then quit MindsHub Cowork and open it to finish updating."}
@@ -278,14 +271,13 @@ export default function UpdatesSection({ footer, serverOnline = false, shellUpda
                       <Button
                         variant={shellDownloadStarted ? 'subtle' : 'primary'}
                         onClick={() => { onDownloadShellUpdate(shellUrl); if (shellVersion) setShellDownloadedVersion(shellVersion); }}
-                        style={{ cursor: 'pointer' }}
-                      >
+                                              >
                         {shellDownloadStarted ? 'Download again' : 'Download installer'}
                       </Button>
                     </div>
                   )}
                   {applyError && (
-                    <span style={{ fontSize: 12.5, color: 'var(--warning)' }}>
+                    <span className="text-sm text-warning">
                       Couldn't apply the update. Please try again.
                     </span>
                   )}
