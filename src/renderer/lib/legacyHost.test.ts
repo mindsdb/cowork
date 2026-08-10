@@ -11,6 +11,15 @@ describe('isLegacyTenantHost', () => {
     expect(isLegacyTenantHost('cw-e075837b.mindshub.ai')).toBe(true);
   });
 
+  // The shape production actually serves. Hosted instances are provisioned by
+  // mindshub_services onto the `4nton.ai` zone (host_prefix `cw-`), NOT onto
+  // `*.mindshub.ai` — so a predicate narrowed to the mindshub.ai suffix would
+  // pass every other test here and still leave prod dead-ended on Keycloak's
+  // "Invalid parameter: redirect_uri". Observed live 2026-08-10 (ENG-1281).
+  it('is true for a legacy cw-<id> host on the 4nton.ai zone (prod)', () => {
+    expect(isLegacyTenantHost('cw-9a9e789c.4nton.ai')).toBe(true);
+  });
+
   // Canonical / dev hosts must still require a Keycloak login.
   it('is false for the canonical cowork.<env> host', () => {
     expect(isLegacyTenantHost('cowork.staging.mindshub.ai')).toBe(false);
