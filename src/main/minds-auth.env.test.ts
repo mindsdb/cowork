@@ -9,6 +9,15 @@ vi.mock('electron', () => ({
   BrowserWindow: class {},
 }));
 
+// minds-auth also transitively imports server-process → credential-provisioning
+// (ENG-1241) → keychain-service, which loads the native `keytar` module at
+// import time — fine on macOS/Windows, but it requires libsecret on Linux,
+// which CI's runner doesn't have. Mocked here purely to make the import chain
+// safe; this suite never calls anything credential-related.
+vi.mock('./credential-provisioning', () => ({
+  loadBundledServerCredentials: vi.fn().mockResolvedValue({}),
+}));
+
 import { buildMindsEnvContent, mindsSignInSettingWrites } from './minds-auth';
 
 describe('buildMindsEnvContent (MindsHub sign-in .env)', () => {

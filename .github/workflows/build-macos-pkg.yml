@@ -152,6 +152,11 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security find-identity -v -p codesigning "$KEYCHAIN_PATH"
 
+      # ENG-1241: written to build/pkg-scripts/ (checked-in postinstall's
+      # sibling), NOT the repo root — pkgbuild's --scripts flag packages this
+      # directory into the installer, and postinstall stages it outside the
+      # signed .app bundle at install time. Never embedded via extraResources
+      # on macOS (that entry is Windows-only in electron-builder.yml).
       - name: Write server credentials
         env:
           GOOGLE_DRIVE_CLIENT_ID: ${{ secrets.GOOGLE_DRIVE_CLIENT_ID }}
@@ -183,7 +188,7 @@ jobs:
             'LINEAR_CLIENT_ID', 'LINEAR_CLIENT_SECRET',
             'GITHUB_CLIENT_ID', 'GITHUB_CLIENT_SECRET',
           ]}
-          with open('server-credentials.json', 'w') as f:
+          with open('build/pkg-scripts/server-credentials.json', 'w') as f:
               json.dump(creds, f)
           "
 

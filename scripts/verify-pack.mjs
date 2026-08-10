@@ -72,10 +72,23 @@ if (!fs.existsSync(asarPath)) {
 fs.existsSync(path.join(resourcesDir, 'assets'))
   ? ok('extraResources assets/ present')
   : fail('extraResources assets/ missing');
-// server-process.ts reads this from process.resourcesPath at runtime.
-fs.existsSync(path.join(resourcesDir, 'server-credentials.json'))
-  ? ok('server-credentials.json present')
-  : fail('server-credentials.json missing');
+
+// ENG-1241: server-credentials.json must never be embedded in the signed
+// macOS bundle — Contents/Resources there is root-owned, so the app could
+// never delete it after provisioning into Keychain (it's staged outside the
+// bundle by a pkgbuild postinstall script instead). Windows keeps a
+// win-only extraResources override and reads/deletes the file in place,
+// since its per-user install location doesn't have that problem.
+const credPath = path.join(resourcesDir, 'server-credentials.json');
+if (process.platform === 'darwin') {
+  !fs.existsSync(credPath)
+    ? ok('server-credentials.json correctly absent from the mac bundle (ENG-1241)')
+    : fail('server-credentials.json must not be embedded in the mac bundle (ENG-1241 regression)');
+} else {
+  fs.existsSync(credPath)
+    ? ok('server-credentials.json present (Windows-only extraResources)')
+    : fail('server-credentials.json missing from the Windows package');
+}
 
 // ── Verdict ─────────────────────────────────────────────────────────────────
 if (failures.length) {
