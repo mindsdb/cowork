@@ -236,6 +236,33 @@ describe('composer send while a question is pending', () => {
     expect(spies.submitAnswer).toHaveBeenCalledTimes(1);
   });
 
+  it('releases only the answered question, not a live sibling\'s interception', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+
+    await send(user, composer, 'first message');
+    // Two questions live at once on the same conversation. Only possible once
+    // the agent is allowed to ask in parallel — but the release below must not
+    // depend on that never happening.
+    await emit(ASK_EVENT);
+    await emit({ ...ASK_EVENT, question_id: 'ask:2' });
+
+    // The newest question is the one a send answers, and it turns out to be dead.
+    spies.submitAnswer.mockImplementationOnce(async () => ({ status: 'not_found' }));
+    await send(user, composer, 'answer for the second');
+    expect(spies.submitAnswer).toHaveBeenCalledWith('conv-a', 'ask:2', {
+      text: 'answer for the second',
+    });
+
+    // ask:1 is still pending, so the composer must still be hijacked by it. A
+    // blanket clear of the mirror would silently un-hijack it here and this send
+    // would be queued behind a turn that cannot finish.
+    await send(user, composer, 'answer for the first');
+    expect(spies.submitAnswer).toHaveBeenLastCalledWith('conv-a', 'ask:1', {
+      text: 'answer for the first',
+    });
+  });
+
   it('surfaces a submit failure, keeps the text, and sends nothing', async () => {
     const user = userEvent.setup();
     const composer = await openTask(user);

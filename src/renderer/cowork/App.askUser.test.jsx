@@ -187,9 +187,19 @@ describe('resolvePendingAnswer', () => {
   it('releases and falls through when the question is gone', async () => {
     // Neither status may discard the text — it falls through to a normal send.
     await expect(call([askStep()], { status: 'not_found' }))
-      .resolves.toEqual({ action: 'send', release: true });
+      .resolves.toEqual({ action: 'send', release: true, questionId: 'ask:1' });
     await expect(call([askStep()], { status: 'already_answered' }))
-      .resolves.toEqual({ action: 'send', release: true });
+      .resolves.toEqual({ action: 'send', release: true, questionId: 'ask:1' });
+  });
+
+  it('names the question to release, so the caller retires only that one', async () => {
+    // Without the id the caller can only blank the whole mirror, which drops a
+    // live sibling question's interception (see retireQuestionFromSteps).
+    const outcome = await call(
+      [askStep(), askStep({ question_id: 'ask:2' })],
+      { status: 'not_found' },
+    );
+    expect(outcome.questionId).toBe('ask:2');
   });
 
   it('reports a retryable failure for error and rejected', async () => {
@@ -205,7 +215,7 @@ describe('resolvePendingAnswer', () => {
     // Fail safe: a status the server grows later must not silently swallow the
     // user's text. Only a body with NO status at all is a success.
     await expect(call([askStep()], { status: 'throttled' }))
-      .resolves.toEqual({ action: 'send', release: true });
+      .resolves.toEqual({ action: 'send', release: true, questionId: 'ask:1' });
     await expect(call([askStep()], { status: '' }))
       .resolves.toEqual({ action: 'consumed' });
   });

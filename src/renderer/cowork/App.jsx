@@ -272,7 +272,10 @@ export function planQueueDrain(steps, taskIds, queues, drainedQuestionIds) {
  *   - `send`     — no question pending, or the question is gone: run the
  *                  normal send so the user's text is never discarded.
  *                  `release: true` additionally means the stale question must
- *                  be dropped from the live-steps mirror.
+ *                  be dropped from the live-steps mirror — and `questionId`
+ *                  says WHICH one, so the caller retires that question instead
+ *                  of blanking the mirror and taking a live sibling's
+ *                  interception with it (see retireQuestionFromSteps).
  *   - `consumed` — the text became the answer; the send is over.
  *   - `fail`     — the submit failed in a way the user can retry. The caller
  *                  throws `message` so the composer surfaces it and keeps the
@@ -287,7 +290,7 @@ export async function resolvePendingAnswer({ steps, conversationId, text, submit
     // The question died with its run (or someone else answered it). The typed
     // text was written as an answer, but it is still the user's words — send
     // it as a message rather than dropping it on the floor.
-    return { action: 'send', release: true };
+    return { action: 'send', release: true, questionId: pending.question_id };
   }
   if (status === 'error' || status === 'rejected') {
     return {
@@ -301,7 +304,7 @@ export async function resolvePendingAnswer({ steps, conversationId, text, submit
   // only sets one for the failures above. So "no status" means the text became
   // the answer, while any status we do NOT recognise is one the server grew
   // later: release and send it, rather than silently swallowing the text.
-  if (status) return { action: 'send', release: true };
+  if (status) return { action: 'send', release: true, questionId: pending.question_id };
   return { action: 'consumed' };
 }
 
@@ -3202,7 +3205,13 @@ function AppCore() {
       // The question is gone. Release the composer and fall through to the
       // normal send below, so the typed text becomes a message instead of
       // being silently dropped.
-      liveStepsRef.current[id] = [];
+      //
+      // Retire exactly the question that was answered, never the whole mirror:
+      // a blanket clear would also drop a live sibling question's interception,
+      // and nothing re-arms it while that sibling blocks the turn (see
+      // retireQuestionFromSteps). retireLiveQuestion also rewrites every alias,
+      // which a direct assignment to this one id would not.
+      retireLiveQuestion(id, answerOutcome.questionId);
     }
 
     // Anton-core can't run two turns in parallel against the same
