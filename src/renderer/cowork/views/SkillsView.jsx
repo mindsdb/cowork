@@ -22,7 +22,7 @@ import { relativeAge } from '../lib/formatTime';
 const ALL_PROJECTS = '__all_projects__';
 
 function EmptyState({ children }) {
-  return <div style={{ padding: 32, color: 'var(--frost-600)', fontSize: 13 }}>{children}</div>;
+  return <div className="p-8 text-[var(--frost-600)] text-[13px]">{children}</div>;
 }
 
 
@@ -42,58 +42,31 @@ function SkillGridCard({ skill, onClick }) {
       }}
     >
       {/* Top content */}
-      <div style={{ flex: 1, padding: '0 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+      <div className="flex-1 px-3 flex flex-col gap-1">
+        <div className="flex items-center gap-[6px] min-w-0">
           {/* Slash badge */}
-          <span style={{
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            flexShrink: 0, width: 20, height: 20, borderRadius: 4,
-            boxShadow: 'var(--sh-1)',
-            fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 500,
-            color: 'var(--ink-3)',
-          }}>/</span>
-          <span style={{
-            flex: 1, minWidth: 0,
-            fontFamily: 'var(--font-body)', fontSize: 14, fontWeight: 500,
-            color: 'var(--ink)',
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>{skill.label}</span>
+          <span className="inline-flex items-center justify-center shrink-0 w-5 h-5 rounded-[4px] shadow-sh-1 font-mono text-[12px] font-medium text-ink-3">/</span>
+          <span className="flex-1 min-w-0 font-[family-name:var(--font-body)] text-base font-medium text-ink overflow-hidden text-ellipsis whitespace-nowrap">{skill.label}</span>
           {skill.enabled === false && (
-            <span style={{
-              flexShrink: 0,
-              display: 'inline-flex', alignItems: 'center',
-              height: 20, padding: '0 6px', borderRadius: 4,
+            <span className="shrink-0 inline-flex items-center h-5 px-[6px] rounded-[4px] border border-solid border-line text-ink-3 font-[family-name:var(--font-body)] text-xs font-medium" style={{
               background: 'color-mix(in srgb, var(--ink) 6%, transparent)',
-              border: '1px solid var(--line)',
-              color: 'var(--ink-3)',
-              fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 500,
             }}>Disabled</span>
           )}
         </div>
-        <span style={{
+        <span
           // Matches the page-header subtitle (13.5 / 1.5) so the card copy
           // reads as the same "muted body" voice, not a looser 14/24 block.
-          fontFamily: 'var(--font-body)', fontSize: 13.5, lineHeight: 1.5,
-          color: 'var(--ink-3)',
-          display: '-webkit-box',
-          WebkitLineClamp: 2,
-          WebkitBoxOrient: 'vertical',
-          overflow: 'hidden',
-        }}>
+          className="font-[family-name:var(--font-body)] text-[13.5px] leading-[1.5] text-ink-3 line-clamp-2"
+        >
           {skill.description || skill.declarative?.slice(0, 120) || '—'}
         </span>
       </div>
 
       {/* Footer */}
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '8px 12px',
-        background: 'var(--bg)',
+      <div className="flex items-center justify-between px-3 py-2 bg-bg font-[family-name:var(--font-body)] text-[12px] text-ink-3" style={{
         boxShadow: 'inset 0px 0.5px 0px rgba(39,39,42,0.06), inset 0px 1px 1px -0.5px rgba(39,39,42,0.06), inset 0px 2px 2px -1px rgba(39,39,42,0.06)',
-        fontFamily: 'var(--font-body)', fontSize: 12,
-        color: 'var(--ink-3)',
       }}>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+        <span className="inline-flex items-center gap-1">
           {Ico.folder(14)}
           <span>{project}</span>
         </span>
@@ -165,7 +138,7 @@ function SkillModal({ open, onClose, onSaved, onError, initial = null, projects 
         onClose={handleClose}
       />
       <ModalBody padding="20px">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div className="flex flex-col gap-3">
           <Field label="Label">
             <Input
               aria-label="Label"
@@ -258,7 +231,7 @@ function UploadSkillModal({ open, onClose, onSaved, onError }) {
     <Modal open={open} onClose={onClose} width="549px" labelledBy="upload-skill-title">
       <ModalHeader id="upload-skill-title" title="Upload Skill Files" subtitle="Upload a .md or .skill file to import a skill." onClose={onClose} />
       <ModalBody padding="20px">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div className="flex flex-col gap-4">
 
           {/* Drop zone */}
           <div
@@ -266,23 +239,20 @@ function UploadSkillModal({ open, onClose, onSaved, onError }) {
             onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
             onDragLeave={() => setDragging(false)}
             onDrop={onDrop}
+            className="h-[160px] rounded-card flex flex-col items-center justify-center gap-3 py-6 [transition:border-color_.15s_ease,background_.15s_ease]"
             style={{
-              height: 160, borderRadius: 12,
               border: `1px dashed ${dragging ? 'var(--accent)' : file ? 'var(--accent)' : 'var(--line-2)'}`,
               background: dragging ? 'var(--accent-bg)' : file ? 'var(--accent-bg)' : 'var(--surface-2)',
-              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-              gap: 12, padding: '24px 0',
               cursor: file ? 'default' : 'pointer',
-              transition: 'border-color .15s ease, background .15s ease',
             }}
           >
             {file ? (
               <>
-                <span style={{ color: 'var(--accent)' }}>{Ico.upload(32)}</span>
-                <span style={{ fontSize: 13.5, fontFamily: 'var(--font-body)', color: 'var(--ink-2)', fontWeight: 500 }}>
+                <span className="text-accent">{Ico.upload(32)}</span>
+                <span className="text-[13.5px] font-[family-name:var(--font-body)] text-ink-2 font-medium">
                   {file.name}
                 </span>
-                <span style={{ fontSize: 12, fontFamily: 'var(--font-body)', color: 'var(--ink-4)' }}>
+                <span className="text-[12px] font-[family-name:var(--font-body)] text-ink-4">
                   {(file.size / 1024).toFixed(1)} KB
                 </span>
                 <Button
@@ -294,8 +264,8 @@ function UploadSkillModal({ open, onClose, onSaved, onError }) {
               </>
             ) : (
               <>
-                <span style={{ color: 'var(--ink-4)' }}>{Ico.upload(32)}</span>
-                <span style={{ fontSize: 13.5, fontFamily: 'var(--font-body)', color: 'var(--ink-3)' }}>
+                <span className="text-ink-4">{Ico.upload(32)}</span>
+                <span className="text-[13.5px] font-[family-name:var(--font-body)] text-ink-3">
                   Drag and drop or click to upload
                 </span>
               </>
@@ -304,15 +274,15 @@ function UploadSkillModal({ open, onClose, onSaved, onError }) {
               ref={inputRef}
               type="file"
               accept=".md,.skill,.zip"
-              style={{ display: 'none' }}
+              className="hidden"
               onChange={(e) => { pickFile(e.target.files[0]); e.target.value = ''; }}
             />
           </div>
 
           {/* File requirements */}
-          <div style={{ fontSize: 12, lineHeight: '16px', color: 'var(--ink-3)', fontFamily: 'var(--font-body)' }}>
-            <div style={{ fontWeight: 500, marginBottom: 4 }}>File requirements</div>
-            <ul style={{ margin: 0, paddingLeft: 18 }}>
+          <div className="text-[12px] leading-[16px] text-ink-3 font-[family-name:var(--font-body)]">
+            <div className="font-medium mb-1">File requirements</div>
+            <ul className="m-0 pl-[18px]">
               <li>.md or .skill file must contain skill name and description formatted in YAML</li>
               <li>.zip file must include a SKILL.md file</li>
             </ul>
@@ -348,7 +318,7 @@ function CreateSkillDropdown({ onWrite, onUpload, onCowork }) {
     >
       {Ico.plus(14)}
       <span>Create skill</span>
-      <span style={{ display: 'inline-flex', color: 'inherit', opacity: 0.7 }}>{Ico.chevDown(11)}</span>
+      <span className="inline-flex text-inherit opacity-70">{Ico.chevDown(11)}</span>
     </Button>
   );
   return <Menu trigger={trigger} items={items} align="end" width={220} />;
@@ -422,7 +392,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
   });
 
   return (
-    <div className="scroll-clean" style={{ flex: 1, overflowY: 'auto', paddingBottom: 40 }}>
+    <div className="scroll-clean flex-1 overflow-y-auto pb-10">
       {selected ? (
         // ── Detail view ────────────────────────────────────────────────────
         <>
@@ -456,35 +426,28 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
               </>
             }
           />
-          <div style={{ padding: '24px 32px 32px' }}>
+          <div className="pt-6 px-8 pb-8">
 
           {/* Scope */}
-          <div style={{ marginBottom: 16 }}>
+          <div className="mb-4">
             <h3 className="s-h3" style={{ margin: '0 0 4px' }}>Scope</h3>
-            <p style={{ margin: 0, fontSize: 13.5, color: 'var(--ink)', lineHeight: 1.5, userSelect: 'text' }}>
+            <p className="m-0 text-[13.5px] text-ink leading-[1.5] select-text">
               {selected.projects?.[0] || 'All projects'}
             </p>
           </div>
 
           {/* Description */}
           {selected.description && (
-            <div style={{ marginBottom: 16 }}>
+            <div className="mb-4">
               <h3 className="s-h3" style={{ margin: '0 0 4px' }}>Description</h3>
-              <p style={{ margin: 0, fontSize: 13.5, color: 'var(--ink)', lineHeight: 1.5, userSelect: 'text' }}>
+              <p className="m-0 text-[13.5px] text-ink leading-[1.5] select-text">
                 {selected.description}
               </p>
             </div>
           )}
 
           {/* Content card */}
-          <div style={{
-            borderRadius: 20,
-            border: '1px solid var(--line)',
-            padding: 24,
-            display: 'flex', flexDirection: 'column', gap: 16,
-            background: 'var(--surface)',
-            userSelect: 'text',
-          }}>
+          <div className="rounded-[20px] border border-solid border-line p-6 flex flex-col gap-4 bg-surface select-text">
             <MarkdownContent
               text={selected.declarative || ''}
               id={`skill-${selected.label}`}
@@ -513,10 +476,10 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
           ) : sorted.length === 0 ? (
             <EmptyState>{search ? 'No skills match your search.' : 'No saved skills yet.'}</EmptyState>
           ) : view === 'list' ? (
-            <div style={{ padding: '16px 32px 60px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr auto auto', gap: '0 16px', borderBottom: '1px solid var(--line)', padding: '0 8px 8px', marginBottom: 4 }}>
+            <div className="pt-4 px-8 pb-[60px]">
+              <div className="grid grid-cols-[1fr_2fr_auto_auto] gap-x-4 border-b border-solid border-line px-2 pb-2 mb-1">
                 {['Name', 'Description', 'Project', 'Updated'].map((h) => (
-                  <span key={h} style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--ink-4)', letterSpacing: '0.10em', textTransform: 'uppercase' }}>{h}</span>
+                  <span key={h} className="font-mono text-[10.5px] text-ink-4 tracking-[0.10em] uppercase">{h}</span>
                 ))}
               </div>
               {sorted.map((skill) => {
@@ -529,20 +492,20 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
                     tabIndex={0}
                     onClick={() => setSelected(skill)}
                     onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelected(skill); } }}
-                    style={{ display: 'grid', gridTemplateColumns: '1fr 2fr auto auto', gap: '0 16px', padding: '10px 8px', borderBottom: '1px solid var(--line)', cursor: 'pointer', borderRadius: 6, outline: 'none' }}
+                    className="grid grid-cols-[1fr_2fr_auto_auto] gap-x-4 px-2 py-[10px] border-b border-solid border-line cursor-pointer rounded-[6px] outline-none"
                     onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; }}
                     onMouseLeave={(e) => { e.currentTarget.style.background = ''; }}
                   >
-                    <span style={{ fontFamily: 'var(--font-body)', fontSize: 13, fontWeight: 500, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{skill.label}</span>
-                    <span style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--ink-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{skill.description || '—'}</span>
-                    <span style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--ink-3)', whiteSpace: 'nowrap' }}>{project || '—'}</span>
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--ink-4)', whiteSpace: 'nowrap' }}>{age || '—'}</span>
+                    <span className="font-[family-name:var(--font-body)] text-[13px] font-medium text-ink overflow-hidden text-ellipsis whitespace-nowrap">{skill.label}</span>
+                    <span className="font-[family-name:var(--font-body)] text-[13px] text-ink-3 overflow-hidden text-ellipsis whitespace-nowrap">{skill.description || '—'}</span>
+                    <span className="font-[family-name:var(--font-body)] text-[13px] text-ink-3 whitespace-nowrap">{project || '—'}</span>
+                    <span className="font-mono text-[11.5px] text-ink-4 whitespace-nowrap">{age || '—'}</span>
                   </div>
                 );
               })}
             </div>
           ) : (
-            <div style={{ padding: '20px 32px 60px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 16 }}>
+            <div className="pt-5 px-8 pb-[60px] grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-4">
               {sorted.map((skill) => (
                 <SkillGridCard key={skill.label} skill={skill} onClick={setSelected} />
               ))}
