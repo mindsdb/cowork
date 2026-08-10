@@ -67,7 +67,7 @@ function EnableToggle({ enabled, onChange, busy }) {
         size="sm"
         aria-label="Schedule enabled"
       />
-      <span className="font-[var(--font-body)] text-sm font-medium" style={{
+      <span className="font-[family-name:var(--font-body)] text-sm font-medium" style={{
         color: enabled ? 'var(--ink-2)' : 'var(--ink-3)',
       }}>{enabled ? 'Enabled' : 'Paused'}</span>
     </label>
@@ -87,7 +87,7 @@ function HealthSparkline({ runs }) {
   const chronological = useMemo(() => [...runs].slice(0, 30).reverse(), [runs]);
   if (!chronological.length) {
     return (
-      <div className="flex items-center justify-center h-20 rounded-card border border-dashed border-line-2 text-ink-4 font-[var(--font-body)] text-sm">
+      <div className="flex items-center justify-center h-20 rounded-card border border-dashed border-line-2 text-ink-4 font-[family-name:var(--font-body)] text-sm">
         No runs yet — health appears after the first run.
       </div>
     );
@@ -139,22 +139,22 @@ function HealthSparkline({ runs }) {
 function RunRow({ run, onOpen }) {
   const isErr = run.status === 'failed';
   return (
-    <div className="grid grid-cols-[12px_1fr_auto_auto] items-center gap-3 px-4 py-3 bg-surface border border-line rounded-card">
+    <div className="grid grid-cols-[12px_1fr_auto_auto] items-center gap-3 px-4 py-3 bg-surface border border-solid border-line rounded-card">
       <span aria-hidden className="w-2 h-2 rounded-full" style={{
         background: runColor(run),
       }} />
       <div className="min-w-0">
-        <div className="font-[var(--font-body)] text-sm font-medium text-ink overflow-hidden text-ellipsis whitespace-nowrap" title={absoluteTime(run.startedAt)}>
+        <div className="font-[family-name:var(--font-body)] text-sm font-medium text-ink overflow-hidden text-ellipsis whitespace-nowrap" title={absoluteTime(run.startedAt)}>
           {absoluteTime(run.startedAt) || '—'}
           {run.isManual && <span className="ml-2 px-2 py-[1px] rounded-[4px] text-accent text-xs font-semibold" style={{
             background: 'color-mix(in srgb, var(--accent) 12%, transparent)',
           }}>MANUAL</span>}
         </div>
         {isErr && run.error && (
-          <div className="font-[var(--font-body)] text-xs text-danger mt-[2px] overflow-hidden text-ellipsis whitespace-nowrap" title={run.error}>{run.error}</div>
+          <div className="font-[family-name:var(--font-body)] text-xs text-danger mt-[2px] overflow-hidden text-ellipsis whitespace-nowrap" title={run.error}>{run.error}</div>
         )}
       </div>
-      <span className="font-[var(--font-body)] text-xs text-ink-3 whitespace-nowrap">{formatDuration(run.durationMs)}</span>
+      <span className="font-[family-name:var(--font-body)] text-xs text-ink-3 whitespace-nowrap">{formatDuration(run.durationMs)}</span>
       {run.conversationId ? (
         <Button onClick={() => onOpen?.(run)}>Open task</Button>
       ) : <span />}
@@ -215,7 +215,7 @@ export default function ScheduleDetailView({
   if (!task) {
     return (
       <div className="scroll-clean flex-1 flex items-center justify-center">
-        <div className="font-[var(--font-body)] text-ink-3">
+        <div className="font-[family-name:var(--font-body)] text-ink-3">
           Schedule not found.{' '}
           <button onClick={onBack} className="bg-transparent border-0 text-accent cursor-pointer">Back to scheduled tasks</button>
         </div>
@@ -236,7 +236,7 @@ export default function ScheduleDetailView({
   const projectName = projects.find((p) => p.id === task.projectId)?.name || '';
 
   return (
-    <div className="scroll-clean flex-1 overflow-y-auto flex flex-col font-[var(--font-body)]">
+    <div className="scroll-clean flex-1 overflow-y-auto flex flex-col font-[family-name:var(--font-body)]">
       <PageHeader
         crumbs={[{ label: 'Scheduled Tasks', onClick: onBack, title: 'All scheduled tasks' }]}
         current={task.title || 'Untitled schedule'}
@@ -249,13 +249,13 @@ export default function ScheduleDetailView({
         )}
 
         {/* Hero card — title, status, run-now, enable toggle, next-run */}
-        <div className="sched-hero py-5 px-[22px] bg-surface border border-line rounded-card flex flex-col gap-4">
+        <div className="sched-hero py-5 px-[22px] bg-surface border border-solid border-line rounded-card flex flex-col gap-4">
           <div className="sched-hero-top flex items-start gap-3">
             <div className="flex-1 min-w-0">
               <div className="s-h2 text-ink line-clamp-2">{task.title}</div>
               <div className="flex items-center gap-3 mt-2">
                 <ScheduleStatusBadge task={task} failedLabel="Last run failed" size="lg" dot />
-                <span className="font-[var(--font-body)] text-sm text-ink-3">
+                <span className="font-[family-name:var(--font-body)] text-sm text-ink-3">
                   {task.cadence === 'once' ? 'One-off run' : `Runs ${task.cadence}`}
                 </span>
               </div>
@@ -298,7 +298,7 @@ export default function ScheduleDetailView({
 
           {/* Prompt preview. */}
           {task.prompt && (
-            <div className="px-4 py-3 bg-surface-2 border border-line rounded-card-row font-[var(--font-body)] text-sm text-ink-2 leading-[1.55] whitespace-pre-wrap max-h-[168px] overflow-y-auto">{task.prompt}</div>
+            <div className="px-4 py-3 bg-surface-2 border border-solid border-line rounded-card-row font-[family-name:var(--font-body)] text-sm text-ink-2 leading-[1.55] whitespace-pre-wrap max-h-[168px] overflow-y-auto">{task.prompt}</div>
           )}
 
           {/* Next + last run summary. */}
@@ -326,11 +326,11 @@ export default function ScheduleDetailView({
         </div>
 
         {/* Health card. */}
-        <div className="sched-health py-5 px-[22px] bg-surface border border-line rounded-card flex flex-col gap-4">
+        <div className="sched-health py-5 px-[22px] bg-surface border border-solid border-line rounded-card flex flex-col gap-4">
           <div className="sched-health-top flex items-start justify-between gap-3">
             <div>
-              <div className="font-[var(--font-display)] text-base font-semibold text-ink">Health</div>
-              <div className="font-[var(--font-body)] text-sm text-ink-3 mt-[2px]">Last {Math.min(stats.total, 30)} runs · success rate, duration, error frequency.</div>
+              <div className="font-[family-name:var(--font-display)] text-base font-semibold text-ink">Health</div>
+              <div className="font-[family-name:var(--font-body)] text-sm text-ink-3 mt-[2px]">Last {Math.min(stats.total, 30)} runs · success rate, duration, error frequency.</div>
             </div>
             <div className="sched-health-metrics inline-flex items-center gap-4">
               <Metric label="Total runs" value={stats.total} />
@@ -351,7 +351,7 @@ export default function ScheduleDetailView({
         {/* Runs list. */}
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between px-[2px] py-1">
-            <div className="font-[var(--font-display)] text-base font-semibold text-ink">
+            <div className="font-[family-name:var(--font-display)] text-base font-semibold text-ink">
               Recent runs
               <span className="ml-2 font-medium text-ink-4 text-sm">{runs.length}</span>
             </div>
@@ -409,8 +409,8 @@ export default function ScheduleDetailView({
 function SummaryStat({ label, value, hint }) {
   return (
     <div className="flex flex-col gap-1">
-      <div className="font-[var(--font-body)] text-xs font-semibold text-ink-3 tracking-[0.04em] uppercase">{label}</div>
-      <div title={hint || undefined} className="font-[var(--font-display)] text-[16px] font-semibold text-ink tracking-[0] overflow-hidden text-ellipsis whitespace-nowrap">{value}</div>
+      <div className="font-[family-name:var(--font-body)] text-xs font-semibold text-ink-3 tracking-[0.04em] uppercase">{label}</div>
+      <div title={hint || undefined} className="font-[family-name:var(--font-display)] text-[16px] font-semibold text-ink tracking-[0] overflow-hidden text-ellipsis whitespace-nowrap">{value}</div>
     </div>
   );
 }
@@ -418,8 +418,8 @@ function SummaryStat({ label, value, hint }) {
 function Metric({ label, value, color }) {
   return (
     <div className="text-right">
-      <div className="font-[var(--font-body)] text-xs text-ink-4 tracking-[0.04em] uppercase font-semibold">{label}</div>
-      <div className="font-[var(--font-display)] text-[18px] font-semibold tracking-[0] mt-[2px]" style={{
+      <div className="font-[family-name:var(--font-body)] text-xs text-ink-4 tracking-[0.04em] uppercase font-semibold">{label}</div>
+      <div className="font-[family-name:var(--font-display)] text-[18px] font-semibold tracking-[0] mt-[2px]" style={{
         color: color || 'var(--ink)',
       }}>{value}</div>
     </div>
