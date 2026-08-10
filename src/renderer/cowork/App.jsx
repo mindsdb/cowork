@@ -4431,6 +4431,27 @@ function AppCore() {
               if (!conversationId) return;
               if (result?.status === 'not_found' || result?.status === 'already_answered') {
                 retireLiveQuestion(conversationId, questionId);
+                return;
+              }
+              // A retryable failure only clears the card's `busy`: the button
+              // flashes disabled and comes back, so the user believes the click
+              // landed. It did not — the answer was never recorded and the agent
+              // stays blocked until the server's 300 s timeout. The composer path
+              // already surfaces exactly these two statuses with a toast; the
+              // card path must too, and the asymmetry was the defect.
+              if (result?.status === 'error') {
+                toastManager.add({
+                  type: 'danger',
+                  title: 'Could not send your answer. Please try again.',
+                });
+              } else if (result?.status === 'rejected') {
+                // From a button press this means the app submitted a shape the
+                // card itself rendered — a stale or raced card, not something the
+                // user can fix by choosing differently.
+                toastManager.add({
+                  type: 'danger',
+                  title: 'That answer was not accepted. Reload the conversation to see the question as it stands now.',
+                });
               }
             }}
           />

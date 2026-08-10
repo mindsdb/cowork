@@ -358,6 +358,40 @@ describe('composer send while a question is pending', () => {
     expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
   });
 
+  it('tells the user when an option click failed and was never recorded', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+
+    await send(user, composer, 'first message');
+    await emit(ASK_EVENT);
+
+    // A network blip or a 500. The card clears `busy` so the button comes back,
+    // which on its own reads as "nothing happened" — while the agent stays
+    // blocked until the 300 s server timeout.
+    spies.submitAnswer.mockImplementationOnce(async () => ({ status: 'error' }));
+    await user.click(await screen.findByRole('button', { name: /postgres/i }));
+
+    expect(await screen.findByText(/could not send your answer/i)).toBeInTheDocument();
+    // Still answerable: the question was not retired, so a retry submits again.
+    await user.click(screen.getByRole('button', { name: /postgres/i }));
+    expect(spies.submitAnswer).toHaveBeenCalledTimes(2);
+  });
+
+  it('tells the user when the server rejected an option click', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+
+    await send(user, composer, 'first message');
+    await emit(ASK_EVENT);
+
+    // A 400 for a value the card itself rendered means the card is stale, so
+    // the copy points at reloading rather than at choosing differently.
+    spies.submitAnswer.mockImplementationOnce(async () => ({ status: 'rejected' }));
+    await user.click(await screen.findByRole('button', { name: /postgres/i }));
+
+    expect(await screen.findByText(/not accepted/i)).toBeInTheDocument();
+  });
+
   it('keeps staged attachments when the send is consumed as an answer', async () => {
     const user = userEvent.setup();
     const composer = await openTask(user);
