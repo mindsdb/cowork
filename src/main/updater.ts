@@ -10,7 +10,7 @@ import { checkForUIUpdate, applyUIUpdate, getRendererPath, hasInternet, rollback
 import type { UpdateCheckResult } from './ui-updater';
 import { checkForServerUpdate, maybeUpdateServer } from './server-updater';
 import { isServerRunning } from './server-process';
-import { decideUpdateApply, summarizeUpdateCheck, shellUpdateIsNewer, shellDownloadUrl } from './update-logic';
+import { decideUpdateApply, summarizeUpdateCheck, shellUpdateIsNewer, shellDownloadUrl, shellAutoUpdateIsActive } from './update-logic';
 import type { UpdateCheckSummary } from '../shared/update-types';
 import { buildKindStrict } from './cowork-home';
 import { getAppDisplayVersion } from './server-source';
@@ -155,21 +155,27 @@ function applyUpdates(getWindow: GetWindow, applyServer: boolean, applyUi: boole
 // Detection only. Each channel reports its own errors so a confirmed update can
 // still win when another channel is inconclusive.
 export async function checkForUpdates(): Promise<UpdateCheckSummary> {
-  const [ui, server, shell] = await Promise.all([
+  const [ui, server, shell, shellAuto] = await Promise.all([
     checkForUIUpdate(),
     checkForServerUpdate(),
     checkForShellUpdate().catch(() => ({ available: false as const })),
-    // The stateful shell updater owns background download/install. Its
-    // snapshot is exposed separately; this call only coalesces the user's
-    // manual trigger with any boot/periodic check already in flight.
+    // The stateful shell updater owns background download/install. This call
+    // coalesces the user's manual trigger with any boot/periodic check already
+    // in flight; its snapshot is folded into the summary below so a manual
+    // check can't report "up to date" while it is downloading or ready.
     checkShellAutoUpdate('manual').catch(() => undefined),
   ]);
+  // On stable the legacy prod-only checkForShellUpdate() always reports nothing,
+  // so the auto-updater is the only signal that a shell update is in flight.
+  const shellAutoActive = !!shellAuto && shellAutoUpdateIsActive(shellAuto.phase);
   return summarizeUpdateCheck({
     ui: { updateAvailable: ui.updateAvailable, newVersion: ui.newVersion, error: ui.error },
     server: { updateAvailable: server.updateAvailable, latestVersion: server.latestVersion, error: server.error },
     shell: shell.available
       ? { updateAvailable: true, version: shell.latestVersion, downloadUrl: shell.downloadUrl ?? undefined }
-      : { updateAvailable: false },
+      : shellAutoActive
+        ? { updateAvailable: true, version: shellAuto?.targetVersion }
+        : { updateAvailable: false },
   });
 }
 

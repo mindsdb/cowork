@@ -15,7 +15,7 @@ const displayVersion = readFileSync(
 const { calVerToUpdaterSemVer } = await import(
   pathToFileURL(join(root, 'dist', 'main', 'shared', 'version.js')).href
 );
-const { resolveShellUpdateFeed } = await import(
+const { resolveShellUpdateFeed, shellUpdaterCacheDirName, resolveWindowsPublisherNames } = await import(
   pathToFileURL(join(root, 'dist', 'main', 'shared', 'shell-update-feed.js')).href
 );
 
@@ -48,17 +48,25 @@ writeFileSync(
   `${updaterVersion}\n`,
 );
 
+// Windows pins the expected Authenticode signer (electron-updater skips
+// verification without it). macOS omits it — Squirrel.Mac validates against the
+// installed app's own signing identity instead.
+const publisherNames = feed && targetPlatform === 'win32'
+  ? resolveWindowsPublisherNames(process.env.COWORK_WIN_PUBLISHER_CN)
+  : [];
+
 const appUpdatePath = join(root, 'build', 'app-update.yml');
 if (feed && !skipFeedConfig) {
-  writeFileSync(
-    appUpdatePath,
-    [
-      'provider: generic',
-      `url: ${feed.url}`,
-      'updaterCacheDirName: anton-updater',
-      '',
-    ].join('\n'),
-  );
+  const lines = [
+    'provider: generic',
+    `url: ${feed.url}`,
+    `updaterCacheDirName: ${shellUpdaterCacheDirName(feed.channel)}`,
+  ];
+  if (publisherNames.length) {
+    lines.push('publisherName:', ...publisherNames.map(name => `  - ${JSON.stringify(name)}`));
+  }
+  lines.push('');
+  writeFileSync(appUpdatePath, lines.join('\n'));
 } else if (!skipFeedConfig) {
   try { unlinkSync(appUpdatePath); } catch (error) {
     if (error?.code !== 'ENOENT') throw error;
@@ -74,6 +82,9 @@ if (feed && !skipFeedConfig) {
     '-c.publish.provider=generic',
     `-c.publish.url=${feed.url}`,
   );
+  publisherNames.forEach((name, i) => {
+    builderArgs.push(`-c.win.publisherName.${i}=${name}`);
+  });
 }
 
 console.log(

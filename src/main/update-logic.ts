@@ -568,6 +568,13 @@ export function shellUpdateIsNewer(
   return compareCalVer(latest, installed) > 0;
 }
 
+/** Shell auto-updater phases that mean a user-visible update is in flight, so a
+ *  manual "check for updates" must NOT report "up to date". Excludes passive
+ *  (idle/checking/disabled), terminal (complete) and failed phases. */
+export function shellAutoUpdateIsActive(phase: string): boolean {
+  return phase === 'available' || phase === 'downloading' || phase === 'ready-to-install';
+}
+
 /** Return the installer URL for a supported platform and release channel. */
 export function shellDownloadUrl(
   platform: string,

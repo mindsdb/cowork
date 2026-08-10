@@ -26,7 +26,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const { calVerToUpdaterSemVer } = await import(
   pathToFileURL(join(root, 'dist', 'main', 'shared', 'version.js')).href
 );
-const { resolveShellUpdateFeed } = await import(
+const { resolveShellUpdateFeed, shellUpdaterCacheDirName, resolveWindowsPublisherNames } = await import(
   pathToFileURL(join(root, 'dist', 'main', 'shared', 'shell-update-feed.js')).href
 );
 
@@ -56,6 +56,13 @@ writeFileSync(
   `${updaterVersion}\n`,
 );
 
+// Pin the Windows updater's expected Authenticode signer. Without this,
+// electron-updater's NsisUpdater skips signature verification and would install
+// any executable the feed serves (see resolveWindowsPublisherNames).
+const publisherNames = feed
+  ? resolveWindowsPublisherNames(process.env.COWORK_WIN_PUBLISHER_CN)
+  : [];
+
 const appUpdatePath = join(root, 'build', 'app-update.yml');
 if (feed) {
   writeFileSync(
@@ -63,7 +70,9 @@ if (feed) {
     [
       'provider: generic',
       `url: ${feed.url}`,
-      'updaterCacheDirName: anton-updater',
+      `updaterCacheDirName: ${shellUpdaterCacheDirName(feed.channel)}`,
+      'publisherName:',
+      ...publisherNames.map(name => `  - ${JSON.stringify(name)}`),
       '',
     ].join('\n'),
   );
@@ -86,10 +95,13 @@ if (id) {
 }
 if (feed) {
   config.publish = { provider: 'generic', url: feed.url };
+  // Also set it on the builder config so builder's own generated app-update.yml
+  // (if it wins over the extraResources copy) carries the pin too.
+  config.win = { ...(config.win || {}), publisherName: publisherNames };
 }
 
 console.log(
-  `[dist-win] display=${displayVersion} updater=${updaterVersion} feed=${feed?.url || '(disabled)'}`,
+  `[dist-win] display=${displayVersion} updater=${updaterVersion} feed=${feed?.url || '(disabled)'} publisher=${JSON.stringify(publisherNames)}`,
 );
 
 try {
