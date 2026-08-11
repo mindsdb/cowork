@@ -416,7 +416,7 @@ function ConnectView({ data, setData, setStatus }) {
       <div>
         <div className="text-[13px] font-[650] text-strong mb-[10px]">Saved connections</div>
         {(data.connections || []).length ? (data.connections || []).map((conn) => (
-          <div key={`${conn.engine}-${conn.name}`} className="flex items-center gap-[10px] py-[10px] border-b border-solid border-[var(--border-0)] text-[13px]">
+          <div key={`${conn.engine}-${conn.name}`} className="flex items-center gap-[10px] py-[10px] border-b border-t-0 border-x-0 border-solid border-[var(--border-0)] text-[13px]">
             <div className="flex-1">
               <strong className="text-strong">{conn.displayName || conn.engine}</strong> / {conn.name}
               <div className="text-[11.5px] text-[var(--frost-600)]">{conn.testAvailable ? 'Ready for datasource tools' : 'Saved in data vault'}</div>
@@ -535,7 +535,7 @@ function PublishView({ data, setData, setStatus, onRefreshArtifacts }) {
         <div className="mt-[18px]">
           <div className="text-[13px] font-[650] text-strong mb-2">Share history</div>
           {(data.history || []).slice(0, 10).map((item) => (
-            <div key={`${item.artifact}-${item.publishedAt}`} className="py-2 border-t border-solid border-[var(--border-0)] text-sm">
+            <div key={`${item.artifact}-${item.publishedAt}`} className="py-2 border-t border-x-0 border-b-0 border-solid border-[var(--border-0)] text-sm">
               <strong>{item.artifactName}</strong>
               {item.url && <span className="ml-2 text-[var(--sage-700)] select-text">{item.url}</span>}
             </div>
