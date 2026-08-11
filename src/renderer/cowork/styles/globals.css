@@ -377,9 +377,18 @@ body[data-theme="dark"] em {
 
 /* Base micro-interaction: smooth transitions on all interactive elements.
    Individual rules can override with more specific transition properties. */
-button, a, [role="button"], input, select, textarea,
-.nav-item, .recent-item, .icon-btn, .btn, .meta-pill,
-.artifact-card, .rail-panel {
+button,
+a,
+[role="button"],
+input,
+select,
+textarea,
+.nav-item,
+.recent-item,
+.icon-btn,
+.btn,
+.meta-pill,
+.artifact-card {
   transition: background 0.15s ease, color 0.15s ease,
               border-color 0.15s ease, box-shadow 0.15s ease,
               opacity 0.15s ease;
@@ -416,7 +425,10 @@ input, textarea { font-family: inherit; }
 /* Form controls + interactive surfaces explicitly opt OUT so clicks,
    text selection, and scrolling work. The composer + chat area + modals
    are real interactive surfaces; everything else stays draggable. */
-button, input, textarea, select,
+button,
+input,
+textarea,
+select,
 a[href],
 [role="button"],
 [role="tab"],
@@ -434,7 +446,6 @@ a[href],
    the cowork shell's outer `-webkit-app-region: drag` swallows wheel
    events and the inner overflow:auto element never sees the scroll. */
 .scroll-clean,
-.task-messages,
 [data-scroll="true"] {
   -webkit-app-region: no-drag;
 }
@@ -446,7 +457,8 @@ a[href],
    heading/landmark navigation) but never renders pixels or steals
    layout. Use for headings/labels/instructions that don't have a
    visible counterpart on the page. */
-.sr-only {
+.sr-only,
+.anton-code-block-copy-label {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -480,12 +492,6 @@ a[href],
 }
 .scroll-clean::-webkit-scrollbar-track { background: transparent; }
 .scroll-clean::-webkit-scrollbar-corner { background: transparent; }
-
-/* ─── Dot canvas ─────────────────────────────────────────────────────────── */
-.dot-canvas {
-  background-image: radial-gradient(circle, rgba(0,0,0,0.06) 1px, transparent 1.2px);
-  background-size: 18px 18px;
-}
 
 /* Home "connect a provider" card (ENG-991): one row on desktop; stacks to a
    column under the mobile breakpoint so the text + buttons aren't crushed
@@ -579,7 +585,6 @@ a[href],
 }
 
 .pulse-dot { animation: pulse-dot 1.6s ease-in-out infinite; }
-.typing-dot { animation: typing 1.2s ease-in-out infinite; }
 
 /* WCAG 2.3.3 Animation from Interactions — users with vestibular
    sensitivity get every infinite/looping animation halted (state still
@@ -588,19 +593,15 @@ a[href],
    feel broken. */
 @media (prefers-reduced-motion: reduce) {
   .pulse-dot,
-  .typing-dot,
   .proj-shimmer,
   .composer-icon.listening,
   .spinner,
   .status-dot.busy,
   .backend-status-control.is-busy .status-text__live,
-  .btn-busy-pulse,
   [class*="set-badge-pulse"] {
     animation: none !important;
   }
 }
-.typing-dot:nth-child(2) { animation-delay: 0.15s; }
-.typing-dot:nth-child(3) { animation-delay: 0.30s; }
 
 /* Projects-page skeleton card — soft horizontal shimmer over the
    placeholder boxes while the projects list loads. Driven via the
@@ -673,7 +674,6 @@ a[href],
 .hover-tint { transition: background .12s, color .12s; }
 .hover-tint:hover { background: color-mix(in srgb, var(--ink) 5%, transparent) !important; }
 .hover-tint-text:hover { color: var(--ink) !important; }
-.hover-tint-danger:hover { color: var(--danger) !important; }
 
 .kbd {
   display: inline-flex; align-items: center; justify-content: center;
@@ -2067,51 +2067,6 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
   color: var(--text-strong); white-space: pre-wrap;
   user-select: text;
 }
-.activity-row {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  align-self: flex-start;
-  max-width: 92%;
-  margin-left: 40px;
-  padding: 4px 0;
-  color: var(--frost-600);
-  font-size: 13px;
-  line-height: 1.35;
-  user-select: none;
-}
-.activity-row.running {
-  color: var(--frost-700);
-}
-.activity-mark {
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  border: 1px solid var(--border-01);
-  color: var(--sage-600);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
-  background: var(--surface-0);
-}
-.activity-spinner {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  border: 2px solid var(--primary-50);
-  border-top-color: var(--primary-600);
-  animation: spin .75s linear infinite;
-}
-.activity-text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.activity-chevron {
-  display: inline-flex;
-  color: var(--frost-500);
-}
 
 /* ─── Artifact card ──────────────────────────────────────────────────────── */
 .artifact-card {
@@ -2523,10 +2478,6 @@ body[data-theme="dark"] .btn.danger-solid:focus-visible {
   color: var(--ink);
   line-height: 1.05;
 }
-.t-special.size-xl { font-size: 44px; letter-spacing: -0.005em; font-weight: 700; }
-.t-special.size-lg { font-size: var(--text-2xl); letter-spacing: 0.02em;   font-weight: 400; }
-.t-special.size-md { font-size: 18px; letter-spacing: 0.06em;   font-weight: 400; }
-.t-special.size-sm { font-size: 12px; letter-spacing: 0.18em;   font-weight: 300; }
 
 /* ─── Form fields ──────────────────────────────────────────────────────── */
 .field-input,
@@ -2645,22 +2596,6 @@ body[data-theme="dark"] .btn.danger-solid:focus-visible {
   padding: 4px 10px;
   border-radius: var(--r-sm);
   font-size: var(--text-sm);
-}
-
-/* Field label group helper */
-.field-label {
-  display: block;
-  font-family: var(--font-sans);
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--ink-2);
-  margin-bottom: 6px;
-}
-.field-hint {
-  font-family: var(--font-sans);
-  font-size: var(--text-xs);
-  color: var(--ink-4);
-  margin-top: 4px;
 }
 
 /* ─── Card system (ENG-791) ─────────────────────────────────────────────
@@ -2791,7 +2726,6 @@ button.card { font: inherit; color: inherit; text-align: left; width: 100%; }
   border: 0;
   margin: 0;
 }
-.divider.thick { height: 1px; background: var(--line-2); }
 
 /* ─── Anton sidebar (per anton-sidebar-{dark,light} guideline) ────────────
    Token-driven; dark mode adds the cyan halo + glow on emphasis. */
@@ -3055,27 +2989,6 @@ body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surfac
   color: var(--accent);
 }
 
-/* Pinned empty-state */
-.app-sidebar .sidebar-empty,
-.pinned-empty {
-  margin: 0 14px;
-  padding: 14px;
-  border: 1px dashed var(--line-2);
-  border-radius: var(--r-8);
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  color: var(--ink-4);
-  font-family: var(--font-sans);
-  font-size: 12px;
-  line-height: 1.45;
-  background: transparent;
-}
-body[data-theme="dark"] .pinned-empty,
-body[data-theme="dark"] .app-sidebar .sidebar-empty {
-  background: rgba(255,255,255,0.01);
-}
-
 /* Recent row — same shape, mono meta on the right */
 .app-sidebar .recent-item {
   display: flex;
@@ -3277,47 +3190,6 @@ body[data-theme="dark"] .chrome-btn--small.is-on {
   box-shadow: 0 0 14px rgba(34,211,238,0.30);
 }
 
-/* Server (backend) toggle in the sidebar footer. Neutral by default in
-   every state — the destructive intent only surfaces on hover when the
-   server is on (red), so the panel doesn't shout at idle. */
-.server-toggle {
-  position: relative;
-  color: var(--ink-3);
-}
-/* When the backend is on, hovering the button reveals it as a stop /
-   disconnect action — danger red, no glow on light, gentle red glow on dark. */
-.server-toggle.is-on:hover {
-  color: var(--danger);
-  background: var(--danger-bg);
-  box-shadow: none;
-}
-body[data-theme="dark"] .server-toggle.is-on:hover {
-  color: var(--danger);
-  background: transparent;
-  box-shadow: 0 0 14px rgba(248, 113, 113, 0.3);
-}
-.server-toggle.is-busy,
-.server-toggle:disabled {
-  cursor: progress;
-  opacity: 0.85;
-  color: var(--accent);
-}
-.server-toggle.is-busy:hover {
-  /* Don't show the hover fill while the action is in flight. */
-  background: transparent;
-  box-shadow: none;
-  color: var(--accent);
-}
-
-/* Help affordance next to the server toggle — appears only when the
-   backend is offline. Same size as the toggle so they read as a pair. */
-.server-help {
-  font-family: var(--font-display, inherit);
-  font-weight: 700;
-  color: var(--ink-3);
-}
-.server-help:hover { color: var(--ink); }
-
 /* Hide focus ring on mouse-clicked buttons so a stray Space/Enter
    later in the session doesn't re-trigger the last-clicked nav item.
    :focus-visible keeps the ring for true keyboard navigation. */
@@ -3413,14 +3285,6 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
   100% { opacity: 1; transform: translate(-50%, 0)   scale(1);    }
 }
 
-/* ─── Coming soon banner ─────────────────────────────────────────────────── */
-.coming-soon-banner {
-  display: flex; align-items: center; gap: 10px;
-  padding: 12px 16px; margin: 20px 28px 0;
-  background: var(--stone-100); border: 1px solid var(--border-01);
-  border-radius: var(--r-lg); font-size: 13px; color: var(--frost-700);
-}
-
 /* ─── Dispatch pairing ──────────────────────────────────────────────────── */
 .dispatch-view {
   flex: 1;
@@ -3507,17 +3371,6 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
   flex-direction: column;
   gap: 10px;
 }
-.dispatch-button-badge {
-  display: inline-flex;
-  align-items: center;
-  height: 20px;
-  padding: 0 8px;
-  border-radius: var(--r-pill);
-  background: rgba(255,255,255,0.16);
-  color: rgba(255,255,255,0.86);
-  font-size: var(--text-xs);
-  line-height: 1;
-}
 
 @media (max-width: 760px) {
   .dispatch-top {
@@ -3540,11 +3393,6 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
     width: 190px;
     height: 190px;
   }
-}
-
-/* ─── Streaming indicator ────────────────────────────────────────────────── */
-.streaming-indicator {
-  display: inline-flex; gap: 4px; align-items: center; padding: 4px 0;
 }
 
 /* ─── Attachments / Context ─────────────────────────────────────────────── */
@@ -3592,64 +3440,13 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
   margin-bottom: 10px; font-size: var(--text-base); color: var(--text-strong);
 }
 .inline-dialog-head strong { flex: 1; }
-.dialog-input,
-.dialog-textarea,
-.schedule-form input,
-.schedule-form textarea,
-.schedule-form select {
-  width: 100%; border: 1px solid var(--border-01);
-  border-radius: var(--r-8); background: var(--surface-0);
-  color: var(--text-strong); outline: 0; font-size: 13px;
-  padding: 8px 10px;
-}
-.dialog-input:focus,
-.dialog-textarea:focus,
-.schedule-form input:focus,
-.schedule-form textarea:focus,
-.schedule-form select:focus {
-  border-color: var(--accent);
-  box-shadow: var(--ring);
-}
-.dialog-input:focus-visible,
-.dialog-textarea:focus-visible,
-.schedule-form input:focus-visible,
-.schedule-form textarea:focus-visible,
-.schedule-form select:focus-visible {
-  outline: 0;
-  box-shadow: 0 0 0 1px var(--accent);
-}
-.dialog-textarea {
-  min-height: 140px; resize: vertical; margin-top: 8px;
-  font-family: var(--font-mono); font-size: 12px;
-}
-.dialog-row { display: flex; gap: 8px; align-items: center; }
-.dialog-actions {
-  display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px;
-}
+
 .dialog-error {
   margin-top: 8px; padding: 8px 10px; border-radius: var(--r-8);
   background: var(--danger-bg); border: 1px solid var(--danger-border);
   color: var(--danger-text); font-size: var(--text-sm);
 }
-.dialog-empty {
-  padding: 12px; color: var(--frost-600); font-size: var(--text-sm);
-}
-.primary-btn,
-.secondary-btn {
-  min-height: 30px; padding: 0 12px; border-radius: var(--r-8);
-  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  font-size: var(--text-sm); font-weight: 550;
-}
-.primary-btn {
-  border: 0; background: var(--primary-700); color: #fff;
-}
-.primary-btn:hover:not(:disabled) { background: var(--primary-600); }
-.secondary-btn {
-  border: 1px solid var(--border-01); background: var(--surface-0); color: var(--frost-800);
-}
-.secondary-btn:hover:not(:disabled) { background: var(--stone-100); color: var(--text-strong); }
-.primary-btn:disabled,
-.secondary-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
 .project-file-list {
   max-height: 240px; overflow: auto; margin-top: 8px;
   border: 1px solid var(--border-01); border-radius: var(--r-8);
@@ -3665,30 +3462,6 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
   flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .project-file-row small { color: var(--frost-600); }
-.message-attachments {
-  display: flex; flex-direction: column; align-items: stretch;
-  gap: 6px; max-width: 78%;
-}
-.context-item {
-  display: flex; align-items: center; gap: 8px;
-  border: 1px solid var(--border-01); border-radius: var(--r-8);
-  padding: 8px; background: var(--surface-0); min-width: 0;
-}
-.context-icon {
-  width: 24px; height: 24px; border-radius: var(--r);
-  display: inline-flex; align-items: center; justify-content: center;
-  background: var(--primary-50); color: var(--primary-700); flex: 0 0 auto;
-}
-.context-body {
-  display: flex; flex-direction: column; gap: 1px; min-width: 0;
-}
-.context-body span {
-  font-size: var(--text-sm); font-weight: 600; color: var(--text-strong);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.context-body small {
-  font-size: var(--text-xs); color: var(--frost-600); text-transform: capitalize;
-}
 
 /* ─── Search / Pins / Rail ──────────────────────────────────────────────── */
 .recent-pin {
@@ -3698,11 +3471,7 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
 .recent-item:hover .recent-pin,
 .recent-item.active .recent-pin { opacity: 1; }
 .recent-pin:hover { color: var(--primary-700); }
-.sidebar-empty {
-  display: flex; align-items: center; gap: 8px;
-  min-height: 28px; padding: 0 10px; color: var(--frost-500);
-  font-size: 12px;
-}
+
 .modal-backdrop {
   position: fixed; inset: 0; z-index: 500;
   background: rgba(8,11,12,0.18);
@@ -3770,28 +3539,7 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
 .search-empty {
   padding: 18px 12px; color: var(--frost-600); font-size: 13px;
 }
-.task-body {
-  flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 280px;
-  min-height: 0;
-}
-.task-main {
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  background:
-    linear-gradient(180deg, rgba(255,255,255,0) 0%, var(--surface-0) 70%),
-    var(--surface-0);
-}
-.task-messages {
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 28px 32px 18px;
-  display: flex;
-  justify-content: center;
-}
+
 .chat-column {
   width: min(760px, 100%);
   display: flex;
@@ -3811,80 +3559,12 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
 .chat-composer-dock > div {
   width: min(760px, 100%);
 }
-.task-rail {
-  border-left: 1px solid var(--border-0);
-  padding: 18px 14px; overflow-y: auto; background: var(--stone-50);
-  display: flex; flex-direction: column; gap: 12px;
-}
-.task-rail-toggle.icon-btn,
-.task-rail-close.icon-btn {
-  display: none;
-}
-.rail-panel {
-  border: 1px solid var(--line); border-radius: var(--card-radius);
-  background: var(--surface-0); padding: 12px;
-}
-.rail-title {
-  font-size: 13px; font-weight: 700; color: var(--text-strong);
-  margin-bottom: 10px;
-}
-.rail-state {
-  display: flex; align-items: center; gap: 8px;
-  color: var(--frost-700); font-size: var(--text-sm); margin-bottom: 8px;
-}
-.rail-state > span {
-  width: 18px; height: 18px; border-radius: 50%;
-  border: 1px solid var(--border-01);
-  display: inline-flex; align-items: center; justify-content: center;
-  color: var(--sage-600); background: var(--surface-0);
-}
-.rail-list { display: flex; flex-direction: column; gap: 7px; }
-.rail-panel .activity-row {
-  margin-left: 0; max-width: 100%; width: 100%;
-  padding: 6px 0;
-}
-.rail-empty {
-  margin: 0; color: var(--frost-600); font-size: var(--text-sm); line-height: 1.45;
-}
-.rail-folder {
-  display: flex; flex-direction: column; gap: 4px; min-width: 0;
-}
-.rail-folder strong { font-size: 13px; color: var(--text-strong); }
-.rail-folder span {
-  font-size: var(--text-xs); color: var(--frost-600);
-  overflow-wrap: anywhere; user-select: text;
-}
 
 /* ─── Scheduling ────────────────────────────────────────────────────────── */
 /* The `.catchup-banner` block was retired with the catchup-approval
    flow — missed runs are now surfaced as informational counters on
    each schedule card / row instead of an actionable banner. */
-.schedule-form {
-  margin: 20px 28px 0; padding: 14px;
-  border: 1px solid var(--line); border-radius: var(--r-12);
-  background: var(--surface-0);
-}
-.schedule-grid {
-  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-}
-.schedule-form label {
-  display: flex; flex-direction: column; gap: 5px;
-  font-size: 12px; font-weight: 600; color: var(--frost-700);
-}
-.schedule-prompt { margin-top: 10px; }
-.schedule-prompt textarea { min-height: 110px; resize: vertical; }
-.schedule-row {
-  display: grid; grid-template-columns: 36px minmax(0, 1fr) auto auto auto auto auto auto;
-  align-items: center; gap: 10px;
-  background: var(--surface-0); border: 1px solid var(--border-01);
-  border-radius: var(--r-lg); padding: 12px 14px;
-}
-.schedule-icon {
-  width: 32px; height: 32px; border-radius: var(--r-8);
-  background: var(--primary-50); color: var(--primary-700);
-  display: inline-flex; align-items: center; justify-content: center;
-}
+
 .empty-state {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 8px; min-height: 220px;
@@ -3896,37 +3576,7 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
 .empty-state p { margin: 0; font-size: 13px; }
 
 @media (max-width: 1050px) {
-  .task-body { grid-template-columns: minmax(0, 1fr); position: relative; }
-  .task-messages { padding-inline: 20px; }
   .chat-composer-dock { padding-inline: 20px; }
-  .task-rail-toggle.icon-btn {
-    display: inline-flex;
-  }
-  .task-rail {
-    display: none;
-  }
-  .task-rail.open {
-    display: flex;
-    position: absolute;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    width: min(340px, calc(100% - 24px));
-    max-height: none;
-    z-index: 30;
-    border-left: 1px solid var(--border-01);
-    border-top: 0;
-    box-shadow: -18px 0 40px -28px rgba(0,0,0,0.35);
-  }
-  .task-rail-close.icon-btn {
-    display: inline-flex;
-    align-self: flex-end;
-    margin-bottom: -4px;
-  }
-  .schedule-grid { grid-template-columns: 1fr; }
-  .schedule-row {
-    grid-template-columns: 36px minmax(0, 1fr);
-  }
 }
 
 /* ─── Chat experience — handoff from docs/design-guidelines/chat.html ────────
@@ -3938,13 +3588,6 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
      Mono (operator metadata: timestamps, model, turn count).
 */
 
-/* Chat shell — make existing layout transparent so the gravity grid shines through */
-.chat-shell .task-main {
-  background: transparent;
-}
-.chat-shell .task-messages {
-  padding: 32px 28px 220px; /* room for the floating composer */
-}
 .chat-shell .chat-column {
   width: min(760px, 100%);
   gap: 16px;
@@ -4075,44 +3718,6 @@ body[data-theme="dark"] .chat-shell .msg-user {
   user-select: text;
 }
 
-/* Thinking block — collapsible, italic body */
-.thinking-toggle {
-  display: inline-flex; align-items: center; gap: 6px;
-  background: none; border: 0; padding: 0; cursor: pointer;
-  font-family: var(--font-display);
-  font-size: var(--text-2xs); font-weight: 600;
-  letter-spacing: 0.18em; text-transform: uppercase;
-  color: var(--ink-4);
-}
-.thinking-toggle:hover { color: var(--ink-3); }
-.thinking-body {
-  font-family: var(--font-body);
-  font-style: italic;
-  font-size: var(--text-base); line-height: 1.6;
-  color: var(--ink-3);
-  margin-top: 6px;
-}
-
-/* Message actions — row of 4 ghost icons after a turn resolves */
-.message-actions {
-  display: flex; align-items: center; gap: 4px;
-  margin-top: 4px;
-}
-.message-actions button {
-  width: 26px; height: 26px;
-  display: inline-flex; align-items: center; justify-content: center;
-  border-radius: var(--r);
-  background: transparent;
-  border: 0;
-  color: var(--ink-4);
-  cursor: pointer;
-  transition: background .12s, color .12s;
-}
-.message-actions button:hover {
-  background: var(--surface-3, color-mix(in srgb, var(--ink) 6%, transparent));
-  color: var(--ink-2);
-}
-
 /* Floating composer dock — 720px max, white surface, deep shadow,
    gradient mask above so scrolled content fades into the page bg */
 .chat-shell .chat-composer-dock {
@@ -4138,22 +3743,6 @@ body[data-theme="dark"] .chat-shell .chat-composer-dock > div {
   box-shadow:
     0 8px 32px rgba(0,0,0,0.55),
     0 0 0 1px rgba(255,255,255,0.02);
-}
-/* The fade mask above the composer */
-.chat-shell .task-main::after {
-  content: '';
-  position: absolute;
-  left: 0; right: 0; bottom: 0;
-  height: 220px;
-  background: linear-gradient(to bottom,
-    color-mix(in srgb, var(--bg) 0%, transparent) 0%,
-    color-mix(in srgb, var(--bg) 80%, transparent) 60%,
-    var(--bg) 100%);
-  pointer-events: none;
-  z-index: 2;
-}
-.chat-shell .task-main {
-  position: relative;
 }
 
 /* Floating composer override — chat shell (18px radius, compact field).
@@ -4290,22 +3879,6 @@ body[data-theme="dark"] .chat-floating-composer .composer-wrap {
   text-overflow: ellipsis;
   padding: 0 4px;
 }
-
-.mshell__action {
-  width: 40px;
-  height: 40px;
-  border-radius: var(--r-lg);
-  background: transparent;
-  border: none;
-  color: var(--text-default);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-  transition: background-color 160ms ease;
-}
-.mshell__action:active { background: var(--surface-2); }
 
 /* Mirrors the hamburger's 40px footprint on the right side so the
    title stays optically centered now that the top-bar "+" is gone. */
@@ -5293,18 +4866,10 @@ body[data-theme="light"] .anton-inline-code {
 }
 /* Hide the visible "Copy" / "Copied" label; the icon carries the
    affordance. The element stays in the DOM with aria-live="polite" so
-   screen readers still get the success announcement. */
-.anton-code-block-copy-label {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: -1px;
-  padding: 0;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  border: 0;
-  white-space: nowrap;
-}
+   screen readers still get the success announcement. Visually-hidden
+   treatment comes from the shared `.sr-only` utility (see the
+   Accessibility utilities section), extended here rather than
+   duplicating the eight-declaration recipe. */
 .anton-code-block-copy-icon {
   display: inline-flex;
   align-items: center;
@@ -5416,7 +4981,6 @@ body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169
      and its source-mode overlay in lockstep. */
   .composer-input-shell { --composer-font-size: 16px !important; }
 }
-
 
 /* ── Channels (ChannelsView) ─────────────────────────────────────────── */
 .channels-view { flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--bg); color: var(--fg); }
