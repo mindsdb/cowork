@@ -37,6 +37,7 @@ import { loadCustomTheme, persistCustomTheme, applyCustomTheme } from '../lib/cu
 import { applyNavTitleColor } from '../lib/navBranding';
 import { getAgentLabel } from './lib/agentLabel';
 import { loadCachedSettings } from './lib/settingsCache';
+import { clearDraft, moveDraft } from './lib/draftStore';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { useGoogleDrivePicker } from './hooks/useGoogleDrivePicker';
 import { fetchSessions, fetchSession, fetchConversationList, fetchProjects, fetchArtifacts, fetchSettings, fetchHealth,
@@ -2721,6 +2722,8 @@ function AppCore() {
       if (!sid || sid === resolvedId) return;
       const previousId = resolvedId;
       resolvedId = sid;
+      // Carry over a reply the user started typing under the tmp- id.
+      moveDraft(previousId, sid);
       setTasks((prev) => prev.map((t) =>
         t.id === previousId || t.id === taskId ? { ...t, id: sid } : t,
       ));
@@ -3018,6 +3021,8 @@ function AppCore() {
       if (!sid || sid === resolvedId) return;
       const previousId = resolvedId;
       resolvedId = sid;
+      // Carry over a reply the user started typing under the tmp- id.
+      moveDraft(previousId, sid);
       setTasks((prev) => prev.map((t) =>
         t.id === previousId || t.id === id ? { ...t, id: sid } : t,
       ));
@@ -3185,6 +3190,8 @@ function AppCore() {
       if (!sid || sid === resolvedId) return;
       const previousId = resolvedId;
       resolvedId = sid;
+      // Carry over a reply the user started typing under the tmp- id.
+      moveDraft(previousId, sid);
       setTasks((prev) => prev.map((t) =>
         t.id === previousId || t.id === id ? { ...t, id: sid } : t,
       ));
@@ -3406,6 +3413,8 @@ function AppCore() {
     console.log('[performDeleteTask] confirmed', taskId);
     deletedTaskIdsRef.current.add(taskId);
     setTasks((prev) => prev.filter((t) => t.id !== taskId));
+    // Its unsent reply draft has nowhere to go back to.
+    clearDraft(taskId);
     // Optimistically remove from pins so the sidebar clears immediately.
     setPins((prev) => prev.filter((p) => p.item_id !== taskId));
     if (activeTaskId === taskId) {
@@ -3529,6 +3538,10 @@ function AppCore() {
       .filter((t) => t.projectName === project.name || t.projectPath === project.path)
       .map((t) => t.id);
     doomedTaskIds.forEach((id) => deletedTaskIdsRef.current.add(id));
+    // The project's own composer draft, plus every draft belonging to a
+    // conversation the server is about to cascade-delete.
+    clearDraft(`project:${project.id || project.name}`);
+    doomedTaskIds.forEach((id) => clearDraft(id));
     // Optimistic — drop locally before the round-trip.
     setProjects((prev) => prev.filter((p) => p.name !== project.name));
     setTasks((prev) => prev.filter((t) =>
