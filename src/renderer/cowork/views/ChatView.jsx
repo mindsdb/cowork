@@ -81,23 +81,6 @@ function formatMetaTime(value) {
   return `${month} ${d.getDate()}, ${formatTime(d)}`;
 }
 
-function dividerLabel(date = new Date()) {
-  const today = new Date();
-  const sameDay = date.toDateString() === today.toDateString();
-  const month = date.toLocaleString('en-US', { month: 'short' });
-  return `${sameDay ? 'Today' : date.toLocaleString('en-US', { weekday: 'short' })} · ${month} ${date.getDate()}`;
-}
-
-function Divider({ label }) {
-  return (
-    <div className="flex items-center gap-3 mt-2 font-display font-semibold tracking-[0.18em] text-[10.5px] text-ink-4 uppercase">
-      <span className="flex-1 h-px bg-line" />
-      <span>{label}</span>
-      <span className="flex-1 h-px bg-line" />
-    </div>
-  );
-}
-
 // ─── Shared turn-action toolbar ──────────────────────────────────────────
 // Used by both user and assistant turns for consistent styling. Actions
 // fade in on hover of the parent turn, but stay visible when `isLast`
@@ -298,7 +281,26 @@ function userTurnAttachmentLabel(a) {
   return 'File';
 }
 
+// Long user messages clamp to ~8 lines behind a "Show more" toggle so a big
+// pasted prompt doesn't dominate the viewport before the answer starts.
+const USER_CLAMP_MAX_PX = 176;
+
 function UserTurn({ content, attachments, time, onDelete, onEdit, isLast, projectName, conversationId }) {
+  const contentRef = useRef(null);
+  const [collapsed, setCollapsed] = useState(true);
+  const [overflowing, setOverflowing] = useState(false);
+  useLayoutEffect(() => {
+    const el = contentRef.current;
+    if (!el) return undefined;
+    // scrollHeight reports full content height even while max-height clamps
+    // the box, so overflow is measurable without expanding first. Re-runs on
+    // width changes (sidebar toggle, window resize) via the ResizeObserver.
+    const measure = () => setOverflowing(el.scrollHeight > USER_CLAMP_MAX_PX + 8);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [content]);
   return (
     <div className="user-turn">
       <div className="user-turn-inner">
@@ -309,12 +311,28 @@ function UserTurn({ content, attachments, time, onDelete, onEdit, isLast, projec
               charts are gated off so a user typing a special fence in
               the composer can't trigger the side-effect renderers
               reserved for assistant output. */}
-          <MarkdownContent
-            text={content}
-            variant="user"
-            enableForms={false}
-            enableCharts={false}
-          />
+          <div
+            ref={contentRef}
+            className={collapsed && overflowing ? 'user-turn-clamp user-turn-clamp--faded' : undefined}
+            style={collapsed && overflowing ? { maxHeight: USER_CLAMP_MAX_PX } : undefined}
+          >
+            <MarkdownContent
+              text={content}
+              variant="user"
+              enableForms={false}
+              enableCharts={false}
+            />
+          </div>
+          {overflowing && (
+            <button
+              type="button"
+              className="user-turn-more"
+              aria-expanded={!collapsed}
+              onClick={() => setCollapsed((c) => !c)}
+            >
+              {collapsed ? 'Show more' : 'Show less'}
+            </button>
+          )}
         </div>
         {attachments?.map((a) => {
           // Image attachments preview inline as a thumbnail (fetched as a
@@ -1366,7 +1384,7 @@ export default function ChatView({
           // pixel, min-w-0 + overflow-hidden prevents the header from
           // visually pushing past the conv-col grid track (which is what
           // was making the icons appear to slide behind the right rail).
-          className="flex items-center justify-between pt-[max(14px,var(--titlebar-safe-top,0px))] pb-3.5 pr-7 pl-7 border-b border-x-0 border-t-0 border-solid border-line bg-transparent flex-shrink-0 min-w-0 overflow-hidden transition-[padding] duration-[240ms] ease-[cubic-bezier(0.32,0.72,0,1)]"
+          className="flex items-center justify-between pt-[max(14px,var(--titlebar-safe-top,0px))] pb-3.5 pr-7 pl-7 bg-transparent flex-shrink-0 min-w-0 overflow-hidden transition-[padding] duration-[240ms] ease-[cubic-bezier(0.32,0.72,0,1)]"
         >
           {/* Left side: [Project] › [Task] for chat tasks, or
               [Apps] › [Task] for connect-data flows (Connect Gmail,
@@ -1562,8 +1580,6 @@ export default function ChatView({
           className="scroll-clean min-h-0 overflow-y-auto overflow-x-hidden pt-8 px-7 pb-[180px] mb-[25px] bg-transparent [-webkit-app-region:no-drag] select-text"
         >
           <div className="max-w-[720px] mx-auto flex flex-col gap-7">
-            <Divider label={dividerLabel(new Date())} />
-
             {(() => {
               // Track the assistant turn index inline so TurnActions
               // knows which user→answer cycle to delete. The walker
