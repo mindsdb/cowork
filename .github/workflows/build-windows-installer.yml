@@ -219,7 +219,12 @@ jobs:
           # Activates the build-time channel guard in gen-build-channel.mjs:
           # fail the build if this kind and VITE_MINDS_API_URL target different
           # environments (e.g. preview baked against the prod API).
+          # Also consumed by run-electron-builder.mjs to resolve the shell update feed.
           COWORK_BUILD_KIND: ${{ inputs.build_kind }}
+          # Authenticode publisher CN baked into app-update.yml's publisherName
+          # pin. Defaults to the SSL.com EV cert CN in source; override via repo
+          # variable only if the cert's subject changes.
+          COWORK_WIN_PUBLISHER_CN: ${{ vars.WINDOWS_PUBLISHER_CN }}
 
       - name: Resolve installer path
         id: installer
@@ -425,6 +430,26 @@ jobs:
           $dest = Join-Path $out $name
           Move-Item $src $dest -Force
 
+      # The installer is signed after electron-builder runs. Recompute the
+      # blockmap and latest.yml from the final signed/renamed bytes; publishing
+      # builder's pre-sign metadata would guarantee a sha512 mismatch.
+      - name: Generate shell updater metadata from signed installer
+        if: inputs.build_kind == 'prod' || inputs.build_kind == 'stable'
+        shell: pwsh
+        run: |
+          $name = "${{ steps.name.outputs.artifact_name }}"
+          $exe = Join-Path $env:GITHUB_WORKSPACE "out\$name"
+          $updaterDir = Join-Path $env:GITHUB_WORKSPACE "out\updater"
+          New-Item -ItemType Directory -Path $updaterDir -Force | Out-Null
+          $blockmap = Join-Path $updaterDir "$name.blockmap"
+          $version = (Get-Content "src/main/updater-version.gen.txt" -Raw).Trim()
+          node scripts/write-update-metadata.mjs `
+            --platform windows `
+            --artifact "$exe" `
+            --version "$version" `
+            --output (Join-Path $updaterDir "latest.yml") `
+            --blockmap-output "$blockmap"
+
       - name: Generate installer signing report
         shell: pwsh
         run: |
@@ -469,6 +494,16 @@ jobs:
             "timestampNotAfter: $($report.timestampNotAfter)"
             "buildKind: $($report.buildKind)"
           ) | Set-Content -Path $txtPath -Encoding UTF8
+
+      # Fail-closed: prove the signed installer would pass electron-updater's own
+      # signature check against the publisherName we baked into app-update.yml.
+      # Catches a wrong-signer or a stale pin before publish instead of bricking
+      # auto-update (or leaving it unverified) in the field.
+      - name: Verify signed installer matches pinned publisher
+        if: inputs.build_kind == 'prod' || inputs.build_kind == 'stable'
+        env:
+          COWORK_WIN_PUBLISHER_CN: ${{ vars.WINDOWS_PUBLISHER_CN }}
+        run: node scripts/verify-win-publisher.mjs out/signing-report/installer-signature-report.json
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4

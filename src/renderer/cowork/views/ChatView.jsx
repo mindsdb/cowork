@@ -89,15 +89,10 @@ function dividerLabel(date = new Date()) {
 
 function Divider({ label }) {
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: 12,
-      fontFamily: FONT_DISPLAY, fontWeight: 600, letterSpacing: '0.18em',
-      fontSize: 10.5, color: T.ink4, textTransform: 'uppercase',
-      marginTop: 8,
-    }}>
-      <span style={{ flex: 1, height: 1, background: T.line }} />
+    <div className="flex items-center gap-3 mt-2 font-display font-semibold tracking-[0.18em] text-[10.5px] text-ink-4 uppercase">
+      <span className="flex-1 h-px bg-line" />
       <span>{label}</span>
-      <span style={{ flex: 1, height: 1, background: T.line }} />
+      <span className="flex-1 h-px bg-line" />
     </div>
   );
 }
@@ -121,8 +116,7 @@ function TurnActions({ getText, onEdit, onDelete, isLast = false, align = 'left'
   };
   return (
     <div
-      className={`turn-actions${isLast ? ' is-last' : ''}`}
-      style={{ justifyContent: align === 'right' ? 'flex-end' : 'flex-start' }}
+      className={`turn-actions${isLast ? ' is-last' : ''} ${align === 'right' ? 'justify-end' : 'justify-start'}`}
     >
       {onEdit && (
         <button
@@ -141,6 +135,8 @@ function TurnActions({ getText, onEdit, onDelete, isLast = false, align = 'left'
         title={copied ? 'Copied' : 'Copy'}
         aria-label={copied ? 'Copied' : 'Copy'}
         onClick={onCopy}
+        // cascade-forced: .turn-action-btn sets `color: inherit` at rest, which
+        // beats a text-accent utility (equal specificity, globals.css loads later).
         style={copied ? { color: 'var(--accent)' } : undefined}
       >
         {copied ? Ico.check(ICON_SZ) : Ico.copy(ICON_SZ)}
@@ -179,7 +175,6 @@ function TurnActions({ getText, onEdit, onDelete, isLast = false, align = 'left'
 // "Disconnect". Both stay in the chat row so the user can bail or
 // destroy without scrolling around to find a menu.
 function ConnectIntroBubble({ title, connector, onHoverChange, modify = false, onCancel, onDisconnect, onClickCard }) {
-  const [hover, setHover] = useState(false);
   const iconName = connector?.logo || 'database';
   const Icon = (Ico[iconName] || Ico.database);
   const clickable = typeof onClickCard === 'function';
@@ -188,57 +183,34 @@ function ConnectIntroBubble({ title, connector, onHoverChange, modify = false, o
   // and two headers stacked back-to-back read as a stutter. The
   // card itself is visually distinct enough to stand on its own.
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingBottom: 4 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+    <div className="flex flex-col gap-2 pb-1">
+      <div className="flex items-center gap-2.5 flex-wrap">
         <div
           role={clickable ? 'button' : undefined}
           tabIndex={clickable ? 0 : undefined}
           onClick={clickable ? onClickCard : undefined}
           onKeyDown={clickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClickCard(); } } : undefined}
-          onMouseEnter={() => { setHover(true); onHoverChange?.(true); }}
-          onMouseLeave={() => { setHover(false); onHoverChange?.(false); }}
-          style={{
-            display: 'inline-flex', alignItems: 'center', gap: 12,
-            padding: '12px 14px',
-            background: hover
-              ? 'color-mix(in srgb, var(--accent) 10%, var(--surface))'
-              : 'var(--surface)',
-            border: `1px solid ${hover ? 'var(--accent)' : T.line}`,
-            borderRadius: 12,
-            maxWidth: '78%',
-            cursor: clickable ? 'pointer' : 'default',
-            transition: 'border-color 140ms ease, background 140ms ease, box-shadow 140ms ease',
-            boxShadow: hover
-              ? `0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent)`
-              : 'none',
-            outline: 'none',
-          }}
+          onMouseEnter={() => onHoverChange?.(true)}
+          onMouseLeave={() => onHoverChange?.(false)}
+          className={`inline-flex items-center gap-3 py-3 px-3.5 rounded-xl max-w-[78%] outline-none bg-surface border border-solid border-line hover:border-accent hover:bg-[color-mix(in_srgb,var(--accent)_10%,var(--surface))] hover:shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent)_18%,transparent)] transition-[border-color,background,box-shadow] duration-[140ms] ease-[ease] ${clickable ? 'cursor-pointer' : 'cursor-default'}`}
         >
-          <span style={{
-            display: 'inline-grid', placeItems: 'center',
-            width: 36, height: 36, borderRadius: 8,
-            background: 'var(--surface-2)',
-            color: connector?.logo_color || 'var(--ink-3)',
-            flexShrink: 0,
-          }}>
+          <span
+            className="inline-grid place-items-center w-9 h-9 rounded-lg bg-surface-2 flex-shrink-0"
+            style={{ color: connector?.logo_color || 'var(--ink-3)' }}
+          >
             {Icon(20)}
           </span>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-            <span style={{
-              fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 14,
-              color: T.ink, letterSpacing: '0',
-            }}>{title}</span>
-            <span style={{
-              fontFamily: FONT_BODY, fontSize: 12.5, color: T.ink3,
-            }}>
+          <div className="flex flex-col gap-0.5 min-w-0">
+            <span className="font-display font-semibold text-base text-ink tracking-normal">{title}</span>
+            <span className="font-body text-sm text-ink-3">
               {clickable
-                ? <>Click to re-open the form <span aria-hidden style={{ color: 'var(--accent)' }}>→</span></>
-                : <>Fill out the form on the side panel <span aria-hidden style={{ color: 'var(--accent)' }}>→</span></>}
+                ? <>Click to re-open the form <span aria-hidden className="text-accent">→</span></>
+                : <>Fill out the form on the side panel <span aria-hidden className="text-accent">→</span></>}
             </span>
           </div>
         </div>
         {modify && (
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <div className="inline-flex items-center gap-1.5">
             {onCancel && (
               <ConnectIntroPillButton
                 kind="ghost"
@@ -247,7 +219,7 @@ function ConnectIntroBubble({ title, connector, onHoverChange, modify = false, o
                 // chevronLeft yet, and the `←` matches the "Back to
                 // options" treatment used elsewhere in the codebase.
                 renderIcon={() => (
-                  <span aria-hidden style={{ fontSize: 14, lineHeight: 1, display: 'inline-block', marginTop: -1 }}>←</span>
+                  <span aria-hidden className="text-base leading-none inline-block -mt-px">←</span>
                 )}
                 label="Cancel"
               />
@@ -277,40 +249,18 @@ function ConnectIntroBubble({ title, connector, onHoverChange, modify = false, o
 // rounded shape so the row reads as a clean affordance group next
 // to the connector card.
 function ConnectIntroPillButton({ kind, renderIcon, label, onClick }) {
-  const [hover, setHover] = useState(false);
   const isDanger = kind === 'danger';
-  const baseColor = isDanger ? 'var(--danger)' : 'var(--ink-3)';
-  const hoverColor = isDanger ? 'var(--danger)' : 'var(--ink)';
-  const baseBg = isDanger
-    ? 'color-mix(in srgb, var(--danger) 8%, transparent)'
-    : 'transparent';
-  const hoverBg = isDanger
-    ? 'color-mix(in srgb, var(--danger) 14%, transparent)'
-    : 'var(--surface-2)';
-  const baseBorder = isDanger
-    ? '1px solid color-mix(in srgb, var(--danger) 30%, transparent)'
-    : '1px solid transparent';
-  const hoverBorder = isDanger
-    ? '1px solid color-mix(in srgb, var(--danger) 45%, transparent)'
-    : '1px solid var(--line)';
   return (
     <button
       type="button"
       onClick={onClick}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      style={{
-        display: 'inline-flex', alignItems: 'center', gap: 6,
-        padding: '6px 12px', borderRadius: 999,
-        background: hover ? hoverBg : baseBg,
-        border: hover ? hoverBorder : baseBorder,
-        color: hover ? hoverColor : baseColor,
-        fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 500,
-        cursor: 'pointer',
-        transition: 'background 140ms ease, border-color 140ms ease, color 140ms ease',
-      }}
+      className={`inline-flex items-center gap-1.5 py-1.5 px-3 rounded-full font-body text-sm font-medium cursor-pointer transition-colors duration-[140ms] ease-[ease] border border-solid ${
+        isDanger
+          ? 'bg-[color-mix(in_srgb,var(--danger)_8%,transparent)] border-[color-mix(in_srgb,var(--danger)_30%,transparent)] text-danger hover:bg-[color-mix(in_srgb,var(--danger)_14%,transparent)] hover:border-[color-mix(in_srgb,var(--danger)_45%,transparent)]'
+          : 'bg-transparent border-transparent text-ink-3 hover:bg-surface-2 hover:border-line hover:text-ink'
+      }`}
     >
-      <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+      <span className="inline-flex items-center">
         {typeof renderIcon === 'function' ? renderIcon(13) : null}
       </span>
       {label}
@@ -416,14 +366,13 @@ const CHAT_ORB_SIZE = 22;
 function AnswerTurn({ state = 'done', time, children, showActions = true, copyText, onDelete, agentLabel, isLast }) {
   return (
     <div
-      className="answer-turn"
       // marginTop pulls the answer closer to ITS question (the column gap
       // is sized for the roomier answer → next-question separation).
-      style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: -10, paddingBottom: 4 }}
+      className="answer-turn flex flex-col gap-2.5 -mt-2.5 pb-1"
     >
       {children}
       {state !== 'thinking' && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div className="flex items-center gap-2">
           {showActions && (
             <TurnActions getText={() => copyText || ''} onDelete={onDelete} isLast={isLast} />
           )}
@@ -473,7 +422,7 @@ function StepArtifacts({ steps, onOpen, projectPath }) {
   const artifacts = steps?.filter((s) => s.badge === 'Artifact') || [];
   if (artifacts.length === 0) return null;
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 4 }}>
+    <div className="flex flex-col gap-3 mt-1">
       {artifacts.map((s) => (
         <ArtifactCard key={s.id} artifact={artifactStepToCard(s, projectPath)} onOpen={onOpen} />
       ))}
@@ -493,7 +442,7 @@ function StepSkills({ steps, latestByKey, messageIndex, projectName }) {
   }
   if (skills.length === 0) return null;
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 4 }}>
+    <div className="flex flex-col gap-3 mt-1">
       {skills.map((s) => (
         <SkillCard key={s.id} skill={s.data || {}} projectName={projectName} />
       ))}
@@ -630,17 +579,12 @@ function ArtifactCard({ artifact, onOpen }) {
       padding="cozy"
       onActivate={canAct ? handleOpen : undefined}
       aria-label={canAct ? `Open preview: ${artifact.title}` : disabledReason || 'No file path'}
-      style={{
-        display: 'grid', gridTemplateColumns: '64px 1fr auto', alignItems: 'center', gap: 16,
-      }}
+      className="grid grid-cols-[64px_1fr_auto] items-center gap-4"
     >
-      <div style={{
-        width: 64, height: 64, background: T.surface2, borderRadius: 8,
-        display: 'grid', placeItems: 'center', color: T.accent,
-      }}>
+      <div className="w-16 h-16 bg-surface-2 rounded-lg grid place-items-center text-accent">
         {artifact.icon === 'doc' ? Ico.doc(26) : Ico.sparkle(26)}
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
+      <div className="flex flex-col gap-[3px] min-w-0">
         {/* Title doubles as the primary "open preview" affordance —
             clicking it routes through the same handler the Open
             button uses. Hover gets an accent + underline so the
@@ -651,6 +595,11 @@ function ArtifactCard({ artifact, onOpen }) {
           onClick={(e) => { e.stopPropagation(); if (canAct) handleOpen(); }}
           disabled={!canAct}
           title={canAct ? `Open preview: ${artifact.title}` : disabledReason || 'No file path'}
+          // kept inline: `all: unset` writes an inline declaration for every
+          // longhand (incl. color/background), which always beats a Tailwind
+          // utility class of equal-or-lower specificity — so every property
+          // touched by the reset has to stay co-located here, and the hover
+          // recolor below has to keep mutating .style directly for the same reason.
           style={{
             all: 'unset',
             cursor: canAct ? 'pointer' : 'not-allowed',
@@ -664,36 +613,29 @@ function ArtifactCard({ artifact, onOpen }) {
           onMouseOver={(e) => { if (canAct) { e.currentTarget.style.color = T.accent; e.currentTarget.style.textDecoration = 'underline'; e.currentTarget.style.textUnderlineOffset = '3px'; } }}
           onMouseOut={(e) => { e.currentTarget.style.color = T.ink; e.currentTarget.style.textDecoration = 'none'; }}
         >{artifact.title}</button>
-        <span style={{ fontFamily: FONT_BODY, fontSize: 12.5, color: T.ink3 }}>
+        <span className="font-body text-sm text-ink-3">
           {artifact.kind || 'live artifact'}
         </span>
         {previewText && (
-          <span title={previewText} style={{
-            fontFamily: FONT_MONO, fontSize: 10.5, color: T.ink4,
-            marginTop: 2, letterSpacing: '0.04em',
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>
+          <span
+            title={previewText}
+            className="font-mono text-[10.5px] text-ink-4 mt-0.5 tracking-[0.04em] overflow-hidden text-ellipsis whitespace-nowrap"
+          >
             {previewText}
           </span>
         )}
       </div>
-      <div style={{ display: 'flex', gap: 6 }}>
+      <div className="flex gap-1.5">
         {status && (
-          <span aria-live="polite" style={{
-            alignSelf: 'center',
-            maxWidth: 180,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            fontFamily: FONT_BODY,
-            fontSize: 11.5,
-            color: status.kind === 'error' ? 'var(--danger)' : T.accent,
-          }}>
+          <span
+            aria-live="polite"
+            className={`self-center max-w-[180px] overflow-hidden text-ellipsis whitespace-nowrap font-body text-[11.5px] ${status.kind === 'error' ? 'text-danger' : 'text-accent'}`}
+          >
             {status.text}
           </span>
         )}
         {canExport && (
-          <div style={{ position: 'relative' }} onClick={(e) => e.stopPropagation()}>
+          <div className="relative" onClick={(e) => e.stopPropagation()}>
             <SmallBtn
               disabled={!canAct || exporting}
               onClick={() => setExportOpen((v) => !v)}
@@ -704,13 +646,8 @@ function ArtifactCard({ artifact, onOpen }) {
             {exportOpen && (
               <div
                 role="menu"
-                style={{
-                  position: 'absolute', top: 'calc(100% + 4px)', right: 0, zIndex: 20,
-                  // No border — floats on --sh-popup alone (ENG-790).
-                  background: T.surface, borderRadius: 10,
-                  boxShadow: 'var(--sh-popup)', padding: 4, minWidth: 140,
-                  display: 'flex', flexDirection: 'column', gap: 2,
-                }}
+                // No border — floats on --sh-popup alone (ENG-790).
+                className="absolute top-[calc(100%+4px)] right-0 z-20 bg-surface rounded-[10px] shadow-sh-popup p-1 min-w-[140px] flex flex-col gap-0.5"
               >
                 {[['pdf', 'PDF'], ['docx', 'Word (.docx)'], ['html', 'HTML']].map(([fmt, label]) => (
                   <button
@@ -718,6 +655,10 @@ function ArtifactCard({ artifact, onOpen }) {
                     type="button"
                     role="menuitem"
                     onClick={(e) => { e.stopPropagation(); handleExport(fmt); }}
+                    // kept inline: same all:unset cascade-priority reason as the
+                    // title button above — the hover background mutation below
+                    // needs a subsequent inline write to win, so it can't move
+                    // to a hover: utility class either.
                     style={{
                       all: 'unset', cursor: 'pointer', padding: '7px 10px', borderRadius: 7,
                       fontFamily: FONT_BODY, fontSize: 12.5, color: T.ink,
@@ -752,6 +693,9 @@ function SmallBtn({ primary, children, onClick, title, disabled }) {
       onClick={(e) => { e.stopPropagation(); if (!disabled) onClick?.(); }}
       title={title}
       disabled={disabled}
+      // kept inline: same all:unset cascade-priority reason as ArtifactCard's
+      // buttons above — every property here has to stay co-located with the
+      // reset since a stylesheet utility class can't beat it.
       style={{
         all: 'unset', cursor: disabled ? 'not-allowed' : 'pointer',
         display: 'inline-flex', alignItems: 'center', gap: 6,
@@ -770,11 +714,7 @@ function SmallBtn({ primary, children, onClick, title, disabled }) {
 // Streaming cursor — blinking accent caret (orb stays on the header).
 function StreamCursor() {
   return (
-    <span style={{
-      display: 'inline-block', width: 8, height: 14,
-      background: T.accent, marginLeft: 4, verticalAlign: 'text-bottom',
-      animation: 'cb 1s steps(2) infinite',
-    }} />
+    <span className="inline-block w-2 h-3.5 bg-accent ml-1 align-text-bottom animate-[cb_1s_steps(2)_infinite]" />
   );
 }
 
@@ -812,45 +752,34 @@ async function waitForServerReady(timeoutMs = 8000) {
 // cards (previously four byte-identical copies of this scaffolding, drifting
 // one tweak at a time — ENG-650). Callers own copy + button wiring; the shell
 // owns layout and button styling.
-const ACTION_CARD_BTN = {
-  borderRadius: 8, padding: '8px 14px',
-  fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500, cursor: 'pointer',
-};
-// bg=ink / text=bg so the label keeps contrast in BOTH themes: light → dark
-// button / light text, dark → light button / dark text. A hardcoded #fff went
-// invisible in dark mode (ink is near-white there → white-on-white).
-const ACTION_CARD_BTN_PRIMARY = {
-  ...ACTION_CARD_BTN, border: 'none', background: T.ink, color: 'var(--bg)',
-};
-const ACTION_CARD_BTN_SECONDARY = {
-  ...ACTION_CARD_BTN, border: `1px solid ${T.line}`, background: 'transparent', color: T.ink,
-};
-
 // buttons: [{ label, onClick, primary, disabled, style }] — `style` overlays
 // the base for per-button tweaks (e.g. the reconnect busy state). An empty
 // list hides the row (e.g. reconnect's "done" state).
 function ActionCard({ time, agentLabel, title, body, buttons = [] }) {
   return (
     <AnswerTurn state="done" time={time} showActions={false} agentLabel={agentLabel}>
-      <div style={{
-        border: `1px solid ${T.line}`, background: T.surface, borderRadius: 12,
-        padding: '16px 18px', maxWidth: 520, display: 'flex', flexDirection: 'column', gap: 10,
-      }}>
-        <div className="s-h3" style={{ color: T.ink }}>
+      <div className="flex flex-col gap-2.5 max-w-[520px] py-4 px-[18px] rounded-xl border border-solid border-line bg-surface">
+        {/* .s-h3 already sets color: var(--ink) — no inline override needed. */}
+        <div className="s-h3">
           {title}
         </div>
-        <div style={{ fontFamily: FONT_BODY, fontSize: 13.5, lineHeight: 1.55, color: T.ink2 }}>
+        <div className="font-body text-[13.5px] leading-[1.55] text-ink-2">
           {body}
         </div>
         {buttons.length > 0 && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
+          <div className="flex flex-wrap gap-2 mt-1">
             {buttons.map((b, i) => (
               <button
                 key={i}
                 type="button"
                 onClick={b.onClick}
                 disabled={b.disabled}
-                style={{ ...(b.primary ? ACTION_CARD_BTN_PRIMARY : ACTION_CARD_BTN_SECONDARY), ...b.style }}
+                // bg=ink / text=bg so the label keeps contrast in BOTH themes: light →
+                // dark button / light text, dark → light button / dark text. A
+                // hardcoded #fff went invisible in dark mode (ink is near-white
+                // there → white-on-white).
+                className={`rounded-lg py-2 px-3.5 font-body text-[13px] font-medium cursor-pointer ${b.primary ? 'border-0 bg-ink text-bg' : 'border border-solid border-line bg-transparent text-ink'}`}
+                style={b.style}
               >{b.label}</button>
             ))}
           </div>
@@ -1256,32 +1185,22 @@ export default function ChatView({
   }, [streamingMsg]);
 
   return (
-    <div ref={chatRef} style={{
-      flex: 1, minHeight: 0,
-      display: 'grid',
-      // minmax(0, 1fr) is critical — bare `1fr` lets the grid track
-      // EXPAND past its allocated size when an unbreakable child (e.g.
-      // a very long task title) demands more width, which pushes the
-      // rail off-screen and causes content to bleed visually behind
-      // the rail. minmax(0, …) tells grid the column can shrink to 0,
-      // so the conv col stays inside its track and content clips.
-      // On narrow screens the rail is always a fixed overlay, so the
-      // grid is always single-column.
-      gridTemplateColumns: effectiveRailOpen ? 'minmax(0, 1fr) 320px' : 'minmax(0, 1fr) 0px',
-      // Without an explicit row, the implicit row is sized to content,
-      // so the scroll region's inner content height grows the row past
-      // the container — the scroll bar never appears. 1fr forces the
-      // row to fill the container height so the inner overflowY can
+    <div
+      ref={chatRef}
+      // minmax(0, 1fr) is critical — bare `1fr` lets the grid track EXPAND
+      // past its allocated size when an unbreakable child (e.g. a very long
+      // task title) demands more width, which pushes the rail off-screen and
+      // causes content to bleed visually behind the rail. minmax(0, …) tells
+      // grid the column can shrink to 0, so the conv col stays inside its
+      // track and content clips. On narrow screens the rail is always a
+      // fixed overlay, so the grid is always single-column.
+      // gridTemplateRows: without an explicit row, the implicit row is sized
+      // to content, so the scroll region's inner content height grows the
+      // row past the container — the scroll bar never appears. 1fr forces
+      // the row to fill the container height so the inner overflowY can
       // create a real scroll context.
-      gridTemplateRows: '1fr',
-      transition: 'grid-template-columns 220ms cubic-bezier(.2,.7,.3,1)',
-      // Transparent so the gravity-field grid behind the app shows through.
-      background: 'transparent',
-      fontFamily: FONT_BODY,
-      color: T.ink2,
-      position: 'relative',
-      overflow: 'hidden',
-    }}>
+      className={`flex-1 min-h-0 grid grid-rows-[1fr] transition-[grid-template-columns] duration-[220ms] ease-[cubic-bezier(.2,.7,.3,1)] bg-transparent font-body text-ink-2 relative overflow-hidden ${effectiveRailOpen ? 'grid-cols-[minmax(0,1fr)_320px]' : 'grid-cols-[minmax(0,1fr)_0px]'}`}
+    >
       <OrbitProvider
         canvasRef={convRef}
         scrollRef={scrollRef}
@@ -1290,46 +1209,36 @@ export default function ChatView({
         activeSlot={orbView.activeSlot}
       >
       {/* ─── Conversation column ─── */}
-      <div ref={convRef} style={{
-        position: 'relative', overflow: 'hidden',
+      <div
+        ref={convRef}
         // Grid auto/1fr is more deterministic than nested flex+min-height
         // for the "header + scrollable body" layout — the 1fr row pins
         // the scroll area to the column's available height, so the inner
         // overflowY can actually scroll.
-        display: 'grid',
-        gridTemplateRows: 'auto 1fr',
-        minWidth: 0, minHeight: 0,
-      }}>
+        className="relative overflow-hidden grid grid-rows-[auto_1fr] min-w-0 min-h-0"
+      >
         {/* Floating expand-rail button — appears on the right edge of
             the conv column when the rail is collapsed. Mirror of the
             sidebar's hamburger pattern. */}
         <button
           type="button"
-          className="chat-rail-toggle"
           onClick={() => isNarrow ? setRailNarrowOpen(true) : setRailOpen(true)}
           title="Expand panel"
           aria-label="Expand panel"
+          // Only the truly dynamic bits (opacity/transform/pointerEvents driven by
+          // rail-open state, and the transition's per-state delay) stay inline —
+          // resting/hover color+background moved to className below so the
+          // hover: utility can win (an inline color/background at rest would
+          // otherwise out-specificity any stylesheet hover rule).
           style={{
-            position: 'absolute',
-            top: 14, right: 14,
-            zIndex: 10,
-            width: 28, height: 28,
-            borderRadius: 6,
-            display: 'inline-grid', placeItems: 'center',
-            cursor: 'pointer',
-            background: 'transparent',
-            border: 0,
-            color: T.ink3,
             opacity: (effectiveRailOpen || railOverlayOpen) ? 0 : 1,
             transform: (effectiveRailOpen || railOverlayOpen) ? 'translateX(8px)' : 'translateX(0)',
             pointerEvents: (effectiveRailOpen || railOverlayOpen) ? 'none' : 'auto',
             transition:
               `opacity 280ms cubic-bezier(0.32,0.72,0,1) ${(effectiveRailOpen || railOverlayOpen) ? '0ms' : '120ms'}, ` +
               `transform 360ms cubic-bezier(0.32,0.72,0,1) ${(effectiveRailOpen || railOverlayOpen) ? '0ms' : '80ms'}`,
-            WebkitAppRegion: 'no-drag',
           }}
-          onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
-          onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-3)'; e.currentTarget.style.background = 'transparent'; }}
+          className="chat-rail-toggle absolute top-3.5 right-3.5 z-10 w-7 h-7 rounded-md inline-grid place-items-center cursor-pointer bg-transparent border-0 text-ink-3 hover:text-ink hover:bg-surface-2 [-webkit-app-region:no-drag]"
         >
           {Ico.panelExpandLeft(15)}
         </button>
@@ -1340,20 +1249,13 @@ export default function ChatView({
             corner, staying left-aligned with the transcript below. `--titlebar-
             safe-top` is set on <main> by the shell and is 0 when the sidebar/
             rail covers the zone, so max() keeps the normal 14px padding then. */}
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          paddingTop: 'max(14px, var(--titlebar-safe-top, 0px))', paddingBottom: 14, paddingRight: 28,
-          paddingLeft: 28,
-          borderBottom: `1px solid ${T.line}`,
-          background: 'transparent',
-          flexShrink: 0,
+        <div
           // Belt + suspenders: even if a flex child miscalculates by a
-          // pixel, this prevents the header from visually pushing past
-          // the conv-col grid track (which is what was making the icons
-          // appear to slide behind the right rail).
-          minWidth: 0, overflow: 'hidden',
-          transition: 'padding 240ms cubic-bezier(0.32, 0.72, 0, 1)',
-        }}>
+          // pixel, min-w-0 + overflow-hidden prevents the header from
+          // visually pushing past the conv-col grid track (which is what
+          // was making the icons appear to slide behind the right rail).
+          className="flex items-center justify-between pt-[max(14px,var(--titlebar-safe-top,0px))] pb-3.5 pr-7 pl-7 border-b border-x-0 border-t-0 border-solid border-line bg-transparent flex-shrink-0 min-w-0 overflow-hidden transition-[padding] duration-[240ms] ease-[cubic-bezier(0.32,0.72,0,1)]"
+        >
           {/* Left side: [Project] › [Task] for chat tasks, or
               [Apps] › [Task] for connect-data flows (Connect Gmail,
               Modify gmail-prod, …). The connect-data flow is
@@ -1362,11 +1264,7 @@ export default function ChatView({
               inject as the first assistant message — that's stable
               across the lifetime of the task whether or not the
               form is currently mounted in the rail. */}
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 8,
-            minWidth: 0, flex: '1 1 0',
-            overflow: 'hidden',
-          }}>
+          <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
             {(() => {
               // The "Apps" crumb only makes sense while the form
               // panel is on screen — the user is mid-flow connecting
@@ -1410,10 +1308,7 @@ export default function ChatView({
             <CrumbSep />
             <div
               {...titleHoverProps}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 4,
-                minWidth: 0, flex: '1 1 0',
-              }}
+              className="flex items-center gap-1 min-w-0 flex-1"
             >
               {titleEditing ? (
                 <input
@@ -1436,18 +1331,11 @@ export default function ChatView({
                   spellCheck={false}
                   autoCapitalize="none"
                   autoCorrect="off"
-                  style={{
-                    flex: '1 1 0', minWidth: 0,
-                    // Match the breadcrumb links (Crumb = 13px) — this is the
-                    // current crumb, so it's a CrumbCurrent sibling in every
-                    // way but its interactivity (click opens the task menu,
-                    // dbl-click edits), hence not the component itself.
-                    fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 13,
-                    letterSpacing: '0', color: T.ink,
-                    background: 'var(--surface-2)',
-                    border: '1px solid var(--accent)',
-                    borderRadius: 5, padding: '2px 6px', outline: 'none',
-                  }}
+                  // Match the breadcrumb links (Crumb = 13px) — this is the
+                  // current crumb, so it's a CrumbCurrent sibling in every
+                  // way but its interactivity (click opens the task menu,
+                  // dbl-click edits), hence not the component itself.
+                  className="flex-1 min-w-0 font-display font-semibold text-[13px] tracking-normal text-ink bg-surface-2 border border-solid border-accent rounded-[5px] py-0.5 px-1.5 outline-none"
                 />
               ) : (
                 <span
@@ -1469,18 +1357,11 @@ export default function ChatView({
                       setSettingsOpen((v) => !v);
                     }
                   }}
-                  style={{
-                    fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 13,
-                    letterSpacing: '0', color: T.ink,
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    overflowWrap: 'anywhere',
-                    minWidth: 0, flex: '0 1 auto',
-                    cursor: 'pointer',
-                  }}
+                  className="font-display font-semibold text-[13px] tracking-normal text-ink overflow-hidden text-ellipsis whitespace-nowrap [overflow-wrap:anywhere] min-w-0 flex-initial cursor-pointer"
                 >{task.title}</span>
               )}
               {task.pinned && !titleEditing && (
-                <span aria-hidden style={{ display: 'inline-flex', flexShrink: 0, color: T.accent }}>
+                <span aria-hidden className="inline-flex flex-shrink-0 text-accent">
                   {Ico.pin(11)}
                 </span>
               )}
@@ -1500,21 +1381,14 @@ export default function ChatView({
                     setSettingsAnchor(rect || null);
                     setSettingsOpen(true);
                   }}
+                  // Only opacity/pointerEvents (titleControlsShown-driven) stay
+                  // inline — resting/hover background+color moved to className
+                  // so hover: can win (see the rail-toggle button above for why).
                   style={{
-                    width: 22, height: 22, borderRadius: 5,
-                    background: settingsOpen ? 'var(--surface-2)' : 'transparent',
-                    border: 0,
-                    color: 'var(--ink-3)',
-                    display: 'inline-grid', placeItems: 'center',
-                    flexShrink: 0,
                     opacity: titleControlsShown ? 1 : 0,
                     pointerEvents: titleControlsShown ? 'auto' : 'none',
-                    cursor: 'pointer',
-                    transition: 'opacity .15s ease, color .15s ease, background .15s ease',
-                    WebkitAppRegion: 'no-drag',
                   }}
-                  onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink)'; }}
-                  onMouseOut={(e) => { e.currentTarget.style.background = settingsOpen ? 'var(--surface-2)' : 'transparent'; e.currentTarget.style.color = 'var(--ink-3)'; }}
+                  className={`w-[22px] h-[22px] rounded-[5px] border-0 inline-grid place-items-center flex-shrink-0 cursor-pointer transition-[opacity,color,background] duration-150 ease-[ease] [-webkit-app-region:no-drag] text-ink-3 hover:text-ink hover:bg-surface-2 ${settingsOpen ? 'bg-surface-2' : 'bg-transparent'}`}
                 >
                   {Ico.moreVert(13)}
                 </button>
@@ -1526,10 +1400,7 @@ export default function ChatView({
               and rail toggle moved out; pin lives inline with the
               title now (above) so it stays visually attached to the
               task it acts on. */}
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 4,
-            flexShrink: 0,
-          }} />
+          <div className="flex items-center gap-1 flex-shrink-0" />
         </div>
         {/* Task menu — anchored to the kebab next to the title.
             Items: Pin/Unpin · Rename · Delete. Move-to-project,
@@ -1573,18 +1444,12 @@ export default function ChatView({
             `marginBottom: 25` shortens the scroll container so the
             chat surface ends with a calm gap above the window edge
             instead of butting flush against it. */}
-        <div ref={scrollRef} data-scroll="true" className="scroll-clean" style={{
-          minHeight: 0, overflowY: 'auto', overflowX: 'hidden',
-          padding: '32px 28px 180px',
-          marginBottom: 25,
-          background: 'transparent',
-          WebkitAppRegion: 'no-drag',
-          userSelect: 'text',
-        }}>
-          <div style={{
-            maxWidth: 720, margin: '0 auto',
-            display: 'flex', flexDirection: 'column', gap: 28,
-          }}>
+        <div
+          ref={scrollRef}
+          data-scroll="true"
+          className="scroll-clean min-h-0 overflow-y-auto overflow-x-hidden pt-8 px-7 pb-[180px] mb-[25px] bg-transparent [-webkit-app-region:no-drag] select-text"
+        >
+          <div className="max-w-[720px] mx-auto flex flex-col gap-7">
             <Divider label={dividerLabel(new Date())} />
 
             {(() => {
@@ -1884,7 +1749,7 @@ export default function ChatView({
                   />
                 )}
                 {streamingMsg.content && (
-                  <div style={{ position: 'relative' }}>
+                  <div className="relative">
                     <TextBlock text={streamingMsg.content} id="streaming" complete={false} conversationId={task.id} />
                     <StreamCursor />
                   </div>
@@ -1906,84 +1771,30 @@ export default function ChatView({
             with the gravity-field showing through it read as a dark
             band at the bottom of the chat. The composer's own border +
             shadow give enough visual separation on its own. */}
-        <div className="chat-floating-composer" style={{
-          position: 'absolute', left: 28, right: 28, bottom: 22,
-          display: 'flex', flexDirection: 'column', alignItems: 'center',
-          gap: 8,
-          pointerEvents: 'auto',
-          ['--composer-max-width']: '720px',
-        }}>
+        <div className="chat-floating-composer absolute left-7 right-7 bottom-[22px] flex flex-col items-center gap-2 pointer-events-auto [--composer-max-width:720px]">
           {/* Queued-messages strip — pills with each waiting prompt
               + a × to drop it. The pills cross-fade in/out so the
               transition between queue states reads as deliberate. */}
           {queuedMessages.length > 0 && (
-            <div style={{
-              width: '100%', maxWidth: 720,
-              display: 'flex', flexDirection: 'column',
-              gap: 6,
-              padding: '10px 12px',
-              borderRadius: 14,
-              background: 'color-mix(in srgb, var(--accent) 8%, var(--surface))',
-              border: '1px solid color-mix(in srgb, var(--accent) 22%, var(--line))',
-              boxShadow: '0 8px 24px rgba(0,0,0,0.10)',
-              animation: 'queue-pop-in 220ms cubic-bezier(0.32, 0.72, 0, 1)',
-            }}>
-              <div style={{
-                fontFamily: 'var(--font-mono)', fontSize: 10.5,
-                color: 'var(--accent)', letterSpacing: '0.08em',
-                textTransform: 'uppercase',
-                display: 'flex', alignItems: 'center', gap: 6,
-              }}>
-                <span className="pulse-dot" style={{
-                  width: 6, height: 6, borderRadius: '50%',
-                  background: 'var(--accent)',
-                  boxShadow: '0 0 6px var(--accent-glow)',
-                }} />
+            <div className="w-full max-w-[720px] flex flex-col gap-1.5 py-2.5 px-3 rounded-[14px] bg-[color-mix(in_srgb,var(--accent)_8%,var(--surface))] border border-solid border-[color-mix(in_srgb,var(--accent)_22%,var(--line))] shadow-[0_8px_24px_rgba(0,0,0,0.10)] animate-[queue-pop-in_220ms_cubic-bezier(0.32,0.72,0,1)]">
+              <div className="font-mono text-[10.5px] text-accent tracking-[0.08em] uppercase flex items-center gap-1.5">
+                <span className="pulse-dot w-1.5 h-1.5 rounded-full bg-accent shadow-[0_0_6px_var(--accent-glow)]" />
                 {queuedMessages.length} queued · waiting for {agentLabel || 'Anton'}
               </div>
-              <div style={{
-                display: 'flex', flexWrap: 'wrap', gap: 6,
-              }}>
+              <div className="flex flex-wrap gap-1.5">
                 {queuedMessages.map((q) => (
                   <span
                     key={q.id}
                     title={q.text}
-                    style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 6,
-                      maxWidth: '100%',
-                      padding: '5px 4px 5px 12px',
-                      borderRadius: 999,
-                      background: 'var(--surface)',
-                      border: '1px solid var(--line)',
-                      fontFamily: 'var(--font-body)', fontSize: 12.5,
-                      color: 'var(--ink-2)',
-                      transition: 'background 120ms ease, border-color 120ms ease',
-                    }}
+                    className="inline-flex items-center gap-1.5 max-w-full pt-[5px] pr-1 pb-[5px] pl-3 rounded-full bg-surface border border-solid border-line font-body text-sm text-ink-2 transition-[background,border-color] duration-[120ms] ease-[ease]"
                   >
-                    <span style={{
-                      maxWidth: 360,
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    }}>{q.text}</span>
+                    <span className="max-w-[360px] overflow-hidden text-ellipsis whitespace-nowrap">{q.text}</span>
                     <button
                       type="button"
                       onClick={() => onRemoveFromQueue?.(q.id)}
                       title="Remove from queue"
                       aria-label="Remove from queue"
-                      style={{
-                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                        width: 20, height: 20, borderRadius: 999,
-                        background: 'transparent', border: 0,
-                        color: 'var(--ink-4)', cursor: 'pointer',
-                        flexShrink: 0,
-                      }}
-                      onMouseOver={(e) => {
-                        e.currentTarget.style.background = 'color-mix(in srgb, var(--danger) 14%, transparent)';
-                        e.currentTarget.style.color = 'var(--danger)';
-                      }}
-                      onMouseOut={(e) => {
-                        e.currentTarget.style.background = 'transparent';
-                        e.currentTarget.style.color = 'var(--ink-4)';
-                      }}
+                      className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-transparent border-0 text-ink-4 cursor-pointer flex-shrink-0 hover:bg-[color-mix(in_srgb,var(--danger)_14%,transparent)] hover:text-danger"
                     >{Ico.close(11)}</button>
                   </span>
                 ))}
@@ -2022,61 +1833,44 @@ export default function ChatView({
       {isNarrow && (
         <div
           onClick={() => setRailNarrowOpen(false)}
+          className="fixed inset-0 z-50 bg-[rgba(0,0,0,0.35)] backdrop-blur-[2px] transition-opacity duration-[280ms] ease-[cubic-bezier(0.32,0.72,0,1)] [-webkit-app-region:no-drag]"
           style={{
-            position: 'fixed', inset: 0, zIndex: 50,
-            background: 'rgba(0,0,0,0.35)',
-            backdropFilter: 'blur(2px)',
             opacity: railOverlayOpen ? 1 : 0,
             pointerEvents: railOverlayOpen ? 'auto' : 'none',
-            transition: 'opacity 280ms cubic-bezier(0.32, 0.72, 0, 1)',
-            WebkitAppRegion: 'no-drag',
           }}
         />
       )}
-      <aside className="chat-rail-aside" style={isNarrow ? {
-        // Narrow: fixed overlay that slides in from the right
-        position: 'fixed',
-        top: 9, bottom: 9, right: 9,
-        width: 'min(85vw, 320px)',
-        zIndex: 51,
-        background: 'var(--surface)',
-        border: '1px solid var(--line)',
-        borderRadius: 14,
-        boxShadow: 'var(--sh-2)',
-        transform: railOverlayOpen ? 'translateX(0)' : 'translateX(calc(100% + 18px))',
-        transition: 'transform 380ms cubic-bezier(0.22, 1, 0.36, 1)',
-        padding: '14px 14px 22px',
-        display: 'flex', flexDirection: 'column', gap: 10,
-        overflowX: 'hidden', overflowY: 'auto',
-        WebkitAppRegion: 'no-drag',
-      } : {
-        // Wide: inline grid column
-        background: 'transparent',
-        padding: '14px 14px 22px',
-        visibility: effectiveRailOpen ? 'visible' : 'hidden',
-        opacity: effectiveRailOpen ? 1 : 0,
-        transition: 'opacity 180ms ease',
-        display: 'flex', flexDirection: 'column', gap: 10,
-        overflowX: 'hidden',
-        overflowY: 'auto',
-        minWidth: 0,
-        WebkitAppRegion: 'no-drag',
-      }}>
+      <aside
+        // Narrow: fixed overlay that slides in from the right.
+        // Wide: inline grid column.
+        className={`chat-rail-aside flex flex-col gap-2.5 pt-3.5 px-3.5 pb-[22px] overflow-x-hidden overflow-y-auto [-webkit-app-region:no-drag] ${
+          isNarrow
+            ? 'fixed top-[9px] bottom-[9px] right-[9px] w-[min(85vw,320px)] z-[51] bg-surface border border-solid border-line rounded-[14px] shadow-sh-2 transition-transform duration-[380ms] ease-[cubic-bezier(0.22,1,0.36,1)]'
+            : 'bg-transparent min-w-0 transition-opacity duration-[180ms] ease-[ease]'
+        }`}
+        style={isNarrow ? {
+          transform: railOverlayOpen ? 'translateX(0)' : 'translateX(calc(100% + 18px))',
+        } : {
+          visibility: effectiveRailOpen ? 'visible' : 'hidden',
+          opacity: effectiveRailOpen ? 1 : 0,
+        }}
+      >
         {/* Rail header bar — collapse button. Stays visible on mobile
             so the user has an explicit way to dismiss the rail (which
             on phone hosts the data-vault form fullscreen). The
             FLOATING expand button outside is the one hidden via
             .chat-rail-toggle in globals.css. */}
-        <div className="chat-rail-close-row" style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
-          flexShrink: 0,
-        }}>
+        <div className="chat-rail-close-row flex items-center justify-end flex-shrink-0">
           <button
             type="button"
             className="chat-rail-close"
             onClick={() => isNarrow ? setRailNarrowOpen(false) : setRailOpen(false)}
             title="Collapse panel"
             aria-label="Collapse panel"
+            // kept inline: same all:unset cascade-priority reason as ArtifactCard's
+            // buttons — every property here stays co-located with the reset, and
+            // the hover color/background mutation needs a subsequent inline write
+            // to win over the reset.
             style={{
               all: 'unset', cursor: 'pointer',
               width: 26, height: 26, borderRadius: 6,
@@ -2140,26 +1934,13 @@ export default function ChatView({
       {formActive && createPortal(
         <div
           onClick={() => clearDataVaultForm(task?.id || '')}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 200,
-            background: 'rgba(0, 0, 0, 0.5)',
-            backdropFilter: 'blur(3px)',
-            WebkitBackdropFilter: 'blur(3px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
+          // autoprefixer adds the -webkit-backdrop-filter prefix at build time,
+          // so no separate WebkitBackdropFilter declaration is needed here.
+          className="fixed inset-0 z-[200] bg-[rgba(0,0,0,0.5)] backdrop-blur-[3px] flex items-center justify-center"
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            style={{
-              width: 'min(90vw, 460px)',
-              maxHeight: '85vh',
-              overflowY: 'auto',
-              borderRadius: 12,
-            }}
+            className="w-[min(90vw,460px)] max-h-[85vh] overflow-y-auto rounded-xl"
           >
             <FormErrorBoundary>
               <DataVaultFormPanel

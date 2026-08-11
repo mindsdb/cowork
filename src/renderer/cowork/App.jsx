@@ -37,6 +37,7 @@ import { loadCustomTheme, persistCustomTheme, applyCustomTheme } from '../lib/cu
 import { applyNavTitleColor } from '../lib/navBranding';
 import { getAgentLabel } from './lib/agentLabel';
 import { loadCachedSettings } from './lib/settingsCache';
+import { clearDraft, moveDraft } from './lib/draftStore';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { useGoogleDrivePicker } from './hooks/useGoogleDrivePicker';
 import { fetchSessions, fetchSession, fetchConversationList, fetchProjects, fetchArtifacts, fetchSettings, fetchHealth,
@@ -581,6 +582,15 @@ function persistTurnState(cid, turnIndex, steps, startedAt) {
     reasoningStartedAt: s.reasoningStartedAt ?? null,
     executionStartedAt: s.executionStartedAt ?? null,
     executionCompletedAt: s.executionCompletedAt ?? null,
+    // Distinct from `status` — a failed tool/killed cell is still
+    // status:'completed' (the lifecycle finished), with cellStatus
+    // carrying the actual verdict ('error'/'timeout'). Without these two,
+    // a failed step renders as a plain success after reload: `status`
+    // alone survives, but the reducer's cellStatus:'error' (tool_call.end
+    // with ok:false, or a killed scratchpad_done) and the measured
+    // executionDurationMs both got silently dropped by this whitelist.
+    cellStatus: s.cellStatus || null,
+    executionDurationMs: s.executionDurationMs ?? null,
     data: s.data || null,
     output: typeof s.output === 'string' ? s.output : null,
     result: s.result || null,
@@ -1334,6 +1344,7 @@ function AppCore() {
   const toastManager = useToastManager();
   // Download-only shell notice; dismissal is scoped to the offered version.
   const [shellUpdate, setShellUpdate] = useState(null); // { version, currentVersion, downloadUrl }
+  const [shellAutoUpdate, setShellAutoUpdate] = useState(null);
   const [shellUpdateDismissed, setShellUpdateDismissed] = useState(() => {
     try { return localStorage.getItem('shellUpdateDismissedVersion') || ''; } catch { return ''; }
   });
@@ -1417,6 +1428,22 @@ function AppCore() {
       const result = await host.serverStop?.();
       if (result) setServerOnline(!!result.running);
     } catch {} finally { setServerBusy(false); }
+  }, []);
+
+  // ENG-850 shell updater snapshot. Pull once for renderer reload recovery,
+  // then subscribe to the same authoritative main-process state.
+  useEffect(() => {
+    let cancelled = false;
+    host.getShellAutoUpdate().then((snapshot) => {
+      if (!cancelled) setShellAutoUpdate(snapshot);
+    }).catch(() => {});
+    const unsubscribe = host.onShellAutoUpdate((snapshot) => {
+      if (!cancelled) setShellAutoUpdate(snapshot);
+    });
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
   }, []);
 
   // Allow descendants (e.g. ProjectsView's rename / create flow) to
@@ -1544,6 +1571,40 @@ function AppCore() {
     const explicit = typeof url === 'string' && url ? url : null;
     host.openExternal(explicit || shellUpdate?.downloadUrl || 'https://mindshub.ai/download');
   }, [shellUpdate]);
+
+  const handleShellAutoUpdateDownload = useCallback(async () => {
+    const snapshot = await host.downloadShellAutoUpdate().catch(() => null);
+    if (snapshot) setShellAutoUpdate(snapshot);
+  }, []);
+
+  const handleShellAutoUpdateInstall = useCallback(async () => {
+    await host.installShellAutoUpdate().catch(() => false);
+  }, []);
+
+  const handleShellAutoUpdateRetry = useCallback(async () => {
+    const snapshot = await host.checkShellAutoUpdate().catch(() => null);
+    if (snapshot) setShellAutoUpdate(snapshot);
+  }, []);
+
+  const handleShellAutoUpdateAction = useCallback(() => {
+    switch (shellAutoUpdate?.phase) {
+      case 'available':
+        return handleShellAutoUpdateDownload();
+      case 'ready-to-install':
+        return handleShellAutoUpdateInstall();
+      case 'failed':
+        if (shellAutoUpdate.recoverable) return handleShellAutoUpdateRetry();
+        return handleDownloadShellUpdate();
+      default:
+        return undefined;
+    }
+  }, [
+    shellAutoUpdate,
+    handleShellAutoUpdateDownload,
+    handleShellAutoUpdateInstall,
+    handleShellAutoUpdateRetry,
+    handleDownloadShellUpdate,
+  ]);
 
   const dismissShellUpdate = useCallback(() => {
     const v = shellUpdate?.version;
@@ -2661,6 +2722,8 @@ function AppCore() {
       if (!sid || sid === resolvedId) return;
       const previousId = resolvedId;
       resolvedId = sid;
+      // Carry over a reply the user started typing under the tmp- id.
+      moveDraft(previousId, sid);
       setTasks((prev) => prev.map((t) =>
         t.id === previousId || t.id === taskId ? { ...t, id: sid } : t,
       ));
@@ -2958,6 +3021,8 @@ function AppCore() {
       if (!sid || sid === resolvedId) return;
       const previousId = resolvedId;
       resolvedId = sid;
+      // Carry over a reply the user started typing under the tmp- id.
+      moveDraft(previousId, sid);
       setTasks((prev) => prev.map((t) =>
         t.id === previousId || t.id === id ? { ...t, id: sid } : t,
       ));
@@ -3125,6 +3190,8 @@ function AppCore() {
       if (!sid || sid === resolvedId) return;
       const previousId = resolvedId;
       resolvedId = sid;
+      // Carry over a reply the user started typing under the tmp- id.
+      moveDraft(previousId, sid);
       setTasks((prev) => prev.map((t) =>
         t.id === previousId || t.id === id ? { ...t, id: sid } : t,
       ));
@@ -3346,6 +3413,8 @@ function AppCore() {
     console.log('[performDeleteTask] confirmed', taskId);
     deletedTaskIdsRef.current.add(taskId);
     setTasks((prev) => prev.filter((t) => t.id !== taskId));
+    // Its unsent reply draft has nowhere to go back to.
+    clearDraft(taskId);
     // Optimistically remove from pins so the sidebar clears immediately.
     setPins((prev) => prev.filter((p) => p.item_id !== taskId));
     if (activeTaskId === taskId) {
@@ -3469,6 +3538,10 @@ function AppCore() {
       .filter((t) => t.projectName === project.name || t.projectPath === project.path)
       .map((t) => t.id);
     doomedTaskIds.forEach((id) => deletedTaskIdsRef.current.add(id));
+    // The project's own composer draft, plus every draft belonging to a
+    // conversation the server is about to cascade-delete.
+    clearDraft(`project:${project.id || project.name}`);
+    doomedTaskIds.forEach((id) => clearDraft(id));
     // Optimistic — drop locally before the round-trip.
     setProjects((prev) => prev.filter((p) => p.name !== project.name));
     setTasks((prev) => prev.filter((t) =>
@@ -3841,6 +3914,8 @@ function AppCore() {
           updateError={updateStatus?.phase === 'error' ? { version: updateStatus.version } : null}
           onApplyUpdate={handleApplyUpdate}
           shellUpdate={shellUpdate && shellUpdate.version !== shellUpdateDismissed ? shellUpdate : null}
+          shellAutoUpdate={shellAutoUpdate}
+          onShellAutoUpdateAction={handleShellAutoUpdateAction}
           onDownloadShellUpdate={handleDownloadShellUpdate}
           onDismissShellUpdate={dismissShellUpdate}
           onStartChat={(text) => {
@@ -4182,6 +4257,10 @@ function AppCore() {
               onSsoSignIn={!ssoConnected && host.isElectron ? async () => { setSettingsOpen(false); await handleSsoSignIn(); } : undefined}
               shellUpdate={shellUpdate}
               onDownloadShellUpdate={handleDownloadShellUpdate}
+              shellAutoUpdate={shellAutoUpdate}
+              onDownloadShellAutoUpdate={handleShellAutoUpdateDownload}
+              onInstallShellAutoUpdate={handleShellAutoUpdateInstall}
+              onRetryShellAutoUpdate={handleShellAutoUpdateRetry}
             />
           </Modal>
         ) : (
@@ -4229,6 +4308,10 @@ function AppCore() {
                 onSsoSignIn={!ssoConnected && host.isElectron ? async () => { setSettingsOpen(false); await handleSsoSignIn(); } : undefined}
                 shellUpdate={shellUpdate}
                 onDownloadShellUpdate={handleDownloadShellUpdate}
+                shellAutoUpdate={shellAutoUpdate}
+                onDownloadShellAutoUpdate={handleShellAutoUpdateDownload}
+                onInstallShellAutoUpdate={handleShellAutoUpdateInstall}
+                onRetryShellAutoUpdate={handleShellAutoUpdateRetry}
               />
             </ModalBody>
           </Modal>

@@ -4,7 +4,6 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-VERSION="$(node -p "require('./package.json').version")"
 PRODUCT_NAME="$(node -e "const fs=require('fs'); const pkg=require('./package.json'); let productName=pkg.productName; try { const builderConfig=fs.readFileSync('./electron-builder.yml', 'utf8'); const match=builderConfig.match(/^\\s*productName:\\s*(.+)\\s*$/m); if (match) productName=match[1].trim().replace(/^['\\\"]|['\\\"]$/g, ''); } catch (error) {} process.stdout.write(productName || pkg.name);")"
 # Per-channel bundle identity (empty for prod/dev/unset → electron-builder.yml
 # defaults, i.e. prod is unchanged). Mirrors src/main/channels.ts via
@@ -36,12 +35,6 @@ is_truthy() {
       ;;
   esac
 }
-
-if is_truthy "$MAC_PKG_UNSIGNED"; then
-  PKG_PATH="release/${ARTIFACT_NAME}-${VERSION}-universal-unsigned.pkg"
-else
-  PKG_PATH="release/${ARTIFACT_NAME}-${VERSION}-universal-signed.pkg"
-fi
 
 # CI-friendly fallback names so the script can read values injected from GitHub
 # Secrets with either APPLE_* or GH_APPLE_* names.
@@ -92,6 +85,12 @@ rm -f release/*.dmg release/*.zip release/*.pkg
 
 echo "==> Building latest app code (main + renderer)"
 npm run build
+DISPLAY_VERSION="$(tr -d '[:space:]' < src/main/app-version.gen.txt)"
+if is_truthy "$MAC_PKG_UNSIGNED"; then
+  PKG_PATH="release/${ARTIFACT_NAME}-${DISPLAY_VERSION}-universal-unsigned.pkg"
+else
+  PKG_PATH="release/${ARTIFACT_NAME}-${DISPLAY_VERSION}-universal-signed.pkg"
+fi
 
 if is_truthy "$MAC_PKG_UNSIGNED"; then
   echo "==> Building unsigned universal app bundle"
@@ -100,13 +99,13 @@ else
   echo "==> Building signed universal app bundle"
 fi
 if [[ -n "$CHANNEL_PRODUCT_NAME" ]]; then
-  npx electron-builder --mac --universal --dir \
+  node scripts/run-electron-builder.mjs --mac --universal --dir \
     -c.afterSign=scripts/after-sign-noop.js \
     -c.appId="$CHANNEL_APP_ID" \
     -c.productName="$CHANNEL_PRODUCT_NAME" \
     -c.mac.icon="$CHANNEL_MAC_ICON"
 else
-  npx electron-builder --mac --universal --dir -c.afterSign=scripts/after-sign-noop.js
+  node scripts/run-electron-builder.mjs --mac --universal --dir -c.afterSign=scripts/after-sign-noop.js
 fi
 
 if [[ ! -d "$APP_PATH" ]]; then
@@ -168,6 +167,30 @@ else
   echo "==> Stapling and validating app"
   xcrun stapler staple "$APP_PATH"
   xcrun stapler validate "$APP_PATH"
+  rm -f "$APP_ZIP"
+
+  # Package the exact signed/notarized/stapled app as the Squirrel.Mac update
+  # payload. Preview remains disabled until it has a durable isolated feed.
+  case "${COWORK_BUILD_KIND:-}" in
+    prod|stable)
+      echo "==> Building shell auto-update zip and latest-mac.yml"
+      node scripts/run-electron-builder.mjs \
+        --skip-feed-config \
+        --prepackaged "$APP_PATH" \
+        --mac zip \
+        --publish never \
+        -c.afterPack=scripts/after-sign-noop.js \
+        -c.afterSign=scripts/after-sign-noop.js
+      UPDATE_ZIP=$(find release -maxdepth 1 -type f -name 'mindshub-cowork-update-*.zip' -print -quit)
+      test -n "$UPDATE_ZIP"
+      UPDATER_VERSION=$(tr -d '[:space:]' < src/main/updater-version.gen.txt)
+      node scripts/write-update-metadata.mjs \
+        --platform mac \
+        --artifact "$UPDATE_ZIP" \
+        --version "$UPDATER_VERSION" \
+        --output release/latest-mac.yml
+      ;;
+  esac
 
   echo "==> Building signed installer pkg"
   productbuild \

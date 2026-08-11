@@ -17,6 +17,7 @@ import ProviderIcon from './ProviderIcon.jsx';
 import { useFileDrop, FileDropOverlay, extractClipboardFiles } from '../lib/useFileDrop';
 import { AttachmentThumbnail } from './AttachmentThumbnail';
 import { useSkills } from '../lib/skillsStore';
+import { useDraft } from '../hooks/useDraft';
 
 // Detect a "/" slash-command token immediately before the caret. Returns the
 // token's start index (the "/") and the lowercased query fragment, or null when
@@ -175,8 +176,14 @@ export default function Composer({
   // with it so the new project is pre-selected for the task being
   // composed. When omitted, the row is hidden.
   onCreateProject = null,
+  // Names the surface this composer's unsent text belongs to, so a draft
+  // survives navigation (every composer unmounts on route change) and doesn't
+  // leak between surfaces. Defaults to the conversation for in-chat replies
+  // and to the shared "new task" surface otherwise; the project view passes
+  // its own so a per-project draft is separate from the home one.
+  draftKey = null,
 }) {
-  const [value, setValue] = useState('');
+  const [value, setValue] = useDraft(draftKey || conversationId || 'new');
   const [focused, setFocused] = useState(false);
   const [openMenu, setOpenMenu] = useState(null);
   /** Project-picker menu state. The menu is a search-first picker:
@@ -754,7 +761,7 @@ export default function Composer({
   }, []);
 
   return (
-    <div ref={wrapRef} {...fileDropHandlers} style={{ width: '100%', maxWidth: 'var(--composer-max-width, 640px)', position: 'relative' }}>
+    <div ref={wrapRef} {...fileDropHandlers} className="relative w-full max-w-[var(--composer-max-width,_640px)]">
       <FileDropOverlay active={filesDragging} label="Drop files to attach" />
       <input
         ref={fileRef}
@@ -764,23 +771,25 @@ export default function Composer({
         onChange={(event) => handleAttachFiles(event.target.files)}
       />
 
-      <div style={{ width: '100%' }}>
-        <div className={`composer-wrap${focused ? ' focused' : ''}${inFence ? ' in-fence' : ''}`} style={{ position: 'relative' }}>
+      <div className="w-full">
+        <div className={`composer-wrap relative${focused ? ' focused' : ''}${inFence ? ' in-fence' : ''}`}>
 
           {/* "/" slash-command menu — anchored to composer-wrap so it appears
               just above/below the textarea, not below the toolbar. */}
           {slashOpen && slashItems.length > 0 && (
             <div
-              className="menu"
               role="listbox"
               aria-label="Skills and actions"
               onMouseDown={(e) => e.preventDefault()}
+              className="menu left-0 right-0 max-h-[min(50vh,320px)] overflow-y-auto"
               style={{
-                position: 'absolute', left: 0, right: 0,
                 ...(slashMenuBelow
                   ? { top: 'calc(100% + 8px)', bottom: 'auto' }
                   : { top: 'auto', bottom: 'calc(100% + 8px)' }),
-                maxHeight: 'min(50vh, 320px)', overflowY: 'auto', padding: '4px 0', zIndex: 40,
+                // cascade-forced: legacy .menu sets padding:6px + z-index:50;
+                // this menu needs 4px/0 padding and z-40, and a same-property
+                // Tailwind utility would lose to .menu (loads after Tailwind).
+                padding: '4px 0', zIndex: 40,
               }}
             >
               {slashItems.map((item, i) => {
@@ -791,19 +800,18 @@ export default function Composer({
                     type="button"
                     role="option"
                     aria-selected={active}
-                    className="menu-item"
+                    className={`menu-item${active ? ' !bg-surface-2' : ''}`}
                     onMouseEnter={() => setSlashIndex(i)}
                     onClick={() => acceptSlash(item)}
-                    style={active ? { background: 'var(--surface-2)' } : undefined}
                   >
-                    <span style={{ display: 'inline-flex', color: 'var(--frost-700, var(--ink-3))' }}>
+                    <span className="inline-flex text-ink-2">
                       {item.kind === 'action' ? Ico.upload(15) : Ico.cube(15)}
                     </span>
-                    <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left' }}>
+                    <span className="flex-1 min-w-0 truncate text-left">
                       {item.label}
                     </span>
                     {item.hint && (
-                      <span style={{ color: 'var(--ink-3)', fontSize: 11.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '46%' }}>
+                      <span className="text-ink-3 text-[11.5px] truncate max-w-[46%]">
                         {item.hint}
                       </span>
                     )}
@@ -990,7 +998,7 @@ export default function Composer({
           <div className="composer-toolbar">
             <span
               ref={attachAnchorRef}
-              style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}
+              className="relative inline-flex items-center"
             >
               <button
                 className="composer-icon"
@@ -1014,9 +1022,11 @@ export default function Composer({
               {openMenu === 'attach' && (
                 <div
                   ref={attachMenuRef}
-                  className={`menu${attachMenuBelow ? ' menu--drop-down' : ''}`}
+                  className={`menu left-0${attachMenuBelow ? ' menu--drop-down' : ''}`}
                   style={{
-                    left: 0,
+                    // cascade-forced: legacy .menu sets min-width:200px; a
+                    // Tailwind min-w-[240px] utility would lose to it (loads
+                    // after Tailwind). top/bottom is state-dependent.
                     minWidth: 240,
                     ...(attachMenuBelow
                       ? { top: 'calc(100% + 6px)' }
@@ -1041,8 +1051,8 @@ export default function Composer({
                     aria-expanded={connectorsOpen}
                   >
                     {Ico.link(14)}
-                    <span style={{ flex: 1 }}>Connectors</span>
-                    <span style={{ display: 'inline-flex', color: 'var(--frost-500)' }}>
+                    <span className="flex-1">Connectors</span>
+                    <span className="inline-flex text-ink-4">
                       {connectorsOpen ? Ico.chevDown(12) : Ico.chevRight(12)}
                     </span>
                   </button>
@@ -1056,23 +1066,13 @@ export default function Composer({
                         inert={!connectorsOpen || undefined}
                       >
                         {connectors.length === 0 ? (
-                          <div style={{ padding: '8px 14px', fontSize: 12.5, color: 'var(--frost-600)' }}>
+                          <div className="py-2 px-[14px] text-sm text-ink-3">
                             No connectors yet. Add one in{' '}
                             {onNavigateToConnectors ? (
                               <button
                                 type="button"
                                 onClick={navigateToConnectors}
-                                style={{
-                                  margin: 0,
-                                  padding: 0,
-                                  border: 0,
-                                  background: 'transparent',
-                                  color: 'var(--accent)',
-                                  font: 'inherit',
-                                  cursor: 'pointer',
-                                  textDecoration: 'underline',
-                                  textUnderlineOffset: 2,
-                                }}
+                                className="m-0 p-0 border-0 bg-transparent text-accent [font:inherit] cursor-pointer underline underline-offset-2"
                               >
                                 Connect Apps and Data
                               </button>
@@ -1087,30 +1087,22 @@ export default function Composer({
                             return (
                               <div
                                 key={`${c.engine}:${c.name}`}
-                                className="menu-item"
+                                className="menu-item flex-nowrap"
                                 style={{
+                                  // cascade-forced: legacy .menu-item sets
+                                  // padding:8px 10px + cursor:pointer; same-
+                                  // property Tailwind utilities would lose
+                                  // to it (loads after Tailwind).
                                   paddingLeft: 12,
                                   paddingRight: 12,
                                   cursor: 'default',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: 10,
-                                  flexWrap: 'nowrap',
                                 }}
                                 onMouseDown={(e) => e.stopPropagation()}
                               >
-                                <span style={{ display: 'inline-flex', color: 'var(--frost-700)', flexShrink: 0 }}>{Ico.link(13)}</span>
-                                <span style={{
-                                  flex: '1 1 120px',
-                                  minWidth: 0,
-                                  display: 'flex',
-                                  flexDirection: 'column',
-                                  alignItems: 'flex-start',
-                                  gap: 2,
-                                }}
-                                >
-                                  <span style={{ fontWeight: 500 }}>{c.name}</span>
-                                  <span style={{ fontSize: 11, color: 'var(--frost-600)' }}>{c.displayName || c.engine}</span>
+                                <span className="inline-flex text-ink-2 shrink-0">{Ico.link(13)}</span>
+                                <span className="flex-[1_1_120px] min-w-0 flex flex-col items-start gap-0.5">
+                                  <span className="font-medium">{c.name}</span>
+                                  <span className="text-[11px] text-ink-3">{c.displayName || c.engine}</span>
                                 </span>
                                 {canMuteConnectors ? (
                                   <button
@@ -1118,9 +1110,8 @@ export default function Composer({
                                     role="switch"
                                     aria-checked={!muted}
                                     aria-label={muted ? `Enable ${c.name} for this chat` : `Disable ${c.name} for this chat`}
-                                    className={`toggle${!muted ? ' on' : ''}`}
+                                    className={`toggle shrink-0${!muted ? ' on' : ''}`}
                                     disabled={busy}
-                                    style={{ flexShrink: 0 }}
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       setConnectorUseInChat(c, muted);
@@ -1137,12 +1128,12 @@ export default function Composer({
                     </div>
                   </div>
                   {error && (
-                    <div style={{ padding: '6px 14px', fontSize: 12, color: 'var(--danger-600, #b3261e)' }}>{error}</div>
+                    <div className="py-[6px] px-[14px] text-[12px] text-[var(--danger-600,_#b3261e)]">{error}</div>
                   )}
                 </div>
               )}
             </span>
-            <div style={{ flex: 1 }} />
+            <div className="flex-1" />
             {/* Mic / voice input intentionally hidden — voice flow isn't
                 wired through anton yet. We keep speechSupported state
                 around so we can reinstate later by re-rendering the
@@ -1154,6 +1145,13 @@ export default function Composer({
                 title="Stop generation"
                 aria-label="Stop generation"
                 style={{
+                  // cascade-forced: .send-btn sets background/color/border/
+                  // box-shadow at rest AND background on :hover — a same-
+                  // property Tailwind utility (or hover: variant) would lose
+                  // to it (loads after Tailwind), so this whole block
+                  // (incl. the JS hover handlers below) stays inline rather
+                  // than becoming hover: classes.
+                  //
                   // Theme-aware "stop" treatment — uses the danger token
                   // on a soft tinted surface, with an outline that
                   // intensifies on hover. Matches the chat header
@@ -1215,7 +1213,7 @@ export default function Composer({
                   the ENTIRE composer rather than just above the pill.
                   An inline-block span hugs the pill's box exactly. */}
               <span
-                style={{ position: 'relative', display: 'inline-flex' }}
+                className="relative inline-flex"
               >
                 <button
                   ref={projectPillRef}
@@ -1225,42 +1223,34 @@ export default function Composer({
                 >
                   {Ico.folder(14)}
                   <span>{project ? project.name : 'Work in a project'}</span>
-                  <span style={{ display: 'inline-flex', color: 'var(--frost-500)' }}>{Ico.chevDown(13)}</span>
+                  <span className="inline-flex text-ink-4">{Ico.chevDown(13)}</span>
                 </button>
 
                 {openMenu === 'project' && !metaReadOnly && (
                   <div
                     ref={projectMenuRef}
-                    className="menu menu--drop-down"
+                    // Always drop downward from the pill. The earlier
+                    // flip-up was over-engineering: the chat-view composer
+                    // (which is glued to the viewport bottom) sets
+                    // `metaReadOnly` and hides this menu entirely, so by
+                    // construction every surface that opens the menu (home
+                    // view, projects view) has plenty of room below. The
+                    // menu's max-height + internal scroll caps it if the
+                    // viewport is unusually short.
+                    className="menu menu--drop-down left-0 top-[calc(100%_+_6px)] max-h-[min(60vh,360px)] flex flex-col overflow-hidden"
                     style={{
-                      // Always drop downward from the pill. The
-                      // earlier flip-up was over-engineering: the
-                      // chat-view composer (which is glued to the
-                      // viewport bottom) sets `metaReadOnly` and
-                      // hides this menu entirely, so by construction
-                      // every surface that opens the menu (home view,
-                      // projects view) has plenty of room below. The
-                      // menu's max-height + internal scroll caps it
-                      // if the viewport is unusually short.
-                      left: 0,
-                      top: 'calc(100% + 6px)',
+                      // cascade-forced: legacy .menu sets min-width:200px;
+                      // a same-property Tailwind utility would lose to it
+                      // (loads after Tailwind).
                       minWidth: 260,
-                      maxHeight: 'min(60vh, 360px)',
-                      display: 'flex', flexDirection: 'column',
-                      overflow: 'hidden',
                     }}
                     onClick={(e) => e.stopPropagation()}
                   >
                     {/* Search input — sticky header (first flex
                         child of a non-scrolling container). */}
-                    <div style={{ padding: '4px 6px 6px' }}>
-                      <div style={{
-                        display: 'flex', alignItems: 'center', gap: 6,
-                        background: 'var(--surface-2)',
-                        border: '1px solid var(--line)',
-                        borderRadius: 6, padding: '4px 8px',
-                      }}>
-                        <span style={{ display: 'inline-flex', color: 'var(--frost-600)' }}>{Ico.folder(13)}</span>
+                    <div className="pt-1 px-[6px] pb-[6px]">
+                      <div className="flex items-center gap-[6px] bg-surface-2 border border-solid border-line rounded-md py-1 px-2">
+                        <span className="inline-flex text-ink-3">{Ico.folder(13)}</span>
                         <input
                           ref={projectSearchRef}
                           type="text"
@@ -1285,29 +1275,17 @@ export default function Composer({
                               else setOpenMenu(null);
                             }
                           }}
-                          style={{
-                            flex: 1, minWidth: 0,
-                            background: 'transparent', border: 0, outline: 'none',
-                            color: 'var(--ink)', fontSize: 13,
-                          }}
+                          className="flex-1 min-w-0 bg-transparent border-0 outline-none text-ink text-[13px]"
                         />
                       </div>
                     </div>
 
                     {/* Filtered project list — only scrollable region. */}
                     <div
-                      className="project-menu-list"
-                      style={{
-                        flex: 1, minHeight: 0,
-                        overflowY: 'auto',
-                        padding: '2px 0',
-                      }}
+                      className="project-menu-list flex-1 min-h-0 overflow-y-auto py-0.5 px-0"
                     >
                       {_filteredProjects.length === 0 ? (
-                        <div style={{
-                          padding: '10px 12px', fontSize: 12,
-                          color: 'var(--frost-600)',
-                        }}>
+                        <div className="py-[10px] px-3 text-[12px] text-ink-3">
                           {_projectSearchTrimmed
                             ? `No project matches “${_projectSearchTrimmed}”.`
                             : 'No projects yet.'}
@@ -1318,9 +1296,9 @@ export default function Composer({
                           className={`menu-item${project?.name === p.name ? ' checked' : ''}`}
                           onClick={() => { onProjectChange(p); setOpenMenu(null); }}
                         >
-                          <span style={{ display: 'inline-flex', color: 'var(--frost-700)' }}>{Ico.folder(14)}</span>
-                          <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
-                          {project?.name === p.name && <span style={{ color: 'var(--primary-700)' }}>{Ico.check(14)}</span>}
+                          <span className="inline-flex text-ink-2">{Ico.folder(14)}</span>
+                          <span className="flex-1 truncate">{p.name}</span>
+                          {project?.name === p.name && <span className="text-[var(--primary-700)]">{Ico.check(14)}</span>}
                         </button>
                       ))}
                     </div>
@@ -1341,7 +1319,7 @@ export default function Composer({
                     */}
                     {onCreateProject && !_projectExactMatch && (
                       <>
-                        <div style={{ height: 1, background: 'var(--border-0)', margin: '2px 0' }} />
+                        <div className="h-px bg-line my-0.5" />
                         <button
                           className="menu-item"
                           disabled={projectMenuBusy}
@@ -1353,14 +1331,17 @@ export default function Composer({
                               setNewProjectOpen(true);
                             }
                           }}
+                          // cascade-forced: legacy .menu-item sets color at
+                          // rest; a same-property Tailwind utility would
+                          // lose to it (loads after Tailwind).
                           style={{ color: 'var(--primary-700)' }}
                         >
-                          <span style={{ display: 'inline-flex', color: 'var(--primary-700)' }}>{Ico.plus(14)}</span>
-                          <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          <span className="inline-flex text-[var(--primary-700)]">{Ico.plus(14)}</span>
+                          <span className="flex-1 truncate">
                             {projectMenuBusy
                               ? 'Creating…'
                               : (_canCreateFromSearch
-                                  ? <>Create <strong style={{ fontWeight: 600 }}>“{_projectSearchTrimmed}”</strong></>
+                                  ? <>Create <strong className="font-semibold">“{_projectSearchTrimmed}”</strong></>
                                   : 'New project')}
                           </span>
                         </button>
@@ -1368,11 +1349,7 @@ export default function Composer({
                     )}
 
                     {projectMenuError && (
-                      <div style={{
-                        padding: '6px 10px', fontSize: 11.5,
-                        color: 'var(--danger)',
-                        borderTop: '1px solid var(--border-0)',
-                      }}>
+                      <div className="py-[6px] px-[10px] text-[11.5px] text-danger border-t border-x-0 border-b-0 border-solid border-line">
                         {projectMenuError}
                       </div>
                     )}
@@ -1390,7 +1367,7 @@ export default function Composer({
                   title="Choose model"
                 >
                   <span>{model?.name ?? 'Select model'}</span>
-                  <span style={{ display: 'inline-flex', color: 'var(--frost-500)' }}>{Ico.chevDown(13)}</span>
+                  <span className="inline-flex text-ink-4">{Ico.chevDown(13)}</span>
                 </button>
               )}
             </>
@@ -1398,8 +1375,10 @@ export default function Composer({
         </div>
       )}
 
+      {/* cascade-forced: legacy .menu sets min-width:200px; a same-property
+          Tailwind utility would lose to it (loads after Tailwind). */}
       {openMenu === 'model' && !metaReadOnly && (
-        <div className="menu" style={{ right: 8, top: 'calc(100% + 6px)', minWidth: 260 }}>
+        <div className="menu right-2 top-[calc(100%_+_6px)]" style={{ minWidth: 260 }}>
           {/* One unnamed section is the flat case (no metadata, or ChatView's
               single-item list): keep the "Model" heading this menu has always
               shown rather than repeating a section name per row. */}

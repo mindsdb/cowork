@@ -49,6 +49,10 @@ jobs:
 
       - name: Validate Windows signing report before upload
         if: inputs.platform == 'windows'
+        env:
+          # Public Authenticode publisher CN of our installers (SSL.com EV cert).
+          # Override via repo variable if the cert's subject ever changes.
+          EXPECTED_PUBLISHER_CN: ${{ vars.WINDOWS_PUBLISHER_CN }}
         run: |
           set -euo pipefail
           REPORT_JSON="out/signing-report/installer-signature-report.json"
@@ -73,7 +77,16 @@ jobs:
               console.error(`::error::Invalid signature status: ${r.status} (${r.statusMessage || ""})`);
               process.exit(1);
             }
-            console.log(`Windows signing report OK: ${r.file} sha256=${r.sha256}`);
+            // Pin WHO signed it: a Valid signature from the wrong cert must not
+            // publish. Match the CN token (comma-quoting varies by host).
+            const expected = (process.env.EXPECTED_PUBLISHER_CN || "Mindsdb, Inc.").trim();
+            const token = expected.split(",")[0].trim();
+            const esc = token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            if (!new RegExp("CN=\\s*\"?" + esc, "i").test(r.signerSubject)) {
+              console.error(`::error::signer CN does not match expected publisher "${token}": ${r.signerSubject}`);
+              process.exit(1);
+            }
+            console.log(`Windows signing report OK: ${r.file} signer=${r.signerSubject} sha256=${r.sha256}`);
           ' "$REPORT_JSON"
 
       - name: Upload to S3
@@ -181,3 +194,114 @@ jobs:
           for KEY in "${UPLOADED_KEYS[@]}"; do
             echo "- ${CDN_BASE}/${KEY}" >> "$GITHUB_STEP_SUMMARY"
           done
+
+      # electron-updater reads one mutable channel manifest that references an
+      # immutable signed payload. Publish payload/blockmap first and latest*.yml
+      # last so clients can never observe metadata for bytes that do not exist.
+      - name: Publish shell updater feed
+        if: inputs.build_kind == 'prod' || inputs.build_kind == 'stable'
+        env:
+          PLATFORM: ${{ inputs.platform }}
+          KIND: ${{ inputs.build_kind }}
+          NAME: ${{ inputs.artifact_name }}
+        run: |
+          set -euo pipefail
+          BUCKET="anton-installer"
+          PREFIX="mindshub-cowork/updates/${KIND}/${PLATFORM}"
+          CDN_BASE="https://downloads.mindshub.ai"
+
+          case "$PLATFORM" in
+            mac)
+              PAYLOAD=$(find out/updater -maxdepth 1 -type f -name '*.zip' -print -quit)
+              METADATA="out/updater/latest-mac.yml"
+              ;;
+            windows)
+              PAYLOAD="out/${NAME}"
+              METADATA="out/updater/latest.yml"
+              ;;
+            *)
+              echo "::error::Unknown updater platform: $PLATFORM"
+              exit 1
+              ;;
+          esac
+
+          test -n "$PAYLOAD"
+          test -f "$PAYLOAD"
+          test -f "$METADATA"
+          PAYLOAD_NAME=$(basename "$PAYLOAD")
+          PAYLOAD_KEY="${PREFIX}/${PAYLOAD_NAME}"
+
+          # Immutable means immutable: never overwrite an existing key. A signed
+          # payload's bytes differ on every re-run (signature timestamp), so
+          # overwriting would let CloudFront keep serving the old cached bytes
+          # under a URL whose fresh latest.yml now names a new hash — bricking
+          # verification until the CDN TTL expires. Create-only: if the key
+          # already holds identical bytes, skip; if it holds DIFFERENT bytes,
+          # fail loudly (bump the version instead of re-publishing).
+          upload_immutable() {
+            local src="$1" key="$2"
+            local expected actual tmp
+            expected=$(sha256sum "$src" | awk '{print $1}')
+            if aws s3api head-object --bucket "$BUCKET" --key "$key" >/dev/null 2>&1; then
+              tmp=$(mktemp)
+              aws s3 cp "s3://${BUCKET}/${key}" "$tmp" >/dev/null
+              actual=$(sha256sum "$tmp" | awk '{print $1}')
+              rm -f "$tmp"
+              if [ "$expected" != "$actual" ]; then
+                echo "::error::Refusing to overwrite immutable key ${key}: existing bytes differ (existing=${actual} new=${expected}). Bump the version instead of re-publishing."
+                exit 1
+              fi
+              echo "Immutable key ${key} already present and byte-identical — skipping re-upload."
+              return 0
+            fi
+            aws s3 cp "$src" "s3://${BUCKET}/${key}" \
+              --cache-control "public,max-age=31536000,immutable"
+            tmp=$(mktemp)
+            aws s3 cp "s3://${BUCKET}/${key}" "$tmp" >/dev/null
+            actual=$(sha256sum "$tmp" | awk '{print $1}')
+            rm -f "$tmp"
+            test "$expected" = "$actual"
+          }
+
+          # 1. Immutable signed payload.
+          upload_immutable "$PAYLOAD" "$PAYLOAD_KEY"
+
+          # 2. Optional differential-download blockmap, generated from the
+          # final payload bytes (post-sign on Windows).
+          BLOCKMAP="${PAYLOAD}.blockmap"
+          if [ ! -f "$BLOCKMAP" ]; then
+            BLOCKMAP="out/updater/${PAYLOAD_NAME}.blockmap"
+          fi
+          if [ -f "$BLOCKMAP" ]; then
+            upload_immutable "$BLOCKMAP" "${PREFIX}/$(basename "$BLOCKMAP")"
+          fi
+
+          # 3. Mutable channel pointer, always last.
+          METADATA_NAME=$(basename "$METADATA")
+          aws s3 cp "$METADATA" "s3://${BUCKET}/${PREFIX}/${METADATA_NAME}" \
+            --cache-control "no-cache,no-store,must-revalidate"
+
+          # Verify the public CDN serves the exact payload BYTES, not just an
+          # HTTP 200 — a stale CloudFront object under an immutable key would
+          # pass a status check but fail client sha512 verification.
+          PAYLOAD_SHA=$(sha256sum "$PAYLOAD" | awk '{print $1}')
+          CDN_TMP=$(mktemp)
+          curl -fsSL --retry 5 --retry-delay 2 \
+            "${CDN_BASE}/${PAYLOAD_KEY}" -o "$CDN_TMP"
+          CDN_SHA=$(sha256sum "$CDN_TMP" | awk '{print $1}')
+          rm -f "$CDN_TMP"
+          if [ "$CDN_SHA" != "$PAYLOAD_SHA" ]; then
+            echo "::error::CDN payload hash mismatch for ${PAYLOAD_KEY} (cdn=${CDN_SHA} local=${PAYLOAD_SHA}). CloudFront may be serving a stale object; invalidate the path."
+            exit 1
+          fi
+          # A query suffix avoids accepting an older cached channel manifest.
+          curl -fsSL --retry 5 --retry-delay 2 \
+            "${CDN_BASE}/${PREFIX}/${METADATA_NAME}?run=${GITHUB_RUN_ID}" -o /dev/null
+
+          {
+            echo ""
+            echo "### Shell updater feed"
+            echo ""
+            echo "- Payload: ${CDN_BASE}/${PAYLOAD_KEY}"
+            echo "- Metadata: ${CDN_BASE}/${PREFIX}/${METADATA_NAME}"
+          } >> "$GITHUB_STEP_SUMMARY"

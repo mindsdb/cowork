@@ -27,3 +27,6 @@ src/main/app-version.gen.txt
 # (build-macos-pkg.yml / build-windows-installer.yml) alongside the checked-in
 # postinstall script. Never meant to be committed.
 build/pkg-scripts/server-credentials.json
+
+src/main/updater-version.gen.txt
+build/app-update.yml

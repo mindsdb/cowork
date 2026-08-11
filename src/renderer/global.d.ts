@@ -22,6 +22,11 @@ interface AntonTronAPI {
   applyUpdate: () => Promise<boolean>;
   onUpdateStatus: (cb: (status: { phase: string; version?: string; currentVersion?: string; downloadUrl?: string }) => void) => () => void;
   getShellUpdate: () => Promise<{ available: boolean; currentVersion?: string; latestVersion?: string; downloadUrl?: string | null }>;
+  getShellAutoUpdate: () => Promise<ShellAutoUpdateSnapshot>;
+  checkShellAutoUpdate: () => Promise<ShellAutoUpdateSnapshot>;
+  downloadShellAutoUpdate: () => Promise<ShellAutoUpdateSnapshot>;
+  installShellAutoUpdate: () => Promise<boolean>;
+  onShellAutoUpdate: (cb: (snapshot: ShellAutoUpdateSnapshot) => void) => () => void;
 
   getPlatform: () => string;
   getUIVersion: () => Promise<{ app: string; ui: string | null; source: 'ota' | 'bundled' }>;
@@ -91,6 +96,20 @@ interface AntonTronAPI {
   getKeychainPref: () => Promise<{ enabled: boolean }>;
   setKeychainPref: (enabled: boolean) => Promise<{ ok: boolean }>;
   getPathForFile: (file: File) => string;
+}
+
+interface ShellAutoUpdateSnapshot {
+  phase: 'disabled' | 'idle' | 'checking' | 'available' | 'downloading' |
+    'ready-to-install' | 'installing' | 'complete' | 'failed';
+  mode: 'auto' | 'manual';
+  channel: 'prod' | 'stable' | 'preview';
+  currentVersion: string;
+  targetVersion?: string;
+  progress?: { transferred: number; total: number; percent: number; bytesPerSecond?: number };
+  recoverable?: boolean;
+  errorCode?: string;
+  errorMessage?: string;
+  disabledReason?: string;
 }
 
 declare global {

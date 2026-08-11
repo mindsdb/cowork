@@ -21,24 +21,16 @@ export function Section({ title, subtitle, notice, children }) {
   const kids = Children.toArray(children);
   const compact = kids.length === 1 && (kids[0]?.type === Switch || kids[0]?.type === ToggleGroup);
   return (
-    <div className={`settings-section${compact ? ' settings-section--inline' : ''}`} style={{
-      display: 'grid', gridTemplateColumns: '1fr 320px', gap: 0,
-      padding: '16px 0',
-      alignItems: 'flex-start',
-    }}>
+    <div className={`settings-section${compact ? ' settings-section--inline' : ''} grid grid-cols-[1fr_320px] gap-0 py-4 items-start`}>
       {/* On mobile the grid collapses to one column (see the settings media
-          query), so the inter-column gutters (paddingRight/Left: 24) would
-          just indent the stacked label + control for no reason — drop them. */}
-      <div style={{ paddingRight: mobile ? 0 : 24 }}>
-        <h3 style={{
-          margin: 0, padding: 0,
-          fontSize: 14, fontWeight: 600, color: 'var(--text-strong)',
-          fontFamily: 'inherit', lineHeight: 1.3,
-        }}>{title}</h3>
-        {subtitle && <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginTop: 4 }}>{subtitle}</div>}
-        {notice && <div style={{ marginTop: 8 }}>{notice}</div>}
+          query), so the inter-column gutters (pr-6/pl-6) would just indent
+          the stacked label + control for no reason — drop them. */}
+      <div className={mobile ? undefined : 'pr-6'}>
+        <h3 className="m-0 p-0 text-base font-semibold text-ink leading-[1.3]">{title}</h3>
+        {subtitle && <div className="text-sm text-ink-3 mt-1">{subtitle}</div>}
+        {notice && <div className="mt-2">{notice}</div>}
       </div>
-      <div style={{ paddingLeft: mobile ? 0 : 24 }}>{children}</div>
+      <div className={mobile ? undefined : 'pl-6'}>{children}</div>
     </div>
   );
 }
@@ -55,26 +47,20 @@ export function SettingsSectionPanel({ children, footer, autoSaved = false }) {
     // of buried at the end), or a quiet "saves automatically" note when it
     // doesn't — so an auto-save section (Appearance) doesn't read as "no way
     // to save" next to sections with a Save button (ENG-990 QA).
-    const barStyle = {
-      position: 'sticky',
-      bottom: 0,
-      zIndex: 1,
-      display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
-      // Bleed past the .settings-detail 14px gutter to the screen edges.
-      margin: '16px -14px 0',
-      padding: '12px 14px calc(12px + env(safe-area-inset-bottom, 0))',
-      borderTop: '1px solid var(--border-subtle)',
-      // Opaque so scrolling content is masked behind the bar.
-      background: 'var(--bg)',
-    };
+    // Bleed past the .settings-detail 14px gutter to the screen edges;
+    // opaque bg so scrolling content is masked behind the bar.
+    const barClass =
+      'sticky bottom-0 z-[1] flex items-center flex-wrap ' +
+      'mt-4 mx-[-14px] mb-0 pt-3 px-[14px] pb-[calc(12px+env(safe-area-inset-bottom,0px))] ' +
+      'border-t border-x-0 border-b-0 border-solid border-line bg-bg';
     return (
-      <div style={{ display: 'flex', flexDirection: 'column' }}>
+      <div className="flex flex-col">
         <div>{children}</div>
         {footer ? (
-          <div style={{ ...barStyle, gap: 10 }}>{footer}</div>
+          <div className={`${barClass} gap-2.5`}>{footer}</div>
         ) : autoSaved ? (
-          <div style={{ ...barStyle, color: 'var(--text-muted)', fontSize: 12.5 }}>
-            <span aria-hidden="true" style={{ display: 'inline-flex', color: 'var(--ok)' }}>
+          <div className={`${barClass} gap-2 text-ink-3 text-sm`}>
+            <span aria-hidden="true" className="inline-flex text-[var(--ok)]">
               {Ico.check ? Ico.check(13) : '✓'}
             </span>
             <span>Changes are saved automatically.</span>
@@ -84,23 +70,12 @@ export function SettingsSectionPanel({ children, footer, autoSaved = false }) {
     );
   }
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
-      <div
-        className="scroll-clean settings-scroll"
-        style={{ flex: 1, overflowY: 'auto', padding: '24px 28px' }}
-      >
-        <div style={{ maxWidth: 820 }}>{children}</div>
+    <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+      <div className="scroll-clean settings-scroll flex-1 overflow-y-auto py-6 px-7">
+        <div className="max-w-[820px]">{children}</div>
       </div>
       {footer && (
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 10,
-          padding: '12px 22px',
-          background: 'var(--surface-glass)',
-          WebkitBackdropFilter: 'blur(var(--surface-glass-blur))',
-          backdropFilter: 'blur(var(--surface-glass-blur))',
-          borderTop: '1px solid var(--border-subtle)',
-          flexShrink: 0,
-        }}>
+        <div className="flex items-center gap-2.5 py-3 px-[22px] bg-[var(--surface-glass)] backdrop-blur-[var(--surface-glass-blur)] border-t border-x-0 border-b-0 border-solid border-line shrink-0">
           {footer}
         </div>
       )}
