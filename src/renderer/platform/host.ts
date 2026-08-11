@@ -288,21 +288,23 @@ async function fetchJson(path: string, init?: RequestInit): Promise<any> {
   return res.json();
 }
 
+// A hosted browser can never use `/settings/raw`: it's restricted to loopback
+// (403) and refused outright in org mode (501). Both are expected, and the DB is
+// the authoritative store, so reads/writes degrade instead of aborting boot.
+// Any other status is a real error and must propagate.
+function isExpectedRawGateStatus(e: unknown): boolean {
+  const status = (e as { status?: number }).status;
+  return status === 403 || status === 501;
+}
+
 export async function readSettings(): Promise<Record<string, string>> {
   if (isElectron && typeof bridge.readSettings === 'function') {
     return bridge.readSettings();
   }
-  // Web: /settings/raw returns unmasked secrets and is loopback-gated
-  // (ENG-457). In the console-hosted deployment the browser's request reaches
-  // cowork-server from the docker bridge, not loopback, so the gate returns
-  // 403 (ENG-817). The DB is authoritative, so for THAT expected 403 we degrade
-  // to empty rather than aborting boot/onboarding. Any other failure (network,
-  // 4xx/5xx, malformed) is a real error and must propagate. (Electron reads via
-  // the IPC bridge above, unaffected.)
   try {
     return await fetchJson('/api/v1/settings/raw');
   } catch (e) {
-    if ((e as { status?: number }).status === 403) return {};
+    if (isExpectedRawGateStatus(e)) return {};
     throw e;
   }
 }
@@ -311,16 +313,12 @@ export async function saveSettings(content: string): Promise<boolean> {
   if (isElectron && typeof bridge.saveSettings === 'function') {
     return bridge.saveSettings(content);
   }
-  // Web: the .env write (/settings/raw) is loopback-gated (ENG-457/ENG-817), so
-  // the expected 403 from the gate is best-effort — return false for it instead
-  // of aborting (the DB write via PUT /settings/:key is the authoritative store).
-  // Any OTHER failure (network, 4xx/5xx) is a real persistence error and must
-  // propagate, so onboarding can't report success over a failed write.
+  // `false` means "not persisted to the dotenv", not "onboarding failed".
   try {
     await fetchJson('/api/v1/settings/raw', { method: 'POST', body: JSON.stringify({ content }) });
     return true;
   } catch (e) {
-    if ((e as { status?: number }).status === 403) return false;
+    if (isExpectedRawGateStatus(e)) return false;
     throw e;
   }
 }
