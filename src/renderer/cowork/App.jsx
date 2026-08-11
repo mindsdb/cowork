@@ -38,7 +38,7 @@ import { loadSkin, persistSkin, nextSkin, skinLabel } from '../lib/skins';
 import { loadCustomTheme, persistCustomTheme, applyCustomTheme } from '../lib/customTheme';
 import { applyNavTitleColor } from '../lib/navBranding';
 import { getAgentLabel } from './lib/agentLabel';
-import { selectNextQueuedTask } from './lib/messageQueue';
+import { selectNextQueuedTask, mergeQueuesForAdoptedId } from './lib/messageQueue';
 import { loadCachedSettings } from './lib/settingsCache';
 import { clearDraft, moveDraft } from './lib/draftStore';
 import { useBreakpoint } from './hooks/useBreakpoint';
@@ -1000,6 +1000,13 @@ function AppCore() {
   const [messageQueue, setMessageQueue] = useState({}); // { [taskId]: [{id, text, attachments}] }
   const messageQueueRef = useRef({});
   useEffect(() => { messageQueueRef.current = messageQueue; }, [messageQueue]);
+  // `reconnectInFlight` is a mount-frozen useCallback (all its deps are
+  // stable), so it cannot close over the render-fresh `drainNextQueuedMessage`
+  // without also capturing a stale `handleSendInTask` (and its stale
+  // `projects`/`health` fallbacks). It reads the latest drain through this ref
+  // instead — assigned right after the drain is defined and read only from
+  // async completion callbacks, never during render.
+  const drainNextQueuedMessageRef = useRef(null);
 
   // Live steps per task, so handleSendInTask can see a pending question
   // without threading stream state through the composer.
@@ -1166,15 +1173,7 @@ function AppCore() {
   // The drain finds a task by its queue key, so a queue left under a stale
   // id would never re-match the task (ENG-1378).
   const migrateQueuedMessages = (fromIds, toId) => {
-    setMessageQueue((prev) => {
-      const keys = [...new Set(fromIds.filter(Boolean))].filter((k) => k !== toId);
-      const pending = keys.flatMap((k) => prev[k] || []);
-      if (pending.length === 0) return prev;
-      const nextQ = { ...prev };
-      keys.forEach((k) => delete nextQ[k]);
-      nextQ[toId] = [...(nextQ[toId] || []), ...pending];
-      return nextQ;
-    });
+    setMessageQueue((prev) => mergeQueuesForAdoptedId(prev, fromIds, toId));
   };
 
   const clearQueueForTask = (taskId) => {
@@ -2324,6 +2323,11 @@ function AppCore() {
           openStreamedForm(taskId, finalContent);
         }
         fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
+        // A reconnect tail also holds the shared stream slot, so a message
+        // queued against any task while it ran must be drained here too —
+        // otherwise it strands at "N queued · waiting for Anton" (ENG-1378).
+        // Via the ref because this closure is mount-frozen (see its decl).
+        drainNextQueuedMessageRef.current?.(taskId);
       },
       onError(message, event) {
         // Order matters twice over. The generation guard comes first: a
@@ -2334,7 +2338,11 @@ function AppCore() {
         if (streamGen !== activeStreamGenerationRef.current) return;
         releaseLiveSteps([taskId]);
         if (event?.code === 'cancelled') return;
-        void handleStreamError([taskId], taskId, message, event);
+        void (async () => {
+          await handleStreamError([taskId], taskId, message, event);
+          // See onDone — the reconnect slot frees here, so drain too.
+          drainNextQueuedMessageRef.current?.(taskId);
+        })();
       },
     });
     return true;
@@ -3689,6 +3697,9 @@ function AppCore() {
       disabledConnections: next.disabledConnections,
     }));
   };
+  // Keep the mount-frozen reconnect closure pointed at the current drain (and
+  // thus the current handleSendInTask). See the ref declaration above.
+  drainNextQueuedMessageRef.current = drainNextQueuedMessage;
 
   // Submit a data-vault form. Drives a fresh assistant turn from the
   // cowork agent endpoint instead of the LLM — same SSE stream shape,
