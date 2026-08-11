@@ -25,6 +25,15 @@ export const IPC = {
   // renderer and drops that push, so the renderer re-pulls this on mount.
   UI_SHELL_UPDATE_GET: 'ui:shell-update-get',
 
+  // Shell auto-update lifecycle (ENG-850). Separate from the legacy
+  // UI_UPDATE_STATUS channel so renderer reloads can pull one authoritative
+  // snapshot rather than reconstructing state from transient phase strings.
+  SHELL_UPDATE_GET: 'shell:update-get',
+  SHELL_UPDATE_CHECK: 'shell:update-check',
+  SHELL_UPDATE_DOWNLOAD: 'shell:update-download',
+  SHELL_UPDATE_INSTALL: 'shell:update-install',
+  SHELL_UPDATE_STATUS: 'shell:update-status',
+
   // Server
   SERVER_RESTART: 'server:restart',
   SERVER_UPDATE_STATUS: 'server:update-status',

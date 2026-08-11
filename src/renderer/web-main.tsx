@@ -5,12 +5,21 @@
 // via FastAPI in web and via window.antontron in Electron. Setup auto-completes
 // on web (the FastAPI host running this code IS the install).
 //
-// Auth: every web instance requires a Keycloak login (onLoad 'login-required'),
-// same as the MindsHub console (mindshub_frontend). An unauthenticated visitor
-// is redirected to Keycloak before <App /> mounts; the resulting token rides as
-// `Authorization: Bearer` on every /api call (see host.ts / cowork/api.js),
-// which the ingress auth subrequest validates. There is no separate "cloud"
-// bypass: the old Cloudflare-Worker standalone path is retired.
+// Auth: canonical web instances require a Keycloak login (onLoad
+// 'login-required'), same as the MindsHub console (mindshub_frontend). An
+// unauthenticated visitor is redirected to Keycloak before <App /> mounts; the
+// resulting token rides as `Authorization: Bearer` on every /api call (see
+// host.ts / cowork/api.js), which the ingress auth subrequest validates.
+//
+// TRANSITION EXCEPTION — legacy per-user hosts (cw-<id>.<env>.mindshub.ai):
+// these predate the k8s multitenant deployment and are gated upstream (Worker /
+// ingress) rather than by the SPA's own Keycloak login. They were never
+// registered as Keycloak redirect URIs, and Keycloak (26.5) cannot
+// subdomain-wildcard a dynamic per-user host, so the onLoad:'login-required'
+// that #473 applied to ALL hosts (when it retired the isCloudHosted bypass)
+// breaks them with "Invalid parameter: redirect_uri". Skip the Keycloak wrapper
+// on cw-<id> hosts — restoring their pre-#473 behaviour — until they are
+// migrated onto cowork.<env>.mindshub.ai, at which point delete this branch.
 //
 // Same as main.tsx:
 //   - First-paint theme bootstrap (avoids palette flash).
@@ -25,6 +34,7 @@ import './cowork/styles/skin-8bit.css';
 import './styles.css';
 import App from './App';
 import { keycloak } from './lib/keycloak';
+import { isLegacyTenantHost } from './lib/legacyHost';
 import { loadSkin } from './lib/skins';
 
 (() => {
@@ -42,12 +52,21 @@ import { loadSkin } from './lib/skins';
 const cleanRedirectUri = `${window.location.protocol}//${window.location.host}${window.location.pathname}`;
 const initOptions = { onLoad: 'login-required' as const, pkceMethod: 'S256', checkLoginIframe: false, redirectUri: cleanRedirectUri };
 
+// Legacy per-user host (cw-<id>): canonical `cowork.*` and localhost dev are
+// unaffected — see the TRANSITION EXCEPTION note above and lib/legacyHost.ts.
+const legacyTenant = isLegacyTenantHost(window.location.hostname);
+
 const root = document.getElementById('root')!;
 
 createRoot(root).render(
   <StrictMode>
-    <ReactKeycloakProvider authClient={keycloak} initOptions={initOptions}>
+    {legacyTenant ? (
+      // Access is gated upstream; render directly without a Keycloak login.
       <App />
-    </ReactKeycloakProvider>
+    ) : (
+      <ReactKeycloakProvider authClient={keycloak} initOptions={initOptions}>
+        <App />
+      </ReactKeycloakProvider>
+    )}
   </StrictMode>
 );

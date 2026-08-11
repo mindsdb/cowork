@@ -25,8 +25,8 @@ function NavItem({ icon, label, active, onClick, badge, comingSoon, elementRef }
       data-coming-soon={comingSoon ? '' : undefined}
       style={comingSoon ? { opacity: 0.55, cursor: 'default' } : undefined}
     >
-      <span className="nav-row__icon" style={{ display: 'inline-flex', flexShrink: 0, alignItems: 'center' }}>{icon}</span>
-      <span className="nav-row__label" style={{ flex: 1 }}>{label}</span>
+      <span className="nav-row__icon inline-flex shrink-0 items-center">{icon}</span>
+      <span className="nav-row__label flex-1">{label}</span>
       {badge != null && (
         <Badge variant="muted" size="xs">{badge}</Badge>
       )}
@@ -80,7 +80,7 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
   // or not — no jumping when moving between rows.
   return (
     <div
-      style={{ position: 'relative', display: 'flex' }}
+      className="relative flex"
       {...hoverProps}
     >
       {editing ? (
@@ -105,14 +105,11 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
           spellCheck={false}
           autoCapitalize="none"
           autoCorrect="off"
-          style={{ flex: 1, minWidth: 0 }}
+          className="flex-1 min-w-0"
         />
       ) : (
-      <button className={`recent-item${selected ? ' is-selected' : ''}`} onClick={onClick} aria-label={task.title} style={{ flex: 1, minWidth: 0 }}>
-        <span className="recent-row__title" style={{
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          flex: 1, paddingRight: 8,
-        }}>
+      <button className={`recent-item${selected ? ' is-selected' : ''} flex-1 min-w-0`} onClick={onClick} aria-label={task.title}>
+        <span className="recent-row__title overflow-hidden text-ellipsis whitespace-nowrap flex-1 pr-2">
           {task.title || 'Untitled'}
           {/* Schedule-group entries — append a muted "· N runs"
               suffix so the title still reads clean while the count
@@ -122,13 +119,8 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
           {task._scheduleGroup && (() => {
             const n = task._scheduleGroup.runs;
             return (
-              <span style={{
-                color: 'var(--ink-4)',
-                fontWeight: 400,
-                marginLeft: 6,
-                whiteSpace: 'nowrap',
-              }}>
-                <span style={{ color: 'var(--ink-5)', marginRight: 4 }}>·</span>
+              <span className="text-ink-4 font-normal ml-1.5 whitespace-nowrap">
+                <span className="text-ink-5 mr-1">·</span>
                 {n} {n === 1 ? 'run' : 'runs'}
               </span>
             );
@@ -136,33 +128,16 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
         </span>
 
         {/* Right-side fixed slot — 22px wide, holds timestamp OR kebab */}
-        <span style={{
-          position: 'relative',
-          width: 50, height: 18,
-          flexShrink: 0,
-          display: 'inline-flex',
-          alignItems: 'center', justifyContent: 'flex-end',
-        }}>
-          <span style={{
-            position: 'absolute', inset: 0,
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end',
-            fontFamily: 'var(--font-sans)', fontSize: 11,
-            color: 'var(--ink-4)',
-            opacity: (showKebab || (!showTimestamp && !isActive)) ? 0 : 1,
-            transition: 'opacity 120ms ease',
-            gap: 6,
-          }}>
+        <span className="relative w-[50px] h-[18px] shrink-0 inline-flex items-center justify-end">
+          <span
+            className="absolute inset-0 inline-flex items-center justify-end font-[family-name:var(--font-sans)] text-xs text-ink-4 gap-1.5 [transition:opacity_120ms_ease]"
+            style={{ opacity: (showKebab || (!showTimestamp && !isActive)) ? 0 : 1 }}
+          >
             {isActive ? (
               <span
-                className="pulse-dot"
+                className="pulse-dot inline-block w-[7px] h-[7px] rounded-full bg-accent shadow-[0_0_0_2px_color-mix(in_srgb,var(--sage-500)_18%,transparent)]"
                 title={`${agentLabel || 'Anton'} is working on this task`}
                 aria-label="Active"
-                style={{
-                  display: 'inline-block',
-                  width: 7, height: 7, borderRadius: '50%',
-                  background: 'var(--accent, #5d9287)',
-                  boxShadow: '0 0 0 2px rgba(93,146,135,0.18)',
-                }}
               />
             ) : (
               showTimestamp ? (relativeAge(task.updatedAt || task.subtitle) || task.subtitle || '') : ''
@@ -173,20 +148,8 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
             role="button"
             aria-label="Task menu"
             onClick={openMenu}
-            style={{
-              position: 'absolute', right: 0, top: '50%',
-              transform: 'translateY(-50%)',
-              display: 'inline-flex',
-              width: 22, height: 22,
-              alignItems: 'center', justifyContent: 'center',
-              color: 'var(--ink-3)', borderRadius: 5,
-              cursor: 'pointer',
-              opacity: showKebab ? 1 : 0,
-              pointerEvents: showKebab ? 'auto' : 'none',
-              transition: 'opacity 120ms ease, background 120ms ease, color 120ms ease',
-            }}
-            onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink)'; }}
-            onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-3)'; }}
+            className="absolute right-0 top-1/2 -translate-y-1/2 inline-flex w-[22px] h-[22px] items-center justify-center text-ink-3 rounded-[5px] cursor-pointer hover:bg-surface-2 hover:text-ink [transition:opacity_120ms_ease,background_120ms_ease,color_120ms_ease]"
+            style={{ opacity: showKebab ? 1 : 0, pointerEvents: showKebab ? 'auto' : 'none' }}
           >
             {Ico.moreVert(13)}
           </span>
@@ -254,6 +217,8 @@ export default function Sidebar({
   onApplyUpdate,
   // Download-only shell update notice.
   shellUpdate = null,
+  shellAutoUpdate = null,
+  onShellAutoUpdateAction,
   onDownloadShellUpdate,
   onDismissShellUpdate,
   agentLabel,
@@ -433,15 +398,11 @@ export default function Sidebar({
 
   return (
     <aside
-      className={`app-sidebar${collapsed ? ' collapsed' : ''}`}
+      className={`app-sidebar${collapsed ? ' collapsed' : ''} shrink-0 h-full bg-[var(--sidebar-bg,var(--surface))] border border-solid border-line rounded-[14px] shadow-sh-2 origin-left flex flex-col overflow-hidden will-change-[width,opacity,transform,filter] [transition:width_380ms_cubic-bezier(0.22,1,0.36,1),opacity_260ms_cubic-bezier(0.32,0.72,0,1),transform_420ms_cubic-bezier(0.22,1,0.36,1),filter_240ms_cubic-bezier(0.32,0.72,0,1)]`}
       style={{
-        flexShrink: 0, height: '100%',
-        background: 'var(--sidebar-bg, var(--surface))',
-        border: '1px solid var(--line)',
-        borderRadius: 14,
-        boxShadow: 'var(--sh-2)',
-        width: collapsed ? 0 : 'clamp(240px, 24vw, 320px)',
-        opacity: collapsed ? 0 : 1,
+        // Dynamic-only: everything else about this transition lives in the
+        // className above. These four properties are collapsed-state-driven
+        // and can't be static Tailwind classes.
         // Combine a gentle leftward translate with a slight scale so
         // the sidebar reads as "settling into place" rather than just
         // sliding. Origin pinned to the left edge so the scale grows
@@ -450,20 +411,13 @@ export default function Sidebar({
         // motion. Scale + filter values are subtle on purpose —
         // they're the difference between "this animated" and
         // "this animated nicely."
+        width: collapsed ? 0 : 'clamp(240px, 24vw, 320px)',
+        opacity: collapsed ? 0 : 1,
         transform: collapsed
           ? 'translateX(-12px) scale(0.985)'
           : 'translateX(0) scale(1)',
-        transformOrigin: 'left center',
         filter: collapsed ? 'blur(6px)' : 'blur(0)',
-        transition:
-          'width 380ms cubic-bezier(0.22, 1, 0.36, 1), ' +
-          'opacity 260ms cubic-bezier(0.32, 0.72, 0, 1), ' +
-          'transform 420ms cubic-bezier(0.22, 1, 0.36, 1), ' +
-          'filter 240ms cubic-bezier(0.32, 0.72, 0, 1)',
-        willChange: 'width, opacity, transform, filter',
         pointerEvents: collapsed ? 'none' : 'auto',
-        display: 'flex', flexDirection: 'column',
-        overflow: 'hidden',
       }}
     >
       {/* Top chrome row: traffic-light pad + collapse/search + ANTON wordmark.
@@ -471,21 +425,24 @@ export default function Sidebar({
           5px upward, so they line up with the macOS traffic lights at
           their new (x:18, y:22) position. */}
       <div
-        className="anton-sidebar__chrome drag-region"
-        style={{
-          // 88px left clears the macOS traffic lights in Electron.
-          // On web there are no traffic lights so 14px suffices.
-          padding: `9px 14px 8px ${host.isWeb ? 14 : 88}px`,
-          flexShrink: 0,
-        }}
+        className="anton-sidebar__chrome drag-region shrink-0"
+        // cascade-forced: overrides .anton-sidebar__chrome's default
+        // `padding: 14px 14px 8px` — also dynamic (host.isWeb picks the
+        // left inset that clears the macOS traffic lights in Electron).
+        style={{ padding: `9px 14px 8px ${host.isWeb ? 14 : 88}px` }}
       >
         {/* Right-aligned cluster: collapse + search icons, then a
             middle-dot separator, then the ANTON wordmark. The chrome's
             existing `justify-content: space-between` pushes the whole
             cluster against the right edge (the left half is empty space
             past the traffic-light pad). */}
-        <div style={{ flex: 1 }} />
-        <div className="anton-sidebar__chrome-left" style={{ marginLeft: 'auto', gap: 4 }}>
+        <div className="flex-1" />
+        <div
+          className="anton-sidebar__chrome-left ml-auto"
+          // cascade-forced: overrides .anton-sidebar__chrome-left's default
+          // `gap: 14px` with a tighter 4px for this cluster.
+          style={{ gap: 4 }}
+        >
           <div className="anton-sidebar__chrome-buttons">
             {/* Collapse button — always mounted so the search icon
                 next to it never shifts when the host route changes
@@ -500,7 +457,7 @@ export default function Sidebar({
               const canToggle = typeof onToggleCollapsed === 'function';
               return (
                 <button
-                  className="icon-btn"
+                  className="icon-btn [-webkit-app-region:no-drag] origin-center"
                   onClick={canToggle ? onToggleCollapsed : undefined}
                   disabled={!canToggle}
                   aria-hidden={canToggle ? undefined : 'true'}
@@ -512,7 +469,12 @@ export default function Sidebar({
                   }
                   aria-label={canToggle ? (collapsed ? 'Expand sidebar' : 'Collapse sidebar') : undefined}
                   style={{
-                    WebkitAppRegion: 'no-drag',
+                    // All dynamic (canToggle-gated), plus `transition` stays
+                    // inline: .icon-btn sets its own `transition: background
+                    // .12s, color .12s` — a Tailwind class would lose that
+                    // cascade tie (same specificity, .icon-btn declared later
+                    // in the stylesheet), silently dropping this custom
+                    // opacity/transform/filter transition.
                     opacity: canToggle ? 1 : 0,
                     // Slight scale + tilt + blur on hide so the
                     // motion is recognisable from the corner of the
@@ -521,7 +483,6 @@ export default function Sidebar({
                     transform: canToggle
                       ? 'scale(1) rotate(0deg)'
                       : 'scale(0.72) rotate(-8deg)',
-                    transformOrigin: 'center',
                     filter: canToggle ? 'blur(0)' : 'blur(2px)',
                     pointerEvents: canToggle ? 'auto' : 'none',
                     cursor: canToggle ? 'pointer' : 'default',
@@ -536,23 +497,17 @@ export default function Sidebar({
               );
             })()}
             <button
-              className="icon-btn"
+              className="icon-btn [-webkit-app-region:no-drag]"
               onClick={onOpenSearch}
               title={`Search  (${shortcut('K')})`}
               aria-label="Search"
-              style={{ WebkitAppRegion: 'no-drag' }}
             >
               {Ico.search(15)}
             </button>
           </div>
           <span
             aria-hidden="true"
-            style={{
-              color: 'var(--text-muted)',
-              opacity: 0.5,
-              fontSize: 13,
-              userSelect: 'none',
-            }}
+            className="text-ink-3 opacity-50 text-[13px] select-none"
           >·</span>
           {navLogo && (
             <img
@@ -571,9 +526,11 @@ export default function Sidebar({
           the surrounding chrome lands first; on dismissal it leads
           the container so the contents exit before the box does. */}
       <div
+        className="flex-1 min-h-0 flex flex-col"
+        // All dynamic: opacity/transform/pointerEvents/transition-delay are
+        // collapsed-state-driven (the transition string embeds a delay that
+        // flips 0ms/80ms), so none of this can be a static Tailwind class.
         style={{
-          flex: 1, minHeight: 0,
-          display: 'flex', flexDirection: 'column',
           opacity: collapsed ? 0 : 1,
           transform: collapsed ? 'translateY(2px)' : 'translateY(0)',
           pointerEvents: collapsed ? 'none' : 'auto',
@@ -592,16 +549,17 @@ export default function Sidebar({
             size="lg"
             onClick={onNewTask}
             title={`New task  (${shortcut('N')})`}
+            // cascade-forced: .btn sets `gap: 6px`; this button needs 10px.
             style={{ gap: 10 }}
           >
             {Ico.plus(14)}
-            <span style={{ flex: 1, textAlign: 'left', fontWeight: 500 }}>New task</span>
+            <span className="flex-1 text-left font-medium">New task</span>
             <Kbd>{shortcut('N')}</Kbd>
           </Button>
         </div>
 
         {/* Primary nav */}
-        <div className="nav-list" style={{ padding: '0 10px', display: 'flex', flexDirection: 'column', gap: 1 }}>
+        <div className="nav-list px-2.5 flex flex-col gap-px">
           <NavItem icon={Ico.folder(15)}  label="Projects"        onClick={() => onNavigate('projects')}  active={activeRoute === 'projects'}  badge={showCounters ? (projectsCount  || null) : null} />
           <NavItem icon={Ico.clock(15)}   label="Scheduled Tasks" onClick={() => onNavigate('scheduled')} active={activeRoute === 'scheduled'} badge={showCounters ? (scheduledCount || null) : null} />
           <NavItem
@@ -646,7 +604,7 @@ export default function Sidebar({
             box (fewer edges). Labels name what the user OWNS (plural
             collections) rather than the engine's abstract concepts. */}
         <div className="section-label">Agent</div>
-        <div className="nav-list" style={{ padding: '0 10px', display: 'flex', flexDirection: 'column', gap: 1 }}>
+        <div className="nav-list px-2.5 flex flex-col gap-px">
           <NavItem icon={Ico.brain(15)} label="Memories"       onClick={() => onNavigate('memory')} active={activeRoute === 'memory'} />
           <NavItem icon={Ico.cube(15)}  label="Skills library" onClick={() => onNavigate('skills')} active={activeRoute === 'skills'} />
         </div>
@@ -656,7 +614,7 @@ export default function Sidebar({
         {pinnedTasks.length > 0 && (
           <>
             <div className="section-label">Pinned</div>
-            <div style={{ padding: '0 10px', display: 'flex', flexDirection: 'column', gap: 1 }}>
+            <div className="px-2.5 flex flex-col gap-px">
               {pinnedTasks.map((task) => (
                 <RecentItem
                   key={task.id}
@@ -688,28 +646,19 @@ export default function Sidebar({
             non-receptive. The span flex-grows to fill the row so
             the heading itself owns the empty space too. */}
         <div
-          className="section-label recents-heading"
-          style={{
-            display: 'flex',
-            alignItems: 'baseline',
-            gap: 8,
-            cursor: 'default',
-            width: '100%',
-          }}
+          className="section-label recents-heading flex items-baseline gap-2 cursor-default w-full"
           onMouseEnter={() => setRecentsHeadingHover(true)}
           onMouseLeave={() => setRecentsHeadingHover(false)}
         >
-          <span style={{ flex: 1 }}>RECENT TASKS</span>
+          <span className="flex-1">RECENT TASKS</span>
           <button
             type="button"
-            className="recents-viewall"
+            className="recents-viewall bg-transparent border-0 p-0 font-[family-name:var(--font-body)] text-xs tracking-[0.02em] normal-case"
             onClick={() => onNavigate?.('tasks')}
             style={{
-              background: 'transparent', border: 0, padding: 0,
+              // Dynamic: hover state (recentsHeadingHover), driven by the
+              // parent row's onMouseEnter/onMouseLeave above.
               cursor: recentsHeadingHover ? 'pointer' : 'default',
-              fontFamily: 'var(--font-body)', fontSize: 11,
-              letterSpacing: '0.02em',
-              textTransform: 'none',
               opacity: recentsHeadingHover ? 1 : 0,
               transform: recentsHeadingHover ? 'translateX(0)' : 'translateX(2px)',
               pointerEvents: recentsHeadingHover ? 'auto' : 'none',
@@ -719,10 +668,7 @@ export default function Sidebar({
             View all →
           </button>
         </div>
-        <div className="scroll-clean" style={{
-          padding: '0 10px', flex: 1, minHeight: 0, overflowY: 'auto',
-          display: 'flex', flexDirection: 'column', gap: 1,
-        }}>
+        <div className="scroll-clean px-2.5 flex-1 min-h-0 overflow-y-auto flex flex-col gap-px">
           {recents.map((t) => {
             // Synthetic schedule-group entries route to the schedule
             // detail view (where the per-run history lives). Lone
@@ -755,33 +701,10 @@ export default function Sidebar({
             <button
               type="button"
               onClick={() => setRecentsModalOpen(true)}
-              className="recents-show-more"
-              style={{
-                margin: '6px 0 4px',
-                padding: '7px 10px',
-                background: 'transparent',
-                border: '1px dashed var(--line-2)',
-                borderRadius: 7,
-                color: 'var(--ink-3)',
-                fontFamily: 'var(--font-body)', fontSize: 12,
-                cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                gap: 8,
-                transition: 'background 120ms ease, color 120ms ease, border-color 120ms ease',
-              }}
-              onMouseOver={(e) => {
-                e.currentTarget.style.background = 'var(--surface-2)';
-                e.currentTarget.style.color = 'var(--ink)';
-                e.currentTarget.style.borderColor = 'var(--line)';
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.background = 'transparent';
-                e.currentTarget.style.color = 'var(--ink-3)';
-                e.currentTarget.style.borderColor = 'var(--line-2)';
-              }}
+              className="recents-show-more mt-1.5 mx-0 mb-1 py-[7px] px-2.5 bg-transparent border border-dashed border-line-2 rounded-[7px] text-ink-3 font-[family-name:var(--font-body)] text-[12px] cursor-pointer flex items-center justify-between gap-2 hover:bg-surface-2 hover:border-line hover:text-ink [transition:background_120ms_ease,color_120ms_ease,border-color_120ms_ease]"
             >
               <span>Show more</span>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--ink-4)' }}>
+              <span className="font-[family-name:var(--font-mono)] text-[10.5px] text-ink-4">
                 +{recentsAll.length - recents.length}
               </span>
             </button>
@@ -796,42 +719,14 @@ export default function Sidebar({
         {updateAvailable && !shellUpdate && (
           <button
             type="button"
-            style={{
-              margin: '0 10px 6px',
-              padding: '8px 12px',
-              background: 'rgba(93,146,135,0.12)',
-              border: '1px solid rgba(93,146,135,0.30)',
-              borderRadius: 8,
-              display: 'flex', alignItems: 'center', gap: 8,
-              cursor: 'pointer',
-              transition: 'background 120ms ease',
-              width: 'calc(100% - 20px)',
-              textAlign: 'left',
-              fontFamily: 'inherit',
-              WebkitAppRegion: 'no-drag',
-            }}
+            className="mt-0 mx-2.5 mb-1.5 py-2 px-3 bg-[color-mix(in_srgb,var(--sage-500)_12%,transparent)] border border-solid border-[color-mix(in_srgb,var(--sage-500)_30%,transparent)] rounded-lg flex items-center gap-2 cursor-pointer w-[calc(100%-20px)] text-left font-[inherit] [-webkit-app-region:no-drag] hover:bg-[color-mix(in_srgb,var(--sage-500)_22%,transparent)] [transition:background_120ms_ease]"
             onClick={onApplyUpdate}
-            onMouseOver={(e) => { e.currentTarget.style.background = 'rgba(93,146,135,0.22)'; }}
-            onMouseOut={(e) => { e.currentTarget.style.background = 'rgba(93,146,135,0.12)'; }}
           >
-            <span style={{
-              width: 6, height: 6, borderRadius: '50%',
-              background: 'var(--sage-500, #5D9287)',
-              flexShrink: 0,
-            }} />
-            <span style={{
-              flex: 1, fontSize: 11.5, color: 'var(--text-strong)',
-              fontFamily: 'var(--font-sans)',
-            }}>
+            <span className="w-1.5 h-1.5 rounded-full bg-[var(--sage-500,#5D9287)] shrink-0" />
+            <span className="flex-1 text-[11.5px] text-ink font-[family-name:var(--font-sans)]">
               Update ready{updateAvailable.version ? ` (${updateAvailable.version})` : ''}
             </span>
-            <span style={{
-              fontSize: 10, color: 'var(--sage-500, #5D9287)',
-              fontFamily: 'var(--font-mono)',
-              letterSpacing: '0.03em',
-              textTransform: 'uppercase',
-              fontWeight: 600,
-            }}>
+            <span className="text-2xs text-[var(--sage-500,#5D9287)] font-[family-name:var(--font-mono)] tracking-[0.03em] uppercase font-semibold">
               Restart
             </span>
           </button>
@@ -842,79 +737,69 @@ export default function Sidebar({
         {updateError && !shellUpdate && (
           <button
             type="button"
-            style={{
-              margin: '0 10px 6px',
-              padding: '8px 12px',
-              background: 'rgba(196,127,0,0.12)',
-              border: '1px solid rgba(196,127,0,0.30)',
-              borderRadius: 8,
-              display: 'flex', alignItems: 'center', gap: 8,
-              cursor: 'pointer',
-              transition: 'background 120ms ease',
-              width: 'calc(100% - 20px)',
-              textAlign: 'left',
-              fontFamily: 'inherit',
-              WebkitAppRegion: 'no-drag',
-            }}
+            className="mt-0 mx-2.5 mb-1.5 py-2 px-3 bg-[rgba(196,127,0,0.12)] border border-solid border-[rgba(196,127,0,0.30)] rounded-lg flex items-center gap-2 cursor-pointer w-[calc(100%-20px)] text-left font-[inherit] [-webkit-app-region:no-drag] hover:bg-[rgba(196,127,0,0.22)] [transition:background_120ms_ease]"
             onClick={onApplyUpdate}
-            onMouseOver={(e) => { e.currentTarget.style.background = 'rgba(196,127,0,0.22)'; }}
-            onMouseOut={(e) => { e.currentTarget.style.background = 'rgba(196,127,0,0.12)'; }}
           >
-            <span style={{
-              width: 6, height: 6, borderRadius: '50%',
-              background: 'var(--warning, #c47f00)',
-              flexShrink: 0,
-            }} />
-            <span style={{
-              flex: 1, fontSize: 11.5, color: 'var(--text-strong)',
-              fontFamily: 'var(--font-sans)',
-            }}>
+            <span className="w-1.5 h-1.5 rounded-full bg-[var(--warning,#c47f00)] shrink-0" />
+            <span className="flex-1 text-[11.5px] text-ink font-[family-name:var(--font-sans)]">
               Update failed{updateError.version ? ` (${updateError.version})` : ''}
             </span>
-            <span style={{
-              fontSize: 10, color: 'var(--warning, #c47f00)',
-              fontFamily: 'var(--font-mono)',
-              letterSpacing: '0.03em',
-              textTransform: 'uppercase',
-              fontWeight: 600,
-            }}>
+            <span className="text-2xs text-[var(--warning,#c47f00)] font-[family-name:var(--font-mono)] tracking-[0.03em] uppercase font-semibold">
               Try again
             </span>
           </button>
         )}
 
-        {/* Shell updates are download-only and dismissible per version. */}
-        {shellUpdate && (
-          <div
-            style={{
-              margin: '0 10px 6px',
-              padding: '8px 12px',
-              background: 'rgba(93,146,135,0.12)',
-              border: '1px solid rgba(93,146,135,0.30)',
-              borderRadius: 8,
-              display: 'flex', alignItems: 'center', gap: 8,
-              width: 'calc(100% - 20px)',
-              WebkitAppRegion: 'no-drag',
-            }}
+        {/* Shell auto-update (electron-updater): background download, install on
+            relaunch. Rendered for the active phases; the action is phase-driven
+            (download / restart / retry) and disabled while work is in flight. */}
+        {shellAutoUpdate && ['available', 'downloading', 'ready-to-install', 'installing', 'failed'].includes(shellAutoUpdate.phase) && (
+          <button
+            type="button"
+            onClick={onShellAutoUpdateAction}
+            disabled={shellAutoUpdate.phase === 'downloading' || shellAutoUpdate.phase === 'installing'}
+            className="mt-0 mx-2.5 mb-1.5 py-2 px-3 bg-[color-mix(in_srgb,var(--sage-500)_12%,transparent)] border border-solid border-[color-mix(in_srgb,var(--sage-500)_30%,transparent)] rounded-lg flex items-center gap-2 w-[calc(100%-20px)] [-webkit-app-region:no-drag] font-[inherit] cursor-pointer disabled:cursor-default"
           >
+            <span className="w-1.5 h-1.5 rounded-full bg-[var(--sage-500,#5D9287)] shrink-0" />
+            <span className="flex-1 text-[11.5px] text-left text-ink font-[family-name:var(--font-sans)]">
+              {shellAutoUpdate.phase === 'downloading'
+                ? `Downloading update${shellAutoUpdate.progress?.percent != null ? ` (${Math.round(shellAutoUpdate.progress.percent)}%)` : '…'}`
+                : shellAutoUpdate.phase === 'ready-to-install'
+                  ? 'App update ready'
+                  : shellAutoUpdate.phase === 'installing'
+                    ? 'Installing update…'
+                    : shellAutoUpdate.phase === 'failed'
+                      ? 'App update failed'
+                      : 'New app version available'}
+            </span>
+            <span className="text-2xs text-[var(--sage-500,#5D9287)] font-[family-name:var(--font-mono)] tracking-[0.03em] uppercase font-semibold">
+              {shellAutoUpdate.phase === 'ready-to-install'
+                ? 'Restart'
+                : shellAutoUpdate.phase === 'failed'
+                  ? (shellAutoUpdate.recoverable ? 'Retry' : 'Download')
+                  : shellAutoUpdate.phase === 'available'
+                    ? 'Download'
+                    : ''}
+            </span>
+          </button>
+        )}
+
+        {/* Shell (installer) update notice — the app itself is newer than what's
+            installed; the shell can't hot-update, so this links to the download
+            and is dismissible per-version (ENG-849). */}
+        {shellUpdate && (!shellAutoUpdate || shellAutoUpdate.phase === 'disabled') && (
+          <div className="mt-0 mx-2.5 mb-1.5 py-2 px-3 bg-[color-mix(in_srgb,var(--sage-500)_12%,transparent)] border border-solid border-[color-mix(in_srgb,var(--sage-500)_30%,transparent)] rounded-lg flex items-center gap-2 w-[calc(100%-20px)] [-webkit-app-region:no-drag]">
             <button
               type="button"
               onClick={onDownloadShellUpdate}
               title={`A new version of MindsHub Cowork is available${shellUpdate.version ? ` (${shellUpdate.version})` : ''} — download the installer, then quit the app and open it to update`}
-              style={{
-                flex: 1, display: 'flex', alignItems: 'center', gap: 8,
-                background: 'none', border: 'none', padding: 0, margin: 0,
-                cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
-              }}
+              className="flex-1 flex items-center gap-2 bg-transparent border-0 p-0 m-0 cursor-pointer text-left font-[inherit]"
             >
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--sage-500, #5D9287)', flexShrink: 0 }} />
-              <span style={{ flex: 1, fontSize: 11.5, color: 'var(--text-strong)', fontFamily: 'var(--font-sans)' }}>
+              <span className="w-1.5 h-1.5 rounded-full bg-[var(--sage-500,#5D9287)] shrink-0" />
+              <span className="flex-1 text-[11.5px] text-ink font-[family-name:var(--font-sans)]">
                 New version available{shellUpdate.version ? ` (${shellUpdate.version})` : ''}
               </span>
-              <span style={{
-                fontSize: 10, color: 'var(--sage-500, #5D9287)', fontFamily: 'var(--font-mono)',
-                letterSpacing: '0.03em', textTransform: 'uppercase', fontWeight: 600,
-              }}>
+              <span className="text-2xs text-[var(--sage-500,#5D9287)] font-[family-name:var(--font-mono)] tracking-[0.03em] uppercase font-semibold">
                 Download
               </span>
             </button>
@@ -923,10 +808,7 @@ export default function Sidebar({
               onClick={onDismissShellUpdate}
               aria-label="Dismiss update notice"
               title="Dismiss"
-              style={{
-                background: 'none', border: 'none', padding: '0 2px', margin: 0,
-                cursor: 'pointer', color: 'var(--text-muted)', fontSize: 14, lineHeight: 1, flexShrink: 0,
-              }}
+              className="bg-transparent border-0 py-0 px-0.5 m-0 cursor-pointer text-ink-3 text-[14px] leading-none shrink-0"
             >
               ×
             </button>
@@ -959,13 +841,12 @@ export default function Sidebar({
                 <button
                   type="button"
                   className={
-                    'backend-status-control is-clickable' +
+                    'backend-status-control is-clickable flex-1 [-webkit-app-region:no-drag]' +
                     (serverBusy ? ' is-busy' : '')
                   }
                   onClick={onShowServerHelp}
                   title="Backend status — click for details"
                   aria-label="Backend status — click for details"
-                  style={{ WebkitAppRegion: 'no-drag', flex: 1 }}
                 >
                   <span className={'status-dot' + (serverBusy ? ' busy' : ' offline')} />
                   <span className="status-text">
@@ -981,24 +862,22 @@ export default function Sidebar({
                   </span>
                 </button>
                 <button
-                  className={'chrome-btn--small' + (settingsActive ? ' is-on' : '')}
+                  className={'chrome-btn--small shrink-0 [-webkit-app-region:no-drag]' + (settingsActive ? ' is-on' : '')}
                   onClick={() => onNavigate('settings:backend')}
                   title="Settings"
                   aria-label="Settings"
-                  style={{ WebkitAppRegion: 'no-drag', flexShrink: 0 }}
                 >
                   {Ico.settings(13)}
                 </button>
               </>
             ) : (
               <button
-                className={'anton-sidebar__footer-settings' + (settingsActive ? ' is-on' : '')}
+                className={'anton-sidebar__footer-settings flex-1 min-w-0 [-webkit-app-region:no-drag]' + (settingsActive ? ' is-on' : '')}
                 onClick={() => onNavigate('settings:agent')}
                 title="Settings"
                 aria-label="Settings"
-                style={{ WebkitAppRegion: 'no-drag', flex: 1, minWidth: 0 }}
               >
-                <span style={{ display: 'inline-flex', flexShrink: 0 }}>{Ico.settings(13)}</span>
+                <span className="inline-flex shrink-0">{Ico.settings(13)}</span>
                 <span>Settings</span>
               </button>
             )}
@@ -1007,28 +886,25 @@ export default function Sidebar({
             // from the Settings/backend-status controls to the left.
             <span
               aria-hidden="true"
-              className="anton-sidebar__footer-divider"
-              style={{ WebkitAppRegion: 'no-drag', marginLeft: 'auto' }}
+              className="anton-sidebar__footer-divider ml-auto [-webkit-app-region:no-drag]"
             />
           )}
           {show8bitToggle && (
             <button
-              className={'chrome-btn--small' + (resolved8bitActive ? ' is-on' : '')}
+              className={'chrome-btn--small shrink-0 [-webkit-app-region:no-drag]' + (resolved8bitActive ? ' is-on' : '')}
               onClick={onToggleSkin}
               title={skin === 'custom' ? '8-bit font' : '8-bit style'}
               aria-label={skin === 'custom' ? 'Toggle 8-bit font' : 'Toggle 8-bit style'}
-              style={{ WebkitAppRegion: 'no-drag', flexShrink: 0 }}
             >
               {Ico.gamepad(15)}
             </button>
           )}
           {showThemeToggle && (
             <button
-              className="chrome-btn--small"
+              className="chrome-btn--small shrink-0 [-webkit-app-region:no-drag]"
               onClick={onToggleTheme}
               title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
               aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
-              style={{ WebkitAppRegion: 'no-drag', flexShrink: 0 }}
             >
               {theme === 'dark' ? Ico.sun(15) : Ico.moon(15)}
             </button>

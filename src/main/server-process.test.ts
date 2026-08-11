@@ -27,6 +27,13 @@ vi.mock('./uv-paths', () => ({
   findUv: () => '/usr/bin/uv',
   coworkServerBinCandidates: () => ['/fake/bin/cowork-server'],
 }));
+// credential-provisioning pulls in keychain-service, which imports the
+// native `keytar` module at load time (see token-refresh.test.ts) — not
+// needed here, since these tests cover server-start orchestration, not
+// credential provisioning (that's credential-provisioning.test.ts).
+vi.mock('./credential-provisioning', () => ({
+  loadBundledServerCredentials: vi.fn().mockResolvedValue({}),
+}));
 vi.mock('fs');
 vi.mock('child_process');
 vi.mock('http');
