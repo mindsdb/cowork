@@ -28,10 +28,15 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ReactKeycloakProvider } from '@react-keycloak/web';
-import './cowork/styles/tailwind.css';
+// Order matters: globals/skin/styles first, Tailwind utilities LAST so
+// utilities win equal-specificity ties against legacy classes — matching
+// the Electron bundle, where the App-subtree CSS imports execute before
+// main.tsx's tailwind.css import. Before this reorder the web bundle had
+// the opposite tie-resolution from Electron for every migrated component.
 import './cowork/styles/globals.css';
 import './cowork/styles/skin-8bit.css';
 import './styles.css';
+import './cowork/styles/tailwind.css';
 import App from './App';
 import { keycloak } from './lib/keycloak';
 import { isLegacyTenantHost } from './lib/legacyHost';

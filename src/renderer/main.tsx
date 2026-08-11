@@ -1,9 +1,13 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
-// Tailwind utilities first so any rule in globals.css/styles.css
-// outranks them on shared selectors. Used by ported components
-// (Markdown stack, ThinkingBlock) that ship in utility classes.
+// NOTE: the `import App` above pulls in the app's CSS first (App.tsx →
+// styles.css, CoworkApp.tsx → globals.css), so despite appearing first
+// here, Tailwind utilities actually land AFTER globals.css/styles.css
+// in both the dev and production bundles — utilities WIN equal-specificity
+// ties against legacy classes. Legacy rules that still beat utilities do
+// so via higher selector specificity (e.g. `.menu .menu-item`), which is
+// why some migrated components carry `!` important utilities (ENG-1017).
 import './cowork/styles/tailwind.css';
 // KaTeX stylesheet for math formula rendering (remark-math + rehype-katex
 // in the Markdown stack). Bundled locally by Vite — cowork's CSP forbids
