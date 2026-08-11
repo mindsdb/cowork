@@ -380,6 +380,79 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
     return { ...state, steps: [...state.steps, step] };
   }
 
+  // Inline ask_user card. The harness pauses mid-turn to ask the user a
+  // multiple-choice question; the payload is self-contained so the card
+  // renders from this event alone, including on replay. Deduped by
+  // question_id so a /tail replay from seq 0 can't double the card.
+  if (type === 'response.ask_user') {
+    const key = event.question_id || '';
+    // No id, no card. Everything that retires a question matches on
+    // question_id: the dedupe guard below, the `ask_user_answered` branch, and
+    // App.jsx's composer interception. An id-less question would be both
+    // un-dedupable and un-retirable — stuck at `answer: null` forever, so
+    // `pendingQuestionFor` keeps returning it and the composer stays hijacked
+    // for the life of the live-steps entry. The server always sends an id, so
+    // this is defence in depth; it earns its place because it is the one
+    // malformed payload whose failure mode is permanent rather than cosmetic.
+    if (!key) return state;
+    // Idempotent: /tail replays from seq 0, so the same question arrives
+    // again on every reconnect.
+    if (state.steps.some((s) => s.badge === 'AskUser' && s._questionKey === key)) {
+      return state;
+    }
+    const step = {
+      id: `question-${key}`,
+      label: event.prompt || 'Question',
+      badge: 'AskUser',
+      icon: 'question',
+      status: 'in_progress',
+      startedAt: eventTs,
+      completedAt: null,
+      data: {
+        question_id: key,
+        prompt: event.prompt || '',
+        options: Array.isArray(event.options) ? event.options : [],
+        select: event.select === 'many' ? 'many' : 'one',
+        allow_custom: event.allow_custom !== false,
+        timeout_s: event.timeout_s ?? null,
+        answer: null,
+      },
+      output: null,
+      result: null,
+      _questionKey: key,
+      _isScratchpad: false,
+      _scratchpadTabId: null,
+    };
+    return { ...state, steps: [...state.steps, step] };
+  }
+
+  // Retires a published ask_user question once the user answers, cancels,
+  // or the server times it out. Never sent for a question that wasn't
+  // published, so an unknown question_id is ignored rather than throwing.
+  if (type === 'response.ask_user_answered') {
+    const key = event.question_id || '';
+    if (!key) return state;
+    let found = false;
+    const steps = state.steps.map((s) => {
+      if (s.badge !== 'AskUser' || s._questionKey !== key) return s;
+      found = true;
+      return {
+        ...s,
+        status: 'completed',
+        completedAt: eventTs,
+        data: {
+          ...s.data,
+          answer: {
+            status: event.status || 'answered',
+            values: Array.isArray(event.values) ? event.values : [],
+            text: event.text || '',
+          },
+        },
+      };
+    });
+    return found ? { ...state, steps } : state;
+  }
+
   // ── thought.* sub-events live under response.in_progress ──────────
   if (type !== 'response.in_progress') return state;
 
@@ -513,7 +586,13 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       result: null,
       _isScratchpad: false,
       _isToolCall: true,
-      _scratchpadTabId: null,
+      // Unlike scratchpad (where the SAME name deliberately groups
+      // multiple cells into one continuing notebook), each tool call is
+      // its own independent invocation — never a "step" of another one.
+      // Keying by tool_use_id gives every call its own pad in
+      // ScratchpadModal instead of collapsing unrelated calls into one
+      // synthetic "Untitled" pad with a misleading "step 1/3" counter.
+      _scratchpadTabId: event.tool_use_id || null,
       _toolUseId: event.tool_use_id || null,
     };
     // Any answer text before this tool call was preamble → move it to
@@ -526,36 +605,64 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
   }
 
   if (role === 'thought.tool_call.end') {
+    // Narrowed from the old "patch the last in-progress step" fallback:
+    // without a matching _isToolCall step for this exact tool_use_id, this
+    // must be a no-op. A blind fallback could close an unrelated step
+    // (e.g. a scratchpad cell still running in the same turn) if this
+    // tool call's only progress event was ever lost to a race.
     const toolUseId = event.tool_use_id || null;
-    const patch = {
+    if (!toolUseId) return state;
+    const idx = state.steps.findIndex((s) => s._isToolCall && s._toolUseId === toolUseId);
+    if (idx === -1) return state;
+    const etaSeconds = typeof event.eta_seconds === 'number' && Number.isFinite(event.eta_seconds)
+      ? event.eta_seconds
+      : null;
+    const steps = state.steps.slice();
+    steps[idx] = {
+      ...steps[idx],
       status: 'completed',
       completedAt: eventTs,
       output: typeof event.content === 'string' ? event.content.slice(0, 2048) : null,
+      ...(etaSeconds != null ? { executionDurationMs: Math.max(0, Math.round(etaSeconds * 1000)) } : null),
+      // Tool's own verdict (anton ToolOutcome.ok, ENG-1276) — reuses the
+      // same cellStatus/'error' convention ThinkingStep.jsx already
+      // renders for a failed scratchpad cell, rather than inventing a
+      // second failure indicator. undefined/true stay unmarked (rendered
+      // as success) — only an explicit false marks the step failed.
+      // Without this, tool_done firing (unconditional by design, even on
+      // a handler exception) rendered as success everywhere (PR #304
+      // review, anton repo).
+      ...(event.ok === false ? { cellStatus: 'error' } : null),
     };
-    if (toolUseId) {
-      const idx = state.steps.findIndex(
-        (s) => s._toolUseId === toolUseId,
-      );
-      if (idx !== -1) {
-        const updated = state.steps.slice();
-        updated[idx] = { ...state.steps[idx], ...patch };
-        return { ...state, steps: updated };
-      }
-    }
-    // Fallback: patch the last in-progress step.
-    const last = state.steps[state.steps.length - 1];
-    if (last && last.status === 'in_progress') {
-      const updated = state.steps.slice();
-      updated[updated.length - 1] = { ...last, ...patch };
-      return { ...state, steps: updated };
-    }
-    return state;
+    return { ...state, steps };
   }
 
   if (role === 'thought.tool_call.progress') {
-    // Informational — no state change needed, but we could update
-    // a label. For now, no-op.
-    return state;
+    const toolUseId = event.tool_use_id || null;
+    const text = event.content || '';
+    if (!toolUseId || !text) return state;
+
+    const idx = state.steps.findIndex((s) => s._isToolCall && s._toolUseId === toolUseId);
+    if (idx === -1) {
+      // First progress event for this tool call — seed a step, same
+      // idiom as the scratchpad_start seed-if-missing case above.
+      const seeded = reduceStream(state, {
+        type: 'response.in_progress',
+        thought_role: 'thought.tool_call.start',
+        tool_use_id: toolUseId,
+        content: event.tool_name || 'Tool',
+        at_ms: eventTs,
+      }, now);
+      const newIdx = seeded.steps.findIndex((s) => s._isToolCall && s._toolUseId === toolUseId);
+      if (newIdx === -1) return seeded;
+      const steps = seeded.steps.slice();
+      steps[newIdx] = { ...steps[newIdx], data: { ...steps[newIdx].data, one_line_description: text } };
+      return { ...seeded, steps };
+    }
+
+    const steps = state.steps.slice();
+    steps[idx] = { ...steps[idx], data: { ...steps[idx].data, one_line_description: text } };
+    return { ...state, steps };
   }
 
   // ── Hermes reasoning/thinking ────────────────────────────────────

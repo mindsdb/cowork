@@ -17,6 +17,7 @@ import ProviderIcon from './ProviderIcon.jsx';
 import { useFileDrop, FileDropOverlay, extractClipboardFiles } from '../lib/useFileDrop';
 import { AttachmentThumbnail } from './AttachmentThumbnail';
 import { useSkills } from '../lib/skillsStore';
+import { useDraft } from '../hooks/useDraft';
 
 // Detect a "/" slash-command token immediately before the caret. Returns the
 // token's start index (the "/") and the lowercased query fragment, or null when
@@ -167,6 +168,12 @@ export default function Composer({
   // and-resend on prior user messages; bump-based so repeated edits
   // of the same text still re-fill the input.
   prefill = null,
+  // Optional — called with the composer's text whenever it changes. One Composer
+  // instance is shared across conversations, so an owner cannot otherwise know
+  // WHICH conversation the text now in the box belongs to. ChatView uses it to
+  // decide whether restored queued text may join what is on screen or must
+  // replace it.
+  onDraftChange,
   // Optional — when supplied, the project menu shows a "+ New project"
   // row (opens the "Start a new project" modal; with search text and
   // no match it creates inline). Receives `{ name }` (plus
@@ -175,8 +182,14 @@ export default function Composer({
   // with it so the new project is pre-selected for the task being
   // composed. When omitted, the row is hidden.
   onCreateProject = null,
+  // Names the surface this composer's unsent text belongs to, so a draft
+  // survives navigation (every composer unmounts on route change) and doesn't
+  // leak between surfaces. Defaults to the conversation for in-chat replies
+  // and to the shared "new task" surface otherwise; the project view passes
+  // its own so a per-project draft is separate from the home one.
+  draftKey = null,
 }) {
-  const [value, setValue] = useState('');
+  const [value, setValue] = useDraft(draftKey || conversationId || 'new');
   const [focused, setFocused] = useState(false);
   const [openMenu, setOpenMenu] = useState(null);
   /** Project-picker menu state. The menu is a search-first picker:
@@ -526,11 +539,22 @@ export default function Composer({
   // instead of parking the caret at the end — the home suggestion chips
   // use it to highlight their [type here] placeholder so the first
   // keystroke replaces it.
+  //
+  // `prefill.append` is the queue-drain case (a question appeared while
+  // messages were queued): that text is handed BACK to the user, so it joins
+  // the current draft instead of destroying it. Edit-and-resend and the home
+  // chips leave `append` unset and keep the replace semantics. The draft is
+  // read off the DOM rather than the `value` closure because this effect's
+  // deps are only `prefill?.bump`, so the closure can be a render behind —
+  // and `ta.value` is the same basis the same-text check below compares on.
   useEffect(() => {
     if (!prefill || !prefill.bump) return;
-    const text = prefill.text || '';
-    const sel = Array.isArray(prefill.select) ? prefill.select : [text.length, text.length];
+    const incoming = prefill.text || '';
     const ta = taRef.current;
+    const text = prefill.append && ta?.value
+      ? `${ta.value}\n${incoming}`
+      : incoming;
+    const sel = Array.isArray(prefill.select) ? prefill.select : [text.length, text.length];
     setError('');
     if (ta && ta.value === text) {
       // Same text re-prefilled — no re-render coming, so the layout
@@ -547,6 +571,13 @@ export default function Composer({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefill?.bump]);
+
+  // Report the draft out on every change (typing, prefill, clear after send) so
+  // the owner can attribute it to the conversation that was open at the time.
+  useEffect(() => {
+    onDraftChange?.(value);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
 
   // Close the open meta-pill menu on any press that isn't on the menu
   // popup itself or a trigger pill. The previous version only closed on

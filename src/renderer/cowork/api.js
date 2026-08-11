@@ -653,6 +653,34 @@ export async function cancelResponse(conversationId) {
   }
 }
 
+/**
+ * Deliver the user's answer to a question a turn is blocked on.
+ *
+ * Callers must distinguish outcomes, so unlike cancelResponse this does not
+ * swallow failures: 404 means the question is gone (the card should become
+ * inert and the composer should stop redirecting), 409 means somebody else
+ * already answered.
+ */
+export async function submitAnswer(conversationId, questionId, answer) {
+  if (!conversationId || !questionId) return { status: 'not_found' };
+  try {
+    return await req('/responses/answer', {
+      method: 'POST',
+      body: JSON.stringify({
+        conversation_id: conversationId,
+        question_id: questionId,
+        ...answer,
+      }),
+    });
+  } catch (err) {
+    const status = err?.status;
+    if (status === 404) return { status: 'not_found' };
+    if (status === 409) return { status: 'already_answered' };
+    if (status === 400) return { status: 'rejected' };
+    return { status: 'error' };
+  }
+}
+
 export async function unpublishArtifact(path) {
   // Idempotent — server 404 means "no record" which is the desired
   // end state.

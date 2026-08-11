@@ -102,6 +102,11 @@ export function ThinkingStep({
               artifact
             </span>
           )}
+          {step.badge === 'AskUser' && (
+            <span className="rounded-md border border-line bg-surface-2 px-1.5 py-px text-[10px] uppercase tracking-wider text-ink-4">
+              question
+            </span>
+          )}
         </div>
       </div>
     </div>

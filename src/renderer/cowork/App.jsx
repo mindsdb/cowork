@@ -37,6 +37,7 @@ import { loadCustomTheme, persistCustomTheme, applyCustomTheme } from '../lib/cu
 import { applyNavTitleColor } from '../lib/navBranding';
 import { getAgentLabel } from './lib/agentLabel';
 import { loadCachedSettings } from './lib/settingsCache';
+import { clearDraft, moveDraft } from './lib/draftStore';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { useGoogleDrivePicker } from './hooks/useGoogleDrivePicker';
 import { fetchSessions, fetchSession, fetchConversationList, fetchProjects, fetchArtifacts, fetchSettings, fetchHealth,
@@ -49,7 +50,7 @@ import { fetchSessions, fetchSession, fetchConversationList, fetchProjects, fetc
          renameConversation, deleteConversation, deleteConversationTurn, moveConversation, moveTaskToProject,
          deleteProject, cancelScratchpad, cancelResponse, fetchConnector,
          fetchSavedConnection, deleteDatasource, deletePickedFile,
-         fetchInFlightStatus, tailInFlight, fetchInFlightList,
+         fetchInFlightStatus, tailInFlight, fetchInFlightList, submitAnswer,
          fetchRecommendedModels } from './api';
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
 import { isArtifactTipDismissed, dismissArtifactTip, dismissIfUntouched } from './components/onboarding/onboardingStore';
@@ -147,6 +148,192 @@ function fireFirstResponse(result) {
   } catch {
     /* analytics must never break the turn */
   }
+}
+
+/**
+ * The question a turn is currently blocked on, or null.
+ *
+ * Derived from the live stream steps rather than tracked separately, so it
+ * cannot drift: the answered state arrives on an event and clears this by
+ * construction.
+ *
+ * `allow_custom` travels with it because the composer has to know whether typed
+ * text can be an answer at all. Absent means true — the same permissive default
+ * the adapter applies (`event.allow_custom !== false`), so only an explicit
+ * `false` counts as select-only.
+ */
+export function pendingQuestionFor(steps) {
+  const pending = (steps || []).filter(
+    (s) => s.badge === 'AskUser' && !s.data?.answer,
+  );
+  if (pending.length === 0) return null;
+  const last = pending[pending.length - 1];
+  return {
+    question_id: last.data.question_id,
+    allow_custom: last.data.allow_custom !== false,
+  };
+}
+
+/**
+ * Text to put back in the composer when a question appears while messages
+ * are queued.
+ *
+ * A message queued before the question existed was written for a different
+ * purpose: auto-sending it as the answer would silently pick an option the
+ * user never chose, and leaving it queued deadlocks (the queue drains on turn
+ * completion, which cannot happen while the question is pending). So it goes
+ * back to the user to decide.
+ */
+export function drainQueueToInput(queued) {
+  return (queued || []).map((m) => m.text).filter(Boolean).join('\n');
+}
+
+/**
+ * The files those same queued messages were carrying.
+ *
+ * `enqueueMessage` deliberately stores `attachments` with each item, because a
+ * queue that held text only lost the user's files. Handing the text back to the
+ * composer without the files reintroduces exactly that loss: the queue entry is
+ * deleted immediately after the drain, so anything not returned here is gone
+ * with no error, no chip, and no upload.
+ *
+ * Deduped by id — a drained item that gets re-queued reuses its own list, so
+ * the same attachment object can appear under more than one queued message.
+ */
+export function drainQueueAttachments(queued) {
+  const seen = new Set();
+  const out = [];
+  (queued || []).forEach((m) => {
+    (m.attachments || []).forEach((a) => {
+      if (!a || seen.has(a.id)) return;
+      seen.add(a.id);
+      out.push(a);
+    });
+  });
+  return out;
+}
+
+/**
+ * The live steps with one question removed.
+ *
+ * Retiring a dead card must not blank the whole mirror: if a DIFFERENT question
+ * in the same conversation is genuinely live, blanking drops its interception,
+ * and nothing re-arms it — the mirror is only rewritten by a stream event, and
+ * while a question is pending no further events arrive. The composer would stop
+ * redirecting, the next send would queue behind a turn that cannot complete,
+ * and it would sit there until the server's 300 s timeout.
+ *
+ * No questionId (a caller that cannot say which question died) falls back to
+ * the blanket clear.
+ */
+export function retireQuestionFromSteps(steps, questionId) {
+  if (!questionId) return [];
+  return (steps || []).filter(
+    (s) => !(s.badge === 'AskUser' && s.data?.question_id === questionId),
+  );
+}
+
+/**
+ * Decides whether a freshly-appeared question should hand a task's queued
+ * messages back to the composer: which key the messages sit under, and which
+ * conversation the text must be handed back to.
+ *
+ * Those are not always the same id. `enqueueMessage` keys the queue by the id
+ * the task had when the message was typed, and `adoptServerId` renames the task
+ * without re-keying the queue — so a message queued before `response.created`
+ * lands stays filed under a now-dead `tmp-…` id. The queue therefore has to be
+ * looked up across every id the stream is known by, while the redirect must be
+ * keyed by the id the task actually has now, or ChatView (which renders the
+ * adopted id) would never match it and the text would be lost.
+ *
+ * `taskIds[0]` is the current id by construction: every caller passes the
+ * stream's live `resolvedId` first, followed by the id it started with.
+ *
+ * Pure so the decision can be tested without a stream. Returns null when
+ * nothing should happen, else {taskId, queueTaskId, questionId, text,
+ * attachments}. The
+ * caller is responsible for adding `questionId` to the drained set
+ * synchronously, before any setState — that is what makes the drain
+ * exactly-once even though clearing the queue is async.
+ */
+export function planQueueDrain(steps, taskIds, queues, drainedQuestionIds) {
+  const pending = pendingQuestionFor(steps);
+  if (!pending) return null;
+  if (drainedQuestionIds?.has(pending.question_id)) return null;
+  const ids = (taskIds || []).filter(Boolean);
+  const queueTaskId = ids.find((tid) => ((queues || {})[tid] || []).length > 0);
+  if (!queueTaskId) return null;
+  return {
+    taskId: ids[0],
+    queueTaskId,
+    questionId: pending.question_id,
+    text: drainQueueToInput(queues[queueTaskId]),
+    attachments: drainQueueAttachments(queues[queueTaskId]),
+  };
+}
+
+/**
+ * What a composer send should do when a question may be pending.
+ *
+ * `submitAnswer` never throws — it maps every failure onto a status — so the
+ * caller cannot tell "the text became the answer" from "the answer was lost"
+ * without looking at the status. This makes that exhaustive:
+ *
+ *   - `send`     — no question pending, or the question is gone: run the
+ *                  normal send so the user's text is never discarded.
+ *                  `release: true` additionally means the stale question must
+ *                  be dropped from the live-steps mirror — and `questionId`
+ *                  says WHICH one, so the caller retires that question instead
+ *                  of blanking the mirror and taking a live sibling's
+ *                  interception with it (see retireQuestionFromSteps).
+ *   - `consumed` — the text became the answer; the send is over.
+ *   - `fail`     — the submit failed in a way the user can retry. The caller
+ *                  throws `message` so the composer surfaces it and keeps the
+ *                  typed text (see Composer's handleSend).
+ *   - `blocked`  — the question does not take typed answers, so nothing is sent
+ *                  at all. Handled exactly like `fail` by the caller (message
+ *                  surfaced, text kept), but decided before any network call.
+ */
+export async function resolvePendingAnswer({ steps, conversationId, text, submit }) {
+  const pending = pendingQuestionFor(steps);
+  if (!pending) return { action: 'send' };
+  const payload = { text };
+  // A select-only question rejects free text server-side (INVALID_OPTION → 400),
+  // and its card deliberately renders no place to type — so the composer is the
+  // only place left, and what lands here is usually not an answer at all
+  // ("cancel, I changed my mind"). Submitting it produced a 400 and a toast
+  // saying the answer was rejected, about a message that was never an answer,
+  // with no way out. Decide it here instead, before any network call, and say
+  // what does work. Sending it as a normal message is not an option: it would
+  // queue behind the turn this question is blocking.
+  if (pending.allow_custom === false && payload.text && !payload.values) {
+    return {
+      action: 'blocked',
+      message: 'This question needs one of the options above. Pick one, or press Skip if you want to type something else.',
+    };
+  }
+  const result = await submit(conversationId, pending.question_id, payload);
+  const status = result?.status;
+  if (status === 'not_found' || status === 'already_answered') {
+    // The question died with its run (or someone else answered it). The typed
+    // text was written as an answer, but it is still the user's words — send
+    // it as a message rather than dropping it on the floor.
+    return { action: 'send', release: true, questionId: pending.question_id };
+  }
+  if (status === 'error' || status === 'rejected') {
+    return {
+      action: 'fail',
+      message: status === 'rejected'
+        ? 'That answer was rejected. Try one of the offered options.'
+        : 'Could not send your answer. Please try again.',
+    };
+  }
+  // A success body carries no `status` at all (`{accepted: true}`) — api.js
+  // only sets one for the failures above. So "no status" means the text became
+  // the answer, while any status we do NOT recognise is one the server grew
+  // later: release and send it, rather than silently swallowing the text.
+  if (status) return { action: 'send', release: true, questionId: pending.question_id };
+  return { action: 'consumed' };
 }
 
 async function resolveComposerAttachmentsForSend(projectName, sessionId, attachments) {
@@ -581,6 +768,15 @@ function persistTurnState(cid, turnIndex, steps, startedAt) {
     reasoningStartedAt: s.reasoningStartedAt ?? null,
     executionStartedAt: s.executionStartedAt ?? null,
     executionCompletedAt: s.executionCompletedAt ?? null,
+    // Distinct from `status` — a failed tool/killed cell is still
+    // status:'completed' (the lifecycle finished), with cellStatus
+    // carrying the actual verdict ('error'/'timeout'). Without these two,
+    // a failed step renders as a plain success after reload: `status`
+    // alone survives, but the reducer's cellStatus:'error' (tool_call.end
+    // with ok:false, or a killed scratchpad_done) and the measured
+    // executionDurationMs both got silently dropped by this whitelist.
+    cellStatus: s.cellStatus || null,
+    executionDurationMs: s.executionDurationMs ?? null,
     data: s.data || null,
     output: typeof s.output === 'string' ? s.output : null,
     result: s.result || null,
@@ -785,6 +981,28 @@ function AppCore() {
   const messageQueueRef = useRef({});
   useEffect(() => { messageQueueRef.current = messageQueue; }, [messageQueue]);
 
+  // Live steps per task, so handleSendInTask can see a pending question
+  // without threading stream state through the composer.
+  const liveStepsRef = useRef({});
+
+  // question_id values we've already drained a pre-existing queue for.
+  // Explicit one-shot guard rather than relying on "the queue is already
+  // empty after the first drain" — clearing the queue goes through
+  // setState, which is async, so a second event landing before that state
+  // commits would otherwise see the same non-empty queue and drain twice.
+  const drainedQuestionsRef = useRef(new Set());
+
+  // Pending composer redirects, keyed by conversation: a drained queue is
+  // handed back to the composer of the task it came from (see
+  // drainQueueToInput), never to whichever task happens to be on screen.
+  // ChatView consumes its own key and calls onComposerRedirectConsumed(taskId),
+  // which deletes just that entry. One slot per task, not one globally: a
+  // background task's drain must be able to wait, unconsumed, while another
+  // task drains, without either losing its text. Consumable rather than
+  // sticky, so a consumed entry cannot re-apply when ChatView remounts.
+  const [composerRedirects, setComposerRedirects] = useState({}); // { [taskId]: {text, bump} }
+  const composerRedirectBumpRef = useRef(0);
+
   // Cross-client sync cache (Option B). Conversations that have an
   // in-flight producer task on the server, regardless of which client
   // started them. Synchronously consulted by reconcileTaskMessages so
@@ -920,6 +1138,105 @@ function AppCore() {
     return head;
   };
 
+  const clearQueueForTask = (taskId) => {
+    setMessageQueue((prev) => {
+      if (!prev[taskId]) return prev;
+      const next = { ...prev };
+      delete next[taskId];
+      return next;
+    });
+  };
+
+  // Called from every stream's onEvent, right after reduceStream. Keeps
+  // liveStepsRef current (so handleSendInTask can see a pending question
+  // without threading stream state through the composer) and, the first
+  // time a question appears while messages are queued, hands them back to
+  // the user as composer text instead of answering with text written for
+  // something else or leaving them queued to deadlock.
+  const updateLiveStepsAndDrainQueue = (taskIds, steps) => {
+    taskIds.forEach((tid) => {
+      if (tid) liveStepsRef.current[tid] = steps;
+    });
+    const plan = planQueueDrain(
+      steps,
+      taskIds,
+      messageQueueRef.current,
+      drainedQuestionsRef.current,
+    );
+    if (!plan) return;
+    // Synchronous, before any setState: clearing the queue is async, so a
+    // second event landing before that commits would otherwise see the same
+    // non-empty queue and drain it twice.
+    drainedQuestionsRef.current.add(plan.questionId);
+    // Clear under the key the messages are filed under, but redirect to the
+    // conversation the task is known by now — see planQueueDrain.
+    clearQueueForTask(plan.queueTaskId);
+    composerRedirectBumpRef.current += 1;
+    // Only the newly restored batch, and only under this task's key — never
+    // accumulated (that re-injects an earlier drain's text) and never into a
+    // shared slot (that discards an earlier drain's text).
+    //
+    // The files those queued messages were carrying ride the SAME entry as the
+    // text, because they have to travel together: `clearQueueForTask` above
+    // deletes the only other reference to them, while `composerAttachments` is a
+    // single app-wide list that is not keyed by task. Staging them here would
+    // therefore put task A's files on whatever task happens to be on screen, and
+    // sending from there would upload and send them against the wrong
+    // conversation. They are staged when — and only when — this task's redirect
+    // is consumed, by the ChatView actually showing this task.
+    setComposerRedirects((prev) => ({
+      ...prev,
+      [plan.taskId]: {
+        text: plan.text,
+        attachments: plan.attachments,
+        bump: composerRedirectBumpRef.current,
+      },
+    }));
+  };
+
+  // Drops any pending question these conversations were blocked on, so the
+  // composer stops redirecting typed text into a question nobody can answer
+  // any more. Called from every terminal path (done, error, cancel, Stop) —
+  // including for `cancelled`, which the stream call sites bail out on before
+  // handleStreamError ever runs.
+  const releaseLiveSteps = useCallback((ids) => {
+    (ids || []).forEach((tid) => { if (tid) delete liveStepsRef.current[tid]; });
+  }, []);
+
+  // Same, plus every alias of the conversation. Stop only knows the adopted
+  // id, but a stream that started on a `tmp-…` id wrote its steps under BOTH
+  // keys, and the pre-adoption one is unreachable by name once the task has
+  // been renamed — it would leak in the map forever. The aliases hold the
+  // identical steps array (the only writer is updateLiveStepsAndDrainQueue,
+  // which assigns the same reference to every id), so value identity is
+  // exactly the alias set.
+  const releaseLiveStepsWithAliases = useCallback((taskId) => {
+    if (!taskId) return;
+    const dying = liveStepsRef.current[taskId];
+    delete liveStepsRef.current[taskId];
+    if (!dying) return;
+    Object.keys(liveStepsRef.current).forEach((key) => {
+      if (liveStepsRef.current[key] === dying) delete liveStepsRef.current[key];
+    });
+  }, []);
+
+  // Retires ONE question from the mirror (see retireQuestionFromSteps for why
+  // granularity matters), leaving anything else the conversation is blocked on
+  // intact.
+  //
+  // Aliases share one array reference (see releaseLiveStepsWithAliases), so the
+  // replacement is written under every key holding it — otherwise the aliases
+  // diverge and the pre-adoption id keeps serving the retired question.
+  const retireLiveQuestion = useCallback((conversationId, questionId) => {
+    if (!conversationId) return;
+    const steps = liveStepsRef.current[conversationId];
+    if (!steps) return;
+    const next = retireQuestionFromSteps(steps, questionId);
+    Object.keys(liveStepsRef.current).forEach((key) => {
+      if (liveStepsRef.current[key] === steps) liveStepsRef.current[key] = next;
+    });
+  }, []);
+
   const handleStopStream = useCallback(async (opts = {}) => {
     const silent = opts?.silent === true;
     activeStreamGenerationRef.current += 1;
@@ -959,6 +1276,11 @@ function AppCore() {
     if (cidToCancel) {
       try { await cancelResponse(cidToCancel); } catch { /* idempotent */ }
       markInFlightDone(cidToCancel);
+      // Stop kills the run, and with it any question that run was waiting
+      // on. Without this the composer stays hijacked: the next send would be
+      // routed into submitAnswer, 404 on the dead run, and the user's text
+      // would be discarded.
+      releaseLiveStepsWithAliases(cidToCancel);
       setMessageQueue((prev) => {
         const next = { ...prev };
         delete next[cidToCancel];
@@ -988,9 +1310,14 @@ function AppCore() {
         ));
       }
     } catch { /* placeholders already stripped */ }
-  }, [markInFlightDone]);
+  }, [markInFlightDone, releaseLiveStepsWithAliases]);
 
   const handleStreamError = useCallback(async (taskIds, cid, message, event) => {
+    const ids = [...new Set(taskIds.filter(Boolean))];
+    // A dead turn must not leave a stale pending question behind — that
+    // would permanently redirect the composer into a question nobody can
+    // ever answer. Deliberately BEFORE the `cancelled` bail-out.
+    releaseLiveSteps(ids);
     if (event?.code === 'cancelled') return;
     // Activation gate (ENG-736): chat turn failed. Shared sink for every chat
     // send/reply/reconnect error, so a failed first query records its reason.
@@ -1002,7 +1329,6 @@ function AppCore() {
     activeStreamCtrlRef.current = null;
     activeScratchpadRef.current = null;
     activeStreamingTaskIdRef.current = null;
-    const ids = [...new Set(taskIds.filter(Boolean))];
     ids.forEach((id) => markInFlightDone(id));
 
     const loaded = cid ? await loadSessionMessagesWithRetry(cid) : null;
@@ -1043,7 +1369,7 @@ function AppCore() {
     if (isAntonConfigError(message, event)) {
       fetchHealth().then((h) => setHealth(h));
     }
-  }, [markInFlightDone]);
+  }, [markInFlightDone, releaseLiveSteps]);
 
   // Per-task streaming state is derived inside ChatView (it has the
   // task object via props). Don't compute it here — `activeTaskId` is
@@ -1894,6 +2220,7 @@ function AppCore() {
       onEvent(ev) {
         if (streamGen !== activeStreamGenerationRef.current) return;
         streamState = reduceStream(streamState, ev);
+        updateLiveStepsAndDrainQueue([taskId], streamState.steps);
         const open = streamState.steps.find((s) => s.status === 'in_progress' && s._isScratchpad);
         if (open?._scratchpadTabId) activeScratchpadRef.current = open._scratchpadTabId;
         flushSync(() => flushStreaming());
@@ -1904,6 +2231,7 @@ function AppCore() {
         activeScratchpadRef.current = null;
         activeStreamingTaskIdRef.current = null;
         markInFlightDone(taskId);
+        releaseLiveSteps([taskId]);
         const finalContent = streamState.bodyText;
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
@@ -1942,8 +2270,14 @@ function AppCore() {
         fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
       },
       onError(message, event) {
-        if (event?.code === 'cancelled') return;
+        // Order matters twice over. The generation guard comes first: a
+        // superseded stream's late abort must not clear liveStepsRef for a
+        // NEWER run on the same conversation. The release then comes before
+        // the `cancelled` bail-out, because an aborted run's question is dead
+        // too and leaving it behind would hijack the composer.
         if (streamGen !== activeStreamGenerationRef.current) return;
+        releaseLiveSteps([taskId]);
+        if (event?.code === 'cancelled') return;
         void handleStreamError([taskId], taskId, message, event);
       },
     });
@@ -2712,8 +3046,14 @@ function AppCore() {
       if (!sid || sid === resolvedId) return;
       const previousId = resolvedId;
       resolvedId = sid;
+      // Carry over a reply the user started typing under the tmp- id.
+      moveDraft(previousId, sid);
       setTasks((prev) => prev.map((t) =>
-        t.id === previousId || t.id === taskId ? { ...t, id: sid } : t,
+        // `adoptedFromId` records that this is a RENAME of the same conversation,
+        // not a different task. ChatView needs to tell the two apart: both change
+        // `task.id`, but only a rename means the draft in the composer still
+        // belongs to the task on screen (see its draftTaskRef).
+        t.id === previousId || t.id === taskId ? { ...t, id: sid, adoptedFromId: previousId } : t,
       ));
       if (activeStreamingTaskIdRef.current === previousId) {
         activeStreamingTaskIdRef.current = sid;
@@ -2787,6 +3127,7 @@ function AppCore() {
         const sid = ev?.conversation_id || ev?.response?.conversation_id;
         if (sid) adoptServerId(sid);
         streamState = reduceStream(streamState, ev);
+        updateLiveStepsAndDrainQueue([resolvedId, taskId], streamState.steps);
         // Track latest in-progress scratchpad so the Stop button
         // can cancel anton's current cell, not just abort our stream.
         const open = streamState.steps.find((s) => s.status === 'in_progress' && s._isScratchpad);
@@ -2813,6 +3154,7 @@ function AppCore() {
         const finalId = sid || resolvedId;
         markInFlightDone(finalId);
         if (finalId !== taskId) markInFlightDone(taskId);
+        releaseLiveSteps([finalId, taskId]);
         const finalContent = streamState.bodyText;
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
@@ -2866,8 +3208,9 @@ function AppCore() {
         fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
       },
       onError(message, event) {
-        if (event?.code === 'cancelled') return;
         if (streamGen !== activeStreamGenerationRef.current) return;
+        releaseLiveSteps([resolvedId, taskId]);
+        if (event?.code === 'cancelled') return;
         void handleStreamError([resolvedId, taskId], resolvedId, message, event);
       },
     });
@@ -2905,6 +3248,66 @@ function AppCore() {
       ));
       setComposerAttachments([]);
       return;
+    }
+
+    // A pending question owns the composer: typed text is the answer, not a
+    // new message. Queuing it instead would deadlock — the queue drains on
+    // turn completion, and the turn cannot complete until this is answered.
+    const answerOutcome = await resolvePendingAnswer({
+      steps: liveStepsRef.current[id],
+      conversationId: id,
+      text,
+      submit: submitAnswer,
+    });
+    if (answerOutcome.action === 'consumed') {
+      // The text became the answer — but `submitAnswer` sends `{text}` only, so
+      // no file travelled with it. Clearing the staged attachments here would
+      // destroy them: never uploaded, never sent, never mentioned. So leave
+      // them staged for the next real message (a drained queued item's files
+      // have no composer entry of their own, so put them back), and say out
+      // loud that they did not go — silence is the failure this whole path
+      // exists to prevent.
+      const orphaned = queuedAttachments ?? composerAttachments;
+      if (queuedAttachments != null && queuedAttachments.length > 0) {
+        setComposerAttachments((prev) => {
+          const have = new Set(prev.map((a) => a.id));
+          const back = queuedAttachments.filter((a) => a && !have.has(a.id));
+          return back.length > 0 ? [...prev, ...back] : prev;
+        });
+      }
+      if (orphaned.length > 0) {
+        toastManager.add({
+          type: 'warning',
+          title: orphaned.length === 1
+            ? 'Your file was not sent — the agent asked a question first. It is still attached.'
+            : `Your ${orphaned.length} files were not sent — the agent asked a question first. They are still attached.`,
+        });
+      }
+      return;
+    }
+    if (answerOutcome.action === 'fail' || answerOutcome.action === 'blocked') {
+      // Two mechanisms, both already used in this file: a toast so the user
+      // actually sees the failure, and a throw so Composer's handleSend keeps
+      // the typed text instead of clearing it (it only clears after onSend
+      // resolves). The interception stays armed — liveStepsRef is untouched —
+      // so the retry goes to the same question.
+      //
+      // `blocked` (a select-only question) rides the same path on purpose: the
+      // user's text must survive so they can copy it out, and nothing was sent.
+      toastManager.add({ type: 'danger', title: answerOutcome.message });
+      throw new Error(answerOutcome.message);
+    }
+    if (answerOutcome.release) {
+      // The question is gone. Release the composer and fall through to the
+      // normal send below, so the typed text becomes a message instead of
+      // being silently dropped.
+      //
+      // Retire exactly the question that was answered, never the whole mirror:
+      // a blanket clear would also drop a live sibling question's interception,
+      // and nothing re-arms it while that sibling blocks the turn (see
+      // retireQuestionFromSteps). retireLiveQuestion also rewrites every alias,
+      // which a direct assignment to this one id would not.
+      retireLiveQuestion(id, answerOutcome.questionId);
     }
 
     // Anton-core can't run two turns in parallel against the same
@@ -3009,8 +3412,11 @@ function AppCore() {
       if (!sid || sid === resolvedId) return;
       const previousId = resolvedId;
       resolvedId = sid;
+      // Carry over a reply the user started typing under the tmp- id.
+      moveDraft(previousId, sid);
       setTasks((prev) => prev.map((t) =>
-        t.id === previousId || t.id === id ? { ...t, id: sid } : t,
+        // See the note on adoptedFromId in handleSendFromHome's adoptServerId.
+        t.id === previousId || t.id === id ? { ...t, id: sid, adoptedFromId: previousId } : t,
       ));
       // Move the in-flight + active refs onto the new id so cancel /
       // reconcile passes look at the right key.
@@ -3079,6 +3485,7 @@ function AppCore() {
         const sid = ev?.conversation_id || ev?.response?.conversation_id;
         if (sid) adoptServerId(sid);
         streamState = reduceStream(streamState, ev);
+        updateLiveStepsAndDrainQueue([resolvedId, id], streamState.steps);
         const open = streamState.steps.find((s) => s.status === 'in_progress' && s._isScratchpad);
         if (open?._scratchpadTabId) activeScratchpadRef.current = open._scratchpadTabId;
         flushSync(() => flushStreaming());
@@ -3090,6 +3497,7 @@ function AppCore() {
         activeStreamingTaskIdRef.current = null;
         markInFlightDone(resolvedId);
         if (resolvedId !== id) markInFlightDone(id);
+        releaseLiveSteps([resolvedId, id]);
         const finalContent = streamState.bodyText;
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
@@ -3132,17 +3540,21 @@ function AppCore() {
         // what enqueueMessage used while the adoption was pending.
         const next = popQueueHead(id);
         if (next) {
-          Promise.resolve().then(() => handleSendInTask(next.text, next.attachments || []));
+          // .catch: handleSendInTask throws when an answer submit fails, and a
+          // bare then() would surface that as an unhandled rejection. The user
+          // has already been told via the toast.
+          Promise.resolve().then(() => handleSendInTask(next.text, next.attachments || [])).catch(() => {});
         }
       },
       onError(message, event) {
-        if (event?.code === 'cancelled') return;
         if (streamGen !== activeStreamGenerationRef.current) return;
+        releaseLiveSteps([resolvedId, id]);
+        if (event?.code === 'cancelled') return;
         void (async () => {
           await handleStreamError([resolvedId, id], resolvedId, message, event);
           const next = popQueueHead(id);
           if (next) {
-            Promise.resolve().then(() => handleSendInTask(next.text, next.attachments || []));
+            Promise.resolve().then(() => handleSendInTask(next.text, next.attachments || [])).catch(() => {});
           }
         })();
       },
@@ -3176,8 +3588,11 @@ function AppCore() {
       if (!sid || sid === resolvedId) return;
       const previousId = resolvedId;
       resolvedId = sid;
+      // Carry over a reply the user started typing under the tmp- id.
+      moveDraft(previousId, sid);
       setTasks((prev) => prev.map((t) =>
-        t.id === previousId || t.id === id ? { ...t, id: sid } : t,
+        // See the note on adoptedFromId in handleSendFromHome's adoptServerId.
+        t.id === previousId || t.id === id ? { ...t, id: sid, adoptedFromId: previousId } : t,
       ));
       if (activeStreamingTaskIdRef.current === previousId) {
         activeStreamingTaskIdRef.current = sid;
@@ -3216,6 +3631,27 @@ function AppCore() {
     };
 
     activeStreamingTaskIdRef.current = id;
+    // Same generation guard the other three stream sites carry, in the same
+    // order: generation → release → (`cancelled` bail, where the transport
+    // reports one). It is not enough that "this stream cannot carry ask_user"
+    // — that is a claim about today's server, while onEvent below pushes
+    // through the same `updateLiveStepsAndDrainQueue` and `reduceStream` as
+    // every other site. Two ways a superseded data-vault stream would
+    // otherwise stall the composer:
+    //   (a) its late onEvent overwrites liveStepsRef[cid] with its own steps,
+    //       masking a newer run's pending question — no ask_user needed on
+    //       this stream at all;
+    //   (b) its late onDone/onError deletes the newer run's entry.
+    // Either way the composer stops redirecting, the next send is queued
+    // behind a turn that cannot complete, and it sits there until the
+    // server's 300 s question timeout.
+    //
+    // The counter is deliberately global rather than per conversation: there
+    // is only ever one `activeStreamCtrlRef` slot, so only one stream can be
+    // live, and the sole bump site (handleStopStream) explicitly releases the
+    // conversation it just stopped. Making it per conversation would buy
+    // nothing while one-stream-at-a-time holds.
+    const streamGen = activeStreamGenerationRef.current;
     activeStreamCtrlRef.current = streamDataVaultSubmission({
       formId,
       // Pass the local id only when it's a real server id — otherwise
@@ -3229,9 +3665,11 @@ function AppCore() {
       name,
       method,
       onEvent(ev) {
+        if (streamGen !== activeStreamGenerationRef.current) return;
         const sid = ev?.conversation_id || ev?.response?.conversation_id;
         if (sid) adoptServerId(sid);
         streamState = reduceStream(streamState, ev);
+        updateLiveStepsAndDrainQueue([resolvedId, id], streamState.steps);
         // The probe's `data-vault-form-patch` success signal travels
         // inside the SSE body text, but MarkdownCode can't process it
         // (the streaming message has complete=false, and the final
@@ -3266,6 +3704,7 @@ function AppCore() {
         flushSync(() => flushStreaming());
       },
       onChunk(chunk, sid) {
+        if (streamGen !== activeStreamGenerationRef.current) return;
         if (sid) adoptServerId(sid);
         // data-vault-form-patch blocks are delivered as complete deltas —
         // parse and apply them immediately so the panel can show the
@@ -3280,9 +3719,11 @@ function AppCore() {
         }
       },
       onDone(sid) {
+        if (streamGen !== activeStreamGenerationRef.current) return;
         if (sid) adoptServerId(sid);
         activeStreamCtrlRef.current = null;
         activeStreamingTaskIdRef.current = null;
+        releaseLiveSteps([resolvedId, id]);
         const finalContent = streamState.bodyText;
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
@@ -3312,9 +3753,16 @@ function AppCore() {
           .then((data) => setConnectors(Array.isArray(data?.connections) ? data.connections : []))
           .catch(() => {});
       },
+      // No `cancelled` bail here, unlike the other three sites: this
+      // transport's onError takes a message only, with no event/code to
+      // inspect. An abort therefore lands as a plain error — but the
+      // generation guard above already swallows it, because the only thing
+      // that aborts this stream is handleStopStream, which bumps first.
       onError(message) {
+        if (streamGen !== activeStreamGenerationRef.current) return;
         activeStreamCtrlRef.current = null;
         activeStreamingTaskIdRef.current = null;
+        releaseLiveSteps([resolvedId, id]);
         setTasks((prev) => prev.map((t) => {
           if (t.id !== id && t.id !== resolvedId) return t;
           const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
@@ -3397,6 +3845,8 @@ function AppCore() {
     console.log('[performDeleteTask] confirmed', taskId);
     deletedTaskIdsRef.current.add(taskId);
     setTasks((prev) => prev.filter((t) => t.id !== taskId));
+    // Its unsent reply draft has nowhere to go back to.
+    clearDraft(taskId);
     // Optimistically remove from pins so the sidebar clears immediately.
     setPins((prev) => prev.filter((p) => p.item_id !== taskId));
     if (activeTaskId === taskId) {
@@ -3520,6 +3970,10 @@ function AppCore() {
       .filter((t) => t.projectName === project.name || t.projectPath === project.path)
       .map((t) => t.id);
     doomedTaskIds.forEach((id) => deletedTaskIdsRef.current.add(id));
+    // The project's own composer draft, plus every draft belonging to a
+    // conversation the server is about to cascade-delete.
+    clearDraft(`project:${project.id || project.name}`);
+    doomedTaskIds.forEach((id) => clearDraft(id));
     // Optimistic — drop locally before the round-trip.
     setProjects((prev) => prev.filter((p) => p.name !== project.name));
     setTasks((prev) => prev.filter((t) =>
@@ -4040,6 +4494,62 @@ function AppCore() {
             }}
             projects={projects}
             agentLabel={agentLabel}
+            inFlightSet={inFlightSet}
+            composerRedirects={composerRedirects}
+            onComposerRedirectConsumed={(taskId, attachments) => {
+              // The drained files are staged here, at consumption time, and never
+              // at drain time: `composerAttachments` is app-wide, so staging a
+              // background task's files early would show them as chips on
+              // whatever conversation is open and send them there. The consumer
+              // hands them back because it is the one that knows the redirect was
+              // for the task on screen.
+              const back = Array.isArray(attachments) ? attachments : [];
+              if (back.length > 0) {
+                setComposerAttachments((prev) => {
+                  const have = new Set(prev.map((a) => a.id));
+                  const fresh = back.filter((a) => a && !have.has(a.id));
+                  return fresh.length > 0 ? [...prev, ...fresh] : prev;
+                });
+              }
+              setComposerRedirects((prev) => {
+                if (!taskId || !prev[taskId]) return prev;
+                const next = { ...prev };
+                delete next[taskId];
+                return next;
+              });
+            }}
+            onQuestionAnswered={(result, conversationId, questionId) => {
+              // Keyed off the conversation the card was rendered with, not the
+              // currently-open task — the card knows which conversation it
+              // belongs to and this must not depend on them being the same.
+              // And keyed off the question too: a dead card must not take a
+              // live sibling's interception down with it.
+              if (!conversationId) return;
+              if (result?.status === 'not_found' || result?.status === 'already_answered') {
+                retireLiveQuestion(conversationId, questionId);
+                return;
+              }
+              // A retryable failure only clears the card's `busy`: the button
+              // flashes disabled and comes back, so the user believes the click
+              // landed. It did not — the answer was never recorded and the agent
+              // stays blocked until the server's 300 s timeout. The composer path
+              // already surfaces exactly these two statuses with a toast; the
+              // card path must too, and the asymmetry was the defect.
+              if (result?.status === 'error') {
+                toastManager.add({
+                  type: 'danger',
+                  title: 'Could not send your answer. Please try again.',
+                });
+              } else if (result?.status === 'rejected') {
+                // From a button press this means the app submitted a shape the
+                // card itself rendered — a stale or raced card, not something the
+                // user can fix by choosing differently.
+                toastManager.add({
+                  type: 'danger',
+                  title: 'That answer was not accepted. Reload the conversation to see the question as it stands now.',
+                });
+              }
+            }}
           />
         )}
 
