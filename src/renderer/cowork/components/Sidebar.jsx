@@ -26,7 +26,11 @@ function NavItem({ icon, label, active, onClick, badge, comingSoon, elementRef }
       style={comingSoon ? { opacity: 0.55, cursor: 'default' } : undefined}
     >
       <span className="nav-row__icon inline-flex shrink-0 items-center">{icon}</span>
-      <span className="nav-row__label flex-1">{label}</span>
+      {/* Keep long labels ("Connected Apps and Data") on one line — at the
+          narrow end of the sidebar's clamp they'd otherwise wrap to two rows.
+          min-w-0 lets the flex item shrink below its content so the ellipsis
+          can engage instead of forcing a wrap. */}
+      <span className="nav-row__label flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{label}</span>
       {badge != null && (
         <Badge variant="muted" size="xs">{badge}</Badge>
       )}
@@ -127,8 +131,12 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
           })()}
         </span>
 
-        {/* Right-side fixed slot — 22px wide, holds timestamp OR kebab */}
-        <span className="relative w-[50px] h-[18px] shrink-0 inline-flex items-center justify-end">
+        {/* Right-side fixed slot — 22px wide, holds timestamp OR kebab. The
+            negative right margin (-mr-1.5 = 6px) pulls the slot into the row's
+            10px right padding so the kebab (and the timestamp it cross-fades
+            with) sit snug against the edge of the hover fill, not a full
+            gutter-width inside it. */}
+        <span className="relative w-[50px] h-[18px] -mr-1.5 shrink-0 inline-flex items-center justify-end">
           <span
             className="absolute inset-0 inline-flex items-center justify-end font-[family-name:var(--font-sans)] text-xs text-ink-4 gap-1.5 [transition:opacity_120ms_ease]"
             style={{ opacity: (showKebab || (!showTimestamp && !isActive)) ? 0 : 1 }}
@@ -549,8 +557,8 @@ export default function Sidebar({
             size="lg"
             onClick={onNewTask}
             title={`New task  (${shortcut('N')})`}
-            // cascade-forced: .btn sets `gap: 6px`; this button needs 10px.
-            style={{ gap: 10 }}
+            // cascade-forced: .btn sets `gap: 6px`; match the nav rows' 9px.
+            style={{ gap: 9 }}
           >
             {Ico.plus(14)}
             <span className="flex-1 text-left font-medium">New task</span>

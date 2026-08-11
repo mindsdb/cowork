@@ -2539,6 +2539,12 @@ body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surfac
      reads as part of the same rail, not a heavier element above it. The label
      weight is set on the span in Sidebar.jsx. */
   font-size: 13px;
+  /* Match the nav rows' box exactly — same 30px height and var(--r) radius as
+     .app-sidebar .nav-item (the standard .btn.lg is a taller 36px). The CTA
+     keeps its tinted colors but reads as the same size and shape as the menu
+     options below it, not a heavier element above them. */
+  height: 30px;
+  border-radius: var(--r);
 }
 
 /* Override existing .nav-item rules to follow the guideline shape */
@@ -2553,7 +2559,7 @@ body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surfac
      more structured rail. */
   min-height: 30px;
   padding: 0 10px;
-  border-radius: var(--r-lg);
+  border-radius: var(--r);
   color: var(--ink-2);
   font-family: var(--font-sans);
   font-size: 13px;
@@ -2622,7 +2628,7 @@ body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surfac
      consistent list, matched to the nav rows (ENG-1038: both tightened to 30). */
   min-height: 30px;
   padding: 0 10px;
-  border-radius: var(--r-8);
+  border-radius: var(--r);
   font-family: var(--font-sans);
   font-size: 13px;
   color: var(--ink-2);
