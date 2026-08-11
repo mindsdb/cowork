@@ -4262,8 +4262,10 @@ body[data-theme="dark"] .phase-check-done {
   font-size: var(--text-sm);
   line-height: inherit;
   color: rgb(232, 132, 110);
-  background: rgba(232, 132, 110, 0.10);
-  border: 1px solid rgba(232, 132, 110, 0.20);
+  /* Neutral chip (a faint --ink tint), not a coral-tinted box with a coral
+     border — so only the TEXT carries the warm colour, à la Claude. Reads
+     calmer and drops another colored border from the transcript. */
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
   border-radius: var(--r-sm);
   padding: 1px 5px;
   word-break: break-word;
@@ -4276,11 +4278,9 @@ body[data-theme="dark"] .phase-check-done {
   font-weight: 500;
 }
 body[data-theme="light"] .anton-inline-code {
-  /* Darker coral on light mode keeps AA contrast against the pale
-     bubble surface. */
+  /* Darker terracotta on light keeps AA contrast; the chip fill itself is
+     the neutral --ink tint inherited from the base rule. */
   color: rgb(168, 76, 60);
-  background: rgba(232, 132, 110, 0.14);
-  border-color: rgba(168, 76, 60, 0.25);
 }
 
 .anton-code-block {
