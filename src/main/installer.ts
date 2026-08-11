@@ -11,8 +11,7 @@ import {
   PYTHON_RANGE,
   getLocalBin,
   getEnvPath,
-  getCoworkServerBinary,
-  findUv,
+  coworkServerBinCandidates,
   findOnPath,
   resolveUv,
   getInstalledVersion,
@@ -209,35 +208,54 @@ function sendInstallCancelled(win: BrowserWindow) {
   } catch {}
 }
 
-export async function checkCoworkServerInstalled(): Promise<boolean> {
+// Discriminated result so the installer's verify step can say WHAT failed.
+// The old boolean collapsed three distinct states into one, and the verify
+// error then claimed "binary not found" even when the binary was sitting on
+// disk with an undeterminable version (ENG-1293/ENG-1323).
+export type ServerInstallCheck =
+  | { installed: true; binary: string | null }
+  | { installed: false; reason: 'binary-missing' }
+  | { installed: false; reason: 'version-unknown'; binary: string }
+  | { installed: false; reason: 'below-minimum'; binary: string; version: string; minVersion: string };
+
+export async function inspectCoworkServerInstall(): Promise<ServerInstallCheck> {
   // Dev mode: if the sibling cowork-server source directory exists,
   // treat it as installed — server-process.ts will run it via `uv run`.
   if (!app.isPackaged) {
     const devDir = process.env.COWORK_SERVER_DIR
       ? path.resolve(process.env.COWORK_SERVER_DIR)
       : path.join(__dirname, '..', '..', '..', '..', 'cowork-server');
-    if (fileExists(path.join(devDir, 'pyproject.toml'))) return true;
+    if (fileExists(path.join(devDir, 'pyproject.toml'))) return { installed: true, binary: null };
   }
-  const hasBinary = fileExists(getCoworkServerBinary()) || !!(await findOnPath('cowork-server'));
-  if (!hasBinary) return false;
+  // Same candidate list server-process.getCoworkServerBin() starts from (the
+  // prod+win32 %LOCALAPPDATA%\bin fallback included) — otherwise this check
+  // and the thing it's gating could disagree: a prod Windows install whose
+  // binary sits only at the legacy location, off PATH, would start fine but
+  // report binary-missing here and trigger a needless reinstall.
+  const binary = coworkServerBinCandidates().find(fileExists) ?? await findOnPath('cowork-server');
+  if (!binary) return { installed: false, reason: 'binary-missing' };
 
   // Binary exists — verify the installed version meets the minimum.
   // An outdated version may be missing new dependencies (e.g. alembic)
   // and crash on import, so we treat it as "not installed" to trigger
   // the installer which does --force --reinstall.
-  const installedVersion = await getInstalledVersion();
-  if (!installedVersion) {
+  const version = await getInstalledVersion();
+  if (!version) {
     console.log('[installer] cowork-server version could not be determined, reinstall needed');
-    return false;
+    return { installed: false, reason: 'version-unknown', binary };
   }
   const minVersion = getMinServerVersion();
-  if (!meetsMinVersion(installedVersion, minVersion)) {
+  if (!meetsMinVersion(version, minVersion)) {
     console.log(
-      `[installer] cowork-server ${installedVersion} is below minimum ${minVersion}, needs upgrade`,
+      `[installer] cowork-server ${version} is below minimum ${minVersion}, needs upgrade`,
     );
-    return false;
+    return { installed: false, reason: 'below-minimum', binary, version, minVersion };
   }
-  return true;
+  return { installed: true, binary };
+}
+
+export async function checkCoworkServerInstalled(): Promise<boolean> {
+  return (await inspectCoworkServerInstall()).installed;
 }
 
 // Convenience wrapper used by the boot flow IPC. Returns the full
@@ -455,7 +473,9 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
     setStep('cowork-server', 'running');
     sendLog(win, `\n--- Installing cowork-server v${getMinServerVersion()}+ ---\n`);
 
-    const uvBin = findUv() || 'uv';
+    // The same binary the uv step resolved and logged ("uv found at X") —
+    // re-deriving here could execute a different uv than the one reported.
+    const uvBin = uvPath;
     const spec = getInstallSpec();
     sendLog(win, `Source: ${spec.channel} — ${spec.package}${spec.overrides.length ? ` (override: ${spec.overrides.join(', ')})` : ''}\n`);
 
@@ -524,17 +544,20 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
     if (abortIfRequested()) return false;
     setStep('verify', 'running');
     sendLog(win, '\n--- Verifying installation ---\n');
-    const installed = await checkCoworkServerInstalled();
-    if (!installed) {
+    const check = await inspectCoworkServerInstall();
+    if (!check.installed) {
       setStep('verify', 'error');
-      sendLog(win, 'ERROR: cowork-server binary not found after installation.\n');
+      if (check.reason === 'binary-missing') {
+        sendLog(win, 'ERROR: cowork-server binary not found after installation.\n');
+      } else if (check.reason === 'version-unknown') {
+        sendLog(win, `ERROR: cowork-server was found at ${check.binary}, but its version could not be determined via uv.\n`);
+      } else {
+        sendLog(win, `ERROR: cowork-server v${check.version} at ${check.binary} is below the required minimum v${check.minVersion}.\n`);
+      }
       sendInstallError(win, 'Verification failed');
       return false;
     }
-    const serverBin = fileExists(getCoworkServerBinary())
-      ? getCoworkServerBinary()
-      : await findOnPath('cowork-server');
-    if (serverBin) sendLog(win, `cowork-server found at ${serverBin}\n`);
+    if (check.binary) sendLog(win, `cowork-server found at ${check.binary}\n`);
     sendLog(win, 'cowork-server is ready!\n');
     setStep('verify', 'done');
 

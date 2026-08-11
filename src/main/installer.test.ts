@@ -40,7 +40,7 @@ vi.mock('./server-updater', () => ({
 
 import { IPC } from '../shared/ipc-channels';
 import { resolvePypiInstallTarget } from './server-updater';
-import { runInstaller } from './installer';
+import { runInstaller, inspectCoworkServerInstall } from './installer';
 
 const EXT = process.platform === 'win32' ? '.exe' : '';
 // Where the astral bootstrap script / findUv probe expects uv, and where
@@ -171,8 +171,9 @@ describe('runInstaller — uv discovery scenarios', () => {
     // uv was detected (with its real location) — never re-installed.
     expect(log).toContain(`uv found at ${PATH_ONLY_UV}`);
     expect(spawnCalls).toHaveLength(1);
-    // findUv() misses, so the install runs the PATH fallback, not a probed path.
-    expect(spawnCalls[0].slice(0, 3)).toEqual(['uv', 'tool', 'install']);
+    // The install spawns the SAME binary the check resolved and logged —
+    // "uv found at X" and the executed uv must never diverge.
+    expect(spawnCalls[0].slice(0, 3)).toEqual([PATH_ONLY_UV, 'tool', 'install']);
     expect(spawnCalls[0]).toContain('cowork-server==0.26.8.2.1');
     // Verification succeeds and reports where the binary landed.
     expect(log).toContain(`cowork-server found at ${SERVER_BIN}`);
@@ -256,7 +257,7 @@ describe('runInstaller — failure and fallback scenarios', () => {
     expect(errors).toEqual([]);
   });
 
-  it('verification rejects an installed server below the minimum version', async () => {
+  it('verification rejects an installed server below the minimum version and says so', async () => {
     // The binary exists and uv is fine, but `uv tool list` reports a version
     // under the floor — e.g. a stale install shadowing the fresh one.
     setupMachine({
@@ -264,9 +265,37 @@ describe('runInstaller — failure and fallback scenarios', () => {
       toolListVersion: '0.20.0',
     });
 
-    const { win, errors, events } = fakeWindow();
+    const { win, logs, errors, events } = fakeWindow();
     await expect(runInstaller(win)).resolves.toBe(false);
 
+    const log = logs.join('');
+    // The failure names what was actually wrong: the version and where the
+    // binary is — it must NOT claim the binary is missing.
+    expect(log).toContain('0.20.0');
+    expect(log).toContain(SERVER_BIN);
+    expect(log).toContain('below the required minimum');
+    expect(log).not.toContain('binary not found');
+    expect(errors).toEqual(['Verification failed']);
+    expect(events).not.toContain(IPC.INSTALL_DONE);
+  });
+
+  it('verification failure from an undeterminable version names the binary it found', async () => {
+    // The regression that hid the real cause from the reporter for days: the
+    // binary IS there, but uv reports no version for it — the message must say
+    // exactly that instead of "binary not found".
+    setupMachine({
+      uvOnPath: PATH_ONLY_UV,
+      // uv tool list never reports cowork-server (e.g. a different tool dir).
+      toolListVersion: undefined,
+    });
+
+    const { win, logs, errors, events } = fakeWindow();
+    await expect(runInstaller(win)).resolves.toBe(false);
+
+    const log = logs.join('');
+    expect(log).toContain(`cowork-server was found at ${SERVER_BIN}`);
+    expect(log).toContain('version could not be determined');
+    expect(log).not.toContain('binary not found');
     expect(errors).toEqual(['Verification failed']);
     expect(events).not.toContain(IPC.INSTALL_DONE);
   });
@@ -282,5 +311,45 @@ describe('runInstaller — failure and fallback scenarios', () => {
     expect(events).not.toContain(IPC.INSTALL_DONE);
     // Cancel is not an error — no error banner for the renderer.
     expect(errors).toEqual([]);
+  });
+});
+
+describe('inspectCoworkServerInstall — binary candidate resolution', () => {
+  // Regression: inspectCoworkServerInstall and server-process.getCoworkServerBin
+  // used to disagree on where the binary may live. A prod Windows install whose
+  // binary sits only at the legacy %LOCALAPPDATA%\bin fallback (not on PATH)
+  // starts fine via server-process, but this check fell through to findOnPath
+  // and missed it — reporting binary-missing and triggering a needless reinstall.
+  const originalPlatform = process.platform;
+  const originalLocalAppData = process.env.LOCALAPPDATA;
+  const LOCALAPPDATA = 'C:\\Users\\u\\AppData\\Local';
+
+  afterEach(() => {
+    Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
+    if (originalLocalAppData === undefined) delete process.env.LOCALAPPDATA;
+    else process.env.LOCALAPPDATA = originalLocalAppData;
+  });
+
+  it('finds a prod Windows binary at the legacy %LOCALAPPDATA%\\bin fallback even when off PATH', async () => {
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+    process.env.LOCALAPPDATA = LOCALAPPDATA;
+    const legacyBin = path.join(LOCALAPPDATA, 'bin', 'cowork-server.exe');
+
+    // Only the legacy candidate exists on disk; nothing is on PATH either
+    // (where/which fails for cowork-server — the fallback must never be reached).
+    vi.mocked(fs.existsSync).mockImplementation((p) => String(p) === legacyBin);
+    vi.mocked(cp.execFile).mockImplementation(((
+      cmd: string,
+      args: string[],
+      _opts: unknown,
+      cb: (err: Error | null, stdout: string, stderr: string) => void,
+    ) => {
+      if (cmd === 'where' && args[0] === 'uv') cb(null, 'C:\\custom\\tools\\uv.exe\n', '');
+      else if (args[0] === 'tool' && args[1] === 'list') cb(null, 'cowork-server v0.26.8.2.1\n- cowork-server\n', '');
+      else cb(new Error(`unexpected execFile: ${cmd} ${args.join(' ')}`), '', '');
+      return {} as never;
+    }) as never);
+
+    await expect(inspectCoworkServerInstall()).resolves.toEqual({ installed: true, binary: legacyBin });
   });
 });

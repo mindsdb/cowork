@@ -22,9 +22,11 @@ vi.mock('./cowork-home', () => ({
   buildKind: () => 'prod',
 }));
 vi.mock('./minds-urls', () => ({ MINDS_ENV_SLUG: '' }));
+/** What resolveUv reports; the dev-mode tests flip it per scenario. */
+const uvState = vi.hoisted(() => ({ resolveUv: '/usr/bin/uv' as string | null }));
 vi.mock('./uv-paths', () => ({
   getEnvPath: () => '/usr/bin',
-  findUv: () => '/usr/bin/uv',
+  resolveUv: async () => uvState.resolveUv,
   coworkServerBinCandidates: () => ['/fake/bin/cowork-server'],
 }));
 // credential-provisioning pulls in keychain-service, which imports the
@@ -38,6 +40,7 @@ vi.mock('fs');
 vi.mock('child_process');
 vi.mock('http');
 
+import { app } from 'electron';
 import { startServer, getServerDiagnostics, isServerRunning, stopServer } from './server-process';
 
 const PORT = 27903;
@@ -83,6 +86,7 @@ let signals: Array<[number, string]> = [];
 beforeEach(() => {
   execCalls = [];
   execHandler = () => ({ err: new Error('nothing found'), stdout: '' });
+  uvState.resolveUv = '/usr/bin/uv';
 
   // process.kill is the real global — killTree calls it directly, so without
   // this stub the POSIX branch would SIGTERM and then SIGKILL whatever process
@@ -351,5 +355,49 @@ describe('Windows reap', () => {
     expect(killed).not.toContain('777');
     expect(killed).not.toContain('123');
     expect(getServerDiagnostics().portHolderPid).toBe(9911);
+  });
+});
+
+describe('dev-mode uv resolution', () => {
+  // The dev branch (`uv run cowork-server` from the sibling source tree) must
+  // resolve uv the same way the installer does — a developer whose uv came
+  // from winget/scoop/pip is on PATH only, outside every probed dir.
+  afterEach(() => {
+    (app as { isPackaged: boolean }).isPackaged = true;
+    delete process.env.COWORK_SERVER_DIR;
+  });
+
+  function enterDevMode() {
+    (app as { isPackaged: boolean }).isPackaged = false;
+    process.env.COWORK_SERVER_DIR = '/dev/cowork-server';
+    vi.mocked(fs.existsSync).mockImplementation((p) => String(p).endsWith('pyproject.toml'));
+  }
+
+  it('spawns `uv run` with the resolveUv-resolved binary (PATH-only uv included)', async () => {
+    enterDevMode();
+    uvState.resolveUv = '/custom/tools/uv';
+
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => child.emit('error', new Error('spawn EPERM')), 0);
+      return child as never;
+    }) as never);
+
+    await startServer({ port: PORT, readyTimeoutMs: 5_000 });
+
+    const spawnCall = vi.mocked(cp.spawn).mock.calls[0];
+    expect(spawnCall?.[0]).toBe('/custom/tools/uv');
+    expect(spawnCall?.[1]).toEqual(['run', 'cowork-server']);
+  });
+
+  it('reports a useful reason and never spawns when uv is unresolvable', async () => {
+    enterDevMode();
+    uvState.resolveUv = null;
+
+    const result = await startServer({ port: PORT, readyTimeoutMs: 5_000 });
+
+    expect(result.ok).toBe(false);
+    expect(result.reason).toContain('uv not found');
+    expect(cp.spawn).not.toHaveBeenCalled();
   });
 });
