@@ -62,6 +62,7 @@
     "electron": "^39.8.10",
     "electron-builder": "^26.15.3",
     "happy-dom": "^20.10.6",
+    "lucide-react": "^1.31.0",
     "postcss": "^8.5.25",
     "tailwindcss": "^3.4.19",
     "typescript": "^5.7.0",

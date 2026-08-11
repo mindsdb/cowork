@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { ArrowLeftRight, Server, Cloud, Sparkle, LogIn, LogOut } from 'lucide-react';
 import { Alert, Button } from '../../components/ui';
 import { ConfirmModal } from '../../components/ConfirmModal';
 import { host, getAccessToken } from '../../../platform/host';
@@ -140,10 +141,10 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
       {/* Feature grid */}
       <div className="grid grid-cols-2 gap-y-2.5 gap-x-5 w-full">
         {[
-          { icon: '⇌', label: 'Seamless model router', desc: 'The simplest way to use all models in one place — Claude, GPT, DeepSeek, Kimi, and more.' },
-          { icon: '⟁', label: 'Remote tasks', desc: 'Run code and long tasks on managed infrastructure, not your laptop.', soon: true },
-          { icon: <svg width="17" height="13" viewBox="0 0 20 14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15.5 12H5a4 4 0 0 1-.5-7.97A5 5 0 0 1 14.5 6h1a3 3 0 0 1 0 6Z" /></svg>, label: 'Share & collaborate', desc: 'Share dashboards, reports, and artifacts — and work on them together.' },
-          { icon: '⊹', label: 'Unified account', desc: 'One login, one bill — no juggling API keys across providers.' },
+          { icon: <ArrowLeftRight size={15} strokeWidth={1.5} aria-hidden="true" />, label: 'Seamless model router', desc: 'The simplest way to use all models in one place — Claude, GPT, DeepSeek, Kimi, and more.' },
+          { icon: <Server size={15} strokeWidth={1.5} aria-hidden="true" />, label: 'Remote tasks', desc: 'Run code and long tasks on managed infrastructure, not your laptop.', soon: true },
+          { icon: <Cloud size={16} strokeWidth={1.5} aria-hidden="true" />, label: 'Share & collaborate', desc: 'Share dashboards, reports, and artifacts — and work on them together.' },
+          { icon: <Sparkle size={15} strokeWidth={1.5} aria-hidden="true" />, label: 'Unified account', desc: 'One login, one bill — no juggling API keys across providers.' },
         ].map(({ icon, label, desc, soon }) => (
           <div key={label} className="flex gap-2.5 items-start">
             <span className="text-[16px] leading-none text-accent mt-0.5 shrink-0 inline-flex items-center">{icon}</span>
@@ -171,11 +172,7 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
 
       {/* CTA */}
       <Button variant="primary" onClick={onSsoSignIn}>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
-          <polyline points="10 17 15 12 10 7" />
-          <line x1="15" y1="12" x2="3" y2="12" />
-        </svg>
+        <LogIn size={14} strokeWidth={1.5} aria-hidden="true" />
         Sign in / Sign up to MindsHub
       </Button>
     </div>
@@ -221,11 +218,7 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
           <Section title="Sign out" subtitle="Disconnect from MindsHub and remove every stored credential on this device. Cowork will return to the onboarding flow on the next launch.">
             <div className="flex justify-end">
               <Button variant="danger" onClick={() => setLogoutConfirmOpen(true)} disabled={loggingOut} title="Sign out and clear stored credentials">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                  <polyline points="16 17 21 12 16 7" />
-                  <line x1="21" y1="12" x2="9" y2="12" />
-                </svg>
+                <LogOut size={13} strokeWidth={1.5} aria-hidden="true" />
                 {loggingOut ? 'Signing out…' : 'Sign out'}
               </Button>
             </div>

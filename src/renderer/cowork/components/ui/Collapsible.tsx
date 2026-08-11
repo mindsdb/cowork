@@ -15,22 +15,19 @@
 // on the panel) via Tailwind variants — no JS style mutation, no extra CSS.
 
 import { Collapsible as BaseCollapsible } from '@base-ui/react/collapsible';
+import { ChevronDown } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { cn } from '../../lib/cn';
 
-// Inlined (like Menu/Select) so the primitive stays free of the product icon set.
+// Lucide directly (like Menu/Select) so the primitive stays free of the product icon set.
 function Chevron() {
   return (
-    <svg
+    <ChevronDown
       className="flex-none text-ink-4 transition-transform duration-200 group-data-[panel-open]:rotate-180"
-      width="12"
-      height="12"
-      viewBox="0 0 24 24"
-      fill="none"
+      size={12}
+      strokeWidth={1.5}
       aria-hidden="true"
-    >
-      <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
+    />
   );
 }
 

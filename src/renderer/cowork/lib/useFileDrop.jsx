@@ -20,6 +20,7 @@
      within a single drop. */
 
 import { memo, useCallback, useRef, useState } from 'react';
+import { Upload } from 'lucide-react';
 
 // Theme-driven font — the 8-bit skin (and others) override --font-body,
 // so the overlay label follows whatever theme the user picked.
@@ -199,16 +200,8 @@ export const FileDropOverlay = memo(function FileDropOverlay({ active, label, bu
           transition: 'transform 160ms cubic-bezier(.2,.7,.3,1)',
         }}
       >
-        <svg
-          width="18" height="18" viewBox="0 0 24 24" fill="none"
-          stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-          aria-hidden="true" style={{ flex: '0 0 auto' }}
-        >
-          {/* upload-into-tray glyph (inherits currentColor) */}
-          <path d="M12 15V3" />
-          <path d="m7 8 5-5 5 5" />
-          <path d="M5 16v5h14v-5" />
-        </svg>
+        {/* upload-into-tray glyph (inherits currentColor) */}
+        <Upload size={18} strokeWidth={1.5} aria-hidden="true" style={{ flex: '0 0 auto' }} />
         <span>{text}</span>
       </div>
     </div>

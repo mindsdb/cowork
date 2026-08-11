@@ -39,6 +39,7 @@
 import { useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Menu as BaseMenu } from '@base-ui/react/menu';
+import { ChevronRight } from 'lucide-react';
 import { cva } from 'class-variance-authority';
 import { cn } from '../../lib/cn';
 
@@ -76,13 +77,9 @@ const itemVariants = cva(
   },
 );
 
-// Chevron for submenu triggers. Inlined so the primitive stays free of
-// any app-icon dependency.
-const CHEVRON_RIGHT = (
-  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-    <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
-);
+// Chevron for submenu triggers. Lucide directly so the primitive stays
+// free of any app-icon dependency.
+const CHEVRON_RIGHT = <ChevronRight size={11} strokeWidth={1.5} aria-hidden="true" />;
 
 // Maps the item array to Base UI nodes. Recursive so `submenu` items
 // nest cleanly. `z` rises by one per level so deeper fly-outs always
