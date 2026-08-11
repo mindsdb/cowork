@@ -82,10 +82,9 @@ import {
   X,
 } from 'lucide-react';
 
-// (Component, default size, extra props) → the old call-style drawer fn.
-const ico = (Cmp, d = 16, props) => (s = d) => (
-  <Cmp size={s} strokeWidth={1.5} aria-hidden="true" {...props} />
-);
+// (Component, default size) → the old call-style drawer fn. Lucide adds
+// aria-hidden itself on childless icons, so no a11y props needed here.
+const ico = (Cmp, d = 16) => (s = d) => <Cmp size={s} strokeWidth={1.5} />;
 
 const Ico = {
   search:   ico(Search),
