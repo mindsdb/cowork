@@ -129,6 +129,7 @@ import {
   setForm as setDataVaultForm,
   clearForm as clearDataVaultForm,
 } from './components/datavault/formStore';
+import { __resetDraftsForTests } from './lib/draftStore';
 
 const ASK_EVENT = {
   type: 'response.ask_user',
@@ -197,6 +198,9 @@ async function attach(user, name = 'notes.txt') {
 }
 
 beforeEach(() => {
+  // Composer text lives in a module-level, per-surface store (lib/draftStore),
+  // so unsent text from the previous test would otherwise still be in the box.
+  __resetDraftsForTests();
   streams.length = 0;
   spies.submitAnswer.mockClear();
   spies.streamMessage.mockClear();
@@ -573,12 +577,16 @@ describe('two tasks draining while only one is on screen', () => {
     await emitOn(streamA, { ...ASK_EVENT, question_id: 'ask:alpha' });
     await waitFor(() => expect(composer.value).toBe('queued for alpha'));
 
-    // One Composer instance serves every conversation, so Alpha's restored text
-    // is still in the box when Beta is opened. Beta's own restored text must
-    // REPLACE it, not be appended to another conversation's draft.
+    // One Composer instance serves every conversation, but its text comes from
+    // the per-surface draft store, so opening Beta shows Beta's restored text on
+    // its own — Alpha's must not be spliced in front of it…
     composer = await openByTitle(user, 'Beta task');
-
     await waitFor(() => expect(composer.value).toBe('queued for beta'));
+
+    // …nor lost: it is still under Alpha's key. Asserted because both halves are
+    // append-into-empty otherwise, where append and replace look identical.
+    composer = await openByTitle(user, 'Alpha task');
+    await waitFor(() => expect(composer.value).toBe('queued for alpha'));
   });
 });
 

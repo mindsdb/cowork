@@ -86,14 +86,18 @@ export function moveDraft(fromKey, toKey) {
   clearDraft(fromKey); // flushes both halves of the move in one write
 }
 
-// Drop every draft, in memory and in storage. Tests need this because the Map
-// above is module state seeded at import: within a test file the registry is
-// shared, so text one case types stays a draft the next case's composer
-// restores. Wired into tests/setup-renderer.ts so every renderer test starts
-// with an empty composer.
-export function resetDrafts() {
-  drafts.clear();
+// Test-only: drop every draft, in memory and on disk. The store is
+// module-level, so without this each test in a file inherits the previous
+// one's typing — which is exactly how ENG-1407's red suite came about.
+//
+// Cancelling `flushTimer` is the load-bearing part: a burst typed before the
+// reset leaves a 400 ms timer armed over the (now stale) `drafts` snapshot, and
+// letting it run would write those keys back AFTER the clear. Cancelling rather
+// than flushing because the point is to forget them, and `drafts.clear()` below
+// already makes a flush a no-op write.
+export function __resetDraftsForTests() {
   if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+  drafts.clear();
   try {
     window.localStorage.removeItem(KEY);
   } catch {

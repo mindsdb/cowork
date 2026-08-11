@@ -3048,13 +3048,9 @@ function AppCore() {
       resolvedId = sid;
       // Carry over a reply the user started typing under the tmp- id.
       moveDraft(previousId, sid);
-      setTasks((prev) => prev.map((t) =>
-        // `adoptedFromId` records that this is a RENAME of the same conversation,
-        // not a different task. ChatView needs to tell the two apart: both change
-        // `task.id`, but only a rename means the draft in the composer still
-        // belongs to the task on screen (see its draftTaskRef).
-        t.id === previousId || t.id === taskId ? { ...t, id: sid, adoptedFromId: previousId } : t,
-      ));
+      setTasks((prev) => prev.map((t) => (
+        t.id === previousId || t.id === taskId ? { ...t, id: sid } : t
+      )));
       if (activeStreamingTaskIdRef.current === previousId) {
         activeStreamingTaskIdRef.current = sid;
       }
@@ -3414,10 +3410,9 @@ function AppCore() {
       resolvedId = sid;
       // Carry over a reply the user started typing under the tmp- id.
       moveDraft(previousId, sid);
-      setTasks((prev) => prev.map((t) =>
-        // See the note on adoptedFromId in handleSendFromHome's adoptServerId.
-        t.id === previousId || t.id === id ? { ...t, id: sid, adoptedFromId: previousId } : t,
-      ));
+      setTasks((prev) => prev.map((t) => (
+        t.id === previousId || t.id === id ? { ...t, id: sid } : t
+      )));
       // Move the in-flight + active refs onto the new id so cancel /
       // reconcile passes look at the right key.
       if (activeStreamingTaskIdRef.current === previousId) {
@@ -3590,10 +3585,9 @@ function AppCore() {
       resolvedId = sid;
       // Carry over a reply the user started typing under the tmp- id.
       moveDraft(previousId, sid);
-      setTasks((prev) => prev.map((t) =>
-        // See the note on adoptedFromId in handleSendFromHome's adoptServerId.
-        t.id === previousId || t.id === id ? { ...t, id: sid, adoptedFromId: previousId } : t,
-      ));
+      setTasks((prev) => prev.map((t) => (
+        t.id === previousId || t.id === id ? { ...t, id: sid } : t
+      )));
       if (activeStreamingTaskIdRef.current === previousId) {
         activeStreamingTaskIdRef.current = sid;
       }
