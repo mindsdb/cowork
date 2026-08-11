@@ -255,6 +255,24 @@ assets/
 
 ---
 
+## Anonymous install analytics
+
+Two independent analytics paths ship in this app, and they are easy to confuse:
+
+| Path | Where | Identifies | Configured by |
+|---|---|---|---|
+| Product analytics | renderer, `posthog-js` | the signed-in Keycloak user | `VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN` |
+| Install analytics | main process, `src/main/analytics.ts` | nothing, see below | nothing, the endpoint is a constant |
+
+The main-process path sends four fire-and-forget `ANTONAPP_*` events (installer success, terms accepted, provider choice) as a single HTTP GET to `collect.mindshub.ai/collect`, where a lambda in [mindshub_services](../mindshub_services/README.md) relays them into PostHog. It mirrors `anton/analytics.py`, with one gap: `sendEvent` sends no installation fingerprint, so those events cannot be attributed to a machine and the collector groups them all under one synthetic id, flagged with an `aid_missing` property. Sending an install id would fix it, and is not done yet.
+
+Two things worth knowing before editing this file:
+
+- **The endpoint is baked in, and `src/main/**` has no OTA path.** A change to `ANALYTICS_URL` reaches users only when they download a new installer, which is why the constant points at a hostname we own rather than at whatever is serving behind it.
+- **A blocked request is invisible.** `sendEvent` discards its response and swallows every error, so anything that rejects the request (a bot rule, a DNS change, an expired cert) loses events with nothing reporting it. That is why the request carries an explicit `User-Agent` and why the collector host is not proxied through Cloudflare. These events were in fact dropped in full for months, by an action-name filter upstream that did not match their uppercase names.
+
+---
+
 ## IPC Reference
 
 All channels defined in `src/shared/ipc-channels.ts`:

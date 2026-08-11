@@ -12,8 +12,22 @@
 import * as https from 'https';
 import * as url from 'url';
 
-const ANALYTICS_URL = 'https://x6nik28qi6.execute-api.us-east-2.amazonaws.com/default/zoomInfoCollector';
+/*
+ * A hostname we own rather than an API Gateway id, so the collector behind it
+ * can move without an app release to follow it. That matters more here than in
+ * anton: `src/main/**` has no OTA path, so a change to this constant only
+ * reaches users who download a new installer.
+ */
+const ANALYTICS_URL = 'https://collect.mindshub.ai/collect';
 const TIMEOUT = 3000; // ms
+/*
+ * Sent so the request does not arrive with Node's default agent. Cloudflare's
+ * bot protection answers script-shaped agents with 403 on the mindshub.ai zone,
+ * and this function throws its response away, so a blocked event would vanish
+ * with nothing reporting it. The collector host is deliberately not proxied, so
+ * this is a second line rather than the only one.
+ */
+const USER_AGENT = 'cowork-analytics/1.0';
 
 export function sendEvent(action: string, extra?: Record<string, string>): void {
   try {
@@ -35,6 +49,7 @@ export function sendEvent(action: string, extra?: Record<string, string>): void 
         hostname: parsed.hostname,
         path: parsed.pathname + parsed.search,
         timeout: TIMEOUT,
+        headers: { 'User-Agent': USER_AGENT },
       },
       (res) => { res.resume(); }
     );
