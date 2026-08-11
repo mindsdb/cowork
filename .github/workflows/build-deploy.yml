@@ -2,9 +2,8 @@
 #
 # The three per-env workflows each carried the same build and scan, differing only
 # in the tag prefix, plus a per-PR environment rollout on the dev one. The static
-# dev/staging/prod Helm rollout has never been switched on here (it is handled
-# outside these workflows), so the commented block at the bottom is kept once
-# rather than three times.
+# staging/prod Helm rollout lives here too, as one `deploy` job that maps the
+# build environment to the target rather than two near-identical copies.
 #
 # The SPA is env-agnostic: it derives every MindsHub service URL from the page
 # origin at runtime (src/renderer/lib/mindsUrls.ts), so one image serves every dev
@@ -101,27 +100,35 @@ jobs:
         id: rollout
         run: echo "deployed=true" >> "$GITHUB_OUTPUT"
 
-  # The static Helm rollout has never run from here — dev/staging/prod are rolled
-  # outside these workflows. Kept as one commented block rather than the two
-  # near-identical copies it used to be, so switching it on means filling in a
-  # deploy-envs input here instead of reconstructing it in each caller.
-  #
-  # deploy:
-  #   runs-on: ${{ inputs.build-runner }}
-  #   needs: [build, scan]
-  #   environment:
-  #     name: <env>
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - uses: mindsdb/github-actions/setup-env@main
-  #     - uses: DevOps-Nirvana/aws-helm-multi-deploy-nodocker@v6
-  #       with:
-  #         environment-slug: <env>
-  #         k8s-namespace: <env>
-  #         image-tag: ${{ inputs.build-environment }}-${{ env.SLUG }}
-  #         timeout: 600s
-  #         wait: "true"
-  #     # rollout status, not `wait ... pod -l <selector>`: the selector also
-  #     # matches the old ReplicaSet's terminating pods, and `wait` fails when one
-  #     # disappears mid-wait even though the deploy succeeded.
-  #     - run: kubectl -n <env> rollout status deployment/cowork-frontend --timeout=10m
+  deploy:
+    runs-on: ${{ inputs.build-runner }}
+    # `scan` too: it is blocking on a deploy branch (see `allow-vulns` above), so
+    # needing only `build` would let a rollout run beside a failing scan.
+    needs: [build, scan]
+    # Only the two long-lived environments have a static rollout. A `development`
+    # build is either a PR (handled by `deploy-pr-env`) or nothing.
+    if: inputs.build-environment == 'staging' || inputs.build-environment == 'production'
+    env:
+      # `build-environment` names the image tag prefix (production); the Helm
+      # chart and namespace name the environment (prod). One is not the other, so
+      # map once here rather than at each use.
+      DEPLOY_ENV: ${{ inputs.build-environment == 'production' && 'prod' || 'staging' }}
+    environment:
+      # Spelled out rather than `env.DEPLOY_ENV`: `environment` is resolved before
+      # the job's `env` block exists, and only takes github/needs/strategy/matrix/
+      # vars/inputs.
+      name: ${{ inputs.build-environment == 'production' && 'prod' || 'staging' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mindsdb/github-actions/setup-env@main
+      - uses: DevOps-Nirvana/aws-helm-multi-deploy-nodocker@v8
+        with:
+          environment-slug: ${{ env.DEPLOY_ENV }}
+          k8s-namespace: ${{ env.DEPLOY_ENV }}
+          image-tag: ${{ inputs.build-environment }}-${{ env.SLUG }}
+          timeout: 600s
+          wait: "true"
+      # rollout status, not `wait ... pod -l <selector>`: the selector also
+      # matches the old ReplicaSet's terminating pods, and `wait` fails when one
+      # disappears mid-wait even though the deploy succeeded.
+      - run: kubectl -n "$DEPLOY_ENV" rollout status deployment/cowork-frontend --timeout=10m
