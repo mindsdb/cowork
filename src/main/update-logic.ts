@@ -104,31 +104,53 @@ export function parseAntonPin(requiresDist: unknown): string | null {
 /** Extract anton-agent's full version specifier set from a Requires-Dist list
  *  (e.g. `["anton-agent<3,>=2.26.6.30.1", "fastapi>=0.100"]` → `"<3,>=2.26.6.30.1"`).
  *
- *  Three distinct return values, all load-bearing for the PyPI anton-only
- *  update check (ENG-1094):
- *   - the specifier string when anton-agent is required with a version bound;
+ *  Distinct return values, all load-bearing for the PyPI anton-only update
+ *  check (ENG-1094):
+ *   - the specifier string when anton-agent is required with a version bound —
+ *     every unmarked `anton-agent` requirement is combined into one comma-joined
+ *     conjunction (satisfiesAntonConstraint reads the clause set as an AND);
  *   - `""` when anton-agent is required with NO version bound (any version ok);
- *   - `null` when there is no anton-agent requirement, or the input isn't a
- *     list — the "couldn't read the constraint" case, which the check treats as
+ *   - `null` when there is no anton-agent requirement, the input isn't a list,
+ *     OR any `anton-agent` requirement carries a PEP 508 environment marker —
+ *     the "couldn't safely read the constraint" case, which the check treats as
  *     fail-closed (see satisfiesAntonConstraint) rather than "anything goes".
+ *
+ *  We deliberately do NOT evaluate environment markers. A marker-qualified
+ *  requirement (a different anton bound per python_version / platform, possibly
+ *  mutually exclusive across entries) can't be reduced to a single applicable
+ *  constraint without a full PEP 508 marker evaluator, and stripping the marker
+ *  could offer an anton the installed wheel forbids on THIS interpreter — the
+ *  exact resolve-failure loop this check exists to prevent. So the presence of
+ *  any marker fails the whole read closed.
  *
  *  Distinct from parseAntonPin, which extracts only the `==` pin the staging rc
  *  stream needs restated on the command line; this returns the whole range so
  *  the updater can prove a candidate anton is permitted before offering it. */
 export function parseAntonConstraint(requiresDist: unknown): string | null {
   if (!Array.isArray(requiresDist)) return null;
+  const specs: string[] = [];
   for (const entry of requiresDist) {
     if (typeof entry !== 'string') continue;
     // `anton-agent` (word-boundaried so `anton-agent-foo` can't match), an
-    // optional `[extra]`, then the specifier up to any `;` environment marker.
-    const m = entry.match(/^\s*anton-agent(?![A-Za-z0-9_-])\s*(?:\[[^\]]*\])?\s*([^;]*)/i);
+    // optional `[extra]`, then the rest of the line: the specifier plus any
+    // PEP 508 `; environment marker`.
+    const m = entry.match(/^\s*anton-agent(?![A-Za-z0-9_-])\s*(?:\[[^\]]*\])?\s*(.*)$/i);
     if (!m) continue;
-    let spec = m[1].trim();
+    const rest = m[1];
+    const semi = rest.indexOf(';');
+    // Any real environment marker fails the whole read closed (see above): we
+    // don't evaluate markers, so acting on a stripped constraint could offer a
+    // forbidden anton. A bare trailing `;` with nothing after it is not a marker.
+    if (semi !== -1 && rest.slice(semi + 1).trim() !== '') return null;
+    let spec = (semi === -1 ? rest : rest.slice(0, semi)).trim();
     // PEP 508 allows the specifier wrapped in parentheses: `anton-agent (>=2)`.
     if (spec.startsWith('(') && spec.endsWith(')')) spec = spec.slice(1, -1).trim();
-    return spec;
+    specs.push(spec);
   }
-  return null;
+  if (specs.length === 0) return null;
+  // Combine every unmarked requirement; bare "" specs (declared with no bound)
+  // drop out, so an all-unbounded set collapses to "" (any version allowed).
+  return specs.filter((s) => s !== '').join(',');
 }
 
 // A single PEP 440 comparison clause, e.g. `<3` or `>=2.26.6.30.1`. The version

@@ -600,15 +600,31 @@ describe('parseAntonConstraint', () => {
     expect(parseAntonConstraint(['anton-agent==2.26.7.23.1rc1'])).toBe('==2.26.7.23.1rc1');
   });
 
-  it('drops environment markers, extras, and PEP 508 parentheses', () => {
-    expect(parseAntonConstraint(['anton-agent<3 ; python_version >= "3.12"'])).toBe('<3');
+  it('drops extras and PEP 508 parentheses', () => {
     expect(parseAntonConstraint(['anton-agent[cli]>=2,<3'])).toBe('>=2,<3');
     expect(parseAntonConstraint(['anton-agent (>=2)'])).toBe('>=2');
   });
 
+  it('combines multiple unmarked anton-agent requirements into one conjunction', () => {
+    expect(parseAntonConstraint(['anton-agent>=2', 'fastapi>=0.100', 'anton-agent<4']))
+      .toBe('>=2,<4');
+  });
+
+  it('fails closed on a PEP 508 environment marker instead of stripping it', () => {
+    // Stripping the marker would treat a conditional bound as unconditional and
+    // could offer an anton this interpreter's wheel actually forbids (ENG-1094 review).
+    expect(parseAntonConstraint(['anton-agent<3 ; python_version >= "3.12"'])).toBeNull();
+    expect(parseAntonConstraint(['anton-agent ; python_version >= "3.12"'])).toBeNull();
+    // Fails closed even when an unmarked entry is also present — we can't know
+    // the marked one doesn't apply (mutually exclusive per-platform bounds).
+    expect(parseAntonConstraint(['anton-agent>=2', 'anton-agent<4 ; sys_platform == "win32"']))
+      .toBeNull();
+    // A bare trailing `;` with nothing after it is not a marker.
+    expect(parseAntonConstraint(['anton-agent>=2 ;'])).toBe('>=2');
+  });
+
   it('returns "" when anton-agent is required with no version bound (any allowed)', () => {
     expect(parseAntonConstraint(['anton-agent'])).toBe('');
-    expect(parseAntonConstraint(['anton-agent ; python_version >= "3.12"'])).toBe('');
   });
 
   it('returns null when there is no anton-agent requirement (fail-closed signal)', () => {
