@@ -83,23 +83,38 @@ vi.mock('./api', async (importOriginal) => ({
   },
 }));
 
-vi.mock('../platform/host', () => ({
-  host: {
+// Spread the real host rather than listing methods, and override only what
+// these tests need to control. A hand-listed mock breaks whenever App gains a
+// host call in a mount effect — `getShellAutoUpdate` / `onShellAutoUpdate`
+// (ENG shell auto-update) did exactly that, and every test in this file died on
+// `host.getShellAutoUpdate is not a function` even though none of them touch
+// updates. This file is the only place that mocks the host and renders the
+// whole App, so there is no shared fixture to keep in sync; spreading the real
+// module is what makes it stop being a tripwire. Safe because every real host
+// method is web-aware: `isElectron` is false under jsdom, so each one returns
+// its no-Electron default instead of reaching for a bridge.
+vi.mock('../platform/host', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    host: {
+      ...actual.host,
+      isElectron: false,
+      isMac: () => false,
+      getApiOrigin: () => 'http://localhost:1',
+      openPath: vi.fn(),
+      openExternal: vi.fn(),
+      onUpdateStatus: () => () => {},
+      onOAuthRefreshError: () => () => {},
+      getKeychainPref: vi.fn(async () => false),
+      serverDiagnostics: vi.fn(async () => ({})),
+      getShellUpdate: vi.fn(async () => null),
+    },
+    getAccessToken: vi.fn(async () => null),
+    getVersionInfo: vi.fn(async () => ({ app: '', ui: null, source: 'web' })),
     isElectron: false,
-    isMac: () => false,
-    getApiOrigin: () => 'http://localhost:1',
-    openPath: vi.fn(),
-    openExternal: vi.fn(),
-    onUpdateStatus: () => () => {},
-    onOAuthRefreshError: () => () => {},
-    getKeychainPref: vi.fn(async () => false),
-    serverDiagnostics: vi.fn(async () => ({})),
-    getShellUpdate: vi.fn(async () => null),
-  },
-  getAccessToken: vi.fn(async () => null),
-  getVersionInfo: vi.fn(async () => ({ app: '', ui: null, source: 'web' })),
-  isElectron: false,
-}));
+  };
+});
 
 vi.mock('./lib/analytics', () => ({
   trackDataSourceConnected: vi.fn(),
