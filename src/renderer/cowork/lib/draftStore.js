@@ -86,6 +86,21 @@ export function moveDraft(fromKey, toKey) {
   clearDraft(fromKey); // flushes both halves of the move in one write
 }
 
+// Drop every draft, in memory and in storage. Tests need this because the Map
+// above is module state seeded at import: within a test file the registry is
+// shared, so text one case types stays a draft the next case's composer
+// restores. Wired into tests/setup-renderer.ts so every renderer test starts
+// with an empty composer.
+export function resetDrafts() {
+  drafts.clear();
+  if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+  try {
+    window.localStorage.removeItem(KEY);
+  } catch {
+    // Quota / private mode — the in-memory clear above is what tests rely on.
+  }
+}
+
 export function clearDraft(key) {
   if (!key || !drafts.delete(key)) return;
   // Flushed now, not debounced: this runs once per send or delete, so there's

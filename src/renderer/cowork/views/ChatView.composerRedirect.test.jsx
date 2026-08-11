@@ -16,6 +16,7 @@ vi.mock('../../platform/host', () => ({
 }));
 
 import ChatView, { redirectForTask } from './ChatView';
+import { moveDraft } from '../lib/draftStore';
 
 const task = (id, adoptedFromId) => ({
   id,
@@ -68,7 +69,14 @@ function Harness({ taskId = 't1', onConsumed }) {
       </button>
       <button
         type="button"
-        onClick={() => { setAdoptedFrom('tmp-9'); setOpenTaskId('conv-9'); }}
+        onClick={() => {
+          // App.jsx's adoptServerId carries the draft across the rename as well
+          // as stamping adoptedFromId; without it the composer would look up the
+          // new id and find nothing.
+          moveDraft('tmp-9', 'conv-9');
+          setAdoptedFrom('tmp-9');
+          setOpenTaskId('conv-9');
+        }}
       >
         adopt server id
       </button>
@@ -194,13 +202,15 @@ describe('ChatView composer redirect', () => {
     const user = userEvent.setup();
     render(<Harness />);
 
-    // The other order: switch first, then the drain lands. The draft in the box
-    // still belongs to t1, so ownership cannot be inferred from "did the task id
-    // change on this run".
+    // The other order: switch first, then the drain lands. Ownership cannot be
+    // inferred from "did the task id change on this run".
     await user.click(composer());
     await user.keyboard('draft for t1');
     await user.click(screen.getByText('switch task'));
-    expect(composer().value).toBe('draft for t1');
+    // t1's text no longer follows the switch — drafts are keyed per surface, so
+    // the box shows t-other's (empty) draft. Kept as a regression guard for that
+    // keying; the assertion that mattered is the replace-not-append below.
+    expect(composer().value).toBe('');
 
     await user.click(screen.getByText('fire other redirect'));
 
@@ -271,6 +281,9 @@ describe('ChatView composer redirect', () => {
     await user.click(screen.getByText('toggle mount'));
 
     await waitFor(() => expect(composer()).not.toBeNull());
-    expect(composer().value).toBe('');
+    // The restored text survives the remount as an ordinary draft — that is the
+    // unsent-composer-text guarantee, not a re-application. What must NOT happen
+    // is the redirect landing a second time on top of it.
+    expect(composer().value).toBe('queued one');
   });
 });
