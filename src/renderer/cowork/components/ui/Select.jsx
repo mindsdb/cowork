@@ -49,6 +49,7 @@
 
 import { useMemo } from 'react';
 import { Select as BaseSelect } from '@base-ui/react/select';
+import { ChevronDown, Check } from 'lucide-react';
 import { cva } from 'class-variance-authority';
 import { cn } from '../../lib/cn';
 import Spinner from './Spinner.jsx';
@@ -92,17 +93,9 @@ export const triggerVariants = cva(
   },
 );
 
-const CHEVRON_DOWN = (
-  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-    <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
-);
+const CHEVRON_DOWN = <ChevronDown size={11} strokeWidth={1.5} aria-hidden="true" />;
 
-const CHECK = (
-  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-    <path d="M5 13l4 4L19 7" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
-);
+const CHECK = <Check size={12} strokeWidth={1.5} aria-hidden="true" />;
 
 // Flattens the options tree (unwrapping groups, dropping separators) into
 // the `{ value, label }` pairs Base UI's Root `items` prop wants — that's

@@ -533,12 +533,33 @@ export default function Composer({
   // instead of parking the caret at the end — the home suggestion chips
   // use it to highlight their [type here] placeholder so the first
   // keystroke replaces it.
+  //
+  // `prefill.append` is the queue-drain case (a question appeared while
+  // messages were queued): that text is handed BACK to the user, so it joins
+  // the current draft instead of destroying it. Edit-and-resend and the home
+  // chips leave `append` unset and keep the replace semantics.
   useEffect(() => {
     if (!prefill || !prefill.bump) return;
-    const text = prefill.text || '';
-    const sel = Array.isArray(prefill.select) ? prefill.select : [text.length, text.length];
+    const incoming = prefill.text || '';
     const ta = taRef.current;
     setError('');
+    if (prefill.append) {
+      // The updater form rather than this effect's `value` closure (deps are
+      // only `prefill?.bump`, so it can be a render behind) or `ta.value`:
+      // `useDraft` documents the updater as reading `getDraft(key)`, which is
+      // current even on the render where the surface key just changed.
+      setValue((prev) => {
+        const next = prev ? `${prev}\n${incoming}` : incoming;
+        // Caret at the end, queued for the post-commit layout effect — setting
+        // it via rAF raced React's value commit.
+        pendingCaretRef.current = [next.length, next.length];
+        return next;
+      });
+      ta?.focus();
+      return;
+    }
+    const text = incoming;
+    const sel = Array.isArray(prefill.select) ? prefill.select : [text.length, text.length];
     if (ta && ta.value === text) {
       // Same text re-prefilled — no re-render coming, so the layout
       // effect won't fire; apply the selection directly.

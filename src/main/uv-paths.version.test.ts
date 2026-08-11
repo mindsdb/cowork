@@ -36,19 +36,24 @@ describe('getInstalledVersion — uv discovery', () => {
     expect(vi.mocked(cp.execFile).mock.calls[0][0]).not.toBe('uv');
   });
 
-  it('falls back to PATH-resolved `uv` when no probed location has the binary', async () => {
+  it('falls back to the PATH-resolved uv when no probed location has the binary', async () => {
     // uv installed via winget/scoop/pip lives outside every probed dir but is
-    // still on PATH — the version probe must not report "no version" for it.
+    // still on PATH — the version probe must not report "no version" for it,
+    // and must run the SAME binary resolveUv reports, not a bare `uv`.
     vi.mocked(fs.existsSync).mockReturnValue(false); // findUv() → null
+    const whichCmd = process.platform === 'win32' ? 'where' : 'which';
     vi.mocked(cp.execFile).mockImplementation(((
-      _cmd: string, _args: string[], _opts: unknown, cb: ExecCb,
+      cmd: string, args: string[], _opts: unknown, cb: ExecCb,
     ) => {
-      cb(null, 'cowork-server v0.26.8.2.1\n- cowork-server\n', '');
+      if (cmd === whichCmd && args[0] === 'uv') cb(null, '/custom/tools/uv\n', '');
+      else if (args[0] === 'tool' && args[1] === 'list') cb(null, 'cowork-server v0.26.8.2.1\n- cowork-server\n', '');
+      else cb(new Error(`unexpected execFile: ${cmd}`), '', '');
       return {} as never;
     }) as never);
 
     await expect(getInstalledVersion()).resolves.toBe('0.26.8.2.1');
-    expect(vi.mocked(cp.execFile).mock.calls[0][0]).toBe('uv');
+    const toolList = vi.mocked(cp.execFile).mock.calls.find((c) => (c[1] as string[])[0] === 'tool');
+    expect(toolList?.[0]).toBe('/custom/tools/uv');
   });
 
   it('resolves null when uv is not runnable anywhere', async () => {

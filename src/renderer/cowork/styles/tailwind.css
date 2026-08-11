@@ -1,6 +1,10 @@
-/* Tailwind utilities entry point. Loaded before globals.css so our
-   existing rules win on any shared selectors (utilities are still
-   available, just outranked by our explicit declarations). */
+/* Tailwind utilities entry point. Despite the import position in
+   main.tsx, this lands AFTER globals.css/styles.css in the emitted
+   bundle (their imports execute first via the App subtree), so
+   utilities win equal-specificity ties against legacy classes. Legacy
+   selectors with higher specificity (e.g. `.menu .menu-item`) still
+   outrank single-class utilities — use `!` utilities or inline styles
+   where a migrated component must beat one (ENG-1017 playbook). */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

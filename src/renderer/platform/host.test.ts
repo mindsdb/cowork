@@ -399,8 +399,23 @@ describe('web settings access — loopback-gated /raw (ENG-817)', () => {
     await expect(host.saveSettings('ANTON_TERMS_CONSENT=true')).resolves.toBe(false);
   });
 
-  // Only the loopback 403 is degraded; real failures must stay observable so
-  // onboarding can't report success over a failed write / read stale-empty.
+  // Org mode's tenancy gate returns 501 and runs before the loopback check, so
+  // hosted /raw answers 501, never 403. Degrading only 403 stranded every hosted
+  // user on the auth screen (resolveBootTarget → 'auth' if a boot probe rejects).
+  it('readSettings degrades to {} on the org-mode tenancy 501', async () => {
+    stubStatus(501, 'not available in org deployments');
+    const host = await importHost();
+    await expect(host.readSettings()).resolves.toEqual({});
+  });
+
+  it('saveSettings returns false (does not throw) on the org-mode tenancy 501', async () => {
+    stubStatus(501, 'not available in org deployments');
+    const host = await importHost();
+    await expect(host.saveSettings('ANTON_TERMS_CONSENT=true')).resolves.toBe(false);
+  });
+
+  // Only 403/501 degrade; real failures must stay observable so onboarding can't
+  // report success over a failed write / read stale-empty.
   it('readSettings REJECTS on a non-403 failure (e.g. 500) — not silently empty', async () => {
     stubStatus(500);
     const host = await importHost();

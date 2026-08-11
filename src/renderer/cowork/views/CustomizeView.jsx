@@ -8,6 +8,7 @@
 // user to wire something up.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { TriangleAlert } from 'lucide-react';
 import Ico from '../components/Icons';
 import { Alert, Button, EmptyState } from '../components/ui';
 import { CONNECTIONS_VAULT_KEEP, deleteDatasource, fetchConnector, fetchDatasources, fetchSavedConnection } from '../api';
@@ -128,7 +129,7 @@ function ConnectionCard({ connection, onDelete, onModify }) {
           title={needsReconnect ? 'Reconnection required' : undefined}
         >
           {needsReconnect
-            ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3 2 20h20L12 3Z"/><path d="M12 10v4M12 17h.01"/></svg>
+            ? <TriangleAlert size={14} strokeWidth={1.5} aria-hidden="true" />
             : Ico.database(14)}
         </span>
         <span

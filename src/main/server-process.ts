@@ -20,7 +20,7 @@ import { loadBundledServerCredentials } from './credential-provisioning';
 import { MINDS_ENV_SLUG } from './minds-urls';
 import { withServerLifecycle } from './server-lifecycle';
 import { decideStartWait, startFailureMessage } from './update-logic';
-import { getEnvPath, findUv, coworkServerBinCandidates } from './uv-paths';
+import { getEnvPath, resolveUv, coworkServerBinCandidates } from './uv-paths';
 import {
   SERVER_START_CAP_MS,
   type ServerStartErrorKind,
@@ -555,7 +555,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
 
   if (isDevSource && devDir) {
     // Dev: use uv to run from source so local edits are picked up
-    const uvCmd = findUv();
+    const uvCmd = await resolveUv();
     if (!uvCmd) {
       lastStartError = 'uv not found. Install uv first: https://docs.astral.sh/uv/getting-started/installation/';
       lastStartErrorKind = 'not-installed';

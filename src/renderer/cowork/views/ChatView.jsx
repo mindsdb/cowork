@@ -23,6 +23,7 @@ import { ScratchpadModal } from '../components/thinking/ScratchpadModal';
 import { ProgressBox, WorkingFolderBox, ContextBox } from '../components/rail';
 import { ArtifactViewer } from '../components/artifact';
 import SkillCard from '../components/SkillCard';
+import AskUserCard from '../components/AskUserCard';
 import { DataVaultFormPanel } from '../components/datavault/DataVaultFormPanel';
 import { getForm as getDataVaultForm, setForm as setDataVaultForm, subscribe as subscribeDataVaultForm, clearForm as clearDataVaultForm } from '../components/datavault/formStore';
 import { FormErrorBoundary } from '../components/datavault/FormErrorBoundary';
@@ -425,6 +426,46 @@ function StepArtifacts({ steps, onOpen, projectPath }) {
     <div className="flex flex-col gap-3 mt-1">
       {artifacts.map((s) => (
         <ArtifactCard key={s.id} artifact={artifactStepToCard(s, projectPath)} onOpen={onOpen} />
+      ))}
+    </div>
+  );
+}
+
+// Renders any badge='AskUser' steps as inline question cards, the same way
+// StepArtifacts renders artifacts — both receive the shared `steps` array.
+//
+// `expired` is derived PER QUESTION, not per conversation. Conversation-level
+// liveness ("this chat has something in flight") is the wrong granularity: it
+// renders an unanswered card from an EARLIER turn with live buttons for as long
+// as any new stream runs on the same conversation, and clicking it 404s — which
+// then retires whatever question the new turn is actually blocked on.
+//
+// Two rules:
+//   - an answered question is never expired; the card renders its outcome, and
+//     the generic "no longer active" line would be noise on top of it
+//   - only the LAST unanswered question of a LIVE turn can still be answered
+//
+// That last rule leans on an invariant owned by anton, not by this repo: the
+// `ask_user` tool blocks the turn, so anton never publishes a second question
+// while one is outstanding, and it always retires the outstanding one (answer,
+// cancel, or the server's 300 s timeout) before the turn ends. This repo can
+// neither see nor enforce that cross-repo contract, so an earlier unanswered
+// card is treated as expired rather than trusted to still be answerable.
+function StepQuestions({ steps, conversationId, conversationLive, onAnswered }) {
+  const questions = steps?.filter((s) => s.badge === 'AskUser') || [];
+  if (questions.length === 0) return null;
+  let lastUnanswered = -1;
+  questions.forEach((s, i) => { if (!s.data?.answer) lastUnanswered = i; });
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 4 }}>
+      {questions.map((s, i) => (
+        <AskUserCard
+          key={s.id}
+          step={s}
+          conversationId={conversationId}
+          expired={!s.data?.answer && !(conversationLive && i === lastUnanswered)}
+          onAnswered={onAnswered}
+        />
       ))}
     </div>
   );
@@ -969,6 +1010,24 @@ function ProviderOverloadedCard({
   );
 }
 
+/**
+ * The pending composer redirect for the task on screen, or null.
+ *
+ * A drain is per-conversation: a reconnected background stream (tailInFlight)
+ * can drain task A's queue while the user is looking at task B, and A's text
+ * must neither land in B's composer nor be dropped while it waits for A to be
+ * opened again. Hence a per-task map rather than one shared slot.
+ *
+ * The entry carries the drained `attachments` alongside the text for the same
+ * reason: the staged-attachment list in App.jsx is app-wide, so files staged at
+ * drain time would appear on — and be sent from — whichever conversation is
+ * open. They are handed to the parent only when this task's entry is consumed.
+ */
+export function redirectForTask(redirects, taskId) {
+  if (!redirects || !taskId) return null;
+  return redirects[taskId] || null;
+}
+
 // ─── Main view ───────────────────────────────────────────────────────────
 export default function ChatView({
   task,
@@ -1008,16 +1067,69 @@ export default function ChatView({
   queuedMessages = [],
   onRemoveFromQueue,
   agentLabel,
+  // Conversation ids the server currently has an active producer for
+  // (App.jsx's cross-client sync feed). Used to decide whether an
+  // unanswered AskUser card is still live or "expired" — replay
+  // resurrects unanswered questions from persisted history, and a
+  // click on one with no live run behind it would 404.
+  inFlightSet,
+  // Pending composer redirects from App.jsx, keyed by conversation id:
+  // {[taskId]: {text, attachments, bump}}. A question appeared while messages
+  // were queued for that task, so their text and files are handed back to its
+  // composer instead of being auto-sent as the answer or left queued to
+  // deadlock. Only this task's entry is read, and consuming it calls
+  // onComposerRedirectConsumed(taskId, attachments) so the parent stages the
+  // files against THIS task and deletes the entry, which is also what stops it
+  // re-firing on a later remount.
+  composerRedirects,
+  onComposerRedirectConsumed,
+  // Lets App.jsx release a dead question's grip on the composer (see
+  // handleSendInTask's pendingQuestionFor check) as soon as the card
+  // itself learns the question is gone.
+  onQuestionAnswered,
 }) {
   const scrollRef = useRef(null);
   const { isNarrow } = useBreakpoint();
   // Wide: inline grid column. Narrow: fixed overlay from the right.
   const [railOpen, setRailOpen] = useState(true);
   const [railNarrowOpen, setRailNarrowOpen] = useState(false);
-  // Composer prefill — set by clicking Edit on a user message.
-  // `bump` is a monotonically-increasing nonce so the Composer's
-  // sync effect runs even when re-editing the same text.
+  // Composer prefill — set by clicking Edit on a user message, or by this
+  // task's entry in App.jsx's `composerRedirects` (a question appeared while
+  // messages were queued). `bump` is a monotonically-increasing nonce so the
+  // Composer's sync effect runs even when re-editing/re-redirecting the same
+  // text.
   const [composerPrefill, setComposerPrefill] = useState({ text: '', bump: 0 });
+  // Forward App.jsx's redirect for THIS task into the same prefill state Edit
+  // uses, so Composer only has to react to one prefill prop. Consuming the entry
+  // (deleting it in the parent) is what stops a stale drain re-applying on
+  // remount.
+  useEffect(() => {
+    const redirect = redirectForTask(composerRedirects, task?.id);
+    if (!redirect) return;
+    const restored = redirect.text || '';
+    if (restored) {
+      // `append` unconditionally, and there is nothing left to decide: since
+      // ENG-1221 the composer's text comes from `lib/draftStore` keyed by
+      // surface (Composer's `useDraft(conversationId)`, and this view passes
+      // `conversationId={task.id}`), so the value on screen IS this task's own
+      // draft — another conversation's draft can no longer be in the box, which
+      // is the state the old `draftTaskRef` ownership check existed to detect.
+      // A drain hands the user's own queued text BACK to them, so it joins that
+      // draft instead of destroying it. Do not reintroduce a guard here: with a
+      // per-surface store, "not ours" is unreachable, and a guard that misfires
+      // silently deletes text the user is mid-typing.
+      setComposerPrefill((prev) => ({
+        text: restored,
+        bump: (prev?.bump || 0) + 1,
+        append: true,
+      }));
+    }
+    // The files travel with the text on the same entry, so they are staged by
+    // the parent here — once, for the task actually on screen — rather than
+    // app-wide at drain time.
+    onComposerRedirectConsumed?.(task?.id, redirect.attachments);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [composerRedirects, task?.id]);
   // Inline rail only active on wide screens.
   const effectiveRailOpen = !isNarrow && railOpen;
   // Narrow-screen overlay rail.
@@ -1695,6 +1807,19 @@ export default function ChatView({
                       onActivateStep={(step) => setOpenScratchpadStepId(prefixId(messageKey(m, i), step.id))}
                     />
                   )}
+                  {/* Above the text: a question is asked, then answered, then
+                      (at most) the turn's closing text streams — so the card
+                      always precedes any text that came after the answer. */}
+                  <StepQuestions
+                    steps={m.steps}
+                    conversationId={task.id}
+                    // A completed turn by construction — `visibleMessages`
+                    // excludes the `_streaming` row — so no question rendered
+                    // here belongs to the live turn, whatever else is in flight
+                    // on this conversation.
+                    conversationLive={false}
+                    onAnswered={onQuestionAnswered}
+                  />
                   <TextBlock text={m.content} id={m.id || `msg-${i}`} complete conversationId={task.id} />
                   {m.artifact && (
                     <ArtifactCard
@@ -1731,6 +1856,15 @@ export default function ChatView({
                     onActivateStep={(step) => setOpenScratchpadStepId(prefixId(streamingKey, step.id))}
                   />
                 )}
+                {/* Above the text: a question is asked, then answered, then
+                    (at most) the turn's closing text streams — so the card
+                    always precedes any text that came after the answer. */}
+                <StepQuestions
+                  steps={streamingMsg.steps}
+                  conversationId={task.id}
+                  conversationLive={isStreaming || !!inFlightSet?.has(task.id)}
+                  onAnswered={onQuestionAnswered}
+                />
                 {/* Bridge state: between the first stream event arriving
                     (which strips the activity placeholder) and the first
                     step, thought, or body chunk landing, the AnswerTurn

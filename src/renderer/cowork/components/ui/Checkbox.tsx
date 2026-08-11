@@ -9,6 +9,7 @@
 //   <Checkbox checked={on} onCheckedChange={setOn} size="sm" disabled />
 
 import { Checkbox as BaseCheckbox } from '@base-ui/react/checkbox';
+import { Check, Minus } from 'lucide-react';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '../../lib/cn';
 
@@ -77,13 +78,9 @@ export function Checkbox({
     >
       <BaseCheckbox.Indicator className="flex items-center justify-center">
         {indeterminate ? (
-          <svg viewBox="0 0 12 12" width={size === 'sm' ? 10 : 12} height={size === 'sm' ? 10 : 12} aria-hidden>
-            <line x1="2.5" y1="6" x2="9.5" y2="6" stroke="currentColor" strokeWidth={2} strokeLinecap="round" />
-          </svg>
+          <Minus size={size === 'sm' ? 10 : 12} strokeWidth={1.5} aria-hidden="true" />
         ) : (
-          <svg viewBox="0 0 12 12" width={size === 'sm' ? 10 : 12} height={size === 'sm' ? 10 : 12} fill="none" aria-hidden>
-            <path d="M2.5 6.5 5 9l4.5-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
+          <Check size={size === 'sm' ? 10 : 12} strokeWidth={1.5} aria-hidden="true" />
         )}
       </BaseCheckbox.Indicator>
     </BaseCheckbox.Root>
