@@ -23,3 +23,19 @@ export function selectNextQueuedTask(queues, existingTaskIds, preferredTaskId) {
   if (preferredTaskId && hasQueue(preferredTaskId)) return preferredTaskId;
   return Object.keys(queues || {}).find(hasQueue) || null;
 }
+
+// Re-key queued messages when the server mints a canonical id for a task
+// that was streaming under a tmp id (adoptServerId, ENG-1378). Moves every
+// source id's queue onto `toId`, preserving FIFO order (existing `toId`
+// items first, then the sources in the given order). Falsy ids and any
+// source equal to `toId` are ignored. Returns the input map unchanged when
+// nothing moves, so the React setState no-ops instead of re-rendering.
+export function mergeQueuesForAdoptedId(queues, fromIds, toId) {
+  const keys = [...new Set((fromIds || []).filter(Boolean))].filter((k) => k !== toId);
+  const pending = keys.flatMap((k) => queues?.[k] || []);
+  if (pending.length === 0) return queues;
+  const next = { ...queues };
+  keys.forEach((k) => delete next[k]);
+  next[toId] = [...(next[toId] || []), ...pending];
+  return next;
+}

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { selectNextQueuedTask } from './messageQueue';
+import { selectNextQueuedTask, mergeQueuesForAdoptedId } from './messageQueue';
 
 const item = (id) => ({ id, text: id, attachments: [], disabledConnections: [] });
 
@@ -46,5 +46,47 @@ describe('selectNextQueuedTask', () => {
     const queues = { b: [item('b1')] };
     expect(selectNextQueuedTask(queues, new Set(['a', 'b']), 'a')).toBe('b');
     expect(selectNextQueuedTask(queues, ['a', 'b'], 'a')).toBe('b');
+  });
+});
+
+describe('mergeQueuesForAdoptedId', () => {
+  it('returns the input unchanged (same reference) when nothing moves', () => {
+    const queues = { tmp: [] };
+    // `tmp` is empty, so no pending items move — identity preserved so the
+    // React setState no-ops.
+    expect(mergeQueuesForAdoptedId(queues, ['tmp'], 'srv')).toBe(queues);
+    const empty = {};
+    expect(mergeQueuesForAdoptedId(empty, ['tmp'], 'srv')).toBe(empty);
+    expect(mergeQueuesForAdoptedId(null, ['tmp'], 'srv')).toBeNull();
+  });
+
+  it('moves a tmp-id queue onto the canonical server id', () => {
+    const queues = { tmp: [item('m1'), item('m2')] };
+    const next = mergeQueuesForAdoptedId(queues, ['tmp'], 'srv');
+    expect(next.tmp).toBeUndefined();
+    expect(next.srv.map((m) => m.id)).toEqual(['m1', 'm2']);
+  });
+
+  it('appends migrated items after any items already under the destination id (FIFO)', () => {
+    const queues = { srv: [item('s0')], tmp: [item('m1')] };
+    const next = mergeQueuesForAdoptedId(queues, ['tmp'], 'srv');
+    expect(next.srv.map((m) => m.id)).toEqual(['s0', 'm1']);
+    expect(next.tmp).toBeUndefined();
+  });
+
+  it('ignores falsy ids and a source equal to the destination', () => {
+    const queues = { srv: [item('s0')], tmp: [item('m1')] };
+    // `srv` (== toId) must not be deleted or duplicated; null/undefined skipped.
+    const next = mergeQueuesForAdoptedId(queues, [null, 'srv', undefined, 'tmp'], 'srv');
+    expect(next.srv.map((m) => m.id)).toEqual(['s0', 'm1']);
+    expect(next.tmp).toBeUndefined();
+  });
+
+  it('merges several source ids in order and de-duplicates the source list', () => {
+    const queues = { a: [item('a1')], b: [item('b1')], c: [item('c1')] };
+    const next = mergeQueuesForAdoptedId(queues, ['a', 'b', 'a'], 'c');
+    expect(next.c.map((m) => m.id)).toEqual(['c1', 'a1', 'b1']);
+    expect(next.a).toBeUndefined();
+    expect(next.b).toBeUndefined();
   });
 });
