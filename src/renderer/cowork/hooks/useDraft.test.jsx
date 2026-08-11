@@ -121,6 +121,29 @@ describe('useDraft', () => {
     expect(mount(useDraft, 'tmp-1735').result.current[0]).toBe('');
   });
 
+  // Every test file that renders a composer needs the module-level store
+  // emptied between tests (ENG-1407). The helper has to leave nothing behind:
+  // a write still armed on the 400 ms debounce would land after the clear and
+  // put the key back on disk.
+  it('reset empties the store and cancels the pending write', async () => {
+    vi.useFakeTimers();
+    try {
+      const { useDraft } = await load();
+      const { __resetDraftsForTests } = await import('../lib/draftStore');
+
+      const view = mount(useDraft, 'task-a');
+      act(() => view.result.current[1]('typed just before the reset'));
+
+      __resetDraftsForTests();
+      vi.advanceTimersByTime(1000); // past the debounce the keystroke armed
+
+      expect(localStorage.getItem('anton.composerDrafts')).toBeNull();
+      expect(mount(useDraft, 'task-a').result.current[0]).toBe('');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('ignores a corrupted or non-string persisted value', async () => {
     localStorage.setItem('anton.composerDrafts', '{"new":{"not":"text"},"task-a":"kept"}');
     const { useDraft } = await load();
