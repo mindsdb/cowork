@@ -909,6 +909,11 @@ describe('summarizeUpdateCheck (ENG-671 "Check for updates")', () => {
       { ok: true, offline: false, updateAvailable: true, uiUpdateAvailable: false, serverUpdateAvailable: true, shellUpdateAvailable: false, serverVersion: '0.26.8.1.2' },
     ],
     [
+      'anton-only server update carries its component label (ENG-1094)',
+      { ui: clean, server: { updateAvailable: true, latestVersion: '2.26.8.1.2', component: 'anton-agent' as const } },
+      { ok: true, offline: false, updateAvailable: true, uiUpdateAvailable: false, serverUpdateAvailable: true, shellUpdateAvailable: false, serverVersion: '2.26.8.1.2', serverComponent: 'anton-agent' },
+    ],
+    [
       'both updates',
       { ui: { updateAvailable: true, newVersion: '1.26.7.20.3' }, server: { updateAvailable: true, latestVersion: '0.26.8.1.2' } },
       { ok: true, offline: false, updateAvailable: true, uiUpdateAvailable: true, serverUpdateAvailable: true, shellUpdateAvailable: false, uiVersion: '1.26.7.20.3', serverVersion: '0.26.8.1.2' },

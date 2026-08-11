@@ -407,7 +407,12 @@ export function decideUpdateApply(input: {
  * any channel error makes the result inconclusive; both errors imply offline. */
 export function summarizeUpdateCheck(input: {
   ui: { updateAvailable: boolean; newVersion?: string; error?: boolean };
-  server: { updateAvailable: boolean; latestVersion?: string; error?: boolean };
+  server: {
+    updateAvailable: boolean;
+    latestVersion?: string;
+    error?: boolean;
+    component?: 'cowork-server' | 'anton-agent';
+  };
   shell?: { updateAvailable: boolean; version?: string; downloadUrl?: string };
 }): UpdateCheckSummary {
   const uiUpdateAvailable = !!input.ui.updateAvailable;
@@ -436,6 +441,7 @@ export function summarizeUpdateCheck(input: {
   };
   if (uiUpdateAvailable && input.ui.newVersion) summary.uiVersion = input.ui.newVersion;
   if (serverUpdateAvailable && input.server.latestVersion) summary.serverVersion = input.server.latestVersion;
+  if (serverUpdateAvailable && input.server.component) summary.serverComponent = input.server.component;
   if (shellUpdateAvailable && input.shell?.version) summary.shellVersion = input.shell.version;
   if (shellUpdateAvailable && input.shell?.downloadUrl) summary.shellDownloadUrl = input.shell.downloadUrl;
   return summary;

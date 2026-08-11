@@ -471,26 +471,37 @@ export async function resolvePypiInstallTarget(): Promise<{ version: string; wit
  *  no cowork-server release or pin edit is needed — only the detection was
  *  missing.
  *
- *  Returns `{ from, to }` when an anton-only update is warranted, else null.
- *  Fails closed (returns null) when the constraint can't be read — never offers
- *  an anton a `--with anton-agent==X` reinstall couldn't resolve against the
+ *  Returns `{ update, error }`. `update` is `{ from, to }` when an anton-only
+ *  update is warranted, else null. `error` is true only when the anton PyPI
+ *  lookup was INCONCLUSIVE (the request failed) — kept distinct from a completed
+ *  lookup that simply found nothing, so the check path can report "couldn't
+ *  check" instead of "up to date" (a missing installed anton isn't an error,
+ *  just nothing to offer). The apply path ignores `error` and skips.
+ *
+ *  Fails closed (no update) when the constraint can't be read — never offers an
+ *  anton a `--with anton-agent==X` reinstall couldn't resolve against the
  *  installed cowork-server (which would loop the banner). Shared by BOTH the
  *  check and the apply so the two can't disagree. */
-async function resolveAntonPypiUpdate(toolsDir?: string): Promise<{ from: string; to: string } | null> {
+async function resolveAntonPypiUpdate(
+  toolsDir?: string,
+): Promise<{ update: { from: string; to: string } | null; error: boolean }> {
   const installedAnton = readInstalledDistVersion(ANTON_DIST_NAME, toolsDir);
-  if (!installedAnton) return null;
+  if (!installedAnton) return { update: null, error: false };
   const constraint = parseAntonConstraint(readInstalledRequiresDist(COWORK_DIST_NAME, toolsDir));
   const json = (await fetchPypiJson(ANTON_PYPI_JSON_URL)) as {
     releases?: Record<string, Array<{ yanked?: boolean }>>;
   } | null;
-  if (!json) return null;
+  if (!json) return { update: null, error: true };
   const latest = selectLatestConstrainedPypiVersion({
     releases: json.releases ?? null,
     includePrereleases: includePrereleases(),
     satisfies: (v) => satisfiesAntonConstraint(v, constraint),
   });
   const decision = decidePypiUpdate(installedAnton, latest);
-  return decision.action === 'update' ? { from: decision.from, to: decision.to } : null;
+  return {
+    update: decision.action === 'update' ? { from: decision.from, to: decision.to } : null,
+    error: false,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -573,10 +584,18 @@ export async function checkForServerUpdate(): Promise<ServerUpdateCheckResult> {
     // Detected the SAME way maybeUpdateServer applies it, so the banner and the
     // action can never disagree.
     const anton = await resolveAntonPypiUpdate();
-    if (anton) {
-      return { updateAvailable: true, currentVersion: anton.from, latestVersion: anton.to, component: 'anton-agent' };
+    if (anton.update) {
+      return { updateAvailable: true, currentVersion: anton.update.from, latestVersion: anton.update.to, component: 'anton-agent' };
     }
-    return { updateAvailable: false, currentVersion, latestVersion, component: 'cowork-server' };
+    // A failed anton lookup is inconclusive, not "up to date" — flag it so the
+    // on-demand UI says "couldn't check" rather than reporting no update.
+    return {
+      updateAvailable: false,
+      currentVersion,
+      latestVersion,
+      component: 'cowork-server',
+      ...(anton.error ? { error: true } : {}),
+    };
   } catch (err: any) {
     console.error('[server-updater] check failed:', err);
     return { updateAvailable: false, error: true };
@@ -689,8 +708,10 @@ async function _pypiUpdate(uv: string): Promise<ServerUpdateResult> {
     // cowork-server is current — but an anton-only release may still be pending
     // (ENG-1094). The cowork-update path above already pulls the right anton via
     // the target wheel, so this only matters when cowork itself is unchanged.
+    // Apply path ignores an inconclusive anton lookup — skip silently rather
+    // than surface it; the next check/poll retries.
     const anton = await resolveAntonPypiUpdate();
-    if (anton) return _pypiAntonUpdate(uv, currentVersion!, anton);
+    if (anton.update) return _pypiAntonUpdate(uv, currentVersion!, anton.update);
     console.log(`[server-updater] up to date (installed=${currentVersion}, latest=${latestVersion})`);
     return { updated: false };
   }

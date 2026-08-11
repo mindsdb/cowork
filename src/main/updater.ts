@@ -170,7 +170,7 @@ export async function checkForUpdates(): Promise<UpdateCheckSummary> {
   const shellAutoActive = !!shellAuto && shellAutoUpdateIsActive(shellAuto.phase);
   return summarizeUpdateCheck({
     ui: { updateAvailable: ui.updateAvailable, newVersion: ui.newVersion, error: ui.error },
-    server: { updateAvailable: server.updateAvailable, latestVersion: server.latestVersion, error: server.error },
+    server: { updateAvailable: server.updateAvailable, latestVersion: server.latestVersion, error: server.error, component: server.component },
     shell: shell.available
       ? { updateAvailable: true, version: shell.latestVersion, downloadUrl: shell.downloadUrl ?? undefined }
       : shellAutoActive

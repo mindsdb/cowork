@@ -204,7 +204,9 @@ describe('maybeUpdateServer — PyPI channel anton-only update (ENG-1094)', () =
     'Metadata-Version: 2.1\nName: cowork-server\n' +
     'Requires-Dist: anton-agent<3,>=2.26.6.30.1\nRequires-Dist: fastapi>=0.100\n';
 
-  function installPypiChannel(antonReleases: Record<string, unknown[]>) {
+  // `antonReleases === null` makes the anton-agent PyPI request fail (404),
+  // simulating an inconclusive anton lookup while cowork-server is current.
+  function installPypiChannel(antonReleases: Record<string, unknown[]> | null) {
     process.env.UV_TOOL_DIR = '/fake/uv/tools';
     // Everything on disk exists EXCEPT direct_url.json — its absence is what
     // makes readVcsInfo return null and select the PyPI channel.
@@ -217,7 +219,7 @@ describe('maybeUpdateServer — PyPI channel anton-only update (ENG-1094)', () =
       (String(p).endsWith('METADATA') ? COWORK_META : '')) as never);
     mockPypi((url) =>
       url.includes('/anton-agent/')
-        ? JSON.stringify({ releases: antonReleases })
+        ? (antonReleases === null ? null : JSON.stringify({ releases: antonReleases }))
         // cowork-server info.version == installed → cowork is up-to-date.
         : JSON.stringify({ info: { version: '0.26.7.27.1' }, releases: { '0.26.7.27.1': [{}] } }));
   }
@@ -262,6 +264,30 @@ describe('maybeUpdateServer — PyPI channel anton-only update (ENG-1094)', () =
       latestVersion: '2.26.7.27.2',
       component: 'anton-agent',
     });
+  });
+
+  it('checkForServerUpdate flags error (not "up to date") when the anton lookup is inconclusive', async () => {
+    // cowork-server is current, but the anton PyPI request fails. Collapsing that
+    // into a plain "no update" would let the on-demand UI say "You're up to date"
+    // for an inconclusive check — flag it as an error instead (PR #533 review).
+    installPypiChannel(null);
+    mockUv();
+    await expect(checkForServerUpdate()).resolves.toEqual({
+      updateAvailable: false,
+      currentVersion: '0.26.7.27.1',
+      latestVersion: '0.26.7.27.1',
+      component: 'cowork-server',
+      error: true,
+    });
+  });
+
+  it('maybeUpdateServer skips silently when the anton lookup is inconclusive', async () => {
+    // The apply path fails closed on an inconclusive anton lookup — no install,
+    // no error surfaced; the next check/poll retries.
+    installPypiChannel(null);
+    const execCalls = mockUv();
+    await expect(maybeUpdateServer()).resolves.toEqual({ updated: false });
+    expect(execCalls.filter((c) => c[1] === 'tool' && c[2] === 'install')).toHaveLength(0);
   });
 
   it('never offers an anton newer than cowork-server allows (3.0.0 blocked by <3)', async () => {

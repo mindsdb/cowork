@@ -232,7 +232,14 @@ export default function UpdatesSection({
               const busy = checkingUpdates || applyingUpdate;
               const parts = [];
               if (applyAvailable) {
-                if (r.serverUpdateAvailable) parts.push(`Server → ${r.serverVersion || 'new version'}`);
+                if (r.serverUpdateAvailable) {
+                  // An anton-only server update (ENG-1094) carries the agent's
+                  // version in serverVersion — label it "Agent" so the card
+                  // doesn't call an agent bump a "Server" update. Absent
+                  // component ⇒ cowork-server, the historical default.
+                  const serverLabel = r.serverComponent === 'anton-agent' ? 'Agent' : 'Server';
+                  parts.push(`${serverLabel} → ${r.serverVersion || 'new version'}`);
+                }
                 if (r.uiUpdateAvailable) parts.push(`UI → ${r.uiVersion || 'new version'}`);
               }
               return (
