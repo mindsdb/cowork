@@ -658,7 +658,10 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
             padding: '3px 6px',
           }}>
             <Tooltip content="Reload preview">
+              {/* Native title only while disabled — a disabled button fires no
+                  hover/focus events, so the styled Tooltip can't open. */}
               <IconButton size={26} onClick={onReload} disabled={!hasActionPath}
+                title={!hasActionPath ? 'Reload preview' : undefined}
                 aria-label="Reload preview" style={pillBtn}>
                 {Ico.reload(20)}
               </IconButton>
@@ -675,6 +678,7 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
             >{isPublished ? displayUrl : '/'}</span>
             <Tooltip content="Open in browser">
               <IconButton size={26} onClick={onOpenInBrowser} disabled={!canOpenInBrowser}
+                title={!canOpenInBrowser ? 'Open in browser' : undefined}
                 aria-label="Open in browser" style={pillBtn}>
                 {Ico.arrowUpRight(20)}
               </IconButton>
