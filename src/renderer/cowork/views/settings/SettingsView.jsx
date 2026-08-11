@@ -311,6 +311,11 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
   // Typing replaces the (empty) value cleanly — no asterisk contamination.
   const showSentinelAsMask = !show && v === '***';
 
+  const copyHint = isDisplayingSentinel ? 'Reveal the key first to copy it'
+    : copyState === 'copied' ? 'Copied'
+      : copyState === 'failed' ? "Couldn't copy — select the key to copy manually"
+        : 'Copy to clipboard';
+
   return (
     <div className="relative">
       <Input
@@ -327,17 +332,13 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
       />
       <div className="absolute right-1 top-1/2 -translate-y-1/2 inline-flex items-center gap-0.5">
         <span className="relative inline-flex">
-          <Tooltip content={
-            isDisplayingSentinel ? 'Reveal the key first to copy it'
-              : copyState === 'copied' ? 'Copied'
-                : copyState === 'failed' ? "Couldn't copy — select the key to copy manually"
-                  : 'Copy to clipboard'
-          }>
+          <Tooltip content={copyHint}>
             <button
               type="button"
               onClick={onCopy}
               onBlur={() => { if (copyState === 'failed') setCopyState('idle'); }}
               disabled={!canCopy}
+              title={!canCopy ? copyHint : undefined}
               aria-label={copyState === 'copied' ? 'Copied to clipboard' : 'Copy key to clipboard'}
               className={canCopy ? btnClass : btnClassDisabled}
             >
@@ -1085,7 +1086,10 @@ export default function SettingsView({
 
   // ───────────────────────── Shared footer/banner helpers ─────────────────────────
 
-  const renderSaveFooter = () => (
+  const renderSaveFooter = () => {
+    const saveDisabled = (!settingsDirty && !anyProviderFailed) || testing || missingCustomNames;
+    const saveHint = missingCustomNames ? 'Each custom provider needs a name' : testing ? 'Saving…' : (!settingsDirty && !anyProviderFailed) ? 'No unsaved changes' : anyProviderFailed ? 'Re-test failed providers.' : 'Save changes and re-run provider tests.';
+    return (
     <>
       <div
         role="status" aria-live="polite" aria-atomic="true"
@@ -1102,18 +1106,23 @@ export default function SettingsView({
                   : 'Changes apply on save.'}
         </span>
       </div>
-      <Tooltip content={missingCustomNames ? 'Each custom provider needs a name' : testing ? 'Saving…' : (!settingsDirty && !anyProviderFailed) ? 'No unsaved changes' : anyProviderFailed ? 'Re-test failed providers.' : 'Save changes and re-run provider tests.'}>
+      <Tooltip content={saveHint}>
+        {/* Native title only while disabled: a disabled <button> fires no
+            hover/focus events, so the styled Tooltip can't open — but the
+            reason it's disabled is exactly what the user needs then. */}
         <Button
           variant="primary" onClick={save}
-          disabled={(!settingsDirty && !anyProviderFailed) || testing || missingCustomNames}
+          disabled={saveDisabled}
+          title={saveDisabled ? saveHint : undefined}
           className="w-[140px] inline-flex items-center justify-center gap-1.5"
-          style={{ opacity: ((!settingsDirty && !anyProviderFailed) || testing || missingCustomNames) ? 0.55 : 1, cursor: ((!settingsDirty && !anyProviderFailed) || testing || missingCustomNames) ? 'default' : 'pointer' }}
+          style={{ opacity: saveDisabled ? 0.55 : 1, cursor: saveDisabled ? 'default' : 'pointer' }}
         >
           {testing ? 'Saving…' : (settingsDirty || anyProviderFailed) ? 'Save settings' : <>{Ico.check(14)} Saved</>}
         </Button>
       </Tooltip>
     </>
-  );
+    );
+  };
 
   // ───────────────────────── Section renderers ─────────────────────────
 
@@ -1339,6 +1348,7 @@ export default function SettingsView({
                     variant="subtle"
                     onClick={() => setAddPickerOpen(true)}
                     disabled={availableTypesForAdd.length === 0}
+                    title={availableTypesForAdd.length === 0 ? 'All provider types are already configured' : undefined}
                     className="absolute top-[14px] left-0 inline-flex items-center gap-1.5 [transition:opacity_200ms_ease,transform_200ms_ease]"
                     style={{
                       opacity: addPickerOpen ? 0 : (availableTypesForAdd.length === 0 ? 0.45 : 1),
