@@ -33,37 +33,15 @@
 // .d.ts is listed alongside the others (`export type *` is type-only).
 import type { ReactNode } from 'react';
 import { Toast as BaseToast } from '@base-ui/react/toast';
+import { Check, TriangleAlert, CircleAlert, X } from 'lucide-react';
 import { cn } from '../../lib/cn';
 
 export const useToastManager = BaseToast.useToastManager;
 
-const CHECK = (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-    <path d="M5 13l4 4L19 7" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
-);
-
-const WARNING_TRIANGLE = (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-    <path d="M12 3.5 22 20H2z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
-    <path d="M12 9.5v5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-    <circle cx="12" cy="17.2" r="1" fill="currentColor" />
-  </svg>
-);
-
-const ALERT_CIRCLE = (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-    <circle cx="12" cy="12" r="9.5" stroke="currentColor" strokeWidth="1.8" />
-    <path d="M12 7.5v6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-    <circle cx="12" cy="16.5" r="1" fill="currentColor" />
-  </svg>
-);
-
-const CLOSE_X = (
-  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-    <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-  </svg>
-);
+const CHECK = <Check size={14} strokeWidth={1.5} aria-hidden="true" />;
+const WARNING_TRIANGLE = <TriangleAlert size={14} strokeWidth={1.5} aria-hidden="true" />;
+const ALERT_CIRCLE = <CircleAlert size={14} strokeWidth={1.5} aria-hidden="true" />;
+const CLOSE_X = <X size={12} strokeWidth={1.5} aria-hidden="true" />;
 
 const TYPE_ICON: Record<string, ReactNode> = { success: CHECK, warning: WARNING_TRIANGLE, danger: ALERT_CIRCLE };
 

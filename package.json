@@ -85,6 +85,7 @@
     "katex": "^0.16.47",
     "keycloak-js": "^26.2.4",
     "keytar": "^7.9.0",
+    "lucide-react": "^1.31.0",
     "marked": "^17.0.4",
     "react": "^19.0.0",
     "react-chartjs-2": "^5.3.1",
