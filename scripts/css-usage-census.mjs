@@ -14,9 +14,11 @@
 // Matching rules (each one exists because a naive version shipped a bug):
 //   - Comments are stripped from CSS before collecting names, so
 //     commented-out selectors don't count as definitions.
-//   - A class is "used" if its exact name appears ANYWHERE in source —
-//     substring match, deliberately conservative (`typing-dots` keeps
-//     `typing-dot` alive).
+//   - A class is "used" if its name appears in source as an exact token
+//     (not inside a longer identifier — class attributes are
+//     space-separated, so `onboarding-step-row` must NOT keep `step-row`
+//     alive, and the Tailwind token `text-success-text` must not keep
+//     `success-text`).
 //   - Dynamic names: a class also counts as used when a dash-prefix of it
 //     is being template-composed (`menu-item${...}`), so `menu-item-on`
 //     survives even if only built dynamically.
@@ -57,20 +59,35 @@ function walk(dir, out) {
 
 const sources = [];
 walk('src', sources);
+try { walk('tests', sources); } catch {} // Playwright e2e specs query the DOM too
 for (const entry of ['index.html']) {
   try { statSync(entry); sources.push(entry); } catch {}
 }
-const blob = sources.map((p) => readFileSync(p, 'utf8')).join('\n');
+// Strip comments before matching — a class named only in prose ("Reuse the
+// global .btn-primary styling — …") is not a usage. Whole-line `//` comments
+// and block comments only; trailing same-line `//` is left alone so URLs
+// (`https://…`) can't truncate real code.
+function stripComments(src) {
+  return src
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '');
+}
+const blob = sources.map((p) => stripComments(readFileSync(p, 'utf8'))).join('\n');
 const cssBlob = CSS_FILES.map((p) => readFileSync(p, 'utf8')).join('\n');
 
 function classIsUsed(name) {
   if (RUNTIME_INJECTED.some((re) => re.test(name))) return true;
-  if (blob.includes(name)) return true;
-  // dynamic-suffix heuristic: any dash-prefix composed via template literal
+  const esc = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  if (new RegExp(`(?<![\\w-])${esc}(?![\\w-])`).test(blob)) return true;
+  // dynamic-suffix heuristic: a dash-prefix of the name composed via a
+  // template literal, with the interpolation starting RIGHT AFTER the
+  // prefix (`menu-item${…}` keeps menu-item-on). A looser "any template
+  // literal starting with this prefix" check false-kept 13 dead
+  // settings-* classes off one `settings-section${…}` hit.
   let i = name.lastIndexOf('-');
   while (i > 0) {
     const prefix = name.slice(0, i + 1);
-    if (blob.includes(prefix + '${') || blob.includes('`' + prefix)) return true;
+    if (blob.includes(prefix + '${')) return true;
     i = name.lastIndexOf('-', i - 1);
   }
   return false;
