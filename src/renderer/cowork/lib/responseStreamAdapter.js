@@ -513,7 +513,13 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       result: null,
       _isScratchpad: false,
       _isToolCall: true,
-      _scratchpadTabId: null,
+      // Unlike scratchpad (where the SAME name deliberately groups
+      // multiple cells into one continuing notebook), each tool call is
+      // its own independent invocation — never a "step" of another one.
+      // Keying by tool_use_id gives every call its own pad in
+      // ScratchpadModal instead of collapsing unrelated calls into one
+      // synthetic "Untitled" pad with a misleading "step 1/3" counter.
+      _scratchpadTabId: event.tool_use_id || null,
       _toolUseId: event.tool_use_id || null,
     };
     // Any answer text before this tool call was preamble → move it to
@@ -526,36 +532,64 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
   }
 
   if (role === 'thought.tool_call.end') {
+    // Narrowed from the old "patch the last in-progress step" fallback:
+    // without a matching _isToolCall step for this exact tool_use_id, this
+    // must be a no-op. A blind fallback could close an unrelated step
+    // (e.g. a scratchpad cell still running in the same turn) if this
+    // tool call's only progress event was ever lost to a race.
     const toolUseId = event.tool_use_id || null;
-    const patch = {
+    if (!toolUseId) return state;
+    const idx = state.steps.findIndex((s) => s._isToolCall && s._toolUseId === toolUseId);
+    if (idx === -1) return state;
+    const etaSeconds = typeof event.eta_seconds === 'number' && Number.isFinite(event.eta_seconds)
+      ? event.eta_seconds
+      : null;
+    const steps = state.steps.slice();
+    steps[idx] = {
+      ...steps[idx],
       status: 'completed',
       completedAt: eventTs,
       output: typeof event.content === 'string' ? event.content.slice(0, 2048) : null,
+      ...(etaSeconds != null ? { executionDurationMs: Math.max(0, Math.round(etaSeconds * 1000)) } : null),
+      // Tool's own verdict (anton ToolOutcome.ok, ENG-1276) — reuses the
+      // same cellStatus/'error' convention ThinkingStep.jsx already
+      // renders for a failed scratchpad cell, rather than inventing a
+      // second failure indicator. undefined/true stay unmarked (rendered
+      // as success) — only an explicit false marks the step failed.
+      // Without this, tool_done firing (unconditional by design, even on
+      // a handler exception) rendered as success everywhere (PR #304
+      // review, anton repo).
+      ...(event.ok === false ? { cellStatus: 'error' } : null),
     };
-    if (toolUseId) {
-      const idx = state.steps.findIndex(
-        (s) => s._toolUseId === toolUseId,
-      );
-      if (idx !== -1) {
-        const updated = state.steps.slice();
-        updated[idx] = { ...state.steps[idx], ...patch };
-        return { ...state, steps: updated };
-      }
-    }
-    // Fallback: patch the last in-progress step.
-    const last = state.steps[state.steps.length - 1];
-    if (last && last.status === 'in_progress') {
-      const updated = state.steps.slice();
-      updated[updated.length - 1] = { ...last, ...patch };
-      return { ...state, steps: updated };
-    }
-    return state;
+    return { ...state, steps };
   }
 
   if (role === 'thought.tool_call.progress') {
-    // Informational — no state change needed, but we could update
-    // a label. For now, no-op.
-    return state;
+    const toolUseId = event.tool_use_id || null;
+    const text = event.content || '';
+    if (!toolUseId || !text) return state;
+
+    const idx = state.steps.findIndex((s) => s._isToolCall && s._toolUseId === toolUseId);
+    if (idx === -1) {
+      // First progress event for this tool call — seed a step, same
+      // idiom as the scratchpad_start seed-if-missing case above.
+      const seeded = reduceStream(state, {
+        type: 'response.in_progress',
+        thought_role: 'thought.tool_call.start',
+        tool_use_id: toolUseId,
+        content: event.tool_name || 'Tool',
+        at_ms: eventTs,
+      }, now);
+      const newIdx = seeded.steps.findIndex((s) => s._isToolCall && s._toolUseId === toolUseId);
+      if (newIdx === -1) return seeded;
+      const steps = seeded.steps.slice();
+      steps[newIdx] = { ...steps[newIdx], data: { ...steps[newIdx].data, one_line_description: text } };
+      return { ...seeded, steps };
+    }
+
+    const steps = state.steps.slice();
+    steps[idx] = { ...steps[idx], data: { ...steps[idx].data, one_line_description: text } };
+    return { ...state, steps };
   }
 
   // ── Hermes reasoning/thinking ────────────────────────────────────

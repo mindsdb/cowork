@@ -581,6 +581,15 @@ function persistTurnState(cid, turnIndex, steps, startedAt) {
     reasoningStartedAt: s.reasoningStartedAt ?? null,
     executionStartedAt: s.executionStartedAt ?? null,
     executionCompletedAt: s.executionCompletedAt ?? null,
+    // Distinct from `status` — a failed tool/killed cell is still
+    // status:'completed' (the lifecycle finished), with cellStatus
+    // carrying the actual verdict ('error'/'timeout'). Without these two,
+    // a failed step renders as a plain success after reload: `status`
+    // alone survives, but the reducer's cellStatus:'error' (tool_call.end
+    // with ok:false, or a killed scratchpad_done) and the measured
+    // executionDurationMs both got silently dropped by this whitelist.
+    cellStatus: s.cellStatus || null,
+    executionDurationMs: s.executionDurationMs ?? null,
     data: s.data || null,
     output: typeof s.output === 'string' ? s.output : null,
     result: s.result || null,
