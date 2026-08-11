@@ -477,7 +477,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
             <EmptyState>{search ? 'No skills match your search.' : 'No saved skills yet.'}</EmptyState>
           ) : view === 'list' ? (
             <div className="pt-4 px-8 pb-[60px]">
-              <div className="grid grid-cols-[1fr_2fr_auto_auto] gap-x-4 border-b border-solid border-line px-2 pb-2 mb-1">
+              <div className="grid grid-cols-[1fr_2fr_auto_auto] gap-x-4 border-b border-t-0 border-x-0 border-solid border-line px-2 pb-2 mb-1">
                 {['Name', 'Description', 'Project', 'Updated'].map((h) => (
                   <span key={h} className="font-mono text-[10.5px] text-ink-4 tracking-[0.10em] uppercase">{h}</span>
                 ))}
@@ -492,7 +492,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
                     tabIndex={0}
                     onClick={() => setSelected(skill)}
                     onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelected(skill); } }}
-                    className="grid grid-cols-[1fr_2fr_auto_auto] gap-x-4 px-2 py-[10px] border-b border-solid border-line cursor-pointer rounded-[6px] outline-none"
+                    className="grid grid-cols-[1fr_2fr_auto_auto] gap-x-4 px-2 py-[10px] border-b border-t-0 border-x-0 border-solid border-line cursor-pointer rounded-[6px] outline-none"
                     onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; }}
                     onMouseLeave={(e) => { e.currentTarget.style.background = ''; }}
                   >
