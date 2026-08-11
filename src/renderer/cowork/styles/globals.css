@@ -4054,6 +4054,61 @@ body[data-theme="dark"] .mshell__drawer-title {
   transition: color 120ms ease;
 }
 .user-turn-more:hover { color: var(--ink); }
+
+/* ─── Chat-view accent damping ───────────────────────────────────────────────
+   Two spots hard-filled the raw bright --accent and read as glare in dark mode
+   (the inline artifact-card CTA and the Progress-panel done markers). Both now
+   follow the canonical primary logic: opaque accent in light, a quiet accent
+   glass / deeper accent in dark. */
+
+/* Artifact-card action buttons (Export / reveal / Open). Small-size siblings;
+   the primary "Open" mirrors .btn.primary rather than a flat --accent fill. */
+.chat-card-btn {
+  all: unset;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 7px;
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  transition: background 120ms ease, border-color 120ms ease;
+}
+.chat-card-btn:hover:not(:disabled) { background: var(--surface-2); }
+.chat-card-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.chat-card-btn:disabled { cursor: not-allowed; opacity: 0.5; }
+.chat-card-btn--primary {
+  font-weight: 600;
+  background: var(--accent-solid);
+  color: var(--accent-solid-ink);
+  border-color: var(--accent-solid);
+}
+.chat-card-btn--primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent-solid) 88%, var(--ink));
+}
+body[data-theme="dark"] .chat-card-btn--primary {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+body[data-theme="dark"] .chat-card-btn--primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
+/* Progress-panel done marker: keep the brand --accent fill in light, but in
+   dark drop to the deeper --accent-3 so a column of checks reads as a quiet
+   reference instead of a string of neon dots. */
+body[data-theme="dark"] .phase-check-done {
+  background-color: var(--accent-3);
+  border-color: var(--accent-3);
+}
 /* ─── Shared turn-action toolbar ──────────────────────────────────────────
    Horizontal row of icon buttons below both user and assistant messages.
    Hidden at rest, revealed on hover of the parent turn. `.is-last` keeps

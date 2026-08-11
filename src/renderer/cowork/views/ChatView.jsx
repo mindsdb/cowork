@@ -745,6 +745,10 @@ function ArtifactCard({ artifact, onOpen }) {
   );
 }
 
+// The primary ("Open") CTA no longer hard-fills raw --accent (which glared in
+// dark). Both variants are class-based now so the primary can adopt the
+// canonical .btn.primary color logic — opaque accent in light, quiet accent
+// glass in dark — via .chat-card-btn(--primary) in globals.css.
 function SmallBtn({ primary, children, onClick, title, disabled }) {
   return (
     <button
@@ -752,20 +756,7 @@ function SmallBtn({ primary, children, onClick, title, disabled }) {
       onClick={(e) => { e.stopPropagation(); if (!disabled) onClick?.(); }}
       title={title}
       disabled={disabled}
-      // kept inline: same all:unset cascade-priority reason as ArtifactCard's
-      // buttons above — every property here has to stay co-located with the
-      // reset since a stylesheet utility class can't beat it.
-      style={{
-        all: 'unset', cursor: disabled ? 'not-allowed' : 'pointer',
-        display: 'inline-flex', alignItems: 'center', gap: 6,
-        padding: '6px 10px', borderRadius: 7,
-        background: primary ? T.accent : T.surface,
-        color: primary ? '#fff' : T.ink,
-        border: `1px solid ${primary ? T.accent : T.line2}`,
-        fontFamily: FONT_BODY, fontSize: 12, fontWeight: 500,
-        whiteSpace: 'nowrap',
-        opacity: disabled ? 0.5 : 1,
-      }}
+      className={primary ? 'chat-card-btn chat-card-btn--primary' : 'chat-card-btn'}
     >{children}</button>
   );
 }
