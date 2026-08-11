@@ -8,7 +8,7 @@
    plus _streaming) and our real Composer + project/model state. Tokens come
    from CSS vars so the panel reads correctly in both light and dark themes. */
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import Ico from '../components/Icons';
 import Composer from '../components/Composer';
@@ -1099,55 +1099,29 @@ export default function ChatView({
   // Composer's sync effect runs even when re-editing/re-redirecting the same
   // text.
   const [composerPrefill, setComposerPrefill] = useState({ text: '', bump: 0 });
-  // Which conversation the text now sitting in the composer belongs to. App
-  // renders ONE ChatView (and so one Composer) for every conversation, so the
-  // textarea value survives a task switch — without this, opening a task with a
-  // pending redirect appended ITS queued messages onto the draft the user was
-  // writing in the previous conversation, producing `B-draft\nA-restored`.
-  // Restored text may only ever join a draft belonging to the same task.
-  //
-  // Updated from the Composer's own value changes rather than from task switches,
-  // because a switch does not touch the box: the draft keeps belonging to
-  // whichever task was open when it was last edited.
-  const draftTaskRef = useRef(task?.id);
-  const noteDraftChanged = useCallback(() => {
-    draftTaskRef.current = task?.id;
-  }, [task?.id]);
-  // A rename of the same conversation (`adoptServerId`, tmp-… → the id the server
-  // minted) changes `task.id` exactly like a switch to another conversation does,
-  // and only App can tell them apart — so it says which id this one used to be.
-  // Move the attribution across rather than inferring it from the id's shape at
-  // read time: a `tmp-` prefix says a draft was typed in SOME brand-new task, not
-  // that it was typed in this one, and treating any tmp- draft as ours put another
-  // conversation's draft back in scope for appending.
-  //
-  // Declared before the redirect effect so a rename and a drain arriving in the
-  // same commit are attributed in that order. Independent of whether the draft is
-  // empty: an empty draft typed into later must still be attributed correctly.
-  useEffect(() => {
-    const adoptedFrom = task?.adoptedFromId;
-    if (adoptedFrom && draftTaskRef.current === adoptedFrom) {
-      draftTaskRef.current = task?.id;
-    }
-  }, [task?.id, task?.adoptedFromId]);
   // Forward App.jsx's redirect for THIS task into the same prefill state Edit
-  // uses, so Composer only has to react to one prefill prop — appending when the
-  // draft on screen is this task's own (a drain hands text BACK to the user and
-  // must not destroy what they are mid-typing) and replacing when it is not.
-  // Consuming the entry (deleting it in the parent) is what stops a stale drain
-  // re-applying on remount.
+  // uses, so Composer only has to react to one prefill prop. Consuming the entry
+  // (deleting it in the parent) is what stops a stale drain re-applying on
+  // remount.
   useEffect(() => {
     const redirect = redirectForTask(composerRedirects, task?.id);
     if (!redirect) return;
     const restored = redirect.text || '';
     if (restored) {
-      // Plain equality: the adoption effect above has already moved a renamed
-      // conversation's attribution onto its new id, so there is nothing to guess.
-      const ownDraft = draftTaskRef.current === task?.id;
+      // `append` unconditionally, and there is nothing left to decide: since
+      // ENG-1221 the composer's text comes from `lib/draftStore` keyed by
+      // surface (Composer's `useDraft(conversationId)`, and this view passes
+      // `conversationId={task.id}`), so the value on screen IS this task's own
+      // draft — another conversation's draft can no longer be in the box, which
+      // is the state the old `draftTaskRef` ownership check existed to detect.
+      // A drain hands the user's own queued text BACK to them, so it joins that
+      // draft instead of destroying it. Do not reintroduce a guard here: with a
+      // per-surface store, "not ours" is unreachable, and a guard that misfires
+      // silently deletes text the user is mid-typing.
       setComposerPrefill((prev) => ({
         text: restored,
         bump: (prev?.bump || 0) + 1,
-        append: ownDraft,
+        append: true,
       }));
     }
     // The files travel with the text on the same entry, so they are staged by
@@ -1984,7 +1958,6 @@ export default function ChatView({
             streaming={isStreaming}
             onStop={onStop}
             prefill={composerPrefill}
-            onDraftChange={noteDraftChanged}
           />
         </div>
       </div>

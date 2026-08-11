@@ -168,12 +168,6 @@ export default function Composer({
   // and-resend on prior user messages; bump-based so repeated edits
   // of the same text still re-fill the input.
   prefill = null,
-  // Optional — called with the composer's text whenever it changes. One Composer
-  // instance is shared across conversations, so an owner cannot otherwise know
-  // WHICH conversation the text now in the box belongs to. ChatView uses it to
-  // decide whether restored queued text may join what is on screen or must
-  // replace it.
-  onDraftChange,
   // Optional — when supplied, the project menu shows a "+ New project"
   // row (opens the "Start a new project" modal; with search text and
   // no match it creates inline). Receives `{ name }` (plus
@@ -543,19 +537,29 @@ export default function Composer({
   // `prefill.append` is the queue-drain case (a question appeared while
   // messages were queued): that text is handed BACK to the user, so it joins
   // the current draft instead of destroying it. Edit-and-resend and the home
-  // chips leave `append` unset and keep the replace semantics. The draft is
-  // read off the DOM rather than the `value` closure because this effect's
-  // deps are only `prefill?.bump`, so the closure can be a render behind —
-  // and `ta.value` is the same basis the same-text check below compares on.
+  // chips leave `append` unset and keep the replace semantics.
   useEffect(() => {
     if (!prefill || !prefill.bump) return;
     const incoming = prefill.text || '';
     const ta = taRef.current;
-    const text = prefill.append && ta?.value
-      ? `${ta.value}\n${incoming}`
-      : incoming;
-    const sel = Array.isArray(prefill.select) ? prefill.select : [text.length, text.length];
     setError('');
+    if (prefill.append) {
+      // The updater form rather than this effect's `value` closure (deps are
+      // only `prefill?.bump`, so it can be a render behind) or `ta.value`:
+      // `useDraft` documents the updater as reading `getDraft(key)`, which is
+      // current even on the render where the surface key just changed.
+      setValue((prev) => {
+        const next = prev ? `${prev}\n${incoming}` : incoming;
+        // Caret at the end, queued for the post-commit layout effect — setting
+        // it via rAF raced React's value commit.
+        pendingCaretRef.current = [next.length, next.length];
+        return next;
+      });
+      ta?.focus();
+      return;
+    }
+    const text = incoming;
+    const sel = Array.isArray(prefill.select) ? prefill.select : [text.length, text.length];
     if (ta && ta.value === text) {
       // Same text re-prefilled — no re-render coming, so the layout
       // effect won't fire; apply the selection directly.
@@ -571,13 +575,6 @@ export default function Composer({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefill?.bump]);
-
-  // Report the draft out on every change (typing, prefill, clear after send) so
-  // the owner can attribute it to the conversation that was open at the time.
-  useEffect(() => {
-    onDraftChange?.(value);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value]);
 
   // Close the open meta-pill menu on any press that isn't on the menu
   // popup itself or a trigger pill. The previous version only closed on

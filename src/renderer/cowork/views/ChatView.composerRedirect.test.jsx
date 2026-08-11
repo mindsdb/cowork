@@ -16,13 +16,13 @@ vi.mock('../../platform/host', () => ({
 }));
 
 import ChatView, { redirectForTask } from './ChatView';
+import { moveDraft, __resetDraftsForTests } from '../lib/draftStore';
 
-const task = (id, adoptedFromId) => ({
+const task = (id) => ({
   id,
   title: `Task ${id}`,
   messages: [],
   status: 'idle',
-  ...(adoptedFromId ? { adoptedFromId } : {}),
 });
 
 /**
@@ -30,15 +30,17 @@ const task = (id, adoptedFromId) => ({
  * ChatView consumes its own key, and consuming deletes just that key.
  * `mounted` models App's `route === 'task'` conditional mount so a remount can
  * be exercised; `openTaskId` models navigating between conversations.
+ *
+ * "adopt server id" models App's `adoptServerId`: `moveDraft` carries the draft
+ * from the pre-adoption `tmp-` surface onto the id the server minted, then the
+ * task is renamed. That pairing is the whole of the rename handling now — the
+ * composer's text lives in the per-surface draft store, so nothing else has to
+ * be told a rename is not a switch to a different conversation.
  */
 function Harness({ taskId = 't1', onConsumed }) {
   const [redirects, setRedirects] = useState({});
   const [mounted, setMounted] = useState(true);
   const [openTaskId, setOpenTaskId] = useState('t1');
-  // A brand-new task before the server has minted its id, and the rename that
-  // follows. App.jsx's adoptServerId stamps `adoptedFromId` so a rename can be
-  // told apart from a switch to a different conversation.
-  const [adoptedFrom, setAdoptedFrom] = useState(null);
   const bump = useRef(0);
   const fire = (tid, text, attachments) => setRedirects((prev) => {
     bump.current += 1;
@@ -60,21 +62,17 @@ function Harness({ taskId = 't1', onConsumed }) {
       <button type="button" onClick={() => setOpenTaskId((t) => (t === 't1' ? 't-other' : 't1'))}>
         switch task
       </button>
+      <button type="button" onClick={() => setOpenTaskId('t1')}>open t1</button>
+      <button type="button" onClick={() => setOpenTaskId('tmp-9')}>open brand-new task</button>
       <button
         type="button"
-        onClick={() => { setAdoptedFrom(null); setOpenTaskId('tmp-9'); }}
-      >
-        open brand-new task
-      </button>
-      <button
-        type="button"
-        onClick={() => { setAdoptedFrom('tmp-9'); setOpenTaskId('conv-9'); }}
+        onClick={() => { moveDraft('tmp-9', 'conv-9'); setOpenTaskId('conv-9'); }}
       >
         adopt server id
       </button>
       {mounted ? (
         <ChatView
-          task={task(openTaskId, adoptedFrom)}
+          task={task(openTaskId)}
           onSend={vi.fn()}
           composerRedirects={redirects}
           onComposerRedirectConsumed={(tid, attachments) => {
@@ -94,7 +92,9 @@ function Harness({ taskId = 't1', onConsumed }) {
 
 const composer = () => document.querySelector('textarea');
 
-beforeEach(() => { /* cleanup is automatic (tests/setup-renderer.ts) */ });
+// The draft store is module-level, so without this each test inherits the
+// previous one's typing (which is what made this file red once ENG-1221 landed).
+beforeEach(() => { __resetDraftsForTests(); });
 
 describe('redirectForTask', () => {
   const redirects = { t1: { text: 'for one', bump: 1 }, t2: { text: 'for two', bump: 2 } };
@@ -164,80 +164,87 @@ describe('ChatView composer redirect', () => {
     await user.click(screen.getByText('fire redirect'));
     await waitFor(() => expect(composer().value).toBe('queued one'));
 
-    // App keeps one ChatView instance across task switches, so the draft
-    // carries over; clear it first to keep the assertion unambiguous.
-    await user.clear(composer());
+    // Opening t-other shows ITS draft (empty) plus its own restored text — t1's
+    // restored text stays under t1's key rather than being carried into the box.
     await user.click(screen.getByText('switch task'));
 
     await waitFor(() => expect(composer().value).toBe('other task text'));
   });
 
-  it('does not append one task\'s restored text onto another task\'s draft', async () => {
+  it('does not splice one task\'s restored text into another task\'s draft', async () => {
     const user = userEvent.setup();
     render(<Harness />);
 
-    // A draft typed in t1 — which is still in the box after switching, because
-    // App keeps one Composer instance for every conversation.
+    // A draft typed in t1. The composer instance is shared across conversations,
+    // but its value comes from the per-surface draft store, so switching swaps
+    // the text rather than carrying it.
     await user.click(composer());
     await user.keyboard('draft for t1');
 
     // t-other drained while t1 was on screen, and only reaches its composer when
-    // the user opens it. Appending there would splice another conversation's
-    // queued messages into what the user was writing.
+    // the user opens it. It must join t-other's own draft, and leave t1's alone.
     await user.click(screen.getByText('fire other redirect'));
     await user.click(screen.getByText('switch task'));
-
     await waitFor(() => expect(composer().value).toBe('other task text'));
+
+    await user.click(screen.getByText('switch task'));
+    await waitFor(() => expect(composer().value).toBe('draft for t1'));
   });
 
-  it('replaces a carried-over draft even when the task is opened first', async () => {
+  it('shows this task\'s own draft after a switch, and appends the drain to that', async () => {
     const user = userEvent.setup();
     render(<Harness />);
 
-    // The other order: switch first, then the drain lands. The draft in the box
-    // still belongs to t1, so ownership cannot be inferred from "did the task id
-    // change on this run".
+    // The invariant the ownership bookkeeping was replaced by: whatever is in
+    // the box after a switch belongs to the task on screen, whichever order the
+    // switch and the drain arrive in.
     await user.click(composer());
     await user.keyboard('draft for t1');
     await user.click(screen.getByText('switch task'));
-    expect(composer().value).toBe('draft for t1');
+    expect(composer().value).toBe('');
+    await user.click(composer());
+    await user.keyboard('typed in t-other');
 
-    await user.click(screen.getByText('fire other redirect'));
+    await user.click(screen.getByText('switch task'));
+    await waitFor(() => expect(composer().value).toBe('draft for t1'));
+    await user.click(screen.getByText('fire redirect'));
 
-    await waitFor(() => expect(composer().value).toBe('other task text'));
+    await waitFor(() => expect(composer().value).toBe('draft for t1\nqueued one'));
   });
 
-  it('does not treat a brand-new task\'s draft as belonging to another task', async () => {
+  it('leaves a brand-new task\'s draft alone when another task drains', async () => {
     const user = userEvent.setup();
     render(<Harness />);
 
     // The draft was typed in a task whose id is still the pre-adoption `tmp-…`
-    // form. That says it was typed in SOME brand-new conversation — not in the
-    // one being opened next, which is what a bare `tmp-` prefix check assumed.
+    // form, i.e. on its own surface like any other conversation.
     await user.click(screen.getByText('open brand-new task'));
     await user.click(composer());
     await user.keyboard('draft in the brand-new task');
     await user.click(screen.getByText('fire redirect'));
 
-    // Opening t1, which has a pending redirect: its restored text must replace
-    // the other conversation's draft, not be spliced onto it.
-    await user.click(screen.getByText('switch task'));
-
+    // Opening t1, which has a pending redirect: its restored text lands on t1's
+    // (empty) draft, and the brand-new task's draft is still there afterwards.
+    await user.click(screen.getByText('open t1'));
     await waitFor(() => expect(composer().value).toBe('queued one'));
+
+    await user.click(screen.getByText('open brand-new task'));
+    await waitFor(() => expect(composer().value).toBe('draft in the brand-new task'));
   });
 
   it('keeps a pre-adoption draft when the server renames the conversation', async () => {
     const user = userEvent.setup();
     render(<Harness taskId="conv-9" />);
 
-    // Typed before `response.created`, so it is attributed to the tmp- id…
+    // Typed before `response.created`, so it sits under the tmp- surface…
     await user.click(screen.getByText('open brand-new task'));
     await user.click(composer());
     await user.keyboard('typed before adoption');
 
-    // …and the rename must carry that attribution over, or this task's own drain
-    // would wipe the draft it is supposed to be handed back alongside.
+    // …and adoptServerId's moveDraft has to carry it onto the minted id, or this
+    // task's own drain appends to an empty box and the draft is gone.
     await user.click(screen.getByText('adopt server id'));
+    await waitFor(() => expect(composer().value).toBe('typed before adoption'));
     await user.click(screen.getByText('fire redirect'));
 
     await waitFor(() => expect(composer().value).toBe('typed before adoption\nqueued one'));
@@ -263,6 +270,9 @@ describe('ChatView composer redirect', () => {
 
     await user.click(screen.getByText('fire redirect'));
     await waitFor(() => expect(composer().value).toBe('queued one'));
+    // Emptied so the assertion after the remount is about the redirect and not
+    // about the draft store legitimately restoring the text it holds.
+    await user.clear(composer());
 
     // Navigate away and back — ChatView is conditionally mounted in App.jsx,
     // so its guard refs reset. A signal the parent still held would re-prefill.
