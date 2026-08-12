@@ -284,22 +284,23 @@ jobs:
           # Prove the public CDN serves the exact BYTES of what was just
           # published, for the payload and the channel pointer alike.
           #
-          # A status check cannot tell a published object from a missing one
-          # here: this distribution answers a missing key with a 200 carrying
-          # 665 bytes of HTML, so `curl -f` succeeds on something that never
-          # uploaded. `curl --retry` is no help either, because it only fires on
-          # a timeout or a 408/429/5xx and never on a 200, which is why the wait
-          # below is an explicit loop rather than a retry flag.
+          # The channel pointer used to be checked by status alone, and this
+          # distribution answered a missing key with a 200 carrying 665 bytes of
+          # HTML, so `curl -f` succeeded on something that never uploaded. Both
+          # prod manifests were absent for weeks while every release reported
+          # success. A missing key answers 404 now, but status still cannot tell
+          # a current object from a stale one, which is the failure an immutable
+          # key is most exposed to.
           #
-          # This mattered. The channel pointer used to be checked by status
-          # alone, and both prod manifests were absent for weeks while every
-          # release reported success.
+          # `curl --retry` is no help for the waiting either, because it fires
+          # only on a timeout or a 408/429/5xx, which is why the wait below is
+          # an explicit loop rather than a retry flag.
           verify_on_cdn() {
             local key="$1" src="$2" want tmp got=""
             want=$(sha256sum "$src" | awk '{print $1}')
             tmp=$(mktemp)
             # A key created moments ago can be shadowed by an edge that cached
-            # the redirect page for it, so give it five minutes to settle.
+            # the 404 for it, so give it five minutes to settle.
             for _ in $(seq 1 30); do
               if curl -fsSL "${CDN_BASE}/${key}" -o "$tmp"; then
                 got=$(sha256sum "$tmp" | awk '{print $1}')
@@ -309,7 +310,7 @@ jobs:
             done
             rm -f "$tmp"
             if [ "$got" != "$want" ]; then
-              echo "::error::${CDN_BASE}/${key} did not serve what this run published, within 300s (cdn=${got:-<unreachable>} local=${want}). A 665-byte body here means the key is missing rather than stale."
+              echo "::error::${CDN_BASE}/${key} did not serve what this run published, within 300s (cdn=${got:-<unreachable>} local=${want})."
               curl -sS -D - "${CDN_BASE}/${key}" -o /dev/null | head -20 || true
               exit 1
             fi
