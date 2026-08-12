@@ -12,7 +12,7 @@ import { checkInstallStatus, runInstaller } from './installer';
 import { startServer, stopServer, forceReapServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort, fetchServerVersions } from './server-process';
 import { setUpdateNotifier, recreateVenvIfUnsupportedPython, repairServerInstall } from './server-updater';
 import { initUpdater, registerUpdateHandlers } from './updater';
-import { awaitBootGate } from './boot-gate';
+import { awaitBootSettled } from './boot-gate';
 import { awaitUpdateMaintenanceIdle } from './update-maintenance';
 import { oauthConnect, cancelCurrentOAuth } from './oauth-service';
 import { setRefreshToken, deleteRefreshToken, getRefreshToken as getOAuthRefreshToken } from './keychain-service';
@@ -1165,15 +1165,11 @@ function setupIPC() {
     // settled. The renderer holds the loading screen across this await, so a
     // boot update (if any) has already reinstalled the server / reloaded the
     // window before we let the UI route into the chat app — no server-down
-    // "Connect a provider" flash (ENG-749). Errors in either barrier are
-    // swallowed: a failed boot must still release the gate, never hang it.
-    // awaitBootGate applies the single authoritative budget (boot-gate.ts) —
-    // sized from the real reinstall/restart caps — as a last-resort backstop so
-    // a genuinely hung poll still releases, without ever firing mid-update.
-    await awaitBootGate((async () => {
-      try { await bootServerSettled; } catch { /* boot start failed */ }
-      try { await bootUpdateSettled; } catch { /* boot update failed */ }
-    })());
+    // "Connect a provider" flash (ENG-749). awaitBootSettled resolves on the
+    // orchestration's ACTUAL completion (no wall-clock budget racing it) and
+    // absorbs a rejected barrier, so a failed boot still releases the gate. The
+    // poll is bounded by each operation's own timeout, so this cannot hang.
+    await awaitBootSettled([bootServerSettled, bootUpdateSettled]);
     return { ready: true };
   });
 

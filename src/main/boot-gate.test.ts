@@ -1,49 +1,58 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { awaitBootGate, BOOT_UPDATE_BUDGET_MS, SERVER_REINSTALL_CAP_MS } from './boot-gate';
-import { SERVER_START_CAP_MS } from '../shared/server-status';
+import { awaitBootSettled } from './boot-gate';
 
 afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('awaitBootGate', () => {
-  it('resolves as soon as the boot poll settles, well before the budget', async () => {
+describe('awaitBootSettled', () => {
+  it('resolves only once every barrier has settled', async () => {
+    let done = false;
+    let releaseServer!: () => void;
+    let releaseUpdate!: () => void;
+    const server = new Promise<void>((r) => { releaseServer = r; });
+    const update = new Promise<void>((r) => { releaseUpdate = r; });
+
+    const gate = awaitBootSettled([server, update]).then(() => { done = true; });
+
+    releaseServer();
+    await Promise.resolve();
+    expect(done).toBe(false); // one barrier still pending
+
+    releaseUpdate();
+    await gate; // deterministic: wait for the gate itself, not a microtask count
+    expect(done).toBe(true);
+  });
+
+  // ENG-749 regression: the gate must track the orchestration's ACTUAL
+  // completion, not an internal clock. A slow primary attempt followed by a
+  // rollback can legitimately run for many minutes — well past the removed 780s
+  // budget — and the gate must stay closed the whole time, releasing only when
+  // the barrier settles.
+  it('never releases on an internal deadline, even past the removed worst-case budget', async () => {
     vi.useFakeTimers();
     let done = false;
-    awaitBootGate(Promise.resolve(), 1_000).then(() => { done = true; });
+    let release!: () => void;
+    const barrier = new Promise<void>((r) => { release = r; });
+
+    awaitBootSettled([barrier]).then(() => { done = true; });
+
+    // Simulate the full worst-case sequence elapsing (detection + reinstall +
+    // restart + rollback reinstall + restart), far beyond any wall-clock guess.
+    await vi.advanceTimersByTimeAsync(900_000);
+    expect(done).toBe(false);
+
+    release();
     await vi.advanceTimersByTimeAsync(0);
     expect(done).toBe(true);
   });
 
-  it('still resolves when the boot poll rejects (never traps the loading screen)', async () => {
-    vi.useFakeTimers();
+  it('resolves even when a barrier rejects — a failed boot never traps the loading screen', async () => {
     let done = false;
-    awaitBootGate(Promise.reject(new Error('boot failed')), 1_000).then(() => { done = true; });
-    await vi.advanceTimersByTimeAsync(0);
+    await awaitBootSettled([
+      Promise.reject(new Error('boot start failed')),
+      Promise.resolve(),
+    ]).then(() => { done = true; });
     expect(done).toBe(true);
-  });
-
-  // ENG-749 regression: the gate must NOT release at 45s (the old renderer-side
-  // fail-open) while a legitimately slow update is still running — it holds until
-  // the barrier settles, or the last-resort budget as a genuine-hang escape.
-  it('leaves the gate pending far past 45s when the barrier hangs, releasing only at the budget', async () => {
-    vi.useFakeTimers();
-    let done = false;
-    awaitBootGate(new Promise<void>(() => {}), BOOT_UPDATE_BUDGET_MS).then(() => { done = true; });
-
-    await vi.advanceTimersByTimeAsync(45_000);
-    expect(done).toBe(false); // the removed 45s cap would have fired here
-
-    await vi.advanceTimersByTimeAsync(SERVER_REINSTALL_CAP_MS + SERVER_START_CAP_MS);
-    expect(done).toBe(false); // still within the legitimate reinstall+restart envelope
-
-    await vi.advanceTimersByTimeAsync(BOOT_UPDATE_BUDGET_MS);
-    expect(done).toBe(true); // backstop finally releases
-  });
-
-  it('budget covers the worst-case update path (reinstall + restart, twice) so it never fires mid-update', () => {
-    expect(BOOT_UPDATE_BUDGET_MS).toBeGreaterThanOrEqual(
-      2 * (SERVER_REINSTALL_CAP_MS + SERVER_START_CAP_MS),
-    );
   });
 });

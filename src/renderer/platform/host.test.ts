@@ -208,7 +208,9 @@ describe('electron mode (bridge present)', () => {
       const host = await importHost();
       let resolved = false;
       void host.awaitBootReady().then(() => { resolved = true; });
-      await vi.advanceTimersByTimeAsync(120_000);
+      // Well past the old 45s cap and the removed 780s main-side budget: the
+      // renderer must stay gated for however long main's bounded poll takes.
+      await vi.advanceTimersByTimeAsync(900_000);
       expect(resolved).toBe(false);
     } finally {
       vi.useRealTimers();

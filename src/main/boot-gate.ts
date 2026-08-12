@@ -1,4 +1,4 @@
-// Boot-update gate budget + race (ENG-749).
+// Boot-update gate (ENG-749).
 //
 // The renderer holds the loading screen until the boot sequence settles: the
 // sidecar start decision plus the boot-time update poll. A boot server update
@@ -6,50 +6,30 @@
 // down — so the gate must stay closed until that finishes, or it flashes the
 // chat UI in a "Connect a provider" state.
 //
-// There is exactly ONE authoritative budget, and it lives here in main (not the
-// renderer), sized from the real operation caps the poll can hit. An earlier
-// renderer-side 45s fail-open sat *inside* that envelope and could release the
-// gate mid-reinstall — the bug this module fixes. The renderer now simply waits
-// for main to settle.
-
-import { SERVER_START_CAP_MS } from '../shared/server-status';
-
-// runUv's reinstall cap — the `execFile(..., { timeout })` in server-updater.ts
-// (`runUv`). Mirrored here as a named constant so the budget below is
-// authoritative; keep in sync with that call site.
-export const SERVER_REINSTALL_CAP_MS = 180_000;
-
-// Last-resort upper bound on how long the gate holds the loading screen. Sized
-// from the real caps: a server update reinstalls (SERVER_REINSTALL_CAP_MS) and
-// restarts (SERVER_START_CAP_MS) the sidecar, and a failed attempt rolls back
-// with the same two steps — plus a minute of slack for a UI download/reload.
-// Every operation the poll runs is individually bounded, so the gate normally
-// resolves long before this; the budget only fires if one genuinely hangs, and
-// is deliberately far larger than any single op so it never fires during a
-// legitimately slow update.
-export const BOOT_UPDATE_BUDGET_MS =
-  2 * (SERVER_REINSTALL_CAP_MS + SERVER_START_CAP_MS) + 60_000;
+// The gate resolves on the boot poll's ACTUAL completion — there is deliberately
+// no wall-clock budget racing the work. An earlier version raced a guessed
+// budget (2× reinstall + 2× restart + slack); that both duplicated the operation
+// caps and omitted phases (detection, version checks, shutdown, PyPI metadata,
+// restart preflight/cleanup), so a slow primary attempt + rollback could still
+// be running when the timer fired and released the gate mid-reinstall.
+//
+// Boundedness is instead guaranteed at the operation sites: every network or
+// subprocess step the poll runs has its own timeout —
+//   hasInternet 5s, fetchManifest / lsRemote / getInstalledVersion 10s,
+//   PyPI metadata 5s, runUv reinstall 180s, startServer SERVER_START_CAP 180s,
+//   UI download 60s, UI reload health 15s
+// — and `initUpdater`'s boot poll always reaches its `finally` (its awaits are
+// individually `.catch`-guarded). So the barrier cannot hang while a step runs,
+// and cannot open before the full sequence (attempt + any rollback) completes.
 
 /**
- * Resolve when the boot sequence `settled` promise resolves, or after
- * `budgetMs` as a last-resort backstop against a hung boot poll — whichever
- * comes first. Never rejects.
+ * Resolve once every boot barrier has settled — success or failure — and never
+ * before. Rejections are absorbed (a failed boot must still release the gate,
+ * never trap the loading screen) and it never rejects.
+ *
+ * No internal deadline: the release tracks the orchestration's real completion,
+ * which is bounded by each operation's own timeout (see file header).
  */
-export function awaitBootGate(
-  settled: Promise<void>,
-  budgetMs: number = BOOT_UPDATE_BUDGET_MS,
-): Promise<void> {
-  return new Promise((resolve) => {
-    let done = false;
-    const finish = () => {
-      if (done) return;
-      done = true;
-      clearTimeout(timer);
-      resolve();
-    };
-    const timer = setTimeout(finish, budgetMs);
-    // Don't let the backstop timer keep the process alive on quit.
-    timer.unref?.();
-    settled.then(finish, finish);
-  });
+export function awaitBootSettled(barriers: Array<Promise<unknown>>): Promise<void> {
+  return Promise.allSettled(barriers).then(() => undefined);
 }
