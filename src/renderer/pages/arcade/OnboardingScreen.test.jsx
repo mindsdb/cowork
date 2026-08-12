@@ -86,6 +86,31 @@ describe('OnboardingScreen — configured cloud instance (ENG-912)', () => {
     expect(screen.queryByText('MindsHub API Key')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
   });
+
+  // The live cloud bug: hosted org deployments DO authenticate through Keycloak,
+  // so the path above fired there and wrote admin-only provider keys. The 403 set
+  // phase='error', which bypasses both branches below (each guarded
+  // `phase !== 'error'`), trapping members on the key form on every reload.
+  it('web + org_mode:true → consent-only, writes NOTHING (no org-setting 403 trap)', async () => {
+    keycloakMock.authenticated = true;
+    hostMock.checkConfigured = vi.fn(async () => ({
+      configured: true,
+      provider: 'minds_cloud',
+      orgMode: true,
+    }));
+    // Module mocks persist across cases in this file, so the write assertions
+    // below would otherwise see the previous test's auto-finalize call.
+    syncSettingsToDb.mockClear();
+    hostMock.saveSettings.mockClear();
+
+    render(<OnboardingScreen coworker={coworker} onComplete={() => {}} />);
+
+    await waitFor(() => expect(screen.getByText(/Your workspace is ready to go/)).toBeInTheDocument());
+    expect(screen.queryByText('MindsHub API Key')).toBeNull();
+    // The org-classified write never happens — that 403 is what trapped members.
+    expect(syncSettingsToDb).not.toHaveBeenCalled();
+    expect(hostMock.saveSettings).not.toHaveBeenCalled();
+  });
 });
 
 // ENG-917: desktop sign-up rides the same loopback PKCE flow as sign-in —
