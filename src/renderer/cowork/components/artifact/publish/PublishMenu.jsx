@@ -19,7 +19,7 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Popover } from '@base-ui/react/popover';
 import Ico from '../../Icons';
-import { Alert, Button, Spinner } from '../../ui';
+import { Alert, Button, Spinner, Tooltip } from '../../ui';
 import { copyText } from '../../../lib/clipboard';
 import {
   AccessChooser,
@@ -94,6 +94,9 @@ function LinkButton({ onClick, children }) {
 }
 
 // Footer action buttons. `primary` = accent fill, otherwise neutral.
+// `title` here is only ever a disabled-state hint (the "Loading current
+// access…" guard). A hover/focus tooltip can't fire on a disabled control, so
+// this stays as a native `title=` rather than ui/Tooltip.
 function FooterButton({ onClick, disabled, primary, busy, busyLabel, title, children }) {
   return (
     <Button variant={primary ? 'primary' : 'default'} onClick={onClick} disabled={disabled} title={title}>
@@ -135,10 +138,12 @@ function UrlField({ url }) {
         flex: 1, minWidth: 0, fontFamily: FONT_MONO, fontSize: 12, color: 'var(--ink-2)',
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', padding: '8px 0',
       }}>{display}</span>
-      <button type="button" onClick={onCopy} title={copied ? 'Copied' : 'Copy URL'} aria-label="Copy URL" style={{
-        flexShrink: 0, width: 26, height: 26, borderRadius: 6, background: 'transparent', border: 0,
-        cursor: 'pointer', color: copied ? 'var(--accent)' : 'var(--ink-4)', display: 'inline-grid', placeItems: 'center',
-      }}>{copied ? Ico.check(13) : Ico.copy(13)}</button>
+      <Tooltip content={copied ? 'Copied' : 'Copy URL'}>
+        <button type="button" onClick={onCopy} aria-label="Copy URL" style={{
+          flexShrink: 0, width: 26, height: 26, borderRadius: 6, background: 'transparent', border: 0,
+          cursor: 'pointer', color: copied ? 'var(--accent)' : 'var(--ink-4)', display: 'inline-grid', placeItems: 'center',
+        }}>{copied ? Ico.check(13) : Ico.copy(13)}</button>
+      </Tooltip>
     </div>
   );
 }
@@ -422,11 +427,13 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                             autoFocus placeholder="New password"
                             style={{ flex: 1, minWidth: 0, background: 'transparent', border: 0, outline: 'none', color: 'var(--ink)', fontFamily: FONT_MONO, fontSize: 13, padding: '9px 0' }}
                           />
-                          <button type="button" onClick={() => setPwd((p) => ({ ...p, reveal: !p.reveal }))}
-                            title={pwd.reveal ? 'Hide' : 'Show'} aria-label={pwd.reveal ? 'Hide password' : 'Show password'}
-                            style={{ background: 'transparent', border: 0, cursor: 'pointer', color: 'var(--ink-4)', display: 'inline-flex', padding: 4 }}>
-                            {pwd.reveal ? Ico.eyeOff(15) : Ico.eye(15)}
-                          </button>
+                          <Tooltip content={pwd.reveal ? 'Hide' : 'Show'}>
+                            <button type="button" onClick={() => setPwd((p) => ({ ...p, reveal: !p.reveal }))}
+                              aria-label={pwd.reveal ? 'Hide password' : 'Show password'}
+                              style={{ background: 'transparent', border: 0, cursor: 'pointer', color: 'var(--ink-4)', display: 'inline-flex', padding: 4 }}>
+                              {pwd.reveal ? Ico.eyeOff(15) : Ico.eye(15)}
+                            </button>
+                          </Tooltip>
                         </div>
                       </>
                     )}

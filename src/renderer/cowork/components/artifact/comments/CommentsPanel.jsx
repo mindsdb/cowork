@@ -20,6 +20,7 @@ import { ConfirmModal } from '../../ConfirmModal';
 import { InboxCard } from './InboxCard';
 import { UnanchoredComposer } from './UnanchoredComposer';
 import { XIcon } from './icons';
+import { Tooltip } from '../../ui';
 
 // Reference "NewShadow/modal-sm" — the panel's card shadow.
 const SHADOW_SM =
@@ -105,17 +106,18 @@ export function CommentsPanel({
       {/* Header */}
       <div className="flex items-center justify-between shrink-0">
         <span className="text-[18px] font-semibold leading-[28px] text-[#202021]">Comments</span>
-        <button
-          type="button"
-          aria-label="Close"
-          title="Close"
-          className="w-[24px] h-[24px] flex items-center justify-center bg-transparent border-0
-            rounded-[6px] p-0 cursor-pointer text-[#69696B] transition-colors
-            hover:text-[#202021] hover:bg-[rgba(39,39,42,0.06)]"
-          onClick={onClose}
-        >
-          <XIcon />
-        </button>
+        <Tooltip content="Close">
+          <button
+            type="button"
+            aria-label="Close"
+            className="w-[24px] h-[24px] flex items-center justify-center bg-transparent border-0
+              rounded-[6px] p-0 cursor-pointer text-[#69696B] transition-colors
+              hover:text-[#202021] hover:bg-[rgba(39,39,42,0.06)]"
+            onClick={onClose}
+          >
+            <XIcon />
+          </button>
+        </Tooltip>
       </div>
 
       {/* Notices */}

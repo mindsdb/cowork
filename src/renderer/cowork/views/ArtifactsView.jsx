@@ -15,7 +15,7 @@ import Ico from '../components/Icons';
 import { Card } from '../components/ui/Card';
 import { useToastManager } from '../components/ui/Toast';
 import { EmptyState } from '../components/ui/EmptyState';
-import { Button } from '../components/ui';
+import { Button, Tooltip } from '../components/ui';
 import {
   revealArtifact, publishArtifact, unpublishArtifact, updateArtifact,
   deleteArtifact,
@@ -187,15 +187,15 @@ function PublishDialog({ artifact, onCancel, onConfirm }) {
 
 // Ghost icon button for the card header (open ↗ / ⋯). forwardRef so the
 // kebab can be the anchor for the page-level HoverMenu.
-const CardIconButton = forwardRef(function CardIconButton({ onClick, title, ariaLabel, children }, ref) {
+const CardIconButton = forwardRef(function CardIconButton({ onClick, ariaLabel, children, ...rest }, ref) {
   return (
     <button
       ref={ref}
       type="button"
-      title={title}
-      aria-label={ariaLabel || title}
+      aria-label={ariaLabel}
       onMouseDown={(e) => e.stopPropagation()}
       onClick={onClick}
+      {...rest}
       style={{
         width: 28, height: 28, borderRadius: 7,
         display: 'inline-grid', placeItems: 'center',
@@ -313,11 +313,15 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
           </div>
           {/* Actions — open-in-browser + ⋯ menu. */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
-            <CardIconButton title="Open" onClick={onOpenExternal}>{Ico.externalLink(15)}</CardIconButton>
-            <CardIconButton ref={kebabRef} title="More actions" ariaLabel="Artifact menu"
-              onClick={(e) => { e.stopPropagation(); openMenu(e); }}>
-              {Ico.moreVert(16)}
-            </CardIconButton>
+            <Tooltip content="Open">
+              <CardIconButton ariaLabel="Open" onClick={onOpenExternal}>{Ico.externalLink(15)}</CardIconButton>
+            </Tooltip>
+            <Tooltip content="More actions">
+              <CardIconButton ref={kebabRef} ariaLabel="Artifact menu"
+                onClick={(e) => { e.stopPropagation(); openMenu(e); }}>
+                {Ico.moreVert(16)}
+              </CardIconButton>
+            </Tooltip>
           </div>
         </div>
 
@@ -333,21 +337,22 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
       }}>
         <span style={{ display: 'inline-flex', flexShrink: 0, color: 'var(--ink-4)' }}>{Ico.folder(13)}</span>
         {canOpenProject ? (
-          <button
-            type="button"
-            onMouseDown={(e) => e.stopPropagation()}
-            onClick={(e) => { e.stopPropagation(); onOpenProject(projectMatch); }}
-            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); onOpenProject(projectMatch); } }}
-            title={`Open ${projectMatch.name}`}
-            style={{
-              all: 'unset', cursor: 'pointer',
-              fontFamily: FONT_BODY, fontSize: 12, color: 'var(--ink-3)',
-              minWidth: 0, flex: '0 1 auto', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              transition: 'color 120ms ease',
-            }}
-            onMouseOver={(e) => { e.currentTarget.style.color = 'var(--accent)'; e.currentTarget.style.textDecoration = 'underline'; e.currentTarget.style.textUnderlineOffset = '2px'; }}
-            onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-3)'; e.currentTarget.style.textDecoration = 'none'; }}
-          >{projectLabel}</button>
+          <Tooltip content={`Open ${projectMatch.name}`}>
+            <button
+              type="button"
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => { e.stopPropagation(); onOpenProject(projectMatch); }}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); onOpenProject(projectMatch); } }}
+              style={{
+                all: 'unset', cursor: 'pointer',
+                fontFamily: FONT_BODY, fontSize: 12, color: 'var(--ink-3)',
+                minWidth: 0, flex: '0 1 auto', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                transition: 'color 120ms ease',
+              }}
+              onMouseOver={(e) => { e.currentTarget.style.color = 'var(--accent)'; e.currentTarget.style.textDecoration = 'underline'; e.currentTarget.style.textUnderlineOffset = '2px'; }}
+              onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-3)'; e.currentTarget.style.textDecoration = 'none'; }}
+            >{projectLabel}</button>
+          </Tooltip>
         ) : (
           <span title={projectLabel} style={{
             fontFamily: FONT_BODY, fontSize: 12, color: 'var(--ink-3)',
@@ -560,21 +565,22 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
           <span style={{ display: 'inline-flex', flexShrink: 0, color: 'var(--ink-4)' }}>{Ico.folder(13)}</span>
           {canOpenProject ? (
-            <button
-              type="button"
-              onMouseDown={(e) => e.stopPropagation()}
-              onClick={(e) => { e.stopPropagation(); onOpenProject(projectMatch); }}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); onOpenProject(projectMatch); } }}
-              title={`Open ${projectMatch.name}`}
-              style={{
-                all: 'unset', cursor: 'pointer',
-                fontFamily: FONT_BODY, fontSize: 12.5, color: 'var(--ink-2)',
-                minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                display: 'inline-block', maxWidth: '100%', transition: 'color 120ms ease',
-              }}
-              onMouseOver={(e) => { e.currentTarget.style.color = 'var(--accent)'; e.currentTarget.style.textDecoration = 'underline'; e.currentTarget.style.textUnderlineOffset = '2px'; }}
-              onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-2)'; e.currentTarget.style.textDecoration = 'none'; }}
-            >{project}</button>
+            <Tooltip content={`Open ${projectMatch.name}`}>
+              <button
+                type="button"
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => { e.stopPropagation(); onOpenProject(projectMatch); }}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); onOpenProject(projectMatch); } }}
+                style={{
+                  all: 'unset', cursor: 'pointer',
+                  fontFamily: FONT_BODY, fontSize: 12.5, color: 'var(--ink-2)',
+                  minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  display: 'inline-block', maxWidth: '100%', transition: 'color 120ms ease',
+                }}
+                onMouseOver={(e) => { e.currentTarget.style.color = 'var(--accent)'; e.currentTarget.style.textDecoration = 'underline'; e.currentTarget.style.textUnderlineOffset = '2px'; }}
+                onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-2)'; e.currentTarget.style.textDecoration = 'none'; }}
+              >{project}</button>
+            </Tooltip>
           ) : (
             <span title={project} style={{
               fontFamily: FONT_BODY, fontSize: 12.5, color: 'var(--ink-2)',
@@ -592,8 +598,12 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
         {/* Updated + open + ⋯ */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end', whiteSpace: 'nowrap' }}>
           <span style={{ fontFamily: FONT_BODY, fontSize: 12, color: 'var(--ink-4)' }}>{artifact.updated || '—'}</span>
-          <CardIconButton title="Open" onClick={onOpenExternal}>{Ico.externalLink(14)}</CardIconButton>
-          <CardIconButton ref={triggerRef} title="More actions" ariaLabel="Artifact menu" onClick={openMenu}>{Ico.moreVert(15)}</CardIconButton>
+          <Tooltip content="Open">
+            <CardIconButton ariaLabel="Open" onClick={onOpenExternal}>{Ico.externalLink(14)}</CardIconButton>
+          </Tooltip>
+          <Tooltip content="More actions">
+            <CardIconButton ref={triggerRef} ariaLabel="Artifact menu" onClick={openMenu}>{Ico.moreVert(15)}</CardIconButton>
+          </Tooltip>
         </div>
       </div>
 
