@@ -174,6 +174,14 @@ pair and the restart-required shell are different surfaces:
 
 Notes:
 
+- **Taskbar pins survive both Windows update paths** (ENG-1367). The
+  auto-updater runs the installer with `--updated`, and manual installer runs
+  keep shortcuts because the assisted installer is built without
+  `allowToChangeInstallationDirectory` — either way the previous version's
+  uninstaller is invoked with `--keep-shortcuts`, so the Start-Menu shortcut
+  and AppUserModelID the pin references are preserved. The pin is only lost
+  when *updating to* a build older than this fix, whose installer still
+  deleted them on manual runs.
 - The **"Current version"** readout in Settings collapses UI + server + agent
   into one unified CalVer and flags "⚠ out of sync" when they drift more than
   `SKEW_WARN_DAYS` apart — so a server-only update that lands before its matching
