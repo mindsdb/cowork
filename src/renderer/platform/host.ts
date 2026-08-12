@@ -343,14 +343,29 @@ export async function checkInstall(): Promise<InstallStatus> {
   return fetchJson('/api/v1/settings/install-status');
 }
 
-export async function checkConfigured(): Promise<{ configured: boolean; provider: string }> {
+export async function checkConfigured(): Promise<{
+  configured: boolean;
+  provider: string;
+  // Electron is desktop by definition, so the bridge path leaves this false.
+  orgMode?: boolean;
+}> {
   if (isElectron && typeof bridge.checkConfigured === 'function') {
     return bridge.checkConfigured();
   }
   // Web: read config_ready from /health — the SAME signal the in-app chat gate
   // uses — so onboarding-vs-app routing can't disagree with the chat gate.
-  const h = await fetchJson('/api/v1/health/') as { config_ready?: boolean; provider?: string };
-  return { configured: Boolean(h.config_ready), provider: h.provider ?? '' };
+  // `orgMode` separates a hosted org deployment from an authenticated
+  // standalone one; config_ready can't express that.
+  const h = await fetchJson('/api/v1/health/') as {
+    config_ready?: boolean;
+    provider?: string;
+    org_mode?: boolean;
+  };
+  return {
+    configured: Boolean(h.config_ready),
+    provider: h.provider ?? '',
+    orgMode: Boolean(h.org_mode),
+  };
 }
 
 export async function validateProvider(
