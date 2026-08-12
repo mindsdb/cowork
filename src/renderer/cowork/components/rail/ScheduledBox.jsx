@@ -4,22 +4,22 @@
 import Ico from '../Icons';
 import { RailCard } from './RailCard';
 
+// Kept for the clickable row below, which stays inline (its `all: unset`,
+// padding, cursor, transition are all clickable-conditional + it uses a
+// JS hover handler). font-body resolves to this same Inter stack.
 const FONT_BODY = "'Inter', system-ui, sans-serif";
 
 function ScheduledList({ items, onSelect }) {
   if (!items.length) {
     return (
-      <p style={{
-        fontFamily: FONT_BODY,
-        fontSize: 12.5, color: 'var(--ink-4)', padding: '8px 4px 4px',
-      }}>
+      <p className="font-body text-sm text-ink-4 pt-2 px-1 pb-1">
         Nothing scheduled here yet.
       </p>
     );
   }
   const clickable = typeof onSelect === 'function';
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingTop: 6 }}>
+    <div className="flex flex-col gap-1 pt-1.5">
       {items.map((s) => {
         const label = s.title || s.prompt || s.id;
         // When `onSelect` is wired, render each row as a button that
@@ -54,17 +54,14 @@ function ScheduledList({ items, onSelect }) {
               e.currentTarget.style.color = 'var(--ink-2)';
             } : undefined}
           >
-            <span style={{ color: 'var(--ink-3)', display: 'inline-flex', flexShrink: 0 }}>
+            <span className="text-ink-3 inline-flex shrink-0">
               {Ico.clock(13)}
             </span>
-            <span style={{
-              flex: 1, minWidth: 0,
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>
+            <span className="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
               {label}
             </span>
             {s.cadence && (
-              <span style={{ fontSize: 11, color: 'var(--ink-4)' }}>{s.cadence}</span>
+              <span className="text-xs text-ink-4">{s.cadence}</span>
             )}
           </Tag>
         );

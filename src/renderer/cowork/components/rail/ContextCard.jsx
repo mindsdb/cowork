@@ -56,12 +56,11 @@ function MemoryRow({ entry, onOpen }) {
         className={clsx(
           'group grid items-center gap-2 rounded-card-row px-1 py-1 text-left',
           'cursor-pointer transition-colors hover:bg-surface-2',
-          'border-0 bg-transparent w-full'
+          'border-0 bg-transparent w-full grid-cols-[14px_minmax(0,1fr)_auto] [font:inherit]'
         )}
-        style={{ gridTemplateColumns: '14px minmax(0,1fr) auto', font: 'inherit' }}
       >
         <span className="text-ink-4 inline-flex flex-none">{Ico.code(13)}</span>
-        <span className="block truncate text-[12.5px] text-ink min-w-0">
+        <span className="block truncate text-sm text-ink min-w-0">
           {labelCategory(entry.category) || entry.name}
         </span>
         {entry.modifiedAt && (
@@ -110,16 +109,15 @@ function SessionAttachmentRow({
       className={clsx(
         'group relative grid items-center gap-2 rounded-card-row px-1 py-1 text-left',
         canOpen && 'cursor-pointer transition-colors hover:bg-surface-2',
-        'outline-none focus-visible:ring-2 focus-visible:ring-offset-0 focus-visible:ring-accent'
+        'outline-none focus-visible:ring-2 focus-visible:ring-offset-0 focus-visible:ring-accent grid-cols-[14px_minmax(0,1fr)_auto] [font:inherit]'
       )}
-      style={{ gridTemplateColumns: '14px minmax(0,1fr) auto', font: 'inherit' }}
     >
       <span className="text-ink-4 inline-flex flex-none">{attachmentSourceIcon(item)}</span>
-      <span className="block truncate text-[12.5px] text-ink min-w-0">{label}</span>
+      <span className="block truncate text-sm text-ink min-w-0">{label}</span>
       {/* Trailing slot: age normally, kebab on hover or while the
           row's menu is open. Same shared-slot trick as Project Files'
           trash so the row width doesn't jump. */}
-      <span className="relative inline-flex items-center justify-end flex-none" style={{ minWidth: 16 }}>
+      <span className="relative inline-flex items-center justify-end flex-none min-w-4">
         {when ? (
           <span className={clsx(
             'text-[10.5px] text-ink-4 transition-opacity',
@@ -168,12 +166,11 @@ function ContextFileRow({ file, onOpen, onRequestDelete }) {
       className={clsx(
         'group grid items-center gap-2 rounded-card-row px-1 py-1 text-left',
         'cursor-pointer transition-colors hover:bg-surface-2',
-        'outline-none focus-visible:ring-2 focus-visible:ring-offset-0 focus-visible:ring-accent'
+        'outline-none focus-visible:ring-2 focus-visible:ring-offset-0 focus-visible:ring-accent grid-cols-[14px_minmax(0,1fr)_auto] [font:inherit]'
       )}
-      style={{ gridTemplateColumns: '14px minmax(0,1fr) auto', font: 'inherit' }}
     >
       <span className="text-ink-4 inline-flex flex-none">{Ico.doc(13)}</span>
-      <span className="block truncate text-[12.5px] text-ink min-w-0">
+      <span className="block truncate text-sm text-ink min-w-0">
         {isAnton ? 'Instructions' : (file.path || file.name)}
       </span>
       {/* Trailing slot: age normally, trash on hover. Both share
@@ -181,7 +178,7 @@ function ContextFileRow({ file, onOpen, onRequestDelete }) {
           row width doesn't change between hover states. The age
           drives the column's intrinsic width (the trash icon is
           ~14px wide, roughly the same as "1m"/"2h"/"3d"). */}
-      <span className="relative inline-flex items-center justify-end flex-none" style={{ minWidth: 16 }}>
+      <span className="relative inline-flex items-center justify-end flex-none min-w-4">
         {file.modified ? (
           <span className={clsx(
             'text-[10.5px] text-ink-4 transition-opacity',
@@ -235,12 +232,11 @@ function DriveReferenceRow({ file, onRequestDelete }) {
       className={clsx(
         'group grid items-center gap-2 rounded-card-row px-1 py-1 text-left',
         'cursor-pointer transition-colors hover:bg-surface-2',
-        'outline-none focus-visible:ring-2 focus-visible:ring-offset-0 focus-visible:ring-accent'
+        'outline-none focus-visible:ring-2 focus-visible:ring-offset-0 focus-visible:ring-accent grid-cols-[14px_minmax(0,1fr)_auto] [font:inherit]'
       )}
-      style={{ gridTemplateColumns: '14px minmax(0,1fr) auto', font: 'inherit' }}
     >
       <span className="text-ink-4 inline-flex flex-none">{Ico.googleDrive(13)}</span>
-      <span className="block truncate text-[12.5px] text-ink min-w-0">{file.name || 'untitled'}</span>
+      <span className="block truncate text-sm text-ink min-w-0">{file.name || 'untitled'}</span>
       {/* Both actions show together on hover — unlike ContextFileRow's
           single age/trash swap, there's no "normal" state content to
           protect here, so open + delete can just sit side by side. */}
@@ -569,7 +565,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
 
   if (blockGlobalEmpty) {
     return (
-      <p className="text-[12.5px] text-ink-4 px-1 pt-2 pb-1">
+      <p className="text-sm text-ink-4 px-1 pt-2 pb-1">
         The agent learns as you work — memories will appear here.
       </p>
     );
@@ -648,7 +644,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
             }}
           />
           {uploadError && (
-            <p className="text-[11px] px-1 pb-0.5" style={{ color: 'var(--danger)' }}>
+            <p className="text-xs px-1 pb-0.5 text-danger">
               {uploadError}
             </p>
           )}
@@ -743,7 +739,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
             }}
           />
           {taskUploadError && (
-            <p className="text-[11px] px-1 pb-0.5" style={{ color: 'var(--danger)' }}>
+            <p className="text-xs px-1 pb-0.5 text-danger">
               {taskUploadError}
             </p>
           )}
@@ -751,7 +747,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
             <p className="text-[12px] text-ink-4 px-1 pb-0.5">Loading attachments…</p>
           )}
           {attachmentsError && (
-            <p className="text-[12px] px-1 pb-0.5" style={{ color: 'var(--danger-600, #b3261e)' }}>
+            <p className="text-[12px] px-1 pb-0.5 text-[var(--danger-600,#b3261e)]">
               {attachmentsError}
             </p>
           )}
@@ -881,7 +877,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
               <button
                 type="button"
                 onClick={() => setShowAll(true)}
-                className="ml-1 mt-1 self-start text-[11px] text-ink-3 hover:text-ink underline-offset-2 hover:underline cursor-pointer bg-transparent border-0 p-0"
+                className="ml-1 mt-1 self-start text-xs text-ink-3 hover:text-ink underline-offset-2 hover:underline cursor-pointer bg-transparent border-0 p-0"
               >
                 + {remaining} more
               </button>
