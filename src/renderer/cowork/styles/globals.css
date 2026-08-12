@@ -4005,17 +4005,21 @@ body[data-theme="dark"] .mshell__drawer-title {
   position: relative;
 }
 .user-turn-bubble {
-  /* Quiet outlined block, not an SMS bubble: --surface-2 fill + a --line
-     hairline for the edge (a light fill alone barely separates from the page
-     over the dot field), no shadow. ENG-787 de-bubble, ENG-641 refine. */
-  background: var(--surface-2);
-  border: 1px solid var(--line);
+  /* Quiet filled block, not an SMS bubble: a borderless --surface-3 fill,
+     no shadow. The transcript sits on a flat --bg (there is no dot field),
+     so — like Claude — the fill alone carries the shape and no hairline is
+     needed. (The old --surface-2 fill was only ~2% off the page in light
+     mode and needed a border to read, which is why one used to be here.)
+     Quieter than the answer by design: --ink-2 text + a tighter 1.5 leading
+     mark the prompt as an echo so the answer stays the primary read.
+     ENG-787 de-bubble, ENG-641 refine. */
+  background: var(--surface-3);
   border-radius: var(--r-xl);
   padding: 12px 16px;
   font-family: var(--font-body);
-  font-size: var(--text-base);
-  line-height: 1.55;
-  color: var(--ink);
+  font-size: 14.5px; /* match the answer body (text-body token) — both are prose */
+  line-height: 1.5;
+  color: var(--ink-2);
   box-shadow: none;
   user-select: text;
   /* The bubble is a flex item in a column flex (.user-turn-inner). Without
@@ -4026,6 +4030,84 @@ body[data-theme="dark"] .mshell__drawer-title {
      scrolls the long line within the bubble instead. */
   min-width: 0;
   max-width: 100%;
+}
+/* Long user messages clamp to ~8 lines with a soft bottom fade + a "Show
+   more" toggle (Claude pattern) so a big pasted prompt doesn't dominate the
+   viewport before the answer. The fade and toggle appear only when the
+   content actually overflows the clamp (measured in UserTurn). */
+.user-turn-clamp { overflow: hidden; }
+.user-turn-clamp--faded {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 2.2em), transparent);
+          mask-image: linear-gradient(to bottom, #000 calc(100% - 2.2em), transparent);
+}
+.user-turn-more {
+  display: block;
+  margin-top: 8px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-3);
+  cursor: pointer;
+  transition: color 120ms ease;
+}
+.user-turn-more:hover { color: var(--ink); }
+
+/* ─── Chat-view accent damping ───────────────────────────────────────────────
+   Two spots hard-filled the raw bright --accent and read as glare in dark mode
+   (the inline artifact-card CTA and the Progress-panel done markers). Both now
+   follow the canonical primary logic: opaque accent in light, a quiet accent
+   glass / deeper accent in dark. */
+
+/* Artifact-card action buttons (Export / reveal / Open). Small-size siblings;
+   the primary "Open" mirrors .btn.primary rather than a flat --accent fill. */
+.chat-card-btn {
+  all: unset;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 7px;
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  transition: background 120ms ease, border-color 120ms ease;
+}
+.chat-card-btn:hover:not(:disabled) { background: var(--surface-2); }
+.chat-card-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.chat-card-btn:disabled { cursor: not-allowed; opacity: 0.5; }
+.chat-card-btn--primary {
+  font-weight: 600;
+  background: var(--accent-solid);
+  color: var(--accent-solid-ink);
+  border-color: var(--accent-solid);
+}
+.chat-card-btn--primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent-solid) 88%, var(--ink));
+}
+body[data-theme="dark"] .chat-card-btn--primary {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+body[data-theme="dark"] .chat-card-btn--primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
+/* Progress-panel done marker: keep the brand --accent fill in light, but in
+   dark drop to the deeper --accent-3 so a column of checks reads as a quiet
+   reference instead of a string of neon dots. */
+body[data-theme="dark"] .phase-check-done {
+  background-color: var(--accent-3);
+  border-color: var(--accent-3);
 }
 /* ─── Shared turn-action toolbar ──────────────────────────────────────────
    Horizontal row of icon buttons below both user and assistant messages.
@@ -4063,12 +4145,33 @@ body[data-theme="dark"] .mshell__drawer-title {
 .answer-turn:hover .turn-meta,
 .answer-turn:focus-within .turn-meta { opacity: 1; }
 /* Answer body rhythm (ENG-787 move 02): a touch more line-height than the
-   shared 14.5px/1.55 body token for calmer long-form reading. Scoped to
-   answer turns so user bubbles, memory previews, and other markdown
-   surfaces keep the tighter default. */
+   user bubble's 1.5 so the answer reads as the roomier, primary long-form
+   content. 1.62 lands between the old 1.7 (too relaxed) and the 1.55 body
+   token — generous but composed, in the Claude register. Scoped to answer
+   turns so user bubbles, memory previews, and other markdown surfaces are
+   unaffected. */
+/* Chat body ink: nudged ~30% darker than the --ink-2 body token for a
+   crisper, more committed read — but kept a soft near-black, not the full
+   --ink, which would read heavy/harsh over long *sans* paragraphs (the trick
+   a serif like Claude's would hide). ~10:1 contrast leaves plenty of headroom.
+   color-mix against the tokens so dark mode moves the text brighter (= more
+   contrast) automatically. Scoped to chat prose so the global --ink-2 token
+   used elsewhere is untouched. */
 .answer-turn .markdown-content p,
 .answer-turn .markdown-content li {
-  line-height: 1.7;
+  line-height: 1.62;
+  color: color-mix(in srgb, var(--ink) 30%, var(--ink-2));
+}
+/* User bubble body: a hair denser than the answer — tighter 1.5 leading plus
+   a touch of negative tracking mark the prompt as a compact echo while the
+   answer stays the roomier primary read. Set at the p/li level (not on
+   .user-turn-bubble) because the markdown `text-body` utility on <p>/<li>
+   carries its own 14.5px/1.55 that otherwise wins over the bubble's base. */
+.user-turn .markdown-content p,
+.user-turn .markdown-content li {
+  line-height: 1.5;
+  letter-spacing: -0.012em;
+  color: color-mix(in srgb, var(--ink) 30%, var(--ink-2));
 }
 /* The in-flight status label next to the orb — soft left-to-right sheen,
    the same "alive" read as Claude's thinking label. Numbers inside tick
@@ -4159,8 +4262,10 @@ body[data-theme="dark"] .mshell__drawer-title {
   font-size: var(--text-sm);
   line-height: inherit;
   color: rgb(232, 132, 110);
-  background: rgba(232, 132, 110, 0.10);
-  border: 1px solid rgba(232, 132, 110, 0.20);
+  /* Neutral chip (a faint --ink tint), not a coral-tinted box with a coral
+     border — so only the TEXT carries the warm colour, à la Claude. Reads
+     calmer and drops another colored border from the transcript. */
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
   border-radius: var(--r-sm);
   padding: 1px 5px;
   word-break: break-word;
@@ -4173,11 +4278,9 @@ body[data-theme="dark"] .mshell__drawer-title {
   font-weight: 500;
 }
 body[data-theme="light"] .anton-inline-code {
-  /* Darker coral on light mode keeps AA contrast against the pale
-     bubble surface. */
+  /* Darker terracotta on light keeps AA contrast; the chip fill itself is
+     the neutral --ink tint inherited from the base rule. */
   color: rgb(168, 76, 60);
-  background: rgba(232, 132, 110, 0.14);
-  border-color: rgba(168, 76, 60, 0.25);
 }
 
 .anton-code-block {
@@ -4457,14 +4560,3 @@ body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169
 @container (max-width: 600px) {
   .artifacts-grid { grid-template-columns: 1fr; }
 }
-
-/* Card and list status-cell are each their own query container, with
-   independent thresholds (the card has padding; the cell is the bare pill
-   area). Below each threshold the access chip drops its text label to
-   icon-only (hover keeps it discoverable) so "Unpublished changes" still fits.
-   Class is `cw-artifact-card` (not `artifact-card`) to avoid a legacy
-   `.artifact-card` rule elsewhere in this file. */
-.cw-artifact-card { container-type: inline-size; container-name: artcard; }
-.cw-status-cell  { container-type: inline-size; container-name: statuscell; }
-@container artcard (max-width: 400px)   { .cw-access-label { display: none; } }
-@container statuscell (max-width: 380px) { .cw-access-label { display: none; } }

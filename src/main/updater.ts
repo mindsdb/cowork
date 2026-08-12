@@ -170,7 +170,7 @@ export async function checkForUpdates(): Promise<UpdateCheckSummary> {
   const shellAutoActive = !!shellAuto && shellAutoUpdateIsActive(shellAuto.phase);
   return summarizeUpdateCheck({
     ui: { updateAvailable: ui.updateAvailable, newVersion: ui.newVersion, error: ui.error },
-    server: { updateAvailable: server.updateAvailable, latestVersion: server.latestVersion, error: server.error },
+    server: { updateAvailable: server.updateAvailable, latestVersion: server.latestVersion, error: server.error, component: server.component },
     shell: shell.available
       ? { updateAvailable: true, version: shell.latestVersion, downloadUrl: shell.downloadUrl ?? undefined }
       : shellAutoActive
@@ -283,7 +283,7 @@ export function initUpdater(
     }
 
     if (ui.updateAvailable) console.log(`[updater] UI update available: ${ui.newVersion}`);
-    if (server.updateAvailable) console.log(`[updater] server update: ${server.currentVersion} → ${server.latestVersion}`);
+    if (server.updateAvailable) console.log(`[updater] server update (${server.component ?? 'cowork-server'}): ${server.currentVersion} → ${server.latestVersion}`);
 
     // A UI held back only for server-compat is still a candidate when a server
     // update is also pending: the server-first apply brings the server current,
@@ -308,13 +308,21 @@ export function initUpdater(
       if (applyServer && !isServerRunning()) console.log('[updater] server is down — applying server update to recover');
       await applyUpdates(getWindow, applyServer, applyUi);
     } else {
+      // An anton-only server update (ENG-1094) shares cowork-server's version,
+      // so a bare version number would read as blank/wrong — name the component
+      // that's actually changing. A cowork-server (or git) update keeps the
+      // bare version it always showed.
+      const serverLabel = server.component === 'anton-agent' && server.latestVersion
+        ? `${server.component} ${server.latestVersion}`
+        : server.latestVersion;
       sendStatus(getWindow, {
         phase: 'available',
         // Interim: surface whichever version we have so the banner never
         // renders blank. Longer term this collapses to one unified version.
-        version: ui.newVersion ?? server.latestVersion,
+        version: ui.newVersion ?? serverLabel,
         serverUpdate: server.updateAvailable,
         serverVersion: server.latestVersion,
+        serverComponent: server.component,
       });
     }
   }
