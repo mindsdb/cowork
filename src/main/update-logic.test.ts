@@ -647,6 +647,19 @@ describe('satisfiesAntonConstraint', () => {
     expect(satisfiesAntonConstraint('2.26.6.30.1', c)).toBe(true);  // lower bound inclusive
     expect(satisfiesAntonConstraint('2.26.6.30.0', c)).toBe(false); // below floor
     expect(satisfiesAntonConstraint('3.0.0', c)).toBe(false);       // hits the <3 ceiling
+    expect(satisfiesAntonConstraint('3.0.0rc1', c)).toBe(false);    // PEP 440: rc of the <3 ceiling
+    expect(satisfiesAntonConstraint('2.26.8.12.1rc3', c)).toBe(true); // an in-range rc still passes
+  });
+
+  it('excludes a pre-release of the < ceiling but not lower rcs (PEP 440)', () => {
+    // `<V` must not match a pre-release of V itself...
+    expect(satisfiesAntonConstraint('2.26.8.9.1rc1', '<2.26.8.9.1')).toBe(false);
+    // ...but a stable or rc build strictly below V is fine.
+    expect(satisfiesAntonConstraint('2.26.8.9.0', '<2.26.8.9.1')).toBe(true);
+    expect(satisfiesAntonConstraint('2.26.8.8.9rc2', '<2.26.8.9.1')).toBe(true);
+    // ...and when the ceiling is ITSELF an rc, lower rcs of the same release pass.
+    expect(satisfiesAntonConstraint('2.26.8.9.1rc2', '<2.26.8.9.1rc5')).toBe(true);
+    expect(satisfiesAntonConstraint('2.26.8.9.1rc5', '<2.26.8.9.1rc5')).toBe(false);
   });
 
   it('evaluates every operator on both sides of the boundary', () => {

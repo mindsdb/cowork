@@ -182,7 +182,19 @@ export function satisfiesAntonConstraint(version: string, constraint: string | n
     const op = m[1];
     const cmp = compareVersions(version, m[2]);
     switch (op) {
-      case '<': if (!(cmp < 0)) return false; break;
+      case '<': {
+        if (!(cmp < 0)) return false;
+        // PEP 440: `<V` must NOT match a pre-release of V's own release unless V
+        // is itself a pre-release. compareVersions orders `Vrc1` *before* `V`, so
+        // the bare `cmp < 0` above wrongly admits it — e.g. `2.26.8.9.1rc1` would
+        // satisfy `<2.26.8.9.1`, the very rc someone pins below during an incident.
+        // Exclude a candidate rc whose release equals V, when V is a full release.
+        const vIsPre = /rc\d+$/.test(m[2]);
+        const candBase = version.replace(/rc\d+$/, '');
+        const candIsPre = candBase !== version;
+        if (candIsPre && !vIsPre && compareVersions(candBase, m[2]) === 0) return false;
+        break;
+      }
       case '<=': if (!(cmp <= 0)) return false; break;
       case '>': if (!(cmp > 0)) return false; break;
       case '>=': if (!(cmp >= 0)) return false; break;

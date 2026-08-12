@@ -481,7 +481,13 @@ export async function resolvePypiInstallTarget(): Promise<{ version: string; wit
  *  Fails closed (no update) when the constraint can't be read — never offers an
  *  anton a `--with anton-agent==X` reinstall couldn't resolve against the
  *  installed cowork-server (which would loop the banner). Shared by BOTH the
- *  check and the apply so the two can't disagree. */
+ *  check and the apply so the two can't disagree.
+ *
+ *  Callers must pass the tools dir resolved via `uvToolsDir(uv)` — the on-disk
+ *  install layout diverges across uv versions/OSes, and the `getUvToolsDir()`
+ *  heuristic this falls back to can miss it (notably on Windows). A miss makes
+ *  the installed anton unreadable, which reads as "nothing to offer" and
+ *  silently disables the ENG-1094 detection. */
 async function resolveAntonPypiUpdate(
   toolsDir?: string,
 ): Promise<{ update: { from: string; to: string } | null; error: boolean }> {
@@ -583,7 +589,7 @@ export async function checkForServerUpdate(): Promise<ServerUpdateCheckResult> {
     // cowork-server is current — an anton-only release may still be pending.
     // Detected the SAME way maybeUpdateServer applies it, so the banner and the
     // action can never disagree.
-    const anton = await resolveAntonPypiUpdate();
+    const anton = await resolveAntonPypiUpdate((await uvToolsDir(uv)) ?? undefined);
     if (anton.update) {
       return { updateAvailable: true, currentVersion: anton.update.from, latestVersion: anton.update.to, component: 'anton-agent' };
     }
@@ -710,7 +716,7 @@ async function _pypiUpdate(uv: string): Promise<ServerUpdateResult> {
     // the target wheel, so this only matters when cowork itself is unchanged.
     // Apply path ignores an inconclusive anton lookup — skip silently rather
     // than surface it; the next check/poll retries.
-    const anton = await resolveAntonPypiUpdate();
+    const anton = await resolveAntonPypiUpdate((await uvToolsDir(uv)) ?? undefined);
     if (anton.update) return _pypiAntonUpdate(uv, currentVersion!, anton.update);
     console.log(`[server-updater] up to date (installed=${currentVersion}, latest=${latestVersion})`);
     return { updated: false };
