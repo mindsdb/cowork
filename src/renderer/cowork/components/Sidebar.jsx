@@ -6,6 +6,8 @@ import RecentsModal from './RecentsModal';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { host } from '../../platform/host';
 import { relativeAge } from '../lib/formatTime';
+import { useAccountUser } from '../hooks/useAccountUser';
+import UserMenu from './UserMenu';
 import OnboardingChecklist from './onboarding/OnboardingChecklist';
 import FirstArtifactTip from './onboarding/FirstArtifactTip';
 
@@ -248,6 +250,10 @@ export default function Sidebar({
   showThemeToggle = true,
   show8bitToggle = true,
   settingsActive = false,
+  // Signed-in state, pushed from App — the user-menu hook re-reads the
+  // access token when this flips (ENG-761 pattern), so the footer swaps
+  // between the plain Settings row and the account row without a reload.
+  isSsoConnected = false,
   // Settings → Personalization → Show nav-panel counters. When
   // false, hide the per-nav badge counts AND the time-since slot
   // on each Recent row. Default true.
@@ -266,6 +272,10 @@ export default function Sidebar({
   artifactTipOpen = false,
   onArtifactTipDismiss,
 }) {
+  // Signed-in account identity (null when signed out) — decides whether the
+  // footer shows the account row + user menu or the plain Settings row.
+  const accountUser = useAccountUser(isSsoConnected);
+
   // Decorate every task with its pinned state. Tasks come from the
   // conversations endpoint which doesn't know about pins (they live
   // in a separate /pins store), so without this the menu shows
@@ -878,6 +888,17 @@ export default function Sidebar({
                   {Ico.settings(13)}
                 </button>
               </>
+            ) : accountUser ? (
+              // Signed in: the account row + user menu (ENG-1408). Settings
+              // and the theme switch live inside the menu, so the standalone
+              // footer controls below stay signed-out-only (the 8-bit toggle
+              // remains reachable via Settings → Appearance).
+              <UserMenu
+                user={accountUser}
+                theme={theme}
+                onToggleTheme={onToggleTheme}
+                onOpenSettings={() => onNavigate('settings:agent')}
+              />
             ) : (
               <button
                 className={'anton-sidebar__footer-settings flex-1 min-w-0 [-webkit-app-region:no-drag]' + (settingsActive ? ' is-on' : '')}
@@ -889,7 +910,7 @@ export default function Sidebar({
                 <span>Settings</span>
               </button>
             )}
-          {(show8bitToggle || showThemeToggle) && (
+          {!accountUser && (show8bitToggle || showThemeToggle) && (
             // Marks these as quick display toggles, not settings — separate
             // from the Settings/backend-status controls to the left.
             <span
@@ -897,7 +918,7 @@ export default function Sidebar({
               className="anton-sidebar__footer-divider ml-auto [-webkit-app-region:no-drag]"
             />
           )}
-          {show8bitToggle && (
+          {!accountUser && show8bitToggle && (
             <button
               className={'chrome-btn--small shrink-0 [-webkit-app-region:no-drag]' + (resolved8bitActive ? ' is-on' : '')}
               onClick={onToggleSkin}
@@ -907,7 +928,7 @@ export default function Sidebar({
               {Ico.gamepad(15)}
             </button>
           )}
-          {showThemeToggle && (
+          {!accountUser && showThemeToggle && (
             <button
               className="chrome-btn--small shrink-0 [-webkit-app-region:no-drag]"
               onClick={onToggleTheme}

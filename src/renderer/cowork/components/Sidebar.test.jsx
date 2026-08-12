@@ -1,13 +1,25 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 
-// Mutable host mock so each test can flip isWeb.
-const hostMock = vi.hoisted(() => ({ isWeb: true, isMac: () => false }));
-vi.mock('../../platform/host', () => ({ host: hostMock }));
+// Mutable host mock so each test can flip isWeb. getAccessToken resolves the
+// token behind the footer user menu — null (signed out) unless a test sets
+// one; openExternal/logout are consumed by the UserMenu the footer renders
+// when signed in.
+const hostMock = vi.hoisted(() => ({ isWeb: true, isMac: () => false, logout: async () => {} }));
+const getAccessTokenMock = vi.hoisted(() => vi.fn(async () => null));
+vi.mock('../../platform/host', () => ({
+  host: hostMock,
+  getAccessToken: getAccessTokenMock,
+  openExternal: vi.fn(async () => {}),
+}));
 
 import Sidebar from './Sidebar';
 
 const baseProps = { tasks: [], onNavigate: () => {} };
+
+// Minimal decodable JWT for the signed-in footer tests.
+const jwt = (payload) =>
+  `header.${btoa(JSON.stringify(payload)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')}.sig`;
 
 describe('Sidebar — Channels has no standalone entry on either platform (ENG-932)', () => {
   // ENG-720 gave web a standalone Channels row *because* the web shell hid
@@ -245,5 +257,37 @@ describe('Sidebar — nav title/logo override', () => {
   it('falls back to "MindsHub" when navTitle is an empty string', () => {
     render(<Sidebar {...baseProps} navTitle="" />);
     expect(screen.getByText('MindsHub')).toBeInTheDocument();
+  });
+});
+
+describe('Sidebar — footer user menu when signed in (ENG-1408)', () => {
+  // Parity with the web console: a signed-in user gets the account row
+  // (avatar + name · org + menu) instead of the bare Settings row; Settings
+  // and the theme switch move inside the menu, so the standalone footer
+  // controls are signed-out-only.
+  beforeEach(() => {
+    getAccessTokenMock.mockResolvedValue(
+      jwt({ name: 'Hazem Ahmed', email: 'hazem@example.com', active_organization: { displayName: 'MindsDB' } })
+    );
+  });
+
+  afterEach(() => {
+    getAccessTokenMock.mockResolvedValue(null);
+  });
+
+  it('replaces the Settings row with the account row', async () => {
+    hostMock.isWeb = false;
+    render(<Sidebar {...baseProps} serverOnline />);
+    const row = await screen.findByRole('button', { name: /Hazem Ahmed/ });
+    expect(row.textContent).toContain('MindsDB');
+    expect(screen.queryByRole('button', { name: 'Settings' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Switch to (light|dark) theme/ })).toBeNull();
+  });
+
+  it('keeps the plain Settings row when signed out', async () => {
+    getAccessTokenMock.mockResolvedValue(null);
+    hostMock.isWeb = false;
+    render(<Sidebar {...baseProps} serverOnline />);
+    expect(await screen.findByRole('button', { name: 'Settings' })).toBeInTheDocument();
   });
 });

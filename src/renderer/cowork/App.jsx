@@ -4289,6 +4289,7 @@ function AppCore() {
           agentLabel={agentLabel}
           theme={theme}
           onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+          isSsoConnected={ssoConnected}
           skin={skin}
           // While a Custom theme is active, the sidebar's "8-bit" button
           // can't flip `skin` straight to '8bit'/'normal' — that would
