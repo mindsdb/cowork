@@ -45,10 +45,12 @@ output from clobbering the host's.
 ## CI
 
 `.github/workflows/build-linux-deb.yml` builds each arch natively and is
-wired into the same orchestrators as mac/windows: label a PR
-`build-linux-deb` for a preview build, pushes to `staging` build `stable`
-(against the staging server ref and API), releases build `prod` with the
-CalVer tag baked in. Uploads go through `upload-installer-to-s3.yml` with
+wired into the same orchestrators as mac/windows: every PR builds `preview`
+(no label needed — unlike the signed mac/windows installers, the deb is
+unsigned and cheap, so both arches build on each push), pushes to `staging`
+build `stable` (against the staging server ref and API), releases build
+`prod` with the CalVer tag baked in. Uploads go through
+`upload-installer-to-s3.yml` with
 platforms `linux-amd64` / `linux-arm64` — one call per arch, because the
 uploader's stable/prod alias objects (`mindshub-cowork-staging.deb`,
 `mindshub-cowork-latest.deb`) are keyed only by platform prefix and the two

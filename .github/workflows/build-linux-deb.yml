@@ -18,7 +18,7 @@ on:
   workflow_call:
     inputs:
       arch:
-        description: amd64 | arm64 
+        description: amd64 | arm64
         required: true
         type: string
       build_kind:
@@ -274,6 +274,8 @@ jobs:
           echo "Computed artifact name: ${NAME}"
 
       - name: Stage deb for upload
+        env:
+          ARTIFACT_NAME: ${{ steps.name.outputs.artifact_name }}
         run: |
           set -euo pipefail
           shopt -s nullglob
@@ -284,7 +286,7 @@ jobs:
             exit 1
           fi
           mkdir -p out
-          mv "${DEBS[0]}" "out/${{ steps.name.outputs.artifact_name }}"
+          mv "${DEBS[0]}" "out/${ARTIFACT_NAME}"
 
       - name: Upload deb artifact
         uses: actions/upload-artifact@v4

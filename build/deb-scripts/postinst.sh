@@ -12,26 +12,27 @@ log() {
   echo "[cowork-postinst] $*" >&2
 }
 
-# electron-builder installs to /opt/<sanitizedProductName>/ (see
-# LinuxTargetHelper.installPrefix), so glob for it rather than hardcoding a
-# name that a productName change would silently break. The product name
-# contains a space; glob expansion yields one word per match regardless.
+# Scope the lookup to THIS package's own file list. A bare /opt/*/ glob would
+# take the first match in all of /opt — staging, and then deleting, a
+# same-named file belonging to some other electron app installed there.
 SRC_FILE=""
-for candidate in /opt/*/resources/server-credentials.json; do
-  [ -f "$candidate" ] || continue
-  SRC_FILE="$candidate"
-  break
-done
+if [ -n "${DPKG_MAINTSCRIPT_PACKAGE:-}" ] && command -v dpkg-query >/dev/null 2>&1; then
+  SRC_FILE=$(dpkg-query -L "$DPKG_MAINTSCRIPT_PACKAGE" 2>/dev/null \
+    | grep -x '/opt/.*/resources/server-credentials\.json' \
+    | head -n 1)
+fi
 
-if [ -z "$SRC_FILE" ]; then
-  log "no server-credentials.json in the payload — nothing to stage (dev/unsigned build?)"
+# No glob fallback on purpose: if the file can't be attributed to this package,
+# leaving it for the app's own fallback beats touching another package's data.
+if [ -z "$SRC_FILE" ] || [ ! -f "$SRC_FILE" ]; then
+  log "no server-credentials.json in this package's payload — nothing to stage"
   exit 0
 fi
 
-# Who to stage for. `sudo apt install` / `sudo dpkg -i` export SUDO_USER;
-# polkit-backed GUI installers (gdebi, GNOME Software) export PKEXEC_UID
-# instead. An unattended or container install has neither, which is not an
-# error — it is the case the resourcesPath fallback exists for.
+# Who to stage for. sudo exports SUDO_USER, pkexec exports PKEXEC_UID. A
+# PackageKit-backed GUI install (GNOME Software, KDE Discover) runs from a
+# system daemon and exports neither, as does an unattended or container
+# install — not an error, but see the note at the bottom.
 TARGET_USER=""
 if [ -n "${SUDO_USER:-}" ] && [ "${SUDO_USER}" != "root" ]; then
   TARGET_USER="$SUDO_USER"
@@ -50,24 +51,34 @@ if [ -z "$HOME_DIR" ] || [ ! -d "$HOME_DIR" ]; then
   exit 0
 fi
 
-DEST_DIR="$HOME_DIR/.cowork-provision"
-DEST_FILE="$DEST_DIR/server-credentials.json"
+if ! command -v runuser >/dev/null 2>&1; then
+  log "runuser unavailable — leaving the packaged copy for the app to read"
+  exit 0
+fi
 
-# 077 so the directory and file are created private, rather than being created
-# world-readable under root's usual 022 and narrowed a moment later.
-umask 077
-
-if mkdir -p "$DEST_DIR" \
-  && cp "$SRC_FILE" "$DEST_FILE" \
-  && chown "$TARGET_USER:" "$DEST_DIR" "$DEST_FILE" \
-  && chmod 700 "$DEST_DIR" \
-  && chmod 600 "$DEST_FILE"; then
-  # Only once a private copy is confirmed in place: /opt is root-owned, so this
-  # is the one and only moment anything can remove the world-readable original.
+# Staged BY the target user, not by root: root writing through a path under a
+# user-writable home means a pre-planted ~/.cowork-provision symlink would have
+# root create, copy, and chown through it. Dropping privileges first removes
+# that entirely, and makes ownership correct without any chown. umask 077 so
+# the directory and file are born private rather than narrowed a moment later.
+if runuser -u "$TARGET_USER" -- /bin/sh -c '
+      set -u
+      umask 077
+      dest_dir="$1/.cowork-provision"
+      if [ -L "$dest_dir" ]; then exit 1; fi
+      mkdir -p "$dest_dir" || exit 1
+      cp "$2" "$dest_dir/server-credentials.json"
+    ' sh "$HOME_DIR" "$SRC_FILE"; then
+  # Only once a private copy is confirmed: /opt is root-owned, so this is the
+  # one moment anything can remove the world-readable original.
   rm -f "$SRC_FILE"
   log "staged credentials for ${TARGET_USER} and removed the packaged copy"
 else
   log "failed to stage for ${TARGET_USER} — leaving the packaged copy for the app to read"
 fi
 
+# KNOWN LIMITATION: for PackageKit-backed GUI installs there is no installing
+# user to stage for, so the credentials stay world-readable in /opt and the app
+# logs a failed cleanup on every launch — the two things this script avoids for
+# sudo/pkexec installs. Tracked as a follow-up.
 exit 0
