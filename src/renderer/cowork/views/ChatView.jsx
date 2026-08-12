@@ -1019,6 +1019,16 @@ function ProviderOverloadedCard({
   );
 }
 
+// Most recent user text before index `i` — the message whose turn failed.
+// Used by failure cards whose action is "resend the failed message".
+function lastUserTextBefore(visibleMessages, i) {
+  for (let j = i - 1; j >= 0; j--) {
+    const c = visibleMessages[j]?.role === 'user' && visibleMessages[j].content;
+    if (typeof c === 'string' && c) return c;
+  }
+  return '';
+}
+
 /**
  * The pending composer redirect for the task on screen, or null.
  *
@@ -1717,11 +1727,7 @@ export default function ChatView({
                  * while Air is payable, a one-click switch that resends the
                  * failed message on it — never "try again". */
                 if (m.code === 'model_access_denied' || m.code === 'model_disabled') {
-                  let deniedPrevUserText = '';
-                  for (let j = i - 1; j >= 0; j--) {
-                    const c = visibleMessages[j]?.role === 'user' && visibleMessages[j].content;
-                    if (typeof c === 'string' && c) { deniedPrevUserText = c; break; }
-                  }
+                  const deniedPrevUserText = lastUserTextBefore(visibleMessages, i);
                   return (
                     <ModelUnavailableCard
                       key={i}
@@ -1742,11 +1748,7 @@ export default function ChatView({
                 // budget → Retry (resend the last user message), plus a MindsHub
                 // failover nudge for BYOK users (ENG-673).
                 if (m.code === 'provider_overloaded') {
-                  let prevUserText = '';
-                  for (let j = i - 1; j >= 0; j--) {
-                    const c = visibleMessages[j]?.role === 'user' && visibleMessages[j].content;
-                    if (typeof c === 'string' && c) { prevUserText = c; break; }
-                  }
+                  const prevUserText = lastUserTextBefore(visibleMessages, i);
                   return (
                     <ProviderOverloadedCard
                       key={i}
@@ -1760,6 +1762,59 @@ export default function ChatView({
                     />
                   );
                 }
+                // Unknown/removed model alias (gateway 404 `unknown_model`):
+                // credits can't fix it — the next step is picking a different
+                // model in Settings.
+                if (m.code === 'unknown_model') {
+                  return (
+                    <ActionCard
+                      key={i}
+                      time={formatMetaTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      title="That model isn't available"
+                      body="The selected model was removed or isn't offered anymore. Switch to another model in Settings."
+                      buttons={[
+                        { label: 'Open Settings', onClick: () => onOpenSettings?.('agent'), primary: true },
+                      ]}
+                    />
+                  );
+                }
+                // Unsupported attachment image (`image_format`): the fix is on
+                // the user's side — re-upload as PNG/JPEG — so the card names
+                // it and offers no dead-end buttons.
+                if (m.code === 'image_format') {
+                  return (
+                    <ActionCard
+                      key={i}
+                      time={formatMetaTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      title="That image couldn't be read"
+                      body="The attached image is in a format the model can't process. Convert it to PNG or JPEG and send it again."
+                    />
+                  );
+                }
+                // Transient billing/policy outage at the gateway
+                // (`policy_unavailable`): retryable and not the user's fault,
+                // so the next step is simply resending the failed message.
+                if (m.code === 'policy_unavailable') {
+                  const retryText = lastUserTextBefore(visibleMessages, i);
+                  return (
+                    <ActionCard
+                      key={i}
+                      time={formatMetaTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      title="Billing is temporarily unavailable"
+                      body="MindsHub couldn't confirm billing for this request. This is temporary — try again in a moment."
+                      buttons={retryText
+                        ? [{ label: 'Try again', onClick: () => onSend?.(retryText), primary: true }]
+                        : []}
+                    />
+                  );
+                }
+                // `anton_error` and anything unmapped: a deliberately generic
+                // bucket with no known next step, so no card — but still a
+                // failure, rendered as a danger alert so it never reads as a
+                // finished answer. Richer treatment is ENG-1093's review.
                 return (
                   <AnswerTurn key={i} state="done" time={formatMetaTime(m.createdAt)} showActions={false} agentLabel={agentLabel}>
                     <Alert variant="danger">{m.content}</Alert>
