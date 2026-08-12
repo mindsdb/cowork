@@ -281,22 +281,43 @@ jobs:
           aws s3 cp "$METADATA" "s3://${BUCKET}/${PREFIX}/${METADATA_NAME}" \
             --cache-control "no-cache,no-store,must-revalidate"
 
-          # Verify the public CDN serves the exact payload BYTES, not just an
-          # HTTP 200 — a stale CloudFront object under an immutable key would
-          # pass a status check but fail client sha512 verification.
-          PAYLOAD_SHA=$(sha256sum "$PAYLOAD" | awk '{print $1}')
-          CDN_TMP=$(mktemp)
-          curl -fsSL --retry 5 --retry-delay 2 \
-            "${CDN_BASE}/${PAYLOAD_KEY}" -o "$CDN_TMP"
-          CDN_SHA=$(sha256sum "$CDN_TMP" | awk '{print $1}')
-          rm -f "$CDN_TMP"
-          if [ "$CDN_SHA" != "$PAYLOAD_SHA" ]; then
-            echo "::error::CDN payload hash mismatch for ${PAYLOAD_KEY} (cdn=${CDN_SHA} local=${PAYLOAD_SHA}). CloudFront may be serving a stale object; invalidate the path."
-            exit 1
-          fi
-          # A query suffix avoids accepting an older cached channel manifest.
-          curl -fsSL --retry 5 --retry-delay 2 \
-            "${CDN_BASE}/${PREFIX}/${METADATA_NAME}?run=${GITHUB_RUN_ID}" -o /dev/null
+          # Prove the public CDN serves the exact BYTES of what was just
+          # published, for the payload and the channel pointer alike.
+          #
+          # A status check cannot tell a published object from a missing one
+          # here: this distribution answers a missing key with a 200 carrying
+          # 665 bytes of HTML, so `curl -f` succeeds on something that never
+          # uploaded. `curl --retry` is no help either, because it only fires on
+          # a timeout or a 408/429/5xx and never on a 200, which is why the wait
+          # below is an explicit loop rather than a retry flag.
+          #
+          # This mattered. The channel pointer used to be checked by status
+          # alone, and both prod manifests were absent for weeks while every
+          # release reported success.
+          verify_on_cdn() {
+            local key="$1" src="$2" want tmp got=""
+            want=$(sha256sum "$src" | awk '{print $1}')
+            tmp=$(mktemp)
+            # A key created moments ago can be shadowed by an edge that cached
+            # the redirect page for it, so give it five minutes to settle.
+            for _ in $(seq 1 30); do
+              if curl -fsSL "${CDN_BASE}/${key}" -o "$tmp"; then
+                got=$(sha256sum "$tmp" | awk '{print $1}')
+                [ "$got" = "$want" ] && break
+              fi
+              sleep 10
+            done
+            rm -f "$tmp"
+            if [ "$got" != "$want" ]; then
+              echo "::error::${CDN_BASE}/${key} did not serve what this run published, within 300s (cdn=${got:-<unreachable>} local=${want}). A 665-byte body here means the key is missing rather than stale."
+              curl -sS -D - "${CDN_BASE}/${key}" -o /dev/null | head -20 || true
+              exit 1
+            fi
+            echo "CDN serves the published bytes: ${key}"
+          }
+
+          verify_on_cdn "$PAYLOAD_KEY" "$PAYLOAD"
+          verify_on_cdn "${PREFIX}/${METADATA_NAME}" "$METADATA"
 
           {
             echo ""
