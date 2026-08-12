@@ -1,15 +1,10 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import * as http from 'http';
 import type { AddressInfo } from 'net';
 
-// ui-updater pulls electron transitively at import; mock it so the module loads
-// in the node test env (mirrors ui-updater.lifecycle.test.ts). Only httpsGet is
-// under test here — it touches the network, not electron.
-vi.mock('electron', () => ({
-  app: { getPath: () => '/tmp', getVersion: () => '0.0.0', isPackaged: true },
-}));
-
-import { httpsGet } from './ui-updater';
+// http-get is dependency-light (node built-ins only) — importing it doesn't pull
+// electron/keytar, which fail to load on Linux CI without libsecret (ENG-749).
+import { httpsGet } from './http-get';
 
 let server: http.Server | null = null;
 
