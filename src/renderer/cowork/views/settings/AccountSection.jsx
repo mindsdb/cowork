@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ArrowLeftRight, Server, Cloud, Sparkle, LogIn, LogOut } from 'lucide-react';
-import { Alert, Button } from '../../components/ui';
+import { Alert, Button, Tooltip } from '../../components/ui';
 import { ConfirmModal } from '../../components/ConfirmModal';
 import { host, getAccessToken } from '../../../platform/host';
 import { resetDeviceIdentity } from '../../lib/analytics';
@@ -217,10 +217,12 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
         {accountUser && <div className={`${CARD} pt-0 px-[18px] pb-2`}>
           <Section title="Sign out" subtitle="Disconnect from MindsHub and remove every stored credential on this device. Cowork will return to the onboarding flow on the next launch.">
             <div className="flex justify-end">
-              <Button variant="danger" onClick={() => setLogoutConfirmOpen(true)} disabled={loggingOut} title="Sign out and clear stored credentials">
-                <LogOut size={13} strokeWidth={1.5} aria-hidden="true" />
-                {loggingOut ? 'Signing out…' : 'Sign out'}
-              </Button>
+              <Tooltip content="Sign out and clear stored credentials">
+                <Button variant="danger" onClick={() => setLogoutConfirmOpen(true)} disabled={loggingOut}>
+                  <LogOut size={13} strokeWidth={1.5} aria-hidden="true" />
+                  {loggingOut ? 'Signing out…' : 'Sign out'}
+                </Button>
+              </Tooltip>
             </div>
           </Section>
         </div>}
