@@ -14,11 +14,38 @@ name: Release smoke (public downloads)
 # CDN rather than the commit. `tests-unit.yml` covers the manifest contract on
 # the PR; this covers the thing that contract is a promise about.
 
+# The release passes `channels: prod` and the version it just tagged. Both
+# matter. `staging.json` is written by a push to `staging`, so checking the
+# stable channel from the prod pipeline fails a release that worked, and this
+# workflow is in that pipeline's notify list. The version is what stops the
+# suite passing against the manifest a PREVIOUS release left behind.
 on:
   workflow_call:
+    inputs:
+      channels:
+        description: 'Download channels to check, comma-separated: prod, stable'
+        type: string
+        required: false
+        default: prod,stable
+      version:
+        description: 'Version this release published; asserted against the prod manifest'
+        type: string
+        required: false
+        default: ''
   schedule:
     - cron: '0 7 * * *' # nightly, an hour after the Electron e2e smoke
   workflow_dispatch:
+    inputs:
+      channels:
+        description: 'Download channels to check, comma-separated: prod, stable'
+        type: string
+        required: false
+        default: prod,stable
+      version:
+        description: 'Version to assert against the prod manifest; blank to skip'
+        type: string
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -30,7 +57,10 @@ defaults:
 jobs:
   downloads:
     runs-on: ubuntu-latest
-    # One test pulls a full ~220 MB installer per platform end to end.
+    # The resume test reassembles a whole installer, once per platform per
+    # channel, and the browser test pulls one more per platform. So a nightly
+    # run over both channels moves six ~220 MB installers, and a release run
+    # over prod alone moves four.
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
@@ -47,6 +77,11 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
       - name: Download the published installers and check them
+        env:
+          # `inputs` is null on a schedule trigger, so the fallback is what the
+          # nightly run gets: both channels, no version to pin against.
+          RELEASE_SMOKE_CHANNELS: ${{ inputs.channels || 'prod,stable' }}
+          RELEASE_SMOKE_VERSION: ${{ inputs.version }}
         run: npm run test:release-smoke
       - uses: actions/upload-artifact@v4
         if: failure()

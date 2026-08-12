@@ -123,6 +123,34 @@ jobs:
           UPLOADED_KEYS=()
           VERSIONED_KEY=""
 
+          upload_installer() {
+            local src="$1" key="$2" cache="$3"
+            aws s3 cp "$src" "s3://${BUCKET}/${key}" \
+              --cache-control "$cache" \
+              --content-type "$INSTALLER_TYPE" \
+              --content-disposition "$DISPOSITION"
+          }
+
+          # Is this key already published? head-object exits non-zero for more
+          # reasons than "no": a 403, a SlowDown throttle and an expired token
+          # all look identical to a miss if you only read the exit status. Any
+          # of them would fall through to the overwrite that the create-only
+          # rule below exists to prevent, and do it silently. So only a genuine
+          # 404 counts as absent; everything else stops the release.
+          key_exists() {
+            local key="$1" err
+            if err=$(aws s3api head-object --bucket "$BUCKET" --key "$key" 2>&1 >/dev/null); then
+              return 0
+            fi
+            case "$err" in
+              *"(404)"* | *"Not Found"*) return 1 ;;
+              *)
+                echo "::error::Cannot tell whether ${key} is already published, so refusing to write it: ${err}"
+                exit 1
+                ;;
+            esac
+          }
+
           # Publish a version's bytes exactly once. Signing and notarisation
           # stamp a timestamp, so rebuilding a version yields different bytes
           # under the same name, and taking the new ones would change what an
@@ -131,7 +159,7 @@ jobs:
           publish_versioned() {
             local src="$1" key="$2"
             local tmp published
-            if aws s3api head-object --bucket "$BUCKET" --key "$key" >/dev/null 2>&1; then
+            if key_exists "$key"; then
               tmp="$(mktemp)"
               aws s3 cp "s3://${BUCKET}/${key}" "$tmp" >/dev/null
               published=$(sha256sum "$tmp" | awk '{print $1}')
@@ -142,11 +170,22 @@ jobs:
               fi
               echo "Already published and byte-identical, skipping re-upload: ${key}"
             else
-              aws s3 cp "$src" "s3://${BUCKET}/${key}" \
-                --cache-control "$IMMUTABLE_CACHE" \
-                --content-type "$INSTALLER_TYPE" \
-                --content-disposition "$DISPOSITION"
+              upload_installer "$src" "$key" "$IMMUTABLE_CACHE"
             fi
+            VERSIONED_KEY="$key"
+            UPLOADED_KEYS+=("$key")
+          }
+
+          # Previews are the one kind that overwrites. They are per-pull-request
+          # and get rebuilt whenever anyone re-runs the job, and re-signing
+          # changes the bytes under the same name, so the create-only rule would
+          # answer an ordinary re-run with "cut a new version" on a branch that
+          # has no versions to cut. They carry the short alias TTL rather than
+          # `immutable`, because advertising a key as immutable while
+          # overwriting it is exactly what strands a stale copy at the edge.
+          publish_preview() {
+            local src="$1" key="$2"
+            upload_installer "$src" "$key" "$ALIAS_CACHE"
             VERSIONED_KEY="$key"
             UPLOADED_KEYS+=("$key")
           }
@@ -167,7 +206,7 @@ jobs:
 
           case "$KIND" in
             preview)
-              publish_versioned "$SRC" "${PREFIX}/previews/${NAME}"
+              publish_preview "$SRC" "${PREFIX}/previews/${NAME}"
               ;;
             stable)
               publish_versioned "$SRC" "${PREFIX}/snapshots/${NAME}"
@@ -219,8 +258,14 @@ jobs:
             echo "| \`${S3_URI}\` | ✅ sha256 verified (\`${REMOTE_SHA}\`) | ${CDN_URL} |" >> "$GITHUB_STEP_SUMMARY"
           done
 
-          echo "versioned_key=${VERSIONED_KEY}" >> "$GITHUB_OUTPUT"
-          echo "download_url=${CDN_BASE}/${VERSIONED_KEY}" >> "$GITHUB_OUTPUT"
+          # Where this step wrote, so the steps after it don't restate the
+          # bucket and prefix as literals and drift from it.
+          {
+            echo "bucket=${BUCKET}"
+            echo "prefix=${PREFIX}"
+            echo "versioned_key=${VERSIONED_KEY}"
+            echo "download_url=${CDN_BASE}/${VERSIONED_KEY}"
+          } >> "$GITHUB_OUTPUT"
 
           {
             echo ""
@@ -241,9 +286,10 @@ jobs:
       - name: Publish public download manifest
         if: inputs.build_kind == 'prod' || inputs.build_kind == 'stable'
         env:
-          PLATFORM: ${{ inputs.platform }}
           KIND: ${{ inputs.build_kind }}
           NAME: ${{ inputs.artifact_name }}
+          BUCKET: ${{ steps.s3.outputs.bucket }}
+          PREFIX: ${{ steps.s3.outputs.prefix }}
           VERSIONED_KEY: ${{ steps.s3.outputs.versioned_key }}
         run: |
           set -euo pipefail
@@ -259,7 +305,7 @@ jobs:
             --cdn-base "https://downloads.mindshub.ai" \
             --output "$MANIFEST_NAME"
 
-          aws s3 cp "$MANIFEST_NAME" "s3://anton-installer/mindshub-cowork/${PLATFORM}/${MANIFEST_NAME}" \
+          aws s3 cp "$MANIFEST_NAME" "s3://${BUCKET}/${PREFIX}/${MANIFEST_NAME}" \
             --cache-control "no-cache, no-store, must-revalidate" \
             --content-type "application/json"
 
@@ -278,14 +324,14 @@ jobs:
       - name: Verify the published download over the CDN
         if: inputs.build_kind == 'prod' || inputs.build_kind == 'stable'
         env:
-          PLATFORM: ${{ inputs.platform }}
           KIND: ${{ inputs.build_kind }}
           NAME: ${{ inputs.artifact_name }}
+          PREFIX: ${{ steps.s3.outputs.prefix }}
         run: |
           set -euo pipefail
           CDN_BASE="https://downloads.mindshub.ai"
           MANIFEST_NAME=$([ "$KIND" = "prod" ] && echo latest.json || echo staging.json)
-          MANIFEST_URL="${CDN_BASE}/mindshub-cowork/${PLATFORM}/${MANIFEST_NAME}"
+          MANIFEST_URL="${CDN_BASE}/${PREFIX}/${MANIFEST_NAME}"
           LOCAL_SHA=$(sha256sum "out/${NAME}" | awk '{print $1}')
 
           fail() { echo "::error::$1"; exit 1; }

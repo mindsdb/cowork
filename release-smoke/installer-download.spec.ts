@@ -24,9 +24,39 @@ import { readFile } from 'node:fs/promises';
 
 const CDN = (process.env.DOWNLOADS_BASE ?? 'https://downloads.mindshub.ai').replace(/\/+$/, '');
 const SHA256 = /^[0-9a-f]{64}$/;
-/* Where a transfer is cut before resuming. Far enough in to span many parts of
- * a multipart object, which is where a validator mismatch shows up. */
-const INTERRUPT_AT = 30 * 1024 * 1024;
+
+/*
+ * Where a transfer is cut before resuming. Aim deep into the object: the
+ * further in, the more parts of a multipart upload the resume has to span,
+ * and spanning them is where a validator mismatch shows up.
+ *
+ * 500 MB is the target, and the clamp is what actually applies today, because
+ * the installers are around 220 MB and a Range starting past the end answers
+ * 416 rather than resuming. Three quarters in leaves a real tail on the other
+ * side of the cut. If an installer ever grows past ~667 MB the target takes
+ * over on its own.
+ */
+const INTERRUPT_TARGET = 500 * 1024 * 1024;
+const interruptAt = (sizeBytes: number) => Math.min(INTERRUPT_TARGET, Math.floor(sizeBytes * 0.75));
+
+/*
+ * Pulling a whole installer is minutes of transfer, and Playwright's default
+ * is 30 seconds per request no matter what `timeout` is set on the test: the
+ * built-in `request` fixture is newContext() with no options. Four workers
+ * pulling at once share one runner NIC, so the default turns a slow night into
+ * a failed release. Still bounded, so a hung connection fails inside the
+ * 15-minute test timeout rather than hanging the job.
+ */
+const BODY_TIMEOUT = 10 * 60_000;
+
+/*
+ * The version this run published, when the release pipeline passes one. Every
+ * other assertion here is self-consistent: the manifest agrees with the object
+ * it names. That stays true of the PREVIOUS release's manifest, so a manifest
+ * upload that silently no-opped passes the whole suite. This is the one check
+ * that ties what is served to what just shipped.
+ */
+const EXPECTED_VERSION = (process.env.RELEASE_SMOKE_VERSION ?? '').trim().replace(/^v/, '');
 
 interface Platform {
   readonly name: 'mac' | 'windows';
@@ -54,10 +84,36 @@ const PLATFORMS: Platform[] = [
   { name: 'windows', ext: 'exe' },
 ];
 
-const CHANNELS: Channel[] = [
+const ALL_CHANNELS: Channel[] = [
   { kind: 'prod', manifest: 'latest.json', alias: 'latest' },
   { kind: 'stable', manifest: 'staging.json', alias: 'staging' },
 ];
+
+/*
+ * Which channels this run checks.
+ *
+ * The prod release passes `prod`, and that is not a convenience. `staging.json`
+ * is published by a push to `staging` and says nothing about the release that
+ * just ran, so asserting it from the release pipeline fails a release that
+ * worked and pages the eng channel for it. The nightly run passes nothing and
+ * gets both.
+ *
+ * An unrecognised name throws rather than quietly selecting nothing: a suite
+ * that runs zero tests reports green, which is the worst answer available.
+ */
+const REQUESTED = (process.env.RELEASE_SMOKE_CHANNELS ?? 'prod,stable')
+  .split(',')
+  .map((name) => name.trim())
+  .filter(Boolean);
+const unknown = REQUESTED.filter((name) => !ALL_CHANNELS.some((c) => c.kind === name));
+if (unknown.length > 0 || REQUESTED.length === 0) {
+  throw new Error(
+    `RELEASE_SMOKE_CHANNELS="${process.env.RELEASE_SMOKE_CHANNELS}" names no known channel` +
+      ` (expected some of ${ALL_CHANNELS.map((c) => c.kind).join(', ')})`,
+  );
+}
+const CHANNELS = ALL_CHANNELS.filter((c) => REQUESTED.includes(c.kind));
+const PROD_CHANNEL = CHANNELS.find((c) => c.kind === 'prod');
 
 const manifestUrl = (p: Platform, c: Channel) => `${CDN}/mindshub-cowork/${p.name}/${c.manifest}`;
 const aliasUrl = (p: Platform, c: Channel) =>
@@ -114,6 +170,14 @@ for (const platform of PLATFORMS) {
         expect(Number.isInteger(manifest.size_bytes) && manifest.size_bytes > 0).toBe(true);
         expect(Number.isNaN(Date.parse(manifest.published_at))).toBe(false);
 
+        // The release pipeline says which version it just published. Without
+        // this, a manifest left over from the previous release passes.
+        if (EXPECTED_VERSION && channel.kind === 'prod') {
+          expect(manifest.version, 'the manifest must name the version this release built').toBe(
+            EXPECTED_VERSION,
+          );
+        }
+
         // The manifest itself must never be cached, or a release is invisible
         // for as long as an edge holds the previous one.
         const headers = (await request.get(manifestUrl(platform, channel))).headers();
@@ -140,14 +204,15 @@ for (const platform of PLATFORMS) {
 
         // The bug this release fixes: a resume whose validator still matches
         // must come back as a 206 carrying only the tail, not a 200 with the
-        // whole 220 MB.
+        // whole installer.
+        const cut = interruptAt(manifest.size_bytes);
         const resumed = await request.get(manifest.url, {
-          headers: { Range: `bytes=${INTERRUPT_AT}-${INTERRUPT_AT + 1023}`, 'If-Range': etag },
+          headers: { Range: `bytes=${cut}-${cut + 1023}`, 'If-Range': etag },
         });
         expect(resumed.status(), 'a matching validator must be honoured').toBe(206);
         expect(resumed.headers()['etag']).toBe(etag);
         expect(resumed.headers()['content-range']).toBe(
-          `bytes ${INTERRUPT_AT}-${INTERRUPT_AT + 1023}/${manifest.size_bytes}`,
+          `bytes ${cut}-${cut + 1023}/${manifest.size_bytes}`,
         );
 
         // And the other half of the contract: a validator that no longer
@@ -164,17 +229,20 @@ for (const platform of PLATFORMS) {
         const manifest = await fetchManifest(request, platform, channel);
         const head = await request.head(manifest.url);
         const etag = head.headers()['etag'];
+        const cut = interruptAt(manifest.size_bytes);
 
         const opening = await request.get(manifest.url, {
-          headers: { Range: `bytes=0-${INTERRUPT_AT - 1}` },
+          headers: { Range: `bytes=0-${cut - 1}` },
+          timeout: BODY_TIMEOUT,
         });
         expect(opening.status()).toBe(206);
         const first = await opening.body();
-        expect(first.byteLength).toBe(INTERRUPT_AT);
+        expect(first.byteLength).toBe(cut);
 
         // Exactly what a browser replays when a transfer breaks partway.
         const rest = await request.get(manifest.url, {
-          headers: { Range: `bytes=${INTERRUPT_AT}-`, 'If-Range': etag },
+          headers: { Range: `bytes=${cut}-`, 'If-Range': etag },
+          timeout: BODY_TIMEOUT,
         });
         expect(rest.status(), 'the tail must come back as a partial response').toBe(206);
         const second = await rest.body();
@@ -216,7 +284,8 @@ for (const platform of PLATFORMS) {
   test(`prod ${platform.name}: a real browser download saves the versioned file name and the published bytes`, async ({
     page,
   }, testInfo) => {
-    const manifest = await fetchManifest(page.request, platform, CHANNELS[0]);
+    test.skip(!PROD_CHANNEL, 'this run does not check the prod channel');
+    const manifest = await fetchManifest(page.request, platform, PROD_CHANNEL as Channel);
     const fileName = installerFileName(manifest);
 
     await page.setContent(`<a id="dl" href="${manifest.url}">download</a>`);

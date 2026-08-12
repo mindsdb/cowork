@@ -67,8 +67,17 @@ jobs:
     # The independent second opinion on the release. The upload job verifies its
     # own work from inside the pipeline; this one downloads the result the way a
     # user does, in a real browser, from the public CDN.
-    needs: [build-installers]
+    #
+    # `prod` only, and the version this run tagged. The stable channel's
+    # manifest comes from a push to `staging` and has nothing to say about this
+    # release, so asserting it here would fail a release that worked. The
+    # version is what makes the check about THIS release rather than about
+    # whichever manifest happens to be published.
+    needs: [auto-release, build-installers]
     uses: ./.github/workflows/release-smoke.yml
+    with:
+      channels: prod
+      version: ${{ needs.auto-release.outputs.version }}
 
   publish-ui:
     # Waits on build-installers, not just the tag: the manifest names that

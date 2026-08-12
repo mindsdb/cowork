@@ -570,7 +570,7 @@ Installers are built on GitHub-hosted runners (required for Apple notarization a
 
 ### S3 layout
 
-The bucket is **`anton-installer`** in `us-east-1`. It is **private** — no public reads, no public ACLs. Everything is served through CloudFront. AWS credentials come from the `mdb-prod` pod's IAM role (not GitHub secrets). The role has `s3:GetObject`, `s3:PutObject`, `s3:ListBucket` and `s3:DeleteObject` on `arn:aws:s3:::anton-installer` and `arn:aws:s3:::anton-installer/*` (see [`terraform/templates/eks-oidc-roles/github-runner.tf`](../terraform/templates/eks-oidc-roles/github-runner.tf), statement `AllowS3AntonInstallerAccess`).
+The bucket is **`anton-installer`** in `us-east-1`. It is **private** — no public reads, no public ACLs. Everything is served through CloudFront. AWS credentials come from the `mdb-prod` pod's IAM role (not GitHub secrets). The role has `s3:GetObject`, `s3:PutObject`, `s3:ListBucket` and `s3:DeleteObject` on `arn:aws:s3:::anton-installer` and `arn:aws:s3:::anton-installer/*`, granted by the `AllowS3AntonInstallerAccess` statement in `templates/eks-oidc-roles/github-runner.tf` in the `mindsdb/terraform` repo.
 
 ```
 s3://anton-installer/
@@ -597,12 +597,15 @@ Each manifest is named after the alias it supersedes, so a consumer already read
 
 **A version's bytes are published once.** If a versioned key already exists with different bytes (rebuilding a version re-signs it, and signing stamps a timestamp), the release fails rather than replacing them. Cut a new version instead of republishing one. The `-latest` and `-staging` aliases are then written as server-side copies of that key, so the alias always serves the exact build the manifest names.
 
+That rule covers the released channels. **Previews overwrite**, because they are per-pull-request and get rebuilt whenever anyone re-runs the job, and "cut a new version" is not something a branch can do. Only a genuine `404` from S3 counts as "not published yet" for the released channels; a `403`, a throttle or an expired token stops the release rather than being read as absence.
+
 **Object headers** are set at publish time, because CloudFront otherwise applies its own one-hour default to everything:
 
 | Object | `Cache-Control` | Why |
 | --- | --- | --- |
 | Versioned installers | `public, max-age=31536000, immutable` | The bytes never change, so a resume can trust a validator that never moves |
 | `-latest` / `-staging` aliases | `public, max-age=60` | Rewritten every release; a minute bounds how long a stale edge copy outlives one |
+| `previews/` builds | `public, max-age=60` | Overwritten on a re-run, so `immutable` would strand the previous bytes at the edge |
 | `latest.json` / `staging.json` | `no-cache, no-store, must-revalidate` | A cached manifest would hide a release entirely |
 
 Installers also carry `Content-Type: application/octet-stream` and `Content-Disposition: attachment; filename="mindshub-cowork-{version}.{pkg,exe}"`, so a file saved from the alias URL is still named after the version it actually is.
@@ -654,9 +657,9 @@ CloudFront behavior:
 
 > **Check these URLs by their bytes, not their status.** A correct status still cannot tell a current object from a stale one, which is the failure an immutable key is most exposed to. And `curl --retry` fires only on a timeout or a 408/429/5xx, so it does not cover the case that actually needs waiting: a key created moments ago, shadowed by an edge that cached the `404` for it. Both checks in the release parse the body and compare a checksum, and wait in an explicit loop.
 
-> **Cache invalidations**: the aliases carry `max-age=60`, so a stale edge copy expires in a minute and a release needs no invalidation to become visible. Versioned URLs are immutable and never need one. The release runner has no `cloudfront:CreateInvalidation` grant today.
+> **Cache invalidations**: the aliases carry `max-age=60`, so a stale edge copy expires in a minute and a release needs no invalidation to become visible. Versioned URLs are immutable and never need one. Nothing in the release calls for an invalidation, though the `mdb-prod` runner does hold `cloudfront:CreateInvalidation` on `*` already, through the inline sam-deploy policy attached to the same role.
 
-Two things watch this path. [`upload-installer-to-s3.yml`](.github/workflows/upload-installer-to-s3.yml) verifies its own work before the release goes green: it re-reads every uploaded object from S3 and compares checksums, then fetches the manifest over the CDN, checks its `sha256` against the installer the run built, and asserts the versioned URL answers a `Range` request with a `206` and a stable ETag. [`release-smoke.yml`](.github/workflows/release-smoke.yml) then downloads the result in a real Chromium, the way a user does, and runs nightly to catch a key that was correct at publish time and has since drifted.
+Two things watch this path. [`upload-installer-to-s3.yml`](.github/workflows/upload-installer-to-s3.yml) verifies its own work before the release goes green: it re-reads every uploaded object from S3 and compares checksums, then fetches the manifest over the CDN, checks its `sha256` against the installer the run built, and asserts the versioned URL answers a `Range` request with a `206` and a stable ETag. [`release-smoke.yml`](.github/workflows/release-smoke.yml) then downloads the result in a real Chromium, the way a user does, and runs nightly to catch a key that was correct at publish time and has since drifted. The release runs it against the **prod channel only**, passing the version it just tagged: `staging.json` is written by a push to `staging`, so asserting it from the prod pipeline would fail a release that worked, and without the version the suite would pass just as happily against the manifest the previous release left behind. The nightly run takes both channels and pins neither.
 
 ### Workflow files
 
