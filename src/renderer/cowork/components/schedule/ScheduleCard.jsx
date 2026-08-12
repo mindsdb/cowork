@@ -6,7 +6,7 @@
 // stops propagation so its controls don't also navigate.
 
 import Ico from '../Icons';
-import { Alert, Card, Button, Spinner } from '../ui';
+import { Alert, Card, Button, Spinner, Tooltip } from '../ui';
 import OverflowMenu from '../OverflowMenu';
 import { relativeTime } from '../../lib/formatTime';
 import { ScheduleStatusBadge } from './ScheduleStatusBadge';
@@ -106,14 +106,15 @@ export default function ScheduleCard({
           <span className="flex min-w-0 items-center gap-1.5">
             <span className="inline-flex shrink-0 text-ink-4">{Ico.folder(13)}</span>
             {canOpenProject ? (
-              <button
-                type="button"
-                onMouseDown={stop}
-                onClick={(e) => { e.stopPropagation(); onOpenProject(projectMatch); }}
-                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); onOpenProject(projectMatch); } }}
-                title={`Open ${projectMatch.name}`}
-                className="m-0 min-w-0 cursor-pointer appearance-none truncate border-0 bg-transparent p-0 text-left font-body text-[12px] text-ink-3 transition-colors hover:text-accent hover:underline hover:underline-offset-2"
-              >{projectName}</button>
+              <Tooltip content={`Open ${projectMatch.name}`}>
+                <button
+                  type="button"
+                  onMouseDown={stop}
+                  onClick={(e) => { e.stopPropagation(); onOpenProject(projectMatch); }}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); onOpenProject(projectMatch); } }}
+                  className="m-0 min-w-0 cursor-pointer appearance-none truncate border-0 bg-transparent p-0 text-left font-body text-[12px] text-ink-3 transition-colors hover:text-accent hover:underline hover:underline-offset-2"
+                >{projectName}</button>
+              </Tooltip>
             ) : (
               <span title={projectName} className="min-w-0 truncate font-body text-[12px] text-ink-3">{projectName}</span>
             )}
@@ -158,7 +159,6 @@ function RunNowButton({ onClick, busy }) {
       size="sm"
       onClick={onClick}
       disabled={busy}
-      title="Run now"
       aria-label="Run now"
     >
       {busy ? <Spinner /> : (Ico.send ? Ico.send(13) : '▶')}

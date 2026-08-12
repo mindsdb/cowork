@@ -39,7 +39,10 @@ const renderComposer = (overrides = {}) => {
 };
 
 const openNewProjectModal = async (user) => {
-  await user.click(screen.getByTitle('Choose project'));
+  // Project pill is the first meta-pill trigger. Its ui/Tooltip label
+  // ("Choose project") now portals on hover, so query the button structurally
+  // rather than by the old native title (ENG-1152).
+  await user.click(document.querySelector('button.meta-pill'));
   await user.click(screen.getByRole('button', { name: /new project/i }));
   return screen.findByText('Start a new project');
 };
@@ -102,7 +105,13 @@ const MODELS = [
   { id: 'kimi', name: 'Kimi K3' },
 ];
 
-const openModelMenu = (user) => user.click(screen.getByTitle('Choose model'));
+// Model pill is the last meta-pill trigger (the project pill precedes it when
+// shown). Its ui/Tooltip label ("Choose model") now portals on hover, so query
+// the button structurally rather than by the old native title (ENG-1152).
+const openModelMenu = (user) => {
+  const pills = document.querySelectorAll('button.meta-pill');
+  return user.click(pills[pills.length - 1]);
+};
 
 /**
  * The open menu's sections in document order: heading text → its rows' text.
