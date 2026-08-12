@@ -195,14 +195,24 @@ describe('electron mode (bridge present)', () => {
     expect(awaitBootReady).toHaveBeenCalledOnce();
   });
 
-  it('awaitBootReady fails open on timeout when the bridge never settles (ENG-749)', async () => {
-    // A hung boot barrier must never trap the loading screen — the renderer-side
-    // timeout resolves the wait regardless.
-    (window as unknown as Record<string, unknown>).antontron = {
-      awaitBootReady: () => new Promise(() => {}),
-    };
-    const host = await importHost();
-    await expect(host.awaitBootReady(10)).resolves.toBeUndefined();
+  it('awaitBootReady stays gated while the bridge is pending — no renderer-side fail-open (ENG-749)', async () => {
+    // The authoritative budget lives in main (boot-gate.ts). The renderer must
+    // NOT race a shorter timeout, or a legitimately slow reinstall would release
+    // the loading screen while the sidecar is still down. Advancing well past the
+    // old 45s cap must not resolve the wait.
+    vi.useFakeTimers();
+    try {
+      (window as unknown as Record<string, unknown>).antontron = {
+        awaitBootReady: () => new Promise(() => {}),
+      };
+      const host = await importHost();
+      let resolved = false;
+      void host.awaitBootReady().then(() => { resolved = true; });
+      await vi.advanceTimersByTimeAsync(120_000);
+      expect(resolved).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('getUIVersion unwraps both string and {ui, app} object shapes', async () => {

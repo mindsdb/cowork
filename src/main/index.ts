@@ -12,6 +12,7 @@ import { checkInstallStatus, runInstaller } from './installer';
 import { startServer, stopServer, forceReapServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort, fetchServerVersions } from './server-process';
 import { setUpdateNotifier, recreateVenvIfUnsupportedPython, repairServerInstall } from './server-updater';
 import { initUpdater, registerUpdateHandlers } from './updater';
+import { awaitBootGate } from './boot-gate';
 import { awaitUpdateMaintenanceIdle } from './update-maintenance';
 import { oauthConnect, cancelCurrentOAuth } from './oauth-service';
 import { setRefreshToken, deleteRefreshToken, getRefreshToken as getOAuthRefreshToken } from './keychain-service';
@@ -1165,10 +1166,14 @@ function setupIPC() {
     // boot update (if any) has already reinstalled the server / reloaded the
     // window before we let the UI route into the chat app — no server-down
     // "Connect a provider" flash (ENG-749). Errors in either barrier are
-    // swallowed: a failed boot must still release the gate, never hang it. The
-    // renderer wraps this call in its own timeout as a final safety net.
-    try { await bootServerSettled; } catch { /* boot start failed */ }
-    try { await bootUpdateSettled; } catch { /* boot update failed */ }
+    // swallowed: a failed boot must still release the gate, never hang it.
+    // awaitBootGate applies the single authoritative budget (boot-gate.ts) —
+    // sized from the real reinstall/restart caps — as a last-resort backstop so
+    // a genuinely hung poll still releases, without ever firing mid-update.
+    await awaitBootGate((async () => {
+      try { await bootServerSettled; } catch { /* boot start failed */ }
+      try { await bootUpdateSettled; } catch { /* boot update failed */ }
+    })());
     return { ready: true };
   });
 

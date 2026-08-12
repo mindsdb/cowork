@@ -456,25 +456,21 @@ export async function checkConfigured(): Promise<{
   };
 }
 
-// Upper bound on how long the loading screen waits for the boot sequence before
-// routing anyway. The main-side gate normally resolves on its own (fast when no
-// update is pending; after the reinstall+reload when one is) — this is only a
-// safety net against a barrier that never settles (e.g. a hung update check with
-// no internal timeout). Generous enough to cover a real server reinstall.
-const BOOT_READY_TIMEOUT_MS = 45_000;
-
 // Hold here until main reports the boot sequence has settled — the sidecar start
 // decision plus the boot-time update poll (ENG-749). On the terminal route the
 // caller stays on the loading screen across this await, so a boot update that
 // restarts the server and reloads the window can't first flash the chat UI in a
 // "Connect a provider" / server-down state. Web has no bridge → resolves at once.
-// Fail-open on timeout so a stuck barrier can never trap the user in loading.
-export async function awaitBootReady(timeoutMs = BOOT_READY_TIMEOUT_MS): Promise<void> {
+//
+// The authoritative upper bound lives in main (boot-gate.ts, sized from the real
+// reinstall/restart caps) — the renderer deliberately does NOT race its own
+// shorter timeout here: an earlier 45s fail-open sat inside the updater's
+// legitimate execution window and could release the gate mid-reinstall while the
+// sidecar was down, recreating the flash. `.catch` guards against an IPC-level
+// rejection (main always resolves the invoke within its budget).
+export async function awaitBootReady(): Promise<void> {
   if (!(isElectron && typeof bridge.awaitBootReady === 'function')) return;
-  await Promise.race([
-    Promise.resolve(bridge.awaitBootReady()).catch(() => {}),
-    new Promise<void>((resolve) => setTimeout(resolve, timeoutMs)),
-  ]);
+  await Promise.resolve(bridge.awaitBootReady()).catch(() => {});
 }
 
 export async function validateProvider(
