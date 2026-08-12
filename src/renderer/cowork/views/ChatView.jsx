@@ -8,11 +8,11 @@
    plus _streaming) and our real Composer + project/model state. Tokens come
    from CSS vars so the panel reads correctly in both light and dark themes. */
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { forwardRef, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import Ico from '../components/Icons';
 import Composer from '../components/Composer';
-import { Alert, Card } from '../components/ui';
+import { Alert, Card, Tooltip } from '../components/ui';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import { ThinkingBlock } from '../components/thinking/ThinkingBlock';
 import { WorkingIndicator } from '../components/thinking/WorkingIndicator';
@@ -103,38 +103,41 @@ function TurnActions({ getText, onEdit, onDelete, isLast = false, align = 'left'
       className={`turn-actions${isLast ? ' is-last' : ''} ${align === 'right' ? 'justify-end' : 'justify-start'}`}
     >
       {onEdit && (
+        <Tooltip content="Edit and resend">
+          <button
+            type="button"
+            className="turn-action-btn"
+            onClick={onEdit}
+            aria-label="Edit and resend this message"
+          >
+            {Ico.edit ? Ico.edit(ICON_SZ) : Ico.pencil ? Ico.pencil(ICON_SZ) : Ico.code(ICON_SZ)}
+          </button>
+        </Tooltip>
+      )}
+      <Tooltip content={copied ? 'Copied' : 'Copy'}>
         <button
           type="button"
           className="turn-action-btn"
-          onClick={onEdit}
-          title="Edit and resend"
-          aria-label="Edit and resend this message"
+          aria-label={copied ? 'Copied' : 'Copy'}
+          onClick={onCopy}
+          // cascade-forced: .turn-action-btn sets `color: inherit` at rest, which
+          // beats a text-accent utility (equal specificity, globals.css loads later).
+          style={copied ? { color: 'var(--accent)' } : undefined}
         >
-          {Ico.edit ? Ico.edit(ICON_SZ) : Ico.pencil ? Ico.pencil(ICON_SZ) : Ico.code(ICON_SZ)}
+          {copied ? Ico.check(ICON_SZ) : Ico.copy(ICON_SZ)}
         </button>
-      )}
-      <button
-        type="button"
-        className="turn-action-btn"
-        title={copied ? 'Copied' : 'Copy'}
-        aria-label={copied ? 'Copied' : 'Copy'}
-        onClick={onCopy}
-        // cascade-forced: .turn-action-btn sets `color: inherit` at rest, which
-        // beats a text-accent utility (equal specificity, globals.css loads later).
-        style={copied ? { color: 'var(--accent)' } : undefined}
-      >
-        {copied ? Ico.check(ICON_SZ) : Ico.copy(ICON_SZ)}
-      </button>
+      </Tooltip>
       {onDelete && (
-        <button
-          type="button"
-          className="turn-action-btn turn-action-btn--danger"
-          title="Delete"
-          aria-label="Delete"
-          onClick={onDelete}
-        >
-          {Ico.trash(ICON_SZ)}
-        </button>
+        <Tooltip content="Delete">
+          <button
+            type="button"
+            className="turn-action-btn turn-action-btn--danger"
+            aria-label="Delete"
+            onClick={onDelete}
+          >
+            {Ico.trash(ICON_SZ)}
+          </button>
+        </Tooltip>
       )}
     </div>
   );
@@ -695,13 +698,17 @@ function ArtifactCard({ artifact, onOpen }) {
         )}
         {canExport && (
           <div className="relative" onClick={(e) => e.stopPropagation()}>
-            <SmallBtn
-              disabled={!canAct || exporting}
-              onClick={() => setExportOpen((v) => !v)}
-              title="Export to another format"
-            >
-              Export ▾
-            </SmallBtn>
+            <Tooltip content="Export to another format">
+              {/* Native title only while disabled — a disabled button fires no
+                  hover/focus events, so the styled Tooltip can't open. */}
+              <SmallBtn
+                disabled={!canAct || exporting}
+                onClick={() => setExportOpen((v) => !v)}
+                title={(!canAct || exporting) ? 'Export to another format' : undefined}
+              >
+                Export ▾
+              </SmallBtn>
+            </Tooltip>
             {exportOpen && (
               <div
                 role="menu"
@@ -731,14 +738,18 @@ function ArtifactCard({ artifact, onOpen }) {
           </div>
         )}
         {!host.isWeb && (
-          <SmallBtn disabled={!canAct} onClick={handleReveal} title={canAct ? `${revealLabel}: ${path}` : disabledReason || 'No file path'}>
-            {revealLabel}
-          </SmallBtn>
+          <Tooltip content={canAct ? `${revealLabel}: ${path}` : ''}>
+            <SmallBtn disabled={!canAct} onClick={handleReveal} title={canAct ? undefined : (disabledReason || 'No file path')}>
+              {revealLabel}
+            </SmallBtn>
+          </Tooltip>
         )}
         {(!host.isWeb || isHtml) && (
-          <SmallBtn primary disabled={!canAct} onClick={handleOpen} title={canAct ? `Open ${path}` : disabledReason || 'No file path'}>
-            Open
-          </SmallBtn>
+          <Tooltip content={canAct ? `Open ${path}` : ''}>
+            <SmallBtn primary disabled={!canAct} onClick={handleOpen} title={canAct ? undefined : (disabledReason || 'No file path')}>
+              Open
+            </SmallBtn>
+          </Tooltip>
         )}
       </div>
     </Card>
@@ -749,17 +760,19 @@ function ArtifactCard({ artifact, onOpen }) {
 // dark). Both variants are class-based now so the primary can adopt the
 // canonical .btn.primary color logic — opaque accent in light, quiet accent
 // glass in dark — via .chat-card-btn(--primary) in globals.css.
-function SmallBtn({ primary, children, onClick, title, disabled }) {
+const SmallBtn = forwardRef(function SmallBtn({ primary, children, onClick, title, disabled, ...rest }, ref) {
   return (
     <button
+      ref={ref}
       type="button"
       onClick={(e) => { e.stopPropagation(); if (!disabled) onClick?.(); }}
       title={title}
       disabled={disabled}
       className={primary ? 'chat-card-btn chat-card-btn--primary' : 'chat-card-btn'}
+      {...rest}
     >{children}</button>
   );
-}
+});
 
 // Streaming cursor — blinking accent caret (orb stays on the header).
 function StreamCursor() {
@@ -1341,28 +1354,29 @@ export default function ChatView({
         {/* Floating expand-rail button — appears on the right edge of
             the conv column when the rail is collapsed. Mirror of the
             sidebar's hamburger pattern. */}
-        <button
-          type="button"
-          onClick={() => isNarrow ? setRailNarrowOpen(true) : setRailOpen(true)}
-          title="Expand panel"
-          aria-label="Expand panel"
-          // Only the truly dynamic bits (opacity/transform/pointerEvents driven by
-          // rail-open state, and the transition's per-state delay) stay inline —
-          // resting/hover color+background moved to className below so the
-          // hover: utility can win (an inline color/background at rest would
-          // otherwise out-specificity any stylesheet hover rule).
-          style={{
-            opacity: (effectiveRailOpen || railOverlayOpen) ? 0 : 1,
-            transform: (effectiveRailOpen || railOverlayOpen) ? 'translateX(8px)' : 'translateX(0)',
-            pointerEvents: (effectiveRailOpen || railOverlayOpen) ? 'none' : 'auto',
-            transition:
-              `opacity 280ms cubic-bezier(0.32,0.72,0,1) ${(effectiveRailOpen || railOverlayOpen) ? '0ms' : '120ms'}, ` +
-              `transform 360ms cubic-bezier(0.32,0.72,0,1) ${(effectiveRailOpen || railOverlayOpen) ? '0ms' : '80ms'}`,
-          }}
-          className="chat-rail-toggle absolute top-3.5 right-3.5 z-10 w-7 h-7 rounded-md inline-grid place-items-center cursor-pointer bg-transparent border-0 text-ink-3 hover:text-ink hover:bg-surface-2 [-webkit-app-region:no-drag]"
-        >
-          {Ico.panelExpandLeft(15)}
-        </button>
+        <Tooltip content="Expand panel">
+          <button
+            type="button"
+            onClick={() => isNarrow ? setRailNarrowOpen(true) : setRailOpen(true)}
+            aria-label="Expand panel"
+            // Only the truly dynamic bits (opacity/transform/pointerEvents driven by
+            // rail-open state, and the transition's per-state delay) stay inline —
+            // resting/hover color+background moved to className below so the
+            // hover: utility can win (an inline color/background at rest would
+            // otherwise out-specificity any stylesheet hover rule).
+            style={{
+              opacity: (effectiveRailOpen || railOverlayOpen) ? 0 : 1,
+              transform: (effectiveRailOpen || railOverlayOpen) ? 'translateX(8px)' : 'translateX(0)',
+              pointerEvents: (effectiveRailOpen || railOverlayOpen) ? 'none' : 'auto',
+              transition:
+                `opacity 280ms cubic-bezier(0.32,0.72,0,1) ${(effectiveRailOpen || railOverlayOpen) ? '0ms' : '120ms'}, ` +
+                `transform 360ms cubic-bezier(0.32,0.72,0,1) ${(effectiveRailOpen || railOverlayOpen) ? '0ms' : '80ms'}`,
+            }}
+            className="chat-rail-toggle absolute top-3.5 right-3.5 z-10 w-7 h-7 rounded-md inline-grid place-items-center cursor-pointer bg-transparent border-0 text-ink-3 hover:text-ink hover:bg-surface-2 [-webkit-app-region:no-drag]"
+          >
+            {Ico.panelExpandLeft(15)}
+          </button>
+        </Tooltip>
 
         {/* Header — reserve the shell-owned titlebar-safe inset on top so the
             breadcrumbs drop below the macOS traffic lights (and the floating
@@ -1487,32 +1501,33 @@ export default function ChatView({
                 </span>
               )}
               {!titleEditing && (
-                <button
-                  ref={settingsBtnRef}
-                  type="button"
-                  aria-label="Task menu"
-                  title="Task menu"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (settingsOpen) {
-                      setSettingsOpen(false);
-                      return;
-                    }
-                    const rect = settingsBtnRef.current?.getBoundingClientRect();
-                    setSettingsAnchor(rect || null);
-                    setSettingsOpen(true);
-                  }}
-                  // Only opacity/pointerEvents (titleControlsShown-driven) stay
-                  // inline — resting/hover background+color moved to className
-                  // so hover: can win (see the rail-toggle button above for why).
-                  style={{
-                    opacity: titleControlsShown ? 1 : 0,
-                    pointerEvents: titleControlsShown ? 'auto' : 'none',
-                  }}
-                  className={`w-[22px] h-[22px] rounded-[5px] border-0 inline-grid place-items-center flex-shrink-0 cursor-pointer transition-[opacity,color,background] duration-150 ease-[ease] [-webkit-app-region:no-drag] text-ink-3 hover:text-ink hover:bg-surface-2 ${settingsOpen ? 'bg-surface-2' : 'bg-transparent'}`}
-                >
-                  {Ico.moreVert(13)}
-                </button>
+                <Tooltip content="Task menu">
+                  <button
+                    ref={settingsBtnRef}
+                    type="button"
+                    aria-label="Task menu"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (settingsOpen) {
+                        setSettingsOpen(false);
+                        return;
+                      }
+                      const rect = settingsBtnRef.current?.getBoundingClientRect();
+                      setSettingsAnchor(rect || null);
+                      setSettingsOpen(true);
+                    }}
+                    // Only opacity/pointerEvents (titleControlsShown-driven) stay
+                    // inline — resting/hover background+color moved to className
+                    // so hover: can win (see the rail-toggle button above for why).
+                    style={{
+                      opacity: titleControlsShown ? 1 : 0,
+                      pointerEvents: titleControlsShown ? 'auto' : 'none',
+                    }}
+                    className={`w-[22px] h-[22px] rounded-[5px] border-0 inline-grid place-items-center flex-shrink-0 cursor-pointer transition-[opacity,color,background] duration-150 ease-[ease] [-webkit-app-region:no-drag] text-ink-3 hover:text-ink hover:bg-surface-2 ${settingsOpen ? 'bg-surface-2' : 'bg-transparent'}`}
+                  >
+                    {Ico.moreVert(13)}
+                  </button>
+                </Tooltip>
               )}
             </div>
           </div>
@@ -1930,13 +1945,14 @@ export default function ChatView({
                     className="inline-flex items-center gap-1.5 max-w-full pt-[5px] pr-1 pb-[5px] pl-3 rounded-full bg-surface border border-solid border-line font-body text-sm text-ink-2 transition-[background,border-color] duration-[120ms] ease-[ease]"
                   >
                     <span className="max-w-[360px] overflow-hidden text-ellipsis whitespace-nowrap">{q.text}</span>
-                    <button
-                      type="button"
-                      onClick={() => onRemoveFromQueue?.(q.id)}
-                      title="Remove from queue"
-                      aria-label="Remove from queue"
-                      className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-transparent border-0 text-ink-4 cursor-pointer flex-shrink-0 hover:bg-[color-mix(in_srgb,var(--danger)_14%,transparent)] hover:text-danger"
-                    >{Ico.close(11)}</button>
+                    <Tooltip content="Remove from queue">
+                      <button
+                        type="button"
+                        onClick={() => onRemoveFromQueue?.(q.id)}
+                        aria-label="Remove from queue"
+                        className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-transparent border-0 text-ink-4 cursor-pointer flex-shrink-0 hover:bg-[color-mix(in_srgb,var(--danger)_14%,transparent)] hover:text-danger"
+                      >{Ico.close(11)}</button>
+                    </Tooltip>
                   </span>
                 ))}
               </div>
@@ -2002,27 +2018,28 @@ export default function ChatView({
             FLOATING expand button outside is the one hidden via
             .chat-rail-toggle in globals.css. */}
         <div className="chat-rail-close-row flex items-center justify-end flex-shrink-0">
-          <button
-            type="button"
-            className="chat-rail-close"
-            onClick={() => isNarrow ? setRailNarrowOpen(false) : setRailOpen(false)}
-            title="Collapse panel"
-            aria-label="Collapse panel"
-            // kept inline: same all:unset cascade-priority reason as ArtifactCard's
-            // buttons — every property here stays co-located with the reset, and
-            // the hover color/background mutation needs a subsequent inline write
-            // to win over the reset.
-            style={{
-              all: 'unset', cursor: 'pointer',
-              width: 26, height: 26, borderRadius: 6,
-              display: 'inline-grid', placeItems: 'center',
-              color: T.ink3,
-            }}
-            onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
-            onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-3)'; e.currentTarget.style.background = 'transparent'; }}
-          >
-            {Ico.panelCollapseRight(15)}
-          </button>
+          <Tooltip content="Collapse panel">
+            <button
+              type="button"
+              className="chat-rail-close"
+              onClick={() => isNarrow ? setRailNarrowOpen(false) : setRailOpen(false)}
+              aria-label="Collapse panel"
+              // kept inline: same all:unset cascade-priority reason as ArtifactCard's
+              // buttons — every property here stays co-located with the reset, and
+              // the hover color/background mutation needs a subsequent inline write
+              // to win over the reset.
+              style={{
+                all: 'unset', cursor: 'pointer',
+                width: 26, height: 26, borderRadius: 6,
+                display: 'inline-grid', placeItems: 'center',
+                color: T.ink3,
+              }}
+              onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
+              onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-3)'; e.currentTarget.style.background = 'transparent'; }}
+            >
+              {Ico.panelCollapseRight(15)}
+            </button>
+          </Tooltip>
         </div>
         <ProgressBox
           steps={railSteps}

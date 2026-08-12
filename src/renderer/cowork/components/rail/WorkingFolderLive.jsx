@@ -23,6 +23,7 @@ import {
   deleteArtifact,
 } from '../../api';
 import { ArtifactViewer } from '../artifact';
+import { Tooltip } from '../ui';
 import { ConfirmModal } from '../ConfirmModal';
 import { host } from '../../../platform/host';
 
@@ -381,35 +382,36 @@ export function WorkingFolderLive({ project, isStreaming }) {
                         rather than a sentence. */}
                     {String(a.updated || '').replace(/^updated\s+/i, '')}
                   </span>
-                  <button
-                    ref={setKebabRef(a.path)}
-                    type="button"
-                    aria-label="More actions"
-                    aria-haspopup="menu"
-                    aria-expanded={menuOpen}
-                    title="More actions"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (menuOpen) setOpenMenuPath(null);
-                      else openMenuFor(a.path);
-                    }}
-                    className={clsx(
-                      // `justify-end` (not center) pins the kebab to
-                      // the right edge of the trailing slot so it sits
-                      // flush against the row's right margin — matching
-                      // where the project-files trash icon lands. The
-                      // artifact timestamp ("3h ago") is wider than the
-                      // project-file one ("3h"), so a centered kebab
-                      // floated noticeably left of the edge.
-                      'absolute inset-0 inline-flex items-center justify-end',
-                      menuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100',
-                      'transition-opacity rounded',
-                      'text-ink-4 hover:text-ink',
-                      'bg-transparent border-0 cursor-pointer p-0',
-                    )}
-                  >
-                    {Ico.moreVert(13)}
-                  </button>
+                  <Tooltip content="More actions">
+                    <button
+                      ref={setKebabRef(a.path)}
+                      type="button"
+                      aria-label="More actions"
+                      aria-haspopup="menu"
+                      aria-expanded={menuOpen}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (menuOpen) setOpenMenuPath(null);
+                        else openMenuFor(a.path);
+                      }}
+                      className={clsx(
+                        // `justify-end` (not center) pins the kebab to
+                        // the right edge of the trailing slot so it sits
+                        // flush against the row's right margin — matching
+                        // where the project-files trash icon lands. The
+                        // artifact timestamp ("3h ago") is wider than the
+                        // project-file one ("3h"), so a centered kebab
+                        // floated noticeably left of the edge.
+                        'absolute inset-0 inline-flex items-center justify-end',
+                        menuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100',
+                        'transition-opacity rounded',
+                        'text-ink-4 hover:text-ink',
+                        'bg-transparent border-0 cursor-pointer p-0',
+                      )}
+                    >
+                      {Ico.moreVert(13)}
+                    </button>
+                  </Tooltip>
                 </span>
               </div>
             );

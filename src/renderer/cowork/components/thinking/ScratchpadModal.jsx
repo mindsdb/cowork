@@ -11,7 +11,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
 import Ico from '../Icons';
-import { Badge } from '../ui';
+import { Badge, Tooltip } from '../ui';
 import { Modal } from '../ui/Modal';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { CodeBlock } from './CodeBlock';
@@ -116,14 +116,16 @@ export function ScratchpadModal({ open, onClose, steps = [], focusStepId = null 
               {modalTitle}
             </span>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            title="Close"
-            className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent text-ink-3 hover:bg-surface-2 hover:text-ink"
-          >
-            ×
-          </button>
+          <Tooltip content="Close">
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent text-ink-3 hover:bg-surface-2 hover:text-ink"
+            >
+              ×
+            </button>
+          </Tooltip>
         </div>
 
         {/* Tab strip — only when more than one pad. Inline styles via
