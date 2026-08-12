@@ -14,8 +14,6 @@
 import { useState } from 'react';
 import Ico from '../Icons';
 
-const FONT_BODY = "'Inter', system-ui, sans-serif";
-
 export function RailCard({
   title,
   defaultOpen = false,
@@ -31,27 +29,10 @@ export function RailCard({
 }) {
   const [open, setOpen] = useState(!!defaultOpen || noChevron);
   return (
-    <div style={{
-      background: 'var(--surface)',
-      border: '1px solid var(--line)',
-      borderRadius: 'var(--card-radius)',
-      overflow: 'hidden',
-      flexShrink: 0,
-    }}>
+    <div className="bg-surface border border-solid border-line rounded-card overflow-hidden shrink-0">
       {noChevron ? (
-        <div style={{
-          padding: '11px 14px',
-          width: '100%',
-          display: 'flex',
-          alignItems: 'center',
-          textAlign: 'left',
-        }}>
-          <span style={{
-            fontFamily: FONT_BODY, fontSize: 13, fontWeight: 600,
-            color: 'var(--ink)', letterSpacing: '0',
-            minWidth: 0, flex: 1,
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>
+        <div className="py-[11px] px-[14px] w-full flex items-center text-left">
+          <span className="font-body text-[13px] font-semibold text-ink tracking-[0] min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
             {title}
           </span>
         </div>
@@ -59,30 +40,13 @@ export function RailCard({
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
-          style={{
-            cursor: 'pointer',
-            background: 'transparent',
-            border: 0,
-            padding: '11px 14px',
-            width: '100%',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            textAlign: 'left',
-            font: 'inherit',
-            color: 'inherit',
-          }}
+          className="cursor-pointer bg-transparent border-0 py-[11px] px-[14px] w-full flex items-center justify-between text-left [font:inherit] text-inherit"
         >
-          <span style={{
-            fontFamily: FONT_BODY, fontSize: 13, fontWeight: 600,
-            color: 'var(--ink)', letterSpacing: '0',
-            minWidth: 0, flex: 1,
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>
+          <span className="font-body text-[13px] font-semibold text-ink tracking-[0] min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
             {title}
           </span>
           <span
-            style={{ color: 'var(--ink-4)', display: 'inline-flex', flexShrink: 0 }}
+            className="text-ink-4 inline-flex shrink-0"
             title={open ? 'Collapse' : 'Expand'}
           >
             {open ? Ico.chevDown(12) : Ico.chevRight(12)}
@@ -90,14 +54,15 @@ export function RailCard({
         </button>
       )}
       {open && (
-        <div style={{
-          padding: '4px 14px 14px',
-          // slim drops the divider so the header reads as one
-          // continuous line above the body (Context per spec).
-          borderTop: slim ? 'none' : '1px solid var(--line)',
-          maxHeight: maxBodyHeight,
-          overflowY: 'auto',
-        }}>
+        <div
+          className="pt-1 px-[14px] pb-[14px] overflow-y-auto"
+          style={{
+            // slim drops the divider so the header reads as one
+            // continuous line above the body (Context per spec).
+            borderTop: slim ? 'none' : '1px solid var(--line)',
+            maxHeight: maxBodyHeight,
+          }}
+        >
           {children}
         </div>
       )}
