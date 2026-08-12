@@ -39,6 +39,8 @@ const openMenu = () => {
 beforeEach(() => {
   hostMock.openExternal.mockClear();
   hostMock.host.logout.mockClear();
+  hostMock.host.isElectron = true;
+  hostMock.host.isWeb = false;
 });
 
 describe('UserMenu — footer row (ENG-1408)', () => {
@@ -105,6 +107,18 @@ describe('UserMenu — dropdown', () => {
     openMenu();
     fireEvent.click(screen.getByRole('menuitem', { name: /Light mode/ }));
     expect(onToggleTheme).toHaveBeenCalled();
+  });
+
+  // The web shell's session is owned by Keycloak in the browser and
+  // host.logout() is a no-op there — a Sign out item would silently do
+  // nothing, so it's Electron-only (matching the Settings account section).
+  it('hides Sign out on the web shell', () => {
+    hostMock.host.isElectron = false;
+    hostMock.host.isWeb = true;
+    render(<UserMenu user={user} theme="light" />);
+    openMenu();
+    expect(screen.getByRole('menuitem', { name: /Settings/ })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: /Sign out/ })).toBeNull();
   });
 
   it('asks for confirmation before signing out, then runs the logout flow', async () => {

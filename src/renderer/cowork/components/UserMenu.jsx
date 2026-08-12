@@ -25,7 +25,7 @@ import Menu from './ui/Menu';
 import { ConfirmModal } from './ConfirmModal';
 import { useLogout, LOGOUT_CONFIRM_COPY } from '../hooks/useLogout';
 import { accountInitials } from '../lib/accountUser';
-import { openExternal } from '../../platform/host';
+import { host, openExternal } from '../../platform/host';
 import {
   MINDS_BILLING_URL,
   MINDS_DOCS_URL,
@@ -104,8 +104,13 @@ export function UserMenu({ user, theme, onToggleTheme, onOpenSettings }) {
       label: isDark ? 'Light mode' : 'Dark mode',
       onClick: onToggleTheme,
     },
-    { divider: true },
-    { icon: icon(LogOut), label: 'Sign out', danger: true, onClick: () => setLogoutConfirmOpen(true) },
+    // Sign out is Electron-only, matching the Settings account section — the
+    // web shell's session is owned by Keycloak in the browser, and host.logout()
+    // is a no-op there (a reload would leave the user signed in).
+    ...(host.isElectron ? [
+      { divider: true },
+      { icon: icon(LogOut), label: 'Sign out', danger: true, onClick: () => setLogoutConfirmOpen(true) },
+    ] : []),
   ];
 
   const trigger = (
@@ -113,7 +118,9 @@ export function UserMenu({ user, theme, onToggleTheme, onOpenSettings }) {
       type="button"
       className="flex items-center gap-2 flex-1 min-w-0 px-2 py-1.5 rounded-lg border-0 bg-transparent cursor-pointer text-left font-[inherit] transition-colors hover:bg-surface-2 [-webkit-app-region:no-drag]"
     >
-      <Avatar user={user} />
+      {/* Keyed by the picture URL so a failed load doesn't stick to the
+          initials fallback after the account picture changes. */}
+      <Avatar key={user.picture || 'initials'} user={user} />
       <span className="min-w-0 flex-1 flex items-baseline gap-1.5 whitespace-nowrap">
         <span className="min-w-0 truncate text-[13px] font-medium text-ink">{displayName}</span>
         {user.org && (

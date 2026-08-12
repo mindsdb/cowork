@@ -290,4 +290,16 @@ describe('Sidebar — footer user menu when signed in (ENG-1408)', () => {
     render(<Sidebar {...baseProps} serverOnline />);
     expect(await screen.findByRole('button', { name: 'Settings' })).toBeInTheDocument();
   });
+
+  // While the backend pill replaces the account row, the menu (which hosts
+  // the theme switch) isn't on screen — so the quick toggles must stay even
+  // though the user is signed in.
+  it('keeps the quick toggles next to the pill when signed in but the server is down', async () => {
+    hostMock.isWeb = false;
+    render(<Sidebar {...baseProps} serverOnline={false} />);
+    expect(await screen.findByRole('button', { name: /Backend status/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Switch to (light|dark) theme/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Toggle 8-bit style' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Hazem Ahmed/ })).toBeNull();
+  });
 });

@@ -276,6 +276,14 @@ export default function Sidebar({
   // footer shows the account row + user menu or the plain Settings row.
   const accountUser = useAccountUser(isSsoConnected);
 
+  // Footer states. The status pill wins over everything (Electron-only, the
+  // server needs attention); otherwise a signed-in user gets the account row.
+  // The quick toggles are keyed off "is the user menu actually rendered", not
+  // "is the user signed in" — while the pill shows, the menu (which hosts the
+  // theme switch) isn't on screen, so the toggles must stay.
+  const showsStatusPill = !host.isWeb && (!serverOnline || serverBusy);
+  const showsUserMenu = !showsStatusPill && !!accountUser;
+
   // Decorate every task with its pinned state. Tasks come from the
   // conversations endpoint which doesn't know about pins (they live
   // in a separate /pins store), so without this the menu shows
@@ -854,7 +862,7 @@ export default function Sidebar({
               only user-side workaround for a turn that burns its whole
               output budget and returns nothing (ENG-1042). So web always
               gets the plain Settings row; only the pill is gated. */}
-          {(!host.isWeb && (!serverOnline || serverBusy)) ? (
+          {showsStatusPill ? (
               <>
                 <button
                   type="button"
@@ -888,7 +896,7 @@ export default function Sidebar({
                   {Ico.settings(13)}
                 </button>
               </>
-            ) : accountUser ? (
+            ) : showsUserMenu ? (
               // Signed in: the account row + user menu (ENG-1408). Settings
               // and the theme switch live inside the menu, so the standalone
               // footer controls below stay signed-out-only (the 8-bit toggle
@@ -910,7 +918,7 @@ export default function Sidebar({
                 <span>Settings</span>
               </button>
             )}
-          {!accountUser && (show8bitToggle || showThemeToggle) && (
+          {!showsUserMenu && (show8bitToggle || showThemeToggle) && (
             // Marks these as quick display toggles, not settings — separate
             // from the Settings/backend-status controls to the left.
             <span
@@ -918,7 +926,7 @@ export default function Sidebar({
               className="anton-sidebar__footer-divider ml-auto [-webkit-app-region:no-drag]"
             />
           )}
-          {!accountUser && show8bitToggle && (
+          {!showsUserMenu && show8bitToggle && (
             <button
               className={'chrome-btn--small shrink-0 [-webkit-app-region:no-drag]' + (resolved8bitActive ? ' is-on' : '')}
               onClick={onToggleSkin}
@@ -928,7 +936,7 @@ export default function Sidebar({
               {Ico.gamepad(15)}
             </button>
           )}
-          {!accountUser && showThemeToggle && (
+          {!showsUserMenu && showThemeToggle && (
             <button
               className="chrome-btn--small shrink-0 [-webkit-app-region:no-drag]"
               onClick={onToggleTheme}
