@@ -1769,6 +1769,26 @@ export default function SettingsView({
                 setSetting={setSetting}
               />
             </Section>
+            {/* Gated on its OWN key, not folded into `hasBudgetSettings`.
+                This setting reaches the server one release after the other two,
+                so requiring it in that gate would hide the whole group — and
+                the two working fields with it — on every server that predates
+                it. The renderer ships OTA and leads the installed server. */}
+            {'maxTurnTokens' in settings && (
+              <Section
+                title="Max tokens per task"
+                subtitle={`The most tokens ${agentLabel || 'Anton'} may spend on one request before pausing to check in with you. Tokens are what your plan's monthly allowance is measured in, so a task that gets stuck can use up a large share of the month without finishing. Raise it if you routinely give it big jobs; lower it to cap what any single request can cost.`}
+              >
+                <BudgetNumberField
+                  settingKey="maxTurnTokens"
+                  value={settings.maxTurnTokens}
+                  savedValue={lastSavedSettings?.maxTurnTokens}
+                  spec={BUDGET_FIELDS.maxTurnTokens}
+                  label="Max tokens per task"
+                  setSetting={setSetting}
+                />
+              </Section>
+            )}
           </SettingsGroup>
         )}
       </SettingsSectionPanel>

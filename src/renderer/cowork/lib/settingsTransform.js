@@ -63,6 +63,7 @@ export const SETTINGS_KEY_MAP = {
   act_first: 'actFirst',
   max_tool_rounds: 'maxToolRounds',
   max_continuations: 'maxContinuations',
+  max_turn_tokens: 'maxTurnTokens',
   publish_url: 'publishUrl',
   greeting: 'greeting',
   tone: 'tone',
@@ -594,6 +595,12 @@ export function diffSettingsForWrite(patch, lastFetched) {
 export const BUDGET_FIELDS = {
   maxToolRounds: { min: 5, max: 500, fallback: 50 },
   maxContinuations: { min: 0, max: 25, fallback: 5 },
+  // Per-turn spend ceiling (ENG-1286). `min` is 100_000 rather than 0 on
+  // purpose: the server bounds it the same way so the guard can be loosened
+  // but never switched off from the UI. Ranges must stay in lockstep with
+  // UserSettings' ge/le — a value this clamp allows but the server rejects
+  // 422s the whole multi-key save, not just this field.
+  maxTurnTokens: { min: 100_000, max: 50_000_000, fallback: 1_250_000 },
 };
 
 /**

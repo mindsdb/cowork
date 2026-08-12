@@ -9,6 +9,7 @@ import {
   mergeRecommendedModels,
   clampBudgetValue,
   clampBudgets,
+  BUDGET_FIELDS,
 } from './settingsTransform';
 
 // The minds-cloud recommended list holds bare aliases — never `latest:`-prefixed.
@@ -389,6 +390,47 @@ describe('agent tool-budget settings (max_tool_rounds / max_continuations)', () 
     expect(diffSettingsForWrite({ maxToolRounds: '200' }, { theme: 'dark' })).toEqual({});
     // Non-budget keys keep the old behavior (writable even when absent).
     expect(diffSettingsForWrite({ greeting: 'hi' }, {})).toEqual({ greeting: 'hi' });
+  });
+});
+
+describe('per-turn spend ceiling (max_turn_tokens, ENG-1286)', () => {
+  it('transforms the server row into a camelCase string value', async () => {
+    const { transformSettingsRows } = await import('./settingsTransform');
+    const rows = [
+      { key: 'max_turn_tokens', value: '1250000', is_sensitive: false, is_set: false },
+    ];
+    expect(transformSettingsRows(rows).maxTurnTokens).toBe('1250000');
+  });
+
+  it('writes the changed ceiling to its snake_case key', () => {
+    expect(
+      diffSettingsForWrite({ maxTurnTokens: '2000000' }, { maxTurnTokens: '1250000' }),
+    ).toEqual({ max_turn_tokens: '2000000' });
+  });
+
+  it('is not written to a server that did not send it', () => {
+    // The renderer ships OTA and leads the installed server, so it will run
+    // against a cowork-server that has the other two budgets but not this one.
+    // A PUT there 400s and fails the WHOLE multi-key save — taking the user's
+    // other settings changes down with it, which is why this is budget-scoped
+    // rather than best-effort.
+    expect(
+      diffSettingsForWrite(
+        { maxTurnTokens: '2000000', maxToolRounds: '80' },
+        { maxToolRounds: '50' },
+      ),
+    ).toEqual({ max_tool_rounds: '80' });
+  });
+
+  it('clamps to bounds that match the server, and cannot be switched off', () => {
+    const spec = BUDGET_FIELDS.maxTurnTokens;
+    // min is 100_000, not 0: the guard can be loosened from the UI but never
+    // disabled. A value this clamp let through but the server rejects would
+    // 422 the whole save.
+    expect(clampBudgetValue('0', spec)).toBe('100000');
+    expect(clampBudgetValue('50', spec)).toBe('100000');
+    expect(clampBudgetValue('999999999', spec)).toBe('50000000');
+    expect(clampBudgetValue('2000000', spec)).toBe('2000000');
   });
 });
 
