@@ -16,8 +16,9 @@
 // every-launch check can pick that up for an already-provisioned install.
 //
 // Keep STATIC_CREDENTIAL_KEYS in sync with the CI steps that generate the
-// staged file: .github/workflows/build-macos-pkg.yml and
-// .github/workflows/build-windows-installer.yml.
+// staged file: .github/workflows/build-macos-pkg.yml,
+// .github/workflows/build-windows-installer.yml and
+// .github/workflows/build-linux-deb.yml.
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -74,6 +75,20 @@ export function getCandidateStagingPaths(): string[] {
       // Fallback: no console user at install time (headless/MDM/pre-login) —
       // postinstall staged a group-readable copy here instead.
       '/Library/Application Support/MindsHub Cowork/.provision/server-credentials.json',
+    ];
+  }
+  if (process.platform === 'linux') {
+    return [
+      // Normal case: the deb's postinst identified the installing user and
+      // staged here, owned by them, mode 600 — then deleted the resources copy
+      // below. A .deb unpacks into root-owned /opt, so (exactly as on macOS,
+      // and unlike Windows's per-user install) the app could never delete a
+      // file left in its own resources dir.
+      path.join(os.homedir(), '.cowork-provision', 'server-credentials.json'),
+      // Fallback: no installing user identifiable at postinst time (headless
+      // `dpkg -i`, container, MDM), so postinst left the resources copy alone
+      // rather than stranding the build with no credentials at all.
+      path.join(process.resourcesPath || '', 'server-credentials.json'),
     ];
   }
   // Windows: no separate staging step. electron-builder.yml gives Windows its

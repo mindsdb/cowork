@@ -80,6 +80,22 @@ describe('getCandidateStagingPaths', () => {
     expect(paths).toHaveLength(1);
     expect(paths[0]).toContain('server-credentials.json');
   });
+
+  // A .deb installs to root-owned /opt, so — unlike Windows's per-user NSIS
+  // install — the app cannot delete a file left in its own resources dir.
+  // The deb postinst stages a user-owned copy first and removes the /opt one;
+  // the resources path stays as the fallback for the case where postinst could
+  // not identify an installing user (headless/container `dpkg -i`) and so left
+  // the original in place.
+  it('prefers the user-owned staged copy over resourcesPath on Linux', () => {
+    setPlatform('linux');
+    Object.defineProperty(process, 'resourcesPath', { value: '/opt/app/resources', configurable: true });
+    const paths = getCandidateStagingPaths();
+    expect(paths).toHaveLength(2);
+    expect(paths[0]).toContain('.cowork-provision/server-credentials.json');
+    expect(paths[0]).not.toContain('/opt/app/resources');
+    expect(paths[1]).toBe('/opt/app/resources/server-credentials.json');
+  });
 });
 
 describe('provisionCredentialsFromStaging', () => {

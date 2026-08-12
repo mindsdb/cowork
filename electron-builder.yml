@@ -80,10 +80,19 @@ linux:
   # can't be cross-compiled, so CI builds each arch on its own runner.
   target:
     - target: deb
+  # ENG-1241: carrier only — /opt is root-owned, so deb.afterInstall stages a
+  # private copy into the installing user's home and deletes this one. Keep it
+  # linux-scoped: the root-level list is additive and would reach macOS.
+  extraResources:
+    - from: server-credentials.json
+      to: server-credentials.json
 
 deb:
   packageName: mindshub-cowork
   artifactName: "mindshub-cowork_${version}_${arch}.${ext}"
+  # Stages the credentials out of root-owned /opt into the installing user's
+  # home; without it they persist world-readable and the app can never clean up.
+  afterInstall: build/deb-scripts/postinst.sh
   # Overriding depends replaces electron-builder's defaults, so the default
   # runtime libs are repeated here. git and curl are required by the
   # first-run cowork-server installer (uv bootstrap + git-based install).
