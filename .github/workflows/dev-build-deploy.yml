@@ -120,14 +120,15 @@ jobs:
       status: ${{ needs.build-deploy.outputs.pr-env-deployed == 'true' && 'up' || 'absent' }}
     secrets: inherit
 
-  # Signed installers, per platform, by label. Each is expensive and needs signing
-  # material, so a PR opts in rather than paying for both every push.
+  # macOS/Windows are signed installers, per platform, by label — each is
+  # expensive and needs signing material, so a PR opts in rather than paying for
+  # both every push. Linux is unsigned and comparatively cheap, so it carries no
+  # label gate and always builds (both arches) once this job runs at all; that is
+  # why this job's own `if` no longer requires either signed-* label — only the
+  # gate above.
   build-installers:
     needs: [gate]
-    if: >-
-      ${{ needs.gate.outputs.run == 'true'
-          && (contains(github.event.pull_request.labels.*.name, 'signed-macos-pkg')
-              || contains(github.event.pull_request.labels.*.name, 'signed-windows-ev')) }}
+    if: needs.gate.outputs.run == 'true'
     uses: ./.github/workflows/build-installers.yml
     with:
       build_kind: preview
@@ -141,6 +142,8 @@ jobs:
       server_ref: staging
       macos: ${{ contains(github.event.pull_request.labels.*.name, 'signed-macos-pkg') }}
       windows: ${{ contains(github.event.pull_request.labels.*.name, 'signed-windows-ev') }}
+      # No override for linux_amd64/linux_arm64: both default to true in
+      # build-installers.yml and always build on a PR (see the job comment above).
     secrets: inherit
 
   # The installers are the deliverable on a desktop PR, and they used to land in an
@@ -160,15 +163,21 @@ jobs:
         env:
           MAC_URL: ${{ needs.build-installers.outputs.macos_download_url }}
           WIN_URL: ${{ needs.build-installers.outputs.windows_download_url }}
+          LINUX_AMD64_URL: ${{ needs.build-installers.outputs.linux_amd64_download_url }}
+          LINUX_ARM64_URL: ${{ needs.build-installers.outputs.linux_arm64_download_url }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
           # jq builds it, so a file name carrying a quote or a space cannot produce
           # malformed JSON the comment job would then fail to parse.
           jq -cn \
-            --arg mac "${MAC_URL:-}" --arg win "${WIN_URL:-}" --arg run "$RUN_URL" '
+            --arg mac "${MAC_URL:-}" --arg win "${WIN_URL:-}" \
+            --arg linux_amd64 "${LINUX_AMD64_URL:-}" --arg linux_arm64 "${LINUX_ARM64_URL:-}" \
+            --arg run "$RUN_URL" '
               [ ( if $mac != "" then {label: "macOS installer (.pkg)", url: $mac} else empty end ),
                 ( if $win != "" then {label: "Windows installer (.exe)", url: $win} else empty end ),
+                ( if $linux_amd64 != "" then {label: "Linux installer (.deb, amd64)", url: $linux_amd64} else empty end ),
+                ( if $linux_arm64 != "" then {label: "Linux installer (.deb, arm64)", url: $linux_arm64} else empty end ),
                 {label: "Build run", url: $run} ]
             ' | tee links.json
           echo "links=$(cat links.json)" >> "$GITHUB_OUTPUT"

@@ -199,7 +199,13 @@ jobs:
       # immutable signed payload. Publish payload/blockmap first and latest*.yml
       # last so clients can never observe metadata for bytes that do not exist.
       - name: Publish shell updater feed
-        if: inputs.build_kind == 'prod' || inputs.build_kind == 'stable'
+        # linux ships no electron-updater feed — a .deb install updates via
+        # apt/dpkg, not the Squirrel-style feed mac/windows use — so skip this
+        # step for linux platforms rather than hitting the "Unknown updater
+        # platform" branch below and failing the upload.
+        if: >-
+          (inputs.build_kind == 'prod' || inputs.build_kind == 'stable')
+          && (inputs.platform == 'mac' || inputs.platform == 'windows')
         env:
           PLATFORM: ${{ inputs.platform }}
           KIND: ${{ inputs.build_kind }}
