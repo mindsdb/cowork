@@ -16,6 +16,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Ico from './Icons';
+import { Tooltip } from './ui';
 
 export function AttachmentThumbnail({
   file = null,
@@ -99,15 +100,16 @@ export function AttachmentThumbnail({
 
   if (onOpen) {
     return (
-      <button
-        type="button"
-        onClick={onOpen}
-        title={alt || 'Open image'}
-        aria-label={alt ? `Open image: ${alt}` : 'Open image'}
-        style={{ ...frameStyle, padding: 0, cursor: 'pointer' }}
-      >
-        {inner}
-      </button>
+      <Tooltip content={alt || 'Open image'}>
+        <button
+          type="button"
+          onClick={onOpen}
+          aria-label={alt ? `Open image: ${alt}` : 'Open image'}
+          style={{ ...frameStyle, padding: 0, cursor: 'pointer' }}
+        >
+          {inner}
+        </button>
+      </Tooltip>
     );
   }
   return <span style={frameStyle} aria-label={alt || undefined}>{inner}</span>;

@@ -160,7 +160,6 @@ function ConnectionCard({ connection, onDelete, onModify }) {
           size="sm"
           onClick={handleRemove}
           disabled={busy}
-          title="Disconnect"
         >
           {busy ? 'Removing…' : 'Disconnect'}
         </Button>

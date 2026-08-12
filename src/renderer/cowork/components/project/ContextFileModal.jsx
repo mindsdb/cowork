@@ -29,7 +29,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
-import { Alert, Button } from '../ui';
+import { Alert, Button, Tooltip } from '../ui';
 import { Modal } from '../ui/Modal';
 import {
   readProjectFile,
@@ -80,7 +80,6 @@ function FileAccessButton({ projectPath, projectName, filePath, rawUrl }) {
       <a
         href={webUrl}
         download
-        title="Download"
         style={{
           textDecoration: 'none',
           cursor: 'pointer',
@@ -97,21 +96,23 @@ function FileAccessButton({ projectPath, projectName, filePath, rawUrl }) {
   return (
     <div style={{ display: 'inline-flex', gap: 4 }}>
       {hasProjectFile && (
-        <Button
-          onClick={() => abs && host.showItemInFolder(abs)}
-          title="Reveal in Finder"
-        >{Ico.folder ? Ico.folder(13) : '📁'} Reveal</Button>
+        <Tooltip content="Reveal in Finder">
+          <Button
+            onClick={() => abs && host.showItemInFolder(abs)}
+          >{Ico.folder ? Ico.folder(13) : '📁'} Reveal</Button>
+        </Tooltip>
       )}
-      <Button
-        onClick={() => {
-          // Prefer the raw URL (attachments + anything that passed one)
-          // via the OS shell; fall back to opening the local project
-          // file in the default app.
-          if (rawUrl) host.openExternal(rawUrl);
-          else if (abs) host.openPath(abs);
-        }}
-        title="Open in default app"
-      >{Ico.externalLink ? Ico.externalLink(13) : '↗'} Open</Button>
+      <Tooltip content="Open in default app">
+        <Button
+          onClick={() => {
+            // Prefer the raw URL (attachments + anything that passed one)
+            // via the OS shell; fall back to opening the local project
+            // file in the default app.
+            if (rawUrl) host.openExternal(rawUrl);
+            else if (abs) host.openPath(abs);
+          }}
+        >{Ico.externalLink ? Ico.externalLink(13) : '↗'} Open</Button>
+      </Tooltip>
     </div>
   );
 }
@@ -447,7 +448,6 @@ export default function ContextFileModal({
             {mode === 'text' && !editing && !loading && (
               <Button
                 onClick={() => setEditing(true)}
-                title="Edit"
               >Edit</Button>
             )}
             {/* HTML / image / binary modes all expose a "Reveal" /
@@ -462,20 +462,22 @@ export default function ContextFileModal({
                 rawUrl={rawUrl}
               />
             )}
-            <button
-              type="button"
-              className="hover-tint hover-tint-text"
-              onClick={() => !busy && onClose?.()}
-              title="Close"
-              style={{
-                cursor: busy ? 'not-allowed' : 'pointer',
-                background: 'transparent', border: 0,
-                color: 'var(--ink-3)',
-                width: 28, height: 28, borderRadius: 6,
-                display: 'inline-grid', placeItems: 'center',
-                fontSize: 18, lineHeight: 1,
-              }}
-            >×</button>
+            <Tooltip content="Close">
+              <button
+                type="button"
+                className="hover-tint hover-tint-text"
+                onClick={() => !busy && onClose?.()}
+                aria-label="Close"
+                style={{
+                  cursor: busy ? 'not-allowed' : 'pointer',
+                  background: 'transparent', border: 0,
+                  color: 'var(--ink-3)',
+                  width: 28, height: 28, borderRadius: 6,
+                  display: 'inline-grid', placeItems: 'center',
+                  fontSize: 18, lineHeight: 1,
+                }}
+              >×</button>
+            </Tooltip>
           </div>
         </div>
 

@@ -15,7 +15,7 @@ import Ico from '../Icons';
 import { fetchConnectors } from '../../api';
 import { Card } from '../ui/Card';
 import { Modal } from '../ui/Modal';
-import { Select } from '../ui';
+import { Select, Tooltip } from '../ui';
 
 const FONT_BODY = "var(--font-body, 'Inter', system-ui, sans-serif)";
 const FONT_DISPLAY = "var(--font-display, 'Inter', system-ui, sans-serif)";
@@ -248,20 +248,21 @@ export default function ConnectorPicker({ open, onPick, onClose }) {
             margin: 0,
             color: 'var(--ink)',
           }}>Connectors Directory</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            title="Close"
-            aria-label="Close"
-            style={{
-              cursor: 'pointer',
-              background: 'transparent', border: 0,
-              color: 'var(--ink-3)',
-              width: 28, height: 28, borderRadius: 6,
-              display: 'inline-grid', placeItems: 'center',
-              fontSize: 18, lineHeight: 1, flexShrink: 0,
-            }}
-          >×</button>
+          <Tooltip content="Close">
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              style={{
+                cursor: 'pointer',
+                background: 'transparent', border: 0,
+                color: 'var(--ink-3)',
+                width: 28, height: 28, borderRadius: 6,
+                display: 'inline-grid', placeItems: 'center',
+                fontSize: 18, lineHeight: 1, flexShrink: 0,
+              }}
+            >×</button>
+          </Tooltip>
         </div>
         <div style={{
           display: 'flex', alignItems: 'center', gap: 10,

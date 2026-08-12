@@ -18,7 +18,7 @@ import {
   useCollectionShortcut,
 } from '../components/collection';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
-import { Alert, Button, CardRow, EmptyState } from '../components/ui';
+import { Alert, Button, CardRow, EmptyState, Tooltip } from '../components/ui';
 import OverflowMenu from '../components/OverflowMenu';
 import { ConfirmModal } from '../components/ConfirmModal';
 import ScheduleTaskModal from '../components/schedule/ScheduleTaskModal';
@@ -457,27 +457,28 @@ function ScheduleListRow({
       }}>
         {projectName ? (
           canOpenProject ? (
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); onOpenProject(projectMatch); }}
-              title={`Open ${projectMatch.name}`}
-              style={{
-                all: 'unset', cursor: 'pointer',
-                color: 'var(--ink-2)',
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                maxWidth: '100%', display: 'inline-block',
-                transition: 'color 120ms ease',
-              }}
-              onMouseOver={(e) => {
-                e.currentTarget.style.color = 'var(--accent)';
-                e.currentTarget.style.textDecoration = 'underline';
-                e.currentTarget.style.textUnderlineOffset = '2px';
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.color = 'var(--ink-2)';
-                e.currentTarget.style.textDecoration = 'none';
-              }}
-            >{projectName}</button>
+            <Tooltip content={`Open ${projectMatch.name}`}>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onOpenProject(projectMatch); }}
+                style={{
+                  all: 'unset', cursor: 'pointer',
+                  color: 'var(--ink-2)',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  maxWidth: '100%', display: 'inline-block',
+                  transition: 'color 120ms ease',
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.color = 'var(--accent)';
+                  e.currentTarget.style.textDecoration = 'underline';
+                  e.currentTarget.style.textUnderlineOffset = '2px';
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.color = 'var(--ink-2)';
+                  e.currentTarget.style.textDecoration = 'none';
+                }}
+              >{projectName}</button>
+            </Tooltip>
           ) : projectName
         ) : <span style={{ color: 'var(--ink-5)' }}>—</span>}
       </div>
@@ -544,7 +545,6 @@ function RowAction({ icon, label, onClick, busy }) {
     <Button
       onClick={onClick}
       disabled={busy}
-      title={label}
     >{icon}{label}</Button>
   );
 }

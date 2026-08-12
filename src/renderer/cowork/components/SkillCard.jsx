@@ -18,6 +18,7 @@ import Ico from './Icons';
 import Button from './ui/Button';
 import { Card } from './ui/Card';
 import { Modal, ModalHeader, ModalBody } from './ui/Modal';
+import { Tooltip } from './ui';
 import { MarkdownContent } from './markdown/MarkdownContent';
 import { saveSkillAndSync, useSkills } from '../lib/skillsStore';
 import { deleteSkillDraft } from '../api';
@@ -179,16 +180,17 @@ export default function SkillCard({ skill, projectName }) {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Button
-              icon
-              size="sm"
-              variant="subtle"
-              onClick={handleDownload}
-              title="Download skill"
-              aria-label="Download skill"
-            >
-              {Ico.download(16)}
-            </Button>
+            <Tooltip content="Download skill">
+              <Button
+                icon
+                size="sm"
+                variant="subtle"
+                onClick={handleDownload}
+                aria-label="Download skill"
+              >
+                {Ico.download(16)}
+              </Button>
+            </Tooltip>
             <Button
               size="sm"
               variant={saved ? 'subtle' : 'primary'}
