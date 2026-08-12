@@ -1,0 +1,56 @@
+name: Release smoke (public downloads)
+
+# Downloads the installers the way a user does, from downloads.mindshub.ai in a
+# real Chromium, and checks that what arrives is what the release published:
+# the manifest resolves, the versioned URL is immutable and attachment-named,
+# an interrupted transfer resumes, and the finished bytes match the checksum.
+#
+# Runs AFTER a prod release rather than on a PR, because there is nothing to
+# check until a release has published. Also nightly, which is what catches a
+# key that was correct at publish time and has since been overwritten, expired
+# by a lifecycle rule, or lost behind a stale edge.
+#
+# NOT a PR gate: it asserts on live infrastructure, so a red run can mean the
+# CDN rather than the commit. `tests-unit.yml` covers the manifest contract on
+# the PR; this covers the thing that contract is a promise about.
+
+on:
+  workflow_call:
+  schedule:
+    - cron: '0 7 * * *' # nightly, an hour after the Electron e2e smoke
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  downloads:
+    runs-on: ubuntu-latest
+    # One test pulls a full ~220 MB installer per platform end to end.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: ./.github/actions/retry
+        with:
+          command: npm ci
+      # Only Chromium: this suite is about what a browser does with the CDN's
+      # response headers, and that behaviour is the same across engines for the
+      # parts under test. The Electron suite brings its own runtime.
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Download the published installers and check them
+        run: npm run test:release-smoke
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: release-smoke-traces
+          path: test-results/
+          retention-days: 7

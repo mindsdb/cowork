@@ -27,6 +27,7 @@
     "typecheck:test": "tsc -p tsconfig.test.json",
     "check:cowork-purity": "node scripts/check-cowork-purity.mjs",
     "test:e2e": "playwright test",
+    "test:release-smoke": "playwright test --config playwright.release-smoke.config.ts",
     "build:web": "BUILD_TARGET=web vite build src/renderer",
     "dev:web": "node scripts/dev-web.mjs",
     "start": "electron dist/main/main/index.js",
