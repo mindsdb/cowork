@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
 import Ico from '../Icons';
+import { Tooltip } from '../ui';
 import {
   attachmentRawUrl,
   deleteAttachment,
@@ -48,25 +49,26 @@ function MemoryRow({ entry, onOpen }) {
   // filename itself. Hover/click opens the editor, which has the
   // full content; the rail row only needs the file identity + age.
   return (
-    <button
-      type="button"
-      onClick={onOpen}
-      title={entry.content || labelCategory(entry.category)}
-      className={clsx(
-        'group grid items-center gap-2 rounded-card-row px-1 py-1 text-left',
-        'cursor-pointer transition-colors hover:bg-surface-2',
-        'border-0 bg-transparent w-full'
-      )}
-      style={{ gridTemplateColumns: '14px minmax(0,1fr) auto', font: 'inherit' }}
-    >
-      <span className="text-ink-4 inline-flex flex-none">{Ico.code(13)}</span>
-      <span className="block truncate text-[12.5px] text-ink min-w-0">
-        {labelCategory(entry.category) || entry.name}
-      </span>
-      {entry.modifiedAt && (
-        <span className="text-[10.5px] text-ink-4">{relativeAge(entry.modifiedAt)}</span>
-      )}
-    </button>
+    <Tooltip content={entry.content || labelCategory(entry.category)}>
+      <button
+        type="button"
+        onClick={onOpen}
+        className={clsx(
+          'group grid items-center gap-2 rounded-card-row px-1 py-1 text-left',
+          'cursor-pointer transition-colors hover:bg-surface-2',
+          'border-0 bg-transparent w-full'
+        )}
+        style={{ gridTemplateColumns: '14px minmax(0,1fr) auto', font: 'inherit' }}
+      >
+        <span className="text-ink-4 inline-flex flex-none">{Ico.code(13)}</span>
+        <span className="block truncate text-[12.5px] text-ink min-w-0">
+          {labelCategory(entry.category) || entry.name}
+        </span>
+        {entry.modifiedAt && (
+          <span className="text-[10.5px] text-ink-4">{relativeAge(entry.modifiedAt)}</span>
+        )}
+      </button>
+    </Tooltip>
   );
 }
 
@@ -189,27 +191,28 @@ function ContextFileRow({ file, onOpen, onRequestDelete }) {
           </span>
         ) : null}
         {canDelete && (
-          <button
-            type="button"
-            aria-label={`Delete ${file.path || file.name}`}
-            title="Delete file"
-            onClick={(e) => {
-              // Don't let the click bubble up to the row — that
-              // would open the file modal instead of confirming
-              // a delete.
-              e.stopPropagation();
-              onRequestDelete(file);
-            }}
-            className={clsx(
-              'absolute inset-0 inline-flex items-center justify-end',
-              'opacity-0 group-hover:opacity-100 focus-visible:opacity-100',
-              'transition-opacity rounded',
-              'text-ink-4 hover:text-danger',
-              'bg-transparent border-0 cursor-pointer p-0',
-            )}
-          >
-            {Ico.trash(13)}
-          </button>
+          <Tooltip content="Delete file">
+            <button
+              type="button"
+              aria-label={`Delete ${file.path || file.name}`}
+              onClick={(e) => {
+                // Don't let the click bubble up to the row — that
+                // would open the file modal instead of confirming
+                // a delete.
+                e.stopPropagation();
+                onRequestDelete(file);
+              }}
+              className={clsx(
+                'absolute inset-0 inline-flex items-center justify-end',
+                'opacity-0 group-hover:opacity-100 focus-visible:opacity-100',
+                'transition-opacity rounded',
+                'text-ink-4 hover:text-danger',
+                'bg-transparent border-0 cursor-pointer p-0',
+              )}
+            >
+              {Ico.trash(13)}
+            </button>
+          </Tooltip>
         )}
       </span>
     </div>
@@ -255,24 +258,25 @@ function DriveReferenceRow({ file, onRequestDelete }) {
           {Ico.externalLink(11)}
         </span>
         {onRequestDelete && (
-          <button
-            type="button"
-            aria-label={`Remove ${file.name || 'file'} from project files`}
-            title="Remove from project files"
-            onClick={(e) => {
-              // Don't let the click bubble up to the row — that would
-              // open the file in Drive instead of confirming a delete.
-              e.stopPropagation();
-              onRequestDelete(file);
-            }}
-            className={clsx(
-              'inline-flex items-center justify-center rounded',
-              'text-ink-4 hover:text-danger',
-              'bg-transparent border-0 cursor-pointer p-0',
-            )}
-          >
-            {Ico.trash(13)}
-          </button>
+          <Tooltip content="Remove from project files">
+            <button
+              type="button"
+              aria-label={`Remove ${file.name || 'file'} from project files`}
+              onClick={(e) => {
+                // Don't let the click bubble up to the row — that would
+                // open the file in Drive instead of confirming a delete.
+                e.stopPropagation();
+                onRequestDelete(file);
+              }}
+              className={clsx(
+                'inline-flex items-center justify-center rounded',
+                'text-ink-4 hover:text-danger',
+                'bg-transparent border-0 cursor-pointer p-0',
+              )}
+            >
+              {Ico.trash(13)}
+            </button>
+          </Tooltip>
         )}
       </span>
     </div>
@@ -696,22 +700,26 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
             <span className="font-display text-[10.5px] font-semibold uppercase tracking-widest text-ink-4">
               Task uploads{sessionAttachments.length > 1 ? ` · ${sessionAttachments.length}` : ''}
             </span>
-            <button
-              type="button"
-              aria-label="Attach files to this task"
-              title={taskUploadBusy ? 'Uploading…' : 'Attach files to this task'}
-              disabled={taskUploadBusy}
-              onClick={() => taskUploadInputRef.current?.click()}
-              className={clsx(
-                'inline-flex items-center justify-center',
-                'h-5 w-5 rounded',
-                'text-ink-4 hover:text-ink hover:bg-surface-2',
-                'transition-colors bg-transparent border-0 cursor-pointer',
-                'disabled:opacity-50 disabled:cursor-wait',
-              )}
-            >
-              {Ico.plus(13)}
-            </button>
+            <Tooltip content="Attach files to this task">
+              {/* Native title only while disabled — a disabled button fires no
+                  hover/focus events, so the styled Tooltip can't open. */}
+              <button
+                type="button"
+                aria-label="Attach files to this task"
+                title={taskUploadBusy ? 'Uploading…' : undefined}
+                disabled={taskUploadBusy}
+                onClick={() => taskUploadInputRef.current?.click()}
+                className={clsx(
+                  'inline-flex items-center justify-center',
+                  'h-5 w-5 rounded',
+                  'text-ink-4 hover:text-ink hover:bg-surface-2',
+                  'transition-colors bg-transparent border-0 cursor-pointer',
+                  'disabled:opacity-50 disabled:cursor-wait',
+                )}
+              >
+                {Ico.plus(13)}
+              </button>
+            </Tooltip>
           </div>
           <input
             ref={taskUploadInputRef}

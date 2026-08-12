@@ -17,7 +17,7 @@
 
 import { useMemo, useRef, useState } from 'react';
 import Ico from '../components/Icons';
-import { Badge, CardRow, EmptyState, Button } from '../components/ui';
+import { Badge, CardRow, EmptyState, Button, Tooltip } from '../components/ui';
 import { relativeAge } from '../lib/formatTime';
 import {
   PageHeader,
@@ -141,27 +141,28 @@ function TaskRow({
       }}>
         {projectName ? (
           canOpenProject ? (
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); onOpenProject(projectMatch); }}
-              title={`Open ${projectMatch.name}`}
-              style={{
-                all: 'unset', cursor: 'pointer',
-                color: 'var(--ink-2)',
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                maxWidth: '100%', display: 'inline-block',
-                transition: 'color 120ms ease',
-              }}
-              onMouseOver={(e) => {
-                e.currentTarget.style.color = 'var(--accent)';
-                e.currentTarget.style.textDecoration = 'underline';
-                e.currentTarget.style.textUnderlineOffset = '2px';
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.color = 'var(--ink-2)';
-                e.currentTarget.style.textDecoration = 'none';
-              }}
-            >{projectName}</button>
+            <Tooltip content={`Open ${projectMatch.name}`}>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onOpenProject(projectMatch); }}
+                style={{
+                  all: 'unset', cursor: 'pointer',
+                  color: 'var(--ink-2)',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  maxWidth: '100%', display: 'inline-block',
+                  transition: 'color 120ms ease',
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.color = 'var(--accent)';
+                  e.currentTarget.style.textDecoration = 'underline';
+                  e.currentTarget.style.textUnderlineOffset = '2px';
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.color = 'var(--ink-2)';
+                  e.currentTarget.style.textDecoration = 'none';
+                }}
+              >{projectName}</button>
+            </Tooltip>
           ) : projectName
         ) : <span style={{ color: 'var(--ink-5)' }}>—</span>}
       </div>
@@ -181,16 +182,17 @@ function TaskRow({
         transition: 'opacity 140ms ease',
         pointerEvents: hover ? 'auto' : 'none',
       }}>
-        <Button
-          variant="danger"
-          icon
-          onClick={() => onDelete?.(task.id)}
-          aria-label="Delete task"
-          title="Delete task"
-          style={{ width: 26, height: 26 }}
-        >
-          {Ico.trash(14)}
-        </Button>
+        <Tooltip content="Delete task">
+          <Button
+            variant="danger"
+            icon
+            onClick={() => onDelete?.(task.id)}
+            aria-label="Delete task"
+            style={{ width: 26, height: 26 }}
+          >
+            {Ico.trash(14)}
+          </Button>
+        </Tooltip>
       </div>
     </CardRow>
   );
@@ -270,27 +272,28 @@ function ScheduleGroupRow({
       }}>
         {projectName ? (
           canOpenProject ? (
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); onOpenProject(projectMatch); }}
-              title={`Open ${projectMatch.name}`}
-              style={{
-                all: 'unset', cursor: 'pointer',
-                color: 'var(--ink-2)',
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                maxWidth: '100%', display: 'inline-block',
-                transition: 'color 120ms ease',
-              }}
-              onMouseOver={(e) => {
-                e.currentTarget.style.color = 'var(--accent)';
-                e.currentTarget.style.textDecoration = 'underline';
-                e.currentTarget.style.textUnderlineOffset = '2px';
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.color = 'var(--ink-2)';
-                e.currentTarget.style.textDecoration = 'none';
-              }}
-            >{projectName}</button>
+            <Tooltip content={`Open ${projectMatch.name}`}>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onOpenProject(projectMatch); }}
+                style={{
+                  all: 'unset', cursor: 'pointer',
+                  color: 'var(--ink-2)',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  maxWidth: '100%', display: 'inline-block',
+                  transition: 'color 120ms ease',
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.color = 'var(--accent)';
+                  e.currentTarget.style.textDecoration = 'underline';
+                  e.currentTarget.style.textUnderlineOffset = '2px';
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.color = 'var(--ink-2)';
+                  e.currentTarget.style.textDecoration = 'none';
+                }}
+              >{projectName}</button>
+            </Tooltip>
           ) : projectName
         ) : <span style={{ color: 'var(--ink-5)' }}>—</span>}
       </div>
@@ -310,16 +313,17 @@ function ScheduleGroupRow({
         transition: 'opacity 140ms ease',
         pointerEvents: hover ? 'auto' : 'none',
       }}>
-        <Button
-          variant="subtle"
-          icon
-          onClick={onOpenLatest}
-          aria-label="Open latest run"
-          title="Open latest run"
-          style={{ width: 26, height: 26 }}
-        >
-          {Ico.externalLink(13)}
-        </Button>
+        <Tooltip content="Open latest run">
+          <Button
+            variant="subtle"
+            icon
+            onClick={onOpenLatest}
+            aria-label="Open latest run"
+            style={{ width: 26, height: 26 }}
+          >
+            {Ico.externalLink(13)}
+          </Button>
+        </Tooltip>
       </div>
     </CardRow>
   );

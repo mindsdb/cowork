@@ -31,7 +31,10 @@ describe('ScheduleCard — project display (ENG-1255)', () => {
     );
 
     const link = screen.getByRole('button', { name: 'Metrics' });
-    expect(link).toHaveAttribute('title', 'Open Metrics');
+    // The resolved project name surfaces as the link's label; the "Open Metrics"
+    // hover affordance now lives on the ui/Tooltip wrapper (ENG-1152), which
+    // portals its content on hover instead of exposing a native `title`.
+    expect(link).not.toHaveAttribute('title');
 
     fireEvent.click(link);
     expect(onOpenProject).toHaveBeenCalledWith(PROJECTS[0]);
