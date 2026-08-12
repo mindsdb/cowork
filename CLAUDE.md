@@ -185,9 +185,12 @@ Note: the server updater is source-aware and never converts an existing git inst
 
 ### OTA updates
 
-- **UI**: CI publishes `dist/renderer/` as `ui-bundle.tar.gz` to `mindsdb/antontron-releases`. Main process fetches + caches in `~/Library/Application Support/anton/ui-cache/` (see [src/main/ui-updater.ts](src/main/ui-updater.ts)).
-- **Server**: source-aware (see [src/main/server-updater.ts](src/main/server-updater.ts)). A **git** install updates by re-pulling the configured branch/tag HEAD (trigger = changed remote commit SHA via `git ls-remote`) for cowork-server **and** anton; a **PyPI** install updates by version comparison + `uv tool install --upgrade`. It detects which from the tool venv's `direct_url.json`.
-- Both have rollback on failure. Disable server auto-update with `COWORK_SERVER_DISABLE_AUTOUPDATE=1`. Bypass UI updates with `DEV_MODE=full` in `~/.anton/.env`.
+Three independently-versioned pieces update through three mechanisms, orchestrated by [src/main/updater.ts](src/main/updater.ts). **UI + server are coupled** and auto-apply together at boot (server first, then UI, then window reload); the **shell is independent** and always needs a relaunch. See [docs/update-behavior.md](docs/update-behavior.md) for *when* each applies and *what the user sees* per scenario.
+
+- **UI** (hot-swap, `prod` builds only): CI publishes `dist/renderer/` as `ui-bundle.tar.gz` to `mindsdb/antontron-releases`. Main process fetches + caches in `~/Library/Application Support/anton/ui-cache/` (see [src/main/ui-updater.ts](src/main/ui-updater.ts)).
+- **Server** (sidecar reinstall + restart, all packaged builds): source-aware (see [src/main/server-updater.ts](src/main/server-updater.ts)). A **git** install updates by re-pulling the configured branch/tag HEAD (trigger = changed remote commit SHA via `git ls-remote`) for cowork-server **and** anton; a **PyPI** install updates by version comparison + `uv tool install --upgrade`. It detects which from the tool venv's `direct_url.json`.
+- **Shell** (the Electron app binary — can't hot-update): an `electron-updater` background download installs the new build on relaunch (ENG-850, see [src/main/shell-auto-update-runtime.ts](src/main/shell-auto-update-runtime.ts)) — **on by default for `stable`**, opt-in for `prod` via `SHELL_AUTO_UPDATE_ENABLED=true`, fail-closed elsewhere. A `prod`-only manual "download the installer" notice (ENG-849, `checkForShellUpdate` in updater.ts) is the fallback.
+- All three have rollback/health checks on failure. Disable server auto-update with `COWORK_SERVER_DISABLE_AUTOUPDATE=1`. Bypass UI updates with `DEV_MODE=full` in `~/.anton/.env`. `SHELL_AUTO_UPDATE_ENABLED=false` is the stable shell-update kill switch.
 
 ### User config
 

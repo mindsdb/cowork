@@ -228,6 +228,8 @@ src/
     server-process.ts    # FastAPI sidecar lifecycle (start/stop/health)
     server-updater.ts    # OTA server update (PyPI check, upgrade, rollback)
     ui-updater.ts        # OTA UI update system (fetch, verify, cache, rollback)
+    updater.ts           # Update orchestrator (couples server + UI, shell notice)
+    shell-auto-update-runtime.ts # Shell (Electron app) auto-update via electron-updater
     preload.ts           # contextBridge — exposes antontron API to renderer
   renderer/              # React UI (bundled by Vite)
     App.tsx              # App flow: loading -> setup -> onboarding -> cowork
@@ -251,7 +253,7 @@ assets/
 
 - **Minds integration**: The GUI replicates the `/connect` flow — lists minds via REST API, handles datasource selection (normalizes string/object refs), writes env vars to `~/.anton/.env`, and auto-restarts the server to pick up new config.
 
-- **OTA updates**: Both the React UI and the Python backend update over-the-air without requiring a new installer. See [Over-the-Air Updates](#over-the-air-updates).
+- **OTA updates**: The React UI and the Python backend update over-the-air (coupled, auto-applied at boot) without a new installer; the Electron shell auto-updates on stable/prod via `electron-updater`, installing on relaunch. See [Over-the-Air Updates](#over-the-air-updates).
 
 ---
 
@@ -308,9 +310,14 @@ The GUI provides a visual `/connect` flow:
 
 ## Over-the-Air Updates
 
-MindsHub Cowork has two independent OTA update channels so both the React frontend and the Python backend can be updated without shipping a new `.dmg` or `.exe`. The Electron shell itself (everything in `src/main/` and the preload) is **not** covered by OTA and only updates via a new installer.
+MindsHub Cowork updates three independently-versioned pieces, each through its own mechanism, so most updates land without the user reinstalling anything:
 
-UI OTA is gated by build kind (ENG-670): enabled in **`prod` builds only** — `stable`, `preview`, and `dev` builds always run their bundled renderer so testers see the branch under test. For *when* updates apply (boot vs. periodic checks, the server-down recovery exception, the `UI_UPDATE_MODE` escape hatch), see [docs/update-behavior.md](docs/update-behavior.md).
+- **UI** (React renderer) and **Server** (Python `cowork-server` sidecar) update fully over-the-air — no new `.dmg`/`.exe` needed. These two are **coupled** and auto-apply together at boot (server first, then UI).
+- **Shell** (the Electron app binary — everything in `src/main/` and the preload) can't hot-update itself, but on stable/prod it no longer requires a hand reinstall: an `electron-updater` background download installs the new build on the next relaunch (ENG-850). A manually-downloaded installer remains the fallback (ENG-849). The shell is **independent** of the UI/server pair and always needs a restart to take effect.
+
+That coupling split is why the user never sees a single combined "3 updates" prompt — the seamless UI/server pair and the restart-required shell are different surfaces. For *when* updates apply (boot vs. periodic checks, the server-down recovery exception, the `UI_UPDATE_MODE` escape hatch) and **what the user sees for each combination of pending updates**, see [docs/update-behavior.md](docs/update-behavior.md).
+
+UI OTA is gated by build kind (ENG-670): enabled in **`prod` builds only** — `stable`, `preview`, and `dev` builds always run their bundled renderer so testers see the branch under test.
 
 ### Server updates (source-aware)
 
@@ -355,6 +362,15 @@ How it works:
 4. The app checks `latest.json` at launch and every 4 hours (static file, no auth, no API rate limits)
 5. An update is taken only if it passes the safety gates: strictly newer than the installed UI (no downgrades), SHA-256 verified, the server-first coupling held (a failed server update defers the UI), and any declared `min_server_version` floor satisfied
 6. **The update is applied automatically at boot** — the UI reloads silently, no user choice involved. There is no manual/auto setting in Settings anymore (ENG-858); `UI_UPDATE_MODE` in `~/.anton/.env` remains as an env-only support/QA escape hatch, not a user-facing preference. A mid-session periodic check (every 4h) still only surfaces a banner and never auto-applies, so a long-running session can always see and apply an update without an unplanned reload. A freshly-swapped bundle must finish loading within 15s or it is rolled back and quarantined. See [docs/update-behavior.md](docs/update-behavior.md) for the full timing rules.
+
+### Shell updates (auto-update / installer)
+
+The Electron **shell** (`src/main/`, preload, native deps) can't hot-swap itself while running, so it updates one of two ways:
+
+- **Automatic (ENG-850)** — packaged `stable` and `prod` builds carry a channel-specific [`electron-updater`](https://www.electron.build/auto-update) feed under `downloads.mindshub.ai/mindshub-cowork/updates/`. It checks at boot and every 4h, downloads the new build in the background, and installs it on the next relaunch (auto mode installs on a normal quit; the quit path first drains any in-flight UI/server apply so the two can't overlap). Enabled by default on **stable** (the first rollout ring); **prod** is opt-in via `SHELL_AUTO_UPDATE_ENABLED=true`, and `=false` is the stable emergency kill switch. `preview`/`dev` fail closed. A downloaded target is persisted so the next launch can detect and report a shell update that didn't actually apply. Signature/checksum failures are terminal for auto-update and fall back to the manual path.
+- **Manual notice (ENG-849)** — a `prod`-only fallback (also shown when auto-update is disabled or has failed): the poll compares the installed shell CalVer against `shellVersion` in `latest.json` and, if newer, shows a dismissible "New version available — Download" banner (per-version dismissal) linking to the installer on `downloads.mindshub.ai`. **Detection only** — it never downloads or installs.
+
+Both surface in the sidebar and in Settings → Updates. See `src/main/shell-auto-update-runtime.ts` (auto-update state machine) and `checkForShellUpdate()` in `src/main/updater.ts` (manual notice).
 
 #### Publishing
 
