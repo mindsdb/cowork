@@ -242,8 +242,7 @@ describe('OnboardingScreen — BYOK setup-deferral hands the model up (ENG-922)'
     expect(onComplete).not.toHaveBeenCalled();
   });
 });
-// ENG-1440 review: the first version of this guard had two holes, both of which
-// reopened the admin-only write.
+// ENG-1440 review: two holes that reopened the admin-only write.
 describe('OnboardingScreen — org-mode guard holds on the unhappy paths', () => {
   beforeEach(() => {
     hostMock.isWeb = true;
@@ -255,7 +254,7 @@ describe('OnboardingScreen — org-mode guard holds on the unhappy paths', () =>
     hostMock.validateProvider = vi.fn(async () => ({ ok: true }));
   });
 
-  // A /health blip must not read as "confirmed non-org" and unlock the write.
+  // A /health blip must not read as "confirmed non-org".
   it('a failed health check leaves orgMode unknown — no auto-finalize write', async () => {
     hostMock.checkConfigured = vi.fn(async () => { throw new Error('network'); });
 
@@ -266,7 +265,7 @@ describe('OnboardingScreen — org-mode guard holds on the unhappy paths', () =>
     expect(hostMock.saveSettings).not.toHaveBeenCalled();
   });
 
-  // config_ready can lag org_mode, so a member can still reach the key form.
+  // config_ready can lag org_mode, so members still reach the key form.
   it('manual Connect in an org deployment refuses instead of 403-ing', async () => {
     hostMock.checkConfigured = vi.fn(async () => ({
       configured: false, provider: '', orgMode: true,
@@ -282,5 +281,47 @@ describe('OnboardingScreen — org-mode guard holds on the unhappy paths', () =>
     await waitFor(() => expect(screen.getByText(/Ask an org admin/i)).toBeInTheDocument());
     expect(syncSettingsToDb).not.toHaveBeenCalled();
     expect(hostMock.validateProvider).not.toHaveBeenCalled();
+  });
+});
+
+// Unknown orgMode fails open here (the auto guard fails closed).
+describe('OnboardingScreen — unknown orgMode still lets a user finish setup', () => {
+  beforeEach(() => {
+    hostMock.isWeb = true;
+    hostMock.isElectron = false;
+    keycloakMock.authenticated = false;
+    hostMock.checkConfigured = vi.fn(async () => { throw new Error('network'); });
+    hostMock.checkInstall = vi.fn(async () => ({ antonInstalled: true, serverDepsReady: true }));
+    hostMock.validateProvider = vi.fn(async () => ({ ok: true }));
+    hostMock.saveSettings = vi.fn(async () => true);
+    syncSettingsToDb.mockClear();
+    syncSettingsToDb.mockResolvedValue(true);
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({}) })));
+  });
+
+  it('manual Connect proceeds when the health check failed', async () => {
+    render(<OnboardingScreen coworker={coworker} onComplete={() => {}} />);
+    await waitFor(() => expect(screen.getByText('MindsHub API Key')).toBeInTheDocument());
+    fireEvent.change(document.querySelector('input[placeholder="mdb_..."]'), {
+      target: { value: 'mdb_test' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^Connect$/i }));
+
+    await waitFor(() => expect(syncSettingsToDb).toHaveBeenCalled());
+    expect(screen.queryByText(/Ask an org admin/i)).toBeNull();
+  });
+
+  it('a rejected write with orgMode unknown names the org cause', async () => {
+    syncSettingsToDb.mockResolvedValue(false); // the 403 shape
+    render(<OnboardingScreen coworker={coworker} onComplete={() => {}} />);
+    await waitFor(() => expect(screen.getByText('MindsHub API Key')).toBeInTheDocument());
+    fireEvent.change(document.querySelector('input[placeholder="mdb_..."]'), {
+      target: { value: 'mdb_test' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^Connect$/i }));
+
+    await waitFor(() =>
+      expect(screen.getByText(/an org admin must configure the model/i)).toBeInTheDocument(),
+    );
   });
 });
