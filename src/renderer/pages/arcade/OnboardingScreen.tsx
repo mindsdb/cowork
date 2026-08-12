@@ -270,9 +270,7 @@ export default function OnboardingScreen({
       .catch(() => {
         if (cancelled) return;
         setWebConfigured(false); // unreachable → fall back to the full flow
-        // orgMode stays null: unreachable is not "confirmed non-org". Setting it
-        // false here would reopen the admin-only write (a /health blip after the
-        // SSO redirect is plausible) — the 403 loop this guards against.
+        // orgMode stays null: unreachable is not "confirmed non-org".
       });
     return () => { cancelled = true; };
   }, []);
@@ -356,9 +354,9 @@ export default function OnboardingScreen({
   // stranding the user on a "could not save" error mid-download (see
   // resolveFinalizeOutcome). Any other failure surfaces as a retryable error.
   // Shared by every finalize path so they can't drift.
-  // Org deployments own provider config; only `manage-organization` may write it.
-  // Every finalize path sends planning/coding provider, so a member submitting
-  // these forms hits the same 403. Say who can fix it, not "save failed".
+  // Provider config is admin-only in org mode, and every finalize path writes it.
+  // Allows an unknown orgMode through (unlike the auto-finalize guard, which is
+  // unprompted): blocking would misfire on a desktop user whose /health blipped.
   const orgProviderWriteBlocked = (): boolean => {
     if (orgMode !== true) return false;
     setPhase('error');
@@ -367,8 +365,7 @@ export default function OnboardingScreen({
   };
 
   const finalizeSettings = async (lines: string[]) => {
-    // Every finalize path lands here (saveFinal, and handleConnectLlm directly),
-    // so a new one can't reopen the trap by forgetting its own check.
+    // The one funnel: saveFinal and handleConnectLlm both land here.
     if (orgProviderWriteBlocked()) return;
     const res = await persistOnboarding(
       {
@@ -384,7 +381,12 @@ export default function OnboardingScreen({
     if (outcome.action === 'error') {
       finalizedRef.current = false; // allow a retry
       setPhase('error');
-      setErrorMsg(outcome.error);
+      // Rejected write + unknown orgMode is most likely the admin-only 403.
+      setErrorMsg(
+        !res.ok && res.dbSyncFailed && orgMode === null
+          ? `${outcome.error} If this is an organization workspace, an org admin must configure the model.`
+          : outcome.error,
+      );
       return;
     }
     if (outcome.action === 'defer') {
