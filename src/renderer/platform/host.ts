@@ -456,6 +456,27 @@ export async function checkConfigured(): Promise<{
   };
 }
 
+// Upper bound on how long the loading screen waits for the boot sequence before
+// routing anyway. The main-side gate normally resolves on its own (fast when no
+// update is pending; after the reinstall+reload when one is) — this is only a
+// safety net against a barrier that never settles (e.g. a hung update check with
+// no internal timeout). Generous enough to cover a real server reinstall.
+const BOOT_READY_TIMEOUT_MS = 45_000;
+
+// Hold here until main reports the boot sequence has settled — the sidecar start
+// decision plus the boot-time update poll (ENG-749). On the terminal route the
+// caller stays on the loading screen across this await, so a boot update that
+// restarts the server and reloads the window can't first flash the chat UI in a
+// "Connect a provider" / server-down state. Web has no bridge → resolves at once.
+// Fail-open on timeout so a stuck barrier can never trap the user in loading.
+export async function awaitBootReady(timeoutMs = BOOT_READY_TIMEOUT_MS): Promise<void> {
+  if (!(isElectron && typeof bridge.awaitBootReady === 'function')) return;
+  await Promise.race([
+    Promise.resolve(bridge.awaitBootReady()).catch(() => {}),
+    new Promise<void>((resolve) => setTimeout(resolve, timeoutMs)),
+  ]);
+}
+
 export async function validateProvider(
   provider: string,
   apiKey: string,
@@ -981,6 +1002,7 @@ export const host = {
   restartServer,
   checkInstall,
   checkConfigured,
+  awaitBootReady,
   validateProvider,
   startInstall,
   cancelInstall,

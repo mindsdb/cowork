@@ -132,6 +132,11 @@ async function reloadWithUiHealthCheck(getWindow: GetWindow): Promise<void> {
 // the manual IPC apply and the boot/periodic poll. Args are "apply this",
 // already resolved against update mode + server health by the caller.
 async function applyUpdatesUnlocked(getWindow: GetWindow, applyServer: boolean, applyUi: boolean): Promise<boolean> {
+  // Surface progress before the (multi-second, server-down) reinstall so the
+  // loading screen / in-app overlay shows "Updating…" instead of a bare
+  // config-not-ready state (ENG-749). The server-updater emits finer-grained
+  // 'downloading'/'restarting' phases too; this is the guaranteed first frame.
+  if (applyServer) sendStatus(getWindow, { phase: 'downloading' });
   const serverOk = applyServer ? await applyServerUpdate() : true;
   // Never activate a UI bundle on top of a server update that failed (and thus
   // rolled back to the old server) — the tandem coupling only holds when the
@@ -243,6 +248,11 @@ export function initUpdater(
   rendererReady: Promise<void>,
   getMode: () => 'auto' | 'manual',
   shellAutoUpdateEnabled = false,
+  // Called once the boot poll has settled — nothing left to apply, or an update
+  // was applied and the window reload kicked off. The renderer's loading gate
+  // (BOOT_AWAIT_READY) awaits this so it never routes into the app mid-update
+  // (ENG-749). Idempotent; safe if the boot poll throws.
+  onBootPollComplete: () => void = () => {},
 ) {
   configureShellAutoUpdate({
     enabled: shellAutoUpdateEnabled,
@@ -339,14 +349,20 @@ export function initUpdater(
   }
 
   rendererReady.then(async () => {
-    console.log(`[updater] boot check (mode: ${getMode()})...`);
-    await poll(true).catch(err => console.error('[updater] boot check failed:', err));
+    try {
+      console.log(`[updater] boot check (mode: ${getMode()})...`);
+      await poll(true).catch(err => console.error('[updater] boot check failed:', err));
 
-    // The boot poll has now brought the server current (server-first). Re-verify
-    // a constrained OTA cache that booted bundled (fail-closed) and, if it's now
-    // compatible, swap it in through the health-checked reload so a corrupt or
-    // hanging bundle still self-heals.
-    await settleConstrainedCache(getWindow).catch(err => console.error('[updater] compat settle failed:', err));
+      // The boot poll has now brought the server current (server-first). Re-verify
+      // a constrained OTA cache that booted bundled (fail-closed) and, if it's now
+      // compatible, swap it in through the health-checked reload so a corrupt or
+      // hanging bundle still self-heals.
+      await settleConstrainedCache(getWindow).catch(err => console.error('[updater] compat settle failed:', err));
+    } finally {
+      // Release the renderer's loading gate whether the poll applied an update,
+      // found nothing, or threw — the gate must never hang the loading screen.
+      onBootPollComplete();
+    }
 
     const timer = setInterval(() => {
       console.log(`[updater] periodic check (mode: ${getMode()})...`);

@@ -119,6 +119,11 @@ describe('web mode (no bridge)', () => {
     await expect(host.mindshubRefresh()).resolves.toMatchObject({ ok: false });
     await expect(host.mindshubFinalize()).resolves.toMatchObject({ ok: false });
   });
+
+  it('awaitBootReady is an immediate no-op without a bridge (ENG-749)', async () => {
+    const host = await importHost();
+    await expect(host.awaitBootReady()).resolves.toBeUndefined();
+  });
 });
 
 describe('electron mode (bridge present)', () => {
@@ -180,6 +185,24 @@ describe('electron mode (bridge present)', () => {
     await expect(host.serverStart()).resolves.toEqual({ ok: false, reason: 'unsupported' });
     await expect(host.getKeychainPref()).resolves.toBe(false);
     await expect(host.mindshubGetCachedToken()).resolves.toBeNull();
+  });
+
+  it('awaitBootReady delegates to the bridge and resolves (ENG-749)', async () => {
+    const awaitBootReady = vi.fn(async () => ({ ready: true }));
+    (window as unknown as Record<string, unknown>).antontron = { awaitBootReady };
+    const host = await importHost();
+    await expect(host.awaitBootReady()).resolves.toBeUndefined();
+    expect(awaitBootReady).toHaveBeenCalledOnce();
+  });
+
+  it('awaitBootReady fails open on timeout when the bridge never settles (ENG-749)', async () => {
+    // A hung boot barrier must never trap the loading screen — the renderer-side
+    // timeout resolves the wait regardless.
+    (window as unknown as Record<string, unknown>).antontron = {
+      awaitBootReady: () => new Promise(() => {}),
+    };
+    const host = await importHost();
+    await expect(host.awaitBootReady(10)).resolves.toBeUndefined();
   });
 
   it('getUIVersion unwraps both string and {ui, app} object shapes', async () => {

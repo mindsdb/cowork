@@ -118,6 +118,15 @@ function shellAutoUpdateEnabled(): boolean {
 // init() can call through to checkConfigured().
 let bootServerSettled: Promise<void> = Promise.resolve();
 
+// Resolves once the boot-time update poll has settled — i.e. it either applied a
+// server/UI update (which restarts the sidecar and reloads the window) or
+// decided nothing needs applying. The renderer awaits this (via BOOT_AWAIT_READY)
+// before leaving the loading screen for the chat UI, so a boot update can't flash
+// the app in a server-down "Connect a provider" state and then reload (ENG-749).
+// Defaults to resolved so builds/paths that never start the updater (dev,
+// unpackaged, DEV_MODE) don't strand the gate.
+let bootUpdateSettled: Promise<void> = Promise.resolve();
+
 // Ask the running server for its readiness. Reads `config_ready` from /health —
 // the SAME signal the in-app chat gate uses (settings.config_status) — so
 // routing and the chat gate read one identical value and cannot disagree.
@@ -163,6 +172,21 @@ async function checkConfigured(): Promise<{ configured: boolean; provider: strin
   if (vars.ANTON_ANTHROPIC_API_KEY) return { configured: true, provider: 'anthropic' };
   if (vars.ANTON_OPENAI_API_KEY) return { configured: true, provider: 'openai' };
   return { configured: false, provider: '' };
+}
+
+// Map a server-updater notification onto the UI update-status shape the
+// renderer's onUpdateStatus subscription already understands, so a server
+// download surfaces progress on the loading screen and the in-app overlay
+// (ENG-749). Only forward "busy" phases — errors keep their own
+// SERVER_UPDATE_STATUS channel and must never leave the UI stuck in a spinner.
+function serverPhaseToUiStatus(
+  payload: Record<string, unknown>,
+): { phase: string; version?: string } | null {
+  const phase = typeof payload.phase === 'string' ? payload.phase : '';
+  const version = typeof payload.to === 'string' ? payload.to : undefined;
+  if (phase === 'downloading') return { phase: 'downloading', ...(version ? { version } : {}) };
+  if (phase === 'restarting') return { phase: 'reloading' };
+  return null;
 }
 
 function httpRequest(
@@ -1135,6 +1159,19 @@ function setupIPC() {
     return checkConfigured();
   });
 
+  ipcMain.handle(IPC.BOOT_AWAIT_READY, async () => {
+    // Block until the sidecar start decision AND the boot-time update poll have
+    // settled. The renderer holds the loading screen across this await, so a
+    // boot update (if any) has already reinstalled the server / reloaded the
+    // window before we let the UI route into the chat app — no server-down
+    // "Connect a provider" flash (ENG-749). Errors in either barrier are
+    // swallowed: a failed boot must still release the gate, never hang it. The
+    // renderer wraps this call in its own timeout as a final safety net.
+    try { await bootServerSettled; } catch { /* boot start failed */ }
+    try { await bootUpdateSettled; } catch { /* boot update failed */ }
+    return { ready: true };
+  });
+
   ipcMain.handle(
     IPC.SETTINGS_VALIDATE,
     async (_event, provider: string, apiKey: string, baseUrl?: string, model?: string) => {
@@ -1453,10 +1490,17 @@ app.whenReady().then(async () => {
   // Bounded by primeLoginShellPath()'s own timeout — checkInstallStatus and
   // the server spawn below both resolve uv through the PATH it caches.
   await primeLoginShellPath();
+  // Boot-update barrier (ENG-749): assigned here (before the renderer can invoke
+  // BOOT_AWAIT_READY) and resolved once the updater's boot poll finishes, or
+  // immediately below when no updater runs. `bootUpdateDone` is idempotent.
+  let resolveBootUpdate: () => void = () => {};
+  bootUpdateSettled = new Promise<void>((resolve) => { resolveBootUpdate = resolve; });
+  const bootUpdateDone = () => resolveBootUpdate();
   checkInstallStatus().then(async ({ antonInstalled }) => {
     if (!antonInstalled) {
       console.log('[server] skipped: cowork-server not installed; setup screen will handle.');
       resolveBootServer();
+      bootUpdateDone();  // no boot poll runs on the not-installed path; don't leave the gate pending
       return;
     }
     // If MindsHub SSO tokens are stored, silently refresh before the Python
@@ -1549,19 +1593,29 @@ app.whenReady().then(async () => {
     // its health probe, so this can't strand a previously-working install.
     setUpdateNotifier((payload) => {
       mainWindow?.webContents.send(IPC.SERVER_UPDATE_STATUS, payload);
+      // Mirror server-update progress onto the UI status channel the renderer
+      // already listens to, so the loading screen (and in-app overlay) can show
+      // what's happening during a boot/periodic server download (ENG-749).
+      const mirrored = serverPhaseToUiStatus(payload);
+      if (mirrored) mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, mirrored);
     });
 
     const devMode = getDevMode();
     if (app.isPackaged && !devMode && mainWindow) {
-      initUpdater(() => mainWindow, rendererReady, getUpdateMode, shellAutoUpdateEnabled());
+      initUpdater(() => mainWindow, rendererReady, getUpdateMode, shellAutoUpdateEnabled(), bootUpdateDone);
     } else if (!app.isPackaged) {
       console.log('[updater] skipped — not a packaged build');
+      bootUpdateDone();  // no boot poll → nothing for the loading gate to wait on
     } else if (devMode) {
       console.log(`[updater] skipped — DEV_MODE=${devMode}`);
+      bootUpdateDone();
+    } else {
+      bootUpdateDone();  // no window to update against
     }
   }).catch((err) => {
     console.error('[server] check-and-start failed:', err);
     resolveBootServer();  // never leave checkConfigured() awaiting a stuck boot
+    bootUpdateDone();     // ...or the loading gate awaiting a boot that never ran
   });
 
   app.on('activate', () => {

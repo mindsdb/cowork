@@ -38,6 +38,11 @@ export const IPC = {
   SERVER_RESTART: 'server:restart',
   SERVER_UPDATE_STATUS: 'server:update-status',
 
+  // Boot — renderer awaits this before leaving the loading screen for the app,
+  // so a boot-time server/UI update (which restarts the sidecar and reloads the
+  // window) can't flash the chat UI in a server-down state first (ENG-749).
+  BOOT_AWAIT_READY: 'boot:await-ready',
+
   // Auth
   AUTH_GET_ACCESS_TOKEN: 'auth:get-access-token',
   AUTH_LOGOUT: 'auth:logout',

@@ -697,6 +697,9 @@ async function _gitUpdate(uv: string, coworkVcs: VcsInfo): Promise<ServerUpdateR
     const wasRunning = isServerRunning();
     if (wasRunning) await stopServer();
 
+    // Progress for the loading screen / in-app overlay (ENG-749) — the reinstall
+    // below takes the sidecar down for several seconds.
+    _notify?.({ phase: 'downloading', to: (coworkRemote || prevCowork).slice(0, 7) });
     const upgrade = await installGit(uv, coworkRef, antonRef);
     if (!upgrade.ok) {
       console.error('[server-updater] git reinstall failed:', upgrade.stderr);
@@ -704,6 +707,7 @@ async function _gitUpdate(uv: string, coworkVcs: VcsInfo): Promise<ServerUpdateR
       return { updated: false, previousVersion: prevCowork, error: upgrade.stderr };
     }
 
+    _notify?.({ phase: 'restarting' });
     const result = await startServer();
     if (!result.ok) {
       console.error('[server-updater] new commit failed health check, rolling back...');
@@ -787,6 +791,9 @@ async function _pypiUpdate(uv: string): Promise<ServerUpdateResult> {
     // The rollback pin is resolved up front: fetching it mid-failure would
     // fail open on a flaky network and leave the rollback unresolvable.
     const [toWithArgs, fromWithArgs] = await Promise.all([antonWithArgs(to), antonWithArgs(from)]);
+    // Progress for the loading screen / in-app overlay (ENG-749) — the reinstall
+    // below takes the sidecar down for several seconds.
+    _notify?.({ phase: 'downloading', to });
     const upgrade = await runUv(
       uv,
       ['tool', 'install', '--force', '--reinstall', '--python', PYTHON_RANGE, `${PACKAGE_NAME}==${to}`, ...toWithArgs],
@@ -797,6 +804,7 @@ async function _pypiUpdate(uv: string): Promise<ServerUpdateResult> {
       return { updated: false, previousVersion: from, error: upgrade.stderr };
     }
 
+    _notify?.({ phase: 'restarting' });
     const result = await startServer();
     if (!result.ok) {
       console.error('[server-updater] new version failed health check, rolling back...');
