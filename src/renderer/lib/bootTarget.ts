@@ -68,12 +68,10 @@ export async function resolveBootTarget(
     if (consented && configured) {
       const status = await host.checkInstall();
       if (!status.antonInstalled || !status.serverDepsReady) return { target: 'setup', orgMode };
-      // Configured + installed → headed into the app. Wait for the boot sequence
-      // to settle first: a pending boot-time server/UI update restarts the
-      // sidecar and reloads the window, and routing to 'terminal' before that
-      // would flash the chat UI in a server-down "Connect a provider" state
-      // (ENG-749). Fast when nothing is pending; host.awaitBootReady is
-      // bounded by its own timeout so this can't hang the loading screen.
+      // Headed into the app — but wait for the boot sequence to settle first, so
+      // a pending boot-time update (which restarts the sidecar) doesn't flash the
+      // chat UI in a server-down state before reloading (ENG-749). Fast when
+      // nothing is pending.
       await host.awaitBootReady();
       return { target: 'terminal', orgMode };
     }

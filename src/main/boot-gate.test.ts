@@ -24,11 +24,9 @@ describe('awaitBootSettled', () => {
     expect(done).toBe(true);
   });
 
-  // ENG-749 regression: the gate must track the orchestration's ACTUAL
-  // completion, not an internal clock. A slow primary attempt followed by a
-  // rollback can legitimately run for many minutes — well past the removed 780s
-  // budget — and the gate must stay closed the whole time, releasing only when
-  // the barrier settles.
+  // ENG-749 regression: the gate tracks the barrier's real completion, not an
+  // internal clock — a slow attempt + rollback can run for minutes and it must
+  // stay closed the whole time.
   it('never releases on an internal deadline, even past the removed worst-case budget', async () => {
     vi.useFakeTimers();
     let done = false;

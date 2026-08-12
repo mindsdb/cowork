@@ -233,13 +233,10 @@ export function getCachedVersion(): string | null {
   return isServingOta() ? readSlotVersion(getCurrentDir()) : null;
 }
 
-// `timeoutMs` is a per-socket INACTIVITY timeout (fast-fails a dead connection);
-// `absoluteTimeoutMs` is a hard wall-clock deadline for the WHOLE operation
-// (spanning redirects) so a trickle-fed response that keeps resetting the
-// inactivity timeout can't keep the request — and the boot poll — alive forever
-// (ENG-749). Defaults the absolute deadline to the inactivity value, which is
-// right for the small manifest/probe callers; the bundle download passes a
-// larger one. Exported for the deadline regression test.
+// `timeoutMs` is a per-socket inactivity timeout; `absoluteTimeoutMs` is a hard
+// wall-clock deadline for the whole operation (spanning redirects), so a
+// trickle-fed response can't reset the inactivity timeout forever and hang the
+// boot poll (ENG-749). Exported for the deadline regression test.
 export function httpsGet(
   url: string,
   timeoutMs = 10000,
@@ -335,13 +332,10 @@ function rmDir(dir: string) {
   }
 }
 
-// UI bundle download: inactivity vs. absolute wall-clock caps. The absolute cap
-// bounds a trickle-fed download so it can't hang the boot poll (ENG-749), while
-// staying generous enough for a genuinely slow-but-progressing link.
+// Download caps: per-socket inactivity vs. absolute wall-clock (bounds a
+// trickle-fed download); tar cap force-kills a wedged extraction (ENG-749).
 const UI_DOWNLOAD_INACTIVITY_MS = 60_000;
 const UI_DOWNLOAD_DEADLINE_MS = 300_000;
-// Hard cap on tar extraction — a wedged tar must not hang the boot poll. Force
-// SIGKILL so a process ignoring SIGTERM is still reaped.
 const TAR_EXTRACT_TIMEOUT_MS = 60_000;
 
 /** Extracts a .tar.gz buffer into a target directory. Bounded so a wedged tar

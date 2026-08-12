@@ -457,17 +457,12 @@ export async function checkConfigured(): Promise<{
 }
 
 // Hold here until main reports the boot sequence has settled — the sidecar start
-// decision plus the boot-time update poll (ENG-749). On the terminal route the
-// caller stays on the loading screen across this await, so a boot update that
-// restarts the server and reloads the window can't first flash the chat UI in a
-// "Connect a provider" / server-down state. Web has no bridge → resolves at once.
-//
-// The authoritative upper bound lives in main (boot-gate.ts, sized from the real
-// reinstall/restart caps) — the renderer deliberately does NOT race its own
-// shorter timeout here: an earlier 45s fail-open sat inside the updater's
-// legitimate execution window and could release the gate mid-reinstall while the
-// sidecar was down, recreating the flash. `.catch` guards against an IPC-level
-// rejection (main always resolves the invoke within its budget).
+// decision plus the boot-time update poll (ENG-749). The caller stays on the
+// loading screen across this await, so a boot update can't first flash the chat
+// UI in a server-down state. The renderer deliberately races no timeout of its
+// own: main resolves on the poll's real completion (see boot-gate.ts), and a
+// shorter renderer cap could release the gate mid-reinstall. Web has no bridge →
+// resolves at once; `.catch` guards an IPC-level rejection.
 export async function awaitBootReady(): Promise<void> {
   if (!(isElectron && typeof bridge.awaitBootReady === 'function')) return;
   await Promise.resolve(bridge.awaitBootReady()).catch(() => {});

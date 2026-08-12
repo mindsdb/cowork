@@ -119,13 +119,10 @@ function shellAutoUpdateEnabled(): boolean {
 // init() can call through to checkConfigured().
 let bootServerSettled: Promise<void> = Promise.resolve();
 
-// Resolves once the boot-time update poll has settled — i.e. it either applied a
-// server/UI update (which restarts the sidecar and reloads the window) or
-// decided nothing needs applying. The renderer awaits this (via BOOT_AWAIT_READY)
-// before leaving the loading screen for the chat UI, so a boot update can't flash
-// the app in a server-down "Connect a provider" state and then reload (ENG-749).
-// Defaults to resolved so builds/paths that never start the updater (dev,
-// unpackaged, DEV_MODE) don't strand the gate.
+// Resolves once the boot-time update poll has settled (applied a server/UI
+// update and reloaded, or decided nothing needs applying). The renderer awaits
+// this via BOOT_AWAIT_READY before leaving the loading screen (ENG-749). Defaults
+// to resolved so paths that never start the updater don't strand the gate.
 let bootUpdateSettled: Promise<void> = Promise.resolve();
 
 // Ask the running server for its readiness. Reads `config_ready` from /health —
@@ -175,11 +172,10 @@ async function checkConfigured(): Promise<{ configured: boolean; provider: strin
   return { configured: false, provider: '' };
 }
 
-// Map a server-updater notification onto the UI update-status shape the
-// renderer's onUpdateStatus subscription already understands, so a server
-// download surfaces progress on the loading screen and the in-app overlay
-// (ENG-749). Only forward "busy" phases — errors keep their own
-// SERVER_UPDATE_STATUS channel and must never leave the UI stuck in a spinner.
+// Map a server-updater notification onto the UI update-status shape the renderer
+// already consumes, so a server download shows progress on the loading screen and
+// the in-app overlay (ENG-749). Only "busy" phases are forwarded — errors keep
+// their own channel and must never leave the UI stuck in a spinner.
 function serverPhaseToUiStatus(
   payload: Record<string, unknown>,
 ): { phase: string; version?: string } | null {
@@ -1161,14 +1157,8 @@ function setupIPC() {
   });
 
   ipcMain.handle(IPC.BOOT_AWAIT_READY, async () => {
-    // Block until the sidecar start decision AND the boot-time update poll have
-    // settled. The renderer holds the loading screen across this await, so a
-    // boot update (if any) has already reinstalled the server / reloaded the
-    // window before we let the UI route into the chat app — no server-down
-    // "Connect a provider" flash (ENG-749). awaitBootSettled resolves on the
-    // orchestration's ACTUAL completion (no wall-clock budget racing it) and
-    // absorbs a rejected barrier, so a failed boot still releases the gate. The
-    // poll is bounded by each operation's own timeout, so this cannot hang.
+    // The renderer holds the loading screen across this await, so a boot update
+    // has already reinstalled/reloaded before the UI routes into the app (ENG-749).
     await awaitBootSettled([bootServerSettled, bootUpdateSettled]);
     return { ready: true };
   });
@@ -1491,8 +1481,7 @@ app.whenReady().then(async () => {
   // Bounded by primeLoginShellPath()'s own timeout — checkInstallStatus and
   // the server spawn below both resolve uv through the PATH it caches.
   await primeLoginShellPath();
-  // Boot-update barrier (ENG-749): assigned here (before the renderer can invoke
-  // BOOT_AWAIT_READY) and resolved once the updater's boot poll finishes, or
+  // Boot-update barrier (ENG-749): resolved once the boot poll finishes, or
   // immediately below when no updater runs. `bootUpdateDone` is idempotent.
   let resolveBootUpdate: () => void = () => {};
   bootUpdateSettled = new Promise<void>((resolve) => { resolveBootUpdate = resolve; });
@@ -1501,7 +1490,7 @@ app.whenReady().then(async () => {
     if (!antonInstalled) {
       console.log('[server] skipped: cowork-server not installed; setup screen will handle.');
       resolveBootServer();
-      bootUpdateDone();  // no boot poll runs on the not-installed path; don't leave the gate pending
+      bootUpdateDone();  // no boot poll on this path — don't strand the gate
       return;
     }
     // If MindsHub SSO tokens are stored, silently refresh before the Python
@@ -1594,9 +1583,8 @@ app.whenReady().then(async () => {
     // its health probe, so this can't strand a previously-working install.
     setUpdateNotifier((payload) => {
       mainWindow?.webContents.send(IPC.SERVER_UPDATE_STATUS, payload);
-      // Mirror server-update progress onto the UI status channel the renderer
-      // already listens to, so the loading screen (and in-app overlay) can show
-      // what's happening during a boot/periodic server download (ENG-749).
+      // Mirror progress onto the UI status channel so the loading screen and
+      // in-app overlay show it during a server download (ENG-749).
       const mirrored = serverPhaseToUiStatus(payload);
       if (mirrored) mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, mirrored);
     });

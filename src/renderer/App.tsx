@@ -89,11 +89,8 @@ export default function App() {
   // Guards the setupError Retry button so a double-click can't fan out redundant
   // concurrent handshakes.
   const [retrying, setRetrying] = useState(false);
-  // ENG-749: progress line shown under the welcome orb while the loading screen
-  // is held open through a boot-time server/UI update, so the user sees that
-  // something is downloading rather than a silent stall. Driven by the same
-  // update-status pushes the in-app overlay uses (server phases are mirrored
-  // onto that channel in main).
+  // ENG-749: progress line under the welcome orb while the loading screen is held
+  // open through a boot-time update, so a download isn't a silent stall.
   const [bootStatus, setBootStatus] = useState<string | null>(null);
   // No setter needed here — the onboarding corner no longer offers a skin
   // toggle (light/dark only), but a page already in the 8bit skin (set via
@@ -127,10 +124,8 @@ export default function App() {
     applyArcadePreset(skin);
   }, [theme, skin]);
 
-  // Reflect boot-time update progress on the loading screen (ENG-749). Main
-  // pushes 'downloading' when a server/UI update starts applying and 'reloading'
-  // right before the window reload; anything else clears the line. Mounted for
-  // the app's lifetime so the message is live while init() holds on the gate.
+  // Reflect boot-time update progress on the loading screen (ENG-749). Mounted
+  // for the app's lifetime so the message is live while init() holds on the gate.
   useEffect(() => {
     return host.onUpdateStatus((status) => {
       const phase = status?.phase;
