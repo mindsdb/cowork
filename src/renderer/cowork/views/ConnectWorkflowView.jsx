@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Monitor, Plug, BriefcaseBusiness, X } from 'lucide-react';
 import Ico from '../components/Icons';
-import { Badge, Button } from '../components/ui';
+import { Badge, Button, Tooltip } from '../components/ui';
 import {
   fetchIntegrations,
   startConnectorOAuth,
@@ -1027,15 +1027,16 @@ export default function ConnectWorkflowView({ onClose }) {
   return (
     <div className="customize-view">
       <div className="customize-header">
-        <Button
-          icon
-          variant="subtle"
-          aria-label="Back to connections"
-          title="Back to connections"
-          onClick={handleBack}
-        >
-          {Ico.chevLeft(16)}
-        </Button>
+        <Tooltip content="Back to connections">
+          <Button
+            icon
+            variant="subtle"
+            aria-label="Back to connections"
+            onClick={handleBack}
+          >
+            {Ico.chevLeft(16)}
+          </Button>
+        </Tooltip>
         <div className="customize-header-title">Connect Apps and Data</div>
       </div>
 

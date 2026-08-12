@@ -5,6 +5,7 @@ import OnboardingScreen from './pages/arcade/OnboardingScreen';
 import { COWORKERS } from './pages/arcade/CoworkerSelect';
 import CoworkApp from './CoworkApp';
 import OrbitMorph from './cowork/components/ui/OrbitMorph';
+import { Tooltip } from './cowork/components/ui/Tooltip';
 import { host } from './platform/host';
 import { loadSkin, persistSkin } from './lib/skins';
 import { syncSettingsToDb, syncModelsToDbWithRetry } from './lib/syncSettings';
@@ -270,24 +271,26 @@ export default function App() {
           above the theme toggle. */}
       {isArcadePage && (
         <>
-          <button
-            onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
-            title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
-            aria-label="Toggle colour theme"
-            className="arcade-theme-toggle"
-            style={{ zIndex: 200 }}
-          >
-            {theme === 'dark' ? <SunIcon size={15} /> : <MoonIcon size={15} />}
-          </button>
-          <button
-            onClick={() => setSkin((s) => (s === '8bit' ? 'normal' : '8bit'))}
-            title={skin === '8bit' ? 'Switch 8-bit arcade style off' : 'Switch style to 8-Bit Arcade mode'}
-            aria-label="Toggle 8-bit arcade style"
-            className="arcade-theme-toggle arcade-skin-toggle"
-            style={{ zIndex: 200 }}
-          >
-            <GamepadIcon size={15} />
-          </button>
+          <Tooltip content={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}>
+            <button
+              onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+              aria-label="Toggle colour theme"
+              className="arcade-theme-toggle"
+              style={{ zIndex: 200 }}
+            >
+              {theme === 'dark' ? <SunIcon size={15} /> : <MoonIcon size={15} />}
+            </button>
+          </Tooltip>
+          <Tooltip content={skin === '8bit' ? 'Switch 8-bit arcade style off' : 'Switch style to 8-Bit Arcade mode'}>
+            <button
+              onClick={() => setSkin((s) => (s === '8bit' ? 'normal' : '8bit'))}
+              aria-label="Toggle 8-bit arcade style"
+              className="arcade-theme-toggle arcade-skin-toggle"
+              style={{ zIndex: 200 }}
+            >
+              <GamepadIcon size={15} />
+            </button>
+          </Tooltip>
         </>
       )}
     </>

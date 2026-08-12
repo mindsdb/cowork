@@ -8,6 +8,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Ico from './Icons';
+import { Tooltip } from './ui';
 import { relativeAge } from '../lib/formatTime';
 
 const FONT_BODY = "var(--font-body, 'Inter', system-ui, sans-serif)";
@@ -46,23 +47,24 @@ function Row({ task, onSelect, onDelete }) {
         {task.title || 'Untitled'}
       </span>
       {hover ? (
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); onDelete?.(); }}
-          onMouseEnter={() => setTrashHover(true)}
-          onMouseLeave={() => setTrashHover(false)}
-          title="Delete this task"
-          aria-label="Delete this task"
-          style={{
-            background: 'transparent', border: 0, padding: 0,
-            display: 'inline-flex', alignItems: 'center',
-            cursor: 'pointer',
-            color: trashHover ? 'var(--danger)' : 'var(--ink-3)',
-            transition: 'color 120ms ease',
-          }}
-        >
-          {Ico.trash(13)}
-        </button>
+        <Tooltip content="Delete this task">
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onDelete?.(); }}
+            onMouseEnter={() => setTrashHover(true)}
+            onMouseLeave={() => setTrashHover(false)}
+            aria-label="Delete this task"
+            style={{
+              background: 'transparent', border: 0, padding: 0,
+              display: 'inline-flex', alignItems: 'center',
+              cursor: 'pointer',
+              color: trashHover ? 'var(--danger)' : 'var(--ink-3)',
+              transition: 'color 120ms ease',
+            }}
+          >
+            {Ico.trash(13)}
+          </button>
+        </Tooltip>
       ) : (
         <span style={{
           fontFamily: 'var(--font-mono)', fontSize: 10.5,
@@ -191,18 +193,20 @@ export default function RecentsModal({ open, onClose, tasks = [], onSelect, onDe
           }}>
             {filtered.length} of {tasks.length}
           </span>
-          <button
-            type="button"
-            onClick={onClose}
-            title="Close"
-            style={{
-              width: 26, height: 26, borderRadius: 6,
-              background: 'transparent', border: 0,
-              color: 'var(--ink-3)', cursor: 'pointer',
-              display: 'inline-grid', placeItems: 'center',
-              fontSize: 18, lineHeight: 1,
-            }}
-          >×</button>
+          <Tooltip content="Close">
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              style={{
+                width: 26, height: 26, borderRadius: 6,
+                background: 'transparent', border: 0,
+                color: 'var(--ink-3)', cursor: 'pointer',
+                display: 'inline-grid', placeItems: 'center',
+                fontSize: 18, lineHeight: 1,
+              }}
+            >×</button>
+          </Tooltip>
         </div>
 
         <div style={{

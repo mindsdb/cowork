@@ -12,7 +12,7 @@
 
 import { useEffect, useState } from 'react';
 import Ico from '../components/Icons';
-import { Badge, Button, Field } from '../components/ui';
+import { Badge, Button, Field, Tooltip } from '../components/ui';
 import ChannelBindings from './ChannelBindings';
 import {
   fetchChannelPlugins,
@@ -271,9 +271,11 @@ export default function ChannelsView() {
     <div className="channels-view">
       <header className="channels-top">
         <span>Channels</span>
-        <Button variant="subtle" icon onClick={refresh} title="Refresh" aria-label="Refresh">
-          {Ico.refresh(15)}
-        </Button>
+        <Tooltip content="Refresh">
+          <Button variant="subtle" icon onClick={refresh} aria-label="Refresh">
+            {Ico.refresh(15)}
+          </Button>
+        </Tooltip>
       </header>
       <div className="channels-lede">
         <p className="channels-intro">

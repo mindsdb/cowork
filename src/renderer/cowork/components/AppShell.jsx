@@ -1,5 +1,6 @@
 import MobileShell from './MobileShell';
 import Ico from './Icons';
+import { Tooltip } from './ui';
 import { host } from '../../platform/host';
 
 // The desktop/tablet shell chrome, extracted from App.jsx: the floating
@@ -49,27 +50,29 @@ export default function AppShell({
       {/* Floating hamburger — reopens a collapsed sidebar (chat route,
           desktop only). Absolute over the window frame; DOM order doesn't
           matter since it's positioned. */}
-      <button
-        onClick={onOpenSidebar}
-        title="Open sidebar"
-        className="icon-btn"
-        style={{
-          position: 'absolute',
-          // Electron: left 97 clears the macOS traffic lights (they end ~x:80).
-          // Web has none, so 18 sits flush with the edge.
-          top: 18, left: host.isWeb ? 18 : 97,
-          zIndex: 10,
-          WebkitAppRegion: 'no-drag',
-          opacity: showFloatingHamburger ? 1 : 0,
-          transform: showFloatingHamburger ? 'translateX(0)' : 'translateX(-8px)',
-          pointerEvents: showFloatingHamburger ? 'auto' : 'none',
-          transition:
-            'opacity 280ms cubic-bezier(0.32, 0.72, 0, 1) 120ms, ' +
-            'transform 360ms cubic-bezier(0.32, 0.72, 0, 1) 80ms',
-        }}
-      >
-        {Ico.sidebarExpandRight(15)}
-      </button>
+      <Tooltip content="Open sidebar">
+        <button
+          onClick={onOpenSidebar}
+          aria-label="Open sidebar"
+          className="icon-btn"
+          style={{
+            position: 'absolute',
+            // Electron: left 97 clears the macOS traffic lights (they end ~x:80).
+            // Web has none, so 18 sits flush with the edge.
+            top: 18, left: host.isWeb ? 18 : 97,
+            zIndex: 10,
+            WebkitAppRegion: 'no-drag',
+            opacity: showFloatingHamburger ? 1 : 0,
+            transform: showFloatingHamburger ? 'translateX(0)' : 'translateX(-8px)',
+            pointerEvents: showFloatingHamburger ? 'auto' : 'none',
+            transition:
+              'opacity 280ms cubic-bezier(0.32, 0.72, 0, 1) 120ms, ' +
+              'transform 360ms cubic-bezier(0.32, 0.72, 0, 1) 80ms',
+          }}
+        >
+          {Ico.sidebarExpandRight(15)}
+        </button>
+      </Tooltip>
       {mainEl}
     </>
   );
