@@ -4560,14 +4560,3 @@ body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169
 @container (max-width: 600px) {
   .artifacts-grid { grid-template-columns: 1fr; }
 }
-
-/* Card and list status-cell are each their own query container, with
-   independent thresholds (the card has padding; the cell is the bare pill
-   area). Below each threshold the access chip drops its text label to
-   icon-only (hover keeps it discoverable) so "Unpublished changes" still fits.
-   Class is `cw-artifact-card` (not `artifact-card`) to avoid a legacy
-   `.artifact-card` rule elsewhere in this file. */
-.cw-artifact-card { container-type: inline-size; container-name: artcard; }
-.cw-status-cell  { container-type: inline-size; container-name: statuscell; }
-@container artcard (max-width: 400px)   { .cw-access-label { display: none; } }
-@container statuscell (max-width: 380px) { .cw-access-label { display: none; } }
