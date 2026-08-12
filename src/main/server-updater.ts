@@ -416,20 +416,38 @@ function includePrereleases(): boolean {
 
 function fetchPypiJson(url: string): Promise<Record<string, unknown> | null> {
   return new Promise((resolve) => {
-    const req = https.get(
+    let settled = false;
+    let req: import('http').ClientRequest | null = null;
+    // Fail-safe to "no update" once, clearing the absolute deadline. The
+    // `timeout` option below is a per-socket INACTIVITY timeout; this absolute
+    // deadline additionally bounds a trickle-fed body that would otherwise keep
+    // resetting it and hang the boot poll (ENG-749).
+    const done = (v: Record<string, unknown> | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(deadline);
+      try { req?.destroy(); } catch { /* already gone */ }
+      resolve(v);
+    };
+    const deadline = setTimeout(() => done(null), PYPI_TIMEOUT_MS);
+    deadline.unref?.();
+    req = https.get(
       url,
       { headers: { Accept: 'application/json' }, timeout: PYPI_TIMEOUT_MS },
       (res) => {
-        if (res.statusCode !== 200) { res.resume(); resolve(null); return; }
+        if (res.statusCode !== 200) { res.resume(); done(null); return; }
         let data = '';
         res.on('data', (c) => (data += c));
         res.on('end', () => {
-          try { resolve(JSON.parse(data)); } catch { resolve(null); }
+          let parsed: Record<string, unknown> | null = null;
+          try { parsed = JSON.parse(data); } catch { parsed = null; }
+          done(parsed);
         });
+        res.on('error', () => done(null));
       },
     );
-    req.on('error', () => resolve(null));
-    req.on('timeout', () => { req.destroy(); resolve(null); });
+    req.on('error', () => done(null));
+    req.on('timeout', () => done(null));
   });
 }
 

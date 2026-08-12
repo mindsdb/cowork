@@ -14,10 +14,11 @@
 // be running when the timer fired and released the gate mid-reinstall.
 //
 // Boundedness is instead guaranteed at the operation sites: every network or
-// subprocess step the poll runs has its own timeout —
+// subprocess step the poll runs has an ABSOLUTE deadline (not merely a
+// per-socket inactivity timeout that a trickle could reset) —
 //   hasInternet 5s, fetchManifest / lsRemote / getInstalledVersion 10s,
 //   PyPI metadata 5s, runUv reinstall 180s, startServer SERVER_START_CAP 180s,
-//   UI download 60s, UI reload health 15s
+//   UI download 300s wall-clock, tar extraction 60s, UI reload health 15s
 // — and `initUpdater`'s boot poll always reaches its `finally` (its awaits are
 // individually `.catch`-guarded). So the barrier cannot hang while a step runs,
 // and cannot open before the full sequence (attempt + any rollback) completes.

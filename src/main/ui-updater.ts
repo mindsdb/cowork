@@ -233,17 +233,49 @@ export function getCachedVersion(): string | null {
   return isServingOta() ? readSlotVersion(getCurrentDir()) : null;
 }
 
-function httpsGet(url: string, timeoutMs = 10000): Promise<{ statusCode: number; headers: Record<string, any>; body: Buffer }> {
+// `timeoutMs` is a per-socket INACTIVITY timeout (fast-fails a dead connection);
+// `absoluteTimeoutMs` is a hard wall-clock deadline for the WHOLE operation
+// (spanning redirects) so a trickle-fed response that keeps resetting the
+// inactivity timeout can't keep the request — and the boot poll — alive forever
+// (ENG-749). Defaults the absolute deadline to the inactivity value, which is
+// right for the small manifest/probe callers; the bundle download passes a
+// larger one. Exported for the deadline regression test.
+export function httpsGet(
+  url: string,
+  timeoutMs = 10000,
+  absoluteTimeoutMs = timeoutMs,
+): Promise<{ statusCode: number; headers: Record<string, any>; body: Buffer }> {
   return new Promise((resolve, reject) => {
+    let settled = false;
+    let activeReq: http.ClientRequest | null = null;
+    const succeed = (v: { statusCode: number; headers: Record<string, any>; body: Buffer }) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(deadline);
+      resolve(v);
+    };
+    const fail = (err: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(deadline);
+      try { activeReq?.destroy(); } catch { /* already gone */ }
+      reject(err);
+    };
+    const deadline = setTimeout(
+      () => fail(new Error('Request exceeded absolute deadline')),
+      absoluteTimeoutMs,
+    );
+    deadline.unref?.();
+
     const doGet = (reqUrl: string, redirects: number) => {
       try {
-        if (redirects > 5) { reject(new Error('Too many redirects')); return; }
+        if (redirects > 5) { fail(new Error('Too many redirects')); return; }
         // https by default; plaintext http only for a loopback QA fixture host
         // (see getManifestUrl) — never for a remote host, tampered manifest, or
         // redirect target.
         const isHttp = reqUrl.startsWith('http://');
         if (isHttp && !isLoopbackUrl(reqUrl)) {
-          reject(new Error(`refusing plaintext http fetch from a non-loopback host: ${reqUrl}`));
+          fail(new Error(`refusing plaintext http fetch from a non-loopback host: ${reqUrl}`));
           return;
         }
         const mod = isHttp ? http : https;
@@ -255,18 +287,18 @@ function httpsGet(url: string, timeoutMs = 10000): Promise<{ statusCode: number;
           }
           const chunks: Buffer[] = [];
           res.on('data', (chunk) => chunks.push(chunk));
-          res.on('end', () => {
-            resolve({
-              statusCode: res.statusCode ?? 0,
-              headers: res.headers as Record<string, any>,
-              body: Buffer.concat(chunks),
-            });
-          });
+          res.on('end', () => succeed({
+            statusCode: res.statusCode ?? 0,
+            headers: res.headers as Record<string, any>,
+            body: Buffer.concat(chunks),
+          }));
+          res.on('error', fail);
         });
-        req.on('error', reject);
-        req.setTimeout(timeoutMs, () => { req.destroy(); reject(new Error('Request timed out')); });
+        activeReq = req;
+        req.on('error', fail);
+        req.setTimeout(timeoutMs, () => fail(new Error('Request timed out')));
       } catch (err) {
-        reject(err);
+        fail(err as Error);
       }
     };
     doGet(url, 0);
@@ -303,20 +335,36 @@ function rmDir(dir: string) {
   }
 }
 
-/** Extracts a .tar.gz buffer into a target directory. */
-async function extractTarGz(buf: Buffer, targetDir: string): Promise<void> {
+// UI bundle download: inactivity vs. absolute wall-clock caps. The absolute cap
+// bounds a trickle-fed download so it can't hang the boot poll (ENG-749), while
+// staying generous enough for a genuinely slow-but-progressing link.
+const UI_DOWNLOAD_INACTIVITY_MS = 60_000;
+const UI_DOWNLOAD_DEADLINE_MS = 300_000;
+// Hard cap on tar extraction — a wedged tar must not hang the boot poll. Force
+// SIGKILL so a process ignoring SIGTERM is still reaped.
+const TAR_EXTRACT_TIMEOUT_MS = 60_000;
+
+/** Extracts a .tar.gz buffer into a target directory. Bounded so a wedged tar
+ *  can't hang the caller; throws on failure/timeout. Exported for tests. */
+export async function extractTarGz(buf: Buffer, targetDir: string): Promise<void> {
   fs.mkdirSync(targetDir, { recursive: true });
   const tmpFile = path.join(getCacheDir(), 'download.tar.gz');
   fs.writeFileSync(tmpFile, buf);
   const { execFileSync } = require('child_process');
-  execFileSync('tar', ['xzf', tmpFile, '-C', targetDir]);
-  fs.unlinkSync(tmpFile);
+  try {
+    execFileSync('tar', ['xzf', tmpFile, '-C', targetDir], {
+      timeout: TAR_EXTRACT_TIMEOUT_MS,
+      killSignal: 'SIGKILL',
+    });
+  } finally {
+    try { fs.unlinkSync(tmpFile); } catch { /* best-effort cleanup */ }
+  }
 }
 
 /** Download, verify, and stage a new UI bundle. Returns true on success. */
 async function downloadAndStage(manifest: UIManifest): Promise<boolean> {
   console.log(`[ui-updater] downloading UI ${manifest.version}...`);
-  const res = await httpsGet(manifest.url, 60000);
+  const res = await httpsGet(manifest.url, UI_DOWNLOAD_INACTIVITY_MS, UI_DOWNLOAD_DEADLINE_MS);
   if (res.statusCode !== 200) {
     console.error(`[ui-updater] download failed: HTTP ${res.statusCode}`);
     return false;
@@ -330,7 +378,13 @@ async function downloadAndStage(manifest: UIManifest): Promise<boolean> {
 
   const staging = getStagingDir();
   rmDir(staging);
-  await extractTarGz(res.body, staging);
+  try {
+    await extractTarGz(res.body, staging);
+  } catch (err) {
+    console.error('[ui-updater] extraction failed:', err);
+    rmDir(staging);
+    return false;
+  }
 
   // Verify index.html exists in the extracted bundle
   if (!fs.existsSync(path.join(staging, 'index.html'))) {
