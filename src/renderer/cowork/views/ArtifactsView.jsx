@@ -320,7 +320,7 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
       </div>
 
       {/* Footer — project origin + last-updated, divided from the body. */}
-      <div className="flex items-center gap-2 py-[9px] px-4 border-t border-solid border-line bg-surface-2">
+      <div className="flex items-center gap-2 py-[9px] px-4 border-t border-x-0 border-b-0 border-solid border-line bg-surface-2">
         <span className="inline-flex shrink-0 text-ink-4">{Ico.folder(13)}</span>
         {canOpenProject ? (
           <Tooltip content={`Open ${projectMatch.name}`}>
@@ -367,7 +367,7 @@ function ListHeaderRow() {
   );
   return (
     <div
-      className="grid gap-4 py-2.5 px-4 border-b border-solid border-line"
+      className="grid gap-4 py-2.5 px-4 border-b border-t-0 border-x-0 border-solid border-line"
       style={{ gridTemplateColumns: LIST_GRID }}
     >
       <Cell>Name</Cell>
@@ -495,7 +495,7 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
         onClick={onRowOpen}
         onKeyDown={(e) => { if (e.key === 'Enter') onRowOpen(); }}
         {...hoverProps}
-        className="grid gap-4 py-3 px-4 border-b border-solid border-line cursor-pointer items-center [outline:none] [transition:background_.12s_ease]"
+        className="grid gap-4 py-3 px-4 border-b border-t-0 border-x-0 border-solid border-line cursor-pointer items-center [outline:none] [transition:background_.12s_ease]"
         style={{
           gridTemplateColumns: LIST_GRID,
           background: hovered ? 'var(--surface-2)' : 'transparent',
