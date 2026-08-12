@@ -295,14 +295,39 @@ jobs:
           # `curl --retry` is no help for the waiting either, because it fires
           # only on a timeout or a 408/429/5xx, which is why the wait below is
           # an explicit loop rather than a retry flag.
+          #
+          # Two separate waits, because they cover two different failures, and
+          # collapsing them into one loop over the body is what makes "give it
+          # five minutes" untrue: the Windows payload is a few hundred MB, so
+          # thirty downloads is tens of minutes and several GB of egress.
           verify_on_cdn() {
-            local key="$1" src="$2" want tmp got=""
+            local key="$1" src="$2" url want tmp resolved="" got=""
+            url="${CDN_BASE}/${key}"
             want=$(sha256sum "$src" | awk '{print $1}')
-            tmp=$(mktemp)
-            # A key created moments ago can be shadowed by an edge that cached
-            # the 404 for it, so give it five minutes to settle.
+
+            # 1. Resolution. A key created moments ago can be shadowed by an
+            # edge that cached the miss for it, so poll until it answers. HEAD,
+            # so waiting costs response headers rather than the whole object.
             for _ in $(seq 1 30); do
-              if curl -fsSL "${CDN_BASE}/${key}" -o "$tmp"; then
+              if curl -fsS -I "$url" -o /dev/null; then
+                resolved=yes
+                break
+              fi
+              sleep 10
+            done
+            if [ -z "$resolved" ]; then
+              curl -sS -D - "$url" -o /dev/null | head -20 || true
+              echo "::error::${url} did not resolve within 300s, so it most likely never uploaded."
+              exit 1
+            fi
+
+            # 2. The bytes. Status cannot tell a current object from a stale
+            # one. Three attempts absorbs a transfer that breaks; a fourth
+            # would be re-asking a question already answered, since step 1
+            # established the key is there.
+            tmp=$(mktemp)
+            for _ in 1 2 3; do
+              if curl -fsSL "$url" -o "$tmp"; then
                 got=$(sha256sum "$tmp" | awk '{print $1}')
                 [ "$got" = "$want" ] && break
               fi
@@ -310,8 +335,8 @@ jobs:
             done
             rm -f "$tmp"
             if [ "$got" != "$want" ]; then
-              echo "::error::${CDN_BASE}/${key} did not serve what this run published, within 300s (cdn=${got:-<unreachable>} local=${want})."
-              curl -sS -D - "${CDN_BASE}/${key}" -o /dev/null | head -20 || true
+              echo "::error::${url} did not serve what this run published (cdn=${got:-<unreachable>} local=${want})."
+              curl -sS -D - "$url" -o /dev/null | head -20 || true
               exit 1
             fi
             echo "CDN serves the published bytes: ${key}"
