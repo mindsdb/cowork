@@ -219,11 +219,8 @@ jobs:
             echo "| \`${S3_URI}\` | ✅ sha256 verified (\`${REMOTE_SHA}\`) | ${CDN_URL} |" >> "$GITHUB_STEP_SUMMARY"
           done
 
-          for KEY in "${UPLOADED_KEYS[@]}"; do
-            case "$KEY" in
-              *"${NAME}") echo "download_url=${CDN_BASE}/${KEY}" >> "$GITHUB_OUTPUT" ;;
-            esac
-          done
+          echo "versioned_key=${VERSIONED_KEY}" >> "$GITHUB_OUTPUT"
+          echo "download_url=${CDN_BASE}/${VERSIONED_KEY}" >> "$GITHUB_OUTPUT"
 
           {
             echo ""
@@ -242,38 +239,53 @@ jobs:
       # above has confirmed the bytes it names are in the bucket, so it can
       # never point at something that does not exist yet.
       - name: Publish public download manifest
-        if: inputs.build_kind == 'prod'
+        if: inputs.build_kind == 'prod' || inputs.build_kind == 'stable'
         env:
           PLATFORM: ${{ inputs.platform }}
+          KIND: ${{ inputs.build_kind }}
           NAME: ${{ inputs.artifact_name }}
+          VERSIONED_KEY: ${{ steps.s3.outputs.versioned_key }}
         run: |
           set -euo pipefail
+          # One manifest per channel, named after the alias it supersedes, so a
+          # consumer already reading `-latest` or `-staging` knows which is its
+          # own without a lookup table.
+          MANIFEST_NAME=$([ "$KIND" = "prod" ] && echo latest.json || echo staging.json)
+
           node scripts/write-download-manifest.mjs \
             --artifact "out/${NAME}" \
-            --platform "$PLATFORM" \
+            --key "$VERSIONED_KEY" \
+            --channel "$KIND" \
             --cdn-base "https://downloads.mindshub.ai" \
-            --output latest.json
+            --output "$MANIFEST_NAME"
 
-          aws s3 cp latest.json "s3://anton-installer/mindshub-cowork/${PLATFORM}/latest.json" \
+          aws s3 cp "$MANIFEST_NAME" "s3://anton-installer/mindshub-cowork/${PLATFORM}/${MANIFEST_NAME}" \
             --cache-control "no-cache, no-store, must-revalidate" \
             --content-type "application/json"
 
       # Prove over the public CDN what the release claims: the manifest resolves
       # to the bytes this run built, and the URL it names can be resumed.
       #
-      # Every assertion here reads the body. A key that does not exist is served
-      # as a 200 with an HTML redirect page rather than a 404, so a status check
-      # passes on a manifest that never uploaded, and `curl --retry` never fires
-      # on a 200 either. That is why the wait below is an explicit loop.
+      # Every assertion here reads the body rather than the status line. A
+      # status can no longer hide a missing key, now that the distribution
+      # answers one with a 404, but it still cannot tell a current object from
+      # a stale one, which is the failure an immutable key is most exposed to.
+      #
+      # The wait is an explicit loop rather than `curl --retry`, which fires
+      # only on a timeout or a 408/429/5xx. A newly created key can be shadowed
+      # by an edge that cached the 404 for it moments earlier, and no retry
+      # flag covers that.
       - name: Verify the published download over the CDN
-        if: inputs.build_kind == 'prod'
+        if: inputs.build_kind == 'prod' || inputs.build_kind == 'stable'
         env:
           PLATFORM: ${{ inputs.platform }}
+          KIND: ${{ inputs.build_kind }}
           NAME: ${{ inputs.artifact_name }}
         run: |
           set -euo pipefail
           CDN_BASE="https://downloads.mindshub.ai"
-          MANIFEST_URL="${CDN_BASE}/mindshub-cowork/${PLATFORM}/latest.json"
+          MANIFEST_NAME=$([ "$KIND" = "prod" ] && echo latest.json || echo staging.json)
+          MANIFEST_URL="${CDN_BASE}/mindshub-cowork/${PLATFORM}/${MANIFEST_NAME}"
           LOCAL_SHA=$(sha256sum "out/${NAME}" | awk '{print $1}')
 
           fail() { echo "::error::$1"; exit 1; }
@@ -281,8 +293,8 @@ jobs:
             node -e 'const m = require("./manifest-live.json"); process.stdout.write(String(m[process.argv[1]] ?? ""))' "$1"
           }
 
-          # A newly created key can be shadowed by an edge that cached the
-          # redirect page for it moments earlier, so give it five minutes.
+          # A newly created key can be shadowed by an edge that cached the 404
+          # for it moments earlier, so give it five minutes.
           RESOLVED=""
           for _ in $(seq 1 30); do
             if curl -fsS "$MANIFEST_URL" -o manifest-live.json \
@@ -294,7 +306,7 @@ jobs:
           done
           if [ -z "$RESOLVED" ]; then
             curl -sS -D - "$MANIFEST_URL" -o /dev/null | head -20 || true
-            fail "${MANIFEST_URL} did not serve JSON within 300s. A missing key is served as a 200 HTML page, so the manifest most likely never uploaded."
+            fail "${MANIFEST_URL} did not serve JSON within 300s, so the manifest most likely never uploaded."
           fi
 
           for KEY in version key url size_bytes sha256 published_at; do

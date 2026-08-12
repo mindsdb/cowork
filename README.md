@@ -565,7 +565,7 @@ Installers are built on GitHub-hosted runners (required for Apple notarization a
 | Flavor | Trigger | S3 destination |
 | --- | --- | --- |
 | **preview** | PR with `signed-macos-pkg` or `signed-windows-ev` label | `s3://anton-installer/mindshub-cowork/{mac,windows}/previews/` |
-| **stable** | Push to `staging` | `s3://anton-installer/mindshub-cowork/{mac,windows}/snapshots/` + `mindshub-cowork-staging.{pkg,exe}` |
+| **stable** | Push to `staging` | `s3://anton-installer/mindshub-cowork/{mac,windows}/snapshots/` + `mindshub-cowork-staging.{pkg,exe}` + `staging.json` |
 | **prod** | Push to `main` (via the CalVer release) | `s3://anton-installer/mindshub-cowork/{mac,windows}/mindshub-cowork-{version}.{pkg,exe}` + `mindshub-cowork-latest.{pkg,exe}` + `latest.json` |
 
 ### S3 layout
@@ -577,6 +577,7 @@ s3://anton-installer/
   mindshub-cowork/
     mac/
       latest.json                                  # prod — manifest: version, url, size, sha256
+      staging.json                                 # stable — the same, for the staging ring
       mindshub-cowork-{version}.pkg                # prod — versioned, written once
       mindshub-cowork-latest.pkg                   # prod — alias, rewritten every release
       mindshub-cowork-staging.pkg                  # stable — alias, rewritten every staging push
@@ -584,12 +585,15 @@ s3://anton-installer/
       snapshots/mindshub-cowork-{version}-stable-{sha}.pkg
     windows/
       latest.json
+      staging.json
       mindshub-cowork-{version}.exe
       mindshub-cowork-latest.exe
       mindshub-cowork-staging.exe
       previews/mindshub-cowork-{version}-preview-{sha}.exe
       snapshots/mindshub-cowork-{version}-stable-{sha}.exe
 ```
+
+Each manifest is named after the alias it supersedes, so a consumer already reading `-latest` or `-staging` knows which one is its own. Preview builds get no manifest: they are per-pull-request, and nothing should be advertising one.
 
 **A version's bytes are published once.** If a versioned key already exists with different bytes (rebuilding a version re-signs it, and signing stamps a timestamp), the release fails rather than replacing them. Cut a new version instead of republishing one. The `-latest` and `-staging` aliases are then written as server-side copies of that key, so the alias always serves the exact build the manifest names.
 
@@ -599,7 +603,7 @@ s3://anton-installer/
 | --- | --- | --- |
 | Versioned installers | `public, max-age=31536000, immutable` | The bytes never change, so a resume can trust a validator that never moves |
 | `-latest` / `-staging` aliases | `public, max-age=60` | Rewritten every release; a minute bounds how long a stale edge copy outlives one |
-| `latest.json` | `no-cache, no-store, must-revalidate` | A cached manifest would hide a release entirely |
+| `latest.json` / `staging.json` | `no-cache, no-store, must-revalidate` | A cached manifest would hide a release entirely |
 
 Installers also carry `Content-Type: application/octet-stream` and `Content-Disposition: attachment; filename="mindshub-cowork-{version}.{pkg,exe}"`, so a file saved from the alias URL is still named after the version it actually is.
 
@@ -644,11 +648,11 @@ CloudFront behavior:
 - Path mapping is **1:1** — the S3 key `mindshub-cowork/mac/mindshub-cowork-latest.pkg` is reachable at `https://downloads.mindshub.ai/mindshub-cowork/mac/mindshub-cowork-latest.pkg`.
 - Viewer-protocol policy is `redirect-to-https`.
 - `GET /` → 302 redirect to `https://mindshub.ai` via the `downloads-root-redirect` CloudFront Function (viewer-request).
-- `GET /<missing key>` (S3 403/404) → `/redirect.html` served **as a `200`**, 665 bytes of meta-refresh HTML pointing at `https://mindshub.ai`.
+- `GET /<missing key>` (S3 403/404) → `/redirect.html`, 665 bytes of meta-refresh HTML pointing at `https://mindshub.ai`, served under a `404`. It answered `200` until ENG-1432 corrected the two `custom_error_response` blocks, which is how a missing manifest could pass a status check.
 - Cache TTL: min 0, default 1 hour, max 24 hours. The default applies only to objects whose origin sends no `Cache-Control`, and min 0 is what lets `no-store` on `latest.json` be honoured. The 24-hour max caps edge retention, so `max-age=31536000` on a versioned key is a year to the browser and a day at the edge.
 - Compression is enabled, but no installer content type is on CloudFront's compressible list. No query strings or cookies are forwarded, so a `?cachebust=` suffix does nothing here.
 
-> **A missing key returns `200`, not `404`.** Anything checking these URLs has to read the body: a status check passes on a key that was never published, and `curl --retry` never fires on a `200` either. That is why the release verification parses the manifest and compares its `sha256` rather than trusting the status line. Flipping the two `custom_error_response` blocks to `404` is tracked separately.
+> **Check these URLs by their bytes, not their status.** A correct status still cannot tell a current object from a stale one, which is the failure an immutable key is most exposed to. And `curl --retry` fires only on a timeout or a 408/429/5xx, so it does not cover the case that actually needs waiting: a key created moments ago, shadowed by an edge that cached the `404` for it. Both checks in the release parse the body and compare a checksum, and wait in an explicit loop.
 
 > **Cache invalidations**: the aliases carry `max-age=60`, so a stale edge copy expires in a minute and a release needs no invalidation to become visible. Versioned URLs are immutable and never need one. The release runner has no `cloudfront:CreateInvalidation` grant today.
 

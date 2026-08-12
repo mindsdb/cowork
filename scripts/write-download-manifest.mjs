@@ -2,57 +2,70 @@
 
 /*
  * Writes the public download manifest that browser clients read to find the
- * current installer: which version is live, the immutable URL that serves it,
+ * current installer: which build is live, the immutable URL that serves it,
  * and the sha256 to check the finished file against.
  *
- * The release publishes this AFTER the installer object, and never names bytes
- * it has not already confirmed are in the bucket, so a client that reads the
- * manifest can always fetch what it points at.
+ * One per platform per channel — latest.json for prod, staging.json for the
+ * stable ring — published AFTER the installer object, so it can never name
+ * bytes that are not already in the bucket.
  *
- * Everything here is derived from the installer file itself rather than passed
- * in alongside it. A version, a size and a hash that arrive as separate
- * arguments can disagree with the artifact; derived ones cannot.
+ * Placement comes from the key and content comes from the artifact, and the
+ * two are cross-checked. A size, a hash and a version passed in alongside the
+ * file can disagree with it; ones read out of it cannot.
  */
 
 import { createHash } from 'node:crypto';
 import { readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, resolve } from 'node:path';
 
-const FILE_NAME_PATTERN = /^mindshub-cowork-(.+)\.(pkg|exe)$/;
+const KEY_PATTERN = /^mindshub-cowork\/(mac|windows)\/(?:snapshots\/)?([^/]+)$/;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
-const PLATFORMS = ['mac', 'windows'];
 const ALIAS_NAMES = ['latest', 'staging'];
 
-/**
- * Pull the version out of a released installer's file name.
- *
- * Only the prod naming shape is accepted. Preview and stable builds carry a
- * channel and a commit sha in the same position (`...-2.0.1-stable-abc1234.pkg`),
- * and the mutable aliases sit at the same prefix under a fixed name. Publishing
- * either as the version the download page advertises would point every new user
- * at a snapshot build, or at a version literally called "latest".
+/*
+ * Released builds are `mindshub-cowork-<version>.<ext>`; stable-ring builds
+ * carry the channel and the commit in the same position. Preview builds are
+ * per-pull-request and get no manifest, so nothing should ever advertise one.
  */
-export function installerVersionFromFileName(fileName) {
-  const match = FILE_NAME_PATTERN.exec(fileName);
-  if (!match) {
+const CHANNEL_FILE_NAMES = {
+  prod: /^mindshub-cowork-((?!.*-(?:preview|stable)-).+)\.(?:pkg|exe)$/,
+  stable: /^mindshub-cowork-(.+-stable-[0-9a-f]+)\.(?:pkg|exe)$/,
+};
+
+/**
+ * Pull the version out of an installer's file name, for the channel that is
+ * being published.
+ *
+ * The channel is checked rather than assumed. Publishing a stable build as the
+ * version the download page advertises would point every new user at a
+ * snapshot, and publishing an alias name would advertise a version literally
+ * called "latest".
+ */
+export function installerVersionFromFileName(fileName, channel) {
+  const pattern = CHANNEL_FILE_NAMES[channel];
+  if (!pattern) {
     throw new Error(
-      `Not a released installer file name: ${fileName} (expected mindshub-cowork-<version>.{pkg,exe})`,
+      `No manifest is published for the ${channel} channel (expected ${Object.keys(CHANNEL_FILE_NAMES).join(' | ')})`,
     );
   }
-  const version = match[1];
-  const channel = /-(preview|stable)-/.exec(version)?.[1] ?? ALIAS_NAMES.find((a) => a === version);
-  if (channel) {
-    throw new Error(
-      `Refusing to publish the ${channel} build as the released version: ${fileName}`,
-    );
+  const version = pattern.exec(fileName)?.[1];
+  if (!version) {
+    throw new Error(`Not a ${channel} installer file name: ${fileName}`);
+  }
+  if (ALIAS_NAMES.includes(version)) {
+    throw new Error(`Refusing to publish the ${version} alias as a version: ${fileName}`);
   }
   return version;
 }
 
 /** Build the manifest body. Pure: every field is an argument. */
-export function downloadManifest({ fileName, platform, cdnBase, sizeBytes, sha256, publishedAt }) {
-  if (!PLATFORMS.includes(platform)) {
-    throw new Error(`Unsupported platform: ${platform} (expected ${PLATFORMS.join(' | ')})`);
+export function downloadManifest({ key, fileName, channel, cdnBase, sizeBytes, sha256, publishedAt }) {
+  const keyed = KEY_PATTERN.exec(key);
+  if (!keyed) {
+    throw new Error(`Not an installer key: ${key}`);
+  }
+  if (keyed[2] !== fileName) {
+    throw new Error(`Key names a different file than the artifact: ${key} vs ${fileName}`);
   }
   if (!cdnBase || !cdnBase.startsWith('https://')) {
     throw new Error(`CDN base must be an https origin: ${cdnBase}`);
@@ -67,10 +80,8 @@ export function downloadManifest({ fileName, platform, cdnBase, sizeBytes, sha25
     throw new Error(`Expected an ISO-8601 timestamp: ${publishedAt}`);
   }
 
-  const version = installerVersionFromFileName(fileName);
-  const key = `mindshub-cowork/${platform}/${fileName}`;
   return {
-    version,
+    version: installerVersionFromFileName(fileName, channel),
     key,
     url: `${cdnBase.replace(/\/+$/, '')}/${key}`,
     size_bytes: sizeBytes,
@@ -91,8 +102,9 @@ function main() {
   const artifact = resolve(value('--artifact'));
   const output = resolve(value('--output'));
   const manifest = downloadManifest({
+    key: value('--key'),
     fileName: basename(artifact),
-    platform: value('--platform'),
+    channel: value('--channel'),
     cdnBase: value('--cdn-base'),
     sizeBytes: statSync(artifact).size,
     sha256: createHash('sha256').update(readFileSync(artifact)).digest('hex'),
