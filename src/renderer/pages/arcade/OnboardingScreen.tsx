@@ -270,7 +270,9 @@ export default function OnboardingScreen({
       .catch(() => {
         if (cancelled) return;
         setWebConfigured(false); // unreachable → fall back to the full flow
-        setOrgMode(false);
+        // orgMode stays null: unreachable is not "confirmed non-org". Setting it
+        // false here would reopen the admin-only write (a /health blip after the
+        // SSO redirect is plausible) — the 403 loop this guards against.
       });
     return () => { cancelled = true; };
   }, []);
@@ -354,7 +356,20 @@ export default function OnboardingScreen({
   // stranding the user on a "could not save" error mid-download (see
   // resolveFinalizeOutcome). Any other failure surfaces as a retryable error.
   // Shared by every finalize path so they can't drift.
+  // Org deployments own provider config; only `manage-organization` may write it.
+  // Every finalize path sends planning/coding provider, so a member submitting
+  // these forms hits the same 403. Say who can fix it, not "save failed".
+  const orgProviderWriteBlocked = (): boolean => {
+    if (orgMode !== true) return false;
+    setPhase('error');
+    setErrorMsg('Your organization owns the model configuration. Ask an org admin to set it up.');
+    return true;
+  };
+
   const finalizeSettings = async (lines: string[]) => {
+    // Every finalize path lands here (saveFinal, and handleConnectLlm directly),
+    // so a new one can't reopen the trap by forgetting its own check.
+    if (orgProviderWriteBlocked()) return;
     const res = await persistOnboarding(
       {
         saveSettings: (c) => host.saveSettings(c),
@@ -397,6 +412,7 @@ export default function OnboardingScreen({
   };
 
   const handleConnect = async () => {
+    if (orgProviderWriteBlocked()) return;
     setPhase('validating');
     setErrorMsg('');
 
@@ -465,6 +481,7 @@ export default function OnboardingScreen({
   };
 
   const handleConnectLlm = async () => {
+    if (orgProviderWriteBlocked()) return;
     setPhase('validating');
     setErrorMsg('');
 
