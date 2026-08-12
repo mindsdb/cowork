@@ -75,6 +75,13 @@ export default {
         'success-border':'var(--success-border)',
         'success-text':'var(--success-text)',
 
+        // Semantic aliases (ENG-1381). Key `surface-glass` → `bg-surface-glass`,
+        // key `sage-500` → `text-sage-500` — resolved values in globals.css.
+        // (`muted` dropped — unused; `strong` added by ENG-1481 when its inline
+        // styles convert and give it a className usage to verify against.)
+        'surface-glass':'var(--surface-glass)',
+        'sage-500':     'var(--sage-500)',
+
         // Aliases for mdb-ai's class names so a verbatim port works.
         // mdb-ai uses text-text-primary, bg-surface-01, border-border-02.
         // Map these to our nearest tokens.

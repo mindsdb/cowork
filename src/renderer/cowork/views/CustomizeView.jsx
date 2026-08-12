@@ -140,7 +140,7 @@ function ConnectionCard({ connection, onDelete, onModify }) {
       </div>
 
       {subtitle && (
-        <span className="truncate text-[12.5px] text-ink-3">{subtitle}</span>
+        <span className="truncate text-sm text-ink-3">{subtitle}</span>
       )}
 
       <div className="flex-1" />

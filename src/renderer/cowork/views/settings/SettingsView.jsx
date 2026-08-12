@@ -137,7 +137,7 @@ function SettingsGroup({ title, children }) {
   }
 
   return (
-    <div className="border border-solid border-line rounded-card bg-[var(--surface-glass)] backdrop-blur-[var(--surface-glass-blur)] mb-[14px] overflow-hidden">
+    <div className="border border-solid border-line rounded-card bg-surface-glass backdrop-blur-[var(--surface-glass-blur)] mb-[14px] overflow-hidden">
       <h2 className={`${headingClass} pt-[14px] px-[18px] pb-0`}>{title}</h2>
       <div className="pt-2.5 px-[18px] pb-2">{children}</div>
     </div>
@@ -1096,8 +1096,8 @@ export default function SettingsView({
         className="flex-1 text-[13px] font-medium text-ink-3 inline-flex items-center gap-1.5"
       >
         {testing && <span aria-hidden="true" className="spinner" style={{ width: 12, height: 12 }} />}
-        {!testing && tested && configReady && <span aria-hidden="true" className="text-[var(--sage-500)] inline-flex">{Ico.check(13)}</span>}
-        {!testing && saved && !tested && <span aria-hidden="true" className="text-[var(--sage-500)] inline-flex">{Ico.check(13)}</span>}
+        {!testing && tested && configReady && <span aria-hidden="true" className="text-sage-500 inline-flex">{Ico.check(13)}</span>}
+        {!testing && saved && !tested && <span aria-hidden="true" className="text-sage-500 inline-flex">{Ico.check(13)}</span>}
         <span>
           {testing ? 'Testing configuration…'
             : tested ? (configReady ? 'Test passed — provider, model, and credentials look good.' : (configError || 'Test reported a problem.'))

@@ -95,7 +95,7 @@ export default function UpdatesSection({
 
   return (
     <SettingsSectionPanel footer={footer}>
-      <div className="border border-solid border-line rounded-card bg-[var(--surface-glass)] backdrop-blur-[var(--surface-glass-blur)] mb-[14px] overflow-hidden pt-0 px-[18px] pb-2">
+      <div className="border border-solid border-line rounded-card bg-surface-glass backdrop-blur-[var(--surface-glass-blur)] mb-[14px] overflow-hidden pt-0 px-[18px] pb-2">
         <Section
           title="Current version"
           subtitle="The version currently running. Server and UI updates are applied automatically at launch; components under the hood are shown in details."
@@ -161,7 +161,7 @@ export default function UpdatesSection({
                   {showVersionDetails ? 'Hide details' : 'Details'}
                 </button>
                 {showVersionDetails && (
-                  <div className="flex flex-col gap-1 font-[family-name:var(--font-mono)] text-[12px] py-2 px-2.5 border border-solid border-line rounded-lg bg-[var(--surface-glass)]">
+                  <div className="flex flex-col gap-1 font-[family-name:var(--font-mono)] text-[12px] py-2 px-2.5 border border-solid border-line rounded-lg bg-surface-glass">
                     {rows.map(([k, v]) => (
                       <span key={k} className="select-text">
                         <span className="text-ink-3 mr-1.5 inline-block min-w-[64px]">{k}</span>{v}

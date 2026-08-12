@@ -162,7 +162,7 @@ export default function BackendSection({
       <div className="flex flex-col gap-[14px]">
 
         {/* Status card — status header + port + logs */}
-        <div className="border border-solid border-line rounded-card bg-[var(--surface-glass)] backdrop-blur-[var(--surface-glass-blur)] overflow-hidden">
+        <div className="border border-solid border-line rounded-card bg-surface-glass backdrop-blur-[var(--surface-glass-blur)] overflow-hidden">
           <div className="py-2.5 px-4 border-b border-x-0 border-t-0 border-solid border-line text-[10.5px] font-semibold tracking-[0.07em] uppercase text-ink-4">Status</div>
 
           {/* Status summary row */}

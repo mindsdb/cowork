@@ -68,7 +68,7 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
   // class string, so each card states its own colors exactly once).
   const CARD_BASE =
     'border border-solid rounded-card backdrop-blur-[var(--surface-glass-blur)] mb-[14px] overflow-hidden';
-  const CARD = `${CARD_BASE} border-line bg-[var(--surface-glass)]`;
+  const CARD = `${CARD_BASE} border-line bg-surface-glass`;
 
   // User info card — shown on both Electron and web if we have a token
   const userCard = accountUser && (
@@ -111,13 +111,13 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
         <div className="border-t border-x-0 border-b-0 border-solid border-line py-2.5 px-[18px] flex gap-5">
           {accountUser.username && (
             <div>
-              <div className="text-[10px] font-semibold tracking-[0.07em] uppercase text-ink-4 mb-0.5">Username</div>
+              <div className="text-2xs font-semibold tracking-[0.07em] uppercase text-ink-4 mb-0.5">Username</div>
               <div className="text-[13px] text-ink-2 font-[family-name:var(--font-mono)]">{accountUser.username}</div>
             </div>
           )}
           {accountUser.org && (
             <div>
-              <div className="text-[10px] font-semibold tracking-[0.07em] uppercase text-ink-4 mb-0.5">Organization</div>
+              <div className="text-2xs font-semibold tracking-[0.07em] uppercase text-ink-4 mb-0.5">Organization</div>
               <div className="text-[13px] text-ink-2">{accountUser.org}</div>
             </div>
           )}
