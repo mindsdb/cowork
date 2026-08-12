@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import Ico from '../../components/Icons';
-import { Alert, Button } from '../../components/ui';
+import { Alert, Button, Tooltip } from '../../components/ui';
 import { host } from '../../../platform/host';
 import { backendFailureCopy, exitCodeLabel } from '../../../../shared/server-status';
 import { Section, SettingsSectionPanel } from './settingsLayout';
@@ -139,9 +139,11 @@ export default function BackendSection({
 
   const backendFooter = (
     <>
-      <Button onClick={refreshDiag} title="Refresh diagnostics">
-        {Ico.refresh(14)}Refresh
-      </Button>
+      <Tooltip content="Refresh diagnostics">
+        <Button onClick={refreshDiag}>
+          {Ico.refresh(14)}Refresh
+        </Button>
+      </Tooltip>
       {(onStartServer || onStopServer) && state !== 'offline' && (
         <Button onClick={handleBackendStop} disabled={diagBusy || serverBusy || !onStopServer}>
           {(diagBusy && serverBusyKind === 'stopping') ? 'Stopping…' : 'Stop backend'}
