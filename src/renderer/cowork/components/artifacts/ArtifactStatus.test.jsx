@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { ArtifactStatus } from './ArtifactStatus.jsx';
@@ -82,5 +84,22 @@ describe('ArtifactStatus access labelling (ENG-1212)', () => {
     render(<ArtifactStatus artifact={{ ...published, accessMode: 'restricted', modified: true }} />);
     expect(screen.getByText('Restricted')).toBeInTheDocument();
     expect(screen.getByText('Unshared changes')).toBeInTheDocument();
+  });
+});
+
+describe('ArtifactStatus access-label visibility (ENG-1475)', () => {
+  // The access badge is a plain inline-flex pill (Badge is whitespace-nowrap and
+  // sizes to its content), so its label is always shown. It must NOT be
+  // collapsed to icon-only by a container-width query — that keyed off the whole
+  // card / status cell, hiding the label even when the pill had ample room.
+  // Container queries can't be exercised in happy-dom, so assert on the
+  // stylesheet directly that no such collapse rule is reintroduced.
+  it('never hides the access label with a card/cell-width container query', () => {
+    // vitest runs from the package root, so resolve globals.css from cwd.
+    const css = readFileSync(
+      join(process.cwd(), 'src/renderer/cowork/styles/globals.css'),
+      'utf8',
+    );
+    expect(css).not.toMatch(/@container\s+(?:artcard|statuscell)\b/);
   });
 });

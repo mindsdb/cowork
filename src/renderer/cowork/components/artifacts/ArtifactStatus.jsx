@@ -19,8 +19,9 @@ const FONT_BODY = "'Inter', system-ui, sans-serif";
 // are neutral so a protected artifact can never read as "Shared / available
 // to all". Every badge carries a `dot` (the "this is live" affordance that the
 // old green "Shared" pill provided — draft/"Not shared" has none) plus an icon,
-// so the label may collapse to icon-only on a narrow card (see .cw-access-label
-// @container) without going blank.
+// then the plain text label. The pill is inline-flex + nowrap and sizes to its
+// content, so the label is always shown (ENG-1475); when a tight cell also holds
+// the "Unshared changes" badge the two wrap to a second line.
 const ACCESS_BADGE = {
   public: { variant: 'success', icon: Ico.globe(11), label: 'Public' },
   password: { variant: 'default', icon: Ico.lock(11), label: 'Password' },
@@ -78,9 +79,8 @@ export function ArtifactStatus({ artifact, phase, publishable = true, onRetry, i
     // changes" warning pushed to the right (margin-left:auto). On a tight
     // card it wraps to its own line, still right-aligned there.
     <span style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', minWidth: 0, flexWrap: 'wrap' }}>
-      <Badge variant={badge.variant} size="sm" dot icon={badge.icon} title={badge.label}>
-        {/* Drops to icon-only on a narrow card (see .cw-access-label @container). */}
-        <span className="cw-access-label">{badge.label}</span>
+      <Badge variant={badge.variant} size="sm" dot icon={badge.icon}>
+        {badge.label}
       </Badge>
       {artifact.modified && (
         inlineChanges
