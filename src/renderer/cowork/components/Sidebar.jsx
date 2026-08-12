@@ -815,7 +815,7 @@ export default function Sidebar({
                 type="button"
                 onClick={onDismissShellUpdate}
                 aria-label="Dismiss update notice"
-                className="bg-transparent border-0 py-0 px-0.5 m-0 cursor-pointer text-ink-3 text-[14px] leading-none shrink-0"
+                className="bg-transparent border-0 py-0 px-0.5 m-0 cursor-pointer text-ink-3 text-base leading-none shrink-0"
               >
                 ×
               </button>
