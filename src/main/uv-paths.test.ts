@@ -98,6 +98,38 @@ describe('uv-paths — per-channel isolation', () => {
     process.env.UV_TOOL_BIN_DIR = '/home/u/.cowork-stable/uv/bin';
     expect(getEnvPath().split(path.delimiter)[0]).toBe('/home/u/.cowork-stable/uv/bin');
   });
+
+  it('getEnvPath includes Homebrew/MacPorts/Linuxbrew dirs on non-Windows', () => {
+    // The actual mechanism of the bug: findUv() already knew about Homebrew,
+    // but getEnvPath() — the PATH handed to the spawned cowork-server child,
+    // and everything IT spawns — didn't, so a subprocess's own PATH search
+    // (e.g. anton's shutil.which("uv")) missed it even when findUv() wouldn't.
+    if (process.platform === 'win32') return;
+    const parts = getEnvPath().split(path.delimiter);
+    expect(parts).toContain('/opt/homebrew/bin');
+    expect(parts).toContain('/usr/local/bin');
+    expect(parts).toContain('/opt/local/bin');
+    expect(parts).toContain('/home/linuxbrew/.linuxbrew/bin');
+  });
+
+  it('getEnvPath puts the inherited PATH ahead of the hardcoded package-manager dirs', () => {
+    // A user who orders their own tools (pyenv shims, a system python3) ahead
+    // of Homebrew in their real PATH must see that SAME ordering inside
+    // cowork-server and everything it spawns — the hardcoded dirs are a
+    // fallback for when nothing else provides the binary, not an override.
+    if (process.platform === 'win32') return;
+    const original = process.env.PATH;
+    process.env.PATH = '/custom/pyenv/shims';
+    try {
+      const parts = getEnvPath().split(path.delimiter);
+      const userIdx = parts.indexOf('/custom/pyenv/shims');
+      const homebrewIdx = parts.indexOf('/opt/homebrew/bin');
+      expect(userIdx).toBeGreaterThanOrEqual(0);
+      expect(homebrewIdx).toBeGreaterThan(userIdx);
+    } finally {
+      process.env.PATH = original;
+    }
+  });
 });
 
 describe('coworkServerBinCandidates — global Windows fallback is prod-only', () => {
