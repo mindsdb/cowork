@@ -16,7 +16,7 @@
 import { RadioGroup } from '@base-ui/react/radio-group';
 import { Radio } from '@base-ui/react/radio';
 import Ico from '../../Icons';
-import { Checkbox, Textarea } from '../../ui';
+import { Checkbox, Textarea, Tooltip } from '../../ui';
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
 const FONT_MONO = "var(--font-mono)";
@@ -171,11 +171,13 @@ export function AccessChooser({
               placeholder="Add a password"
               style={BARE_INPUT}
             />
-            <button type="button" onClick={() => set({ _reveal: !draft._reveal })}
-              title={draft._reveal ? 'Hide' : 'Show'} aria-label={draft._reveal ? 'Hide password' : 'Show password'}
-              style={{ background: 'transparent', border: 0, cursor: 'pointer', color: 'var(--ink-4)', display: 'inline-flex', padding: 4 }}>
-              {draft._reveal ? Ico.eyeOff(15) : Ico.eye(15)}
-            </button>
+            <Tooltip content={draft._reveal ? 'Hide' : 'Show'}>
+              <button type="button" onClick={() => set({ _reveal: !draft._reveal })}
+                aria-label={draft._reveal ? 'Hide password' : 'Show password'}
+                style={{ background: 'transparent', border: 0, cursor: 'pointer', color: 'var(--ink-4)', display: 'inline-flex', padding: 4 }}>
+                {draft._reveal ? Ico.eyeOff(15) : Ico.eye(15)}
+              </button>
+            </Tooltip>
           </div>
         </div>
       )}

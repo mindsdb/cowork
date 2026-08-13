@@ -8,11 +8,11 @@
    plus _streaming) and our real Composer + project/model state. Tokens come
    from CSS vars so the panel reads correctly in both light and dark themes. */
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { forwardRef, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import Ico from '../components/Icons';
 import Composer from '../components/Composer';
-import { Alert, Card } from '../components/ui';
+import { Alert, Card, Tooltip } from '../components/ui';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import { ThinkingBlock } from '../components/thinking/ThinkingBlock';
 import { WorkingIndicator } from '../components/thinking/WorkingIndicator';
@@ -81,23 +81,6 @@ function formatMetaTime(value) {
   return `${month} ${d.getDate()}, ${formatTime(d)}`;
 }
 
-function dividerLabel(date = new Date()) {
-  const today = new Date();
-  const sameDay = date.toDateString() === today.toDateString();
-  const month = date.toLocaleString('en-US', { month: 'short' });
-  return `${sameDay ? 'Today' : date.toLocaleString('en-US', { weekday: 'short' })} · ${month} ${date.getDate()}`;
-}
-
-function Divider({ label }) {
-  return (
-    <div className="flex items-center gap-3 mt-2 font-display font-semibold tracking-[0.18em] text-[10.5px] text-ink-4 uppercase">
-      <span className="flex-1 h-px bg-line" />
-      <span>{label}</span>
-      <span className="flex-1 h-px bg-line" />
-    </div>
-  );
-}
-
 // ─── Shared turn-action toolbar ──────────────────────────────────────────
 // Used by both user and assistant turns for consistent styling. Actions
 // fade in on hover of the parent turn, but stay visible when `isLast`
@@ -120,38 +103,41 @@ function TurnActions({ getText, onEdit, onDelete, isLast = false, align = 'left'
       className={`turn-actions${isLast ? ' is-last' : ''} ${align === 'right' ? 'justify-end' : 'justify-start'}`}
     >
       {onEdit && (
+        <Tooltip content="Edit and resend">
+          <button
+            type="button"
+            className="turn-action-btn"
+            onClick={onEdit}
+            aria-label="Edit and resend this message"
+          >
+            {Ico.edit ? Ico.edit(ICON_SZ) : Ico.pencil ? Ico.pencil(ICON_SZ) : Ico.code(ICON_SZ)}
+          </button>
+        </Tooltip>
+      )}
+      <Tooltip content={copied ? 'Copied' : 'Copy'}>
         <button
           type="button"
           className="turn-action-btn"
-          onClick={onEdit}
-          title="Edit and resend"
-          aria-label="Edit and resend this message"
+          aria-label={copied ? 'Copied' : 'Copy'}
+          onClick={onCopy}
+          // cascade-forced: .turn-action-btn sets `color: inherit` at rest, which
+          // beats a text-accent utility (equal specificity, globals.css loads later).
+          style={copied ? { color: 'var(--accent)' } : undefined}
         >
-          {Ico.edit ? Ico.edit(ICON_SZ) : Ico.pencil ? Ico.pencil(ICON_SZ) : Ico.code(ICON_SZ)}
+          {copied ? Ico.check(ICON_SZ) : Ico.copy(ICON_SZ)}
         </button>
-      )}
-      <button
-        type="button"
-        className="turn-action-btn"
-        title={copied ? 'Copied' : 'Copy'}
-        aria-label={copied ? 'Copied' : 'Copy'}
-        onClick={onCopy}
-        // cascade-forced: .turn-action-btn sets `color: inherit` at rest, which
-        // beats a text-accent utility (equal specificity, globals.css loads later).
-        style={copied ? { color: 'var(--accent)' } : undefined}
-      >
-        {copied ? Ico.check(ICON_SZ) : Ico.copy(ICON_SZ)}
-      </button>
+      </Tooltip>
       {onDelete && (
-        <button
-          type="button"
-          className="turn-action-btn turn-action-btn--danger"
-          title="Delete"
-          aria-label="Delete"
-          onClick={onDelete}
-        >
-          {Ico.trash(ICON_SZ)}
-        </button>
+        <Tooltip content="Delete">
+          <button
+            type="button"
+            className="turn-action-btn turn-action-btn--danger"
+            aria-label="Delete"
+            onClick={onDelete}
+          >
+            {Ico.trash(ICON_SZ)}
+          </button>
+        </Tooltip>
       )}
     </div>
   );
@@ -298,7 +284,26 @@ function userTurnAttachmentLabel(a) {
   return 'File';
 }
 
+// Long user messages clamp to ~8 lines behind a "Show more" toggle so a big
+// pasted prompt doesn't dominate the viewport before the answer starts.
+const USER_CLAMP_MAX_PX = 176;
+
 function UserTurn({ content, attachments, time, onDelete, onEdit, isLast, projectName, conversationId }) {
+  const contentRef = useRef(null);
+  const [collapsed, setCollapsed] = useState(true);
+  const [overflowing, setOverflowing] = useState(false);
+  useLayoutEffect(() => {
+    const el = contentRef.current;
+    if (!el) return undefined;
+    // scrollHeight reports full content height even while max-height clamps
+    // the box, so overflow is measurable without expanding first. Re-runs on
+    // width changes (sidebar toggle, window resize) via the ResizeObserver.
+    const measure = () => setOverflowing(el.scrollHeight > USER_CLAMP_MAX_PX + 8);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [content]);
   return (
     <div className="user-turn">
       <div className="user-turn-inner">
@@ -309,12 +314,28 @@ function UserTurn({ content, attachments, time, onDelete, onEdit, isLast, projec
               charts are gated off so a user typing a special fence in
               the composer can't trigger the side-effect renderers
               reserved for assistant output. */}
-          <MarkdownContent
-            text={content}
-            variant="user"
-            enableForms={false}
-            enableCharts={false}
-          />
+          <div
+            ref={contentRef}
+            className={collapsed && overflowing ? 'user-turn-clamp user-turn-clamp--faded' : undefined}
+            style={collapsed && overflowing ? { maxHeight: USER_CLAMP_MAX_PX } : undefined}
+          >
+            <MarkdownContent
+              text={content}
+              variant="user"
+              enableForms={false}
+              enableCharts={false}
+            />
+          </div>
+          {overflowing && (
+            <button
+              type="button"
+              className="user-turn-more"
+              aria-expanded={!collapsed}
+              onClick={() => setCollapsed((c) => !c)}
+            >
+              {collapsed ? 'Show more' : 'Show less'}
+            </button>
+          )}
         </div>
         {attachments?.map((a) => {
           // Image attachments preview inline as a thumbnail (fetched as a
@@ -677,13 +698,17 @@ function ArtifactCard({ artifact, onOpen }) {
         )}
         {canExport && (
           <div className="relative" onClick={(e) => e.stopPropagation()}>
-            <SmallBtn
-              disabled={!canAct || exporting}
-              onClick={() => setExportOpen((v) => !v)}
-              title="Export to another format"
-            >
-              Export ▾
-            </SmallBtn>
+            <Tooltip content="Export to another format">
+              {/* Native title only while disabled — a disabled button fires no
+                  hover/focus events, so the styled Tooltip can't open. */}
+              <SmallBtn
+                disabled={!canAct || exporting}
+                onClick={() => setExportOpen((v) => !v)}
+                title={(!canAct || exporting) ? 'Export to another format' : undefined}
+              >
+                Export ▾
+              </SmallBtn>
+            </Tooltip>
             {exportOpen && (
               <div
                 role="menu"
@@ -713,44 +738,41 @@ function ArtifactCard({ artifact, onOpen }) {
           </div>
         )}
         {!host.isWeb && (
-          <SmallBtn disabled={!canAct} onClick={handleReveal} title={canAct ? `${revealLabel}: ${path}` : disabledReason || 'No file path'}>
-            {revealLabel}
-          </SmallBtn>
+          <Tooltip content={canAct ? `${revealLabel}: ${path}` : ''}>
+            <SmallBtn disabled={!canAct} onClick={handleReveal} title={canAct ? undefined : (disabledReason || 'No file path')}>
+              {revealLabel}
+            </SmallBtn>
+          </Tooltip>
         )}
         {(!host.isWeb || isHtml) && (
-          <SmallBtn primary disabled={!canAct} onClick={handleOpen} title={canAct ? `Open ${path}` : disabledReason || 'No file path'}>
-            Open
-          </SmallBtn>
+          <Tooltip content={canAct ? `Open ${path}` : ''}>
+            <SmallBtn primary disabled={!canAct} onClick={handleOpen} title={canAct ? undefined : (disabledReason || 'No file path')}>
+              Open
+            </SmallBtn>
+          </Tooltip>
         )}
       </div>
     </Card>
   );
 }
 
-function SmallBtn({ primary, children, onClick, title, disabled }) {
+// The primary ("Open") CTA no longer hard-fills raw --accent (which glared in
+// dark). Both variants are class-based now so the primary can adopt the
+// canonical .btn.primary color logic — opaque accent in light, quiet accent
+// glass in dark — via .chat-card-btn(--primary) in globals.css.
+const SmallBtn = forwardRef(function SmallBtn({ primary, children, onClick, title, disabled, ...rest }, ref) {
   return (
     <button
+      ref={ref}
       type="button"
       onClick={(e) => { e.stopPropagation(); if (!disabled) onClick?.(); }}
       title={title}
       disabled={disabled}
-      // kept inline: same all:unset cascade-priority reason as ArtifactCard's
-      // buttons above — every property here has to stay co-located with the
-      // reset since a stylesheet utility class can't beat it.
-      style={{
-        all: 'unset', cursor: disabled ? 'not-allowed' : 'pointer',
-        display: 'inline-flex', alignItems: 'center', gap: 6,
-        padding: '6px 10px', borderRadius: 7,
-        background: primary ? T.accent : T.surface,
-        color: primary ? '#fff' : T.ink,
-        border: `1px solid ${primary ? T.accent : T.line2}`,
-        fontFamily: FONT_BODY, fontSize: 12, fontWeight: 500,
-        whiteSpace: 'nowrap',
-        opacity: disabled ? 0.5 : 1,
-      }}
+      className={primary ? 'chat-card-btn chat-card-btn--primary' : 'chat-card-btn'}
+      {...rest}
     >{children}</button>
   );
-}
+});
 
 // Streaming cursor — blinking accent caret (orb stays on the header).
 function StreamCursor() {
@@ -1008,6 +1030,16 @@ function ProviderOverloadedCard({
       buttons={providerOverloadedButtons({ reconnectable: onManaged, onRetry, onOpenSettings })}
     />
   );
+}
+
+// Most recent user text before index `i` — the message whose turn failed.
+// Used by failure cards whose action is "resend the failed message".
+function lastUserTextBefore(visibleMessages, i) {
+  for (let j = i - 1; j >= 0; j--) {
+    const c = visibleMessages[j]?.role === 'user' && visibleMessages[j].content;
+    if (typeof c === 'string' && c) return c;
+  }
+  return '';
 }
 
 /**
@@ -1332,28 +1364,29 @@ export default function ChatView({
         {/* Floating expand-rail button — appears on the right edge of
             the conv column when the rail is collapsed. Mirror of the
             sidebar's hamburger pattern. */}
-        <button
-          type="button"
-          onClick={() => isNarrow ? setRailNarrowOpen(true) : setRailOpen(true)}
-          title="Expand panel"
-          aria-label="Expand panel"
-          // Only the truly dynamic bits (opacity/transform/pointerEvents driven by
-          // rail-open state, and the transition's per-state delay) stay inline —
-          // resting/hover color+background moved to className below so the
-          // hover: utility can win (an inline color/background at rest would
-          // otherwise out-specificity any stylesheet hover rule).
-          style={{
-            opacity: (effectiveRailOpen || railOverlayOpen) ? 0 : 1,
-            transform: (effectiveRailOpen || railOverlayOpen) ? 'translateX(8px)' : 'translateX(0)',
-            pointerEvents: (effectiveRailOpen || railOverlayOpen) ? 'none' : 'auto',
-            transition:
-              `opacity 280ms cubic-bezier(0.32,0.72,0,1) ${(effectiveRailOpen || railOverlayOpen) ? '0ms' : '120ms'}, ` +
-              `transform 360ms cubic-bezier(0.32,0.72,0,1) ${(effectiveRailOpen || railOverlayOpen) ? '0ms' : '80ms'}`,
-          }}
-          className="chat-rail-toggle absolute top-3.5 right-3.5 z-10 w-7 h-7 rounded-md inline-grid place-items-center cursor-pointer bg-transparent border-0 text-ink-3 hover:text-ink hover:bg-surface-2 [-webkit-app-region:no-drag]"
-        >
-          {Ico.panelExpandLeft(15)}
-        </button>
+        <Tooltip content="Expand panel">
+          <button
+            type="button"
+            onClick={() => isNarrow ? setRailNarrowOpen(true) : setRailOpen(true)}
+            aria-label="Expand panel"
+            // Only the truly dynamic bits (opacity/transform/pointerEvents driven by
+            // rail-open state, and the transition's per-state delay) stay inline —
+            // resting/hover color+background moved to className below so the
+            // hover: utility can win (an inline color/background at rest would
+            // otherwise out-specificity any stylesheet hover rule).
+            style={{
+              opacity: (effectiveRailOpen || railOverlayOpen) ? 0 : 1,
+              transform: (effectiveRailOpen || railOverlayOpen) ? 'translateX(8px)' : 'translateX(0)',
+              pointerEvents: (effectiveRailOpen || railOverlayOpen) ? 'none' : 'auto',
+              transition:
+                `opacity 280ms cubic-bezier(0.32,0.72,0,1) ${(effectiveRailOpen || railOverlayOpen) ? '0ms' : '120ms'}, ` +
+                `transform 360ms cubic-bezier(0.32,0.72,0,1) ${(effectiveRailOpen || railOverlayOpen) ? '0ms' : '80ms'}`,
+            }}
+            className="chat-rail-toggle absolute top-3.5 right-3.5 z-10 w-7 h-7 rounded-md inline-grid place-items-center cursor-pointer bg-transparent border-0 text-ink-3 hover:text-ink hover:bg-surface-2 [-webkit-app-region:no-drag]"
+          >
+            {Ico.panelExpandLeft(15)}
+          </button>
+        </Tooltip>
 
         {/* Header — reserve the shell-owned titlebar-safe inset on top so the
             breadcrumbs drop below the macOS traffic lights (and the floating
@@ -1366,7 +1399,7 @@ export default function ChatView({
           // pixel, min-w-0 + overflow-hidden prevents the header from
           // visually pushing past the conv-col grid track (which is what
           // was making the icons appear to slide behind the right rail).
-          className="flex items-center justify-between pt-[max(14px,var(--titlebar-safe-top,0px))] pb-3.5 pr-7 pl-7 border-b border-x-0 border-t-0 border-solid border-line bg-transparent flex-shrink-0 min-w-0 overflow-hidden transition-[padding] duration-[240ms] ease-[cubic-bezier(0.32,0.72,0,1)]"
+          className="flex items-center justify-between pt-[max(14px,var(--titlebar-safe-top,0px))] pb-3.5 pr-7 pl-7 bg-transparent flex-shrink-0 min-w-0 overflow-hidden transition-[padding] duration-[240ms] ease-[cubic-bezier(0.32,0.72,0,1)]"
         >
           {/* Left side: [Project] › [Task] for chat tasks, or
               [Apps] › [Task] for connect-data flows (Connect Gmail,
@@ -1478,32 +1511,33 @@ export default function ChatView({
                 </span>
               )}
               {!titleEditing && (
-                <button
-                  ref={settingsBtnRef}
-                  type="button"
-                  aria-label="Task menu"
-                  title="Task menu"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (settingsOpen) {
-                      setSettingsOpen(false);
-                      return;
-                    }
-                    const rect = settingsBtnRef.current?.getBoundingClientRect();
-                    setSettingsAnchor(rect || null);
-                    setSettingsOpen(true);
-                  }}
-                  // Only opacity/pointerEvents (titleControlsShown-driven) stay
-                  // inline — resting/hover background+color moved to className
-                  // so hover: can win (see the rail-toggle button above for why).
-                  style={{
-                    opacity: titleControlsShown ? 1 : 0,
-                    pointerEvents: titleControlsShown ? 'auto' : 'none',
-                  }}
-                  className={`w-[22px] h-[22px] rounded-[5px] border-0 inline-grid place-items-center flex-shrink-0 cursor-pointer transition-[opacity,color,background] duration-150 ease-[ease] [-webkit-app-region:no-drag] text-ink-3 hover:text-ink hover:bg-surface-2 ${settingsOpen ? 'bg-surface-2' : 'bg-transparent'}`}
-                >
-                  {Ico.moreVert(13)}
-                </button>
+                <Tooltip content="Task menu">
+                  <button
+                    ref={settingsBtnRef}
+                    type="button"
+                    aria-label="Task menu"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (settingsOpen) {
+                        setSettingsOpen(false);
+                        return;
+                      }
+                      const rect = settingsBtnRef.current?.getBoundingClientRect();
+                      setSettingsAnchor(rect || null);
+                      setSettingsOpen(true);
+                    }}
+                    // Only opacity/pointerEvents (titleControlsShown-driven) stay
+                    // inline — resting/hover background+color moved to className
+                    // so hover: can win (see the rail-toggle button above for why).
+                    style={{
+                      opacity: titleControlsShown ? 1 : 0,
+                      pointerEvents: titleControlsShown ? 'auto' : 'none',
+                    }}
+                    className={`w-[22px] h-[22px] rounded-[5px] border-0 inline-grid place-items-center flex-shrink-0 cursor-pointer transition-[opacity,color,background] duration-150 ease-[ease] [-webkit-app-region:no-drag] text-ink-3 hover:text-ink hover:bg-surface-2 ${settingsOpen ? 'bg-surface-2' : 'bg-transparent'}`}
+                  >
+                    {Ico.moreVert(13)}
+                  </button>
+                </Tooltip>
               )}
             </div>
           </div>
@@ -1562,8 +1596,6 @@ export default function ChatView({
           className="scroll-clean min-h-0 overflow-y-auto overflow-x-hidden pt-8 px-7 pb-[180px] mb-[25px] bg-transparent [-webkit-app-region:no-drag] select-text"
         >
           <div className="max-w-[720px] mx-auto flex flex-col gap-7">
-            <Divider label={dividerLabel(new Date())} />
-
             {(() => {
               // Track the assistant turn index inline so TurnActions
               // knows which user→answer cycle to delete. The walker
@@ -1710,11 +1742,7 @@ export default function ChatView({
                  * while Air is payable, a one-click switch that resends the
                  * failed message on it — never "try again". */
                 if (m.code === 'model_access_denied' || m.code === 'model_disabled') {
-                  let deniedPrevUserText = '';
-                  for (let j = i - 1; j >= 0; j--) {
-                    const c = visibleMessages[j]?.role === 'user' && visibleMessages[j].content;
-                    if (typeof c === 'string' && c) { deniedPrevUserText = c; break; }
-                  }
+                  const deniedPrevUserText = lastUserTextBefore(visibleMessages, i);
                   return (
                     <ModelUnavailableCard
                       key={i}
@@ -1735,11 +1763,7 @@ export default function ChatView({
                 // budget → Retry (resend the last user message), plus a MindsHub
                 // failover nudge for BYOK users (ENG-673).
                 if (m.code === 'provider_overloaded') {
-                  let prevUserText = '';
-                  for (let j = i - 1; j >= 0; j--) {
-                    const c = visibleMessages[j]?.role === 'user' && visibleMessages[j].content;
-                    if (typeof c === 'string' && c) { prevUserText = c; break; }
-                  }
+                  const prevUserText = lastUserTextBefore(visibleMessages, i);
                   return (
                     <ProviderOverloadedCard
                       key={i}
@@ -1753,6 +1777,59 @@ export default function ChatView({
                     />
                   );
                 }
+                // Unknown/removed model alias (gateway 404 `unknown_model`):
+                // credits can't fix it — the next step is picking a different
+                // model in Settings.
+                if (m.code === 'unknown_model') {
+                  return (
+                    <ActionCard
+                      key={i}
+                      time={formatMetaTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      title="That model isn't available"
+                      body="The selected model was removed or isn't offered anymore. Switch to another model in Settings."
+                      buttons={[
+                        { label: 'Open Settings', onClick: () => onOpenSettings?.('agent'), primary: true },
+                      ]}
+                    />
+                  );
+                }
+                // Unsupported attachment image (`image_format`): the fix is on
+                // the user's side — re-upload as PNG/JPEG — so the card names
+                // it and offers no dead-end buttons.
+                if (m.code === 'image_format') {
+                  return (
+                    <ActionCard
+                      key={i}
+                      time={formatMetaTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      title="That image couldn't be read"
+                      body="The attached image is in a format the model can't process. Convert it to PNG or JPEG and send it again."
+                    />
+                  );
+                }
+                // Transient billing/policy outage at the gateway
+                // (`policy_unavailable`): retryable and not the user's fault,
+                // so the next step is simply resending the failed message.
+                if (m.code === 'policy_unavailable') {
+                  const retryText = lastUserTextBefore(visibleMessages, i);
+                  return (
+                    <ActionCard
+                      key={i}
+                      time={formatMetaTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      title="Billing is temporarily unavailable"
+                      body="MindsHub couldn't confirm billing for this request. This is temporary — try again in a moment."
+                      buttons={retryText
+                        ? [{ label: 'Try again', onClick: () => onSend?.(retryText), primary: true }]
+                        : []}
+                    />
+                  );
+                }
+                // `anton_error` and anything unmapped: a deliberately generic
+                // bucket with no known next step, so no card — but still a
+                // failure, rendered as a danger alert so it never reads as a
+                // finished answer. Richer treatment is ENG-1093's review.
                 return (
                   <AnswerTurn key={i} state="done" time={formatMetaTime(m.createdAt)} showActions={false} agentLabel={agentLabel}>
                     <Alert variant="danger">{m.content}</Alert>
@@ -1923,13 +2000,14 @@ export default function ChatView({
                     className="inline-flex items-center gap-1.5 max-w-full pt-[5px] pr-1 pb-[5px] pl-3 rounded-full bg-surface border border-solid border-line font-body text-sm text-ink-2 transition-[background,border-color] duration-[120ms] ease-[ease]"
                   >
                     <span className="max-w-[360px] overflow-hidden text-ellipsis whitespace-nowrap">{q.text}</span>
-                    <button
-                      type="button"
-                      onClick={() => onRemoveFromQueue?.(q.id)}
-                      title="Remove from queue"
-                      aria-label="Remove from queue"
-                      className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-transparent border-0 text-ink-4 cursor-pointer flex-shrink-0 hover:bg-[color-mix(in_srgb,var(--danger)_14%,transparent)] hover:text-danger"
-                    >{Ico.close(11)}</button>
+                    <Tooltip content="Remove from queue">
+                      <button
+                        type="button"
+                        onClick={() => onRemoveFromQueue?.(q.id)}
+                        aria-label="Remove from queue"
+                        className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-transparent border-0 text-ink-4 cursor-pointer flex-shrink-0 hover:bg-[color-mix(in_srgb,var(--danger)_14%,transparent)] hover:text-danger"
+                      >{Ico.close(11)}</button>
+                    </Tooltip>
                   </span>
                 ))}
               </div>
@@ -1995,27 +2073,28 @@ export default function ChatView({
             FLOATING expand button outside is the one hidden via
             .chat-rail-toggle in globals.css. */}
         <div className="chat-rail-close-row flex items-center justify-end flex-shrink-0">
-          <button
-            type="button"
-            className="chat-rail-close"
-            onClick={() => isNarrow ? setRailNarrowOpen(false) : setRailOpen(false)}
-            title="Collapse panel"
-            aria-label="Collapse panel"
-            // kept inline: same all:unset cascade-priority reason as ArtifactCard's
-            // buttons — every property here stays co-located with the reset, and
-            // the hover color/background mutation needs a subsequent inline write
-            // to win over the reset.
-            style={{
-              all: 'unset', cursor: 'pointer',
-              width: 26, height: 26, borderRadius: 6,
-              display: 'inline-grid', placeItems: 'center',
-              color: T.ink3,
-            }}
-            onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
-            onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-3)'; e.currentTarget.style.background = 'transparent'; }}
-          >
-            {Ico.panelCollapseRight(15)}
-          </button>
+          <Tooltip content="Collapse panel">
+            <button
+              type="button"
+              className="chat-rail-close"
+              onClick={() => isNarrow ? setRailNarrowOpen(false) : setRailOpen(false)}
+              aria-label="Collapse panel"
+              // kept inline: same all:unset cascade-priority reason as ArtifactCard's
+              // buttons — every property here stays co-located with the reset, and
+              // the hover color/background mutation needs a subsequent inline write
+              // to win over the reset.
+              style={{
+                all: 'unset', cursor: 'pointer',
+                width: 26, height: 26, borderRadius: 6,
+                display: 'inline-grid', placeItems: 'center',
+                color: T.ink3,
+              }}
+              onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
+              onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-3)'; e.currentTarget.style.background = 'transparent'; }}
+            >
+              {Ico.panelCollapseRight(15)}
+            </button>
+          </Tooltip>
         </div>
         <ProgressBox
           steps={railSteps}

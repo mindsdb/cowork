@@ -1,11 +1,13 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as cp from 'child_process';
+import * as https from 'https';
+import { EventEmitter } from 'events';
 
 // Integration-style tests for the orchestration entry point only — the
 // decision logic itself is tested directly in update-logic.test.ts (qa.md
-// §5a rule). server-process pulls in electron; fs/child_process are mocked
-// so nothing touches real binaries, venvs, or the network.
+// §5a rule). server-process pulls in electron; fs/child_process/https are
+// mocked so nothing touches real binaries, venvs, or the network.
 vi.mock('./server-process', () => ({
   startServer: vi.fn(async () => ({ ok: true, port: 26866 })),
   stopServer: vi.fn(async () => {}),
@@ -14,8 +16,12 @@ vi.mock('./server-process', () => ({
   // just run the wrapped fn so runUv still invokes execFile.
   withServerMaintenance: vi.fn(async (fn: () => Promise<unknown>) => fn()),
 }));
+// buildKind reaches electron's `app`; stub it so the PyPI stream gate resolves
+// without a packaged app (mirrors server-source.test.ts).
+vi.mock('./cowork-home', () => ({ buildKind: vi.fn(() => 'prod') }));
 vi.mock('fs');
 vi.mock('child_process');
+vi.mock('https');
 
 import { startServer } from './server-process';
 import {
@@ -24,6 +30,24 @@ import {
   checkForServerUpdate,
   recreateVenvIfUnsupportedPython,
 } from './server-updater';
+
+/** Mock https.get to return a canned PyPI JSON body chosen by URL (cowork vs
+ *  anton), matching fetchPypiJson's (url, opts, cb) shape. */
+function mockPypi(bodyFor: (url: string) => string | null) {
+  vi.mocked(https.get).mockImplementation(((url: string, _opts: unknown, cb: (r: unknown) => void) => {
+    const body = bodyFor(String(url));
+    const res = new EventEmitter() as EventEmitter & { statusCode: number; resume: () => void };
+    res.statusCode = body === null ? 404 : 200;
+    res.resume = () => {};
+    setTimeout(() => {
+      cb(res);
+      if (body !== null) res.emit('data', body);
+      res.emit('end');
+    }, 0);
+    const req = { on: () => req, destroy: () => {} };
+    return req as never;
+  }) as never);
+}
 
 afterEach(() => {
   vi.clearAllMocks();
@@ -170,6 +194,126 @@ describe('uv-unresolvable bails are loud', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     await expect(recreateVenvIfUnsupportedPython()).resolves.toBe(false);
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('uv not found'));
+  });
+});
+
+describe('maybeUpdateServer — PyPI channel anton-only update (ENG-1094)', () => {
+  // A PyPI-channel install where cowork-server is current but a newer
+  // anton-agent has published — the case that was invisible before ENG-1094.
+  const COWORK_META =
+    'Metadata-Version: 2.1\nName: cowork-server\n' +
+    'Requires-Dist: anton-agent<3,>=2.26.6.30.1\nRequires-Dist: fastapi>=0.100\n';
+
+  // `antonReleases === null` makes the anton-agent PyPI request fail (404),
+  // simulating an inconclusive anton lookup while cowork-server is current.
+  function installPypiChannel(antonReleases: Record<string, unknown[]> | null) {
+    process.env.UV_TOOL_DIR = '/fake/uv/tools';
+    // Everything on disk exists EXCEPT direct_url.json — its absence is what
+    // makes readVcsInfo return null and select the PyPI channel.
+    vi.mocked(fs.existsSync).mockImplementation(((p: string) => !String(p).endsWith('direct_url.json')) as never);
+    vi.mocked(fs.readdirSync).mockReturnValue([
+      'cowork_server-0.26.7.27.1.dist-info',
+      'anton_agent-2.26.7.27.1.dist-info',
+    ] as never);
+    vi.mocked(fs.readFileSync).mockImplementation(((p: string) =>
+      (String(p).endsWith('METADATA') ? COWORK_META : '')) as never);
+    mockPypi((url) =>
+      url.includes('/anton-agent/')
+        ? (antonReleases === null ? null : JSON.stringify({ releases: antonReleases }))
+        // cowork-server info.version == installed → cowork is up-to-date.
+        : JSON.stringify({ info: { version: '0.26.7.27.1' }, releases: { '0.26.7.27.1': [{}] } }));
+  }
+
+  function mockUv(): string[][] {
+    const execCalls: string[][] = [];
+    vi.mocked(cp.execFile).mockImplementation(((
+      cmd: string,
+      args: string[],
+      _opts: unknown,
+      cb: (err: Error | null, stdout: string, stderr: string) => void,
+    ) => {
+      execCalls.push([cmd, ...args]);
+      if (args[0] === 'tool' && args[1] === 'list') cb(null, 'cowork-server v0.26.7.27.1\n', '');
+      else cb(null, '', ''); // uv tool install → success
+      return {} as never;
+    }) as never);
+    return execCalls;
+  }
+
+  it('applies a newer anton-agent while cowork-server stays pinned to its current version', async () => {
+    installPypiChannel({ '2.26.7.27.1': [{}], '2.26.7.27.2': [{}] });
+    const execCalls = mockUv();
+
+    const result = await maybeUpdateServer();
+
+    expect(result).toEqual({ updated: true, previousVersion: '2.26.7.27.1', newVersion: '2.26.7.27.2' });
+    const installs = execCalls.filter((c) => c[1] === 'tool' && c[2] === 'install');
+    expect(installs).toHaveLength(1);
+    // Same cowork-server version; the newer anton is forced as a direct requirement.
+    expect(installs[0]).toContain('cowork-server==0.26.7.27.1');
+    expect(installs[0]).toContain('--with');
+    expect(installs[0]).toContain('anton-agent==2.26.7.27.2');
+  });
+
+  it('checkForServerUpdate names the anton-agent component and its versions', async () => {
+    installPypiChannel({ '2.26.7.27.1': [{}], '2.26.7.27.2': [{}] });
+    mockUv();
+    await expect(checkForServerUpdate()).resolves.toEqual({
+      updateAvailable: true,
+      currentVersion: '2.26.7.27.1',
+      latestVersion: '2.26.7.27.2',
+      component: 'anton-agent',
+    });
+  });
+
+  it('checkForServerUpdate flags error (not "up to date") when the anton lookup is inconclusive', async () => {
+    // cowork-server is current, but the anton PyPI request fails. Collapsing that
+    // into a plain "no update" would let the on-demand UI say "You're up to date"
+    // for an inconclusive check — flag it as an error instead (PR #533 review).
+    installPypiChannel(null);
+    mockUv();
+    await expect(checkForServerUpdate()).resolves.toEqual({
+      updateAvailable: false,
+      currentVersion: '0.26.7.27.1',
+      latestVersion: '0.26.7.27.1',
+      component: 'cowork-server',
+      error: true,
+    });
+  });
+
+  it('maybeUpdateServer skips silently when the anton lookup is inconclusive', async () => {
+    // The apply path fails closed on an inconclusive anton lookup — no install,
+    // no error surfaced; the next check/poll retries.
+    installPypiChannel(null);
+    const execCalls = mockUv();
+    await expect(maybeUpdateServer()).resolves.toEqual({ updated: false });
+    expect(execCalls.filter((c) => c[1] === 'tool' && c[2] === 'install')).toHaveLength(0);
+  });
+
+  it('never offers an anton newer than cowork-server allows (3.0.0 blocked by <3)', async () => {
+    installPypiChannel({ '2.26.7.27.1': [{}], '3.0.0': [{}] });
+    const execCalls = mockUv();
+    await expect(maybeUpdateServer()).resolves.toEqual({ updated: false });
+    expect(execCalls.filter((c) => c[1] === 'tool' && c[2] === 'install')).toHaveLength(0);
+  });
+
+  it('rolls back to the prior anton when the new one fails its health check', async () => {
+    installPypiChannel({ '2.26.7.27.1': [{}], '2.26.7.27.2': [{}] });
+    const execCalls = mockUv();
+    vi.mocked(startServer)
+      .mockResolvedValueOnce({ ok: false, reason: 'health check failed' } as never)
+      .mockResolvedValueOnce({ ok: true, port: 26866 } as never);
+
+    const result = await maybeUpdateServer();
+
+    expect(result.updated).toBe(false);
+    expect(result.previousVersion).toBe('2.26.7.27.1');
+    expect(result.error).toContain('New anton failed to start');
+    const installs = execCalls.filter((c) => c[1] === 'tool' && c[2] === 'install');
+    expect(installs).toHaveLength(2);
+    expect(installs[0]).toContain('anton-agent==2.26.7.27.2'); // forward
+    expect(installs[1]).toContain('anton-agent==2.26.7.27.1'); // rollback
+    expect(vi.mocked(startServer)).toHaveBeenCalledTimes(2);
   });
 });
 

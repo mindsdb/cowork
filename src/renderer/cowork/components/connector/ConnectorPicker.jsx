@@ -15,10 +15,7 @@ import Ico from '../Icons';
 import { fetchConnectors } from '../../api';
 import { Card } from '../ui/Card';
 import { Modal } from '../ui/Modal';
-import { Select } from '../ui';
-
-const FONT_BODY = "var(--font-body, 'Inter', system-ui, sans-serif)";
-const FONT_DISPLAY = "var(--font-display, 'Inter', system-ui, sans-serif)";
+import { Select, Tooltip } from '../ui';
 
 // Category → fallback Ico name when a connector doesn't ship its own
 // flat icon. Keep this map small and obvious; "other" → generic puzzle.
@@ -116,7 +113,8 @@ function ConnectorLogo({ connector, size = 22 }) {
       <img
         src={connector.logo_url}
         alt=""
-        style={{ width: size, height: size, objectFit: 'contain' }}
+        className="object-contain"
+        style={{ width: size, height: size }}
       />
     );
   }
@@ -132,27 +130,18 @@ const ConnectorTile = memo(function ConnectorTile({ connector, onPick }) {
       interactive
       padding="cozy"
       onClick={() => onPick?.(connector)}
-      style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}
+      className="flex items-start gap-3"
     >
-      <span style={{
-        display: 'inline-grid', placeItems: 'center',
-        width: 40, height: 40, borderRadius: 8,
-        background: 'var(--surface-2)',
-        color: connector.logo_color || 'var(--ink-3)',
-        flexShrink: 0,
-      }}>
+      <span
+        className="inline-grid place-items-center w-[40px] h-[40px] rounded-card-row bg-surface-2 shrink-0"
+        style={{ color: connector.logo_color || 'var(--ink-3)' }}
+      >
         <ConnectorLogo connector={connector} size={22} />
       </span>
-      <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <span style={{
-          fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 14, color: 'var(--ink)',
-          letterSpacing: '0',
-        }}>{connector.label || connector.id}</span>
+      <div className="min-w-0 flex flex-col gap-1">
+        <span className="font-[family-name:var(--font-display)] font-semibold text-base text-ink tracking-[0]">{connector.label || connector.id}</span>
         {connector.description && (
-          <span style={{
-            fontFamily: FONT_BODY, fontSize: 12.5, color: 'var(--ink-3)',
-            lineHeight: 1.4,
-          }}>{connector.description}</span>
+          <span className="font-[family-name:var(--font-body)] text-sm text-ink-3 leading-[1.4]">{connector.description}</span>
         )}
       </div>
     </Card>
@@ -238,44 +227,20 @@ export default function ConnectorPicker({ open, onPick, onClose }) {
         {/* Header — title row, then search row, then filter/sort row.
             All three live in the chrome above the scrollable grid;
             the grid background (surface-2) provides the visual break. */}
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '14px 16px 8px',
-          background: 'var(--surface)',
-          flexShrink: 0,
-        }}>
-          <h2 id="connector-picker-title" className="s-h3" style={{
-            margin: 0,
-            color: 'var(--ink)',
-          }}>Connectors Directory</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            title="Close"
-            aria-label="Close"
-            style={{
-              cursor: 'pointer',
-              background: 'transparent', border: 0,
-              color: 'var(--ink-3)',
-              width: 28, height: 28, borderRadius: 6,
-              display: 'inline-grid', placeItems: 'center',
-              fontSize: 18, lineHeight: 1, flexShrink: 0,
-            }}
-          >×</button>
+        <div className="flex items-center justify-between pt-[14px] px-4 pb-2 bg-surface shrink-0">
+          <h2 id="connector-picker-title" className="s-h3 m-0">Connectors Directory</h2>
+          <Tooltip content="Close">
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              className="cursor-pointer bg-transparent border-0 text-ink-3 w-[28px] h-[28px] rounded-[6px] inline-grid place-items-center text-[18px] leading-none shrink-0"
+            >×</button>
+          </Tooltip>
         </div>
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 10,
-          padding: '0 16px 8px',
-          background: 'var(--surface)',
-          flexShrink: 0,
-        }}>
-          <label className="focus-within-ring" style={{
-            flex: 1,
-            display: 'inline-flex', alignItems: 'center', gap: 8,
-            padding: '8px 11px', borderRadius: 8,
-            background: 'var(--surface-2)', border: '1px solid var(--line)',
-          }}>
-            <span style={{ display: 'inline-flex', color: 'var(--ink-3)', flexShrink: 0 }}>
+        <div className="flex items-center gap-[10px] pt-0 px-4 pb-2 bg-surface shrink-0">
+          <label className="focus-within-ring flex-1 inline-flex items-center gap-2 py-2 px-[11px] rounded-card-row bg-surface-2 border border-solid border-line">
+            <span className="inline-flex text-ink-3 shrink-0">
               {Ico.search(14)}
             </span>
             <input
@@ -288,12 +253,7 @@ export default function ConnectorPicker({ open, onPick, onClose }) {
               spellCheck={false}
               autoCapitalize="none"
               autoCorrect="off"
-              style={{
-                flex: 1, minWidth: 0,
-                border: 0, outline: 0, background: 'transparent',
-                fontFamily: FONT_BODY, fontSize: 13.5,
-                color: 'var(--ink)',
-              }}
+              className="flex-1 min-w-0 border-0 outline-0 bg-transparent font-[family-name:var(--font-body)] text-[13.5px] text-ink"
             />
           </label>
         </div>
@@ -301,12 +261,7 @@ export default function ConnectorPicker({ open, onPick, onClose }) {
             "narrow my results" controls (search, filter, sort) read
             as one cluster. No hard divider line; the body's softer
             surface-2 plus an inset top shadow handle the break. */}
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
-          padding: '0 16px 18px',
-          background: 'var(--surface)',
-          flexShrink: 0,
-        }}>
+        <div className="flex items-center gap-2 flex-wrap pt-0 px-4 pb-[18px] bg-surface shrink-0">
           <Select
             variant="pill"
             label="Filter by"
@@ -348,24 +303,19 @@ export default function ConnectorPicker({ open, onPick, onClose }) {
             • `minHeight: 0` is the flexbox gotcha that lets a flex
               child actually shrink below its content size — without
               it, `overflowY: auto` never triggers. */}
-        <div style={{
-          flex: 1, minHeight: 0, overflowY: 'auto',
-          padding: '24px 16px 16px',
-          background: 'var(--surface-2)',
-          boxShadow: 'inset 0 8px 16px -10px rgba(15, 16, 17, 0.10)',
-        }}>
+        <div className="flex-1 min-h-0 overflow-y-auto pt-6 px-4 pb-4 bg-surface-2 shadow-[inset_0_8px_16px_-10px_rgba(15,16,17,0.10)]">
           {loading && (
-            <div style={{ padding: 12, color: 'var(--ink-3)', fontSize: 13 }}>
+            <div className="p-3 text-ink-3 text-[13px]">
               Loading connectors…
             </div>
           )}
           {error && (
-            <div style={{ padding: 12, color: 'var(--danger)', fontSize: 13 }}>
+            <div className="p-3 text-danger text-[13px]">
               {error}
             </div>
           )}
           {!loading && !error && filtered.length === 0 && (
-            <div style={{ padding: 12, color: 'var(--ink-3)', fontSize: 13 }}>
+            <div className="p-3 text-ink-3 text-[13px]">
               {query
                 ? <>No connectors match <strong>“{query}”</strong>.</>
                 : 'No connectors available yet.'}
@@ -378,11 +328,7 @@ export default function ConnectorPicker({ open, onPick, onClose }) {
               The search/category filter shrinks `filtered` first, so
               both modes operate on the same already-narrowed list. */}
           {sortBy === 'name' ? (
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
-              gap: 10,
-            }}>
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-[10px]">
               {[...filtered]
                 .sort((a, b) => (a.label || a.id).localeCompare(b.label || b.id))
                 .map((c) => (
@@ -396,20 +342,11 @@ export default function ConnectorPicker({ open, onPick, onClose }) {
                 const featured = filtered.filter((c) => c.featured);
                 if (!featured.length) return null;
                 return (
-                  <div style={{ marginBottom: 24 }}>
-                    <div style={{
-                      fontFamily: FONT_BODY, fontSize: 11, fontWeight: 600,
-                      letterSpacing: '0.04em', textTransform: 'uppercase',
-                      color: 'var(--ink-3)',
-                      padding: '4px 2px 8px',
-                    }}>
+                  <div className="mb-6">
+                    <div className="font-[family-name:var(--font-body)] text-xs font-semibold tracking-[0.04em] uppercase text-ink-3 pt-1 px-0.5 pb-2">
                       Featured
                     </div>
-                    <div style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
-                      gap: 10,
-                    }}>
+                    <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-[10px]">
                       {featured.map((c) => (
                         <ConnectorTile key={c.id} connector={c} onPick={onPick} />
                       ))}
@@ -418,27 +355,14 @@ export default function ConnectorPicker({ open, onPick, onClose }) {
                 );
               })()}
               {groupByCategory(filtered).map(([cat, list]) => (
-                <div key={cat} style={{ marginBottom: 18 }}>
-                  <div style={{
-                    fontFamily: FONT_BODY, fontSize: 11, fontWeight: 600,
-                    letterSpacing: '0.04em', textTransform: 'uppercase',
-                    color: 'var(--ink-3)',
-                    padding: '4px 2px 8px',
-                  }}>
+                <div key={cat} className="mb-[18px]">
+                  <div className="font-[family-name:var(--font-body)] text-xs font-semibold tracking-[0.04em] uppercase text-ink-3 pt-1 px-0.5 pb-2">
                     {categoryLabel(cat)}
-                    <span style={{
-                      marginLeft: 8, fontWeight: 500,
-                      color: 'var(--ink-4)',
-                      fontSize: 11, letterSpacing: 0, textTransform: 'none',
-                    }}>
+                    <span className="ml-2 font-medium text-ink-4 text-xs tracking-[0] normal-case">
                       {list.length}
                     </span>
                   </div>
-                  <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
-                    gap: 10,
-                  }}>
+                  <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-[10px]">
                     {list.map((c) => (
                       <ConnectorTile key={c.id} connector={c} onPick={onPick} />
                     ))}

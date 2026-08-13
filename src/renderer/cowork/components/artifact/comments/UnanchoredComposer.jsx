@@ -8,6 +8,7 @@
 
 import { useCallback, useRef, useState } from 'react';
 import { ArrowUpIcon } from './icons';
+import { Tooltip } from '../../ui';
 
 const MAX_HEIGHT = 120; // px — ~5 lines before the textarea scrolls
 
@@ -59,22 +60,23 @@ export function UnanchoredComposer({ onCreate, onPosted }) {
           if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
         }}
       />
-      <button
-        type="button"
-        aria-label="Send"
-        title="Send"
-        disabled={!canSend}
-        onClick={send}
-        className={[
-          'w-[24px] h-[24px] rounded-full flex items-center justify-center shrink-0',
-          'border-0 p-0 transition-[background,opacity,transform] active:scale-[.92]',
-          canSend
-            ? 'bg-[#146573] text-white opacity-100 cursor-pointer'
-            : 'bg-transparent text-[#111115] opacity-45 cursor-default',
-        ].join(' ')}
-      >
-        <ArrowUpIcon />
-      </button>
+      <Tooltip content="Send">
+        <button
+          type="button"
+          aria-label="Send"
+          disabled={!canSend}
+          onClick={send}
+          className={[
+            'w-[24px] h-[24px] rounded-full flex items-center justify-center shrink-0',
+            'border-0 p-0 transition-[background,opacity,transform] active:scale-[.92]',
+            canSend
+              ? 'bg-[#146573] text-white opacity-100 cursor-pointer'
+              : 'bg-transparent text-[#111115] opacity-45 cursor-default',
+          ].join(' ')}
+        >
+          <ArrowUpIcon />
+        </button>
+      </Tooltip>
     </div>
   );
 }

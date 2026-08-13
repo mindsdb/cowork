@@ -12,6 +12,7 @@ import Sidebar from './components/Sidebar';
 import AppShell from './components/AppShell';
 import { ConfirmModal } from './components/ConfirmModal';
 import { Modal, ModalHeader, ModalBody } from './components/ui/Modal';
+import { Tooltip } from './components/ui';
 import { ToastProvider, useToastManager } from './components/ui/Toast';
 import HomeView from './views/HomeView';
 import ChatView from './views/ChatView';
@@ -4753,23 +4754,24 @@ function AppCore() {
               title="Settings"
               onClose={() => setSettingsOpen(false)}
               right={!ssoConnected && host.isElectron ? (
-                <button
-                  type="button"
-                  onClick={async () => { setSettingsOpen(false); await handleSsoSignIn(); }}
-                  title="Sign in with MindsHub to use managed models"
-                  style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 6,
-                    padding: '5px 11px', borderRadius: 7,
-                    border: '1px solid var(--border-subtle)',
-                    background: 'transparent',
-                    color: 'var(--ink-3)',
-                    fontFamily: 'var(--font-body)', fontSize: 12.5,
-                    cursor: 'pointer', flexShrink: 0,
-                    transition: 'background 120ms ease, color 120ms ease, border-color 120ms ease',
-                  }}
-                  onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink)'; }}
-                  onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-3)'; }}
-                >Sign in</button>
+                <Tooltip content="Sign in with MindsHub to use managed models">
+                  <button
+                    type="button"
+                    onClick={async () => { setSettingsOpen(false); await handleSsoSignIn(); }}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 6,
+                      padding: '5px 11px', borderRadius: 7,
+                      border: '1px solid var(--border-subtle)',
+                      background: 'transparent',
+                      color: 'var(--ink-3)',
+                      fontFamily: 'var(--font-body)', fontSize: 12.5,
+                      cursor: 'pointer', flexShrink: 0,
+                      transition: 'background 120ms ease, color 120ms ease, border-color 120ms ease',
+                    }}
+                    onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink)'; }}
+                    onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-3)'; }}
+                  >Sign in</button>
+                </Tooltip>
               ) : undefined}
             />
             <ModalBody padding="0" style={{ overflowY: 'hidden', display: 'flex', flexDirection: 'column' }}>

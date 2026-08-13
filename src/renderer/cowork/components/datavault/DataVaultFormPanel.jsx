@@ -16,7 +16,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
-import { Alert, Button } from '../ui';
+import { Alert, Button, Tooltip } from '../ui';
 import { DataVaultForm } from './DataVaultForm';
 import {
   clearForm, getForm, patchForm, subscribe,
@@ -641,7 +641,6 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
             type="button"
             onClick={onBackToOptions}
             disabled={busy}
-            title="Back to options"
             style={{
               flex: 1, minWidth: 0,
               display: 'flex', alignItems: 'center', gap: 8,
@@ -685,25 +684,26 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
             Connect
           </div>
         )}
-        <button
-          type="button"
-          onClick={handleClose}
-          title="Close form"
-          aria-label="Close form"
-          style={{
-            flexShrink: 0,
-            width: 38, alignSelf: 'stretch',
-            background: 'transparent', border: 0,
-            color: 'var(--ink-4)',
-            display: 'inline-grid', placeItems: 'center',
-            cursor: 'pointer',
-            transition: 'color 140ms ease, background 140ms ease',
-          }}
-          onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
-          onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-4)'; e.currentTarget.style.background = 'transparent'; }}
-        >
-          {Ico.close ? Ico.close(13) : <span style={{ fontSize: 16, lineHeight: 1 }}>×</span>}
-        </button>
+        <Tooltip content="Close form">
+          <button
+            type="button"
+            onClick={handleClose}
+            aria-label="Close form"
+            style={{
+              flexShrink: 0,
+              width: 38, alignSelf: 'stretch',
+              background: 'transparent', border: 0,
+              color: 'var(--ink-4)',
+              display: 'inline-grid', placeItems: 'center',
+              cursor: 'pointer',
+              transition: 'color 140ms ease, background 140ms ease',
+            }}
+            onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
+            onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-4)'; e.currentTarget.style.background = 'transparent'; }}
+          >
+            {Ico.close ? Ico.close(13) : <span style={{ fontSize: 16, lineHeight: 1 }}>×</span>}
+          </button>
+        </Tooltip>
       </div>
 
       <div style={{ padding: '10px 14px 14px' }}>
@@ -808,24 +808,25 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
                 <span style={{ minWidth: 0, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {spec.status_text}
                 </span>
-                <button
-                  type="button"
-                  onClick={() => setDismissedStatus(spec.status_text)}
-                  title="Dismiss"
-                  aria-label="Dismiss status"
-                  style={{
-                    width: 20, height: 20, borderRadius: 5,
-                    background: 'transparent', border: 0, padding: 0,
-                    color: 'var(--ink-4)',
-                    display: 'inline-grid', placeItems: 'center',
-                    cursor: 'pointer', flex: '0 0 20px',
-                    transition: 'color 120ms ease, background 120ms ease',
-                  }}
-                  onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
-                  onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-4)'; e.currentTarget.style.background = 'transparent'; }}
-                >
-                  {Ico.close ? Ico.close(11) : <span style={{ fontSize: 14, lineHeight: 1 }}>×</span>}
-                </button>
+                <Tooltip content="Dismiss">
+                  <button
+                    type="button"
+                    onClick={() => setDismissedStatus(spec.status_text)}
+                    aria-label="Dismiss status"
+                    style={{
+                      width: 20, height: 20, borderRadius: 5,
+                      background: 'transparent', border: 0, padding: 0,
+                      color: 'var(--ink-4)',
+                      display: 'inline-grid', placeItems: 'center',
+                      cursor: 'pointer', flex: '0 0 20px',
+                      transition: 'color 120ms ease, background 120ms ease',
+                    }}
+                    onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
+                    onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-4)'; e.currentTarget.style.background = 'transparent'; }}
+                  >
+                    {Ico.close ? Ico.close(11) : <span style={{ fontSize: 14, lineHeight: 1 }}>×</span>}
+                  </button>
+                </Tooltip>
               </div>
             )}
             <DataVaultForm
