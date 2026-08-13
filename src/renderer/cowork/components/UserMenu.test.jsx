@@ -17,10 +17,7 @@ import UserMenu from './UserMenu';
 import { LOGOUT_CONFIRM_COPY } from '../hooks/useLogout';
 import {
   MINDS_BILLING_URL,
-  MINDS_DOCS_URL,
-  MINDS_GENERAL_URL,
   MINDS_MEMBERS_URL,
-  MINDS_PROFILE_URL,
   MINDS_SUPPORT_URL,
 } from '../../lib/mindsUrls';
 
@@ -70,19 +67,27 @@ describe('UserMenu — footer row (ENG-1408)', () => {
   });
 });
 
-describe('UserMenu — dropdown', () => {
-  it('shows the email header, org, and every destination', () => {
-    render(<UserMenu user={user} theme="light" />);
+describe('UserMenu — dropdown (ENG-1545 curated items)', () => {
+  it('shows the email header, org, and the five curated destinations', () => {
+    render(<UserMenu user={user} />);
     openMenu();
     expect(screen.getByText('hazem@example.com')).toBeInTheDocument();
-    for (const label of ['Settings', 'Profile', 'Billing & Usage', 'General', 'Members', 'Documentation', 'Help & feedback', 'Dark mode', 'Sign out']) {
+    for (const label of ['Settings', 'Billing & Usage', 'Members', 'Help & Feedback', 'Logout']) {
       expect(screen.getByRole('menuitem', { name: new RegExp(label) })).toBeInTheDocument();
+    }
+  });
+
+  it('drops the items curated away (Profile / General / Documentation / theme toggle)', () => {
+    render(<UserMenu user={user} />);
+    openMenu();
+    for (const label of [/^Profile$/, /^General$/, /Documentation/, /Dark mode/, /Light mode/]) {
+      expect(screen.queryByRole('menuitem', { name: label })).toBeNull();
     }
   });
 
   it('opens Settings in-app', () => {
     const onOpenSettings = vi.fn();
-    render(<UserMenu user={user} theme="light" onOpenSettings={onOpenSettings} />);
+    render(<UserMenu user={user} onOpenSettings={onOpenSettings} />);
     openMenu();
     fireEvent.click(screen.getByRole('menuitem', { name: /Settings/ }));
     expect(onOpenSettings).toHaveBeenCalled();
@@ -90,43 +95,32 @@ describe('UserMenu — dropdown', () => {
   });
 
   it.each([
-    ['Profile', MINDS_PROFILE_URL],
     ['Billing & Usage', MINDS_BILLING_URL],
-    ['General', MINDS_GENERAL_URL],
     ['Members', MINDS_MEMBERS_URL],
-    ['Documentation', MINDS_DOCS_URL],
-    ['Help & feedback', MINDS_SUPPORT_URL],
+    ['Help & Feedback', MINDS_SUPPORT_URL],
   ])('opens %s in the OS browser', (label, url) => {
-    render(<UserMenu user={user} theme="light" />);
+    render(<UserMenu user={user} />);
     openMenu();
     fireEvent.click(screen.getByRole('menuitem', { name: new RegExp(label) }));
     expect(hostMock.openExternal).toHaveBeenCalledWith(url);
   });
 
-  it('flips the theme label and calls onToggleTheme', () => {
-    const onToggleTheme = vi.fn();
-    render(<UserMenu user={user} theme="dark" onToggleTheme={onToggleTheme} />);
-    openMenu();
-    fireEvent.click(screen.getByRole('menuitem', { name: /Light mode/ }));
-    expect(onToggleTheme).toHaveBeenCalled();
-  });
-
   // The web shell's session is owned by Keycloak in the browser and
-  // host.logout() is a no-op there — a Sign out item would silently do
+  // host.logout() is a no-op there — a Logout item would silently do
   // nothing, so it's Electron-only (matching the Settings account section).
-  it('hides Sign out on the web shell', () => {
+  it('hides Logout on the web shell', () => {
     hostMock.host.isElectron = false;
     hostMock.host.isWeb = true;
-    render(<UserMenu user={user} theme="light" />);
+    render(<UserMenu user={user} />);
     openMenu();
     expect(screen.getByRole('menuitem', { name: /Settings/ })).toBeInTheDocument();
-    expect(screen.queryByRole('menuitem', { name: /Sign out/ })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: /Logout/ })).toBeNull();
   });
 
-  it('asks for confirmation before signing out, then runs the logout flow', async () => {
-    render(<UserMenu user={user} theme="light" />);
+  it('asks for confirmation before logging out, then runs the logout flow', async () => {
+    render(<UserMenu user={user} />);
     openMenu();
-    fireEvent.click(screen.getByRole('menuitem', { name: /Sign out/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /Logout/ }));
     // Confirm modal — nothing signed out yet.
     expect(screen.getByText(LOGOUT_CONFIRM_COPY.title)).toBeInTheDocument();
     expect(hostMock.host.logout).not.toHaveBeenCalled();
