@@ -4,8 +4,11 @@ import {
   resolveShellUpdateFeed,
   shellUpdaterCacheDirName,
   resolveWindowsPublisherNames,
+  withAppUpdateChannel,
+  SHELL_UPDATE_CHANNEL,
   WINDOWS_PUBLISHER_CN,
 } from './shell-update-feed';
+import { calVerToUpdaterSemVer } from './version';
 
 describe('resolveShellUpdateFeed', () => {
   it('keeps prod and stable on separate platform feeds', () => {
@@ -37,6 +40,54 @@ describe('shellUpdaterCacheDirName', () => {
 
   it('keeps stable and prod on separate cache dirs (no cross-channel eviction)', () => {
     expect(shellUpdaterCacheDirName('prod')).not.toBe(shellUpdaterCacheDirName('stable'));
+  });
+});
+
+// The updater channel baked into app-update.yml names the manifest the client
+// fetches; it must equal the fixed name the publish pipeline writes
+// (`latest.yml` / `latest-mac.yml`), never a per-build value derived from the
+// version.
+describe('SHELL_UPDATE_CHANNEL + withAppUpdateChannel', () => {
+  it('is a fixed, ring-stable channel matching the published manifest name', () => {
+    expect(SHELL_UPDATE_CHANNEL).toBe('latest');
+    // A version-derived channel could be numeric; the fixed pointer never is.
+    expect(SHELL_UPDATE_CHANNEL).not.toMatch(/^\d/);
+  });
+
+  it('stays independent of the channel electron-builder would derive from the version', () => {
+    // An untagged build's updater semver is a prerelease whose first token is the
+    // commit distance — what electron-builder would otherwise use as the channel.
+    const semver = calVerToUpdaterSemVer('2.26.8.9.1-306-gabc1234');
+    expect(semver).toBe('2.260809.1-306.gabc1234');
+    const versionDerivedChannel = semver!.split('-')[1].split('.')[0];
+    expect(versionDerivedChannel).toBe('306');
+    expect(versionDerivedChannel).not.toBe(SHELL_UPDATE_CHANNEL);
+  });
+
+  it('replaces an existing channel line with the pinned pointer', () => {
+    const manifest = [
+      'provider: generic',
+      'url: https://downloads.mindshub.ai/mindshub-cowork/updates/stable/windows',
+      'channel: 306',
+      'updaterCacheDirName: anton-updater-stable',
+      '',
+    ].join('\n');
+    const fixed = withAppUpdateChannel(manifest);
+    expect(fixed).toContain('channel: latest');
+    expect(fixed).not.toContain('channel: 306');
+    // Other lines are left intact.
+    expect(fixed).toContain('url: https://downloads.mindshub.ai/mindshub-cowork/updates/stable/windows');
+    expect(fixed).toContain('updaterCacheDirName: anton-updater-stable');
+  });
+
+  it('appends a channel line when the manifest has none', () => {
+    const manifest = 'provider: generic\nurl: https://example.com/feed\n';
+    const fixed = withAppUpdateChannel(manifest);
+    expect(fixed).toBe(`${manifest}channel: latest\n`);
+  });
+
+  it('honours an explicit channel override', () => {
+    expect(withAppUpdateChannel('channel: 306\n', 'beta')).toBe('channel: beta\n');
   });
 });
 
