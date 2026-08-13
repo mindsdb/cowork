@@ -103,7 +103,7 @@ function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSett
             onCheckedChange={(on) => setSetting(
               settingKey,
               on
-                ? String(spec.unlimited)
+                ? String(spec.max)
                 : resolveBudgetRestore(preToggle.current, savedValue, spec),
             )}
             aria-label={unlimitedLabel}
