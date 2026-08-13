@@ -1085,6 +1085,7 @@ export default function ChatView({
   onDeleteTurn,
   onSubmitDataVaultForm,
   onNavigateToConnectors,
+  onDismissConnectForm,
   onCancelModify,
   onDisconnectModify,
   onMoveTaskToProject,
@@ -2146,7 +2147,9 @@ export default function ChatView({
           overlay so it's front-and-center when a connector is picked. */}
       {formActive && createPortal(
         <div
-          onClick={() => clearDataVaultForm(task?.id || '')}
+          onClick={() => (onDismissConnectForm
+            ? onDismissConnectForm(task?.id || '')
+            : clearDataVaultForm(task?.id || ''))}
           // autoprefixer adds the -webkit-backdrop-filter prefix at build time,
           // so no separate WebkitBackdropFilter declaration is needed here.
           className="fixed inset-0 z-[200] bg-[rgba(0,0,0,0.5)] backdrop-blur-[3px] flex items-center justify-center"
@@ -2161,6 +2164,7 @@ export default function ChatView({
                 onContinue={(payload) => onSend?.(payload?.text || '[form action]')}
                 onSubmit={onSubmitDataVaultForm}
                 onNavigateToConnectors={onNavigateToConnectors}
+                onClose={onDismissConnectForm}
               />
             </FormErrorBoundary>
           </div>

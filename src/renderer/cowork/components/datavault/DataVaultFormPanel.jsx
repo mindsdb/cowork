@@ -43,7 +43,7 @@ function getBrowserOAuthMethod(spec) {
 
 const FONT_BODY = 'var(--font-body)';
 
-export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNavigateToConnectors, highlighted = false }) {
+export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNavigateToConnectors, onClose, highlighted = false }) {
   const [spec, setSpec] = useState(() => getForm(conversationId));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -574,6 +574,9 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
   // a stuck/abandoned form is sitting there. Clears the form from
   // the conversation's store; the panel unmounts.
   const handleClose = () => {
+    // Host may own dismissal (e.g. returning the user to where they opened
+    // the connect flow, ENG-1534); fall back to a plain form-clear.
+    if (onClose) { onClose(conversationId); return; }
     if (conversationId) clearForm(conversationId);
   };
 
