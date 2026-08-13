@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as cp from 'child_process';
+import * as os from 'os';
+import * as path from 'path';
 
 // Split from uv-paths.test.ts: these tests need fs/child_process fully mocked
 // (findUv probes disk, the version probe execs uv), while that file's
@@ -132,5 +134,32 @@ describe('findUv — extra package-manager locations', () => {
   it('still returns null when uv is nowhere to be found', () => {
     vi.mocked(fs.existsSync).mockReturnValue(false);
     expect(findUv()).toBeNull();
+  });
+});
+
+describe('findUv — Windows package-manager locations', () => {
+  const originalPlatform = process.platform;
+  const originalLocalAppData = process.env.LOCALAPPDATA;
+
+  afterEach(() => {
+    Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
+    if (originalLocalAppData === undefined) delete process.env.LOCALAPPDATA;
+    else process.env.LOCALAPPDATA = originalLocalAppData;
+  });
+
+  it('checks scoop shims', () => {
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+    delete process.env.LOCALAPPDATA;
+    const scoopPath = path.join(os.homedir(), 'scoop', 'shims', 'uv.exe');
+    vi.mocked(fs.existsSync).mockImplementation((p) => String(p) === scoopPath);
+    expect(findUv()).toBe(scoopPath);
+  });
+
+  it('checks the WinGet Links dir', () => {
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+    process.env.LOCALAPPDATA = 'C:\\Users\\u\\AppData\\Local';
+    const wingetPath = path.join('C:\\Users\\u\\AppData\\Local', 'Microsoft', 'WinGet', 'Links', 'uv.exe');
+    vi.mocked(fs.existsSync).mockImplementation((p) => String(p) === wingetPath);
+    expect(findUv()).toBe(wingetPath);
   });
 });
