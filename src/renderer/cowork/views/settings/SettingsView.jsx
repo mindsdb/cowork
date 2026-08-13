@@ -72,12 +72,16 @@ const LINK_BTN =
 function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSetting, unlimitedLabel }) {
   const { min, max, fallback } = spec;
   const hintId = useId();
-  // "No limit" writes the TOP of the range. At `maxTurnTokens`' max the ceiling
-  // cannot fire in practice — the step cap lands first — so the top of the range
-  // already was the off switch; it was just undiscoverable, which is the whole
-  // job of this checkbox. Writing `spec.max` keeps the range contiguous, so
-  // there is no sentinel to guard with a server-side validator and no special
-  // case in the clamp.
+  // "No limit" writes the TOP of the range, which already was the off switch —
+  // it was just undiscoverable, which is the whole job of this checkbox. Writing
+  // `spec.max` keeps the range contiguous, so there is no sentinel to guard with
+  // a server-side validator and no special case in the clamp.
+  //
+  // The hint below says "only the step and auto-continue caps apply" rather
+  // than promising infinity, and that wording is load-bearing: at ~306 calls
+  // (the server's default 50 rounds x 6 passes) 50M is reached at ~163k per
+  // call, which a long conversation can carry. Never observed — largest turn in
+  // 30 days was 8.26M — but not impossible.
   const showUnlimited = unlimitedLabel != null && spec.max != null;
   const isUnlimited = showUnlimited && isBudgetUnlimited(value, spec);
   // The number to put back when the switch goes off. A ref, not state: it must
