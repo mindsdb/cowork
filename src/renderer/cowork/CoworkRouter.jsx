@@ -5,13 +5,14 @@
 // `createBrowserRouter` on web — RR's memory router is the idiomatic
 // replacement for the old `host.isWeb` URL gating.
 //
-// Increment 1 (skeleton): Home (`/`) and Conversation (`/c/:conversationId`)
-// are real path-based routes; the conversation route has a `fetchSession`
-// loader so deep-link / refresh / Back-Forward resolve the conversation.
-// Every other view still renders from AppCore's `route`-state view switch;
-// the routes below only mirror the URL into that state (and back), so the
-// giant AppCore component can be decomposed incrementally in later
-// increments without regressing anything now.
+// v1 (URL state): Home (`/`), Conversation (`/c/:conversationId`, with a
+// `fetchSession` loader), and the two detail views — project
+// (`/projects/:projectId`) and schedule (`/scheduled/:scheduleId`) — are
+// path-based routes; every other view maps its `route` state string to
+// `/<route>`. Detail routes resolve their entity client-side from the fetched
+// list (no single-resource loader — that's v2). All routes only mirror the URL
+// into AppCore's `route`/selection state (and back) via the bridge below, so
+// the giant AppCore component stays intact until the v2 decomposition.
 //
 // How it fits together:
 //   - AppCore renders <RouterProvider> and hands its shell (the sidebar +
@@ -76,10 +77,12 @@ export function isOptimisticConversation(id) {
 }
 
 // Known non-migrated route keys (mirror AppCore's `route` state strings).
+// `schedule-detail` is intentionally absent: its route state maps to the
+// nested `/scheduled/:id` URL (see pathForRoute / ScheduleDetailRoute), not a
+// bare `/schedule-detail`.
 const VIEW_ROUTES = [
   'projects',
   'scheduled',
-  'schedule-detail',
   'artifacts',
   'tasks',
   'channels',
@@ -105,10 +108,13 @@ export function useCowork() {
   return ctx;
 }
 
-// route (AppCore state) → URL path. Home and Conversation are the migrated
-// routes; every other route mirrors its state string as `/<route>` so the
-// shell chrome, refresh, and Back/Forward stay coherent this increment.
-export function pathForRoute(route, activeTaskId) {
+// route (AppCore state) → URL path. Home and Conversation are the fully
+// migrated routes; the two detail views carry their entity id
+// (`/projects/:id`, `/scheduled/:id`) so refresh / deep-link / Back-Forward
+// restore the selection; every other route mirrors its state string as
+// `/<route>`. `projectId` / `scheduleId` are the currently-selected entity ids
+// from AppCore state — pass falsy for the list/grid form. (ENG-1233 v1)
+export function pathForRoute(route, activeTaskId, projectId, scheduleId) {
   if (route === 'task') {
     if (!activeTaskId) return '/';
     // A `tmp-` id is a client-only placeholder for a brand-new chat whose
@@ -121,36 +127,58 @@ export function pathForRoute(route, activeTaskId) {
     if (String(activeTaskId).startsWith('tmp-')) return null;
     return `/c/${activeTaskId}`;
   }
+  // Projects: grid = `/projects`, a selected project = `/projects/:id`.
+  if (route === 'projects') return projectId ? `/projects/${projectId}` : '/projects';
+  // Schedule detail nests under the list route so `/scheduled` (list) and
+  // `/scheduled/:id` (detail) share a prefix.
+  if (route === 'schedule-detail') return scheduleId ? `/scheduled/${scheduleId}` : '/scheduled';
   if (!route || route === 'home') return '/';
   return `/${route}`;
 }
 
-// URL path → initial AppCore nav state. Lets AppCore seed `route` /
-// `activeTaskId` from the address bar on first render (web deep-link /
+// Decode a single URL path segment, tolerating a malformed %-escape (a bad
+// deep link must never throw out of first render and white-screen the app —
+// ENG-1233 Minor 2). Returns null on failure.
+function safeDecodeSegment(seg) {
+  try {
+    return decodeURIComponent(seg);
+  } catch {
+    return null;
+  }
+}
+
+// URL path → initial AppCore nav state. Lets AppCore seed `route` and the
+// selected entity from the address bar on first render (web deep-link /
 // refresh), so the correct view paints immediately instead of flashing Home.
+// `selectedProjectId` is seeded but not directly held as state — the project
+// route element resolves it to the project object from the fetched list.
 // Electron always boots the memory router at `/`.
 export function initialNavState() {
-  if (!host.isWeb || typeof window === 'undefined') {
-    return { route: 'home', activeTaskId: null };
-  }
+  const HOME = { route: 'home', activeTaskId: null, selectedProjectId: null, selectedScheduleId: null };
+  if (!host.isWeb || typeof window === 'undefined') return HOME;
   const path = window.location.pathname;
+
   const convo = path.match(/^\/c\/(.+)$/);
   if (convo) {
-    let id;
-    try {
-      id = decodeURIComponent(convo[1]);
-    } catch {
-      // Malformed percent-encoding (e.g. `/c/%`): a bad deep link must not
-      // throw out of first render and white-screen the app. Seed Home; the
-      // route loader still runs against the raw param and resolves it safely.
-      // (ENG-1233 — Minor 2)
-      return { route: 'home', activeTaskId: null };
-    }
-    return { route: 'task', activeTaskId: id };
+    const id = safeDecodeSegment(convo[1]);
+    if (id == null) return HOME; // malformed → fail safe to Home
+    return { ...HOME, route: 'task', activeTaskId: id };
+  }
+  const proj = path.match(/^\/projects\/(.+)$/);
+  if (proj) {
+    const id = safeDecodeSegment(proj[1]);
+    if (id == null) return { ...HOME, route: 'projects' }; // bad id → grid
+    return { ...HOME, route: 'projects', selectedProjectId: id };
+  }
+  const sched = path.match(/^\/scheduled\/(.+)$/);
+  if (sched) {
+    const id = safeDecodeSegment(sched[1]);
+    if (id == null) return { ...HOME, route: 'scheduled' }; // bad id → list
+    return { ...HOME, route: 'schedule-detail', selectedScheduleId: id };
   }
   const key = path.replace(/^\/+/, '');
-  if (VIEW_ROUTES.includes(key)) return { route: key, activeTaskId: null };
-  return { route: 'home', activeTaskId: null };
+  if (VIEW_ROUTES.includes(key)) return { ...HOME, route: key };
+  return HOME;
 }
 
 // ---------------------------------------------------------------------------
@@ -165,11 +193,11 @@ export function initialNavState() {
 // by the child route elements' effects) wins on mount instead of being
 // clobbered back to `/`.
 function CoworkLayout() {
-  const { shell, route, activeTaskId } = useCowork();
+  const { shell, route, activeTaskId, selectedProjectId, selectedScheduleId } = useCowork();
   const navigate = useNavigate();
   const location = useLocation();
   const firstRun = useRef(true);
-  const target = pathForRoute(route, activeTaskId);
+  const target = pathForRoute(route, activeTaskId, selectedProjectId, selectedScheduleId);
 
   useEffect(() => {
     if (firstRun.current) {
@@ -221,6 +249,32 @@ function ViewRoute({ name }) {
     enterRoute(name);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [name]);
+  return null;
+}
+
+// `/projects/:projectId` — project detail. Mirrors the URL into AppCore's
+// `projects` route and resolves the selected project object from the id
+// client-side, from the already-fetched list (v1: no single-project endpoint
+// needed). (ENG-1233 v1)
+function ProjectDetailRoute() {
+  const { projectId } = useParams();
+  const { enterProjectDetail } = useCowork();
+  useEffect(() => {
+    enterProjectDetail(projectId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId]);
+  return null;
+}
+
+// `/scheduled/:scheduleId` — schedule detail. Sets AppCore's `schedule-detail`
+// route + selected id; the view resolves the schedule from the fetched list.
+function ScheduleDetailRoute() {
+  const { scheduleId } = useParams();
+  const { enterScheduleDetail } = useCowork();
+  useEffect(() => {
+    enterScheduleDetail(scheduleId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scheduleId]);
   return null;
 }
 
@@ -276,6 +330,8 @@ export const routes = [
     children: [
       { index: true, element: <HomeRoute /> },
       { path: 'c/:conversationId', element: <ConversationRoute />, loader: conversationLoader },
+      { path: 'projects/:projectId', element: <ProjectDetailRoute /> },
+      { path: 'scheduled/:scheduleId', element: <ScheduleDetailRoute /> },
       ...VIEW_ROUTES.map((name) => ({ path: name, element: <ViewRoute name={name} /> })),
       // Unknown path → home (deleted/typo'd deep link).
       { path: '*', element: <Navigate to="/" replace /> },

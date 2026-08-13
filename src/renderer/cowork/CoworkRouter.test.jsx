@@ -29,10 +29,18 @@ describe('pathForRoute', () => {
     expect(pathForRoute('task', 'tmp-1700000000000')).toBeNull();
   });
 
-  it('mirrors non-migrated routes as /<route>', () => {
+  it('mirrors non-migrated list routes as /<route>', () => {
     expect(pathForRoute('projects', null)).toBe('/projects');
     expect(pathForRoute('scheduled', null)).toBe('/scheduled');
-    expect(pathForRoute('schedule-detail', null)).toBe('/schedule-detail');
+    expect(pathForRoute('artifacts', null)).toBe('/artifacts');
+  });
+
+  it('nests detail routes under their list with the entity id (ENG-1233 v1)', () => {
+    expect(pathForRoute('projects', null, 'proj-1')).toBe('/projects/proj-1');
+    expect(pathForRoute('schedule-detail', null, null, 'sched-9')).toBe('/scheduled/sched-9');
+    // no id → the list/grid form
+    expect(pathForRoute('projects', null, null)).toBe('/projects');
+    expect(pathForRoute('schedule-detail', null, null, null)).toBe('/scheduled');
   });
 });
 

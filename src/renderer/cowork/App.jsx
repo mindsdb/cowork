@@ -1829,7 +1829,10 @@ function AppCore() {
   // failure (not a 404): the view offers a retry instead of losing the URL.
   // (ENG-1233 — Major 2)
   const [conversationError, setConversationError] = useState(null);
-  const [selectedScheduleId, setSelectedScheduleId] = useState(null);
+  // Seed from the address bar so a `/scheduled/:id` deep-link / refresh restores
+  // the detail view (ENG-1233 v1). selectedProject is resolved from its id by
+  // the project detail route (it needs the fetched list), so it stays null here.
+  const [selectedScheduleId, setSelectedScheduleId] = useState(initialNav.selectedScheduleId ?? null);
   const [selectedProject, setSelectedProject] = useState(null);
   // Defaults to "Model Router" — defer to whatever this account's Settings
   // has configured — until a composer picks a concrete model for a task.
@@ -3180,6 +3183,10 @@ function AppCore() {
     if (key === 'artifacts') {
       fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
     } else if (key === 'projects') {
+      // Bare `/projects` is the grid — clear any selection so a Back from
+      // `/projects/:id` (or a fresh grid visit) doesn't render stale detail.
+      // The detail is `/projects/:id`, driven by enterProjectDetail. (ENG-1233 v1)
+      setSelectedProject(null);
       fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); });
     } else if (key === 'scheduled') {
       fetchSchedules().then((data) => {
@@ -3187,6 +3194,32 @@ function AppCore() {
         setScheduleRunsIndex(data.runs_index || {});
       });
     }
+  }, []);
+
+  // Detail routes → state (ENG-1233 v1). No single-resource loader: resolve the
+  // entity client-side from the already-fetched list, so refresh / deep-link /
+  // Back-Forward restore the selection with no `cowork-server` change.
+  const enterProjectDetail = useCallback((projectId) => {
+    setRoute('projects');
+    setConversationError(null);
+    fetchProjects().then((data) => {
+      if (!Array.isArray(data)) return;
+      setProjects(data);
+      const found = data.find((p) => p.id === projectId || p.name === projectId);
+      if (found) setSelectedProject(found);
+      // Not found (deleted/renamed away): leave selection empty — the grid
+      // shows, and the bridge canonicalizes the URL back to `/projects`.
+    }).catch(() => {});
+  }, []);
+
+  const enterScheduleDetail = useCallback((scheduleId) => {
+    setRoute('schedule-detail');
+    setSelectedScheduleId(scheduleId);
+    setConversationError(null);
+    fetchSchedules().then((data) => {
+      setScheduled(data.schedules || []);
+      setScheduleRunsIndex(data.runs_index || {});
+    }).catch(() => {});
   }, []);
 
   const attachmentProjectPath = currentTask?.projectPath || selectedProject?.path || null;
@@ -5662,9 +5695,15 @@ function AppCore() {
     shell,
     route,
     activeTaskId,
+    // The bridge mirrors the selected detail entity into the URL. Prefer the
+    // stable id; fall back to name for projects that predate ids. (ENG-1233 v1)
+    selectedProjectId: selectedProject?.id || selectedProject?.name || null,
+    selectedScheduleId,
     enterHome,
     enterRoute,
     openConversation,
+    enterProjectDetail,
+    enterScheduleDetail,
   };
 
   return (

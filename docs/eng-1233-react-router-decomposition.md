@@ -1,10 +1,22 @@
-# ENG-1233 — Web URL/route state via react-router (full decomposition)
+# ENG-1233 — Web URL/route state via react-router
 
-**Status:** In progress. **Increment 1** (router skeleton + real Home and
-Conversation routes) is implemented and hardened on
-`paul/eng-1233-web-url-route-state-rr` (PR #582). Increments 2–6 remain. This
-doc is the **contract** later increments build against — read the Navigation
-and Loader contracts before adding a route.
+**Status:** In progress, delivered in two phases (Linear epic ENG-1233):
+
+- **v1 — URL state (MVP)** — ENG-1535, on `paul/eng-1233-web-url-route-state-rr`
+  (PR #582). The router skeleton + a state↔URL **bridge** give deep-link /
+  refresh / Back-Forward for Home, Conversation (with a loader), every list
+  view, and the two **detail** views (project, schedule) — the latter resolving
+  their entity client-side from the fetched list, so **no `cowork-server`
+  change** and **no `AppCore` decomposition**. This is the shippable MVP.
+- **v2 — Loaders + decomposition** — ENG-1536. Per-route loaders, the `AppCore`
+  provider decomposition, the settings overlay on the data router, deleting the
+  bridge + rewiring all nav to `<Link>`/`useNavigate`, and the
+  `GET /projects/{id}` server prereq.
+
+This doc is the design **contract** for both phases — read the Navigation and
+Loader contracts before adding a route. Most of the architecture below (full
+loaders, provider split, settings overlay) is **v2 scope**; v1 deliberately
+sidesteps it via the bridge.
 
 ## Purpose
 
@@ -91,11 +103,11 @@ starting point.
   - `fetchSession(id)` (`api.js`) fetches any conversation by id → a full task
     object or `null`, but **collapses every failure to `null`** (404, auth,
     5xx, network are indistinguishable). For the loader use
-    **`fetchSessionResult(id)`** instead (added in increment 1): it returns
+    **`fetchSessionResult(id)`** instead (added in v1): it returns
     `{status:'ok'|'not_found'|'unavailable'}` so the route can tell a deleted
     conversation from a transient outage. See the Loader contract below.
   - `selectTask(id)` used to hydrate messages, reattach in-flight SSE streams,
-    and record visits. In increment 1 this moved to `openConversation()` (the
+    and record visits. In v1 this moved to `openConversation()` (the
     conversation route's job): the loader fetches; the route element hydrates +
     reattaches the stream. `selectTask` is now a thin nav trigger. **Don't lose
     the stream reattach** when you promote later routes.
@@ -150,7 +162,7 @@ conversation keeps rendering during a blip); and the optimistic registry
 mid-send conversation render from local state. The registry is **cleared on
 turn completion** so a later visit hydrates fresh instead of replaying a stale
 local snapshot. Loader `signal` cancellation is not yet wired — add it when
-loaders start doing real per-navigation fetches (increments 2–3).
+loaders start doing real per-navigation fetches (v2).
 
 ## Target architecture
 
@@ -181,9 +193,9 @@ loaders start doing real per-navigation fetches (increments 2–3).
   URL-driven data (which conversation/project) comes from loaders/params, not
   context. Increment 1 uses a single temporary `CoworkProvider` as scaffolding
   (`shell` + nav state + a few handlers) — that is deliberate and short-lived;
-  the split lands as `AppCore` is decomposed in increments 2–5, not at the end.
+  the split lands as `AppCore` is decomposed in v2, not at the end.
 - **`CoworkLayout`** — the shell: `Sidebar` / `MobileShell` / composer chrome +
-  `<Outlet />`. It hosts the state→URL bridge in increment 1; the bridge
+  `<Outlet />`. It hosts the state→URL bridge in v1; the bridge
   shrinks to nothing as each route is fully migrated per the Navigation
   contract.
 - **Route elements** — wrap each existing view so it reads `useLoaderData()` +
@@ -219,41 +231,76 @@ there is history, else navigate to the resolved background/Home). On mobile,
 **Use stable IDs in URLs, not mutable names.** `/projects/:projectId`, not
 `/projects/:name` — a rename must not rot deep links. Caveat: the projects API
 is name-keyed today (`fetchProjects`, and the server's `project` field is a
-name), so this likely needs a stable-id lookup server-side; sequence that with
-increment 2.
+name), so a real single-project loader needs a stable-id lookup server-side
+(v2). v1 sidesteps this by resolving the id against the already-fetched list
+client-side.
 
-## Migration increments (each shippable + validated + pushed)
+## Phases
 
-1. **Skeleton — DONE (hardened).** `react-router-dom` added. Router around the
-   cowork screen (Memory/Browser per shell). Temporary `CoworkProvider`
-   scaffold. `CoworkLayout` with shell + `<Outlet/>`. Real **Home** and
-   **Conversation `/c/:id`** routes with the `fetchSessionResult` loader
-   implementing the full Loader contract (found / not_found / unavailable /
-   optimistic incl. the capped-list case). New-chat history follows the
-   Navigation contract (temp id never in the URL; one Back press to Home).
-   Behavior tests cover the loader failure modes and the history contract
-   (`CoworkRouter.behavior.test.jsx`). Everything else renders from the
-   `route`-state switch on hard refresh.
-2. **Projects** (`/projects`, `/projects/:projectId`) with `fetchProjects`
-   loader **and** rewire every Projects entry point to `<Link>`/`useNavigate`
-   in this increment (Navigation contract rule). Resolve the stable-id question
-   first.
-3. **The rest** — scheduled (+detail), artifacts, tasks, channels, customize,
-   skills, memory — each with a loader per the Loader contract, each rewiring
-   its own nav in the same increment. Wire loader `signal` cancellation here.
-4. **Settings overlay** (data-router design above; mobile full-page; direct-
-   link / refresh / close all specified).
-5. **Finish nav rewire + provider split.** Any remaining `route`-state writes →
-   `<Link>`/`useNavigate`. Complete the `CoworkProvider` decomposition into the
-   concern-scoped providers with selector consumption.
-6. **Delete** the dead view-switch + nav state; final validation
-   (typecheck/purity/tests/both builds/CodeQL); refresh the PR #582 body to
-   describe the real implementation.
+### v1 — URL state via the bridge (ENG-1535, MVP) — mostly DONE
 
-Keep each increment green on all gates before pushing. Stream reattach
-(`openConversation`'s SSE logic) and the composer's cross-route behavior are the
-highest-risk areas — test conversation open/refresh/back and new-chat send
-carefully.
+Ships URL state for the whole app **without** touching `AppCore` or
+`cowork-server`, via the state↔URL bridge in `CoworkRouter.jsx`
+(`pathForRoute` / `initialNavState` / the `CoworkLayout` push effect + the
+mirror route elements).
+
+- [x] `react-router-dom` added; router around the cowork screen (Memory on
+  Electron / Browser on web via `createCoworkRouter`); `CoworkLayout` with the
+  shell + `<Outlet/>`; the temporary single `CoworkProvider`.
+- [x] Real **Home** and **Conversation `/c/:id`** routes; the conversation
+  loader (`fetchSessionResult`) implements the full Loader contract (found /
+  not_found→redirect / unavailable→retry / optimistic incl. the capped-list
+  case). New-chat history follows the Navigation contract (temp id never in the
+  URL; one Back press to Home).
+- [x] All list views (`/projects`, `/scheduled`, `/artifacts`, `/tasks`,
+  `/channels`, `/customize`, `/skills`, `/memory`) deep-link / refresh /
+  Back-Forward through the bridge (mirror `ViewRoute`s → `enterRoute`).
+- [x] **Detail views carry their id**: `/projects/:projectId` and
+  `/scheduled/:scheduleId`, resolved client-side from the fetched list
+  (`enterProjectDetail` / `enterScheduleDetail`) — no single-resource loader,
+  no server change. Uses the stable project `id` (name fallback) so it survives
+  most renames.
+- [x] Behavior + unit tests: loader failure modes, new-chat history, and the
+  detail-route deep-link/round-trip (`CoworkRouter.behavior.test.jsx`,
+  `CoworkRouter.test.jsx`).
+- [ ] Author pass in `npm run dev:web` (needs the auth-realm localhost fix,
+  mindsdb/auth PR #276) — deep-link / refresh / Back-Forward + new-chat send.
+
+**Accepted v1 debt** (paid down in v2): the two-way bridge is a deliberate
+second source of truth; settings is not in the URL (refresh with settings open
+closes it); list/detail loaders don't distinguish `unavailable` from empty.
+
+### v2 — Loaders + decomposition (ENG-1536)
+
+The idiomatic end-state. Everything below is v2 scope. Epic-scale — split into
+sub-issues; the recommended shape is a long-lived integration branch stacking
+small per-workstream PRs, gated by a web-e2e suite before it merges to
+`staging`.
+
+1. **Server prereq (cross-repo, first):** `GET /projects/{id}` (and
+   `/scheduled/{id}`) in `cowork-server`, so detail deep links use a stable id
+   via a real loader and survive rename cleanly.
+2. **Loaders:** promote every route to a loader per the Loader contract
+   (found / not_found / unavailable / cancellation via `signal`); replace the
+   error-swallowing `fetch*` with `*Result`-style wrappers. Rewire each route's
+   nav entry points to `<Link>`/`useNavigate` in the same increment (Navigation
+   contract rule).
+3. **Settings overlay:** the data-router design above (open / direct-link /
+   refresh / close; desktop modal vs mobile full-page; CodeQL dynamic-dispatch
+   guard). Sequence in lockstep with whether content is painted by the shell or
+   the `<Outlet/>`.
+4. **`AppCore` decomposition:** split into concern-scoped providers (theme,
+   updates, server, composer) + a **selector-based streaming store** (the ~6
+   shared stream refs + queue/in-flight machinery — must not re-render on every
+   token). Extract streaming last.
+5. **Delete the bridge + dead code:** remove `pathForRoute`/`initialNavState`
+   seeding, the mirror routes, the `route`/entity-id `useState`s, and the
+   view-switch. Final validation (typecheck/purity/tests/both builds/CodeQL);
+   refresh the PR body.
+
+Stream reattach (`openConversation`'s SSE logic) and the composer's cross-route
+behavior are the highest-risk areas — test conversation open/refresh/back and
+new-chat send carefully throughout.
 
 ## Production web hosting (SPA fallback)
 

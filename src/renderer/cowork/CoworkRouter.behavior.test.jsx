@@ -35,6 +35,8 @@ function makeHarness(initialNav) {
     openConversation: vi.fn(),
     enterHome: vi.fn(),
     enterRoute: vi.fn(),
+    enterProjectDetail: vi.fn(),
+    enterScheduleDetail: vi.fn(),
   };
   function Harness({ router }) {
     const [nav, setNav] = useState(initialNav);
@@ -42,12 +44,17 @@ function makeHarness(initialNav) {
     const value = {
       shell: <div data-testid="shell"><Outlet /></div>,
       route: nav.route,
-      activeTaskId: nav.activeTaskId,
+      activeTaskId: nav.activeTaskId ?? null,
+      selectedProjectId: nav.selectedProjectId ?? null,
+      selectedScheduleId: nav.selectedScheduleId ?? null,
       // Mirror AppCore: entering Home/a view resets nav state; opening a
-      // conversation is recorded (the real one hydrates + reattaches).
-      enterHome: () => { ctl.enterHome(); setNav({ route: 'home', activeTaskId: null }); },
-      enterRoute: (k) => { ctl.enterRoute(k); setNav({ route: k, activeTaskId: null }); },
+      // conversation is recorded (the real one hydrates + reattaches); the
+      // detail routes set route + the selected entity id.
+      enterHome: () => { ctl.enterHome(); setNav({ route: 'home' }); },
+      enterRoute: (k) => { ctl.enterRoute(k); setNav({ route: k }); },
       openConversation: (id, loaded) => { ctl.openConversation(id, loaded); },
+      enterProjectDetail: (id) => { ctl.enterProjectDetail(id); setNav({ route: 'projects', selectedProjectId: id }); },
+      enterScheduleDetail: (id) => { ctl.enterScheduleDetail(id); setNav({ route: 'schedule-detail', selectedScheduleId: id }); },
     };
     return (
       <CoworkProvider value={value}>
@@ -129,5 +136,36 @@ describe('new-chat history (ENG-1233 Major 1)', () => {
     await waitFor(() => expect(router.state.location.pathname).toBe('/'));
 
     clearOptimisticConversation('sid-hist-1');
+  });
+});
+
+describe('detail routes carry their entity id (ENG-1233 v1)', () => {
+  it('resolves a project deep link and preserves the URL', async () => {
+    const { router, ctl } = renderAt(['/projects/proj-9'], { route: 'projects' });
+    await waitFor(() => expect(ctl.enterProjectDetail).toHaveBeenCalledWith('proj-9'));
+    expect(router.state.location.pathname).toBe('/projects/proj-9');
+  });
+
+  it('resolves a schedule deep link and preserves the URL', async () => {
+    const { router, ctl } = renderAt(['/scheduled/sched-9'], {
+      route: 'schedule-detail',
+      selectedScheduleId: 'sched-9',
+    });
+    await waitFor(() => expect(ctl.enterScheduleDetail).toHaveBeenCalledWith('sched-9'));
+    expect(router.state.location.pathname).toBe('/scheduled/sched-9');
+  });
+
+  it('pushes /projects/:id when a project is selected, and Back returns to the grid', async () => {
+    const { router, ctl } = renderAt(['/projects'], { route: 'projects' });
+    await waitFor(() => expect(ctl.enterRoute).toHaveBeenCalledWith('projects'));
+    expect(router.state.location.pathname).toBe('/projects');
+
+    // Select a project (as an in-app click does): the bridge pushes the id URL.
+    await act(async () => { ctl.setNav({ route: 'projects', selectedProjectId: 'proj-x' }); });
+    await waitFor(() => expect(router.state.location.pathname).toBe('/projects/proj-x'));
+
+    // Back returns to the grid, not out of the app.
+    await act(async () => { await router.navigate(-1); });
+    await waitFor(() => expect(router.state.location.pathname).toBe('/projects'));
   });
 });
