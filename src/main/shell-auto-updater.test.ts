@@ -166,26 +166,42 @@ describe('createShellAutoUpdater', () => {
 
   it('does not raise the failure banner when a background check cannot reach the feed', async () => {
     // The reported bug: a fresh install's boot check hits a transient CDN/network
-    // error and the sidebar shows "App update failed". It must stay silent and
-    // fall back to idle so the next poll can retry (ENG-1544).
+    // error (or the ENG-1504 404) and the sidebar shows "App update failed". It
+    // must land on the quiet check-failed state — never 'failed' (ENG-1544).
     const { adapter, updater, snapshots } = setup('auto');
     await updater.check('boot');
     adapter.emit('updater-error', new Error('net::ERR_INTERNET_DISCONNECTED'));
-    const snapshot = updater.getSnapshot();
-    expect(snapshot.phase).toBe('idle');
-    expect(snapshot.errorCode).toBeUndefined();
+    expect(updater.getSnapshot().phase).toBe('check-failed');
     expect(snapshots).not.toContain('failed');
     // Still retryable on the next poll.
     await updater.check('periodic');
     expect(updater.getSnapshot().phase).toBe('checking');
   });
 
-  it('surfaces a user-initiated check failure as a quiet check-failed state', async () => {
-    const { adapter, updater, snapshots } = setup('auto');
-    await updater.check('manual');
-    adapter.emit('updater-error', new Error('getaddrinfo ENOTFOUND downloads.mindshub.ai'));
+  it('reports every failure through onFailure with the raw error and phase', async () => {
+    const failures: Array<{ phase: string; code: string; message: string }> = [];
+    const adapter = new FakeAdapter();
+    const updater = createShellAutoUpdater({
+      adapter,
+      initialSnapshot: { phase: 'idle', mode: 'auto', channel: 'prod', currentVersion: '2.0.7' },
+      onFailure: ({ error, code, phase }) => failures.push({ phase, code, message: error.message }),
+    });
+
+    // A check failure carries the pre-transition phase ('checking') and the raw
+    // error — the detail that used to live only in the UI.
+    await updater.check('boot');
+    adapter.emit('updater-error', new Error('HttpError: 404 Not Found (latest.yml)'));
+    expect(failures).toEqual([
+      { phase: 'checking', code: 'update-request-failed', message: 'HttpError: 404 Not Found (latest.yml)' },
+    ]);
     expect(updater.getSnapshot().phase).toBe('check-failed');
-    expect(snapshots).not.toContain('failed');
+
+    // A download failure is reported from 'downloading' and still raises 'failed'.
+    await updater.check('manual');
+    adapter.emit('available', '2.1.0');
+    adapter.emit('updater-error', new Error('sha512 mismatch'));
+    expect(failures[1]).toMatchObject({ phase: 'downloading', code: 'artifact-verification-failed' });
+    expect(updater.getSnapshot().phase).toBe('failed');
   });
 
   it('immediately supplies the authoritative snapshot to subscribers', () => {

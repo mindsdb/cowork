@@ -110,12 +110,15 @@ export function transitionShellUpdate(
       };
     }
 
-    // A background check (boot/periodic) that can't reach the server is
-    // expected and benign: fall back to idle silently and let the next poll
-    // retry. A user-initiated check surfaces a quiet, transient 'check-failed'
-    // note instead. Neither is rendered as "App update failed" (ENG-1544).
-    const background = snapshot.trigger === 'boot' || snapshot.trigger === 'periodic';
-    if (background) return { ...clearTransient(snapshot), phase: 'idle' };
+    // A CHECK that can't reach or resolve the feed — whether a background
+    // boot/periodic poll or a user-initiated check — is not an update failure:
+    // no update was found, and the user can't act on it. It surfaces as the
+    // quiet 'check-failed' state (a subtle Settings note, never the sidebar
+    // "App update failed" banner) and stays retryable. Kept visible in Settings
+    // rather than silently discarded so a persistently broken feed (e.g. a 404
+    // on the update manifest) is still discoverable on inspection; the full
+    // error also goes to the log + telemetry via the updater's onFailure hook
+    // (ENG-1544).
     return {
       ...clearTransient(snapshot),
       phase: 'check-failed',

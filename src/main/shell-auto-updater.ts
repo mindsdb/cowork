@@ -6,10 +6,26 @@ import {
 } from 'electron-updater';
 import {
   transitionShellUpdate,
+  type ShellUpdatePhase,
   type ShellUpdateEvent,
   type ShellUpdateSnapshot,
   type ShellUpdateTrigger,
 } from './shell-update-state';
+
+/**
+ * Observability hook fired for every update failure — check, download, or
+ * install — at the single choke point (`fail()`), before the error is
+ * normalized down to a UI message. Carries the raw Error (with stack) and the
+ * phase the failure happened in, so the runtime can log full detail and emit
+ * telemetry. Without this, a failed check's detail lived ONLY in the snapshot
+ * message rendered raw in Settings — the sole observability channel (ENG-1544).
+ */
+export interface ShellUpdateFailure {
+  error: Error;
+  code: string;
+  recoverable: boolean;
+  phase: ShellUpdatePhase;
+}
 
 export interface ShellUpdaterAdapter {
   onChecking(listener: () => void): void;
@@ -27,6 +43,7 @@ export interface ShellAutoUpdaterOptions {
   initialSnapshot: ShellUpdateSnapshot;
   adapter: ShellUpdaterAdapter;
   onSnapshot?: (snapshot: ShellUpdateSnapshot) => void;
+  onFailure?: (failure: ShellUpdateFailure) => void;
   classifyError?: (error: Error) => { code: string; recoverable: boolean };
 }
 
@@ -85,6 +102,20 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
   const fail = (error: unknown) => {
     const normalized = error instanceof Error ? error : new Error(String(error));
     const classified = classifyError(normalized);
+    // Report the raw failure (with stack + the phase it happened in) before we
+    // collapse it to a UI message, so the runtime can log it and emit telemetry.
+    // `snapshot.phase` here is the PRE-transition phase: 'checking' ⇒ a check
+    // failure, 'downloading'/'installing' ⇒ a download/install failure.
+    try {
+      options.onFailure?.({
+        error: normalized,
+        code: classified.code,
+        recoverable: classified.recoverable,
+        phase: snapshot.phase,
+      });
+    } catch {
+      // Observability must never break the state machine.
+    }
     dispatch({
       type: 'FAILED',
       code: classified.code,
