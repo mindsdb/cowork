@@ -20,6 +20,15 @@ afterEach(() => {
 
 type ExecCb = (err: Error | null, stdout: string, stderr: string) => void;
 
+// findOnPath's POSIX branch shells out to `sh -c 'command -v "$1"' -- <cmd>`
+// rather than a separate `which` binary (not guaranteed present on a minimal
+// Debian install — see uv-paths.ts). Matches that call shape on POSIX, and
+// the unchanged `where <cmd>` shape on win32.
+function isPathLookup(cmd: string, args: string[], target: string): boolean {
+  if (process.platform === 'win32') return cmd === 'where' && args[0] === target;
+  return cmd === '/bin/sh' && args[args.length - 1] === target;
+}
+
 describe('getInstalledVersion — uv discovery', () => {
   it('uses the probed uv binary when one exists on disk', async () => {
     vi.mocked(fs.existsSync).mockReturnValue(true);
@@ -41,11 +50,10 @@ describe('getInstalledVersion — uv discovery', () => {
     // still on PATH — the version probe must not report "no version" for it,
     // and must run the SAME binary resolveUv reports, not a bare `uv`.
     vi.mocked(fs.existsSync).mockReturnValue(false); // findUv() → null
-    const whichCmd = process.platform === 'win32' ? 'where' : 'which';
     vi.mocked(cp.execFile).mockImplementation(((
       cmd: string, args: string[], _opts: unknown, cb: ExecCb,
     ) => {
-      if (cmd === whichCmd && args[0] === 'uv') cb(null, '/custom/tools/uv\n', '');
+      if (isPathLookup(cmd, args, 'uv')) cb(null, '/custom/tools/uv\n', '');
       else if (args[0] === 'tool' && args[1] === 'list') cb(null, 'cowork-server v0.26.8.2.1\n- cowork-server\n', '');
       else cb(new Error(`unexpected execFile: ${cmd}`), '', '');
       return {} as never;
@@ -72,8 +80,6 @@ describe('getInstalledVersion — uv discovery', () => {
 });
 
 describe('resolveUv', () => {
-  const whichCmd = process.platform === 'win32' ? 'where' : 'which';
-
   it('returns the probed location without consulting PATH', async () => {
     vi.mocked(fs.existsSync).mockReturnValue(true);
     await expect(resolveUv()).resolves.toMatch(/uv(\.exe)?$/);
@@ -85,7 +91,7 @@ describe('resolveUv', () => {
     vi.mocked(cp.execFile).mockImplementation(((
       cmd: string, args: string[], _opts: unknown, cb: ExecCb,
     ) => {
-      if (cmd === whichCmd && args[0] === 'uv') cb(null, '/custom/tools/uv\n', '');
+      if (isPathLookup(cmd, args, 'uv')) cb(null, '/custom/tools/uv\n', '');
       else cb(new Error('not found'), '', '');
       return {} as never;
     }) as never);
