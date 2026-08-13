@@ -780,7 +780,7 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
   // instead of a menu of technical-sounding cards. Recommended methods
   // already float to the front (stable). Decision logic lives in the
   // pure, unit-tested `computeHeroView`.
-  const { hero, rest, heroOneClick, heroLabel, heroHelper } =
+  const { hero, rest, heroOneClick, heroLabel, heroHelper, providerName } =
     computeHeroView(methods, spec);
   const orderedMethods = orderMethods(methods);
 
@@ -832,16 +832,19 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
         >
           <FormLogo logo={spec?.logo} logoUrl={spec?.logo_url} color={spec?.logo_color} connectorId={spec?._connector_id || spec?.engine} />
           <span style={{
-            fontWeight: 600, fontSize: 14.5, color: 'var(--ink)',
+            display: 'flex', flexDirection: 'column', gap: 2,
             minWidth: 0, flex: '1 1 auto', overflowWrap: 'anywhere', wordBreak: 'break-word',
-          }}>{busy ? 'Working…' : label}</span>
+          }}>
+            <span style={{ fontWeight: 600, fontSize: 14.5, color: 'var(--ink)' }}>
+              {busy ? 'Working…' : label}
+            </span>
+            {helper && !busy && (
+              <span style={{ fontSize: 11.5, fontWeight: 400, color: 'var(--ink-3)', lineHeight: 1.35 }}>
+                {helper}
+              </span>
+            )}
+          </span>
         </button>
-        {helper && (
-          <div style={{
-            fontSize: 12, color: 'var(--ink-3)', lineHeight: 1.4,
-            paddingLeft: 2, overflowWrap: 'anywhere',
-          }}>{helper}</div>
-        )}
         {hasHelp && (
           hasHowTo ? (
             <button
@@ -1049,7 +1052,25 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
         <>
           {renderHero()}
           {rest.length > 0 && (
-            <Collapsible title="See other options" panelClassName="pt-2">
+            <Collapsible
+              hideChevron
+              triggerClassName="justify-center"
+              panelClassName="pt-2"
+              title={(
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+                  width: '100%', fontSize: 11.5, color: 'var(--ink-3)',
+                }}>
+                  See other options to connect {providerName}
+                  <span
+                    className="inline-flex transition-transform duration-200 group-data-[panel-open]:rotate-180"
+                    aria-hidden
+                  >
+                    {Ico.chevDown(13)}
+                  </span>
+                </span>
+              )}
+            >
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {rest.map(renderCard)}
               </div>
