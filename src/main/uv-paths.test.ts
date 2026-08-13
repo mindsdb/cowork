@@ -98,6 +98,19 @@ describe('uv-paths — per-channel isolation', () => {
     process.env.UV_TOOL_BIN_DIR = '/home/u/.cowork-stable/uv/bin';
     expect(getEnvPath().split(path.delimiter)[0]).toBe('/home/u/.cowork-stable/uv/bin');
   });
+
+  it('getEnvPath includes Homebrew/MacPorts/Linuxbrew dirs on non-Windows (mindshub#12484)', () => {
+    // The actual mechanism of the bug: findUv() already knew about Homebrew,
+    // but getEnvPath() — the PATH handed to the spawned cowork-server child,
+    // and everything IT spawns — didn't, so a subprocess's own PATH search
+    // (e.g. anton's shutil.which("uv")) missed it even when findUv() wouldn't.
+    if (process.platform === 'win32') return;
+    const parts = getEnvPath().split(path.delimiter);
+    expect(parts).toContain('/opt/homebrew/bin');
+    expect(parts).toContain('/usr/local/bin');
+    expect(parts).toContain('/opt/local/bin');
+    expect(parts).toContain('/home/linuxbrew/.linuxbrew/bin');
+  });
 });
 
 describe('coworkServerBinCandidates — global Windows fallback is prod-only', () => {

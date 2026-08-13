@@ -55,7 +55,11 @@ export function getEnvPath(): string {
   const currentPath = process.env.PATH || '';
   // Include the per-channel uv bin dir (where a non-prod build's cowork-server
   // shim lives) so anything resolving the binary by name finds this channel's.
-  const parts = [localBin, cargoBin, currentPath];
+  // Also fold in EXTRA_UV_BIN_DIRS: a GUI-launched app's inherited PATH can be
+  // missing these even though findUv() already checks them on disk, and this
+  // is the PATH handed to cowork-server and everything IT spawns (mindshub#12484).
+  const extraDirs = process.platform === 'win32' ? [] : EXTRA_UV_BIN_DIRS;
+  const parts = [localBin, cargoBin, ...extraDirs, currentPath];
   if (process.env.UV_TOOL_BIN_DIR) parts.unshift(process.env.UV_TOOL_BIN_DIR);
   return parts.join(path.delimiter);
 }
@@ -104,7 +108,18 @@ function getUvBinary(): string {
   return path.join(getLocalBin(), `uv${ext}`);
 }
 
-/** Locate uv on disk — checks ~/.local/bin, ~/.cargo/bin, Homebrew paths. */
+// Package-manager bin dirs a GUI-launched parent's inherited PATH may miss
+// (mindshub#12484). Checked on every non-Windows platform; harmless if the
+// "wrong" OS's dir doesn't exist. Keep in sync with anton's _find_uv().
+const EXTRA_UV_BIN_DIRS = [
+  '/opt/homebrew/bin', // Homebrew, Apple Silicon
+  '/usr/local/bin', // Homebrew, Intel Mac
+  '/opt/local/bin', // MacPorts
+  '/home/linuxbrew/.linuxbrew/bin', // Linuxbrew
+];
+
+/** Locate uv on disk — checks ~/.local/bin, ~/.cargo/bin, then common
+ *  package-manager locations. */
 export function findUv(): string | null {
   const explicit = getUvBinary();
   if (fs.existsSync(explicit)) return explicit;
@@ -117,8 +132,9 @@ export function findUv(): string | null {
   const cargoBin = path.join(os.homedir(), '.cargo', 'bin', process.platform === 'win32' ? 'uv.exe' : 'uv');
   if (fs.existsSync(cargoBin)) return cargoBin;
 
-  if (process.platform === 'darwin') {
-    for (const p of ['/opt/homebrew/bin/uv', '/usr/local/bin/uv']) {
+  if (process.platform !== 'win32') {
+    for (const dir of EXTRA_UV_BIN_DIRS) {
+      const p = path.join(dir, 'uv');
       if (fs.existsSync(p)) return p;
     }
   }

@@ -12,7 +12,7 @@ vi.mock('./cowork-home', () => ({
   buildKind: () => 'prod',
 }));
 
-import { getInstalledVersion, resolveUv } from './uv-paths';
+import { getInstalledVersion, resolveUv, findUv } from './uv-paths';
 
 afterEach(() => {
   vi.clearAllMocks();
@@ -103,5 +103,34 @@ describe('resolveUv', () => {
     }) as never);
 
     await expect(resolveUv()).resolves.toBeNull();
+  });
+});
+
+describe('findUv — extra package-manager locations (mindshub#12484)', () => {
+  it('checks Homebrew on Apple Silicon', () => {
+    vi.mocked(fs.existsSync).mockImplementation((p) => String(p) === '/opt/homebrew/bin/uv');
+    expect(findUv()).toBe('/opt/homebrew/bin/uv');
+  });
+
+  it('checks Homebrew on Intel Mac', () => {
+    vi.mocked(fs.existsSync).mockImplementation((p) => String(p) === '/usr/local/bin/uv');
+    expect(findUv()).toBe('/usr/local/bin/uv');
+  });
+
+  it('checks MacPorts', () => {
+    vi.mocked(fs.existsSync).mockImplementation((p) => String(p) === '/opt/local/bin/uv');
+    expect(findUv()).toBe('/opt/local/bin/uv');
+  });
+
+  it('checks Linuxbrew', () => {
+    vi.mocked(fs.existsSync).mockImplementation(
+      (p) => String(p) === '/home/linuxbrew/.linuxbrew/bin/uv',
+    );
+    expect(findUv()).toBe('/home/linuxbrew/.linuxbrew/bin/uv');
+  });
+
+  it('still returns null when uv is nowhere to be found', () => {
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    expect(findUv()).toBeNull();
   });
 });
