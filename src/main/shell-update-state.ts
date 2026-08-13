@@ -7,6 +7,11 @@ export type ShellUpdatePhase =
   | 'ready-to-install'
   | 'installing'
   | 'complete'
+  // A CHECK that couldn't reach or resolve the feed — distinct from 'failed',
+  // which means an update was found but couldn't be downloaded/installed. A
+  // user-initiated check surfaces this as a quiet, transient note; background
+  // checks never reach it (they fall back to 'idle' silently). See ENG-1544.
+  | 'check-failed'
   | 'failed';
 
 export type ShellUpdateChannel = 'prod' | 'stable' | 'preview';
@@ -79,12 +84,42 @@ export function transitionShellUpdate(
   if (snapshot.phase === 'disabled') return snapshot;
 
   if (event.type === 'FAILED') {
-    if (snapshot.phase === 'complete') return snapshot;
+    // A finished install is terminal; a stray error while idle is noise.
+    // Ignoring the idle case also absorbs the DUPLICATE error electron-updater
+    // emits for one failed check (a rejected checkForUpdates() promise *and* an
+    // 'error' event) — the second pass can't escalate a benign check failure
+    // into the actionable banner, because the first already left us at idle.
+    if (snapshot.phase === 'complete' || snapshot.phase === 'idle') return snapshot;
+
+    // Only a failure while an update is actually being fetched or applied is a
+    // real, user-actionable "update failed". Everything else that reaches here
+    // is a failed CHECK: we couldn't reach or resolve the feed, and no update
+    // was ever found — so it must not show the "App update failed" banner.
+    const applying =
+      snapshot.phase === 'downloading'
+      || snapshot.phase === 'ready-to-install'
+      || snapshot.phase === 'installing';
+    if (applying) {
+      return {
+        ...snapshot,
+        phase: 'failed',
+        progress: undefined,
+        recoverable: event.recoverable,
+        errorCode: event.code,
+        errorMessage: event.message,
+      };
+    }
+
+    // A background check (boot/periodic) that can't reach the server is
+    // expected and benign: fall back to idle silently and let the next poll
+    // retry. A user-initiated check surfaces a quiet, transient 'check-failed'
+    // note instead. Neither is rendered as "App update failed" (ENG-1544).
+    const background = snapshot.trigger === 'boot' || snapshot.trigger === 'periodic';
+    if (background) return { ...clearTransient(snapshot), phase: 'idle' };
     return {
-      ...snapshot,
-      phase: 'failed',
-      progress: undefined,
-      recoverable: event.recoverable,
+      ...clearTransient(snapshot),
+      phase: 'check-failed',
+      recoverable: true,
       errorCode: event.code,
       errorMessage: event.message,
     };
@@ -96,6 +131,7 @@ export function transitionShellUpdate(
         snapshot.phase !== 'idle'
         && snapshot.phase !== 'available'
         && snapshot.phase !== 'failed'
+        && snapshot.phase !== 'check-failed'
         && snapshot.phase !== 'complete'
       ) return snapshot;
       if (snapshot.phase === 'failed' && snapshot.recoverable === false) return snapshot;

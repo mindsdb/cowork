@@ -139,9 +139,13 @@ describe('createShellAutoUpdater', () => {
     });
   });
 
-  it('classifies integrity failures as terminal and network errors as recoverable', async () => {
-    const integrity = setup();
+  it('classifies download integrity failures as terminal and network errors as recoverable', async () => {
+    // Integrity/network errors are reported by electron-updater while an update
+    // is downloading, not while checking — a failed check can't verify an
+    // artifact. Drive to 'downloading' (auto mode) before emitting the error.
+    const integrity = setup('auto');
     await integrity.updater.check('boot');
+    integrity.adapter.emit('available', '2.1.0');
     integrity.adapter.emit('updater-error', new Error('sha512 checksum mismatch'));
     expect(integrity.updater.getSnapshot()).toMatchObject({
       phase: 'failed',
@@ -149,14 +153,39 @@ describe('createShellAutoUpdater', () => {
       recoverable: false,
     });
 
-    const network = setup();
+    const network = setup('auto');
     await network.updater.check('boot');
+    network.adapter.emit('available', '2.1.0');
     network.adapter.emit('updater-error', new Error('ECONNRESET'));
     expect(network.updater.getSnapshot()).toMatchObject({
       phase: 'failed',
       errorCode: 'update-request-failed',
       recoverable: true,
     });
+  });
+
+  it('does not raise the failure banner when a background check cannot reach the feed', async () => {
+    // The reported bug: a fresh install's boot check hits a transient CDN/network
+    // error and the sidebar shows "App update failed". It must stay silent and
+    // fall back to idle so the next poll can retry (ENG-1544).
+    const { adapter, updater, snapshots } = setup('auto');
+    await updater.check('boot');
+    adapter.emit('updater-error', new Error('net::ERR_INTERNET_DISCONNECTED'));
+    const snapshot = updater.getSnapshot();
+    expect(snapshot.phase).toBe('idle');
+    expect(snapshot.errorCode).toBeUndefined();
+    expect(snapshots).not.toContain('failed');
+    // Still retryable on the next poll.
+    await updater.check('periodic');
+    expect(updater.getSnapshot().phase).toBe('checking');
+  });
+
+  it('surfaces a user-initiated check failure as a quiet check-failed state', async () => {
+    const { adapter, updater, snapshots } = setup('auto');
+    await updater.check('manual');
+    adapter.emit('updater-error', new Error('getaddrinfo ENOTFOUND downloads.mindshub.ai'));
+    expect(updater.getSnapshot().phase).toBe('check-failed');
+    expect(snapshots).not.toContain('failed');
   });
 
   it('immediately supplies the authoritative snapshot to subscribers', () => {

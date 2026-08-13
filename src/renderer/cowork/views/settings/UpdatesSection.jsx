@@ -292,16 +292,20 @@ export default function UpdatesSection({
                                   ? 'App update ready'
                                   : autoPhase === 'installing'
                                     ? 'Installing app update…'
-                                    : 'App update failed'}
+                                    : autoPhase === 'check-failed'
+                                      ? 'Could not check for updates'
+                                      : 'App update failed'}
                         </span>
                         <span className={`text-[11.5px] ${autoPhase === 'failed' ? 'text-warning' : 'text-ink-3'}`}>
                           {autoPhase === 'ready-to-install'
                             ? 'Restart Cowork to finish installing the downloaded update.'
-                            : autoPhase === 'failed'
-                              ? (shellAutoUpdate.errorMessage || 'The automatic update could not be completed. Your current installation is still usable.')
-                              : autoPhase === 'available'
-                                ? (shellAutoUpdate.mode === 'manual' ? 'Download it when you are ready.' : 'The update is ready to download.')
-                                : 'You can continue working while Cowork prepares the update.'}
+                            : autoPhase === 'check-failed'
+                              ? "We couldn't reach the update server. We'll try again automatically."
+                              : autoPhase === 'failed'
+                                ? 'The automatic update could not be completed. Your current installation is still usable.'
+                                : autoPhase === 'available'
+                                  ? (shellAutoUpdate.mode === 'manual' ? 'Download it when you are ready.' : 'The update is ready to download.')
+                                  : 'You can continue working while Cowork prepares the update.'}
                         </span>
                       </div>
                       {autoPhase === 'available' && (
