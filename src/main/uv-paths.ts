@@ -49,6 +49,38 @@ export function applyChannelUvIsolation(): void {
   if (!process.env.UV_TOOL_BIN_DIR) process.env.UV_TOOL_BIN_DIR = coworkUvBinDir();
 }
 
+// undefined = not yet primed, null = primed but unavailable (win32, or the
+// spawn failed/timed out), string = the resolved login-shell PATH.
+let cachedLoginShellPath: string | null | undefined;
+
+/** Resolve the user's real login-shell PATH once, so getEnvPath() can see
+ *  any package manager's bin dir without a hardcoded list. Never throws;
+ *  a failure or timeout just leaves getEnvPath() at its prior behavior. */
+export function primeLoginShellPath(): Promise<void> {
+  if (cachedLoginShellPath !== undefined) return Promise.resolve();
+  if (process.platform === 'win32') {
+    cachedLoginShellPath = null;
+    return Promise.resolve();
+  }
+  const shell = process.env.SHELL || '/bin/sh';
+  return new Promise((resolve) => {
+    execFile(shell, ['-ilc', 'echo $PATH'], { timeout: 3000 }, (err, stdout) => {
+      if (err) {
+        cachedLoginShellPath = null;
+        resolve();
+        return;
+      }
+      const lines = String(stdout).split('\n').map((l) => l.trim()).filter(Boolean);
+      cachedLoginShellPath = lines.length ? lines[lines.length - 1] : null;
+      resolve();
+    });
+  });
+}
+
+export function resetLoginShellPathCache(): void {
+  cachedLoginShellPath = undefined;
+}
+
 export function getEnvPath(): string {
   const localBin = getLocalBin();
   const cargoBin = path.join(os.homedir(), '.cargo', 'bin');
@@ -59,7 +91,8 @@ export function getEnvPath(): string {
   // missing these even though findUv() already checks them on disk, and this
   // is the PATH handed to cowork-server and everything IT spawns.
   const extraDirs = process.platform === 'win32' ? [] : EXTRA_UV_BIN_DIRS;
-  const parts = [localBin, cargoBin, ...extraDirs, currentPath];
+  const shellPath = cachedLoginShellPath ? [cachedLoginShellPath] : [];
+  const parts = [localBin, cargoBin, ...extraDirs, ...shellPath, currentPath];
   if (process.env.UV_TOOL_BIN_DIR) parts.unshift(process.env.UV_TOOL_BIN_DIR);
   return parts.join(path.delimiter);
 }
