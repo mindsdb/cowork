@@ -7,13 +7,46 @@
 
 const OAUTH_BUILTIN_ID = 'browser_oauth_builtin';
 
-/** Human connector name for button copy ("GitHub", "Google Drive").
- *  `spec.label` is the connector name (the OAuth handler reads the same
- *  field); fall back to stripping a leading "Connect " off the form
- *  title, then a generic word. */
+// Exact display casing for the connector ids that ship the in-browser
+// OAuth method — used as a fallback when neither `label` nor `title`
+// carries the name, so we never fall all the way to a generic word for
+// a known provider. Prettifying the id would give "Github"/"Gcp".
+const KNOWN_PROVIDER_NAMES = {
+  github: 'GitHub',
+  gmail: 'Gmail',
+  gcp: 'Google Cloud',
+  google_drive: 'Google Drive',
+  google_ads: 'Google Ads',
+  google_analytics_4: 'Google Analytics 4',
+  google_calendar: 'Google Calendar',
+  linear: 'Linear',
+};
+
+function prettifyEngine(engine) {
+  return String(engine)
+    .split(/[_-]+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
+/** Human connector name for user-facing copy ("GitHub", "Google Drive").
+ *  Resolution order: `spec.label` (the connector name — populated on some
+ *  paths) → the form title with a leading "Connect " stripped → the
+ *  connector id (`engine` / `_connector_id`) with known display casing →
+ *  a generic word. The label is empty in the browser-OAuth form spec (it
+ *  lives at the connector level, not inside `form`), which is why the
+ *  title/id fallbacks matter — without them the success message reads
+ *  "Provider connected" instead of "GitHub connected" (ENG-1534). */
 export function providerNameFromSpec(spec) {
-  if (spec && spec.label) return spec.label;
-  if (spec && spec.title) return String(spec.title).replace(/^connect\s+/i, '').trim() || 'the provider';
+  if (!spec) return 'the provider';
+  if (spec.label) return spec.label;
+  if (spec.title) {
+    const stripped = String(spec.title).replace(/^connect\s+/i, '').trim();
+    if (stripped) return stripped;
+  }
+  const engine = spec.engine || spec._connector_id;
+  if (engine) return KNOWN_PROVIDER_NAMES[engine] || prettifyEngine(engine);
   return 'the provider';
 }
 

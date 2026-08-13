@@ -13,6 +13,16 @@ describe('providerNameFromSpec', () => {
   it('falls back to the title with the "Connect " prefix stripped', () => {
     expect(providerNameFromSpec({ title: 'Connect Google Drive' })).toBe('Google Drive');
   });
+  it('falls back to the connector id with known display casing', () => {
+    // The browser-OAuth form spec has no label AND (often) no title —
+    // resolve from the connector id so the success copy says "GitHub
+    // connected", not "Provider connected" (ENG-1534).
+    expect(providerNameFromSpec({ _connector_id: 'github' })).toBe('GitHub');
+    expect(providerNameFromSpec({ engine: 'google_drive' })).toBe('Google Drive');
+  });
+  it('prettifies an unknown connector id rather than going generic', () => {
+    expect(providerNameFromSpec({ _connector_id: 'acme_crm' })).toBe('Acme Crm');
+  });
   it('falls back to a generic word when nothing is available', () => {
     expect(providerNameFromSpec({})).toBe('the provider');
     expect(providerNameFromSpec(null)).toBe('the provider');
