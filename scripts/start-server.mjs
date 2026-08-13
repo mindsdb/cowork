@@ -92,6 +92,13 @@ export async function start({ readyTimeoutMs = 15000 } = {}) {
     ...process.env,
     PATH: getEnvPath(),
     PYTHONUNBUFFERED: '1',
+    // Pin the dev data home. cowork-server has no build-kind of its own —
+    // with COWORK_HOME unset it falls back to ~/.cowork (production), so a
+    // bare `uv run cowork-server` would read and *migrate* the prod DB. The
+    // Electron dev app avoids this by injecting COWORK_HOME per build kind
+    // (server-process.ts); dev:web bypasses Electron, so we mirror that here.
+    // Honor an explicit override so a developer can still target another home.
+    COWORK_HOME: process.env.COWORK_HOME || path.join(os.homedir(), '.cowork-dev'),
     // Both port names — see server-process.ts spawn env for why.
     COWORK_SERVER_PORT: String(DEFAULT_PORT),
     COWORK_LISTEN_PORT: String(DEFAULT_PORT),
