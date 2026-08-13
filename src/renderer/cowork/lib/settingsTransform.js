@@ -586,7 +586,7 @@ export function diffSettingsForWrite(patch, lastFetched) {
 
 // ─── Agent budget clamping ───────────────────────────────────────────
 //
-// The server bounds these (pydantic ge/le) and 422s anything outside, and a
+// The server bounds these (pydantic ge/le) and 400s anything outside, and a
 // failed key fails the whole multi-key save — so the client must never PUT
 // an out-of-range value. Values are STRINGS end-to-end (server rows are
 // strings; the page-wide dirty compare is a JSON diff, so types must survive
