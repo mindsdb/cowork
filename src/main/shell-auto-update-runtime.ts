@@ -149,16 +149,12 @@ export function configureShellAutoUpdate(options: {
     },
     onFailure({ error, code, recoverable, phase }) {
       const stage = phase === 'checking' ? 'check' : phase;
-      // Full detail (status, URL, stack) to the app log — the durable,
-      // screenshot-independent channel. Previously a failed check's detail
-      // existed only in the UI (ENG-1544).
+      // Full detail to the app log — the durable, screenshot-independent channel.
       console.error(
         `[shell-updater] ${stage} failed (code=${code}, recoverable=${recoverable}):`,
         error,
       );
-      // Fire-and-forget telemetry so a persistently broken feed — e.g. a 404 on
-      // the update manifest, the exact ENG-1504 failure — is visible in
-      // aggregate without waiting for a user to screenshot the error.
+      // Telemetry so a persistently broken feed (e.g. a manifest 404) is visible.
       const status = (error as { statusCode?: number }).statusCode;
       sendEvent('shell_update_failed', {
         stage,

@@ -36,10 +36,7 @@ export default function UpdatesSection({
   // clipboard helper's fallback chain (see lib/clipboard.js) also fails,
   // instead of leaving the button looking like it silently did nothing.
   const [versionCopyState, setVersionCopyState] = useState('idle');
-  // A shell-update failure's full electron-updater error (status, URL, headers,
-  // stack) is kept one click away for troubleshooting/screenshots rather than
-  // dumped raw at every user (ENG-1544). 'idle' | 'copied' | 'failed' mirrors
-  // the version-copy affordance above.
+  // Failure detail kept one click away rather than dumped raw (ENG-1544).
   const [showUpdateErrorDetails, setShowUpdateErrorDetails] = useState(false);
   const [errorCopyState, setErrorCopyState] = useState('idle');
   // ENG-671 — on-demand "Check for updates". `checkResult` is null (idle) or a

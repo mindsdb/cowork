@@ -13,12 +13,9 @@ import {
 } from './shell-update-state';
 
 /**
- * Observability hook fired for every update failure — check, download, or
- * install — at the single choke point (`fail()`), before the error is
- * normalized down to a UI message. Carries the raw Error (with stack) and the
- * phase the failure happened in, so the runtime can log full detail and emit
- * telemetry. Without this, a failed check's detail lived ONLY in the snapshot
- * message rendered raw in Settings — the sole observability channel (ENG-1544).
+ * Fired for every update failure at the `fail()` choke point with the raw Error
+ * (stack) and the phase it happened in, so the runtime can log + telemeter it
+ * (ENG-1544).
  */
 export interface ShellUpdateFailure {
   error: Error;
@@ -102,10 +99,7 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
   const fail = (error: unknown) => {
     const normalized = error instanceof Error ? error : new Error(String(error));
     const classified = classifyError(normalized);
-    // Report the raw failure (with stack + the phase it happened in) before we
-    // collapse it to a UI message, so the runtime can log it and emit telemetry.
-    // `snapshot.phase` here is the PRE-transition phase: 'checking' ⇒ a check
-    // failure, 'downloading'/'installing' ⇒ a download/install failure.
+    // Pre-transition phase: 'checking' ⇒ check failure, else download/install.
     try {
       options.onFailure?.({
         error: normalized,
@@ -114,7 +108,7 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
         phase: snapshot.phase,
       });
     } catch {
-      // Observability must never break the state machine.
+      // Never let a reporting error break the reducer.
     }
     dispatch({
       type: 'FAILED',

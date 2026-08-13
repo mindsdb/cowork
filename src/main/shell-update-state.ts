@@ -7,10 +7,8 @@ export type ShellUpdatePhase =
   | 'ready-to-install'
   | 'installing'
   | 'complete'
-  // A CHECK that couldn't reach or resolve the feed — distinct from 'failed',
-  // which means an update was found but couldn't be downloaded/installed. A
-  // user-initiated check surfaces this as a quiet, transient note; background
-  // checks never reach it (they fall back to 'idle' silently). See ENG-1544.
+  // A check that couldn't reach the feed — distinct from 'failed' (an update
+  // was found but couldn't be applied). Quiet Settings note, never the banner.
   | 'check-failed'
   | 'failed';
 
@@ -84,17 +82,10 @@ export function transitionShellUpdate(
   if (snapshot.phase === 'disabled') return snapshot;
 
   if (event.type === 'FAILED') {
-    // A finished install is terminal; a stray error while idle is noise.
-    // Ignoring the idle case also absorbs the DUPLICATE error electron-updater
-    // emits for one failed check (a rejected checkForUpdates() promise *and* an
-    // 'error' event) — the second pass can't escalate a benign check failure
-    // into the actionable banner, because the first already left us at idle.
+    // Terminal once complete; ignore stray/duplicate errors once idle.
     if (snapshot.phase === 'complete' || snapshot.phase === 'idle') return snapshot;
 
-    // Only a failure while an update is actually being fetched or applied is a
-    // real, user-actionable "update failed". Everything else that reaches here
-    // is a failed CHECK: we couldn't reach or resolve the feed, and no update
-    // was ever found — so it must not show the "App update failed" banner.
+    // Only a download/install failure is a real, user-actionable "update failed".
     const applying =
       snapshot.phase === 'downloading'
       || snapshot.phase === 'ready-to-install'
@@ -110,15 +101,9 @@ export function transitionShellUpdate(
       };
     }
 
-    // A CHECK that can't reach or resolve the feed — whether a background
-    // boot/periodic poll or a user-initiated check — is not an update failure:
-    // no update was found, and the user can't act on it. It surfaces as the
-    // quiet 'check-failed' state (a subtle Settings note, never the sidebar
-    // "App update failed" banner) and stays retryable. Kept visible in Settings
-    // rather than silently discarded so a persistently broken feed (e.g. a 404
-    // on the update manifest) is still discoverable on inspection; the full
-    // error also goes to the log + telemetry via the updater's onFailure hook
-    // (ENG-1544).
+    // A failed check (boot/periodic or manual): kept visible in Settings, not
+    // the banner, and retryable. Full detail goes to the log + telemetry via
+    // onFailure; kept visible so a broken feed stays discoverable (ENG-1544).
     return {
       ...clearTransient(snapshot),
       phase: 'check-failed',
