@@ -116,7 +116,12 @@ export function UserMenu({ user, theme, onToggleTheme, onOpenSettings }) {
   const trigger = (
     <button
       type="button"
-      className="flex items-center gap-2 flex-1 min-w-0 px-2 py-1.5 rounded-lg border-0 bg-transparent cursor-pointer text-left font-[inherit] transition-colors hover:bg-surface-2 [-webkit-app-region:no-drag]"
+      // Hover fill is a 6% ink mix (the .recent-item.is-selected treatment),
+      // not a surface token — the light sidebar sits at ~#F4F4F4, which is
+      // what --surface-2 and --stone-100 resolve to, so any absolute surface
+      // fill disappears there. Mixing against --ink stays visible on any
+      // background and brightens correctly in dark mode.
+      className="flex items-center gap-2 flex-1 min-w-0 px-2 py-1.5 rounded-lg border-0 bg-transparent cursor-pointer text-left font-[inherit] transition-colors hover:bg-[color-mix(in_srgb,var(--ink)_6%,transparent)] [-webkit-app-region:no-drag]"
     >
       {/* Keyed by the picture URL so a failed load doesn't stick to the
           initials fallback after the account picture changes. */}
