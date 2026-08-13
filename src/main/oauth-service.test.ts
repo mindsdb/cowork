@@ -167,6 +167,27 @@ describe('oauthConnect', () => {
     expect(result.reason).toMatch(/state mismatch/i);
   });
 
+  it('rejects a same-length forged state (exercises the byte compare, not just the length check)', async () => {
+    // The state comparison uses crypto.timingSafeEqual, which throws on a
+    // length mismatch rather than comparing — this pins that the real
+    // rejection path (mismatched bytes at equal length, the actual state
+    // param's length) is also covered, not just the differently-sized
+    // 'forged-state' case above.
+    const nextAuthUrl = captureAuthUrl();
+    const flow = oauthConnect(OPTS);
+    const authUrl = await nextAuthUrl();
+    const realState = authUrl.searchParams.get('state') as string;
+    // Same length, one character changed — guaranteed different from realState.
+    const forgedSameLength = realState.slice(0, -1) + (realState.at(-1) === 'a' ? 'b' : 'a');
+
+    const page = await hitCallback(authUrl, { code: 'c', state: forgedSameLength });
+    expect(page.status).toBe(400);
+
+    const result = await flow;
+    expect(result.ok).toBe(false);
+    expect(result.reason).toMatch(/state mismatch/i);
+  });
+
   // ─── ENG-761: no two live loopback attempts ─────────────────────────
   // A retry (double-click, second sign-in surface) used to leave the
   // previous attempt's server listening; whichever tab the user finished
