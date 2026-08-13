@@ -673,6 +673,11 @@ function failedEventMeta(events) {
     // time-gate its Retry (ENG-1537). Null when the gateway sent no hint — the
     // card then offers an ungated Retry rather than inventing an interval.
     retryAfter: typeof ev.retry_after === 'number' ? ev.retry_after : null,
+    // included_allowance_exhausted: when the free grant refreshes, as the
+    // gate's opaque ISO string. Formatted at render time — the server
+    // deliberately doesn't parse it, since only the client knows the
+    // viewer's timezone (ENG-1537).
+    resetAt: typeof ev.reset_at === 'string' ? ev.reset_at : null,
   };
 }
 
@@ -719,6 +724,7 @@ function hydrateMessagesFromServerEvents(messages) {
           providerLabel: failed?.providerLabel ?? null,
           failedModel: failed?.failedModel ?? null,
           retryAfter: failed?.retryAfter ?? null,
+          resetAt: failed?.resetAt ?? null,
         });
       }
     }

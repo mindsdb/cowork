@@ -852,6 +852,28 @@ function ActionCard({ time, agentLabel, title, body, buttons = [] }) {
   );
 }
 
+// ── AllowanceExhaustedCard: the free monthly grant, not a drained wallet ───
+// ENG-1537. auth's `access.py` issues `included_allowance_exhausted` ONLY for a
+// free-bucket model on an org that has NEVER topped up, so this user has not
+// spent money — they used the monthly grant, and it resets. Two things follow,
+// and the old shared out-of-credits card got both wrong: the reset date is a
+// genuinely free way forward (hiding it while asking for money is the defect),
+// and "unlock" is literally true, because non-free models need a wallet this
+// org doesn't have.
+//
+// The date is formatted here, not server-side: only the client knows the
+// viewer's timezone, and parsing it on the server shifts the day for some
+// users. Anything unusable — absent, malformed, or already past on a reloaded
+// conversation — degrades to "next month" rather than rendering "Invalid Date"
+// or a stale month.
+function formatAllowanceReset(resetAt) {
+  if (!resetAt) return 'next month';
+  const d = new Date(resetAt);
+  if (Number.isNaN(d.getTime())) return 'next month';
+  if (d.getTime() <= Date.now()) return 'next month';
+  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'long' });
+}
+
 // ── RateLimitedCard: a velocity limit, NOT an out-of-credits state ─────────
 // ENG-1537. The org exceeded requests/tokens per minute; credits cannot lift
 // that ceiling, so this card must never offer a top-up. anton already waited
@@ -1872,6 +1894,24 @@ export default function ChatView({
                       buttons={retryText
                         ? [{ label: 'Try again', onClick: () => onSend?.(retryText), primary: true }]
                         : []}
+                    />
+                  );
+                }
+                // Spent FREE monthly allowance (gateway 429
+                // `included_allowance_exhausted`): not a drained wallet, so it
+                // names the reset date as a free alternative and says what
+                // credits actually unlock (ENG-1537).
+                if (m.code === 'included_allowance_exhausted') {
+                  return (
+                    <ActionCard
+                      key={i}
+                      time={formatMetaTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      title="You've used this month's free tokens"
+                      body={`Your free allowance resets on ${formatAllowanceReset(m.resetAt)}. Add credits to keep working now and unlock Claude, GPT, Gemini, Kimi, DeepSeek and more.`}
+                      buttons={[
+                        { label: 'Add credits', onClick: () => host.openExternal(MINDS_BILLING_URL), primary: true },
+                      ]}
                     />
                   );
                 }

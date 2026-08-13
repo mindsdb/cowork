@@ -51,6 +51,47 @@ describe('unknown_model failure card', () => {
   });
 });
 
+describe('included_allowance_exhausted card (ENG-1537)', () => {
+  const BODY = "You've used this month's free tokens.";
+
+  it('describes the free grant, not a drained wallet', () => {
+    render(<ChatView task={taskWith(failedTurn('included_allowance_exhausted', BODY))} />);
+    expect(screen.getByText("You've used this month's free tokens")).toBeInTheDocument();
+    // This user has never topped up — "out of credits" misdescribes it.
+    expect(screen.queryByText(/out of credits/i)).toBeNull();
+  });
+
+  it('keeps an actionable path to continue (ENG-1169 holds across the split)', () => {
+    render(<ChatView task={taskWith(failedTurn('included_allowance_exhausted', BODY))} />);
+    expect(screen.getByRole('button', { name: 'Add credits' })).toBeEnabled();
+  });
+
+  it('names the reset date the gate supplied — the free way forward', () => {
+    const inMarch = new Date(Date.now() + 40 * 24 * 3600 * 1000);
+    render(<ChatView task={taskWith(failedTurn('included_allowance_exhausted', BODY, {
+      resetAt: inMarch.toISOString(),
+    }))} />);
+    const expected = inMarch.toLocaleDateString(undefined, { day: 'numeric', month: 'long' });
+    expect(screen.getByText(new RegExp(`resets on ${expected}`))).toBeInTheDocument();
+  });
+
+  it('says what credits unlock', () => {
+    render(<ChatView task={taskWith(failedTurn('included_allowance_exhausted', BODY))} />);
+    expect(screen.getByText(/unlock Claude, GPT, Gemini, Kimi, DeepSeek and more/)).toBeInTheDocument();
+  });
+
+  it.each([
+    ['absent', undefined],
+    ['malformed', 'not-a-date'],
+    ['already past', new Date(Date.now() - 86_400_000).toISOString()],
+  ])('falls back to "next month" when the date is %s', (_label, resetAt) => {
+    // Never "Invalid Date", and never a stale month on a reloaded conversation.
+    render(<ChatView task={taskWith(failedTurn('included_allowance_exhausted', BODY, { resetAt }))} />);
+    expect(screen.getByText(/resets on next month/)).toBeInTheDocument();
+    expect(screen.queryByText(/Invalid Date/)).toBeNull();
+  });
+});
+
 describe('rate_limited failure card (ENG-1537)', () => {
   const BODY = "Too many requests too quickly. Wait a moment and continue — this isn't a credits problem.";
 
@@ -168,6 +209,8 @@ const WIRE_CODES = [
   'image_format',
   // ENG-1537 — the velocity 429, previously mislabelled as out-of-credits.
   'rate_limited',
+  // ENG-1537 — the spent free allowance, split off the credits card.
+  'included_allowance_exhausted',
   'anton_error',
 ];
 

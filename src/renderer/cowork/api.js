@@ -154,6 +154,11 @@ function _failedEventMeta(events) {
     failedModel: ev.model ?? null,
     // ENG-1537 — see App.jsx's failedEventMeta; the two paths must agree.
     retryAfter: typeof ev.retry_after === 'number' ? ev.retry_after : null,
+    // included_allowance_exhausted: when the free grant refreshes, as the
+    // gate's opaque ISO string. Formatted at render time — the server
+    // deliberately doesn't parse it, since only the client knows the
+    // viewer's timezone (ENG-1537).
+    resetAt: typeof ev.reset_at === 'string' ? ev.reset_at : null,
   };
 }
 
@@ -200,6 +205,7 @@ function _hydrateAssistantEvents(messages) {
           reconnectable: failed?.reconnectable ?? null,
           providerLabel: failed?.providerLabel ?? null,
           retryAfter: failed?.retryAfter ?? null,
+          resetAt: failed?.resetAt ?? null,
           failedModel: failed?.failedModel ?? null,
         });
       }
