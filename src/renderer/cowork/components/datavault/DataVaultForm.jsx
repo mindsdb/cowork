@@ -31,7 +31,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
-import { Alert, Badge, Button, Checkbox, Select, Input, Textarea } from '../ui';
+import { Alert, Badge, Button, Checkbox, Collapsible, Select, Input, Textarea } from '../ui';
 import {
   setFormState,
   setSelectedMethod,
@@ -39,6 +39,7 @@ import {
   subscribeSelectedMethod,
 } from './formStore';
 import HowToModal from './HowToModal';
+import { computeHeroView, orderMethods } from './methodHero';
 import { host } from '../../../platform/host';
 import { ANTON_VAULT_KEEP } from '../../api';
 
@@ -408,6 +409,31 @@ export function DataVaultForm({
     });
   };
 
+  // One-click "Authorize with <Provider>" from the picker (ENG-1534).
+  // Selects the recommended in-browser OAuth method AND fires its
+  // primary action in the same click, so a fields-less OAuth connector
+  // launches sign-in without a second "Connect" tap. Dispatches directly
+  // (not via `dispatch`, which reads the not-yet-updated activeMethodId
+  // from state) with the method's own id as authMethod, empty values —
+  // the connection gets a default name, editable later. Only wired for
+  // fields-less methods (see MethodPicker), so a method with required
+  // fields still reveals them first.
+  const authorizeWithMethod = (method) => {
+    if (!method || !onAction) return;
+    setLocalSelectedMethod(method.id);
+    onMethodChange?.(method.id);
+    const primary =
+      (Array.isArray(method.actions) ? method.actions : []).find((a) => a.kind === 'primary')
+      || { id: 'submit', kind: 'primary' };
+    onAction({
+      id: primary.id,
+      kind: 'primary',
+      values: {},
+      skipped: [],
+      authMethod: method.id,
+    });
+  };
+
   return (
     <div style={{
       display: 'flex', flexDirection: 'column', gap: 14,
@@ -468,11 +494,13 @@ export function DataVaultForm({
           server-pre-selected). User clicks a card to pick. */}
       {isMultiMethod && !activeMethod && (
         <MethodPicker
+          spec={spec}
           methods={visibleMethods}
           onPick={(id) => {
             setLocalSelectedMethod(id);
             onMethodChange?.(id);
           }}
+          onAuthorize={authorizeWithMethod}
           busy={busy}
         />
       )}
@@ -725,31 +753,113 @@ export function DataVaultForm({
 // description, and an optional "Recommended" pill. Click selects
 // the method (host pulls the choice into local state and the form
 // switches to the picked method's fields).
-function MethodPicker({ methods, onPick, busy }) {
+function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
   // When a method exposes `how_to` markdown, clicking the help
   // affordance opens an in-app modal instead of an external URL.
   // We hold the active method so the modal can show its title.
   const [howToFor, setHowToFor] = useState(null);
-  // Recommended methods float to the top — relative order within
-  // each group is preserved (stable sort). Spec authors signal the
-  // simplest path with `recommended: true`; the picker should lead
-  // with it.
-  const orderedMethods = (() => {
-    if (!Array.isArray(methods)) return [];
-    const recommended = methods.filter((m) => m && m.recommended);
-    const rest = methods.filter((m) => !m || !m.recommended);
-    return [...recommended, ...rest];
-  })();
-  return (
-    <div style={{
-      display: 'flex', flexDirection: 'column', gap: 8,
-    }}>
-      <div style={{
-        fontSize: 12.5, color: 'var(--ink-3)', marginBottom: 2,
-      }}>
-        Pick how you want to connect:
+  // ── Hero promotion (ENG-1534) ───────────────────────────────────
+  // Lead with the single recommended method as a prominent button, and
+  // tuck the rest under a quiet "See other options" disclosure — so an
+  // OAuth connector reads as one obvious "Authorize with X" action
+  // instead of a menu of technical-sounding cards. Recommended methods
+  // already float to the front (stable). Decision logic lives in the
+  // pure, unit-tested `computeHeroView`.
+  const { hero, rest, heroOneClick, heroLabel, heroHelper } =
+    computeHeroView(methods, spec);
+  const orderedMethods = orderMethods(methods);
+
+  const helpFor = (m) => {
+    const hasHowTo = typeof m.how_to === 'string' && m.how_to.trim().length > 0;
+    const hasHelp = hasHowTo || !!m.help_url;
+    const handleHelp = (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      if (hasHowTo) setHowToFor(m);
+      else if (m.help_url) {
+        try { host.openExternal(m.help_url); }
+        catch { window.open(m.help_url, '_blank', 'noreferrer'); }
+      }
+    };
+    return { hasHowTo, hasHelp, handleHelp };
+  };
+
+  const renderHero = () => {
+    const { hasHelp, hasHowTo, handleHelp } = helpFor(hero);
+    const label = heroLabel;
+    const helper = heroHelper;
+    const onHeroClick = () => {
+      if (busy) return;
+      if (heroOneClick) onAuthorize?.(hero);
+      else onPick?.(hero.id);
+    };
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onHeroClick}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 12,
+            width: '100%', textAlign: 'left',
+            padding: '12px 14px', borderRadius: 10,
+            background: 'color-mix(in srgb, var(--accent) 12%, var(--surface))',
+            border: '1px solid color-mix(in srgb, var(--accent) 45%, transparent)',
+            color: 'var(--ink)', cursor: busy ? 'not-allowed' : 'pointer',
+            fontFamily: FONT_BODY, minWidth: 0,
+            transition: 'transform 120ms ease, background 120ms ease, border-color 120ms ease',
+            outline: 'none',
+          }}
+          onMouseOver={(e) => { if (!busy) e.currentTarget.style.transform = 'translateY(-1px)'; }}
+          onMouseOut={(e) => { e.currentTarget.style.transform = 'translateY(0)'; }}
+          onFocus={(e) => { e.currentTarget.style.boxShadow = '0 0 0 2px var(--accent)'; }}
+          onBlur={(e) => { e.currentTarget.style.boxShadow = 'none'; }}
+        >
+          <FormLogo logo={spec?.logo} logoUrl={spec?.logo_url} color={spec?.logo_color} />
+          <span style={{
+            fontWeight: 600, fontSize: 14.5, color: 'var(--ink)',
+            minWidth: 0, flex: '1 1 auto', overflowWrap: 'anywhere', wordBreak: 'break-word',
+          }}>{busy ? 'Working…' : label}</span>
+        </button>
+        {helper && (
+          <div style={{
+            fontSize: 12, color: 'var(--ink-3)', lineHeight: 1.4,
+            paddingLeft: 2, overflowWrap: 'anywhere',
+          }}>{helper}</div>
+        )}
+        {hasHelp && (
+          hasHowTo ? (
+            <button
+              type="button"
+              onClick={handleHelp}
+              style={{
+                alignSelf: 'flex-start', fontSize: 11.5, color: 'var(--accent)',
+                background: 'transparent', border: 0, padding: 0, cursor: 'pointer',
+                fontWeight: 500, fontFamily: 'inherit',
+              }}
+              onMouseOver={(e) => { e.currentTarget.style.textDecoration = 'underline'; }}
+              onMouseOut={(e) => { e.currentTarget.style.textDecoration = 'none'; }}
+            >How to?</button>
+          ) : (
+            <a
+              href={hero.help_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={handleHelp}
+              style={{
+                alignSelf: 'flex-start', fontSize: 11.5, color: 'var(--accent)',
+                textDecoration: 'none', fontWeight: 500,
+              }}
+              onMouseOver={(e) => { e.currentTarget.style.textDecoration = 'underline'; }}
+              onMouseOut={(e) => { e.currentTarget.style.textDecoration = 'none'; }}
+            >How to?</a>
+          )
+        )}
       </div>
-      {orderedMethods.map((m) => {
+    );
+  };
+
+  const renderCard = (m) => {
         const hasHowTo = typeof m.how_to === 'string' && m.how_to.trim().length > 0;
         const hasHelp = hasHowTo || !!m.help_url;
         const handleHelp = (e) => {
@@ -914,7 +1024,32 @@ function MethodPicker({ methods, onPick, busy }) {
             )}
           </div>
         );
-      })}
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {hero ? (
+        // Lead with the recommended method as a prominent button; the
+        // rest fold away under a quiet disclosure (ENG-1534).
+        <>
+          {renderHero()}
+          {rest.length > 0 && (
+            <Collapsible title="See other options" panelClassName="pt-2">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {rest.map(renderCard)}
+              </div>
+            </Collapsible>
+          )}
+        </>
+      ) : (
+        // No recommended method — fall back to today's flat card list.
+        <>
+          <div style={{ fontSize: 12.5, color: 'var(--ink-3)', marginBottom: 2 }}>
+            Pick how you want to connect:
+          </div>
+          {orderedMethods.map(renderCard)}
+        </>
+      )}
 
       <HowToModal
         open={!!howToFor}
