@@ -14,7 +14,9 @@ import Spinner from '../../components/ui/Spinner';
 import ModelSelect from '../../components/ModelSelect.jsx';
 import { host } from '../../../platform/host';
 import { SKINS, normalizeSkin } from '../../../lib/skins';
-import { MINDS_API_BASE, MINDS_API_KEY_URL, MINDS_REGISTER_URL, MINDS_BILLING_URL } from '../../../lib/mindsUrls';
+import { MINDS_API_BASE, MINDS_API_KEY_URL, MINDS_REGISTER_URL, MINDS_BILLING_URL, MINDS_USAGE_URL } from '../../../lib/mindsUrls';
+import { ConfirmModal } from '../../components/ConfirmModal';
+import { useLogout, LOGOUT_CONFIRM_COPY } from '../../hooks/useLogout';
 import { isElectron } from '../../../platform/host';
 import ChannelsView from '../ChannelsView';
 import UpdatesSection from './UpdatesSection';
@@ -616,7 +618,32 @@ export function navItemsForHost(isWeb) {
   return isWeb ? NAV_ITEMS.filter((i) => WEB_NAV_IDS.has(i.id)) : [...NAV_ITEMS];
 }
 
-function SettingsNav({ section, onSectionChange, serverOnline = true }) {
+// Action rows shown below the section list (ENG-1545). Billing/Usage open the
+// console in the browser; Sign out runs the logout flow. These are NOT section
+// ids — they trigger handlers rather than switching `effectiveSection` (an
+// unknown section id would silently redirect to Agent).
+function SettingsNavActionRow({ icon, label, onClick, danger = false, disabled = false }) {
+  const iconEl = Ico[icon] ? Ico[icon](15) : null;
+  return (
+    <button
+      type="button"
+      onClick={disabled ? undefined : onClick}
+      aria-disabled={disabled ? 'true' : undefined}
+      className={`w-full flex items-center gap-2 py-2 px-2.5 rounded-[7px] border-0 text-[13px] [font-family:inherit] text-left [transition:background_120ms_ease,color_120ms_ease] ${danger
+        ? 'bg-transparent text-danger font-normal hover:bg-surface-2'
+        : 'bg-transparent text-ink-3 font-normal hover:bg-surface-2 hover:text-ink'} ${disabled
+        ? 'opacity-35 pointer-events-none cursor-default'
+        : 'cursor-pointer'}`}
+    >
+      {iconEl && (
+        <span aria-hidden="true" className="inline-flex shrink-0 text-[color:inherit]">{iconEl}</span>
+      )}
+      <span>{label}</span>
+    </button>
+  );
+}
+
+function SettingsNav({ section, onSectionChange, serverOnline = true, onBilling, onUsage, onSignOut, loggingOut = false }) {
   return (
     <nav
       role="navigation"
@@ -657,6 +684,22 @@ function SettingsNav({ section, onSectionChange, serverOnline = true }) {
           </button>
         );
       })}
+
+      {/* Account actions (ENG-1545) — Billing/Usage open the console; Sign
+          out runs the logout flow. Separated from the section links above. */}
+      <div className="mt-2 pt-2 border-t border-x-0 border-b-0 border-solid border-line flex flex-col gap-0.5">
+        <SettingsNavActionRow icon="card" label="Billing" onClick={onBilling} />
+        <SettingsNavActionRow icon="slider" label="Usage" onClick={onUsage} />
+        {onSignOut && (
+          <SettingsNavActionRow
+            icon="powerOff"
+            label={loggingOut ? 'Signing out…' : 'Sign out'}
+            onClick={onSignOut}
+            danger
+            disabled={loggingOut}
+          />
+        )}
+      </div>
     </nav>
   );
 }
@@ -696,6 +739,32 @@ export default function SettingsView({
   const [testing, setTesting] = useState(false);
   const [tested, setTested] = useState(false);
   const [addPickerOpen, setAddPickerOpen] = useState(false);
+
+  // Nav action items (ENG-1545): Billing/Usage open the console; Sign out
+  // runs the shared logout flow (Electron only — no-op on hosted web, so the
+  // row is omitted there, matching the sidebar user menu).
+  const { loggingOut, logout } = useLogout();
+  const [signOutOpen, setSignOutOpen] = useState(false);
+  const openExternalUrl = (url) => (host.openExternal ? host.openExternal(url) : window.open(url, '_blank'));
+  const navActionProps = {
+    onBilling: () => openExternalUrl(MINDS_BILLING_URL),
+    onUsage: () => openExternalUrl(MINDS_USAGE_URL),
+    onSignOut: host.isWeb ? undefined : () => setSignOutOpen(true),
+    loggingOut,
+  };
+  const signOutConfirm = (
+    <ConfirmModal
+      open={signOutOpen}
+      title={LOGOUT_CONFIRM_COPY.title}
+      message={LOGOUT_CONFIRM_COPY.message}
+      confirmLabel={LOGOUT_CONFIRM_COPY.confirmLabel}
+      destructive
+      busy={loggingOut}
+      busyLabel="Signing out…"
+      onConfirm={logout}
+      onClose={() => setSignOutOpen(false)}
+    />
+  );
   // Per-role "use a typed model id" flag. Sticky so picking Other…
   // keeps the text input visible even when the typed value is empty.
   const [modelInputMode, setModelInputMode] = useState({ planning: false, coding: false });
@@ -2308,9 +2377,37 @@ export default function SettingsView({
                   </div>
                 );
               })}
+              {/* Account actions (ENG-1545) — Billing/Usage open the console;
+                  Sign out runs the logout flow. */}
+              {[
+                { id: 'billing', label: 'Billing', icon: 'card', onClick: navActionProps.onBilling },
+                { id: 'usage', label: 'Usage', icon: 'slider', onClick: navActionProps.onUsage },
+                ...(navActionProps.onSignOut
+                  ? [{ id: 'signout', label: loggingOut ? 'Signing out…' : 'Sign out', icon: 'powerOff', onClick: navActionProps.onSignOut, danger: true, disabled: loggingOut }]
+                  : []),
+              ].map((a) => (
+                <div className="mshell-accordion" key={a.id}>
+                  <button
+                    type="button"
+                    className="mshell-accordion__head"
+                    aria-disabled={a.disabled || undefined}
+                    disabled={a.disabled}
+                    onClick={a.onClick}
+                    style={a.danger ? { color: 'var(--danger)' } : undefined}
+                  >
+                    {Ico[a.icon] && (
+                      <span aria-hidden="true" className="inline-flex shrink-0 text-ink-3">
+                        {Ico[a.icon](18)}
+                      </span>
+                    )}
+                    <span className="mshell-accordion__label">{a.label}</span>
+                  </button>
+                </div>
+              ))}
             </nav>
           )}
         </div>
+        {signOutConfirm}
       </SettingsLayoutContext.Provider>
     );
   }
@@ -2326,7 +2423,7 @@ export default function SettingsView({
 
   return (
     <div className="flex-1 flex flex-row min-h-0">
-      <SettingsNav section={effectiveSection} onSectionChange={onSectionChange} serverOnline={serverOnline} />
+      <SettingsNav section={effectiveSection} onSectionChange={onSectionChange} serverOnline={serverOnline} {...navActionProps} />
 
       {effectiveSection === 'agent' && renderAgentSection()}
       {effectiveSection === 'appearance' && renderAppearanceSection()}
@@ -2334,6 +2431,7 @@ export default function SettingsView({
       {effectiveSection === 'updates' && renderUpdatesSection()}
       {effectiveSection === 'backend' && renderBackendSection()}
       {effectiveSection === 'account' && renderAccountSection()}
+      {signOutConfirm}
     </div>
   );
 }

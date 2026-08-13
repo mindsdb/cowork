@@ -262,9 +262,9 @@ describe('Sidebar — nav title/logo override', () => {
 
 describe('Sidebar — footer user menu when signed in (ENG-1408)', () => {
   // Parity with the web console: a signed-in user gets the account row
-  // (avatar + name · org + menu) instead of the bare Settings row; Settings
-  // and the theme switch move inside the menu, so the standalone footer
-  // controls are signed-out-only.
+  // (avatar + name · org + menu) instead of the bare Settings row. Settings
+  // moves inside the menu, but the quick theme + 8-bit toggles stay in the
+  // footer (ENG-1545) — restored from the menu-only placement ENG-1408 used.
   beforeEach(() => {
     getAccessTokenMock.mockResolvedValue(
       jwt({ name: 'Hazem Ahmed', email: 'hazem@example.com', active_organization: { displayName: 'MindsDB' } })
@@ -281,7 +281,8 @@ describe('Sidebar — footer user menu when signed in (ENG-1408)', () => {
     const row = await screen.findByRole('button', { name: /Hazem Ahmed/ });
     expect(row.textContent).toContain('MindsDB');
     expect(screen.queryByRole('button', { name: 'Settings' })).toBeNull();
-    expect(screen.queryByRole('button', { name: /Switch to (light|dark) theme/ })).toBeNull();
+    // ENG-1545: the quick theme toggle stays in the footer alongside the menu.
+    expect(screen.getByRole('button', { name: /Switch to (light|dark) theme/ })).toBeInTheDocument();
   });
 
   it('keeps the plain Settings row when signed out', async () => {
