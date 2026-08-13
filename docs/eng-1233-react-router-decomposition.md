@@ -1,64 +1,165 @@
 # ENG-1233 — Web URL/route state via react-router (full decomposition)
 
-**Status:** plan / not yet implemented. This branch (`paul/eng-1233-web-url-route-state-rr`, PR #582) is currently equal to `staging`. This doc seeds a **fresh, dedicated session** to build it.
+**Status:** In progress. **Increment 1** (router skeleton + real Home and
+Conversation routes) is implemented and hardened on
+`paul/eng-1233-web-url-route-state-rr` (PR #582). Increments 2–6 remain. This
+doc is the **contract** later increments build against — read the Navigation
+and Loader contracts before adding a route.
 
 ## Purpose
 
-Implement ENG-1233 (web nav state ↔ URL so refresh / deep-links / Back-Forward work on the web shell) **idiomatically with react-router, from first principles** — path-based routes, route components, and loaders — decomposing the ~4,000-line `AppCore` god component into a provider + layout + route elements.
+Implement ENG-1233 (web nav state ↔ URL so refresh / deep-links / Back-Forward
+work on the web shell) **idiomatically with react-router, from first
+principles** — path-based routes, route components, and loaders — decomposing
+the ~4,000-line `AppCore` god component into a provider + layout + route
+elements.
 
-This is the **alternative** to PR #561 (`paul/eng-1233-web-url-route-state`), which solves the same problem hand-rolled (manual `pushState`/`popstate`, a `navState` reducer, a `urlState` query-mapping layer, and a `router.jsx` shim). Only one of the two PRs should land. **Do not port #561's structure** — that was the rejected approach. Build what you'd build if react-router were the starting point.
+This is the **alternative** to PR #561 (`paul/eng-1233-web-url-route-state`),
+which solves the same problem hand-rolled (manual `pushState`/`popstate`, a
+`navState` reducer, a `urlState` query-mapping layer, and a `router.jsx`
+shim). Only one of the two PRs should land. **Do not port #561's structure** —
+that was the rejected approach. Build what you'd build if react-router were the
+starting point.
 
 ## Non-negotiable constraints (read first)
 
-- **Dual shell.** The app ships as an Electron desktop app **and** a headless web SPA. Electron has **no address bar**. Two entry points: `src/renderer/main.tsx` (Electron) and `src/renderer/web-main.tsx` (web). Use `createMemoryRouter` on Electron, `createBrowserRouter` on web. Everything URL-facing is gated on `host.isWeb` today; RR's memory router is the idiomatic replacement for that gating.
-- **Never touch `window.antontron` directly** inside `src/renderer/cowork/` — go through `src/renderer/platform/host.ts` (`host.isWeb = !isElectron`). CI enforces this (`npm run check:cowork-purity`).
-- **CodeQL `js/unvalidated-dynamic-method-call`.** Any dispatch keyed on a URL/user-controlled value (`obj[key]()`, `map.get(key)()`) trips a **high-severity** alert. Guard with `Object.hasOwn(obj, key) ? obj[key]() : …`. This bit the hand-rolled branch twice. RR's own matching avoids it, but watch any custom dispatch you add.
-  - Verify via the alerts API, and wait for CodeQL to **settle** — a first-poll `neutral` can be premature:
+- **Dual shell.** The app ships as an Electron desktop app **and** a headless
+  web SPA. Electron has **no address bar**. Two entry points:
+  `src/renderer/main.tsx` (Electron) and `src/renderer/web-main.tsx` (web). Use
+  `createMemoryRouter` on Electron, `createBrowserRouter` on web (see
+  `createCoworkRouter`). Everything URL-facing is gated on `host.isWeb` today;
+  RR's memory router is the idiomatic replacement for that gating.
+- **Never touch `window.antontron` directly** inside `src/renderer/cowork/` —
+  go through `src/renderer/platform/host.ts` (`host.isWeb = !isElectron`). CI
+  enforces this (`npm run check:cowork-purity`).
+- **CodeQL `js/unvalidated-dynamic-method-call`.** Any dispatch keyed on a
+  URL/user-controlled value (`obj[key]()`, `map.get(key)()`) trips a
+  **high-severity** alert. Guard with `Object.hasOwn(obj, key) ? obj[key]() :
+  …`. This bit the hand-rolled branch twice. RR's own matching avoids it, but
+  watch any custom dispatch you add.
+  - Verify via the alerts API, and wait for CodeQL to **settle** — a first-poll
+    `neutral` can be premature:
     `gh api "repos/mindsdb/cowork/code-scanning/alerts?ref=refs/pull/582/head&state=open"`
-- **StrictMode** wraps both entries — effects run twice on mount in dev. Any mount-time sync must be idempotent.
+- **StrictMode** wraps both entries — effects run twice on mount in dev. Any
+  mount-time sync must be idempotent.
 - **Validate every increment** with the CI gates before pushing:
   ```sh
   PATH="/opt/homebrew/opt/node@20/bin:$PATH" npm run typecheck:renderer   # tsc --noEmit
   PATH="/opt/homebrew/opt/node@20/bin:$PATH" npm run check:cowork-purity
-  PATH="/opt/homebrew/opt/node@20/bin:$PATH" npm test                     # vitest (staging: ~9xx tests)
+  PATH="/opt/homebrew/opt/node@20/bin:$PATH" npm test                     # vitest
   PATH="/opt/homebrew/opt/node@20/bin:$PATH" npm run build:renderer       # electron renderer
   PATH="/opt/homebrew/opt/node@20/bin:$PATH" npm run build:web            # web SPA
   ```
-- **Branch/PR:** commit to `paul/eng-1233-web-url-route-state-rr`; PR #582 is a **draft** based on `staging`. Push normally (no force unless resetting). Verify the remote head before pushing; report CI (esp. the bare `CodeQL` check, which hides under the passing `CodeQL · Analyze` checks).
+- **Branch/PR:** commit to `paul/eng-1233-web-url-route-state-rr`; PR #582 is a
+  **draft** based on `staging`. Push normally (no force unless resetting).
+  Verify the remote head before pushing; report CI (esp. the bare `CodeQL`
+  check, which hides under the passing `CodeQL · Analyze` checks).
 
 ## Domain facts (learned; don't re-derive)
 
-- **Boot gates.** `src/renderer/App.tsx` runs the pre-cowork screen sequence (Loading → Terms → Setup → Onboarding → Intro) and renders `<CoworkApp />` only when `page === 'terminal'` (App.tsx:275). `CoworkApp.tsx` → `<CoworkRoot />` → `AppCore` (in `src/renderer/cowork/App.jsx`). **The router must wrap the cowork app, not the gates** — put `<RouterProvider>` around the cowork screen (inside App.tsx's terminal branch or inside CoworkApp), leaving onboarding non-routed.
-- **The view inventory** = `AppCore`'s render switch (`src/renderer/cowork/App.jsx`, the `return (` at ~3740). Each `route === 'x' && <View/>`:
-  | route | ~line | component | entity |
-  |---|---|---|---|
-  | home | 3914 | home/composer | — |
-  | task | 3951 | `ChatView` (`currentTask`) | conversation id |
-  | projects | 4003 | `ProjectsView` | project name (detail) |
-  | scheduled | 4044 | scheduled list | — |
-  | schedule-detail | 4069 | `ScheduleDetailView` | schedule id |
-  | artifacts | 4108 | artifacts | — |
-  | tasks | 4123 | tasks | — |
-  | channels | 4144 | channels | — |
-  | customize | 4148 | `CustomizeView` | — |
-  | skills | 4250 | `SkillsView` | — |
-  | (memory) | — | present in routing but check render | — |
+- **Boot gates.** `src/renderer/App.tsx` runs the pre-cowork screen sequence
+  (Loading → Terms → Setup → Onboarding → Intro) and renders `<CoworkApp />`
+  only when `page === 'terminal'`. `CoworkApp.tsx` → `<CoworkRoot />` →
+  `AppCore` (in `src/renderer/cowork/App.jsx`). **The router wraps the cowork
+  app, not the gates** — onboarding stays non-routed.
+- **The view inventory** = `AppCore`'s render switch (`src/renderer/cowork/App.jsx`).
+  Each `route === 'x' && <View/>`:
+  | route | component | entity |
+  |---|---|---|
+  | home | home/composer | — |
+  | task | `ChatView` (`currentTask`) | conversation id |
+  | projects | `ProjectsView` | project name (detail) |
+  | scheduled | scheduled list | — |
+  | schedule-detail | `ScheduleDetailView` | schedule id |
+  | artifacts | artifacts | — |
+  | tasks | tasks | — |
+  | channels | channels | — |
+  | customize | `CustomizeView` | — |
+  | skills | `SkillsView` | — |
+  | memory | present in routing — check render | — |
   (Line numbers drift — re-grep `route === '` in App.jsx.)
-- **Nav state today** = `route` (string) + `activeTaskId` + `selectedProject` (object) + `selectedScheduleId` + settings overlay (`settingsOpen`/`settingsSection`), all `useState` in `AppCore` (~line 766+). ~90 `setRoute`/`setActiveTaskId`/… call sites; the `Sidebar` (`src/renderer/cowork/components/Sidebar.jsx`, ~1065 lines) navigates via an `onNavigate(key)` prop (~15 sites) + `onSelectTask(id)`.
+- **Nav state today** = `route` (string) + `activeTaskId` + `selectedProject`
+  (object) + `selectedScheduleId` + settings overlay
+  (`settingsOpen`/`settingsSection`), all `useState` in `AppCore`. ~90
+  `setRoute`/`setActiveTaskId`/… call sites; the `Sidebar`
+  (`src/renderer/cowork/components/Sidebar.jsx`) navigates via an
+  `onNavigate(key)` prop + `onSelectTask(id)`.
 - **Conversations / loaders:**
-  - `fetchSessions()` (`src/renderer/cowork/api.js:255`) returns a **capped list** — `/conversations/?project=all&limit=200`, eager messages for the first 50. So a deep-link/refresh to an **older** conversation is NOT in the list.
-  - `fetchSession(id)` (`api.js:279`) fetches **any** conversation by id → a full task object (`_conversationToTask`) or `null`. **This is the natural `/c/:id` loader**: return it; 404/`null` → redirect home. (`fetchProjects()` `api.js:553` is uncapped.)
-  - `selectTask(id)` does more than set state — hydrates messages, reattaches in-flight SSE streams, records visits. In RR this is the conversation route's job (loader fetches; an effect/route action reattaches the stream). Don't lose the stream reattach.
-- **Settings** is a **modal overlay orthogonal to the content route** (`?settings=<section>` today; null=closed, ''=open-no-section, section name). On mobile it's a full master-detail; on desktop a modal over the current content.
+  - `fetchSessions()` (`api.js`) returns a **capped list** —
+    `/conversations/?project=all&limit=200`, eager messages for the first 50.
+    So a deep-link/refresh to an **older** conversation is NOT in the list.
+  - `fetchSession(id)` (`api.js`) fetches any conversation by id → a full task
+    object or `null`, but **collapses every failure to `null`** (404, auth,
+    5xx, network are indistinguishable). For the loader use
+    **`fetchSessionResult(id)`** instead (added in increment 1): it returns
+    `{status:'ok'|'not_found'|'unavailable'}` so the route can tell a deleted
+    conversation from a transient outage. See the Loader contract below.
+  - `selectTask(id)` used to hydrate messages, reattach in-flight SSE streams,
+    and record visits. In increment 1 this moved to `openConversation()` (the
+    conversation route's job): the loader fetches; the route element hydrates +
+    reattaches the stream. `selectTask` is now a thin nav trigger. **Don't lose
+    the stream reattach** when you promote later routes.
+- **Settings** is a **modal overlay orthogonal to the content route**
+  (`?settings=<section>` today; null=closed, ''=open-no-section, section name).
+  On mobile it's a full master-detail; on desktop a modal over the content.
+
+## Navigation contract (push / replace / preserve)
+
+Every transition must have a defined history intent. A generic two-way
+state↔URL bridge cannot infer this, so it is stated here and enforced per
+route as routes are promoted (see the increment plan). "One Back press" from
+a leaf view must return to where the user came from.
+
+| Transition | Intent | Notes |
+|---|---|---|
+| Sidebar / in-view navigation between views | **push** | normal navigation |
+| Home → new chat, **before** the server mints an id | **preserve** | The temporary `tmp-` id must **never** enter the URL. `pathForRoute` returns `null` for a `tmp-` task, and the bridge leaves the address bar alone. A `/c/tmp-*` push would be a dead entry (Back returns to it) and an unrecoverable refresh (the id was never sent to the server). |
+| Temporary → canonical id adoption | **push (once)** | When the server id is adopted, `pathForRoute` yields `/c/:sid` and the bridge performs the *single* push for the new chat. Net history for a chat started from Home: `/ → /c/:sid`, so one Back press returns Home. |
+| New chat started from **inside** another conversation `/c/:A` | **preserve**, then push `/c/:sid` | The address bar stays on `/c/:A` through the temp window (no intermediate entry — `pathForRoute` returns `null`), then the canonical id pushes once. Back returns to the originating conversation `/c/:A`. |
+| Conversation deep link → 404 (deleted) | **replace → `/`** | `redirect('/')` from the loader. |
+| Conversation deep link → transient failure | **preserve** | Keep the URL; render a retryable error (see Loader contract). |
+| Deleting the open conversation | **replace → `/`** (or the next recent) | Deletion redirect; decide push vs replace when this route is promoted. |
+| Settings open / close | **push on open, `navigate(-1)` / back-location on close** | See Settings overlay. A direct `/settings/:section` link with no history has no background — define its close target explicitly. |
+| Optimistic canonicalization of *any* entity id | **replace** | Same principle as temp→canonical: never leave a placeholder id as a distinct history entry. |
+
+**Rule for promoting a route:** when a view becomes a real route, rewire *all*
+of its entry points (`Sidebar`, in-view links, header crumbs) to
+`<Link>`/`useNavigate` **in the same increment**, and delete the corresponding
+`route`-state writes. Do **not** leave a route half-migrated behind the generic
+bridge — that is two sources of truth and loses the push/replace intent above.
+
+## Loader contract (every loader defines all outcomes)
+
+A loader must not collapse distinct failures. For every loader define:
+
+| Outcome | Behavior |
+|---|---|
+| **found** | return the entity; the route element hydrates from it |
+| **not_found** (404) | `redirect('/')` (or the parent list) — the link is dead |
+| **unavailable** (auth / 5xx / network) | **do not redirect.** Return an `{ unavailable: true }` marker (or throw a `Response` to a route `errorElement`); keep the URL and render a **retryable** error. Retry re-runs the loader via `useRevalidator()`. |
+| **optimistic / in-flight local data** | short-circuit the fetch and render from local state (a just-sent conversation isn't server-loadable yet) |
+| **cancellation** | honor the loader `request.signal`; a superseded navigation must abort its fetch, not race the new one |
+
+Increment 1 implements this for `/c/:conversationId`:
+`fetchSessionResult` distinguishes not_found from unavailable; the loader
+redirects Home only on not_found, returns `{ unavailable: true }` on transient
+failure (the shell renders `ConversationUnavailable`, a retry that revalidates,
+**only when there is no local copy** — a sidebar click on an already-loaded
+conversation keeps rendering during a blip); and the optimistic registry
+(`markOptimisticConversation` / `clearOptimisticConversation`) lets a
+mid-send conversation render from local state. The registry is **cleared on
+turn completion** so a later visit hydrates fresh instead of replaying a stale
+local snapshot. Loader `signal` cancellation is not yet wired — add it when
+loaders start doing real per-navigation fetches (increments 2–3).
 
 ## Target architecture
 
 **Route tree (path-based):**
 ```
 /                        Home
-/c/:conversationId       Conversation      loader → fetchSession(id) | redirect('/') on null
+/c/:conversationId       Conversation      loader → fetchSessionResult(id)  (see Loader contract)
 /projects                Projects grid     loader → fetchProjects()
-/projects/:name          Project detail
+/projects/:projectId     Project detail    stable id, NOT the mutable name (see below)
 /scheduled               Scheduled         loader → fetchSchedules()
 /scheduled/:scheduleId   Schedule detail
 /artifacts               Artifacts         loader → fetchArtifacts()
@@ -67,29 +168,110 @@ This is the **alternative** to PR #561 (`paul/eng-1233-web-url-route-state`), wh
 ```
 
 **Pieces:**
-- **`CoworkProvider`** (new) — everything in `AppCore` *above* its `return` (the ~50 state pieces, streaming, composer, connectors, settings, handlers) lifted into a context (`useCowork()`). This is the crux and the bulk of the work. Cross-cutting app state (streaming, composer, toasts) stays here; URL-driven data (which conversation/project) comes from loaders/params, not this.
-- **`CoworkLayout`** (new) — the shell: `Sidebar` / `MobileShell` / composer chrome + `<Outlet />`. Replaces the giant view-switch. The layout route reads `useCowork()`.
-- **Route elements** — wrap each existing view (`ChatView`, `ProjectsView`, `ScheduleDetailView`, …) so it reads `useLoaderData()` + `useParams()` + `useCowork()` instead of props threaded from `AppCore`.
-- **Router** — `createBrowserRouter(routes)` (web) / `createMemoryRouter(routes)` (Electron), rendered via `<RouterProvider>` around the cowork screen (App.tsx terminal branch). Routes = a single `CoworkLayout` route with the views as children.
-- **Navigation** — `<Link to="/c/…">` / `useNavigate()` / loader `redirect()` replace every `setRoute`/`onNavigate`/`navigate`. `useParams()`/`useLoaderData()` replace the entity-id state.
+- **Context/provider (decomposed — do NOT build one god context).** Lifting all
+  ~50 `AppCore` fields into a single `CoworkProvider` value just relocates the
+  god component into a god context, and a single context object re-renders
+  every consumer on any streaming tick. Instead split by concern, each its own
+  provider/hook, and prefer **selector-based** consumption so a consumer
+  subscribes only to what it reads:
+  - **conversation/streaming** — tasks, active stream, reattach, in-flight refs
+  - **composer** — draft text, attachments, disabled connections, model
+  - **settings/overlay** — section, open/close
+  - **shell** — sidebar collapse, mobile shell, toasts, theme
+  URL-driven data (which conversation/project) comes from loaders/params, not
+  context. Increment 1 uses a single temporary `CoworkProvider` as scaffolding
+  (`shell` + nav state + a few handlers) — that is deliberate and short-lived;
+  the split lands as `AppCore` is decomposed in increments 2–5, not at the end.
+- **`CoworkLayout`** — the shell: `Sidebar` / `MobileShell` / composer chrome +
+  `<Outlet />`. It hosts the state→URL bridge in increment 1; the bridge
+  shrinks to nothing as each route is fully migrated per the Navigation
+  contract.
+- **Route elements** — wrap each existing view so it reads `useLoaderData()` +
+  `useParams()` + the relevant hook instead of props threaded from `AppCore`.
+- **Router** — `createBrowserRouter` (web) / `createMemoryRouter` (Electron)
+  via `<RouterProvider>` around the cowork screen. `routes` is exported for
+  behavior tests.
+- **Navigation** — `<Link>` / `useNavigate()` / loader `redirect()` replace
+  every `setRoute`/`onNavigate`; `useParams()`/`useLoaderData()` replace the
+  entity-id state.
 
-**Deleted at the end:** the `route`/`activeTaskId`/`selectedProject`/`selectedScheduleId` nav `useState`s and all their setters; the render view-switch; and — do **not** bring these from #561 — `lib/navState.js`, `lib/urlState.js`, `lib/router.jsx`, `hooks/useWebNavUrlSync.js`. RR replaces all of it. (The `SettingsView` `Object.hasOwn` CodeQL guard from #561 is still worth keeping if you touch that code.)
+**Deleted at the end:** the `route`/`activeTaskId`/`selectedProject`/
+`selectedScheduleId` nav `useState`s and their setters; the render view-switch;
+and — do **not** bring these from #561 — `lib/navState.js`, `lib/urlState.js`,
+`lib/router.jsx`, `hooks/useWebNavUrlSync.js`.
 
-**Settings overlay** — the one genuinely tricky bit. Use the standard RR modal pattern: on open, navigate to `/settings/:section` with `state={{ backgroundLocation: location }}`; render two `<Routes>` — the main one keyed on `backgroundLocation` (keeps the content route mounted underneath) and a second that renders the settings modal when `backgroundLocation` is set. On mobile, `/settings/:section` renders full-page instead. Closing = `navigate(-1)` or to the background location.
+**Settings overlay** — the genuinely tricky bit, and it needs a **data-router**
+design (not the classic `backgroundLocation` + two-`<Routes>` modal pattern,
+which is written for `<BrowserRouter>`/`useRoutes` and does **not** compose with
+`createBrowserRouter` + `RouterProvider` loaders). Options that do compose:
+- a **layout/pathless route** that renders the current content route's
+  `<Outlet/>` plus the settings modal when the URL matches `/settings/:section`
+  (the content route stays mounted because settings is a sibling under the same
+  layout, not a replacement), or
+- the modal as a **child of the content route** so opening settings doesn't
+  unmount the conversation beneath it.
+Specify all three behaviors explicitly: **direct link** (`/settings/x` opened
+cold — no background location; pick a concrete content route to render
+underneath, e.g. Home), **refresh** (same), and **close** (`navigate(-1)` when
+there is history, else navigate to the resolved background/Home). On mobile,
+`/settings/:section` renders full-page instead of a modal.
+
+**Use stable IDs in URLs, not mutable names.** `/projects/:projectId`, not
+`/projects/:name` — a rename must not rot deep links. Caveat: the projects API
+is name-keyed today (`fetchProjects`, and the server's `project` field is a
+name), so this likely needs a stable-id lookup server-side; sequence that with
+increment 2.
 
 ## Migration increments (each shippable + validated + pushed)
 
-1. **Skeleton.** Add `react-router-dom`. Router around the cowork screen (Memory/Browser per shell). `CoworkProvider` scaffold (start by wrapping AppCore's existing state — you can extract incrementally). `CoworkLayout` with the shell + `<Outlet/>`. Real routes for **Home** and **Conversation `/c/:id`** with the `fetchSession` loader (incl. the capped-list case + null→redirect). Prove deep-link + refresh + Back/Forward on `/c/:id`. Everything else can 404 or render a placeholder this increment.
-2. **Projects** (`/projects`, `/projects/:name`) with `fetchProjects` loader.
-3. **The rest** — scheduled (+detail), artifacts, tasks, channels, customize, skills, memory — with loaders.
-4. **Settings overlay** (backgroundLocation pattern; mobile full-page).
-5. **Rewire all navigation** — `Sidebar` `onNavigate`/`onSelectTask` and every in-view nav → `<Link>`/`useNavigate`. Delete `route` state + setters.
-6. **Delete** the dead view-switch + nav state; final validation (typecheck/purity/tests/both builds/CodeQL), refresh PR #582 body to describe the real implementation.
+1. **Skeleton — DONE (hardened).** `react-router-dom` added. Router around the
+   cowork screen (Memory/Browser per shell). Temporary `CoworkProvider`
+   scaffold. `CoworkLayout` with shell + `<Outlet/>`. Real **Home** and
+   **Conversation `/c/:id`** routes with the `fetchSessionResult` loader
+   implementing the full Loader contract (found / not_found / unavailable /
+   optimistic incl. the capped-list case). New-chat history follows the
+   Navigation contract (temp id never in the URL; one Back press to Home).
+   Behavior tests cover the loader failure modes and the history contract
+   (`CoworkRouter.behavior.test.jsx`). Everything else renders from the
+   `route`-state switch on hard refresh.
+2. **Projects** (`/projects`, `/projects/:projectId`) with `fetchProjects`
+   loader **and** rewire every Projects entry point to `<Link>`/`useNavigate`
+   in this increment (Navigation contract rule). Resolve the stable-id question
+   first.
+3. **The rest** — scheduled (+detail), artifacts, tasks, channels, customize,
+   skills, memory — each with a loader per the Loader contract, each rewiring
+   its own nav in the same increment. Wire loader `signal` cancellation here.
+4. **Settings overlay** (data-router design above; mobile full-page; direct-
+   link / refresh / close all specified).
+5. **Finish nav rewire + provider split.** Any remaining `route`-state writes →
+   `<Link>`/`useNavigate`. Complete the `CoworkProvider` decomposition into the
+   concern-scoped providers with selector consumption.
+6. **Delete** the dead view-switch + nav state; final validation
+   (typecheck/purity/tests/both builds/CodeQL); refresh the PR #582 body to
+   describe the real implementation.
 
-Keep each increment green on all gates before pushing. Stream reattach (`selectTask`'s SSE logic) and the composer's cross-route behavior are the highest-risk areas — test conversation open/refresh/back and new-chat send carefully.
+Keep each increment green on all gates before pushing. Stream reattach
+(`openConversation`'s SSE logic) and the composer's cross-route behavior are the
+highest-risk areas — test conversation open/refresh/back and new-chat send
+carefully.
+
+## Production web hosting (SPA fallback)
+
+A web refresh of `/c/:id` needs the server that hosts the SPA to serve
+`index-web.html` for unknown paths. **This already exists** — the frontend
+nginx config (`cowork/scripts/nginx-frontend.conf`) has
+`try_files $uri $uri/ /index-web.html`, a standard SPA fallback. So deep-route
+refresh is **not** a separate-repository prerequisite; it should be **verified
+in the deployed environment**, not assumed missing. (The dev server handles it
+locally via a history-API fallback; Electron's memory router is unaffected.)
 
 ## Reference: the hand-rolled counterpart (#561)
 
-PR #561 (`paul/eng-1233-web-url-route-state`) is the hand-rolled implementation to compare against — same feature, `?view=&c=&p=&s=&settings=` query scheme, no dep. Useful to read for the **behavior spec** (edge cases it hardened): unresolvable/deleted deep link → home; new-chat = one Back press; capped-list conversation fetch; the settings-section CodeQL guard. Reproduce the *behavior*, not the *structure*.
+PR #561 (`paul/eng-1233-web-url-route-state`) is the hand-rolled implementation
+to compare against — same feature, `?view=&c=&p=&s=&settings=` query scheme, no
+dep. Useful for the **behavior spec** (edge cases it hardened): unresolvable/
+deleted deep link → home; new-chat = one Back press; capped-list conversation
+fetch; the settings-section CodeQL guard. Reproduce the *behavior*, not the
+*structure*.
 
 Linear: https://linear.app/mindsdb/issue/ENG-1233/web-add-urlroute-state-history-api-so-refresh-deep-links-and

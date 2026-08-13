@@ -348,6 +348,33 @@ export async function fetchSession(id) {
 }
 
 /**
+ * Loader-facing conversation fetch (ENG-1233). Unlike `fetchSession`, which
+ * collapses every failure to `null`, this distinguishes a conversation that
+ * is genuinely gone (`404 → 'not_found'`) from an operational failure — auth,
+ * 5xx, or a network drop (`→ 'unavailable'`). The route loader needs that
+ * distinction: a 404 deep link should drop to Home, but a transient outage
+ * must keep the URL and offer a retry instead of silently discarding a valid
+ * link. The metadata request is authoritative; a failed items request is
+ * treated as an empty (but present) conversation, matching `fetchSession`.
+ *
+ * @returns {Promise<{status:'ok', task:object} | {status:'not_found'} | {status:'unavailable', code:number}>}
+ */
+export async function fetchSessionResult(id) {
+  const [metaRes, msgsRes] = await Promise.allSettled([
+    req(`/conversations/${encodeURIComponent(id)}`),
+    req(`/conversations/${encodeURIComponent(id)}/items`),
+  ]);
+  if (metaRes.status === 'rejected') {
+    const err = metaRes.reason;
+    if (err && err.status === 404) return { status: 'not_found' };
+    // `err.status` is undefined for a network/abort failure — code 0.
+    return { status: 'unavailable', code: (err && err.status) || 0 };
+  }
+  const msgs = msgsRes.status === 'fulfilled' && Array.isArray(msgsRes.value) ? msgsRes.value : [];
+  return { status: 'ok', task: _conversationToTask(metaRes.value, msgs) };
+}
+
+/**
  * Pre-allocates the id for a conversation that doesn't exist yet, so
  * attachments can be uploaded against it before the first stream. The
  * server adopts a client-supplied UUID as the conversation's real id

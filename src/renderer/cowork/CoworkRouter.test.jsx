@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   pathForRoute,
   markOptimisticConversation,
+  clearOptimisticConversation,
   isOptimisticConversation,
 } from './CoworkRouter';
 
@@ -19,6 +20,13 @@ describe('pathForRoute', () => {
   it('maps a task to /c/:id, falling back to / without an id', () => {
     expect(pathForRoute('task', 'conv-123')).toBe('/c/conv-123');
     expect(pathForRoute('task', null)).toBe('/');
+  });
+
+  it('keeps a temporary (tmp-) conversation out of the URL (ENG-1233 Major 1)', () => {
+    // `null` = "don't drive the URL": a tmp- id must never be pushed as
+    // `/c/tmp-*` (dead history entry + unrecoverable refresh). The canonical
+    // server id drives the single push instead.
+    expect(pathForRoute('task', 'tmp-1700000000000')).toBeNull();
   });
 
   it('mirrors non-migrated routes as /<route>', () => {
@@ -44,10 +52,30 @@ describe('optimistic conversation registry', () => {
     expect(isOptimisticConversation(id)).toBe(true);
   });
 
+  it('clears a marked id once the turn completes (ENG-1233 Minor 1)', () => {
+    // After completion the conversation is persisted; dropping the flag lets a
+    // future visit hydrate from the server instead of stale local state.
+    const id = 'server-minted-clearable';
+    markOptimisticConversation(id);
+    expect(isOptimisticConversation(id)).toBe(true);
+    clearOptimisticConversation(id);
+    expect(isOptimisticConversation(id)).toBe(false);
+  });
+
+  it('still treats a cleared tmp- id as optimistic (prefix wins)', () => {
+    // The `tmp-` prefix is intrinsic, not registry-driven: clearing it must
+    // not make a still-temporary id look persistable.
+    const id = 'tmp-xyz';
+    markOptimisticConversation(id);
+    clearOptimisticConversation(id);
+    expect(isOptimisticConversation(id)).toBe(true);
+  });
+
   it('ignores non-string / empty ids safely', () => {
     expect(isOptimisticConversation(undefined)).toBe(false);
     expect(isOptimisticConversation(null)).toBe(false);
     expect(() => markOptimisticConversation(undefined)).not.toThrow();
+    expect(() => clearOptimisticConversation(undefined)).not.toThrow();
     expect(isOptimisticConversation('')).toBe(false);
   });
 });

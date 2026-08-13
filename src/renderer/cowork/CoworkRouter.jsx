@@ -34,26 +34,41 @@ import {
   useLocation,
   useParams,
   useLoaderData,
+  useRevalidator,
 } from 'react-router-dom';
 import { host } from '../platform/host';
-import { fetchSession } from './api';
+import { fetchSessionResult } from './api';
+import { EmptyState, Button } from './components/ui';
 
 // ---------------------------------------------------------------------------
 // Optimistic conversation registry
 // ---------------------------------------------------------------------------
-// A new-chat send creates an optimistic task and routes to `/c/<id>` before
-// the server has persisted the conversation — and the server later mints its
-// canonical id, which we also route to. Hitting the `fetchSession` loader for
-// either would 404 and bounce home. AppCore marks these ids so the loader
-// skips the fetch and lets the streaming task render from local state.
+// A new-chat send creates an optimistic task; the server later mints its
+// canonical id, which we route to before it is loadable via the API. Hitting
+// the loader for it would 404 and bounce home, so AppCore marks these ids and
+// the loader renders the streaming task from local state instead of fetching.
+//
+// Lifecycle: marked when the id is minted/adopted, cleared once the turn
+// completes (the conversation is then server-persisted, so a revisit should
+// hydrate fresh — see clearOptimisticConversation). Without the clear, every
+// conversation created this session would stay "optimistic" and future visits
+// would skip loader hydration and show stale local state.
 //
 // Module-level (not React state): the loader runs outside the component tree.
-// It naturally empties on a full page reload (module re-evaluates), which is
+// It also empties on a full page reload (module re-evaluates), which is
 // exactly when a `/c/:id` refresh SHOULD hit the server.
+//
+// Note: this registry is a *loader* concern only. Whether a temporary id
+// reaches the URL is decided separately by pathForRoute (the `tmp-` prefix),
+// so clearing an id here never affects history behavior.
 const optimisticIds = new Set();
 
 export function markOptimisticConversation(id) {
   if (id) optimisticIds.add(id);
+}
+
+export function clearOptimisticConversation(id) {
+  if (id) optimisticIds.delete(id);
 }
 
 export function isOptimisticConversation(id) {
@@ -94,7 +109,18 @@ export function useCowork() {
 // routes; every other route mirrors its state string as `/<route>` so the
 // shell chrome, refresh, and Back/Forward stay coherent this increment.
 export function pathForRoute(route, activeTaskId) {
-  if (route === 'task') return activeTaskId ? `/c/${activeTaskId}` : '/';
+  if (route === 'task') {
+    if (!activeTaskId) return '/';
+    // A `tmp-` id is a client-only placeholder for a brand-new chat whose
+    // server id hasn't been minted yet. Never drive the URL to it: pushing
+    // `/c/tmp-*` leaves a dead history entry that Back returns to, and a
+    // refresh can't resolve it (the id was never sent to the server). Return
+    // `null` = "leave the address bar where it is"; the canonical-id adoption
+    // drives the single push to `/c/:sid`, so a new chat is exactly one Back
+    // press from where it started. (ENG-1233 — Major 1)
+    if (String(activeTaskId).startsWith('tmp-')) return null;
+    return `/c/${activeTaskId}`;
+  }
   if (!route || route === 'home') return '/';
   return `/${route}`;
 }
@@ -109,7 +135,19 @@ export function initialNavState() {
   }
   const path = window.location.pathname;
   const convo = path.match(/^\/c\/(.+)$/);
-  if (convo) return { route: 'task', activeTaskId: decodeURIComponent(convo[1]) };
+  if (convo) {
+    let id;
+    try {
+      id = decodeURIComponent(convo[1]);
+    } catch {
+      // Malformed percent-encoding (e.g. `/c/%`): a bad deep link must not
+      // throw out of first render and white-screen the app. Seed Home; the
+      // route loader still runs against the raw param and resolves it safely.
+      // (ENG-1233 — Minor 2)
+      return { route: 'home', activeTaskId: null };
+    }
+    return { route: 'task', activeTaskId: id };
+  }
   const key = path.replace(/^\/+/, '');
   if (VIEW_ROUTES.includes(key)) return { route: key, activeTaskId: null };
   return { route: 'home', activeTaskId: null };
@@ -138,6 +176,10 @@ function CoworkLayout() {
       firstRun.current = false;
       return;
     }
+    // `null` target = an optimistic/temporary conversation that must stay out
+    // of the URL (see pathForRoute): leave the address bar untouched until the
+    // canonical id adopts and drives the push. (ENG-1233 — Major 1)
+    if (target == null) return;
     if (location.pathname !== target) navigate(target);
     // Depend only on `target`: reacting to `location.pathname` too would fight
     // the URL→state sync (both would try to drive the other).
@@ -182,6 +224,27 @@ function ViewRoute({ name }) {
   return null;
 }
 
+// Rendered by the shell's view switch when the `/c/:id` loader hit an
+// operational failure (auth / 5xx / network — see conversationLoader). Unlike
+// a 404 (which redirects Home), the URL is preserved so the deep link isn't
+// lost during an outage; the retry re-runs the loader through the data
+// router's revalidator. (ENG-1233 — Major 2)
+export function ConversationUnavailable() {
+  const revalidator = useRevalidator();
+  const retrying = revalidator.state !== 'idle';
+  return (
+    <EmptyState
+      title="This conversation didn’t load"
+      description="We couldn’t reach the server. Your link is still valid — try again once you’re back online."
+      action={
+        <Button variant="primary" onClick={() => revalidator.revalidate()} disabled={retrying}>
+          {retrying ? 'Retrying…' : 'Try again'}
+        </Button>
+      }
+    />
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Loader — the natural `/c/:id` data dependency. Returns the conversation for
 // the route element to hydrate; a missing/deleted conversation redirects home
@@ -193,12 +256,21 @@ async function conversationLoader({ params }) {
   // would 404 and redirect home mid-send). The streaming task renders from
   // local state.
   if (isOptimisticConversation(id)) return { optimistic: true, id };
-  const task = await fetchSession(id);
-  if (!task) return redirect('/');
-  return { task, id };
+  const result = await fetchSessionResult(id);
+  // Genuinely gone (404): drop the dead deep link to Home.
+  if (result.status === 'not_found') return redirect('/');
+  // Operational failure (auth / 5xx / network): the conversation may well
+  // still exist. Keep the URL and let the route render a retryable error
+  // rather than silently discarding a valid link during a transient outage.
+  // (ENG-1233 — Major 2)
+  if (result.status === 'unavailable') return { unavailable: true, id };
+  return { task: result.task, id };
 }
 
-const routes = [
+// Exported for behavior tests (loader failure modes, the state↔URL bridge,
+// and new-chat history) — build a `createMemoryRouter(routes)` and wrap it in
+// a test `CoworkProvider`. Production code goes through `createCoworkRouter`.
+export const routes = [
   {
     element: <CoworkLayout />,
     children: [

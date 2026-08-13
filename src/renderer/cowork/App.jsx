@@ -64,9 +64,11 @@ import { MODEL_ROUTER_ID, MODEL_ROUTER } from './lib/modelCatalog';
 import {
   CoworkProvider,
   CoworkRouterProvider,
+  ConversationUnavailable,
   createCoworkRouter,
   initialNavState,
   markOptimisticConversation,
+  clearOptimisticConversation,
 } from './CoworkRouter';
 import { Outlet } from 'react-router-dom';
 
@@ -1823,6 +1825,10 @@ function AppCore() {
   const sidebarCollapsedEffective =
     !sidebarPopout && sidebarCollapsibleRoutes.has(route) && sidebarCollapsed;
   const [activeTaskId, setActiveTaskId] = useState(initialNav.activeTaskId);
+  // Set to a conversation id when its `/c/:id` loader hit an operational
+  // failure (not a 404): the view offers a retry instead of losing the URL.
+  // (ENG-1233 — Major 2)
+  const [conversationError, setConversationError] = useState(null);
   const [selectedScheduleId, setSelectedScheduleId] = useState(null);
   const [selectedProject, setSelectedProject] = useState(null);
   // Defaults to "Model Router" — defer to whatever this account's Settings
@@ -2294,6 +2300,15 @@ function AppCore() {
 
   const activeTasks = tasks.filter((t) => t.status === 'active');
   const currentTask = tasks.find((t) => t.id === activeTaskId) || (route === 'task' ? tasks[0] : null);
+  // The `/c/:id` loader hit a transient failure and we have nothing local to
+  // show — render the retryable error rather than an empty (or, via the
+  // `tasks[0]` fallback above, a wrong) ChatView. A locally-available
+  // conversation keeps rendering during a blip. (ENG-1233 — Major 2)
+  const showConversationError =
+    route === 'task' &&
+    conversationError != null &&
+    conversationError === activeTaskId &&
+    !tasks.some((t) => t.id === activeTaskId);
   // Tasks belong to one project for life. Resolve via projectName
   // first (server's canonical id), then projectPath, then fall back
   // to the currently-selected project for orphans.
@@ -2510,18 +2525,26 @@ function AppCore() {
 
   // Hydrate + reattach the conversation the `/c/:id` route just resolved.
   // `loaded` is the route loader's result: `{ task }` for a real
-  // conversation, or `{ optimistic: true }` for a new-chat send still in
-  // flight (its messages live in local state — don't clobber them).
+  // conversation, `{ optimistic: true }` for a new-chat send still in flight
+  // (its messages live in local state — don't clobber them), or
+  // `{ unavailable: true }` when the loader hit a transient server failure.
   const openConversation = useCallback((id, loaded) => {
     setActiveTaskId(id);
     setRoute('task');
     setComposerAttachments([]);
+    // Operational failure from the loader (auth / 5xx / network): flag it so
+    // the view can offer a retry. Any resolvable result clears a stale error
+    // for this id. The render only *shows* the error when the conversation is
+    // absent locally, so a sidebar click on an already-loaded conversation
+    // during a blip keeps rendering it. (ENG-1233 — Major 2)
+    if (loaded?.unavailable) setConversationError(id);
+    else setConversationError((cur) => (cur === id ? null : cur));
     // Phase 2 reconnect — fire-and-forget. If a turn is still running
     // server-side for this conversation (closed-tab-came-back, or opened
     // from another tab/device), this re-attaches the live SSE stream and
     // replays from seq 0. Cheap no-op when the producer isn't running.
     reconnectInFlight(id).catch(() => { /* probe failures are silent */ });
-    if (!loaded || loaded.optimistic || !loaded.task) return;
+    if (!loaded || loaded.optimistic || loaded.unavailable || !loaded.task) return;
     const fresh = loaded.task;
     // Is this conversation actually mid-stream right now? If yes, we LEAVE
     // running indicators alone. If no, reconcile strips zombie placeholders
@@ -3140,10 +3163,12 @@ function AppCore() {
   // refresh, or Back/Forward.
   const enterHome = useCallback(() => {
     setRoute('home');
+    setConversationError(null);
   }, []);
 
   const enterRoute = useCallback((key) => {
     setRoute(key);
+    setConversationError(null);
     if (key === 'artifacts') {
       fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
     } else if (key === 'projects') {
@@ -3524,6 +3549,10 @@ function AppCore() {
         activeScratchpadRef.current = null;
         activeStreamingTaskIdRef.current = null;
         const finalId = sid || resolvedId;
+        // Turn complete → the conversation is server-persisted now, so drop
+        // its optimistic flag: a later revisit should hydrate fresh from the
+        // server rather than replay this local snapshot. (ENG-1233 — Minor 1)
+        clearOptimisticConversation(finalId);
         markInFlightDone(finalId);
         if (finalId !== taskId) markInFlightDone(taskId);
         releaseLiveSteps([finalId, taskId]);
@@ -3937,6 +3966,10 @@ function AppCore() {
         activeStreamCtrlRef.current = null;
         activeScratchpadRef.current = null;
         activeStreamingTaskIdRef.current = null;
+        // See the new-task onDone: the conversation is persisted now, so the
+        // optimistic flag (set if `id` was a tmp-connect id that adopted a
+        // server id) can be dropped. (ENG-1233 — Minor 1)
+        clearOptimisticConversation(resolvedId);
         markInFlightDone(resolvedId);
         if (resolvedId !== id) markInFlightDone(id);
         releaseLiveSteps([resolvedId, id]);
@@ -4196,6 +4229,9 @@ function AppCore() {
         activeStreamCtrlRef.current = null;
         activeStreamingTaskIdRef.current = null;
         releaseLiveSteps([resolvedId, id]);
+        // Turn complete → conversation persisted, so drop the optimistic flag
+        // (revisits hydrate fresh). (ENG-1233 — Minor 1)
+        clearOptimisticConversation(resolvedId);
         const finalContent = streamState.bodyText;
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
@@ -5020,7 +5056,9 @@ function AppCore() {
           />
         )}
 
-        {route === 'task' && currentTask && (
+        {route === 'task' && showConversationError && <ConversationUnavailable />}
+
+        {route === 'task' && currentTask && !showConversationError && (
           <ChatView
             task={currentTask}
             onSend={handleSendInTask}
