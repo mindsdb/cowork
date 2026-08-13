@@ -235,6 +235,42 @@ name), so a real single-project loader needs a stable-id lookup server-side
 (v2). v1 sidesteps this by resolving the id against the already-fetched list
 client-side.
 
+## Code organization (v2)
+
+The decomposition lands into a **three-layer** layout. This is the *same
+motion* as the router migration — each route element is a feature slice's front
+door, so a route's state, view, and components move into its slice as it's
+carved out of `AppCore`. Do this in **v2**, not the v1 PR (a broad file move
+would bloat the MVP diff).
+
+- **`app/`** — composition root + cross-cutting state that no single feature
+  owns: `app/CoworkRouter.jsx` (route table), `app/providers/` (Theme, Server,
+  Updates, Composer), `app/stores/` (the selector-based streaming store,
+  in-flight, message queue), `app/shell/` (CoworkLayout, Sidebar, MobileShell,
+  AppShell).
+- **`features/<name>/`** — one vertical slice per route: its view, route element
+  (+ loader), store/hooks, and components. Slices: conversation, home, projects,
+  scheduled, artifacts, tasks, channels, customize, skills, memory, settings.
+- **Shared, feature-agnostic** — `components/ui/` (design-system primitives,
+  unchanged), `lib/` and `hooks/` (truly-shared; feature-specific utilities move
+  into their feature).
+
+**Boundary rule:** a feature never deep-imports another feature — anything two
+features share moves down to `app/stores`, `components/ui`, or `lib`. Worth an
+eslint import-boundary rule once the layout settles.
+
+**Order** (folded into the v2 workstreams below):
+1. Establish `app/` with the safe-leaf providers first (Theme → Server →
+   Updates → Composer) — mechanical, isolated, shrinks `AppCore` immediately.
+2. One demonstrator slice end-to-end (`features/projects/`) to set the template.
+3. The rest one route at a time; **conversation + the streaming store last**
+   (highest coupling — the shared stream refs move as one selector store).
+
+The repo already leans this way: `components/{project,schedule,task,artifact,
+connector,datavault}/` plus colocated stores like `datavault/formStore.js` and
+`onboarding/onboardingStore.js` are proto-slices — this formalizes and completes
+the pattern.
+
 ## Phases
 
 ### v1 — URL state via the bridge (ENG-1535, MVP) — mostly DONE
