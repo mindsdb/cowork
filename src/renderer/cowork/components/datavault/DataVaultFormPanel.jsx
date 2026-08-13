@@ -21,6 +21,7 @@ import { DataVaultForm } from './DataVaultForm';
 import { providerNameFromSpec } from './methodHero';
 import {
   clearForm, getForm, patchForm, subscribe,
+  getSelectedMethod, subscribeSelectedMethod, setSelectedMethod,
 } from './formStore';
 
 import { saveConnector, fetchDatasources, startConnectorOAuth, pollConnectorOAuth } from '../../api';
@@ -61,6 +62,14 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
   // than on the spec so server-side updates don't have to know
   // anything about UI dismissal state.
   const [dismissedStatus, setDismissedStatus] = useState(null);
+  // Active method for the panel chrome — when set (and not on the
+  // success screen), the header bar becomes the "← Back to options ·
+  // <method>" breadcrumb. Source of truth lives in formStore so
+  // DataVaultForm can write it (on pick) and the panel can clear it
+  // (on "back").
+  const [activeMethodId, setActiveMethodId] = useState(
+    () => (conversationId ? getSelectedMethod(conversationId) : null)
+  );
   // Generic "name this connection" label — submitted as `user_label`
   // alongside whatever per-connector fields the form collects.
   const [userLabel, setUserLabel] = useState(spec?.user_label || '');
@@ -92,6 +101,14 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
   useEffect(() => {
     setSpec(getForm(conversationId));
     return subscribe(conversationId, (next) => setSpec(next));
+  }, [conversationId]);
+
+  useEffect(() => {
+    if (!conversationId) return undefined;
+    setActiveMethodId(getSelectedMethod(conversationId));
+    return subscribeSelectedMethod(conversationId, (mid) => {
+      setActiveMethodId(mid || null);
+    });
   }, [conversationId]);
 
   useEffect(() => {
@@ -560,6 +577,27 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
     if (conversationId) clearForm(conversationId);
   };
 
+  // Resolve the active method spec so the breadcrumb header can show
+  // its label. Falls back to `spec.selected_method` so a server-side
+  // pre-pick still surfaces in the header.
+  const resolvedActiveMethodId = activeMethodId || spec.selected_method || null;
+  const activeMethodSpec = (Array.isArray(spec.methods) && resolvedActiveMethodId)
+    ? (spec.methods.find((m) => m.id === resolvedActiveMethodId) || null)
+    : null;
+  const onBackToOptions = () => {
+    if (!conversationId) return;
+    setSelectedMethod(conversationId, null);
+    // Modify-flow opens directly on the saved method by stamping
+    // `selected_method` on the spec itself. Clearing the per-
+    // conversation override above isn't enough — the form's resolver
+    // falls back to `spec.selected_method` and stays on the same
+    // method. Patch the spec to drop it so the picker actually
+    // re-engages. No-op for create flows where `selected_method`
+    // wasn't set in the first place.
+    if (spec?.selected_method) {
+      patchForm(conversationId, { form_id: spec.form_id, selected_method: null });
+    }
+  };
 
   return (
     // `key` flips when a NEW form_id arrives, so React remounts the
@@ -591,17 +629,67 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
         animation: 'dvf-appear 320ms cubic-bezier(0.2, 0.7, 0.2, 1) both',
       }}
     >
-      {/* Header bar — just a close button, flush right (ENG-1534). The
-          form body below carries its own logo + title / hero, so the
-          bar no longer needs a "Back to options" breadcrumb; switching
-          methods is done from the picker's "See other options", and
-          closing resets to the picker. */}
+      {/* Header bar — during the connect flow it's the
+          "← Back to options · <method>" navigation (when a method is
+          active) or a plain "Connect" label. On the SUCCESS screen the
+          breadcrumb is dropped — the connection is done, there's nothing
+          to go back to — leaving just the close button (ENG-1534). The X
+          sits flush right in every case. */}
       <div style={{
         display: 'flex', alignItems: 'stretch',
         borderBottom: '1px solid var(--line)',
         minHeight: 42,
       }}>
-        <div style={{ flex: 1, minWidth: 0 }} />
+        {spec._is_success ? (
+          <div style={{ flex: 1, minWidth: 0 }} />
+        ) : activeMethodSpec ? (
+          <button
+            type="button"
+            onClick={onBackToOptions}
+            disabled={busy}
+            style={{
+              flex: 1, minWidth: 0,
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '0 14px',
+              background: 'transparent', border: 0,
+              cursor: busy ? 'not-allowed' : 'pointer',
+              opacity: busy ? 0.6 : 1,
+              fontFamily: FONT_BODY,
+              textAlign: 'left',
+              transition: 'background 120ms ease',
+            }}
+            onMouseOver={(e) => { if (!busy) e.currentTarget.style.background = 'var(--surface-2)'; }}
+            onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; }}
+          >
+            <span style={{
+              color: 'var(--accent)',
+              fontSize: 13, fontWeight: 600,
+              display: 'inline-flex', alignItems: 'center', gap: 4,
+              flexShrink: 0,
+            }}>
+              <span aria-hidden>{'←'}</span>
+              Back to options
+            </span>
+            <span style={{
+              color: 'var(--ink-4)', fontSize: 12.5,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              minWidth: 0, flex: 1,
+            }}>
+              · {activeMethodSpec.label || activeMethodSpec.id}
+            </span>
+          </button>
+        ) : (
+          <div style={{
+            flex: 1, minWidth: 0,
+            display: 'flex', alignItems: 'center',
+            padding: '0 14px',
+            fontFamily: FONT_BODY, fontSize: 13, fontWeight: 600,
+            color: 'var(--ink)', letterSpacing: '0',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+            Connect
+          </div>
+        )}
         <Tooltip content="Close form">
           <button
             type="button"
