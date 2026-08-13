@@ -52,6 +52,27 @@ describe('primeLoginShellPath', () => {
     expect(getEnvPath().split(path.delimiter)).toContain('/custom/tools');
   });
 
+  it('puts the resolved shell PATH ahead of the hardcoded package-manager dirs', async () => {
+    // Same ordering concern as the inherited-PATH case: the shell probe
+    // encodes the user's real preference and must not be shadowed by the
+    // Homebrew/MacPorts/Linuxbrew fallback list.
+    if (process.platform === 'win32') return;
+    vi.mocked(cp.execFile).mockImplementation(((
+      _cmd: string, _args: string[], _opts: unknown, cb: ExecCb,
+    ) => {
+      cb(null, `${MARKER}/custom/pyenv/shims\n`, '');
+      return {} as never;
+    }) as never);
+
+    await primeLoginShellPath();
+
+    const parts = getEnvPath().split(path.delimiter);
+    const userIdx = parts.indexOf('/custom/pyenv/shims');
+    const homebrewIdx = parts.indexOf('/opt/homebrew/bin');
+    expect(userIdx).toBeGreaterThanOrEqual(0);
+    expect(homebrewIdx).toBeGreaterThan(userIdx);
+  });
+
   it('extracts the marked value even with output before AND after it', async () => {
     if (process.platform === 'win32') return;
     vi.mocked(cp.execFile).mockImplementation(((
@@ -117,6 +138,44 @@ describe('primeLoginShellPath', () => {
     await primeLoginShellPath();
 
     expect(getEnvPath()).toBe(before);
+  });
+
+  it('kills with SIGKILL, since an interactive shell can ignore SIGTERM', async () => {
+    if (process.platform === 'win32') return;
+    vi.mocked(cp.execFile).mockImplementation(((
+      _cmd: string, _args: string[], opts: { killSignal?: string }, cb: ExecCb,
+    ) => {
+      expect(opts.killSignal).toBe('SIGKILL');
+      cb(null, `${MARKER}/usr/bin\n`, '');
+      return {} as never;
+    }) as never);
+
+    await primeLoginShellPath();
+  });
+
+  it('resolves within a bounded time even if the shell callback never fires at all', async () => {
+    // The empirically-confirmed failure mode: a blocked interactive shell
+    // (stuck on `read`, ignoring SIGTERM) whose execFile callback never
+    // runs. SIGKILL closes most of this, but resolution must not depend
+    // on the child actually dying — a hard timer must win regardless.
+    if (process.platform === 'win32') return;
+    vi.useFakeTimers();
+    try {
+      const execFile = vi.mocked(cp.execFile).mockImplementation((() => {
+        return {} as never; // callback never invoked
+      }) as never);
+
+      const done = primeLoginShellPath();
+      await vi.advanceTimersByTimeAsync(10_000);
+      await done; // must not hang — this line is the assertion
+
+      // The cache landed on a real value (not stuck at "not yet primed"),
+      // so a later call doesn't spawn a second, equally stuck shell.
+      await primeLoginShellPath();
+      expect(execFile).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('is a no-op on Windows — never spawns a shell', async () => {

@@ -72,8 +72,12 @@ export function primeLoginShellPath(): Promise<void> {
   const cmd = path.basename(shell) === 'fish'
     ? `echo "${SHELL_PATH_MARKER}"(string join : $PATH)`
     : `echo "${SHELL_PATH_MARKER}$PATH"`;
-  return new Promise((resolve) => {
-    execFile(shell, ['-ilc', cmd], { timeout: 3000 }, (err, stdout) => {
+  const probe = new Promise<void>((resolve) => {
+    // SIGKILL, not the execFile default SIGTERM: an interactive shell (-i)
+    // can ignore SIGTERM outright, and one blocked reading stdin (an rc
+    // file's `read`, a first-run wizard) then never exits — confirmed to
+    // hang the default SIGTERM timeout indefinitely.
+    execFile(shell, ['-ilc', cmd], { timeout: 3000, killSignal: 'SIGKILL' }, (err, stdout) => {
       if (err) {
         cachedLoginShellPath = null;
         resolve();
@@ -86,6 +90,16 @@ export function primeLoginShellPath(): Promise<void> {
       resolve();
     });
   });
+  // Belt-and-suspenders: even SIGKILL can be deferred by an uninterruptible
+  // kernel sleep (a hung NFS/network-mount syscall). This gates app startup,
+  // so resolution must never depend on the child actually dying.
+  const hardTimeout = new Promise<void>((resolve) => {
+    setTimeout(() => {
+      if (cachedLoginShellPath === undefined) cachedLoginShellPath = null;
+      resolve();
+    }, 4000);
+  });
+  return Promise.race([probe, hardTimeout]);
 }
 
 export function resetLoginShellPathCache(): void {
@@ -98,12 +112,13 @@ export function getEnvPath(): string {
   const currentPath = process.env.PATH || '';
   // Include the per-channel uv bin dir (where a non-prod build's cowork-server
   // shim lives) so anything resolving the binary by name finds this channel's.
-  // Also fold in EXTRA_UV_BIN_DIRS: a GUI-launched app's inherited PATH can be
-  // missing these even though findUv() already checks them on disk, and this
-  // is the PATH handed to cowork-server and everything IT spawns.
+  // EXTRA_UV_BIN_DIRS goes LAST: it's a fallback for known package managers,
+  // not a preference — this PATH governs every subprocess cowork-server
+  // spawns, so a user's own ordering (pyenv shims ahead of Homebrew, say)
+  // must not be shadowed by it.
   const extraDirs = process.platform === 'win32' ? [] : EXTRA_UV_BIN_DIRS;
   const shellPath = cachedLoginShellPath ? [cachedLoginShellPath] : [];
-  const parts = [localBin, cargoBin, ...extraDirs, ...shellPath, currentPath];
+  const parts = [localBin, cargoBin, ...shellPath, currentPath, ...extraDirs];
   if (process.env.UV_TOOL_BIN_DIR) parts.unshift(process.env.UV_TOOL_BIN_DIR);
   return parts.join(path.delimiter);
 }

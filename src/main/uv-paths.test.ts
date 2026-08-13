@@ -111,6 +111,25 @@ describe('uv-paths — per-channel isolation', () => {
     expect(parts).toContain('/opt/local/bin');
     expect(parts).toContain('/home/linuxbrew/.linuxbrew/bin');
   });
+
+  it('getEnvPath puts the inherited PATH ahead of the hardcoded package-manager dirs', () => {
+    // A user who orders their own tools (pyenv shims, a system python3) ahead
+    // of Homebrew in their real PATH must see that SAME ordering inside
+    // cowork-server and everything it spawns — the hardcoded dirs are a
+    // fallback for when nothing else provides the binary, not an override.
+    if (process.platform === 'win32') return;
+    const original = process.env.PATH;
+    process.env.PATH = '/custom/pyenv/shims';
+    try {
+      const parts = getEnvPath().split(path.delimiter);
+      const userIdx = parts.indexOf('/custom/pyenv/shims');
+      const homebrewIdx = parts.indexOf('/opt/homebrew/bin');
+      expect(userIdx).toBeGreaterThanOrEqual(0);
+      expect(homebrewIdx).toBeGreaterThan(userIdx);
+    } finally {
+      process.env.PATH = original;
+    }
+  });
 });
 
 describe('coworkServerBinCandidates — global Windows fallback is prod-only', () => {
