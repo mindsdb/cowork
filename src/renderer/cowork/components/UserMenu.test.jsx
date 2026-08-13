@@ -18,6 +18,7 @@ import { LOGOUT_CONFIRM_COPY } from '../hooks/useLogout';
 import {
   MINDS_BILLING_URL,
   MINDS_DOCS_URL,
+  MINDS_GENERAL_URL,
   MINDS_MEMBERS_URL,
   MINDS_PROFILE_URL,
   MINDS_SUPPORT_URL,
@@ -74,7 +75,7 @@ describe('UserMenu — dropdown', () => {
     render(<UserMenu user={user} theme="light" />);
     openMenu();
     expect(screen.getByText('hazem@example.com')).toBeInTheDocument();
-    for (const label of ['Settings', 'Profile', 'Billing & Usage', 'Members', 'Documentation', 'Help & feedback', 'Dark mode', 'Sign out']) {
+    for (const label of ['Settings', 'Profile', 'Billing & Usage', 'General', 'Members', 'Documentation', 'Help & feedback', 'Dark mode', 'Sign out']) {
       expect(screen.getByRole('menuitem', { name: new RegExp(label) })).toBeInTheDocument();
     }
   });
@@ -91,6 +92,7 @@ describe('UserMenu — dropdown', () => {
   it.each([
     ['Profile', MINDS_PROFILE_URL],
     ['Billing & Usage', MINDS_BILLING_URL],
+    ['General', MINDS_GENERAL_URL],
     ['Members', MINDS_MEMBERS_URL],
     ['Documentation', MINDS_DOCS_URL],
     ['Help & feedback', MINDS_SUPPORT_URL],
