@@ -39,6 +39,33 @@ export function shellUpdaterCacheDirName(channel: ShellUpdateFeed['channel']): s
   return `anton-updater-${channel}`;
 }
 
+/**
+ * The electron-updater channel baked into app-update.yml. It names the manifest
+ * the client fetches: `<channel>.yml` on Windows, `<channel>-mac.yml` on macOS.
+ *
+ * A fixed, ring-stable pointer, deliberately independent of the package version.
+ * Rings are separated by the feed URL path (`/stable/`, `/prod/`), and the
+ * publish pipeline always writes the manifest as `latest.yml` / `latest-mac.yml`,
+ * so the embedded channel must match that name. Deriving it from the version
+ * would vary it per build and point at a manifest that was never published.
+ */
+export const SHELL_UPDATE_CHANNEL = 'latest';
+
+/**
+ * Set the `channel:` field of an app-update.yml manifest, replacing the line if
+ * present or appending it. The packaging scripts use this to keep the embedded
+ * channel equal to SHELL_UPDATE_CHANNEL. Returns the updated YAML; other lines
+ * are left untouched.
+ */
+export function withAppUpdateChannel(
+  manifest: string,
+  channel: string = SHELL_UPDATE_CHANNEL,
+): string {
+  return /^channel:.*$/m.test(manifest)
+    ? manifest.replace(/^channel:.*$/m, `channel: ${channel}`)
+    : `${manifest.replace(/\n?$/, '\n')}channel: ${channel}\n`;
+}
+
 /** Authenticode publisher CN of our Windows installers (SSL.com EV cert). This
  *  is PUBLIC data — embedded in every signed binary — so it lives in source,
  *  not a secret. Override at build time with COWORK_WIN_PUBLISHER_CN. */
