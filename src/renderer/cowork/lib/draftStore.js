@@ -13,6 +13,7 @@
 // Memory is the source of truth; localStorage is only so drafts survive a
 // reload. A quota/private-mode failure therefore degrades to "works until you
 // restart" rather than breaking navigation.
+// deepcode ignore HardcodedNonCryptoSecret: 'anton.composerDrafts' is a localStorage key name (see localStorage.getItem/setItem below), not a secret value.
 const KEY = 'anton.composerDrafts';
 
 // Cap the number of retained drafts. Iteration order is recency (setDraft

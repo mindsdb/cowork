@@ -29,6 +29,7 @@ export async function deleteRefreshToken(engine: string, accountEmail: string): 
 // vs. the `engine:accountEmail` shape above), so the two can never collide.
 // See credential-provisioning.ts for the provisioning/rotation logic that
 // calls these.
+// deepcode ignore HardcodedNonCryptoSecret: '__generation__' is a public keychain account-key identifier (the keytar entry's *name*), not a secret value — the actual secrets live in the OS secure store, never in source. See credential-provisioning.ts.
 const GENERATION_ACCOUNT_KEY = '__generation__'; // reserved — never a valid
 // credential name (those are always uppercase env-var-style), so this can
 // never collide with a real entry.
