@@ -1,14 +1,11 @@
-// Behavior-level tests for the router skeleton (ENG-1233): they exercise the
-// real route config — the `/c/:id` loader's failure modes and the state↔URL
-// bridge's history behavior — rather than only the pure path/registry helpers
-// (those live in CoworkRouter.test.jsx). This is where the two Major findings
-// on PR #582 lived, so they're covered here as regressions.
+// Behavior tests over the real route config — the `/c/:id` loader's failure
+// modes, detail-route deep links, and the state↔URL bridge's history — rather
+// than the pure helpers (those are in CoworkRouter.test.jsx).
 //
-// Harness: build a `createMemoryRouter(routes)` and wrap it in a test
-// `CoworkProvider` whose `shell` is just `<Outlet/>`. The route elements sync
-// URL→state by calling the context handlers (spied here); the state→URL bridge
-// lives in the real `CoworkLayout`. We drive nav state via `ctl.setNav` to
-// emulate AppCore, and inspect `router.state.location` for the URL.
+// Harness: a `createMemoryRouter(routes)` wrapped in a test `CoworkProvider`
+// whose `shell` is just `<Outlet/>`. Route elements sync URL→state via the
+// spied context handlers; the state→URL bridge lives in the real CoworkLayout.
+// We drive nav via `ctl.setNav` and read `router.state.location` for the URL.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { useState } from 'react';
 import { render, waitFor, act, cleanup } from '@testing-library/react';

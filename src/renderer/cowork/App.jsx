@@ -1796,9 +1796,8 @@ function AppCore() {
     document.body.classList.toggle('gf-dots-off', settings.showDots === false);
   }, [settings.showDots]);
 
-  // Seed nav state from the address bar so a web deep-link / refresh paints
-  // the right view on first render instead of flashing Home (ENG-1233).
-  // Electron's memory router always starts at `/` → home.
+  // Seed nav state from the address bar so a web deep-link / refresh paints the
+  // right view instead of flashing Home. Electron's memory router starts at `/`.
   const initialNav = useRef(initialNavState()).current;
   // The router is created once (memory router on Electron, browser router on
   // web). It's stateless w.r.t. AppCore — nav state flows through context.
@@ -1825,13 +1824,11 @@ function AppCore() {
   const sidebarCollapsedEffective =
     !sidebarPopout && sidebarCollapsibleRoutes.has(route) && sidebarCollapsed;
   const [activeTaskId, setActiveTaskId] = useState(initialNav.activeTaskId);
-  // Set to a conversation id when its `/c/:id` loader hit an operational
-  // failure (not a 404): the view offers a retry instead of losing the URL.
-  // (ENG-1233 — Major 2)
+  // Set when the `/c/:id` loader hit an operational failure (not a 404): the
+  // view offers a retry instead of losing the URL.
   const [conversationError, setConversationError] = useState(null);
-  // Seed from the address bar so a `/scheduled/:id` deep-link / refresh restores
-  // the detail view (ENG-1233 v1). selectedProject is resolved from its id by
-  // the project detail route (it needs the fetched list), so it stays null here.
+  // Seed from a `/scheduled/:id` deep-link so refresh restores the detail view.
+  // (selectedProject is resolved from its id by the project route, so null here.)
   const [selectedScheduleId, setSelectedScheduleId] = useState(initialNav.selectedScheduleId ?? null);
   const [selectedProject, setSelectedProject] = useState(null);
   // Defaults to "Model Router" — defer to whatever this account's Settings
@@ -2303,10 +2300,9 @@ function AppCore() {
 
   const activeTasks = tasks.filter((t) => t.status === 'active');
   const currentTask = tasks.find((t) => t.id === activeTaskId) || (route === 'task' ? tasks[0] : null);
-  // The `/c/:id` loader hit a transient failure and we have nothing local to
-  // show — render the retryable error rather than an empty (or, via the
-  // `tasks[0]` fallback above, a wrong) ChatView. A locally-available
-  // conversation keeps rendering during a blip. (ENG-1233 — Major 2)
+  // Loader hit a transient failure and there's nothing local — show the retry
+  // rather than an empty (or, via the `tasks[0]` fallback, wrong) ChatView. A
+  // locally-available conversation keeps rendering during a blip.
   const showConversationError =
     route === 'task' &&
     conversationError != null &&
@@ -2514,40 +2510,31 @@ function AppCore() {
     return true;
   }, [markInFlight, markInFlightDone, handleStreamError]);
 
-  // Navigation intent only. Setting activeTaskId + route flips the state
-  // the URL bridge mirrors into `/c/:id`, which mounts the conversation
-  // route; that route's loader fetches the conversation and
-  // openConversation() (below) hydrates it + reattaches the stream. The
-  // heavy lifting moved out of here (ENG-1233) so every entry point —
-  // sidebar click, deep link, refresh, Back/Forward — runs the same path.
+  // Navigation intent only: flipping route + activeTaskId drives the URL to
+  // `/c/:id`, whose loader + openConversation() (below) do the hydration and
+  // stream reattach — so sidebar click / deep link / refresh / Back all run one
+  // path.
   const selectTask = (id) => {
     if (sidebarPopout) setNavPopoutOpen(false);
-    // Clear the composer synchronously here — at the navigation intent — not
-    // in openConversation. openConversation runs after the route's async
-    // loader resolves, so clearing there races with (and would wipe) a
-    // queued-message redirect that ChatView stages for the conversation being
-    // opened. This matches staging's ordering. (ENG-1233)
+    // Clear the composer here (the sync nav intent), not in openConversation:
+    // that runs after the async loader and would wipe a queued-message redirect
+    // ChatView stages for the conversation. Matches staging's ordering.
     setComposerAttachments([]);
     setActiveTaskId(id);
     setRoute('task');
   };
 
-  // Hydrate + reattach the conversation the `/c/:id` route just resolved.
-  // `loaded` is the route loader's result: `{ task }` for a real
-  // conversation, `{ optimistic: true }` for a new-chat send still in flight
-  // (its messages live in local state — don't clobber them), or
-  // `{ unavailable: true }` when the loader hit a transient server failure.
+  // Hydrate + reattach the conversation the `/c/:id` route resolved. `loaded` is
+  // the loader result: `{ task }`, `{ optimistic: true }` (new-chat mid-send —
+  // messages live locally, don't clobber), or `{ unavailable: true }` (transient
+  // failure).
   const openConversation = useCallback((id, loaded) => {
     setActiveTaskId(id);
     setRoute('task');
-    // NB: the composer is cleared by selectTask (the synchronous nav intent),
-    // not here — clearing after the async loader would wipe a queued-message
-    // redirect ChatView stages for this conversation. (ENG-1233)
-    // Operational failure from the loader (auth / 5xx / network): flag it so
-    // the view can offer a retry. Any resolvable result clears a stale error
-    // for this id. The render only *shows* the error when the conversation is
-    // absent locally, so a sidebar click on an already-loaded conversation
-    // during a blip keeps rendering it. (ENG-1233 — Major 2)
+    // Composer is cleared by selectTask (sync), not here — see there. On a
+    // loader failure flag it for a retry; any resolvable result clears a stale
+    // error. The render only shows it when the conversation is absent locally,
+    // so a sidebar click during a blip keeps rendering.
     if (loaded?.unavailable) setConversationError(id);
     else setConversationError((cur) => (cur === id ? null : cur));
     // Phase 2 reconnect — fire-and-forget. If a turn is still running
@@ -3168,10 +3155,9 @@ function AppCore() {
     }
   }, [orgMode, settingsSection]);
 
-  // URL → state sync for the router's route elements (ENG-1233). enterRoute
-  // is the single place a view's entry data is (re)fetched, so it runs the
-  // same whether the route was entered by in-app navigation, a deep link, a
-  // refresh, or Back/Forward.
+  // URL → state sync for the route elements. enterRoute is the single place a
+  // view's entry data is (re)fetched, so in-app nav / deep link / refresh /
+  // Back-Forward all run the same path.
   const enterHome = useCallback(() => {
     setRoute('home');
     setConversationError(null);
@@ -3183,9 +3169,8 @@ function AppCore() {
     if (key === 'artifacts') {
       fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
     } else if (key === 'projects') {
-      // Bare `/projects` is the grid — clear any selection so a Back from
-      // `/projects/:id` (or a fresh grid visit) doesn't render stale detail.
-      // The detail is `/projects/:id`, driven by enterProjectDetail. (ENG-1233 v1)
+      // Bare `/projects` is the grid — clear the selection so a Back from
+      // `/projects/:id` doesn't render stale detail (detail = enterProjectDetail).
       setSelectedProject(null);
       fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); });
     } else if (key === 'scheduled') {
@@ -3196,9 +3181,9 @@ function AppCore() {
     }
   }, []);
 
-  // Detail routes → state (ENG-1233 v1). No single-resource loader: resolve the
-  // entity client-side from the already-fetched list, so refresh / deep-link /
-  // Back-Forward restore the selection with no `cowork-server` change.
+  // Detail routes → state (v1). No single-resource loader: resolve the entity
+  // client-side from the fetched list, so refresh / deep-link restore the
+  // selection with no server change.
   const enterProjectDetail = useCallback((projectId) => {
     setRoute('projects');
     setConversationError(null);
@@ -3207,8 +3192,7 @@ function AppCore() {
       setProjects(data);
       const found = data.find((p) => p.id === projectId || p.name === projectId);
       if (found) setSelectedProject(found);
-      // Not found (deleted/renamed away): leave selection empty — the grid
-      // shows, and the bridge canonicalizes the URL back to `/projects`.
+      // Not found → leave selection empty; the bridge canonicalizes to `/projects`.
     }).catch(() => {});
   }, []);
 
@@ -3424,9 +3408,8 @@ function AppCore() {
     const rawComposer = composerAttachments;
     const hasPendingFiles = rawComposer.some(isPendingFileAttachment);
     const taskId = hasPendingFiles ? allocateConversationId() : `tmp-${Date.now()}`;
-    // Route to /c/<taskId> before the server has persisted the conversation;
-    // flag it so the route loader renders from local state instead of 404ing
-    // home (ENG-1233).
+    // Flag the not-yet-persisted id so the route loader renders from local
+    // state instead of 404ing home.
     markOptimisticConversation(taskId);
 
     const { merged: sendingAttachments, attachmentIds, reference } = await resolveComposerAttachmentsForSend(
@@ -3484,8 +3467,7 @@ function AppCore() {
       resolvedId = sid;
       // Carry over a reply the user started typing under the tmp- id.
       moveDraft(previousId, sid);
-      // The server's canonical id is also not yet loadable via fetchSession
-      // when we route to it, so keep the loader off it (ENG-1233).
+      // The canonical id isn't loadable yet either — keep the loader off it.
       markOptimisticConversation(sid);
       setTasks((prev) => prev.map((t) => (
         t.id === previousId || t.id === taskId ? { ...t, id: sid } : t
@@ -3590,9 +3572,8 @@ function AppCore() {
         activeScratchpadRef.current = null;
         activeStreamingTaskIdRef.current = null;
         const finalId = sid || resolvedId;
-        // Turn complete → the conversation is server-persisted now, so drop
-        // its optimistic flag: a later revisit should hydrate fresh from the
-        // server rather than replay this local snapshot. (ENG-1233 — Minor 1)
+        // Turn done → conversation persisted; drop the optimistic flag so a
+        // later revisit hydrates fresh instead of replaying this snapshot.
         clearOptimisticConversation(finalId);
         markInFlightDone(finalId);
         if (finalId !== taskId) markInFlightDone(taskId);
@@ -4007,9 +3988,8 @@ function AppCore() {
         activeStreamCtrlRef.current = null;
         activeScratchpadRef.current = null;
         activeStreamingTaskIdRef.current = null;
-        // See the new-task onDone: the conversation is persisted now, so the
-        // optimistic flag (set if `id` was a tmp-connect id that adopted a
-        // server id) can be dropped. (ENG-1233 — Minor 1)
+        // Turn done → conversation persisted; drop the optimistic flag (set if
+        // `id` was a tmp-connect id that adopted a server id).
         clearOptimisticConversation(resolvedId);
         markInFlightDone(resolvedId);
         if (resolvedId !== id) markInFlightDone(id);
@@ -4270,8 +4250,7 @@ function AppCore() {
         activeStreamCtrlRef.current = null;
         activeStreamingTaskIdRef.current = null;
         releaseLiveSteps([resolvedId, id]);
-        // Turn complete → conversation persisted, so drop the optimistic flag
-        // (revisits hydrate fresh). (ENG-1233 — Minor 1)
+        // Turn done → conversation persisted; drop the optimistic flag.
         clearOptimisticConversation(resolvedId);
         const finalContent = streamState.bodyText;
         const finalSteps = streamState.steps;
@@ -4807,10 +4786,9 @@ function AppCore() {
     },
   };
 
-  // The app chrome — sidebar, content column, and modals. It still contains
-  // the `route`-keyed view switch (rendered from AppCore state) plus the
-  // router's <Outlet/>, which mounts the child route element that syncs that
-  // state to the URL. Handed to the router via context (ENG-1233).
+  // The app chrome — sidebar, content column, modals. Still holds the
+  // `route`-keyed view switch plus the router's <Outlet/>; handed to the router
+  // via context.
   const shell = (
     <div style={{
       ...appStyle, ...accentCss,
@@ -5688,15 +5666,14 @@ function AppCore() {
     </div>
   );
 
-  // Hand the shell + current nav state + URL→state sync handlers to the
-  // router. CoworkLayout renders `shell` (with its <Outlet/>); the child
-  // route elements consume the handlers (ENG-1233).
+  // Hand the shell + nav state + URL→state handlers to the router; CoworkLayout
+  // renders `shell` and the route elements consume the handlers.
   const coworkValue = {
     shell,
     route,
     activeTaskId,
-    // The bridge mirrors the selected detail entity into the URL. Prefer the
-    // stable id; fall back to name for projects that predate ids. (ENG-1233 v1)
+    // Bridge mirrors the selected detail entity into the URL. Prefer the stable
+    // id; fall back to name for projects that predate ids.
     selectedProjectId: selectedProject?.id || selectedProject?.name || null,
     selectedScheduleId,
     enterHome,

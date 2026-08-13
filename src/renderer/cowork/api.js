@@ -348,14 +348,12 @@ export async function fetchSession(id) {
 }
 
 /**
- * Loader-facing conversation fetch (ENG-1233). Unlike `fetchSession`, which
- * collapses every failure to `null`, this distinguishes a conversation that
- * is genuinely gone (`404 → 'not_found'`) from an operational failure — auth,
- * 5xx, or a network drop (`→ 'unavailable'`). The route loader needs that
- * distinction: a 404 deep link should drop to Home, but a transient outage
- * must keep the URL and offer a retry instead of silently discarding a valid
- * link. The metadata request is authoritative; a failed items request is
- * treated as an empty (but present) conversation, matching `fetchSession`.
+ * Loader-facing conversation fetch. Unlike `fetchSession` (which collapses every
+ * failure to `null`), this separates a gone conversation (`404 → 'not_found'`)
+ * from an operational failure (auth / 5xx / network `→ 'unavailable'`) so the
+ * route can drop a dead link Home but keep the URL + retry on a transient
+ * outage. The metadata request is authoritative; a failed items request is
+ * treated as an empty-but-present conversation.
  *
  * @returns {Promise<{status:'ok', task:object} | {status:'not_found'} | {status:'unavailable', code:number}>}
  */
