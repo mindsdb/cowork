@@ -595,12 +595,19 @@ export function diffSettingsForWrite(patch, lastFetched) {
 export const BUDGET_FIELDS = {
   maxToolRounds: { min: 5, max: 500, fallback: 50 },
   maxContinuations: { min: 0, max: 25, fallback: 5 },
-  // Per-turn spend ceiling (ENG-1286). `min` is 100_000 rather than 0 on
-  // purpose: the server bounds it the same way so the guard can be loosened
-  // but never switched off from the UI. Ranges must stay in lockstep with
-  // UserSettings' ge/le — a value this clamp allows but the server rejects
-  // 422s the whole multi-key save, not just this field.
-  maxTurnTokens: { min: 100_000, max: 50_000_000, fallback: 1_250_000 },
+  // Per-turn spend ceiling (ENG-1286). `min` is 750_000, not 0 and not a
+  // rounder-looking 100_000: a turn's first LLM call costs roughly the
+  // conversation's context (~190k on a long one), so a ceiling below a couple
+  // of calls stops the turn before it has done anything. Measured against
+  // anton, a 100_000 ceiling dispatched ZERO tools and still spent 400_000 —
+  // and this input CLAMPS INTO that band, so a user typing 0 (the natural way
+  // to say "no limit") landed on the single worst value available. 750_000 is
+  // the lowest value where a 190k-context turn still gets several rounds, and
+  // it sits just above the p75 external turn (736k).
+  // Ranges must stay in lockstep with UserSettings' ge/le — a value this clamp
+  // allows but the server rejects 400s the whole multi-key save, not just this
+  // field. cowork-server pins the mirror in test_agent_budget_settings.py.
+  maxTurnTokens: { min: 750_000, max: 50_000_000, fallback: 1_250_000 },
 };
 
 /**

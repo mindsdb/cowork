@@ -424,13 +424,18 @@ describe('per-turn spend ceiling (max_turn_tokens, ENG-1286)', () => {
 
   it('clamps to bounds that match the server, and cannot be switched off', () => {
     const spec = BUDGET_FIELDS.maxTurnTokens;
-    // min is 100_000, not 0: the guard can be loosened from the UI but never
-    // disabled. A value this clamp let through but the server rejects would
-    // 422 the whole save.
-    expect(clampBudgetValue('0', spec)).toBe('100000');
-    expect(clampBudgetValue('50', spec)).toBe('100000');
+    // The floor is 750_000, and it is not arbitrary: below roughly a couple of
+    // LLM calls' worth of context the ceiling stops the turn before it has done
+    // any work. This input clamps UP into the valid range, so a user typing 0 —
+    // the natural way to say "no limit" — must not land in that band.
+    expect(clampBudgetValue('0', spec)).toBe('750000');
+    expect(clampBudgetValue('100000', spec)).toBe('750000');
     expect(clampBudgetValue('999999999', spec)).toBe('50000000');
     expect(clampBudgetValue('2000000', spec)).toBe('2000000');
+    // Mirrors UserSettings' ge/le exactly; a value the client allows and the
+    // server rejects 400s the whole multi-key save (cowork-server asserts the
+    // other direction in test_agent_budget_settings.py).
+    expect([spec.min, spec.max]).toEqual([750_000, 50_000_000]);
   });
 });
 
