@@ -206,6 +206,12 @@ async function attach(user, name = 'notes.txt') {
 }
 
 beforeEach(() => {
+  // App runs on createBrowserRouter under jsdom (host.isElectron === false),
+  // which reads/writes the shared window history. happy-dom keeps that history
+  // across tests in this file, so a conversation URL pushed by one test would
+  // otherwise leak into the next and auto-open that conversation on mount.
+  // Reset to '/' so each test starts on Home. (ENG-1233)
+  window.history.replaceState(null, '', '/');
   // Composer text lives in a module-level, per-surface store (lib/draftStore),
   // so unsent text from the previous test would otherwise still be in the box.
   __resetDraftsForTests();

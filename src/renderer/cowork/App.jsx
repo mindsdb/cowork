@@ -2519,6 +2519,12 @@ function AppCore() {
   // sidebar click, deep link, refresh, Back/Forward — runs the same path.
   const selectTask = (id) => {
     if (sidebarPopout) setNavPopoutOpen(false);
+    // Clear the composer synchronously here — at the navigation intent — not
+    // in openConversation. openConversation runs after the route's async
+    // loader resolves, so clearing there races with (and would wipe) a
+    // queued-message redirect that ChatView stages for the conversation being
+    // opened. This matches staging's ordering. (ENG-1233)
+    setComposerAttachments([]);
     setActiveTaskId(id);
     setRoute('task');
   };
@@ -2531,7 +2537,9 @@ function AppCore() {
   const openConversation = useCallback((id, loaded) => {
     setActiveTaskId(id);
     setRoute('task');
-    setComposerAttachments([]);
+    // NB: the composer is cleared by selectTask (the synchronous nav intent),
+    // not here — clearing after the async loader would wipe a queued-message
+    // redirect ChatView stages for this conversation. (ENG-1233)
     // Operational failure from the loader (auth / 5xx / network): flag it so
     // the view can offer a retry. Any resolvable result clears a stale error
     // for this id. The render only *shows* the error when the conversation is
