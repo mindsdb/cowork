@@ -96,6 +96,8 @@ deb:
   # Overriding depends replaces electron-builder's defaults, so the default
   # runtime libs are repeated here. git and curl are required by the
   # first-run cowork-server installer (uv bootstrap + git-based install).
+  # lsof backs killProcessOnPort()'s orphan cowork-server reaping
+  # (server-process.ts) — not installed by default on a minimal Debian.
   depends:
     - libgtk-3-0
     - libnotify4
@@ -106,6 +108,7 @@ deb:
     - libatspi2.0-0
     - libuuid1
     - libsecret-1-0
+    - lsof
     - git
     - curl
 

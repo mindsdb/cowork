@@ -126,19 +126,33 @@ export function findUv(): string | null {
   return null;
 }
 
-/** Resolve a command via where/which on the augmented PATH. Returns the
- *  first resolved location (null when absent) so callers can log WHICH
- *  binary a machine uses — e.g. a preinstalled uv from winget/scoop/pip
- *  living outside the dirs findUv probes. */
+/** Resolve a command on the augmented PATH. Returns the first resolved
+ *  location (null when absent) so callers can log WHICH binary a machine
+ *  uses — e.g. a preinstalled uv from winget/scoop/pip living outside the
+ *  dirs findUv probes.
+ *
+ *  POSIX uses the `command -v` shell builtin rather than the `which`
+ *  binary: `which` is a separate package (debianutils on Debian) that
+ *  isn't guaranteed present on a minimal install, and its own absence
+ *  (ENOENT) would be indistinguishable from `cmd` itself being absent —
+ *  silently reporting git/uv/cowork-server as missing and aborting
+ *  first-run on a machine that actually has them on PATH. A shell builtin
+ *  can't ENOENT that way. */
 export function findOnPath(cmd: string): Promise<string | null> {
   return new Promise((resolve) => {
     const env = { ...process.env, PATH: getEnvPath() };
-    const whichCmd = process.platform === 'win32' ? 'where' : 'which';
-    execFile(whichCmd, [cmd], { env }, (err, stdout) => {
+    const resolveFirst = (err: unknown, stdout: string) => {
       if (err) { resolve(null); return; }
       const first = String(stdout).split(/\r?\n/).map((l) => l.trim()).find(Boolean);
       resolve(first ?? null);
-    });
+    };
+    if (process.platform === 'win32') {
+      execFile('where', [cmd], { env }, resolveFirst);
+      return;
+    }
+    // `--` becomes $0, cmd becomes $1 — avoids interpolating cmd into the
+    // shell script string, regardless of what it contains.
+    execFile('/bin/sh', ['-c', 'command -v "$1"', '--', cmd], { env }, resolveFirst);
   });
 }
 
