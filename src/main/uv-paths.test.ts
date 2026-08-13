@@ -99,7 +99,7 @@ describe('uv-paths — per-channel isolation', () => {
     expect(getEnvPath().split(path.delimiter)[0]).toBe('/home/u/.cowork-stable/uv/bin');
   });
 
-  it('getEnvPath includes Homebrew/MacPorts/Linuxbrew dirs on non-Windows (mindshub#12484)', () => {
+  it('getEnvPath includes Homebrew/MacPorts/Linuxbrew dirs on non-Windows', () => {
     // The actual mechanism of the bug: findUv() already knew about Homebrew,
     // but getEnvPath() — the PATH handed to the spawned cowork-server child,
     // and everything IT spawns — didn't, so a subprocess's own PATH search

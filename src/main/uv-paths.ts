@@ -57,7 +57,7 @@ export function getEnvPath(): string {
   // shim lives) so anything resolving the binary by name finds this channel's.
   // Also fold in EXTRA_UV_BIN_DIRS: a GUI-launched app's inherited PATH can be
   // missing these even though findUv() already checks them on disk, and this
-  // is the PATH handed to cowork-server and everything IT spawns (mindshub#12484).
+  // is the PATH handed to cowork-server and everything IT spawns.
   const extraDirs = process.platform === 'win32' ? [] : EXTRA_UV_BIN_DIRS;
   const parts = [localBin, cargoBin, ...extraDirs, currentPath];
   if (process.env.UV_TOOL_BIN_DIR) parts.unshift(process.env.UV_TOOL_BIN_DIR);
@@ -108,9 +108,9 @@ function getUvBinary(): string {
   return path.join(getLocalBin(), `uv${ext}`);
 }
 
-// Package-manager bin dirs a GUI-launched parent's inherited PATH may miss
-// (mindshub#12484). Checked on every non-Windows platform; harmless if the
-// "wrong" OS's dir doesn't exist. Keep in sync with anton's _find_uv().
+// Package-manager bin dirs a GUI-launched parent's inherited PATH may miss.
+// Checked on every non-Windows platform; harmless if the "wrong" OS's dir
+// doesn't exist. Keep in sync with anton's _find_uv().
 const EXTRA_UV_BIN_DIRS = [
   '/opt/homebrew/bin', // Homebrew, Apple Silicon
   '/usr/local/bin', // Homebrew, Intel Mac

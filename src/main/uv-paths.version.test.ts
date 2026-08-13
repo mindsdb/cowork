@@ -106,7 +106,7 @@ describe('resolveUv', () => {
   });
 });
 
-describe('findUv — extra package-manager locations (mindshub#12484)', () => {
+describe('findUv — extra package-manager locations', () => {
   it('checks Homebrew on Apple Silicon', () => {
     vi.mocked(fs.existsSync).mockImplementation((p) => String(p) === '/opt/homebrew/bin/uv');
     expect(findUv()).toBe('/opt/homebrew/bin/uv');
