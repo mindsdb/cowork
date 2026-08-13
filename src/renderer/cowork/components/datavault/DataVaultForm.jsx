@@ -47,15 +47,30 @@ const FONT_BODY    = 'var(--font-body)';
 const FONT_DISPLAY = 'var(--font-display)';
 const FONT_MONO    = 'var(--font-mono)';
 
-function FormLogo({ logo, logoUrl, color }) {
-  if (logoUrl) {
+function FormLogo({ logo, logoUrl, color, connectorId }) {
+  // Prefer the real brand mark: an explicit logo_url, else the static
+  // `logos/<connector_id>.svg` asset the connectors list uses (ENG-1534).
+  // The form spec's `logo_url` is often empty at runtime, which used to
+  // drop us to the generic `logo` glyph ("code" → "<>") on the
+  // "Authorize with <Provider>" button. On a missing/broken asset the
+  // `onError` swaps to the glyph, so connectors without an svg still look
+  // fine. `failedSrc` (not a boolean) means a new connector's src is
+  // retried rather than stuck on the previous one's failure.
+  const [failedSrc, setFailedSrc] = useState(null);
+  const src = logoUrl || (connectorId ? `logos/${connectorId}.svg` : null);
+  if (src && src !== failedSrc) {
     return (
       <span style={{
         display: 'inline-grid', placeItems: 'center',
         width: 36, height: 36, borderRadius: 8,
         background: 'var(--surface-2)',
       }}>
-        <img src={logoUrl} alt="" style={{ width: 22, height: 22, objectFit: 'contain' }} />
+        <img
+          src={src}
+          alt=""
+          onError={() => setFailedSrc(src)}
+          style={{ width: 22, height: 22, objectFit: 'contain' }}
+        />
       </span>
     );
   }
@@ -450,7 +465,7 @@ export function DataVaultForm({
           "Pick how you want to connect:" caption). */}
       {!(isMultiMethod && !activeMethod) && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <FormLogo logo={spec.logo} logoUrl={spec.logo_url} color={spec.logo_color} />
+          <FormLogo logo={spec.logo} logoUrl={spec.logo_url} color={spec.logo_color} connectorId={spec._connector_id || spec.engine} />
           <div style={{ minWidth: 0, flex: 1 }}>
             <div className="s-h3" style={{
               color: 'var(--ink)',
@@ -815,7 +830,7 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
           onFocus={(e) => { e.currentTarget.style.boxShadow = '0 0 0 2px var(--accent)'; }}
           onBlur={(e) => { e.currentTarget.style.boxShadow = 'none'; }}
         >
-          <FormLogo logo={spec?.logo} logoUrl={spec?.logo_url} color={spec?.logo_color} />
+          <FormLogo logo={spec?.logo} logoUrl={spec?.logo_url} color={spec?.logo_color} connectorId={spec?._connector_id || spec?.engine} />
           <span style={{
             fontWeight: 600, fontSize: 14.5, color: 'var(--ink)',
             minWidth: 0, flex: '1 1 auto', overflowWrap: 'anywhere', wordBreak: 'break-word',

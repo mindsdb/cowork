@@ -84,7 +84,7 @@ export function computeHeroView(methods, spec) {
   const heroOneClick = heroIsOAuth && !fields.some((f) => f && f.required);
   const heroLabel = heroIsOAuth ? `Authorize with ${providerName}` : (hero.label || hero.id);
   const heroHelper = heroIsOAuth
-    ? `Opens ${providerName} sign-in in your browser — no setup needed.`
+    ? `Opens ${providerName} authorization in your browser — one click to wire.`
     : (hero.description || '');
 
   return { hero, rest, heroIsOAuth, heroOneClick, providerName, heroLabel, heroHelper };

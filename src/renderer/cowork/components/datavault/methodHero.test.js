@@ -46,7 +46,7 @@ describe('computeHeroView', () => {
     expect(v.heroIsOAuth).toBe(true);
     expect(v.heroOneClick).toBe(true); // fields: [] → nothing to fill first
     expect(v.heroLabel).toBe('Authorize with GitHub');
-    expect(v.heroHelper).toBe('Opens GitHub sign-in in your browser — no setup needed.');
+    expect(v.heroHelper).toBe('Opens GitHub authorization in your browser — one click to wire.');
     // Everything else falls under "See other options".
     expect(v.rest.map((m) => m.id)).toEqual(['fine-grained-pat', 'oauth']);
   });
