@@ -14,7 +14,7 @@ import Spinner from '../../components/ui/Spinner';
 import ModelSelect from '../../components/ModelSelect.jsx';
 import { host } from '../../../platform/host';
 import { SKINS, normalizeSkin } from '../../../lib/skins';
-import { MINDS_API_BASE, MINDS_API_KEY_URL, MINDS_REGISTER_URL, MINDS_BILLING_URL, MINDS_USAGE_URL } from '../../../lib/mindsUrls';
+import { MINDS_API_BASE, MINDS_API_KEY_URL, MINDS_REGISTER_URL, MINDS_BILLING_URL } from '../../../lib/mindsUrls';
 import { ConfirmModal } from '../../components/ConfirmModal';
 import { useLogout, LOGOUT_CONFIRM_COPY } from '../../hooks/useLogout';
 import { isElectron } from '../../../platform/host';
@@ -588,14 +588,20 @@ function CredentialRow({ title, subtitle, status, hasValue, children }) {
 
 // ───────────────────────── Nav sidebar ─────────────────────────
 
+// `id: 'account'` keeps the section/renderer wiring; it's labelled "Profile"
+// and lives under the "Account settings" group in the nav (ENG-1545).
 const NAV_ITEMS = [
   { id: 'agent', label: 'Agent', icon: 'robot' },
   { id: 'appearance', label: 'Appearance', icon: 'palette' },
   { id: 'channels', label: 'Channels', icon: 'chats' },
   { id: 'updates', label: 'Updates', icon: 'refresh' },
   { id: 'backend', label: 'Backend', icon: 'database' },
-  { id: 'account', label: 'Account', icon: 'people' },
+  { id: 'account', label: 'Profile', icon: 'people' },
 ];
+
+// Section ids that belong under the "Account settings" group (rendered
+// separately from the top "App settings" section list).
+const ACCOUNT_SECTION_IDS = new Set(['account']);
 
 // Sections that make sense in the hosted web shell (ENG-932). Absent, not
 // disabled — a nav row that opens a dead end is worse than no row:
@@ -622,7 +628,7 @@ export function navItemsForHost(isWeb) {
 // console in the browser; Sign out runs the logout flow. These are NOT section
 // ids — they trigger handlers rather than switching `effectiveSection` (an
 // unknown section id would silently redirect to Agent).
-function SettingsNavActionRow({ icon, label, onClick, danger = false, disabled = false }) {
+function SettingsNavActionRow({ icon, label, onClick, danger = false, disabled = false, trailing = null }) {
   const iconEl = Ico[icon] ? Ico[icon](15) : null;
   return (
     <button
@@ -639,57 +645,67 @@ function SettingsNavActionRow({ icon, label, onClick, danger = false, disabled =
         <span aria-hidden="true" className="inline-flex shrink-0 text-[color:inherit]">{iconEl}</span>
       )}
       <span>{label}</span>
+      {trailing && (
+        <span aria-hidden="true" className="ml-auto inline-flex shrink-0 text-ink-4">{trailing}</span>
+      )}
     </button>
   );
 }
 
-function SettingsNav({ section, onSectionChange, serverOnline = true, onBilling, onUsage, onSignOut, loggingOut = false }) {
+const NAV_GROUP_HEADING = 'text-2xs tracking-[0.08em] uppercase text-ink-4 px-2.5 pb-1.5 font-semibold';
+
+function SettingsNav({ section, onSectionChange, serverOnline = true, onBillingUsage, onSignOut, loggingOut = false }) {
+  const items = navItemsForHost(host.isWeb);
+  const topItems = items.filter((i) => !ACCOUNT_SECTION_IDS.has(i.id));
+  const accountSections = items.filter((i) => ACCOUNT_SECTION_IDS.has(i.id)); // Profile (desktop only)
+
+  const sectionButton = (item) => {
+    const active = section === item.id;
+    // `!host.isWeb &&`: the offline-disable exists because a dead local
+    // server can't accept a save, and Backend stays enabled as the escape
+    // hatch to restart it. On web there is no Backend row — and
+    // `serverOnline` DOES go false there: refreshData() polls /health on
+    // mount on both platforms (App.jsx), so a transient failure on hosted
+    // (proxy 502, auth blip) would otherwise disable EVERY row with no way out.
+    const disabled = !host.isWeb && !serverOnline && item.id !== 'backend';
+    const icon = Ico[item.icon] ? Ico[item.icon](15) : null;
+    return (
+      <button
+        key={item.id}
+        type="button"
+        onClick={disabled ? undefined : () => onSectionChange?.(item.id)}
+        aria-current={active ? 'page' : undefined}
+        aria-disabled={disabled ? 'true' : undefined}
+        className={`w-full flex items-center gap-2 py-2 px-2.5 rounded-[7px] border-0 text-[13px] [font-family:inherit] text-left [transition:background_120ms_ease,color_120ms_ease] ${active
+          ? 'bg-surface-2 text-ink font-semibold'
+          : 'bg-transparent text-ink-3 font-normal hover:bg-surface-2 hover:text-ink'} ${disabled
+          ? 'opacity-35 pointer-events-none cursor-default'
+          : 'cursor-pointer'}`}
+      >
+        {icon && (
+          <span aria-hidden="true" className="inline-flex shrink-0 text-[color:inherit]">{icon}</span>
+        )}
+        <span>{item.label}</span>
+      </button>
+    );
+  };
+
   return (
     <nav
       role="navigation"
       aria-label="Settings sections"
       className="w-[180px] shrink-0 border-r border-y-0 border-l-0 border-solid border-line py-5 px-2.5 flex flex-col gap-0.5"
     >
-      <div className="text-2xs tracking-[0.08em] uppercase text-ink-4 pt-0 px-2.5 pb-1.5 font-semibold">Settings</div>
-      {navItemsForHost(host.isWeb).map((item) => {
-        const active = section === item.id;
-        // `!host.isWeb &&`: the offline-disable exists because a dead local
-        // server can't accept a save, and Backend stays enabled as the escape
-        // hatch to restart it. On web there is no Backend row — and
-        // `serverOnline` DOES go false there: refreshData() polls /health on
-        // mount on both platforms (App.jsx), so a transient failure on hosted
-        // (proxy 502, auth blip) would otherwise disable EVERY row with no
-        // way out.
-        const disabled = !host.isWeb && !serverOnline && item.id !== 'backend';
-        const icon = Ico[item.icon] ? Ico[item.icon](15) : null;
-        return (
-          <button
-            key={item.id}
-            type="button"
-            onClick={disabled ? undefined : () => onSectionChange?.(item.id)}
-            aria-current={active ? 'page' : undefined}
-            aria-disabled={disabled ? 'true' : undefined}
-            className={`w-full flex items-center gap-2 py-2 px-2.5 rounded-[7px] border-0 text-[13px] [font-family:inherit] text-left [transition:background_120ms_ease,color_120ms_ease] ${active
-              ? 'bg-surface-2 text-ink font-semibold'
-              : 'bg-transparent text-ink-3 font-normal hover:bg-surface-2 hover:text-ink'} ${disabled
-              ? 'opacity-35 pointer-events-none cursor-default'
-              : 'cursor-pointer'}`}
-          >
-            {icon && (
-              <span aria-hidden="true" className="inline-flex shrink-0 text-[color:inherit]">
-                {icon}
-              </span>
-            )}
-            <span>{item.label}</span>
-          </button>
-        );
-      })}
+      <div className={NAV_GROUP_HEADING + ' pt-0'}>App settings</div>
+      {topItems.map(sectionButton)}
 
-      {/* Account actions (ENG-1545) — Billing/Usage open the console; Sign
-          out runs the logout flow. Separated from the section links above. */}
+      {/* Account settings (ENG-1545) — Profile section + account actions.
+          Billing & Usage opens the console; Sign out (signed-in only) runs
+          the logout flow. */}
       <div className="mt-2 pt-2 border-t border-x-0 border-b-0 border-solid border-line flex flex-col gap-0.5">
-        <SettingsNavActionRow icon="card" label="Billing" onClick={onBilling} />
-        <SettingsNavActionRow icon="slider" label="Usage" onClick={onUsage} />
+        <div className={NAV_GROUP_HEADING}>Account settings</div>
+        {accountSections.map(sectionButton)}
+        <SettingsNavActionRow icon="card" label="Billing & Usage" onClick={onBillingUsage} trailing={Ico.chevronRight(15)} />
         {onSignOut && (
           <SettingsNavActionRow
             icon="powerOff"
@@ -747,9 +763,11 @@ export default function SettingsView({
   const [signOutOpen, setSignOutOpen] = useState(false);
   const openExternalUrl = (url) => (host.openExternal ? host.openExternal(url) : window.open(url, '_blank'));
   const navActionProps = {
-    onBilling: () => openExternalUrl(MINDS_BILLING_URL),
-    onUsage: () => openExternalUrl(MINDS_USAGE_URL),
-    onSignOut: host.isWeb ? undefined : () => setSignOutOpen(true),
+    // Billing & Usage is one entry — the console billing page already covers
+    // both (ENG-1545). Sign out only when actually signed in (and Electron —
+    // logout is a no-op on hosted web).
+    onBillingUsage: () => openExternalUrl(MINDS_BILLING_URL),
+    onSignOut: (!host.isWeb && isSsoConnected) ? () => setSignOutOpen(true) : undefined,
     loggingOut,
   };
   const signOutConfirm = (
@@ -2346,64 +2364,72 @@ export default function SettingsView({
             </div>
           ) : (
             <nav className="settings-list" role="navigation" aria-label="Settings sections">
-              {navItemsForHost(host.isWeb).map((item) => {
-                // `!host.isWeb &&`: the offline-disable exists because a dead local
-                // server can't accept a save, and Backend stays enabled as the
-                // escape hatch to restart it. On web there is no Backend row —
-                // and `serverOnline` DOES go false there: refreshData() polls
-                // /health on mount on both platforms (App.jsx), so a transient
-                // failure on hosted (proxy 502, auth blip) would otherwise
-                // disable EVERY row with no way out.
-                const disabled = !host.isWeb && !serverOnline && item.id !== 'backend';
-                const icon = Ico[item.icon] ? Ico[item.icon](18) : null;
-                return (
-                  <div className="mshell-accordion" key={item.id}>
+              {(() => {
+                const items = navItemsForHost(host.isWeb);
+                const topItems = items.filter((i) => !ACCOUNT_SECTION_IDS.has(i.id));
+                const accountSections = items.filter((i) => ACCOUNT_SECTION_IDS.has(i.id));
+                const heading = (label) => (
+                  <div key={`h-${label}`} className="px-4 pt-3 pb-1 text-2xs uppercase tracking-[0.08em] text-ink-4 font-semibold">{label}</div>
+                );
+                const sectionHead = (item) => {
+                  // See desktop note: Backend stays the escape hatch when the
+                  // local server is down.
+                  const disabled = !host.isWeb && !serverOnline && item.id !== 'backend';
+                  return (
+                    <div className="mshell-accordion" key={item.id}>
+                      <button
+                        type="button"
+                        className="mshell-accordion__head"
+                        aria-disabled={disabled || undefined}
+                        disabled={disabled}
+                        onClick={() => onSectionChange?.(item.id)}
+                        style={disabled ? { opacity: 0.4, cursor: 'default' } : undefined}
+                      >
+                        {Ico[item.icon] && (
+                          <span aria-hidden="true" className="inline-flex shrink-0 text-ink-3">{Ico[item.icon](18)}</span>
+                        )}
+                        <span className="mshell-accordion__label">{item.label}</span>
+                        <span className="mshell-accordion__chev">{Ico.chevronRight(16)}</span>
+                      </button>
+                    </div>
+                  );
+                };
+                const actionHead = (a) => (
+                  <div className="mshell-accordion" key={a.id}>
                     <button
                       type="button"
                       className="mshell-accordion__head"
-                      aria-disabled={disabled || undefined}
-                      disabled={disabled}
-                      onClick={() => onSectionChange?.(item.id)}
-                      style={disabled ? { opacity: 0.4, cursor: 'default' } : undefined}
+                      aria-disabled={a.disabled || undefined}
+                      disabled={a.disabled}
+                      onClick={a.onClick}
+                      style={a.danger ? { color: 'var(--danger)' } : undefined}
                     >
-                      {icon && (
-                        <span aria-hidden="true" className="inline-flex shrink-0 text-ink-3">
-                          {icon}
-                        </span>
+                      {Ico[a.icon] && (
+                        <span aria-hidden="true" className="inline-flex shrink-0 text-ink-3">{Ico[a.icon](18)}</span>
                       )}
-                      <span className="mshell-accordion__label">{item.label}</span>
-                      <span className="mshell-accordion__chev">{Ico.chevronRight(16)}</span>
+                      <span className="mshell-accordion__label">{a.label}</span>
+                      {a.chev && <span className="mshell-accordion__chev">{Ico.chevronRight(16)}</span>}
                     </button>
                   </div>
                 );
-              })}
-              {/* Account actions (ENG-1545) — Billing/Usage open the console;
-                  Sign out runs the logout flow. */}
-              {[
-                { id: 'billing', label: 'Billing', icon: 'card', onClick: navActionProps.onBilling },
-                { id: 'usage', label: 'Usage', icon: 'slider', onClick: navActionProps.onUsage },
-                ...(navActionProps.onSignOut
-                  ? [{ id: 'signout', label: loggingOut ? 'Signing out…' : 'Sign out', icon: 'powerOff', onClick: navActionProps.onSignOut, danger: true, disabled: loggingOut }]
-                  : []),
-              ].map((a) => (
-                <div className="mshell-accordion" key={a.id}>
-                  <button
-                    type="button"
-                    className="mshell-accordion__head"
-                    aria-disabled={a.disabled || undefined}
-                    disabled={a.disabled}
-                    onClick={a.onClick}
-                    style={a.danger ? { color: 'var(--danger)' } : undefined}
-                  >
-                    {Ico[a.icon] && (
-                      <span aria-hidden="true" className="inline-flex shrink-0 text-ink-3">
-                        {Ico[a.icon](18)}
-                      </span>
-                    )}
-                    <span className="mshell-accordion__label">{a.label}</span>
-                  </button>
-                </div>
-              ))}
+                // Account actions (ENG-1545) — Billing & Usage opens the
+                // console; Sign out (signed-in only) runs the logout flow.
+                const actions = [
+                  { id: 'billing', label: 'Billing & Usage', icon: 'card', onClick: navActionProps.onBillingUsage, chev: true },
+                  ...(navActionProps.onSignOut
+                    ? [{ id: 'signout', label: loggingOut ? 'Signing out…' : 'Sign out', icon: 'powerOff', onClick: navActionProps.onSignOut, danger: true, disabled: loggingOut }]
+                    : []),
+                ];
+                return (
+                  <>
+                    {heading('App settings')}
+                    {topItems.map(sectionHead)}
+                    {heading('Account settings')}
+                    {accountSections.map(sectionHead)}
+                    {actions.map(actionHead)}
+                  </>
+                );
+              })()}
             </nav>
           )}
         </div>

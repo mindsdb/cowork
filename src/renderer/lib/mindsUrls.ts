@@ -66,9 +66,6 @@ const KEYCLOAK_BASE = MINDS_KEYCLOAK_URL.replace(/\/auth\/?$/, '');
 // https://console.mindshub.ai when the desktop app moves to prod.
 export const MINDS_CONSOLE_URL = mindsServiceHost('console');
 export const MINDS_BILLING_URL = `${MINDS_CONSOLE_URL}/settings/organization/billing`;
-// ENG-1545: console usage page. Mirrors the billing path shape; verify the
-// exact console route if usage lives elsewhere.
-export const MINDS_USAGE_URL = `${MINDS_CONSOLE_URL}/settings/organization/usage`;
 export const MINDS_API_KEY_URL = `${MINDS_CONSOLE_URL}/apiKeys`;
 
 // Console settings pages the sidebar user menu deep-links to (ENG-1408) —

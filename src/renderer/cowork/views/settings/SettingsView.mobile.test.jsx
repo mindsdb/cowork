@@ -36,7 +36,7 @@ vi.mock('../ChannelsView', () => ({ default: () => <div data-testid="channels-st
 
 import SettingsView from './SettingsView';
 
-const NAV_LABELS = ['Agent', 'Appearance', 'Channels', 'Updates', 'Backend', 'Account'];
+const NAV_LABELS = ['Agent', 'Appearance', 'Channels', 'Updates', 'Backend', 'Profile'];
 
 // Controlled harness: the open section is owned by the parent (App in prod).
 // Taps call onSectionChange, which re-renders with the new `section` — the
@@ -82,8 +82,8 @@ describe('SettingsView mobile master-detail (ENG-990/ENG-991)', () => {
 
   it('drills into a section on tap and back returns to the list', () => {
     renderMobile();
-    fireEvent.click(screen.getByRole('button', { name: /^Account$/ }));
-    // Now in the Account detail: the list rows are gone, back control changes.
+    fireEvent.click(screen.getByRole('button', { name: /^Profile$/ }));
+    // Now in the Account (Profile) detail: the list rows are gone, back changes.
     expect(screen.getByRole('button', { name: 'Back to settings' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: /^Appearance$/ })).toBeNull();
     // Back returns to the list.
