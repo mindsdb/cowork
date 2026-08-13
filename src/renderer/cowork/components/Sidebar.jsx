@@ -6,6 +6,8 @@ import RecentsModal from './RecentsModal';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { host } from '../../platform/host';
 import { relativeAge } from '../lib/formatTime';
+import { useAccountUser } from '../hooks/useAccountUser';
+import UserMenu from './UserMenu';
 import OnboardingChecklist from './onboarding/OnboardingChecklist';
 import FirstArtifactTip from './onboarding/FirstArtifactTip';
 
@@ -248,6 +250,10 @@ export default function Sidebar({
   showThemeToggle = true,
   show8bitToggle = true,
   settingsActive = false,
+  // Signed-in state, pushed from App — the user-menu hook re-reads the
+  // access token when this flips (ENG-761 pattern), so the footer swaps
+  // between the plain Settings row and the account row without a reload.
+  isSsoConnected = false,
   // Settings → Personalization → Show nav-panel counters. When
   // false, hide the per-nav badge counts AND the time-since slot
   // on each Recent row. Default true.
@@ -266,6 +272,18 @@ export default function Sidebar({
   artifactTipOpen = false,
   onArtifactTipDismiss,
 }) {
+  // Signed-in account identity (null when signed out) — decides whether the
+  // footer shows the account row + user menu or the plain Settings row.
+  const accountUser = useAccountUser(isSsoConnected);
+
+  // Footer states. The status pill wins over everything (Electron-only, the
+  // server needs attention); otherwise a signed-in user gets the account row.
+  // The quick toggles are keyed off "is the user menu actually rendered", not
+  // "is the user signed in" — while the pill shows, the menu (which hosts the
+  // theme switch) isn't on screen, so the toggles must stay.
+  const showsStatusPill = !host.isWeb && (!serverOnline || serverBusy);
+  const showsUserMenu = !showsStatusPill && !!accountUser;
+
   // Decorate every task with its pinned state. Tasks come from the
   // conversations endpoint which doesn't know about pins (they live
   // in a separate /pins store), so without this the menu shows
@@ -844,7 +862,7 @@ export default function Sidebar({
               only user-side workaround for a turn that burns its whole
               output budget and returns nothing (ENG-1042). So web always
               gets the plain Settings row; only the pill is gated. */}
-          {(!host.isWeb && (!serverOnline || serverBusy)) ? (
+          {showsStatusPill ? (
               <>
                 <Tooltip content="Backend status — click for details">
                   <button
@@ -880,6 +898,17 @@ export default function Sidebar({
                   </button>
                 </Tooltip>
               </>
+            ) : showsUserMenu ? (
+              // Signed in: the account row + user menu (ENG-1408). Settings
+              // and the theme switch live inside the menu, so the standalone
+              // footer controls below stay signed-out-only (the 8-bit toggle
+              // remains reachable via Settings → Appearance).
+              <UserMenu
+                user={accountUser}
+                theme={theme}
+                onToggleTheme={onToggleTheme}
+                onOpenSettings={() => onNavigate('settings:agent')}
+              />
             ) : (
               <button
                 className={'anton-sidebar__footer-settings flex-1 min-w-0 [-webkit-app-region:no-drag]' + (settingsActive ? ' is-on' : '')}
@@ -890,7 +919,7 @@ export default function Sidebar({
                 <span>Settings</span>
               </button>
             )}
-          {(show8bitToggle || showThemeToggle) && (
+          {!showsUserMenu && (show8bitToggle || showThemeToggle) && (
             // Marks these as quick display toggles, not settings — separate
             // from the Settings/backend-status controls to the left.
             <span
@@ -898,7 +927,7 @@ export default function Sidebar({
               className="anton-sidebar__footer-divider ml-auto [-webkit-app-region:no-drag]"
             />
           )}
-          {show8bitToggle && (
+          {!showsUserMenu && show8bitToggle && (
             <Tooltip content={skin === 'custom' ? '8-bit font' : '8-bit style'}>
               <button
                 className={'chrome-btn--small shrink-0 [-webkit-app-region:no-drag]' + (resolved8bitActive ? ' is-on' : '')}
@@ -909,7 +938,7 @@ export default function Sidebar({
               </button>
             </Tooltip>
           )}
-          {showThemeToggle && (
+          {!showsUserMenu && showThemeToggle && (
             <Tooltip content={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}>
               <button
                 className="chrome-btn--small shrink-0 [-webkit-app-region:no-drag]"
