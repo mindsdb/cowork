@@ -669,6 +669,10 @@ function failedEventMeta(events) {
     // gateway rejected, so the card can name it. `failedModel` locally —
     // "model" is too overloaded in message objects.
     failedModel: ev.model ?? null,
+    // rate_limited: the gateway's own Retry-After, in seconds, so the card can
+    // time-gate its Retry (ENG-1537). Null when the gateway sent no hint — the
+    // card then offers an ungated Retry rather than inventing an interval.
+    retryAfter: typeof ev.retry_after === 'number' ? ev.retry_after : null,
   };
 }
 
@@ -714,6 +718,7 @@ function hydrateMessagesFromServerEvents(messages) {
           reconnectable: failed?.reconnectable ?? null,
           providerLabel: failed?.providerLabel ?? null,
           failedModel: failed?.failedModel ?? null,
+          retryAfter: failed?.retryAfter ?? null,
         });
       }
     }

@@ -51,6 +51,58 @@ describe('unknown_model failure card', () => {
   });
 });
 
+describe('rate_limited failure card (ENG-1537)', () => {
+  const BODY = "Too many requests too quickly. Wait a moment and continue — this isn't a credits problem.";
+
+  it('never offers a top-up — this is a velocity limit, not out of credits', () => {
+    render(<ChatView task={taskWith(failedTurn('rate_limited', BODY))} />);
+    expect(screen.getByText('Too many requests too quickly')).toBeInTheDocument();
+    // THE defect: this used to render the out-of-credits card with a
+    // "Top up balance" button, sending the user to buy something that cannot
+    // lift a per-minute ceiling.
+    expect(screen.queryByRole('button', { name: /top up/i })).toBeNull();
+    expect(screen.queryByText(/out of credits/i)).toBeNull();
+  });
+
+  it('gates Retry while the gateway-supplied wait is still running', () => {
+    render(<ChatView task={taskWith(failedTurn('rate_limited', BODY, {
+      retryAfter: 30,
+      createdAt: new Date().toISOString(),
+    }))} />);
+    // An ungated Retry re-sends a large context into the limiter that just
+    // refused it — the same amplification loop, user-initiated.
+    const btn = screen.getByRole('button', { name: /Try again in \d+s/ });
+    expect(btn).toBeDisabled();
+  });
+
+  it('offers an ungated Retry once the wait has elapsed', () => {
+    render(<ChatView task={taskWith(failedTurn('rate_limited', BODY, {
+      retryAfter: 30,
+      createdAt: new Date(Date.now() - 60_000).toISOString(),
+    }))} />);
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeEnabled();
+  });
+
+  it('offers an ungated Retry when the gateway sent no hint', () => {
+    // Older gateway / stripped header: an honest button beats an invented
+    // countdown.
+    render(<ChatView task={taskWith(failedTurn('rate_limited', BODY))} />);
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeEnabled();
+  });
+
+  it('resends the previous user message on Retry, like provider_overloaded', () => {
+    const onSend = vi.fn();
+    render(
+      <ChatView
+        task={taskWith(failedTurn('rate_limited', BODY))}
+        onSend={onSend}
+      />,
+    );
+    screen.getByRole('button', { name: 'Try again' }).click();
+    expect(onSend).toHaveBeenCalledWith('draw me a chart');
+  });
+});
+
 describe('image_format failure card', () => {
   it('names the fix (PNG/JPEG) with no dead-end buttons', () => {
     render(
@@ -114,6 +166,8 @@ const WIRE_CODES = [
   'model_disabled',
   'provider_overloaded',
   'image_format',
+  // ENG-1537 — the velocity 429, previously mislabelled as out-of-credits.
+  'rate_limited',
   'anton_error',
 ];
 

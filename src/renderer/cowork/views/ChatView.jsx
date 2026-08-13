@@ -852,6 +852,55 @@ function ActionCard({ time, agentLabel, title, body, buttons = [] }) {
   );
 }
 
+// ── RateLimitedCard: a velocity limit, NOT an out-of-credits state ─────────
+// ENG-1537. The org exceeded requests/tokens per minute; credits cannot lift
+// that ceiling, so this card must never offer a top-up. anton already waited
+// in-turn (up to ~90s) before this rendered, so reaching it means the window
+// hadn't cleared — which is precisely why Retry is time-gated against the
+// gateway's own Retry-After: an immediate retry re-sends a large context into
+// the limiter that just refused it, reproducing the amplification loop the fix
+// removed, only user-initiated.
+//
+// No hint (older gateway, stripped header) → an ungated Retry. Better an
+// honest button than an invented countdown.
+function RateLimitedCard({ time, agentLabel, body, retryAfter, createdAt, onRetry }) {
+  const readyAt = useMemo(() => {
+    if (typeof retryAfter !== 'number' || retryAfter <= 0) return null;
+    const started = createdAt ? new Date(createdAt).getTime() : NaN;
+    // An unparseable timestamp must not gate the button forever.
+    if (Number.isNaN(started)) return null;
+    return started + retryAfter * 1000;
+  }, [retryAfter, createdAt]);
+
+  const [now, setNow] = useState(() => Date.now());
+  const remaining = readyAt ? Math.max(0, Math.ceil((readyAt - now) / 1000)) : 0;
+
+  useEffect(() => {
+    if (!readyAt || remaining <= 0) return undefined;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [readyAt, remaining]);
+
+  const buttons = onRetry
+    ? [{
+        label: remaining > 0 ? `Try again in ${remaining}s` : 'Try again',
+        onClick: remaining > 0 ? undefined : onRetry,
+        disabled: remaining > 0,
+        primary: true,
+      }]
+    : [];
+
+  return (
+    <ActionCard
+      time={time}
+      agentLabel={agentLabel}
+      title="Too many requests too quickly"
+      body={body}
+      buttons={buttons}
+    />
+  );
+}
+
 // For **MindsHub** (`reconnectable`), the fix is to re-provision the key in
 // place via mindshubFinalize (the same step login runs) — no logout. For a
 // **BYOK** provider, only the user can fix their own key, so we point them to
@@ -1823,6 +1872,23 @@ export default function ChatView({
                       buttons={retryText
                         ? [{ label: 'Try again', onClick: () => onSend?.(retryText), primary: true }]
                         : []}
+                    />
+                  );
+                }
+                // Velocity rate-limit (gateway 429 `rate_limited`): waiting is
+                // the fix, so the card says so and offers a time-gated Retry —
+                // never a top-up, which is what this used to show (ENG-1537).
+                if (m.code === 'rate_limited') {
+                  const rlRetryText = lastUserTextBefore(visibleMessages, i);
+                  return (
+                    <RateLimitedCard
+                      key={i}
+                      time={formatMetaTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      body={m.content}
+                      retryAfter={m.retryAfter}
+                      createdAt={m.createdAt}
+                      onRetry={rlRetryText ? () => onSend?.(rlRetryText) : undefined}
                     />
                   );
                 }

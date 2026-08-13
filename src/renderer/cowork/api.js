@@ -152,6 +152,8 @@ function _failedEventMeta(events) {
     reconnectable: ev.reconnectable ?? null,
     providerLabel: ev.provider_label ?? null,
     failedModel: ev.model ?? null,
+    // ENG-1537 — see App.jsx's failedEventMeta; the two paths must agree.
+    retryAfter: typeof ev.retry_after === 'number' ? ev.retry_after : null,
   };
 }
 
@@ -197,6 +199,7 @@ function _hydrateAssistantEvents(messages) {
           code: failed?.code || null,
           reconnectable: failed?.reconnectable ?? null,
           providerLabel: failed?.providerLabel ?? null,
+          retryAfter: failed?.retryAfter ?? null,
           failedModel: failed?.failedModel ?? null,
         });
       }

@@ -687,6 +687,24 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
   if (role === 'thought.progress') {
     const phase = event.phase;
 
+    // anton is deliberately idle, waiting out a velocity rate-limit before
+    // resuming the same step (ENG-1537). Surfaced as an ephemeral live line —
+    // the turn is NOT failing, so it must not look like an error, and it must
+    // not be dropped: a silent 90s pause is indistinguishable from a hang, and
+    // that is how a correct wait gets reported as a freeze. Reuses
+    // `currentThought` rather than adding UI, so the existing working state
+    // carries it and the user never has to type "continue".
+    //
+    // Every other ad-hoc phase falls through to the `return state` at the
+    // bottom of this block and is discarded as noise — which is exactly why
+    // this needs an explicit branch.
+    if (phase === 'rate_limited') {
+      const text = event.message || event.content || 'Rate limited — waiting';
+      // A fresh burst, not an append: this interrupts whatever the model was
+      // narrating, and the next real reasoning delta should replace it.
+      return { ...state, currentThought: { text, startedAt: eventTs } };
+    }
+
     // Cell finished — flip the trailing in-progress scratchpad to
     // completed if the .result hasn't arrived yet. (When .result does
     // come in, it'll carry the same status flip plus the output.)
