@@ -53,6 +53,10 @@ export function applyChannelUvIsolation(): void {
 // spawn failed/timed out), string = the resolved login-shell PATH.
 let cachedLoginShellPath: string | null | undefined;
 
+// Precedes the printed PATH so we can find our own output regardless of what
+// an rc file prints before OR after it (banners, async job-control lines).
+const SHELL_PATH_MARKER = '__cowork_shell_path__';
+
 /** Resolve the user's real login-shell PATH once, so getEnvPath() can see
  *  any package manager's bin dir without a hardcoded list. Never throws;
  *  a failure or timeout just leaves getEnvPath() at its prior behavior. */
@@ -63,15 +67,22 @@ export function primeLoginShellPath(): Promise<void> {
     return Promise.resolve();
   }
   const shell = process.env.SHELL || '/bin/sh';
+  // fish's $PATH is a list variable — plain interpolation space-joins it,
+  // so it needs `string join :` where every other shell just uses "$PATH".
+  const cmd = path.basename(shell) === 'fish'
+    ? `echo "${SHELL_PATH_MARKER}"(string join : $PATH)`
+    : `echo "${SHELL_PATH_MARKER}$PATH"`;
   return new Promise((resolve) => {
-    execFile(shell, ['-ilc', 'echo $PATH'], { timeout: 3000 }, (err, stdout) => {
+    execFile(shell, ['-ilc', cmd], { timeout: 3000 }, (err, stdout) => {
       if (err) {
         cachedLoginShellPath = null;
         resolve();
         return;
       }
-      const lines = String(stdout).split('\n').map((l) => l.trim()).filter(Boolean);
-      cachedLoginShellPath = lines.length ? lines[lines.length - 1] : null;
+      const out = String(stdout);
+      const idx = out.lastIndexOf(SHELL_PATH_MARKER);
+      const value = idx === -1 ? '' : out.slice(idx + SHELL_PATH_MARKER.length).split('\n')[0].trim();
+      cachedLoginShellPath = value || null;
       resolve();
     });
   });

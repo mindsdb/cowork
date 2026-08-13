@@ -1310,9 +1310,6 @@ app.whenReady().then(async () => {
   // build kinds on one machine don't share one binary. Must run before the
   // installer's presence check and before the server starts.
   applyChannelUvIsolation();
-  // Background: resolves the real login-shell PATH so uv/tool lookups can
-  // see package managers a GUI launch's PATH misses. Never blocks startup.
-  void primeLoginShellPath();
 
   // Guard the two environment axes against silent disagreement: the build kind
   // (data home / branch) must target the API host the canonical channel model
@@ -1485,6 +1482,9 @@ app.whenReady().then(async () => {
   // checkConfigured() can await the real readiness without polling.
   let resolveBootServer: () => void = () => {};
   bootServerSettled = new Promise<void>((resolve) => { resolveBootServer = resolve; });
+  // Bounded by primeLoginShellPath()'s own timeout — checkInstallStatus and
+  // the server spawn below both resolve uv through the PATH it caches.
+  await primeLoginShellPath();
   checkInstallStatus().then(async ({ antonInstalled }) => {
     if (!antonInstalled) {
       console.log('[server] skipped: cowork-server not installed; setup screen will handle.');
