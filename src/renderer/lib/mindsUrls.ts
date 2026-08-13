@@ -71,6 +71,7 @@ export const MINDS_API_KEY_URL = `${MINDS_CONSOLE_URL}/apiKeys`;
 // Console settings pages the sidebar user menu deep-links to (ENG-1408) —
 // same routes the web console's own user menu navigates to.
 export const MINDS_PROFILE_URL = `${MINDS_CONSOLE_URL}/settings/personal/profile`;
+export const MINDS_GENERAL_URL = `${MINDS_CONSOLE_URL}/settings/organization/general`;
 export const MINDS_MEMBERS_URL = `${MINDS_CONSOLE_URL}/settings/organization/members`;
 
 // Environment-independent MindsHub destinations (docs site + support page).
