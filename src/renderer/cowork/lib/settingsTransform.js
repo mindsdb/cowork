@@ -629,6 +629,42 @@ export function clampBudgetValue(raw, spec, prev = null) {
 }
 
 /**
+ * Is this budget effectively unlimited — i.e. pinned to the top of its range?
+ *
+ * "No limit" writes `spec.max` rather than a sentinel. At `maxTurnTokens`' max
+ * the ceiling cannot fire in practice (the step cap lands first), so the top of
+ * the range IS the off switch — it was only ever a problem because it was
+ * undiscoverable, which the checkbox fixes. A 0-means-unlimited sentinel was
+ * built and removed: it needed a hole in the range, a server-side validator to
+ * guard the hole, and a special case in this clamp, and it collided with
+ * `maxContinuations`, where 0 means literally zero.
+ */
+export function isBudgetUnlimited(value, spec) {
+  if (spec?.max == null || value == null || String(value).trim() === '') return false;
+  return Number(value) >= spec.max;
+}
+
+/**
+ * The number to put back when "no limit" is switched OFF.
+ *
+ * Lives here rather than in the component because it is the one real decision
+ * in the toggle, and `SettingsView` has no test coverage. Order: the value the
+ * user had before they ticked the box, then the last committed value, then the
+ * factory default — never the sentinel itself, which would leave the switch
+ * stuck on. Candidates are clamped, so a remembered value that predates a floor
+ * change comes back legal rather than 400ing the save.
+ */
+export function resolveBudgetRestore(remembered, saved, spec) {
+  for (const candidate of [remembered, saved]) {
+    if (candidate == null) continue;
+    if (String(candidate).trim() === '') continue;
+    if (isBudgetUnlimited(candidate, spec)) continue;
+    return clampBudgetValue(candidate, spec);
+  }
+  return String(spec.fallback);
+}
+
+/**
  * Return `settings` with any present budget keys clamped into range, and
  * empty/unparseable drafts DROPPED from the write entirely.
  *

@@ -10,6 +10,8 @@ import {
   clampBudgetValue,
   clampBudgets,
   BUDGET_FIELDS,
+  isBudgetUnlimited,
+  resolveBudgetRestore,
 } from './settingsTransform';
 
 // The minds-cloud recommended list holds bare aliases — never `latest:`-prefixed.
@@ -428,8 +430,11 @@ describe('per-turn spend ceiling (max_turn_tokens, ENG-1286)', () => {
     // LLM calls' worth of context the ceiling stops the turn before it has done
     // any work. This input clamps UP into the valid range, so a user typing 0 —
     // the natural way to say "no limit" — must not land in that band.
+    // No sentinel: 0 is just below the floor and clamps up like anything else.
     expect(clampBudgetValue('0', spec)).toBe('750000');
+    expect(clampBudgetValue('1', spec)).toBe('750000');
     expect(clampBudgetValue('100000', spec)).toBe('750000');
+    expect(clampBudgetValue('749999', spec)).toBe('750000');
     expect(clampBudgetValue('999999999', spec)).toBe('50000000');
     expect(clampBudgetValue('2000000', spec)).toBe('2000000');
     // Mirrors UserSettings' ge/le exactly; a value the client allows and the
@@ -683,5 +688,42 @@ describe('mergeRecommendedModels — the section/version maps', () => {
       .toEqual(held.modelProviders);
     expect(mergeRecommendedModels(held, { recommendedModels: {} }).modelFamilies)
       .toEqual(held.modelFamilies);
+  });
+});
+
+
+describe('the "no limit" switch (ENG-1286)', () => {
+  const spec = BUDGET_FIELDS.maxTurnTokens;
+
+  it('reads the top of the range as unlimited, and nothing else', () => {
+    expect(isBudgetUnlimited('50000000', spec)).toBe(true);
+    expect(isBudgetUnlimited('1250000', spec)).toBe(false);
+    expect(isBudgetUnlimited('750000', spec)).toBe(false);
+    expect(isBudgetUnlimited('', spec)).toBe(false);
+    expect(isBudgetUnlimited(null, spec)).toBe(false);
+    // 0 is NOT unlimited — it is below the floor. `maxContinuations` next door
+    // uses 0 to mean literally zero auto-continues, and letting 0 mean "no
+    // limit" here would give the same number opposite meanings two fields apart.
+    expect(isBudgetUnlimited('0', spec)).toBe(false);
+  });
+
+  it('restores the pre-toggle value when the switch goes off', () => {
+    expect(resolveBudgetRestore('2000000', '1250000', spec)).toBe('2000000');
+  });
+
+  it('falls back to the last committed value, then the factory default', () => {
+    expect(resolveBudgetRestore(null, '1250000', spec)).toBe('1250000');
+    expect(resolveBudgetRestore(null, null, spec)).toBe('1250000');
+    expect(resolveBudgetRestore('', '', spec)).toBe('1250000');
+  });
+
+  it('never restores the max, which would leave the switch stuck on', () => {
+    expect(resolveBudgetRestore('50000000', '50000000', spec)).toBe('1250000');
+  });
+
+  it('clamps a remembered value that predates a floor change', () => {
+    // Someone who saved 100_000 before the floor moved must come back legal —
+    // the settings write is all-or-nothing, so one out-of-range key 400s the lot.
+    expect(resolveBudgetRestore('100000', null, spec)).toBe('750000');
   });
 });
