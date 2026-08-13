@@ -463,3 +463,68 @@ describe('fetchInFlightList', () => {
     expect(await fetchInFlightList()).toEqual([]);
   });
 });
+
+describe('fetchSessionResult — loader failure classification (ENG-1233 Major 2)', () => {
+  const meta = { id: 'c1', title: 'T', project: null };
+
+  // Drives the two requests independently. A spec is `{ ok?, status?, body? }`,
+  // or the string 'throw' to simulate a network failure (no HTTP status).
+  const stub = (metaSpec, itemsSpec) => {
+    const mk = (spec) => (spec === 'throw'
+      ? () => { throw new Error('offline'); }
+      : async () => ({
+          ok: spec.ok ?? true,
+          status: spec.status ?? 200,
+          headers: { get: () => 'application/json' },
+          json: async () => spec.body ?? {},
+          text: async () => JSON.stringify(spec.body ?? {}),
+        }));
+    const metaFn = mk(metaSpec);
+    const itemsFn = mk(itemsSpec);
+    vi.stubGlobal('fetch', vi.fn(async (url) => (String(url).endsWith('/items') ? itemsFn() : metaFn())));
+  };
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('returns ok with hydrated messages when both requests succeed', async () => {
+    stub({ body: meta }, { body: [{ role: 'user', content: 'hi' }] });
+    const { fetchSessionResult } = await import('./api');
+    const res = await fetchSessionResult('c1');
+    expect(res.status).toBe('ok');
+    expect(res.task.messages.length).toBeGreaterThan(0);
+  });
+
+  it('maps a 404 on metadata to not_found (dead link → redirect)', async () => {
+    stub({ ok: false, status: 404 }, { body: [] });
+    const { fetchSessionResult } = await import('./api');
+    expect(await fetchSessionResult('c1')).toEqual({ status: 'not_found' });
+  });
+
+  it('maps a 5xx on metadata to unavailable with the code', async () => {
+    stub({ ok: false, status: 503 }, { body: [] });
+    const { fetchSessionResult } = await import('./api');
+    expect(await fetchSessionResult('c1')).toEqual({ status: 'unavailable', code: 503 });
+  });
+
+  it('maps a non-404 items failure to unavailable — never a blank ok', async () => {
+    // Metadata exists but the transcript 500s: an ok+[] would silently blank a
+    // real conversation, so the route must offer the retry instead.
+    stub({ body: meta }, { ok: false, status: 500 });
+    const { fetchSessionResult } = await import('./api');
+    expect(await fetchSessionResult('c1')).toEqual({ status: 'unavailable', code: 500 });
+  });
+
+  it('maps an items network failure to unavailable (code 0)', async () => {
+    stub({ body: meta }, 'throw');
+    const { fetchSessionResult } = await import('./api');
+    expect(await fetchSessionResult('c1')).toEqual({ status: 'unavailable', code: 0 });
+  });
+
+  it('treats a 404 on items as an existing-but-empty conversation (the one benign exception)', async () => {
+    stub({ body: meta }, { ok: false, status: 404 });
+    const { fetchSessionResult } = await import('./api');
+    const res = await fetchSessionResult('c1');
+    expect(res.status).toBe('ok');
+    expect(res.task.messages).toEqual([]);
+  });
+});

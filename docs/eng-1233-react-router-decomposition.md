@@ -62,7 +62,7 @@ it. "One Back press" from a leaf returns to where you came from.
 | Sidebar / in-view nav | **push** |
 | New chat, before the server mints an id | **preserve** — the `tmp-` id never enters the URL (`pathForRoute` → `null`); a `/c/tmp-*` push is a dead entry + unrecoverable refresh |
 | Temp → canonical id adoption | **push once** — from Home: `/ → /c/:sid` (one Back to Home); from `/c/:A`: stays on `/c/:A`, then pushes `/c/:sid` (Back to `/c/:A`) |
-| Deep link → 404 (deleted) | **replace → `/`** (`redirect('/')`) |
+| Deep link → 404 (deleted) | `redirect('/')` — see the Loader contract note; the dead URL never lands in history |
 | Deep link → transient failure | **preserve** — keep the URL + retry (Loader contract) |
 | Delete the open conversation | **replace → `/`** (or next recent) |
 | Settings open / close | **push** on open; **`navigate(-1)`** / background on close (a cold `/settings/x` has no history — pick an explicit close target) |
@@ -77,15 +77,18 @@ writes. Don't half-migrate behind the bridge (two sources of truth).
 | Outcome | Behavior |
 |---|---|
 | **found** | return the entity; the route hydrates |
-| **not_found** (404) | `redirect('/')` (or parent list) — dead link |
+| **not_found** (404) | `redirect('/')` (or parent list) — dead link. **`redirect`, not `replace`:** RR7 fires a loader redirect while still committed to the origin (the `/c/:id` entry never commits), so this pushes `[origin, /]` — Back returns to the origin and the dead URL is unreachable. `replace('/')` would replace the *origin* instead (→ `[/]`) and lose it; a cold deep-link's initial redirect is force-replaced by RR anyway. Verified in `CoworkRouter.behavior.test`. |
 | **unavailable** (auth / 5xx / network) | **don't redirect** — return `{ unavailable: true }` (or throw to an `errorElement`); keep the URL + render a retryable error (`useRevalidator()`) |
 | **optimistic / in-flight** | short-circuit the fetch, render from local state |
 | **cancellation** | honor `request.signal`; a superseded nav aborts, doesn't race |
 
-v1 implements this for `/c/:id`: found / not_found→redirect / unavailable→
-`ConversationUnavailable` retry (shown only when there's no local copy) /
-optimistic via the registry (`mark`/`clearOptimisticConversation`, cleared on
-turn completion). `signal` cancellation is v2.
+v1 implements the **failure-mode** contract for `/c/:id` (found / not_found→
+redirect / unavailable→`ConversationUnavailable` retry, shown only when there's
+no local copy / optimistic via the registry —
+`mark`/`clearOptimisticConversation`, cleared on turn completion). **Not yet the
+full contract: `request.signal` cancellation is deferred to v2**, so a superseded
+`/c/:id` nav's fetch isn't aborted (the stale result is just ignored). Every list
+route stays on the bridge (no loader) in v1.
 
 ## Architecture
 
@@ -145,23 +148,36 @@ the rest, conversation + streaming store last. The repo already leans this way
 ## Phases
 
 **v1 (ENG-1535) — mostly done.** Router skeleton + bridge, all in
-`CoworkRouter.jsx`.
+`CoworkRouter.jsx`. It **wires AppCore to the router** (adds `enter*` URL→state
+handlers, the `/c/:id` loader path, detail-resolution + loading state) but does
+**not decompose** it — the ~4,200-line `AppCore` stays whole behind the bridge.
 
 - [x] Router + `CoworkLayout` + temporary `CoworkProvider`.
-- [x] Home + Conversation (`/c/:id`) with the `fetchSessionResult` loader (full
-  contract); new-chat history contract.
+- [x] Home + Conversation (`/c/:id`) with the `fetchSessionResult` loader
+  (failure-mode contract; **`signal` cancellation deferred to v2**); new-chat
+  history contract.
 - [x] All list views via the bridge; detail views (`/projects/:id`,
-  `/scheduled/:id`) resolved client-side (no server change).
-- [x] Behavior + unit tests (loader failures, new-chat history, detail round-trip).
+  `/scheduled/:id`) resolved client-side (no server change), with a stale-request
+  guard + missing-id → `/projects` and a loading state (no wrong-entity flash).
+- [x] Behavior + unit tests (loader failure classification, 404 history, detail
+  round-trip + missing-id replace, requested-id loading state).
+- [ ] **Browser-level e2e (v1 acceptance criterion, not yet done):** the current
+  detail tests drive the context handlers directly; a Playwright/web pass should
+  exercise real list resolution, missing entities, stale responses, and the
+  refresh/Back paths against the running SPA.
 - [ ] `npm run dev:web` click-through (blocked on the auth-realm localhost fix,
   mindsdb/auth#276).
 
 *Accepted debt (→ v2):* the two-way bridge (second source of truth); settings not
-in the URL; list/detail don't distinguish `unavailable` from empty.
+in the URL; list/detail can't distinguish `unavailable` from empty (no `*Result`
+wrapper), so a projects-fetch outage resolves a detail id as "missing".
 
 **v2 (ENG-1536) — idiomatic end-state.** Epic-scale; recommended shape = a
 long-lived integration branch of small per-workstream PRs, web-e2e-gated before
-merging to `staging`.
+merging to `staging`. **Before execution, break the workstreams below into child
+issues with per-route acceptance criteria** (loader outcomes, nav intents, and
+the e2e paths each route must pass) — the list here is a roadmap, not the
+per-route contract.
 
 1. **Server prereq (first, cross-repo):** `GET /projects/{id}` (+ `/scheduled/{id}`).
 2. **Loaders:** every route per the Loader contract (+ `signal`); `*Result`

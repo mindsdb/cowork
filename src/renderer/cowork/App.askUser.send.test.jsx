@@ -8,6 +8,10 @@ const spies = vi.hoisted(() => ({
   streamMessage: vi.fn(),
   cancelResponse: vi.fn(async () => ({})),
   fetchInFlightStatus: vi.fn(async () => ({ in_flight: false })),
+  // Default matches the real fn under this file's denied-network env (an
+  // unavailable result, which the render ignores for locally-present tasks);
+  // the deep-link test overrides it to control loader resolution.
+  fetchSessionResult: vi.fn(async () => ({ status: 'unavailable', code: 0 })),
 }));
 
 // The live stream handles are captured per streamMessage call so the test can
@@ -23,6 +27,7 @@ vi.mock('./api', async (importOriginal) => ({
     { id: 'conv-b', title: 'Beta task', messages: [], status: 'idle', projectName: 'general' },
   ]),
   fetchSession: vi.fn(async () => ({ messages: [] })),
+  fetchSessionResult: (...args) => spies.fetchSessionResult(...args),
   fetchConversationList: vi.fn(async () => []),
   fetchProjects: vi.fn(async () => [{ name: 'general', path: '/tmp/general' }]),
   fetchArtifacts: vi.fn(async () => []),
@@ -127,6 +132,7 @@ vi.mock('./lib/analytics', () => ({
 }));
 
 import App from './App';
+import { markOptimisticConversation, clearOptimisticConversation } from './CoworkRouter';
 import {
   fetchSessions,
   fetchProjects,
@@ -219,6 +225,8 @@ beforeEach(() => {
   spies.cancelResponse.mockClear();
   spies.submitAnswer.mockImplementation(async () => ({ accepted: true }));
   spies.fetchInFlightStatus.mockImplementation(async () => ({ in_flight: false }));
+  spies.fetchSessionResult.mockReset();
+  spies.fetchSessionResult.mockImplementation(async () => ({ status: 'unavailable', code: 0 }));
 });
 
 describe('composer send while a question is pending', () => {
@@ -1011,5 +1019,25 @@ describe('attachment send that would strand at "Queued"', () => {
     expect(await screen.findByText(/pick a project/i)).toBeInTheDocument();
     expect(spies.streamMessage).not.toHaveBeenCalled();
     expect(screen.getByText('shot.png')).toBeInTheDocument();
+  });
+});
+
+describe('a requested conversation id not present locally (ENG-1233 Major 4)', () => {
+  it('renders a loading state, never the tasks[0] recent-conversation fallback', async () => {
+    // The render condition the fix targets: route === 'task' with a requested
+    // activeTaskId that isn't in `tasks` and hasn't errored. We reach it stably
+    // via the optimistic deep link (the loader returns { optimistic } and
+    // openConversation deliberately doesn't merge it into `tasks`) — the same
+    // "requested id, unresolved" state a deep link / scheduled-run open passes
+    // through transiently. The old `tasks[0]` fallback would have rendered
+    // "Alpha task" (conv-a) here; the fix shows the loading state.
+    markOptimisticConversation('conv-ghost');
+    window.history.replaceState(null, '', '/c/conv-ghost');
+    render(<App />);
+
+    // Loading shows — which means currentTask did NOT fall back to a recent.
+    await waitFor(() => expect(screen.getByTestId('conversation-loading')).toBeInTheDocument());
+
+    clearOptimisticConversation('conv-ghost');
   });
 });

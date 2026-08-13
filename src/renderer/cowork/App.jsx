@@ -65,6 +65,7 @@ import {
   CoworkProvider,
   CoworkRouterProvider,
   ConversationUnavailable,
+  ConversationLoading,
   createCoworkRouter,
   initialNavState,
   markOptimisticConversation,
@@ -1831,6 +1832,17 @@ function AppCore() {
   // (selectedProject is resolved from its id by the project route, so null here.)
   const [selectedScheduleId, setSelectedScheduleId] = useState(initialNav.selectedScheduleId ?? null);
   const [selectedProject, setSelectedProject] = useState(null);
+  // The project-detail id currently being resolved from the fetched list, or
+  // null once settled. Distinct from `selectedProject` (which the whole app
+  // reads and the URL bridge mirrors): while this differs from the selection we
+  // render the grid, not a stale project, under `/projects/:id`. Seeded so a
+  // refresh on a detail URL shows the loading grid, not a flash of the list.
+  const [projectDetailPending, setProjectDetailPending] = useState(
+    initialNav.route === 'projects' ? (initialNav.selectedProjectId ?? null) : null
+  );
+  // Monotonic request token so a slow `/projects/:A` response can't overwrite a
+  // later `/projects/:B` resolution (rapid detail-to-detail navigation).
+  const projectDetailReqRef = useRef(0);
   // Defaults to "Model Router" — defer to whatever this account's Settings
   // has configured — until a composer picks a concrete model for a task.
   // Never re-synced from settings after that: its whole point is that it
@@ -2299,15 +2311,29 @@ function AppCore() {
   }, [settings]);
 
   const activeTasks = tasks.filter((t) => t.status === 'active');
-  const currentTask = tasks.find((t) => t.id === activeTaskId) || (route === 'task' ? tasks[0] : null);
+  const resolvedTask = tasks.find((t) => t.id === activeTaskId) || null;
+  // Only fall back to a default task when no id is requested. A requested id
+  // that isn't local yet (deep link / scheduled-run open) is still loading —
+  // falling back to tasks[0] would flash an unrelated recent conversation.
+  const currentTask = resolvedTask || (route === 'task' && !activeTaskId ? tasks[0] : null);
   // Loader hit a transient failure and there's nothing local — show the retry
-  // rather than an empty (or, via the `tasks[0]` fallback, wrong) ChatView. A
-  // locally-available conversation keeps rendering during a blip.
+  // rather than an empty (or, via the old `tasks[0]` fallback, wrong) ChatView.
+  // A locally-available conversation keeps rendering during a blip.
   const showConversationError =
     route === 'task' &&
     conversationError != null &&
     conversationError === activeTaskId &&
-    !tasks.some((t) => t.id === activeTaskId);
+    !resolvedTask;
+  // Requested id not resolved and not (yet) errored: show a loading state, not
+  // the wrong conversation, until openConversation merges it into local state.
+  const showConversationLoading =
+    route === 'task' && activeTaskId != null && !resolvedTask && !showConversationError;
+  // A detail URL whose id isn't yet the selected project (resolving, or cold
+  // deep link): show the grid, never a stale project, under `/projects/:id`.
+  const projectDetailResolving =
+    projectDetailPending != null &&
+    !(selectedProject && (selectedProject.id === projectDetailPending || selectedProject.name === projectDetailPending));
+  const selectedProjectForView = projectDetailResolving ? null : selectedProject;
   // Tasks belong to one project for life. Resolve via projectName
   // first (server's canonical id), then projectPath, then fall back
   // to the currently-selected project for orphans.
@@ -3161,11 +3187,13 @@ function AppCore() {
   const enterHome = useCallback(() => {
     setRoute('home');
     setConversationError(null);
+    setProjectDetailPending(null);
   }, []);
 
   const enterRoute = useCallback((key) => {
     setRoute(key);
     setConversationError(null);
+    setProjectDetailPending(null); // leaving a detail route (or landing on the grid)
     if (key === 'artifacts') {
       fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
     } else if (key === 'projects') {
@@ -3184,16 +3212,27 @@ function AppCore() {
   // Detail routes → state (v1). No single-resource loader: resolve the entity
   // client-side from the fetched list, so refresh / deep-link restore the
   // selection with no server change.
+  // Returns a promise resolving to `false` when the id isn't in the list (the
+  // route element then replaces the dead URL with `/projects`), else truthy.
   const enterProjectDetail = useCallback((projectId) => {
     setRoute('projects');
     setConversationError(null);
-    fetchProjects().then((data) => {
-      if (!Array.isArray(data)) return;
+    // Resolving this id: render the grid (not a stale project) until it settles.
+    setProjectDetailPending(projectId);
+    const reqId = ++projectDetailReqRef.current;
+    return fetchProjects().then((data) => {
+      if (reqId !== projectDetailReqRef.current) return true; // superseded — a newer id owns pending
+      if (!Array.isArray(data)) { setProjectDetailPending(null); return true; }
       setProjects(data);
       const found = data.find((p) => p.id === projectId || p.name === projectId);
-      if (found) setSelectedProject(found);
-      // Not found → leave selection empty; the bridge canonicalizes to `/projects`.
-    }).catch(() => {});
+      if (found) { setProjectDetailPending(null); setSelectedProject(found); return true; }
+      // Confirmed missing: keep `pending` set (stays on the grid) — the route
+      // element replaces the URL with `/projects`, whose enterRoute clears it.
+      return false;
+    }).catch(() => {
+      if (reqId === projectDetailReqRef.current) setProjectDetailPending(null);
+      return true; // transient failure → keep the URL, don't bounce
+    });
   }, []);
 
   const enterScheduleDetail = useCallback((scheduleId) => {
@@ -5077,6 +5116,8 @@ function AppCore() {
 
         {route === 'task' && showConversationError && <ConversationUnavailable />}
 
+        {route === 'task' && showConversationLoading && <ConversationLoading />}
+
         {route === 'task' && currentTask && !showConversationError && (
           <ChatView
             task={currentTask}
@@ -5204,7 +5245,8 @@ function AppCore() {
         {route === 'projects' && (
           <ProjectsView
             projects={projects}
-            selectedProject={selectedProject}
+            selectedProject={selectedProjectForView}
+            loading={projectDetailResolving}
             tasks={tasks}
             scheduled={scheduled}
             scheduleRunsIndex={scheduleRunsIndex}

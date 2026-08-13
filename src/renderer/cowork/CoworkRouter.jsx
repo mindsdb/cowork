@@ -25,7 +25,7 @@ import {
 } from 'react-router-dom';
 import { host } from '../platform/host';
 import { fetchSessionResult } from './api';
-import { EmptyState, Button } from './components/ui';
+import { EmptyState, Button, Spinner } from './components/ui';
 
 // Ids that aren't yet loadable via the API (a new-chat send + the canonical id
 // the server later mints). The loader renders these from local state instead of
@@ -199,12 +199,21 @@ function ViewRoute({ name }) {
 }
 
 // `/projects/:projectId` — resolves the project object from the id client-side
-// (from the fetched list; no single-project endpoint in v1).
+// (from the fetched list; no single-project endpoint in v1). enterProjectDetail
+// resolves to `false` when the id isn't in the list; replace the dead detail
+// URL with the grid (replace, not push, so Back skips the missing entry).
 function ProjectDetailRoute() {
   const { projectId } = useParams();
   const { enterProjectDetail } = useCowork();
+  const navigate = useNavigate();
   useEffect(() => {
-    enterProjectDetail(projectId);
+    let active = true;
+    Promise.resolve(enterProjectDetail(projectId)).then((found) => {
+      if (active && found === false) navigate('/projects', { replace: true });
+    });
+    return () => { active = false; };
+    // enterProjectDetail (AppCore useCallback) and navigate are stable — depend
+    // only on the id, matching the other route elements.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
   return null;
@@ -241,6 +250,17 @@ export function ConversationUnavailable() {
   );
 }
 
+// Shown while a requested conversation id hasn't resolved into local state yet
+// (deep link / scheduled-run open). Avoids briefly rendering an unrelated recent
+// conversation, which the old `tasks[0]` fallback did.
+export function ConversationLoading() {
+  return (
+    <div className="flex-1 min-h-0 grid place-items-center text-ink-3" data-testid="conversation-loading">
+      <Spinner style={{ fontSize: 22 }} />
+    </div>
+  );
+}
+
 // `/c/:id` loader. Distinguishes the failure modes so the route can react: a
 // 404 drops the dead link Home; a transient failure keeps the URL + retries.
 async function conversationLoader({ params }) {
@@ -248,6 +268,12 @@ async function conversationLoader({ params }) {
   // Not-yet-persisted conversation (mid-send): render from local state.
   if (isOptimisticConversation(id)) return { optimistic: true, id };
   const result = await fetchSessionResult(id);
+  // 404 → `redirect('/')`, NOT `replace('/')`. In RR7's data router a loader
+  // redirect fires while still committed to the origin — the `/c/:id` entry
+  // never commits — so this pushes `[origin, /]`: Back returns to the origin and
+  // the dead URL is unreachable (verified in CoworkRouter.behavior.test). A
+  // `replace` here would instead replace the *origin* (→ `[/]`) and lose it; on
+  // a cold deep-link RR already forces the initial redirect to replace.
   if (result.status === 'not_found') return redirect('/');
   if (result.status === 'unavailable') return { unavailable: true, id };
   return { task: result.task, id };

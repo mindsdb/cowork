@@ -26,7 +26,10 @@ import {
   clearOptimisticConversation,
 } from './CoworkRouter';
 
-function makeHarness(initialNav) {
+function makeHarness(initialNav, opts = {}) {
+  // Whether a given project id resolves from the fetched list. Default: found.
+  // `false` exercises the missing-detail path (route element replaces the URL).
+  const projectExists = opts.projectExists || (() => true);
   const ctl = {
     setNav: null,
     openConversation: vi.fn(),
@@ -50,7 +53,14 @@ function makeHarness(initialNav) {
       enterHome: () => { ctl.enterHome(); setNav({ route: 'home' }); },
       enterRoute: (k) => { ctl.enterRoute(k); setNav({ route: k }); },
       openConversation: (id, loaded) => { ctl.openConversation(id, loaded); },
-      enterProjectDetail: (id) => { ctl.enterProjectDetail(id); setNav({ route: 'projects', selectedProjectId: id }); },
+      // Resolves to found/not-found so the route element can replace a dead
+      // detail URL — the real enterProjectDetail has the same contract.
+      enterProjectDetail: (id) => {
+        ctl.enterProjectDetail(id);
+        const found = projectExists(id);
+        if (found) setNav({ route: 'projects', selectedProjectId: id });
+        return Promise.resolve(found);
+      },
       enterScheduleDetail: (id) => { ctl.enterScheduleDetail(id); setNav({ route: 'schedule-detail', selectedScheduleId: id }); },
     };
     return (
@@ -62,9 +72,9 @@ function makeHarness(initialNav) {
   return { ctl, Harness };
 }
 
-function renderAt(initialEntries, initialNav) {
-  const router = createMemoryRouter(routes, { initialEntries });
-  const { ctl, Harness } = makeHarness(initialNav);
+function renderAt(initialEntries, initialNav, opts = {}) {
+  const router = createMemoryRouter(routes, { initialEntries, initialIndex: initialEntries.length - 1 });
+  const { ctl, Harness } = makeHarness(initialNav, opts);
   render(<Harness router={router} />);
   return { router, ctl };
 }
@@ -89,12 +99,27 @@ describe('conversation loader failure handling (ENG-1233 Major 2)', () => {
     expect(router.state.location.pathname).toBe('/c/known');
   });
 
-  it('redirects a genuinely-missing (404) deep link home', async () => {
+  it('redirects a 404 deep link Home without trapping the dead URL in history', async () => {
+    // RR7 subtlety (ENG-1233 Major 1): a loader redirect fires while still
+    // committed to the origin — the `/c/:id` entry never commits — so
+    // `redirect('/')` pushes `[origin, /]`. Back returns to the origin and the
+    // dead URL is unreachable in either direction. (`replace('/')` would replace
+    // the origin instead and lose it — see the loader comment.)
     fetchSessionResult.mockResolvedValue({ status: 'not_found' });
-    const { router, ctl } = renderAt(['/c/missing'], { route: 'task', activeTaskId: 'missing' });
+    const { router, ctl } = renderAt(['/projects'], { route: 'projects' });
+    await waitFor(() => expect(router.state.location.pathname).toBe('/projects'));
 
+    await act(async () => { await router.navigate('/c/missing'); });
     await waitFor(() => expect(router.state.location.pathname).toBe('/'));
     expect(ctl.enterHome).toHaveBeenCalled();
+
+    // Back returns to the origin, not the dead conversation.
+    await act(async () => { await router.navigate(-1); });
+    await waitFor(() => expect(router.state.location.pathname).toBe('/projects'));
+
+    // Forward does NOT resurrect /c/missing — it never entered history.
+    await act(async () => { await router.navigate(1); });
+    await waitFor(() => expect(router.state.location.pathname).toBe('/'));
   });
 
   it('keeps the URL and flags unavailable on a transient failure (does NOT redirect home)', async () => {
@@ -150,6 +175,21 @@ describe('detail routes carry their entity id (ENG-1233 v1)', () => {
     });
     await waitFor(() => expect(ctl.enterScheduleDetail).toHaveBeenCalledWith('sched-9'));
     expect(router.state.location.pathname).toBe('/scheduled/sched-9');
+  });
+
+  it('replaces a missing project deep link with the grid, and Back skips the dead URL (Major 3)', async () => {
+    const { router, ctl } = renderAt(
+      ['/scheduled', '/projects/ghost'],
+      { route: 'projects' },
+      { projectExists: () => false },
+    );
+    await waitFor(() => expect(ctl.enterProjectDetail).toHaveBeenCalledWith('ghost'));
+    // Not in the fetched list → the dead detail URL is replaced with the grid.
+    await waitFor(() => expect(router.state.location.pathname).toBe('/projects'));
+
+    // replace, not push: Back returns to the origin, not to /projects/ghost.
+    await act(async () => { await router.navigate(-1); });
+    await waitFor(() => expect(router.state.location.pathname).toBe('/scheduled'));
   });
 
   it('pushes /projects/:id when a project is selected, and Back returns to the grid', async () => {
