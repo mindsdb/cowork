@@ -92,6 +92,9 @@ export async function start({ readyTimeoutMs = 15000 } = {}) {
     ...process.env,
     PATH: getEnvPath(),
     PYTHONUNBUFFERED: '1',
+    // Pin the dev home; unset COWORK_HOME defaults to ~/.cowork (prod). Mirrors
+    // server-process.ts, which the Electron dev path already does.
+    COWORK_HOME: process.env.COWORK_HOME || path.join(os.homedir(), '.cowork-dev'),
     // Both port names — see server-process.ts spawn env for why.
     COWORK_SERVER_PORT: String(DEFAULT_PORT),
     COWORK_LISTEN_PORT: String(DEFAULT_PORT),
