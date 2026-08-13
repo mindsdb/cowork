@@ -183,9 +183,15 @@ export function findUv(): string | null {
   const explicit = getUvBinary();
   if (fs.existsSync(explicit)) return explicit;
 
-  if (process.platform === 'win32' && process.env.LOCALAPPDATA) {
-    const winCandidate = path.join(process.env.LOCALAPPDATA, 'bin', 'uv.exe');
-    if (fs.existsSync(winCandidate)) return winCandidate;
+  if (process.platform === 'win32') {
+    const scoopCandidate = path.join(os.homedir(), 'scoop', 'shims', 'uv.exe');
+    if (fs.existsSync(scoopCandidate)) return scoopCandidate;
+    if (process.env.LOCALAPPDATA) {
+      const winCandidate = path.join(process.env.LOCALAPPDATA, 'bin', 'uv.exe');
+      if (fs.existsSync(winCandidate)) return winCandidate;
+      const wingetCandidate = path.join(process.env.LOCALAPPDATA, 'Microsoft', 'WinGet', 'Links', 'uv.exe');
+      if (fs.existsSync(wingetCandidate)) return wingetCandidate;
+    }
   }
 
   const cargoBin = path.join(os.homedir(), '.cargo', 'bin', process.platform === 'win32' ? 'uv.exe' : 'uv');
