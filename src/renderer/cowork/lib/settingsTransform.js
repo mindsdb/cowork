@@ -63,6 +63,7 @@ export const SETTINGS_KEY_MAP = {
   act_first: 'actFirst',
   max_tool_rounds: 'maxToolRounds',
   max_continuations: 'maxContinuations',
+  max_turn_tokens: 'maxTurnTokens',
   publish_url: 'publishUrl',
   greeting: 'greeting',
   tone: 'tone',
@@ -585,7 +586,7 @@ export function diffSettingsForWrite(patch, lastFetched) {
 
 // ─── Agent budget clamping ───────────────────────────────────────────
 //
-// The server bounds these (pydantic ge/le) and 422s anything outside, and a
+// The server bounds these (pydantic ge/le) and 400s anything outside, and a
 // failed key fails the whole multi-key save — so the client must never PUT
 // an out-of-range value. Values are STRINGS end-to-end (server rows are
 // strings; the page-wide dirty compare is a JSON diff, so types must survive
@@ -594,6 +595,19 @@ export function diffSettingsForWrite(patch, lastFetched) {
 export const BUDGET_FIELDS = {
   maxToolRounds: { min: 5, max: 500, fallback: 50 },
   maxContinuations: { min: 0, max: 25, fallback: 5 },
+  // Per-turn spend ceiling (ENG-1286). `min` is 750_000, not 0 and not a
+  // rounder-looking 100_000: a turn's first LLM call costs roughly the
+  // conversation's context (~190k on a long one), so a ceiling below a couple
+  // of calls stops the turn before it has done anything. Measured against
+  // anton, a 100_000 ceiling dispatched ZERO tools and still spent 400_000 —
+  // and this input CLAMPS INTO that band, so a user typing 0 (the natural way
+  // to say "no limit") landed on the single worst value available. 750_000 is
+  // the lowest value where a 190k-context turn still gets several rounds, and
+  // it sits just above the p75 external turn (736k).
+  // Ranges must stay in lockstep with UserSettings' ge/le — a value this clamp
+  // allows but the server rejects 400s the whole multi-key save, not just this
+  // field. cowork-server pins the mirror in test_agent_budget_settings.py.
+  maxTurnTokens: { min: 750_000, max: 50_000_000, fallback: 1_250_000 },
 };
 
 /**
@@ -612,6 +626,49 @@ export function clampBudgetValue(raw, spec, prev = null) {
     n = (prev != null && String(prev).trim() !== '' && !Number.isNaN(p)) ? p : fallback;
   }
   return String(Math.min(max, Math.max(min, n)));
+}
+
+/**
+ * Is this budget effectively unlimited — i.e. pinned to the top of its range?
+ *
+ * "No limit" writes `spec.max` rather than a sentinel, so the top of the range
+ * IS the off switch — it was only ever a problem because it was undiscoverable,
+ * which the checkbox fixes.
+ *
+ * EFFECTIVELY off, not literally: a turn makes roughly
+ * `maxToolRounds x (maxContinuations + 1)` LLM calls, so at the server's
+ * defaults (50 x 6 = ~306) 50M is reached at ~163k per call — below the ~190k a
+ * long conversation carries. It has never happened (largest turn in 30 days of
+ * production: 8.26M), but the step cap is not a guarantee that it can't.
+ *
+ * A 0-means-unlimited sentinel was
+ * built and removed: it needed a hole in the range, a server-side validator to
+ * guard the hole, and a special case in this clamp, and it collided with
+ * `maxContinuations`, where 0 means literally zero.
+ */
+export function isBudgetUnlimited(value, spec) {
+  if (spec?.max == null || value == null || String(value).trim() === '') return false;
+  return Number(value) >= spec.max;
+}
+
+/**
+ * The number to put back when "no limit" is switched OFF.
+ *
+ * Lives here rather than in the component because it is the one real decision
+ * in the toggle, and `SettingsView` has no test coverage. Order: the value the
+ * user had before they ticked the box, then the last committed value, then the
+ * factory default — never the sentinel itself, which would leave the switch
+ * stuck on. Candidates are clamped, so a remembered value that predates a floor
+ * change comes back legal rather than 400ing the save.
+ */
+export function resolveBudgetRestore(remembered, saved, spec) {
+  for (const candidate of [remembered, saved]) {
+    if (candidate == null) continue;
+    if (String(candidate).trim() === '') continue;
+    if (isBudgetUnlimited(candidate, spec)) continue;
+    return clampBudgetValue(candidate, spec);
+  }
+  return String(spec.fallback);
 }
 
 /**

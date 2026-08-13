@@ -9,6 +9,9 @@ import {
   mergeRecommendedModels,
   clampBudgetValue,
   clampBudgets,
+  BUDGET_FIELDS,
+  isBudgetUnlimited,
+  resolveBudgetRestore,
 } from './settingsTransform';
 
 // The minds-cloud recommended list holds bare aliases — never `latest:`-prefixed.
@@ -392,6 +395,55 @@ describe('agent tool-budget settings (max_tool_rounds / max_continuations)', () 
   });
 });
 
+describe('per-turn spend ceiling (max_turn_tokens, ENG-1286)', () => {
+  it('transforms the server row into a camelCase string value', async () => {
+    const { transformSettingsRows } = await import('./settingsTransform');
+    const rows = [
+      { key: 'max_turn_tokens', value: '1250000', is_sensitive: false, is_set: false },
+    ];
+    expect(transformSettingsRows(rows).maxTurnTokens).toBe('1250000');
+  });
+
+  it('writes the changed ceiling to its snake_case key', () => {
+    expect(
+      diffSettingsForWrite({ maxTurnTokens: '2000000' }, { maxTurnTokens: '1250000' }),
+    ).toEqual({ max_turn_tokens: '2000000' });
+  });
+
+  it('is not written to a server that did not send it', () => {
+    // The renderer ships OTA and leads the installed server, so it will run
+    // against a cowork-server that has the other two budgets but not this one.
+    // A PUT there 400s and fails the WHOLE multi-key save — taking the user's
+    // other settings changes down with it, which is why this is budget-scoped
+    // rather than best-effort.
+    expect(
+      diffSettingsForWrite(
+        { maxTurnTokens: '2000000', maxToolRounds: '80' },
+        { maxToolRounds: '50' },
+      ),
+    ).toEqual({ max_tool_rounds: '80' });
+  });
+
+  it('clamps to bounds that match the server, and cannot be switched off', () => {
+    const spec = BUDGET_FIELDS.maxTurnTokens;
+    // The floor is 750_000, and it is not arbitrary: below roughly a couple of
+    // LLM calls' worth of context the ceiling stops the turn before it has done
+    // any work. This input clamps UP into the valid range, so a user typing 0 —
+    // the natural way to say "no limit" — must not land in that band.
+    // No sentinel: 0 is just below the floor and clamps up like anything else.
+    expect(clampBudgetValue('0', spec)).toBe('750000');
+    expect(clampBudgetValue('1', spec)).toBe('750000');
+    expect(clampBudgetValue('100000', spec)).toBe('750000');
+    expect(clampBudgetValue('749999', spec)).toBe('750000');
+    expect(clampBudgetValue('999999999', spec)).toBe('50000000');
+    expect(clampBudgetValue('2000000', spec)).toBe('2000000');
+    // Mirrors UserSettings' ge/le exactly; a value the client allows and the
+    // server rejects 400s the whole multi-key save (cowork-server asserts the
+    // other direction in test_agent_budget_settings.py).
+    expect([spec.min, spec.max]).toEqual([750_000, 50_000_000]);
+  });
+});
+
 describe('clampBudgetValue / clampBudgets', () => {
   const spec = { min: 5, max: 500, fallback: 50 };
 
@@ -636,5 +688,42 @@ describe('mergeRecommendedModels — the section/version maps', () => {
       .toEqual(held.modelProviders);
     expect(mergeRecommendedModels(held, { recommendedModels: {} }).modelFamilies)
       .toEqual(held.modelFamilies);
+  });
+});
+
+
+describe('the "no limit" switch (ENG-1286)', () => {
+  const spec = BUDGET_FIELDS.maxTurnTokens;
+
+  it('reads the top of the range as unlimited, and nothing else', () => {
+    expect(isBudgetUnlimited('50000000', spec)).toBe(true);
+    expect(isBudgetUnlimited('1250000', spec)).toBe(false);
+    expect(isBudgetUnlimited('750000', spec)).toBe(false);
+    expect(isBudgetUnlimited('', spec)).toBe(false);
+    expect(isBudgetUnlimited(null, spec)).toBe(false);
+    // 0 is NOT unlimited — it is below the floor. `maxContinuations` next door
+    // uses 0 to mean literally zero auto-continues, and letting 0 mean "no
+    // limit" here would give the same number opposite meanings two fields apart.
+    expect(isBudgetUnlimited('0', spec)).toBe(false);
+  });
+
+  it('restores the pre-toggle value when the switch goes off', () => {
+    expect(resolveBudgetRestore('2000000', '1250000', spec)).toBe('2000000');
+  });
+
+  it('falls back to the last committed value, then the factory default', () => {
+    expect(resolveBudgetRestore(null, '1250000', spec)).toBe('1250000');
+    expect(resolveBudgetRestore(null, null, spec)).toBe('1250000');
+    expect(resolveBudgetRestore('', '', spec)).toBe('1250000');
+  });
+
+  it('never restores the max, which would leave the switch stuck on', () => {
+    expect(resolveBudgetRestore('50000000', '50000000', spec)).toBe('1250000');
+  });
+
+  it('clamps a remembered value that predates a floor change', () => {
+    // Someone who saved 100_000 before the floor moved must come back legal —
+    // the settings write is all-or-nothing, so one out-of-range key 400s the lot.
+    expect(resolveBudgetRestore('100000', null, spec)).toBe('750000');
   });
 });

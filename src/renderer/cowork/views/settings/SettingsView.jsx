@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef, useContext } from 'react';
 import { useId } from 'react';
 import Ico from '../../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchRecommendedModels } from '../../api';
-import { providerTypeToKeyField, providerValueToType, resolveModelPickerValue, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, clampBudgetValue, clampBudgets, BUDGET_FIELDS } from '../../lib/settingsTransform';
+import { providerTypeToKeyField, providerValueToType, resolveModelPickerValue, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore } from '../../lib/settingsTransform';
 import { MODEL_REFRESH_TTL_MS } from '../../lib/modelRefresh';
 import { trackHarnessSwapped } from '../../lib/analytics';
 import { copyText as copyToClipboard } from '../../lib/clipboard';
@@ -69,9 +69,25 @@ const LINK_BTN =
 //     factory default (clearing a saved 500 to retype must not save 50).
 // Escape-dismiss skips blur entirely; clampBudgets() in save() is the
 // backstop that keeps rejectable values out of every PUT.
-function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSetting }) {
+function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSetting, unlimitedLabel }) {
   const { min, max, fallback } = spec;
   const hintId = useId();
+  // "No limit" writes the TOP of the range, which already was the off switch —
+  // it was just undiscoverable, which is the whole job of this checkbox. Writing
+  // `spec.max` keeps the range contiguous, so there is no sentinel to guard with
+  // a server-side validator and no special case in the clamp.
+  //
+  // The hint below says "only the step and auto-continue caps apply" rather
+  // than promising infinity, and that wording is load-bearing: at ~306 calls
+  // (the server's default 50 rounds x 6 passes) 50M is reached at ~163k per
+  // call, which a long conversation can carry. Never observed — largest turn in
+  // 30 days was 8.26M — but not impossible.
+  const showUnlimited = unlimitedLabel != null && spec.max != null;
+  const isUnlimited = showUnlimited && isBudgetUnlimited(value, spec);
+  // The number to put back when the switch goes off. A ref, not state: it must
+  // survive re-renders without causing one, and it is read only on toggle.
+  const preToggle = useRef(null);
+  if (showUnlimited && !isUnlimited && value != null) preToggle.current = value;
   // The last COMMITTED value, from the page's saved-state snapshot — never a
   // draft. Tracking "last parseable edit" instead was a bug (Codex review on
   // #514): editing a saved 120 to an unsaved 300, then clearing, restored the
@@ -80,6 +96,21 @@ function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSett
     savedValue != null && String(savedValue).trim() !== '' ? String(savedValue) : null;
   return (
     <div className="inline-flex items-baseline gap-2">
+      {showUnlimited && (
+        <label className="inline-flex items-baseline gap-1.5 mr-1 whitespace-nowrap">
+          <Checkbox
+            checked={isUnlimited}
+            onCheckedChange={(on) => setSetting(
+              settingKey,
+              on
+                ? String(spec.max)
+                : resolveBudgetRestore(preToggle.current, savedValue, spec),
+            )}
+            aria-label={unlimitedLabel}
+          />
+          <span className="text-[11.5px] text-ink-3">{unlimitedLabel}</span>
+        </label>
+      )}
       {/* globals.css `.field-input` sets width:100% and loads after the
           Tailwind layer, so a w-[90px] utility loses the cascade — inline
           width is the one reliable override here. */}
@@ -91,7 +122,12 @@ function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSett
         min={min}
         max={max}
         step={1}
-        value={value ?? String(fallback)}
+        disabled={isUnlimited}
+        // Show the number they'd return to, not the max: a disabled field
+        // reading 50000000 invites someone to "fix" it back down by hand.
+        value={isUnlimited
+          ? resolveBudgetRestore(preToggle.current, savedValue, spec)
+          : (value ?? String(fallback))}
         onChange={(e) => setSetting(settingKey, e.target.value)}
         onBlur={(e) => {
           if (value == null) return; // untouched — don't materialize the key
@@ -108,7 +144,9 @@ function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSett
         title={`${label} (${min}–${max}, default ${fallback})`}
       />
       <span id={hintId} className="text-[11.5px] text-ink-3 whitespace-nowrap">
-        {min}&ndash;{max} &middot; default {fallback}
+        {isUnlimited
+          ? 'no limit — only the step and auto-continue caps apply'
+          : <>{min}&ndash;{max} &middot; default {fallback}</>}
       </span>
     </div>
   );
@@ -1769,6 +1807,27 @@ export default function SettingsView({
                 setSetting={setSetting}
               />
             </Section>
+            {/* Gated on its OWN key, not folded into `hasBudgetSettings`.
+                This setting reaches the server one release after the other two,
+                so requiring it in that gate would hide the whole group — and
+                the two working fields with it — on every server that predates
+                it. The renderer ships OTA and leads the installed server. */}
+            {'maxTurnTokens' in settings && (
+              <Section
+                title="Max tokens per task"
+                subtitle={`The most tokens ${agentLabel || 'Anton'} may spend on one request before pausing to check in with you. Tokens are what your plan's monthly allowance is measured in, so a task that gets stuck can use up a large share of the month without finishing. Raise it if you routinely give it big jobs; lower it to cap what any single request can cost.`}
+              >
+                <BudgetNumberField
+                  settingKey="maxTurnTokens"
+                  value={settings.maxTurnTokens}
+                  savedValue={lastSavedSettings?.maxTurnTokens}
+                  spec={BUDGET_FIELDS.maxTurnTokens}
+                  label="Max tokens per task"
+                  setSetting={setSetting}
+                  unlimitedLabel="No limit"
+                />
+              </Section>
+            )}
           </SettingsGroup>
         )}
       </SettingsSectionPanel>
