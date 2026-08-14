@@ -144,8 +144,13 @@ describe('rate_limited failure card (ENG-1537)', () => {
     // reintroducing `created_at + retryAfter` as the anchor would go green in
     // CI and gate for ~7h for every user west of UTC. Requiring an offset makes
     // that failure mode "no gate" — visible, and assertable in any zone.
+    // RELATIVE, not a literal date. A hardcoded future date stops testing
+    // anything once it passes: from 2026-12-02 the value is in the past, so the
+    // clamp path returns null and the test goes green with the offset check
+    // deleted — silently ceasing to guard the regression it exists for.
+    const naive = new Date(Date.now() + 30_000).toISOString().replace('Z', '');
     render(<ChatView task={taskWith(failedTurn('rate_limited', BODY, {
-      retryAt: '2026-12-01T10:00:00',   // naive: exactly what created_at looks like
+      retryAt: naive,   // exactly the shape created_at has
     }))} />);
     expect(screen.getByRole('button', { name: 'Try again' })).toBeEnabled();
   });
