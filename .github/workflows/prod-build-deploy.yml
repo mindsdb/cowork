@@ -63,6 +63,22 @@ jobs:
       app_version: ${{ needs.auto-release.outputs.tag }}
     secrets: inherit
 
+  release-smoke:
+    # The independent second opinion on the release. The upload job verifies its
+    # own work from inside the pipeline; this one downloads the result the way a
+    # user does, in a real browser, from the public CDN.
+    #
+    # `prod` only, and the version this run tagged. The stable channel's
+    # manifest comes from a push to `staging` and has nothing to say about this
+    # release, so asserting it here would fail a release that worked. The
+    # version is what makes the check about THIS release rather than about
+    # whichever manifest happens to be published.
+    needs: [auto-release, build-installers]
+    uses: ./.github/workflows/release-smoke.yml
+    with:
+      channels: prod
+      version: ${{ needs.auto-release.outputs.version }}
+
   publish-ui:
     # Waits on build-installers, not just the tag: the manifest names that
     # installer as the latest shell version, so publishing before the installer
@@ -85,15 +101,17 @@ jobs:
 
   notify:
     # Alert the eng channel if ANY job in the prod pipeline fails — the tag, the
-    # image, the installers, or the UI publish. A called workflow reports failure
-    # when any job inside it failed, so five entries cover the whole graph.
+    # image, the installers, the public-download smoke, or the UI publish. A
+    # called workflow reports failure when any job inside it failed, so the
+    # entries below cover the whole graph.
     # One job covers both outcomes: a `uses:` job cannot branch on status, so
     # the aggregate result picks the failed or recovered message, and a
     # cancelled run stays silent.
     #
     # It cannot cover a run that never started (`startup_failure`, zero jobs) —
     # there is no job to put it in. pipeline-watchdog.yml covers that from outside.
-    needs: [run-unit-tests, build-deploy, auto-release, build-installers, publish-ui]
+    needs:
+      [run-unit-tests, build-deploy, auto-release, build-installers, release-smoke, publish-ui]
     if: ${{ !cancelled() && !contains(needs.*.result, 'cancelled') }}
     permissions:
       contents: read
