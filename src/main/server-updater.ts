@@ -38,12 +38,15 @@ import {
   parseVcsInfo,
   decideGitUpdate,
   decidePypiUpdate,
+  decideStreamRepair,
+  isPrereleaseVersion,
   looksLikeBrokenInstall,
   parseAntonPin,
   parseAntonConstraint,
   satisfiesAntonConstraint,
   selectLatestPypiVersion,
   selectLatestConstrainedPypiVersion,
+  type StreamRepairDecision,
   type VcsInfo,
 } from './update-logic';
 import {
@@ -230,11 +233,15 @@ async function reinstallFromSource(uv: string, toolsDir?: string): Promise<{ ok:
   // stream is a silent downgrade — and a downgraded server can face a
   // database migrated ahead of it and fail to boot. Unknown version
   // (corrupt venv metadata) falls back to the latest stable, best effort.
+  // Exception: a prod build holding a pre-release is off its stream — never
+  // re-pin that; the bare name resolves back onto the stable stream.
   const installed = await getInstalledVersion(uv);
-  const withArgs = installed ? await antonWithArgs(installed) : [];
+  const offStream = !!installed && currentBuildKind() === 'prod' && isPrereleaseVersion(installed);
+  const pin = installed && !offStream ? `${PACKAGE_NAME}==${installed}` : PACKAGE_NAME;
+  const withArgs = installed && !offStream ? await antonWithArgs(installed) : [];
   return runUv(uv, [
     'tool', 'install', '--force', '--reinstall', '--python', PYTHON_RANGE,
-    installed ? `${PACKAGE_NAME}==${installed}` : PACKAGE_NAME,
+    pin,
     ...withArgs,
   ]);
 }
@@ -395,6 +402,15 @@ export async function repairServerInstall(failureLog?: string): Promise<boolean>
 // build can never be offered an rc, and a dev machine's shared uv tool
 // (uv tools are per-user, not per-build) is not dragged onto rcs by a dev
 // session. Defensive try/catch mirrors server-source's build-kind fallbacks.
+// Defensive try/catch mirrors server-source's build-kind fallbacks.
+function currentBuildKind(): string | null {
+  try {
+    return buildKind();
+  } catch {
+    return null;
+  }
+}
+
 function includePrereleases(): boolean {
   try {
     const kind = buildKind();
@@ -698,13 +714,38 @@ async function _gitUpdate(uv: string, coworkVcs: VcsInfo): Promise<ServerUpdateR
 
 // ---- PyPI channel (release) ------------------------------------------------
 
+/** The one-line stream verdict for the boot log, keyed by the repair decision. */
+function streamCheckOutcome(repair: StreamRepairDecision): string {
+  if (repair.action === 'repair') return `off stream, repairing to ${repair.to}`;
+  switch (repair.reason) {
+    case 'not-prod': return 'pre-release stream allowed, repair not applicable';
+    case 'unknown-installed-version': return 'installed version unknown';
+    case 'on-stream': return 'on stream, nothing to repair';
+    case 'no-latest-version': return 'off stream, but the stable target could not be resolved; repair deferred';
+    case 'latest-not-stable': return 'off stream, but no stable target resolved; repair deferred';
+  }
+}
+
 async function _pypiUpdate(uv: string): Promise<ServerUpdateResult> {
   const [currentVersion, latestVersion] = await Promise.all([
     getInstalledVersion(uv),
     fetchLatestVersion(),
   ]);
 
-  const decision = decidePypiUpdate(currentVersion, latestVersion);
+  // Off-stream check first: a prod build holding a pre-release sorts above
+  // the stable stream, so decidePypiUpdate alone would report it up to date
+  // forever. A repair reuses the update block below — same exact-pin install,
+  // health check, and rollback — just pointed backwards deliberately.
+  const repair = decideStreamRepair({ buildKind: currentBuildKind(), currentVersion, latestVersion });
+  console.log(
+    `[server-updater] stream check: build=${currentBuildKind() ?? 'unknown'} ` +
+    `cowork-server=${currentVersion ?? 'unknown'} ` +
+    `anton-agent=${readInstalledDistVersion(ANTON_DIST_NAME) ?? 'unknown'} — ${streamCheckOutcome(repair)}`,
+  );
+
+  const decision = repair.action === 'repair'
+    ? { action: 'update' as const, from: repair.from, to: repair.to }
+    : decidePypiUpdate(currentVersion, latestVersion);
   if (decision.action === 'skip') {
     return decision.reason === 'unknown-installed-version'
       ? { updated: false, error: 'could not determine installed version' }
