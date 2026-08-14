@@ -1,0 +1,91 @@
+name: Release smoke (public downloads)
+
+# Downloads the installers the way a user does, from downloads.mindshub.ai in a
+# real Chromium, and checks that what arrives is what the release published:
+# the manifest resolves, the versioned URL is immutable and attachment-named,
+# an interrupted transfer resumes, and the finished bytes match the checksum.
+#
+# Runs AFTER a prod release rather than on a PR, because there is nothing to
+# check until a release has published. Also nightly, which is what catches a
+# key that was correct at publish time and has since been overwritten, expired
+# by a lifecycle rule, or lost behind a stale edge.
+#
+# NOT a PR gate: it asserts on live infrastructure, so a red run can mean the
+# CDN rather than the commit. `tests-unit.yml` covers the manifest contract on
+# the PR; this covers the thing that contract is a promise about.
+
+# The release passes `channels: prod` and the version it just tagged. Both
+# matter. `staging.json` is written by a push to `staging`, so checking the
+# stable channel from the prod pipeline fails a release that worked, and this
+# workflow is in that pipeline's notify list. The version is what stops the
+# suite passing against the manifest a PREVIOUS release left behind.
+on:
+  workflow_call:
+    inputs:
+      channels:
+        description: 'Download channels to check, comma-separated: prod, stable'
+        type: string
+        required: false
+        default: prod,stable
+      version:
+        description: 'Version this release published; asserted against the prod manifest'
+        type: string
+        required: false
+        default: ''
+  schedule:
+    - cron: '0 7 * * *' # nightly, an hour after the Electron e2e smoke
+  workflow_dispatch:
+    inputs:
+      channels:
+        description: 'Download channels to check, comma-separated: prod, stable'
+        type: string
+        required: false
+        default: prod,stable
+      version:
+        description: 'Version to assert against the prod manifest; blank to skip'
+        type: string
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  downloads:
+    runs-on: ubuntu-latest
+    # The resume test reassembles a whole installer, once per platform per
+    # channel, and the browser test pulls one more per platform. So a nightly
+    # run over both channels moves six ~220 MB installers, and a release run
+    # over prod alone moves four.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: ./.github/actions/retry
+        with:
+          command: npm ci
+      # Only Chromium: this suite is about what a browser does with the CDN's
+      # response headers, and that behaviour is the same across engines for the
+      # parts under test. The Electron suite brings its own runtime.
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Download the published installers and check them
+        env:
+          # `inputs` is null on a schedule trigger, so the fallback is what the
+          # nightly run gets: both channels, no version to pin against.
+          RELEASE_SMOKE_CHANNELS: ${{ inputs.channels || 'prod,stable' }}
+          RELEASE_SMOKE_VERSION: ${{ inputs.version }}
+        run: npm run test:release-smoke
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: release-smoke-traces
+          path: test-results/
+          retention-days: 7
