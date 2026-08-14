@@ -611,17 +611,20 @@ s3://anton-installer/
 
 Each manifest is named after the alias it supersedes, so a consumer already reading `-latest` or `-staging` knows which one is its own. Preview builds get no manifest: they are per-pull-request, and nothing should be advertising one.
 
-**A version's bytes are published once.** If a versioned key already exists with different bytes (rebuilding a version re-signs it, and signing stamps a timestamp), the release fails rather than replacing them. Cut a new version instead of republishing one. The `-latest` and `-staging` aliases are then written as server-side copies of that key, so the alias always serves the exact build the manifest names.
+**A prod version's bytes are published once.** If a versioned key already exists with different bytes (rebuilding a version re-signs it, and signing stamps a timestamp), the release fails rather than replacing them. Cut a new version instead of republishing one. The `-latest` and `-staging` aliases are then written as server-side copies of that key, so the alias always serves the exact build the manifest names.
 
-That rule covers the released channels. **Previews overwrite**, because they are per-pull-request and get rebuilt whenever anyone re-runs the job, and "cut a new version" is not something a branch can do. Only a genuine `404` from S3 counts as "not published yet" for the released channels; a `403`, a throttle or an expired token stops the release rather than being read as absence.
+That rule is prod's, because prod is where a version is cut once and its URL is advertised to users. **Previews and stable snapshots overwrite.** Both are named after a commit rather than a release and get rebuilt whenever anyone re-runs the job, so create-only would answer an ordinary re-run with "cut a new version" for a key that has no version to cut. They carry the 60-second alias TTL instead of `immutable`, since advertising a key as immutable while overwriting it is what strands a stale copy at the edge.
+
+Wherever create-only does apply, only a genuine `404` from S3 counts as "not published yet"; a `403`, a throttle or an expired token stops the release rather than being read as absence. The same rule governs the updater payloads under `updates/`, which are immutable in both channels.
 
 **Object headers** are set at publish time, because CloudFront otherwise applies its own one-hour default to everything:
 
 | Object | `Cache-Control` | Why |
 | --- | --- | --- |
-| Versioned installers | `public, max-age=31536000, immutable` | The bytes never change, so a resume can trust a validator that never moves |
+| Prod versioned installers | `public, max-age=31536000, immutable` | The bytes never change, so a resume can trust a validator that never moves |
 | `-latest` / `-staging` aliases | `public, max-age=60` | Rewritten every release; a minute bounds how long a stale edge copy outlives one |
-| `previews/` builds | `public, max-age=60` | Overwritten on a re-run, so `immutable` would strand the previous bytes at the edge |
+| `previews/` and `snapshots/` builds | `public, max-age=60` | Overwritten on a re-run, so `immutable` would strand the previous bytes at the edge |
+| `updates/` payloads and blockmaps | `public,max-age=31536000,immutable` | Named in a channel manifest by hash; the bytes behind that hash never change |
 | `latest.json` / `staging.json` | `no-cache, no-store, must-revalidate` | A cached manifest would hide a release entirely |
 
 Installers also carry `Content-Type: application/octet-stream` and `Content-Disposition: attachment; filename="mindshub-cowork-{version}.{pkg,exe}"`, so a file saved from the alias URL is still named after the version it actually is.
@@ -689,7 +692,7 @@ Two things watch this path. [`upload-installer-to-s3.yml`](.github/workflows/upl
 | [`pipeline-watchdog.yml`](.github/workflows/pipeline-watchdog.yml) | Scheduled | Alerts on runs that never started (`startup_failure`) |
 | [`build-macos-pkg.yml`](.github/workflows/build-macos-pkg.yml) | Called | Build + sign + notarize `.pkg` |
 | [`build-windows-installer.yml`](.github/workflows/build-windows-installer.yml) | Called | Build + sign `.exe` |
-| [`upload-installer-to-s3.yml`](.github/workflows/upload-installer-to-s3.yml) | Called | Publish to S3, write `latest.json`, verify over the CDN |
+| [`upload-installer-to-s3.yml`](.github/workflows/upload-installer-to-s3.yml) | Called | Publish to S3, write the updater feed and `latest.json`, verify both over the CDN |
 | [`release-smoke.yml`](.github/workflows/release-smoke.yml) | Called after a prod release / nightly | Download the published installers in a real Chromium and check them |
 | [`publish-ui.yml`](.github/workflows/publish-ui.yml) | Push to `main` / `ui-v*` tag / manual | OTA UI bundle publish |
 

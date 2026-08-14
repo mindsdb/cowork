@@ -189,14 +189,16 @@ jobs:
             UPLOADED_KEYS+=("$key")
           }
 
-          # Previews are the one kind that overwrites. They are per-pull-request
-          # and get rebuilt whenever anyone re-runs the job, and re-signing
-          # changes the bytes under the same name, so the create-only rule would
-          # answer an ordinary re-run with "cut a new version" on a branch that
-          # has no versions to cut. They carry the short alias TTL rather than
-          # `immutable`, because advertising a key as immutable while
-          # overwriting it is exactly what strands a stale copy at the edge.
-          publish_preview() {
+          # Previews and stable snapshots overwrite. Both are named after a
+          # commit rather than a release, both get rebuilt whenever anyone
+          # re-runs the job, and re-signing changes the bytes under the same
+          # name — so the create-only rule would answer an ordinary re-run with
+          # "cut a new version" for a key that has no version to cut. They carry
+          # the short alias TTL rather than `immutable`, because advertising a
+          # key as immutable while overwriting it is exactly what strands a
+          # stale copy at the edge. Only prod, where a version is cut once and
+          # its URL is advertised to users, gets the create-only rule.
+          publish_rebuildable() {
             local src="$1" key="$2"
             upload_installer "$src" "$key" "$ALIAS_CACHE"
             VERSIONED_KEY="$key"
@@ -219,10 +221,10 @@ jobs:
 
           case "$KIND" in
             preview)
-              publish_preview "$SRC" "${PREFIX}/previews/${NAME}"
+              publish_rebuildable "$SRC" "${PREFIX}/previews/${NAME}"
               ;;
             stable)
-              publish_versioned "$SRC" "${PREFIX}/snapshots/${NAME}"
+              publish_rebuildable "$SRC" "${PREFIX}/snapshots/${NAME}"
               publish_alias "${PREFIX}/mindshub-cowork-staging.${EXT}"
               ;;
             prod)
@@ -334,11 +336,31 @@ jobs:
           # verification until the CDN TTL expires. Create-only: if the key
           # already holds identical bytes, skip; if it holds DIFFERENT bytes,
           # fail loudly (bump the version instead of re-publishing).
+          # head-object exits non-zero for more reasons than "no": a 403, a
+          # SlowDown throttle and an expired token all look identical to a miss
+          # if you only read the exit status, and every one of them would fall
+          # through to the overwrite the rule above exists to prevent — of an
+          # immutable payload, which is the case it protects hardest. Only a
+          # genuine 404 counts as absent; anything else stops the release.
+          key_exists() {
+            local key="$1" err
+            if err=$(aws s3api head-object --bucket "$BUCKET" --key "$key" 2>&1 >/dev/null); then
+              return 0
+            fi
+            case "$err" in
+              *"(404)"* | *"Not Found"*) return 1 ;;
+              *)
+                echo "::error::Cannot tell whether ${key} is already published, so refusing to write it: ${err}"
+                exit 1
+                ;;
+            esac
+          }
+
           upload_immutable() {
             local src="$1" key="$2"
             local expected actual tmp
             expected=$(sha256sum "$src" | awk '{print $1}')
-            if aws s3api head-object --bucket "$BUCKET" --key "$key" >/dev/null 2>&1; then
+            if key_exists "$key"; then
               tmp=$(mktemp)
               aws s3 cp "s3://${BUCKET}/${key}" "$tmp" >/dev/null
               actual=$(sha256sum "$tmp" | awk '{print $1}')
@@ -536,8 +558,21 @@ jobs:
             || fail "manifest sha256 does not match the installer this release built (manifest=${MANIFEST_SHA} built=${LOCAL_SHA})"
 
           HEADERS=$(curl -fsSI "$INSTALLER_URL")
-          grep -qiE '^cache-control: *public, *max-age=31536000, *immutable' <<<"$HEADERS" \
-            || fail "${INSTALLER_URL} is not served as immutable: $(grep -i '^cache-control' <<<"$HEADERS" || echo 'no cache-control header')"
+          # Assert the header this channel actually sets, not one of them.
+          # A prod version is published once, so its URL is advertised as
+          # immutable; a stable snapshot is named after a commit and gets
+          # rewritten on a re-run, so it carries the short alias TTL. What both
+          # have to prove is that SOME explicit Cache-Control survives to the
+          # edge, because without one CloudFront applies its own hour.
+          if [ "$KIND" = "prod" ]; then
+            EXPECT_CACHE='^cache-control: *public, *max-age=31536000, *immutable'
+            EXPECT_DESC="immutable"
+          else
+            EXPECT_CACHE='^cache-control: *public, *max-age=60'
+            EXPECT_DESC="public, max-age=60"
+          fi
+          grep -qiE "$EXPECT_CACHE" <<<"$HEADERS" \
+            || fail "${INSTALLER_URL} is not served as ${EXPECT_DESC}: $(grep -i '^cache-control' <<<"$HEADERS" || echo 'no cache-control header')"
           grep -qiF "content-disposition: attachment; filename=\"${NAME}\"" <<<"$HEADERS" \
             || fail "${INSTALLER_URL} does not name the versioned file: $(grep -i '^content-disposition' <<<"$HEADERS" || echo 'no content-disposition header')"
           ETAG=$(grep -i '^etag:' <<<"$HEADERS" | tr -d '\r' | awk '{print $2}')
