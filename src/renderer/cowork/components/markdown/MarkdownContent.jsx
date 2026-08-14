@@ -88,6 +88,63 @@ function isSafeExternalHref(href) {
   return _SAFE_HREF_SCHEMES.has(url.protocol);
 }
 
+// A finished artifact's local path or a fabricated sandbox: URL that anton emits
+// as a "download" link — inert in chat, so remarkArtifactLocalLinks neutralizes
+// it (ENG-1636).
+//
+// Asymmetric by design: ANY Windows drive path is caught, but a POSIX path only
+// under `.anton/artifacts/` or `.cowork/`. Scoping POSIX to the artifact shape
+// keeps a real web `/route` link from being swallowed; the trade is a
+// POSIX-shaped hole — a file anton writes elsewhere on macOS/Linux still renders
+// as a dead link. Artifacts live under `.anton/artifacts`, so the canonical case
+// is covered on every platform; widening to bare-absolute-POSIX is where
+// over-matching would start.
+export function isArtifactLocalPath(href) {
+  if (!href || typeof href !== 'string') return false;
+  const h = href.trim();
+  if (/^[a-zA-Z]:[\\/]/.test(h)) return true; // C:\… or C:/… (Windows drive)
+  if (/^(?:file|sandbox):/i.test(h)) return true; // file:… / sandbox:/mnt/data/…
+  // POSIX artifact path (bare path — absolute or relative). A REAL web link
+  // (http/https/mailto) whose URL merely happens to contain the marker — e.g. a
+  // published `https://…/.cowork/…` URL — must stay clickable, so bail before
+  // the marker test. The `(?:^|/)` boundary matches both an absolute path
+  // (`/Users/…/.anton/artifacts/…`) and a leading-relative one
+  // (`.anton/artifacts/…`) while not matching a stray `foo.cowork/…`.
+  if (/^(?:https?|mailto):/i.test(h)) return false;
+  return /(?:^|\/)\.anton\/artifacts\//.test(h) || /(?:^|\/)\.cowork\//.test(h);
+}
+
+const _ARTIFACT_LOCAL_LINK_TITLE =
+  'This file is in the Live Artifacts panel — open or download it there';
+
+// Rewrite a link targeting a local file path (or fabricated sandbox:/file: URL)
+// into an inert <span> — link text kept, tooltip pointing at the Live Artifacts
+// panel, never a dead <a> (ENG-1636). Runs pre-sanitize on purpose: sanitize
+// strips a disallowed-scheme href (C:\…, sandbox:, file:) before the `a`
+// override could see it, so only here are Windows/POSIX/file/sandbox caught
+// uniformly. The <span>'s leftover href isn't allowlisted → sanitize drops it.
+function remarkArtifactLocalLinks() {
+  const walk = (node) => {
+    if (!node || !Array.isArray(node.children)) return;
+    for (const child of node.children) {
+      if (child.type === 'link' && isArtifactLocalPath(child.url)) {
+        child.data = {
+          ...(child.data || {}),
+          hName: 'span',
+          hProperties: {
+            ...((child.data && child.data.hProperties) || {}),
+            className: ['artifact-local-link'],
+            title: _ARTIFACT_LOCAL_LINK_TITLE,
+          },
+        };
+      } else if (child.type !== 'code' && child.type !== 'inlineCode') {
+        walk(child);
+      }
+    }
+  };
+  return (tree) => walk(tree);
+}
+
 function openMarkdownHref(href) {
   if (!isSafeExternalHref(href)) return;
   // Prefer the host bridge (Electron routes through shell.openExternal;
@@ -108,6 +165,10 @@ const sanitizeSchema = {
   attributes: {
     ...defaultSchema.attributes,
     code: [...(defaultSchema.attributes?.code || []), ['className']],
+    // Only `className` needs allowlisting here: defaultSchema permits `title`
+    // on every element (attributes['*']), so remarkArtifactLocalLinks' Live
+    // Artifacts tooltip survives without a span entry, but ['*'] omits
+    // className — which the engram chips and this plugin both set.
     span: [...(defaultSchema.attributes?.span || []), ['className']],
   },
   protocols: {
@@ -459,7 +520,12 @@ export function MarkdownContent({
     // plain-prose currency ("$5 and $10") is safe. _normalizeMathDelimiters
     // does the delimiter work instead: it rewrites \(…\), \[…\], and genuine
     // (pandoc-guarded) $…$ inline math into the `$$…$$` form parsed here.
-    () => [remarkGfm, [remarkMath, { singleDollarTextMath: false }], [remarkSkillMentions, skillNames]],
+    () => [
+      remarkGfm,
+      [remarkMath, { singleDollarTextMath: false }],
+      [remarkSkillMentions, skillNames],
+      remarkArtifactLocalLinks,
+    ],
     [skillNames],
   );
 

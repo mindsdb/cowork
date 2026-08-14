@@ -20,7 +20,7 @@ vi.mock('./MarkdownTable', () => ({
   TableBody: (p) => <tbody {...p} />,
 }));
 
-import { MarkdownContent, _normalizeMathDelimiters } from './MarkdownContent';
+import { MarkdownContent, _normalizeMathDelimiters, isArtifactLocalPath } from './MarkdownContent';
 
 describe('_normalizeMathDelimiters', () => {
   it('rewrites inline \\(…\\) to single-line $$…$$', () => {
@@ -110,6 +110,106 @@ describe('_normalizeMathDelimiters', () => {
     expect(_normalizeMathDelimiters('')).toBe('');
     expect(_normalizeMathDelimiters(null)).toBe(null);
     expect(_normalizeMathDelimiters(undefined)).toBe(undefined);
+  });
+});
+
+// ENG-1636: anton sometimes emits a finished file's local path (or a
+// fabricated sandbox: URL) as a "download" link. It never resolves in chat, so
+// the renderer neutralizes it and points the user at the Live Artifacts panel
+// instead of leaving a dead link.
+describe('isArtifactLocalPath', () => {
+  it('detects Windows drive paths (forward or back slash)', () => {
+    expect(isArtifactLocalPath('C:\\Users\\roland\\.anton\\artifacts\\x\\f.xlsx')).toBe(true);
+    expect(isArtifactLocalPath('C:/Users/roland/f.xlsx')).toBe(true);
+    expect(isArtifactLocalPath('d:\\data\\out.csv')).toBe(true);
+  });
+
+  it('detects file: and fabricated sandbox: URLs', () => {
+    expect(isArtifactLocalPath('file:///Users/me/f.xlsx')).toBe(true);
+    expect(isArtifactLocalPath('sandbox:/mnt/data/f.xlsx')).toBe(true);
+    expect(isArtifactLocalPath('SANDBOX:/mnt/data/f.xlsx')).toBe(true);
+  });
+
+  it('detects POSIX artifact / .cowork paths that would sneak past the scheme check', () => {
+    expect(isArtifactLocalPath('/Users/tzuchunlin/.cowork/projects/general/.anton/artifacts/x/f.xlsx')).toBe(true);
+    expect(isArtifactLocalPath('/home/me/.anton/artifacts/x/f.xlsx')).toBe(true);
+  });
+
+  it('leaves legitimate links and non-string input alone', () => {
+    expect(isArtifactLocalPath('https://example.com/report.xlsx')).toBe(false);
+    expect(isArtifactLocalPath('/settings')).toBe(false); // web-mode route
+    expect(isArtifactLocalPath('mailto:a@b.com')).toBe(false);
+    expect(isArtifactLocalPath('')).toBe(false);
+    expect(isArtifactLocalPath(null)).toBe(false);
+    expect(isArtifactLocalPath(undefined)).toBe(false);
+  });
+
+  it('does NOT swallow a real web link whose path merely contains the marker', () => {
+    // A published/served URL can legitimately contain these segments; it must
+    // stay clickable, not get neutralized by the substring test.
+    expect(isArtifactLocalPath('https://cdn.example.com/.cowork/asset.png')).toBe(false);
+    expect(isArtifactLocalPath('https://pub.example.com/.anton/artifacts/x/index.html')).toBe(false);
+    expect(isArtifactLocalPath('http://127.0.0.1:26866/api/v1/artifacts/x/budget.xlsx')).toBe(false);
+  });
+
+  it('catches a bare relative artifact path (no scheme)', () => {
+    expect(isArtifactLocalPath('.anton/artifacts/x/budget.xlsx')).toBe(true);
+  });
+});
+
+describe('MarkdownContent artifact-local-path backstop (end-to-end)', () => {
+  const PANEL_HINT = 'Live Artifacts panel';
+
+  it('renders a POSIX artifact path as inert text pointing at the panel, not a link', () => {
+    const path = '/Users/me/.cowork/projects/general/.anton/artifacts/x/Scorecard.xlsx';
+    const { container } = render(
+      <MarkdownContent text={`[Download Scorecard.xlsx](${path})`} complete />,
+    );
+    const span = container.querySelector(`span[title*="${PANEL_HINT}"]`);
+    expect(container.querySelector('a')).toBeNull(); // no clickable/dead link
+    expect(container.textContent).toContain('Download Scorecard.xlsx'); // text kept
+    expect(span).not.toBeNull();
+    expect(span.getAttribute('href')).toBeNull(); // wrapper can never navigate
+  });
+
+  it('renders a Windows drive-path link (the majority case) as inert panel text', () => {
+    // Windows `C:\…` hrefs get their scheme stripped by rehype-sanitize, so
+    // catching them requires the pre-sanitize remark pass — guard that here.
+    const path = 'C:\\Users\\roland\\.anton\\artifacts\\x\\report.xlsx';
+    const { container } = render(
+      <MarkdownContent text={`[Download report.xlsx](${path})`} complete />,
+    );
+    expect(container.querySelector('a')).toBeNull();
+    expect(container.querySelector(`span[title*="${PANEL_HINT}"]`)).not.toBeNull();
+  });
+
+  it('renders a fabricated sandbox: link as inert text pointing at the panel', () => {
+    const { container } = render(
+      <MarkdownContent text={'[Get the file](sandbox:/mnt/data/report.xlsx)'} complete />,
+    );
+    expect(container.querySelector('a')).toBeNull();
+    expect(container.querySelector(`span[title*="${PANEL_HINT}"]`)).not.toBeNull();
+  });
+
+  it('does NOT swallow a real external link', () => {
+    const { container } = render(
+      <MarkdownContent text={'[docs](https://example.com/report.xlsx)'} complete />,
+    );
+    const a = container.querySelector('a');
+    expect(a).not.toBeNull();
+    expect(a.getAttribute('href')).toBe('https://example.com/report.xlsx');
+    expect(container.querySelector(`span[title*="${PANEL_HINT}"]`)).toBeNull();
+  });
+
+  it('does NOT swallow a real https link whose path contains the artifact marker', () => {
+    const url = 'https://pub.example.com/.cowork/dashboards/index.html';
+    const { container } = render(
+      <MarkdownContent text={`[open dashboard](${url})`} complete />,
+    );
+    const a = container.querySelector('a');
+    expect(a).not.toBeNull();
+    expect(a.getAttribute('href')).toBe(url);
+    expect(container.querySelector(`span[title*="${PANEL_HINT}"]`)).toBeNull();
   });
 });
 
