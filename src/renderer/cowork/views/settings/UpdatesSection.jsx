@@ -12,6 +12,17 @@ const UPDATE_CARD_CLASS =
   'border-[color-mix(in_srgb,var(--sage-500)_30%,transparent)] bg-[color-mix(in_srgb,var(--sage-500)_12%,transparent)] rounded-lg';
 const UPDATE_CARD_BODY_CLASS = 'flex flex-col gap-0.5 flex-1 min-w-[160px]';
 
+// Ring annotation per build kind. Staging-ring builds (preview/stable) follow
+// the pre-release server stream, so an rc Server version next to a clean shell
+// version is expected there — naming the ring makes that self-explanatory in
+// bug reports. Absent on web and on legacy shells that predate the field.
+const BUILD_KIND_LABELS = {
+  dev: 'dev (local source)',
+  preview: 'preview (staging update ring)',
+  stable: 'stable (staging update ring)',
+  prod: 'prod',
+};
+
 // The Updates settings section: current-version readout plus the on-demand
 // update check/apply flow. Self-contained — it owns every piece of state its
 // UI needs (versions, the check result, in-flight/applied flags), so nothing
@@ -28,7 +39,7 @@ export default function UpdatesSection({
   onInstallShellAutoUpdate,
   onRetryShellAutoUpdate,
 }) {
-  const [versionInfo, setVersionInfo] = useState({ app: '', ui: null, source: 'web' });
+  const [versionInfo, setVersionInfo] = useState({ app: '', ui: null, source: 'web', buildKind: null });
   const [serverVersion, setServerVersion] = useState('');
   const [antonVersion, setAntonVersion] = useState('');
   const [showVersionDetails, setShowVersionDetails] = useState(false);
@@ -117,8 +128,10 @@ export default function UpdatesSection({
             // excluded — it updates via reinstall and is shown on its own line.
             const unified = unifiedVersion([uiVer, serverVersion, antonVersion]);
             const outOfSync = !!unified && unified.skewDays >= SKEW_WARN_DAYS;
+            const buildLabel = BUILD_KIND_LABELS[versionInfo.buildKind];
             const rows = [
               ['App shell', shellVer || '—'],
+              ...(buildLabel ? [['Build', buildLabel]] : []),
               ['UI', uiVer ? `${uiVer} (${uiSource})` : '—'],
               ['Server', serverVersion || '—'],
               ['Agent', antonVersion || '—'],
