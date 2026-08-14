@@ -39,7 +39,6 @@ import {
   decideGitUpdate,
   decidePypiUpdate,
   decideStreamRepair,
-  isPrereleaseVersion,
   looksLikeBrokenInstall,
   parseAntonPin,
   parseAntonConstraint,
@@ -233,15 +232,13 @@ async function reinstallFromSource(uv: string, toolsDir?: string): Promise<{ ok:
   // stream is a silent downgrade — and a downgraded server can face a
   // database migrated ahead of it and fail to boot. Unknown version
   // (corrupt venv metadata) falls back to the latest stable, best effort.
-  // Exception: a prod build holding a pre-release is off its stream — never
-  // re-pin that; the bare name resolves back onto the stable stream.
+  // This deliberately re-pins an off-stream pre-release on prod too: this
+  // path has no health check, so the stream repair in _pypiUpdate owns that.
   const installed = await getInstalledVersion(uv);
-  const offStream = !!installed && currentBuildKind() === 'prod' && isPrereleaseVersion(installed);
-  const pin = installed && !offStream ? `${PACKAGE_NAME}==${installed}` : PACKAGE_NAME;
-  const withArgs = installed && !offStream ? await antonWithArgs(installed) : [];
+  const withArgs = installed ? await antonWithArgs(installed) : [];
   return runUv(uv, [
     'tool', 'install', '--force', '--reinstall', '--python', PYTHON_RANGE,
-    pin,
+    installed ? `${PACKAGE_NAME}==${installed}` : PACKAGE_NAME,
     ...withArgs,
   ]);
 }
@@ -396,13 +393,8 @@ export async function repairServerInstall(failureLog?: string): Promise<boolean>
 
 // ---- PyPI path helpers (release channel) ----------------------------------
 
-// Staging-ring builds (preview/stable) follow the rc stream, so their
-// "latest" scans the full releases map including pre-releases; prod AND dev
-// trust info.version, which PyPI computes excluding pre-releases — a prod
-// build can never be offered an rc, and a dev machine's shared uv tool
-// (uv tools are per-user, not per-build) is not dragged onto rcs by a dev
-// session. Defensive try/catch mirrors server-source's build-kind fallbacks.
-// Defensive try/catch mirrors server-source's build-kind fallbacks.
+/** `buildKind()` with the same defensive fallback as server-source's
+ *  build-kind reads. Null when the kind cannot be determined. */
 function currentBuildKind(): string | null {
   try {
     return buildKind();
@@ -411,13 +403,15 @@ function currentBuildKind(): string | null {
   }
 }
 
+// Staging-ring builds (preview/stable) follow the rc stream, so their
+// "latest" scans the full releases map including pre-releases; prod AND dev
+// trust info.version, which PyPI computes excluding pre-releases — a prod
+// build can never be offered an rc, and a dev machine's shared uv tool
+// (uv tools are per-user, not per-build) is not dragged onto rcs by a dev
+// session.
 function includePrereleases(): boolean {
-  try {
-    const kind = buildKind();
-    return kind === 'preview' || kind === 'stable';
-  } catch {
-    return false;
-  }
+  const kind = currentBuildKind();
+  return kind === 'preview' || kind === 'stable';
 }
 
 function fetchPypiJson(url: string): Promise<Record<string, unknown> | null> {
@@ -594,28 +588,30 @@ export async function checkForServerUpdate(): Promise<ServerUpdateCheckResult> {
     }
 
     // PyPI channel: compare version numbers
-    const [currentVersion, latestVersion] = await Promise.all([
+    const [currentVersion, latestVersion, toolsDir] = await Promise.all([
       getInstalledVersion(uv),
       fetchLatestVersion(),
+      uvToolsDir(uv),
     ]);
+    // Logged before the early return: the run someone digs into a log for is
+    // the one where the check could NOT conclude, and it must say so.
+    const kind = currentBuildKind();
+    const repair = decideStreamRepair({ buildKind: kind, currentVersion, latestVersion });
+    console.log(
+      `[server-updater] stream check: build=${kind ?? 'unknown'} ` +
+      `cowork-server=${currentVersion ?? 'unknown'} ` +
+      `anton-agent=${readInstalledDistVersion(ANTON_DIST_NAME, toolsDir ?? undefined) ?? 'unknown'} — ${streamCheckOutcome(repair)}`,
+    );
     if (!currentVersion || !latestVersion) return { updateAvailable: false, error: true };
     // A stream repair counts as an available update: the boot flow gates the
     // apply path on this check, so an off-stream install must surface here.
-    // Logged here (not in the apply path) because the check runs on every
-    // boot — a user's log alone must answer whether the repair fired.
-    const repair = decideStreamRepair({ buildKind: currentBuildKind(), currentVersion, latestVersion });
-    console.log(
-      `[server-updater] stream check: build=${currentBuildKind() ?? 'unknown'} ` +
-      `cowork-server=${currentVersion} ` +
-      `anton-agent=${readInstalledDistVersion(ANTON_DIST_NAME) ?? 'unknown'} — ${streamCheckOutcome(repair)}`,
-    );
     if (repair.action === 'repair' || decidePypiUpdate(currentVersion, latestVersion).action === 'update') {
       return { updateAvailable: true, currentVersion, latestVersion, component: 'cowork-server' };
     }
     // cowork-server is current — an anton-only release may still be pending.
     // Detected the SAME way maybeUpdateServer applies it, so the banner and the
     // action can never disagree.
-    const anton = await resolveAntonPypiUpdate((await uvToolsDir(uv)) ?? undefined);
+    const anton = await resolveAntonPypiUpdate(toolsDir ?? undefined);
     if (anton.update) {
       return { updateAvailable: true, currentVersion: anton.update.from, latestVersion: anton.update.to, component: 'anton-agent' };
     }
@@ -728,11 +724,11 @@ async function _gitUpdate(uv: string, coworkVcs: VcsInfo): Promise<ServerUpdateR
 function streamCheckOutcome(repair: StreamRepairDecision): string {
   if (repair.action === 'repair') return `off stream, repairing to ${repair.to}`;
   switch (repair.reason) {
-    case 'not-prod': return 'pre-release stream allowed, repair not applicable';
+    case 'not-prod': return 'not a prod build, repair not applicable';
     case 'unknown-installed-version': return 'installed version unknown';
     case 'on-stream': return 'on stream, nothing to repair';
-    case 'no-latest-version': return 'off stream, but the stable target could not be resolved; repair deferred';
-    case 'latest-not-stable': return 'off stream, but no stable target resolved; repair deferred';
+    case 'no-latest-version': return 'off stream, but PyPI was unreachable; repair deferred';
+    case 'latest-not-stable': return "off stream, but PyPI's latest is a pre-release; repair deferred";
   }
 }
 
@@ -742,10 +738,8 @@ async function _pypiUpdate(uv: string): Promise<ServerUpdateResult> {
     fetchLatestVersion(),
   ]);
 
-  // Off-stream check first: a prod build holding a pre-release sorts above
-  // the stable stream, so decidePypiUpdate alone would report it up to date
-  // forever. A repair reuses the update block below — same exact-pin install,
-  // health check, and rollback — just pointed backwards deliberately.
+  // An rc sorts above its stable, so decidePypiUpdate alone reports a stranded
+  // prod install up to date forever; repair reuses the health-checked block below.
   const repair = decideStreamRepair({ buildKind: currentBuildKind(), currentVersion, latestVersion });
   const decision = repair.action === 'repair'
     ? { action: 'update' as const, from: repair.from, to: repair.to }
@@ -781,9 +775,12 @@ async function _pypiUpdate(uv: string): Promise<ServerUpdateResult> {
     // this one package; the wheel's anton rc pin is restated as a direct
     // requirement via antonWithArgs, so no resolution-wide prerelease flag
     // is ever set).
+    // The rollback pin is resolved up front: fetching it mid-failure would
+    // fail open on a flaky network and leave the rollback unresolvable.
+    const [toWithArgs, fromWithArgs] = await Promise.all([antonWithArgs(to), antonWithArgs(from)]);
     const upgrade = await runUv(
       uv,
-      ['tool', 'install', '--force', '--reinstall', '--python', PYTHON_RANGE, `${PACKAGE_NAME}==${to}`, ...(await antonWithArgs(to))],
+      ['tool', 'install', '--force', '--reinstall', '--python', PYTHON_RANGE, `${PACKAGE_NAME}==${to}`, ...toWithArgs],
     );
     if (!upgrade.ok) {
       console.error('[server-updater] upgrade failed:', upgrade.stderr);
@@ -794,7 +791,7 @@ async function _pypiUpdate(uv: string): Promise<ServerUpdateResult> {
     const result = await startServer();
     if (!result.ok) {
       console.error('[server-updater] new version failed health check, rolling back...');
-      const rollback = await runUv(uv, ['tool', 'install', '--force', '--reinstall', '--python', PYTHON_RANGE, `${PACKAGE_NAME}==${from}`, ...(await antonWithArgs(from))]);
+      const rollback = await runUv(uv, ['tool', 'install', '--force', '--reinstall', '--python', PYTHON_RANGE, `${PACKAGE_NAME}==${from}`, ...fromWithArgs]);
       if (rollback.ok) {
         const restored = await startServer();
         if (restored.ok) {

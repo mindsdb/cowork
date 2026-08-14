@@ -29,7 +29,7 @@ interface AntonTronAPI {
   onShellAutoUpdate: (cb: (snapshot: ShellAutoUpdateSnapshot) => void) => () => void;
 
   getPlatform: () => string;
-  getUIVersion: () => Promise<{ app: string; ui: string | null; source: 'ota' | 'bundled' }>;
+  getUIVersion: () => Promise<{ app: string; ui: string | null; source: 'ota' | 'bundled'; buildKind?: string }>;
   openExternal: (url: string) => Promise<void>;
   openPath: (path: string) => Promise<{ ok: boolean; reason?: string }>;
   showItemInFolder: (path: string) => Promise<{ ok: boolean; reason?: string }>;

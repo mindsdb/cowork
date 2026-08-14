@@ -12,10 +12,8 @@ const UPDATE_CARD_CLASS =
   'border-[color-mix(in_srgb,var(--sage-500)_30%,transparent)] bg-[color-mix(in_srgb,var(--sage-500)_12%,transparent)] rounded-lg';
 const UPDATE_CARD_BODY_CLASS = 'flex flex-col gap-0.5 flex-1 min-w-[160px]';
 
-// Ring annotation per build kind. Staging-ring builds (preview/stable) follow
-// the pre-release server stream, so an rc Server version next to a clean shell
-// version is expected there — naming the ring makes that self-explanatory in
-// bug reports. Absent on web and on legacy shells that predate the field.
+// Naming the ring makes an rc Server version self-explanatory in bug reports:
+// staging-ring builds (preview/stable) follow the pre-release server stream.
 const BUILD_KIND_LABELS = {
   dev: 'dev (local source)',
   preview: 'preview (staging update ring)',
