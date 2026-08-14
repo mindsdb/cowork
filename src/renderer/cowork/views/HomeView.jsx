@@ -257,9 +257,9 @@ export default function HomeView({
 
   // Sending the habit-tracker prompt completes onboarding step 1 no
   // matter which surface filled the composer (sidebar checklist or the
-  // user typing it by hand). A selected task mode prepends its
-  // instruction line to the outgoing message and clears itself after a
-  // successful send.
+  // user typing it by hand). A selected task mode appends its
+  // instruction line after the user text (titles and search derive from
+  // the message head) and clears itself after a successful send.
   const sendTracked = async (text) => {
     if (typeof text === 'string' && text.trim().startsWith(HABIT_TRACKER_PREFIX)) {
       completeStep('see-it-work');
