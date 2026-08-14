@@ -315,7 +315,7 @@ export function initUpdater(
       // The stream repair is boot-only: a downgrade pill mid-session reads as
       // the app being confused, so a pending repair is never surfaced here.
       const surfaceServer = server.updateAvailable && !server.repair;
-      if (!uiCandidate && !surfaceServer) {
+      if (!ui.updateAvailable && !surfaceServer) {
         console.log('[updater] stream repair pending — applies at the next boot, not surfaced mid-session');
         return;
       }
