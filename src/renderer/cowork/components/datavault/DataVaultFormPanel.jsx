@@ -18,6 +18,7 @@ import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
 import { Alert, Button, Tooltip } from '../ui';
 import { DataVaultForm } from './DataVaultForm';
+import { providerNameFromSpec } from './methodHero';
 import {
   clearForm, getForm, patchForm, subscribe,
   getSelectedMethod, subscribeSelectedMethod, setSelectedMethod,
@@ -42,7 +43,7 @@ function getBrowserOAuthMethod(spec) {
 
 const FONT_BODY = 'var(--font-body)';
 
-export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNavigateToConnectors, highlighted = false }) {
+export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNavigateToConnectors, onClose, highlighted = false }) {
   const [spec, setSpec] = useState(() => getForm(conversationId));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -61,10 +62,11 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
   // than on the spec so server-side updates don't have to know
   // anything about UI dismissal state.
   const [dismissedStatus, setDismissedStatus] = useState(null);
-  // Active method for the panel chrome — when set, the header bar
-  // becomes the "← Back to options · <method>" breadcrumb. Source of
-  // truth lives in formStore so DataVaultForm can write it (on pick)
-  // and the panel can clear it (on "back").
+  // Active method for the panel chrome — when set (and not on the
+  // success screen), the header bar becomes the "← Back to options ·
+  // <method>" breadcrumb. Source of truth lives in formStore so
+  // DataVaultForm can write it (on pick) and the panel can clear it
+  // (on "back").
   const [activeMethodId, setActiveMethodId] = useState(
     () => (conversationId ? getSelectedMethod(conversationId) : null)
   );
@@ -227,7 +229,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
     // required fields (e.g. developer token for Google Ads).
     if (authMethod === 'browser_oauth_builtin' && kind === 'primary') {
       const engine = spec.engine || spec._connector_id || 'google_drive';
-      const providerLabel = spec.label || 'Provider';
+      const providerLabel = providerNameFromSpec(spec);
       const successTitle = `${providerLabel} connected`;
       setBusy(true);
       setError('');
@@ -572,6 +574,9 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
   // a stuck/abandoned form is sitting there. Clears the form from
   // the conversation's store; the panel unmounts.
   const handleClose = () => {
+    // Host may own dismissal (e.g. returning the user to where they opened
+    // the connect flow, ENG-1534); fall back to a plain form-clear.
+    if (onClose) { onClose(conversationId); return; }
     if (conversationId) clearForm(conversationId);
   };
 
@@ -627,16 +632,20 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
         animation: 'dvf-appear 320ms cubic-bezier(0.2, 0.7, 0.2, 1) both',
       }}
     >
-      {/* Header bar — when a method is active, the bar IS the
-          "← Back to options · <method>" navigation. Otherwise it's
-          a plain "Connect" label. The X close button sits flush
-          right in either case. */}
+      {/* Header bar — during the connect flow it's the
+          "← Back to options · <method>" navigation (when a method is
+          active) or a plain "Connect" label. On the SUCCESS screen the
+          breadcrumb is dropped — the connection is done, there's nothing
+          to go back to — leaving just the close button (ENG-1534). The X
+          sits flush right in every case. */}
       <div style={{
         display: 'flex', alignItems: 'stretch',
         borderBottom: '1px solid var(--line)',
         minHeight: 42,
       }}>
-        {activeMethodSpec ? (
+        {spec._is_success ? (
+          <div style={{ flex: 1, minWidth: 0 }} />
+        ) : activeMethodSpec ? (
           <button
             type="button"
             onClick={onBackToOptions}
@@ -843,7 +852,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
                 if (method?.fields?.length) return;
                 // No fields — auto-start immediately on method selection.
                 const engine = spec.engine || spec._connector_id || 'google_drive';
-                const providerLabel = spec.label || 'Provider';
+                const providerLabel = providerNameFromSpec(spec);
                 const successTitle = `${providerLabel} connected`;
                 setBusy(true);
                 setError('');
