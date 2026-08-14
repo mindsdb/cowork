@@ -87,7 +87,7 @@ function FormLogo({ logo, logoUrl, color, connectorId }) {
   );
 }
 
-function FieldInput({ field, value, onChange, disabled }) {
+function FieldInput({ field, value, onChange, disabled, inputRef }) {
   const baseStyle = {
     width: '100%', boxSizing: 'border-box',
     padding: '8px 10px', borderRadius: 7,
@@ -138,6 +138,7 @@ function FieldInput({ field, value, onChange, disabled }) {
   if (field.type === 'textarea') {
     return (
       <Textarea
+        ref={inputRef}
         value={displayValue}
         placeholder={placeholder}
         disabled={disabled}
@@ -175,6 +176,7 @@ function FieldInput({ field, value, onChange, disabled }) {
   // text, password, url, default
   return (
     <Input
+      ref={inputRef}
       type={field.type === 'password' ? 'password' : (field.type === 'url' ? 'url' : 'text')}
       value={displayValue}
       placeholder={placeholder}
@@ -281,10 +283,6 @@ export function DataVaultForm({
   const values = valuesByKey[stateKey] || initialFor(fields);
   const skipped = skippedByKey[stateKey] || new Set();
   const requiredErrors = requiredErrorsByKey[stateKey] || {};
-  const posthogProjectChoice = fields.find((field) => field.name === 'posthog_project_choice');
-  const visibleFields = fields.filter((field) => (
-    !(field.name === 'project_id' && posthogProjectChoice && !String(values.project_id || '').trim())
-  ));
 
   // Publish a redacted snapshot of the form state so the chat layer
   // can inject context into messages sent during a connect task.
@@ -425,8 +423,13 @@ export function DataVaultForm({
       const missing = fields.filter((field) => {
         if (!field.required || skipped.has(field.name)) return false;
         // PostHog resolves its numeric project ID from the user's personal API
-        // key in the panel before the connector request is sent.
-        if (spec?._connector_id === 'posthog' && field.name === 'project_id') return false;
+        // key in the panel before the connector request is sent, and lets the
+        // user provide it either by picking from the discovered list or by
+        // typing it directly — so neither field alone can be required
+        // client-side. DataVaultFormPanel's guard is the source of truth for
+        // whether a value was actually supplied.
+        if (spec?._connector_id === 'posthog'
+          && (field.name === 'project_id' || field.name === 'posthog_project_choice')) return false;
         const value = values[field.name];
         return value === null || value === undefined || String(value).trim() === '';
       });
@@ -571,7 +574,7 @@ export function DataVaultForm({
           and a Submit button, exactly the "confirm-and-continue"
           step we don't want). */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {visibleFields.map((f) => {
+        {fields.map((f) => {
           const isSkipped = skipped.has(f.name);
           // Identity / read-only marker. The modify-flow pins
           // `name` (and could pin others) so the vault row key
@@ -581,8 +584,6 @@ export function DataVaultForm({
           return (
             <div
               key={f.name}
-              ref={(node) => { fieldRefs.current[f.name] = node; }}
-              tabIndex={-1}
               style={{ display: 'flex', flexDirection: 'column', gap: 4, opacity: isSkipped ? 0.55 : 1 }}
             >
               <div style={{
@@ -626,6 +627,7 @@ export function DataVaultForm({
                   value={values[f.name]}
                   onChange={(v) => updateField(f.name, v)}
                   disabled={busy || isLocked}
+                  inputRef={(node) => { fieldRefs.current[f.name] = node; }}
                 />
               )}
               {isSkipped && (

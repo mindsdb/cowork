@@ -48,7 +48,7 @@ describe('DataVaultFormPanel — user_label', () => {
     expect(screen.getByText('Project ID is required.')).toBeInTheDocument();
   });
 
-  it('allows explicitly skipped required fields through', async () => {
+  it('skipping a field after a required error clears the error and allows submission', async () => {
     setForm(CID, {
       form_id: 'f4',
       fields: [{ name: 'project_id', label: 'Project ID', type: 'text', required: true }],
@@ -57,9 +57,38 @@ describe('DataVaultFormPanel — user_label', () => {
     render(<DataVaultFormPanel conversationId={CID} onSubmit={onSubmit} />);
 
     const user = userEvent.setup();
+    // Trip the required error first — without the check in place this
+    // submit would already succeed, so the assertion below only holds
+    // with the new validation.
+    await user.click(screen.getByRole('button', { name: /submit/i }));
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(screen.getByText('Project ID is required.')).toBeInTheDocument();
+
     await user.click(screen.getByRole('button', { name: 'skip' }));
     await user.click(screen.getByRole('button', { name: /submit/i }));
 
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ skipped: ['project_id'] }));
+    expect(screen.queryByText('Project ID is required.')).not.toBeInTheDocument();
+  });
+
+  it('clears a required error from one method when the user switches to another', async () => {
+    setForm(CID, {
+      form_id: 'f5',
+      methods: [
+        { id: 'method_a', label: 'Method A', fields: [{ name: 'field_a', label: 'Field A', type: 'text', required: true }] },
+        { id: 'method_b', label: 'Method B', fields: [{ name: 'field_b', label: 'Field B', type: 'text', required: true }] },
+      ],
+    });
+    render(<DataVaultFormPanel conversationId={CID} onSubmit={vi.fn()} />);
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: /method a/i }));
+    await user.click(screen.getByRole('button', { name: /submit/i }));
+    expect(screen.getByText('Field A is required.')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /back to options/i }));
+    await user.click(screen.getByRole('button', { name: /method b/i }));
+
+    expect(screen.queryByText('Field A is required.')).not.toBeInTheDocument();
   });
 });

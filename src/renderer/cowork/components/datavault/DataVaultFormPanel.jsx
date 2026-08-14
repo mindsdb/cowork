@@ -228,7 +228,9 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
     // PostHog projects are account-scoped. Users know their project by name,
     // not the numeric ID that the connector engine needs, so discover choices
     // before posting the generic connector submission.
-    if (spec._connector_id === 'posthog' && kind === 'primary' && !String(values?.project_id || '').trim()) {
+    if (spec._connector_id === 'posthog' && kind === 'primary'
+      && !String(values?.project_id || '').trim()
+      && !String(values?.posthog_project_choice || '').trim()) {
       setBusy(true);
       try {
         const result = await discoverPostHogProjects({
@@ -256,7 +258,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
                   type: 'select',
                   required: true,
                   options,
-                  help: 'Choose the PostHog project to connect, or enter its numeric ID manually below.',
+                  help: 'Choose the PostHog project to connect, or type its numeric ID directly in the Project ID field.',
                 },
               },
             },
