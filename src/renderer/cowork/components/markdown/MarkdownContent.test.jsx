@@ -143,6 +143,18 @@ describe('isArtifactLocalPath', () => {
     expect(isArtifactLocalPath(null)).toBe(false);
     expect(isArtifactLocalPath(undefined)).toBe(false);
   });
+
+  it('does NOT swallow a real web link whose path merely contains the marker', () => {
+    // A published/served URL can legitimately contain these segments; it must
+    // stay clickable, not get neutralized by the substring test.
+    expect(isArtifactLocalPath('https://cdn.example.com/.cowork/asset.png')).toBe(false);
+    expect(isArtifactLocalPath('https://pub.example.com/.anton/artifacts/x/index.html')).toBe(false);
+    expect(isArtifactLocalPath('http://127.0.0.1:26866/api/v1/artifacts/x/budget.xlsx')).toBe(false);
+  });
+
+  it('catches a bare relative artifact path (no scheme)', () => {
+    expect(isArtifactLocalPath('.anton/artifacts/x/budget.xlsx')).toBe(true);
+  });
 });
 
 describe('MarkdownContent artifact-local-path backstop (end-to-end)', () => {
@@ -186,6 +198,17 @@ describe('MarkdownContent artifact-local-path backstop (end-to-end)', () => {
     const a = container.querySelector('a');
     expect(a).not.toBeNull();
     expect(a.getAttribute('href')).toBe('https://example.com/report.xlsx');
+    expect(container.querySelector(`span[title*="${PANEL_HINT}"]`)).toBeNull();
+  });
+
+  it('does NOT swallow a real https link whose path contains the artifact marker', () => {
+    const url = 'https://pub.example.com/.cowork/dashboards/index.html';
+    const { container } = render(
+      <MarkdownContent text={`[open dashboard](${url})`} complete />,
+    );
+    const a = container.querySelector('a');
+    expect(a).not.toBeNull();
+    expect(a.getAttribute('href')).toBe(url);
     expect(container.querySelector(`span[title*="${PANEL_HINT}"]`)).toBeNull();
   });
 });

@@ -97,7 +97,14 @@ export function isArtifactLocalPath(href) {
   const h = href.trim();
   if (/^[a-zA-Z]:[\\/]/.test(h)) return true; // C:\… or C:/… (Windows drive)
   if (/^(?:file|sandbox):/i.test(h)) return true; // file:… / sandbox:/mnt/data/…
-  return h.includes('/.anton/artifacts/') || h.includes('/.cowork/'); // POSIX artifact path
+  // POSIX artifact path (bare path — absolute or relative). A REAL web link
+  // (http/https/mailto) whose URL merely happens to contain the marker — e.g. a
+  // published `https://…/.cowork/…` URL — must stay clickable, so bail before
+  // the marker test. The `(?:^|/)` boundary matches both an absolute path
+  // (`/Users/…/.anton/artifacts/…`) and a leading-relative one
+  // (`.anton/artifacts/…`) while not matching a stray `foo.cowork/…`.
+  if (/^(?:https?|mailto):/i.test(h)) return false;
+  return /(?:^|\/)\.anton\/artifacts\//.test(h) || /(?:^|\/)\.cowork\//.test(h);
 }
 
 const _ARTIFACT_LOCAL_LINK_TITLE =
