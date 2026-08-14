@@ -115,11 +115,11 @@ export const TASK_MODES = [
         prompt: 'Create a project management table for tracking tasks across the project lifecycle, with an elegant and minimalist visual style.',
       },
       {
-        label: 'Compile 2025 North America AI conference calendar',
-        prompt: 'Help me collect AI industry conferences in North America from August to December 2025 and compile them into a calendar.',
+        label: 'Compile a North America AI conference calendar',
+        prompt: 'Help me collect upcoming AI industry conferences in North America for the rest of the year and compile them into a calendar.',
       },
       {
-        label: 'Create U.S. energy M&A legal due diligence checklist',
+        label: 'Create acquisition due diligence checklist',
         prompt: 'Create a due diligence checklist spreadsheet for a company acquisition, grouped by workstream with owner and status columns.',
       },
       {
@@ -127,7 +127,7 @@ export const TASK_MODES = [
         prompt: 'Research the most popular vision language models on Hugging Face and compile them into a comparison table.',
       },
       {
-        label: 'Calculate IRR for Anysphere investment cash flows',
+        label: 'Calculate IRR for investment cash flows',
         prompt: 'Build an investment cash flow table with capital calls, exit payouts, and a yearly IRR calculation. Use sample numbers I can replace.',
       },
     ],
@@ -142,7 +142,7 @@ export const TASK_MODES = [
     samplesVariant: 'cards',
     samples: [
       {
-        label: 'Show weekly sales activity via Heatmap',
+        label: 'Show weekly sales activity via heatmap',
         prompt: 'Create a heatmap of weekly sales activity across regions and product categories, using sample data, and highlight the peaks and the weak spots.',
       },
       {
@@ -223,8 +223,11 @@ export const TASK_MODES = [
   },
 ];
 
-/** Outgoing message for a selected mode: instruction line, then the user text. */
+/** Outgoing message for a selected mode: the user text, then the instruction
+    line. Appended (not prepended) because the task title, sidebar preview, and
+    search index all derive from the message HEAD — a leading instruction would
+    make every task of a mode read identically and bury the user's actual ask. */
 export function composeModeMessage(mode, text) {
   if (!mode) return text;
-  return `${mode.instruction}\n\n${text}`;
+  return `${text}\n\n${mode.instruction}`;
 }

@@ -553,6 +553,17 @@ export default function Composer({
     }
   }, [value]);
 
+  // Task-mode change (select from the pill row or clear via the chip) moves
+  // focus into the textarea: the user's next act is typing, and for a screen
+  // reader the focus event reads out the freshly-swapped placeholder — the
+  // otherwise-silent mode switch gets announced (ENG-1594 review finding).
+  const prevTaskModeRef = useRef(taskMode);
+  useEffect(() => {
+    if (prevTaskModeRef.current === taskMode) return;
+    prevTaskModeRef.current = taskMode;
+    taRef.current?.focus();
+  }, [taskMode]);
+
   // Edit-and-resend: when ChatView bumps `prefill`, drop the supplied
   // text into the composer and focus the textarea so the user can
   // immediately tweak + send. Guarded on `bump > 0` so the initial

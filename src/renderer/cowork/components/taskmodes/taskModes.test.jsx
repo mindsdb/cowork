@@ -32,9 +32,9 @@ describe('TASK_MODES data', () => {
     }
   });
 
-  it('composeModeMessage prepends the instruction line, and passes through with no mode', () => {
+  it('composeModeMessage APPENDS the instruction (titles derive from the message head)', () => {
     const slides = TASK_MODES[0];
-    expect(composeModeMessage(slides, 'AI in 2026')).toBe('Create a slide presentation.\n\nAI in 2026');
+    expect(composeModeMessage(slides, 'AI in 2026')).toBe('AI in 2026\n\nCreate a slide presentation.');
     expect(composeModeMessage(null, 'hello')).toBe('hello');
   });
 });

@@ -2488,7 +2488,7 @@ body[data-theme="dark"] .onboarding-card {
   border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
   background: var(--primary-50);
   color: var(--primary-700);
-  font: inherit; font-size: 13px; font-weight: 550;
+  font: inherit; font-size: 13px; font-weight: 500;
   cursor: pointer;
   transform: scale(1);
   transition: background 140ms ease, border-color 140ms ease,
