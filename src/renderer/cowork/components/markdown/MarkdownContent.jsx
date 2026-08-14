@@ -88,13 +88,10 @@ function isSafeExternalHref(href) {
   return _SAFE_HREF_SCHEMES.has(url.protocol);
 }
 
-// A finished artifact's local filesystem location, or a fabricated sandbox: URL,
-// that anton sometimes emits as a "download" link. NONE of these resolve in the
-// chat surface — clicking does nothing — and to a user that reads as "the work
-// wasn't delivered" (ENG-1636). We detect them so `remarkArtifactLocalLinks`
-// can neutralize the link BEFORE it reaches the DOM. POSIX detection is scoped
-// to the artifact/.cowork path shape so a legitimate web `/route` link (web
-// mode) is never swallowed.
+// A finished artifact's local path or a fabricated sandbox: URL that anton emits
+// as a "download" link — inert in chat, so remarkArtifactLocalLinks neutralizes
+// it (ENG-1636). POSIX detection is scoped to the artifact/.cowork shape so a
+// real web `/route` link isn't swallowed.
 export function isArtifactLocalPath(href) {
   if (!href || typeof href !== 'string') return false;
   const h = href.trim();
@@ -106,21 +103,12 @@ export function isArtifactLocalPath(href) {
 const _ARTIFACT_LOCAL_LINK_TITLE =
   'This file is in the Live Artifacts panel — open or download it there';
 
-// remark plugin: rewrite a markdown link whose target is a finished file's
-// local path (or a fabricated sandbox:/file: URL) into an inert <span> that
-// keeps the link TEXT but carries a tooltip pointing at the Live Artifacts
-// panel — never a clickable/dead <a> (ENG-1636).
-//
-// This has to run here, on the raw mdast url, rather than in the `a` component
-// override: rehype-sanitize silently drops a disallowed-scheme href (Windows
-// `C:\…`, `sandbox:`, `file:`) on its way to hast, so by the time the override
-// runs those links are already bare, indistinguishable "Link blocked" spans.
-// Rewriting pre-sanitize is what lets us catch the Windows/sandbox/file forms
-// uniformly with the POSIX `/…/.anton/artifacts/…` form. Setting `data.hName`/
-// `hProperties` (the same mdast→hast override remarkSkillMentions uses) changes
-// only the wrapper element; the link's text children pass through untouched.
-// The stray `href` the link handler emits is not allowlisted on <span>, so
-// rehype-sanitize strips it — the span can never navigate.
+// Rewrite a link targeting a local file path (or fabricated sandbox:/file: URL)
+// into an inert <span> — link text kept, tooltip pointing at the Live Artifacts
+// panel, never a dead <a> (ENG-1636). Runs pre-sanitize on purpose: sanitize
+// strips a disallowed-scheme href (C:\…, sandbox:, file:) before the `a`
+// override could see it, so only here are Windows/POSIX/file/sandbox caught
+// uniformly. The <span>'s leftover href isn't allowlisted → sanitize drops it.
 function remarkArtifactLocalLinks() {
   const walk = (node) => {
     if (!node || !Array.isArray(node.children)) return;
@@ -163,8 +151,7 @@ const sanitizeSchema = {
   attributes: {
     ...defaultSchema.attributes,
     code: [...(defaultSchema.attributes?.code || []), ['className']],
-    // `title` on <span> carries the Live Artifacts hint that
-    // remarkArtifactLocalLinks stamps onto neutralized local-path links.
+    // `title` carries remarkArtifactLocalLinks' Live Artifacts hint on <span>.
     span: [...(defaultSchema.attributes?.span || []), ['className'], ['title']],
   },
   protocols: {
