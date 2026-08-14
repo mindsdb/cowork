@@ -14,6 +14,8 @@ import {
   parseVcsInfo,
   decideGitUpdate,
   decidePypiUpdate,
+  decideStreamRepair,
+  isPrereleaseVersion,
   parseUiManifest,
   looksLikeBrokenInstall,
   decideUpdateApply,
@@ -239,6 +241,64 @@ describe('decidePypiUpdate', () => {
     expect(decidePypiUpdate('0.1.10', null)).toEqual({
       action: 'skip',
       reason: 'no-latest-version',
+    });
+  });
+});
+
+describe('isPrereleaseVersion', () => {
+  it('detects an rc suffix and nothing else', () => {
+    expect(isPrereleaseVersion('0.1.10.1rc2')).toBe(true);
+    expect(isPrereleaseVersion('0.1.10.1')).toBe(false);
+    // Dev/local tails are not the rc stream and must not trigger repairs.
+    expect(isPrereleaseVersion('0.1.10.dev4')).toBe(false);
+  });
+});
+
+describe('decideStreamRepair', () => {
+  it('repairs a prod build holding a pre-release back to the latest stable', () => {
+    // The stable target sorts BELOW the rc — the whole point is that this
+    // deliberate downgrade is allowed where the update path never goes back.
+    expect(decideStreamRepair({ buildKind: 'prod', currentVersion: '0.1.12.1rc7', latestVersion: '0.1.10.1' })).toEqual({
+      action: 'repair',
+      from: '0.1.12.1rc7',
+      to: '0.1.10.1',
+    });
+  });
+
+  it('leaves non-prod builds alone even when they hold a pre-release', () => {
+    for (const kind of ['stable', 'preview', 'dev', null, undefined]) {
+      expect(decideStreamRepair({ buildKind: kind, currentVersion: '0.1.12.1rc7', latestVersion: '0.1.10.1' })).toEqual({
+        action: 'skip',
+        reason: 'not-prod',
+      });
+    }
+  });
+
+  it('never touches a prod install already on a stable version', () => {
+    expect(decideStreamRepair({ buildKind: 'prod', currentVersion: '0.1.10.1', latestVersion: '0.1.11.1' })).toEqual({
+      action: 'skip',
+      reason: 'on-stream',
+    });
+  });
+
+  it('skips when the installed version is unknown', () => {
+    expect(decideStreamRepair({ buildKind: 'prod', currentVersion: null, latestVersion: '0.1.10.1' })).toEqual({
+      action: 'skip',
+      reason: 'unknown-installed-version',
+    });
+  });
+
+  it('skips when PyPI is unreachable rather than reinstalling blind', () => {
+    expect(decideStreamRepair({ buildKind: 'prod', currentVersion: '0.1.12.1rc7', latestVersion: null })).toEqual({
+      action: 'skip',
+      reason: 'no-latest-version',
+    });
+  });
+
+  it('never repairs onto another pre-release', () => {
+    expect(decideStreamRepair({ buildKind: 'prod', currentVersion: '0.1.12.1rc7', latestVersion: '0.1.13.1rc1' })).toEqual({
+      action: 'skip',
+      reason: 'latest-not-stable',
     });
   });
 });
