@@ -14,7 +14,9 @@
   "include": [
     "tests/**/*.ts",
     "e2e/**/*.ts",
+    "release-smoke/**/*.ts",
     "playwright.config.ts",
+    "playwright.release-smoke.config.ts",
     "src/**/*.d.ts",       // global.d.ts → vite/client (ImportMeta.env, used via host.ts imports)
     "src/**/*.test.ts",
     "src/**/*.test.tsx"
