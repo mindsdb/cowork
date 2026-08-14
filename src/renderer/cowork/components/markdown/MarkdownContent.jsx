@@ -88,6 +88,61 @@ function isSafeExternalHref(href) {
   return _SAFE_HREF_SCHEMES.has(url.protocol);
 }
 
+// A finished artifact's local filesystem location, or a fabricated sandbox: URL,
+// that anton sometimes emits as a "download" link. NONE of these resolve in the
+// chat surface — clicking does nothing — and to a user that reads as "the work
+// wasn't delivered" (ENG-1636). We detect them so `remarkArtifactLocalLinks`
+// can neutralize the link BEFORE it reaches the DOM. POSIX detection is scoped
+// to the artifact/.cowork path shape so a legitimate web `/route` link (web
+// mode) is never swallowed.
+export function isArtifactLocalPath(href) {
+  if (!href || typeof href !== 'string') return false;
+  const h = href.trim();
+  if (/^[a-zA-Z]:[\\/]/.test(h)) return true; // C:\… or C:/… (Windows drive)
+  if (/^(?:file|sandbox):/i.test(h)) return true; // file:… / sandbox:/mnt/data/…
+  return h.includes('/.anton/artifacts/') || h.includes('/.cowork/'); // POSIX artifact path
+}
+
+const _ARTIFACT_LOCAL_LINK_TITLE =
+  'This file is in the Live Artifacts panel — open or download it there';
+
+// remark plugin: rewrite a markdown link whose target is a finished file's
+// local path (or a fabricated sandbox:/file: URL) into an inert <span> that
+// keeps the link TEXT but carries a tooltip pointing at the Live Artifacts
+// panel — never a clickable/dead <a> (ENG-1636).
+//
+// This has to run here, on the raw mdast url, rather than in the `a` component
+// override: rehype-sanitize silently drops a disallowed-scheme href (Windows
+// `C:\…`, `sandbox:`, `file:`) on its way to hast, so by the time the override
+// runs those links are already bare, indistinguishable "Link blocked" spans.
+// Rewriting pre-sanitize is what lets us catch the Windows/sandbox/file forms
+// uniformly with the POSIX `/…/.anton/artifacts/…` form. Setting `data.hName`/
+// `hProperties` (the same mdast→hast override remarkSkillMentions uses) changes
+// only the wrapper element; the link's text children pass through untouched.
+// The stray `href` the link handler emits is not allowlisted on <span>, so
+// rehype-sanitize strips it — the span can never navigate.
+function remarkArtifactLocalLinks() {
+  const walk = (node) => {
+    if (!node || !Array.isArray(node.children)) return;
+    for (const child of node.children) {
+      if (child.type === 'link' && isArtifactLocalPath(child.url)) {
+        child.data = {
+          ...(child.data || {}),
+          hName: 'span',
+          hProperties: {
+            ...((child.data && child.data.hProperties) || {}),
+            className: ['artifact-local-link'],
+            title: _ARTIFACT_LOCAL_LINK_TITLE,
+          },
+        };
+      } else if (child.type !== 'code' && child.type !== 'inlineCode') {
+        walk(child);
+      }
+    }
+  };
+  return (tree) => walk(tree);
+}
+
 function openMarkdownHref(href) {
   if (!isSafeExternalHref(href)) return;
   // Prefer the host bridge (Electron routes through shell.openExternal;
@@ -108,7 +163,9 @@ const sanitizeSchema = {
   attributes: {
     ...defaultSchema.attributes,
     code: [...(defaultSchema.attributes?.code || []), ['className']],
-    span: [...(defaultSchema.attributes?.span || []), ['className']],
+    // `title` on <span> carries the Live Artifacts hint that
+    // remarkArtifactLocalLinks stamps onto neutralized local-path links.
+    span: [...(defaultSchema.attributes?.span || []), ['className'], ['title']],
   },
   protocols: {
     ...(defaultSchema.protocols || {}),
@@ -459,7 +516,12 @@ export function MarkdownContent({
     // plain-prose currency ("$5 and $10") is safe. _normalizeMathDelimiters
     // does the delimiter work instead: it rewrites \(…\), \[…\], and genuine
     // (pandoc-guarded) $…$ inline math into the `$$…$$` form parsed here.
-    () => [remarkGfm, [remarkMath, { singleDollarTextMath: false }], [remarkSkillMentions, skillNames]],
+    () => [
+      remarkGfm,
+      [remarkMath, { singleDollarTextMath: false }],
+      [remarkSkillMentions, skillNames],
+      remarkArtifactLocalLinks,
+    ],
     [skillNames],
   );
 
