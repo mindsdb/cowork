@@ -240,6 +240,9 @@ export default function Sidebar({
   onToggleTheme,
   skin = 'normal',
   onToggleSkin,
+  // Opens the full Display / ThemeModal picker (ENG-1545). When unset the
+  // footer "Display settings" opener button isn't rendered.
+  onOpenThemeModal,
   // Whether the 8-bit button should render "on". While skin === 'custom',
   // the caller repurposes onToggleSkin to flip the mono font instead of
   // skin itself, so "on" needs to track that font choice, not `skin`.
@@ -947,6 +950,17 @@ export default function Sidebar({
                 aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
               >
                 {theme === 'dark' ? Ico.sun(15) : Ico.moon(15)}
+              </button>
+            </Tooltip>
+          )}
+          {onOpenThemeModal && (
+            <Tooltip content="Display settings">
+              <button
+                className="chrome-btn--small shrink-0 [-webkit-app-region:no-drag]"
+                onClick={onOpenThemeModal}
+                aria-label="Open display settings"
+              >
+                {Ico.slider(15)}
               </button>
             </Tooltip>
           )}
