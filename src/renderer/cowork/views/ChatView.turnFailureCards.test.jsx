@@ -51,6 +51,142 @@ describe('unknown_model failure card', () => {
   });
 });
 
+describe('included_allowance_exhausted card (ENG-1537)', () => {
+  const BODY = "You've used this month's free tokens.";
+
+  it('describes the free grant, not a drained wallet', () => {
+    render(<ChatView task={taskWith(failedTurn('included_allowance_exhausted', BODY))} />);
+    expect(screen.getByText("You've used this month's free tokens")).toBeInTheDocument();
+    // This user has never topped up — "out of credits" misdescribes it.
+    expect(screen.queryByText(/out of credits/i)).toBeNull();
+  });
+
+  it('keeps an actionable path to continue (ENG-1169 holds across the split)', () => {
+    render(<ChatView task={taskWith(failedTurn('included_allowance_exhausted', BODY))} />);
+    expect(screen.getByRole('button', { name: 'Add credits' })).toBeEnabled();
+  });
+
+  it('names the reset date the gate supplied — the free way forward', () => {
+    const inMarch = new Date(Date.now() + 40 * 24 * 3600 * 1000);
+    render(<ChatView task={taskWith(failedTurn('included_allowance_exhausted', BODY, {
+      resetAt: inMarch.toISOString(),
+    }))} />);
+    const expected = inMarch.toLocaleDateString(undefined, { day: 'numeric', month: 'long' });
+    expect(screen.getByText(new RegExp(`resets on ${expected}`))).toBeInTheDocument();
+  });
+
+  it('says what credits unlock', () => {
+    render(<ChatView task={taskWith(failedTurn('included_allowance_exhausted', BODY))} />);
+    expect(screen.getByText(/unlock Claude, GPT, Gemini, Kimi, DeepSeek and more/)).toBeInTheDocument();
+  });
+
+  it.each([
+    ['absent', undefined],
+    ['malformed', 'not-a-date'],
+    ['already past', new Date(Date.now() - 86_400_000).toISOString()],
+  ])('falls back to "next month" when the date is %s', (_label, resetAt) => {
+    // Never "Invalid Date", and never a stale month on a reloaded conversation.
+    render(<ChatView task={taskWith(failedTurn('included_allowance_exhausted', BODY, { resetAt }))} />);
+    expect(screen.getByText(/resets on next month/)).toBeInTheDocument();
+    expect(screen.queryByText(/Invalid Date/)).toBeNull();
+  });
+});
+
+describe('rate_limited failure card (ENG-1537)', () => {
+  const BODY = "Too many requests too quickly. Wait a moment and continue — this isn't a credits problem.";
+
+  it('never offers a top-up — this is a velocity limit, not out of credits', () => {
+    render(<ChatView task={taskWith(failedTurn('rate_limited', BODY))} />);
+    expect(screen.getByText('Too many requests too quickly')).toBeInTheDocument();
+    // THE defect: this used to render the out-of-credits card with a
+    // "Top up balance" button, sending the user to buy something that cannot
+    // lift a per-minute ceiling.
+    expect(screen.queryByRole('button', { name: /top up/i })).toBeNull();
+    expect(screen.queryByText(/out of credits/i)).toBeNull();
+  });
+
+  it('gates Retry while the server-supplied wait is still running', () => {
+    // Anchored on the server's ABSOLUTE instant. The previous version of this
+    // test hand-injected `createdAt`, a field no error row in this app carries
+    // — so it was green on dead code, and the ticket's "its Retry is
+    // time-gated" was unmet on every real path (ENG-1537 review).
+    render(<ChatView task={taskWith(failedTurn('rate_limited', BODY, {
+      retryAt: new Date(Date.now() + 30_000).toISOString(),
+    }))} />);
+    const btn = screen.getByRole('button', { name: /Try again in \d+s/ });
+    expect(btn).toBeDisabled();
+  });
+
+  it('offers an ungated Retry once the wait has elapsed', () => {
+    render(<ChatView task={taskWith(failedTurn('rate_limited', BODY, {
+      retryAt: new Date(Date.now() - 60_000).toISOString(),
+    }))} />);
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeEnabled();
+  });
+
+  it('gates identically outside UTC', () => {
+    // The trap that made the naive fix wrong: the suite pins TZ=UTC, so a
+    // local-time parse looks correct here and gates for ~7h in
+    // America/Los_Angeles. An offset-bearing instant is timezone-proof, and
+    // this asserts it rather than trusting it.
+    const inThirty = new Date(Date.now() + 30_000);
+    for (const iso of [inThirty.toISOString(), inThirty.toISOString().replace('Z', '+00:00')]) {
+      const { unmount } = render(
+        <ChatView task={taskWith(failedTurn('rate_limited', BODY, { retryAt: iso }))} />,
+      );
+      expect(screen.getByRole('button', { name: /Try again in \d+s/ })).toBeDisabled();
+      unmount();
+    }
+  });
+
+  it('refuses an offset-less anchor instead of parsing it as local time', () => {
+    // The regression guard the TZ=UTC pin would otherwise hide. Someone
+    // reintroducing `created_at + retryAfter` as the anchor would go green in
+    // CI and gate for ~7h for every user west of UTC. Requiring an offset makes
+    // that failure mode "no gate" — visible, and assertable in any zone.
+    // RELATIVE, not a literal date. A hardcoded future date stops testing
+    // anything once it passes: from 2026-12-02 the value is in the past, so the
+    // clamp path returns null and the test goes green with the offset check
+    // deleted — silently ceasing to guard the regression it exists for.
+    const naive = new Date(Date.now() + 30_000).toISOString().replace('Z', '');
+    render(<ChatView task={taskWith(failedTurn('rate_limited', BODY, {
+      retryAt: naive,   // exactly the shape created_at has
+    }))} />);
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeEnabled();
+  });
+
+  it('never gates Retry for longer than the clamp', () => {
+    // anton cards immediately above its 60s cap rather than sleeping, so a
+    // large hint reaches the client as a real value. Ungated, retryAfter=30000
+    // disabled the button for 8.3 hours — indistinguishable from a broken card.
+    render(<ChatView task={taskWith(failedTurn('rate_limited', BODY, {
+      retryAt: new Date(Date.now() + 8 * 3600 * 1000).toISOString(),
+    }))} />);
+    const btn = screen.getByRole('button', { name: /Try again in (\d+)s/ });
+    const secs = Number(btn.textContent.match(/(\d+)s/)[1]);
+    expect(secs).toBeLessThanOrEqual(600);
+  });
+
+  it('offers an ungated Retry when the gateway sent no hint', () => {
+    // Older gateway / stripped header: an honest button beats an invented
+    // countdown.
+    render(<ChatView task={taskWith(failedTurn('rate_limited', BODY))} />);
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeEnabled();
+  });
+
+  it('resends the previous user message on Retry, like provider_overloaded', () => {
+    const onSend = vi.fn();
+    render(
+      <ChatView
+        task={taskWith(failedTurn('rate_limited', BODY))}
+        onSend={onSend}
+      />,
+    );
+    screen.getByRole('button', { name: 'Try again' }).click();
+    expect(onSend).toHaveBeenCalledWith('draw me a chart');
+  });
+});
+
 describe('image_format failure card', () => {
   it('names the fix (PNG/JPEG) with no dead-end buttons', () => {
     render(
@@ -114,6 +250,10 @@ const WIRE_CODES = [
   'model_disabled',
   'provider_overloaded',
   'image_format',
+  // ENG-1537 — the velocity 429, previously mislabelled as out-of-credits.
+  'rate_limited',
+  // ENG-1537 — the spent free allowance, split off the credits card.
+  'included_allowance_exhausted',
   'anton_error',
 ];
 

@@ -274,7 +274,19 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
   if (type === 'response.failed') {
     // Key upgrade-intent signal: a free user hit the token cap. Fire once here,
     // on receipt — not in the render path (ChatView), which re-runs every paint.
-    if (!replay && event.code === 'token_limit') {
+    //
+    // BOTH out-of-credits codes count (ENG-1537). Splitting the spent free
+    // allowance into its own code would otherwise have silently dropped it from
+    // this metric — and that cohort is precisely the one it exists to measure,
+    // since a never-topped-up org is steered onto the free-bucket model by
+    // `_enabled_aware_default`. `rate_limited` is correctly excluded: a
+    // velocity limit was never upgrade intent, and counting it would inflate
+    // the signal with users who already pay.
+    //
+    // The event carries no properties, so the historical series cannot be
+    // re-segmented retroactively — a `reason` property would be worth adding
+    // before the next question about this metric.
+    if (!replay && (event.code === 'token_limit' || event.code === 'included_allowance_exhausted')) {
       try { _trackTokenCapHit(); }
       catch { /* analytics must never break streaming */ }
     }
@@ -686,6 +698,24 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
   // Progress markers
   if (role === 'thought.progress') {
     const phase = event.phase;
+
+    // anton is deliberately idle, waiting out a velocity rate-limit before
+    // resuming the same step (ENG-1537). Surfaced as an ephemeral live line —
+    // the turn is NOT failing, so it must not look like an error, and it must
+    // not be dropped: a silent 90s pause is indistinguishable from a hang, and
+    // that is how a correct wait gets reported as a freeze. Reuses
+    // `currentThought` rather than adding UI, so the existing working state
+    // carries it and the user never has to type "continue".
+    //
+    // Every other ad-hoc phase falls through to the `return state` at the
+    // bottom of this block and is discarded as noise — which is exactly why
+    // this needs an explicit branch.
+    if (phase === 'rate_limited') {
+      const text = event.message || event.content || 'Rate limited — waiting';
+      // A fresh burst, not an append: this interrupts whatever the model was
+      // narrating, and the next real reasoning delta should replace it.
+      return { ...state, currentThought: { text, startedAt: eventTs } };
+    }
 
     // Cell finished — flip the trailing in-progress scratchpad to
     // completed if the .result hasn't arrived yet. (When .result does

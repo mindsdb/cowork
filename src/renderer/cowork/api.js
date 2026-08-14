@@ -152,6 +152,18 @@ function _failedEventMeta(events) {
     reconnectable: ev.reconnectable ?? null,
     providerLabel: ev.provider_label ?? null,
     failedModel: ev.model ?? null,
+    // ENG-1537 — see App.jsx's failedEventMeta; the two paths must agree.
+    retryAfter: typeof ev.retry_after === 'number' ? ev.retry_after : null,
+    // included_allowance_exhausted: when the free grant refreshes, as the
+    // gate's opaque ISO string. Formatted at render time — the server
+    // deliberately doesn't parse it, since only the client knows the
+    // viewer's timezone (ENG-1537).
+    resetAt: typeof ev.reset_at === 'string' ? ev.reset_at : null,
+    // Absolute instant to gate Retry against. The message's own created_at
+    // is NOT a substitute: the server serialises it offset-less, so JS reads
+    // it as local time — the gate would last hours west of UTC and no-op east
+    // of it, invisible to a TZ=UTC suite (ENG-1537 review).
+    retryAt: typeof ev.retry_at === 'string' ? ev.retry_at : null,
   };
 }
 
@@ -197,6 +209,9 @@ function _hydrateAssistantEvents(messages) {
           code: failed?.code || null,
           reconnectable: failed?.reconnectable ?? null,
           providerLabel: failed?.providerLabel ?? null,
+          retryAfter: failed?.retryAfter ?? null,
+          resetAt: failed?.resetAt ?? null,
+          retryAt: failed?.retryAt ?? null,
           failedModel: failed?.failedModel ?? null,
         });
       }
