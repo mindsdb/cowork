@@ -9,7 +9,6 @@ import { mergeTasksFromServer } from './lib/mergeTasks';
 // provider setup. The cowork app is mounted by CoworkApp.tsx only after
 // those gates pass, so AppCore renders unconditionally here.
 import Sidebar from './components/Sidebar';
-import ThemeModal from './components/ThemeModal';
 import AppShell from './components/AppShell';
 import { ConfirmModal } from './components/ConfirmModal';
 import { Modal, ModalHeader, ModalBody } from './components/ui/Modal';
@@ -1508,9 +1507,6 @@ function AppCore() {
   // stylesheet keyed on body[data-skin]; both color schemes have a
   // variant per skin, so the two toggles compose freely.
   const [skin, setSkin] = useState(loadSkin);
-  // The full Display / theme picker modal (ENG-1545), opened from the
-  // sidebar footer's "Display settings" button.
-  const [themeModalOpen, setThemeModalOpen] = useState(false);
   // The "design your own" recipe behind the `custom` skin — edited in
   // Settings → Appearance, applied as inline body token overrides.
   const [customTheme, setCustomTheme] = useState(loadCustomTheme);
@@ -4310,7 +4306,6 @@ function AppCore() {
             }
           }}
           is8bitActive={skin === 'custom' ? customTheme.font === 'mono' : skin !== 'normal'}
-          onOpenThemeModal={() => setThemeModalOpen(true)}
           showThemeToggle={settings.showThemeToggle !== false}
           show8bitToggle={settings.show8bitToggle !== false}
           onNavigate={navigate}
@@ -4832,15 +4827,6 @@ function AppCore() {
         open={connectorPickerOpen}
         onClose={() => setConnectorPickerOpen(false)}
         onPick={handleConnectorPicked}
-      />
-
-      <ThemeModal
-        open={themeModalOpen}
-        onClose={() => setThemeModalOpen(false)}
-        theme={theme}
-        onThemeChange={setTheme}
-        skin={skin}
-        onSkinChange={setSkin}
       />
 
       {!host.isWeb && (

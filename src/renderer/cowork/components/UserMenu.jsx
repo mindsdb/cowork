@@ -76,13 +76,13 @@ export function UserMenu({ user, onOpenSettings }) {
   const displayName = user.name || user.username || user.email;
 
   const items = [
-    // Identity header — email in small type, org beneath when the account
-    // has one (accounts without an active organization just skip the line).
-    (user.email || user.org) && {
+    // Identity header — just the org name (accounts without an active
+    // organization skip the header entirely). The email is intentionally not
+    // shown here; the account row already carries the identity.
+    user.org && {
       heading: (
         <div className="min-w-0">
-          {user.email && <div className="text-[11px] text-ink-3 truncate">{user.email}</div>}
-          {user.org && <div className="text-[12.5px] font-semibold text-ink mt-[2px] truncate">{user.org}</div>}
+          <div className="text-[12.5px] font-semibold text-ink truncate">{user.org}</div>
         </div>
       ),
     },

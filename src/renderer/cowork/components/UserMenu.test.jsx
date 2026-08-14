@@ -68,10 +68,12 @@ describe('UserMenu — footer row (ENG-1408)', () => {
 });
 
 describe('UserMenu — dropdown (ENG-1545 curated items)', () => {
-  it('shows the email header, org, and the five curated destinations', () => {
+  it('shows the org header (not the email) and the five curated destinations', () => {
     render(<UserMenu user={user} />);
     openMenu();
-    expect(screen.getByText('hazem@example.com')).toBeInTheDocument();
+    // The org name heads the menu; the email is intentionally not shown here.
+    expect(screen.getAllByText('MindsDB').length).toBeGreaterThan(0);
+    expect(screen.queryByText('hazem@example.com')).toBeNull();
     for (const label of ['Settings', 'Billing & Usage', 'Members', 'Help & Feedback', 'Logout']) {
       expect(screen.getByRole('menuitem', { name: new RegExp(label) })).toBeInTheDocument();
     }
