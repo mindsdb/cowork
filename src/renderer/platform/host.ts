@@ -234,6 +234,17 @@ export interface VersionInfo {
   ui: string | null;
   /** Where the running renderer came from. */
   source: 'bundled' | 'ota' | 'web';
+  /** The shell's build kind (update ring). Null on web and on legacy shells
+   *  that predate the field — an OTA renderer can run on an older shell. */
+  buildKind: 'dev' | 'preview' | 'stable' | 'prod' | null;
+}
+
+const BUILD_KINDS = ['dev', 'preview', 'stable', 'prod'] as const;
+
+function normalizeBuildKind(value: unknown): VersionInfo['buildKind'] {
+  return (BUILD_KINDS as readonly string[]).includes(value as string)
+    ? (value as VersionInfo['buildKind'])
+    : null;
 }
 
 /** Structured version facts for the unified version display (ENG-213). The
@@ -249,10 +260,10 @@ export async function getVersionInfo(): Promise<VersionInfo> {
       const ui = v.ui != null && v.ui !== 'bundled' ? String(v.ui) : null;
       const source: VersionInfo['source'] =
         v.source === 'ota' || v.source === 'bundled' ? v.source : ui ? 'ota' : 'bundled';
-      return { app: String(v.app ?? ''), ui, source };
+      return { app: String(v.app ?? ''), ui, source, buildKind: normalizeBuildKind(v.buildKind) };
     }
   }
-  return { app: '', ui: null, source: 'web' };
+  return { app: '', ui: null, source: 'web', buildKind: null };
 }
 
 // ---- Onboarding -------------------------------------------------------

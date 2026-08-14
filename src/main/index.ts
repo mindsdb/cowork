@@ -1270,6 +1270,10 @@ function setupIPC() {
       app: getAppDisplayVersion(),
       ui: uiVersion,
       source: uiVersion ? 'ota' : 'bundled',
+      // Which update ring this install is on — staging-ring builds
+      // (preview/stable) legitimately run rc server versions, and without
+      // this in the About panel such reports look like corruption.
+      buildKind: buildKind(),
     };
   });
 
