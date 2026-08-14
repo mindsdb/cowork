@@ -826,7 +826,9 @@ export default function SettingsView({
   const roleModelValue = (role, fallback = '') => canonicalModelForRole(role) || fallback || '';
   const setRoleDriver = (role, providerType, model) => {
     const normalizedType = providerValueToType(providerType) || 'minds-cloud';
-    const nextModel = model || '';
+    // null is a tombstone ("clear the stored row so the server's enabled-aware
+    // default governs", ENG-1632) and must survive to the save path untouched.
+    const nextModel = model === null ? null : (model || '');
     if (role === 'planning') {
       setSetting('planningProvider', normalizedType);
       setSetting('planningModel', nextModel);
@@ -947,17 +949,27 @@ export default function SettingsView({
     const keyField = providerTypeToKeyField(type);
     if (keyField) setSetting(keyField, '');
 
-    // Role settings referencing the removed provider get re-pointed
-    // at MindsHub with its recommended pair for the role.
+    // Role settings referencing the removed provider get re-pointed at
+    // MindsHub. Planning gets a real, wallet-affordable model (it's visible in
+    // the picker); the aux roles are tombstoned (null → row cleared) so the
+    // server's enabled-aware default governs them — writing the raw pair here
+    // used to pin haiku/kimi for exactly the accounts that couldn't pay for
+    // them (ENG-1632).
     const adjustedOverrides = {};
+    const modelEnabled = settings.modelEnabled || {};
     for (const role of ['planning', 'coding', 'router']) {
       const o = roleOverride(role);
       if (roleProviderType(role) === type) {
-        const pair = recommendedPair['minds-cloud'] || ['', '', ''];
-        const roleIdx = role === 'planning' ? 0 : role === 'router' ? 2 : 1;
-        const fallback = pair[roleIdx] || pair[1] || (recommendedModels['minds-cloud']?.[0] || '');
-        adjustedOverrides[role] = { providerType: 'minds-cloud', model: fallback };
-        setRoleDriver(role, 'minds-cloud', fallback);
+        if (role === 'planning') {
+          const pair = recommendedPair['minds-cloud'] || ['', '', ''];
+          const fallback = [pair[0], ...(recommendedModels['minds-cloud'] || [])]
+            .filter(Boolean)
+            .find((m) => modelEnabled[m] !== false) || pair[0] || '';
+          adjustedOverrides[role] = { providerType: 'minds-cloud', model: fallback };
+          setRoleDriver(role, 'minds-cloud', fallback);
+        } else {
+          setRoleDriver(role, 'minds-cloud', null);
+        }
       } else {
         if (o) adjustedOverrides[role] = o;
       }
@@ -1027,16 +1039,31 @@ export default function SettingsView({
     const next = { ...s };
     if ((providerValueToType(s.planningProvider) || 'minds-cloud') !== type) {
       next.planningProvider = type;
-      next.planningModel = pair[0] || '';
-      next.defaultModel = pair[0] || '';
+      // Never seed a model the wallet can't currently cover (ENG-1632): the
+      // raw pair value written for a wallet-locked account becomes an explicit
+      // pin that 402s and permanently disarms the server's enabled-aware
+      // default. Planning stays a real, visible value — just an affordable one.
+      const modelEnabled = s.modelEnabled || {};
+      const planningSeed = [pair[0], ...(recommendedModels[type] || [])]
+        .filter(Boolean)
+        .find((m) => modelEnabled[m] !== false) || pair[0] || '';
+      next.planningModel = planningSeed;
+      next.defaultModel = planningSeed;
     }
+    // The aux roles are invisible in default mode, so writing ANY model here
+    // claims a user intent that doesn't exist — and the write used to land
+    // exactly for wallet-locked accounts (the diff only kept it when the
+    // server's enabled-aware default differed from the pair). Tombstone the
+    // rows instead (null → DELETE in updateSettings) so the server's own
+    // resolution governs them again. The provider still repoints: keeping a
+    // stale model id from another provider would misroute.
     if ((providerValueToType(s.codingProvider) || 'minds-cloud') !== type) {
       next.codingProvider = type;
-      next.codingModel = pair[1] || '';
+      next.codingModel = null;
     }
     if ((providerValueToType(s.routerProvider) || 'minds-cloud') !== type) {
       next.routerProvider = type;
-      next.routerModel = pair[2] || pair[1] || '';
+      next.routerModel = null;
     }
     return next;
   };
@@ -1566,8 +1593,22 @@ export default function SettingsView({
                             <Select
                               value={curType}
                               onValueChange={(t) => {
+                                // Seed the first wallet-affordable candidate,
+                                // not the raw pair value: silently writing a
+                                // locked model on a provider switch converts
+                                // the server's dynamic default into a hard pin
+                                // that 402s (ENG-1632). The model picker's own
+                                // path stays informed-consent (ENG-1248) — the
+                                // user can still pick a locked model there and
+                                // see the "Needs credits" hint.
                                 const pair = recommendedPair[t] || ['', '', ''];
-                                const newModel = pair[roleIdx] || pair[1] || (recommendedModels[t]?.[0] || '');
+                                const candidates = [
+                                  pair[roleIdx] || pair[1],
+                                  ...(recommendedModels[t] || []),
+                                ].filter(Boolean);
+                                const newModel =
+                                  candidates.find((m) => modelEnabled[m] !== false)
+                                  || candidates[0] || '';
                                 setModelInputMode((m) => ({ ...m, [role]: false }));
                                 writeOverride({ providerType: t, model: newModel });
                               }}

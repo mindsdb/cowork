@@ -562,6 +562,9 @@ export function diffSettingsForWrite(patch, lastFetched) {
     const serverKey = CLIENT_TO_SERVER[clientKey];
     if (!serverKey) continue;
     if (value === '***') continue;
+    // `null` is a tombstone ("clear the stored row"), handled by
+    // updateSettings as a DELETE — never a PUT of the string "null".
+    if (value === null) continue;
     // Budget keys are writable only when the server serves them: the server
     // returns a row for every settings field, so absence from the fetched
     // snapshot means an older server that would 400 the write (and fail the

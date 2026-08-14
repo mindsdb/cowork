@@ -8,7 +8,7 @@ import { initialStreamState, reduceStream, iterateSSE } from './lib/responseStre
 import { isAntonConfigError } from './lib/antonErrors';
 import { host } from '../platform/host';
 import { relativeAge } from './lib/formatTime';
-import { transformSettingsRows, diffSettingsForWrite, mergeRecommendedModels } from './lib/settingsTransform';
+import { transformSettingsRows, diffSettingsForWrite, mergeRecommendedModels, CLIENT_TO_SERVER } from './lib/settingsTransform';
 import { cacheSettings } from './lib/settingsCache';
 import {
   buildMemoryDeletePayload,
@@ -1131,6 +1131,24 @@ export async function updateSettings(patch) {
         e.failed = keys;
         throw e;
       }
+    }
+
+    // A `null` in the patch is a tombstone: clear the stored row entirely so
+    // the server's own resolution (enabled-aware defaults) governs the key
+    // again — deliberately NOT a `''` write, which creates a permanent empty
+    // row the raw readers and apply_model_defaults mishandle (ENG-1632).
+    // Best-effort by design: 404 = no row to clear (the fetched value was the
+    // server's resolved default), 400 = a pre-ENG-660 server that doesn't
+    // know the key — neither may fail the save the user just made. The
+    // `k in _lastFetchedSettings` gate skips servers that never served the
+    // key at all (mirrors the BUDGET_FIELDS absent-key rule).
+    const tombstones = Object.keys(patch).filter(
+      (k) => patch[k] === null && CLIENT_TO_SERVER[k] && k in _lastFetchedSettings,
+    );
+    for (const k of tombstones) {
+      try {
+        await req(`/settings/${encodeURIComponent(CLIENT_TO_SERVER[k])}`, { method: 'DELETE' });
+      } catch { /* best-effort clear — see above */ }
     }
 
     // Re-fetch so _lastFetchedSettings reflects the server's canonical state

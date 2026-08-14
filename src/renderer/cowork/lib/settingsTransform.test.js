@@ -727,3 +727,13 @@ describe('the "no limit" switch (ENG-1286)', () => {
     expect(resolveBudgetRestore('100000', null, spec)).toBe('750000');
   });
 });
+
+describe('diffSettingsForWrite — null tombstones (ENG-1632)', () => {
+  it('never PUTs a null value — a tombstone is a DELETE, not a write of "null"', () => {
+    const writes = diffSettingsForWrite(
+      { codingModel: null, routerModel: null, actFirst: 'true' },
+      { codingModel: 'haiku', routerModel: 'kimi', actFirst: 'false' },
+    );
+    expect(writes).toEqual({ act_first: 'true' });
+  });
+});
