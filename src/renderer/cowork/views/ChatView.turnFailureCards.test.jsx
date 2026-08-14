@@ -139,6 +139,17 @@ describe('rate_limited failure card (ENG-1537)', () => {
     }
   });
 
+  it('refuses an offset-less anchor instead of parsing it as local time', () => {
+    // The regression guard the TZ=UTC pin would otherwise hide. Someone
+    // reintroducing `created_at + retryAfter` as the anchor would go green in
+    // CI and gate for ~7h for every user west of UTC. Requiring an offset makes
+    // that failure mode "no gate" — visible, and assertable in any zone.
+    render(<ChatView task={taskWith(failedTurn('rate_limited', BODY, {
+      retryAt: '2026-12-01T10:00:00',   // naive: exactly what created_at looks like
+    }))} />);
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeEnabled();
+  });
+
   it('never gates Retry for longer than the clamp', () => {
     // anton cards immediately above its 60s cap rather than sleeping, so a
     // large hint reaches the client as a real value. Ungated, retryAfter=30000

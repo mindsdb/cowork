@@ -899,6 +899,13 @@ function RateLimitedCard({ time, agentLabel, body, retryAt, onRetry }) {
     // serialised offset-less, so JS parses it as local time — the gate lasts
     // hours west of UTC and no-ops east of it, and a TZ=UTC suite sees neither.
     if (typeof retryAt !== 'string') return null;
+    // REQUIRE an offset. An offset-less timestamp is what made the original bug
+    // invisible: JS parses "2026-08-12T01:04:55" as LOCAL time, so the gate ran
+    // ~7h long west of UTC and no-opped east of it — and the suite pins TZ=UTC
+    // globally, so no assertion could see either direction. Rejecting the naive
+    // form here turns that whole class of regression into "no gate" rather than
+    // "a wrong gate", and makes it testable in any zone.
+    if (!/(?:Z|[+-]\d{2}:?\d{2})$/.test(retryAt)) return null;
     const at = new Date(retryAt).getTime();
     if (Number.isNaN(at)) return null;
     return Math.min(at, Date.now() + MAX_RETRY_GATE_MS);
