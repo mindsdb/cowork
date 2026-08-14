@@ -24,7 +24,7 @@ import {
   getSelectedMethod, subscribeSelectedMethod, setSelectedMethod,
 } from './formStore';
 
-import { saveConnector, fetchDatasources, startConnectorOAuth, pollConnectorOAuth } from '../../api';
+import { discoverPostHogProjects, saveConnector, fetchDatasources, startConnectorOAuth, pollConnectorOAuth } from '../../api';
 import { host } from '../../../platform/host';
 import { trackDataSourceConnected } from '../../lib/analytics';
 
@@ -222,6 +222,51 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
         spec, action: id, kind, submissionId: null, skipped: skipped || [],
         fieldNames: [],
       }));
+      return;
+    }
+
+    // PostHog projects are account-scoped. Users know their project by name,
+    // not the numeric ID that the connector engine needs, so discover choices
+    // before posting the generic connector submission.
+    if (spec._connector_id === 'posthog' && kind === 'primary' && !String(values?.project_id || '').trim()) {
+      setBusy(true);
+      try {
+        const result = await discoverPostHogProjects({
+          personalApiKey: values?.personal_api_key,
+          host: values?.host,
+          customHost: values?.custom_host,
+        });
+        const options = (result.projects || []).map((project) => ({
+          value: String(project.id),
+          label: project.name || `Project ${project.id}`,
+        }));
+        if (!options.length) {
+          throw new Error('No PostHog projects are available to this personal API key. Enter a project ID manually or check the key access.');
+        }
+        patchForm(conversationId, {
+          form_id: spec.form_id,
+          form_error: null,
+          subtitle: 'Choose the PostHog project to connect.',
+          methods: {
+            [authMethod || 'personal-api-key']: {
+              fields: {
+                posthog_project_choice: {
+                  name: 'posthog_project_choice',
+                  label: 'PostHog project',
+                  type: 'select',
+                  required: true,
+                  options,
+                  help: 'Choose the PostHog project to connect, or enter its numeric ID manually below.',
+                },
+              },
+            },
+          },
+        });
+      } catch (err) {
+        setError(err?.message || 'Could not find PostHog projects.');
+      } finally {
+        setBusy(false);
+      }
       return;
     }
 
@@ -512,6 +557,11 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
 
     setBusy(true);
     try {
+      const submissionValues = { ...(values || {}) };
+      if (spec._connector_id === 'posthog' && submissionValues.posthog_project_choice) {
+        submissionValues.project_id = submissionValues.posthog_project_choice;
+        delete submissionValues.posthog_project_choice;
+      }
       // Endpoint-as-agent path: hand the submission off to the
       // host (App.jsx → handleSubmitDataVaultForm). It opens an SSE
       // stream against /v1/datavault/submissions and pipes the
@@ -532,7 +582,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
           formSpec: wireMethodId
             ? { ...spec, auth_method: wireMethodId, selected_method: wireMethodId }
             : spec,
-          values: { ...(values || {}), user_label: userLabel },
+          values: { ...submissionValues, user_label: userLabel },
           skipped: skipped || [],
           name: connectionName,
           method: wireMethodId || null,
@@ -548,7 +598,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
           formId: spec.form_id,
           conversationId,
           formSpec: spec,
-          values: { ...(values || {}), user_label: userLabel },
+          values: { ...submissionValues, user_label: userLabel },
           skipped: skipped || [],
           name: connectionName,
           method: wireMethodId || null,

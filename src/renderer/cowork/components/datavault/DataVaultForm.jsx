@@ -254,6 +254,8 @@ export function DataVaultForm({
   // and easy to reset on a brand-new form.
   const [valuesByKey, setValuesByKey] = useState({});
   const [skippedByKey, setSkippedByKey] = useState({});
+  const [requiredErrorsByKey, setRequiredErrorsByKey] = useState({});
+  const fieldRefs = useRef({});
 
   const initialFor = (fs) => {
     const out = {};
@@ -270,6 +272,7 @@ export function DataVaultForm({
       lastFormIdRef.current = spec?.form_id;
       setValuesByKey({});
       setSkippedByKey({});
+      setRequiredErrorsByKey({});
       setLocalSelectedMethod(null);
     }
   }, [spec?.form_id]);
@@ -277,6 +280,11 @@ export function DataVaultForm({
   const stateKey = `${spec?.form_id || ''}::${activeMethodId || 'default'}`;
   const values = valuesByKey[stateKey] || initialFor(fields);
   const skipped = skippedByKey[stateKey] || new Set();
+  const requiredErrors = requiredErrorsByKey[stateKey] || {};
+  const posthogProjectChoice = fields.find((field) => field.name === 'posthog_project_choice');
+  const visibleFields = fields.filter((field) => (
+    !(field.name === 'project_id' && posthogProjectChoice && !String(values.project_id || '').trim())
+  ));
 
   // Publish a redacted snapshot of the form state so the chat layer
   // can inject context into messages sent during a connect task.
@@ -385,6 +393,12 @@ export function DataVaultForm({
 
   const updateField = (name, v) => {
     setValues((prev) => ({ ...prev, [name]: v }));
+    setRequiredErrorsByKey((prev) => {
+      if (!prev[stateKey]?.[name]) return prev;
+      const next = { ...prev[stateKey] };
+      delete next[name];
+      return { ...prev, [stateKey]: next };
+    });
     setSkipped((prev) => {
       if (!prev.has(name)) return prev;
       const next = new Set(prev);
@@ -406,6 +420,24 @@ export function DataVaultForm({
     if (action.kind === 'cancel') {
       onAction({ id: action.id, kind: 'cancel' });
       return;
+    }
+    if (action.kind === 'primary') {
+      const missing = fields.filter((field) => {
+        if (!field.required || skipped.has(field.name)) return false;
+        // PostHog resolves its numeric project ID from the user's personal API
+        // key in the panel before the connector request is sent.
+        if (spec?._connector_id === 'posthog' && field.name === 'project_id') return false;
+        const value = values[field.name];
+        return value === null || value === undefined || String(value).trim() === '';
+      });
+      if (missing.length) {
+        const errors = Object.fromEntries(
+          missing.map((field) => [field.name, `${field.label || field.name} is required.`]),
+        );
+        setRequiredErrorsByKey((prev) => ({ ...prev, [stateKey]: errors }));
+        requestAnimationFrame(() => fieldRefs.current[missing[0].name]?.focus?.());
+        return;
+      }
     }
     // Strip any field marked as skipped from the values payload.
     const cleanValues = {};
@@ -539,7 +571,7 @@ export function DataVaultForm({
           and a Submit button, exactly the "confirm-and-continue"
           step we don't want). */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {fields.map((f) => {
+        {visibleFields.map((f) => {
           const isSkipped = skipped.has(f.name);
           // Identity / read-only marker. The modify-flow pins
           // `name` (and could pin others) so the vault row key
@@ -547,7 +579,12 @@ export function DataVaultForm({
           // the skip affordance.
           const isLocked = !!f._locked;
           return (
-            <div key={f.name} style={{ display: 'flex', flexDirection: 'column', gap: 4, opacity: isSkipped ? 0.55 : 1 }}>
+            <div
+              key={f.name}
+              ref={(node) => { fieldRefs.current[f.name] = node; }}
+              tabIndex={-1}
+              style={{ display: 'flex', flexDirection: 'column', gap: 4, opacity: isSkipped ? 0.55 : 1 }}
+            >
               <div style={{
                 display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
                 gap: 8,
@@ -600,10 +637,10 @@ export function DataVaultForm({
                   fontFamily: FONT_BODY, fontStyle: 'italic',
                 }}>Skipped — the agent will figure this one out.</div>
               )}
-              {f.error && !isSkipped && (
+              {(requiredErrors[f.name] || f.error) && !isSkipped && (
                 <div style={{
                   fontSize: 11.5, color: 'var(--danger)',
-                }}>{f.error}</div>
+                }}>{requiredErrors[f.name] || f.error}</div>
               )}
               {f.warning && !isSkipped && (
                 <div style={{

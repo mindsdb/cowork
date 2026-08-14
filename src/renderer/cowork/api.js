@@ -1368,6 +1368,17 @@ export async function fetchPublishable() {
   return req('/publish');
 }
 
+export async function discoverPostHogProjects({ personalApiKey, host, customHost }) {
+  return req('/connectors/posthog/projects', {
+    method: 'POST',
+    body: JSON.stringify({
+      personal_api_key: personalApiKey,
+      host,
+      custom_host: customHost || null,
+    }),
+  });
+}
+
 // Submit a data-vault form and stream the cowork agent's response.
 //
 // Replaces the prior fire-and-forget POST. The agent endpoint:
