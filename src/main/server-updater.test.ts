@@ -596,6 +596,18 @@ describe('stream repair — prod install stranded on a pre-release', () => {
     expect(installs[0]).toContain(`cowork-server==${NEWER_RC}`);
   });
 
+  it('checkForServerUpdate reports the repair as an available update (the boot flow gates the apply on it)', async () => {
+    installOnPypiChannel(RC);
+    mockUv(RC);
+
+    await expect(checkForServerUpdate()).resolves.toEqual({
+      updateAvailable: true,
+      currentVersion: RC,
+      latestVersion: STABLE,
+      component: 'cowork-server',
+    });
+  });
+
   it('never reinstalls a prod build already on a stable version, even with PyPI unreachable', async () => {
     installOnPypiChannel(STABLE, { pypiDown: true });
     const execCalls = mockUv(STABLE);

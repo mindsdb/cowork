@@ -599,7 +599,10 @@ export async function checkForServerUpdate(): Promise<ServerUpdateCheckResult> {
       fetchLatestVersion(),
     ]);
     if (!currentVersion || !latestVersion) return { updateAvailable: false, error: true };
-    if (decidePypiUpdate(currentVersion, latestVersion).action === 'update') {
+    // A stream repair counts as an available update: the boot flow gates the
+    // apply path on this check, so an off-stream install must surface here.
+    const repair = decideStreamRepair({ buildKind: currentBuildKind(), currentVersion, latestVersion });
+    if (repair.action === 'repair' || decidePypiUpdate(currentVersion, latestVersion).action === 'update') {
       return { updateAvailable: true, currentVersion, latestVersion, component: 'cowork-server' };
     }
     // cowork-server is current — an anton-only release may still be pending.

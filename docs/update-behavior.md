@@ -134,6 +134,26 @@ PR #401); update polling and server updates run in every packaged build.
 - QA override: `OTA_UI=on|off` flips the gate in any build without a rebuild
   (`otaUiEnabled()` in `update-logic.ts`).
 
+## Stream repair: a prod install holding a pre-release
+
+Only staging-ring builds (`stable`, `preview`) follow the rc pre-release
+stream; `prod` resolves stable releases only. But a prod machine can still
+*hold* an rc — e.g. a uv tool dir once shared with a staging build — and an
+rc sorts above the stable it precedes, so the plain "is PyPI newer" check
+reports it up to date forever.
+
+Every PyPI-channel check therefore starts with a stream check, logged as one
+line naming the build kind, the installed `cowork-server` and `anton-agent`
+versions, and the verdict (`stream check: build=… — off stream, repairing
+to …` / `on stream, nothing to repair`). On a prod build holding a
+pre-release the check reports an available update, and the boot pass applies
+it: the latest stable is reinstalled (with whatever `anton-agent` its wheel
+resolves) and health-checked. If the stable server cannot boot — typically
+because the rc migrated the database ahead of it — the rc is restored, the
+app comes back up, and the repair retries on the next launch. Data under
+the cowork home is never touched; projects, conversations, and credentials
+all survive the repair.
+
 ## Sample scenarios: what the user sees
 
 The app updates three independently-versioned pieces, each through its own
@@ -165,6 +185,7 @@ pair and the restart-required shell are different surfaces:
 | **Server only, at boot** | Auto-applies. Brief overlay ("Almost there…"), then the window reloads on the new sidecar. Effectively invisible. |
 | **Server only, found mid-session** (4h periodic) | No auto-apply. A sidebar "Update ready — Restart" pill + Settings card ("Server → `<version>`"). Clicking it reloads the window and restarts the sidecar — *not* a full app relaunch. |
 | **Server only, server is down** | Force-applied immediately regardless of mode — recovery, not routine. Overlay + reload. |
+| **Server on the wrong stream** (prod build holding a pre-release) | Repaired like a boot server update: overlay + reload onto the latest stable. If the stable server can't boot against the rc-migrated database, the pre-release is restored and the app comes back up; the repair retries next launch. The boot log's "stream check" line records what happened. |
 | **UI only, at boot** (`prod`) | Auto-applies. Overlay + health-checked reload (the new bundle has 15s to load or it rolls back and quarantines). |
 | **UI only, found mid-session** | Banner only; applies on the next relaunch or when the user clicks Restart. |
 | **Server + UI, at boot** | Both auto-apply, server first, in one pass → one overlay + one reload. If the server update fails, the UI is deferred to the next pass (tandem coupling). |
