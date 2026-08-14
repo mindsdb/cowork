@@ -2,24 +2,20 @@
 // placeholder), display name, and org, opening a dropdown with the account
 // destinations. Parity with the web console's user menu (ENG-1408).
 //
-// Console pages (Profile / Billing & Usage / General / Members), the docs site, and the
-// support page all open in the OS browser — each of those items carries an ↗
-// hint so the jump out of the app is telegraphed before the click. Settings,
-// the theme switch, and sign-out act inside the app.
+// Curated to five destinations (ENG-1545): Settings, Billing & Usage, Members,
+// Help & Feedback, Logout. The console pages (Billing & Usage / Members) and the
+// support page open in the OS browser — each carries an ↗ hint so the jump out
+// of the app is telegraphed before the click. Settings and logout act inside the
+// app. Theme + 8-bit live as quick toggles in the sidebar footer, not here.
 
 import { useState } from 'react';
 import {
   ArrowUpRight,
-  BookOpen,
-  Building2,
   CircleHelp,
   CreditCard,
   EllipsisVertical,
   LogOut,
-  Moon,
   Settings,
-  Sun,
-  UserRound,
   UsersRound,
 } from 'lucide-react';
 import Menu from './ui/Menu';
@@ -29,10 +25,7 @@ import { accountInitials } from '../lib/accountUser';
 import { host, openExternal } from '../../platform/host';
 import {
   MINDS_BILLING_URL,
-  MINDS_DOCS_URL,
-  MINDS_GENERAL_URL,
   MINDS_MEMBERS_URL,
-  MINDS_PROFILE_URL,
   MINDS_SUPPORT_URL,
 } from '../../lib/mindsUrls';
 
@@ -76,43 +69,33 @@ function Avatar({ user }) {
   );
 }
 
-export function UserMenu({ user, theme, onToggleTheme, onOpenSettings }) {
+export function UserMenu({ user, onOpenSettings }) {
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
   const { loggingOut, logout } = useLogout();
 
   const displayName = user.name || user.username || user.email;
-  const isDark = theme === 'dark';
 
   const items = [
-    // Identity header — email in small type, org beneath when the account
-    // has one (accounts without an active organization just skip the line).
-    (user.email || user.org) && {
+    // Identity header — just the org name (accounts without an active
+    // organization skip the header entirely). The email is intentionally not
+    // shown here; the account row already carries the identity.
+    user.org && {
       heading: (
         <div className="min-w-0">
-          {user.email && <div className="text-[11px] text-ink-3 truncate">{user.email}</div>}
-          {user.org && <div className="text-[12.5px] font-semibold text-ink mt-[2px] truncate">{user.org}</div>}
+          <div className="text-[12.5px] font-semibold text-ink truncate">{user.org}</div>
         </div>
       ),
     },
     { icon: icon(Settings), label: 'Settings', onClick: onOpenSettings },
-    externalItem(UserRound, 'Profile', MINDS_PROFILE_URL),
     externalItem(CreditCard, 'Billing & Usage', MINDS_BILLING_URL),
-    externalItem(Building2, 'General', MINDS_GENERAL_URL),
     externalItem(UsersRound, 'Members', MINDS_MEMBERS_URL),
-    { divider: true },
-    externalItem(BookOpen, 'Documentation', MINDS_DOCS_URL),
-    externalItem(CircleHelp, 'Help & feedback', MINDS_SUPPORT_URL),
-    {
-      icon: isDark ? icon(Sun) : icon(Moon),
-      label: isDark ? 'Light mode' : 'Dark mode',
-      onClick: onToggleTheme,
-    },
-    // Sign out is Electron-only, matching the Settings account section — the
+    externalItem(CircleHelp, 'Help & Feedback', MINDS_SUPPORT_URL),
+    // Logout is Electron-only, matching the Settings account section — the
     // web shell's session is owned by Keycloak in the browser, and host.logout()
     // is a no-op there (a reload would leave the user signed in).
     ...(host.isElectron ? [
       { divider: true },
-      { icon: icon(LogOut), label: 'Sign out', danger: true, onClick: () => setLogoutConfirmOpen(true) },
+      { icon: icon(LogOut), label: 'Logout', danger: true, onClick: () => setLogoutConfirmOpen(true) },
     ] : []),
   ];
 

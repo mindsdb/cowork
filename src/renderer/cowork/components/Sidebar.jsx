@@ -240,6 +240,9 @@ export default function Sidebar({
   onToggleTheme,
   skin = 'normal',
   onToggleSkin,
+  // Opens the full Display / ThemeModal picker (ENG-1545). When unset the
+  // footer "Display settings" opener button isn't rendered.
+  onOpenThemeModal,
   // Whether the 8-bit button should render "on". While skin === 'custom',
   // the caller repurposes onToggleSkin to flip the mono font instead of
   // skin itself, so "on" needs to track that font choice, not `skin`.
@@ -899,14 +902,12 @@ export default function Sidebar({
                 </Tooltip>
               </>
             ) : showsUserMenu ? (
-              // Signed in: the account row + user menu (ENG-1408). Settings
-              // and the theme switch live inside the menu, so the standalone
-              // footer controls below stay signed-out-only (the 8-bit toggle
-              // remains reachable via Settings → Appearance).
+              // Signed in: the account row + user menu (ENG-1408), curated to
+              // the account destinations (Settings, Billing & Usage, Members,
+              // Help & Feedback, Logout). Theme + 8-bit stay out of the menu —
+              // they're the quick footer toggles restored just below (ENG-1545).
               <UserMenu
                 user={accountUser}
-                theme={theme}
-                onToggleTheme={onToggleTheme}
                 onOpenSettings={() => onNavigate('settings:agent')}
               />
             ) : (
@@ -919,7 +920,10 @@ export default function Sidebar({
                 <span>Settings</span>
               </button>
             )}
-          {!showsUserMenu && (show8bitToggle || showThemeToggle) && (
+          {/* Quick display toggles — kept visible even when the user menu
+              is present (ENG-1545), so theme + 8-bit stay one click away
+              rather than buried in the menu / Settings → Appearance. */}
+          {(show8bitToggle || showThemeToggle) && (
             // Marks these as quick display toggles, not settings — separate
             // from the Settings/backend-status controls to the left.
             <span
@@ -927,7 +931,7 @@ export default function Sidebar({
               className="anton-sidebar__footer-divider ml-auto [-webkit-app-region:no-drag]"
             />
           )}
-          {!showsUserMenu && show8bitToggle && (
+          {show8bitToggle && (
             <Tooltip content={skin === 'custom' ? '8-bit font' : '8-bit style'}>
               <button
                 className={'chrome-btn--small shrink-0 [-webkit-app-region:no-drag]' + (resolved8bitActive ? ' is-on' : '')}
@@ -938,7 +942,7 @@ export default function Sidebar({
               </button>
             </Tooltip>
           )}
-          {!showsUserMenu && showThemeToggle && (
+          {showThemeToggle && (
             <Tooltip content={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}>
               <button
                 className="chrome-btn--small shrink-0 [-webkit-app-region:no-drag]"
@@ -946,6 +950,17 @@ export default function Sidebar({
                 aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
               >
                 {theme === 'dark' ? Ico.sun(15) : Ico.moon(15)}
+              </button>
+            </Tooltip>
+          )}
+          {onOpenThemeModal && (
+            <Tooltip content="Display settings">
+              <button
+                className="chrome-btn--small shrink-0 [-webkit-app-region:no-drag]"
+                onClick={onOpenThemeModal}
+                aria-label="Open display settings"
+              >
+                {Ico.slider(15)}
               </button>
             </Tooltip>
           )}
