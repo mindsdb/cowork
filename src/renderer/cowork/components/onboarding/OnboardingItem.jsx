@@ -33,7 +33,7 @@ export default function OnboardingItem({ step, done, onStart }) {
       style={{
         display: 'flex', gap: 10, alignItems: 'flex-start',
         width: '100%', textAlign: 'left', font: 'inherit',
-        border: 0, cursor: 'pointer', borderRadius: 'var(--r-sm)', padding: '7px 6px',
+        border: 0, cursor: done ? 'default' : 'pointer', borderRadius: 'var(--r-sm)', padding: '7px 6px',
       }}
     >
       <Checkbox done={done} />

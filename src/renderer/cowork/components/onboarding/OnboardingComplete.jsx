@@ -18,7 +18,7 @@ export default function OnboardingComplete({ onDismiss }) {
       <div style={{ fontSize: 15, fontWeight: 650, color: 'var(--text-strong)' }}>
         You&rsquo;ve got the basics!
       </div>
-      <Button block onClick={onDismiss}>Dismiss</Button>
+      <Button block onClick={onDismiss}>Close</Button>
     </div>
   );
 }
