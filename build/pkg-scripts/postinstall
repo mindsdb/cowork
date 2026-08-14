@@ -38,6 +38,8 @@ stage_for_console_user() {
   local user="$1" home="$2"
   local dest_dir="$home/.cowork-provision"
   local dest_file="$dest_dir/server-credentials.json"
+  # A pre-planted symlink here would make root chown/chmod its target.
+  [ -L "$dest_dir" ] && rm -f "$dest_dir"
   install -d -o "$user" -g staff -m 700 "$dest_dir" \
     && cp "$SRC_FILE" "$dest_file" \
     && chown "$user" "$dest_file" \
