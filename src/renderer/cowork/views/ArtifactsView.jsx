@@ -15,7 +15,7 @@ import Ico from '../components/Icons';
 import { Card } from '../components/ui/Card';
 import { useToastManager } from '../components/ui/Toast';
 import { EmptyState } from '../components/ui/EmptyState';
-import { Button } from '../components/ui';
+import { Button, Tooltip } from '../components/ui';
 import {
   revealArtifact, publishArtifact, unpublishArtifact, updateArtifact,
   deleteArtifact,
@@ -47,9 +47,6 @@ import { ToggleGroup } from '../components/ui/ToggleGroup';
 import { host } from '../../platform/host';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
-
-const FONT_BODY = "var(--font-body)";
-const FONT_DISPLAY = "var(--font-display)";
 
 const EMPTY_ARTIFACTS = [];
 
@@ -168,7 +165,7 @@ function PublishDialog({ artifact, onCancel, onConfirm }) {
         onClose={onCancel}
       />
       <ModalBody>
-        <div style={{ fontFamily: FONT_BODY, fontWeight: 600, fontSize: 12.5, color: 'var(--ink)', marginBottom: 8 }}>
+        <div className="font-[family-name:var(--font-body)] font-semibold text-sm text-ink mb-2">
           Who can access your app
         </div>
         <AccessChooser value={draft} onChange={setDraft} onSubmit={submit} />
@@ -187,15 +184,17 @@ function PublishDialog({ artifact, onCancel, onConfirm }) {
 
 // Ghost icon button for the card header (open ↗ / ⋯). forwardRef so the
 // kebab can be the anchor for the page-level HoverMenu.
-const CardIconButton = forwardRef(function CardIconButton({ onClick, title, ariaLabel, children }, ref) {
+// Hover treatment stays a JS handler (mutates .style on over/out) — a
+// deliberate carry-over, not converted to a CSS `hover:` variant here.
+const CardIconButton = forwardRef(function CardIconButton({ onClick, ariaLabel, children, ...rest }, ref) {
   return (
     <button
       ref={ref}
       type="button"
-      title={title}
-      aria-label={ariaLabel || title}
+      aria-label={ariaLabel}
       onMouseDown={(e) => e.stopPropagation()}
       onClick={onClick}
+      {...rest}
       style={{
         width: 28, height: 28, borderRadius: 7,
         display: 'inline-grid', placeItems: 'center',
@@ -269,95 +268,81 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
       as="div"
       interactive
       padding="none"
-      className="cw-artifact-card"
+      className="cw-artifact-card flex flex-col overflow-hidden"
       {...hoverProps}
       onActivate={() => (canPreview ? onOpenViewer(artifact) : openArtifactFile(artifact))}
-      style={{
-        display: 'flex', flexDirection: 'column',
-        overflow: 'hidden',
-      }}
     >
       {/* Body — icon + name·ext + actions, then the status row. */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '14px 16px', flex: 1 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-          <span style={{ display: 'inline-flex', flexShrink: 0, alignSelf: 'flex-start', marginTop: 2 }}>
+      <div className="flex flex-col gap-3 py-[14px] px-4 flex-1">
+        <div className="flex items-center gap-[10px] min-w-0">
+          <span className="inline-flex shrink-0 self-start mt-0.5">
             <ArtifactIcon artifact={artifact} size={18} />
           </span>
           {/* Name: title primary, filename secondary (ENG-1123 Bug 1) — the
               secondary line always renders (empty for web apps) so row
               height stays uniform whether or not there's a filename. */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, flex: 1 }}>
+          <div className="flex flex-col gap-0.5 min-w-0 flex-1">
             <div
-              style={{
-                display: 'flex', alignItems: 'baseline', minWidth: 0,
-                fontFamily: FONT_DISPLAY, fontSize: 14, fontWeight: 600, lineHeight: 1.2,
-              }}
+              className="flex items-baseline min-w-0 font-[family-name:var(--font-display)] text-base font-semibold leading-[1.2]"
               title={base}
             >
-              <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--ink)' }}>{base}</span>
+              <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-ink">{base}</span>
             </div>
             <div
-              style={{
-                display: 'flex', alignItems: 'baseline', minWidth: 0,
-                fontFamily: FONT_BODY, fontSize: 12, lineHeight: 1.2, minHeight: '1.2em',
-              }}
+              className="flex items-baseline min-w-0 font-[family-name:var(--font-body)] text-[12px] leading-[1.2] min-h-[1.2em]"
               title={secondary ? secondary.name + secondary.ext : undefined}
             >
               {secondary && (
                 <>
-                  <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--ink-3)' }}>{secondary.name}</span>
-                  <span style={{ flexShrink: 0, color: 'var(--ink-4)' }}>{secondary.ext}</span>
+                  <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-ink-3">{secondary.name}</span>
+                  <span className="shrink-0 text-ink-4">{secondary.ext}</span>
                 </>
               )}
             </div>
           </div>
           {/* Actions — open-in-browser + ⋯ menu. */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
-            <CardIconButton title="Open" onClick={onOpenExternal}>{Ico.externalLink(15)}</CardIconButton>
-            <CardIconButton ref={kebabRef} title="More actions" ariaLabel="Artifact menu"
-              onClick={(e) => { e.stopPropagation(); openMenu(e); }}>
-              {Ico.moreVert(16)}
-            </CardIconButton>
+          <div className="flex items-center gap-0.5 shrink-0">
+            <Tooltip content="Open">
+              <CardIconButton ariaLabel="Open" onClick={onOpenExternal}>{Ico.externalLink(15)}</CardIconButton>
+            </Tooltip>
+            <Tooltip content="More actions">
+              <CardIconButton ref={kebabRef} ariaLabel="Artifact menu"
+                onClick={(e) => { e.stopPropagation(); openMenu(e); }}>
+                {Ico.moreVert(16)}
+              </CardIconButton>
+            </Tooltip>
           </div>
         </div>
 
-        <div style={{ display: 'flex', minWidth: 0 }}>
+        <div className="flex min-w-0">
           <ArtifactStatus artifact={artifact} phase={phase} publishable={publishable} onRetry={onRetry} />
         </div>
       </div>
 
       {/* Footer — project origin + last-updated, divided from the body. */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 8,
-        padding: '9px 16px', borderTop: '1px solid var(--line)', background: 'var(--surface-2)',
-      }}>
-        <span style={{ display: 'inline-flex', flexShrink: 0, color: 'var(--ink-4)' }}>{Ico.folder(13)}</span>
+      <div className="flex items-center gap-2 py-[9px] px-4 border-t border-x-0 border-b-0 border-solid border-line bg-surface-2">
+        <span className="inline-flex shrink-0 text-ink-4">{Ico.folder(13)}</span>
         {canOpenProject ? (
-          <button
-            type="button"
-            onMouseDown={(e) => e.stopPropagation()}
-            onClick={(e) => { e.stopPropagation(); onOpenProject(projectMatch); }}
-            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); onOpenProject(projectMatch); } }}
-            title={`Open ${projectMatch.name}`}
-            style={{
-              all: 'unset', cursor: 'pointer',
-              fontFamily: FONT_BODY, fontSize: 12, color: 'var(--ink-3)',
-              minWidth: 0, flex: '0 1 auto', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              transition: 'color 120ms ease',
-            }}
-            onMouseOver={(e) => { e.currentTarget.style.color = 'var(--accent)'; e.currentTarget.style.textDecoration = 'underline'; e.currentTarget.style.textUnderlineOffset = '2px'; }}
-            onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-3)'; e.currentTarget.style.textDecoration = 'none'; }}
-          >{projectLabel}</button>
+          <Tooltip content={`Open ${projectMatch.name}`}>
+            <button
+              type="button"
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => { e.stopPropagation(); onOpenProject(projectMatch); }}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); onOpenProject(projectMatch); } }}
+              style={{
+                all: 'unset', cursor: 'pointer',
+                fontFamily: 'var(--font-body)', fontSize: 12, color: 'var(--ink-3)',
+                minWidth: 0, flex: '0 1 auto', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                transition: 'color 120ms ease',
+              }}
+              onMouseOver={(e) => { e.currentTarget.style.color = 'var(--accent)'; e.currentTarget.style.textDecoration = 'underline'; e.currentTarget.style.textUnderlineOffset = '2px'; }}
+              onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-3)'; e.currentTarget.style.textDecoration = 'none'; }}
+            >{projectLabel}</button>
+          </Tooltip>
         ) : (
-          <span title={projectLabel} style={{
-            fontFamily: FONT_BODY, fontSize: 12, color: 'var(--ink-3)',
-            minWidth: 0, flex: '0 1 auto', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>{projectLabel}</span>
+          <span title={projectLabel} className="font-[family-name:var(--font-body)] text-[12px] text-ink-3 min-w-0 flex-[0_1_auto] overflow-hidden text-ellipsis whitespace-nowrap">{projectLabel}</span>
         )}
-        <span style={{
-          marginLeft: 'auto', flexShrink: 0,
-          fontFamily: FONT_BODY, fontSize: 12, color: 'var(--ink-4)',
-        }}>{artifact.updated || '—'}</span>
+        <span className="ml-auto shrink-0 font-[family-name:var(--font-body)] text-[12px] text-ink-4">{artifact.updated || '—'}</span>
       </div>
     </Card>
   );
@@ -378,16 +363,13 @@ const LIST_GRID = 'minmax(0, 2.4fr) minmax(0, 1.3fr) minmax(0, 2fr) 200px';
 
 function ListHeaderRow() {
   const Cell = ({ children }) => (
-    <div style={{
-      fontFamily: FONT_BODY, fontSize: 13, fontWeight: 600, color: 'var(--ink-2)',
-    }}>{children}</div>
+    <div className="font-[family-name:var(--font-body)] text-[13px] font-semibold text-ink-2">{children}</div>
   );
   return (
-    <div style={{
-      display: 'grid', gridTemplateColumns: LIST_GRID, gap: 16,
-      padding: '10px 16px',
-      borderBottom: '1px solid var(--line)',
-    }}>
+    <div
+      className="grid gap-4 py-2.5 px-4 border-b border-t-0 border-x-0 border-solid border-line"
+      style={{ gridTemplateColumns: LIST_GRID }}
+    >
       <Cell>Name</Cell>
       <Cell>Project</Cell>
       <Cell>Status</Cell>
@@ -513,43 +495,32 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
         onClick={onRowOpen}
         onKeyDown={(e) => { if (e.key === 'Enter') onRowOpen(); }}
         {...hoverProps}
+        className="grid gap-4 py-3 px-4 border-b border-t-0 border-x-0 border-solid border-line cursor-pointer items-center [outline:none] [transition:background_.12s_ease]"
         style={{
-          display: 'grid', gridTemplateColumns: LIST_GRID, gap: 16,
-          padding: '12px 16px',
+          gridTemplateColumns: LIST_GRID,
           background: hovered ? 'var(--surface-2)' : 'transparent',
-          borderBottom: '1px solid var(--line)',
-          cursor: 'pointer',
-          transition: 'background .12s ease',
-          alignItems: 'center',
-          outline: 'none',
         }}
       >
         {/* Name — title primary, filename secondary (ENG-1123 Bug 1). */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-          <span style={{ display: 'inline-flex', flexShrink: 0, alignSelf: 'flex-start', marginTop: 2 }}>
+        <div className="flex items-center gap-[10px] min-w-0">
+          <span className="inline-flex shrink-0 self-start mt-0.5">
             <ArtifactIcon artifact={artifact} size={16} />
           </span>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+          <div className="flex flex-col gap-0.5 min-w-0">
             <div
-              style={{
-                display: 'flex', alignItems: 'baseline', minWidth: 0,
-                fontFamily: FONT_DISPLAY, fontSize: 14, fontWeight: 600, lineHeight: 1.2,
-              }}
+              className="flex items-baseline min-w-0 font-[family-name:var(--font-display)] text-base font-semibold leading-[1.2]"
               title={base}
             >
-              <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--ink)' }}>{base}</span>
+              <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-ink">{base}</span>
             </div>
             <div
-              style={{
-                display: 'flex', alignItems: 'baseline', minWidth: 0,
-                fontFamily: FONT_BODY, fontSize: 12, lineHeight: 1.2, minHeight: '1.2em',
-              }}
+              className="flex items-baseline min-w-0 font-[family-name:var(--font-body)] text-[12px] leading-[1.2] min-h-[1.2em]"
               title={secondary ? secondary.name + secondary.ext : undefined}
             >
               {secondary && (
                 <>
-                  <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--ink-3)' }}>{secondary.name}</span>
-                  <span style={{ flexShrink: 0, color: 'var(--ink-4)' }}>{secondary.ext}</span>
+                  <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-ink-3">{secondary.name}</span>
+                  <span className="shrink-0 text-ink-4">{secondary.ext}</span>
                 </>
               )}
             </div>
@@ -557,43 +528,45 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
         </div>
 
         {/* Project */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-          <span style={{ display: 'inline-flex', flexShrink: 0, color: 'var(--ink-4)' }}>{Ico.folder(13)}</span>
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className="inline-flex shrink-0 text-ink-4">{Ico.folder(13)}</span>
           {canOpenProject ? (
-            <button
-              type="button"
-              onMouseDown={(e) => e.stopPropagation()}
-              onClick={(e) => { e.stopPropagation(); onOpenProject(projectMatch); }}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); onOpenProject(projectMatch); } }}
-              title={`Open ${projectMatch.name}`}
-              style={{
-                all: 'unset', cursor: 'pointer',
-                fontFamily: FONT_BODY, fontSize: 12.5, color: 'var(--ink-2)',
-                minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                display: 'inline-block', maxWidth: '100%', transition: 'color 120ms ease',
-              }}
-              onMouseOver={(e) => { e.currentTarget.style.color = 'var(--accent)'; e.currentTarget.style.textDecoration = 'underline'; e.currentTarget.style.textUnderlineOffset = '2px'; }}
-              onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-2)'; e.currentTarget.style.textDecoration = 'none'; }}
-            >{project}</button>
+            <Tooltip content={`Open ${projectMatch.name}`}>
+              <button
+                type="button"
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => { e.stopPropagation(); onOpenProject(projectMatch); }}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); onOpenProject(projectMatch); } }}
+                style={{
+                  all: 'unset', cursor: 'pointer',
+                  fontFamily: 'var(--font-body)', fontSize: 12.5, color: 'var(--ink-2)',
+                  minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  display: 'inline-block', maxWidth: '100%', transition: 'color 120ms ease',
+                }}
+                onMouseOver={(e) => { e.currentTarget.style.color = 'var(--accent)'; e.currentTarget.style.textDecoration = 'underline'; e.currentTarget.style.textUnderlineOffset = '2px'; }}
+                onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-2)'; e.currentTarget.style.textDecoration = 'none'; }}
+              >{project}</button>
+            </Tooltip>
           ) : (
-            <span title={project} style={{
-              fontFamily: FONT_BODY, fontSize: 12.5, color: 'var(--ink-2)',
-              minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>{project}</span>
+            <span title={project} className="font-[family-name:var(--font-body)] text-sm text-ink-2 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{project}</span>
           )}
         </div>
 
         {/* Status — query container so the access chip drops to icon-only
             when the column gets tight (frees room for "Unpublished changes"). */}
-        <div className="cw-status-cell" style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
+        <div className="cw-status-cell flex items-center min-w-0">
           <ArtifactStatus artifact={artifact} phase={phase} publishable={publishable} onRetry={onRetry} inlineChanges />
         </div>
 
         {/* Updated + open + ⋯ */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end', whiteSpace: 'nowrap' }}>
-          <span style={{ fontFamily: FONT_BODY, fontSize: 12, color: 'var(--ink-4)' }}>{artifact.updated || '—'}</span>
-          <CardIconButton title="Open" onClick={onOpenExternal}>{Ico.externalLink(14)}</CardIconButton>
-          <CardIconButton ref={triggerRef} title="More actions" ariaLabel="Artifact menu" onClick={openMenu}>{Ico.moreVert(15)}</CardIconButton>
+        <div className="flex items-center gap-1.5 justify-end whitespace-nowrap">
+          <span className="font-[family-name:var(--font-body)] text-[12px] text-ink-4">{artifact.updated || '—'}</span>
+          <Tooltip content="Open">
+            <CardIconButton ariaLabel="Open" onClick={onOpenExternal}>{Ico.externalLink(14)}</CardIconButton>
+          </Tooltip>
+          <Tooltip content="More actions">
+            <CardIconButton ref={triggerRef} ariaLabel="Artifact menu" onClick={openMenu}>{Ico.moreVert(15)}</CardIconButton>
+          </Tooltip>
         </div>
       </div>
 
@@ -872,13 +845,9 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
   return (
     // Background intentionally omitted so the gravity-field canvas
     // painted behind the React root shows through.
-    <div className="scroll-clean" style={{
-      flex: 1, overflowY: 'auto',
-      display: 'flex', flexDirection: 'column',
-      // Query container so the artifacts grid picks its column count from the
-      // actual panel width (not the viewport) — see .artifacts-grid @container.
-      containerType: 'inline-size',
-    }}>
+    <div
+      className="scroll-clean flex-1 overflow-y-auto flex flex-col [container-type:inline-size]"
+    >
       <PageHeader
         title="Live Artifacts"
         subtitle={`Documents, dashboards, and code ${agentLabel} produces. Share to get a live URL.`}
@@ -894,7 +863,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
           ProjectsView uses 18px because its header has an anchor
           button on the right ("+ New project"), which reads as
           slightly taller — Artifacts compensates with a few extra. */}
-      <div style={{ height: 20 }} />
+      <div className="h-5" />
 
       {total > 0 && (
         <FilterRow
@@ -913,19 +882,16 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
 
       {total === 0 ? (
         <EmptyState
-          icon={<span style={{ display: 'inline-flex', color: 'var(--ink-5)' }}>{Ico.sparkle(32)}</span>}
+          icon={<span className="inline-flex text-ink-5">{Ico.sparkle(32)}</span>}
           title="No artifacts yet"
           description={`When ${agentLabel} creates documents, dashboards, or code outputs they'll appear here.`}
           style={{ flex: 1 }}
         />
       ) : effectiveView === 'grid' ? (
-        <div className="artifacts-grid" style={{
-          // Grid layout (display + responsive columns + gap) lives in CSS
-          // (.artifacts-grid in globals.css): 2 cols, 3 when wide, 1 on
-          // mobile — pure CSS media queries, no JS resize listener.
-          padding: '6px 32px 60px',
-          marginTop: 18,
-        }}>
+        <div className="artifacts-grid pt-1.5 px-8 pb-[60px] mt-[18px]">
+          {/* Grid layout (display + responsive columns + gap) lives in CSS
+              (.artifacts-grid in globals.css): 2 cols, 3 when wide, 1 on
+              mobile — pure CSS media queries, no JS resize listener. */}
           {visible.map((a) => (
             <ArtifactBubble
               key={a.id || a.path}
@@ -943,7 +909,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
           ))}
         </div>
       ) : (
-        <div style={{ padding: '6px 32px 60px', marginTop: 18 }}>
+        <div className="pt-1.5 px-8 pb-[60px] mt-[18px]">
           <ListHeaderRow />
           {visible.map((a) => (
             <ArtifactRow

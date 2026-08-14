@@ -25,7 +25,7 @@ const TITLES = {
 };
 
 function EmptyState({ children }) {
-  return <div style={{ padding: 32, color: 'var(--frost-600)', fontSize: 13 }}>{children}</div>;
+  return <div className="p-8 text-[var(--frost-600)] text-[13px]">{children}</div>;
 }
 
 function credentialTemplate(engineDef) {
@@ -197,12 +197,8 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
         title="Memories"
         subtitle="Profile, rules, and lessons the agent can reuse across tasks."
       />
-      <div style={{ height: 14 }} />
-      <div className="util-split" style={{
-        flex: 1, minHeight: 0,
-        display: 'grid', gridTemplateColumns: '300px 1fr',
-        padding: '0 32px 24px', gap: 24,
-      }}>
+      <div className="h-[14px]" />
+      <div className="util-split flex-1 min-h-0 grid grid-cols-[300px_1fr] px-8 pb-6 gap-6">
         <Card padding="snug" flat className="scroll-clean" style={{
           display: 'flex', flexDirection: 'column', gap: 14,
           overflowY: 'auto', minHeight: 0,
@@ -227,17 +223,15 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
           ))}
           {totalFiles === 0 && <EmptyState>No memory entries found.</EmptyState>}
         </Card>
-        <div className="scroll-clean" style={{
-          overflowY: 'auto', minHeight: 0,
-        }}>
+        <div className="scroll-clean overflow-y-auto min-h-0">
           {editing === 'edit' && selected ? (
             <>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 14, fontWeight: 650, color: 'var(--text-strong)' }}>
+              <div className="flex items-center gap-[10px] mb-[10px]">
+                <div className="flex-1">
+                  <div className="text-base font-[650] text-ink">
                     {labelCategory(selected.category)}
                   </div>
-                  <div style={{ fontSize: 12, color: 'var(--frost-600)' }}>
+                  <div className="text-[12px] text-[var(--frost-600)]">
                     {selected.scope === 'Project' && selected.projectName
                       ? `Project · ${selected.projectName}`
                       : selected.scope}
@@ -249,17 +243,17 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
               <textarea
                 value={draft.content}
                 onChange={(e) => setDraft((prev) => ({ ...prev, content: e.target.value }))}
-                style={memoryEditorStyle}
+                className={memoryEditorClass}
               />
             </>
           ) : displayed ? (
             <>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 14, fontWeight: 650, color: 'var(--text-strong)' }}>
+              <div className="flex items-center gap-[10px] mb-[10px]">
+                <div className="flex-1">
+                  <div className="text-base font-[650] text-ink">
                     {labelCategory(displayed.category)}
                   </div>
-                  <div style={{ fontSize: 12, color: 'var(--frost-600)' }}>
+                  <div className="text-[12px] text-[var(--frost-600)]">
                     {displayed.scope === 'Project' && displayed.projectName
                       ? `Project · ${displayed.projectName}`
                       : displayed.scope}
@@ -268,7 +262,7 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
                 <Button variant="subtle" onClick={() => startEdit(displayed)}>Edit</Button>
                 <Button variant="subtle" onClick={() => remove(displayed)}>Delete</Button>
               </div>
-              <div style={memoryViewerStyle}>
+              <div className={memoryViewerClass}>
                 <MarkdownContent
                   text={displayed.content || displayed.preview || ''}
                   id={`mem-${displayed.path || displayed.category || 'doc'}`}
@@ -278,7 +272,7 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
               </div>
             </>
           ) : (
-            <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div className="h-full flex items-center justify-center">
               <UiEmptyState description="Select a memory entry to inspect it." />
             </div>
           )}
@@ -290,27 +284,26 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
 
 function MemorySectionList({ heading, files, selected, onSelect, isActive }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-      <div style={{
-        fontFamily: 'var(--font-mono)', fontSize: 10.5, letterSpacing: '0.14em',
-        textTransform: 'uppercase', color: 'var(--ink-4)', fontWeight: 600,
-        padding: '0 4px 4px', display: 'flex', alignItems: 'center', gap: 6,
-      }}>
+    <div className="flex flex-col gap-px">
+      <div className="font-mono text-[10.5px] tracking-[0.14em] uppercase text-ink-4 font-semibold px-1 pb-1 flex items-center gap-[6px]">
         <span>{heading}</span>
-        {isActive && <span style={{ color: 'var(--accent)', letterSpacing: 0, textTransform: 'none', fontFamily: 'var(--font-body)', fontSize: 10.5 }}>· active</span>}
-        <span style={{ marginLeft: 'auto', color: 'var(--ink-4)', letterSpacing: 0, textTransform: 'none', fontFamily: 'var(--font-body)' }}>{files.length}</span>
+        {isActive && <span className="text-accent tracking-[0] normal-case font-[family-name:var(--font-body)] text-[10.5px]">· active</span>}
+        <span className="ml-auto text-ink-4 tracking-[0] normal-case font-[family-name:var(--font-body)]">{files.length}</span>
       </div>
       {files.length === 0 ? (
-        <div style={{ padding: '2px 6px 2px', color: 'var(--ink-4)', fontSize: 12 }}>—</div>
+        <div className="px-[6px] py-[2px] text-ink-4 text-[12px]">—</div>
       ) : files.map((file) => (
         <button
           key={file.path}
           className={`recent-item${selected?.path === file.path ? ' active' : ''}`}
+          // These three must beat the unlayered `.recent-item` globals rule
+          // (height:26px; padding:0 10px), which wins specificity ties against
+          // Tailwind utilities — so they stay inline. Lets multi-line labels grow.
+          style={{ height: 'auto', minHeight: 26, padding: '4px 10px' }}
           onClick={() => onSelect(file)}
-          style={{ height: 'auto', minHeight: 26, padding: '4px 10px', fontSize: 12.5 }}
         >
-          <span style={{ color: 'var(--primary-700)', display: 'inline-flex' }}>{Ico.doc(13)}</span>
-          <span style={{ flex: 1, whiteSpace: 'normal' }}>{labelCategory(file.category)}</span>
+          <span className="text-[var(--primary-700)] inline-flex">{Ico.doc(13)}</span>
+          <span className="flex-1 whitespace-normal">{labelCategory(file.category)}</span>
         </button>
       ))}
     </div>
@@ -419,20 +412,20 @@ function ConnectView({ data, setData, setStatus }) {
   };
 
   return (
-    <div className="util-publish" style={{ padding: 28, display: 'grid', gridTemplateColumns: '1fr 360px', gap: 24 }}>
+    <div className="util-publish p-[28px] grid grid-cols-[1fr_360px] gap-6">
       <div>
-        <div style={{ fontSize: 13, fontWeight: 650, color: 'var(--text-strong)', marginBottom: 10 }}>Saved connections</div>
+        <div className="text-[13px] font-[650] text-strong mb-[10px]">Saved connections</div>
         {(data.connections || []).length ? (data.connections || []).map((conn) => (
-          <div key={`${conn.engine}-${conn.name}`} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', borderBottom: '1px solid var(--border-0)', fontSize: 13 }}>
-            <div style={{ flex: 1 }}>
-              <strong style={{ color: 'var(--text-strong)' }}>{conn.displayName || conn.engine}</strong> / {conn.name}
-              <div style={{ fontSize: 11.5, color: 'var(--frost-600)' }}>{conn.testAvailable ? 'Ready for datasource tools' : 'Saved in data vault'}</div>
+          <div key={`${conn.engine}-${conn.name}`} className="flex items-center gap-[10px] py-[10px] border-b border-t-0 border-x-0 border-solid border-[var(--border-0)] text-[13px]">
+            <div className="flex-1">
+              <strong className="text-strong">{conn.displayName || conn.engine}</strong> / {conn.name}
+              <div className="text-[11.5px] text-[var(--frost-600)]">{conn.testAvailable ? 'Ready for datasource tools' : 'Saved in data vault'}</div>
             </div>
             <Button variant="subtle" onClick={() => remove(conn)}>Remove</Button>
           </div>
         )) : <EmptyState>No data vault connections found.</EmptyState>}
       </div>
-      <form onSubmit={save} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <form onSubmit={save} className="flex flex-col gap-[10px]">
         <Select
           ariaLabel="Engine"
           value={engine}
@@ -451,7 +444,7 @@ function ConnectView({ data, setData, setStatus }) {
         )}
         <Input aria-label="Connection name (optional)" value={name} onChange={(v) => setName(v)} placeholder="connection name (optional)" style={inputStyle} />
         {fields.length > 0 && (
-          <div style={{ fontSize: 11.5, color: 'var(--frost-600)' }}>
+          <div className="text-[11.5px] text-[var(--frost-600)]">
             Required: {fields.filter((field) => field.required).map((field) => field.name).join(', ') || 'none'}
           </div>
         )}
@@ -482,11 +475,11 @@ function ConnectView({ data, setData, setStatus }) {
             )}
           </Field>
         )) : (
-          <div style={{ padding: 12, border: '1px solid var(--border-01)', borderRadius: 8, color: 'var(--frost-600)', fontSize: 12.5 }}>
+          <div className="p-3 border border-solid border-[var(--border-01)] rounded-card-row text-[var(--frost-600)] text-sm">
             This engine does not expose editable credential fields in the installed registry.
           </div>
         )}
-        {validation && <div style={{ fontSize: 12, color: 'var(--frost-700)' }}>{validation}</div>}
+        {validation && <div className="text-[12px] text-[var(--frost-700)]">{validation}</div>}
         <Button variant="subtle" disabled={!engine.trim() || busy} onClick={validate}>
           {busyAction === 'check' ? 'Checking' : 'Check fields'}
         </Button>
@@ -519,19 +512,19 @@ function PublishView({ data, setData, setStatus, onRefreshArtifacts }) {
   };
 
   return (
-    <div style={{ padding: 28, display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <div className="p-[28px] flex flex-col gap-[10px]">
       {!data.publishReady && (
         <Alert variant="warning">
           Configure a Minds API key in Settings before sharing.
         </Alert>
       )}
       {(data.artifacts || []).length ? (data.artifacts || []).map((artifact) => (
-        <div key={artifact.path} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 12, border: '1px solid var(--border-01)', borderRadius: 9 }}>
-          <span style={{ color: 'var(--primary-700)', display: 'inline-flex' }}>{Ico.upload(15)}</span>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 13.5, fontWeight: 650, color: 'var(--text-strong)' }}>{artifact.title}</div>
-            <div style={{ fontSize: 11.5, color: 'var(--frost-600)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{artifact.path}</div>
-            {artifact.publishedUrl && <div style={{ fontSize: 12, color: 'var(--sage-700)', marginTop: 4, userSelect: 'text' }}>{artifact.publishedUrl}</div>}
+        <div key={artifact.path} className="flex items-center gap-3 p-3 border border-solid border-[var(--border-01)] rounded-[9px]">
+          <span className="text-[var(--primary-700)] inline-flex">{Ico.upload(15)}</span>
+          <div className="flex-1 min-w-0">
+            <div className="text-[13.5px] font-[650] text-strong">{artifact.title}</div>
+            <div className="text-[11.5px] text-[var(--frost-600)] whitespace-nowrap overflow-hidden text-ellipsis">{artifact.path}</div>
+            {artifact.publishedUrl && <div className="text-[12px] text-[var(--sage-700)] mt-1 select-text">{artifact.publishedUrl}</div>}
           </div>
           {artifact.publishedUrl && <Button variant="subtle" onClick={() => copyUrl(artifact.publishedUrl)}>Copy URL</Button>}
           {artifact.publishedUrl && <Button variant="subtle" onClick={() => window.open(artifact.publishedUrl, '_blank', 'noopener,noreferrer')}>Open</Button>}
@@ -539,12 +532,12 @@ function PublishView({ data, setData, setStatus, onRefreshArtifacts }) {
         </div>
       )) : <EmptyState>No HTML artifacts found in output folders.</EmptyState>}
       {(data.history || []).length > 0 && (
-        <div style={{ marginTop: 18 }}>
-          <div style={{ fontSize: 13, fontWeight: 650, color: 'var(--text-strong)', marginBottom: 8 }}>Share history</div>
+        <div className="mt-[18px]">
+          <div className="text-[13px] font-[650] text-strong mb-2">Share history</div>
           {(data.history || []).slice(0, 10).map((item) => (
-            <div key={`${item.artifact}-${item.publishedAt}`} style={{ padding: '8px 0', borderTop: '1px solid var(--border-0)', fontSize: 12.5 }}>
+            <div key={`${item.artifact}-${item.publishedAt}`} className="py-2 border-t border-x-0 border-b-0 border-solid border-[var(--border-0)] text-sm">
               <strong>{item.artifactName}</strong>
-              {item.url && <span style={{ marginLeft: 8, color: 'var(--sage-700)', userSelect: 'text' }}>{item.url}</span>}
+              {item.url && <span className="ml-2 text-[var(--sage-700)] select-text">{item.url}</span>}
             </div>
           ))}
         </div>
@@ -570,33 +563,11 @@ const inputStyle = {
 // keeps the text readable in both light and dark themes (the bug
 // before this change was relying on the browser default text color,
 // which rendered black-on-dark in dark mode).
-const memoryEditorStyle = {
-  width: '100%',
-  minHeight: 520,
-  border: '1px solid var(--border-01)',
-  borderRadius: 7,
-  padding: 12,
-  fontFamily: 'var(--font-mono)',
-  fontSize: 12.5,
-  lineHeight: 1.55,
-  outline: 'none',
-  background: 'var(--surface-0)',
-  color: 'var(--ink)',
-  resize: 'vertical',
-  userSelect: 'text',
-};
+const memoryEditorClass = 'w-full min-h-[520px] border border-solid border-[var(--border-01)] rounded-[7px] p-3 font-mono text-sm leading-[1.55] outline-none bg-[var(--surface-0)] text-ink resize-y select-text';
 
 // Container for the MarkdownContent renderer in view mode. Keeps the
 // minHeight matched to the editor textarea so flipping between read
 // and edit doesn't shift the layout. Body styling (font, line-height,
 // colours) is left to MarkdownContent itself so headings, lists, and
 // code fences render with the same chat-column rhythm.
-const memoryViewerStyle = {
-  minHeight: 520,
-  padding: '12px 14px',
-  border: '1px solid var(--border-01)',
-  borderRadius: 7,
-  background: 'var(--surface-0)',
-  userSelect: 'text',
-  overflowY: 'auto',
-};
+const memoryViewerClass = 'min-h-[520px] px-[14px] py-3 border border-solid border-[var(--border-01)] rounded-[7px] bg-[var(--surface-0)] select-text overflow-y-auto';

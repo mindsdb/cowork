@@ -16,10 +16,11 @@ import * as os from 'os';
 import * as path from 'path';
 import { app } from 'electron';
 import { coworkHome, buildKind } from './cowork-home';
+import { loadBundledServerCredentials } from './credential-provisioning';
 import { MINDS_ENV_SLUG } from './minds-urls';
 import { withServerLifecycle } from './server-lifecycle';
 import { decideStartWait, startFailureMessage } from './update-logic';
-import { getEnvPath, findUv, coworkServerBinCandidates } from './uv-paths';
+import { getEnvPath, resolveUv, coworkServerBinCandidates } from './uv-paths';
 import {
   SERVER_START_CAP_MS,
   type ServerStartErrorKind,
@@ -109,19 +110,6 @@ function findFreePort(): Promise<number> {
       srv.close(() => resolve(port));
     });
   });
-}
-
-function loadBundledServerCredentials(): Record<string, string> {
-  try {
-    const credPath = path.join(process.resourcesPath || '', 'server-credentials.json');
-    if (fs.existsSync(credPath)) {
-      const raw = JSON.parse(fs.readFileSync(credPath, 'utf8'));
-      if (raw && typeof raw === 'object') return raw as Record<string, string>;
-    }
-  } catch {
-    // no credentials file bundled (dev mode) — fine
-  }
-  return {};
 }
 
 let serverProcess: ChildProcess | null = null;
@@ -567,7 +555,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
 
   if (isDevSource && devDir) {
     // Dev: use uv to run from source so local edits are picked up
-    const uvCmd = findUv();
+    const uvCmd = await resolveUv();
     if (!uvCmd) {
       lastStartError = 'uv not found. Install uv first: https://docs.astral.sh/uv/getting-started/installation/';
       lastStartErrorKind = 'not-installed';
@@ -605,7 +593,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     console.log(`[server] build kind "${kind}" → data home ${dataHome}`);
     const env = {
       ...process.env,
-      ...loadBundledServerCredentials(),
+      ...(await loadBundledServerCredentials()),
       PATH: getEnvPath(),
       PYTHONUNBUFFERED: '1',
       // Both port names: COWORK_SERVER_PORT for every shipped server and

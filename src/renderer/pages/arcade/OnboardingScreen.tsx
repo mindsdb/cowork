@@ -253,14 +253,25 @@ export default function OnboardingScreen({
   // takes over. Tracked as STATE — not the finalizedRef ref — so the boot returns
   // below yield to it deterministically; a ref mutation doesn't re-render, which
   // let the provider form flash / the consent button go inert during
-  // finalization (PR #445 review). Hosted cloud skips keycloak, so it stays false.
+  // finalization (PR #445 review). Org deployments never take that path.
   const [autoFinalizing, setAutoFinalizing] = useState(false);
+  // Server serves organizations (provider config is admin-owned there, so the
+  // client must not write it). `null` = still checking.
+  const [orgMode, setOrgMode] = useState<boolean | null>(host.isWeb ? null : false);
   useEffect(() => {
     if (!host.isWeb) return;
     let cancelled = false;
     host.checkConfigured()
-      .then((r) => { if (!cancelled) setWebConfigured(Boolean(r.configured)); })
-      .catch(() => { if (!cancelled) setWebConfigured(false); }); // unreachable → fall back to the full flow
+      .then((r) => {
+        if (cancelled) return;
+        setWebConfigured(Boolean(r.configured));
+        setOrgMode(Boolean(r.orgMode));
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setWebConfigured(false); // unreachable → fall back to the full flow
+        setOrgMode(false);
+      });
     return () => { cancelled = true; };
   }, []);
 
@@ -611,6 +622,10 @@ export default function OnboardingScreen({
   useEffect(() => {
     if (!host.isWeb) return;
     if (provider !== 'minds') return;
+    // Not in an org deployment: these lines are org-classified (admin-only), so
+    // a member gets a 403 whose error phase then bypasses the consent-only
+    // branch below. `!== false` — `null` means the check is still in flight.
+    if (orgMode !== false) return;
     if (finalizedRef.current) return; // already completed — don't re-finalize
     let cancelled = false;
     import('../../lib/keycloak').then(({ keycloak }) => {
@@ -626,7 +641,7 @@ export default function OnboardingScreen({
       ]);
     });
     return () => { cancelled = true; };
-  }, [provider]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [provider, orgMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Full-screen Terms/Privacy reader (opened from the consent line).
   if (legalDoc) {

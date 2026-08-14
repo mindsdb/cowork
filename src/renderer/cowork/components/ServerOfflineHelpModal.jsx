@@ -6,7 +6,7 @@
 
 import { useEffect, useState } from 'react';
 import Ico from './Icons';
-import { Alert, Button } from './ui';
+import { Alert, Button, Tooltip } from './ui';
 import { Modal } from './ui/Modal';
 import { host } from '../../platform/host';
 import { backendFailureCopy, exitCodeLabel } from '../../../shared/server-status';
@@ -231,19 +231,21 @@ export default function ServerOfflineHelpModal({
               {HEADER.subtitle}
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            title="Close"
-            style={{
-              cursor: 'pointer',
-              background: 'transparent', border: 0,
-              color: 'var(--ink-3)',
-              width: 28, height: 28, borderRadius: 6,
-              display: 'inline-grid', placeItems: 'center',
-              fontSize: 18, lineHeight: 1, flexShrink: 0,
-            }}
-          >×</button>
+          <Tooltip content="Close">
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              style={{
+                cursor: 'pointer',
+                background: 'transparent', border: 0,
+                color: 'var(--ink-3)',
+                width: 28, height: 28, borderRadius: 6,
+                display: 'inline-grid', placeItems: 'center',
+                fontSize: 18, lineHeight: 1, flexShrink: 0,
+              }}
+            >×</button>
+          </Tooltip>
         </div>
 
         <div style={{

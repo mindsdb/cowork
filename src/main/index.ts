@@ -1,3 +1,6 @@
+// MUST be first: sets the per-channel Electron app name (→ userData dir) before
+// any module that reads app.getPath('userData') at load time (e.g. token-store).
+import './app-identity';
 import { app, BrowserWindow, ipcMain, Menu, nativeImage, net, powerMonitor, session, shell } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -9,6 +12,7 @@ import { checkInstallStatus, runInstaller } from './installer';
 import { startServer, stopServer, forceReapServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort, fetchServerVersions } from './server-process';
 import { setUpdateNotifier, recreateVenvIfUnsupportedPython, repairServerInstall } from './server-updater';
 import { initUpdater, registerUpdateHandlers } from './updater';
+import { awaitUpdateMaintenanceIdle } from './update-maintenance';
 import { oauthConnect, cancelCurrentOAuth } from './oauth-service';
 import { setRefreshToken, deleteRefreshToken, getRefreshToken as getOAuthRefreshToken } from './keychain-service';
 import { OAUTH_CREDENTIALS } from './credentials';
@@ -23,9 +27,11 @@ import { MINDS_API_HOST } from './minds-urls';
 import { sendEvent } from './analytics';
 import { getRendererPath, getBundledPath, checkForUIUpdate, applyUIUpdate, hasInternet, getCachedVersion, isServingOta, rollbackUI } from './ui-updater';
 import type { UpdateCheckResult } from './ui-updater';
-import { coworkHome, coworkEnvPath, coworkStatePath, migrateLegacyHome, readEnvFile, buildKind } from './cowork-home';
+import { coworkHome, coworkEnvPath, coworkStatePath, migrateLegacyHome, readEnvFile, buildKind, buildKindStrict } from './cowork-home';
 import { checkChannelConsistency } from './channels';
-import { applyChannelUvIsolation } from './uv-paths';
+import { resolveChannelIconPath } from './app-icon';
+import { applyChannelUvIsolation, primeLoginShellPath } from './uv-paths';
+import { shellAutoUpdateEnabledFor } from './shell-auto-update-rollout';
 import { getServerAuthToken, authHeader, resetServerAuthTokenCache } from './server-auth';
 import { getAppDisplayVersion } from './server-source';
 import { extractProviderError, classifyOpenAICompatibleResult } from './provider-error';
@@ -82,6 +88,12 @@ function getDevMode(): string | null {
 function getUpdateMode(): 'auto' | 'manual' {
   const vars = readEnvFile();
   return vars.UI_UPDATE_MODE === 'manual' ? 'manual' : 'auto';
+}
+
+/** Stable-first ENG-850 rollout with an environment kill switch. */
+function shellAutoUpdateEnabled(): boolean {
+  const vars = readEnvFile();
+  return shellAutoUpdateEnabledFor(buildKindStrict(), vars.SHELL_AUTO_UPDATE_ENABLED);
 }
 
 // Resolves once the boot-time server start has settled (server up, or
@@ -290,11 +302,14 @@ function ensureDefaultProject() {
 }
 
 // ─── Icons ───────────────────────────────────────────────────
+// Channel-aware: non-prod builds show their badged icon (icon-<kind>.png) in the
+// window/dock/taskbar, not the prod icon. Selection logic (+ fallback) lives in
+// app-icon.ts so it's unit-tested; here we only resolve the assets dir.
 function getIconPath(): string {
-  if (app.isPackaged) {
-    return path.join(process.resourcesPath, 'assets', 'icon.png');
-  }
-  return path.join(__dirname, '..', '..', '..', 'assets', 'icon.png');
+  const assetsDir = app.isPackaged
+    ? path.join(process.resourcesPath, 'assets')
+    : path.join(__dirname, '..', '..', '..', 'assets');
+  return resolveChannelIconPath(buildKind(), assetsDir, fs.existsSync);
 }
 
 let mainWindow: BrowserWindow | null = null;
@@ -1480,6 +1495,9 @@ app.whenReady().then(async () => {
   // checkConfigured() can await the real readiness without polling.
   let resolveBootServer: () => void = () => {};
   bootServerSettled = new Promise<void>((resolve) => { resolveBootServer = resolve; });
+  // Bounded by primeLoginShellPath()'s own timeout — checkInstallStatus and
+  // the server spawn below both resolve uv through the PATH it caches.
+  await primeLoginShellPath();
   checkInstallStatus().then(async ({ antonInstalled }) => {
     if (!antonInstalled) {
       console.log('[server] skipped: cowork-server not installed; setup screen will handle.');
@@ -1580,7 +1598,7 @@ app.whenReady().then(async () => {
 
     const devMode = getDevMode();
     if (app.isPackaged && !devMode && mainWindow) {
-      initUpdater(() => mainWindow, rendererReady, getUpdateMode);
+      initUpdater(() => mainWindow, rendererReady, getUpdateMode, shellAutoUpdateEnabled());
     } else if (!app.isPackaged) {
       console.log('[updater] skipped — not a packaged build');
     } else if (devMode) {
@@ -1653,6 +1671,22 @@ async function drainServerForQuit(): Promise<void> {
   // Stop all OAuth refresh loops before the server shuts down so no
   // in-flight tick can call PATCH /token against a dead server.
   stopAllRefreshLoops();
+  // An auto-mode shell update installs itself as the app goes down, outside
+  // the update-maintenance gate that the in-app "Restart now" install enters.
+  // The download only stages the payload (Windows: the NSIS installer on disk;
+  // macOS: Squirrel.Mac fetches it into ShipIt's area) — the bundle swap runs
+  // later: on Windows in electron-updater's `app.once('quit')` handler, on
+  // macOS via ShipIt once this process terminates. Both are strictly after this
+  // before-quit drain, so waiting for any in-flight UI/server apply to finish
+  // here keeps the installer's file swap from overlapping it. Bounded like the
+  // server stop below so a wedged apply can't pin the quit indefinitely.
+  const applyDrained = await Promise.race([
+    awaitUpdateMaintenanceIdle().then(() => true),
+    new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 8_000)),
+  ]);
+  if (!applyDrained) {
+    console.warn('[updater] update-maintenance did not drain before the quit ceiling; an on-quit shell install may overlap an in-flight apply');
+  }
   // Hard ceiling so a wedged python can't pin the quit indefinitely.
   // stopServer's own SIGTERM(6s) + SIGKILL(1.5s) chain stays inside
   // this window, but a misbehaving OS-level process delay could push

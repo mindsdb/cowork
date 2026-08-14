@@ -657,10 +657,15 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
             background: 'var(--surface-2)', border: '1px solid var(--line)', borderRadius: 999,
             padding: '3px 6px',
           }}>
-            <IconButton size={26} onClick={onReload} disabled={!hasActionPath}
-              title="Reload preview" aria-label="Reload preview" style={pillBtn}>
-              {Ico.reload(20)}
-            </IconButton>
+            <Tooltip content="Reload preview">
+              {/* Native title only while disabled — a disabled button fires no
+                  hover/focus events, so the styled Tooltip can't open. */}
+              <IconButton size={26} onClick={onReload} disabled={!hasActionPath}
+                title={!hasActionPath ? 'Reload preview' : undefined}
+                aria-label="Reload preview" style={pillBtn}>
+                {Ico.reload(20)}
+              </IconButton>
+            </Tooltip>
             <span
               title={isPublished ? pub.publishedUrl : undefined}
               style={{
@@ -671,10 +676,13 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
                 padding: '0 2px',
               }}
             >{isPublished ? displayUrl : '/'}</span>
-            <IconButton size={26} onClick={onOpenInBrowser} disabled={!canOpenInBrowser}
-              title="Open in browser" aria-label="Open in browser" style={pillBtn}>
-              {Ico.arrowUpRight(20)}
-            </IconButton>
+            <Tooltip content="Open in browser">
+              <IconButton size={26} onClick={onOpenInBrowser} disabled={!canOpenInBrowser}
+                title={!canOpenInBrowser ? 'Open in browser' : undefined}
+                aria-label="Open in browser" style={pillBtn}>
+                {Ico.arrowUpRight(20)}
+              </IconButton>
+            </Tooltip>
           </div>
         </div>
 
@@ -708,7 +716,7 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
             align="end"
             width={190}
             trigger={
-              <IconButton aria-label="More actions" title="More actions">
+              <IconButton aria-label="More actions">
                 {Ico.moreVert(16)}
               </IconButton>
             }
@@ -735,7 +743,9 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
               },
             ]}
           />
-          <IconButton onClick={onClose} aria-label="Close" title="Close">{Ico.close(15)}</IconButton>
+          <Tooltip content="Close">
+            <IconButton onClick={onClose} aria-label="Close">{Ico.close(15)}</IconButton>
+          </Tooltip>
         </div>
       </div>
 

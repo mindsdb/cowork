@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { providerStatusBadge } from './SettingsView';
-import { accountUserFromToken } from '../../lib/accountUser';
+import { accountUserFromToken, accountInitials } from '../../lib/accountUser';
 
 const jwt = (payload) =>
   `header.${btoa(JSON.stringify(payload)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')}.sig`;
@@ -20,7 +20,13 @@ describe('accountUserFromToken', () => {
       username: 'hazem',
       sub: 'user-1',
       org: 'MindsDB',
+      picture: null,
     });
+  });
+
+  it('carries the picture claim through for the avatar (ENG-1408)', () => {
+    const user = accountUserFromToken(jwt({ picture: 'https://cdn.example.com/a.png' }));
+    expect(user.picture).toBe('https://cdn.example.com/a.png');
   });
 
   it('builds a name from given/family name when no display name claim exists', () => {
@@ -43,6 +49,18 @@ describe('accountUserFromToken', () => {
   it('returns null for an undecodable token', () => {
     expect(accountUserFromToken('not-a-jwt')).toBeNull();
     expect(accountUserFromToken('a.%%%not-base64%%%.b')).toBeNull();
+  });
+});
+
+describe('accountInitials', () => {
+  it.each([
+    [{ name: 'Hazem Ahmed' }, 'HA'],
+    [{ name: 'Hazem' }, 'H'],
+    [{ email: 'hazem@example.com' }, 'H'],
+    [{}, '?'],
+    [null, '?'],
+  ])('maps %o to %s', (user, expected) => {
+    expect(accountInitials(user)).toBe(expected);
   });
 });
 

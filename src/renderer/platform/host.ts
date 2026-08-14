@@ -288,21 +288,23 @@ async function fetchJson(path: string, init?: RequestInit): Promise<any> {
   return res.json();
 }
 
+// A hosted browser can never use `/settings/raw`: it's restricted to loopback
+// (403) and refused outright in org mode (501). Both are expected, and the DB is
+// the authoritative store, so reads/writes degrade instead of aborting boot.
+// Any other status is a real error and must propagate.
+function isExpectedRawGateStatus(e: unknown): boolean {
+  const status = (e as { status?: number }).status;
+  return status === 403 || status === 501;
+}
+
 export async function readSettings(): Promise<Record<string, string>> {
   if (isElectron && typeof bridge.readSettings === 'function') {
     return bridge.readSettings();
   }
-  // Web: /settings/raw returns unmasked secrets and is loopback-gated
-  // (ENG-457). In the console-hosted deployment the browser's request reaches
-  // cowork-server from the docker bridge, not loopback, so the gate returns
-  // 403 (ENG-817). The DB is authoritative, so for THAT expected 403 we degrade
-  // to empty rather than aborting boot/onboarding. Any other failure (network,
-  // 4xx/5xx, malformed) is a real error and must propagate. (Electron reads via
-  // the IPC bridge above, unaffected.)
   try {
     return await fetchJson('/api/v1/settings/raw');
   } catch (e) {
-    if ((e as { status?: number }).status === 403) return {};
+    if (isExpectedRawGateStatus(e)) return {};
     throw e;
   }
 }
@@ -311,16 +313,12 @@ export async function saveSettings(content: string): Promise<boolean> {
   if (isElectron && typeof bridge.saveSettings === 'function') {
     return bridge.saveSettings(content);
   }
-  // Web: the .env write (/settings/raw) is loopback-gated (ENG-457/ENG-817), so
-  // the expected 403 from the gate is best-effort — return false for it instead
-  // of aborting (the DB write via PUT /settings/:key is the authoritative store).
-  // Any OTHER failure (network, 4xx/5xx) is a real persistence error and must
-  // propagate, so onboarding can't report success over a failed write.
+  // `false` means "not persisted to the dotenv", not "onboarding failed".
   try {
     await fetchJson('/api/v1/settings/raw', { method: 'POST', body: JSON.stringify({ content }) });
     return true;
   } catch (e) {
-    if ((e as { status?: number }).status === 403) return false;
+    if (isExpectedRawGateStatus(e)) return false;
     throw e;
   }
 }
@@ -345,14 +343,29 @@ export async function checkInstall(): Promise<InstallStatus> {
   return fetchJson('/api/v1/settings/install-status');
 }
 
-export async function checkConfigured(): Promise<{ configured: boolean; provider: string }> {
+export async function checkConfigured(): Promise<{
+  configured: boolean;
+  provider: string;
+  // Electron is desktop by definition, so the bridge path leaves this false.
+  orgMode?: boolean;
+}> {
   if (isElectron && typeof bridge.checkConfigured === 'function') {
     return bridge.checkConfigured();
   }
   // Web: read config_ready from /health — the SAME signal the in-app chat gate
   // uses — so onboarding-vs-app routing can't disagree with the chat gate.
-  const h = await fetchJson('/api/v1/health/') as { config_ready?: boolean; provider?: string };
-  return { configured: Boolean(h.config_ready), provider: h.provider ?? '' };
+  // `orgMode` separates a hosted org deployment from an authenticated
+  // standalone one; config_ready can't express that.
+  const h = await fetchJson('/api/v1/health/') as {
+    config_ready?: boolean;
+    provider?: string;
+    org_mode?: boolean;
+  };
+  return {
+    configured: Boolean(h.config_ready),
+    provider: h.provider ?? '',
+    orgMode: Boolean(h.org_mode),
+  };
 }
 
 export async function validateProvider(
@@ -536,6 +549,63 @@ function mergeShellUpdate(
     shellVersion: shell.version,
     ...(shell.downloadUrl ? { shellDownloadUrl: shell.downloadUrl } : {}),
   };
+}
+
+export interface ShellAutoUpdateSnapshot {
+  phase: 'disabled' | 'idle' | 'checking' | 'available' | 'downloading' |
+    'ready-to-install' | 'installing' | 'complete' | 'failed';
+  mode: 'auto' | 'manual';
+  channel: 'prod' | 'stable' | 'preview';
+  currentVersion: string;
+  targetVersion?: string;
+  progress?: { transferred: number; total: number; percent: number; bytesPerSecond?: number };
+  recoverable?: boolean;
+  errorCode?: string;
+  errorMessage?: string;
+  disabledReason?: string;
+}
+
+const DISABLED_SHELL_AUTO_UPDATE: ShellAutoUpdateSnapshot = {
+  phase: 'disabled',
+  mode: 'manual',
+  channel: 'preview',
+  currentVersion: '',
+  disabledReason: 'unavailable',
+};
+
+export async function getShellAutoUpdate(): Promise<ShellAutoUpdateSnapshot> {
+  if (isElectron && typeof bridge.getShellAutoUpdate === 'function') {
+    return bridge.getShellAutoUpdate();
+  }
+  return DISABLED_SHELL_AUTO_UPDATE;
+}
+
+export function onShellAutoUpdate(cb: (snapshot: ShellAutoUpdateSnapshot) => void): () => void {
+  if (isElectron && typeof bridge.onShellAutoUpdate === 'function') {
+    return bridge.onShellAutoUpdate(cb);
+  }
+  return () => {};
+}
+
+export async function checkShellAutoUpdate(): Promise<ShellAutoUpdateSnapshot> {
+  if (isElectron && typeof bridge.checkShellAutoUpdate === 'function') {
+    return bridge.checkShellAutoUpdate();
+  }
+  return DISABLED_SHELL_AUTO_UPDATE;
+}
+
+export async function downloadShellAutoUpdate(): Promise<ShellAutoUpdateSnapshot> {
+  if (isElectron && typeof bridge.downloadShellAutoUpdate === 'function') {
+    return bridge.downloadShellAutoUpdate();
+  }
+  return DISABLED_SHELL_AUTO_UPDATE;
+}
+
+export async function installShellAutoUpdate(): Promise<boolean> {
+  if (isElectron && typeof bridge.installShellAutoUpdate === 'function') {
+    return bridge.installShellAutoUpdate();
+  }
+  return false;
 }
 
 // On-demand check for a newer UI, server, or shell version. Detection only —
@@ -821,6 +891,11 @@ export const host = {
   applyUpdate,
   checkForUpdates,
   getShellUpdate,
+  getShellAutoUpdate,
+  onShellAutoUpdate,
+  checkShellAutoUpdate,
+  downloadShellAutoUpdate,
+  installShellAutoUpdate,
   oauthConnect,
   oauthCancel,
   mindshubLogin,

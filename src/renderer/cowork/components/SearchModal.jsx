@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import Ico from './Icons';
-import { Badge } from './ui';
+import { Badge, Tooltip } from './ui';
 
 function ResultIcon({ type }) {
   if (type === 'project') return Ico.folder(15);
@@ -66,7 +66,7 @@ export default function SearchModal({ open, onClose, onSearch, onSelect }) {
             aria-label="Search MindsHub Cowork"
             onChange={(event) => setQuery(event.target.value)}
           />
-          <button className="mini-icon-btn" title="Close" onClick={onClose}>x</button>
+          <Tooltip content="Close"><button className="mini-icon-btn" aria-label="Close" onClick={onClose}>x</button></Tooltip>
         </div>
         <div className="search-results">
           {results.map((result) => (

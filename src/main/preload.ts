@@ -120,6 +120,15 @@ contextBridge.exposeInMainWorld('antontron', {
   checkForUpdate: () => ipcRenderer.invoke(IPC.UI_UPDATE_CHECK),
   applyUpdate: () => ipcRenderer.invoke(IPC.UI_UPDATE_APPLY),
   getShellUpdate: () => ipcRenderer.invoke(IPC.UI_SHELL_UPDATE_GET),
+  getShellAutoUpdate: () => ipcRenderer.invoke(IPC.SHELL_UPDATE_GET),
+  checkShellAutoUpdate: () => ipcRenderer.invoke(IPC.SHELL_UPDATE_CHECK),
+  downloadShellAutoUpdate: () => ipcRenderer.invoke(IPC.SHELL_UPDATE_DOWNLOAD),
+  installShellAutoUpdate: () => ipcRenderer.invoke(IPC.SHELL_UPDATE_INSTALL),
+  onShellAutoUpdate: (cb: (snapshot: Record<string, unknown>) => void) => {
+    const listener = (_: any, snapshot: Record<string, unknown>) => cb(snapshot);
+    ipcRenderer.on(IPC.SHELL_UPDATE_STATUS, listener);
+    return () => ipcRenderer.removeListener(IPC.SHELL_UPDATE_STATUS, listener);
+  },
   onUpdateStatus: (cb: (status: { phase: string; version?: string }) => void) => {
     const listener = (_: any, status: { phase: string; version?: string }) => cb(status);
     ipcRenderer.on(IPC.UI_UPDATE_STATUS, listener);

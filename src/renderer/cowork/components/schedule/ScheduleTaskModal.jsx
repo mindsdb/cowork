@@ -13,6 +13,15 @@ import Ico from '../Icons';
 
 const FONT_BODY = 'var(--font-body)';
 
+// Sentinel for the "No project" (unassigned) choice in the Project <Select>.
+// It must be a non-empty string: Base UI's <Select.Value> treats an
+// empty-string value as "nothing selected" and renders the placeholder, so an
+// option with value '' shows "Select…" on the closed control even while its
+// item carries a checkmark (ENG-1246). This value never reaches the server —
+// `handleSubmit` resolves it to `project_id: null` (server → general), and it
+// can't collide with a real project path.
+const NO_PROJECT = '__no_project__';
+
 function toLocalInput(value) {
   if (!value) return '';
   const date = new Date(value);
@@ -25,12 +34,22 @@ function defaultNextRun() {
   return toLocalInput(new Date(Date.now() + 60 * 60 * 1000).toISOString());
 }
 
-const fieldLabel = {
-  fontFamily: FONT_BODY, fontSize: 11.5, fontWeight: 500,
-  color: 'var(--ink-3)', letterSpacing: '0.02em',
-  textTransform: 'uppercase',
-  marginBottom: 6,
-};
+// Unambiguous echo of the datetime-local value. The native <input
+// type="datetime-local"> renders in Chromium's UI locale, which in Electron
+// can disagree with the OS regional format (e.g. shows DD/MM on an en_US
+// machine) — ambiguous for the first 12 days of a month on a control that
+// decides when a task runs (ENG-1244). A spelled-out month removes the
+// ambiguity regardless of what the native control shows. Takes the local
+// "YYYY-MM-DDTHH:mm" string the input holds.
+function formatNextRunEcho(local) {
+  if (!local) return '';
+  const d = new Date(local);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleString(undefined, {
+    weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
+    hour: 'numeric', minute: '2-digit',
+  });
+}
 
 const fieldInput = {
   width: '100%', boxSizing: 'border-box',
@@ -51,7 +70,7 @@ const fieldSelectStyle = {
 };
 
 export default function ScheduleTaskModal({
-  open, onClose, onSubmit, onDelete,
+  open, onClose, onSubmit,
   task,                    // when set → edit mode
   projects = [],
   defaultProjectPath = '',
@@ -62,7 +81,6 @@ export default function ScheduleTaskModal({
 
   const [form, setForm] = useState(() => emptyForm({ defaultProjectPath }));
   const [error, setError] = useState('');
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   // Whenever the modal opens (or the editing target changes), reset
   // form state so reopening doesn't show stale fields from a previous
@@ -70,17 +88,13 @@ export default function ScheduleTaskModal({
   useEffect(() => {
     if (!open) return;
     setError('');
-    setConfirmingDelete(false);
     if (task) {
-      // The server stores the project as a NAME (`task.project`) and
-      // the form's Project select uses path as its value. Hydrate the
-      // form by resolving the name back to a path via `projects`.
-      // Earlier versions read `task.projectPath` which the server never
-      // sets, so editing always lost the project association.
+      // The server keys the project association by `projectId` (a UUID) and
+      // the form's Project select uses the project PATH as its value. Hydrate
+      // by resolving the stored id back to a path via `projects` (ENG-1255).
       const taskProjectPath = (() => {
-        if (task.projectPath) return task.projectPath;
-        if (task.project) {
-          const match = projects.find((p) => p.name === task.project);
+        if (task.projectId) {
+          const match = projects.find((p) => p.id === task.projectId);
           if (match?.path) return match.path;
         }
         return '';
@@ -90,7 +104,7 @@ export default function ScheduleTaskModal({
         prompt:      task.prompt || '',
         cadence:     task.cadence || 'once',
         nextRunAt:   toLocalInput(task.nextRunAt) || defaultNextRun(),
-        projectPath: taskProjectPath || defaultProjectPath || '',
+        projectPath: taskProjectPath || defaultProjectPath || NO_PROJECT,
         enabled:     task.enabled !== false,
       });
     } else {
@@ -115,20 +129,20 @@ export default function ScheduleTaskModal({
       return;
     }
     setError('');
-    // The server's `ScheduleRequest` schema accepts `project` as a
-    // bare project NAME (not a path) and ignores any unknown fields.
-    // The earlier payload sent `project_path: <path>` which silently
-    // dropped — every schedule landed with `project: null`, breaking
-    // the project-pivoted card / list / count. Resolve the form's
-    // path back to a name via `projects` and send the right field.
-    const projectMatch = projects.find((p) => p.path === form.projectPath);
+    // The server keys the project association by `project_id` (a UUID); a
+    // bare name is silently dropped and the schedule falls back to the general
+    // project (ENG-1255). Resolve the selected path → project id via
+    // `projects`. The "No project" sentinel sends null (server → general).
+    const projectMatch = form.projectPath === NO_PROJECT
+      ? null
+      : projects.find((p) => p.path === form.projectPath);
     const payload = {
       title:        form.title.trim() || form.prompt.trim().slice(0, 80),
       prompt:       form.prompt,
       cadence:      form.cadence,
       timezone:     Intl.DateTimeFormat().resolvedOptions().timeZone || 'local',
       next_run_at:  new Date(form.nextRunAt).toISOString(),
-      project:      projectMatch?.name || null,
+      project_id:   projectMatch?.id || null,
       // Scheduled tasks always use the user's configured default
       // model — exposing the picker here let people accidentally
       // pin a stale model id that's no longer valid.
@@ -140,17 +154,6 @@ export default function ScheduleTaskModal({
       onClose?.();
     } catch (err) {
       setError(err?.message || 'Could not save schedule.');
-    }
-  }
-
-  async function handleDelete() {
-    if (!task?.id) return;
-    setError('');
-    try {
-      await onDelete?.(task.id);
-      onClose?.();
-    } catch (err) {
-      setError(err?.message || 'Could not delete schedule.');
     }
   }
 
@@ -173,7 +176,7 @@ export default function ScheduleTaskModal({
         onClose={onClose}
       />
       <ModalBody padding="18px 20px">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div className="flex flex-col gap-[14px]">
           <Field label="Title">
             <Input
               value={form.title}
@@ -184,7 +187,7 @@ export default function ScheduleTaskModal({
             />
           </Field>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <div className="grid grid-cols-[1fr_1fr] gap-[14px]">
             <Field label="Cadence">
               <Select
                 value={form.cadence}
@@ -208,6 +211,11 @@ export default function ScheduleTaskModal({
                 onChange={(v) => update('nextRunAt', v)}
                 style={fieldInput}
               />
+              {formatNextRunEcho(form.nextRunAt) && (
+                <span className="mt-[5px] font-[family-name:var(--font-body)] text-[11.5px] text-ink-3">
+                  {formatNextRunEcho(form.nextRunAt)}
+                </span>
+              )}
             </Field>
           </div>
 
@@ -218,14 +226,17 @@ export default function ScheduleTaskModal({
               ariaLabel="Project"
               style={fieldSelectStyle}
               options={[
-                { value: '', label: 'No project' },
+                // "No project" is the unassigned mode, not a project — divide
+                // it from the real projects (which map 1:1 to the projects page).
+                { value: NO_PROJECT, label: 'No project' },
+                { separator: true },
                 ...projects.map((p) => ({ value: p.path, label: p.name })),
               ]}
             />
           </Field>
 
           <div>
-            <span style={{ ...fieldLabel, display: 'block' }}>Status</span>
+            <span className="block font-[family-name:var(--font-body)] text-[11.5px] font-medium text-ink-3 tracking-[0.02em] uppercase mb-1.5">Status</span>
             {/* Block-level `flex` with a fixed height (not `inline-flex`): an
                 inline-flex row sits on a text baseline in the parent's line
                 box, so toggling the label between "Enabled" and "Paused"
@@ -241,17 +252,14 @@ export default function ScheduleTaskModal({
                 deliberately not a clickable <span> (mouse-only + unassociated)
                 nor a <label> (the Switch's own hidden input would be
                 double-activated). */}
-            <div style={{
-              display: 'flex', width: 'fit-content', alignItems: 'center', gap: 8, height: 22,
-              fontFamily: FONT_BODY, fontSize: 13.5, color: 'var(--ink)',
-            }}>
+            <div className="flex w-fit items-center gap-2 h-[22px] font-[family-name:var(--font-body)] text-[13.5px] text-ink">
               <Switch
                 checked={form.enabled}
                 onCheckedChange={(v) => update('enabled', v)}
                 size="sm"
                 aria-label="Schedule enabled"
               />
-              <span aria-hidden="true" style={{ userSelect: 'none' }}>
+              <span aria-hidden="true" className="select-none">
                 {form.enabled ? 'Enabled' : 'Paused'}
               </span>
             </div>
@@ -272,27 +280,11 @@ export default function ScheduleTaskModal({
           )}
         </div>
       </ModalBody>
-      <ModalFooter align={isEdit ? 'space-between' : 'flex-end'}>
-        {isEdit && onDelete && (
-          confirmingDelete ? (
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 12.5, color: 'var(--ink-3)' }}>Delete this schedule?</span>
-              <Button variant="subtle" onClick={() => setConfirmingDelete(false)} disabled={busy}>
-                Cancel
-              </Button>
-              <Button variant="danger-solid" onClick={handleDelete} disabled={busy}>
-                Delete
-              </Button>
-            </div>
-          ) : (
-            <Button variant="danger" onClick={() => setConfirmingDelete(true)} disabled={busy}>
-              {Ico.trash ? Ico.trash(13) : null}
-              Delete
-            </Button>
-          )
-        )}
-        {!isEdit && <span />}
-        <div style={{ display: 'inline-flex', gap: 8 }}>
+      {/* Footer is edit/create only — deleting a schedule lives on the task
+          card/detail overflow menu (with its own confirm), not inside this
+          form, so the footer never carries a destructive action. */}
+      <ModalFooter align="flex-end">
+        <div className="inline-flex gap-2">
           <Button variant="subtle" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
@@ -319,7 +311,7 @@ function emptyForm({ defaultProjectPath }) {
     prompt: '',
     cadence: 'once',
     nextRunAt: defaultNextRun(),
-    projectPath: defaultProjectPath || '',
+    projectPath: defaultProjectPath || NO_PROJECT,
     enabled: true,
   };
 }

@@ -1,110 +1,194 @@
-// Inline SVG icon library (Iconoir/Lucide-style line icons)
+// App-wide icon set — Lucide (lucide-react), consolidated in ENG-634.
+//
+// Same call-style API as the old hand-rolled set: `Ico.search(16)` renders a
+// 16px icon. Keys are stable — several call sites resolve them dynamically
+// from data (`Ico[connector.logo]`, `Ico[item.icon]`), so never rename or
+// remove a key without grepping for its string form too.
+//
+// Stroke width is UNIFIED at 1.5 across the entire app (CEO call, ENG-634) —
+// no per-icon weights. If you need a heavier glyph, that's a design-system
+// conversation, not a local override.
+//
+// Kept hand-rolled: brand marks (mindsdb, googleDrive) — Lucide ships no
+// brand icons — and the composer's solid stop/pause glyphs, which are
+// deliberately smaller than Lucide's filled shapes to fit the composer
+// button design.
+import {
+  ArrowUp,
+  ArrowUpRight,
+  Bot,
+  Box,
+  Brain,
+  CalendarClock,
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  CodeXml,
+  Copy,
+  Database,
+  Download,
+  Ellipsis,
+  EllipsisVertical,
+  ExternalLink,
+  Eye,
+  EyeOff,
+  FileText,
+  Folder,
+  FolderInput,
+  FolderOpen,
+  Gamepad2,
+  Globe,
+  Image,
+  KeyRound,
+  LayoutGrid,
+  Link,
+  List,
+  Lock,
+  Mail,
+  Menu,
+  MessagesSquare,
+  Mic,
+  Moon,
+  Palette,
+  PanelLeft,
+  PanelLeftClose,
+  PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
+  Paperclip,
+  Pencil,
+  Pin,
+  Plus,
+  Power,
+  PowerOff,
+  RefreshCw,
+  RotateCw,
+  Save,
+  Search,
+  Settings,
+  SlidersHorizontal,
+  Smartphone,
+  Sparkles,
+  SquareCheckBig,
+  Sun,
+  ThumbsDown,
+  ThumbsUp,
+  Trash2,
+  Upload,
+  Users,
+  Wifi,
+  X,
+} from 'lucide-react';
+
+// (Component, default size) → the old call-style drawer fn. Lucide adds
+// aria-hidden itself on childless icons, so no a11y props needed here.
+const ico = (Cmp, d = 16) => (s = d) => <Cmp size={s} strokeWidth={1.5} />;
 
 const Ico = {
-  search:   (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>,
-  chats:    (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M16 14a3 3 0 0 1-3 3H7l-4 3v-9a3 3 0 0 1 3-3h7a3 3 0 0 1 3 3v3Z"/><path d="M8 7V6a3 3 0 0 1 3-3h7a3 3 0 0 1 3 3v6l-2-1.5"/></svg>,
-  list:     (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h13M3 12h13M3 18h13"/><circle cx="20" cy="6" r="1"/><circle cx="20" cy="12" r="1"/><circle cx="20" cy="18" r="1"/></svg>,
+  search:   ico(Search),
+  chats:    ico(MessagesSquare),
+  list:     ico(List),
   // 2x2 grid — used in the Projects page view-toggle.
-  grid:     (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><rect x="13" y="13" width="7" height="7" rx="1"/></svg>,
-  // Picture frame with a tiny mountain inside — used as the icon for
-  // image artifacts (PNG, JPG, SVG, etc.) on the Live artifacts page.
-  image:    (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.5"/><path d="m21 16-5-5-5 5-3-3-5 5"/></svg>,
-  sidebar:  (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4.5" width="18" height="15" rx="2.5"/><path d="M9.5 4.5v15"/></svg>,
-  // Sidebar with arrow pointing left → "collapse the left panel".
-  sidebarCollapseLeft:  (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4.5" width="18" height="15" rx="2.5"/><path d="M9.5 4.5v15"/><path d="M16 9l-3 3 3 3"/></svg>,
-  // Sidebar with arrow pointing right → "expand the left panel".
-  sidebarExpandRight:   (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4.5" width="18" height="15" rx="2.5"/><path d="M9.5 4.5v15"/><path d="M13 9l3 3-3 3"/></svg>,
-  // Right panel collapse — sidebar mirrored, divider on the right.
-  panelCollapseRight:   (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4.5" width="18" height="15" rx="2.5"/><path d="M14.5 4.5v15"/><path d="M8 9l3 3-3 3"/></svg>,
-  // Right panel expand — divider on the right with arrow pointing left.
-  panelExpandLeft:      (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4.5" width="18" height="15" rx="2.5"/><path d="M14.5 4.5v15"/><path d="M11 9l-3 3 3 3"/></svg>,
-  menu:     (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7h18M3 12h18M3 17h18"/></svg>,
-  sun:      (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>,
-  moon:     (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></svg>,
+  grid:     ico(LayoutGrid),
+  image:    ico(Image),
+  sidebar:  ico(PanelLeft),
+  sidebarCollapseLeft: ico(PanelLeftClose),
+  sidebarExpandRight:  ico(PanelLeftOpen),
+  panelCollapseRight:  ico(PanelRightClose),
+  panelExpandLeft:     ico(PanelRightOpen),
+  menu:     ico(Menu),
+  sun:      ico(Sun),
+  moon:     ico(Moon),
   // Retro gamepad — the 8-Bit skin toggle.
-  gamepad:  (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M6 11h4M8 9v4"/><path d="M15.5 12.5h.01M18 10h.01"/><path d="M17.32 6H6.68a4 4 0 0 0-3.98 3.6l-.66 5.86A2.75 2.75 0 0 0 6.8 17.6L8.5 15.5h7l1.7 2.1a2.75 2.75 0 0 0 4.76-2.14l-.66-5.86A4 4 0 0 0 17.32 6Z"/></svg>,
+  gamepad:  ico(Gamepad2),
   // Painter's palette — the Custom (design-your-own) skin.
-  palette:  (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M12 21a9 9 0 1 1 9-9c0 2.5-2 3.5-3.5 3.5H15a2 2 0 0 0-1.5 3.3c.3.4.5.8.5 1.2a1.5 1.5 0 0 1-2 1Z"/><circle cx="7.5" cy="11.5" r=".5"/><circle cx="10" cy="7.5" r=".5"/><circle cx="14.5" cy="7.5" r=".5"/><circle cx="17" cy="11.5" r=".5"/></svg>,
-  power:    (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v9"/><path d="M7.5 6.5a7 7 0 1 0 9 0"/></svg>,
-  // Disconnect / power-off — power glyph with a slash. Reads as
-  // "click to turn off" (i.e. backend currently running).
-  powerOff: (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M7.5 6.5a7 7 0 1 0 9 0"/><path d="M12 3v6.5"/><path d="M5 5l14 14"/></svg>,
+  palette:  ico(Palette),
+  power:    ico(Power),
+  // Disconnect / power-off — reads as "click to turn off".
+  powerOff: ico(PowerOff),
   // Message-action affordances under each Anton turn.
-  copy:     (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>,
-  refresh:  (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg>,
-  thumbUp:  (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M7 10v11h11.5a2.5 2.5 0 0 0 2.5-2.4l.5-7A2.5 2.5 0 0 0 19 9h-5l1-4a2 2 0 0 0-3.8-1L7 10Z"/><path d="M3 10h4v11H3z"/></svg>,
-  thumbDown:(s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M17 14V3H5.5A2.5 2.5 0 0 0 3 5.4l-.5 7A2.5 2.5 0 0 0 5 15h5l-1 4a2 2 0 0 0 3.8 1L17 14Z"/><path d="M21 14h-4V3h4z"/></svg>,
-  chevronRight: (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 6 6 6-6 6"/></svg>,
-  code:     (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="m8 8-5 4 5 4M16 8l5 4-5 4M14 4l-4 16"/></svg>,
-  plus:     (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12h14"/></svg>,
-  folder:   (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg>,
-  phone:    (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><rect x="7" y="2.75" width="10" height="18.5" rx="2.7"/><path d="M10.5 6h3M11.5 18h1"/></svg>,
-  googleDrive: (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="m8 4 4 7H6L8 4Z"/><path d="m8 4 5 8 3.5-6H8Z"/><path d="m6 11 4.5 8H18l-5-7H6Z"/></svg>,
-  clock:    (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>,
-  sparkle:  (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M5.6 18.4l2.8-2.8M15.6 8.4l2.8-2.8"/></svg>,
-  slider:   (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M4 6h11M4 12h7M4 18h13"/><circle cx="18" cy="6" r="2"/><circle cx="14" cy="12" r="2"/><circle cx="20" cy="18" r="2"/></svg>,
-  settings: (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1.08-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1.08 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/><circle cx="12" cy="12" r="3"/></svg>,
-  pin:      (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M12 17v5"/><path d="M9 4h6l-1 6 3 3H7l3-3-1-6Z"/></svg>,
-  chevDown: (s = 14) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>,
-  chevRight:(s = 14) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="m9 6 6 6-6 6"/></svg>,
-  chevLeft: (s = 14) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="m15 6-6 6 6 6"/></svg>,
-  mic:      (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>,
-  send:     (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>,
-  // Solid square — used for "stop generation" on the composer when a
-  // task is in flight.
-  stop:     (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>,
-  pause:    (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>,
-  attach:   (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5 12.5 20a5 5 0 0 1-7-7l9-9a3.5 3.5 0 0 1 5 5l-9 9a2 2 0 0 1-3-3l8-8"/></svg>,
-  download: (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M12 4v12m0 0 4-4m-4 4-4-4M4 20h16"/></svg>,
-  check:    (s = 14) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12.5 10 17.5 19.5 7"/></svg>,
+  copy:     ico(Copy),
+  refresh:  ico(RotateCw),
+  thumbUp:  ico(ThumbsUp),
+  thumbDown: ico(ThumbsDown),
+  chevronRight: ico(ChevronRight),
+  code:     ico(CodeXml),
+  plus:     ico(Plus),
+  folder:   ico(Folder),
+  phone:    ico(Smartphone),
+  clock:    ico(Clock),
+  sparkle:  ico(Sparkles),
+  slider:   ico(SlidersHorizontal),
+  settings: ico(Settings),
+  pin:      ico(Pin),
+  chevDown: ico(ChevronDown, 14),
+  chevRight: ico(ChevronRight, 14),
+  chevLeft: ico(ChevronLeft, 14),
+  mic:      ico(Mic),
+  // Up arrow — the composer's send affordance.
+  send:     ico(ArrowUp),
+  attach:   ico(Paperclip),
+  download: ico(Download),
+  check:    ico(Check, 14),
   // Rounded-square card with an inner tick — the onboarding "Get to know
   // Cowork" / "you've got the basics" glyph.
-  taskCheck:(s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9.25 13L11.25 14.75L14.75 9.75M16 20H17C18.6569 20 20 18.6569 20 17V7C20 5.34315 18.6569 4 17 4H7C5.34315 4 4 5.34315 4 7V17C4 18.6569 5.34315 20 7 20H8"/></svg>,
-  more:     (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>,
-  // Vertical 3-dot kebab — used for the per-row task action menu in
-  // the sidebar and the chat header.
-  moreVert: (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg>,
+  taskCheck: ico(SquareCheckBig),
+  more:     ico(Ellipsis),
+  // Vertical 3-dot kebab — per-row task action menu in the sidebar and
+  // the chat header.
+  moreVert: ico(EllipsisVertical),
   // Pencil — rename action.
-  edit:     (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M16.5 4.5l3 3L8 19H5v-3z"/><path d="M14.5 6.5l3 3"/></svg>,
+  edit:     ico(Pencil),
   // Trash — delete action.
-  trash:    (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M3.5 6.5h17M9 6.5V4.5h6v2"/><path d="M5.5 6.5l1 13a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2l1-13"/><path d="M10 11v6M14 11v6"/></svg>,
-  // Move to project — folder + arrow.
-  moveTo:   (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/><path d="m13 13 3-3-3-3"/><path d="M16 10H9"/></svg>,
+  trash:    ico(Trash2),
+  // Move to project — folder + inbound arrow.
+  moveTo:   ico(FolderInput),
   // Schedule — calendar/clock blend.
-  schedule: (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/><path d="M12 14v3l2 1.2"/></svg>,
-  doc:      (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg>,
-  globe:    (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>,
-  brain:    (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96-.46 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.44-3.14Z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96-.46 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.44-3.14Z"/></svg>,
-  database: (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/></svg>,
-  mail:     (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>,
-  upload:   (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M12 4v12m0-12-4 4m4-4 4 4M4 20h16"/></svg>,
-  wifi:     (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0M1.42 9a16 16 0 0 1 21.16 0M8.53 16.11a6 6 0 0 1 6.95 0M12 20h.01"/></svg>,
-  key:      (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6M15.5 7.5l3 3L22 7l-3-3"/></svg>,
-  lock:     (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>,
-  people:   (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>,
-  mindsdb:  (s = 14) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"><path d="M3 17v3h3M21 7V4h-3M3 7V4h3M21 17v3h-3"/><circle cx="12" cy="12" r="4"/></svg>,
-  robot:    (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M12 4V2"/><circle cx="12" cy="1.5" r="1" fill="currentColor" stroke="none"/><rect x="3.5" y="5" width="17" height="13" rx="3.5"/><circle cx="9" cy="11" r="1.5"/><circle cx="15" cy="11" r="1.5"/><path d="M9 15a3.5 3.5 0 0 0 6 0"/><path d="M3.5 10.5H2M22 10.5h-1.5"/></svg>,
-  link:     (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M10 14a4 4 0 0 1 0-5.66l3-3a4 4 0 1 1 5.66 5.66l-1.5 1.5"/><path d="M14 10a4 4 0 0 1 0 5.66l-3 3a4 4 0 1 1-5.66-5.66l1.5-1.5"/></svg>,
-  // Isometric cube — top diamond + two faces. Communicates a discrete
-  // composable unit; used for Skills library nav.
-  cube:     (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3 21 7.5 12 12 3 7.5 12 3Z"/><path d="M3 7.5v9L12 21V12"/><path d="M21 7.5v9L12 21"/></svg>,
-  // External link — square with arrow exiting top-right. Universal
-  // "opens in browser" affordance.
-  externalLink: (s = 14) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M14 4h6v6"/><path d="M10 14 20 4"/><path d="M19 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h6"/></svg>,
-  // Close glyph — used by the data-vault form panel and any other
-  // dismissable affordance. Plain × strokes.
-  close:    (s = 14) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg>,
-  // Eye / eye-off — used by the masked API key fields in Settings to
-  // toggle between hidden and revealed value.
-  eye:      (s = 14) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>,
-  eyeOff:   (s = 14) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3l18 18"/><path d="M10.6 6.1A11 11 0 0 1 12 6c6.5 0 10 6 10 6a18 18 0 0 1-3 3.6"/><path d="M6.6 6.6A18 18 0 0 0 2 12s3.5 6 10 6c1.7 0 3.2-.3 4.5-.9"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>,
-  // ── Artifact-viewer top-bar icons (design-supplied, 20-grid) ──────────
-  // Folder with an export arrow — "open the artifact's local folder".
-  openFolder:   (s = 16) => <svg width={s} height={s} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17.5 8.33325C17.5 6.95254 16.3807 5.83325 15 5.83325H11.338C10.5021 5.83325 9.7215 5.4155 9.25783 4.72L9.0755 4.4465C8.61183 3.751 7.83126 3.33325 6.99538 3.33325H5C3.61929 3.33325 2.5 4.45254 2.5 5.83325V13.3333C2.5 14.714 3.61929 15.8333 5 15.8333H9.16667"/><path d="M13.3545 16.229L16.89 12.6935"/><path d="M13.9434 12.1042H17.4789V15.6398"/></svg>,
-  // Circular arrows — manual reload of the preview.
-  reload:       (s = 16) => <svg width={s} height={s} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14.6667 4.66675V7.33341H12"/><path d="M5.3252 15.3334V12.6667H7.99186"/><path d="M15.3332 10C15.3332 12.9455 12.9454 15.3333 9.99984 15.3333C8.24236 15.3333 6.6463 14.4833 5.6665 13.1719"/><path d="M4.6665 10.0001C4.6665 7.05456 7.05432 4.66675 9.99984 4.66675C11.7362 4.66675 13.3149 5.49646 14.2975 6.78103"/></svg>,
-  // Diagonal arrow — "open in the default browser".
-  arrowUpRight: (s = 16) => <svg width={s} height={s} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M7.99984 6H13.9998V12M13.9998 6L6.1665 13.8333"/></svg>,
+  schedule: ico(CalendarClock),
+  doc:      ico(FileText),
+  globe:    ico(Globe),
+  brain:    ico(Brain),
+  database: ico(Database),
+  mail:     ico(Mail),
+  upload:   ico(Upload),
+  wifi:     ico(Wifi),
+  key:      ico(KeyRound),
+  lock:     ico(Lock),
+  people:   ico(Users),
+  robot:    ico(Bot),
+  link:     ico(Link),
+  // Isometric cube — a discrete composable unit; Skills library nav.
+  cube:     ico(Box),
+  // External link — "opens in browser" affordance.
+  externalLink: ico(ExternalLink, 14),
+  // Close glyph — any dismissable affordance.
+  close:    ico(X, 14),
+  // Eye / eye-off — masked API key fields in Settings.
+  eye:      ico(Eye, 14),
+  eyeOff:   ico(EyeOff, 14),
+  // ── Artifact-viewer top-bar icons ─────────────────────────────────────
+  // "Open the artifact's local folder".
+  openFolder:   ico(FolderOpen),
+  // Manual reload of the preview.
+  reload:       ico(RefreshCw),
+  // "Open in the default browser".
+  arrowUpRight: ico(ArrowUpRight),
+  // Save — thinking-step marker (mdb-ai adapter `step.icon` string).
+  save:     ico(Save),
+
+  // ── Hand-rolled exceptions (no Lucide equivalent) ─────────────────────
+  // Brand marks: Lucide ships no brand icons.
+  // Official Drive mark (same geometry as public/logos/google_drive.svg),
+  // filled with currentColor so it sits monochrome alongside the neutral menu
+  // icons instead of the brand green.
+  googleDrive: (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12.01 1.485c-2.082 0-3.754.02-3.743.047.01.02 1.708 3.001 3.774 6.62l3.76 6.574h3.76c2.081 0 3.753-.02 3.742-.047-.005-.02-1.708-3.001-3.775-6.62l-3.76-6.574zm-4.76 1.73a789.828 789.861 0 0 0-3.63 6.319L0 15.868l1.89 3.298 1.885 3.297 3.62-6.335 3.618-6.33-1.88-3.287C8.1 4.704 7.255 3.22 7.25 3.214zm2.259 12.653-.203.348c-.114.198-.96 1.672-1.88 3.287a423.93 423.948 0 0 1-1.698 2.97c-.01.026 3.24.042 7.222.042h7.244l1.796-3.157c.992-1.734 1.85-3.23 1.906-3.323l.104-.167h-7.249z"/></svg>,
+  mindsdb:  (s = 14) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true"><path d="M3 17v3h3M21 7V4h-3M3 7V4h3M21 17v3h-3"/><circle cx="12" cy="12" r="4"/></svg>,
+  // Solid composer glyphs — sized to the composer button design (Lucide's
+  // filled Square/Pause fill the full 24-grid and read too heavy here).
+  stop:     (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>,
+  pause:    (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>,
 };
 
 export default Ico;

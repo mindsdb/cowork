@@ -1,11 +1,13 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as cp from 'child_process';
+import * as https from 'https';
+import { EventEmitter } from 'events';
 
 // Integration-style tests for the orchestration entry point only — the
 // decision logic itself is tested directly in update-logic.test.ts (qa.md
-// §5a rule). server-process pulls in electron; fs/child_process are mocked
-// so nothing touches real binaries, venvs, or the network.
+// §5a rule). server-process pulls in electron; fs/child_process/https are
+// mocked so nothing touches real binaries, venvs, or the network.
 vi.mock('./server-process', () => ({
   startServer: vi.fn(async () => ({ ok: true, port: 26866 })),
   stopServer: vi.fn(async () => {}),
@@ -14,16 +16,57 @@ vi.mock('./server-process', () => ({
   // just run the wrapped fn so runUv still invokes execFile.
   withServerMaintenance: vi.fn(async (fn: () => Promise<unknown>) => fn()),
 }));
+// buildKind reaches electron's `app`; stub it so the PyPI stream gate resolves
+// without a packaged app (mirrors server-source.test.ts).
+vi.mock('./cowork-home', () => ({ buildKind: vi.fn(() => 'prod') }));
 vi.mock('fs');
 vi.mock('child_process');
+vi.mock('https');
 
 import { startServer } from './server-process';
-import { maybeUpdateServer, repairServerInstall } from './server-updater';
+import {
+  maybeUpdateServer,
+  repairServerInstall,
+  checkForServerUpdate,
+  recreateVenvIfUnsupportedPython,
+} from './server-updater';
+
+/** Mock https.get to return a canned PyPI JSON body chosen by URL (cowork vs
+ *  anton), matching fetchPypiJson's (url, opts, cb) shape. */
+function mockPypi(bodyFor: (url: string) => string | null) {
+  vi.mocked(https.get).mockImplementation(((url: string, _opts: unknown, cb: (r: unknown) => void) => {
+    const body = bodyFor(String(url));
+    const res = new EventEmitter() as EventEmitter & { statusCode: number; resume: () => void };
+    res.statusCode = body === null ? 404 : 200;
+    res.resume = () => {};
+    setTimeout(() => {
+      cb(res);
+      if (body !== null) res.emit('data', body);
+      res.emit('end');
+    }, 0);
+    const req = { on: () => req, destroy: () => {} };
+    return req as never;
+  }) as never);
+}
 
 afterEach(() => {
   vi.clearAllMocks();
   delete process.env.UV_TOOL_DIR; // not covered by the setup-env scrub patterns
 });
+
+/** execFile stub for the no-uv tests: where/which (and everything else)
+ *  fails, so the PATH fallback comes up empty too — uv is truly absent. */
+function mockUvUnresolvable() {
+  vi.mocked(cp.execFile).mockImplementation(((
+    _cmd: string,
+    _args: string[],
+    _opts: unknown,
+    cb: (err: Error | null, stdout: string, stderr: string) => void,
+  ) => {
+    cb(new Error('not found'), '', '');
+    return {} as never;
+  }) as never);
+}
 
 describe('maybeUpdateServer (orchestration)', () => {
   it('is a no-op when COWORK_SERVER_DISABLE_AUTOUPDATE is set', async () => {
@@ -33,12 +76,17 @@ describe('maybeUpdateServer (orchestration)', () => {
     await expect(maybeUpdateServer()).resolves.toEqual({ updated: false });
   });
 
-  it('reports (never throws) when uv cannot be found', async () => {
+  it('reports loudly (never throws) when uv cannot be found', async () => {
     vi.mocked(fs.existsSync).mockReturnValue(false); // no uv binary anywhere
+    mockUvUnresolvable(); // and not on PATH either
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     await expect(maybeUpdateServer()).resolves.toEqual({
       updated: false,
       error: 'uv not found',
     });
+    // A machine whose uv lives outside the probed dirs gets NO updates — that
+    // must be loud in the logs, not an info-level shrug.
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('uv not found'));
   });
 
   it('git update that fails health check rolls back by pinning the EXACT prior commits', async () => {
@@ -124,6 +172,151 @@ describe('maybeUpdateServer (orchestration)', () => {
   });
 });
 
+describe('uv-unresolvable bails are loud', () => {
+  // Every recovery/update entry point no-ops when uv is missing from the
+  // probed locations AND from PATH. Each bail must warn: these paths run
+  // unattended, and a silent no-op looks identical to "nothing to do" in a
+  // support log.
+  it('checkForServerUpdate flags the error and warns', async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    mockUvUnresolvable();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await expect(checkForServerUpdate()).resolves.toEqual({
+      updateAvailable: false,
+      error: true,
+    });
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('uv not found'));
+  });
+
+  it('recreateVenvIfUnsupportedPython returns false and warns', async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    mockUvUnresolvable();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await expect(recreateVenvIfUnsupportedPython()).resolves.toBe(false);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('uv not found'));
+  });
+});
+
+describe('maybeUpdateServer — PyPI channel anton-only update (ENG-1094)', () => {
+  // A PyPI-channel install where cowork-server is current but a newer
+  // anton-agent has published — the case that was invisible before ENG-1094.
+  const COWORK_META =
+    'Metadata-Version: 2.1\nName: cowork-server\n' +
+    'Requires-Dist: anton-agent<3,>=2.26.6.30.1\nRequires-Dist: fastapi>=0.100\n';
+
+  // `antonReleases === null` makes the anton-agent PyPI request fail (404),
+  // simulating an inconclusive anton lookup while cowork-server is current.
+  function installPypiChannel(antonReleases: Record<string, unknown[]> | null) {
+    process.env.UV_TOOL_DIR = '/fake/uv/tools';
+    // Everything on disk exists EXCEPT direct_url.json — its absence is what
+    // makes readVcsInfo return null and select the PyPI channel.
+    vi.mocked(fs.existsSync).mockImplementation(((p: string) => !String(p).endsWith('direct_url.json')) as never);
+    vi.mocked(fs.readdirSync).mockReturnValue([
+      'cowork_server-0.26.7.27.1.dist-info',
+      'anton_agent-2.26.7.27.1.dist-info',
+    ] as never);
+    vi.mocked(fs.readFileSync).mockImplementation(((p: string) =>
+      (String(p).endsWith('METADATA') ? COWORK_META : '')) as never);
+    mockPypi((url) =>
+      url.includes('/anton-agent/')
+        ? (antonReleases === null ? null : JSON.stringify({ releases: antonReleases }))
+        // cowork-server info.version == installed → cowork is up-to-date.
+        : JSON.stringify({ info: { version: '0.26.7.27.1' }, releases: { '0.26.7.27.1': [{}] } }));
+  }
+
+  function mockUv(): string[][] {
+    const execCalls: string[][] = [];
+    vi.mocked(cp.execFile).mockImplementation(((
+      cmd: string,
+      args: string[],
+      _opts: unknown,
+      cb: (err: Error | null, stdout: string, stderr: string) => void,
+    ) => {
+      execCalls.push([cmd, ...args]);
+      if (args[0] === 'tool' && args[1] === 'list') cb(null, 'cowork-server v0.26.7.27.1\n', '');
+      else cb(null, '', ''); // uv tool install → success
+      return {} as never;
+    }) as never);
+    return execCalls;
+  }
+
+  it('applies a newer anton-agent while cowork-server stays pinned to its current version', async () => {
+    installPypiChannel({ '2.26.7.27.1': [{}], '2.26.7.27.2': [{}] });
+    const execCalls = mockUv();
+
+    const result = await maybeUpdateServer();
+
+    expect(result).toEqual({ updated: true, previousVersion: '2.26.7.27.1', newVersion: '2.26.7.27.2' });
+    const installs = execCalls.filter((c) => c[1] === 'tool' && c[2] === 'install');
+    expect(installs).toHaveLength(1);
+    // Same cowork-server version; the newer anton is forced as a direct requirement.
+    expect(installs[0]).toContain('cowork-server==0.26.7.27.1');
+    expect(installs[0]).toContain('--with');
+    expect(installs[0]).toContain('anton-agent==2.26.7.27.2');
+  });
+
+  it('checkForServerUpdate names the anton-agent component and its versions', async () => {
+    installPypiChannel({ '2.26.7.27.1': [{}], '2.26.7.27.2': [{}] });
+    mockUv();
+    await expect(checkForServerUpdate()).resolves.toEqual({
+      updateAvailable: true,
+      currentVersion: '2.26.7.27.1',
+      latestVersion: '2.26.7.27.2',
+      component: 'anton-agent',
+    });
+  });
+
+  it('checkForServerUpdate flags error (not "up to date") when the anton lookup is inconclusive', async () => {
+    // cowork-server is current, but the anton PyPI request fails. Collapsing that
+    // into a plain "no update" would let the on-demand UI say "You're up to date"
+    // for an inconclusive check — flag it as an error instead (PR #533 review).
+    installPypiChannel(null);
+    mockUv();
+    await expect(checkForServerUpdate()).resolves.toEqual({
+      updateAvailable: false,
+      currentVersion: '0.26.7.27.1',
+      latestVersion: '0.26.7.27.1',
+      component: 'cowork-server',
+      error: true,
+    });
+  });
+
+  it('maybeUpdateServer skips silently when the anton lookup is inconclusive', async () => {
+    // The apply path fails closed on an inconclusive anton lookup — no install,
+    // no error surfaced; the next check/poll retries.
+    installPypiChannel(null);
+    const execCalls = mockUv();
+    await expect(maybeUpdateServer()).resolves.toEqual({ updated: false });
+    expect(execCalls.filter((c) => c[1] === 'tool' && c[2] === 'install')).toHaveLength(0);
+  });
+
+  it('never offers an anton newer than cowork-server allows (3.0.0 blocked by <3)', async () => {
+    installPypiChannel({ '2.26.7.27.1': [{}], '3.0.0': [{}] });
+    const execCalls = mockUv();
+    await expect(maybeUpdateServer()).resolves.toEqual({ updated: false });
+    expect(execCalls.filter((c) => c[1] === 'tool' && c[2] === 'install')).toHaveLength(0);
+  });
+
+  it('rolls back to the prior anton when the new one fails its health check', async () => {
+    installPypiChannel({ '2.26.7.27.1': [{}], '2.26.7.27.2': [{}] });
+    const execCalls = mockUv();
+    vi.mocked(startServer)
+      .mockResolvedValueOnce({ ok: false, reason: 'health check failed' } as never)
+      .mockResolvedValueOnce({ ok: true, port: 26866 } as never);
+
+    const result = await maybeUpdateServer();
+
+    expect(result.updated).toBe(false);
+    expect(result.previousVersion).toBe('2.26.7.27.1');
+    expect(result.error).toContain('New anton failed to start');
+    const installs = execCalls.filter((c) => c[1] === 'tool' && c[2] === 'install');
+    expect(installs).toHaveLength(2);
+    expect(installs[0]).toContain('anton-agent==2.26.7.27.2'); // forward
+    expect(installs[1]).toContain('anton-agent==2.26.7.27.1'); // rollback
+    expect(vi.mocked(startServer)).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe('repairServerInstall (orchestration)', () => {
   // Regression: a venv that's installed, current, and on a supported Python but
   // still won't boot (corrupt/partial env — e.g. FastAPI's annotated-doc landed
@@ -163,9 +356,49 @@ describe('repairServerInstall (orchestration)', () => {
     expect(execCalls.filter((c) => c[1] === 'tool' && c[2] === 'install')).toHaveLength(0);
   });
 
-  it('returns false (never throws) when uv cannot be found', async () => {
+  it('returns false and warns (never throws) when uv cannot be found', async () => {
     vi.mocked(fs.existsSync).mockReturnValue(false); // no uv binary anywhere
+    mockUvUnresolvable(); // and not on PATH either
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     await expect(repairServerInstall(BROKEN)).resolves.toBe(false);
+    // A repairable broken install that silently isn't repaired is
+    // undiagnosable from the logs — the bail must say why.
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('uv not found'));
+  });
+
+  it('repairs using a PATH-only uv when the probed locations are empty', async () => {
+    // uv preinstalled via winget/scoop/pip: nothing at the probed dirs, but
+    // where/which resolves it — the repair must run with that uv, not bail.
+    const PATH_UV = '/custom/tools/uv';
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    const execCalls: string[][] = [];
+    vi.mocked(cp.execFile).mockImplementation(((
+      cmd: string,
+      args: string[],
+      _opts: unknown,
+      cb: (err: Error | null, stdout: string, stderr: string) => void,
+    ) => {
+      execCalls.push([cmd, ...args]);
+      if (cmd === 'which' || cmd === 'where') {
+        if (args[0] === 'uv') cb(null, `${PATH_UV}\n`, '');
+        else cb(new Error(`${args[0]} not found`), '', '');
+      } else if (args[0] === 'tool' && args[1] === 'dir') {
+        cb(null, '/fake/uv/tools\n', '');
+      } else if (args[0] === 'tool' && args[1] === 'list') {
+        cb(null, 'cowork-server v0.26.8.2.1\n- cowork-server\n', '');
+      } else {
+        cb(null, '', ''); // uv tool install → success
+      }
+      return {} as never;
+    }) as never);
+
+    await expect(repairServerInstall(BROKEN)).resolves.toBe(true);
+
+    const installs = execCalls.filter((c) => c[1] === 'tool' && c[2] === 'install');
+    expect(installs).toHaveLength(1);
+    // The reinstall ran with the PATH-resolved uv, pinned to the installed version.
+    expect(installs[0][0]).toBe(PATH_UV);
+    expect(installs[0]).toContain('cowork-server==0.26.8.2.1');
   });
 
   it('reinstalls from PyPI and returns true when the venv has no vcs_info', async () => {

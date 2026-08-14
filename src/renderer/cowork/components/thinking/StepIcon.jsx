@@ -8,8 +8,10 @@ const ICON_MAP = {
   sparkle:  Ico.sparkle,
   code:     Ico.code,
   search:   Ico.search,
-  // 'save' / 'memory' / 'download' / 'cube' aren't in our glyph set yet —
-  // fall through to sparkle so the row still has a marker.
+  save:     Ico.save,
+  memory:   Ico.brain,
+  download: Ico.download,
+  cube:     Ico.cube,
 };
 
 export function StepIcon({ type, size = 12 }) {

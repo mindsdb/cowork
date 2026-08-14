@@ -9,6 +9,9 @@ import {
   mergeRecommendedModels,
   clampBudgetValue,
   clampBudgets,
+  BUDGET_FIELDS,
+  isBudgetUnlimited,
+  resolveBudgetRestore,
 } from './settingsTransform';
 
 // The minds-cloud recommended list holds bare aliases — never `latest:`-prefixed.
@@ -149,11 +152,13 @@ describe('buildModelOptions', () => {
     expect(options.some((o) => o.value === '__stale__')).toBe(false);
   });
 
-  it('lists every model in the recommended list, disabling locked ones', () => {
+  // ENG-1248: a model the wallet can't pay for stays selectable — a disabled
+  // row was a dead-end click. The row carries a right-aligned tag instead.
+  it('lists every model in the recommended list, tagging needs-credits ones but keeping them selectable', () => {
     const options = buildModelOptions('sonnet', MINDS_LIST, false, false, { opus: false });
     const byValue = Object.fromEntries(options.map((o) => [o.value, o]));
     expect(byValue.sonnet).toEqual({ value: 'sonnet', label: 'sonnet', disabled: false });
-    expect(byValue.opus).toEqual({ value: 'opus', label: 'opus — Add credits to unlock', disabled: true });
+    expect(byValue.opus).toEqual({ value: 'opus', label: 'opus', disabled: false, tag: 'Needs credits' });
   });
 
   it('appends an "Other…" entry only when allowOther is true', () => {
@@ -198,10 +203,10 @@ describe('buildModelOptions', () => {
     expect(byValue.sonnet.label).toBe('sonnet');
   });
 
-  it('keeps the locked suffix on a labelled model', () => {
+  it('keeps the bare label on a labelled needs-credits model, moving the wallet state to the tag', () => {
     const options = buildModelOptions('sonnet', MINDS_LIST, false, false, { opus: false }, { opus: 'Claude Opus 5' });
     const opus = options.find((o) => o.value === 'opus');
-    expect(opus).toEqual({ value: 'opus', label: 'Claude Opus 5 — Add credits to unlock', disabled: true });
+    expect(opus).toEqual({ value: 'opus', label: 'Claude Opus 5', disabled: false, tag: 'Needs credits' });
   });
 
   it('labels the legacy placeholder from the label map too', () => {
@@ -390,6 +395,55 @@ describe('agent tool-budget settings (max_tool_rounds / max_continuations)', () 
   });
 });
 
+describe('per-turn spend ceiling (max_turn_tokens, ENG-1286)', () => {
+  it('transforms the server row into a camelCase string value', async () => {
+    const { transformSettingsRows } = await import('./settingsTransform');
+    const rows = [
+      { key: 'max_turn_tokens', value: '1250000', is_sensitive: false, is_set: false },
+    ];
+    expect(transformSettingsRows(rows).maxTurnTokens).toBe('1250000');
+  });
+
+  it('writes the changed ceiling to its snake_case key', () => {
+    expect(
+      diffSettingsForWrite({ maxTurnTokens: '2000000' }, { maxTurnTokens: '1250000' }),
+    ).toEqual({ max_turn_tokens: '2000000' });
+  });
+
+  it('is not written to a server that did not send it', () => {
+    // The renderer ships OTA and leads the installed server, so it will run
+    // against a cowork-server that has the other two budgets but not this one.
+    // A PUT there 400s and fails the WHOLE multi-key save — taking the user's
+    // other settings changes down with it, which is why this is budget-scoped
+    // rather than best-effort.
+    expect(
+      diffSettingsForWrite(
+        { maxTurnTokens: '2000000', maxToolRounds: '80' },
+        { maxToolRounds: '50' },
+      ),
+    ).toEqual({ max_tool_rounds: '80' });
+  });
+
+  it('clamps to bounds that match the server, and cannot be switched off', () => {
+    const spec = BUDGET_FIELDS.maxTurnTokens;
+    // The floor is 750_000, and it is not arbitrary: below roughly a couple of
+    // LLM calls' worth of context the ceiling stops the turn before it has done
+    // any work. This input clamps UP into the valid range, so a user typing 0 —
+    // the natural way to say "no limit" — must not land in that band.
+    // No sentinel: 0 is just below the floor and clamps up like anything else.
+    expect(clampBudgetValue('0', spec)).toBe('750000');
+    expect(clampBudgetValue('1', spec)).toBe('750000');
+    expect(clampBudgetValue('100000', spec)).toBe('750000');
+    expect(clampBudgetValue('749999', spec)).toBe('750000');
+    expect(clampBudgetValue('999999999', spec)).toBe('50000000');
+    expect(clampBudgetValue('2000000', spec)).toBe('2000000');
+    // Mirrors UserSettings' ge/le exactly; a value the client allows and the
+    // server rejects 400s the whole multi-key save (cowork-server asserts the
+    // other direction in test_agent_budget_settings.py).
+    expect([spec.min, spec.max]).toEqual([750_000, 50_000_000]);
+  });
+});
+
 describe('clampBudgetValue / clampBudgets', () => {
   const spec = { min: 5, max: 500, fallback: 50 };
 
@@ -436,5 +490,240 @@ describe('clampBudgetValue / clampBudgets', () => {
     expect('maxToolRounds' in out).toBe(false);
     expect('maxContinuations' in out).toBe(false);
     expect(out.harness).toBe('anton');
+  });
+});
+
+// ─── buildModelOptions: version tags + section metadata (ENG-1287) ───
+//
+// `modelFamilies[id] === id` means the version behind that alias moves, so
+// picking it always gets the newest release. Version state rides on `tag`, the
+// row's right-aligned pill, never on `label`: the label is what the collapsed
+// trigger shows and what the search matches. `modelProviders[id]` is MindsHub's
+// authoritative serving-vendor field, which decides the picker section instead of
+// the alias-inference in lib/modelCatalog.
+
+const FAMILY_META = {
+  modelProviders: { sonnet: 'anthropic', 'sonnet-4-5': 'anthropic', kimi: 'moonshot' },
+  modelFamilies: { sonnet: 'sonnet', 'sonnet-4-5': 'sonnet', kimi: 'kimi' },
+};
+const FAMILY_LABELS = {
+  sonnet: 'Claude Sonnet 5',
+  'sonnet-4-5': 'Claude Sonnet 4.5',
+  kimi: 'Kimi K3',
+};
+
+describe('buildModelOptions — moving vs pinned versions', () => {
+  it('tags nothing when no model in the list is a frozen version', () => {
+    // The tag distinguishes a moving alias from a frozen one. With nothing frozen in
+    // the list it would sit on every row and distinguish nothing.
+    const options = buildModelOptions('sonnet', ['sonnet', 'kimi'], false, false, {}, FAMILY_LABELS, FAMILY_META);
+    const byValue = Object.fromEntries(options.map((o) => [o.value, o]));
+    expect(byValue.sonnet).toEqual({ value: 'sonnet', label: 'Claude Sonnet 5', disabled: false, provider: 'anthropic' });
+    expect(byValue.kimi).toEqual({ value: 'kimi', label: 'Kimi K3', disabled: false, provider: 'moonshot' });
+  });
+
+  it('tags the moving aliases "Latest" once a frozen version is listed', () => {
+    const options = buildModelOptions(
+      'sonnet', ['sonnet', 'sonnet-4-5', 'kimi'], false, false, {}, FAMILY_LABELS, FAMILY_META,
+    );
+    const byValue = Object.fromEntries(options.map((o) => [o.value, o]));
+    expect(byValue.sonnet.tag).toBe('Latest');
+    // Every moving alias, not only the one that has a pin — the tag is a claim
+    // about that alias, and it is now readable against a row that lacks it.
+    expect(byValue.kimi.tag).toBe('Latest');
+    // And the marker stays out of the label: ModelSelect renders the selected
+    // option's label verbatim in the collapsed trigger and filters on that same
+    // string, so a suffix here would show permanently in the closed control and make
+    // typing "latest" match every row.
+    expect(byValue.sonnet.label).toBe('Claude Sonnet 5');
+    expect(byValue.kimi.label).toBe('Kimi K3');
+  });
+
+  it('tags no BYOK model when the metadata covers only MindsHub ids', () => {
+    // The shape every call site actually produces: `modelFamilies` is global to the
+    // settings blob, `modelList` is per-provider. A user with a MindsHub key who
+    // points a role at Anthropic previously saw every row tagged "(latest)",
+    // including `claude-haiku-4-5-20251001`, a dated snapshot that never moves.
+    const options = buildModelOptions(
+      'claude-opus-4-8', ANTHROPIC_LIST, true, false, {}, {},
+      { modelProviders: { sonnet: 'anthropic' }, modelFamilies: { sonnet: 'sonnet' } },
+    );
+    for (const o of options) {
+      expect(o.tag).toBeUndefined();
+      expect(o.label || '').not.toContain('latest');
+      expect(o.label || '').not.toContain('version');
+    }
+  });
+
+  it('never drops a model, on a family chain or a cycle', () => {
+    // Options must stay a permutation of modelList: resolveModelPickerValue
+    // resolves the stored model against the unordered list, so a dropped id gives
+    // showStalePin === false with no rendered option (the ENG-739 desync class).
+    // A Statsig edit reaches the app with no deploy and auth does not validate the
+    // family target, so neither shape is theoretical.
+    const chain = ['sonnet', 'sonnet-4-5', 'sonnet-4-1'];
+    const chainOpts = buildModelOptions('sonnet', chain, false, false, {}, {}, {
+      modelProviders: { sonnet: 'anthropic', 'sonnet-4-5': 'anthropic', 'sonnet-4-1': 'anthropic' },
+      modelFamilies: { sonnet: 'sonnet', 'sonnet-4-5': 'sonnet', 'sonnet-4-1': 'sonnet-4-5' },
+    });
+    expect(chainOpts.map((o) => o.value).sort()).toEqual([...chain].sort());
+
+    const cycle = ['a', 'b'];
+    const cycleOpts = buildModelOptions('a', cycle, false, false, {}, {}, {
+      modelProviders: { a: 'anthropic', b: 'anthropic' },
+      modelFamilies: { a: 'b', b: 'a' },
+    });
+    expect(cycleOpts.map((o) => o.value).sort()).toEqual([...cycle].sort());
+  });
+
+  it('marks a frozen version as an older version and never as latest', () => {
+    const options = buildModelOptions(
+      'sonnet', ['sonnet', 'sonnet-4-5'], false, false, {}, FAMILY_LABELS, FAMILY_META,
+    );
+    const pin = options.find((o) => o.value === 'sonnet-4-5');
+    expect(pin.tag).toBe('Older version');
+    expect(pin.label).toBe('Claude Sonnet 4.5');
+  });
+
+  it('lists a frozen version directly under the alias it froze', () => {
+    // The gateway's order is meaningful upstream (free/baseline model first), so
+    // heads keep their positions and only the pin moves to follow its head.
+    const options = buildModelOptions(
+      'sonnet', ['sonnet', 'kimi', 'sonnet-4-5'], false, false, {}, FAMILY_LABELS, FAMILY_META,
+    );
+    expect(options.map((o) => o.value)).toEqual(['sonnet', 'sonnet-4-5', 'kimi']);
+  });
+
+  it('keeps an orphaned pin listed, untagged, in its own position', () => {
+    // A typo'd family in the policy, or a head filtered out upstream. The model is
+    // still selectable so it must not vanish — but it must not claim to be latest.
+    const options = buildModelOptions('sonnet-4-5', ['sonnet-4-5'], false, false, {}, FAMILY_LABELS, {
+      modelProviders: { 'sonnet-4-5': 'anthropic' },
+      modelFamilies: { 'sonnet-4-5': 'sonet' },
+    });
+    expect(options.map((o) => o.value)).toEqual(['sonnet-4-5']);
+    // No tag at all: "Older version" is relative to a newer one, and the head is
+    // not in this list, so there is nothing for the user to read it against.
+    expect(options[0].tag).toBeUndefined();
+    expect(options[0].label).toBe('Claude Sonnet 4.5');
+  });
+
+  it('leaves the other rows untagged when the only pin in the list is an orphan', () => {
+    // The orphan carries no marker itself, so it must not turn "Latest" on for the
+    // rows around it either: every row would claim to be the newest with nothing
+    // rendered anywhere to read that against.
+    const options = buildModelOptions('sonnet', ['sonnet', 'kimi', 'sonnet-4-5'], false, false, {}, FAMILY_LABELS, {
+      modelProviders: FAMILY_META.modelProviders,
+      modelFamilies: { sonnet: 'sonnet', kimi: 'kimi', 'sonnet-4-5': 'sonet' },
+    });
+    for (const o of options) expect(o.tag).toBeUndefined();
+  });
+
+  it('carries the backend provider through so the picker stops inferring it', () => {
+    const options = buildModelOptions('sonnet', ['sonnet', 'kimi'], false, false, {}, FAMILY_LABELS, FAMILY_META);
+    expect(options.find((o) => o.value === 'sonnet').provider).toBe('anthropic');
+    expect(options.find((o) => o.value === 'kimi').provider).toBe('moonshot');
+  });
+
+  it('tags nothing and sets no provider without the metadata', () => {
+    // A BYOK provider, or a cowork-server too old to send it: every model renders
+    // exactly as it does today rather than claiming to be "latest".
+    const options = buildModelOptions('claude-opus-4-8', ANTHROPIC_LIST, true, false);
+    for (const o of options) {
+      expect(o.tag).toBeUndefined();
+      expect(o.provider).toBeUndefined();
+    }
+  });
+
+  it('marks a locked pin independently of its head, and keeps both rows selectable', () => {
+    const options = buildModelOptions(
+      'sonnet', ['sonnet', 'sonnet-4-5'], false, false,
+      { 'sonnet-4-5': false }, FAMILY_LABELS, FAMILY_META,
+    );
+    const byValue = Object.fromEntries(options.map((o) => [o.value, o]));
+    // A model the wallet can't pay for stays selectable: the wall is at use time.
+    expect(byValue.sonnet.disabled).toBe(false);
+    expect(byValue['sonnet-4-5'].disabled).toBe(false);
+    // Both facts stay readable on the same row, and the label stays the bare name
+    // so the closed trigger and the search never see a marker.
+    expect(byValue['sonnet-4-5'].label).toBe('Claude Sonnet 4.5');
+    expect(byValue['sonnet-4-5'].tag).toBe('Older version · Needs credits');
+    expect(byValue.sonnet.tag).toBe('Latest');
+  });
+
+  it('keeps the version tag on a locked moving alias', () => {
+    const options = buildModelOptions(
+      'sonnet', ['sonnet', 'sonnet-4-5'], false, false,
+      { sonnet: false }, FAMILY_LABELS, FAMILY_META,
+    );
+    const head = options.find((o) => o.value === 'sonnet');
+    expect(head.label).toBe('Claude Sonnet 5');
+    expect(head.disabled).toBe(false);
+    // Version state reads first, so the wallet state can never hide it.
+    expect(head.tag).toBe('Latest · Needs credits');
+  });
+
+  it('keeps the __stale__ and "Other…" entries pinned outside the sections', () => {
+    const options = buildModelOptions('latest:sonnet', ['sonnet'], true, true, {}, FAMILY_LABELS, FAMILY_META);
+    expect(options[0]).toMatchObject({ value: '__stale__', pin: 'top' });
+    expect(options[options.length - 1]).toMatchObject({ value: '__custom__', pin: 'bottom' });
+  });
+});
+
+describe('mergeRecommendedModels — the section/version maps', () => {
+  it('overlays modelProviders and modelFamilies when the server sends them', () => {
+    const merged = mergeRecommendedModels({}, {
+      modelProviders: { sonnet: 'anthropic' },
+      modelFamilies: { sonnet: 'sonnet' },
+    });
+    expect(merged.modelProviders).toEqual({ sonnet: 'anthropic' });
+    expect(merged.modelFamilies).toEqual({ sonnet: 'sonnet' });
+  });
+
+  it('keeps what we hold when the server sends them empty or omits them', () => {
+    // An older cowork-server, a BYOK provider, or a failed MindsHub fetch — the
+    // endpoint still answers 200. Wiping would flatten the picker until restart.
+    const held = { modelProviders: { sonnet: 'anthropic' }, modelFamilies: { sonnet: 'sonnet' } };
+    expect(mergeRecommendedModels(held, { modelProviders: {}, modelFamilies: {} }).modelProviders)
+      .toEqual(held.modelProviders);
+    expect(mergeRecommendedModels(held, { recommendedModels: {} }).modelFamilies)
+      .toEqual(held.modelFamilies);
+  });
+});
+
+
+describe('the "no limit" switch (ENG-1286)', () => {
+  const spec = BUDGET_FIELDS.maxTurnTokens;
+
+  it('reads the top of the range as unlimited, and nothing else', () => {
+    expect(isBudgetUnlimited('50000000', spec)).toBe(true);
+    expect(isBudgetUnlimited('1250000', spec)).toBe(false);
+    expect(isBudgetUnlimited('750000', spec)).toBe(false);
+    expect(isBudgetUnlimited('', spec)).toBe(false);
+    expect(isBudgetUnlimited(null, spec)).toBe(false);
+    // 0 is NOT unlimited — it is below the floor. `maxContinuations` next door
+    // uses 0 to mean literally zero auto-continues, and letting 0 mean "no
+    // limit" here would give the same number opposite meanings two fields apart.
+    expect(isBudgetUnlimited('0', spec)).toBe(false);
+  });
+
+  it('restores the pre-toggle value when the switch goes off', () => {
+    expect(resolveBudgetRestore('2000000', '1250000', spec)).toBe('2000000');
+  });
+
+  it('falls back to the last committed value, then the factory default', () => {
+    expect(resolveBudgetRestore(null, '1250000', spec)).toBe('1250000');
+    expect(resolveBudgetRestore(null, null, spec)).toBe('1250000');
+    expect(resolveBudgetRestore('', '', spec)).toBe('1250000');
+  });
+
+  it('never restores the max, which would leave the switch stuck on', () => {
+    expect(resolveBudgetRestore('50000000', '50000000', spec)).toBe('1250000');
+  });
+
+  it('clamps a remembered value that predates a floor change', () => {
+    // Someone who saved 100_000 before the floor moved must come back legal —
+    // the settings write is all-or-nothing, so one out-of-range key 400s the lot.
+    expect(resolveBudgetRestore('100000', null, spec)).toBe('750000');
   });
 });

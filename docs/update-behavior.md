@@ -29,7 +29,9 @@ on their launch-time version until they relaunch or click the banner.
   become detection-only; both just show the banner. Updates apply only when
   the user triggers them (banner / "Check for updates"), running the same
   apply sequence as the default.
-- One mode governs **both** the cowork-server update and the UI (OTA) bundle.
+- One mode governs the cowork-server update, the UI (OTA) bundle, **and** the
+  shell auto-updater's download step (in manual mode the shell waits at
+  "available" for an explicit Download click instead of downloading on its own).
 - Pre-existing `UI_UPDATE_MODE=manual` entries from before ENG-858 continue
   to work exactly as before — nothing to migrate.
 
@@ -77,8 +79,35 @@ installer. So the app can't apply a shell update; it can only *notice* one:
 - Banner dismissal is **per-version** (localStorage) — a dismissed notice
   reappears when a newer shell ships. Settings always shows the current state.
 
-Auto-download / install-on-relaunch (electron-updater) is a separate,
-out-of-scope effort (ENG-850).
+## Shell automatic update lifecycle (ENG-850)
+
+Eligible packaged prod/stable builds contain a channel-specific
+`electron-updater` feed. Stable is the first automatic-update rollout ring;
+prod remains disabled by default until stable completes signed N → N+1 smoke
+testing and its observation window. `SHELL_AUTO_UPDATE_ENABLED=false` is the
+emergency stable kill switch, while `true` explicitly opts prod into QA. The
+ENG-849 manual installer notice remains the disabled/failure fallback.
+
+When enabled, main owns one immutable shell-update snapshot:
+
+`idle → checking → available → downloading → ready-to-install → installing`
+
+- Auto mode downloads after detection and installs on normal app quit. Manual
+  mode waits for an explicit download and explicit restart. Either way the quit
+  path first drains any in-flight UI/server apply (bounded) before the process
+  terminates, so the on-quit install cannot overlap an apply.
+- Concurrent boot, periodic, and manual checks coalesce into one operation.
+- The renderer pulls the snapshot on mount and subscribes to full snapshot
+  changes, so a UI reload cannot lose progress/readiness state.
+- A downloaded target is persisted as small durable evidence. The next launch
+  compares the running internal SemVer with that target and reports a
+  recoverable `install-not-applied` failure if relaunch stayed on the old shell.
+- UI/server apply and shell install share a maintenance gate; shell install
+  also waits for active server lifecycle work. The explicit in-app install
+  enters the gate directly; the auto-mode on-quit install is serialized by the
+  quit drain above.
+- Signature/checksum failures are terminal for automatic update, while the
+  existing manual installer URL remains available.
 
 ## Build kinds
 
@@ -86,21 +115,80 @@ Each packaged build carries a build kind, baked into `build-config.json` in
 the app resources by its installer workflow. It gates **UI OTA** (ENG-670 /
 PR #401); update polling and server updates run in every packaged build.
 
-| Build kind | Built by | Update polling + server updates | UI OTA |
-|---|---|---|---|
-| `prod` | `prod-build-installer.yml` (release) | ✅ | **✅ enabled** |
-| `stable` | `staging-build-installer.yml` (staging) | ✅ | ❌ bundled UI |
-| `preview` | `dev-build-installer.yml` (per-PR) | ✅ | ❌ bundled UI |
-| `dev` | unpackaged local run | ❌ no polling | ❌ bundled UI |
+| Build kind | Built by | Update polling + server updates | UI OTA | Shell auto-update (ENG-850) |
+|---|---|---|---|---|
+| `prod` | `prod-build-installer.yml` (release) | ✅ | **✅ enabled** | ⚙️ opt-in (`SHELL_AUTO_UPDATE_ENABLED=true`) + ENG-849 manual notice always on |
+| `stable` | `staging-build-installer.yml` (staging) | ✅ | ❌ bundled UI | **✅ default on** (first rollout ring; `=false` kill switch) |
+| `preview` | `dev-build-installer.yml` (per-PR) | ✅ | ❌ bundled UI | ❌ fail closed |
+| `dev` | unpackaged local run | ❌ no polling | ❌ bundled UI | ❌ not packaged |
 
 - Non-prod kinds keep the renderer bundled in the build so testers always run
   the branch-under-test UI, never a hot-updated one.
+- The shell channels are separate from UI OTA: `stable` gets automatic shell
+  updates by default while running its bundled UI, and `prod` gets the ENG-849
+  manual "download the installer" notice even when auto-update is left opt-out.
 - Resolution order: `COWORK_BUILD_KIND` env → `build-config.json` → `dev` if
   unpackaged. The OTA gate uses the strict resolver (`buildKindStrict()`):
   a missing/malformed/unrecognized kind is **never** treated as `prod`, so a
   mispackaged build fails safe to OTA-off.
 - QA override: `OTA_UI=on|off` flips the gate in any build without a rebuild
   (`otaUiEnabled()` in `update-logic.ts`).
+
+## Sample scenarios: what the user sees
+
+The app updates three independently-versioned pieces, each through its own
+mechanism and its own on-screen surface:
+
+- **UI** (React renderer) — hot-swapped OTA bundle (`prod` builds only).
+- **Server** (`cowork-server` sidecar) — reinstalled and restarted in place.
+- **Shell** (the Electron app binary) — cannot hot-update; replaced by an
+  automatic background download that installs on relaunch (`stable` by default,
+  `prod` opt-in), or a hand-downloaded installer.
+
+UI and server are **coupled** and auto-apply together at boot (server first).
+The shell is **independent** and always needs a restart to take effect. That
+split is why there is never a single combined "3 updates" prompt — the seamless
+pair and the restart-required shell are different surfaces:
+
+- **UI/server auto-apply** (boot) → a brief full-screen overlay (spinner +
+  "Updating…" / "Almost there…"), then the window reloads.
+- **UI/server found mid-session** → a sidebar **"Update ready — Restart"** pill
+  and a Settings → Updates card ("Server → …" / "UI → …").
+- **Shell** (auto-update) → a sidebar pill + Settings card that walk the phases
+  **"New app version available" → "Downloading update (42%)…" → "App update
+  ready — Restart"**.
+- **Shell** (manual fallback) → a dismissible **"New version available —
+  Download"** notice linking to the installer.
+
+| Updates pending | What the user sees |
+|---|---|
+| **Server only, at boot** | Auto-applies. Brief overlay ("Almost there…"), then the window reloads on the new sidecar. Effectively invisible. |
+| **Server only, found mid-session** (4h periodic) | No auto-apply. A sidebar "Update ready — Restart" pill + Settings card ("Server → `<version>`"). Clicking it reloads the window and restarts the sidecar — *not* a full app relaunch. |
+| **Server only, server is down** | Force-applied immediately regardless of mode — recovery, not routine. Overlay + reload. |
+| **UI only, at boot** (`prod`) | Auto-applies. Overlay + health-checked reload (the new bundle has 15s to load or it rolls back and quarantines). |
+| **UI only, found mid-session** | Banner only; applies on the next relaunch or when the user clicks Restart. |
+| **Server + UI, at boot** | Both auto-apply, server first, in one pass → one overlay + one reload. If the server update fails, the UI is deferred to the next pass (tandem coupling). |
+| **Shell only** (auto-update eligible) | Independent of the overlay. The pill/card walk "available → downloading (%) → ready-to-install". Background download; nothing installs until the user clicks **Restart** (or, in auto mode, on the next normal quit). |
+| **Shell only** (auto-update disabled/failed, `prod`) | Falls back to the "New version available — Download" notice → installer on `downloads.mindshub.ai`. The user downloads it, quits the app, and runs the installer by hand. |
+| **Shell + Server + UI, all pending** | Two experiences at once: server + UI apply seamlessly at boot (overlay + reload), while the shell surfaces as a *separate*, non-blocking "App update ready — Restart" notice the user actions whenever convenient. No combined prompt. |
+
+Notes:
+
+- **Taskbar pins survive both Windows update paths** (ENG-1367). The
+  auto-updater runs the installer with `--updated`, and manual installer runs
+  keep shortcuts because the assisted installer is built without
+  `allowToChangeInstallationDirectory` — either way the previous version's
+  uninstaller is invoked with `--keep-shortcuts`, so the Start-Menu shortcut
+  and AppUserModelID the pin references are preserved. The pin is only lost
+  when *updating to* a build older than this fix, whose installer still
+  deleted them on manual runs.
+- The **"Current version"** readout in Settings collapses UI + server + agent
+  into one unified CalVer and flags "⚠ out of sync" when they drift more than
+  `SKEW_WARN_DAYS` apart — so a server-only update that lands before its matching
+  UI can briefly show that warning until the next UI bundle catches up. The app
+  shell is shown on its own line (it changes only on reinstall/relaunch).
+- A **failed** UI/server apply keeps the banner as a "Try again" retry instead
+  of silently vanishing until the next poll.
 
 ## Related
 

@@ -32,13 +32,18 @@
 //
 // Item shape — matches the legacy hand-rolled menus so call sites port
 // 1:1: { icon?, label, onClick?, danger?, disabled?, hint?, title?,
-//        divider?|separator?, submenu?: Item[], id?|key? }.
+//        divider?|separator?, submenu?: Item[], heading?, id?|key? }.
 // An item with a `submenu` array renders a nested fly-out (replaces
 // TaskMenu's hand-rolled "Move to project" corridor).
+// An item with a `heading` node renders as a non-interactive group label
+// (Base UI Group + GroupLabel — announced by screen readers, skipped by
+// arrow-key navigation). Used for identity headers like the user menu's
+// email/org block.
 
 import { useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Menu as BaseMenu } from '@base-ui/react/menu';
+import { ChevronRight } from 'lucide-react';
 import { cva } from 'class-variance-authority';
 import { cn } from '../../lib/cn';
 
@@ -76,13 +81,9 @@ const itemVariants = cva(
   },
 );
 
-// Chevron for submenu triggers. Inlined so the primitive stays free of
-// any app-icon dependency.
-const CHEVRON_RIGHT = (
-  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-    <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
-);
+// Chevron for submenu triggers. Lucide directly so the primitive stays
+// free of any app-icon dependency.
+const CHEVRON_RIGHT = <ChevronRight size={11} strokeWidth={1.5} aria-hidden="true" />;
 
 // Maps the item array to Base UI nodes. Recursive so `submenu` items
 // nest cleanly. `z` rises by one per level so deeper fly-outs always
@@ -95,6 +96,16 @@ function renderItems(items, z, onActivate) {
 
     if (it.divider || it.separator) {
       return <BaseMenu.Separator key={`sep-${key}-${i}`} className="h-px bg-line my-[4px]" />;
+    }
+
+    if (it.heading) {
+      return (
+        <BaseMenu.Group key={`heading-${key}-${i}`}>
+          <BaseMenu.GroupLabel className="px-[14px] pt-[6px] pb-[4px] select-none cursor-default">
+            {it.heading}
+          </BaseMenu.GroupLabel>
+        </BaseMenu.Group>
+      );
     }
 
     if (Array.isArray(it.submenu)) {

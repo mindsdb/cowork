@@ -11,7 +11,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
 import Ico from '../Icons';
-import { Badge } from '../ui';
+import { Badge, Tooltip } from '../ui';
 import { Modal } from '../ui/Modal';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { CodeBlock } from './CodeBlock';
@@ -58,8 +58,14 @@ export function ScratchpadModal({ open, onClose, steps = [], focusStepId = null 
       const raw = s._scratchpadTabId;
       const tabId = typeof raw === 'string' && raw.trim() ? raw.trim() : null;
       const key = tabId || UNNAMED_TAB_KEY;
-      const displayName = tabId || 'Untitled';
       if (!byTab.has(key)) {
+        // Tool-call tabs are keyed by tool_use_id (an opaque id, not a
+        // human name) — show the step's own label (e.g. "test_tool")
+        // instead. Scratchpad tabs are keyed by the pad's own name,
+        // which IS meant to be shown as-is.
+        const displayName = !tabId
+          ? 'Untitled'
+          : (s._isToolCall ? (s.label || tabId) : tabId);
         byTab.set(key, { id: key, name: displayName, cells: [] });
       }
       byTab.get(key).cells.push(s);
@@ -81,6 +87,11 @@ export function ScratchpadModal({ open, onClose, steps = [], focusStepId = null 
   useEffect(() => { if (focusTabId) setActiveTabId(focusTabId); }, [focusTabId]);
 
   const activeTab = tabs.find((t) => t.id === activeTabId) || tabs[0];
+  // The modal now also opens for pure tool-call activity (no
+  // scratchpad cells at all) — "Scratchpad" as a fixed title would be
+  // wrong there, so title off whether the active pad is a tool call.
+  const activeIsToolCallOnly = !!activeTab && activeTab.cells.every((c) => c._isToolCall);
+  const modalTitle = activeIsToolCallOnly ? (activeTab.name || 'Tool Call') : 'Scratchpad';
 
   // Esc + backdrop dismissal are handled by <Modal>.
 
@@ -92,7 +103,7 @@ export function ScratchpadModal({ open, onClose, steps = [], focusStepId = null 
       width="min(1040px, 94vw)"
       height="82vh"
       fullBleed={isNarrow}
-      ariaLabel="Scratchpad"
+      ariaLabel={modalTitle}
     >
       <div className="scratchpad-modal flex h-full flex-col overflow-hidden">
 
@@ -102,17 +113,19 @@ export function ScratchpadModal({ open, onClose, steps = [], focusStepId = null 
           <div className="flex items-center gap-2.5">
             <span className="inline-flex text-ink-3">{Ico.code(15)}</span>
             <span className="s-h3 text-ink">
-              Scratchpad
+              {modalTitle}
             </span>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            title="Close"
-            className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent text-ink-3 hover:bg-surface-2 hover:text-ink"
-          >
-            ×
-          </button>
+          <Tooltip content="Close">
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent text-ink-3 hover:bg-surface-2 hover:text-ink"
+            >
+              ×
+            </button>
+          </Tooltip>
         </div>
 
         {/* Tab strip — only when more than one pad. Inline styles via
@@ -233,9 +246,18 @@ function CellView({ cell, index, total, focused = false }) {
   // for the rare cell that exceeds that, one of the two fields may
   // still hold a parseable copy. Try data.code first (canonical),
   // then result.code (sent with stdout/stderr), then result.input.code.
-  // For tool-call cells (Hermes), show args as JSON.
+  // For tool-call cells (Hermes, and now anton generic tools), show
+  // args as JSON — excluding `one_line_description`, which lives in
+  // the same `data` bag but is our own live-progress bookkeeping field
+  // (patched in by thought.tool_call.progress), not a real argument.
+  // Without excluding it, a tool call with zero real arguments would
+  // still show a non-empty "Args" toggle whose JSON is just this
+  // internal field, which reads as a fabricated argument.
   const code = isToolCall
-    ? (data && Object.keys(data).length > 0 ? JSON.stringify(data, null, 2) : '')
+    ? (() => {
+        const { one_line_description: _omit, ...args } = data;
+        return Object.keys(args).length > 0 ? JSON.stringify(args, null, 2) : '';
+      })()
     : (data.code || cell.result?.code || cell.result?.input?.code || '');
   const stdout = cell.output || cell.result?.stdout || '';
   const stderr = cell.stderr || cell.result?.stderr || '';

@@ -2,13 +2,14 @@ import { useState, useEffect, useMemo, useRef, useContext } from 'react';
 import { useId } from 'react';
 import Ico from '../../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchRecommendedModels } from '../../api';
-import { providerTypeToKeyField, providerValueToType, resolveModelPickerValue, buildModelOptions, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, clampBudgetValue, clampBudgets, BUDGET_FIELDS } from '../../lib/settingsTransform';
+import { providerTypeToKeyField, providerValueToType, resolveModelPickerValue, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore } from '../../lib/settingsTransform';
+import { MODEL_REFRESH_TTL_MS } from '../../lib/modelRefresh';
 import { trackHarnessSwapped } from '../../lib/analytics';
 import { copyText as copyToClipboard } from '../../lib/clipboard';
 import { deriveProviderStatus, friendlyProviderError } from '../../lib/providerStatus';
 import { ToggleGroup } from '../../components/ui/ToggleGroup';
 import { Switch } from '../../components/ui/Switch';
-import { Badge, Button, Input, Checkbox, Select } from '../../components/ui';
+import { Badge, Button, Input, Checkbox, Select, Tooltip } from '../../components/ui';
 import Spinner from '../../components/ui/Spinner';
 import ModelSelect from '../../components/ModelSelect.jsx';
 import { host } from '../../../platform/host';
@@ -39,6 +40,23 @@ export function patchSavedJson(prevJson, key, value) {
   }
 }
 
+// Small icon button that lives inside a text field (clear / reveal / copy).
+// CORE carries the shape; the states add color/background/cursor so no state
+// ever stacks two utilities for the same property.
+const FIELD_ICON_BTN_CORE =
+  'inline-flex items-center justify-center w-[28px] h-[26px] rounded-md border-0 p-0';
+const FIELD_ICON_BTN_BASE = `${FIELD_ICON_BTN_CORE} bg-transparent text-ink-3 cursor-pointer`;
+// Variant absolutely positioned against the field's right edge.
+const FIELD_ICON_BTN = `${FIELD_ICON_BTN_BASE} absolute right-1 top-1/2 -translate-y-1/2`;
+
+// Native <input type="color"> rendered as a small swatch well.
+const COLOR_SWATCH_INPUT =
+  'w-[64px] h-[32px] p-0.5 border border-solid border-line-2 rounded-md bg-surface cursor-pointer';
+
+// Inline text-link button (renders inside a sentence, inherits its type).
+const LINK_BTN =
+  'bg-transparent border-none p-0 cursor-pointer text-accent underline text-[length:inherit] [font-family:inherit]';
+
 // Numeric input for the Advanced Settings agent budgets. State keeps the
 // server's string form (settings round-trip as strings; the page-wide dirty
 // compare is a JSON diff, so types must stay stable across save → re-fetch).
@@ -51,9 +69,25 @@ export function patchSavedJson(prevJson, key, value) {
 //     factory default (clearing a saved 500 to retype must not save 50).
 // Escape-dismiss skips blur entirely; clampBudgets() in save() is the
 // backstop that keeps rejectable values out of every PUT.
-function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSetting }) {
+function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSetting, unlimitedLabel }) {
   const { min, max, fallback } = spec;
   const hintId = useId();
+  // "No limit" writes the TOP of the range, which already was the off switch —
+  // it was just undiscoverable, which is the whole job of this checkbox. Writing
+  // `spec.max` keeps the range contiguous, so there is no sentinel to guard with
+  // a server-side validator and no special case in the clamp.
+  //
+  // The hint below says "only the step and auto-continue caps apply" rather
+  // than promising infinity, and that wording is load-bearing: at ~306 calls
+  // (the server's default 50 rounds x 6 passes) 50M is reached at ~163k per
+  // call, which a long conversation can carry. Never observed — largest turn in
+  // 30 days was 8.26M — but not impossible.
+  const showUnlimited = unlimitedLabel != null && spec.max != null;
+  const isUnlimited = showUnlimited && isBudgetUnlimited(value, spec);
+  // The number to put back when the switch goes off. A ref, not state: it must
+  // survive re-renders without causing one, and it is read only on toggle.
+  const preToggle = useRef(null);
+  if (showUnlimited && !isUnlimited && value != null) preToggle.current = value;
   // The last COMMITTED value, from the page's saved-state snapshot — never a
   // draft. Tracking "last parseable edit" instead was a bug (Codex review on
   // #514): editing a saved 120 to an unsaved 300, then clearing, restored the
@@ -61,15 +95,39 @@ function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSett
   const saved =
     savedValue != null && String(savedValue).trim() !== '' ? String(savedValue) : null;
   return (
-    <div style={{ display: 'inline-flex', alignItems: 'baseline', gap: 8 }}>
+    <div className="inline-flex items-baseline gap-2">
+      {showUnlimited && (
+        <label className="inline-flex items-baseline gap-1.5 mr-1 whitespace-nowrap">
+          <Checkbox
+            checked={isUnlimited}
+            onCheckedChange={(on) => setSetting(
+              settingKey,
+              on
+                ? String(spec.max)
+                : resolveBudgetRestore(preToggle.current, savedValue, spec),
+            )}
+            aria-label={unlimitedLabel}
+          />
+          <span className="text-[11.5px] text-ink-3">{unlimitedLabel}</span>
+        </label>
+      )}
+      {/* globals.css `.field-input` sets width:100% and loads after the
+          Tailwind layer, so a w-[90px] utility loses the cascade — inline
+          width is the one reliable override here. */}
       <input
         className="field-input"
+        style={{ width: 90 }}
         type="number"
         inputMode="numeric"
         min={min}
         max={max}
         step={1}
-        value={value ?? String(fallback)}
+        disabled={isUnlimited}
+        // Show the number they'd return to, not the max: a disabled field
+        // reading 50000000 invites someone to "fix" it back down by hand.
+        value={isUnlimited
+          ? resolveBudgetRestore(preToggle.current, savedValue, spec)
+          : (value ?? String(fallback))}
         onChange={(e) => setSetting(settingKey, e.target.value)}
         onBlur={(e) => {
           if (value == null) return; // untouched — don't materialize the key
@@ -84,78 +142,42 @@ function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSett
         aria-label={label}
         aria-describedby={hintId}
         title={`${label} (${min}–${max}, default ${fallback})`}
-        style={{ width: 90 }}
       />
-      <span id={hintId} style={{ fontSize: 11.5, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-        {min}&ndash;{max} &middot; default {fallback}
+      <span id={hintId} className="text-[11.5px] text-ink-3 whitespace-nowrap">
+        {isUnlimited
+          ? 'no limit — only the step and auto-continue caps apply'
+          : <>{min}&ndash;{max} &middot; default {fallback}</>}
       </span>
     </div>
   );
 }
 
-// Collapsible group of sections. Defaults to open; click the header to
-// toggle. Uses the theme tokens so it reads well in light + dark.
-function CollapsibleGroup({ title, defaultOpen = true, children }) {
+// A titled group of settings sections. Since ENG-1320 these no longer
+// collapse: the settings subnav already isolates one section per screen, so a
+// second collapse level inside a section just hid content behind an extra
+// click for no benefit. The group is now a static titled card whose content is
+// always visible. The heading is kept so groups still surface in SR heading
+// navigation. Mobile stays flat, as it already was (ENG-990).
+function SettingsGroup({ title, children }) {
   const { mobile } = useContext(SettingsLayoutContext);
-  const [open, setOpen] = useState(defaultOpen);
-  const panelId = useId();
-  const headingId = useId();
-  // Mobile (ENG-990): flat and non-collapsible. The master-detail screen
-  // already isolates one section, so a second collapse level just adds
-  // confusion — render the group title as a plain header with its content
-  // always visible, separated from the next group by spacing.
+  const headingClass =
+    'm-0 font-[family-name:var(--font-sans)] text-sm font-semibold tracking-[0.04em] uppercase text-ink-3';
+  // Mobile (ENG-990): the master-detail screen already isolates one section,
+  // so render the group title as a plain header with its content flowing
+  // below, separated from the next group by spacing.
   if (mobile) {
     return (
-      <div style={{ marginBottom: 6 }}>
-        <h2 style={{
-          margin: 0, padding: '12px 2px 8px',
-          fontFamily: 'var(--font-sans)', fontSize: 12.5, fontWeight: 600,
-          letterSpacing: '0.04em', textTransform: 'uppercase',
-          color: 'var(--text-muted)',
-        }}>{title}</h2>
-        <div style={{ padding: '0 2px 4px' }}>{children}</div>
+      <div className="mb-1.5">
+        <h2 className={`${headingClass} pt-3 px-0.5 pb-2`}>{title}</h2>
+        <div className="pt-0 px-0.5 pb-1">{children}</div>
       </div>
     );
   }
 
   return (
-    <div style={{
-      border: '1px solid var(--border-subtle)',
-      borderRadius: 'var(--card-radius)',
-      background: 'var(--surface-glass)',
-      WebkitBackdropFilter: 'blur(var(--surface-glass-blur))',
-      backdropFilter: 'blur(var(--surface-glass-blur))',
-      marginBottom: 14,
-      overflow: 'hidden',
-    }}>
-      {/* W3C "Accordion" pattern: heading wraps the toggle button so the
-          group surfaces in SR heading navigation, while the button still
-          owns interaction. h3 margin reset to keep the visual layout. */}
-      <h2 id={headingId} style={{ margin: 0, padding: 0, fontWeight: 'inherit', fontSize: 'inherit' }}>
-        <button
-          onClick={() => setOpen((o) => !o)}
-          aria-expanded={open}
-          aria-controls={panelId}
-          style={{
-            width: '100%', display: 'flex', alignItems: 'center', gap: 8,
-            padding: '14px 18px', background: 'transparent', border: 0,
-            fontFamily: 'var(--font-sans)', fontSize: 12.5, fontWeight: 600,
-            letterSpacing: '0.04em', textTransform: 'uppercase',
-            color: 'var(--text-muted)', cursor: 'pointer', textAlign: 'left',
-          }}
-        >
-          <span aria-hidden="true" style={{
-            display: 'inline-flex', width: 14, height: 14,
-            color: 'var(--text-muted)',
-            transform: open ? 'rotate(90deg)' : 'rotate(0deg)',
-            transition: 'transform 180ms cubic-bezier(0.32, 0.72, 0, 1)',
-          }}>{Ico.chevronRight ? Ico.chevronRight(12) : '›'}</span>
-          <span style={{ flex: 1 }}>{title}</span>
-        </button>
-      </h2>
-      {open && (
-        <div id={panelId} role="region" aria-labelledby={headingId} style={{ padding: '0 18px 8px' }}>{children}</div>
-      )}
+    <div className="border border-solid border-line rounded-card bg-surface-glass backdrop-blur-[var(--surface-glass-blur)] mb-[14px] overflow-hidden">
+      <h2 className={`${headingClass} pt-[14px] px-[18px] pb-0`}>{title}</h2>
+      <div className="pt-2.5 px-[18px] pb-2">{children}</div>
     </div>
   );
 }
@@ -180,7 +202,7 @@ function ClearableTextInput({ value, onChange, placeholder, ariaLabel }) {
   const v = value ?? '';
   const hasValue = v.length > 0;
   return (
-    <div style={{ position: 'relative' }}>
+    <div className="relative">
       <Input
         value={v}
         onChange={(next) => onChange(next)}
@@ -189,21 +211,16 @@ function ClearableTextInput({ value, onChange, placeholder, ariaLabel }) {
         style={hasValue ? { paddingRight: 36 } : undefined}
       />
       {hasValue && (
-        <button
-          type="button"
-          onClick={() => onChange('')}
-          title="Clear (commits on Save settings)"
-          aria-label="Clear value"
-          style={{
-            position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)',
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            width: 28, height: 26, borderRadius: 6,
-            border: 0, background: 'transparent', cursor: 'pointer',
-            color: 'var(--ink-3)', padding: 0,
-          }}
-        >
-          {Ico.close(13)}
-        </button>
+        <Tooltip content="Clear (commits on Save settings)">
+          <button
+            type="button"
+            onClick={() => onChange('')}
+            aria-label="Clear value"
+            className={FIELD_ICON_BTN}
+          >
+            {Ico.close(13)}
+          </button>
+        </Tooltip>
       )}
     </div>
   );
@@ -321,13 +338,9 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
     onChange('');
   };
 
-  const btnStyle = {
-    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-    width: 28, height: 26, borderRadius: 6,
-    border: 0, background: 'transparent', cursor: 'pointer',
-    color: 'var(--ink-3)', padding: 0,
-  };
-  const btnStyleActive = { ...btnStyle, color: 'var(--text-strong)', background: 'var(--surface-2, rgba(255,255,255,0.04))' };
+  const btnClass = FIELD_ICON_BTN_BASE;
+  const btnClassActive = `${FIELD_ICON_BTN_CORE} cursor-pointer text-ink bg-surface-2`;
+  const btnClassDisabled = `${FIELD_ICON_BTN_CORE} bg-transparent text-ink-3 opacity-35 cursor-not-allowed`;
 
   // When the field is holding the server sentinel and the user hasn't
   // toggled reveal, render the input as empty + a long bullet placeholder.
@@ -336,8 +349,13 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
   // Typing replaces the (empty) value cleanly — no asterisk contamination.
   const showSentinelAsMask = !show && v === '***';
 
+  const copyHint = isDisplayingSentinel ? 'Reveal the key first to copy it'
+    : copyState === 'copied' ? 'Copied'
+      : copyState === 'failed' ? "Couldn't copy — select the key to copy manually"
+        : 'Copy to clipboard';
+
   return (
-    <div style={{ position: 'relative' }}>
+    <div className="relative">
       <Input
         variant="mono"
         type={show ? 'text' : 'password'}
@@ -350,75 +368,60 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
         aria-label={revealName ? `${revealName} API key` : 'API key'}
         style={{ paddingRight: 108 }}
       />
-      <div style={{
-        position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)',
-        display: 'inline-flex', alignItems: 'center', gap: 2,
-      }}>
-        <span style={{ position: 'relative', display: 'inline-flex' }}>
-          <button
-            type="button"
-            onClick={onCopy}
-            onBlur={() => { if (copyState === 'failed') setCopyState('idle'); }}
-            disabled={!canCopy}
-            title={
-              isDisplayingSentinel ? 'Reveal the key first to copy it'
-                : copyState === 'copied' ? 'Copied'
-                  : copyState === 'failed' ? "Couldn't copy — select the key to copy manually"
-                    : 'Copy to clipboard'
-            }
-            aria-label={copyState === 'copied' ? 'Copied to clipboard' : 'Copy key to clipboard'}
-            style={canCopy ? btnStyle : { ...btnStyle, opacity: 0.35, cursor: 'not-allowed' }}
-          >
-            {copyState === 'copied' ? Ico.check(13) : Ico.copy(13)}
-          </button>
+      <div className="absolute right-1 top-1/2 -translate-y-1/2 inline-flex items-center gap-0.5">
+        <span className="relative inline-flex">
+          <Tooltip content={copyHint}>
+            <button
+              type="button"
+              onClick={onCopy}
+              onBlur={() => { if (copyState === 'failed') setCopyState('idle'); }}
+              disabled={!canCopy}
+              title={!canCopy ? copyHint : undefined}
+              aria-label={copyState === 'copied' ? 'Copied to clipboard' : 'Copy key to clipboard'}
+              className={canCopy ? btnClass : btnClassDisabled}
+            >
+              {copyState === 'copied' ? Ico.check(13) : Ico.copy(13)}
+            </button>
+          </Tooltip>
           {(copyState === 'copied' || copyState === 'failed') && (
             <span
               role="status"
               aria-live="polite"
+              className={`absolute bottom-[calc(100%+6px)] left-1/2 py-[3px] px-2 text-[10.5px] font-semibold tracking-[0.04em] uppercase bg-[rgba(20,28,28,0.92)] border border-solid rounded-md whitespace-nowrap pointer-events-none shadow-sh-2 z-[5] ${copyState === 'failed'
+                ? 'text-danger border-[color-mix(in_srgb,var(--danger)_45%,transparent)]'
+                : 'text-accent border-[color-mix(in_srgb,var(--accent)_45%,transparent)]'}`}
               style={{
-                position: 'absolute',
-                bottom: 'calc(100% + 6px)',
-                left: '50%',
-                padding: '3px 8px',
-                fontSize: 10.5, fontWeight: 600, letterSpacing: '0.04em',
-                textTransform: 'uppercase',
-                color: copyState === 'failed' ? 'var(--danger, #e5484d)' : '#7CC4B6',
-                background: 'rgba(20,28,28,0.92)',
-                border: copyState === 'failed' ? '1px solid color-mix(in srgb, var(--danger, #e5484d) 45%, transparent)' : '1px solid rgba(124,196,182,0.45)',
-                borderRadius: 6,
-                whiteSpace: 'nowrap',
-                pointerEvents: 'none',
-                boxShadow: 'var(--sh-2)',
                 // 'copied' pops in, holds, fades on its own 1.5s clock. 'failed'
                 // only pops in and holds — it's cleared by state (next attempt
                 // or blur), not by the animation, so it stays legible.
                 animation: copyState === 'failed' ? 'failed-pop 0.2s ease forwards' : 'copied-pop 1.5s ease forwards',
-                zIndex: 5,
               }}
             >{copyState === 'failed' ? "Couldn't copy — select the key to copy manually" : 'Copied'}</span>
           )}
         </span>
-        <button
-          type="button"
-          onClick={onToggleShow}
-          disabled={revealing}
-          title={show ? 'Hide key' : (revealing ? 'Revealing…' : 'Reveal key')}
-          aria-label={show ? 'Hide key' : 'Reveal key'}
-          aria-pressed={show}
-          style={show ? btnStyleActive : btnStyle}
-        >
-          {show ? Ico.eyeOff(13) : Ico.eye(13)}
-        </button>
-        <button
-          type="button"
-          onClick={onClearField}
-          disabled={!hasValue}
-          title="Clear this key (commits on Save settings)"
-          aria-label="Clear key"
-          style={hasValue ? btnStyle : { ...btnStyle, opacity: 0.35, cursor: 'not-allowed' }}
-        >
-          {Ico.close(13)}
-        </button>
+        <Tooltip content={show ? 'Hide key' : (revealing ? 'Revealing…' : 'Reveal key')}>
+          <button
+            type="button"
+            onClick={onToggleShow}
+            disabled={revealing}
+            aria-label={show ? 'Hide key' : 'Reveal key'}
+            aria-pressed={show}
+            className={show ? btnClassActive : btnClass}
+          >
+            {show ? Ico.eyeOff(13) : Ico.eye(13)}
+          </button>
+        </Tooltip>
+        <Tooltip content="Clear this key (commits on Save settings)">
+          <button
+            type="button"
+            onClick={onClearField}
+            disabled={!hasValue}
+            aria-label="Clear key"
+            className={hasValue ? btnClass : btnClassDisabled}
+          >
+            {Ico.close(13)}
+          </button>
+        </Tooltip>
       </div>
     </div>
   );
@@ -465,13 +468,9 @@ function SetBadge({ hasValue, active }) {
       variant="success"
       size="xs"
       className={`ml-2 align-middle uppercase tracking-[0.04em] ${active ? 'set-badge-pulse' : ''}`}
-      icon={<span aria-hidden style={{
-        width: 6, height: 6, borderRadius: 999,
-        background: 'currentColor',
-        boxShadow: active
-          ? '0 0 8px currentColor, 0 0 14px rgba(124,196,182,0.6)'
-          : '0 0 4px rgba(93,146,135,0.45)',
-      }} />}
+      icon={<span aria-hidden className={`w-1.5 h-1.5 rounded-full bg-current ${active
+        ? 'shadow-[0_0_8px_currentColor,0_0_14px_rgba(124,196,182,0.6)]'
+        : 'shadow-[0_0_4px_color-mix(in_srgb,var(--sage-500)_45%,transparent)]'}`} />}
       style={{
         // When active, the box-shadow comes from the set-badge-pulse
         // keyframes; the static value would never paint. When inactive
@@ -515,11 +514,6 @@ const GET_KEY_URL = {
 };
 
 const PROTECTED_PROVIDER_TYPES = new Set(['minds-cloud']);
-
-// How long data from the model dropdown's on-open refresh counts as fresh.
-// Re-opening inside this window skips the round trip and opens immediately;
-// it only has to be short next to the 5-minute cache it stands in for.
-const MODEL_REFRESH_TTL_MS = 5000;
 
 function makeEmptyProvider(type) {
   const base = { type, apiKey: '', isDefault: false };
@@ -577,14 +571,14 @@ function CredentialRow({ title, subtitle, status, hasValue, children }) {
   // the glow stays meaningful: "this is what's authenticating you now."
   const setActive = hasValue && (status === 'required' || status === 'auto');
   const titleNode = (
-    <span style={{ display: 'inline-flex', alignItems: 'center', flexWrap: 'wrap', rowGap: 4 }}>
+    <span className="inline-flex items-center flex-wrap gap-y-1">
       {title}
       <RelevanceBadge status={status} />
       <SetBadge hasValue={hasValue} active={setActive} />
     </span>
   );
   return (
-    <div style={{ opacity: dimmed ? 0.5 : 1, transition: 'opacity .15s ease' }}>
+    <div className={`[transition:opacity_.15s_ease] ${dimmed ? 'opacity-50' : 'opacity-100'}`}>
       <Section title={titleNode} subtitle={subtitle}>{children}</Section>
     </div>
   );
@@ -627,24 +621,9 @@ function SettingsNav({ section, onSectionChange, serverOnline = true }) {
     <nav
       role="navigation"
       aria-label="Settings sections"
-      style={{
-        width: 180,
-        flexShrink: 0,
-        borderRight: '1px solid var(--line)',
-        padding: '20px 10px 20px',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 2,
-      }}
+      className="w-[180px] shrink-0 border-r border-y-0 border-l-0 border-solid border-line py-5 px-2.5 flex flex-col gap-0.5"
     >
-      <div style={{
-        fontSize: 10,
-        letterSpacing: '0.08em',
-        textTransform: 'uppercase',
-        color: 'var(--ink-4)',
-        padding: '0 10px 6px',
-        fontWeight: 600,
-      }}>Settings</div>
+      <div className="text-2xs tracking-[0.08em] uppercase text-ink-4 pt-0 px-2.5 pb-1.5 font-semibold">Settings</div>
       {navItemsForHost(host.isWeb).map((item) => {
         const active = section === item.id;
         // `!host.isWeb &&`: the offline-disable exists because a dead local
@@ -663,40 +642,14 @@ function SettingsNav({ section, onSectionChange, serverOnline = true }) {
             onClick={disabled ? undefined : () => onSectionChange?.(item.id)}
             aria-current={active ? 'page' : undefined}
             aria-disabled={disabled ? 'true' : undefined}
-            style={{
-              width: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              padding: '8px 10px',
-              opacity: disabled ? 0.35 : 1,
-              pointerEvents: disabled ? 'none' : 'auto',
-              cursor: disabled ? 'default' : 'pointer',
-              borderRadius: 7,
-              border: 0,
-              background: active ? 'var(--surface-2)' : 'transparent',
-              color: active ? 'var(--ink)' : 'var(--ink-3)',
-              fontWeight: active ? 600 : 400,
-              fontSize: 13,
-              fontFamily: 'inherit',
-              textAlign: 'left',
-              transition: 'background 120ms ease, color 120ms ease',
-            }}
-            onMouseEnter={(e) => {
-              if (!active && !disabled) {
-                e.currentTarget.style.background = 'var(--surface-2, rgba(127,127,127,0.07))';
-                e.currentTarget.style.color = 'var(--ink)';
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (!active && !disabled) {
-                e.currentTarget.style.background = 'transparent';
-                e.currentTarget.style.color = 'var(--ink-3)';
-              }
-            }}
+            className={`w-full flex items-center gap-2 py-2 px-2.5 rounded-[7px] border-0 text-[13px] [font-family:inherit] text-left [transition:background_120ms_ease,color_120ms_ease] ${active
+              ? 'bg-surface-2 text-ink font-semibold'
+              : 'bg-transparent text-ink-3 font-normal hover:bg-surface-2 hover:text-ink'} ${disabled
+              ? 'opacity-35 pointer-events-none cursor-default'
+              : 'cursor-pointer'}`}
           >
             {icon && (
-              <span aria-hidden="true" style={{ display: 'inline-flex', flexShrink: 0, color: 'inherit' }}>
+              <span aria-hidden="true" className="inline-flex shrink-0 text-[color:inherit]">
                 {icon}
               </span>
             )}
@@ -733,6 +686,10 @@ export default function SettingsView({
   // Settings is a deliberate visit, so it always reflects the true state.
   shellUpdate = null,
   onDownloadShellUpdate,
+  shellAutoUpdate = null,
+  onDownloadShellAutoUpdate,
+  onInstallShellAutoUpdate,
+  onRetryShellAutoUpdate,
 }) {
   const [saved, setSaved] = useState(false);
   const [validation, setValidation] = useState(null);
@@ -751,8 +708,11 @@ export default function SettingsView({
   const [initialProviderTestDone, setInitialProviderTestDone] = useState(false);
   // Per-role note of when the refresh above last landed fresh data, so
   // re-opening the dropdown doesn't re-pay a round trip that just completed.
+  // -Infinity, not 0: performance.now() is already well past 0 by first render, so a
+  // 0 sentinel reads as "refreshed at page load" and skips the first open of the
+  // session — the one open where the wallet state is most likely to be stale.
   const modelOpenState = useRef({});
-  const modelOpenFor = (role) => (modelOpenState.current[role] ||= { refreshedAt: 0 });
+  const modelOpenFor = (role) => (modelOpenState.current[role] ||= { refreshedAt: -Infinity });
   // Whether the refresh token lives in the macOS keychain (vs a file under
   // ~/.cowork). Mac-only; read from main on mount.
   const [keychainPref, setKeychainPref] = useState(false);
@@ -1159,20 +1119,23 @@ export default function SettingsView({
   const testButtonLabel = testing
     ? 'Testing…'
     : tested
-      ? (<><span style={{ display: 'inline-flex', marginRight: 6, verticalAlign: 'middle' }}>{Ico.check(13)}</span>Tested</>)
+      ? (<><span className="inline-flex mr-1.5 align-middle">{Ico.check(13)}</span>Tested</>)
       : 'Test';
 
   // ───────────────────────── Shared footer/banner helpers ─────────────────────────
 
-  const renderSaveFooter = () => (
+  const renderSaveFooter = () => {
+    const saveDisabled = (!settingsDirty && !anyProviderFailed) || testing || missingCustomNames;
+    const saveHint = missingCustomNames ? 'Each custom provider needs a name' : testing ? 'Saving…' : (!settingsDirty && !anyProviderFailed) ? 'No unsaved changes' : anyProviderFailed ? 'Re-test failed providers.' : 'Save changes and re-run provider tests.';
+    return (
     <>
       <div
         role="status" aria-live="polite" aria-atomic="true"
-        style={{ flex: 1, fontSize: 13, fontWeight: 500, color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+        className="flex-1 text-[13px] font-medium text-ink-3 inline-flex items-center gap-1.5"
       >
         {testing && <span aria-hidden="true" className="spinner" style={{ width: 12, height: 12 }} />}
-        {!testing && tested && configReady && <span aria-hidden="true" style={{ color: 'var(--sage-500, #5d9287)', display: 'inline-flex' }}>{Ico.check(13)}</span>}
-        {!testing && saved && !tested && <span aria-hidden="true" style={{ color: 'var(--sage-500, #5d9287)', display: 'inline-flex' }}>{Ico.check(13)}</span>}
+        {!testing && tested && configReady && <span aria-hidden="true" className="text-sage-500 inline-flex">{Ico.check(13)}</span>}
+        {!testing && saved && !tested && <span aria-hidden="true" className="text-sage-500 inline-flex">{Ico.check(13)}</span>}
         <span>
           {testing ? 'Testing configuration…'
             : tested ? (configReady ? 'Test passed — provider, model, and credentials look good.' : (configError || 'Test reported a problem.'))
@@ -1181,16 +1144,23 @@ export default function SettingsView({
                   : 'Changes apply on save.'}
         </span>
       </div>
-      <Button
-        variant="primary" onClick={save}
-        disabled={(!settingsDirty && !anyProviderFailed) || testing || missingCustomNames}
-        title={missingCustomNames ? 'Each custom provider needs a name' : testing ? 'Saving…' : (!settingsDirty && !anyProviderFailed) ? 'No unsaved changes' : anyProviderFailed ? 'Re-test failed providers.' : 'Save changes and re-run provider tests.'}
-        style={{ width: 140, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, opacity: ((!settingsDirty && !anyProviderFailed) || testing || missingCustomNames) ? 0.55 : 1, cursor: ((!settingsDirty && !anyProviderFailed) || testing || missingCustomNames) ? 'default' : 'pointer' }}
-      >
-        {testing ? 'Saving…' : (settingsDirty || anyProviderFailed) ? 'Save settings' : <>{Ico.check(14)} Saved</>}
-      </Button>
+      <Tooltip content={saveHint}>
+        {/* Native title only while disabled: a disabled <button> fires no
+            hover/focus events, so the styled Tooltip can't open — but the
+            reason it's disabled is exactly what the user needs then. */}
+        <Button
+          variant="primary" onClick={save}
+          disabled={saveDisabled}
+          title={saveDisabled ? saveHint : undefined}
+          className="w-[140px] inline-flex items-center justify-center gap-1.5"
+          style={{ opacity: saveDisabled ? 0.55 : 1, cursor: saveDisabled ? 'default' : 'pointer' }}
+        >
+          {testing ? 'Saving…' : (settingsDirty || anyProviderFailed) ? 'Save settings' : <>{Ico.check(14)} Saved</>}
+        </Button>
+      </Tooltip>
     </>
-  );
+    );
+  };
 
   // ───────────────────────── Section renderers ─────────────────────────
 
@@ -1198,9 +1168,9 @@ export default function SettingsView({
     const anyProviderConfigured = providers.some(providerConfigured);
     return (
       <SettingsSectionPanel footer={renderSaveFooter()}>
-        <div style={{ display: 'flex', flexDirection: 'column' }}>
-          <div style={{ order: anyProviderConfigured ? 2 : 0 }}>
-            <CollapsibleGroup title="LLM Providers">
+        <div className="flex flex-col">
+          <div className={anyProviderConfigured ? 'order-2' : 'order-none'}>
+            <SettingsGroup title="LLM Providers">
               {providers.map((p) => {
                 const configured = providerConfigured(p);
                 const label = typeLabels[p.type] || p.type;
@@ -1248,20 +1218,18 @@ export default function SettingsView({
                 // <h3> uses the `.sr-only` utility (its text is the current
                 // name or a sensible fallback) — keeps the visual unchanged
                 // while making the row reachable by H/4 navigation.
-                const headingBaseStyle = {
-                  margin: 0, padding: 0, fontFamily: 'inherit', lineHeight: 1.3,
-                  fontSize: 14, fontWeight: 600, color: 'var(--text-strong)',
-                };
+                const headingBaseClass =
+                  'm-0 p-0 leading-[1.3] text-base font-semibold text-ink';
                 const customHeadingText = p.type === 'openai-compatible'
                   ? ((p.name || '').trim() || 'Custom OpenAI-compatible provider')
                   : null;
                 const titleNode = (
-                  <span style={{ display: 'inline-flex', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                  <span className="inline-flex items-center flex-wrap gap-2">
                     {p.type === 'openai-compatible' ? (() => {
                       const nameEmpty = !(p.name || '').trim();
                       const errorId = `provider-name-error-${p.type}`;
                       return (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                        <div className="flex flex-col gap-[3px]">
                           <h3 className="sr-only">{customHeadingText}</h3>
                           <Input
                             value={p.name ?? ''}
@@ -1274,16 +1242,16 @@ export default function SettingsView({
                             aria-required="true"
                             style={{
                               width: 220, fontSize: 13.5, fontWeight: 600,
-                              borderColor: nameEmpty ? 'rgba(224,112,96,0.55)' : undefined,
+                              borderColor: nameEmpty ? 'color-mix(in srgb, var(--danger) 55%, transparent)' : undefined,
                             }}
                           />
                           {nameEmpty && (
-                            <span id={errorId} style={{ fontSize: 10.5, color: '#E07060' }}>Name required</span>
+                            <span id={errorId} className="text-[10.5px] text-danger">Name required</span>
                           )}
                         </div>
                       );
                     })() : (
-                      <h3 style={headingBaseStyle}>{label}</h3>
+                      <h3 className={headingBaseClass}>{label}</h3>
                     )}
                   </span>
                 );
@@ -1295,26 +1263,18 @@ export default function SettingsView({
                 const showKeyInput = ssoMindsHub || !configured || st.settled === 'untested'
                   || (st.settled === 'fail' && !st.checking) || editingProviders.has(p.type);
                 return (
-                  <div key={p.type} className="settings-provider-row" style={{
+                  <div key={p.type} className={`settings-provider-row py-4 items-start ${mobile
                     // Desktop: name | key/status | actions in a 3-col grid.
                     // Mobile: a compact left-aligned column — the grid stacked
                     // but kept the status pill + a 30px-wide button column
                     // right-aligned, floating them into a lot of dead space.
-                    display: mobile ? 'flex' : 'grid',
-                    flexDirection: mobile ? 'column' : undefined,
-                    gridTemplateColumns: mobile ? undefined : '1fr 380px auto',
-                    gap: mobile ? 10 : 24,
-                    padding: '16px 0',
-                    alignItems: 'flex-start',
-                  }}>
+                    ? 'flex flex-col gap-2.5'
+                    : 'grid grid-cols-[1fr_380px_auto] gap-6'}`}>
                     {/* Left: name + description */}
                     <div>
                       {titleNode}
                       {PROVIDER_TYPE_DESC[p.type] && (
-                        <div style={{
-                          fontSize: 12, color: 'var(--text-muted)',
-                          marginTop: 6, maxWidth: 380, lineHeight: 1.45,
-                        }}>
+                        <div className="text-[12px] text-ink-3 mt-1.5 max-w-[380px] leading-[1.45]">
                           {PROVIDER_TYPE_DESC[p.type]}
                         </div>
                       )}
@@ -1322,9 +1282,9 @@ export default function SettingsView({
 
                     {/* Middle: status pill (tested) OR key input (editing / untested) */}
                     {showKeyInput ? (
-                      <div style={{ display: 'grid', gap: 6 }}>
+                      <div className="grid gap-1.5">
                         {ssoMindsHub ? (
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: mobile ? 'flex-start' : 'flex-end', padding: '5px 0' }}>
+                          <div className={`flex items-center py-[5px] px-0 ${mobile ? 'justify-start' : 'justify-end'}`}>
                             {statusPill}
                           </div>
                         ) : (
@@ -1349,131 +1309,129 @@ export default function SettingsView({
                           />
                         )}
                         {GET_KEY_URL[p.type] && !ssoMindsHub && (
-                          <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
+                          <div className="text-[11.5px] text-ink-3">
                             Get your API key at{' '}
-                            <a
-                              href={GET_KEY_URL[p.type]}
-                              target="_blank"
-                              rel="noreferrer noopener"
-                              title={`Open ${GET_KEY_URL[p.type].replace(/^https?:\/\//, '')} in your browser.`}
-                              style={{ color: 'var(--accent-500, #7CC4B6)' }}
-                            >{GET_KEY_URL[p.type].replace(/^https?:\/\//, '')} →</a>
+                            <Tooltip content={`Open ${GET_KEY_URL[p.type].replace(/^https?:\/\//, '')} in your browser.`}>
+                              <a
+                                href={GET_KEY_URL[p.type]}
+                                target="_blank"
+                                rel="noreferrer noopener"
+                                className="text-accent"
+                              >{GET_KEY_URL[p.type].replace(/^https?:\/\//, '')} →</a>
+                            </Tooltip>
                           </div>
                         )}
                         {p.type === 'minds-cloud' && !isSsoConnected && (
-                          <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
+                          <div className="text-[11.5px] text-ink-3">
                             Don't have an account?{' '}
-                            <a
-                              href={MINDS_REGISTER_URL}
-                              target="_blank"
-                              rel="noreferrer noopener"
-                              title="Open the MindsHub sign-up page in your browser."
-                              style={{ color: 'var(--accent-500, #7CC4B6)' }}
-                            >Sign up →</a>
+                            <Tooltip content="Open the MindsHub sign-up page in your browser.">
+                              <a
+                                href={MINDS_REGISTER_URL}
+                                target="_blank"
+                                rel="noreferrer noopener"
+                                className="text-accent"
+                              >Sign up →</a>
+                            </Tooltip>
                           </div>
                         )}
                         {status === 'fail' && friendlyError && (
-                          <div style={{ fontSize: 11.5, color: '#E07060', display: 'flex', alignItems: 'flex-start', gap: 6 }}>
-                            <span style={{ flexShrink: 0, marginTop: 1 }}>{Ico.key ? Ico.key(11) : '!'}</span>
+                          <div className="text-[11.5px] text-danger flex items-start gap-1.5">
+                            <span className="shrink-0 mt-px">{Ico.key ? Ico.key(11) : '!'}</span>
                             <span>{friendlyError}</span>
                           </div>
                         )}
                       </div>
                     ) : (
                       // Status pill replaces the key input after a test result
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: mobile ? 'flex-start' : 'flex-end', padding: '5px 0', gap: 10 }}>
+                      <div className={`flex items-center py-[5px] px-0 gap-2.5 ${mobile ? 'justify-start' : 'justify-end'}`}>
                         {status === 'fail' && friendlyError && (
-                          <span style={{ fontSize: 11.5, color: '#E07060' }}>{friendlyError}</span>
+                          <span className="text-[11.5px] text-danger">{friendlyError}</span>
                         )}
                         {statusPill}
                       </div>
                     )}
 
                     {/* Right (desktop) / inline row (mobile): trash + edit */}
-                    <div style={{ display: 'flex', flexDirection: mobile ? 'row' : 'column', gap: 6, width: mobile ? 'auto' : 30 }}>
+                    <div className={`flex gap-1.5 ${mobile ? 'flex-row w-auto' : 'flex-col w-[30px]'}`}>
                       {!PROTECTED_PROVIDER_TYPES.has(p.type) && (
-                        <Button
-                          variant="danger"
-                          icon
-                          size="sm"
-                          onClick={() => removeProvider(p.type)}
-                          title="Remove this provider"
-                          aria-label="Remove this provider"
-                        >{Ico.trash(13)}</Button>
+                        <Tooltip content="Remove this provider">
+                          <Button
+                            variant="danger"
+                            icon
+                            size="sm"
+                            onClick={() => removeProvider(p.type)}
+                            aria-label="Remove this provider"
+                          >{Ico.trash(13)}</Button>
+                        </Tooltip>
                       )}
                       {!showKeyInput && (
-                        <Button
-                          icon
-                          size="sm"
-                          onClick={() => setEditingProviders((prev) => new Set([...prev, p.type]))}
-                          title="Edit API key"
-                          aria-label="Edit API key"
-                        >{Ico.edit(13)}</Button>
+                        <Tooltip content="Edit API key">
+                          <Button
+                            icon
+                            size="sm"
+                            onClick={() => setEditingProviders((prev) => new Set([...prev, p.type]))}
+                            aria-label="Edit API key"
+                          >{Ico.edit(13)}</Button>
+                        </Tooltip>
                       )}
                     </div>
                   </div>
                 );
               })}
-              <div style={{
-                position: 'relative',
-                padding: '14px 0 4px',
-                minHeight: 50,
-              }}>
+              <div className="relative pt-[14px] px-0 pb-1 min-h-[50px]">
                 {/* Idle: + Add provider button. Fades + slides down when
               the picker opens. */}
-                <Button
-                  variant="subtle"
-                  onClick={() => setAddPickerOpen(true)}
-                  disabled={availableTypesForAdd.length === 0}
-                  title={availableTypesForAdd.length === 0 ? 'All provider types are already configured' : 'Add another provider'}
-                  style={{
-                    position: 'absolute', top: 14, left: 0,
-                    display: 'inline-flex', alignItems: 'center', gap: 6,
-                    opacity: addPickerOpen ? 0 : (availableTypesForAdd.length === 0 ? 0.45 : 1),
-                    transform: addPickerOpen ? 'translateY(6px)' : 'translateY(0)',
-                    transition: 'opacity 200ms ease, transform 200ms ease',
-                    pointerEvents: addPickerOpen ? 'none' : (availableTypesForAdd.length === 0 ? 'none' : 'auto'),
-                    cursor: availableTypesForAdd.length === 0 ? 'not-allowed' : 'pointer',
-                  }}
-                >{Ico.plus(13)} Add provider</Button>
+                <Tooltip content={availableTypesForAdd.length === 0 ? 'All provider types are already configured' : 'Add another provider'}>
+                  <Button
+                    variant="subtle"
+                    onClick={() => setAddPickerOpen(true)}
+                    disabled={availableTypesForAdd.length === 0}
+                    title={availableTypesForAdd.length === 0 ? 'All provider types are already configured' : undefined}
+                    className="absolute top-[14px] left-0 inline-flex items-center gap-1.5 [transition:opacity_200ms_ease,transform_200ms_ease]"
+                    style={{
+                      opacity: addPickerOpen ? 0 : (availableTypesForAdd.length === 0 ? 0.45 : 1),
+                      transform: addPickerOpen ? 'translateY(6px)' : 'translateY(0)',
+                      pointerEvents: addPickerOpen ? 'none' : (availableTypesForAdd.length === 0 ? 'none' : 'auto'),
+                      cursor: availableTypesForAdd.length === 0 ? 'not-allowed' : 'pointer',
+                    }}
+                  >{Ico.plus(13)} Add provider</Button>
+                </Tooltip>
 
                 {/* Open: Choose Provider: <chip> <chip> · Cancel.
               Fades + slides up from below as it appears. */}
-                <div style={{
-                  display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center',
-                  opacity: addPickerOpen ? 1 : 0,
-                  transform: addPickerOpen ? 'translateY(0)' : 'translateY(-6px)',
-                  transition: 'opacity 220ms ease, transform 220ms ease',
-                  pointerEvents: addPickerOpen ? 'auto' : 'none',
-                  position: 'absolute', top: 14, left: 0, right: 0,
-                }}>
-                  <strong style={{
-                    fontSize: 12.5, color: 'var(--text-strong)', marginRight: 4,
-                  }}>Choose Provider:</strong>
+                <div
+                  className="flex flex-wrap gap-1.5 items-center absolute top-[14px] left-0 right-0 [transition:opacity_220ms_ease,transform_220ms_ease]"
+                  style={{
+                    opacity: addPickerOpen ? 1 : 0,
+                    transform: addPickerOpen ? 'translateY(0)' : 'translateY(-6px)',
+                    pointerEvents: addPickerOpen ? 'auto' : 'none',
+                  }}>
+                  <strong className="text-sm text-ink mr-1">Choose Provider:</strong>
                   {availableTypesForAdd.map((t) => (
-                    <Button
-                      key={t}
-                      variant="subtle"
-                      onClick={() => addProviderOfType(t)}
-                      title={PROVIDER_TYPE_DESC[t]}
-                      style={{ fontSize: 12.5, padding: '4px 10px', fontWeight: 400 }}
-                    >{typeLabels[t] || t}</Button>
+                    <Tooltip key={t} content={PROVIDER_TYPE_DESC[t]}>
+                      <Button
+                        variant="subtle"
+                        onClick={() => addProviderOfType(t)}
+                        style={{ fontSize: 12.5, padding: '4px 10px', fontWeight: 400 }}
+                      >{typeLabels[t] || t}</Button>
+                    </Tooltip>
                   ))}
-                  <Button
-                    variant="subtle"
-                    icon
-                    size="sm"
-                    onClick={() => setAddPickerOpen(false)}
-                    title="Hide the provider picker."
-                    aria-label="Close provider picker"
-                    style={{ marginLeft: 4 }}
-                  >{Ico.close(13)}</Button>
+                  <Tooltip content="Hide the provider picker.">
+                    <Button
+                      variant="subtle"
+                      icon
+                      size="sm"
+                      onClick={() => setAddPickerOpen(false)}
+                      aria-label="Close provider picker"
+                      className="ml-1"
+                    >{Ico.close(13)}</Button>
+                  </Tooltip>
                 </div>
               </div>
-            </CollapsibleGroup>
+            </SettingsGroup>
           </div>
-          <div style={{ order: anyProviderConfigured ? 1 : 0 }}>
-            <CollapsibleGroup title="Agent Models">
+          <div className={anyProviderConfigured ? 'order-1' : 'order-none'}>
+            <SettingsGroup title="Agent Models">
               {(() => {
                 // The default-mode provider is the implicit fallback for
                 // any role that hasn't been explicitly assigned an
@@ -1512,10 +1470,10 @@ export default function SettingsView({
                   const modelList = recommendedModels[curType] || [];
                   /* Per-model availability (settings.modelEnabled, sourced from MindsHub
                    * /v1/models). A model the org's wallet can't currently pay for (or
-                   * whose free allowance is spent) is listed here as false so we render
-                   * it greyed + non-selectable, with an "add credits to unlock" prompt.
-                   * Absent id ⇒ available (backwards compatible; direct providers have
-                   * no such flag). */
+                   * whose free allowance is spent) is listed here as false — it stays
+                   * selectable with a "Needs credits" tag, and picking it shows the
+                   * top-up hint below (ENG-1248). Absent id ⇒ available (backwards
+                   * compatible; direct providers have no such flag). */
                   const modelEnabled = settings.modelEnabled || {};
                   const isLocked = (m) => modelEnabled[m] === false;
                   const firstEnabledModel = modelList.find((m) => !isLocked(m)) || modelList[0] || '';
@@ -1574,21 +1532,24 @@ export default function SettingsView({
                   // Plain bold field label. Note: no dotted underline — that reads as
                   // a "hover for a tooltip" affordance, and none is wired here.
                   const fieldLabel = (text) => (
-                    <span style={{
-                      fontSize: 11, fontWeight: 700, color: 'var(--text-strong)',
-                      letterSpacing: '0.02em',
-                    }}>{text}:</span>
+                    <span className="text-xs font-bold text-ink tracking-[0.02em]">{text}:</span>
                   );
 
+                  // Two stacked lines (ENG-1248): the credit state + top-up
+                  // action reads first on its own line, the BYOK escape hatch
+                  // sits under it. Inline, the escape hatch diluted the one
+                  // action that matters when the wallet is empty.
                   const noCreditsNotice = isNoCredits ? (
-                    <div style={{ fontSize: 12, lineHeight: 1.6 }}>
-                      <span style={{ color: '#E07060', fontWeight: 600 }}>No credits available. </span>
-                      <button
-                        type="button"
-                        onClick={() => host.openExternal ? host.openExternal(MINDS_BILLING_URL) : window.open(MINDS_BILLING_URL, '_blank')}
-                        style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--accent, #7CC4B6)', textDecoration: 'underline', fontSize: 'inherit', fontFamily: 'inherit' }}
-                      >Top up credits →</button>
-                      <span style={{ color: 'var(--text-muted)' }}>{' '}or add your own provider and API key below.</span>
+                    <div className="text-[12px] leading-[1.6] grid gap-px">
+                      <div>
+                        <span className="text-danger font-semibold">No credits available. </span>
+                        <button
+                          type="button"
+                          onClick={() => host.openExternal ? host.openExternal(MINDS_BILLING_URL) : window.open(MINDS_BILLING_URL, '_blank')}
+                          className={LINK_BTN}
+                        >Top up balance →</button>
+                      </div>
+                      <div className="text-ink-3">Or add your own provider and API key below.</div>
                     </div>
                   ) : null;
 
@@ -1598,9 +1559,9 @@ export default function SettingsView({
                         : role === 'router' ? 'fast respond-or-delegate gating on each turn, and history summarization'
                         : 'scratchpad code generation'
                     }.`} notice={noCreditsNotice}>
-                      <div style={{ display: 'grid', gap: 6 }}>
+                      <div className="grid gap-1.5">
                         {multipleProviders && (
-                          <label style={{ display: 'grid', gap: 4 }}>
+                          <label className="grid gap-1">
                             {fieldLabel('Provider')}
                             <Select
                               value={curType}
@@ -1626,9 +1587,18 @@ export default function SettingsView({
                             // longer wedges the control into a no-op "Saved" (ENG-739).
                             const { showStalePin, inputMode, selectValue } =
                               resolveModelPickerValue(curModel, modelList, allowOther, modelInputMode[role]);
-                            const modelOptions = buildModelOptions(curModel, modelList, allowOther, showStalePin, modelEnabled, settings.modelLabels || {});
+                            // The trailing bag carries MindsHub's authoritative
+                            // maker field (so the picker's sections stop being
+                            // inferred from the alias) plus the family metadata
+                            // that tags the moving aliases "latest".
+                            const modelOptions = buildModelOptions(
+                              curModel, modelList, allowOther, showStalePin, modelEnabled,
+                              settings.modelLabels || {},
+                              { modelProviders: settings.modelProviders, modelFamilies: settings.modelFamilies },
+                            );
                             return (
-                              <label style={{ display: 'grid', gap: 4 }}>
+                              <>
+                              <label className="grid gap-1">
                                 {fieldLabel('Model')}
                                 <ModelSelect
                                   value={selectValue || firstEnabledModel}
@@ -1687,10 +1657,27 @@ export default function SettingsView({
                                   />
                                 )}
                               </label>
-                            );
+                              {/* Needs-credits rows stay selectable (ENG-1248) —
+                                  this hint is the informed-consent half: the
+                                  choice is respected, the cost is named, and the
+                                  top-up route is one click away. Outside the
+                                  <label> so it doesn't leak into the combobox's
+                                  accessible name (PR #579 review). */}
+                              {!inputMode && !!curModel && isLocked(curModel) && (
+                                <div className="text-[11.5px] text-ink-3">
+                                  {displayModelLabel(curModel, settings.modelLabels || {})} needs credits.{' '}
+                                  <button
+                                    type="button"
+                                    onClick={() => host.openExternal ? host.openExternal(MINDS_BILLING_URL) : window.open(MINDS_BILLING_URL, '_blank')}
+                                    className={LINK_BTN}
+                                  >Top up your balance</button>
+                                  {' '}to use it.
+                                </div>
+                              )}
+                            </>);
                           })()
                         ) : (
-                          <label style={{ display: 'grid', gap: 4 }}>
+                          <label className="grid gap-1">
                             {fieldLabel('Model')}
                             <TextInput
                               value={curModel}
@@ -1701,7 +1688,7 @@ export default function SettingsView({
                           </label>
                         )}
                         {showEffort && (
-                          <label style={{ display: 'grid', gap: 4 }}>
+                          <label className="grid gap-1">
                             {fieldLabel('Reasoning effort')}
                             <Select
                               value={effortValue}
@@ -1712,13 +1699,13 @@ export default function SettingsView({
                           </label>
                         )}
                         {providerCheckingNotice && (
-                          <div id={providerWarnId} aria-live="polite" style={{ fontSize: 11.5, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <div id={providerWarnId} aria-live="polite" className="text-[11.5px] text-ink-3 flex items-center gap-1.5">
                             <Spinner intervalMs={90} />
                             Checking {providerDisplayName(provider)} connection…
                           </div>
                         )}
                         {providerUnusable && (
-                          <div id={providerWarnId} style={{ fontSize: 11.5, color: '#E07060' }}>
+                          <div id={providerWarnId} className="text-[11.5px] text-warning">
                             {providerUnconfigured
                               ? (provider
                                 ? `${providerDisplayName(provider)} isn't configured — add its credentials under LLM Providers above, or pick another provider.`
@@ -1738,11 +1725,11 @@ export default function SettingsView({
                   </>
                 );
               })()}
-            </CollapsibleGroup>
+            </SettingsGroup>
           </div>
         </div>
 
-        <CollapsibleGroup title="Agent Harness">
+        <SettingsGroup title="Agent Harness">
           <Section title="Harness" subtitle={`Which AI agent powers your tasks. ${agentLabel || 'Anton'} is the default; Hermes is an alternative agent with its own tool and memory system.`}>
             <ToggleGroup
               value={settings.harness || 'anton'}
@@ -1754,9 +1741,9 @@ export default function SettingsView({
               ]}
             />
           </Section>
-        </CollapsibleGroup>
+        </SettingsGroup>
 
-        <CollapsibleGroup title="Memory" defaultOpen={false}>
+        <SettingsGroup title="Memory">
           <Section title="Memory mode" subtitle={`How ${agentLabel || 'Anton'} updates its long-term memory.`}>
             <ToggleGroup
               value={settings.memoryMode ?? 'autopilot'}
@@ -1773,7 +1760,6 @@ export default function SettingsView({
             <Switch
               checked={settings.episodicMemory ?? true}
               onCheckedChange={(v) => setSetting('episodicMemory', v)}
-              title={`Save conversation history so ${agentLabel || 'Anton'} can recall past tasks.`}
               aria-label="Episodic memory"
             />
           </Section>
@@ -1781,7 +1767,6 @@ export default function SettingsView({
             <Switch
               checked={settings.proactiveDashboards ?? false}
               onCheckedChange={(v) => setSetting('proactiveDashboards', v)}
-              title="Auto-generate HTML reports from scratchpad output."
               aria-label="Proactive dashboards"
             />
           </Section>
@@ -1789,14 +1774,13 @@ export default function SettingsView({
             <Switch
               checked={settings.actFirst ?? true}
               onCheckedChange={(v) => setSetting('actFirst', v)}
-              title={`${agentLabel || 'Anton'} acts on sensible defaults and surfaces its assumptions as it goes, instead of pausing to ask.`}
               aria-label="Act first, ask later"
             />
           </Section>
-        </CollapsibleGroup>
+        </SettingsGroup>
 
         {hasBudgetSettings && (
-          <CollapsibleGroup title="Advanced Settings" defaultOpen={false}>
+          <SettingsGroup title="Advanced Settings">
             <Section
               title="Max steps per task"
               subtitle={`How many actions (running code, reading files, searching) ${agentLabel || 'Anton'} may take on one request before pausing to check in with you. Raise it so big tasks finish in one go; lower it for a tighter leash on time and cost.`}
@@ -1823,7 +1807,28 @@ export default function SettingsView({
                 setSetting={setSetting}
               />
             </Section>
-          </CollapsibleGroup>
+            {/* Gated on its OWN key, not folded into `hasBudgetSettings`.
+                This setting reaches the server one release after the other two,
+                so requiring it in that gate would hide the whole group — and
+                the two working fields with it — on every server that predates
+                it. The renderer ships OTA and leads the installed server. */}
+            {'maxTurnTokens' in settings && (
+              <Section
+                title="Max tokens per task"
+                subtitle={`The most tokens ${agentLabel || 'Anton'} may spend on one request before pausing to check in with you. Tokens are what your plan's monthly allowance is measured in, so a task that gets stuck can use up a large share of the month without finishing. Raise it if you routinely give it big jobs; lower it to cap what any single request can cost.`}
+              >
+                <BudgetNumberField
+                  settingKey="maxTurnTokens"
+                  value={settings.maxTurnTokens}
+                  savedValue={lastSavedSettings?.maxTurnTokens}
+                  spec={BUDGET_FIELDS.maxTurnTokens}
+                  label="Max tokens per task"
+                  setSetting={setSetting}
+                  unlimitedLabel="No limit"
+                />
+              </Section>
+            )}
+          </SettingsGroup>
         )}
       </SettingsSectionPanel>
     );
@@ -1903,13 +1908,13 @@ export default function SettingsView({
       transition: `opacity ${AUTO_SAVE_FADE_MS}ms ease`,
     };
     if (status.state === 'saving') {
-      return <span style={{ ...fadeStyle, fontSize: 11.5, color: 'var(--ink-4)', marginLeft: 8 }}>Saving…</span>;
+      return <span style={fadeStyle} className="text-[11.5px] text-ink-4 ml-2">Saving…</span>;
     }
     if (status.state === 'error') {
-      return <span style={{ ...fadeStyle, fontSize: 11.5, color: 'var(--danger, #e5484d)', marginLeft: 8 }}>Couldn't save</span>;
+      return <span style={fadeStyle} className="text-[11.5px] text-danger ml-2">Couldn't save</span>;
     }
     return (
-      <span style={{ ...fadeStyle, fontSize: 11.5, color: 'var(--ok, #3aa876)', marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+      <span style={fadeStyle} className="text-[11.5px] text-[var(--ok)] ml-2 inline-flex items-center gap-1">
         {Ico.check(11)} Saved
       </span>
     );
@@ -1940,7 +1945,7 @@ export default function SettingsView({
     // `autoSaved` surfaces a quiet "saves automatically" note on mobile so the
     // page doesn't read as "no way to save" next to Save-button sections.
     <SettingsSectionPanel autoSaved>
-      <CollapsibleGroup title="Appearance">
+      <SettingsGroup title="Appearance">
         <Section title="Style" subtitle="Normal, 8-Bit, or design your own with Custom. Combines with light and dark.">
           <ToggleGroup
             value={normalizeSkin(skin)}
@@ -1949,7 +1954,7 @@ export default function SettingsView({
             options={SKINS.map((s) => ({
               value: s.id,
               label: s.icon && Ico[s.icon]
-                ? (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{Ico[s.icon](13)} {s.label}</span>)
+                ? (<span className="inline-flex items-center gap-1.5">{Ico[s.icon](13)} {s.label}</span>)
                 : s.label,
               'aria-label': `${s.label} style`,
               title: s.title,
@@ -1964,13 +1969,13 @@ export default function SettingsView({
             options={[
               {
                 value: 'light',
-                label: (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{Ico.sun(13)} Light</span>),
+                label: (<span className="inline-flex items-center gap-1.5">{Ico.sun(13)} Light</span>),
                 'aria-label': 'Light theme',
                 title: 'Use the light theme.',
               },
               {
                 value: 'dark',
-                label: (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{Ico.moon(13)} Dark</span>),
+                label: (<span className="inline-flex items-center gap-1.5">{Ico.moon(13)} Dark</span>),
                 'aria-label': 'Dark theme',
                 title: 'Use the dark theme.',
               },
@@ -1985,20 +1990,21 @@ export default function SettingsView({
                 value={customTheme.accent}
                 onChange={(e) => onCustomThemeChange?.({ ...customTheme, accent: e.target.value })}
                 aria-label="Custom accent color"
-                style={{ width: 64, height: 32, padding: 2, border: '1px solid var(--line-2)', borderRadius: 6, background: 'var(--surface)', cursor: 'pointer' }}
+                className={COLOR_SWATCH_INPUT}
               />
             </Section>
             <Section title="Background — Light mode" subtitle="Pick a base color for Light — surfaces and text shades derive from it — or use Light's default.">
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div className="flex items-center gap-3">
                 <input
                   type="color"
                   value={customTheme.bgLight || '#fafafa'}
                   onChange={(e) => onCustomThemeChange?.({ ...customTheme, bgLight: e.target.value })}
                   disabled={customTheme.bgLight === null}
                   aria-label="Custom background color — Light mode"
-                  style={{ width: 64, height: 32, padding: 2, border: '1px solid var(--line-2)', borderRadius: 6, background: 'var(--surface)', cursor: 'pointer', opacity: customTheme.bgLight === null ? 0.45 : 1 }}
+                  className={COLOR_SWATCH_INPUT}
+                  style={{ opacity: customTheme.bgLight === null ? 0.45 : 1 }}
                 />
-                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: 'var(--text-muted)', cursor: 'pointer' }}>
+                <label className="inline-flex items-center gap-2 text-sm text-ink-3 cursor-pointer">
                   <Checkbox
                     checked={customTheme.bgLight === null}
                     onCheckedChange={(v) => onCustomThemeChange?.({ ...customTheme, bgLight: v ? null : '#fafafa' })}
@@ -2009,16 +2015,17 @@ export default function SettingsView({
               </div>
             </Section>
             <Section title="Background — Dark mode" subtitle="Pick a base color for Dark — surfaces and text shades derive from it — or use Dark's default.">
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div className="flex items-center gap-3">
                 <input
                   type="color"
                   value={customTheme.bgDark || '#080d18'}
                   onChange={(e) => onCustomThemeChange?.({ ...customTheme, bgDark: e.target.value })}
                   disabled={customTheme.bgDark === null}
                   aria-label="Custom background color — Dark mode"
-                  style={{ width: 64, height: 32, padding: 2, border: '1px solid var(--line-2)', borderRadius: 6, background: 'var(--surface)', cursor: 'pointer', opacity: customTheme.bgDark === null ? 0.45 : 1 }}
+                  className={COLOR_SWATCH_INPUT}
+                  style={{ opacity: customTheme.bgDark === null ? 0.45 : 1 }}
                 />
-                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: 'var(--text-muted)', cursor: 'pointer' }}>
+                <label className="inline-flex items-center gap-2 text-sm text-ink-3 cursor-pointer">
                   <Checkbox
                     checked={customTheme.bgDark === null}
                     onCheckedChange={(v) => onCustomThemeChange?.({ ...customTheme, bgDark: v ? null : '#080d18' })}
@@ -2055,15 +2062,14 @@ export default function SettingsView({
               <Switch
                 checked={customTheme.scanlines}
                 onCheckedChange={(v) => onCustomThemeChange?.({ ...customTheme, scanlines: v })}
-                title="Toggle the CRT scanline overlay."
                 aria-label="Scanline overlay"
               />
             </Section>
           </>
         )}
         <Section title="Greeting" subtitle="The line shown when you start a new task.">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <div style={{ flex: 1 }}>
+          <div className="flex items-center gap-1">
+            <div className="flex-1">
               <TextInput
                 value={settings.greeting}
                 onChange={(v) => autoSaveSetting('greeting', v, { debounceMs: 600 })}
@@ -2075,8 +2081,8 @@ export default function SettingsView({
           </div>
         </Section>
         <Section title="Sidebar title" subtitle="Shown at the top of the left-hand nav panel. Leave blank for the default, MindsHub.">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <div style={{ flex: 1 }}>
+          <div className="flex items-center gap-1">
+            <div className="flex-1">
               <TextInput
                 value={settings.navTitle || ''}
                 onChange={(v) => autoSaveSetting('navTitle', v, { debounceMs: 600 })}
@@ -2089,16 +2095,17 @@ export default function SettingsView({
           </div>
         </Section>
         <Section title="Sidebar title color" subtitle="Pick a color for the sidebar title, or follow the theme's default text color.">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div className="flex items-center gap-3">
             <input
               type="color"
               value={settings.navTitleColor || '#e8e8ec'}
               onChange={(e) => autoSaveSetting('navTitleColor', e.target.value, { debounceMs: 400 })}
               disabled={!settings.navTitleColor}
               aria-label="Sidebar title color"
-              style={{ width: 64, height: 32, padding: 2, border: '1px solid var(--line-2)', borderRadius: 6, background: 'var(--surface)', cursor: 'pointer', opacity: settings.navTitleColor ? 1 : 0.45 }}
+              className={COLOR_SWATCH_INPUT}
+              style={{ opacity: settings.navTitleColor ? 1 : 0.45 }}
             />
-            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: 'var(--text-muted)', cursor: 'pointer' }}>
+            <label className="inline-flex items-center gap-2 text-sm text-ink-3 cursor-pointer">
               <Checkbox
                 checked={!settings.navTitleColor}
                 onCheckedChange={(v) => autoSaveSetting('navTitleColor', v ? '' : '#e8e8ec')}
@@ -2110,18 +2117,17 @@ export default function SettingsView({
           </div>
         </Section>
         <Section title="Sidebar logo" subtitle="An icon shown next to the sidebar title. PNG, JPG, or SVG, under 300 KB.">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div className="flex items-center gap-3">
             {settings.navLogo && (
               <img
                 src={settings.navLogo}
                 alt=""
-                style={{ width: 32, height: 32, objectFit: 'contain', borderRadius: 6, border: '1px solid var(--line-2)', background: 'var(--surface)' }}
+                className="w-8 h-8 object-contain rounded-md border border-solid border-line-2 bg-surface"
               />
             )}
             <Button
               variant="subtle"
               onClick={() => logoInputRef.current?.click()}
-              title="Choose a logo image."
             >
               {settings.navLogo ? 'Change logo' : 'Upload logo'}
             </Button>
@@ -2138,67 +2144,63 @@ export default function SettingsView({
               ref={logoInputRef}
               type="file"
               accept="image/png,image/jpeg,image/svg+xml,image/webp"
-              style={{ display: 'none' }}
+              className="hidden"
               onChange={(e) => { handleLogoUpload(e.target.files?.[0]); e.target.value = ''; }}
             />
             <AutoSaveTag settingKey="navLogo" />
           </div>
           {logoError && (
-            <div style={{ fontSize: 12, color: 'var(--danger, #e5484d)', marginTop: 6 }}>{logoError}</div>
+            <div className="text-[12px] text-danger mt-1.5">{logoError}</div>
           )}
         </Section>
         <div className="settings-hide-mobile">
           <Section title="Animated background" subtitle="Off by default. Toggle on for an animated dot-grid behind the app instead of a flat surface.">
-            <div style={{ display: 'flex', alignItems: 'center' }}>
+            <div className="flex items-center">
               <Switch
                 checked={settings.showDots}
                 onCheckedChange={(v) => autoSaveSetting('showDots', v)}
-                title="Toggle the animated grid background."
                 aria-label="Animated background"
               />
               <AutoSaveTag settingKey="showDots" />
             </div>
           </Section>
           <Section title="Show nav-panel counters" subtitle="Badge counts on Projects / Scheduled / Artifacts / Connected apps, plus the time-since label on each Recent row.">
-            <div style={{ display: 'flex', alignItems: 'center' }}>
+            <div className="flex items-center">
               <Switch
                 checked={settings.showCounters !== false}
                 onCheckedChange={(v) => autoSaveSetting('showCounters', v)}
-                title="Show badge counts on Projects, Scheduled, Artifacts and Connected apps."
                 aria-label="Nav-panel counters"
               />
               <AutoSaveTag settingKey="showCounters" />
             </div>
           </Section>
           <Section title="Theme toggle button" subtitle="The light/dark button in the sidebar footer.">
-            <div style={{ display: 'flex', alignItems: 'center' }}>
+            <div className="flex items-center">
               <Switch
                 checked={settings.showThemeToggle !== false}
                 onCheckedChange={(v) => autoSaveSetting('showThemeToggle', v)}
-                title="Show or hide the sidebar's light/dark theme toggle."
                 aria-label="Theme toggle button"
               />
               <AutoSaveTag settingKey="showThemeToggle" />
             </div>
           </Section>
           <Section title="8-bit style toggle button" subtitle="The gamepad button in the sidebar footer that switches to 8-Bit Arcade style.">
-            <div style={{ display: 'flex', alignItems: 'center' }}>
+            <div className="flex items-center">
               <Switch
                 checked={settings.show8bitToggle !== false}
                 onCheckedChange={(v) => autoSaveSetting('show8bitToggle', v)}
-                title="Show or hide the sidebar's 8-bit style toggle."
                 aria-label="8-bit style toggle button"
               />
               <AutoSaveTag settingKey="show8bitToggle" />
             </div>
           </Section>
         </div>
-      </CollapsibleGroup>
+      </SettingsGroup>
     </SettingsSectionPanel>
   );
 
   const renderChannelsSection = () => (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
+    <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
       <ChannelsView />
     </div>
   );
@@ -2209,6 +2211,10 @@ export default function SettingsView({
       serverOnline={serverOnline}
       shellUpdate={shellUpdate}
       onDownloadShellUpdate={onDownloadShellUpdate}
+      shellAutoUpdate={shellAutoUpdate}
+      onDownloadShellAutoUpdate={onDownloadShellAutoUpdate}
+      onInstallShellAutoUpdate={onInstallShellAutoUpdate}
+      onRetryShellAutoUpdate={onRetryShellAutoUpdate}
     />
   );
 
@@ -2233,8 +2239,8 @@ export default function SettingsView({
 
   // Mobile (ENG-990): master-detail. The surface is a list of the six
   // sections; tapping one drills into a focused full-screen page for just
-  // that section (sub-groups render flat — see CollapsibleGroup — so there's
-  // no nested collapsing). The top-bar back control returns to the list; from
+  // that section (sub-groups render flat — see SettingsGroup — and no longer
+  // collapse on either platform). The top-bar back control returns to the list; from
   // the list it closes Settings (onClose). Only the open section mounts, so
   // its effects/dropdowns don't all run at once.
   if (mobile) {
@@ -2257,7 +2263,7 @@ export default function SettingsView({
             aria-label={inDetail ? 'Back to settings' : 'Close settings'}
             onClick={() => (inDetail ? onSectionChange?.(null) : onClose?.())}
           >
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
+            {Ico.chevLeft(22)}
           </button>
           <div className="settings-mobile__title" id="settings-mobile-title">
             {activeItem ? activeItem.label : 'Settings'}
@@ -2292,7 +2298,7 @@ export default function SettingsView({
                       style={disabled ? { opacity: 0.4, cursor: 'default' } : undefined}
                     >
                       {icon && (
-                        <span aria-hidden="true" style={{ display: 'inline-flex', flexShrink: 0, color: 'var(--text-muted)' }}>
+                        <span aria-hidden="true" className="inline-flex shrink-0 text-ink-3">
                           {icon}
                         </span>
                       )}
@@ -2319,7 +2325,7 @@ export default function SettingsView({
     : visibleNav[0]?.id;
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'row', minHeight: 0 }}>
+    <div className="flex-1 flex flex-row min-h-0">
       <SettingsNav section={effectiveSection} onSectionChange={onSectionChange} serverOnline={serverOnline} />
 
       {effectiveSection === 'agent' && renderAgentSection()}

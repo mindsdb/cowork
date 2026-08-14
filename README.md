@@ -228,6 +228,8 @@ src/
     server-process.ts    # FastAPI sidecar lifecycle (start/stop/health)
     server-updater.ts    # OTA server update (PyPI check, upgrade, rollback)
     ui-updater.ts        # OTA UI update system (fetch, verify, cache, rollback)
+    updater.ts           # Update orchestrator (couples server + UI, shell notice)
+    shell-auto-update-runtime.ts # Shell (Electron app) auto-update via electron-updater
     preload.ts           # contextBridge — exposes antontron API to renderer
   renderer/              # React UI (bundled by Vite)
     App.tsx              # App flow: loading -> setup -> onboarding -> cowork
@@ -251,7 +253,7 @@ assets/
 
 - **Minds integration**: The GUI replicates the `/connect` flow — lists minds via REST API, handles datasource selection (normalizes string/object refs), writes env vars to `~/.anton/.env`, and auto-restarts the server to pick up new config.
 
-- **OTA updates**: Both the React UI and the Python backend update over-the-air without requiring a new installer. See [Over-the-Air Updates](#over-the-air-updates).
+- **OTA updates**: The React UI and the Python backend update over-the-air (coupled, auto-applied at boot) without a new installer; the Electron shell auto-updates on stable/prod via `electron-updater`, installing on relaunch. See [Over-the-Air Updates](#over-the-air-updates).
 
 ---
 
@@ -308,9 +310,14 @@ The GUI provides a visual `/connect` flow:
 
 ## Over-the-Air Updates
 
-MindsHub Cowork has two independent OTA update channels so both the React frontend and the Python backend can be updated without shipping a new `.dmg` or `.exe`. The Electron shell itself (everything in `src/main/` and the preload) is **not** covered by OTA and only updates via a new installer.
+MindsHub Cowork updates three independently-versioned pieces, each through its own mechanism, so most updates land without the user reinstalling anything:
 
-UI OTA is gated by build kind (ENG-670): enabled in **`prod` builds only** — `stable`, `preview`, and `dev` builds always run their bundled renderer so testers see the branch under test. For *when* updates apply (boot vs. periodic checks, the server-down recovery exception, the `UI_UPDATE_MODE` escape hatch), see [docs/update-behavior.md](docs/update-behavior.md).
+- **UI** (React renderer) and **Server** (Python `cowork-server` sidecar) update fully over-the-air — no new `.dmg`/`.exe` needed. These two are **coupled** and auto-apply together at boot (server first, then UI).
+- **Shell** (the Electron app binary — everything in `src/main/` and the preload) can't hot-update itself, but on stable/prod it no longer requires a hand reinstall: an `electron-updater` background download installs the new build on the next relaunch (ENG-850). A manually-downloaded installer remains the fallback (ENG-849). The shell is **independent** of the UI/server pair and always needs a restart to take effect.
+
+That coupling split is why the user never sees a single combined "3 updates" prompt — the seamless UI/server pair and the restart-required shell are different surfaces. For *when* updates apply (boot vs. periodic checks, the server-down recovery exception, the `UI_UPDATE_MODE` escape hatch) and **what the user sees for each combination of pending updates**, see [docs/update-behavior.md](docs/update-behavior.md).
+
+UI OTA is gated by build kind (ENG-670): enabled in **`prod` builds only** — `stable`, `preview`, and `dev` builds always run their bundled renderer so testers see the branch under test.
 
 ### Server updates (source-aware)
 
@@ -349,12 +356,21 @@ The React UI updates via a separate public repo: [`mindsdb/antontron-releases`](
 
 How it works:
 
-1. Code is merged to `main` — **every** push to `main` runs the auto-release workflow (`release.yml`), which computes a CalVer version (e.g. `2.26.7.16.1`) via the shared `calver-release.yml` reusable in [mindsdb/github-actions](https://github.com/mindsdb/github-actions), tags it, builds the prod installer, and calls `publish-ui` with that exact version, so the UI bundle and the prod app installer always publish the **same** version
+1. Code is merged to `main` — **every** push to `main` runs the prod pipeline (`prod-build-deploy.yml`), whose `auto-release` job computes a CalVer version (e.g. `2.26.7.16.1`) via the shared `calver-release.yml` reusable in [mindsdb/github-actions](https://github.com/mindsdb/github-actions), tags it, builds the prod installer, and calls `publish-ui` with that exact version, so the UI bundle and the prod app installer always publish the **same** version
 2. The `publish-ui` workflow builds the renderer (with the version baked into `__APP_VERSION__`) and creates a `.tar.gz` bundle with a SHA-256 checksum
 3. Using a `RELEASES_TOKEN`, it pushes the bundle as a GitHub Release and updates `latest.json` on GitHub Pages — both on the public `antontron-releases` repo
 4. The app checks `latest.json` at launch and every 4 hours (static file, no auth, no API rate limits)
 5. An update is taken only if it passes the safety gates: strictly newer than the installed UI (no downgrades), SHA-256 verified, the server-first coupling held (a failed server update defers the UI), and any declared `min_server_version` floor satisfied
 6. **The update is applied automatically at boot** — the UI reloads silently, no user choice involved. There is no manual/auto setting in Settings anymore (ENG-858); `UI_UPDATE_MODE` in `~/.anton/.env` remains as an env-only support/QA escape hatch, not a user-facing preference. A mid-session periodic check (every 4h) still only surfaces a banner and never auto-applies, so a long-running session can always see and apply an update without an unplanned reload. A freshly-swapped bundle must finish loading within 15s or it is rolled back and quarantined. See [docs/update-behavior.md](docs/update-behavior.md) for the full timing rules.
+
+### Shell updates (auto-update / installer)
+
+The Electron **shell** (`src/main/`, preload, native deps) can't hot-swap itself while running, so it updates one of two ways:
+
+- **Automatic (ENG-850)** — packaged `stable` and `prod` builds carry a channel-specific [`electron-updater`](https://www.electron.build/auto-update) feed under `downloads.mindshub.ai/mindshub-cowork/updates/`. It checks at boot and every 4h, downloads the new build in the background, and installs it on the next relaunch (auto mode installs on a normal quit; the quit path first drains any in-flight UI/server apply so the two can't overlap). Enabled by default on **stable** (the first rollout ring); **prod** is opt-in via `SHELL_AUTO_UPDATE_ENABLED=true`, and `=false` is the stable emergency kill switch. `preview`/`dev` fail closed. A downloaded target is persisted so the next launch can detect and report a shell update that didn't actually apply. Signature/checksum failures are terminal for auto-update and fall back to the manual path.
+- **Manual notice (ENG-849)** — a `prod`-only fallback (also shown when auto-update is disabled or has failed): the poll compares the installed shell CalVer against `shellVersion` in `latest.json` and, if newer, shows a dismissible "New version available — Download" banner (per-version dismissal) linking to the installer on `downloads.mindshub.ai`. **Detection only** — it never downloads or installs.
+
+Both surface in the sidebar and in Settings → Updates. See `src/main/shell-auto-update-runtime.ts` (auto-update state machine) and `checkForShellUpdate()` in `src/main/updater.ts` (manual notice).
 
 #### Publishing
 
@@ -432,7 +448,7 @@ The single source of truth for the app version is [`package.json`](package.json)
 
 1. Open a PR that bumps `"version"` in `package.json` (e.g. `2.0.5` → `2.0.6`).
 2. Merge to `main`.
-3. [`.github/workflows/release.yml`](.github/workflows/release.yml) automatically creates the git tag and GitHub release. The `v*` tag triggers [`prod-build-installer.yml`](.github/workflows/prod-build-installer.yml), which builds, signs, and uploads installers to S3.
+3. [`.github/workflows/prod-build-deploy.yml`](.github/workflows/prod-build-deploy.yml) automatically creates the git tag and GitHub release, then cuts the installers from it in the same run via [`build-installers.yml`](.github/workflows/build-installers.yml), which builds, signs, and uploads them to S3.
 
 **Don't:**
 - Create GitHub releases manually — the `v*` tag namespace is locked via a repo ruleset.
@@ -564,58 +580,83 @@ Installers are built on GitHub-hosted runners (required for Apple notarization a
 
 | Flavor | Trigger | S3 destination |
 | --- | --- | --- |
-| **preview** | PR with `signed-macos-pkg` or `signed-windows-ev` label | `s3://anton-installer/anton/{mac,windows}/previews/` |
-| **stable** | Push to `staging` | `s3://anton-installer/anton/{mac,windows}/snapshots/` |
-| **prod** | Push tag `v*` | `s3://anton-installer/anton/{mac,windows}/anton-{version}.{pkg,exe}` + `anton-latest.{pkg,exe}` |
-
-Prod is gated: the upload job asserts `package.json` version matches the release tag.
+| **preview** | PR with `signed-macos-pkg` or `signed-windows-ev` label | `s3://anton-installer/mindshub-cowork/{mac,windows}/previews/` |
+| **stable** | Push to `staging` | `s3://anton-installer/mindshub-cowork/{mac,windows}/snapshots/` + `mindshub-cowork-staging.{pkg,exe}` + `staging.json` |
+| **prod** | Push to `main` (via the CalVer release) | `s3://anton-installer/mindshub-cowork/{mac,windows}/mindshub-cowork-{version}.{pkg,exe}` + `mindshub-cowork-latest.{pkg,exe}` + `latest.json` |
 
 ### S3 layout
 
-The bucket is **`anton-installer`** in `us-east-1`. It is **private** — no public reads, no public ACLs. Everything is served through CloudFront. AWS credentials come from the `mdb-prod` pod's IAM role (not GitHub secrets). The role must have `s3:PutObject` on `arn:aws:s3:::anton-installer/anton/*`.
+The bucket is **`anton-installer`** in `us-east-1`. It is **private** — no public reads, no public ACLs. Everything is served through CloudFront. AWS credentials come from the `mdb-prod` pod's IAM role (not GitHub secrets). The role has `s3:GetObject`, `s3:PutObject`, `s3:ListBucket` and `s3:DeleteObject` on `arn:aws:s3:::anton-installer` and `arn:aws:s3:::anton-installer/*`, granted by the `AllowS3AntonInstallerAccess` statement in `templates/eks-oidc-roles/github-runner.tf` in the `mindsdb/terraform` repo.
 
 ```
 s3://anton-installer/
-  anton/
+  mindshub-cowork/
     mac/
-      anton-{version}.pkg            # prod — versioned
-      anton-latest.pkg               # prod — always points at the most recent release
-      previews/anton-{version}-preview-{sha}.pkg
-      snapshots/anton-{version}-stable-{sha}.pkg
+      latest.json                                  # prod — manifest: version, url, size, sha256
+      staging.json                                 # stable — the same, for the staging ring
+      mindshub-cowork-{version}.pkg                # prod — versioned, written once
+      mindshub-cowork-latest.pkg                   # prod — alias, rewritten every release
+      mindshub-cowork-staging.pkg                  # stable — alias, rewritten every staging push
+      previews/mindshub-cowork-{version}-preview-{sha}.pkg
+      snapshots/mindshub-cowork-{version}-stable-{sha}.pkg
     windows/
-      anton-{version}.exe
-      anton-latest.exe
-      previews/anton-{version}-preview-{sha}.exe
-      snapshots/anton-{version}-stable-{sha}.exe
+      latest.json
+      staging.json
+      mindshub-cowork-{version}.exe
+      mindshub-cowork-latest.exe
+      mindshub-cowork-staging.exe
+      previews/mindshub-cowork-{version}-preview-{sha}.exe
+      snapshots/mindshub-cowork-{version}-stable-{sha}.exe
 ```
 
-No sidecar `.sha256` files are published — the `.pkg` is notarized by Apple and the `.exe` is EV-signed via SSL.com, so OS-level signature verification is the integrity guarantee.
+Each manifest is named after the alias it supersedes, so a consumer already reading `-latest` or `-staging` knows which one is its own. Preview builds get no manifest: they are per-pull-request, and nothing should be advertising one.
 
-> **Lifecycle tip**: set bucket lifecycle rules to auto-expire objects under `previews/` (e.g. 14 days) and `snapshots/` (e.g. 60 days) to keep costs bounded. Prod objects have no expiration.
+**A prod version's bytes are published once.** If a versioned key already exists with different bytes (rebuilding a version re-signs it, and signing stamps a timestamp), the release fails rather than replacing them. Cut a new version instead of republishing one. The `-latest` and `-staging` aliases are then written as server-side copies of that key, so the alias always serves the exact build the manifest names.
+
+That rule is prod's, because prod is where a version is cut once and its URL is advertised to users. **Previews and stable snapshots overwrite.** Both are named after a commit rather than a release and get rebuilt whenever anyone re-runs the job, so create-only would answer an ordinary re-run with "cut a new version" for a key that has no version to cut. They carry the 60-second alias TTL instead of `immutable`, since advertising a key as immutable while overwriting it is what strands a stale copy at the edge.
+
+Wherever create-only does apply, only a genuine `404` from S3 counts as "not published yet"; a `403`, a throttle or an expired token stops the release rather than being read as absence. The same rule governs the updater payloads under `updates/`, which are immutable in both channels.
+
+**Object headers** are set at publish time, because CloudFront otherwise applies its own one-hour default to everything:
+
+| Object | `Cache-Control` | Why |
+| --- | --- | --- |
+| Prod versioned installers | `public, max-age=31536000, immutable` | The bytes never change, so a resume can trust a validator that never moves |
+| `-latest` / `-staging` aliases | `public, max-age=60` | Rewritten every release; a minute bounds how long a stale edge copy outlives one |
+| `previews/` and `snapshots/` builds | `public, max-age=60` | Overwritten on a re-run, so `immutable` would strand the previous bytes at the edge |
+| `updates/` payloads and blockmaps | `public,max-age=31536000,immutable` | Named in a channel manifest by hash; the bytes behind that hash never change |
+| `latest.json` / `staging.json` | `no-cache, no-store, must-revalidate` | A cached manifest would hide a release entirely |
+
+Installers also carry `Content-Type: application/octet-stream` and `Content-Disposition: attachment; filename="mindshub-cowork-{version}.{pkg,exe}"`, so a file saved from the alias URL is still named after the version it actually is.
+
+No sidecar `.sha256` files are published. The checksum lives in `latest.json`, and OS-level signature verification (Apple notarization, SSL.com EV) remains the tamper guarantee.
+
+> **Lifecycle tip**: set bucket lifecycle rules to auto-expire objects under `previews/` (e.g. 14 days) and `snapshots/` (e.g. 60 days) to keep costs bounded. Prod objects have no expiration. The bucket has no `abort_incomplete_multipart_upload` rule today, so a failed upload leaves billable orphaned parts.
 
 ### Public downloads at `downloads.mindshub.ai`
 
 End users never hit S3 directly. The `anton-installer` bucket is fronted by a CloudFront distribution aliased to **`https://downloads.mindshub.ai`** (the legacy domain `downloads.mindsdb.com` also continues to work during the transition).
 
-- macOS: https://downloads.mindshub.ai/anton/mac/anton-latest.pkg
-- Windows: https://downloads.mindshub.ai/anton/windows/anton-latest.exe
+**Start from the manifest, not the alias.** `latest.json` names the immutable URL for the current release and the checksum to verify it against, which is the only combination that survives an interrupted download:
 
-Public URL layout:
+```console
+$ curl -sS https://downloads.mindshub.ai/mindshub-cowork/mac/latest.json
+{
+  "version": "2.26.8.10.1",
+  "key": "mindshub-cowork/mac/mindshub-cowork-2.26.8.10.1.pkg",
+  "url": "https://downloads.mindshub.ai/mindshub-cowork/mac/mindshub-cowork-2.26.8.10.1.pkg",
+  "size_bytes": 220393119,
+  "sha256": "…",
+  "published_at": "2026-08-12T00:22:46.681Z"
+}
+```
 
-```
-https://downloads.mindshub.ai/
-  anton/
-    mac/
-      anton-{version}.pkg                              # prod — versioned
-      anton-latest.pkg                                 # prod — always the newest release
-      previews/anton-{version}-preview-{sha}.pkg
-      snapshots/anton-{version}-stable-{sha}.pkg
-    windows/
-      anton-{version}.exe
-      anton-latest.exe
-      previews/anton-{version}-preview-{sha}.exe
-      snapshots/anton-{version}-stable-{sha}.exe
-```
+The `-latest` aliases stay for the consumers that hardcode them, and still work:
+
+- macOS: https://downloads.mindshub.ai/mindshub-cowork/mac/mindshub-cowork-latest.pkg
+- Windows: https://downloads.mindshub.ai/mindshub-cowork/windows/mindshub-cowork-latest.exe
+
+The difference matters mid-download. An alias is rewritten on every release, so a transfer interrupted across one resumes with a validator that no longer matches and gets the whole body again instead of the tail. A versioned URL is written once, so the resume succeeds, and the manifest's `sha256` is how a truncated file gets told apart from a good one.
 
 Infrastructure:
 
@@ -626,27 +667,33 @@ Infrastructure:
 
 CloudFront behavior:
 
-- Path mapping is **1:1** — the S3 key `anton/mac/anton-latest.pkg` is reachable at `https://downloads.mindshub.ai/anton/mac/anton-latest.pkg`.
+- Path mapping is **1:1** — the S3 key `mindshub-cowork/mac/mindshub-cowork-latest.pkg` is reachable at `https://downloads.mindshub.ai/mindshub-cowork/mac/mindshub-cowork-latest.pkg`.
 - Viewer-protocol policy is `redirect-to-https`.
 - `GET /` → 302 redirect to `https://mindshub.ai` via the `downloads-root-redirect` CloudFront Function (viewer-request).
-- `GET /<missing key>` (S3 403/404) → redirect to `https://mindshub.ai` via `/redirect.html` (meta-refresh + JS). Unknown paths bounce to the marketing site instead of returning an XML error.
-- Default cache TTL is 1 hour, max 24 hours. Compression is enabled. No query strings or cookies are forwarded.
+- `GET /<missing key>` (S3 403/404) → `/redirect.html`, 665 bytes of meta-refresh HTML pointing at `https://mindshub.ai`, served under a `404`. It answered `200` until ENG-1432 corrected the two `custom_error_response` blocks, which is how a missing manifest could pass a status check.
+- Cache TTL: min 0, default 1 hour, max 24 hours. The default applies only to objects whose origin sends no `Cache-Control`, and min 0 is what lets `no-store` on `latest.json` be honoured. The 24-hour max caps edge retention, so `max-age=31536000` on a versioned key is a year to the browser and a day at the edge.
+- Compression is enabled, but no installer content type is on CloudFront's compressible list. No query strings or cookies are forwarded, so a `?cachebust=` suffix does nothing here.
 
-> **Cache invalidations**: `anton-latest.{pkg,exe}` is overwritten on each prod release, so CloudFront may serve the stale copy for up to 1 hour. Create an invalidation for `/anton/mac/anton-latest.pkg` and/or `/anton/windows/anton-latest.exe` if a release needs to be visible immediately. Versioned URLs (`anton-{version}.pkg`) are immutable and never need invalidation.
+> **Check these URLs by their bytes, not their status.** A correct status still cannot tell a current object from a stale one, which is the failure an immutable key is most exposed to. And `curl --retry` fires only on a timeout or a 408/429/5xx, so it does not cover the case that actually needs waiting: a key created moments ago, shadowed by an edge that cached the `404` for it. Both checks in the release parse the body and compare a checksum, and wait in an explicit loop.
 
-The [`upload-installer-to-s3.yml`](.github/workflows/upload-installer-to-s3.yml) workflow prints both the `s3://` URI and the `https://downloads.mindshub.ai/...` URL for every object it uploads in its GitHub step summary, so PRs and releases have a clickable public URL in the Actions run.
+> **Cache invalidations**: the aliases carry `max-age=60`, so a stale edge copy expires in a minute and a release needs no invalidation to become visible. Versioned URLs are immutable and never need one. Nothing in the release calls for an invalidation, though the `mdb-prod` runner does hold `cloudfront:CreateInvalidation` on `*` already, through the inline sam-deploy policy attached to the same role.
+
+Two things watch this path. [`upload-installer-to-s3.yml`](.github/workflows/upload-installer-to-s3.yml) verifies its own work before the release goes green: it re-reads every uploaded object from S3 and compares checksums, then fetches the manifest over the CDN, checks its `sha256` against the installer the run built, and asserts the versioned URL answers a `Range` request with a `206` and a stable ETag. [`release-smoke.yml`](.github/workflows/release-smoke.yml) then downloads the result in a real Chromium, the way a user does, and runs nightly to catch a key that was correct at publish time and has since drifted. The release runs it against the **prod channel only**, passing the version it just tagged: `staging.json` is written by a push to `staging`, so asserting it from the prod pipeline would fail a release that worked, and without the version the suite would pass just as happily against the manifest the previous release left behind. The nightly run takes both channels and pins neither.
 
 ### Workflow files
 
 | Workflow | Trigger | Purpose |
 | --- | --- | --- |
-| [`release.yml`](.github/workflows/release.yml) | Version bump merged to `main` | Creates git tag + GitHub release |
-| [`dev-build-installer.yml`](.github/workflows/dev-build-installer.yml) | PR with label | Preview builds |
-| [`staging-build-installer.yml`](.github/workflows/staging-build-installer.yml) | Push to `staging` | Stable builds |
-| [`prod-build-installer.yml`](.github/workflows/prod-build-installer.yml) | Push tag `v*` | Prod builds |
+| [`dev-build-deploy.yml`](.github/workflows/dev-build-deploy.yml) | Pull request | Tests, PR env, and label-gated preview installers |
+| [`staging-build-deploy.yml`](.github/workflows/staging-build-deploy.yml) | Push to `staging` | Tests, staging image + rollout, stable installers |
+| [`prod-build-deploy.yml`](.github/workflows/prod-build-deploy.yml) | Push to `main` | Tests, prod image, CalVer tag + release, prod installers, OTA UI bundle |
+| [`build-deploy.yml`](.github/workflows/build-deploy.yml) | Called | Build + push the web SPA image, then roll it out |
+| [`build-installers.yml`](.github/workflows/build-installers.yml) | Called | Both platforms' installers: build, sign, upload |
+| [`pipeline-watchdog.yml`](.github/workflows/pipeline-watchdog.yml) | Scheduled | Alerts on runs that never started (`startup_failure`) |
 | [`build-macos-pkg.yml`](.github/workflows/build-macos-pkg.yml) | Called | Build + sign + notarize `.pkg` |
 | [`build-windows-installer.yml`](.github/workflows/build-windows-installer.yml) | Called | Build + sign `.exe` |
-| [`upload-installer-to-s3.yml`](.github/workflows/upload-installer-to-s3.yml) | Called | Upload to S3 |
+| [`upload-installer-to-s3.yml`](.github/workflows/upload-installer-to-s3.yml) | Called | Publish to S3, write the updater feed and `latest.json`, verify both over the CDN |
+| [`release-smoke.yml`](.github/workflows/release-smoke.yml) | Called after a prod release / nightly | Download the published installers in a real Chromium and check them |
 | [`publish-ui.yml`](.github/workflows/publish-ui.yml) | Push to `main` / `ui-v*` tag / manual | OTA UI bundle publish |
 
 ### Required GitHub Secrets
@@ -657,7 +704,7 @@ Windows signing: `SSL_USERNAME`, `SSL_PASSWORD`, `SSL_CREDENTIAL_ID`, `SSL_TOTP_
 
 OTA UI publishing: `RELEASES_TOKEN` (fine-grained PAT scoped to `mindsdb/antontron-releases`)
 
-> **No AWS secrets.** The upload job runs on `mdb-prod` and picks up AWS credentials from the pod's IAM role. The role must have `s3:PutObject` on `arn:aws:s3:::anton-installer/anton/*`.
+> **No AWS secrets.** The upload job runs on `mdb-prod` and picks up AWS credentials from the pod's IAM role. The role needs `s3:GetObject` and `s3:PutObject` on `arn:aws:s3:::anton-installer/*` — `GetObject` as well as `PutObject`, because the publish path reads a key back to check whether it already holds these bytes, and copies the versioned key onto the alias server-side.
 
 ### OTA UI publishing setup
 

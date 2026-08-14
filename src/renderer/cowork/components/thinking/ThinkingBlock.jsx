@@ -19,6 +19,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
 import Ico from '../Icons';
+import { Tooltip } from '../ui';
 import { ThinkingStep } from './ThinkingStep';
 import { WorkingIndicator } from './WorkingIndicator';
 import { truncateLabel } from '../../lib/responseStreamAdapter';
@@ -111,53 +112,54 @@ export function ThinkingBlock({
 
   return (
     <div className="w-full">
-      <button
-        type="button"
-        onClick={toggleExpanded}
-        aria-expanded={isExpanded}
-        title={isExpanded ? 'Hide thought process' : 'Show thought process'}
-        className={clsx(
-          'group flex w-full cursor-pointer items-center gap-1 rounded-md py-1 text-left',
-          'border-0 bg-transparent'
-        )}
-      >
-        {isActive ? (
-          <WorkingIndicator
-            slotId={slotId}
-            label={
-              isExpanded
-                ? <WorkingLabel startedAt={startedAt} />
-                : (currentLabel || 'Thinking…')
-            }
-          />
-        ) : (
-          <>
-            {/* Same size as the answer body (14.5px) — the header reads
-                as part of the message, not as fine print. */}
-            <span className="flex-none text-[14.5px] text-ink-3">
-              {finalDuration ? `Worked for ${finalDuration}` : 'Thought process'}
-            </span>
-            <span
-              className={clsx(
-                'inline-flex flex-none items-center self-center text-ink-4',
-                'transition-transform duration-200',
-                isExpanded && 'rotate-180'
-              )}
-            >
-              {Ico.chevDown(16)}
-            </span>
-          </>
-        )}
+      <Tooltip content={isExpanded ? 'Hide thought process' : 'Show thought process'}>
+        <button
+          type="button"
+          onClick={toggleExpanded}
+          aria-expanded={isExpanded}
+          className={clsx(
+            'group flex w-full cursor-pointer items-center gap-1 rounded-md py-1 text-left',
+            'border-0 bg-transparent'
+          )}
+        >
+          {isActive ? (
+            <WorkingIndicator
+              slotId={slotId}
+              label={
+                isExpanded
+                  ? <WorkingLabel startedAt={startedAt} />
+                  : (currentLabel || 'Thinking…')
+              }
+            />
+          ) : (
+            <>
+              {/* Same size as the answer body (14.5px) — the header reads
+                  as part of the message, not as fine print. */}
+              <span className="flex-none text-[14.5px] text-ink-3">
+                {finalDuration ? `Worked for ${finalDuration}` : 'Thought process'}
+              </span>
+              <span
+                className={clsx(
+                  'inline-flex flex-none items-center self-center text-ink-4',
+                  'transition-transform duration-200',
+                  isExpanded && 'rotate-180'
+                )}
+              >
+                {Ico.chevDown(16)}
+              </span>
+            </>
+          )}
 
-        {timedOutCount > 0 && (
-          <span
-            className="ml-2 flex-none rounded-md border border-line bg-surface-2 px-1.5 py-px text-[10px] uppercase tracking-wider text-danger"
-            title={`${timedOutCount} cell${timedOutCount > 1 ? 's' : ''} timed out — the agent retried with smaller steps. Expand to see which.`}
-          >
-            {timedOutCount} timed out
-          </span>
-        )}
-      </button>
+          {timedOutCount > 0 && (
+            <span
+              className="ml-2 flex-none rounded-md border border-line bg-surface-2 px-1.5 py-px text-[10px] uppercase tracking-wider text-danger"
+              title={`${timedOutCount} cell${timedOutCount > 1 ? 's' : ''} timed out — the agent retried with smaller steps. Expand to see which.`}
+            >
+              {timedOutCount} timed out
+            </span>
+          )}
+        </button>
+      </Tooltip>
 
       {isExpanded && (hasSteps || (isActive && currentThought?.text)) && (
         <div className="ml-0 mt-1">

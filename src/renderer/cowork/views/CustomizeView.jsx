@@ -8,6 +8,7 @@
 // user to wire something up.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { TriangleAlert } from 'lucide-react';
 import Ico from '../components/Icons';
 import { Alert, Button, EmptyState } from '../components/ui';
 import { CONNECTIONS_VAULT_KEEP, deleteDatasource, fetchConnector, fetchDatasources, fetchSavedConnection } from '../api';
@@ -21,10 +22,7 @@ import {
   SortPill,
   useCollectionShortcut,
 } from '../components/collection';
-
-const FONT_BODY    = "var(--font-body)";
-const FONT_DISPLAY = "var(--font-display)";
-const FONT_MONO    = "var(--font-mono)";
+import { cn } from '../lib/cn';
 
 // ─── Header ──────────────────────────────────────────────────────────────
 
@@ -64,27 +62,14 @@ function ConnectionsCounts({ search, total, filtered }) {
 // Only rendered when there's at least one existing connection — the
 // EmptyState already covers the zero-connection case.
 function NewConnectionCard({ onClick }) {
-  const [hover, setHover] = useState(false);
   return (
     <button
       type="button"
       onClick={onClick}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      style={{
-        minHeight: 120, borderRadius: 10,
-        padding: '14px 16px',
-        background: 'transparent',
-        border: `1px dashed ${hover ? 'var(--accent)' : 'var(--line-2)'}`,
-        color: hover ? 'var(--accent)' : 'var(--ink-3)',
-        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-        gap: 8, cursor: 'pointer',
-        transition: 'border-color .15s ease, color .15s ease',
-        font: 'inherit',
-      }}
+      className="flex min-h-[120px] cursor-pointer flex-col items-center justify-center gap-2 rounded-[10px] border border-dashed border-line-2 bg-transparent px-4 py-3.5 text-ink-3 [font:inherit] [transition:border-color_.15s_ease,color_.15s_ease] hover:border-accent hover:text-accent"
     >
-      <span style={{ display: 'inline-flex' }}>{Ico.plus(16)}</span>
-      <span style={{ fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500 }}>
+      <span className="inline-flex">{Ico.plus(16)}</span>
+      <span className="font-[family-name:var(--font-body)] text-[13px] font-medium">
         New connection
       </span>
     </button>
@@ -92,15 +77,14 @@ function NewConnectionCard({ onClick }) {
 }
 
 function ConnectionCard({ connection, onDelete, onModify }) {
-  const [hover, setHover] = useState(false);
   const [busy, setBusy] = useState(false);
   const engine = connection.engine || 'unknown';
   const name = connection.name || connection.slug || 'unnamed';
-  // Human-facing title (label or derived identity, e.g. "Support" /
-  // "user@gmail.com"); falls back to the slug. `name` stays the identity used
-  // for disconnect/modify.
-  const displayName =
-    connection.display_name || connection.displayName || name;
+  // Card title is the user-assigned label; a dash for pre-migration
+  // connections that don't have one yet. Identity (host/db, email, etc.)
+  // moves to a subtitle line below instead of being the title.
+  const title = connection.user_label || '—';
+  const subtitle = connection.display_name || connection.displayName || null;
   const updated = connection.updated_at || connection.updatedAt || null;
   const needsReconnect = connection.status === 'needs_reconnect';
 
@@ -130,72 +114,45 @@ function ConnectionCard({ connection, onDelete, onModify }) {
       tabIndex={canModify ? 0 : undefined}
       onClick={canModify ? handleCardClick : undefined}
       onKeyDown={canModify ? (e) => { if (e.key === 'Enter') handleCardClick(); } : undefined}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      style={{
-        background: needsReconnect
-          ? 'color-mix(in srgb, var(--warning, #f5a623) 8%, var(--surface))'
-          : (hover ? 'var(--surface-2)' : 'var(--surface)'),
-        border: needsReconnect
-          ? `1px solid color-mix(in srgb, var(--warning, #f5a623) 45%, transparent)`
-          : `1px solid ${hover ? 'var(--line-2)' : 'var(--line)'}`,
-        borderRadius: 10,
-        padding: '14px 16px',
-        minHeight: 120,
-        display: 'flex', flexDirection: 'column', gap: 10,
-        transition: 'background .15s ease, border-color .15s ease',
-        position: 'relative',
-        cursor: canModify ? 'pointer' : 'default',
-        outline: 'none',
-      }}
+      className={cn(
+        'relative flex min-h-[120px] flex-col gap-2.5 rounded-[10px] px-4 py-3.5 outline-none',
+        '[transition:background_.15s_ease,border-color_.15s_ease]',
+        canModify ? 'cursor-pointer' : 'cursor-default',
+        needsReconnect
+          ? 'border border-solid border-[color-mix(in_srgb,var(--warning)_45%,transparent)] bg-[color-mix(in_srgb,var(--warning)_8%,var(--surface))]'
+          : 'border border-solid border-line bg-surface hover:border-line-2 hover:bg-surface-2',
+      )}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-        <span style={{
-          display: 'inline-flex', flexShrink: 0,
-          color: needsReconnect ? 'var(--warning, #f5a623)' : 'var(--ink-3)',
-        }} title={needsReconnect ? 'Reconnection required' : undefined}>
+      <div className="flex items-center gap-2 min-w-0">
+        <span
+          className={cn('inline-flex shrink-0', needsReconnect ? 'text-warning' : 'text-ink-3')}
+          title={needsReconnect ? 'Reconnection required' : undefined}
+        >
           {needsReconnect
-            ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3 2 20h20L12 3Z"/><path d="M12 10v4M12 17h.01"/></svg>
+            ? <TriangleAlert size={14} strokeWidth={1.5} aria-hidden="true" />
             : Ico.database(14)}
         </span>
-        <span style={{
-          flex: 1, minWidth: 0,
-          fontFamily: FONT_DISPLAY, fontSize: 16, fontWeight: 600,
-          letterSpacing: '0', color: 'var(--ink)',
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }} title={displayName !== name ? name : undefined}>{displayName}</span>
-        <span style={{
-          flexShrink: 0,
-          fontFamily: FONT_MONO, fontSize: 10.5,
-          color: 'var(--ink-4)', letterSpacing: '0.04em',
-          textTransform: 'uppercase',
-          padding: '2px 7px', borderRadius: 99,
-          background: 'var(--surface-3)',
-          border: '1px solid var(--line)',
-        }}>{engine}</span>
+        <span
+          className="flex-1 min-w-0 truncate font-[family-name:var(--font-display)] text-[16px] font-semibold tracking-normal text-ink"
+          title={title !== name ? name : undefined}
+        >{title}</span>
+        <span className="shrink-0 rounded-full border border-solid border-line bg-surface-3 px-[7px] py-[2px] font-[family-name:var(--font-mono)] text-[10.5px] uppercase tracking-[0.04em] text-ink-4">{engine}</span>
       </div>
 
-      <div style={{ flex: 1 }} />
+      {subtitle && (
+        <span className="truncate text-sm text-ink-3">{subtitle}</span>
+      )}
+
+      <div className="flex-1" />
 
       {needsReconnect && (
-        <div style={{
-          fontFamily: FONT_BODY, fontSize: 12, fontWeight: 500,
-          color: 'var(--warning, #f5a623)',
-        }}>
+        <div className="font-[family-name:var(--font-body)] text-[12px] font-medium text-warning">
           Reconnection required — click to fix
         </div>
       )}
 
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 10,
-        borderTop: '1px solid var(--line)',
-        paddingTop: 10,
-      }}>
-        <span style={{
-          flex: 1,
-          fontFamily: FONT_MONO, fontSize: 10.5,
-          color: 'var(--ink-4)', letterSpacing: '0.04em',
-        }}>
+      <div className="flex items-center gap-2.5 border-t border-x-0 border-b-0 border-solid border-line pt-2.5">
+        <span className="flex-1 font-[family-name:var(--font-mono)] text-[10.5px] tracking-[0.04em] text-ink-4">
           {updated ? `updated ${updated}` : 'connected'}
         </span>
         <Button
@@ -203,7 +160,6 @@ function ConnectionCard({ connection, onDelete, onModify }) {
           size="sm"
           onClick={handleRemove}
           disabled={busy}
-          title="Disconnect"
         >
           {busy ? 'Removing…' : 'Disconnect'}
         </Button>
@@ -231,15 +187,9 @@ function humanLabel(name) {
 
 function MetaRow({ label, value }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-      <span style={{
-        width: 100, flexShrink: 0,
-        fontFamily: FONT_BODY, fontSize: 12, color: 'var(--ink-4)',
-      }}>{label}</span>
-      <span style={{
-        fontFamily: FONT_MONO, fontSize: 12, color: 'var(--ink)',
-        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-      }}>{value || '—'}</span>
+    <div className="flex items-baseline gap-2">
+      <span className="w-[100px] shrink-0 font-[family-name:var(--font-body)] text-[12px] text-ink-4">{label}</span>
+      <span className="truncate font-[family-name:var(--font-mono)] text-[12px] text-ink">{value || '—'}</span>
     </div>
   );
 }
@@ -360,51 +310,28 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
       <div
         aria-hidden="true"
         onClick={onClose}
-        style={{
-          position: 'fixed', inset: 0, zIndex: 70,
-          background: 'rgba(0,0,0,0.18)',
-        }}
+        className="fixed inset-0 z-[70] bg-[rgba(0,0,0,0.18)]"
       />
 
       {/* Slide-in panel */}
       <div
         role="dialog"
         aria-label={`${spec?.label || connection.engine} connection details`}
-        style={{
-          position: 'fixed', top: 0, right: 0, bottom: 0, zIndex: 71,
-          width: 'min(400px, 92vw)',
-          background: 'var(--surface)',
-          borderLeft: '1px solid var(--line)',
-          boxShadow: '-12px 0 40px rgba(0,0,0,0.12)',
-          display: 'flex', flexDirection: 'column',
-          fontFamily: FONT_BODY,
-        }}
+        className="fixed top-0 right-0 bottom-0 z-[71] flex w-[min(400px,_92vw)] flex-col border-l border-y-0 border-r-0 border-solid border-line bg-surface font-[family-name:var(--font-body)] shadow-[-12px_0_40px_rgba(0,0,0,0.12)]"
       >
         {/* Header */}
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 12,
-          padding: '18px 20px 16px',
-          borderBottom: '1px solid var(--line)',
-          flexShrink: 0,
-        }}>
-          <span style={{
-            display: 'inline-grid', placeItems: 'center',
-            width: 36, height: 36, borderRadius: 8,
-            background: 'var(--surface-2)', flexShrink: 0,
-          }}>
+        <div className="flex shrink-0 items-center gap-3 border-b border-x-0 border-t-0 border-solid border-line pt-[18px] px-5 pb-4">
+          <span className="inline-grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-surface-2">
             {spec?.logo_url
-              ? <img src={spec.logo_url} alt="" style={{ width: 22, height: 22, objectFit: 'contain' }} />
-              : <span style={{ color: 'var(--ink-3)', display: 'inline-flex' }}>{Ico.database(18)}</span>
+              ? <img src={spec.logo_url} alt="" className="h-[22px] w-[22px] object-contain" />
+              : <span className="inline-flex text-ink-3">{Ico.database(18)}</span>
             }
           </span>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="s-h3" style={{
-              color: 'var(--ink)',
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>
+          <div className="min-w-0 flex-1">
+            <div className="s-h3 truncate">
               {spec?.label || connection.engine}
             </div>
-            <div style={{ fontFamily: FONT_MONO, fontSize: 11, color: 'var(--ink-4)', marginTop: 1 }}>
+            <div className="mt-[1px] font-[family-name:var(--font-mono)] text-xs text-ink-4">
               {connection.name}
             </div>
           </div>
@@ -412,29 +339,18 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
             type="button"
             onClick={onClose}
             aria-label="Close"
-            style={{
-              background: 'transparent', border: 0,
-              color: 'var(--ink-3)', cursor: 'pointer',
-              width: 28, height: 28, borderRadius: 6,
-              display: 'inline-grid', placeItems: 'center',
-              fontSize: 18, lineHeight: 1, flexShrink: 0,
-            }}
+            className="inline-grid h-7 w-7 shrink-0 cursor-pointer place-items-center rounded-md border-0 bg-transparent text-[18px] leading-none text-ink-3"
           >×</button>
         </div>
 
         {/* Body */}
-        <div className="scroll-clean" style={{ flex: 1, overflowY: 'auto', padding: '18px 20px' }}>
+        <div className="scroll-clean flex-1 overflow-y-auto py-[18px] px-5">
           {loading ? (
-            <div style={{ fontSize: 13, color: 'var(--ink-4)' }}>Loading…</div>
+            <div className="text-[13px] text-ink-4">Loading…</div>
           ) : (
             <>
               {/* Meta */}
-              <div style={{
-                padding: '12px 14px', marginBottom: 20,
-                background: 'var(--surface-2)',
-                borderRadius: 8, border: '1px solid var(--line)',
-                display: 'flex', flexDirection: 'column', gap: 8,
-              }}>
+              <div className="mb-5 flex flex-col gap-2 rounded-lg border border-solid border-line bg-surface-2 py-3 px-[14px]">
                 <MetaRow label="Engine" value={connection.engine} />
                 {saved?.updatedAt && <MetaRow label="Last updated" value={fmtDate(saved.updatedAt)} />}
                 {saved?.createdAt && <MetaRow label="Connected" value={fmtDate(saved.createdAt)} />}
@@ -443,40 +359,28 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
               {/* Credentials */}
               {displayFields.length > 0 && (
                 <>
-                  <div style={{
-                    fontFamily: FONT_BODY, fontSize: 11, fontWeight: 600,
-                    letterSpacing: '0.05em', textTransform: 'uppercase',
-                    color: 'var(--ink-3)', marginBottom: 8,
-                  }}>
+                  <div className="mb-2 font-[family-name:var(--font-body)] text-xs font-semibold uppercase tracking-[0.05em] text-ink-3">
                     Credentials
                   </div>
-                  <div style={{
-                    border: '1px solid var(--line)', borderRadius: 8, overflow: 'hidden',
-                    marginBottom: 20,
-                  }}>
+                  <div className="mb-5 overflow-hidden rounded-lg border border-solid border-line">
                     {displayFields.map((f, i) => (
                       <div
                         key={f.key}
-                        style={{
-                          display: 'flex', alignItems: 'center', gap: 10,
-                          padding: '10px 14px',
-                          background: 'var(--surface)',
-                          borderBottom: i < displayFields.length - 1 ? '1px solid var(--line)' : 'none',
-                        }}
+                        className={cn(
+                          'flex items-center gap-2.5 bg-surface py-2.5 px-[14px]',
+                          i < displayFields.length - 1 ? 'border-b border-x-0 border-t-0 border-solid border-line' : 'border-0',
+                        )}
                       >
-                        <span style={{
-                          width: 120, flexShrink: 0,
-                          fontFamily: FONT_BODY, fontSize: 12,
-                          color: 'var(--ink-3)', fontWeight: 500,
-                        }}>
+                        <span className="w-[120px] shrink-0 font-[family-name:var(--font-body)] text-[12px] font-medium text-ink-3">
                           {f.label}
                         </span>
-                        <span style={{
-                          flex: 1, fontFamily: FONT_MONO, fontSize: 12,
-                          color: f.isSecret ? 'var(--ink-4)' : (f.value ? 'var(--ink)' : 'var(--ink-4)'),
-                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                          fontStyle: (!f.isSecret && !f.value) ? 'italic' : 'normal',
-                        }}>
+                        <span
+                          className={cn(
+                            'flex-1 truncate font-[family-name:var(--font-mono)] text-[12px]',
+                            (f.isSecret || !f.value) ? 'text-ink-4' : 'text-ink',
+                            (!f.isSecret && !f.value) && 'italic',
+                          )}
+                        >
                           {f.isSecret ? '•••••••• saved' : (f.value || '—')}
                         </span>
                       </div>
@@ -490,26 +394,18 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
                   existing ones without widening the OAuth scope. */}
               {connection.engine === 'google_drive' && (
                 <>
-                  <div style={{
-                    fontFamily: FONT_BODY, fontSize: 11, fontWeight: 600,
-                    letterSpacing: '0.05em', textTransform: 'uppercase',
-                    color: 'var(--ink-3)', marginBottom: 8,
-                  }}>
+                  <div className="mb-2 font-[family-name:var(--font-body)] text-xs font-semibold uppercase tracking-[0.05em] text-ink-3">
                     Drive files
                   </div>
-                  <div style={{
-                    border: '1px solid var(--line)', borderRadius: 8,
-                    padding: '12px 14px', marginBottom: 20,
-                    display: 'flex', flexDirection: 'column', gap: 10,
-                  }}>
-                    <div style={{ fontSize: 12, color: 'var(--ink-3)', lineHeight: 1.5 }}>
+                  <div className="mb-5 flex flex-col gap-2.5 rounded-lg border border-solid border-line py-3 px-[14px]">
+                    <div className="text-[12px] leading-normal text-ink-3">
                       This connection can only read files it created itself. Select any files below —
                       including several at once, or whole Shared Drives — to grant access to them too.
                     </div>
                     {pickerState.status === 'waiting' ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                        <Spinner style={{ color: 'var(--ink-3)' }} />
-                        <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>
+                      <div className="flex flex-wrap items-center gap-2.5">
+                        <Spinner className="text-ink-3" />
+                        <span className="text-[12px] text-ink-3">
                           Opened in your browser — pick your files there, then come back. Confirming access can take a few seconds after you return.
                         </span>
                         <Button variant="subtle" size="sm" onClick={handleCancelPicker}>
@@ -520,19 +416,19 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
                       <Button
                         size="sm"
                         onClick={handlePickFiles}
-                        style={{ alignSelf: 'flex-start' }}
+                        className="self-start"
                       >
                         Select files from Google Drive
                       </Button>
                     )}
                     {pickerState.status === 'error' && (
-                      <div style={{ fontSize: 12, color: 'var(--danger)' }}>{pickerState.reason}</div>
+                      <div className="text-[12px] text-danger">{pickerState.reason}</div>
                     )}
                     {pickerState.status === 'done' && pickerState.failed?.length > 0 && (
                       <Alert variant="danger">
                         Google didn't actually grant access to {pickerState.failed.length === 1 ? 'this file' : 'these files'} —
                         try picking {pickerState.failed.length === 1 ? 'it' : 'them'} again:
-                        <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+                        <ul className="mt-1 mx-0 mb-0 pl-[18px]">
                           {pickerState.failed.map((f) => (
                             <li key={f.id}>{f.name} ({f.reason})</li>
                           ))}
@@ -540,11 +436,11 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
                       </Alert>
                     )}
                     {pickerState.status === 'done' && pickerState.files.length === 0 && (
-                      <div style={{ fontSize: 12, color: 'var(--ink-4)', fontStyle: 'italic' }}>No files selected.</div>
+                      <div className="text-[12px] italic text-ink-4">No files selected.</div>
                     )}
                     {pickerState.status === 'done' && pickerState.files.length > 0 && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        <div style={{ fontSize: 12, color: 'var(--ink-3)' }}>
+                      <div className="flex flex-col gap-1.5">
+                        <div className="text-[12px] text-ink-3">
                           Granted access to {pickerState.files.length} file{pickerState.files.length === 1 ? '' : 's'}:
                         </div>
                         {pickerState.files.map((f) => (
@@ -553,17 +449,10 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
                             href={f.url}
                             target="_blank"
                             rel="noreferrer"
-                            style={{
-                              display: 'flex', alignItems: 'center', gap: 8,
-                              fontSize: 12, color: 'var(--ink)',
-                              textDecoration: 'none',
-                              padding: '4px 6px', borderRadius: 6,
-                              background: 'var(--surface-2)',
-                              overflow: 'hidden',
-                            }}
+                            className="flex items-center gap-2 overflow-hidden rounded-md bg-surface-2 py-1 px-1.5 text-[12px] text-ink no-underline"
                           >
-                            {f.iconUrl && <img src={f.iconUrl} alt="" style={{ width: 14, height: 14, flexShrink: 0 }} />}
-                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
+                            {f.iconUrl && <img src={f.iconUrl} alt="" className="h-3.5 w-3.5 shrink-0" />}
+                            <span className="truncate">{f.name}</span>
                           </a>
                         ))}
                       </div>
@@ -576,12 +465,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
         </div>
 
         {/* Footer */}
-        <div style={{
-          padding: '14px 20px',
-          borderTop: '1px solid var(--line)',
-          display: 'flex', flexDirection: 'column', gap: 8,
-          flexShrink: 0,
-        }}>
+        <div className="flex shrink-0 flex-col gap-2 border-t border-x-0 border-b-0 border-solid border-line py-3.5 px-5">
           {saved?.fields?.status === 'needs_reconnect' && (
             <Alert variant="warning" title="Reconnection required">
               Access for this connection has expired or was revoked. Reconnect to restore access, or remove the connection.
@@ -596,7 +480,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
                 )) return;
                 onReconnect?.(connection, spec);
               }}
-              style={{ width: '100%', justifyContent: 'center' }}
+              className="w-full justify-center"
             >
               Reconnect
             </Button>
@@ -785,10 +669,7 @@ export default function CustomizeView({
   return (
     // Background intentionally omitted so the gravity-field canvas
     // painted behind the React root shows through.
-    <div className="scroll-clean" style={{
-      flex: 1, overflowY: 'auto',
-      display: 'flex', flexDirection: 'column',
-    }}>
+    <div className="scroll-clean flex flex-1 flex-col overflow-y-auto">
       <PageHeader
         title="Connect Apps and Data"
         subtitle={`Connect ${agentLabel} to the tools you already use, and automate work there.`}
@@ -815,18 +696,14 @@ export default function CustomizeView({
 
       {total === 0 ? (
         <EmptyState
-          icon={<span style={{ display: 'inline-flex', color: 'var(--ink-4)' }}>{Ico.link(32)}</span>}
+          icon={<span className="inline-flex text-ink-4">{Ico.link(32)}</span>}
           title="No apps connected yet"
           description={`Connectors shape how ${agentLabel} works with you. Hook up the apps and databases you already use, and ${agentLabel} will automate work there.`}
           action={<ConnectButton onClick={handleConnectNew} large />}
           style={{ flex: 1 }}
         />
       ) : (
-        <div style={{
-          padding: '6px 32px 60px',
-          display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14,
-          marginTop: 18,
-        }}>
+        <div className="mt-[18px] grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3.5 pt-1.5 px-8 pb-[60px]">
           {visible.map((c) => (
             <ConnectionCard
               key={`${c.engine}-${c.name}`}

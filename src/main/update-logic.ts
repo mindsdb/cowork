@@ -101,6 +101,136 @@ export function parseAntonPin(requiresDist: unknown): string | null {
   return null;
 }
 
+/** Extract anton-agent's full version specifier set from a Requires-Dist list
+ *  (e.g. `["anton-agent<3,>=2.26.6.30.1", "fastapi>=0.100"]` → `"<3,>=2.26.6.30.1"`).
+ *
+ *  Distinct return values, all load-bearing for the PyPI anton-only update
+ *  check (ENG-1094):
+ *   - the specifier string when anton-agent is required with a version bound —
+ *     every unmarked `anton-agent` requirement is combined into one comma-joined
+ *     conjunction (satisfiesAntonConstraint reads the clause set as an AND);
+ *   - `""` when anton-agent is required with NO version bound (any version ok);
+ *   - `null` when there is no anton-agent requirement, the input isn't a list,
+ *     OR any `anton-agent` requirement carries a PEP 508 environment marker —
+ *     the "couldn't safely read the constraint" case, which the check treats as
+ *     fail-closed (see satisfiesAntonConstraint) rather than "anything goes".
+ *
+ *  We deliberately do NOT evaluate environment markers. A marker-qualified
+ *  requirement (a different anton bound per python_version / platform, possibly
+ *  mutually exclusive across entries) can't be reduced to a single applicable
+ *  constraint without a full PEP 508 marker evaluator, and stripping the marker
+ *  could offer an anton the installed wheel forbids on THIS interpreter — the
+ *  exact resolve-failure loop this check exists to prevent. So the presence of
+ *  any marker fails the whole read closed.
+ *
+ *  Distinct from parseAntonPin, which extracts only the `==` pin the staging rc
+ *  stream needs restated on the command line; this returns the whole range so
+ *  the updater can prove a candidate anton is permitted before offering it. */
+export function parseAntonConstraint(requiresDist: unknown): string | null {
+  if (!Array.isArray(requiresDist)) return null;
+  const specs: string[] = [];
+  for (const entry of requiresDist) {
+    if (typeof entry !== 'string') continue;
+    // `anton-agent` (word-boundaried so `anton-agent-foo` can't match), an
+    // optional `[extra]`, then the rest of the line: the specifier plus any
+    // PEP 508 `; environment marker`.
+    const m = entry.match(/^\s*anton-agent(?![A-Za-z0-9_-])\s*(?:\[[^\]]*\])?\s*(.*)$/i);
+    if (!m) continue;
+    const rest = m[1];
+    const semi = rest.indexOf(';');
+    // Any real environment marker fails the whole read closed (see above): we
+    // don't evaluate markers, so acting on a stripped constraint could offer a
+    // forbidden anton. A bare trailing `;` with nothing after it is not a marker.
+    if (semi !== -1 && rest.slice(semi + 1).trim() !== '') return null;
+    let spec = (semi === -1 ? rest : rest.slice(0, semi)).trim();
+    // PEP 508 allows the specifier wrapped in parentheses: `anton-agent (>=2)`.
+    if (spec.startsWith('(') && spec.endsWith(')')) spec = spec.slice(1, -1).trim();
+    specs.push(spec);
+  }
+  if (specs.length === 0) return null;
+  // Combine every unmarked requirement; bare "" specs (declared with no bound)
+  // drop out, so an all-unbounded set collapses to "" (any version allowed).
+  return specs.filter((s) => s !== '').join(',');
+}
+
+// A single PEP 440 comparison clause, e.g. `<3` or `>=2.26.6.30.1`. The version
+// charclass deliberately omits `*`, so a wildcard clause (`==2.*`) fails to
+// parse and the whole constraint fails closed (below) — we never offer an anton
+// we can't prove is allowed.
+const SPEC_CLAUSE = /^(<=|>=|==|!=|<|>)\s*([0-9A-Za-z.!+]+)$/;
+
+/** Does `version` satisfy an anton-agent specifier set (the string returned by
+ *  parseAntonConstraint)? Comparison reuses compareVersions, the same CalVer
+ *  ordering the rest of the updater uses.
+ *
+ *  Fail-closed by design — the whole point is to never install an anton the
+ *  installed cowork-server forbids (which a `--with anton-agent==X` reinstall
+ *  would then fail to resolve, looping the banner):
+ *   - `null` constraint (couldn't be read) → false;
+ *   - any clause we can't parse, or an operator we don't implement (`~=`,
+ *     wildcards) → false;
+ *   - `""` (declared with no bound) → true (any version allowed). */
+export function satisfiesAntonConstraint(version: string, constraint: string | null): boolean {
+  if (constraint === null) return false;
+  const spec = constraint.trim();
+  if (spec === '') return true;
+  for (const raw of spec.split(',')) {
+    const clause = raw.trim();
+    if (clause === '') continue;
+    const m = SPEC_CLAUSE.exec(clause);
+    if (!m) return false;
+    const op = m[1];
+    const cmp = compareVersions(version, m[2]);
+    switch (op) {
+      case '<': {
+        if (!(cmp < 0)) return false;
+        // PEP 440: `<V` must NOT match a pre-release of V's own release unless V
+        // is itself a pre-release. compareVersions orders `Vrc1` *before* `V`, so
+        // the bare `cmp < 0` above wrongly admits it — e.g. `2.26.8.9.1rc1` would
+        // satisfy `<2.26.8.9.1`, the very rc someone pins below during an incident.
+        // Exclude a candidate rc whose release equals V, when V is a full release.
+        const vIsPre = /rc\d+$/.test(m[2]);
+        const candBase = version.replace(/rc\d+$/, '');
+        const candIsPre = candBase !== version;
+        if (candIsPre && !vIsPre && compareVersions(candBase, m[2]) === 0) return false;
+        break;
+      }
+      case '<=': if (!(cmp <= 0)) return false; break;
+      case '>': if (!(cmp > 0)) return false; break;
+      case '>=': if (!(cmp >= 0)) return false; break;
+      case '==': if (cmp !== 0) return false; break;
+      default: if (cmp === 0) return false; break; // '!='
+    }
+  }
+  return true;
+}
+
+/** Newest anton-agent version on PyPI that BOTH satisfies cowork-server's
+ *  Requires-Dist constraint AND is eligible for this build's stream.
+ *
+ *  Unlike selectLatestPypiVersion (which trusts `info.version` on the prod
+ *  path), this always scans the releases map: anton-agent's own `info.version`
+ *  could be a major outside cowork-server's range (a 3.x while the installed
+ *  wheel requires `<3`), so the constraint must be applied to every candidate
+ *  before taking the max. Pre-releases are excluded unless includePrereleases
+ *  (the same stream gate cowork-server uses). Null when nothing qualifies. */
+export function selectLatestConstrainedPypiVersion(input: {
+  releases: Record<string, Array<{ yanked?: boolean }>> | null | undefined;
+  includePrereleases: boolean;
+  satisfies: (version: string) => boolean;
+}): string | null {
+  const candidates = Object.entries(input.releases ?? {})
+    .filter(([version, files]) =>
+      SANE_PYPI_VERSION.test(version) &&
+      (input.includePrereleases || !/rc\d+$/.test(version)) &&
+      Array.isArray(files) && files.length > 0 &&
+      files.some((f) => !f?.yanked) &&
+      input.satisfies(version))
+    .map(([version]) => version);
+  if (candidates.length === 0) return null;
+  return candidates.reduce((best, v) => (compareVersions(v, best) > 0 ? v : best));
+}
+
 // ---------------------------------------------------------------------------
 // `uv tool list` output → installed cowork-server version
 // ---------------------------------------------------------------------------
@@ -289,7 +419,12 @@ export function decideUpdateApply(input: {
  * any channel error makes the result inconclusive; both errors imply offline. */
 export function summarizeUpdateCheck(input: {
   ui: { updateAvailable: boolean; newVersion?: string; error?: boolean };
-  server: { updateAvailable: boolean; latestVersion?: string; error?: boolean };
+  server: {
+    updateAvailable: boolean;
+    latestVersion?: string;
+    error?: boolean;
+    component?: 'cowork-server' | 'anton-agent';
+  };
   shell?: { updateAvailable: boolean; version?: string; downloadUrl?: string };
 }): UpdateCheckSummary {
   const uiUpdateAvailable = !!input.ui.updateAvailable;
@@ -318,6 +453,7 @@ export function summarizeUpdateCheck(input: {
   };
   if (uiUpdateAvailable && input.ui.newVersion) summary.uiVersion = input.ui.newVersion;
   if (serverUpdateAvailable && input.server.latestVersion) summary.serverVersion = input.server.latestVersion;
+  if (serverUpdateAvailable && input.server.component) summary.serverComponent = input.server.component;
   if (shellUpdateAvailable && input.shell?.version) summary.shellVersion = input.shell.version;
   if (shellUpdateAvailable && input.shell?.downloadUrl) summary.shellDownloadUrl = input.shell.downloadUrl;
   return summary;
@@ -566,6 +702,13 @@ export function shellUpdateIsNewer(
   const installed = parseCalVer(installedShellVersion);
   if (!latest || !installed) return false;
   return compareCalVer(latest, installed) > 0;
+}
+
+/** Shell auto-updater phases that mean a user-visible update is in flight, so a
+ *  manual "check for updates" must NOT report "up to date". Excludes passive
+ *  (idle/checking/disabled), terminal (complete) and failed phases. */
+export function shellAutoUpdateIsActive(phase: string): boolean {
+  return phase === 'available' || phase === 'downloading' || phase === 'ready-to-install';
 }
 
 /** Return the installer URL for a supported platform and release channel. */

@@ -68,6 +68,16 @@ export const MINDS_CONSOLE_URL = mindsServiceHost('console');
 export const MINDS_BILLING_URL = `${MINDS_CONSOLE_URL}/settings/organization/billing`;
 export const MINDS_API_KEY_URL = `${MINDS_CONSOLE_URL}/apiKeys`;
 
+// Console settings pages the sidebar user menu deep-links to (ENG-1408) —
+// same routes the web console's own user menu navigates to.
+export const MINDS_PROFILE_URL = `${MINDS_CONSOLE_URL}/settings/personal/profile`;
+export const MINDS_GENERAL_URL = `${MINDS_CONSOLE_URL}/settings/organization/general`;
+export const MINDS_MEMBERS_URL = `${MINDS_CONSOLE_URL}/settings/organization/members`;
+
+// Environment-independent MindsHub destinations (docs site + support page).
+export const MINDS_DOCS_URL = 'https://docs.mindshub.ai';
+export const MINDS_SUPPORT_URL = 'https://mindshub.ai/support';
+
 // MindsHub sign-up: the Keycloak registration flow (not the account
 // page), which lands the new user back on the console. Built from the
 // base vars so it stays correct if VITE_KEYCLOAK_URL / VITE_MINDS_API_URL

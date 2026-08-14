@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Monitor, Plug, BriefcaseBusiness, X } from 'lucide-react';
 import Ico from '../components/Icons';
-import { Badge, Button } from '../components/ui';
+import { Badge, Button, Tooltip } from '../components/ui';
 import {
   fetchIntegrations,
   startConnectorOAuth,
@@ -383,10 +384,7 @@ function ConnectorLogo({ id, large = false }) {
   if (id === 'anton_chrome') {
     return (
       <span className={className} aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-          <rect x="3" y="4" width="18" height="14" rx="2" />
-          <path d="M8 21h8M12 18v3" />
-        </svg>
+        <Monitor size="100%" strokeWidth={1.5} />
       </span>
     );
   }
@@ -431,12 +429,7 @@ function ConnectorLogo({ id, large = false }) {
 function PluginLogo() {
   return (
     <span className="customize-plugin-logo" aria-hidden="true">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M9 2v6" />
-        <path d="M15 2v6" />
-        <path d="M7 8h10a2 2 0 0 1 2 2v3a7 7 0 0 1-14 0v-3a2 2 0 0 1 2-2Z" />
-        <path d="M12 22v-4" />
-      </svg>
+      <Plug size="100%" strokeWidth={1.5} />
     </span>
   );
 }
@@ -474,12 +467,7 @@ function HomePage({ onOpenDirectory }) {
     <div className="customize-home-main">
       <div className="customize-home-content">
         <div className="customize-home-mark" aria-hidden="true">
-          <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="8" y="20" width="48" height="32" rx="4" />
-            <path d="M24 20v-4a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v4" />
-            <path d="M8 32h48" />
-            <rect x="28" y="30" width="8" height="5" rx="1" />
-          </svg>
+          <BriefcaseBusiness size="100%" strokeWidth={1.5} />
         </div>
 
         <h1 className="customize-heading">Customize your agent</h1>
@@ -535,7 +523,7 @@ function ConnectorsPage({
     : `You are not connected to ${connectorName} yet.`;
   const connectLabel = selectedConnections.length ? `Connect another ${connectorName}` : `Connect ${connectorName}`;
   const connectionSummary = selectedConnections
-    .map((connection) => connection.label || connection.subtitle || connection.name)
+    .map((connection) => connection.user_label || connection.name)
     .filter(Boolean)
     .slice(0, 2)
     .join(', ');
@@ -717,10 +705,7 @@ function DirectoryModal({ mode, onChangeMode, onClose, onChooseConnector }) {
             {mode === DIRECTORY_MODE_PLUGINS ? 'Plugins Directory' : 'Connectors Directory'}
           </h2>
           <button className="icon-btn" type="button" aria-label="Close directory" onClick={onClose}>
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M18 6 6 18" />
-              <path d="m6 6 12 12" />
-            </svg>
+            <X size={18} strokeWidth={1.5} aria-hidden="true" />
           </button>
         </div>
 
@@ -1042,15 +1027,16 @@ export default function ConnectWorkflowView({ onClose }) {
   return (
     <div className="customize-view">
       <div className="customize-header">
-        <Button
-          icon
-          variant="subtle"
-          aria-label="Back to connections"
-          title="Back to connections"
-          onClick={handleBack}
-        >
-          {Ico.chevLeft(16)}
-        </Button>
+        <Tooltip content="Back to connections">
+          <Button
+            icon
+            variant="subtle"
+            aria-label="Back to connections"
+            onClick={handleBack}
+          >
+            {Ico.chevLeft(16)}
+          </Button>
+        </Tooltip>
         <div className="customize-header-title">Connect Apps and Data</div>
       </div>
 

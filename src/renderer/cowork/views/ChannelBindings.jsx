@@ -7,7 +7,7 @@
 
 import { useEffect, useState } from 'react';
 import Ico from '../components/Icons';
-import { Badge, Button } from '../components/ui';
+import { Badge, Button, Tooltip } from '../components/ui';
 import {
   fetchChannelBindings,
   createChannelBinding,
@@ -190,9 +190,11 @@ export default function ChannelBindings({ plugins = [], channelType = null }) {
                     {dirty ? (
                       <Button variant="primary" size="sm" onClick={() => saveRow(b)}>Save</Button>
                     ) : null}
-                    <Button variant="danger" size="sm" icon onClick={() => removeRow(b)} title="Remove route" aria-label="Remove route">
-                      {Ico.power(14)}
-                    </Button>
+                    <Tooltip content="Remove route">
+                      <Button variant="danger" size="sm" icon onClick={() => removeRow(b)} aria-label="Remove route">
+                        {Ico.power(14)}
+                      </Button>
+                    </Tooltip>
                   </td>
                 </tr>
               );

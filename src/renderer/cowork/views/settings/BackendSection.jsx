@@ -1,9 +1,13 @@
 import { useState, useEffect } from 'react';
 import Ico from '../../components/Icons';
-import { Alert, Button } from '../../components/ui';
+import { Alert, Button, Tooltip } from '../../components/ui';
 import { host } from '../../../platform/host';
 import { backendFailureCopy, exitCodeLabel } from '../../../../shared/server-status';
 import { Section, SettingsSectionPanel } from './settingsLayout';
+
+// Port / Exit / Started chips in the status card.
+const CHIP_CLASS = 'py-1.5 px-2.5 rounded-md bg-surface-2 border border-solid border-line';
+const CHIP_LABEL_CLASS = 'text-ink-4 uppercase tracking-[0.06em] text-[9.5px] mr-1.5';
 
 // The Backend settings section: local Python server status, diagnostics, and
 // start/stop/restart controls. Electron-only — unreachable from the nav since
@@ -83,21 +87,15 @@ export default function BackendSection({
   if (host.isWeb) {
     return (
       <SettingsSectionPanel>
-        <div style={{
-          padding: '32px 0',
-          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-          gap: 10, textAlign: 'center',
-          color: 'var(--text-muted)', fontSize: 13,
-        }}>
-          <span style={{ fontSize: 32, lineHeight: 1 }}>☁</span>
-          <div style={{ fontWeight: 600, color: 'var(--text-strong)', fontSize: 14 }}>Backend is managed server-side</div>
-          <div style={{ maxWidth: 320 }}>The Python backend runs on the server — it isn't controllable from this interface.</div>
+        <div className="py-8 px-0 flex flex-col items-center justify-center gap-2.5 text-center text-ink-3 text-[13px]">
+          <span className="text-[32px] leading-none">☁</span>
+          <div className="font-semibold text-ink text-base">Backend is managed server-side</div>
+          <div className="max-w-[320px]">The Python backend runs on the server — it isn't controllable from this interface.</div>
         </div>
       </SettingsSectionPanel>
     );
   }
 
-  const FONT_MONO = "var(--font-mono, 'JetBrains Mono', monospace)";
   const error = diag?.lastError;
   const log = (diag?.recentLog || '').trim();
   const port = diag?.port;
@@ -131,7 +129,7 @@ export default function BackendSection({
     : 'failed';
 
   const STATUS_META = {
-    online: { title: 'MindsHub backend is running', subtitle: 'The local Python server is responding to /health.', iconColor: 'var(--success, #1F8F5F)', iconBgMix: 'var(--success, #1F8F5F)' },
+    online: { title: 'MindsHub backend is running', subtitle: 'The local Python server is responding to /health.', iconColor: 'var(--success)', iconBgMix: 'var(--success)' },
     starting: { title: 'MindsHub backend is starting…', subtitle: 'Spawning the local Python server. This usually takes a few seconds.', iconColor: 'var(--accent)', iconBgMix: 'var(--accent)' },
     stopping: { title: 'MindsHub backend is stopping…', subtitle: 'Waiting for the local Python server to terminate.', iconColor: 'var(--ink-3)', iconBgMix: 'var(--ink-3)' },
     offline: offlineKind === 'stopped'
@@ -141,9 +139,11 @@ export default function BackendSection({
 
   const backendFooter = (
     <>
-      <Button onClick={refreshDiag} title="Refresh diagnostics">
-        {Ico.refresh(14)}Refresh
-      </Button>
+      <Tooltip content="Refresh diagnostics">
+        <Button onClick={refreshDiag}>
+          {Ico.refresh(14)}Refresh
+        </Button>
+      </Tooltip>
       {(onStartServer || onStopServer) && state !== 'offline' && (
         <Button onClick={handleBackendStop} disabled={diagBusy || serverBusy || !onStopServer}>
           {(diagBusy && serverBusyKind === 'stopping') ? 'Stopping…' : 'Stop backend'}
@@ -159,91 +159,70 @@ export default function BackendSection({
 
   return (
     <SettingsSectionPanel footer={backendFooter}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div className="flex flex-col gap-[14px]">
 
         {/* Status card — status header + port + logs */}
-        <div style={{
-          border: '1px solid var(--border-subtle)', borderRadius: 'var(--card-radius)',
-          background: 'var(--surface-glass)',
-          WebkitBackdropFilter: 'blur(var(--surface-glass-blur))',
-          backdropFilter: 'blur(var(--surface-glass-blur))',
-          overflow: 'hidden',
-        }}>
-          <div style={{
-            padding: '10px 16px',
-            borderBottom: '1px solid var(--line)',
-            fontSize: 10.5, fontWeight: 600, letterSpacing: '0.07em',
-            textTransform: 'uppercase', color: 'var(--ink-4)',
-          }}>Status</div>
+        <div className="border border-solid border-line rounded-card bg-surface-glass backdrop-blur-[var(--surface-glass-blur)] overflow-hidden">
+          <div className="py-2.5 px-4 border-b border-x-0 border-t-0 border-solid border-line text-[10.5px] font-semibold tracking-[0.07em] uppercase text-ink-4">Status</div>
 
           {/* Status summary row */}
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '14px 16px' }}>
-            <span style={{
-              display: 'inline-grid', placeItems: 'center',
-              width: 34, height: 34, borderRadius: 8, flexShrink: 0,
-              background: `color-mix(in srgb, ${STATUS_META.iconBgMix} 14%, var(--surface))`,
-              color: STATUS_META.iconColor,
-              border: `1px solid color-mix(in srgb, ${STATUS_META.iconBgMix} 35%, transparent)`,
-            }}>
+          <div className="flex items-start gap-3 py-[14px] px-4">
+            <span
+              className="inline-grid place-items-center w-[34px] h-[34px] rounded-lg shrink-0 border border-solid"
+              style={{
+                background: `color-mix(in srgb, ${STATUS_META.iconBgMix} 14%, var(--surface))`,
+                color: STATUS_META.iconColor,
+                borderColor: `color-mix(in srgb, ${STATUS_META.iconBgMix} 35%, transparent)`,
+              }}
+            >
               {Ico.power ? Ico.power(16) : '⏻'}
             </span>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 600, fontSize: 13.5, color: 'var(--ink)' }}>{STATUS_META.title}</div>
-              <div style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 2, lineHeight: 1.5 }}>{STATUS_META.subtitle}</div>
+            <div className="flex-1 min-w-0">
+              <div className="font-semibold text-[13.5px] text-ink">{STATUS_META.title}</div>
+              <div className="text-[12px] text-ink-3 mt-0.5 leading-[1.5]">{STATUS_META.subtitle}</div>
             </div>
           </div>
 
           {/* Port + exit code + last attempt chips */}
-          <div style={{
-            display: 'flex', gap: 8, padding: '0 16px 14px',
-            fontFamily: FONT_MONO, fontSize: 11,
-          }}>
-            <div style={{ padding: '6px 10px', borderRadius: 6, background: 'var(--surface-2)', border: '1px solid var(--line)' }}>
-              <span style={{ color: 'var(--ink-4)', textTransform: 'uppercase', letterSpacing: '0.06em', fontSize: 9.5, marginRight: 6 }}>Port</span>
-              <span style={{ color: 'var(--ink)' }}>{port ?? '—'}</span>
+          <div className="flex gap-2 pt-0 px-4 pb-[14px] font-[family-name:var(--font-mono)] text-xs">
+            <div className={CHIP_CLASS}>
+              <span className={CHIP_LABEL_CLASS}>Port</span>
+              <span className="text-ink">{port ?? '—'}</span>
             </div>
             {state === 'offline' && (
-              <div style={{ padding: '6px 10px', borderRadius: 6, background: 'var(--surface-2)', border: '1px solid var(--line)' }}>
-                <span style={{ color: 'var(--ink-4)', textTransform: 'uppercase', letterSpacing: '0.06em', fontSize: 9.5, marginRight: 6 }}>Exit</span>
-                <span style={{ color: 'var(--ink)' }}>{exitLabel}</span>
+              <div className={CHIP_CLASS}>
+                <span className={CHIP_LABEL_CLASS}>Exit</span>
+                <span className="text-ink">{exitLabel}</span>
               </div>
             )}
             {startedAt && (
-              <div style={{ padding: '6px 10px', borderRadius: 6, background: 'var(--surface-2)', border: '1px solid var(--line)' }}>
-                <span style={{ color: 'var(--ink-4)', textTransform: 'uppercase', letterSpacing: '0.06em', fontSize: 9.5, marginRight: 6 }}>Started</span>
-                <span style={{ color: 'var(--ink)' }}>{startedAt}</span>
+              <div className={CHIP_CLASS}>
+                <span className={CHIP_LABEL_CLASS}>Started</span>
+                <span className="text-ink">{startedAt}</span>
               </div>
             )}
           </div>
 
           {/* Headline error inside card — offline + start-failure */}
           {state === 'offline' && offlineKind === 'failed' && (
-            <div style={{ padding: '0 16px 14px' }}>
+            <div className="pt-0 px-4 pb-[14px]">
               {error ? (
-                <Alert variant="danger" style={{ fontFamily: FONT_MONO, wordBreak: 'break-word' }}>{error}</Alert>
+                <Alert variant="danger" className="font-[family-name:var(--font-mono)] break-words">{error}</Alert>
               ) : (
-                <div style={{
-                  padding: '10px 12px', borderRadius: 8,
-                  background: 'var(--surface-2)', border: '1px solid var(--line)',
-                  color: 'var(--ink-3)', fontSize: 12.5, lineHeight: 1.5,
-                }}>No specific start error was captured. Check the log tail — the process may have died after starting.</div>
+                <div className="py-2.5 px-3 rounded-lg bg-surface-2 border border-solid border-line text-ink-3 text-sm leading-[1.5]">No specific start error was captured. Check the log tail — the process may have died after starting.</div>
               )}
             </div>
           )}
 
           {/* Recent log */}
-          <div style={{ borderTop: '1px solid var(--line)', padding: '10px 16px 14px' }}>
-            <div style={{
-              fontFamily: FONT_MONO, fontSize: 10, color: 'var(--ink-4)',
-              letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 6,
-            }}>Log</div>
-            <pre style={{
-              margin: 0, padding: '10px 12px',
-              background: 'var(--surface-2)', border: '1px solid var(--line)',
-              borderRadius: 8, fontFamily: FONT_MONO, fontSize: 11.5, lineHeight: 1.55,
-              color: 'var(--ink-2)', maxHeight: 200, overflow: 'auto',
-              whiteSpace: 'pre-wrap', wordBreak: 'break-word', userSelect: 'text',
-            }}>{log || '(no log captured yet)'}</pre>
+          <div className="border-t border-x-0 border-b-0 border-solid border-line pt-2.5 px-4 pb-[14px]">
+            <div className="font-[family-name:var(--font-mono)] text-2xs text-ink-4 tracking-[0.1em] uppercase mb-1.5">Log</div>
+            {/* ENG-1320: grow to fill the modal instead of a fixed 200px cap
+                that squeezed a long log into a tiny scroller while the panel
+                had room to spare. Viewport-relative so it scales with the
+                modal (min(820px, 88vh)); still capped + scrollable so a very
+                long log can't push the section controls off-screen. */}
+            <pre className="m-0 py-2.5 px-3 bg-surface-2 border border-solid border-line rounded-lg font-[family-name:var(--font-mono)] text-[11.5px] leading-[1.55] text-ink-2 max-h-[min(520px,52vh)] overflow-auto whitespace-pre-wrap break-words select-text">{log || '(no log captured yet)'}</pre>
           </div>
         </div>
 
@@ -251,9 +230,9 @@ export default function BackendSection({
             failure kind, so the panel never asks for a log in the state
             where no log can exist. */}
         {state === 'offline' && offlineKind === 'failed' && (
-          <div style={{ fontSize: 12, color: 'var(--ink-3)', lineHeight: 1.5 }}>
-            <div style={{ color: 'var(--ink-2)', fontWeight: 600, marginBottom: 4 }}>{failureCopy.headline}</div>
-            <ul style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 3 }}>
+          <div className="text-[12px] text-ink-3 leading-[1.5]">
+            <div className="text-ink-2 font-semibold mb-1">{failureCopy.headline}</div>
+            <ul className="m-0 pl-[18px] flex flex-col gap-[3px]">
               {failureCopy.hints.map((hint) => <li key={hint}>{hint}</li>)}
             </ul>
           </div>

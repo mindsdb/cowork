@@ -9,9 +9,9 @@ const pkg = JSON.parse(readFileSync(path.resolve(__dirname, '../../package.json'
 
 // App display version resolution (baked into __APP_VERSION__ at build time):
 //
-//   1. VITE_APP_VERSION env var — set by CI for prod builds. release.yml
-//      creates a CalVer tag (e.g. v2.26.7.1.1) and prod-build-installer.yml
-//      passes it as app_version, which lands here via the build step's env.
+//   1. VITE_APP_VERSION env var — set by CI for prod builds. prod-build-deploy.yml
+//      creates a CalVer tag (e.g. v2.26.7.1.1) and passes it to build-installers.yml
+//      as app_version, which lands here via the build step's env.
 //      Result: clean version like "2.26.7.1.1".
 //
 //   2. git describe --tags — used by staging and dev builds (no explicit

@@ -30,14 +30,10 @@ import {
   revealProjectInFinder,
   fetchMemory, fetchArtifacts, countNonEmptyMemory,
 } from '../api';
-import { Button, Menu, EmptyState } from '../components/ui';
+import { Button, Menu, EmptyState, Tooltip } from '../components/ui';
 import { Crumb, CrumbSep, CrumbCurrent } from '../components/ui/Crumb';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { host } from '../../platform/host';
-
-const FONT_BODY    = 'var(--font-body)';
-const FONT_DISPLAY = 'var(--font-display)';
-const FONT_MONO    = 'var(--font-mono)';
 
 // ─── Pin persistence (localStorage) ──────────────────────────────────────
 //
@@ -159,7 +155,7 @@ function ProjectsCounts({ search, total, filtered, pinnedCount }) {
       {pinnedCount > 0 && (
         <>
           {' · '}
-          <span style={{ color: 'var(--accent)' }}>{pinnedCount} pinned</span>
+          <span className="text-accent">{pinnedCount} pinned</span>
         </>
       )}
     </>
@@ -270,18 +266,11 @@ function NewProjectCard({ onCreate, creating, onCreatingChange }) {
   if (editing) {
     return (
       <div
-        style={{
-          minHeight: 120, borderRadius: 'var(--card-radius)',
-          padding: '14px 16px',
-          background: 'var(--surface)',
-          border: '1px solid var(--accent)',
-          display: 'flex', flexDirection: 'column', gap: 10, justifyContent: 'center',
-          fontFamily: FONT_BODY,
-        }}
+        className="min-h-[120px] rounded-card py-[14px] px-4 bg-surface border border-solid border-accent flex flex-col gap-[10px] justify-center font-body"
         onClick={(e) => e.stopPropagation()}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ display: 'inline-flex', flexShrink: 0, color: 'var(--ink-3)' }}>
+        <div className="flex items-center gap-2">
+          <span className="inline-flex shrink-0 text-ink-3">
             {Ico.folder(14)}
           </span>
           <input
@@ -308,22 +297,10 @@ function NewProjectCard({ onCreate, creating, onCreatingChange }) {
               if (val) submit();
               else cancel();
             }}
-            style={{
-              flex: 1, minWidth: 0,
-              fontFamily: FONT_DISPLAY, fontSize: 16, fontWeight: 600,
-              letterSpacing: '0', color: 'var(--ink)',
-              background: 'var(--surface-2)',
-              border: '1px solid var(--line)',
-              borderRadius: 6,
-              padding: '4px 8px',
-              outline: 'none',
-            }}
+            className="flex-1 min-w-0 font-display text-[16px] font-semibold tracking-normal text-ink bg-surface-2 border border-solid border-line rounded-md py-1 px-2 outline-none"
           />
         </div>
-        <div style={{
-          fontFamily: FONT_MONO, fontSize: 10.5,
-          color: 'var(--ink-4)', letterSpacing: '0.04em',
-        }}>
+        <div className="font-mono text-[10.5px] text-ink-4 tracking-[0.04em]">
           {busy ? 'Creating…' : '↵ create · esc cancel'}
         </div>
       </div>
@@ -336,19 +313,10 @@ function NewProjectCard({ onCreate, creating, onCreatingChange }) {
       onClick={() => setEditing(true)}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      style={{
-        minHeight: 120, borderRadius: 'var(--card-radius)',
-        padding: '14px 16px',
-        background: 'transparent',
-        border: `1px dashed ${hover ? 'var(--accent)' : 'var(--line-2)'}`,
-        color: hover ? 'var(--accent)' : 'var(--ink-3)',
-        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-        gap: 8, cursor: 'pointer',
-        transition: 'border-color .15s ease, color .15s ease',
-      }}
+      className={`min-h-[120px] rounded-card py-[14px] px-4 bg-transparent border border-dashed flex flex-col items-center justify-center gap-2 cursor-pointer [transition:border-color_.15s_ease,color_.15s_ease] ${hover ? 'border-accent text-accent' : 'border-line-2 text-ink-3'}`}
     >
-      <span style={{ display: 'inline-flex' }}>{Ico.plus(16)}</span>
-      <span style={{ fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500 }}>New project</span>
+      <span className="inline-flex">{Ico.plus(16)}</span>
+      <span className="font-body text-[13px] font-medium">New project</span>
     </button>
   );
 }
@@ -364,23 +332,14 @@ function NewProjectCard({ onCreate, creating, onCreatingChange }) {
 // the typical sidebar width — the prior 1.6fr lost the name to the
 // "Last activity" cell. Updated column was dropped (the activity
 // summary already implies recency); the freed width goes to Name.
-const LIST_GRID = '3fr 1.2fr 64px 64px 64px 64px 64px 36px';
+const LIST_GRID_COLS = 'grid-cols-[3fr_1.2fr_64px_64px_64px_64px_64px_36px]';
 
 function ListHeader() {
   const Cell = ({ children, align }) => (
-    <div style={{
-      fontFamily: FONT_MONO, fontSize: 10.5,
-      color: 'var(--ink-4)', letterSpacing: '0.10em',
-      textTransform: 'uppercase',
-      textAlign: align || 'left',
-    }}>{children}</div>
+    <div className={`font-mono text-[10.5px] text-ink-4 tracking-widest uppercase ${align === 'right' ? 'text-right' : 'text-left'}`}>{children}</div>
   );
   return (
-    <div style={{
-      display: 'grid', gridTemplateColumns: LIST_GRID, gap: 14,
-      padding: '10px 14px',
-      borderBottom: '1px solid var(--line)',
-    }}>
+    <div className={`grid ${LIST_GRID_COLS} gap-[14px] py-[10px] px-[14px] border-b border-t-0 border-x-0 border-solid border-line`}>
       <Cell>Name</Cell>
       <Cell>Last activity</Cell>
       <Cell align="right">Tasks</Cell>
@@ -396,12 +355,7 @@ function ListHeader() {
 function D1Num({ value }) {
   const isZero = !value;
   return (
-    <span style={{
-      fontFamily: FONT_MONO, fontSize: 12,
-      color: isZero ? 'var(--ink-5)' : 'var(--ink)',
-      textAlign: 'right',
-      fontVariantNumeric: 'tabular-nums',
-    }}>{value ?? 0}</span>
+    <span className={`font-mono text-[12px] text-right tabular-nums ${isZero ? 'text-ink-5' : 'text-ink'}`}>{value ?? 0}</span>
   );
 }
 
@@ -411,21 +365,9 @@ function D1Num({ value }) {
 function ActiveNum({ value }) {
   const isZero = !value;
   return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end',
-      gap: 6,
-      fontFamily: FONT_MONO, fontSize: 12,
-      color: isZero ? 'var(--ink-5)' : 'var(--accent)',
-      textAlign: 'right',
-      fontVariantNumeric: 'tabular-nums',
-    }}>
+    <span className={`inline-flex items-center justify-end gap-[6px] font-mono text-[12px] text-right tabular-nums ${isZero ? 'text-ink-5' : 'text-accent'}`}>
       {!isZero && (
-        <span aria-hidden className="pulse-dot" style={{
-          width: 6, height: 6, borderRadius: '50%',
-          background: 'var(--accent)',
-          boxShadow: '0 0 6px color-mix(in srgb, var(--accent) 55%, transparent)',
-          flexShrink: 0,
-        }} />
+        <span aria-hidden className="pulse-dot w-1.5 h-1.5 rounded-full bg-accent shadow-[0_0_6px_color-mix(in_srgb,var(--accent)_55%,transparent)] shrink-0" />
       )}
       {value ?? 0}
     </span>
@@ -502,26 +444,12 @@ function ListRow({
       onClick={editing ? undefined : () => onOpen?.(project)}
       {...hoverProps}
       onKeyDown={(e) => { if (!editing && e.key === 'Enter') onOpen?.(project); }}
-      style={{
-        display: 'grid', gridTemplateColumns: LIST_GRID, gap: 14,
-        padding: '12px 14px',
-        background: hovered ? 'var(--surface)' : 'transparent',
-        borderBottom: '1px solid var(--line)',
-        cursor: editing ? 'default' : 'pointer',
-        transition: 'background .12s ease',
-        alignItems: 'center',
-        outline: 'none',
-      }}
+      className={`grid ${LIST_GRID_COLS} gap-[14px] items-center py-3 px-[14px] border-b border-t-0 border-x-0 border-solid border-line outline-none [transition:background_.12s_ease] ${hovered ? 'bg-surface' : 'bg-transparent'} ${editing ? 'cursor-default' : 'cursor-pointer'}`}
     >
       {/* Name */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-        <span aria-hidden style={{
-          width: 6, height: 6, borderRadius: 99,
-          background: active ? 'var(--success)' : 'var(--ink-5)',
-          boxShadow: active ? '0 0 6px var(--success-glow)' : 'none',
-          flexShrink: 0,
-        }} />
-        <span style={{ display: 'inline-flex', color: 'var(--ink-3)', flexShrink: 0 }}>
+      <div className="flex items-center gap-2 min-w-0">
+        <span aria-hidden className={`w-1.5 h-1.5 rounded-full shrink-0 ${active ? 'bg-[var(--success)] shadow-[0_0_6px_var(--success-glow)]' : 'bg-ink-5'}`} />
+        <span className="inline-flex text-ink-3 shrink-0">
           {Ico.folder(13)}
         </span>
         {editing ? (
@@ -538,36 +466,21 @@ function ListRow({
             spellCheck={false}
             autoCapitalize="none"
             autoCorrect="off"
-            style={{
-              flex: '1 1 0', minWidth: 0,
-              fontFamily: FONT_DISPLAY, fontSize: 14.5, fontWeight: 600,
-              color: 'var(--ink)',
-              background: 'var(--surface-2)',
-              border: '1px solid var(--accent)',
-              borderRadius: 5, padding: '2px 6px', outline: 'none',
-            }}
+            className="flex-[1_1_0] min-w-0 font-display text-[14.5px] font-semibold text-ink bg-surface-2 border border-solid border-accent rounded-[5px] py-0.5 px-1.5 outline-none"
           />
         ) : (
-          <span style={{
-            fontFamily: FONT_DISPLAY, fontSize: 14.5, fontWeight: 600,
-            color: 'var(--ink)', minWidth: 0,
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>{project.name}</span>
+          <span className="font-display text-[14.5px] font-semibold text-ink min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{project.name}</span>
         )}
         {pinned && !editing && (
-          <span style={{ display: 'inline-flex', color: 'var(--accent)', flexShrink: 0 }}>
+          <span className="inline-flex text-accent shrink-0">
             {Ico.pin(11)}
           </span>
         )}
       </div>
 
       {/* Last activity */}
-      <div style={{
-        fontFamily: FONT_BODY, fontSize: 12.5,
-        color: 'var(--ink-2)',
-        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-      }}>
-        {summary?.title || <span style={{ color: 'var(--ink-4)', fontStyle: 'italic' }}>No activity yet</span>}
+      <div className="font-body text-sm text-ink-2 overflow-hidden text-ellipsis whitespace-nowrap">
+        {summary?.title || <span className="text-ink-4 italic">No activity yet</span>}
       </div>
 
       {/* Number cells */}
@@ -578,7 +491,7 @@ function ListRow({
       <D1Num value={art} />
 
       {/* ⋯ menu */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+      <div className="flex justify-end">
         <button
           ref={triggerRef}
           type="button"
@@ -588,18 +501,7 @@ function ListRow({
             onMenuOpen?.(project, rect);
           }}
           aria-label="Project menu"
-          style={{
-            width: 26, height: 26, borderRadius: 6,
-            background: 'transparent', border: 0,
-            color: 'var(--ink-3)',
-            opacity: revealed || isReserved ? 1 : 0,
-            display: isReserved ? 'none' : 'inline-grid',
-            placeItems: 'center',
-            cursor: 'pointer',
-            transition: 'opacity .15s ease, color .15s ease, background .15s ease',
-          }}
-          onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink)'; }}
-          onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-3)'; }}
+          className={`w-[26px] h-[26px] rounded-md bg-transparent hover:bg-surface-2 border-0 text-ink-3 hover:text-ink place-items-center cursor-pointer [transition:opacity_.15s_ease,color_.15s_ease,background_.15s_ease] ${isReserved ? 'hidden' : 'inline-grid'} ${revealed || isReserved ? 'opacity-100' : 'opacity-0'}`}
         >
           {Ico.moreVert(15)}
         </button>
@@ -612,17 +514,18 @@ function ListRow({
 
 function SkeletonCard() {
   return (
-    <div style={{
-      minHeight: 120, borderRadius: 'var(--card-radius)', padding: '14px 16px',
-      border: '1px solid var(--line)', background: 'var(--surface)',
-      display: 'flex', flexDirection: 'column', gap: 10,
-    }}>
-      <div style={{ height: 14, width: '60%', background: 'var(--surface-2)', borderRadius: 4 }} className="proj-shimmer" />
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <div style={{ height: 11, width: '90%', background: 'var(--surface-2)', borderRadius: 4 }} className="proj-shimmer" />
-        <div style={{ height: 11, width: '70%', background: 'var(--surface-2)', borderRadius: 4 }} className="proj-shimmer" />
+    <div className="min-h-[120px] rounded-card py-[14px] px-4 border border-solid border-line bg-surface flex flex-col gap-[10px]">
+      {/* background stays inline: the `background` shorthand resets
+          background-image to `none`, which is what keeps .proj-shimmer's
+          gradient suppressed today (cascade-forced by legacy class
+          proj-shimmer) — a bg-* utility only sets background-color and
+          would newly reveal the shimmer animation. */}
+      <div style={{ background: 'var(--surface-2)' }} className="h-3.5 w-3/5 rounded proj-shimmer" />
+      <div className="flex-1 flex flex-col gap-1.5">
+        <div style={{ background: 'var(--surface-2)' }} className="h-[11px] w-[90%] rounded proj-shimmer" />
+        <div style={{ background: 'var(--surface-2)' }} className="h-[11px] w-[70%] rounded proj-shimmer" />
       </div>
-      <div style={{ height: 12, width: '50%', background: 'var(--surface-2)', borderRadius: 4 }} className="proj-shimmer" />
+      <div style={{ background: 'var(--surface-2)' }} className="h-3 w-1/2 rounded proj-shimmer" />
     </div>
   );
 }
@@ -636,7 +539,7 @@ function SkeletonCard() {
 // wants the in-page detail view to stay.
 
 function ProjectDetail({
-  project, projects, tasks, scheduled, scheduleRunsIndex = {}, models, onSend, onSelectTask,
+  project, projects, tasks, scheduled, scheduleRunsIndex = {}, models, modelMeta, onSend, onSelectTask,
   onDeleteTask, onMoveTaskToProject, onShowAll,
   attachments = [],
   connectors = [],
@@ -697,77 +600,38 @@ function ProjectDetail({
   };
 
   return (
-    <div className="project-detail-root" style={{
-      flex: 1, minHeight: 0,
-      display: 'grid',
-      gridTemplateColumns: railOpen ? 'minmax(0, 1fr) 320px' : 'minmax(0, 1fr) 0px',
-      gridTemplateRows: '1fr',
-      transition: 'grid-template-columns 220ms cubic-bezier(.2,.7,.3,1)',
-      background: 'transparent',
-      fontFamily: FONT_BODY,
-      color: 'var(--ink-2)',
-      position: 'relative',
-      overflow: 'hidden',
-    }}>
-      <div style={{
-        position: 'relative', overflow: 'hidden',
-        display: 'grid',
-        gridTemplateRows: 'auto 1fr',
-        minWidth: 0, minHeight: 0,
-      }}>
+    <div className={`project-detail-root flex-1 min-h-0 grid grid-rows-[1fr] bg-transparent font-body text-ink-2 relative overflow-hidden [transition:grid-template-columns_220ms_cubic-bezier(.2,.7,.3,1)] ${railOpen ? 'grid-cols-[minmax(0,1fr)_320px]' : 'grid-cols-[minmax(0,1fr)_0px]'}`}>
+      <div className="relative overflow-hidden grid grid-rows-[auto_1fr] min-w-0 min-h-0">
         {/* Floating expand-rail button (mirrors ChatView). */}
-        <button
-          type="button"
-          className="project-detail-rail-toggle"
-          onClick={() => setRailOpen(true)}
-          title="Expand panel"
-          aria-label="Expand panel"
-          style={{
-            position: 'absolute', top: 14, right: 14, zIndex: 10,
-            width: 28, height: 28, borderRadius: 6,
-            display: 'inline-grid', placeItems: 'center',
-            cursor: 'pointer', background: 'transparent', border: 0,
-            color: 'var(--ink-3)',
-            opacity: railOpen ? 0 : 1,
-            transform: railOpen ? 'translateX(8px)' : 'translateX(0)',
-            pointerEvents: railOpen ? 'none' : 'auto',
-            transition:
-              `opacity 280ms cubic-bezier(0.32,0.72,0,1) ${railOpen ? '0ms' : '120ms'}, ` +
-              `transform 360ms cubic-bezier(0.32,0.72,0,1) ${railOpen ? '0ms' : '80ms'}`,
-            WebkitAppRegion: 'no-drag',
-          }}
-          onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
-          onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-3)'; e.currentTarget.style.background = 'transparent'; }}
-        >
-          {Ico.panelExpandLeft(15)}
-        </button>
+        <Tooltip content="Expand panel">
+          <button
+            type="button"
+            onClick={() => setRailOpen(true)}
+            aria-label="Expand panel"
+            style={{
+              // Dynamic: the resting/hover-mirroring transition delay differs
+              // by railOpen (0ms vs 120ms/80ms) — not a clean binary class swap.
+              transition:
+                `opacity 280ms cubic-bezier(0.32,0.72,0,1) ${railOpen ? '0ms' : '120ms'}, ` +
+                `transform 360ms cubic-bezier(0.32,0.72,0,1) ${railOpen ? '0ms' : '80ms'}`,
+            }}
+            className={`project-detail-rail-toggle absolute top-3.5 right-3.5 z-10 w-7 h-7 rounded-md inline-grid place-items-center cursor-pointer bg-transparent hover:bg-surface-2 border-0 text-ink-3 hover:text-ink [-webkit-app-region:no-drag] ${railOpen ? 'opacity-0 translate-x-2 pointer-events-none' : 'opacity-100 translate-x-0 pointer-events-auto'}`}
+          >
+            {Ico.panelExpandLeft(15)}
+          </button>
+        </Tooltip>
 
         {/* Header — Projects › [project] crumb. Top padding honours the
             shell's --titlebar-safe-top so the crumb drops below the traffic
             lights when the sidebar isn't docked (0 → normal 14px), staying
             left-aligned with the detail below. */}
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          paddingTop: 'max(14px, var(--titlebar-safe-top, 0px))', paddingBottom: 14, paddingRight: 28,
-          paddingLeft: 28,
-          borderBottom: '1px solid var(--line)',
-          background: 'transparent',
-          flexShrink: 0,
-          minWidth: 0, overflow: 'hidden',
-        }}>
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 8,
-            minWidth: 0, flex: '1 1 0',
-            overflow: 'hidden',
-          }}>
+        <div className="flex items-center justify-between pt-[max(14px,var(--titlebar-safe-top,0px))] pb-[14px] pr-7 pl-7 border-b border-t-0 border-x-0 border-solid border-line bg-transparent shrink-0 min-w-0 overflow-hidden">
+          <div className="flex items-center gap-2 min-w-0 flex-[1_1_0] overflow-hidden">
             <Crumb label="Projects" onClick={onShowAll} title="All projects" />
             <CrumbSep />
             <div
               {...hoverProps}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 4,
-                minWidth: 0, flex: '1 1 0',
-              }}
+              className="flex items-center gap-1 min-w-0 flex-[1_1_0]"
             >
               {editing ? (
                 <input
@@ -790,19 +654,12 @@ function ProjectDetail({
                   spellCheck={false}
                   autoCapitalize="none"
                   autoCorrect="off"
-                  style={{
-                    flex: '1 1 0', minWidth: 0,
-                    fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 13,
-                    letterSpacing: '0', color: 'var(--ink)',
-                    background: 'var(--surface-2)',
-                    border: '1px solid var(--accent)',
-                    borderRadius: 5, padding: '2px 6px', outline: 'none',
-                  }}
+                  className="flex-[1_1_0] min-w-0 font-display font-semibold text-[13px] tracking-normal text-ink bg-surface-2 border border-solid border-accent rounded-[5px] py-0.5 px-1.5 outline-none"
                 />
               ) : (
                 <CrumbCurrent
                   label={project.name}
-                  style={{ flex: '0 1 auto' }}
+                  className="flex-[0_1_auto]"
                 />
               )}
               {!editing && (
@@ -815,20 +672,7 @@ function ProjectDetail({
                     const rect = kebabRef.current?.getBoundingClientRect();
                     setMenuRect(rect || null);
                   }}
-                  style={{
-                    width: 22, height: 22, borderRadius: 5,
-                    background: 'transparent', border: 0,
-                    color: 'var(--ink-3)',
-                    display: 'inline-grid', placeItems: 'center',
-                    flexShrink: 0,
-                    opacity: showKebab ? 1 : 0,
-                    pointerEvents: showKebab ? 'auto' : 'none',
-                    cursor: 'pointer',
-                    transition: 'opacity .15s ease, color .15s ease, background .15s ease',
-                    WebkitAppRegion: 'no-drag',
-                  }}
-                  onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink)'; }}
-                  onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-3)'; }}
+                  className={`w-[22px] h-[22px] rounded-[5px] bg-transparent hover:bg-surface-2 border-0 text-ink-3 hover:text-ink inline-grid place-items-center shrink-0 cursor-pointer [-webkit-app-region:no-drag] [transition:opacity_.15s_ease,color_.15s_ease,background_.15s_ease] ${showKebab ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
                 >
                   {Ico.moreVert(13)}
                 </button>
@@ -851,16 +695,8 @@ function ProjectDetail({
           onDelete={() => onDelete?.(project)}
         />
 
-        <div data-scroll="true" style={{
-          minHeight: 0, overflowY: 'auto', overflowX: 'hidden',
-          padding: '32px 28px 60px',
-          background: 'transparent',
-          WebkitAppRegion: 'no-drag',
-        }}>
-          <div style={{
-            maxWidth: 720, margin: '0 auto',
-            display: 'flex', flexDirection: 'column', gap: 28,
-          }}>
+        <div data-scroll="true" className="min-h-0 overflow-y-auto overflow-x-hidden pt-8 px-7 pb-[60px] bg-transparent [-webkit-app-region:no-drag]">
+          <div className="max-w-[720px] mx-auto flex flex-col gap-7">
             <Composer
               onSend={onSend}
               project={project}
@@ -869,6 +705,7 @@ function ProjectDetail({
               onModelChange={() => {}}
               projects={projects || []}
               models={models || []}
+              modelMeta={modelMeta}
               attachments={attachments}
               connectors={connectors}
               onNavigateToConnectors={onNavigateToConnectors}
@@ -880,6 +717,9 @@ function ProjectDetail({
               hideModel
               metaReadOnly
               placeholder={`Start a new task in ${project.name}…`}
+              // Keyed on the id, not the name: renaming a project must not
+              // orphan the draft the user is in the middle of typing.
+              draftKey={`project:${project.id || project.name}`}
             />
 
             <TaskList
@@ -897,39 +737,18 @@ function ProjectDetail({
         </div>
       </div>
 
-      <aside className="project-detail-rail" style={{
-        background: 'transparent',
-        padding: '14px 14px 22px',
-        visibility: railOpen ? 'visible' : 'hidden',
-        opacity: railOpen ? 1 : 0,
-        transition: 'opacity 180ms ease',
-        display: 'flex', flexDirection: 'column', gap: 10,
-        overflowX: 'hidden', overflowY: 'auto',
-        minWidth: 0,
-        WebkitAppRegion: 'no-drag',
-      }}>
-        <div className="project-detail-rail-toggle-row" style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
-          flexShrink: 0,
-        }}>
-          <button
-            type="button"
-            className="project-detail-rail-toggle"
-            onClick={() => setRailOpen(false)}
-            title="Collapse panel"
-            aria-label="Collapse panel"
-            style={{
-              cursor: 'pointer', background: 'transparent', border: 0,
-              width: 26, height: 26, borderRadius: 6,
-              display: 'inline-grid', placeItems: 'center',
-              color: 'var(--ink-3)',
-              WebkitAppRegion: 'no-drag',
-            }}
-            onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
-            onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-3)'; e.currentTarget.style.background = 'transparent'; }}
-          >
-            {Ico.panelCollapseRight(15)}
-          </button>
+      <aside className={`project-detail-rail bg-transparent pt-[14px] px-[14px] pb-[22px] flex flex-col gap-[10px] overflow-x-hidden overflow-y-auto min-w-0 [-webkit-app-region:no-drag] [transition:opacity_180ms_ease] ${railOpen ? 'visible opacity-100' : 'invisible opacity-0'}`}>
+        <div className="project-detail-rail-toggle-row flex items-center justify-end shrink-0">
+          <Tooltip content="Collapse panel">
+            <button
+              type="button"
+              onClick={() => setRailOpen(false)}
+              aria-label="Collapse panel"
+              className="project-detail-rail-toggle cursor-pointer bg-transparent hover:bg-surface-2 border-0 w-[26px] h-[26px] rounded-md inline-grid place-items-center text-ink-3 hover:text-ink [-webkit-app-region:no-drag]"
+            >
+              {Ico.panelCollapseRight(15)}
+            </button>
+          </Tooltip>
         </div>
         <WorkingFolderBox project={project} />
         <ContextBox
@@ -956,6 +775,7 @@ export default function ProjectsView({
   // TasksView does.
   scheduleRunsIndex = {},
   models = [],
+  modelMeta,
   loading = false,
   onSelectProject,
   onCreateProject,
@@ -1113,6 +933,7 @@ export default function ProjectsView({
         scheduled={scheduled}
         scheduleRunsIndex={scheduleRunsIndex}
         models={models}
+        modelMeta={modelMeta}
         onSend={onSendInProject}
         onSelectTask={onSelectTask}
         onDeleteTask={onDeleteTask}
@@ -1150,10 +971,7 @@ export default function ProjectsView({
     // Background intentionally omitted so the gravity-field canvas
     // painted behind the React root shows through. Earlier this was
     // `background: 'var(--bg)'`, which masked the field on this view.
-    <div className="scroll-clean" style={{
-      flex: 1, overflowY: 'auto',
-      display: 'flex', flexDirection: 'column',
-    }}>
+    <div className="scroll-clean flex-1 overflow-y-auto flex flex-col">
       <PageHeader
         title="Projects"
         subtitle={`Workspaces ${agentLabel} uses to group conversations, memory, and outputs.`}
@@ -1189,27 +1007,21 @@ export default function ProjectsView({
       />
 
       {loading ? (
-        <div style={{
-          padding: '6px 32px 60px',
-          display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14,
-          marginTop: 18,
-        }}>
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-[14px] pt-1.5 px-8 pb-[60px] mt-[18px]">
           {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
         </div>
       ) : projects.length === 0 ? (
         <EmptyState
-          icon={<span style={{ display: 'inline-flex', color: 'var(--ink-4)' }}>{Ico.folder(32)}</span>}
+          icon={<span className="inline-flex text-ink-4">{Ico.folder(32)}</span>}
           title="No projects yet"
           description="Create your first project to start grouping conversations and outputs."
           action={<NewProjectButton onClick={handleNewProject} />}
+          // EmptyState only accepts a `style` prop (no className) — kept
+          // inline; out of scope to modify EmptyState.jsx for this ticket.
           style={{ flex: 1 }}
         />
       ) : effectiveView === 'grid' ? (
-        <div style={{
-          padding: '6px 32px 60px',
-          display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14,
-          marginTop: 18,
-        }}>
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-[14px] pt-1.5 px-8 pb-[60px] mt-[18px]">
           {visibleProjects.map((p) => (
             <ProjectCard
               key={p.name || p.path}
@@ -1234,35 +1046,16 @@ export default function ProjectsView({
           <button
             type="button"
             onClick={handleNewProject}
-            className="proj-new-tile"
-            style={{
-              minHeight: 120, borderRadius: 'var(--card-radius)',
-              padding: '14px 16px',
-              background: 'transparent',
-              border: '1px dashed var(--line-2)',
-              color: 'var(--ink-3)',
-              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-              gap: 8, cursor: 'pointer',
-              transition: 'border-color .15s ease, color .15s ease',
-              font: 'inherit',
-            }}
-            onMouseOver={(e) => {
-              e.currentTarget.style.borderColor = 'var(--accent)';
-              e.currentTarget.style.color = 'var(--accent)';
-            }}
-            onMouseOut={(e) => {
-              e.currentTarget.style.borderColor = 'var(--line-2)';
-              e.currentTarget.style.color = 'var(--ink-3)';
-            }}
+            className="proj-new-tile min-h-[120px] rounded-card py-[14px] px-4 bg-transparent border border-dashed border-line-2 hover:border-accent text-ink-3 hover:text-accent flex flex-col items-center justify-center gap-2 cursor-pointer [transition:border-color_.15s_ease,color_.15s_ease] [font:inherit]"
           >
-            <span style={{ display: 'inline-flex' }}>{Ico.plus(16)}</span>
-            <span style={{ fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500 }}>
+            <span className="inline-flex">{Ico.plus(16)}</span>
+            <span className="font-body text-[13px] font-medium">
               New project
             </span>
           </button>
         </div>
       ) : (
-        <div style={{ padding: '6px 32px 60px', marginTop: 18 }}>
+        <div className="pt-1.5 px-8 pb-[60px] mt-[18px]">
           <ListHeader />
           {visibleProjects.map((p) => (
             <ListRow

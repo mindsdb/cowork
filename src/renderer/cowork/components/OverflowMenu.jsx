@@ -25,6 +25,10 @@ export function OverflowMenu({
     <button
       type="button"
       aria-label={label}
+      // Kept as native `title` (not ui/Tooltip, ENG-1152): this button is
+      // also the Menu's trigger, so wrapping it in a Tooltip would nest two
+      // Base UI triggers competing for the same ref/handlers. Deferred until
+      // the trigger forwards a ref cleanly.
       title={title}
       disabled={disabled}
       className={clsx(

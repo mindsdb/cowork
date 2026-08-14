@@ -15,6 +15,13 @@ on:
         description: Artifact name produced by the build workflow (also the final file name)
         required: true
         type: string
+    outputs:
+      download_url:
+        description: >-
+          Public CloudFront URL of the uploaded installer. Exposed so the calling
+          pipeline can put it in front of a reviewer — the job summary is only
+          found by someone who already went looking.
+        value: ${{ jobs.upload.outputs.download_url }}
 
 permissions:
   contents: read
@@ -26,7 +33,14 @@ defaults:
 jobs:
   upload:
     runs-on: mdb-prod
+    outputs:
+      download_url: ${{ steps.s3.outputs.download_url }}
     steps:
+      # The manifest writer lives in the repo, so this job needs the tree as
+      # well as the build artifact.
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -40,6 +54,10 @@ jobs:
 
       - name: Validate Windows signing report before upload
         if: inputs.platform == 'windows'
+        env:
+          # Public Authenticode publisher CN of our installers (SSL.com EV cert).
+          # Override via repo variable if the cert's subject ever changes.
+          EXPECTED_PUBLISHER_CN: ${{ vars.WINDOWS_PUBLISHER_CN }}
         run: |
           set -euo pipefail
           REPORT_JSON="out/signing-report/installer-signature-report.json"
@@ -48,6 +66,7 @@ jobs:
             ls -la out || true
             exit 1
           fi
+          # shellcheck disable=SC2016  # the JS below must NOT be shell-expanded
           node -e '
             const fs = require("fs");
             const p = process.argv[1];
@@ -63,10 +82,20 @@ jobs:
               console.error(`::error::Invalid signature status: ${r.status} (${r.statusMessage || ""})`);
               process.exit(1);
             }
-            console.log(`Windows signing report OK: ${r.file} sha256=${r.sha256}`);
+            // Pin WHO signed it: a Valid signature from the wrong cert must not
+            // publish. Match the CN token (comma-quoting varies by host).
+            const expected = (process.env.EXPECTED_PUBLISHER_CN || "Mindsdb, Inc.").trim();
+            const token = expected.split(",")[0].trim();
+            const esc = token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            if (!new RegExp("CN=\\s*\"?" + esc, "i").test(r.signerSubject)) {
+              console.error(`::error::signer CN does not match expected publisher "${token}": ${r.signerSubject}`);
+              process.exit(1);
+            }
+            console.log(`Windows signing report OK: ${r.file} signer=${r.signerSubject} sha256=${r.sha256}`);
           ' "$REPORT_JSON"
 
       - name: Upload to S3
+        id: s3
         env:
           PLATFORM: ${{ inputs.platform }}
           KIND: ${{ inputs.build_kind }}
@@ -75,7 +104,6 @@ jobs:
           set -euo pipefail
           BUCKET="anton-installer"
           PREFIX="mindshub-cowork/${PLATFORM}"
-          BASE="s3://${BUCKET}/${PREFIX}"
           EXT="${NAME##*.}"
           SRC="out/${NAME}"
 
@@ -93,25 +121,115 @@ jobs:
           HTTPS_BASE="https://${BUCKET}.s3.${REGION}.amazonaws.com"
           CDN_BASE="https://downloads.mindshub.ai"
 
-          UPLOADED_KEYS=()
+          # A versioned key's bytes never change, so it can be cached for a year
+          # and a resume can trust a validator that never moves. The aliases are
+          # rewritten every release, so they get a minute: long enough to absorb
+          # a download spike, short enough that a stale copy is not the story.
+          # Without either header CloudFront falls back to its own hour.
+          IMMUTABLE_CACHE="public, max-age=31536000, immutable"
+          ALIAS_CACHE="public, max-age=60"
+          # Serve installers as opaque bytes named after the version they are,
+          # so a file saved from the alias URL is not called "...-latest.pkg".
+          INSTALLER_TYPE="application/octet-stream"
+          DISPOSITION="attachment; filename=\"${NAME}\""
 
-          upload() {
+          UPLOADED_KEYS=()
+          VERSIONED_KEY=""
+
+          upload_installer() {
+            local src="$1" key="$2" cache="$3"
+            aws s3 cp "$src" "s3://${BUCKET}/${key}" \
+              --cache-control "$cache" \
+              --content-type "$INSTALLER_TYPE" \
+              --content-disposition "$DISPOSITION"
+          }
+
+          # Is this key already published? head-object exits non-zero for more
+          # reasons than "no": a 403, a SlowDown throttle and an expired token
+          # all look identical to a miss if you only read the exit status. Any
+          # of them would fall through to the overwrite that the create-only
+          # rule below exists to prevent, and do it silently. So only a genuine
+          # 404 counts as absent; everything else stops the release.
+          key_exists() {
+            local key="$1" err
+            if err=$(aws s3api head-object --bucket "$BUCKET" --key "$key" 2>&1 >/dev/null); then
+              return 0
+            fi
+            case "$err" in
+              *"(404)"* | *"Not Found"*) return 1 ;;
+              *)
+                echo "::error::Cannot tell whether ${key} is already published, so refusing to write it: ${err}"
+                exit 1
+                ;;
+            esac
+          }
+
+          # Publish a version's bytes exactly once. Signing and notarisation
+          # stamp a timestamp, so rebuilding a version yields different bytes
+          # under the same name, and taking the new ones would change what an
+          # already-advertised URL serves. Identical bytes are a no-op;
+          # different bytes stop the release rather than replacing anything.
+          publish_versioned() {
             local src="$1" key="$2"
-            aws s3 cp "$src" "s3://${BUCKET}/${key}"
+            local tmp published
+            if key_exists "$key"; then
+              tmp="$(mktemp)"
+              aws s3 cp "s3://${BUCKET}/${key}" "$tmp" >/dev/null
+              published=$(sha256sum "$tmp" | awk '{print $1}')
+              rm -f "$tmp"
+              if [ "$published" != "$LOCAL_SHA" ]; then
+                echo "::error::Refusing to overwrite ${key}: it is already published with different bytes (published=${published} built=${LOCAL_SHA}). Cut a new version rather than republishing this one."
+                exit 1
+              fi
+              echo "Already published and byte-identical, skipping re-upload: ${key}"
+            else
+              upload_installer "$src" "$key" "$IMMUTABLE_CACHE"
+            fi
+            VERSIONED_KEY="$key"
+            UPLOADED_KEYS+=("$key")
+          }
+
+          # Previews and stable snapshots overwrite. Both are named after a
+          # commit rather than a release, both get rebuilt whenever anyone
+          # re-runs the job, and re-signing changes the bytes under the same
+          # name — so the create-only rule would answer an ordinary re-run with
+          # "cut a new version" for a key that has no version to cut. They carry
+          # the short alias TTL rather than `immutable`, because advertising a
+          # key as immutable while overwriting it is exactly what strands a
+          # stale copy at the edge. Only prod, where a version is cut once and
+          # its URL is advertised to users, gets the create-only rule.
+          publish_rebuildable() {
+            local src="$1" key="$2"
+            upload_installer "$src" "$key" "$ALIAS_CACHE"
+            VERSIONED_KEY="$key"
+            UPLOADED_KEYS+=("$key")
+          }
+
+          # The alias is a server-side copy of the key just published, never a
+          # second upload of the local file. Copying makes "the alias serves the
+          # version the manifest names" a property of how it is written, instead
+          # of something two independent uploads have to agree on.
+          publish_alias() {
+            local key="$1"
+            aws s3 cp "s3://${BUCKET}/${VERSIONED_KEY}" "s3://${BUCKET}/${key}" \
+              --metadata-directive REPLACE \
+              --cache-control "$ALIAS_CACHE" \
+              --content-type "$INSTALLER_TYPE" \
+              --content-disposition "$DISPOSITION"
             UPLOADED_KEYS+=("$key")
           }
 
           case "$KIND" in
             preview)
-              upload "$SRC" "${PREFIX}/previews/${NAME}"
+              publish_rebuildable "$SRC" "${PREFIX}/previews/${NAME}"
               ;;
             stable)
-              upload "$SRC" "${PREFIX}/snapshots/${NAME}"
-              upload "$SRC" "${PREFIX}/mindshub-cowork-staging.${EXT}"
+              publish_rebuildable "$SRC" "${PREFIX}/snapshots/${NAME}"
+              publish_alias "${PREFIX}/mindshub-cowork-staging.${EXT}"
               ;;
             prod)
-              upload "$SRC" "${PREFIX}/${NAME}"
-              upload "$SRC" "${PREFIX}/mindshub-cowork-latest.${EXT}"
+              publish_versioned "$SRC" "${PREFIX}/${NAME}"
+              publish_alias "${PREFIX}/mindshub-cowork-latest.${EXT}"
               ;;
             *)
               echo "::error::Unknown build_kind: $KIND"
@@ -155,6 +273,15 @@ jobs:
             echo "| \`${S3_URI}\` | ✅ sha256 verified (\`${REMOTE_SHA}\`) | ${CDN_URL} |" >> "$GITHUB_STEP_SUMMARY"
           done
 
+          # Where this step wrote, so the steps after it don't restate the
+          # bucket and prefix as literals and drift from it.
+          {
+            echo "bucket=${BUCKET}"
+            echo "prefix=${PREFIX}"
+            echo "versioned_key=${VERSIONED_KEY}"
+            echo "download_url=${CDN_BASE}/${VERSIONED_KEY}"
+          } >> "$GITHUB_OUTPUT"
+
           {
             echo ""
             echo "### Public download URLs"
@@ -165,3 +292,311 @@ jobs:
           for KEY in "${UPLOADED_KEYS[@]}"; do
             echo "- ${CDN_BASE}/${KEY}" >> "$GITHUB_STEP_SUMMARY"
           done
+
+      # electron-updater reads one mutable channel manifest that references an
+      # immutable signed payload. Publish payload/blockmap first and latest*.yml
+      # last so clients can never observe metadata for bytes that do not exist.
+      - name: Publish shell updater feed
+        if: inputs.build_kind == 'prod' || inputs.build_kind == 'stable'
+        env:
+          PLATFORM: ${{ inputs.platform }}
+          KIND: ${{ inputs.build_kind }}
+          NAME: ${{ inputs.artifact_name }}
+        run: |
+          set -euo pipefail
+          BUCKET="anton-installer"
+          PREFIX="mindshub-cowork/updates/${KIND}/${PLATFORM}"
+          CDN_BASE="https://downloads.mindshub.ai"
+
+          case "$PLATFORM" in
+            mac)
+              PAYLOAD=$(find out/updater -maxdepth 1 -type f -name '*.zip' -print -quit)
+              METADATA="out/updater/latest-mac.yml"
+              ;;
+            windows)
+              PAYLOAD="out/${NAME}"
+              METADATA="out/updater/latest.yml"
+              ;;
+            *)
+              echo "::error::Unknown updater platform: $PLATFORM"
+              exit 1
+              ;;
+          esac
+
+          test -n "$PAYLOAD"
+          test -f "$PAYLOAD"
+          test -f "$METADATA"
+          PAYLOAD_NAME=$(basename "$PAYLOAD")
+          PAYLOAD_KEY="${PREFIX}/${PAYLOAD_NAME}"
+
+          # Immutable means immutable: never overwrite an existing key. A signed
+          # payload's bytes differ on every re-run (signature timestamp), so
+          # overwriting would let CloudFront keep serving the old cached bytes
+          # under a URL whose fresh latest.yml now names a new hash — bricking
+          # verification until the CDN TTL expires. Create-only: if the key
+          # already holds identical bytes, skip; if it holds DIFFERENT bytes,
+          # fail loudly (bump the version instead of re-publishing).
+          # head-object exits non-zero for more reasons than "no": a 403, a
+          # SlowDown throttle and an expired token all look identical to a miss
+          # if you only read the exit status, and every one of them would fall
+          # through to the overwrite the rule above exists to prevent — of an
+          # immutable payload, which is the case it protects hardest. Only a
+          # genuine 404 counts as absent; anything else stops the release.
+          key_exists() {
+            local key="$1" err
+            if err=$(aws s3api head-object --bucket "$BUCKET" --key "$key" 2>&1 >/dev/null); then
+              return 0
+            fi
+            case "$err" in
+              *"(404)"* | *"Not Found"*) return 1 ;;
+              *)
+                echo "::error::Cannot tell whether ${key} is already published, so refusing to write it: ${err}"
+                exit 1
+                ;;
+            esac
+          }
+
+          upload_immutable() {
+            local src="$1" key="$2"
+            local expected actual tmp
+            expected=$(sha256sum "$src" | awk '{print $1}')
+            if key_exists "$key"; then
+              tmp=$(mktemp)
+              aws s3 cp "s3://${BUCKET}/${key}" "$tmp" >/dev/null
+              actual=$(sha256sum "$tmp" | awk '{print $1}')
+              rm -f "$tmp"
+              if [ "$expected" != "$actual" ]; then
+                echo "::error::Refusing to overwrite immutable key ${key}: existing bytes differ (existing=${actual} new=${expected}). Bump the version instead of re-publishing."
+                exit 1
+              fi
+              echo "Immutable key ${key} already present and byte-identical — skipping re-upload."
+              return 0
+            fi
+            aws s3 cp "$src" "s3://${BUCKET}/${key}" \
+              --cache-control "public,max-age=31536000,immutable"
+            tmp=$(mktemp)
+            aws s3 cp "s3://${BUCKET}/${key}" "$tmp" >/dev/null
+            actual=$(sha256sum "$tmp" | awk '{print $1}')
+            rm -f "$tmp"
+            test "$expected" = "$actual"
+          }
+
+          # 1. Immutable signed payload.
+          upload_immutable "$PAYLOAD" "$PAYLOAD_KEY"
+
+          # 2. Optional differential-download blockmap, generated from the
+          # final payload bytes (post-sign on Windows).
+          BLOCKMAP="${PAYLOAD}.blockmap"
+          if [ ! -f "$BLOCKMAP" ]; then
+            BLOCKMAP="out/updater/${PAYLOAD_NAME}.blockmap"
+          fi
+          if [ -f "$BLOCKMAP" ]; then
+            upload_immutable "$BLOCKMAP" "${PREFIX}/$(basename "$BLOCKMAP")"
+          fi
+
+          # 3. Mutable channel pointer, always last.
+          METADATA_NAME=$(basename "$METADATA")
+          aws s3 cp "$METADATA" "s3://${BUCKET}/${PREFIX}/${METADATA_NAME}" \
+            --cache-control "no-cache,no-store,must-revalidate"
+
+          # Prove the public CDN serves the exact BYTES of what was just
+          # published, for the payload and the channel pointer alike.
+          #
+          # The channel pointer used to be checked by status alone, and this
+          # distribution answered a missing key with a 200 carrying 665 bytes of
+          # HTML, so `curl -f` succeeded on something that never uploaded. Both
+          # prod manifests were absent for weeks while every release reported
+          # success. A missing key answers 404 now, but status still cannot tell
+          # a current object from a stale one, which is the failure an immutable
+          # key is most exposed to.
+          #
+          # `curl --retry` is no help for the waiting either, because it fires
+          # only on a timeout or a 408/429/5xx, which is why the wait below is
+          # an explicit loop rather than a retry flag.
+          #
+          # Two separate waits, because they cover two different failures, and
+          # collapsing them into one loop over the body is what makes "give it
+          # five minutes" untrue: the Windows payload is a few hundred MB, so
+          # thirty downloads is tens of minutes and several GB of egress.
+          verify_on_cdn() {
+            local key="$1" src="$2" url want tmp resolved="" got=""
+            url="${CDN_BASE}/${key}"
+            want=$(sha256sum "$src" | awk '{print $1}')
+
+            # 1. Resolution. A key created moments ago can be shadowed by an
+            # edge that cached the miss for it, so poll until it answers. HEAD,
+            # so waiting costs response headers rather than the whole object.
+            for _ in $(seq 1 30); do
+              if curl -fsS -I "$url" -o /dev/null; then
+                resolved=yes
+                break
+              fi
+              sleep 10
+            done
+            if [ -z "$resolved" ]; then
+              curl -sS -D - "$url" -o /dev/null | head -20 || true
+              echo "::error::${url} did not resolve within 300s, so it most likely never uploaded."
+              exit 1
+            fi
+
+            # 2. The bytes. Status cannot tell a current object from a stale
+            # one. Three attempts absorbs a transfer that breaks; a fourth
+            # would be re-asking a question already answered, since step 1
+            # established the key is there.
+            tmp=$(mktemp)
+            for _ in 1 2 3; do
+              if curl -fsSL "$url" -o "$tmp"; then
+                got=$(sha256sum "$tmp" | awk '{print $1}')
+                [ "$got" = "$want" ] && break
+              fi
+              sleep 10
+            done
+            rm -f "$tmp"
+            if [ "$got" != "$want" ]; then
+              echo "::error::${url} did not serve what this run published (cdn=${got:-<unreachable>} local=${want})."
+              curl -sS -D - "$url" -o /dev/null | head -20 || true
+              exit 1
+            fi
+            echo "CDN serves the published bytes: ${key}"
+          }
+
+          verify_on_cdn "$PAYLOAD_KEY" "$PAYLOAD"
+          verify_on_cdn "${PREFIX}/${METADATA_NAME}" "$METADATA"
+
+          {
+            echo ""
+            echo "### Shell updater feed"
+            echo ""
+            echo "- Payload: ${CDN_BASE}/${PAYLOAD_KEY}"
+            echo "- Metadata: ${CDN_BASE}/${PREFIX}/${METADATA_NAME}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # The manifest is how a browser client finds the current installer: which
+      # version is live, the immutable URL that serves it, and the sha256 to
+      # check the finished file against. It is written last, after the loop
+      # above has confirmed the bytes it names are in the bucket, so it can
+      # never point at something that does not exist yet.
+      - name: Publish public download manifest
+        if: inputs.build_kind == 'prod' || inputs.build_kind == 'stable'
+        env:
+          KIND: ${{ inputs.build_kind }}
+          NAME: ${{ inputs.artifact_name }}
+          BUCKET: ${{ steps.s3.outputs.bucket }}
+          PREFIX: ${{ steps.s3.outputs.prefix }}
+          VERSIONED_KEY: ${{ steps.s3.outputs.versioned_key }}
+        run: |
+          set -euo pipefail
+          # One manifest per channel, named after the alias it supersedes, so a
+          # consumer already reading `-latest` or `-staging` knows which is its
+          # own without a lookup table.
+          MANIFEST_NAME=$([ "$KIND" = "prod" ] && echo latest.json || echo staging.json)
+
+          node scripts/write-download-manifest.mjs \
+            --artifact "out/${NAME}" \
+            --key "$VERSIONED_KEY" \
+            --channel "$KIND" \
+            --cdn-base "https://downloads.mindshub.ai" \
+            --output "$MANIFEST_NAME"
+
+          aws s3 cp "$MANIFEST_NAME" "s3://${BUCKET}/${PREFIX}/${MANIFEST_NAME}" \
+            --cache-control "no-cache, no-store, must-revalidate" \
+            --content-type "application/json"
+
+      # Prove over the public CDN what the release claims: the manifest resolves
+      # to the bytes this run built, and the URL it names can be resumed.
+      #
+      # Every assertion here reads the body rather than the status line. A
+      # status can no longer hide a missing key, now that the distribution
+      # answers one with a 404, but it still cannot tell a current object from
+      # a stale one, which is the failure an immutable key is most exposed to.
+      #
+      # The wait is an explicit loop rather than `curl --retry`, which fires
+      # only on a timeout or a 408/429/5xx. A newly created key can be shadowed
+      # by an edge that cached the 404 for it moments earlier, and no retry
+      # flag covers that.
+      - name: Verify the published download over the CDN
+        if: inputs.build_kind == 'prod' || inputs.build_kind == 'stable'
+        env:
+          KIND: ${{ inputs.build_kind }}
+          NAME: ${{ inputs.artifact_name }}
+          PREFIX: ${{ steps.s3.outputs.prefix }}
+        run: |
+          set -euo pipefail
+          CDN_BASE="https://downloads.mindshub.ai"
+          MANIFEST_NAME=$([ "$KIND" = "prod" ] && echo latest.json || echo staging.json)
+          MANIFEST_URL="${CDN_BASE}/${PREFIX}/${MANIFEST_NAME}"
+          LOCAL_SHA=$(sha256sum "out/${NAME}" | awk '{print $1}')
+
+          fail() { echo "::error::$1"; exit 1; }
+          field() {
+            node -e 'const m = require("./manifest-live.json"); process.stdout.write(String(m[process.argv[1]] ?? ""))' "$1"
+          }
+
+          # A newly created key can be shadowed by an edge that cached the 404
+          # for it moments earlier, so give it five minutes.
+          RESOLVED=""
+          for _ in $(seq 1 30); do
+            if curl -fsS "$MANIFEST_URL" -o manifest-live.json \
+              && node -e 'require("./manifest-live.json")' >/dev/null 2>&1; then
+              RESOLVED=yes
+              break
+            fi
+            sleep 10
+          done
+          if [ -z "$RESOLVED" ]; then
+            curl -sS -D - "$MANIFEST_URL" -o /dev/null | head -20 || true
+            fail "${MANIFEST_URL} did not serve JSON within 300s, so the manifest most likely never uploaded."
+          fi
+
+          for KEY in version key url size_bytes sha256 published_at; do
+            [ -n "$(field "$KEY")" ] || fail "manifest field '${KEY}' is missing or empty"
+          done
+
+          MANIFEST_SHA=$(field sha256)
+          INSTALLER_URL=$(field url)
+          [ "$MANIFEST_SHA" = "$LOCAL_SHA" ] \
+            || fail "manifest sha256 does not match the installer this release built (manifest=${MANIFEST_SHA} built=${LOCAL_SHA})"
+
+          HEADERS=$(curl -fsSI "$INSTALLER_URL")
+          # Assert the header this channel actually sets, not one of them.
+          # A prod version is published once, so its URL is advertised as
+          # immutable; a stable snapshot is named after a commit and gets
+          # rewritten on a re-run, so it carries the short alias TTL. What both
+          # have to prove is that SOME explicit Cache-Control survives to the
+          # edge, because without one CloudFront applies its own hour.
+          if [ "$KIND" = "prod" ]; then
+            EXPECT_CACHE='^cache-control: *public, *max-age=31536000, *immutable'
+            EXPECT_DESC="immutable"
+          else
+            EXPECT_CACHE='^cache-control: *public, *max-age=60'
+            EXPECT_DESC="public, max-age=60"
+          fi
+          grep -qiE "$EXPECT_CACHE" <<<"$HEADERS" \
+            || fail "${INSTALLER_URL} is not served as ${EXPECT_DESC}: $(grep -i '^cache-control' <<<"$HEADERS" || echo 'no cache-control header')"
+          grep -qiF "content-disposition: attachment; filename=\"${NAME}\"" <<<"$HEADERS" \
+            || fail "${INSTALLER_URL} does not name the versioned file: $(grep -i '^content-disposition' <<<"$HEADERS" || echo 'no content-disposition header')"
+          ETAG=$(grep -i '^etag:' <<<"$HEADERS" | tr -d '\r' | awk '{print $2}')
+
+          # An interrupted download resumes by replaying its validator. If this
+          # answers 200 the client gets the whole body again instead of the tail.
+          RANGE_HEADERS=$(curl -sS -D - -o /dev/null -r 0-1023 -H "If-Range: ${ETAG}" "$INSTALLER_URL")
+          RANGE_STATUS=$(head -1 <<<"$RANGE_HEADERS" | awk '{print $2}')
+          RANGE_ETAG=$(grep -i '^etag:' <<<"$RANGE_HEADERS" | tr -d '\r' | awk '{print $2}')
+          [ "$RANGE_STATUS" = "206" ] \
+            || fail "${INSTALLER_URL} answered ${RANGE_STATUS} to a Range request, so an interrupted download cannot resume"
+          [ "$RANGE_ETAG" = "$ETAG" ] \
+            || fail "ETag moved between the HEAD and the Range request (${ETAG} then ${RANGE_ETAG})"
+
+          {
+            echo ""
+            echo "### Public download manifest"
+            echo ""
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| Manifest | ${MANIFEST_URL} |"
+            echo "| Version | \`$(field version)\` |"
+            echo "| Installer | ${INSTALLER_URL} |"
+            echo "| Size | $(field size_bytes) bytes |"
+            echo "| sha256 | \`${MANIFEST_SHA}\` |"
+            echo "| Resumable | ✅ Range returned 206 with a stable ETag |"
+          } >> "$GITHUB_STEP_SUMMARY"

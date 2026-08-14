@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
+import { Gamepad2, Sun, Moon } from 'lucide-react';
 import SetupScreen from './pages/arcade/SetupScreen';
 import OnboardingScreen from './pages/arcade/OnboardingScreen';
 import { COWORKERS } from './pages/arcade/CoworkerSelect';
 import CoworkApp from './CoworkApp';
 import OrbitMorph from './cowork/components/ui/OrbitMorph';
+import { Tooltip } from './cowork/components/ui/Tooltip';
 import { host } from './platform/host';
 import { loadSkin, persistSkin } from './lib/skins';
 import { syncSettingsToDb, syncModelsToDbWithRetry } from './lib/syncSettings';
@@ -67,29 +69,15 @@ function applyArcadePreset(skin: string): void {
 }
 
 function GamepadIcon({ size = 15 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M6 11h4M8 9v4" /><path d="M15.5 12.5h.01M18 10h.01" />
-      <path d="M17.32 6H6.68a4 4 0 0 0-3.98 3.6l-.66 5.86A2.75 2.75 0 0 0 6.8 17.6L8.5 15.5h7l1.7 2.1a2.75 2.75 0 0 0 4.76-2.14l-.66-5.86A4 4 0 0 0 17.32 6Z" />
-    </svg>
-  );
+  return <Gamepad2 size={size} strokeWidth={1.5} aria-hidden="true" />;
 }
 
 function SunIcon({ size = 15 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="4" />
-      <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
-    </svg>
-  );
+  return <Sun size={size} strokeWidth={1.5} aria-hidden="true" />;
 }
 
 function MoonIcon({ size = 15 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z" />
-    </svg>
-  );
+  return <Moon size={size} strokeWidth={1.5} aria-hidden="true" />;
 }
 
 export default function App() {
@@ -283,24 +271,26 @@ export default function App() {
           above the theme toggle. */}
       {isArcadePage && (
         <>
-          <button
-            onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
-            title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
-            aria-label="Toggle colour theme"
-            className="arcade-theme-toggle"
-            style={{ zIndex: 200 }}
-          >
-            {theme === 'dark' ? <SunIcon size={15} /> : <MoonIcon size={15} />}
-          </button>
-          <button
-            onClick={() => setSkin((s) => (s === '8bit' ? 'normal' : '8bit'))}
-            title={skin === '8bit' ? 'Switch 8-bit arcade style off' : 'Switch style to 8-Bit Arcade mode'}
-            aria-label="Toggle 8-bit arcade style"
-            className="arcade-theme-toggle arcade-skin-toggle"
-            style={{ zIndex: 200 }}
-          >
-            <GamepadIcon size={15} />
-          </button>
+          <Tooltip content={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}>
+            <button
+              onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+              aria-label="Toggle colour theme"
+              className="arcade-theme-toggle"
+              style={{ zIndex: 200 }}
+            >
+              {theme === 'dark' ? <SunIcon size={15} /> : <MoonIcon size={15} />}
+            </button>
+          </Tooltip>
+          <Tooltip content={skin === '8bit' ? 'Switch 8-bit arcade style off' : 'Switch style to 8-Bit Arcade mode'}>
+            <button
+              onClick={() => setSkin((s) => (s === '8bit' ? 'normal' : '8bit'))}
+              aria-label="Toggle 8-bit arcade style"
+              className="arcade-theme-toggle arcade-skin-toggle"
+              style={{ zIndex: 200 }}
+            >
+              <GamepadIcon size={15} />
+            </button>
+          </Tooltip>
         </>
       )}
     </>

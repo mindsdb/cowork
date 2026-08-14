@@ -14,6 +14,13 @@
 // this asserts the two properties that make the seam safe: every caller states
 // the input, and the value it states matches the ring it is building for.
 //
+// The shape changed when the installer builds were folded into the per-event
+// pipelines (ENG-1053). There is now one hop: each ring's pipeline calls
+// `build-installers.yml`, which calls the two platform builds. The invariant is
+// unchanged and there are fewer places to state it, so this checks both halves:
+// each ring states the right host, and the aggregator passes it through rather
+// than substituting a value of its own.
+//
 // Deliberately hand-parsed: js-yaml is only present transitively (via
 // electron-builder) and could disappear on any bump, which is not a dependency
 // this guard should own.
@@ -25,7 +32,10 @@ const REPO = fileURLToPath(new URL('../..', import.meta.url));
 const WORKFLOWS = `${REPO}/.github/workflows`;
 
 /** The reusable workflows that bake an environment into a shipped installer. */
-const BUILD_WORKFLOWS = ['build-macos-pkg.yml', 'build-windows-installer.yml'];
+const PLATFORM_BUILDS = ['build-macos-pkg.yml', 'build-windows-installer.yml'];
+
+/** The one workflow every ring goes through to reach them. */
+const AGGREGATOR = 'build-installers.yml';
 
 /** Which host each ring must be built against. `preview` is the dev/PR ring. */
 const HOST_FOR_KIND: Record<string, string> = {
@@ -34,7 +44,8 @@ const HOST_FOR_KIND: Record<string, string> = {
   preview: 'https://api.staging.mindshub.ai',
 };
 
-const CALLERS = ['prod-build-installer.yml', 'staging-build-installer.yml', 'dev-build-installer.yml'];
+/** The per-event pipelines, one per ring. */
+const RINGS = ['prod-build-deploy.yml', 'staging-build-deploy.yml', 'dev-build-deploy.yml'];
 
 interface CallSite {
   workflow: string;
@@ -42,20 +53,20 @@ interface CallSite {
   inputs: Record<string, string>;
 }
 
-/** Every `uses: ./.github/workflows/build-*.yml` in a file, with the `with:`
+/** Every `uses: ./.github/workflows/<target>.yml` in a file, with the `with:`
  *  inputs that follow it. Indentation-scoped: `with:` is a SIBLING of `uses:`
  *  (both under the job), and the inputs sit one level deeper, so the block runs
  *  until the line that dedents out of the job. */
-function callSites(workflow: string): CallSite[] {
+function callSites(workflow: string, targets: string[]): CallSite[] {
   const text = readFileSync(`${WORKFLOWS}/${workflow}`, 'utf-8');
   const sites: CallSite[] = [];
   const lines = text.split('\n');
 
   for (let i = 0; i < lines.length; i++) {
-    const usesMatch = /^(\s*)uses:\s*\.\/\.github\/workflows\/(build-[a-z-]+\.yml)\s*$/.exec(lines[i]);
+    const usesMatch = /^(\s*)uses:\s*\.\/\.github\/workflows\/([a-z-]+\.yml)\s*$/.exec(lines[i]);
     if (!usesMatch) continue;
     const [, indent, target] = usesMatch;
-    if (!BUILD_WORKFLOWS.includes(target)) continue;
+    if (!targets.includes(target)) continue;
 
     const inputs: Record<string, string> = {};
     for (let j = i + 1; j < lines.length; j++) {
@@ -78,21 +89,22 @@ function callSites(workflow: string): CallSite[] {
 }
 
 describe('installer workflows bake an environment', () => {
-  const sites = CALLERS.flatMap(callSites);
+  const ringSites = RINGS.flatMap((w) => callSites(w, [AGGREGATOR]));
 
-  it('finds every build call site (guards the parser itself)', () => {
-    // Three rings, each building macOS and Windows. If this drops, the parser
-    // stopped understanding the YAML and every assertion below went vacuous.
-    expect(sites).toHaveLength(6);
-    for (const w of CALLERS) {
-      expect(sites.filter((s) => s.workflow === w)).toHaveLength(2);
+  it('finds every ring call site (guards the parser itself)', () => {
+    // Three rings, each reaching the installers exactly once. If this drops, the
+    // parser stopped understanding the YAML and every assertion below went
+    // vacuous.
+    expect(ringSites).toHaveLength(3);
+    for (const w of RINGS) {
+      expect(ringSites.filter((s) => s.workflow === w)).toHaveLength(1);
     }
   });
 
-  it.each(CALLERS)('%s states minds_api_url on every build call', (workflow) => {
-    // The actual defect: dev-build-installer.yml omitted it entirely, which is
-    // silent at build time and only shows up as a login that never completes.
-    for (const site of callSites(workflow)) {
+  it.each(RINGS)('%s states minds_api_url when it builds installers', (workflow) => {
+    // The actual defect: the dev ring omitted it entirely, which is silent at
+    // build time and only shows up as a login that never completes.
+    for (const site of callSites(workflow, [AGGREGATOR])) {
       expect(site.inputs.minds_api_url, `${workflow} -> ${site.uses} must state minds_api_url`).toBeTruthy();
     }
   });
@@ -100,7 +112,7 @@ describe('installer workflows bake an environment', () => {
   it('points each ring at the environment it is meant to test', () => {
     // A prod build must reach production, and a non-prod build must never
     // reach it: that is what makes a green staging run mean anything.
-    for (const site of sites) {
+    for (const site of ringSites) {
       const kind = site.inputs.build_kind;
       expect(Object.keys(HOST_FOR_KIND), `unknown build_kind "${kind}"`).toContain(kind);
       expect(site.inputs.minds_api_url, `${site.workflow} -> ${site.uses} (${kind})`).toBe(HOST_FOR_KIND[kind]);
@@ -108,12 +120,23 @@ describe('installer workflows bake an environment', () => {
   });
 
   it('builds prod against prod', () => {
-    const prod = sites.filter((s) => s.inputs.build_kind === 'prod');
-    expect(prod).toHaveLength(2); // macOS + Windows
+    const prod = ringSites.filter((s) => s.inputs.build_kind === 'prod');
+    expect(prod).toHaveLength(1);
     for (const site of prod) expect(site.inputs.minds_api_url).toBe('https://api.mindshub.ai');
   });
 
-  it.each(BUILD_WORKFLOWS)('%s requires minds_api_url and gives it no default', (workflow) => {
+  it('the aggregator passes the host through rather than choosing one', () => {
+    // The hop added by folding the installers into the pipelines is only safe if
+    // it is transparent. A literal here would silently override every ring.
+    const sites = callSites(AGGREGATOR, PLATFORM_BUILDS);
+    expect(sites, 'build-installers.yml must call both platform builds').toHaveLength(2);
+    for (const site of sites) {
+      expect(site.inputs.minds_api_url, `${AGGREGATOR} -> ${site.uses}`).toBe('${{ inputs.minds_api_url }}');
+      expect(site.inputs.build_kind, `${AGGREGATOR} -> ${site.uses}`).toBe('${{ inputs.build_kind }}');
+    }
+  });
+
+  it.each([...PLATFORM_BUILDS, AGGREGATOR])('%s requires minds_api_url and gives it no default', (workflow) => {
     // Required rather than defaulted, on purpose. A default cannot be both
     // safe and honest here: the only safe value is production (it is what the
     // renderer falls back to anyway), but then a caller that forgets gets a
