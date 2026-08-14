@@ -1383,8 +1383,9 @@ async function commitRenewedKey(accessToken: string, apiKey: string, prefix: str
     }
     const envPath = coworkEnvPath();
     const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
-    fs.writeFileSync(envPath, replaceMindsApiKeyLine(existing, apiKey), { encoding: 'utf-8', mode: 0o600 });
-    try { fs.chmodSync(envPath, 0o600); } catch { /* best-effort */ }
+    // Atomic writer (ENG-1209): the renewal runs while the live server holds
+    // .env open, which is exactly the Windows share-mode EPERM this fixes.
+    await writeEnvFileAtomic(envPath, replaceMindsApiKeyLine(existing, apiKey));
   } catch (error) {
     console.warn('[minds-auth] renewed key committed to server DB but failed to write .env (CLI copy stale)', error);
   }

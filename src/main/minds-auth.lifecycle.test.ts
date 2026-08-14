@@ -32,7 +32,13 @@ vi.mock('./installer', () => ({
 vi.mock('./installation-id', () => ({
   getInstallationId: vi.fn(() => 'deadbeef00000000'),
 }));
-vi.mock('./cowork-home', () => ({
+// Partial mock: only the three path functions are pinned to the test dir.
+// Everything else (buildKind, readEnvFile, …) comes from the real module —
+// a full-replacement factory breaks at file load whenever cowork-home gains
+// an export that a transitive import reads at module scope (minds-urls
+// calls buildKind() at load time).
+vi.mock('./cowork-home', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./cowork-home')>()),
   coworkHome: () => '/tmp/minds-auth-lifecycle-test',
   coworkEnvPath: () => '/tmp/minds-auth-lifecycle-test/.env',
   coworkStatePath: () => '/tmp/minds-auth-lifecycle-test/state.json',
