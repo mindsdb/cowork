@@ -83,6 +83,20 @@ describe('billing_opened trigger per call site', () => {
     expect(analyticsMock.trackBillingOpened).toHaveBeenCalledWith('model_disabled');
   });
 
+  it('connect_provider: the "Start for free" card records the route, with no impression event', async () => {
+    const user = userEvent.setup();
+    render(<ChatView task={taskWith([{ role: 'provider_required' }])} />);
+
+    // Rendering the card alone must emit nothing — whether this surface earns an
+    // impression event is an open ENG-1305 question, deliberately not settled here.
+    expect(analyticsMock.trackBillingOpened).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: 'Start for free' }));
+
+    expect(analyticsMock.trackBillingOpened).toHaveBeenCalledWith('connect_provider');
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
+  });
+
   it('fires on the click, not on the render — a repaint must not inflate the count', () => {
     const { rerender } = render(<ModelUnavailableCard code="model_access_denied" failedModel="opus" />);
     rerender(<ModelUnavailableCard code="model_access_denied" failedModel="opus" />);

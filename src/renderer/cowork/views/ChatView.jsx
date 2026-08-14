@@ -1873,7 +1873,17 @@ export default function ChatView({
                     title="Connect a provider to start chatting"
                     body="Start with MindsHub and get free monthly tokens on MindsHub Air, then pay as you go. Or add your own API key in Settings."
                     buttons={[
-                      { label: 'Start for free', onClick: () => host.openExternal(MINDS_BILLING_URL), primary: true },
+                      {
+                        label: 'Start for free',
+                        // ENG-1533: the click only. Whether this card deserves an
+                        // impression event of its own is an open ENG-1305
+                        // question, and is not settled here.
+                        onClick: () => {
+                          trackBillingOpened('connect_provider');
+                          host.openExternal(MINDS_BILLING_URL);
+                        },
+                        primary: true,
+                      },
                       { label: 'Open Settings', onClick: () => onOpenSettings?.('agent') },
                     ]}
                   />

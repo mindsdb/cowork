@@ -32,7 +32,7 @@ const EVENTS = {
   FIRST_QUERY:              'first_query',              // {}  once per user (ENG-501)
   FIRST_RESPONSE:           'first_response',           // { outcome: 'success'|'error', reason } once per user (ENG-736)
   TOKEN_CAP_HIT:            'token_cap_hit',            // { code: 'token_limit'|'model_access_denied' } credit-block impression (ENG-385, widened ENG-1533)
-  BILLING_OPENED:           'billing_opened',           // { trigger: 'token_limit'|'model_access_denied'|'model_disabled'|'key_provisioning_refused' } (ENG-1533)
+  BILLING_OPENED:           'billing_opened',           // { trigger: 'token_limit'|'model_access_denied'|'model_disabled'|'key_provisioning_refused'|'connect_provider'|'no_credits_notice'|'locked_model_hint'|'nav' } every route to the billing page; 'nav' is NOT upgrade intent (ENG-1533)
   KEY_PROVISIONING_REFUSED: 'key_provisioning_refused', // { outcome: 'byok_offered'|'billing_opened'|'unhandled' } (ENG-1533)
   HARNESS_SWAPPED:          'harness_swapped',          // { from, to }
   APP_INSTALLED:            'app_installed',            // {}  desktop, once per install
@@ -412,16 +412,31 @@ export function trackTokenCapHit(code) {
   capture(EVENTS.TOKEN_CAP_HIT, { code: code || 'token_limit' });
 }
 
-// The desktop sent the user to the console billing page (ENG-1533). `trigger`
-// names the condition that sent them, because the causes have different fixes
-// and probably different conversion rates:
+// The desktop sent the user to the console billing page (ENG-1533). Fired at
+// EVERY route there, so the count is the whole story rather than the paths
+// someone remembered. `trigger` names the condition that sent them, because the
+// causes have different fixes and probably different conversion rates:
 //   token_limit               out of credits mid-turn; pairs with token_cap_hit
 //   model_access_denied       legacy per-model credit denial (pre-wallet gateways)
 //   model_disabled            legacy admin-disabled model; credits do not unlock it
 //   key_provisioning_refused  MindsHub would not mint an LLM key on reconnect
-// Deliberately no impression event alongside it: token_cap_hit already fires
-// once per receipt in the stream adapter, and an impression in the render path
-// would re-fire on every paint.
+//   connect_provider          "Start for free" on the connect-a-provider card
+//                             (chat and home render the same card)
+//   no_credits_notice         Settings, after a minds-cloud provider test came
+//                             back 402/429/credit/quota
+//   locked_model_hint         Settings, the "<model> needs credits" hint under a
+//                             model the wallet cannot pay for
+//   nav                       the Billing & Usage item in the user menu
+//
+// `nav` is the one value that is NOT upgrade intent — nothing blocked that user,
+// they went looking. It is recorded because it is a real route to the page, but
+// a token_cap_hit -> billing_opened funnel MUST exclude it or the click-through
+// rate is inflated by people checking their usage. PostHog will not do that for
+// you; filter on trigger.
+//
+// Deliberately no impression event alongside any of this: token_cap_hit already
+// fires once per receipt in the stream adapter, and an impression in the render
+// path would re-fire on every paint.
 export function trackBillingOpened(trigger) {
   capture(EVENTS.BILLING_OPENED, { trigger: trigger || 'unknown' });
 }
