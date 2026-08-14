@@ -31,6 +31,27 @@ function detectSlashToken(text, caret) {
   return { start: caret - m[2].length - 1, query: m[2].toLowerCase() };
 }
 
+// Selected task-mode chip in the composer toolbar (ENG-1594). One button —
+// the whole chip removes the mode. Both glyphs (mode icon + X) stay in the
+// DOM, absolutely stacked, and cross-fade on hover/focus-visible via CSS
+// (.task-mode-chip), so the swap is interruptible and needs no state.
+function TaskModeChip({ mode, onClear }) {
+  return (
+    <button
+      type="button"
+      className="task-mode-chip"
+      aria-label={`Remove ${mode.chipLabel} mode`}
+      onClick={onClear}
+    >
+      <span className="task-mode-chip__glyphs" aria-hidden>
+        <span className="task-mode-chip__icon">{Ico[mode.icon](14)}</span>
+        <span className="task-mode-chip__x">{Ico.close(14)}</span>
+      </span>
+      {mode.chipLabel}
+    </button>
+  );
+}
+
 function AttachmentChip({ attachment, onRemove }) {
   const src = attachment.source || attachment.kind || 'file';
   const isImage = attachment.mime && String(attachment.mime).startsWith('image/');
@@ -179,6 +200,11 @@ export default function Composer({
   // with it so the new project is pre-selected for the task being
   // composed. When omitted, the row is hidden.
   onCreateProject = null,
+  // Selected task mode (ENG-1594) — when set, a removable chip renders in
+  // the toolbar next to the + button. The caller owns the selection state
+  // (and the matching placeholder); `onClearTaskMode` removes it.
+  taskMode = null,
+  onClearTaskMode,
   // Names the surface this composer's unsent text belongs to, so a draft
   // survives navigation (every composer unmounts on route change) and doesn't
   // leak between surfaces. Defaults to the conversation for in-chat replies
@@ -1162,6 +1188,7 @@ export default function Composer({
                 </div>
               )}
             </span>
+            {taskMode && <TaskModeChip mode={taskMode} onClear={onClearTaskMode} />}
             <div className="flex-1" />
             {/* Mic / voice input intentionally hidden — voice flow isn't
                 wired through anton yet. We keep speechSupported state
