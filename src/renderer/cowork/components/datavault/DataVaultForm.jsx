@@ -425,28 +425,19 @@ export function DataVaultForm({
   };
 
   // One-click "Authorize with <Provider>" from the picker (ENG-1534).
-  // Selects the recommended in-browser OAuth method AND fires its
-  // primary action in the same click, so a fields-less OAuth connector
-  // launches sign-in without a second "Connect" tap. Dispatches directly
-  // (not via `dispatch`, which reads the not-yet-updated activeMethodId
-  // from state) with the method's own id as authMethod, empty values —
-  // the connection gets a default name, editable later. Only wired for
-  // fields-less methods (see MethodPicker), so a method with required
-  // fields still reveals them first.
+  // Selects the recommended in-browser OAuth method — same as a plain
+  // card pick — which is enough on its own: the host's onMethodChange
+  // already auto-starts the connect immediately for a fields-less
+  // method (see DataVaultFormPanel). We must NOT also dispatch onAction
+  // here: for `browser_oauth_builtin` that hits handleAction's own
+  // auto-start branch too, so a single hero click would launch the
+  // OAuth flow twice concurrently. Only wired for fields-less methods
+  // (see MethodPicker), so a method with required fields still reveals
+  // them first via the normal pick-then-submit path.
   const authorizeWithMethod = (method) => {
-    if (!method || !onAction) return;
+    if (!method) return;
     setLocalSelectedMethod(method.id);
     onMethodChange?.(method.id);
-    const primary =
-      (Array.isArray(method.actions) ? method.actions : []).find((a) => a.kind === 'primary')
-      || { id: 'submit', kind: 'primary' };
-    onAction({
-      id: primary.id,
-      kind: 'primary',
-      values: {},
-      skipped: [],
-      authMethod: method.id,
-    });
   };
 
   return (

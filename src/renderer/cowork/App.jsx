@@ -2659,23 +2659,26 @@ function AppCore() {
   // Where the user was when they opened the connect flow, so closing the
   // connect modal BEFORE connecting returns them there (the connectors
   // panel, or the chat card they came from) instead of stranding them in
-  // the throwaway "Connect X" task the flow spins up (ENG-1534).
-  const connectOriginRef = useRef(null);
+  // the throwaway "Connect X" task the flow spins up (ENG-1534). Keyed by
+  // connect task id (not a single slot) so a second connect/reconnect
+  // started before an earlier one is dismissed doesn't clobber the first
+  // task's origin.
+  const connectOriginsRef = useRef(new Map());
 
   // Dismiss a connect form. For a not-yet-connected throwaway connect task,
   // drop the task and restore the origin route/task; otherwise just clear
   // the form (existing behavior — e.g. after a successful connect, which has
   // already turned the task into a real conversation).
   const handleConnectFormDismiss = (taskId) => {
-    const origin = connectOriginRef.current;
+    const origin = connectOriginsRef.current.get(taskId);
     const spec = getDataVaultForm(taskId);
     const isConnectTemp = typeof taskId === 'string' && taskId.startsWith('tmp-connect-');
     clearDataVaultForm(taskId);
-    if (origin && isConnectTemp && origin.connectTaskId === taskId && !spec?._is_success) {
+    if (origin && isConnectTemp && !spec?._is_success) {
       setTasks((prev) => prev.filter((t) => t.id !== taskId));
       setActiveTaskId(origin.taskId);
       setRoute(origin.route);
-      connectOriginRef.current = null;
+      connectOriginsRef.current.delete(taskId);
     }
   };
 
@@ -2763,7 +2766,7 @@ function AppCore() {
       // Remember where to return if the user closes the connect modal
       // before actually connecting — the connect task above is throwaway
       // until then (ENG-1534).
-      connectOriginRef.current = { route: originRoute, taskId: originTaskId, connectTaskId: tempId };
+      connectOriginsRef.current.set(tempId, { route: originRoute, taskId: originTaskId });
       // Cache the original spec on the connect_intro message so the
       // bubble can re-publish it to the form store if the user
       // closes the panel and clicks the card to bring it back.
@@ -2777,7 +2780,6 @@ function AppCore() {
       // No registry entry — fall back to the chat-agent flow. This IS a real
       // connect attempt (anton drives it), so there's no throwaway task to
       // return from.
-      connectOriginRef.current = null;
       Promise.resolve().then(() => handleSendFromHome(`Connect ${label}`));
     }
     return tempId;
