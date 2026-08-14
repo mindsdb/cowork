@@ -1,8 +1,9 @@
-import { saveTokens, getRefreshToken, clearTokens, getTokenStoreVersion } from './token-store';
+import { saveTokens, getRefreshToken, clearTokens, getTokenStoreVersion, getAccessToken, isAccessTokenExpired } from './token-store';
 import { stopServer, startServer, isServerRunning, isServerStarting, getServerPort } from './server-process';
 import { checkInstallStatus } from './installer';
 import { coworkHome, coworkEnvPath, coworkStatePath } from './cowork-home';
 import { getInstallationId } from './installation-id';
+import { authHeader } from './server-auth';
 import { retryOnTransientLock } from './fs-retry';
 import {
   MINDS_API_HOST,
@@ -58,6 +59,40 @@ const ANTON_KEY_NAME = 'hub:anton';
 // deferred follow-up (ENG-440).
 function antonKeyName(): string {
   return `${ANTON_KEY_NAME}:${getInstallationId()}`;
+}
+
+// ── Per-device key renewal decision (ENG-498) ─────────────────────
+//
+// The auth-service may stamp an absolute expiry on device keys
+// (API_KEYS__DEVICE_KEY_TTL_DAYS, auth #145). Renew when under this
+// fraction of the key's own lifetime remains — deriving the window from
+// created/expiry_date keeps the client correct for whatever TTL ops
+// picks, with no config knob. An already-expired key also renews (heal):
+// the laptop may have slept past the deadline, or expiry may have been
+// backfilled server-side before this client updated.
+const KEY_RENEWAL_LIFETIME_FRACTION = 0.25;
+
+// When the lifetime can't be derived (missing/garbled `created`, or
+// created >= expiry), fall back to a fixed window rather than never
+// renewing — a wrong-but-safe early renewal beats a 401 at the deadline.
+const KEY_RENEWAL_FALLBACK_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
+
+export function shouldRenewKey(
+  created: string | null | undefined,
+  expiryDate: string | null | undefined,
+  nowMs: number,
+): boolean {
+  if (!expiryDate) return false;
+  const expiryMs = Date.parse(expiryDate);
+  if (Number.isNaN(expiryMs)) return false;
+  const remainingMs = expiryMs - nowMs;
+  if (remainingMs <= 0) return true;
+  const createdMs = created ? Date.parse(created) : NaN;
+  const lifetimeMs = expiryMs - createdMs;
+  const windowMs = Number.isNaN(createdMs) || lifetimeMs <= 0
+    ? KEY_RENEWAL_FALLBACK_WINDOW_MS
+    : lifetimeMs * KEY_RENEWAL_LIFETIME_FRACTION;
+  return remainingMs < windowMs;
 }
 
 // Every auth-service / Keycloak request gets a hard deadline. Node's
@@ -133,6 +168,7 @@ async function doRefreshTokens(): Promise<TokenRefreshResult> {
         console.warn('[minds-auth] refresh token rejected (invalid_grant) — clearing session');
         clearTokens();
         cancelScheduledRefresh();
+        cancelKeyLifecycleChecks();
         return { status: 'invalid_grant' };
       }
       console.warn(`[minds-auth] token refresh failed transiently (HTTP ${res.status}${oauthError ? `, ${oauthError}` : ''}) — keeping tokens`);
@@ -169,8 +205,9 @@ async function doRefreshTokens(): Promise<TokenRefreshResult> {
 // gateway has had intermittent outages), the local logout must not
 // hang on the network. Local state cleanup is the user-visible part;
 // the SSO revocation is best-effort.
-export async function endKeycloakSession(): Promise<void> {
-  const refreshToken = getRefreshToken();
+// ENG-498: logout passes the token explicitly — the detached revoke chain
+// runs after clearTokens() has wiped the store.
+export async function endKeycloakSession(refreshToken: string | null = getRefreshToken()): Promise<void> {
   if (!refreshToken) return;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 3000);
@@ -416,11 +453,17 @@ interface ApiKeyRecord {
 export interface ProvisionResult {
   // `mdb_*` API key on success.
   key?: string;
+  // The minted key's prefix (identifies it for rollback in the renewal
+  // path — see commitRenewedKey).
+  prefix?: string;
   // True iff the auth-service rejected the request because the user
   // lacks the entitlement to mint LLM keys (free tier). Surfaced to
   // the renderer so it can route to the paywall instead of treating
   // this as a generic failure.
   upgradeRequired?: boolean;
+  // True iff the mint hit the account's active-key cap (HTTP 409). The
+  // renewal path treats this as "retry once, deleting own prior key".
+  limitReached?: boolean;
   // Free-form error message for any other failure (network, auth
   // expired, etc.). Renderer paints it on the welcome screen.
   error?: string;
@@ -435,8 +478,20 @@ export interface ProvisionResult {
 // array means the endpoint isn't paginated and is already the full list.
 // Best-effort: any failure returns what we have so far so key creation
 // still proceeds.
-async function listExistingKeys(accessToken: string): Promise<{ name?: string; prefix?: string }[]> {
-  const collected: { name?: string; prefix?: string }[] = [];
+interface ApiKeyListEntry {
+  name?: string;
+  prefix?: string;
+  created?: string;
+  expiry_date?: string | null;
+  // Auth-service DELETE is a soft delete (perform_destroy sets revoked=True
+  // and keeps the row for the audit trail), and the list endpoint does NOT
+  // filter revoked rows — so every consumer here must, or revoked keys are
+  // indistinguishable from live ones.
+  revoked?: boolean;
+}
+
+async function listExistingKeys(accessToken: string): Promise<ApiKeyListEntry[]> {
+  const collected: ApiKeyListEntry[] = [];
   let url: string | null = `${AUTH_SERVICE_URL}/api-keys/`;
   // Hard page cap so a malformed `next` chain can't loop forever.
   for (let page = 0; url && page < 50; page++) {
@@ -447,12 +502,12 @@ async function listExistingKeys(accessToken: string): Promise<{ name?: string; p
       if (!res.ok) break;
       const body = await res.json() as { results?: unknown; next?: unknown } | unknown[];
       if (Array.isArray(body)) {
-        collected.push(...(body as { name?: string; prefix?: string }[]));
+        collected.push(...(body as ApiKeyListEntry[]));
         break;
       }
       const results = (body as { results?: unknown }).results;
       if (Array.isArray(results)) {
-        collected.push(...(results as { name?: string; prefix?: string }[]));
+        collected.push(...(results as ApiKeyListEntry[]));
       }
       const next = (body as { next?: unknown }).next;
       url = typeof next === 'string' && next ? next : null;
@@ -465,12 +520,115 @@ async function listExistingKeys(accessToken: string): Promise<{ name?: string; p
 
 async function deleteKeyByPrefix(accessToken: string, prefix: string): Promise<void> {
   try {
-    await timedFetch(`${AUTH_SERVICE_URL}/api-keys/${encodeURIComponent(prefix)}/`, {
+    const res = await timedFetch(`${AUTH_SERVICE_URL}/api-keys/${encodeURIComponent(prefix)}/`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${accessToken}` },
     });
+    // Best-effort cleanup — a failed delete never blocks the caller — but
+    // a silent failure here is exactly what let the renewal-rollback bug
+    // hide, so at least make it diagnosable. `prefix` is the public
+    // display prefix, not a secret.
+    if (!res.ok) console.warn('[minds-auth] key delete returned', res.status, 'for prefix', prefix);
   } catch {
     // best-effort cleanup — proceed with the new key creation regardless
+  }
+}
+
+// ENG-498: on explicit sign-out, delete THIS device's own key(s) so a
+// retired session doesn't leave a live, mintable credential behind.
+// Exact-name matches only — never the legacy fixed `hub:anton` (a
+// not-yet-upgraded device may still rely on it) and never other
+// devices' keys (that's the ENG-440 silent-revocation bug).
+//
+// listExistingKeys/deleteKeyByPrefix both swallow their own failures
+// (best-effort by design), so a zero-match result is otherwise silent and
+// indistinguishable from "already revoked" — log which case happened at
+// least once so a stuck key is diagnosable. The key NAME is safe to log:
+// it's just `hub:anton:<installation_id>`, not a secret.
+async function revokeAntonApiKeys(accessToken: string): Promise<void> {
+  const keyName = antonKeyName();
+  const existing = await listExistingKeys(accessToken);
+  let revoked = 0;
+  for (const entry of existing) {
+    // Skip rows auth already soft-revoked: every sign-in's pre-mint cleanup
+    // adds one, so they accumulate — and they list oldest-first, so deleting
+    // them here burns the 5s revoke budget before reaching the one live key
+    // (the newest) that actually needs revoking.
+    if (entry?.name === keyName && entry.prefix && entry.revoked !== true) {
+      await deleteKeyByPrefix(accessToken, entry.prefix);
+      revoked++;
+    }
+  }
+  if (revoked === 0) {
+    console.warn('[logout] no per-device key found to revoke (name=%s) — list failed, key already gone, or key lives in another org', keyName);
+  } else {
+    console.log('[logout] revoked %d device key(s)', revoked);
+  }
+}
+
+// Bounds the revoke phase of logout. Without this, a black-holed
+// auth-service delays endKeycloakSession by up to 30-90s (list + several
+// sequential deletes, each carrying the 30s timedFetch deadline) — long
+// enough that the IdP SSO session outlives the moment the user already
+// saw "signed out": clicking Sign in during that window silently
+// re-authenticates, the exact bug end-session exists to prevent. On
+// timeout we abandon the revoke and fall through to end-session; the
+// un-revoked key still falls to the server-side TTL.
+const LOGOUT_REVOKE_TIMEOUT_MS = 5_000;
+
+// Detached logout cleanup: revoke this device's key while the session is
+// still valid, then end the IdP session. Ordering matters — end-session
+// first would leave the revoke racing an invalidated session. Both are
+// best-effort; the caller (AUTH_LOGOUT) deliberately does not await this,
+// so failures may not block sign-out. Exported (rather than inlined in
+// the handler) so the ordering is unit-testable.
+export async function revokeDeviceKeyAndEndSession(
+  accessToken: string | null,
+  refreshToken: string | null,
+): Promise<void> {
+  try {
+    if (accessToken) {
+      let timer: NodeJS.Timeout | undefined;
+      try {
+        await Promise.race([
+          revokeAntonApiKeys(accessToken),
+          new Promise<void>((resolve) => { timer = setTimeout(resolve, LOGOUT_REVOKE_TIMEOUT_MS); }),
+        ]);
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+    }
+  } catch (err) {
+    console.warn('[logout] device key revoke failed:', err instanceof Error ? err.message : err);
+  } finally {
+    await endKeycloakSession(refreshToken);
+  }
+}
+
+// Best-effort token for the logout revoke. The common case (valid cached
+// token) is synchronous; an expired token gets ONE refresh attempt bounded
+// by `timeoutMs` so a hung IdP can never stall sign-out. On timeout the
+// caller proceeds without the revoke — the key then falls to the TTL.
+//
+// NOTE: a refresh here may ROTATE the persisted refresh token (Keycloak
+// may be configured to rotate it on exchange — see the _inflightRefresh
+// comment above). Callers composing this with endKeycloakSession must
+// read getRefreshToken() AFTER awaiting getRevokeToken, never before —
+// otherwise they'd hand end-session a refresh token the exchange already
+// superseded.
+export async function getRevokeToken(timeoutMs = 5_000): Promise<string | null> {
+  const cached = getAccessToken();
+  if (cached && !isAccessTokenExpired()) return cached;
+  if (!getRefreshToken()) return cached;
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    const refreshed = await Promise.race([
+      refreshTokensOnly(),
+      new Promise<null>((resolve) => { timer = setTimeout(resolve, timeoutMs, null); }),
+    ]);
+    return refreshed && refreshed.status === 'ok' ? refreshed.token : getAccessToken();
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }
 
@@ -551,7 +709,18 @@ function canUseAntonWithMinds(entitlements: any): boolean {
   return canCreateApiKeys(entitlements) && !requiresHubUpgrade(entitlements);
 }
 
-export async function provisionAntonApiKey(initialToken: string): Promise<ProvisionResult> {
+export interface ProvisionOptions {
+  // Renewal (ENG-498) mints the replacement while the old key is still
+  // valid — in-flight sessions may hold it, and the TTL reaps it anyway —
+  // so it skips the delete. Sign-in keeps the default and stays tidy.
+  deleteExistingKey?: boolean;
+}
+
+export async function provisionAntonApiKey(
+  initialToken: string,
+  options: ProvisionOptions = {},
+): Promise<ProvisionResult> {
+  const { deleteExistingKey = true } = options;
   const orgResult = await ensureActiveOrg(initialToken);
   if (!orgResult.token) {
     return {
@@ -671,10 +840,15 @@ export async function provisionAntonApiKey(initialToken: string): Promise<Provis
   // fixing. Best-effort — listing/deleting failures shouldn't block creation
   // of the new key.
   const keyName = antonKeyName();
-  const existing = await listExistingKeys(provisionToken);
-  for (const entry of existing) {
-    if (entry?.name === keyName && entry.prefix) {
-      await deleteKeyByPrefix(provisionToken, entry.prefix);
+  if (deleteExistingKey) {
+    const existing = await listExistingKeys(provisionToken);
+    for (const entry of existing) {
+      // revoked !== true: auth's delete is a soft delete, so prior sign-ins'
+      // cleanup rows keep listing forever — re-deleting them is one wasted
+      // round-trip each per sign-in.
+      if (entry?.name === keyName && entry.prefix && entry.revoked !== true) {
+        await deleteKeyByPrefix(provisionToken, entry.prefix);
+      }
     }
   }
 
@@ -694,7 +868,7 @@ export async function provisionAntonApiKey(initialToken: string): Promise<Provis
     });
     if (res.ok) {
       const data = await res.json() as ApiKeyRecord;
-      if (data?.key) return { key: data.key };
+      if (data?.key) return { key: data.key, prefix: data.prefix };
       return { error: 'Auth-service did not return an API key value.' };
     }
     type ErrorBody = { code?: string; detail?: string; error?: string; message?: string };
@@ -702,6 +876,16 @@ export async function provisionAntonApiKey(initialToken: string): Promise<Provis
     try { body = await res.json() as ErrorBody; } catch { /* not JSON */ }
     if (res.status === 402 || body?.code === 'upgrade_required') {
       return { upgradeRequired: true };
+    }
+    // 409 on this endpoint is only ever the active-key cap
+    // (max_active_per_user_organization). Surfaced distinctly so the
+    // renewal path can retry with its own prior key deleted instead of
+    // failing identically every tick until the 401 deadline.
+    if (res.status === 409) {
+      return {
+        limitReached: true,
+        error: body?.detail || body?.error || body?.message || 'API key limit reached.',
+      };
     }
     if (res.status === 401 || res.status === 403) {
       return {
@@ -782,6 +966,18 @@ export function buildMindsEnvContent(existing: string, apiKey: string, host: str
     'ANTON_PLANNING_PROVIDER=minds-cloud',
     'ANTON_CODING_PROVIDER=minds-cloud',
   );
+  return lines.filter(Boolean).join('\n') + '\n';
+}
+
+// Renewal-only .env rewrite (ENG-498): swap the credential line and
+// nothing else. buildMindsEnvContent is deliberately NOT reused here —
+// it re-asserts ANTON_MINDS_ENABLED and the provider lines, which would
+// hijack the provider selection of a user who switched to BYOK after
+// signing in. Same filter+push shape as the sign-in writer.
+export function replaceMindsApiKeyLine(existing: string, apiKey: string): string {
+  const lines = existing.split('\n')
+    .filter((l) => !l.startsWith('ANTON_MINDS_API_KEY='));
+  lines.push(`ANTON_MINDS_API_KEY=${apiKey}`);
   return lines.filter(Boolean).join('\n') + '\n';
 }
 
@@ -935,9 +1131,12 @@ export async function writeMindsKeyToEnvAndRestart(apiKey: string): Promise<void
     for (const { key, value } of mindsSignInSettingWrites(apiKey, MINDS_API_HOST)) {
       let ok = false;
       try {
+        // authHeader(): main-process fetch — the webRequest injection hook
+        // only covers renderer requests, so this must carry the server
+        // bearer token itself when COWORK_REQUIRE_AUTH=true.
         const res = await timedFetch(`http://127.0.0.1:${port}/api/v1/settings/${key}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...authHeader() },
           body: JSON.stringify({ value }),
         });
         ok = res.ok;
@@ -1000,4 +1199,194 @@ function scheduleRefreshIn(delayMs: number): void {
   // the chain never dies after a single failure — the pre-ENG-761 timer
   // ran silentRefresh once and never retried.
   _refreshTimer = setTimeout(() => { void refreshTokensOnly(); }, delayMs);
+}
+
+// ── Per-device key lifecycle (ENG-498) ────────────────────────────
+//
+// Boot + daily watch over THIS device's key. While the auth-service TTL
+// is disabled every key has expiry_date null and this is a no-op listing
+// call; once ops enables the TTL, installs renew ahead of the deadline
+// instead of 401-ing at it (the ENG-440 bug, time-delayed). A key that
+// is MISSING (not expired — absent) is deliberately left alone: that is
+// plausibly a console revocation, and silently re-minting would undo it.
+
+const KEY_LIFECYCLE_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
+let _keyLifecycleTimer: NodeJS.Timeout | null = null;
+let _inflightKeyLifecycle: Promise<void> | null = null;
+
+export function startKeyLifecycleChecks(): void {
+  cancelKeyLifecycleChecks();
+  void runKeyLifecycleCheck();
+  _keyLifecycleTimer = setInterval(() => { void runKeyLifecycleCheck(); }, KEY_LIFECYCLE_INTERVAL_MS);
+}
+
+export function cancelKeyLifecycleChecks(): void {
+  if (_keyLifecycleTimer) clearInterval(_keyLifecycleTimer);
+  _keyLifecycleTimer = null;
+}
+
+// Single-flight like refreshTokensOnly: a boot check racing the first
+// interval tick must not double-mint.
+export function runKeyLifecycleCheck(): Promise<void> {
+  if (!_inflightKeyLifecycle) {
+    _inflightKeyLifecycle = doKeyLifecycleCheck()
+      .catch((e: any) => { console.warn('[minds-auth] key lifecycle check failed:', e?.message || e); })
+      .finally(() => { _inflightKeyLifecycle = null; });
+  }
+  return _inflightKeyLifecycle;
+}
+
+function tokenSubject(token: string | null): string | null {
+  if (!token) return null;
+  const payload = decodeJwtPayload(token);
+  return typeof payload?.sub === 'string' ? payload.sub : null;
+}
+
+async function doKeyLifecycleCheck(): Promise<void> {
+  // Signed-out sessions have nothing to renew. Don't force a refresh
+  // round-trip when there is no session at all.
+  if (!getAccessToken() && !getRefreshToken()) return;
+  // The settings PUT in commitRenewedKey is the ONLY durable commit path
+  // (DB rows outrank .env in the server's settings chain, and the
+  // env→DB migration is sentinel-guarded — it never re-runs). With no
+  // server to PUT to, minting now would strand the new key unwritten
+  // until some later tick; simpler and safer to skip the whole tick and
+  // let the next one retry once the server is up.
+  if (!isServerRunning() && !isServerStarting()) {
+    console.log('[minds-auth] server not running — no commit path — skipping this tick');
+    return;
+  }
+  let token = getAccessToken();
+  if (!token || isAccessTokenExpired()) {
+    const result = await refreshTokensOnly();
+    if (result.status !== 'ok') return;
+    token = result.token;
+  }
+  // Whose key we are renewing. Compared again before the commit: benign
+  // refreshes rotate the token string but keep `sub`, so this aborts
+  // exactly when a logout or different-user login landed mid-renewal.
+  // (getTokenStoreVersion is unsuitable here — provisioning's own
+  // org-switch refreshes bump it, which would abort every renewal that
+  // needs the personal-org fallback.)
+  const renewingFor = tokenSubject(token);
+  if (!renewingFor) return;
+
+  const keyName = antonKeyName();
+  // revoked !== true: auth's DELETE is a soft delete and the list keeps the
+  // row, so a console-revoked key still lists with its expiry_date. Filtering
+  // it out makes it genuinely look absent — renewing it would quietly undo an
+  // admin's deliberate revocation (and an expired revoked key would
+  // "self-heal" the moment its TTL lapsed).
+  const own = (await listExistingKeys(token)).filter((k) => k?.name === keyName && k.revoked !== true);
+  if (own.length === 0) return;
+  // Duplicates exist after a renewal (old key rides to expiry) — the
+  // newest one is the live credential and drives the decision.
+  const newest = own.reduce((a, b) =>
+    (Date.parse(b.created ?? '') || 0) > (Date.parse(a.created ?? '') || 0) ? b : a);
+  if (!shouldRenewKey(newest.created, newest.expiry_date, Date.now())) return;
+
+  console.log('[minds-auth] device key expired or near expiry — re-minting');
+  let result = await provisionAntonApiKey(token, { deleteExistingKey: false });
+  if (!result.key && result.limitReached) {
+    // At the active-key cap the no-delete renewal can never succeed and
+    // would fail identically every tick until the 401 deadline, so retry
+    // once with this device's own prior key deleted. The trade is not
+    // free: the delete runs BEFORE the mint, so if the retry's mint then
+    // fails (network, 5xx, token expiry mid-flight) the device holds no
+    // live key — and since revoked rows are filtered out above, the next
+    // tick takes the "missing ⇒ don't silently re-mint" branch, so the
+    // only in-product recovery is a re-sign-in until the local-vs-remote
+    // key-identity heal (ENG-498 enablement precondition) ships. Accepted:
+    // it needs the cap AND a second-mint failure, and this path can't
+    // fire at all until the TTL is enabled — which is gated on that heal.
+    console.warn('[minds-auth] key renewal hit the active-key cap — retrying once with own prior key deleted');
+    result = await provisionAntonApiKey(token, { deleteExistingKey: true });
+  }
+  if (!result.key) {
+    console.warn('[minds-auth] key renewal mint failed:',
+      result.error || (result.upgradeRequired ? 'upgrade required' : 'no key returned'));
+    return;
+  }
+  if (tokenSubject(getAccessToken()) !== renewingFor) {
+    // Deliberately no rollback here: a logout/different-user login is a
+    // separate concern from a failed commit, and the new session may
+    // already be relying on whatever it just did — the TTL reaps this
+    // key on its own if it truly goes unused.
+    console.warn('[minds-auth] session changed during key renewal — discarding minted key');
+    return;
+  }
+  await commitRenewedKey(token, result.key, result.prefix);
+}
+
+// Hot-swap the renewed credential. The settings PUT goes FIRST and is the
+// AUTHORITATIVE commit: in cowork-server, DB rows outrank .env in the
+// settings chain, and the one-time env→DB migration is sentinel-guarded
+// and never re-runs — so a key that only reaches .env never reaches the
+// app. .env is written only after the PUT lands; it's just the
+// standalone-CLI's copy. If the PUT is skipped or fails, roll the mint
+// back (delete the just-minted key) so the account's "newest key" reverts
+// to the old one and the next tick retries the whole renewal statelessly
+// — recovery that works even across an app restart.
+// Deliberately NOT writeMindsKeyToEnvAndRestart — no server restart (the
+// settings cache invalidates on PUT; in-flight sessions keep the old key,
+// which stays valid until its own expiry), and no provider flips (a user
+// who switched to BYOK keeps their selection).
+async function commitRenewedKey(accessToken: string, apiKey: string, prefix: string | undefined): Promise<void> {
+  // Roll back with the CURRENT store token, not the one captured at the
+  // top of doKeyLifecycleCheck: provisionAntonApiKey may have minted under
+  // an org-switched token (org-switch / personal-org fallback), and the
+  // auth-service's DELETE is org-scoped — deleting with the stale token
+  // 404s. refreshAfterOrgSwitch persists the switched token via
+  // saveTokens, so getAccessToken() carries the right org claim by now;
+  // fall back to the passed-in token only if the store emptied mid-flight.
+  const rollbackMint = async (): Promise<void> => {
+    if (prefix) await deleteKeyByPrefix(getAccessToken() ?? accessToken, prefix);
+  };
+
+  // Re-check here too: the boot-time gate in doKeyLifecycleCheck can go
+  // stale across the mint's network round-trip if the sidecar goes down
+  // mid-renewal.
+  if (!isServerRunning() && !isServerStarting()) {
+    console.warn('[minds-auth] server no longer available for renewal commit — rolling back minted key, will retry next tick');
+    await rollbackMint();
+    return;
+  }
+  const port = getServerPort();
+  try {
+    // authHeader(): main-process fetches never pass through the renderer's
+    // webRequest injection hook, so with COWORK_REQUIRE_AUTH=true a bare PUT
+    // 401s — which here would mean mint → rollback → retry, silently, every
+    // tick forever.
+    const res = await timedFetch(`http://127.0.0.1:${port}/api/v1/settings/minds_api_key`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...authHeader() },
+      body: JSON.stringify({ value: apiKey }),
+    });
+    if (!res.ok) {
+      console.warn('[minds-auth] renewal settings PUT returned', res.status, '— rolling back minted key, will retry next tick');
+      await rollbackMint();
+      return;
+    }
+  } catch (error) {
+    console.warn('[minds-auth] failed to write renewed key to server DB — rolling back minted key, will retry next tick', error);
+    await rollbackMint();
+    return;
+  }
+
+  // DB is authoritative and already correct at this point — a failure
+  // here is not a renewal failure, only a stale standalone-CLI copy.
+  try {
+    const homeDir = coworkHome();
+    if (!fs.existsSync(homeDir)) {
+      fs.mkdirSync(homeDir, { recursive: true });
+    }
+    const envPath = coworkEnvPath();
+    const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
+    // Atomic writer (ENG-1209): the renewal runs while the live server holds
+    // .env open, which is exactly the Windows share-mode EPERM this fixes.
+    await writeEnvFileAtomic(envPath, replaceMindsApiKeyLine(existing, apiKey));
+  } catch (error) {
+    console.warn('[minds-auth] renewed key committed to server DB but failed to write .env (CLI copy stale)', error);
+  }
 }
