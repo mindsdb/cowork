@@ -274,7 +274,19 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
   if (type === 'response.failed') {
     // Key upgrade-intent signal: a free user hit the token cap. Fire once here,
     // on receipt — not in the render path (ChatView), which re-runs every paint.
-    if (!replay && event.code === 'token_limit') {
+    //
+    // BOTH out-of-credits codes count (ENG-1537). Splitting the spent free
+    // allowance into its own code would otherwise have silently dropped it from
+    // this metric — and that cohort is precisely the one it exists to measure,
+    // since a never-topped-up org is steered onto the free-bucket model by
+    // `_enabled_aware_default`. `rate_limited` is correctly excluded: a
+    // velocity limit was never upgrade intent, and counting it would inflate
+    // the signal with users who already pay.
+    //
+    // The event carries no properties, so the historical series cannot be
+    // re-segmented retroactively — a `reason` property would be worth adding
+    // before the next question about this metric.
+    if (!replay && (event.code === 'token_limit' || event.code === 'included_allowance_exhausted')) {
       try { _trackTokenCapHit(); }
       catch { /* analytics must never break streaming */ }
     }

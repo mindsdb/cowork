@@ -885,14 +885,24 @@ function formatAllowanceReset(resetAt) {
 //
 // No hint (older gateway, stripped header) → an ungated Retry. Better an
 // honest button than an invented countdown.
-function RateLimitedCard({ time, agentLabel, body, retryAfter, createdAt, onRetry }) {
+// Longest we will ever disable Retry. The server clamps nothing, and anton
+// cards immediately above its own 60s cap rather than sleeping — so a large
+// hint arrives here as a real value. Ungated it would disable the button for
+// hours (measured: retryAfter=30000 gated for 8.3h), which is indistinguishable
+// from a broken card (ENG-1537 review).
+const MAX_RETRY_GATE_MS = 10 * 60 * 1000;
+
+function RateLimitedCard({ time, agentLabel, body, retryAt, onRetry }) {
   const readyAt = useMemo(() => {
-    if (typeof retryAfter !== 'number' || retryAfter <= 0) return null;
-    const started = createdAt ? new Date(createdAt).getTime() : NaN;
-    // An unparseable timestamp must not gate the button forever.
-    if (Number.isNaN(started)) return null;
-    return started + retryAfter * 1000;
-  }, [retryAfter, createdAt]);
+    // The server sends an ABSOLUTE, offset-bearing instant. Deliberately not
+    // derived from the message's created_at + retryAfter: created_at is
+    // serialised offset-less, so JS parses it as local time — the gate lasts
+    // hours west of UTC and no-ops east of it, and a TZ=UTC suite sees neither.
+    if (typeof retryAt !== 'string') return null;
+    const at = new Date(retryAt).getTime();
+    if (Number.isNaN(at)) return null;
+    return Math.min(at, Date.now() + MAX_RETRY_GATE_MS);
+  }, [retryAt]);
 
   const [now, setNow] = useState(() => Date.now());
   const remaining = readyAt ? Math.max(0, Math.ceil((readyAt - now) / 1000)) : 0;
@@ -1926,8 +1936,7 @@ export default function ChatView({
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
                       body={m.content}
-                      retryAfter={m.retryAfter}
-                      createdAt={m.createdAt}
+                      retryAt={m.retryAt}
                       onRetry={rlRetryText ? () => onSend?.(rlRetryText) : undefined}
                     />
                   );

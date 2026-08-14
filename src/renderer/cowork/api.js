@@ -159,6 +159,11 @@ function _failedEventMeta(events) {
     // deliberately doesn't parse it, since only the client knows the
     // viewer's timezone (ENG-1537).
     resetAt: typeof ev.reset_at === 'string' ? ev.reset_at : null,
+    // Absolute instant to gate Retry against. The message's own created_at
+    // is NOT a substitute: the server serialises it offset-less, so JS reads
+    // it as local time — the gate would last hours west of UTC and no-op east
+    // of it, invisible to a TZ=UTC suite (ENG-1537 review).
+    retryAt: typeof ev.retry_at === 'string' ? ev.retry_at : null,
   };
 }
 
@@ -206,6 +211,7 @@ function _hydrateAssistantEvents(messages) {
           providerLabel: failed?.providerLabel ?? null,
           retryAfter: failed?.retryAfter ?? null,
           resetAt: failed?.resetAt ?? null,
+          retryAt: failed?.retryAt ?? null,
           failedModel: failed?.failedModel ?? null,
         });
       }

@@ -105,23 +105,50 @@ describe('rate_limited failure card (ENG-1537)', () => {
     expect(screen.queryByText(/out of credits/i)).toBeNull();
   });
 
-  it('gates Retry while the gateway-supplied wait is still running', () => {
+  it('gates Retry while the server-supplied wait is still running', () => {
+    // Anchored on the server's ABSOLUTE instant. The previous version of this
+    // test hand-injected `createdAt`, a field no error row in this app carries
+    // — so it was green on dead code, and the ticket's "its Retry is
+    // time-gated" was unmet on every real path (ENG-1537 review).
     render(<ChatView task={taskWith(failedTurn('rate_limited', BODY, {
-      retryAfter: 30,
-      createdAt: new Date().toISOString(),
+      retryAt: new Date(Date.now() + 30_000).toISOString(),
     }))} />);
-    // An ungated Retry re-sends a large context into the limiter that just
-    // refused it — the same amplification loop, user-initiated.
     const btn = screen.getByRole('button', { name: /Try again in \d+s/ });
     expect(btn).toBeDisabled();
   });
 
   it('offers an ungated Retry once the wait has elapsed', () => {
     render(<ChatView task={taskWith(failedTurn('rate_limited', BODY, {
-      retryAfter: 30,
-      createdAt: new Date(Date.now() - 60_000).toISOString(),
+      retryAt: new Date(Date.now() - 60_000).toISOString(),
     }))} />);
     expect(screen.getByRole('button', { name: 'Try again' })).toBeEnabled();
+  });
+
+  it('gates identically outside UTC', () => {
+    // The trap that made the naive fix wrong: the suite pins TZ=UTC, so a
+    // local-time parse looks correct here and gates for ~7h in
+    // America/Los_Angeles. An offset-bearing instant is timezone-proof, and
+    // this asserts it rather than trusting it.
+    const inThirty = new Date(Date.now() + 30_000);
+    for (const iso of [inThirty.toISOString(), inThirty.toISOString().replace('Z', '+00:00')]) {
+      const { unmount } = render(
+        <ChatView task={taskWith(failedTurn('rate_limited', BODY, { retryAt: iso }))} />,
+      );
+      expect(screen.getByRole('button', { name: /Try again in \d+s/ })).toBeDisabled();
+      unmount();
+    }
+  });
+
+  it('never gates Retry for longer than the clamp', () => {
+    // anton cards immediately above its 60s cap rather than sleeping, so a
+    // large hint reaches the client as a real value. Ungated, retryAfter=30000
+    // disabled the button for 8.3 hours — indistinguishable from a broken card.
+    render(<ChatView task={taskWith(failedTurn('rate_limited', BODY, {
+      retryAt: new Date(Date.now() + 8 * 3600 * 1000).toISOString(),
+    }))} />);
+    const btn = screen.getByRole('button', { name: /Try again in (\d+)s/ });
+    const secs = Number(btn.textContent.match(/(\d+)s/)[1]);
+    expect(secs).toBeLessThanOrEqual(600);
   });
 
   it('offers an ungated Retry when the gateway sent no hint', () => {

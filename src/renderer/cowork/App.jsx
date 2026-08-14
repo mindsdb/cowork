@@ -678,6 +678,11 @@ function failedEventMeta(events) {
     // deliberately doesn't parse it, since only the client knows the
     // viewer's timezone (ENG-1537).
     resetAt: typeof ev.reset_at === 'string' ? ev.reset_at : null,
+    // Absolute instant to gate Retry against. The message's own created_at
+    // is NOT a substitute: the server serialises it offset-less, so JS reads
+    // it as local time — the gate would last hours west of UTC and no-op east
+    // of it, invisible to a TZ=UTC suite (ENG-1537 review).
+    retryAt: typeof ev.retry_at === 'string' ? ev.retry_at : null,
   };
 }
 
@@ -725,6 +730,7 @@ function hydrateMessagesFromServerEvents(messages) {
           failedModel: failed?.failedModel ?? null,
           retryAfter: failed?.retryAfter ?? null,
           resetAt: failed?.resetAt ?? null,
+          retryAt: failed?.retryAt ?? null,
         });
       }
     }
@@ -1371,6 +1377,14 @@ function AppCore() {
             reconnectable: event?.reconnectable ?? null,
             providerLabel: event?.provider_label ?? null,
             failedModel: event?.model ?? null,
+            // ENG-1537 review: this local trailer is reached when
+            // loadSessionMessagesWithRetry gives up after 3 attempts — which is
+            // MORE likely precisely when the gateway is rate-limiting. Without
+            // these the rate-limit card loses its gate and the allowance card
+            // always reads "resets on next month".
+            retryAfter: typeof event?.retry_after === 'number' ? event.retry_after : null,
+            retryAt: typeof event?.retry_at === 'string' ? event.retry_at : null,
+            resetAt: typeof event?.reset_at === 'string' ? event.reset_at : null,
           };
       return {
         ...t,
