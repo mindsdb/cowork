@@ -90,8 +90,15 @@ function isSafeExternalHref(href) {
 
 // A finished artifact's local path or a fabricated sandbox: URL that anton emits
 // as a "download" link — inert in chat, so remarkArtifactLocalLinks neutralizes
-// it (ENG-1636). POSIX detection is scoped to the artifact/.cowork shape so a
-// real web `/route` link isn't swallowed.
+// it (ENG-1636).
+//
+// Asymmetric by design: ANY Windows drive path is caught, but a POSIX path only
+// under `.anton/artifacts/` or `.cowork/`. Scoping POSIX to the artifact shape
+// keeps a real web `/route` link from being swallowed; the trade is a
+// POSIX-shaped hole — a file anton writes elsewhere on macOS/Linux still renders
+// as a dead link. Artifacts live under `.anton/artifacts`, so the canonical case
+// is covered on every platform; widening to bare-absolute-POSIX is where
+// over-matching would start.
 export function isArtifactLocalPath(href) {
   if (!href || typeof href !== 'string') return false;
   const h = href.trim();
@@ -158,8 +165,11 @@ const sanitizeSchema = {
   attributes: {
     ...defaultSchema.attributes,
     code: [...(defaultSchema.attributes?.code || []), ['className']],
-    // `title` carries remarkArtifactLocalLinks' Live Artifacts hint on <span>.
-    span: [...(defaultSchema.attributes?.span || []), ['className'], ['title']],
+    // Only `className` needs allowlisting here: defaultSchema permits `title`
+    // on every element (attributes['*']), so remarkArtifactLocalLinks' Live
+    // Artifacts tooltip survives without a span entry, but ['*'] omits
+    // className — which the engram chips and this plugin both set.
+    span: [...(defaultSchema.attributes?.span || []), ['className']],
   },
   protocols: {
     ...(defaultSchema.protocols || {}),
