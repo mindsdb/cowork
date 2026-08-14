@@ -545,6 +545,9 @@ export interface ServerUpdateCheckResult {
   // to say what's actually changing. Absent on the git channel (both components
   // move together as one commit-pair update).
   component?: 'cowork-server' | 'anton-agent';
+  // Set when the "update" is the stream repair (a deliberate downgrade).
+  // Boot-only: the caller must not surface it mid-session or offer it as a pill.
+  repair?: boolean;
 }
 
 /** Check whether a server update is available WITHOUT applying it. */
@@ -606,7 +609,13 @@ export async function checkForServerUpdate(): Promise<ServerUpdateCheckResult> {
     // A stream repair counts as an available update: the boot flow gates the
     // apply path on this check, so an off-stream install must surface here.
     if (repair.action === 'repair' || decidePypiUpdate(currentVersion, latestVersion).action === 'update') {
-      return { updateAvailable: true, currentVersion, latestVersion, component: 'cowork-server' };
+      return {
+        updateAvailable: true,
+        currentVersion,
+        latestVersion,
+        component: 'cowork-server',
+        ...(repair.action === 'repair' ? { repair: true } : {}),
+      };
     }
     // cowork-server is current — an anton-only release may still be pending.
     // Detected the SAME way maybeUpdateServer applies it, so the banner and the

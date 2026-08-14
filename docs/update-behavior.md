@@ -154,6 +154,11 @@ app comes back up, and the repair retries on the next launch. Data under
 the cowork home is never touched; projects, conversations, and credentials
 all survive the repair.
 
+The repair is boot-only. Mid-session polls, the Settings check, and a manual
+"Restart now" never surface or apply it — a downgrade offer in the update
+pill reads as the app being confused, so the stranded install simply repairs
+itself on the next launch.
+
 ## Sample scenarios: what the user sees
 
 The app updates three independently-versioned pieces, each through its own

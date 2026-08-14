@@ -424,6 +424,15 @@ describe('decideUpdateApply', () => {
     expect(decideUpdateApply({ ...base, serverDown: true, mode: 'manual' }).applyUi).toBe(false);
   });
 
+  it('a repair-only update applies at boot in any mode and never mid-session', () => {
+    // Repairs get no banner fallback, so boot must apply them even in manual
+    // mode; mid-session they stay silent, including the serverDown override.
+    expect(decideUpdateApply({ ...base, repairOnly: true }).applyServer).toBe(true);
+    expect(decideUpdateApply({ ...base, repairOnly: true, mode: 'manual' }).applyServer).toBe(true);
+    expect(decideUpdateApply({ ...base, repairOnly: true, isBootCheck: false }).applyServer).toBe(false);
+    expect(decideUpdateApply({ ...base, repairOnly: true, isBootCheck: false, serverDown: true }).applyServer).toBe(false);
+  });
+
   it('applies nothing when there is nothing to apply, even for a down server', () => {
     expect(
       decideUpdateApply({ ...base, serverUpdateAvailable: false, uiUpdateAvailable: false, serverDown: true }),

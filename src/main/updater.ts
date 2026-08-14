@@ -170,7 +170,8 @@ export async function checkForUpdates(): Promise<UpdateCheckSummary> {
   const shellAutoActive = !!shellAuto && shellAutoUpdateIsActive(shellAuto.phase);
   return summarizeUpdateCheck({
     ui: { updateAvailable: ui.updateAvailable, newVersion: ui.newVersion, error: ui.error },
-    server: { updateAvailable: server.updateAvailable, latestVersion: server.latestVersion, error: server.error, component: server.component },
+    // A pending stream repair is boot-only; the manual check must not offer it.
+    server: { updateAvailable: server.updateAvailable && !server.repair, latestVersion: server.latestVersion, error: server.error, component: server.component },
     shell: shell.available
       ? { updateAvailable: true, version: shell.latestVersion, downloadUrl: shell.downloadUrl ?? undefined }
       : shellAutoActive
@@ -187,8 +188,10 @@ export function registerUpdateHandlers(getWindow: GetWindow) {
   ipcMain.handle(IPC.UI_SHELL_UPDATE_GET, () => lastShellStatus);
   ipcMain.handle(IPC.UI_UPDATE_APPLY, async () => {
     // A manual apply always re-checks the server so it can't drift from the UI.
+    // A pending stream repair is excluded: it applies at boot, and a user
+    // restarting for a UI update must not trigger a server downgrade.
     const server = await checkForServerUpdate();
-    return applyUpdates(getWindow, server.updateAvailable, true);
+    return applyUpdates(getWindow, server.updateAvailable && !server.repair, true);
   });
   registerShellAutoUpdateHandlers();
 }
@@ -302,12 +305,20 @@ export function initUpdater(
       serverDown: !isServerRunning(),
       isBootCheck: autoApply,
       mode: getMode(),
+      repairOnly: !!server.repair,
     });
 
     if (applyServer || applyUi) {
       if (applyServer && !isServerRunning()) console.log('[updater] server is down — applying server update to recover');
       await applyUpdates(getWindow, applyServer, applyUi);
     } else {
+      // The stream repair is boot-only: a downgrade pill mid-session reads as
+      // the app being confused, so a pending repair is never surfaced here.
+      const surfaceServer = server.updateAvailable && !server.repair;
+      if (!uiCandidate && !surfaceServer) {
+        console.log('[updater] stream repair pending — applies at the next boot, not surfaced mid-session');
+        return;
+      }
       // An anton-only server update (ENG-1094) shares cowork-server's version,
       // so a bare version number would read as blank/wrong — name the component
       // that's actually changing. A cowork-server (or git) update keeps the
@@ -319,10 +330,10 @@ export function initUpdater(
         phase: 'available',
         // Interim: surface whichever version we have so the banner never
         // renders blank. Longer term this collapses to one unified version.
-        version: ui.newVersion ?? serverLabel,
-        serverUpdate: server.updateAvailable,
-        serverVersion: server.latestVersion,
-        serverComponent: server.component,
+        version: ui.newVersion ?? (surfaceServer ? serverLabel : undefined),
+        serverUpdate: surfaceServer,
+        serverVersion: surfaceServer ? server.latestVersion : undefined,
+        serverComponent: surfaceServer ? server.component : undefined,
       });
     }
   }

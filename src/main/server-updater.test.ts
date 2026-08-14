@@ -616,6 +616,7 @@ describe('stream repair — prod install stranded on a pre-release', () => {
       currentVersion: RC,
       latestVersion: STABLE,
       component: 'cowork-server',
+      repair: true,
     });
 
     // The check runs on every boot, so its log alone must answer: which

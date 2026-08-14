@@ -430,11 +430,14 @@ export function decideUpdateApply(input: {
   serverDown: boolean;
   isBootCheck: boolean;
   mode: 'auto' | 'manual';
+  repairOnly?: boolean;
 }): UpdateApplyDecision {
-  const { serverUpdateAvailable, uiUpdateAvailable, serverDown, isBootCheck, mode } = input;
+  const { serverUpdateAvailable, uiUpdateAvailable, serverDown, isBootCheck, mode, repairOnly } = input;
   const autoOk = isBootCheck && mode === 'auto';
+  // A stream repair is boot-only: it gets no mid-session banner, so boot must
+  // apply it even in manual mode, and the serverDown override never fires it.
   return {
-    applyServer: serverUpdateAvailable && (serverDown || autoOk),
+    applyServer: serverUpdateAvailable && (repairOnly ? isBootCheck : (serverDown || autoOk)),
     applyUi: uiUpdateAvailable && autoOk,
   };
 }
