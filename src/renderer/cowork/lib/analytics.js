@@ -25,16 +25,18 @@ import { host } from '../../platform/host';
 // on all of them. `$identify` is a PostHog protocol event, not a product event,
 // so it lives inline in the merge rather than here.
 const EVENTS = {
-  DATA_SOURCE_CONNECTED: 'data_source_connected', // { source_type }
-  ARTIFACT_BUILT:        'artifact_built',         // { artifact_type }
-  ARTIFACT_PUBLISHED:    'artifact_published',     // { artifact_id, visibility }
-  AGENT_SESSION_STARTED: 'agent_session_started',  // {}
-  FIRST_QUERY:           'first_query',            // {}  once per user (ENG-501)
-  FIRST_RESPONSE:        'first_response',         // { outcome: 'success'|'error', reason } once per user (ENG-736)
-  TOKEN_CAP_HIT:         'token_cap_hit',          // {}  upgrade-intent signal (ENG-385)
-  HARNESS_SWAPPED:       'harness_swapped',        // { from, to }
-  APP_INSTALLED:         'app_installed',          // {}  desktop, once per install
-  BOOT_SCREEN_RESOLVED:  'boot_screen_resolved',   // { target, anton_installed, server_deps_ready } desktop, per launch (ENG-921)
+  DATA_SOURCE_CONNECTED:    'data_source_connected',    // { source_type }
+  ARTIFACT_BUILT:           'artifact_built',           // { artifact_type }
+  ARTIFACT_PUBLISHED:       'artifact_published',       // { artifact_id, visibility }
+  AGENT_SESSION_STARTED:    'agent_session_started',    // {}
+  FIRST_QUERY:              'first_query',              // {}  once per user (ENG-501)
+  FIRST_RESPONSE:           'first_response',           // { outcome: 'success'|'error', reason } once per user (ENG-736)
+  TOKEN_CAP_HIT:            'token_cap_hit',            // { code: 'token_limit'|'model_access_denied' } credit-block impression (ENG-385, widened ENG-1533)
+  BILLING_OPENED:           'billing_opened',           // { trigger: 'token_limit'|'model_access_denied'|'model_disabled'|'key_provisioning_refused' } (ENG-1533)
+  KEY_PROVISIONING_REFUSED: 'key_provisioning_refused', // { outcome: 'byok_offered'|'billing_opened'|'unhandled' } (ENG-1533)
+  HARNESS_SWAPPED:          'harness_swapped',          // { from, to }
+  APP_INSTALLED:            'app_installed',            // {}  desktop, once per install
+  BOOT_SCREEN_RESOLVED:     'boot_screen_resolved',     // { target, anton_installed, server_deps_ready } desktop, per launch (ENG-921)
 };
 
 const POSTHOG_HOST = 'https://us.i.posthog.com';
@@ -399,10 +401,42 @@ export function trackAgentSessionStarted() {
   capture(EVENTS.AGENT_SESSION_STARTED);
 }
 
-// The key upgrade-intent signal: a free user hit the token cap. Fired from the
-// stream adapter when a turn fails with the `token_limit` code (ENG-385).
-export function trackTokenCapHit() {
-  capture(EVENTS.TOKEN_CAP_HIT);
+// The key upgrade-intent signal: a turn was blocked on credits. Fired from the
+// stream adapter on receipt of the failure (ENG-385). `code` is the wire code
+// that blocked the turn — `token_limit`, or `model_access_denied`, whose card
+// used to be shown with no impression at all (ENG-1533). One event with a `code`
+// rather than two events, so the impression count stays a single series and the
+// once-per-receipt guarantee is not duplicated. Historic events predate the
+// property and carry no `code`; they are all `token_limit`.
+export function trackTokenCapHit(code) {
+  capture(EVENTS.TOKEN_CAP_HIT, { code: code || 'token_limit' });
+}
+
+// The desktop sent the user to the console billing page (ENG-1533). `trigger`
+// names the condition that sent them, because the causes have different fixes
+// and probably different conversion rates:
+//   token_limit               out of credits mid-turn; pairs with token_cap_hit
+//   model_access_denied       legacy per-model credit denial (pre-wallet gateways)
+//   model_disabled            legacy admin-disabled model; credits do not unlock it
+//   key_provisioning_refused  MindsHub would not mint an LLM key on reconnect
+// Deliberately no impression event alongside it: token_cap_hit already fires
+// once per receipt in the stream adapter, and an impression in the render path
+// would re-fire on every paint.
+export function trackBillingOpened(trigger) {
+  capture(EVENTS.BILLING_OPENED, { trigger: trigger || 'unknown' });
+}
+
+// MindsHub declined to provision an LLM key (ENG-1533) — the earliest point a
+// user can be blocked from working at all. The refusal is detected in the main
+// process, but `outcome` is only knowable in the renderer, so this fires there:
+//   byok_offered    first run — routed to Bring Your Own Key, no paywall shown
+//   billing_opened  reconnect — sent to the console billing page
+//   unhandled       SSO sign-in — the result is not acted on, so the user lands
+//                   with no working key, no BYOK route and no message
+// Its own event rather than a `billing_opened` trigger because on the commonest
+// path (first run) no paywall is shown at all; the fork is the measurement.
+export function trackKeyProvisioningRefused(outcome) {
+  capture(EVENTS.KEY_PROVISIONING_REFUSED, { outcome: outcome || 'unknown' });
 }
 
 // User switched the active agent/harness in Settings (e.g. anton -> hermes).

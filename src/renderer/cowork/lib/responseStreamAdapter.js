@@ -272,10 +272,16 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
   }
 
   if (type === 'response.failed') {
-    // Key upgrade-intent signal: a free user hit the token cap. Fire once here,
-    // on receipt — not in the render path (ChatView), which re-runs every paint.
-    if (!replay && event.code === 'token_limit') {
-      try { _trackTokenCapHit(); }
+    // Key upgrade-intent signal: the turn was blocked on credits. Fire once
+    // here, on receipt — not in the render path (ChatView), which re-runs every
+    // paint. `model_access_denied` counts too (ENG-1533): it renders its own
+    // "needs credits" card, so it was a paywall impression with no impression
+    // event at all. One event carrying the `code` rather than a second event,
+    // so the impression stays a single series and keeps this once-per-receipt
+    // guarantee. `model_disabled` is deliberately excluded — an admin turned the
+    // model off, and credits do not unlock it, so it is not upgrade intent.
+    if (!replay && (event.code === 'token_limit' || event.code === 'model_access_denied')) {
+      try { _trackTokenCapHit(event.code); }
       catch { /* analytics must never break streaming */ }
     }
     return {

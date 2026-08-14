@@ -576,3 +576,69 @@ describe('is_internal on captured events (ENG-672)', () => {
     }
   });
 });
+
+// ENG-1533: the money path between the paywall and the payment. The property
+// values are the whole point of these two events, so they are pinned on the
+// wire, not just at the call site.
+describe('billing + provisioning events (ENG-1533)', () => {
+  // Fire-and-forget helpers (like trackDataSourceConnected) return nothing, so
+  // wait for the POST rather than awaiting the call.
+  const sentEvent = async (fetchMock, name) => {
+    await vi.waitFor(() =>
+      expect(
+        fetchMock.mock.calls.map((c) => JSON.parse(c[1].body)).some((b) => b.event === name)
+      ).toBe(true)
+    );
+    return fetchMock.mock.calls.map((c) => JSON.parse(c[1].body)).find((b) => b.event === name);
+  };
+
+  it('billing_opened carries the trigger that sent the user', async () => {
+    const fetchMock = mockFetch();
+    const { trackBillingOpened } = await importAnalytics();
+
+    trackBillingOpened('token_limit');
+
+    const event = await sentEvent(fetchMock, 'billing_opened');
+    expect(event.properties.trigger).toBe('token_limit');
+  });
+
+  it('billing_opened records an unnamed trigger as unknown, never as a real one', async () => {
+    const fetchMock = mockFetch();
+    const { trackBillingOpened } = await importAnalytics();
+
+    trackBillingOpened();
+
+    const event = await sentEvent(fetchMock, 'billing_opened');
+    expect(event.properties.trigger).toBe('unknown');
+  });
+
+  it('key_provisioning_refused carries the outcome, so the BYOK/billing/nothing fork is countable', async () => {
+    const fetchMock = mockFetch();
+    const { trackKeyProvisioningRefused } = await importAnalytics();
+
+    trackKeyProvisioningRefused('byok_offered');
+
+    const event = await sentEvent(fetchMock, 'key_provisioning_refused');
+    expect(event.properties.outcome).toBe('byok_offered');
+  });
+
+  it('token_cap_hit carries the code so the two credit blocks are distinguishable', async () => {
+    const fetchMock = mockFetch();
+    const { trackTokenCapHit } = await importAnalytics();
+
+    trackTokenCapHit('model_access_denied');
+
+    const event = await sentEvent(fetchMock, 'token_cap_hit');
+    expect(event.properties.code).toBe('model_access_denied');
+  });
+
+  it('token_cap_hit defaults to token_limit, matching the events logged before the code property existed', async () => {
+    const fetchMock = mockFetch();
+    const { trackTokenCapHit } = await importAnalytics();
+
+    trackTokenCapHit();
+
+    const event = await sentEvent(fetchMock, 'token_cap_hit');
+    expect(event.properties.code).toBe('token_limit');
+  });
+});
