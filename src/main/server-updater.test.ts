@@ -546,7 +546,6 @@ describe('stream repair — prod install stranded on a pre-release', () => {
   it('repairs a prod install holding a pre-release down to the latest stable', async () => {
     installOnPypiChannel(RC);
     const execCalls = mockUv(RC);
-    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
 
     const result = await maybeUpdateServer();
 
@@ -554,13 +553,6 @@ describe('stream repair — prod install stranded on a pre-release', () => {
     const installs = installCalls(execCalls);
     expect(installs).toHaveLength(1);
     expect(installs[0]).toContain(`cowork-server==${STABLE}`);
-
-    // The boot log alone must answer: which stream, which versions, what happened.
-    const line = log.mock.calls.map((c) => String(c[0])).find((s) => s.includes('stream check'));
-    expect(line).toContain('build=prod');
-    expect(line).toContain(`cowork-server=${RC}`);
-    expect(line).toContain('anton-agent=0.9.5');
-    expect(line).toContain(`repairing to ${STABLE}`);
   });
 
   it('restores the pre-release when the stable server refuses to boot', async () => {
@@ -599,6 +591,7 @@ describe('stream repair — prod install stranded on a pre-release', () => {
   it('checkForServerUpdate reports the repair as an available update (the boot flow gates the apply on it)', async () => {
     installOnPypiChannel(RC);
     mockUv(RC);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
 
     await expect(checkForServerUpdate()).resolves.toEqual({
       updateAvailable: true,
@@ -606,18 +599,36 @@ describe('stream repair — prod install stranded on a pre-release', () => {
       latestVersion: STABLE,
       component: 'cowork-server',
     });
+
+    // The check runs on every boot, so its log alone must answer: which
+    // stream, which versions, what the repair is about to do.
+    const line = log.mock.calls.map((c) => String(c[0])).find((s) => s.includes('stream check'));
+    expect(line).toContain('build=prod');
+    expect(line).toContain(`cowork-server=${RC}`);
+    expect(line).toContain('anton-agent=0.9.5');
+    expect(line).toContain(`repairing to ${STABLE}`);
+  });
+
+  it('checkForServerUpdate logs the on-stream verdict on a healthy prod install', async () => {
+    installOnPypiChannel(STABLE);
+    mockUv(STABLE);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    const result = await checkForServerUpdate();
+
+    expect(result.updateAvailable).toBe(false);
+    const line = log.mock.calls.map((c) => String(c[0])).find((s) => s.includes('stream check'));
+    expect(line).toContain('build=prod');
+    expect(line).toContain('on stream, nothing to repair');
   });
 
   it('never reinstalls a prod build already on a stable version, even with PyPI unreachable', async () => {
     installOnPypiChannel(STABLE, { pypiDown: true });
     const execCalls = mockUv(STABLE);
-    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
 
     await expect(maybeUpdateServer()).resolves.toEqual({ updated: false });
 
     expect(installCalls(execCalls)).toHaveLength(0);
-    const line = log.mock.calls.map((c) => String(c[0])).find((s) => s.includes('stream check'));
-    expect(line).toContain('on stream, nothing to repair');
   });
 
   it('boot repair on a prod build resolves the stable stream instead of re-pinning the pre-release', async () => {

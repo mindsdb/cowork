@@ -601,7 +601,14 @@ export async function checkForServerUpdate(): Promise<ServerUpdateCheckResult> {
     if (!currentVersion || !latestVersion) return { updateAvailable: false, error: true };
     // A stream repair counts as an available update: the boot flow gates the
     // apply path on this check, so an off-stream install must surface here.
+    // Logged here (not in the apply path) because the check runs on every
+    // boot — a user's log alone must answer whether the repair fired.
     const repair = decideStreamRepair({ buildKind: currentBuildKind(), currentVersion, latestVersion });
+    console.log(
+      `[server-updater] stream check: build=${currentBuildKind() ?? 'unknown'} ` +
+      `cowork-server=${currentVersion} ` +
+      `anton-agent=${readInstalledDistVersion(ANTON_DIST_NAME) ?? 'unknown'} — ${streamCheckOutcome(repair)}`,
+    );
     if (repair.action === 'repair' || decidePypiUpdate(currentVersion, latestVersion).action === 'update') {
       return { updateAvailable: true, currentVersion, latestVersion, component: 'cowork-server' };
     }
@@ -740,12 +747,6 @@ async function _pypiUpdate(uv: string): Promise<ServerUpdateResult> {
   // forever. A repair reuses the update block below — same exact-pin install,
   // health check, and rollback — just pointed backwards deliberately.
   const repair = decideStreamRepair({ buildKind: currentBuildKind(), currentVersion, latestVersion });
-  console.log(
-    `[server-updater] stream check: build=${currentBuildKind() ?? 'unknown'} ` +
-    `cowork-server=${currentVersion ?? 'unknown'} ` +
-    `anton-agent=${readInstalledDistVersion(ANTON_DIST_NAME) ?? 'unknown'} — ${streamCheckOutcome(repair)}`,
-  );
-
   const decision = repair.action === 'repair'
     ? { action: 'update' as const, from: repair.from, to: repair.to }
     : decidePypiUpdate(currentVersion, latestVersion);
