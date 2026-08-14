@@ -27,6 +27,7 @@ import {
   Clock,
   CodeXml,
   Copy,
+  CreditCard,
   Database,
   Download,
   Ellipsis,
@@ -114,6 +115,8 @@ const Ico = {
   thumbUp:  ico(ThumbsUp),
   thumbDown: ico(ThumbsDown),
   chevronRight: ico(ChevronRight),
+  // Billing & Usage row in Settings nav (ENG-1545).
+  card:     ico(CreditCard),
   code:     ico(CodeXml),
   plus:     ico(Plus),
   folder:   ico(Folder),
