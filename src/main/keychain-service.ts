@@ -1,5 +1,16 @@
-import keytar from 'keytar';
 import { buildKind } from './cowork-home';
+
+// keytar is a native module — an eager top-level import forces every consumer
+// of this file (even one that never touches the keychain) to load that native
+// binding at module-load time, which fails on Linux CI without libsecret.
+// Load it lazily so importing this module (directly or transitively) stays
+// safe everywhere; the native module only loads when a function below
+// actually runs. `import()` is still intercepted by `vi.mock('keytar', ...)`
+// the same way a static import would be, so keychain-service.test.ts is
+// unaffected.
+async function getKeytar() {
+  return (await import('keytar')).default;
+}
 
 // Namespace the keychain service per channel so build kinds on one machine don't
 // share OAuth refresh tokens. prod keeps the historical 'cowork-oauth' (existing
@@ -11,14 +22,17 @@ function accountKey(engine: string, accountEmail: string): string {
 }
 
 export async function getRefreshToken(engine: string, accountEmail: string): Promise<string | null> {
+  const keytar = await getKeytar();
   return keytar.getPassword(SERVICE_NAME, accountKey(engine, accountEmail));
 }
 
 export async function setRefreshToken(engine: string, accountEmail: string, token: string): Promise<void> {
+  const keytar = await getKeytar();
   await keytar.setPassword(SERVICE_NAME, accountKey(engine, accountEmail), token);
 }
 
 export async function deleteRefreshToken(engine: string, accountEmail: string): Promise<void> {
+  const keytar = await getKeytar();
   await keytar.deletePassword(SERVICE_NAME, accountKey(engine, accountEmail));
 }
 
@@ -35,17 +49,21 @@ const GENERATION_ACCOUNT_KEY = '__generation__'; // reserved — never a valid
 // never collide with a real entry.
 
 export async function getStaticCredential(name: string): Promise<string | null> {
+  const keytar = await getKeytar();
   return keytar.getPassword(SERVICE_NAME, name);
 }
 
 export async function setStaticCredential(name: string, value: string): Promise<void> {
+  const keytar = await getKeytar();
   await keytar.setPassword(SERVICE_NAME, name, value);
 }
 
 export async function getGenerationMarker(): Promise<string | null> {
+  const keytar = await getKeytar();
   return keytar.getPassword(SERVICE_NAME, GENERATION_ACCOUNT_KEY);
 }
 
 export async function setGenerationMarker(generation: string): Promise<void> {
+  const keytar = await getKeytar();
   await keytar.setPassword(SERVICE_NAME, GENERATION_ACCOUNT_KEY, generation);
 }
