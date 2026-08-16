@@ -884,12 +884,12 @@ export default function Sidebar({
               // Help & Feedback, Logout).
               <UserMenu
                 user={accountUser}
-                onOpenSettings={() => onNavigate('settings:agent')}
+                onOpenSettings={() => onNavigate('settings')}
               />
             ) : (
               <button
                 className={'anton-sidebar__footer-settings flex-1 min-w-0 [-webkit-app-region:no-drag]' + (settingsActive ? ' is-on' : '')}
-                onClick={() => onNavigate('settings:agent')}
+                onClick={() => onNavigate('settings')}
                 aria-label="Settings"
               >
                 <span className="inline-flex shrink-0">{Ico.settings(13)}</span>

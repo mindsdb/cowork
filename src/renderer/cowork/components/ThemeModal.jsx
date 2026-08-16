@@ -76,6 +76,12 @@ export default function ThemeModal({
       <ModalHeader id="theme-modal-title" title="Display" subtitle="Theme and style — applied live" onClose={onClose} />
       <ModalBody>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+          {!host.isWeb && onCodingModeChange && (
+            <Group label="Coding mode">
+              <Choice active={!codingModeEnabled} onClick={() => onCodingModeChange(false)}>Off</Choice>
+              <Choice active={!!codingModeEnabled} onClick={() => onCodingModeChange(true)}>On</Choice>
+            </Group>
+          )}
           <Group label="Theme">
             <Choice active={theme === 'light'} onClick={() => onThemeChange('light')}>Light</Choice>
             <Choice active={theme === 'dark'} onClick={() => onThemeChange('dark')}>Dark</Choice>
@@ -87,12 +93,6 @@ export default function ThemeModal({
               </Choice>
             ))}
           </Group>
-          {!host.isWeb && onCodingModeChange && (
-            <Group label="Coding mode">
-              <Choice active={!codingModeEnabled} onClick={() => onCodingModeChange(false)}>Off</Choice>
-              <Choice active={!!codingModeEnabled} onClick={() => onCodingModeChange(true)}>On</Choice>
-            </Group>
-          )}
         </div>
       </ModalBody>
     </Modal>

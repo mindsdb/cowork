@@ -54,12 +54,16 @@ describe('Sidebar — Settings is reachable on web (ENG-932)', () => {
     expect(screen.getByRole('button', { name: 'Settings' })).toBeInTheDocument();
   });
 
-  it('opens the Agent section, where reasoning effort lives', () => {
+  it('opens general settings (not forced to a specific section)', () => {
+    // Was: forced straight to 'settings:agent'. The Agent section (where
+    // reasoning effort lives) is still one click away via Settings' own
+    // nav — this button is just a general entry point now, not an
+    // Agent-specific shortcut.
     const onNavigate = vi.fn();
     hostMock.isWeb = true;
     render(<Sidebar {...baseProps} onNavigate={onNavigate} />);
     screen.getByRole('button', { name: 'Settings' }).click();
-    expect(onNavigate).toHaveBeenCalledWith('settings:agent');
+    expect(onNavigate).toHaveBeenCalledWith('settings');
   });
 
   it('still renders Settings on Electron when the server is healthy', () => {
