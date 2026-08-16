@@ -1741,13 +1741,19 @@ export default function SettingsView({
               ]}
             />
           </Section>
-          <Section title="Coding mode" subtitle="Let a task launch in an external coding CLI (e.g. Claude Code) instead of the in-app chat, when one is installed.">
-            <Switch
-              checked={settings.codingModeEnabled ?? false}
-              onCheckedChange={(v) => setSetting('codingModeEnabled', v)}
-              aria-label="Coding mode"
-            />
-          </Section>
+          {/* Desktop only: launching an external CLI in a terminal is an
+              Electron main-process capability (child_process spawn) with no
+              web equivalent — a browser tab can't open a terminal window on
+              the visitor's machine. */}
+          {!host.isWeb && (
+            <Section title="Coding mode" subtitle="Let a task launch in an external coding CLI (e.g. Claude Code) instead of the in-app chat, when one is installed.">
+              <Switch
+                checked={settings.codingModeEnabled ?? false}
+                onCheckedChange={(v) => setSetting('codingModeEnabled', v)}
+                aria-label="Coding mode"
+              />
+            </Section>
+          )}
         </SettingsGroup>
 
         <SettingsGroup title="Memory">

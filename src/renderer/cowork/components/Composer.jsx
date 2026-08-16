@@ -1392,8 +1392,12 @@ export default function Composer({
           {/* Coding mode (MVP): the harness choice itself still gates on the
               setting — offering Claude Code as an option only makes sense
               when it's turned on. Model selection above applies regardless
-              of which harness is picked. */}
-          {codingModeEnabled && (
+              of which harness is picked. Desktop-only regardless of the
+              setting's value: it's an account-wide setting, so a web
+              session for the same account would otherwise still see the
+              option — launching a terminal is an Electron capability the
+              web build has no equivalent for. */}
+          {codingModeEnabled && !host.isWeb && (
             <Tooltip content="Choose harness">
               <button
                 className="meta-pill"
