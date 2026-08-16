@@ -11,10 +11,10 @@ import {
 } from './composerFences';
 import { HighlightOverlay } from './composerHighlight';
 import {
-  groupModelOptions, modelMaker, isMovingAlias, isFrozenAlias, hasFrozenVersions, orderByFamily,
+  isMovingAlias, isFrozenAlias, hasFrozenVersions, orderByFamily,
 } from '../lib/modelCatalog';
 import { MODEL_REFRESH_TTL_MS } from '../lib/modelRefresh';
-import ProviderIcon from './ProviderIcon.jsx';
+import ModelSelect from './ModelSelect.jsx';
 import { useFileDrop, FileDropOverlay, extractClipboardFiles } from '../lib/useFileDrop';
 import { AttachmentThumbnail } from './AttachmentThumbnail';
 import { useSkills } from '../lib/skillsStore';
@@ -65,61 +65,6 @@ function AttachmentChip({ attachment, onRemove }) {
         </Tooltip>
       )}
     </div>
-  );
-}
-
-// Shared by the menu's own "Model" label and each section heading, so a grouped
-// and an ungrouped menu can't drift apart visually.
-const MODEL_HEADING = {
-  padding: '6px 10px',
-  fontSize: 11,
-  fontWeight: 600,
-  color: 'var(--frost-600)',
-  textTransform: 'uppercase',
-  letterSpacing: '0.04em',
-};
-
-/**
- * One row of the composer's model menu.
- *
- * `latest` marks an alias whose version moves — picking it always gets the newest
- * release. A locked model is one the org's wallet can't currently pay for; it
- * renders disabled with the same "Add credits to unlock" wording the Settings
- * picker uses, so a model that would fail at send time can't be chosen here.
- */
-function ModelMenuItem({ item, selected, onSelect }) {
-  return (
-    <button
-      className={`menu-item${selected ? ' checked' : ''}`}
-      disabled={item.locked}
-      title={item.locked ? 'Add credits to unlock this model' : undefined}
-      onClick={onSelect}
-      style={{
-        display: 'flex', alignItems: 'center', gap: 8, width: '100%',
-        paddingLeft: item.pinned ? 24 : undefined,
-        opacity: item.locked ? 0.55 : undefined,
-        cursor: item.locked ? 'not-allowed' : undefined,
-      }}
-    >
-      <ProviderIcon maker={item.maker} className="text-ink-2" />
-      <span style={{
-        flex: 1,
-        fontWeight: item.pinned ? 400 : 500,
-        color: item.pinned ? 'var(--frost-700)' : undefined,
-      }}>{item.name}</span>
-      {item.moving && (
-        <span
-          title="This model always points at the newest version."
-          style={{
-            fontSize: 10, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase',
-            padding: '1px 5px', borderRadius: 4,
-            background: 'var(--surface-2)', color: 'var(--frost-600)',
-          }}
-        >latest</span>
-      )}
-      {item.locked && <span style={{ fontSize: 11, color: 'var(--frost-600)' }}>Add credits to unlock</span>}
-      {selected && <span style={{ color: 'var(--primary-700)' }}>{Ico.check(14)}</span>}
-    </button>
   );
 }
 
@@ -326,10 +271,6 @@ export default function Composer({
   // on every keystroke / selection event.
   const parsedFences = useMemo(() => parseFences(value), [value]);
 
-  // Model menu sections. Grouped here rather than by the caller because ChatView
-  // passes its own one-item list, which must stay ungrouped — and with no
-  // metadata `groupModelOptions` returns exactly one unnamed section holding the
-  // input, so the flat menu needs no separate branch below.
   // Don't re-pay the round trip for a menu reopened moments later. -Infinity, not
   // 0: performance.now() is already well past 0 by first render, so a 0 sentinel
   // would read as "refreshed at page load" and skip the first open of the session.
@@ -344,47 +285,36 @@ export default function Composer({
     Promise.resolve(modelMeta.onRefresh()).catch(() => {});
   }, [modelMeta]);
 
-  const modelSections = useMemo(() => {
+  // Flat options for <ModelSelect> — the same searchable, bounded-height,
+  // provider-grouped picker the Settings model rows use (ui/Combobox).
+  // ModelSelect groups internally (lib/modelCatalog), so this only builds the
+  // per-row tag/provider metadata, mirroring settingsTransform's
+  // buildModelOptions so the two pickers can't drift apart again.
+  const modelPickerOptions = useMemo(() => {
     const { modelProviders = {}, modelFamilies = {}, modelEnabled = {} } = modelMeta || {};
     const list = models || [];
     const ids = list.map((m) => m.id);
-    // Family rules come from lib/modelCatalog, shared with the Settings picker.
-    // They used to be reimplemented here over `{id, name}` objects while
-    // settingsTransform had its own copy over id strings, which is how the two
-    // drifted — the BYOK "(latest)" bug was live in both and had to be fixed twice.
     const byId = new Map(list.map((m) => [m.id, m]));
     const ordered = orderByFamily(ids, modelFamilies).map((id) => byId.get(id));
     // Only tag once something listed is NOT the latest; on an all-moving catalog the
     // tag would sit on every row and distinguish nothing.
     const tagMoving = hasFrozenVersions(ids, modelFamilies);
-    const items = ordered.map((m) => ({
-      value: m.id,
-      // `label` feeds modelSection's maker inference; `name` is what renders.
-      label: m.name,
-      name: m.name,
-      provider: modelProviders[m.id],
-      maker: modelMaker(m.id, m.name).key,
-      moving: tagMoving && isMovingAlias(m.id, modelFamilies),
-      // Indented under its head only when the head is actually listed. An orphan
-      // reads as a top-level model: indenting it under nothing, or calling it an
-      // older version of a model the user cannot see, is worse than listing it
-      // plainly. It is never `moving` either, so it claims nothing.
-      pinned: isFrozenAlias(m.id, modelFamilies) && byId.has(modelFamilies[m.id]),
-      locked: modelEnabled[m.id] === false,
-    }));
-    // Group only when the server told us who serves the models THESE rows are, not
-    // merely that it knows about some model somewhere: `modelProviders` is global to
-    // the settings blob and keyed by model id, so a MindsHub key populates it even
-    // for a role pointed at BYOK Anthropic, whose ids it never mentions. Gating on
-    // the map being non-empty grouped that list by inference alone. With nothing
-    // known about any listed id — an older cowork-server, a BYOK provider,
-    // ChatView's one-item list — a single unnamed section renders today's flat menu
-    // exactly. An empty list takes that path too: grouping nothing yields no
-    // sections at all, and a menu with neither heading nor rows reads as broken
-    // rather than as still-loading.
-    return items.length && ids.some((id) => modelProviders[id])
-      ? groupModelOptions(items)
-      : [{ key: 'all', name: null, items }];
+    return ordered.map((m) => {
+      const tag = [
+        tagMoving && isMovingAlias(m.id, modelFamilies) ? 'Latest' : '',
+        // A frozen version whose head is also listed. An orphan carries no
+        // tag: "older version" is a claim relative to a newer one, and with
+        // no head present there is nothing for the user to read it against.
+        (isFrozenAlias(m.id, modelFamilies) && byId.has(modelFamilies[m.id])) ? 'Older version' : '',
+        modelEnabled[m.id] === false ? 'Needs credits' : '',
+      ].filter(Boolean).join(' · ');
+      return {
+        value: m.id,
+        label: m.name,
+        ...(tag ? { tag } : {}),
+        ...(modelProviders[m.id] ? { provider: modelProviders[m.id] } : {}),
+      };
+    });
   }, [models, modelMeta]);
 
 
@@ -1204,6 +1134,35 @@ export default function Composer({
               )}
             </span>
             <div className="flex-1" />
+            {/* Model selection lives in the toolbar, next to send — a
+                standing composer capability independent of metaReadOnly
+                (which only locks the project pill) and of coding mode: it
+                applies to whichever harness the task runs with, Anton
+                included. Reuses <ModelSelect> — the same searchable,
+                bounded-height, provider-grouped picker (ui/Combobox) the
+                Settings model rows use — so height/scroll/search behavior
+                lives in one place. `modelReadOnly` (defaults to
+                `metaReadOnly`) keeps ChatView's existing "model is fixed
+                once a task starts" behavior. */}
+            {modelReadOnly ? (
+              <span className="meta-pill" title="Model is fixed for this task">
+                <span>{model?.name ?? 'Model'}</span>
+              </span>
+            ) : (
+              <ModelSelect
+                value={model?.id || ''}
+                onValueChange={(id) => {
+                  const found = modelPickerOptions.find((o) => o.value === id);
+                  onModelChange({ id, name: found?.label || id });
+                }}
+                onOpenChange={(open) => { if (open) openModelMenu(); }}
+                options={modelPickerOptions}
+                variant="unstyled"
+                className="meta-pill"
+                ariaLabel="Choose model"
+                placeholder="Select model"
+              />
+            )}
             {/* Mic / voice input intentionally hidden — voice flow isn't
                 wired through anton yet. We keep speechSupported state
                 around so we can reinstate later by re-rendering the
@@ -1288,6 +1247,7 @@ export default function Composer({
                   <button
                     ref={projectPillRef}
                     className="meta-pill"
+                    aria-label="Choose project"
                     onClick={() => setOpenMenu(openMenu === 'project' ? null : 'project')}
                   >
                     {Ico.folder(14)}
@@ -1429,35 +1389,6 @@ export default function Composer({
             </>
           )}
 
-          {/* Model selection: a standing composer capability, independent of
-              metaReadOnly (which only locks the project pill, e.g. inside a
-              project page) and of coding mode — it applies to whichever
-              harness the task runs with, Anton included. Reuses the same
-              modelSections/ModelMenuItem catalog as the Settings pickers.
-              `modelReadOnly` (defaults to `metaReadOnly`) keeps ChatView's
-              existing "model is fixed once a task starts" behavior — a
-              project page locking its project pill shouldn't also lock
-              model choice, so ProjectsView overrides it explicitly. */}
-          {modelReadOnly ? (
-            <span className="meta-pill" title="Model is fixed for this task">
-              <span>{model?.name ?? 'Model'}</span>
-            </span>
-          ) : (
-            <Tooltip content="Choose model">
-              <button
-                className="meta-pill"
-                onClick={() => {
-                  const opening = openMenu !== 'model';
-                  setOpenMenu(opening ? 'model' : null);
-                  if (opening) openModelMenu();
-                }}
-              >
-                <span>{model?.name ?? 'Select model'}</span>
-                <span className="inline-flex text-ink-4">{Ico.chevDown(13)}</span>
-              </button>
-            </Tooltip>
-          )}
-
           {/* Coding mode (MVP): the harness choice itself still gates on the
               setting — offering Claude Code as an option only makes sense
               when it's turned on. Model selection above applies regardless
@@ -1495,32 +1426,6 @@ export default function Composer({
               {opt.hint && <span style={{ fontSize: 11, color: 'var(--frost-600)' }}>{opt.hint}</span>}
               {codingHarness === opt.value && <span className="text-[var(--primary-700)]">{Ico.check(14)}</span>}
             </button>
-          ))}
-        </div>
-      )}
-
-      {/* cascade-forced: legacy .menu sets min-width:200px; a same-property
-          Tailwind utility would lose to it (loads after Tailwind). */}
-      {openMenu === 'model' && !modelReadOnly && (
-        <div className="menu right-2 top-[calc(100%_+_6px)]" style={{ minWidth: 260 }}>
-          {/* One unnamed section is the flat case (no metadata, or ChatView's
-              single-item list): keep the "Model" heading this menu has always
-              shown rather than repeating a section name per row. */}
-          {modelSections.length === 1 && !modelSections[0].name && (
-            <div style={MODEL_HEADING}>Model</div>
-          )}
-          {modelSections.map((section) => (
-            <Fragment key={section.key}>
-              {section.name && <div style={MODEL_HEADING}>{section.name}</div>}
-              {section.items.map((item) => (
-                <ModelMenuItem
-                  key={item.value}
-                  item={item}
-                  selected={model?.id === item.value}
-                  onSelect={() => { onModelChange({ id: item.value, name: item.name }); setOpenMenu(null); }}
-                />
-              ))}
-            </Fragment>
           ))}
         </div>
       )}
