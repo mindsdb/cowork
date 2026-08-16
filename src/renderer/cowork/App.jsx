@@ -4366,14 +4366,14 @@ function AppCore() {
 
       {/* Single floating corner button — back to its original bottom-right
           placement, matching the onboarding pages (App.tsx's
-          .arcade-theme-toggle, which never moved). Opens ThemeModal, the
-          same Light/Dark + Normal/8-Bit (+ desktop-only Coding mode)
-          picker as the sidebar's old "Display settings" button (now
-          removed — this is the one entry point). Icon doubles as status:
-          plain "display settings" slider normally, switching to the lit
-          gamepad/console mark while coding mode is on (the same way the
-          old floating 8-bit toggle lit for a non-default skin) — off,
-          there's nothing coding-mode-specific to signal. */}
+          .arcade-theme-toggle, which never moved). Opens ThemeModal (now
+          titled "Display Settings"), the same Light/Dark + Normal/8-Bit
+          (+ desktop-only Coding mode) picker as the sidebar's old
+          "Display settings" button (now removed — this is the one entry
+          point). Icon doubles as status: the same sun/moon the old
+          separate theme toggle used, switching to the lit gamepad/
+          console mark while coding mode is on (desktop only) — the same
+          way the old floating 8-bit toggle lit for a non-default skin. */}
       {(() => {
         const codingModeOn = !host.isWeb && settings.codingModeEnabled;
         return (settings.showThemeToggle !== false || settings.show8bitToggle !== false) && (
@@ -4383,7 +4383,7 @@ function AppCore() {
               aria-label="Open display settings"
               className={'floating-toggle [-webkit-app-region:no-drag]' + (codingModeOn ? ' is-on' : '')}
             >
-              {codingModeOn ? Ico.gamepad(15) : Ico.slider(15)}
+              {codingModeOn ? Ico.gamepad(15) : (theme === 'dark' ? Ico.sun(15) : Ico.moon(15))}
             </button>
           </Tooltip>
         );

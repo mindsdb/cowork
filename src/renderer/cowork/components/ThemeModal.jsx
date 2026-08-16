@@ -73,7 +73,7 @@ export default function ThemeModal({
 }) {
   return (
     <Modal open={open} onClose={onClose} size="sm" labelledBy="theme-modal-title">
-      <ModalHeader id="theme-modal-title" title="Display" subtitle="Theme and style — applied live" onClose={onClose} />
+      <ModalHeader id="theme-modal-title" title="Display Settings" subtitle="Theme and style — applied live" onClose={onClose} />
       <ModalBody>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
           {!host.isWeb && onCodingModeChange && (
