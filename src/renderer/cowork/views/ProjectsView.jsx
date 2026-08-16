@@ -541,6 +541,7 @@ function SkeletonCard() {
 function ProjectDetail({
   project, projects, tasks, scheduled, scheduleRunsIndex = {}, models, modelMeta, onSend, onSelectTask,
   onDeleteTask, onMoveTaskToProject, onShowAll,
+  model, onModelChange,
   codingModeEnabled = false,
   attachments = [],
   connectors = [],
@@ -702,8 +703,8 @@ function ProjectDetail({
               onSend={onSend}
               project={project}
               onProjectChange={() => {}}
-              model={null}
-              onModelChange={() => {}}
+              model={model}
+              onModelChange={onModelChange}
               projects={projects || []}
               models={models || []}
               modelMeta={modelMeta}
@@ -715,9 +716,10 @@ function ProjectDetail({
               onRemoveAttachment={onRemoveAttachment}
               disabledConnections={disabledConnections}
               onUpdateConnectorMute={onUpdateConnectorMute}
-              hideModel
               metaReadOnly
+              modelReadOnly={false}
               codingModeEnabled={codingModeEnabled}
+              sendsMeta
               placeholder={`Start a new task in ${project.name}…`}
               // Keyed on the id, not the name: renaming a project must not
               // orphan the draft the user is in the middle of typing.
@@ -778,6 +780,8 @@ export default function ProjectsView({
   scheduleRunsIndex = {},
   models = [],
   modelMeta,
+  model,
+  onModelChange,
   loading = false,
   onSelectProject,
   onCreateProject,
@@ -937,6 +941,8 @@ export default function ProjectsView({
         scheduleRunsIndex={scheduleRunsIndex}
         models={models}
         modelMeta={modelMeta}
+        model={model}
+        onModelChange={onModelChange}
         onSend={onSendInProject}
         onSelectTask={onSelectTask}
         onDeleteTask={onDeleteTask}

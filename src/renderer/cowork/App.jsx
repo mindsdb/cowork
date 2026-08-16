@@ -4664,6 +4664,8 @@ function AppCore() {
             scheduleRunsIndex={scheduleRunsIndex}
             models={modelOptions}
             modelMeta={modelMeta}
+            model={selectedModel}
+            onModelChange={setSelectedModel}
             onSelectProject={(p) => setSelectedProject(p)}
             onCreateProject={handleCreateProject}
             onSendInProject={(text, meta) => {

@@ -154,11 +154,12 @@ export default function Composer({
   placeholder = 'Hi Boss, how can I help you today?',
   disabled = false,
   metaReadOnly = false,
+  // Whether the model pill is a fixed label rather than a picker. Defaults
+  // to metaReadOnly (ChatView's prior behavior: "model is fixed once a task
+  // starts") — ProjectsView overrides this to false since its metaReadOnly
+  // is only about locking the project, not the model.
+  modelReadOnly = metaReadOnly,
   hideMeta = false,
-  // When true, suppress the model picker but keep the project picker.
-  // Used on the home (new task) composer where we want the user to
-  // pick a project but not fuss with model selection.
-  hideModel = false,
   // When true, the send button is replaced with a stop button that
   // calls onStop (cancel the in-flight stream + scratchpad).
   streaming = false,
@@ -186,17 +187,25 @@ export default function Composer({
   // and to the shared "new task" surface otherwise; the project view passes
   // its own so a per-project draft is separate from the home one.
   draftKey = null,
-  // Coding mode (MVP, ENG-1656 follow-up): when true and a local `claude`
-  // CLI is detected, show a harness pill (Anton / Claude Code) and — when
-  // Claude Code is picked — a model pill, both independent of `hideModel`/
-  // `metaReadOnly` (those gate the unrelated Planning/Coding model picker).
+  // Coding mode (MVP, ENG-1656 follow-up): when true, show a harness pill
+  // (Anton / Claude Code) independent of `metaReadOnly` (which only locks
+  // the project pill). Model selection is a separate, always-on capability
+  // below — it applies to whichever harness is picked, Anton included.
   codingModeEnabled = false,
+  // Whether onSend's 2nd argument carries {harness, model}. Must default to
+  // false: ChatView's onSend is handleSendInTask(text, queuedAttachments,
+  // opts), where position 2 is a real, differently-shaped parameter — an
+  // in-flight-turn message queues by storing whatever lands there as the
+  // message's `attachments`, so sending a {harness, model} object there
+  // silently corrupts the queue (non-array `.attachments`) instead of
+  // failing loudly. Only HomeView/ProjectsView's handleSendFromHome uses
+  // this position for meta, so only they opt in.
+  sendsMeta = false,
 }) {
   const [value, setValue] = useDraft(draftKey || conversationId || 'new');
   const [focused, setFocused] = useState(false);
   const [openMenu, setOpenMenu] = useState(null);
   const [codingHarness, setCodingHarness] = useState('anton');
-  const [codingModel, setCodingModel] = useState('kimi');
   // Detected but not gating: shown as a non-blocking hint on the Claude Code
   // option rather than hiding the picker. A user should be able to configure
   // coding mode (and see what it'd send) regardless of whether detection
@@ -378,12 +387,6 @@ export default function Composer({
       : [{ key: 'all', name: null, items }];
   }, [models, modelMeta]);
 
-  // Coding mode's model pill shows the catalog's display name once loaded,
-  // falling back to the raw id (e.g. the 'kimi' default) before it has.
-  const codingModelLabel = useMemo(() => {
-    const found = (models || []).find((m) => m.id === codingModel);
-    return found?.name || codingModel;
-  }, [models, codingModel]);
 
   // Auto-resize the textarea up to a max height; past that it scrolls.
   // The overlay is absolutely positioned with `inset: 0`, so it follows
@@ -794,10 +797,15 @@ export default function Composer({
     if (disabled || !value.trim()) return;
     setBusy(true);
     try {
-      const sendMeta = codingModeEnabled
-        ? { harness: codingHarness, model: codingHarness === 'claude-code' ? codingModel : undefined }
-        : undefined;
-      await Promise.resolve(onSend(value.trim(), sendMeta));
+      // Model selection always rides along (it applies to Anton too, not
+      // just coding mode); harness only matters once coding mode is on —
+      // otherwise every task is implicitly Anton regardless of local state.
+      // See `sendsMeta` above for why this can't unconditionally be onSend's
+      // 2nd argument.
+      const result = sendsMeta
+        ? onSend(value.trim(), { harness: codingModeEnabled ? codingHarness : 'anton', model: model?.id })
+        : onSend(value.trim());
+      await Promise.resolve(result);
       setValue('');
       // Clear the error only AFTER a successful send. Clearing it up
       // front meant a user hammering Send/Enter on a failing send wiped
@@ -1263,11 +1271,6 @@ export default function Composer({
                 {Ico.folder(14)}
                 <span>{project ? project.name : 'No project'}</span>
               </span>
-              {!hideModel && (
-                <span className="meta-pill" title="Model is fixed for this task">
-                  <span>{model?.name ?? 'Model'}</span>
-                </span>
-              )}
             </>
           ) : (
             <>
@@ -1423,58 +1426,52 @@ export default function Composer({
                   </div>
                 )}
               </span>
-              {!hideModel && (
-                <Tooltip content="Choose model">
-                  <button
-                    className="meta-pill"
-                    onClick={() => {
-                      const opening = openMenu !== 'model';
-                      setOpenMenu(opening ? 'model' : null);
-                      if (opening) openModelMenu();
-                    }}
-                  >
-                    <span>{model?.name ?? 'Select model'}</span>
-                    <span className="inline-flex text-ink-4">{Ico.chevDown(13)}</span>
-                  </button>
-                </Tooltip>
-              )}
             </>
           )}
 
-          {/* Coding mode (MVP): independent of metaReadOnly/hideModel —
-              those gate the unrelated Planning/Coding role picker. Shown
-              whenever the setting is on, regardless of whether a local
-              `claude` CLI was detected — detection only adds a hint below,
-              it never hides the picker (a launch that can't find the CLI
-              still surfaces a clear "command not found" in the opened
-              terminal, so nothing here is silently broken). */}
+          {/* Model selection: a standing composer capability, independent of
+              metaReadOnly (which only locks the project pill, e.g. inside a
+              project page) and of coding mode — it applies to whichever
+              harness the task runs with, Anton included. Reuses the same
+              modelSections/ModelMenuItem catalog as the Settings pickers.
+              `modelReadOnly` (defaults to `metaReadOnly`) keeps ChatView's
+              existing "model is fixed once a task starts" behavior — a
+              project page locking its project pill shouldn't also lock
+              model choice, so ProjectsView overrides it explicitly. */}
+          {modelReadOnly ? (
+            <span className="meta-pill" title="Model is fixed for this task">
+              <span>{model?.name ?? 'Model'}</span>
+            </span>
+          ) : (
+            <Tooltip content="Choose model">
+              <button
+                className="meta-pill"
+                onClick={() => {
+                  const opening = openMenu !== 'model';
+                  setOpenMenu(opening ? 'model' : null);
+                  if (opening) openModelMenu();
+                }}
+              >
+                <span>{model?.name ?? 'Select model'}</span>
+                <span className="inline-flex text-ink-4">{Ico.chevDown(13)}</span>
+              </button>
+            </Tooltip>
+          )}
+
+          {/* Coding mode (MVP): the harness choice itself still gates on the
+              setting — offering Claude Code as an option only makes sense
+              when it's turned on. Model selection above applies regardless
+              of which harness is picked. */}
           {codingModeEnabled && (
-            <>
-              <Tooltip content="Choose harness">
-                <button
-                  className="meta-pill"
-                  onClick={() => setOpenMenu(openMenu === 'codingHarness' ? null : 'codingHarness')}
-                >
-                  <span>{codingHarness === 'claude-code' ? 'Claude Code' : 'Anton'}</span>
-                  <span className="inline-flex text-ink-4">{Ico.chevDown(13)}</span>
-                </button>
-              </Tooltip>
-              {codingHarness === 'claude-code' && (
-                <Tooltip content="Choose model">
-                  <button
-                    className="meta-pill"
-                    onClick={() => {
-                      const opening = openMenu !== 'codingModel';
-                      setOpenMenu(opening ? 'codingModel' : null);
-                      if (opening) openModelMenu();
-                    }}
-                  >
-                    <span>{codingModelLabel}</span>
-                    <span className="inline-flex text-ink-4">{Ico.chevDown(13)}</span>
-                  </button>
-                </Tooltip>
-              )}
-            </>
+            <Tooltip content="Choose harness">
+              <button
+                className="meta-pill"
+                onClick={() => setOpenMenu(openMenu === 'codingHarness' ? null : 'codingHarness')}
+              >
+                <span>{codingHarness === 'claude-code' ? 'Claude Code' : 'Anton'}</span>
+                <span className="inline-flex text-ink-4">{Ico.chevDown(13)}</span>
+              </button>
+            </Tooltip>
           )}
         </div>
       )}
@@ -1502,33 +1499,9 @@ export default function Composer({
         </div>
       )}
 
-      {/* Same grouped, catalog-driven menu as the Planning/Coding/Router
-          pickers (modelSections, derived from the same `models`/`modelMeta`
-          props Settings uses) — not a hardcoded list. */}
-      {openMenu === 'codingModel' && (
-        <div className="menu right-2 top-[calc(100%_+_6px)]" style={{ minWidth: 260 }}>
-          {modelSections.length === 1 && !modelSections[0].name && (
-            <div style={MODEL_HEADING}>Model</div>
-          )}
-          {modelSections.map((section) => (
-            <Fragment key={section.key}>
-              {section.name && <div style={MODEL_HEADING}>{section.name}</div>}
-              {section.items.map((item) => (
-                <ModelMenuItem
-                  key={item.value}
-                  item={item}
-                  selected={codingModel === item.value}
-                  onSelect={() => { setCodingModel(item.value); setOpenMenu(null); }}
-                />
-              ))}
-            </Fragment>
-          ))}
-        </div>
-      )}
-
       {/* cascade-forced: legacy .menu sets min-width:200px; a same-property
           Tailwind utility would lose to it (loads after Tailwind). */}
-      {openMenu === 'model' && !metaReadOnly && (
+      {openMenu === 'model' && !modelReadOnly && (
         <div className="menu right-2 top-[calc(100%_+_6px)]" style={{ minWidth: 260 }}>
           {/* One unnamed section is the flat case (no metadata, or ChatView's
               single-item list): keep the "Model" heading this menu has always

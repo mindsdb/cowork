@@ -547,9 +547,9 @@ export default function HomeView({
               disabledConnections={disabledConnections}
               onUpdateConnectorMute={onUpdateConnectorMute}
               onCreateProject={onCreateProject}
-              hideModel
               onTypingChange={setIsTyping}
               codingModeEnabled={codingModeEnabled}
+              sendsMeta
             />
           )}
           {!blocked && onPrefill && (
