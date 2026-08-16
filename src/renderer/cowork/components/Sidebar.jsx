@@ -232,11 +232,6 @@ export default function Sidebar({
   onDownloadShellUpdate,
   onDismissShellUpdate,
   agentLabel,
-  // Opens the full Display / ThemeModal picker (ENG-1545). When unset the
-  // footer "Display settings" opener button isn't rendered. Theme/8-bit
-  // themselves are floating corner toggles again (see App.jsx) — not the
-  // sidebar's concern any more.
-  onOpenThemeModal,
   settingsActive = false,
   // Signed-in state, pushed from App — the user-menu hook re-reads the
   // access token when this flips (ENG-761 pattern), so the footer swaps
@@ -882,10 +877,28 @@ export default function Sidebar({
               // Signed in: the account row + user menu (ENG-1408), curated to
               // the account destinations (Settings, Billing & Usage, Members,
               // Help & Feedback, Logout).
-              <UserMenu
-                user={accountUser}
-                onOpenSettings={() => onNavigate('settings')}
-              />
+              <>
+                <UserMenu
+                  user={accountUser}
+                  onOpenSettings={() => onNavigate('settings')}
+                />
+                {/* Quick shortcut — kept visible even with the user menu
+                    present, so Settings stays one click away rather than
+                    buried behind opening the menu first. The status-pill
+                    and signed-out states already show a Settings button
+                    directly, so this only adds value here. Display
+                    settings (theme/8-bit/coding mode) moved to the
+                    floating corner button — see App.jsx. */}
+                <Tooltip content="Settings">
+                  <button
+                    className="chrome-btn--small shrink-0 ml-auto [-webkit-app-region:no-drag]"
+                    onClick={() => onNavigate('settings')}
+                    aria-label="Open Settings"
+                  >
+                    {Ico.settings(15)}
+                  </button>
+                </Tooltip>
+              </>
             ) : (
               <button
                 className={'anton-sidebar__footer-settings flex-1 min-w-0 [-webkit-app-region:no-drag]' + (settingsActive ? ' is-on' : '')}
@@ -896,19 +909,6 @@ export default function Sidebar({
                 <span>Settings</span>
               </button>
             )}
-          {/* Display settings opener — theme + 8-bit themselves are floating
-              corner toggles again (see App.jsx), not sidebar footer buttons. */}
-          {onOpenThemeModal && (
-            <Tooltip content="Display settings">
-              <button
-                className="chrome-btn--small shrink-0 ml-auto [-webkit-app-region:no-drag]"
-                onClick={onOpenThemeModal}
-                aria-label="Open display settings"
-              >
-                {Ico.slider(15)}
-              </button>
-            </Tooltip>
-          )}
         </div>
 
         {/* Version is shown on the Settings page — no need to repeat here. */}

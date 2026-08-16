@@ -4368,25 +4368,26 @@ function AppCore() {
           placement, matching the onboarding pages (App.tsx's
           .arcade-theme-toggle, which never moved). Opens ThemeModal, the
           same Light/Dark + Normal/8-Bit (+ desktop-only Coding mode)
-          picker as the sidebar's "Display settings" button —
-          ThemeModal's own header comment says it was originally "opened
-          from the bottom-right 'gamepad' corner button", so this
-          restores that rather than the two separate toggle buttons a
-          past change (ENG-1545) split it into. Lit while coding mode is
-          on, the same way the old floating 8-bit toggle lit for a
-          non-default skin. */}
-      {(settings.showThemeToggle !== false || settings.show8bitToggle !== false) && (
-        <Tooltip content="Display settings">
-          <button
-            onClick={() => setThemeModalOpen(true)}
-            aria-label="Open display settings"
-            className={'floating-toggle [-webkit-app-region:no-drag]'
-              + (!host.isWeb && settings.codingModeEnabled ? ' is-on' : '')}
-          >
-            {Ico.gamepad(15)}
-          </button>
-        </Tooltip>
-      )}
+          picker as the sidebar's old "Display settings" button (now
+          removed — this is the one entry point). Icon doubles as status:
+          plain "display settings" slider normally, switching to the lit
+          gamepad/console mark while coding mode is on (the same way the
+          old floating 8-bit toggle lit for a non-default skin) — off,
+          there's nothing coding-mode-specific to signal. */}
+      {(() => {
+        const codingModeOn = !host.isWeb && settings.codingModeEnabled;
+        return (settings.showThemeToggle !== false || settings.show8bitToggle !== false) && (
+          <Tooltip content="Display settings">
+            <button
+              onClick={() => setThemeModalOpen(true)}
+              aria-label="Open display settings"
+              className={'floating-toggle [-webkit-app-region:no-drag]' + (codingModeOn ? ' is-on' : '')}
+            >
+              {codingModeOn ? Ico.gamepad(15) : Ico.slider(15)}
+            </button>
+          </Tooltip>
+        );
+      })()}
 
       {!isMobile && (
       <div
@@ -4416,7 +4417,6 @@ function AppCore() {
           serverOnline={serverOnline}
           agentLabel={agentLabel}
           isSsoConnected={ssoConnected}
-          onOpenThemeModal={() => setThemeModalOpen(true)}
           onNavigate={navigate}
           onSelectTask={selectTask}
           onNewTask={newTask}
