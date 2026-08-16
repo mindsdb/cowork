@@ -1156,6 +1156,13 @@ export default function ChatView({
   onBack,
   project,
   model,
+  onModelChange,
+  // Full catalog for the model picker (ENG-1656: task view can change its
+  // model, not just display it). Falls back to a single-item list of just
+  // the current model when omitted, so existing callers/tests that don't
+  // pass these keep working exactly as before — a flat, unpickable menu.
+  models,
+  modelMeta,
   attachments,
   connectors,
   onAttachFiles,
@@ -2141,9 +2148,10 @@ export default function ChatView({
             project={project}
             onProjectChange={() => {}}
             model={model}
-            onModelChange={() => {}}
+            onModelChange={onModelChange || (() => {})}
             projects={[]}
-            models={model ? [model] : []}
+            models={models || (model ? [model] : [])}
+            modelMeta={modelMeta}
             attachments={attachments}
             connectors={connectors}
             onNavigateToConnectors={onNavigateToConnectors}
@@ -2155,6 +2163,7 @@ export default function ChatView({
             onRemoveAttachment={onRemoveAttachment}
             placeholder="Reply…"
             metaReadOnly
+            modelReadOnly={false}
             hideMeta
             streaming={isStreaming}
             onStop={onStop}

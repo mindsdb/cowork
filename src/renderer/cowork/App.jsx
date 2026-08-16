@@ -4570,6 +4570,17 @@ function AppCore() {
             }}
             project={currentTaskProject}
             model={currentTaskModel}
+            onModelChange={(m) => {
+              // Same pattern as handleSwitchToAirAndResend: write the pick
+              // onto the task itself so it's visible immediately (drives
+              // currentTaskModel) and so handleSendInTask's existing
+              // `currentTask.model` fallback picks it up on the very next
+              // send, with no changes needed there.
+              if (!currentTask) return;
+              setTasks((prev) => prev.map((t) => (t.id === currentTask.id ? { ...t, model: m.id } : t)));
+            }}
+            models={modelOptions}
+            modelMeta={modelMeta}
             attachments={composerAttachments}
             connectors={connectors}
             onAttachFiles={handleAttachFiles}
