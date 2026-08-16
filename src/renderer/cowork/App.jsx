@@ -4364,41 +4364,24 @@ function AppCore() {
         />
       )}
 
-      {/* Theme + 8-bit style floating corner toggles — back to their
-          original bottom-right placement, matching the onboarding pages
-          (App.tsx's .arcade-theme-toggle/.arcade-skin-toggle, which never
-          moved). A past change relocated these into the sidebar footer;
-          this restores the original placement so onboarding and the
-          signed-in app agree on where they live. */}
-      {settings.showThemeToggle !== false && (
-        <Tooltip content={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}>
+      {/* Single floating corner button — back to its original bottom-right
+          placement, matching the onboarding pages (App.tsx's
+          .arcade-theme-toggle, which never moved). Opens ThemeModal, the
+          same Light/Dark + Normal/8-Bit (+ desktop-only Coding mode)
+          picker as the sidebar's "Display settings" button —
+          ThemeModal's own header comment says it was originally "opened
+          from the bottom-right 'gamepad' corner button", so this
+          restores that rather than the two separate toggle buttons a
+          past change (ENG-1545) split it into. Lit while coding mode is
+          on, the same way the old floating 8-bit toggle lit for a
+          non-default skin. */}
+      {(settings.showThemeToggle !== false || settings.show8bitToggle !== false) && (
+        <Tooltip content="Display settings">
           <button
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
-            className="floating-toggle [-webkit-app-region:no-drag]"
-          >
-            {theme === 'dark' ? Ico.sun(15) : Ico.moon(15)}
-          </button>
-        </Tooltip>
-      )}
-      {settings.show8bitToggle !== false && (
-        <Tooltip content={skin === 'custom' ? 'Toggle 8-bit font' : (skin === '8bit' ? 'Switch 8-bit style off' : 'Switch style to 8-bit')}>
-          <button
-            onClick={() => {
-              // While a Custom theme is active, flipping `skin` straight to
-              // '8bit'/'normal' would silently discard the CustomTheme
-              // recipe (it only applies while skin === 'custom'). Repurpose
-              // the button to toggle just the mono/8-bit font instead, so
-              // it stays meaningful without resetting anything.
-              if (skin === 'custom') {
-                setCustomTheme((prev) => ({ ...prev, font: prev.font === 'mono' ? 'standard' : 'mono' }));
-              } else {
-                setSkin(skin === '8bit' ? 'normal' : '8bit');
-              }
-            }}
-            aria-label={skin === 'custom' ? 'Toggle 8-bit font' : 'Toggle 8-bit style'}
-            className={'floating-toggle floating-toggle--skin [-webkit-app-region:no-drag]'
-              + ((skin === 'custom' ? customTheme.font === 'mono' : skin !== 'normal') ? ' is-on' : '')}
+            onClick={() => setThemeModalOpen(true)}
+            aria-label="Open display settings"
+            className={'floating-toggle [-webkit-app-region:no-drag]'
+              + (!host.isWeb && settings.codingModeEnabled ? ' is-on' : '')}
           >
             {Ico.gamepad(15)}
           </button>
@@ -4967,6 +4950,16 @@ function AppCore() {
         onThemeChange={setTheme}
         skin={skin}
         onSkinChange={setSkin}
+        codingModeEnabled={settings.codingModeEnabled}
+        onCodingModeChange={(v) => {
+          // ThemeModal's own convention: changes apply live, no Apply/
+          // Cancel. Unlike Settings' harness section (setSetting alone,
+          // persisted only when its page-wide Save is clicked), this
+          // needs to actually reach the server right away — mirrors
+          // autoSaveSetting's setSetting-then-onSave(patch) pair.
+          setSetting('codingModeEnabled', v);
+          saveSettings({ codingModeEnabled: v }).catch(() => {});
+        }}
       />
 
       {!host.isWeb && (

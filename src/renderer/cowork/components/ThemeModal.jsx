@@ -1,7 +1,9 @@
-// Display modal — pick light/dark theme + style (Normal / 8-Bit).
-// Opened from the bottom-right "gamepad" corner button. Changes apply live
-// (the parent's setTheme/setSkin persist + repaint via App.jsx effects), so
-// there's no Apply/Cancel — close when you like the look.
+// Display modal — pick light/dark theme + style (Normal / 8-Bit) + coding
+// mode (desktop only). Opened from the bottom-right "gamepad" corner
+// button. Theme/style changes apply live (the parent's setTheme/setSkin
+// persist + repaint via App.jsx effects), so there's no Apply/Cancel —
+// close when you like the look. Coding mode persists through the same
+// settings path Settings → Agent Harness uses (setSetting).
 //
 // "Custom" lives in Settings → Appearance (it needs the token recipe editor),
 // so it's intentionally not offered here — this is the quick theme + 8-bit
@@ -9,6 +11,7 @@
 
 import { Modal, ModalHeader, ModalBody } from './ui/Modal';
 import { SKINS } from '../../lib/skins';
+import { host } from '../../platform/host';
 
 const STYLE_OPTIONS = SKINS.filter((s) => s.id !== 'custom'); // Normal / 8-Bit
 
@@ -60,7 +63,14 @@ function Group({ label, children }) {
   );
 }
 
-export default function ThemeModal({ open, onClose, theme, onThemeChange, skin, onSkinChange }) {
+export default function ThemeModal({
+  open, onClose, theme, onThemeChange, skin, onSkinChange,
+  // Desktop only: launching an external CLI in a terminal is an Electron
+  // main-process capability (child_process spawn) with no web equivalent.
+  // Omitted entirely on web rather than shown disabled — there's nothing
+  // a web user could do to make it work.
+  codingModeEnabled, onCodingModeChange,
+}) {
   return (
     <Modal open={open} onClose={onClose} size="sm" labelledBy="theme-modal-title">
       <ModalHeader id="theme-modal-title" title="Display" subtitle="Theme and style — applied live" onClose={onClose} />
@@ -77,6 +87,12 @@ export default function ThemeModal({ open, onClose, theme, onThemeChange, skin, 
               </Choice>
             ))}
           </Group>
+          {!host.isWeb && onCodingModeChange && (
+            <Group label="Coding mode">
+              <Choice active={!codingModeEnabled} onClick={() => onCodingModeChange(false)}>Off</Choice>
+              <Choice active={!!codingModeEnabled} onClick={() => onCodingModeChange(true)}>On</Choice>
+            </Group>
+          )}
         </div>
       </ModalBody>
     </Modal>
