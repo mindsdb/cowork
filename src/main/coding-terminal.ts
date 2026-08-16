@@ -91,7 +91,13 @@ export async function startCodingTerminal(
 
   let proc: PtyProcess;
   try {
-    proc = pty.spawn(detection.path, ['--model', opts.model, opts.message], {
+    // The opening task message is NOT passed as a CLI argument — node-pty's
+    // native argv builder (pty.cc) has been observed to crash the whole
+    // process on a long/multi-byte positional arg (a heap-corruption abort
+    // inside PtyFork, not a catchable JS error). Typing it into the PTY's
+    // stdin after the CLI is up avoids that code path entirely, and is
+    // closer to how a real terminal session works besides.
+    proc = pty.spawn(detection.path, ['--model', opts.model], {
       name: 'xterm-256color',
       cols,
       rows,
@@ -118,6 +124,8 @@ export async function startCodingTerminal(
     sessions.delete(taskId);
     sender.send(IPC.CODING_TERMINAL_EXIT, taskId, exitCode);
   });
+
+  if (opts.message) proc.write(`${opts.message}\r`);
 
   return { ok: true };
 }

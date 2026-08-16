@@ -51,7 +51,7 @@ describe('coding-terminal', () => {
     const result = await startCodingTerminal('task-1', { projectPath: '/proj', message: 'hi', model: 'kimi' }, 80, 24, sender);
 
     expect(result).toEqual({ ok: true });
-    expect(spawnMock).toHaveBeenCalledWith('/usr/local/bin/claude', ['--model', 'kimi', 'hi'], expect.objectContaining({
+    expect(spawnMock).toHaveBeenCalledWith('/usr/local/bin/claude', ['--model', 'kimi'], expect.objectContaining({
       cwd: '/proj',
       cols: 80,
       rows: 24,
@@ -62,6 +62,17 @@ describe('coding-terminal', () => {
       }),
     }));
     expect(isCodingTerminalRunning('task-1')).toBe(true);
+  });
+
+  it('types the opening message into stdin instead of passing it as an argv entry', async () => {
+    const { startCodingTerminal } = await import('./coding-terminal');
+    const proc = fakePty();
+    spawnMock.mockReturnValue(proc);
+
+    await startCodingTerminal('task-msg', { projectPath: '/proj', message: 'build me a login form', model: 'kimi' }, 80, 24, fakeSender());
+
+    expect(spawnMock).toHaveBeenCalledWith('/usr/local/bin/claude', ['--model', 'kimi'], expect.anything());
+    expect(proc.write).toHaveBeenCalledWith('build me a login form\r');
   });
 
   it('is a no-op reconnect when a session for the task is already running', async () => {
