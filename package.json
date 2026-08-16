@@ -41,7 +41,8 @@
     "dist:win": "npm run build && node scripts/dist-win.mjs",
     "dist:win:all": "npm run build && node scripts/dist-win.mjs --all",
     "release:win:local": "npm run dist:win",
-    "rebuild": "electron-rebuild"
+    "rebuild": "electron-rebuild",
+    "postinstall": "electron-rebuild"
   },
   "devDependencies": {
     "@babel/core": "^8.0.1",
