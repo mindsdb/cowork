@@ -248,6 +248,7 @@ export default function HomeView({
   tasksCount = 0,
   artifactsCount = 0,
   onPrefill,
+  codingModeEnabled = false,
 }) {
   const greetingText = greeting || GREETING_FALLBACK;
   const blocked = configReady === false;
@@ -255,11 +256,11 @@ export default function HomeView({
   // Sending the habit-tracker prompt completes onboarding step 1 no
   // matter which surface filled the composer (suggestion chip, sidebar
   // checklist, or the user typing it by hand).
-  const sendTracked = (text) => {
+  const sendTracked = (text, meta) => {
     if (typeof text === 'string' && text.trim().startsWith(HABIT_TRACKER_PREFIX)) {
       completeStep('see-it-work');
     }
-    return onSend(text);
+    return onSend(text, meta);
   };
 
   const { phase, typedCount } = useBootPhase({
@@ -548,6 +549,7 @@ export default function HomeView({
               onCreateProject={onCreateProject}
               hideModel
               onTypingChange={setIsTyping}
+              codingModeEnabled={codingModeEnabled}
             />
           )}
           {!blocked && onPrefill && (

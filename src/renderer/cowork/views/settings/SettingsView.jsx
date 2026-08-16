@@ -1741,6 +1741,13 @@ export default function SettingsView({
               ]}
             />
           </Section>
+          <Section title="Coding mode" subtitle="Let a task launch in an external coding CLI (e.g. Claude Code) instead of the in-app chat, when one is installed.">
+            <Switch
+              checked={settings.codingModeEnabled ?? false}
+              onCheckedChange={(v) => setSetting('codingModeEnabled', v)}
+              aria-label="Coding mode"
+            />
+          </Section>
         </SettingsGroup>
 
         <SettingsGroup title="Memory">

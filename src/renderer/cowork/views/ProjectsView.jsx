@@ -541,6 +541,7 @@ function SkeletonCard() {
 function ProjectDetail({
   project, projects, tasks, scheduled, scheduleRunsIndex = {}, models, modelMeta, onSend, onSelectTask,
   onDeleteTask, onMoveTaskToProject, onShowAll,
+  codingModeEnabled = false,
   attachments = [],
   connectors = [],
   onAttachFiles,
@@ -716,6 +717,7 @@ function ProjectDetail({
               onUpdateConnectorMute={onUpdateConnectorMute}
               hideModel
               metaReadOnly
+              codingModeEnabled={codingModeEnabled}
               placeholder={`Start a new task in ${project.name}…`}
               // Keyed on the id, not the name: renaming a project must not
               // orphan the draft the user is in the middle of typing.
@@ -781,6 +783,7 @@ export default function ProjectsView({
   onCreateProject,
   onDeleteProject,
   onSendInProject,
+  codingModeEnabled = false,
   onSelectTask,
   onDeleteTask,
   onMoveTaskToProject,
@@ -938,6 +941,7 @@ export default function ProjectsView({
         onSelectTask={onSelectTask}
         onDeleteTask={onDeleteTask}
         onMoveTaskToProject={onMoveTaskToProject}
+        codingModeEnabled={codingModeEnabled}
         attachments={attachments}
         connectors={connectors}
         onNavigateToConnectors={onNavigateToConnectors}

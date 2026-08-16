@@ -36,6 +36,7 @@ import { getServerAuthToken, authHeader, resetServerAuthTokenCache } from './ser
 import { getAppDisplayVersion } from './server-source';
 import { extractProviderError, classifyOpenAICompatibleResult } from './provider-error';
 import { unifiedVersion, SKEW_WARN_DAYS } from '../shared/version';
+import { detectClaudeCode, launchCodingTask } from './coding-mode';
 
 function getAntonEnvPath(): string {
   return coworkEnvPath();
@@ -1258,6 +1259,14 @@ function setupIPC() {
     } catch (e: any) {
       return { ok: false, reason: e?.message || String(e) };
     }
+  });
+
+  ipcMain.handle(IPC.CODING_DETECT_CLI, async () => {
+    return detectClaudeCode();
+  });
+
+  ipcMain.handle(IPC.CODING_LAUNCH_TASK, async (_event, opts: { projectPath: string; message: string; model: string }) => {
+    return launchCodingTask(opts);
   });
 
   ipcMain.handle(IPC.APP_UI_VERSION, async () => {

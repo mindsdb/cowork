@@ -68,6 +68,7 @@ export const SETTINGS_KEY_MAP = {
   greeting: 'greeting',
   tone: 'tone',
   harness: 'harness',
+  coding_mode_enabled: 'codingModeEnabled',
 };
 
 /** Client camelCase → server snake_case */

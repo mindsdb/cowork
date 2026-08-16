@@ -19,6 +19,7 @@ import { useFileDrop, FileDropOverlay, extractClipboardFiles } from '../lib/useF
 import { AttachmentThumbnail } from './AttachmentThumbnail';
 import { useSkills } from '../lib/skillsStore';
 import { useDraft } from '../hooks/useDraft';
+import { host } from '../../platform/host';
 
 // Detect a "/" slash-command token immediately before the caret. Returns the
 // token's start index (the "/") and the lowercased query fragment, or null when
@@ -185,10 +186,27 @@ export default function Composer({
   // and to the shared "new task" surface otherwise; the project view passes
   // its own so a per-project draft is separate from the home one.
   draftKey = null,
+  // Coding mode (MVP, ENG-1656 follow-up): when true and a local `claude`
+  // CLI is detected, show a harness pill (Anton / Claude Code) and — when
+  // Claude Code is picked — a model pill, both independent of `hideModel`/
+  // `metaReadOnly` (those gate the unrelated Planning/Coding model picker).
+  codingModeEnabled = false,
 }) {
   const [value, setValue] = useDraft(draftKey || conversationId || 'new');
   const [focused, setFocused] = useState(false);
   const [openMenu, setOpenMenu] = useState(null);
+  const [codingHarness, setCodingHarness] = useState('anton');
+  const [codingModel, setCodingModel] = useState('kimi');
+  const [claudeCodeInfo, setClaudeCodeInfo] = useState({ installed: false, path: null });
+
+  useEffect(() => {
+    if (!codingModeEnabled) return;
+    let cancelled = false;
+    host.detectClaudeCode().then((info) => {
+      if (!cancelled) setClaudeCodeInfo(info || { installed: false, path: null });
+    });
+    return () => { cancelled = true; };
+  }, [codingModeEnabled]);
   /** Project-picker menu state. The menu is a search-first picker:
       one input at the top filters the project list AND doubles as
       the "+ Create '<typed>'" entry when no results match — same
@@ -764,7 +782,10 @@ export default function Composer({
     if (disabled || !value.trim()) return;
     setBusy(true);
     try {
-      await Promise.resolve(onSend(value.trim()));
+      const sendMeta = (codingModeEnabled && claudeCodeInfo.installed)
+        ? { harness: codingHarness, model: codingHarness === 'claude-code' ? codingModel : undefined }
+        : undefined;
+      await Promise.resolve(onSend(value.trim(), sendMeta));
       setValue('');
       // Clear the error only AFTER a successful send. Clearing it up
       // front meant a user hammering Send/Enter on a failing send wiped
@@ -1407,6 +1428,71 @@ export default function Composer({
               )}
             </>
           )}
+
+          {/* Coding mode (MVP): independent of metaReadOnly/hideModel —
+              those gate the unrelated Planning/Coding role picker. Only
+              shown once a local `claude` CLI is actually detected, so
+              users who don't have it installed never see a dead option. */}
+          {codingModeEnabled && claudeCodeInfo.installed && (
+            <>
+              <Tooltip content="Choose harness">
+                <button
+                  className="meta-pill"
+                  onClick={() => setOpenMenu(openMenu === 'codingHarness' ? null : 'codingHarness')}
+                >
+                  <span>{codingHarness === 'claude-code' ? 'Claude Code' : 'Anton'}</span>
+                  <span className="inline-flex text-ink-4">{Ico.chevDown(13)}</span>
+                </button>
+              </Tooltip>
+              {codingHarness === 'claude-code' && (
+                <Tooltip content="Choose model">
+                  <button
+                    className="meta-pill"
+                    onClick={() => setOpenMenu(openMenu === 'codingModel' ? null : 'codingModel')}
+                  >
+                    <span>{codingModel}</span>
+                    <span className="inline-flex text-ink-4">{Ico.chevDown(13)}</span>
+                  </button>
+                </Tooltip>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {openMenu === 'codingHarness' && (
+        <div className="menu right-2 top-[calc(100%_+_6px)]" style={{ minWidth: 180 }}>
+          {[
+            { value: 'anton', label: 'Anton' },
+            { value: 'claude-code', label: 'Claude Code' },
+          ].map((opt) => (
+            <button
+              key={opt.value}
+              className={`menu-item${codingHarness === opt.value ? ' checked' : ''}`}
+              onClick={() => { setCodingHarness(opt.value); setOpenMenu(null); }}
+            >
+              <span className="flex-1 truncate">{opt.label}</span>
+              {codingHarness === opt.value && <span className="text-[var(--primary-700)]">{Ico.check(14)}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {openMenu === 'codingModel' && (
+        <div className="menu right-2 top-[calc(100%_+_6px)]" style={{ minWidth: 180 }}>
+          {/* MVP: a fixed list rather than the full model catalog — `kimi`
+              is the confirmed-working MindsHub alias for Claude Code
+              (https://mindsdb.github.io/mindshub_inference/kimi-claude-code). */}
+          {['kimi'].map((m) => (
+            <button
+              key={m}
+              className={`menu-item${codingModel === m ? ' checked' : ''}`}
+              onClick={() => { setCodingModel(m); setOpenMenu(null); }}
+            >
+              <span className="flex-1 truncate">{m}</span>
+              {codingModel === m && <span className="text-[var(--primary-700)]">{Ico.check(14)}</span>}
+            </button>
+          ))}
         </div>
       )}
 

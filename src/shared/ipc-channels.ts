@@ -86,4 +86,9 @@ export const IPC = {
   APP_UI_VERSION: 'app:ui-version',
   OPEN_EXTERNAL: 'app:open-external',
   SHOW_ITEM_IN_FOLDER: 'shell:show-item-in-folder',
+
+  // Coding mode (MVP) — detect a local `claude` CLI install and launch a
+  // task with it in an external terminal, instead of the in-app chat.
+  CODING_DETECT_CLI: 'coding:detect-cli',
+  CODING_LAUNCH_TASK: 'coding:launch-task',
 } as const;

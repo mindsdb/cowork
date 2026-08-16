@@ -53,7 +53,7 @@ import { fetchSessions, fetchSession, fetchConversationList, fetchProjects, fetc
          deleteProject, cancelScratchpad, cancelResponse, fetchConnector,
          fetchSavedConnection, deleteDatasource, deletePickedFile,
          fetchInFlightStatus, tailInFlight, fetchInFlightList, submitAnswer,
-         fetchRecommendedModels } from './api';
+         fetchRecommendedModels, createConversation, revealSettingKey } from './api';
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
 import { isArtifactTipDismissed, dismissArtifactTip, dismissIfUntouched } from './components/onboarding/onboardingStore';
 import { modelLabel, recommendedModelOptions, providerValueToType,
@@ -3001,8 +3001,47 @@ function AppCore() {
     return health?.config_ready !== false;
   }, [health]);
 
+  // Coding mode (MVP, ENG-1656 follow-up): the task never goes through
+  // anton/`/responses` — it's recorded (harness/model) via a direct
+  // conversation-create call, then handed to an external `claude` process
+  // in its own terminal, cwd'd to the project folder. Thrown errors here
+  // surface through the composer's existing inline error UI (same as any
+  // other send failure) — no separate toast plumbing needed.
+  const launchCodingModeTask = async (text, meta) => {
+    let generalProject = projects.find((p) => p.name === 'general');
+    const effectiveProject = selectedProject || generalProject;
+    if (!effectiveProject?.path) {
+      throw new Error('Pick a project with a folder before launching Claude Code.');
+    }
+    await createConversation({
+      project: effectiveProject.name,
+      projectId: effectiveProject.id,
+      topic: text.length > 60 ? text.slice(0, 57) + '…' : text,
+      harness: meta.harness,
+      model: meta.model,
+    });
+    const authToken = await revealSettingKey('minds');
+    if (!authToken) {
+      throw new Error('No MindsHub API key configured — sign in with MindsHub or add a key in Settings before using coding mode.');
+    }
+    const result = await host.launchCodingTask({
+      projectPath: effectiveProject.path,
+      message: text,
+      model: meta.model,
+    });
+    if (!result?.ok) {
+      throw new Error(result?.reason || 'Could not launch Claude Code.');
+    }
+    toastManager.add({ type: 'success', title: 'Opened Claude Code in Terminal', description: effectiveProject.name });
+    const fresh = await fetchSessions();
+    if (Array.isArray(fresh)) setTasks(fresh.filter((t) => !deletedTaskIdsRef.current.has(t.id)));
+  };
+
   // Send from the home screen — creates a new session
-  const handleSendFromHome = async (text) => {
+  const handleSendFromHome = async (text, meta) => {
+    if (meta?.harness === 'claude-code') {
+      return launchCodingModeTask(text, meta);
+    }
     // Preflight: no provider configured → render an action card task
     // instead of routing through anton's LLM path.
     if (!(await ensureProviderReady())) {
@@ -4502,6 +4541,7 @@ function AppCore() {
             tasksCount={tasks.length}
             artifactsCount={artifacts.length}
             onPrefill={(text, select) => setComposerPrefill({ text, bump: Date.now(), select })}
+            codingModeEnabled={settings.codingModeEnabled}
           />
         )}
 
@@ -4626,12 +4666,13 @@ function AppCore() {
             modelMeta={modelMeta}
             onSelectProject={(p) => setSelectedProject(p)}
             onCreateProject={handleCreateProject}
-            onSendInProject={(text) => {
+            onSendInProject={(text, meta) => {
               // Sending from project detail = same path as home, but
               // selectedProject is already pinned to this project so
               // the new task lands in the right workspace.
-              handleSendFromHome(text);
+              handleSendFromHome(text, meta);
             }}
+            codingModeEnabled={settings.codingModeEnabled}
             onSelectTask={selectTask}
             onDeleteTask={handleDeleteTask}
             onMoveTaskToProject={handleOpenMoveModal}

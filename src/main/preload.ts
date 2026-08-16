@@ -72,6 +72,11 @@ contextBridge.exposeInMainWorld('antontron', {
   // Open a local file/folder in the OS default handler.
   openPath:     (p: string) => ipcRenderer.invoke('shell:open-path', p),
   showItemInFolder: (p: string) => ipcRenderer.invoke(IPC.SHOW_ITEM_IN_FOLDER, p),
+
+  // Coding mode (MVP): detect a local `claude` CLI, launch a task with it.
+  detectClaudeCode: () => ipcRenderer.invoke(IPC.CODING_DETECT_CLI),
+  launchCodingTask: (opts: { projectPath: string; message: string; model: string }) =>
+    ipcRenderer.invoke(IPC.CODING_LAUNCH_TASK, opts),
   onInstallLog: (cb: (msg: string) => void) => {
     const listener = (_: any, msg: string) => cb(msg);
     ipcRenderer.on(IPC.INSTALL_LOG, listener);

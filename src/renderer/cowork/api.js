@@ -277,6 +277,16 @@ export async function fetchConversationList() {
   }
 }
 
+/** Create a task record directly (bypassing the `/responses` stream) — used
+ * by coding-mode (MVP): the actual work happens in an external CLI, but the
+ * task should still show up with its harness/model recorded. */
+export async function createConversation({ project, projectId, topic, harness, model } = {}) {
+  return req('/conversations/', {
+    method: 'POST',
+    body: JSON.stringify({ project, projectId, topic, harness, model }),
+  });
+}
+
 export async function fetchSessions() {
   try {
     const conversations = await fetchConversationList();

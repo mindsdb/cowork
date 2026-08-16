@@ -199,6 +199,26 @@ export async function showItemInFolder(path: string): Promise<{ ok: boolean; rea
   return { ok: false, reason: 'unsupported' };
 }
 
+// ---- Coding mode (MVP) ---------------------------------------------------
+
+export async function detectClaudeCode(): Promise<{ installed: boolean; path: string | null }> {
+  if (isElectron && typeof bridge.detectClaudeCode === 'function') {
+    return bridge.detectClaudeCode();
+  }
+  return { installed: false, path: null };
+}
+
+export async function launchCodingTask(opts: {
+  projectPath: string;
+  message: string;
+  model: string;
+}): Promise<{ ok: boolean; reason?: string }> {
+  if (isElectron && typeof bridge.launchCodingTask === 'function') {
+    return bridge.launchCodingTask(opts);
+  }
+  return { ok: false, reason: 'unsupported' };
+}
+
 // ---- File drop / clipboard ---------------------------------------------
 
 // In Electron, dropped files expose an OS path via webUtils. In web, the
@@ -882,6 +902,8 @@ export const host = {
   openExternal,
   openPath,
   showItemInFolder,
+  detectClaudeCode,
+  launchCodingTask,
   getPathForFile,
   getUIVersion,
   getVersionInfo,
