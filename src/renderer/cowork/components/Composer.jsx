@@ -197,6 +197,11 @@ export default function Composer({
   const [openMenu, setOpenMenu] = useState(null);
   const [codingHarness, setCodingHarness] = useState('anton');
   const [codingModel, setCodingModel] = useState('kimi');
+  // Detected but not gating: shown as a non-blocking hint on the Claude Code
+  // option rather than hiding the picker. A user should be able to configure
+  // coding mode (and see what it'd send) regardless of whether detection
+  // succeeded on this machine — the actual launch still surfaces a clear
+  // "command not found" in the opened terminal if the CLI truly isn't there.
   const [claudeCodeInfo, setClaudeCodeInfo] = useState({ installed: false, path: null });
 
   useEffect(() => {
@@ -372,6 +377,13 @@ export default function Composer({
       ? groupModelOptions(items)
       : [{ key: 'all', name: null, items }];
   }, [models, modelMeta]);
+
+  // Coding mode's model pill shows the catalog's display name once loaded,
+  // falling back to the raw id (e.g. the 'kimi' default) before it has.
+  const codingModelLabel = useMemo(() => {
+    const found = (models || []).find((m) => m.id === codingModel);
+    return found?.name || codingModel;
+  }, [models, codingModel]);
 
   // Auto-resize the textarea up to a max height; past that it scrolls.
   // The overlay is absolutely positioned with `inset: 0`, so it follows
@@ -782,7 +794,7 @@ export default function Composer({
     if (disabled || !value.trim()) return;
     setBusy(true);
     try {
-      const sendMeta = (codingModeEnabled && claudeCodeInfo.installed)
+      const sendMeta = codingModeEnabled
         ? { harness: codingHarness, model: codingHarness === 'claude-code' ? codingModel : undefined }
         : undefined;
       await Promise.resolve(onSend(value.trim(), sendMeta));
@@ -1430,10 +1442,13 @@ export default function Composer({
           )}
 
           {/* Coding mode (MVP): independent of metaReadOnly/hideModel —
-              those gate the unrelated Planning/Coding role picker. Only
-              shown once a local `claude` CLI is actually detected, so
-              users who don't have it installed never see a dead option. */}
-          {codingModeEnabled && claudeCodeInfo.installed && (
+              those gate the unrelated Planning/Coding role picker. Shown
+              whenever the setting is on, regardless of whether a local
+              `claude` CLI was detected — detection only adds a hint below,
+              it never hides the picker (a launch that can't find the CLI
+              still surfaces a clear "command not found" in the opened
+              terminal, so nothing here is silently broken). */}
+          {codingModeEnabled && (
             <>
               <Tooltip content="Choose harness">
                 <button
@@ -1448,9 +1463,13 @@ export default function Composer({
                 <Tooltip content="Choose model">
                   <button
                     className="meta-pill"
-                    onClick={() => setOpenMenu(openMenu === 'codingModel' ? null : 'codingModel')}
+                    onClick={() => {
+                      const opening = openMenu !== 'codingModel';
+                      setOpenMenu(opening ? 'codingModel' : null);
+                      if (opening) openModelMenu();
+                    }}
                   >
-                    <span>{codingModel}</span>
+                    <span>{codingModelLabel}</span>
                     <span className="inline-flex text-ink-4">{Ico.chevDown(13)}</span>
                   </button>
                 </Tooltip>
@@ -1461,10 +1480,14 @@ export default function Composer({
       )}
 
       {openMenu === 'codingHarness' && (
-        <div className="menu right-2 top-[calc(100%_+_6px)]" style={{ minWidth: 180 }}>
+        <div className="menu right-2 top-[calc(100%_+_6px)]" style={{ minWidth: 220 }}>
           {[
             { value: 'anton', label: 'Anton' },
-            { value: 'claude-code', label: 'Claude Code' },
+            {
+              value: 'claude-code',
+              label: 'Claude Code',
+              hint: claudeCodeInfo.installed ? undefined : 'not detected on this machine',
+            },
           ].map((opt) => (
             <button
               key={opt.value}
@@ -1472,26 +1495,33 @@ export default function Composer({
               onClick={() => { setCodingHarness(opt.value); setOpenMenu(null); }}
             >
               <span className="flex-1 truncate">{opt.label}</span>
+              {opt.hint && <span style={{ fontSize: 11, color: 'var(--frost-600)' }}>{opt.hint}</span>}
               {codingHarness === opt.value && <span className="text-[var(--primary-700)]">{Ico.check(14)}</span>}
             </button>
           ))}
         </div>
       )}
 
+      {/* Same grouped, catalog-driven menu as the Planning/Coding/Router
+          pickers (modelSections, derived from the same `models`/`modelMeta`
+          props Settings uses) — not a hardcoded list. */}
       {openMenu === 'codingModel' && (
-        <div className="menu right-2 top-[calc(100%_+_6px)]" style={{ minWidth: 180 }}>
-          {/* MVP: a fixed list rather than the full model catalog — `kimi`
-              is the confirmed-working MindsHub alias for Claude Code
-              (https://mindsdb.github.io/mindshub_inference/kimi-claude-code). */}
-          {['kimi'].map((m) => (
-            <button
-              key={m}
-              className={`menu-item${codingModel === m ? ' checked' : ''}`}
-              onClick={() => { setCodingModel(m); setOpenMenu(null); }}
-            >
-              <span className="flex-1 truncate">{m}</span>
-              {codingModel === m && <span className="text-[var(--primary-700)]">{Ico.check(14)}</span>}
-            </button>
+        <div className="menu right-2 top-[calc(100%_+_6px)]" style={{ minWidth: 260 }}>
+          {modelSections.length === 1 && !modelSections[0].name && (
+            <div style={MODEL_HEADING}>Model</div>
+          )}
+          {modelSections.map((section) => (
+            <Fragment key={section.key}>
+              {section.name && <div style={MODEL_HEADING}>{section.name}</div>}
+              {section.items.map((item) => (
+                <ModelMenuItem
+                  key={item.value}
+                  item={item}
+                  selected={codingModel === item.value}
+                  onSelect={() => { setCodingModel(item.value); setOpenMenu(null); }}
+                />
+              ))}
+            </Fragment>
           ))}
         </div>
       )}
