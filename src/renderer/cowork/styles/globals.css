@@ -2818,6 +2818,51 @@ body[data-theme="dark"] .chrome-btn--small.is-on {
   box-shadow: 0 0 14px rgba(34,211,238,0.30);
 }
 
+/* Floating corner toggles (theme + 8-bit style) — restored to the
+   bottom-right placement the onboarding pages always kept (App.tsx's
+   .arcade-theme-toggle/.arcade-skin-toggle, which never moved: CoworkApp
+   hasn't mounted yet there, so those pages have no sidebar footer to
+   host them). Same geometry/tokens as that version so the transition
+   from onboarding into the signed-in app is seamless. */
+.floating-toggle {
+  position: fixed;
+  right: 18px;
+  bottom: 16px;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-8);
+  color: var(--ink-2);
+  cursor: pointer;
+  z-index: 50;
+  box-shadow: var(--sh-1);
+  transition: background .15s, color .15s, transform .15s, box-shadow .2s;
+}
+.floating-toggle:hover {
+  color: var(--ink);
+  transform: translateY(-1px);
+}
+body[data-theme="dark"] .floating-toggle:hover {
+  color: var(--accent);
+  box-shadow: 0 0 18px rgba(34,211,238,0.3);
+}
+/* Skin (style) toggle — same chrome as the theme toggle, stacked above
+   it in the corner. `.is-on` is a class (not a body[data-skin] selector):
+   under the Custom skin the button is repurposed to toggle just the mono
+   font rather than skin itself, so "lit" has to track that font choice,
+   not skin being non-default (App.jsx computes the class accordingly). */
+.floating-toggle--skin {
+  bottom: 54px;
+}
+.floating-toggle--skin.is-on {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
 /* Hide focus ring on mouse-clicked buttons so a stray Space/Enter
    later in the session doesn't re-trigger the last-clicked nav item.
    :focus-visible keeps the ring for true keyboard navigation. */

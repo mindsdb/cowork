@@ -4364,6 +4364,47 @@ function AppCore() {
         />
       )}
 
+      {/* Theme + 8-bit style floating corner toggles — back to their
+          original bottom-right placement, matching the onboarding pages
+          (App.tsx's .arcade-theme-toggle/.arcade-skin-toggle, which never
+          moved). A past change relocated these into the sidebar footer;
+          this restores the original placement so onboarding and the
+          signed-in app agree on where they live. */}
+      {settings.showThemeToggle !== false && (
+        <Tooltip content={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}>
+          <button
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
+            className="floating-toggle [-webkit-app-region:no-drag]"
+          >
+            {theme === 'dark' ? Ico.sun(15) : Ico.moon(15)}
+          </button>
+        </Tooltip>
+      )}
+      {settings.show8bitToggle !== false && (
+        <Tooltip content={skin === 'custom' ? 'Toggle 8-bit font' : (skin === '8bit' ? 'Switch 8-bit style off' : 'Switch style to 8-bit')}>
+          <button
+            onClick={() => {
+              // While a Custom theme is active, flipping `skin` straight to
+              // '8bit'/'normal' would silently discard the CustomTheme
+              // recipe (it only applies while skin === 'custom'). Repurpose
+              // the button to toggle just the mono/8-bit font instead, so
+              // it stays meaningful without resetting anything.
+              if (skin === 'custom') {
+                setCustomTheme((prev) => ({ ...prev, font: prev.font === 'mono' ? 'standard' : 'mono' }));
+              } else {
+                setSkin(skin === '8bit' ? 'normal' : '8bit');
+              }
+            }}
+            aria-label={skin === 'custom' ? 'Toggle 8-bit font' : 'Toggle 8-bit style'}
+            className={'floating-toggle floating-toggle--skin [-webkit-app-region:no-drag]'
+              + ((skin === 'custom' ? customTheme.font === 'mono' : skin !== 'normal') ? ' is-on' : '')}
+          >
+            {Ico.gamepad(15)}
+          </button>
+        </Tooltip>
+      )}
+
       {!isMobile && (
       <div
         style={isNarrow ? {
@@ -4391,27 +4432,8 @@ function AppCore() {
           activeTaskId={route === 'task' ? activeTaskId : null}
           serverOnline={serverOnline}
           agentLabel={agentLabel}
-          theme={theme}
-          onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
           isSsoConnected={ssoConnected}
-          skin={skin}
-          // While a Custom theme is active, the sidebar's "8-bit" button
-          // can't flip `skin` straight to '8bit'/'normal' — that would
-          // silently discard the CustomTheme recipe (it only applies while
-          // skin === 'custom'). Repurpose the same button to toggle just
-          // the mono/8-bit font instead, so it stays meaningful without
-          // resetting anything.
-          onToggleSkin={() => {
-            if (skin === 'custom') {
-              setCustomTheme((prev) => ({ ...prev, font: prev.font === 'mono' ? 'standard' : 'mono' }));
-            } else {
-              setSkin(skin === '8bit' ? 'normal' : '8bit');
-            }
-          }}
-          is8bitActive={skin === 'custom' ? customTheme.font === 'mono' : skin !== 'normal'}
           onOpenThemeModal={() => setThemeModalOpen(true)}
-          showThemeToggle={settings.showThemeToggle !== false}
-          show8bitToggle={settings.show8bitToggle !== false}
           onNavigate={navigate}
           onSelectTask={selectTask}
           onNewTask={newTask}

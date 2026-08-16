@@ -1410,8 +1410,8 @@ export default function Composer({
                 { value: 'anton', label: 'Anton' },
                 {
                   value: 'claude-code',
-                  label: 'Claude Code',
-                  title: claudeCodeInfo.installed ? undefined : 'Claude Code — not detected on this machine',
+                  label: 'Claude-Code',
+                  title: claudeCodeInfo.installed ? undefined : 'Claude-Code — not detected on this machine',
                 },
               ]}
             />
