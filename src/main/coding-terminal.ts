@@ -1,23 +1,25 @@
 // Embedded Claude Code terminal (ENG-1656 follow-up): runs the `claude` CLI
-// in a real PTY inside the app, keyed by task id, so each Claude-Code task
-// is its own independent, reconnectable session — mirroring how this app
-// ran Anton's CLI in its own pre-GUI days.
+// in a real PTY, keyed by task id, so each Claude-Code task is its own
+// independent, reconnectable session — mirroring how this app ran Anton's
+// CLI in its own pre-GUI days.
 //
+// The PTY itself lives in a separate `utilityProcess` (coding-pty-host.ts),
+// not inline here — node-pty's native spawn crashed the whole app when
+// called directly from Electron's main process (see that file for why).
 // node-pty is a native module and is listed only as an `optionalDependency`
 // (see package.json) — its native build is not guaranteed on every platform/
-// Node ABI combination. Loaded lazily and defensively so a machine where it
-// failed to build degrades to a clear "not available" error instead of
-// crashing the whole app at require time. node-pty itself supports macOS,
-// Linux and Windows (via winpty) equally — nothing here is platform-gated;
-// only the optional native build can make it unavailable.
+// Node ABI combination; the host process degrades to a clear "not available"
+// error (via an `error` message) instead of crashing when it's missing.
 import * as os from 'os';
 import * as path from 'path';
-import type { WebContents } from 'electron';
+import { utilityProcess } from 'electron';
+import type { UtilityProcess, WebContents } from 'electron';
 import { IPC } from '../shared/ipc-channels';
 import { detectClaudeCode, revealMindsApiKey } from './coding-mode';
 import { getEnvPath } from './uv-paths';
 
 const MINDSHUB_INFERENCE_BASE_URL = 'https://api.mindshub.ai';
+const START_TIMEOUT_MS = 15_000;
 
 interface CodingTerminalOptions {
   projectPath: string;
@@ -30,39 +32,17 @@ interface StartResult {
   reason?: string;
 }
 
-// Minimal structural type for the bits of a node-pty `IPty` this file uses —
-// avoids a hard type dependency on the optional package.
-interface PtyProcess {
-  onData(cb: (data: string) => void): void;
-  onExit(cb: (e: { exitCode: number }) => void): void;
-  write(data: string): void;
-  resize(cols: number, rows: number): void;
-  kill(): void;
-}
-
-type PtyModule = { spawn: (file: string, args: string[], opts: Record<string, unknown>) => PtyProcess };
-let ptyModule: PtyModule | null | undefined;
-
-/** Lazily import node-pty. Cached: undefined = not yet tried, null = tried
- *  and unavailable (missing optional dep, or its native build failed on
- *  this machine), object = loaded. Never throws. */
-async function loadPty(): Promise<PtyModule | null> {
-  if (ptyModule !== undefined) return ptyModule;
-  try {
-    ptyModule = await import('node-pty');
-  } catch {
-    ptyModule = null;
-  }
-  return ptyModule;
-}
-
-const sessions = new Map<string, PtyProcess>();
+const sessions = new Map<string, UtilityProcess>();
 
 export function isCodingTerminalRunning(taskId: string): boolean {
   return sessions.has(taskId);
 }
 
-/** Start (or, if already running, no-op and reconnect to) the PTY for a
+function hostScriptPath(): string {
+  return path.join(__dirname, 'coding-pty-host.js');
+}
+
+/** Start (or, if already running, no-op and reconnect to) the PTY host for a
  *  task. Reconnect is the common case — the user left the task view and
  *  came back; the session should keep running, not restart the prompt. */
 export async function startCodingTerminal(
@@ -74,11 +54,6 @@ export async function startCodingTerminal(
 ): Promise<StartResult> {
   if (sessions.has(taskId)) return { ok: true };
 
-  const pty = await loadPty();
-  if (!pty) {
-    return { ok: false, reason: 'Embedded terminal is not available on this build.' };
-  }
-
   const detection = await detectClaudeCode();
   if (!detection.installed || !detection.path) {
     return { ok: false, reason: 'Claude Code CLI not found on PATH.' };
@@ -89,19 +64,51 @@ export async function startCodingTerminal(
     return { ok: false, reason: 'No MindsHub API key configured — sign in with MindsHub or add a key in Settings before using coding mode.' };
   }
 
-  let proc: PtyProcess;
-  try {
-    // The opening task message is NOT passed as a CLI argument — node-pty's
-    // native argv builder (pty.cc) has been observed to crash the whole
-    // process on a long/multi-byte positional arg (a heap-corruption abort
-    // inside PtyFork, not a catchable JS error). Typing it into the PTY's
-    // stdin after the CLI is up avoids that code path entirely, and is
-    // closer to how a real terminal session works besides.
-    proc = pty.spawn(detection.path, ['--model', opts.model], {
-      name: 'xterm-256color',
+  const child = utilityProcess.fork(hostScriptPath(), [], { stdio: 'ignore' });
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (result: StartResult) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      resolve(result);
+    };
+    const timeout = setTimeout(() => {
+      finish({ ok: false, reason: 'Timed out starting the coding terminal.' });
+    }, START_TIMEOUT_MS);
+
+    child.on('message', (msg: any) => {
+      switch (msg?.type) {
+        case 'started':
+          sessions.set(taskId, child);
+          if (opts.message) child.postMessage({ type: 'write', data: `${opts.message}\r` });
+          finish({ ok: true });
+          break;
+        case 'data':
+          sender.send(IPC.CODING_TERMINAL_DATA, taskId, msg.data);
+          break;
+        case 'exit':
+          sessions.delete(taskId);
+          sender.send(IPC.CODING_TERMINAL_EXIT, taskId, msg.exitCode);
+          break;
+        case 'error':
+          finish({ ok: false, reason: msg.reason });
+          break;
+      }
+    });
+    child.on('exit', () => {
+      sessions.delete(taskId);
+      finish({ ok: false, reason: 'Coding terminal process exited unexpectedly.' });
+    });
+
+    child.postMessage({
+      type: 'start',
+      claudePath: detection.path,
+      args: ['--model', opts.model],
+      cwd: opts.projectPath,
       cols,
       rows,
-      cwd: opts.projectPath,
       env: {
         ...process.env,
         PATH: getEnvPath(),
@@ -112,37 +119,25 @@ export async function startCodingTerminal(
         CLAUDE_CONFIG_DIR: path.join(os.homedir(), '.cowork', 'claude-code'),
       },
     });
-  } catch (e: any) {
-    return { ok: false, reason: e?.message || 'Failed to start Claude Code.' };
-  }
-
-  sessions.set(taskId, proc);
-  proc.onData((data) => {
-    sender.send(IPC.CODING_TERMINAL_DATA, taskId, data);
   });
-  proc.onExit(({ exitCode }) => {
-    sessions.delete(taskId);
-    sender.send(IPC.CODING_TERMINAL_EXIT, taskId, exitCode);
-  });
-
-  if (opts.message) proc.write(`${opts.message}\r`);
-
-  return { ok: true };
 }
 
 export function writeToCodingTerminal(taskId: string, data: string): void {
-  sessions.get(taskId)?.write(data);
+  sessions.get(taskId)?.postMessage({ type: 'write', data });
 }
 
 export function resizeCodingTerminal(taskId: string, cols: number, rows: number): void {
-  sessions.get(taskId)?.resize(cols, rows);
+  sessions.get(taskId)?.postMessage({ type: 'resize', cols, rows });
 }
 
 export function killCodingTerminal(taskId: string): void {
-  const proc = sessions.get(taskId);
-  if (!proc) return;
+  const child = sessions.get(taskId);
+  if (!child) return;
   sessions.delete(taskId);
-  try { proc.kill(); } catch { /* already gone */ }
+  try {
+    child.postMessage({ type: 'kill' });
+    child.kill();
+  } catch { /* already gone */ }
 }
 
 export function killAllCodingTerminals(): void {

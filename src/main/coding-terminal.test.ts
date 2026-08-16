@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { EventEmitter } from 'events';
 
 const detectClaudeCodeMock = vi.hoisted(() => vi.fn());
 const revealMindsApiKeyMock = vi.hoisted(() => vi.fn());
@@ -11,50 +12,54 @@ vi.mock('./uv-paths', () => ({
   getEnvPath: () => '/fake/path',
 }));
 
-const spawnMock = vi.hoisted(() => vi.fn());
-vi.mock('node-pty', () => ({
-  spawn: spawnMock,
-}));
-
-function fakePty() {
-  const handlers: { data?: (d: string) => void; exit?: (e: { exitCode: number }) => void } = {};
-  return {
-    onData: (cb: (d: string) => void) => { handlers.data = cb; },
-    onExit: (cb: (e: { exitCode: number }) => void) => { handlers.exit = cb; },
-    write: vi.fn(),
-    resize: vi.fn(),
-    kill: vi.fn(),
-    _handlers: handlers,
-  };
+class FakeUtilityProcess extends EventEmitter {
+  postMessage = vi.fn();
+  kill = vi.fn();
 }
+
+const forkMock = vi.hoisted(() => vi.fn());
+vi.mock('electron', () => ({
+  utilityProcess: { fork: forkMock },
+}));
 
 function fakeSender() {
   return { send: vi.fn() } as any;
 }
 
+// startCodingTerminal awaits detectClaudeCode/revealMindsApiKey (both mocked
+// promises) before registering listeners and posting 'start' — wait for that
+// to actually happen before emitting host-process events at it.
+async function waitForStartPosted(child: FakeUtilityProcess) {
+  await vi.waitFor(() => expect(child.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'start' })));
+}
+
 describe('coding-terminal', () => {
   beforeEach(async () => {
     vi.resetModules();
-    spawnMock.mockReset();
+    forkMock.mockReset();
     detectClaudeCodeMock.mockReset();
     revealMindsApiKeyMock.mockReset();
     detectClaudeCodeMock.mockResolvedValue({ installed: true, path: '/usr/local/bin/claude' });
     revealMindsApiKeyMock.mockResolvedValue('mdb_test_token');
   });
 
-  it('spawns a PTY and reports ok on first start', async () => {
+  it('forks the pty host and reports ok once it acks "started"', async () => {
     const { startCodingTerminal, isCodingTerminalRunning } = await import('./coding-terminal');
-    const proc = fakePty();
-    spawnMock.mockReturnValue(proc);
+    const child = new FakeUtilityProcess();
+    forkMock.mockReturnValue(child);
     const sender = fakeSender();
 
-    const result = await startCodingTerminal('task-1', { projectPath: '/proj', message: 'hi', model: 'kimi' }, 80, 24, sender);
+    const resultPromise = startCodingTerminal('task-1', { projectPath: '/proj', message: '', model: 'kimi' }, 80, 24, sender);
+    await waitForStartPosted(child);
+    child.emit('message', { type: 'started' });
+    const result = await resultPromise;
 
     expect(result).toEqual({ ok: true });
-    expect(spawnMock).toHaveBeenCalledWith('/usr/local/bin/claude', ['--model', 'kimi'], expect.objectContaining({
+    expect(child.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'start',
+      claudePath: '/usr/local/bin/claude',
+      args: ['--model', 'kimi'],
       cwd: '/proj',
-      cols: 80,
-      rows: 24,
       env: expect.objectContaining({
         ANTHROPIC_BASE_URL: 'https://api.mindshub.ai',
         ANTHROPIC_AUTH_TOKEN: 'mdb_test_token',
@@ -64,28 +69,20 @@ describe('coding-terminal', () => {
     expect(isCodingTerminalRunning('task-1')).toBe(true);
   });
 
-  it('types the opening message into stdin instead of passing it as an argv entry', async () => {
-    const { startCodingTerminal } = await import('./coding-terminal');
-    const proc = fakePty();
-    spawnMock.mockReturnValue(proc);
-
-    await startCodingTerminal('task-msg', { projectPath: '/proj', message: 'build me a login form', model: 'kimi' }, 80, 24, fakeSender());
-
-    expect(spawnMock).toHaveBeenCalledWith('/usr/local/bin/claude', ['--model', 'kimi'], expect.anything());
-    expect(proc.write).toHaveBeenCalledWith('build me a login form\r');
-  });
-
   it('is a no-op reconnect when a session for the task is already running', async () => {
     const { startCodingTerminal } = await import('./coding-terminal');
-    const proc = fakePty();
-    spawnMock.mockReturnValue(proc);
+    const child = new FakeUtilityProcess();
+    forkMock.mockReturnValue(child);
     const sender = fakeSender();
 
-    await startCodingTerminal('task-1', { projectPath: '/proj', message: 'hi', model: 'kimi' }, 80, 24, sender);
-    const result = await startCodingTerminal('task-1', { projectPath: '/proj', message: 'hi', model: 'kimi' }, 80, 24, sender);
+    const p1 = startCodingTerminal('task-1', { projectPath: '/proj', message: '', model: 'kimi' }, 80, 24, sender);
+    await waitForStartPosted(child);
+    child.emit('message', { type: 'started' });
+    await p1;
+    const result = await startCodingTerminal('task-1', { projectPath: '/proj', message: '', model: 'kimi' }, 80, 24, sender);
 
     expect(result).toEqual({ ok: true });
-    expect(spawnMock).toHaveBeenCalledTimes(1);
+    expect(forkMock).toHaveBeenCalledTimes(1);
   });
 
   it('fails when the claude CLI is not installed', async () => {
@@ -93,10 +90,10 @@ describe('coding-terminal', () => {
     const { startCodingTerminal } = await import('./coding-terminal');
     const sender = fakeSender();
 
-    const result = await startCodingTerminal('task-2', { projectPath: '/proj', message: 'hi', model: 'kimi' }, 80, 24, sender);
+    const result = await startCodingTerminal('task-2', { projectPath: '/proj', message: '', model: 'kimi' }, 80, 24, sender);
 
     expect(result.ok).toBe(false);
-    expect(spawnMock).not.toHaveBeenCalled();
+    expect(forkMock).not.toHaveBeenCalled();
   });
 
   it('fails when no MindsHub API key is configured', async () => {
@@ -104,78 +101,120 @@ describe('coding-terminal', () => {
     const { startCodingTerminal } = await import('./coding-terminal');
     const sender = fakeSender();
 
-    const result = await startCodingTerminal('task-3', { projectPath: '/proj', message: 'hi', model: 'kimi' }, 80, 24, sender);
+    const result = await startCodingTerminal('task-3', { projectPath: '/proj', message: '', model: 'kimi' }, 80, 24, sender);
 
     expect(result.ok).toBe(false);
-    expect(spawnMock).not.toHaveBeenCalled();
+    expect(forkMock).not.toHaveBeenCalled();
+  });
+
+  it('types the opening message into stdin once the host is up', async () => {
+    const { startCodingTerminal } = await import('./coding-terminal');
+    const child = new FakeUtilityProcess();
+    forkMock.mockReturnValue(child);
+
+    const resultPromise = startCodingTerminal('task-msg', { projectPath: '/proj', message: 'build me a login form', model: 'kimi' }, 80, 24, fakeSender());
+    await waitForStartPosted(child);
+    child.emit('message', { type: 'started' });
+    await resultPromise;
+
+    expect(child.postMessage).toHaveBeenCalledWith({ type: 'write', data: 'build me a login form\r' });
   });
 
   it('streams PTY data to the renderer and cleans up on exit', async () => {
     const { startCodingTerminal, isCodingTerminalRunning } = await import('./coding-terminal');
-    const proc = fakePty();
-    spawnMock.mockReturnValue(proc);
+    const child = new FakeUtilityProcess();
+    forkMock.mockReturnValue(child);
     const sender = fakeSender();
 
-    await startCodingTerminal('task-4', { projectPath: '/proj', message: 'hi', model: 'kimi' }, 80, 24, sender);
-    proc._handlers.data?.('hello from claude');
+    const resultPromise = startCodingTerminal('task-4', { projectPath: '/proj', message: '', model: 'kimi' }, 80, 24, sender);
+    await waitForStartPosted(child);
+    child.emit('message', { type: 'started' });
+    await resultPromise;
+
+    child.emit('message', { type: 'data', data: 'hello from claude' });
     expect(sender.send).toHaveBeenCalledWith('coding:terminal-data', 'task-4', 'hello from claude');
 
-    proc._handlers.exit?.({ exitCode: 0 });
+    child.emit('message', { type: 'exit', exitCode: 0 });
     expect(sender.send).toHaveBeenCalledWith('coding:terminal-exit', 'task-4', 0);
     expect(isCodingTerminalRunning('task-4')).toBe(false);
   });
 
-  it('writes input and forwards resize to the right session', async () => {
-    const { startCodingTerminal, writeToCodingTerminal, resizeCodingTerminal } = await import('./coding-terminal');
-    const proc = fakePty();
-    spawnMock.mockReturnValue(proc);
-    await startCodingTerminal('task-5', { projectPath: '/proj', message: 'hi', model: 'kimi' }, 80, 24, fakeSender());
+  it('reports failure when the host process reports an error', async () => {
+    const { startCodingTerminal } = await import('./coding-terminal');
+    const child = new FakeUtilityProcess();
+    forkMock.mockReturnValue(child);
 
-    writeToCodingTerminal('task-5', 'ls\n');
-    resizeCodingTerminal('task-5', 100, 40);
+    const resultPromise = startCodingTerminal('task-5', { projectPath: '/proj', message: '', model: 'kimi' }, 80, 24, fakeSender());
+    await waitForStartPosted(child);
+    child.emit('message', { type: 'error', reason: 'native module missing' });
 
-    expect(proc.write).toHaveBeenCalledWith('ls\n');
-    expect(proc.resize).toHaveBeenCalledWith(100, 40);
+    await expect(resultPromise).resolves.toEqual({ ok: false, reason: 'native module missing' });
   });
 
-  it('kill removes the session and calls proc.kill', async () => {
+  it('reports failure when the host process exits before acking start', async () => {
+    const { startCodingTerminal } = await import('./coding-terminal');
+    const child = new FakeUtilityProcess();
+    forkMock.mockReturnValue(child);
+
+    const resultPromise = startCodingTerminal('task-6', { projectPath: '/proj', message: '', model: 'kimi' }, 80, 24, fakeSender());
+    await waitForStartPosted(child);
+    child.emit('exit', 1);
+
+    const result = await resultPromise;
+    expect(result.ok).toBe(false);
+  });
+
+  it('writes input and forwards resize to the right session', async () => {
+    const { startCodingTerminal, writeToCodingTerminal, resizeCodingTerminal } = await import('./coding-terminal');
+    const child = new FakeUtilityProcess();
+    forkMock.mockReturnValue(child);
+    const resultPromise = startCodingTerminal('task-7', { projectPath: '/proj', message: '', model: 'kimi' }, 80, 24, fakeSender());
+    await waitForStartPosted(child);
+    child.emit('message', { type: 'started' });
+    await resultPromise;
+    child.postMessage.mockClear();
+
+    writeToCodingTerminal('task-7', 'ls\n');
+    resizeCodingTerminal('task-7', 100, 40);
+
+    expect(child.postMessage).toHaveBeenCalledWith({ type: 'write', data: 'ls\n' });
+    expect(child.postMessage).toHaveBeenCalledWith({ type: 'resize', cols: 100, rows: 40 });
+  });
+
+  it('kill removes the session and kills the host process', async () => {
     const { startCodingTerminal, killCodingTerminal, isCodingTerminalRunning } = await import('./coding-terminal');
-    const proc = fakePty();
-    spawnMock.mockReturnValue(proc);
-    await startCodingTerminal('task-6', { projectPath: '/proj', message: 'hi', model: 'kimi' }, 80, 24, fakeSender());
+    const child = new FakeUtilityProcess();
+    forkMock.mockReturnValue(child);
+    const resultPromise = startCodingTerminal('task-8', { projectPath: '/proj', message: '', model: 'kimi' }, 80, 24, fakeSender());
+    await waitForStartPosted(child);
+    child.emit('message', { type: 'started' });
+    await resultPromise;
 
-    killCodingTerminal('task-6');
+    killCodingTerminal('task-8');
 
-    expect(proc.kill).toHaveBeenCalled();
-    expect(isCodingTerminalRunning('task-6')).toBe(false);
+    expect(child.kill).toHaveBeenCalled();
+    expect(isCodingTerminalRunning('task-8')).toBe(false);
   });
 
   it('killAllCodingTerminals kills every running session', async () => {
     const { startCodingTerminal, killAllCodingTerminals, isCodingTerminalRunning } = await import('./coding-terminal');
-    const procA = fakePty();
-    const procB = fakePty();
-    spawnMock.mockReturnValueOnce(procA).mockReturnValueOnce(procB);
-    await startCodingTerminal('task-a', { projectPath: '/proj', message: 'hi', model: 'kimi' }, 80, 24, fakeSender());
-    await startCodingTerminal('task-b', { projectPath: '/proj', message: 'hi', model: 'kimi' }, 80, 24, fakeSender());
+    const childA = new FakeUtilityProcess();
+    const childB = new FakeUtilityProcess();
+    forkMock.mockReturnValueOnce(childA).mockReturnValueOnce(childB);
+    const pA = startCodingTerminal('task-a', { projectPath: '/proj', message: '', model: 'kimi' }, 80, 24, fakeSender());
+    await waitForStartPosted(childA);
+    childA.emit('message', { type: 'started' });
+    await pA;
+    const pB = startCodingTerminal('task-b', { projectPath: '/proj', message: '', model: 'kimi' }, 80, 24, fakeSender());
+    await waitForStartPosted(childB);
+    childB.emit('message', { type: 'started' });
+    await pB;
 
     killAllCodingTerminals();
 
-    expect(procA.kill).toHaveBeenCalled();
-    expect(procB.kill).toHaveBeenCalled();
+    expect(childA.kill).toHaveBeenCalled();
+    expect(childB.kill).toHaveBeenCalled();
     expect(isCodingTerminalRunning('task-a')).toBe(false);
     expect(isCodingTerminalRunning('task-b')).toBe(false);
-  });
-
-  it('reports unavailable when node-pty fails to load', async () => {
-    vi.doMock('node-pty', () => {
-      throw new Error('native module missing');
-    });
-    const { startCodingTerminal } = await import('./coding-terminal');
-    const sender = fakeSender();
-
-    const result = await startCodingTerminal('task-7', { projectPath: '/proj', message: 'hi', model: 'kimi' }, 80, 24, sender);
-
-    expect(result.ok).toBe(false);
-    expect(result.reason).toMatch(/not available/i);
   });
 });
