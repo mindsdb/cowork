@@ -257,7 +257,13 @@ export function DataVaultForm({
   const [valuesByKey, setValuesByKey] = useState({});
   const [skippedByKey, setSkippedByKey] = useState({});
   const [requiredErrorsByKey, setRequiredErrorsByKey] = useState({});
+  /* Focus target for the first field that fails the required check.
+     `fieldRefs` holds the real control, which is what we want the caret in,
+     but only `Input` and `Textarea` forward a ref — a `select` or `boolean`
+     field puts nothing there. `fieldContainerRefs` holds the wrapper, which
+     every field type has, so the error is at least scrolled into view. */
   const fieldRefs = useRef({});
+  const fieldContainerRefs = useRef({});
 
   const initialFor = (fs) => {
     const out = {};
@@ -422,14 +428,21 @@ export function DataVaultForm({
     if (action.kind === 'primary') {
       const missing = fields.filter((field) => {
         if (!field.required || skipped.has(field.name)) return false;
-        // PostHog resolves its numeric project ID from the user's personal API
-        // key in the panel before the connector request is sent, and lets the
-        // user provide it either by picking from the discovered list or by
-        // typing it directly — so neither field alone can be required
-        // client-side. DataVaultFormPanel's guard is the source of truth for
-        // whether a value was actually supplied.
+        /* PostHog resolves its numeric project ID from the user's personal
+           API key in the panel before the connector request is sent, and the
+           user can supply it either by picking from the discovered list or by
+           typing it directly. So require one of the two rather than both.
+           Until discovery has added the choice field an empty `project_id` is
+           what triggers discovery, so nothing is required yet; once the choice
+           exists, a submit with neither filled in has to say so instead of
+           running discovery a second time. */
         if (spec?._connector_id === 'posthog'
-          && (field.name === 'project_id' || field.name === 'posthog_project_choice')) return false;
+          && (field.name === 'project_id' || field.name === 'posthog_project_choice')) {
+          if (!fields.some((f) => f.name === 'posthog_project_choice')) return false;
+          const supplied = String(values.project_id || '').trim()
+            || String(values.posthog_project_choice || '').trim();
+          return !supplied && field.name === 'posthog_project_choice';
+        }
         const value = values[field.name];
         return value === null || value === undefined || String(value).trim() === '';
       });
@@ -438,7 +451,10 @@ export function DataVaultForm({
           missing.map((field) => [field.name, `${field.label || field.name} is required.`]),
         );
         setRequiredErrorsByKey((prev) => ({ ...prev, [stateKey]: errors }));
-        requestAnimationFrame(() => fieldRefs.current[missing[0].name]?.focus?.());
+        requestAnimationFrame(() => {
+          const name = missing[0].name;
+          (fieldRefs.current[name] || fieldContainerRefs.current[name])?.focus?.();
+        });
         return;
       }
     }
@@ -584,7 +600,9 @@ export function DataVaultForm({
           return (
             <div
               key={f.name}
-              style={{ display: 'flex', flexDirection: 'column', gap: 4, opacity: isSkipped ? 0.55 : 1 }}
+              ref={(node) => { fieldContainerRefs.current[f.name] = node; }}
+              tabIndex={-1}
+              style={{ display: 'flex', flexDirection: 'column', gap: 4, opacity: isSkipped ? 0.55 : 1, outline: 'none' }}
             >
               <div style={{
                 display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',

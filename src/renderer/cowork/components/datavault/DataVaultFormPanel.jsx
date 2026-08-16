@@ -560,8 +560,17 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
     setBusy(true);
     try {
       const submissionValues = { ...(values || {}) };
-      if (spec._connector_id === 'posthog' && submissionValues.posthog_project_choice) {
-        submissionValues.project_id = submissionValues.posthog_project_choice;
+      /* The discovered picker and the manual Project ID box both feed
+         `project_id`, so one of them has to win when both carry a value.
+         A typed id wins: it is the one still visible on screen, and a user
+         who picks a project and then types over it has corrected
+         themselves. `posthog_project_choice` is a UI-only field and never
+         reaches the wire either way. */
+      if (spec._connector_id === 'posthog') {
+        const typedProjectId = String(submissionValues.project_id || '').trim();
+        if (!typedProjectId && submissionValues.posthog_project_choice) {
+          submissionValues.project_id = submissionValues.posthog_project_choice;
+        }
         delete submissionValues.posthog_project_choice;
       }
       // Endpoint-as-agent path: hand the submission off to the

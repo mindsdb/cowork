@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DataVaultFormPanel } from './DataVaultFormPanel';
 import { clearForm, setForm } from './formStore';
@@ -90,5 +90,28 @@ describe('DataVaultFormPanel — user_label', () => {
     await user.click(screen.getByRole('button', { name: /method b/i }));
 
     expect(screen.queryByText('Field A is required.')).not.toBeInTheDocument();
+  });
+
+  it('focuses the offending field even when it is a select, which takes no input ref', async () => {
+    setForm(CID, {
+      form_id: 'f6',
+      fields: [{
+        name: 'region',
+        label: 'Region',
+        type: 'select',
+        required: true,
+        options: [{ value: 'us', label: 'US' }],
+      }],
+    });
+    render(<DataVaultFormPanel conversationId={CID} onSubmit={vi.fn()} />);
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: /submit/i }));
+
+    const error = await screen.findByText('Region is required.');
+    await waitFor(() => {
+      expect(document.activeElement).not.toBe(document.body);
+      expect(document.activeElement.contains(error)).toBe(true);
+    });
   });
 });

@@ -92,4 +92,48 @@ describe('DataVaultFormPanel — PostHog project discovery', () => {
       expect.objectContaining({ values: expect.objectContaining({ project_id: '999' }) })
     );
   });
+
+  it('submits the typed Project ID when the user types over a picked project', async () => {
+    discoverPostHogProjects.mockResolvedValue({ projects: [{ id: 123, name: 'Prod' }] });
+    setForm(CID, POSTHOG_SPEC);
+    const onSubmit = vi.fn();
+    render(<DataVaultFormPanel conversationId={CID} onSubmit={onSubmit} />);
+
+    const user = userEvent.setup();
+    await user.type(screen.getByPlaceholderText(/phx_/), 'phx_test');
+    await user.click(screen.getByRole('button', { name: /submit/i }));
+    await screen.findByRole('combobox', { name: /posthog project/i });
+
+    // Pick one, then correct it by hand. The box the user can still see wins.
+    await user.click(screen.getByRole('combobox', { name: /posthog project/i }));
+    await user.click(screen.getByRole('option', { name: 'Prod' }));
+    await user.type(screen.getByPlaceholderText('12345'), '999');
+    await user.click(screen.getByRole('button', { name: /submit/i }));
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ values: expect.objectContaining({ project_id: '999' }) })
+    );
+    // UI-only field, never sent to the connector engine.
+    expect(onSubmit.mock.calls[0][0].values).not.toHaveProperty('posthog_project_choice');
+  });
+
+  it('marks the choice field and sends nothing when submitted with no project at all', async () => {
+    discoverPostHogProjects.mockResolvedValue({ projects: [{ id: 123, name: 'Prod' }] });
+    setForm(CID, POSTHOG_SPEC);
+    const onSubmit = vi.fn();
+    render(<DataVaultFormPanel conversationId={CID} onSubmit={onSubmit} />);
+
+    const user = userEvent.setup();
+    await user.type(screen.getByPlaceholderText(/phx_/), 'phx_test');
+    await user.click(screen.getByRole('button', { name: /submit/i }));
+    await screen.findByRole('combobox', { name: /posthog project/i });
+
+    // Neither picked nor typed. Without the required check this re-runs
+    // discovery and shows the user nothing at all.
+    await user.click(screen.getByRole('button', { name: /submit/i }));
+
+    expect(await screen.findByText('PostHog project is required.')).toBeInTheDocument();
+    expect(discoverPostHogProjects).toHaveBeenCalledTimes(1);
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
 });
