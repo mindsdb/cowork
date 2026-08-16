@@ -1,7 +1,8 @@
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Ico from './Icons';
 import { Tooltip } from './ui';
+import { ToggleGroup } from './ui/ToggleGroup';
 import NewProjectModal from './project/NewProjectModal';
 import {
   parseFences,
@@ -1396,41 +1397,25 @@ export default function Composer({
               setting's value: it's an account-wide setting, so a web
               session for the same account would otherwise still see the
               option — launching a terminal is an Electron capability the
-              web build has no equivalent for. */}
+              web build has no equivalent for. Same ToggleGroup as the
+              Settings Anton/Hermes control, not a dropdown — a segmented
+              toggle reads better for a 2-way, always-visible choice. */}
           {codingModeEnabled && !host.isWeb && (
-            <Tooltip content="Choose harness">
-              <button
-                className="meta-pill"
-                onClick={() => setOpenMenu(openMenu === 'codingHarness' ? null : 'codingHarness')}
-              >
-                <span>{codingHarness === 'claude-code' ? 'Claude Code' : 'Anton'}</span>
-                <span className="inline-flex text-ink-4">{Ico.chevDown(13)}</span>
-              </button>
-            </Tooltip>
+            <ToggleGroup
+              value={codingHarness}
+              onValueChange={setCodingHarness}
+              aria-label="Choose harness"
+              size="sm"
+              options={[
+                { value: 'anton', label: 'Anton' },
+                {
+                  value: 'claude-code',
+                  label: 'Claude Code',
+                  title: claudeCodeInfo.installed ? undefined : 'Claude Code — not detected on this machine',
+                },
+              ]}
+            />
           )}
-        </div>
-      )}
-
-      {openMenu === 'codingHarness' && (
-        <div className="menu right-2 top-[calc(100%_+_6px)]" style={{ minWidth: 220 }}>
-          {[
-            { value: 'anton', label: 'Anton' },
-            {
-              value: 'claude-code',
-              label: 'Claude Code',
-              hint: claudeCodeInfo.installed ? undefined : 'not detected on this machine',
-            },
-          ].map((opt) => (
-            <button
-              key={opt.value}
-              className={`menu-item${codingHarness === opt.value ? ' checked' : ''}`}
-              onClick={() => { setCodingHarness(opt.value); setOpenMenu(null); }}
-            >
-              <span className="flex-1 truncate">{opt.label}</span>
-              {opt.hint && <span style={{ fontSize: 11, color: 'var(--frost-600)' }}>{opt.hint}</span>}
-              {codingHarness === opt.value && <span className="text-[var(--primary-700)]">{Ico.check(14)}</span>}
-            </button>
-          ))}
         </div>
       )}
 
