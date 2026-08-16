@@ -87,8 +87,15 @@ export const IPC = {
   OPEN_EXTERNAL: 'app:open-external',
   SHOW_ITEM_IN_FOLDER: 'shell:show-item-in-folder',
 
-  // Coding mode (MVP) — detect a local `claude` CLI install and launch a
-  // task with it in an external terminal, instead of the in-app chat.
+  // Coding mode (MVP) — detect a local `claude` CLI install, then run it in
+  // a real PTY embedded in the app (a task view's ChatView, for a
+  // claude-code-harness task) instead of the in-app anton chat.
   CODING_DETECT_CLI: 'coding:detect-cli',
-  CODING_LAUNCH_TASK: 'coding:launch-task',
+  CODING_TERMINAL_START: 'coding:terminal-start',
+  CODING_TERMINAL_DATA: 'coding:terminal-data',
+  CODING_TERMINAL_INPUT: 'coding:terminal-input',
+  CODING_TERMINAL_RESIZE: 'coding:terminal-resize',
+  CODING_TERMINAL_EXIT: 'coding:terminal-exit',
+  CODING_TERMINAL_IS_RUNNING: 'coding:terminal-is-running',
+  CODING_TERMINAL_KILL: 'coding:terminal-kill',
 } as const;

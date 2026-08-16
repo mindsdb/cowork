@@ -3003,38 +3003,51 @@ function AppCore() {
 
   // Coding mode (MVP, ENG-1656 follow-up): the task never goes through
   // anton/`/responses` — it's recorded (harness/model) via a direct
-  // conversation-create call, then handed to an external `claude` process
-  // in its own terminal, cwd'd to the project folder. Thrown errors here
-  // surface through the composer's existing inline error UI (same as any
-  // other send failure) — no separate toast plumbing needed.
+  // conversation-create call, then ChatView renders a live embedded
+  // terminal (CodingTerminal) for it instead of the normal chat transcript,
+  // running `claude` in a real PTY cwd'd to the project folder. Thrown
+  // errors here surface through the composer's existing inline error UI
+  // (same as any other send failure) — no separate toast plumbing needed.
   const launchCodingModeTask = async (text, meta) => {
     let generalProject = projects.find((p) => p.name === 'general');
     const effectiveProject = selectedProject || generalProject;
     if (!effectiveProject?.path) {
       throw new Error('Pick a project with a folder before launching Claude Code.');
     }
-    await createConversation({
+    const authToken = await revealSettingKey('minds');
+    if (!authToken) {
+      throw new Error('No MindsHub API key configured — sign in with MindsHub or add a key in Settings before using coding mode.');
+    }
+    const conversation = await createConversation({
       project: effectiveProject.name,
       projectId: effectiveProject.id,
       topic: text.length > 60 ? text.slice(0, 57) + '…' : text,
       harness: meta.harness,
       model: meta.model,
     });
-    const authToken = await revealSettingKey('minds');
-    if (!authToken) {
-      throw new Error('No MindsHub API key configured — sign in with MindsHub or add a key in Settings before using coding mode.');
+    const taskId = conversation?.id;
+    if (!taskId) {
+      throw new Error('Could not create the Claude Code task.');
     }
-    const result = await host.launchCodingTask({
+    setTasks((prev) => [{
+      id: taskId,
+      title: text.length > 60 ? text.slice(0, 57) + '…' : text,
+      subtitle: 'just now',
+      status: 'idle',
+      messages: [{ role: 'user', content: text, attachments: [] }],
+      projectName: effectiveProject.name,
+      projectId: effectiveProject.id,
       projectPath: effectiveProject.path,
-      message: text,
+      harness: meta.harness,
       model: meta.model,
-    });
-    if (!result?.ok) {
-      throw new Error(result?.reason || 'Could not launch Claude Code.');
-    }
-    toastManager.add({ type: 'success', title: 'Opened Claude Code in Terminal', description: effectiveProject.name });
-    const fresh = await fetchSessions();
-    if (Array.isArray(fresh)) setTasks(fresh.filter((t) => !deletedTaskIdsRef.current.has(t.id)));
+      attachments: [],
+      disabledConnections: [],
+      pinned: false,
+      updatedAt: null,
+      createdAt: null,
+    }, ...prev]);
+    setActiveTaskId(taskId);
+    setRoute('task');
   };
 
   // Send from the home screen — creates a new session

@@ -12,6 +12,7 @@ import { forwardRef, useEffect, useLayoutEffect, useMemo, useRef, useState, useS
 import { createPortal } from 'react-dom';
 import Ico from '../components/Icons';
 import Composer from '../components/Composer';
+import CodingTerminal from '../components/CodingTerminal';
 import { Alert, Card, Tooltip } from '../components/ui';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import { ThinkingBlock } from '../components/thinking/ThinkingBlock';
@@ -1283,6 +1284,10 @@ export default function ChatView({
   // useSyncExternalStore keeps this in sync without useEffect: React
   // re-reads the snapshot whenever the formStore notifies subscribers.
   const taskId = task?.id || '';
+  // Coding mode (ENG-1656 follow-up): a claude-code-harness task never goes
+  // through anton's chat pipeline — it embeds a live PTY terminal instead of
+  // the message transcript + Composer (see CodingTerminal / coding-terminal.ts).
+  const isClaudeCodeTask = task?.harness === 'claude-code';
   const subscribeFormStore = useMemo(
     () => (onChange) => subscribeDataVaultForm(taskId, onChange),
     [taskId],
@@ -1676,6 +1681,15 @@ export default function ChatView({
           }}
         />
 
+        {isClaudeCodeTask ? (
+          <CodingTerminal
+            taskId={task.id}
+            projectPath={artifactProjectPath}
+            message={task.messages?.[0]?.content}
+            model={model}
+          />
+        ) : (
+        <>
         {/* Scrollable conversation.
             Bottom padding clears the floating composer so every
             message is reachable when scrolled to the end. Sized
@@ -2170,6 +2184,8 @@ export default function ChatView({
             prefill={composerPrefill}
           />
         </div>
+        </>
+        )}
       </div>
 
       {/* ─── Right rail ─── */}

@@ -208,15 +208,55 @@ export async function detectClaudeCode(): Promise<{ installed: boolean; path: st
   return { installed: false, path: null };
 }
 
-export async function launchCodingTask(opts: {
-  projectPath: string;
-  message: string;
-  model: string;
-}): Promise<{ ok: boolean; reason?: string }> {
-  if (isElectron && typeof bridge.launchCodingTask === 'function') {
-    return bridge.launchCodingTask(opts);
+export async function startCodingTerminal(
+  taskId: string,
+  opts: { projectPath: string; message: string; model: string },
+  cols: number,
+  rows: number,
+): Promise<{ ok: boolean; reason?: string }> {
+  if (isElectron && typeof bridge.startCodingTerminal === 'function') {
+    return bridge.startCodingTerminal(taskId, opts, cols, rows);
   }
   return { ok: false, reason: 'unsupported' };
+}
+
+export function sendCodingTerminalInput(taskId: string, data: string): void {
+  if (isElectron && typeof bridge.sendCodingTerminalInput === 'function') {
+    bridge.sendCodingTerminalInput(taskId, data);
+  }
+}
+
+export function resizeCodingTerminal(taskId: string, cols: number, rows: number): void {
+  if (isElectron && typeof bridge.resizeCodingTerminal === 'function') {
+    bridge.resizeCodingTerminal(taskId, cols, rows);
+  }
+}
+
+export async function isCodingTerminalRunning(taskId: string): Promise<boolean> {
+  if (isElectron && typeof bridge.isCodingTerminalRunning === 'function') {
+    return bridge.isCodingTerminalRunning(taskId);
+  }
+  return false;
+}
+
+export function killCodingTerminal(taskId: string): void {
+  if (isElectron && typeof bridge.killCodingTerminal === 'function') {
+    bridge.killCodingTerminal(taskId);
+  }
+}
+
+export function onCodingTerminalData(cb: (taskId: string, data: string) => void): () => void {
+  if (isElectron && typeof bridge.onCodingTerminalData === 'function') {
+    return bridge.onCodingTerminalData(cb);
+  }
+  return () => {};
+}
+
+export function onCodingTerminalExit(cb: (taskId: string, exitCode: number) => void): () => void {
+  if (isElectron && typeof bridge.onCodingTerminalExit === 'function') {
+    return bridge.onCodingTerminalExit(cb);
+  }
+  return () => {};
 }
 
 // ---- File drop / clipboard ---------------------------------------------
@@ -903,7 +943,13 @@ export const host = {
   openPath,
   showItemInFolder,
   detectClaudeCode,
-  launchCodingTask,
+  startCodingTerminal,
+  sendCodingTerminalInput,
+  resizeCodingTerminal,
+  isCodingTerminalRunning,
+  killCodingTerminal,
+  onCodingTerminalData,
+  onCodingTerminalExit,
   getPathForFile,
   getUIVersion,
   getVersionInfo,
