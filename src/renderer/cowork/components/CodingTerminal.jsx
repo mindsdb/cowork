@@ -18,16 +18,20 @@ import { host } from '../../platform/host';
 // can't resolve custom properties, so the app's theme tokens have to be
 // read as computed values off <body> (where globals.css scopes them,
 // via body[data-theme]/[data-skin]) rather than passed through directly.
+// `background: 'transparent'` (rather than a resolved --bg) lets the
+// app's real background — gradient, gravity-field effect, whatever's
+// actually behind ChatView — show through instead of a flat fill;
+// cursorAccent still needs a real (non-transparent) color since it's the
+// text color painted under the solid block cursor, not a fill itself.
 function readTerminalTheme() {
   const style = getComputedStyle(document.body);
   const get = (name, fallback) => style.getPropertyValue(name).trim() || fallback;
-  const bg = get('--bg', '#1e1e1e');
   const ink = get('--ink', '#e6e6e6');
   return {
-    background: bg,
+    background: 'transparent',
     foreground: ink,
     cursor: ink,
-    cursorAccent: bg,
+    cursorAccent: get('--bg', '#1e1e1e'),
     selectionBackground: get('--line', '#3a3d40'),
   };
 }
@@ -137,7 +141,12 @@ export default function CodingTerminal({ taskId, projectPath, message, model }) 
           Claude Code exited (code {exited}).
         </div>
       )}
-      <div ref={containerRef} className="flex-1 min-h-0 min-w-0 px-3 py-2 bg-bg" />
+      {/* xterm.css hardcodes .xterm-viewport's background to #000, which
+          would defeat theme.background: 'transparent' above — this is the
+          one rule from a third-party stylesheet that genuinely needs
+          !important to override cleanly. */}
+      <style>{'.xterm-viewport { background-color: transparent !important; }'}</style>
+      <div ref={containerRef} className="flex-1 min-h-0 min-w-0 px-3 py-2 bg-transparent" />
     </div>
   );
 }
