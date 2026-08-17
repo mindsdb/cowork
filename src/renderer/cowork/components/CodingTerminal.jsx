@@ -13,6 +13,25 @@
 import { useEffect, useRef, useState } from 'react';
 import { host } from '../../platform/host';
 
+// xterm renders via canvas, which only accepts resolved color values —
+// var(--bg) works fine as a plain CSS background but canvas fillStyle
+// can't resolve custom properties, so the app's theme tokens have to be
+// read as computed values off <body> (where globals.css scopes them,
+// via body[data-theme]/[data-skin]) rather than passed through directly.
+function readTerminalTheme() {
+  const style = getComputedStyle(document.body);
+  const get = (name, fallback) => style.getPropertyValue(name).trim() || fallback;
+  const bg = get('--bg', '#1e1e1e');
+  const ink = get('--ink', '#e6e6e6');
+  return {
+    background: bg,
+    foreground: ink,
+    cursor: ink,
+    cursorAccent: bg,
+    selectionBackground: get('--line', '#3a3d40'),
+  };
+}
+
 export default function CodingTerminal({ taskId, projectPath, message, model }) {
   const containerRef = useRef(null);
   const termRef = useRef(null);
@@ -24,6 +43,7 @@ export default function CodingTerminal({ taskId, projectPath, message, model }) 
     let term = null;
     let fitAddon = null;
     let resizeObserver = null;
+    let themeObserver = null;
     let unsubData = () => {};
     let unsubExit = () => {};
 
@@ -45,11 +65,7 @@ export default function CodingTerminal({ taskId, projectPath, message, model }) 
         fontFamily: 'var(--font-mono, ui-monospace, monospace)',
         fontSize: 12.5,
         cursorBlink: true,
-        theme: {
-          background: '#1e1e1e',
-          foreground: '#e6e6e6',
-          cursor: '#e6e6e6',
-        },
+        theme: readTerminalTheme(),
         allowProposedApi: true,
       });
       fitAddon = new FitAddon();
@@ -57,6 +73,13 @@ export default function CodingTerminal({ taskId, projectPath, message, model }) 
       term.open(containerRef.current);
       fitAddon.fit();
       termRef.current = term;
+
+      // Follow live theme/8-bit-skin toggles — xterm's theme option can be
+      // reassigned post-construction and it repaints immediately.
+      themeObserver = new MutationObserver(() => {
+        term.options.theme = readTerminalTheme();
+      });
+      themeObserver.observe(document.body, { attributes: true, attributeFilter: ['data-theme', 'data-skin'] });
 
       unsubData = host.onCodingTerminalData((id, data) => {
         if (id === taskId) term.write(data);
@@ -95,6 +118,7 @@ export default function CodingTerminal({ taskId, projectPath, message, model }) 
       unsubData();
       unsubExit();
       resizeObserver?.disconnect();
+      themeObserver?.disconnect();
       term?.dispose();
       termRef.current = null;
     };
@@ -113,7 +137,7 @@ export default function CodingTerminal({ taskId, projectPath, message, model }) 
           Claude Code exited (code {exited}).
         </div>
       )}
-      <div ref={containerRef} className="flex-1 min-h-0 min-w-0 px-3 py-2 bg-[#1e1e1e]" />
+      <div ref={containerRef} className="flex-1 min-h-0 min-w-0 px-3 py-2 bg-bg" />
     </div>
   );
 }
