@@ -1866,17 +1866,46 @@ export default function ChatView({
                     />
                   );
                 }
-                // Unknown/removed model alias (gateway 404 `unknown_model`):
-                // credits can't fix it — the next step is picking a different
-                // model in Settings.
-                if (m.code === 'unknown_model') {
+                /* A model the provider can't serve (404 `model_not_found`) —
+                 * removed, renamed, or never existed (a provider name pasted
+                 * where an alias belongs). Credits can't fix it; the next step
+                 * is picking a real model.
+                 *
+                 * The body quotes the RAW id, not modelLabel's prettified
+                 * version: the point is for the user to recognise the exact
+                 * string sitting in their settings, and prettifying an id that
+                 * isn't a real model would obscure the typo (ENG-1358).
+                 * `failedModel` is absent from a server too old to send it, so
+                 * the copy degrades to the unnamed wording rather than
+                 * rendering an empty quote. */
+                /* `unknown_model` is the pre-rename code. Accept BOTH: the
+                 * renderer updates OTA and can lead a pinned server (a server
+                 * update isn't always pending, so updater.ts applies the UI
+                 * alone), and dropping the old code would regress those users to
+                 * the buttonless danger alert ENG-1282 removed. It also covers
+                 * disabled-auto-update and git-pinned installs, which no
+                 * minServerVersion bump would reach. */
+                if (m.code === 'model_not_found' || m.code === 'unknown_model') {
+                  const badModel = typeof m.failedModel === 'string' ? m.failedModel.trim() : '';
                   return (
                     <ActionCard
                       key={i}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
-                      title="That model isn't available"
-                      body="The selected model was removed or isn't offered anymore. Switch to another model in Settings."
+                      title={badModel ? `"${badModel}" isn't a model we can use` : "That model isn't available"}
+                      body={badModel
+                        ? `Your settings point at "${badModel}", which this provider doesn't offer — so nothing was sent. Pick a model from the list in Settings.`
+                        : "The selected model was removed or isn't offered anymore. Switch to another model in Settings."}
+                      // Open Settings only. A "Switch to MindsHub Air" button was
+                      // tried here and removed: it routes through
+                      // handleSendInTask's `modelOverride`, which the in-process
+                      // harness ignores entirely (stream_response takes no
+                      // `model` — harness.py), so the turn would rerun on the
+                      // same dead id while the composer chip claimed otherwise.
+                      // The neighbouring model-denial card has the same latent
+                      // problem; making that switch real is a product decision
+                      // (it means writing the global planning_model setting),
+                      // tracked separately rather than faked here.
                       buttons={[
                         { label: 'Open Settings', onClick: () => onOpenSettings?.('agent'), primary: true },
                       ]}

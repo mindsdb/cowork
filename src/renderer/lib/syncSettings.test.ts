@@ -132,6 +132,38 @@ describe('syncModelsToDb', () => {
   it('returns true (vacuously) when there is nothing to write', async () => {
     expect(await syncModelsToDb(['ANTON_MINDS_API_KEY=mdb_abc'])).toBe(true);
   });
+
+  // ENG-1358: the server now refuses a model id the live catalog doesn't list.
+  // That refusal is permanent — retrying it forever would strand onboarding on
+  // a write that can never succeed, so it must NOT read as a transient failure.
+  it('treats a 400 rejection as permanent, not a retryable failure', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    fetchMock.mockResolvedValue({ ok: false, status: 400 });
+    expect(await syncModelsToDb(['ANTON_PLANNING_MODEL=deepseek-v4-flash'])).toBe(true);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('deepseek-v4-flash'));
+    warn.mockRestore();
+  });
+
+  it('still reports a 5xx as a retryable failure', async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 503 });
+    expect(await syncModelsToDb(['ANTON_PLANNING_MODEL=gpt-5.5'])).toBe(false);
+  });
+
+  // Only 400/422 mean "the server refused this VALUE". A 401 is an auth state a
+  // later attempt can clear, so treating the whole 4xx class as permanent would
+  // silently drop a model write that would have succeeded. 401 is also the only
+  // other 4xx actually reachable on this route.
+  it('treats a 401 as retryable, not a permanent refusal', async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 401 });
+    expect(await syncModelsToDb(['ANTON_PLANNING_MODEL=gpt-5.5'])).toBe(false);
+  });
+
+  it('treats a 422 as a permanent refusal, like 400', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    fetchMock.mockResolvedValue({ ok: false, status: 422 });
+    expect(await syncModelsToDb(['ANTON_PLANNING_MODEL=bad'])).toBe(true);
+    warn.mockRestore();
+  });
 });
 
 describe('syncModelsToDbWithRetry', () => {
