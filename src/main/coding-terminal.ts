@@ -22,6 +22,24 @@ import { getEnvPath } from './uv-paths';
 const MINDSHUB_INFERENCE_BASE_URL = 'https://api.mindshub.ai';
 const START_TIMEOUT_MS = 15_000;
 
+// Vars Claude Code (or any nested Claude session, including a dev running
+// this very app from inside one) sets on ITSELF and expects a *fresh*
+// process not to inherit — e.g. CLAUDE_CODE_CHILD_SESSION makes a nested
+// `claude` think it's a child of an outer session and disables transcript
+// saving. If our own Electron process inherited any of these from its
+// parent shell, the embedded CLI must not see them; ANTHROPIC_* is stripped
+// too since ANTHROPIC_BASE_URL/ANTHROPIC_AUTH_TOKEN are set explicitly
+// below and a stray inherited ANTHROPIC_API_KEY could otherwise compete
+// with them for which credential the CLI picks.
+function sanitizedParentEnv(): NodeJS.ProcessEnv {
+  const clean: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (key.startsWith('CLAUDE_CODE_') || key === 'CLAUDECODE' || key.startsWith('ANTHROPIC_')) continue;
+    clean[key] = value;
+  }
+  return clean;
+}
+
 function readJsonFile(filePath: string): Record<string, unknown> {
   try {
     return JSON.parse(fs.readFileSync(filePath, 'utf8'));
@@ -151,10 +169,14 @@ export async function startCodingTerminal(
 
   // Per-project, not a single shared dir — keeps MindsHub Claude Code
   // sessions/config isolated per project and separate from the user's own
-  // claude.ai profile (~/.claude). Trust is recorded against `cwd`
-  // (resolved above), not the project root, since that's the CLI's actual
-  // working directory once worktrees are in play.
-  const claudeConfigDir = path.join(opts.projectPath, '.claude-mindshub');
+  // claude.ai profile (~/.claude). Lives under .claude-mindshub/config/,
+  // alongside .claude-mindshub/tasks/<taskId>/ (the worktrees) — everything
+  // MindsHub/coding-mode-owned under one directory, deliberately not
+  // `.claude/` (Claude Code's own real per-project state dir; see
+  // coding-workspace.ts for why that name is reserved). Trust is recorded
+  // against `cwd` (resolved above), not the project root, since that's the
+  // CLI's actual working directory once worktrees are in play.
+  const claudeConfigDir = path.join(opts.projectPath, '.claude-mindshub', 'config');
   ensureClaudeConfigDefaults(claudeConfigDir, cwd);
 
   const child = utilityProcess.fork(hostScriptPath(), [], { stdio: 'ignore' });
@@ -205,7 +227,7 @@ export async function startCodingTerminal(
       cols,
       rows,
       env: {
-        ...process.env,
+        ...sanitizedParentEnv(),
         PATH: getEnvPath(),
         TERM: 'xterm-256color',
         COLORTERM: 'truecolor',
@@ -265,8 +287,8 @@ export function killAllCodingTerminals(): void {
 }
 
 /** Called when a Claude-Code task is deleted — stops its process (if still
- *  running) and removes its worktree/branch so `.claude_tasks/` doesn't
- *  accumulate directories for tasks that no longer exist. */
+ *  running) and removes its worktree/branch so `.claude-mindshub/tasks/`
+ *  doesn't accumulate directories for tasks that no longer exist. */
 export async function removeCodingTask(taskId: string, projectPath: string): Promise<void> {
   killCodingTerminal(taskId);
   await removeTaskWorktree(projectPath, taskId);

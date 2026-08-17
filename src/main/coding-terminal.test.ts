@@ -71,7 +71,7 @@ describe('coding-terminal', () => {
     ensureTaskWorktreeMock.mockReset();
     removeTaskWorktreeMock.mockReset();
     ensureTaskWorktreeMock.mockImplementation(async (repoPath: string, taskId: string) => ({
-      path: `${repoPath}/.claude_tasks/${taskId}`,
+      path: `${repoPath}/.claude-mindshub/tasks/${taskId}`,
       isNew: true,
     }));
     removeTaskWorktreeMock.mockResolvedValue(undefined);
@@ -93,16 +93,54 @@ describe('coding-terminal', () => {
       type: 'start',
       claudePath: '/usr/local/bin/claude',
       args: ['--model', 'kimi'],
-      cwd: '/proj/.claude_tasks/task-1',
+      cwd: '/proj/.claude-mindshub/tasks/task-1',
       env: expect.objectContaining({
         ANTHROPIC_BASE_URL: 'https://api.mindshub.ai',
         ANTHROPIC_AUTH_TOKEN: 'mdb_test_token',
         PATH: '/fake/path',
-        CLAUDE_CONFIG_DIR: '/proj/.claude-mindshub',
+        CLAUDE_CONFIG_DIR: '/proj/.claude-mindshub/config',
         CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT: '1',
       }),
     }));
     expect(isCodingTerminalRunning('task-1')).toBe(true);
+  });
+
+  it('strips inherited CLAUDE_CODE_*/ANTHROPIC_* vars so a nested session cannot leak in', async () => {
+    // e.g. this exact scenario in dev: launching the app from inside a
+    // Claude Code session's own shell inherits CLAUDE_CODE_CHILD_SESSION,
+    // which makes the embedded CLI think it's a child session and disables
+    // its own transcript saving.
+    process.env.CLAUDE_CODE_CHILD_SESSION = '1';
+    process.env.CLAUDE_CODE_SESSION_ID = 'outer-session';
+    process.env.CLAUDECODE = '1';
+    process.env.ANTHROPIC_API_KEY = 'sk-should-not-leak';
+    process.env.SOME_UNRELATED_VAR = 'keep-me';
+    try {
+      const { startCodingTerminal } = await import('./coding-terminal');
+      const child = new FakeUtilityProcess();
+      forkMock.mockReturnValue(child);
+
+      const resultPromise = startCodingTerminal('task-clean-env', { projectPath: '/proj', message: '', model: 'kimi' }, 80, 24, fakeSender());
+      await waitForStartPosted(child);
+      child.emit('message', { type: 'started' });
+      await resultPromise;
+
+      const sentEnv = (child.postMessage.mock.calls.find((c: any[]) => c[0]?.type === 'start')?.[0] as any).env;
+      expect(sentEnv.CLAUDE_CODE_CHILD_SESSION).toBeUndefined();
+      expect(sentEnv.CLAUDE_CODE_SESSION_ID).toBeUndefined();
+      expect(sentEnv.CLAUDECODE).toBeUndefined();
+      expect(sentEnv.ANTHROPIC_API_KEY).toBeUndefined();
+      expect(sentEnv.SOME_UNRELATED_VAR).toBe('keep-me');
+      // Our own deliberate ANTHROPIC_* overrides still make it through.
+      expect(sentEnv.ANTHROPIC_BASE_URL).toBe('https://api.mindshub.ai');
+      expect(sentEnv.ANTHROPIC_AUTH_TOKEN).toBe('mdb_test_token');
+    } finally {
+      delete process.env.CLAUDE_CODE_CHILD_SESSION;
+      delete process.env.CLAUDE_CODE_SESSION_ID;
+      delete process.env.CLAUDECODE;
+      delete process.env.ANTHROPIC_API_KEY;
+      delete process.env.SOME_UNRELATED_VAR;
+    }
   });
 
   it('seeds a fresh project config dir with a dark theme and onboarding already done', async () => {
@@ -115,16 +153,16 @@ describe('coding-terminal', () => {
     child.emit('message', { type: 'started' });
     await resultPromise;
 
-    expect(JSON.parse(fsStore.get('/proj/.claude-mindshub/settings.json')!)).toEqual({ theme: 'dark' });
-    expect(JSON.parse(fsStore.get('/proj/.claude-mindshub/.claude.json')!)).toEqual({
+    expect(JSON.parse(fsStore.get('/proj/.claude-mindshub/config/settings.json')!)).toEqual({ theme: 'dark' });
+    expect(JSON.parse(fsStore.get('/proj/.claude-mindshub/config/.claude.json')!)).toEqual({
       hasCompletedOnboarding: true,
-      projects: { '/proj/.claude_tasks/task-seed': { hasTrustDialogAccepted: true } },
+      projects: { '/proj/.claude-mindshub/tasks/task-seed': { hasTrustDialogAccepted: true } },
     });
   });
 
   it('does not clobber an existing config dir\'s other settings/state', async () => {
-    fsStore.set('/proj/.claude-mindshub/settings.json', JSON.stringify({ theme: 'light', tui: 'fullscreen' }));
-    fsStore.set('/proj/.claude-mindshub/.claude.json', JSON.stringify({ hasCompletedOnboarding: true, userID: 'abc' }));
+    fsStore.set('/proj/.claude-mindshub/config/settings.json', JSON.stringify({ theme: 'light', tui: 'fullscreen' }));
+    fsStore.set('/proj/.claude-mindshub/config/.claude.json', JSON.stringify({ hasCompletedOnboarding: true, userID: 'abc' }));
     const { startCodingTerminal } = await import('./coding-terminal');
     const child = new FakeUtilityProcess();
     forkMock.mockReturnValue(child);
@@ -135,20 +173,20 @@ describe('coding-terminal', () => {
     await resultPromise;
 
     // theme was already 'light' (a deliberate choice, e.g. via /theme) — must survive untouched
-    expect(JSON.parse(fsStore.get('/proj/.claude-mindshub/settings.json')!)).toEqual({ theme: 'light', tui: 'fullscreen' });
-    expect(JSON.parse(fsStore.get('/proj/.claude-mindshub/.claude.json')!)).toEqual({
+    expect(JSON.parse(fsStore.get('/proj/.claude-mindshub/config/settings.json')!)).toEqual({ theme: 'light', tui: 'fullscreen' });
+    expect(JSON.parse(fsStore.get('/proj/.claude-mindshub/config/.claude.json')!)).toEqual({
       hasCompletedOnboarding: true,
       userID: 'abc',
-      projects: { '/proj/.claude_tasks/task-preserve': { hasTrustDialogAccepted: true } },
+      projects: { '/proj/.claude-mindshub/tasks/task-preserve': { hasTrustDialogAccepted: true } },
     });
   });
 
   it('does not re-mark trust for a cwd that already has it, and preserves other project entries', async () => {
-    fsStore.set('/proj/.claude-mindshub/.claude.json', JSON.stringify({
+    fsStore.set('/proj/.claude-mindshub/config/.claude.json', JSON.stringify({
       hasCompletedOnboarding: true,
       projects: {
-        '/proj/.claude_tasks/task-other': { hasTrustDialogAccepted: true, allowedTools: ['Bash'] },
-        '/proj/.claude_tasks/task-trust': { hasTrustDialogAccepted: true },
+        '/proj/.claude-mindshub/tasks/task-other': { hasTrustDialogAccepted: true, allowedTools: ['Bash'] },
+        '/proj/.claude-mindshub/tasks/task-trust': { hasTrustDialogAccepted: true },
       },
     }));
     const { startCodingTerminal } = await import('./coding-terminal');
@@ -160,9 +198,9 @@ describe('coding-terminal', () => {
     child.emit('message', { type: 'started' });
     await resultPromise;
 
-    expect(JSON.parse(fsStore.get('/proj/.claude-mindshub/.claude.json')!).projects).toEqual({
-      '/proj/.claude_tasks/task-other': { hasTrustDialogAccepted: true, allowedTools: ['Bash'] },
-      '/proj/.claude_tasks/task-trust': { hasTrustDialogAccepted: true },
+    expect(JSON.parse(fsStore.get('/proj/.claude-mindshub/config/.claude.json')!).projects).toEqual({
+      '/proj/.claude-mindshub/tasks/task-other': { hasTrustDialogAccepted: true, allowedTools: ['Bash'] },
+      '/proj/.claude-mindshub/tasks/task-trust': { hasTrustDialogAccepted: true },
     });
   });
 
@@ -183,7 +221,7 @@ describe('coding-terminal', () => {
   });
 
   it('reconnecting to a task whose worktree already exists uses --continue and skips retyping the message', async () => {
-    ensureTaskWorktreeMock.mockResolvedValue({ path: '/proj/.claude_tasks/task-old', isNew: false });
+    ensureTaskWorktreeMock.mockResolvedValue({ path: '/proj/.claude-mindshub/tasks/task-old', isNew: false });
     const { startCodingTerminal } = await import('./coding-terminal');
     const child = new FakeUtilityProcess();
     forkMock.mockReturnValue(child);
@@ -194,7 +232,7 @@ describe('coding-terminal', () => {
     await resultPromise;
 
     expect(child.postMessage).toHaveBeenCalledWith(expect.objectContaining({
-      cwd: '/proj/.claude_tasks/task-old',
+      cwd: '/proj/.claude-mindshub/tasks/task-old',
       args: ['--model', 'kimi', '--continue'],
     }));
     expect(child.postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'write' }));

@@ -61,12 +61,12 @@ describe('coding-workspace', () => {
 
   describe('ensureTaskWorktree', () => {
     it('reuses an existing worktree directory without touching git', async () => {
-      existsPaths.add('/proj/.claude_tasks/task-1');
+      existsPaths.add('/proj/.claude-mindshub/tasks/task-1');
       const { ensureTaskWorktree } = await import('./coding-workspace');
 
       const result = await ensureTaskWorktree('/proj', 'task-1');
 
-      expect(result).toEqual({ path: '/proj/.claude_tasks/task-1', isNew: false });
+      expect(result).toEqual({ path: '/proj/.claude-mindshub/tasks/task-1', isNew: false });
       expect(execFileMock).not.toHaveBeenCalled();
     });
 
@@ -77,19 +77,18 @@ describe('coding-workspace', () => {
 
       const result = await ensureTaskWorktree('/proj', 'task-2');
 
-      expect(result).toEqual({ path: '/proj/.claude_tasks/task-2', isNew: true });
+      expect(result).toEqual({ path: '/proj/.claude-mindshub/tasks/task-2', isNew: true });
       const calls = execFileMock.mock.calls.map((c: any[]) => c[1]);
       expect(calls).toContainEqual(['rev-parse', '--is-inside-work-tree']);
       expect(calls).toContainEqual(['init', '-b', 'main']);
       expect(calls).toContainEqual(['add', '-A']);
       expect(calls.some((a: string[]) => a[0] === 'commit')).toBe(true);
-      expect(calls).toContainEqual(['worktree', 'add', '/proj/.claude_tasks/task-2', '-b', 'claude/task-2', 'main']);
+      expect(calls).toContainEqual(['worktree', 'add', '/proj/.claude-mindshub/tasks/task-2', '-b', 'claude/task-2', 'main']);
 
       const gitignore = fsStore.get('/proj/.gitignore') || '';
       expect(gitignore).toContain('.anton/');
       expect(gitignore).toContain('skills/');
       expect(gitignore).toContain('.claude-mindshub/');
-      expect(gitignore).toContain('.claude_tasks/');
     });
 
     it('skips git init when the repo already exists, but still creates the worktree', async () => {
@@ -100,7 +99,7 @@ describe('coding-workspace', () => {
 
       const calls = execFileMock.mock.calls.map((c: any[]) => c[1]);
       expect(calls).not.toContainEqual(['init', '-b', 'main']);
-      expect(calls).toContainEqual(['worktree', 'add', '/proj/.claude_tasks/task-3', '-b', 'claude/task-3', 'main']);
+      expect(calls).toContainEqual(['worktree', 'add', '/proj/.claude-mindshub/tasks/task-3', '-b', 'claude/task-3', 'main']);
     });
 
     it('preserves an existing .gitignore, only appending missing entries', async () => {
@@ -114,7 +113,6 @@ describe('coding-workspace', () => {
       expect(gitignore).toContain('node_modules/');
       expect(gitignore).toContain('.anton/');
       expect(gitignore).toContain('.claude-mindshub/');
-      expect(gitignore).toContain('.claude_tasks/');
       // Original entry isn't duplicated.
       expect(gitignore.match(/\.anton\//g)?.length).toBe(1);
     });
@@ -126,8 +124,8 @@ describe('coding-workspace', () => {
 
       await ensureTaskWorktree('/proj', 'task-links');
 
-      expect(symlinkSyncMock).toHaveBeenCalledWith('/proj/.anton', '/proj/.claude_tasks/task-links/.anton', 'dir');
-      expect(symlinkSyncMock).toHaveBeenCalledWith('/proj/skills', '/proj/.claude_tasks/task-links/skills', 'dir');
+      expect(symlinkSyncMock).toHaveBeenCalledWith('/proj/.anton', '/proj/.claude-mindshub/tasks/task-links/.anton', 'dir');
+      expect(symlinkSyncMock).toHaveBeenCalledWith('/proj/skills', '/proj/.claude-mindshub/tasks/task-links/skills', 'dir');
     });
 
     it('skips linking a shared dir that does not exist in the project yet', async () => {
@@ -141,7 +139,7 @@ describe('coding-workspace', () => {
 
     it('does not re-create a link that is already there', async () => {
       existsPaths.add('/proj/.anton');
-      lstatPaths.add('/proj/.claude_tasks/task-relink/.anton');
+      lstatPaths.add('/proj/.claude-mindshub/tasks/task-relink/.anton');
       const { ensureTaskWorktree } = await import('./coding-workspace');
 
       await ensureTaskWorktree('/proj', 'task-relink');
@@ -150,14 +148,14 @@ describe('coding-workspace', () => {
     });
 
     it('re-checks shared links on reconnect (worktree already exists)', async () => {
-      existsPaths.add('/proj/.claude_tasks/task-reconnect');
+      existsPaths.add('/proj/.claude-mindshub/tasks/task-reconnect');
       existsPaths.add('/proj/skills');
       const { ensureTaskWorktree } = await import('./coding-workspace');
 
       const result = await ensureTaskWorktree('/proj', 'task-reconnect');
 
       expect(result.isNew).toBe(false);
-      expect(symlinkSyncMock).toHaveBeenCalledWith('/proj/skills', '/proj/.claude_tasks/task-reconnect/skills', 'dir');
+      expect(symlinkSyncMock).toHaveBeenCalledWith('/proj/skills', '/proj/.claude-mindshub/tasks/task-reconnect/skills', 'dir');
     });
   });
 
@@ -168,7 +166,7 @@ describe('coding-workspace', () => {
       await removeTaskWorktree('/proj', 'task-5');
 
       const calls = execFileMock.mock.calls.map((c: any[]) => c[1]);
-      expect(calls).toContainEqual(['worktree', 'remove', '/proj/.claude_tasks/task-5', '--force']);
+      expect(calls).toContainEqual(['worktree', 'remove', '/proj/.claude-mindshub/tasks/task-5', '--force']);
       expect(calls).toContainEqual(['branch', '-D', 'claude/task-5']);
     });
 
@@ -179,7 +177,7 @@ describe('coding-workspace', () => {
 
       await removeTaskWorktree('/proj', 'task-6');
 
-      expect(fs.rmSync).toHaveBeenCalledWith('/proj/.claude_tasks/task-6', { recursive: true, force: true });
+      expect(fs.rmSync).toHaveBeenCalledWith('/proj/.claude-mindshub/tasks/task-6', { recursive: true, force: true });
     });
 
     it('never throws even when both the worktree remove and branch delete fail', async () => {

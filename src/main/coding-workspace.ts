@@ -5,9 +5,18 @@
 // the first time a repo needs a task worktree, this bootstraps one: `git
 // init -b main`, a .gitignore covering the tool-owned dirs that shouldn't be
 // versioned, and an initial commit. From then on every Claude Code task in
-// that repo gets its own worktree under `<repo>/.claude_tasks/<taskId>/` — a
-// real, independent checkout on its own branch, so two concurrent tasks can
-// never step on each other's uncommitted edits.
+// that repo gets its own worktree under `<repo>/.claude-mindshub/tasks/
+// <taskId>/` — a real, independent checkout on its own branch, so two
+// concurrent tasks can never step on each other's uncommitted edits.
+//
+// Deliberately NOT `<repo>/.claude/` — this app's own `.claude/` (used
+// elsewhere in this very monorepo, e.g. a `worktrees/` dir of its own)
+// is Claude Code's real per-project state directory; reusing that name
+// for our own tool-owned folder would collide with it. Everything
+// MindsHub/coding-mode-owned lives under the one `.claude-mindshub/`
+// directory instead — the CLI's config dir (`.claude-mindshub/config/`,
+// set as CLAUDE_CONFIG_DIR by coding-terminal.ts) and task worktrees
+// (`.claude-mindshub/tasks/<taskId>/`) side by side.
 //
 // Deliberately keyed by `repoPath`, not "the project" — a project that later
 // links external sub-repos can call ensureTaskWorktree/removeTaskWorktree
@@ -17,7 +26,8 @@ import { execFile } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 
-export const TASKS_DIRNAME = '.claude_tasks';
+export const MINDSHUB_DIRNAME = '.claude-mindshub';
+const TASKS_SUBDIR = 'tasks';
 
 // `.anton/` (project memory/artifacts, shared by Anton AND Hermes despite
 // the name) and `skills/` (symlinks into the global skills store) are both
@@ -25,7 +35,7 @@ export const TASKS_DIRNAME = '.claude_tasks';
 // below can point each worktree back at the one real copy instead of a
 // frozen snapshot from whenever the repo happened to be initialized.
 const SHARED_DIRS = ['.anton', 'skills'];
-const GITIGNORE_ENTRIES = ['.anton/', 'skills/', '.claude-mindshub/', `${TASKS_DIRNAME}/`];
+const GITIGNORE_ENTRIES = ['.anton/', 'skills/', `${MINDSHUB_DIRNAME}/`];
 
 function git(args: string[], cwd: string): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
@@ -75,8 +85,12 @@ async function ensureRepo(repoPath: string): Promise<void> {
   await git(['commit', '--allow-empty', '-m', 'Initial commit (auto-created for Claude Code task isolation)'], repoPath);
 }
 
+function tasksDir(repoPath: string): string {
+  return path.join(repoPath, MINDSHUB_DIRNAME, TASKS_SUBDIR);
+}
+
 function taskWorktreePath(repoPath: string, taskId: string): string {
-  return path.join(repoPath, TASKS_DIRNAME, taskId);
+  return path.join(tasksDir(repoPath), taskId);
 }
 
 function taskBranchName(taskId: string): string {
@@ -122,7 +136,7 @@ export async function ensureTaskWorktree(repoPath: string, taskId: string): Prom
     return { path: worktreePath, isNew: false };
   }
   await ensureRepo(repoPath);
-  fs.mkdirSync(path.join(repoPath, TASKS_DIRNAME), { recursive: true });
+  fs.mkdirSync(tasksDir(repoPath), { recursive: true });
   await git(['worktree', 'add', worktreePath, '-b', taskBranchName(taskId), 'main'], repoPath);
   ensureSharedLinks(repoPath, worktreePath);
   return { path: worktreePath, isNew: true };
