@@ -85,6 +85,16 @@ describe('coding-terminal', () => {
     expect(forkMock).toHaveBeenCalledTimes(1);
   });
 
+  it('fails without spawning when no model was selected', async () => {
+    const { startCodingTerminal } = await import('./coding-terminal');
+    const sender = fakeSender();
+
+    const result = await startCodingTerminal('task-nomodel', { projectPath: '/proj', message: '', model: '' }, 80, 24, sender);
+
+    expect(result.ok).toBe(false);
+    expect(forkMock).not.toHaveBeenCalled();
+  });
+
   it('fails when the claude CLI is not installed', async () => {
     detectClaudeCodeMock.mockResolvedValue({ installed: false, path: null });
     const { startCodingTerminal } = await import('./coding-terminal');

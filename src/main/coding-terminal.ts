@@ -54,6 +54,14 @@ export async function startCodingTerminal(
 ): Promise<StartResult> {
   if (sessions.has(taskId)) return { ok: true };
 
+  if (!opts.model) {
+    // node-pty's spawn() validates every argv entry is a string and throws
+    // synchronously ("A string was expected") if not — a task created
+    // before a model finished loading would otherwise reach that throw
+    // inside the host process instead of a clear, actionable error here.
+    return { ok: false, reason: 'No model selected — pick a model before launching Claude Code.' };
+  }
+
   const detection = await detectClaudeCode();
   if (!detection.installed || !detection.path) {
     return { ok: false, reason: 'Claude Code CLI not found on PATH.' };

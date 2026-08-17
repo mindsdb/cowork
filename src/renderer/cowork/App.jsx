@@ -3014,6 +3014,9 @@ function AppCore() {
     if (!effectiveProject?.path) {
       throw new Error('Pick a project with a folder before launching Claude Code.');
     }
+    if (!meta.model) {
+      throw new Error('Pick a model before launching Claude Code.');
+    }
     const authToken = await revealSettingKey('minds');
     if (!authToken) {
       throw new Error('No MindsHub API key configured — sign in with MindsHub or add a key in Settings before using coding mode.');
