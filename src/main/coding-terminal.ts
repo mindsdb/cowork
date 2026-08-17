@@ -101,6 +101,8 @@ export async function startCodingTerminal(
           sender.send(IPC.CODING_TERMINAL_EXIT, taskId, msg.exitCode);
           break;
         case 'error':
+          // eslint-disable-next-line no-console
+          console.error('[coding-terminal] host process error', msg.where, msg.reason, msg.stack);
           finish({ ok: false, reason: msg.reason });
           break;
       }

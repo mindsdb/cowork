@@ -26,6 +26,22 @@ interface PtyProcess {
 
 let proc: PtyProcess | null = null;
 
+function reportError(err: unknown, where: string) {
+  const e = err as any;
+  parentPort.postMessage({
+    type: 'error',
+    reason: e?.message || String(e),
+    where,
+    stack: e?.stack || null,
+  });
+}
+
+// Diagnostic-only: a mistyped `msg.args`/`msg.env` entry could throw
+// asynchronously (outside the per-message try/catch below) — surface it
+// instead of silently dying with no signal to the main process.
+process.on('uncaughtException', (err) => reportError(err, 'uncaughtException'));
+process.on('unhandledRejection', (err) => reportError(err, 'unhandledRejection'));
+
 parentPort.on('message', async (e) => {
   const msg = e.data;
   switch (msg?.type) {
@@ -42,8 +58,8 @@ parentPort.on('message', async (e) => {
         proc.onData((data) => parentPort.postMessage({ type: 'data', data }));
         proc.onExit(({ exitCode }) => parentPort.postMessage({ type: 'exit', exitCode }));
         parentPort.postMessage({ type: 'started' });
-      } catch (err: any) {
-        parentPort.postMessage({ type: 'error', reason: err?.message || String(err) });
+      } catch (err) {
+        reportError(err, 'start');
       }
       break;
     }
