@@ -2517,6 +2517,12 @@ body[data-theme="dark"] .onboarding-card {
 }
 .task-mode-chip:focus-visible .task-mode-chip__icon { opacity: 0; transform: scale(0.25); }
 .task-mode-chip:focus-visible .task-mode-chip__x { opacity: 1; transform: scale(1); }
+/* Touch: there's no hover to reveal the X, so keep it visible — the chip
+   should read as removable, not as a static label. */
+@media (hover: none) {
+  .task-mode-chip__icon { opacity: 0; transform: scale(0.25); }
+  .task-mode-chip__x { opacity: 1; transform: scale(1); }
+}
 /* Dark: --primary-700 has no dark override (stays a dark teal), so the chip
    text would sink into the surface. Use the bright accent instead. */
 body[data-theme="dark"] .task-mode-chip {

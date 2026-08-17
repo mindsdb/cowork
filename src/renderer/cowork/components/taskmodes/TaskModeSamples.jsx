@@ -8,7 +8,7 @@ import Ico from '../Icons';
 export default function TaskModeSamples({ mode, onPick }) {
   const isCards = mode.samplesVariant === 'cards';
   return (
-    <div className="task-mode-samples" key={mode.id}>
+    <div className="task-mode-samples">
       {isCards && (
         <div
           className="task-mode-samples__heading"
