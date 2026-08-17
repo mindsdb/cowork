@@ -112,7 +112,7 @@ export async function startCodingTerminal(
       finish({ ok: false, reason: 'Coding terminal process exited unexpectedly.' });
     });
 
-    child.postMessage({
+    const startMsg = {
       type: 'start',
       claudePath: detection.path,
       args: ['--model', opts.model],
@@ -128,7 +128,27 @@ export async function startCodingTerminal(
         ANTHROPIC_AUTH_TOKEN: authToken,
         CLAUDE_CONFIG_DIR: path.join(os.homedir(), '.cowork', 'claude-code'),
       },
+    };
+
+    // Diagnostic-only (ENG-1656): every one of these must be a string or
+    // node-pty's native spawn throws a bare, stackless "A string was
+    // expected" with no indication of which field was wrong. Log any
+    // offender's actual type/value before it ever reaches the host process.
+    const badFields: string[] = [];
+    if (typeof startMsg.claudePath !== 'string') badFields.push(`claudePath=${JSON.stringify(startMsg.claudePath)}`);
+    if (typeof startMsg.cwd !== 'string') badFields.push(`cwd=${JSON.stringify(startMsg.cwd)}`);
+    startMsg.args.forEach((a, i) => {
+      if (typeof a !== 'string') badFields.push(`args[${i}]=${JSON.stringify(a)} (${typeof a})`);
     });
+    for (const [k, v] of Object.entries(startMsg.env)) {
+      if (typeof v !== 'string') badFields.push(`env.${k}=${JSON.stringify(v)} (${typeof v})`);
+    }
+    if (badFields.length) {
+      // eslint-disable-next-line no-console
+      console.error('[coding-terminal] non-string field(s) about to be sent to pty host:', badFields);
+    }
+
+    child.postMessage(startMsg);
   });
 }
 
