@@ -17,22 +17,21 @@ const IS_MAC = host.isMac() || /Mac|iPhone|iPod|iPad/.test(typeof navigator !== 
 const MOD_LABEL = IS_MAC ? '⌘' : 'Ctrl+';
 const shortcut = (key) => `${MOD_LABEL}${key}`;
 
-function NavItem({ icon, label, active, onClick, badge, comingSoon, disabled, tooltip, elementRef }) {
-  // `comingSoon` and `disabled` share the same visual/interaction treatment
-  // (dimmed, non-clickable). `disabled` is the generic gate — used e.g. to
-  // turn off a surface-specific feature — while `comingSoon` also appends the
-  // "Soon" badge. `tooltip` renders the reason on hover/focus via the styled
-  // Tooltip primitive (works even on a dimmed row).
-  const inert = comingSoon || disabled;
+function NavItem({ icon, label, active, onClick, badge, comingSoon, tooltip, elementRef }) {
+  // `comingSoon` gates an entry that isn't on this surface yet: it's dimmed,
+  // non-clickable, aria-disabled, and gets a "Soon" chip. On hover it explains
+  // itself — pass `tooltip` for specific copy via the styled Tooltip primitive,
+  // or omit it to fall back to the default "Coming soon" hint ([data-coming-soon]
+  // CSS ::after). The `!tooltip` guard keeps exactly one hint from rendering.
   const button = (
     <button
       ref={elementRef}
       className={`nav-item${active ? ' active' : ''}`}
-      onClick={inert ? undefined : onClick}
+      onClick={comingSoon ? undefined : onClick}
       aria-label={label}
-      aria-disabled={inert ? true : undefined}
-      data-coming-soon={comingSoon ? '' : undefined}
-      style={inert ? { opacity: 0.55, cursor: 'default' } : undefined}
+      aria-disabled={comingSoon ? true : undefined}
+      data-coming-soon={comingSoon && !tooltip ? '' : undefined}
+      style={comingSoon ? { opacity: 0.55, cursor: 'default' } : undefined}
     >
       <span className="nav-row__icon inline-flex shrink-0 items-center">{icon}</span>
       {/* Keep long labels ("Connected Apps and Data") on one line — at the
@@ -605,7 +604,7 @@ export default function Sidebar({
             onClick={() => onNavigate('scheduled')}
             active={activeRoute === 'scheduled'}
             badge={showCounters && !host.isWeb ? (scheduledCount || null) : null}
-            disabled={host.isWeb}
+            comingSoon={host.isWeb}
             tooltip={host.isWeb ? 'Scheduled tasks available on the Desktop App. Coming to cloud soon.' : undefined}
           />
           <NavItem
