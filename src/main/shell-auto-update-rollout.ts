@@ -1,11 +1,13 @@
 export type ShellAutoUpdateBuildKind = 'prod' | 'stable' | string | null;
 
 /**
- * Stable is the first automatic-update rollout ring. Prod remains opt-in
- * until the stable signed N → N+1 smoke and observation window are complete.
+ * Both stable and prod auto-update by default. Stable led the rollout; prod
+ * followed once the signed N → N+1 swap-on-relaunch smoke passed (macOS and
+ * Windows) and its observation window closed.
  *
- * An explicit false value is the emergency kill switch. Unknown non-empty
- * values fail closed so a misspelled override cannot accidentally enable it.
+ * An explicit false value is the emergency kill switch (either ring). Unknown
+ * non-empty values fail closed so a misspelled override cannot accidentally
+ * enable it.
  */
 export function shellAutoUpdateEnabledFor(
   buildKind: ShellAutoUpdateBuildKind,
@@ -18,5 +20,5 @@ export function shellAutoUpdateEnabledFor(
   if (normalized === '0' || normalized === 'false') return false;
   if (normalized) return false;
 
-  return buildKind === 'stable';
+  return true;
 }

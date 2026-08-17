@@ -82,11 +82,12 @@ installer. So the app can't apply a shell update; it can only *notice* one:
 ## Shell automatic update lifecycle (ENG-850)
 
 Eligible packaged prod/stable builds contain a channel-specific
-`electron-updater` feed. Stable is the first automatic-update rollout ring;
-prod remains disabled by default until stable completes signed N → N+1 smoke
-testing and its observation window. `SHELL_AUTO_UPDATE_ENABLED=false` is the
-emergency stable kill switch, while `true` explicitly opts prod into QA. The
-ENG-849 manual installer notice remains the disabled/failure fallback.
+`electron-updater` feed. Both rings auto-update by default: stable led the
+rollout, and prod followed once the signed N → N+1 swap-on-relaunch smoke
+passed (macOS and Windows) and its observation window closed.
+`SHELL_AUTO_UPDATE_ENABLED=false` is the emergency kill switch for either ring;
+`true` is an explicit opt-in. The ENG-849 manual installer notice remains the
+disabled/failure fallback.
 
 When enabled, main owns one immutable shell-update snapshot:
 
@@ -117,7 +118,7 @@ PR #401); update polling and server updates run in every packaged build.
 
 | Build kind | Built by | Update polling + server updates | UI OTA | Shell auto-update (ENG-850) |
 |---|---|---|---|---|
-| `prod` | `prod-build-installer.yml` (release) | ✅ | **✅ enabled** | ⚙️ opt-in (`SHELL_AUTO_UPDATE_ENABLED=true`) + ENG-849 manual notice always on |
+| `prod` | `prod-build-installer.yml` (release) | ✅ | **✅ enabled** | **✅ default on** (`=false` kill switch) + ENG-849 manual notice always on |
 | `stable` | `staging-build-installer.yml` (staging) | ✅ | ❌ bundled UI | **✅ default on** (first rollout ring; `=false` kill switch) |
 | `preview` | `dev-build-installer.yml` (per-PR) | ✅ | ❌ bundled UI | ❌ fail closed |
 | `dev` | unpackaged local run | ❌ no polling | ❌ bundled UI | ❌ not packaged |
