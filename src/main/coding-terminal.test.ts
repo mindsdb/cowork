@@ -3,9 +3,11 @@ import { EventEmitter } from 'events';
 
 const detectClaudeCodeMock = vi.hoisted(() => vi.fn());
 const revealMindsApiKeyMock = vi.hoisted(() => vi.fn());
+const revealMindsBaseUrlMock = vi.hoisted(() => vi.fn());
 vi.mock('./coding-mode', () => ({
   detectClaudeCode: detectClaudeCodeMock,
   revealMindsApiKey: revealMindsApiKeyMock,
+  revealMindsBaseUrl: revealMindsBaseUrlMock,
 }));
 
 vi.mock('./uv-paths', () => ({
@@ -65,9 +67,11 @@ describe('coding-terminal', () => {
     forkMock.mockReset();
     detectClaudeCodeMock.mockReset();
     revealMindsApiKeyMock.mockReset();
+    revealMindsBaseUrlMock.mockReset();
     fsStore.clear();
     detectClaudeCodeMock.mockResolvedValue({ installed: true, path: '/usr/local/bin/claude' });
     revealMindsApiKeyMock.mockResolvedValue('mdb_test_token');
+    revealMindsBaseUrlMock.mockResolvedValue('https://api.staging.mindshub.ai');
     ensureTaskWorktreeMock.mockReset();
     removeTaskWorktreeMock.mockReset();
     ensureTaskWorktreeMock.mockImplementation(async (repoPath: string, taskId: string) => ({
@@ -95,7 +99,7 @@ describe('coding-terminal', () => {
       args: ['--model', 'kimi'],
       cwd: '/proj/.claude-mindshub/tasks/task-1',
       env: expect.objectContaining({
-        ANTHROPIC_BASE_URL: 'https://api.mindshub.ai',
+        ANTHROPIC_BASE_URL: 'https://api.staging.mindshub.ai',
         ANTHROPIC_AUTH_TOKEN: 'mdb_test_token',
         PATH: '/fake/path',
         CLAUDE_CONFIG_DIR: '/proj/.claude-mindshub/config',
@@ -132,7 +136,7 @@ describe('coding-terminal', () => {
       expect(sentEnv.ANTHROPIC_API_KEY).toBeUndefined();
       expect(sentEnv.SOME_UNRELATED_VAR).toBe('keep-me');
       // Our own deliberate ANTHROPIC_* overrides still make it through.
-      expect(sentEnv.ANTHROPIC_BASE_URL).toBe('https://api.mindshub.ai');
+      expect(sentEnv.ANTHROPIC_BASE_URL).toBe('https://api.staging.mindshub.ai');
       expect(sentEnv.ANTHROPIC_AUTH_TOKEN).toBe('mdb_test_token');
     } finally {
       delete process.env.CLAUDE_CODE_CHILD_SESSION;
@@ -298,6 +302,22 @@ describe('coding-terminal', () => {
 
     expect(result.ok).toBe(false);
     expect(forkMock).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the prod inference host if minds_url is unavailable', async () => {
+    revealMindsBaseUrlMock.mockResolvedValue(null);
+    const { startCodingTerminal } = await import('./coding-terminal');
+    const child = new FakeUtilityProcess();
+    forkMock.mockReturnValue(child);
+
+    const resultPromise = startCodingTerminal('task-fallback-url', { projectPath: '/proj', message: '', model: 'kimi' }, 80, 24, fakeSender());
+    await waitForStartPosted(child);
+    child.emit('message', { type: 'started' });
+    await resultPromise;
+
+    expect(child.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      env: expect.objectContaining({ ANTHROPIC_BASE_URL: 'https://api.mindshub.ai' }),
+    }));
   });
 
   it('types the opening message into stdin once the host is up', async () => {

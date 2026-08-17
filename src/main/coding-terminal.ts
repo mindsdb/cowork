@@ -15,11 +15,15 @@ import * as path from 'path';
 import { utilityProcess } from 'electron';
 import type { UtilityProcess, WebContents } from 'electron';
 import { IPC } from '../shared/ipc-channels';
-import { detectClaudeCode, revealMindsApiKey } from './coding-mode';
+import { detectClaudeCode, revealMindsApiKey, revealMindsBaseUrl } from './coding-mode';
 import { ensureTaskWorktree, removeTaskWorktree } from './coding-workspace';
 import { getEnvPath } from './uv-paths';
 
-const MINDSHUB_INFERENCE_BASE_URL = 'https://api.mindshub.ai';
+// Last-resort fallback only — real requests use revealMindsBaseUrl(), the
+// actual host the stored key was minted against (dev/preview/stable builds
+// mint against staging, not this). See coding-mode.ts for why hardcoding
+// this unconditionally 401s on every non-prod build despite a valid key.
+const MINDSHUB_INFERENCE_FALLBACK_URL = 'https://api.mindshub.ai';
 const START_TIMEOUT_MS = 15_000;
 
 // Vars Claude Code (or any nested Claude session, including a dev running
@@ -147,6 +151,7 @@ export async function startCodingTerminal(
   if (!authToken) {
     return { ok: false, reason: 'No MindsHub API key configured — sign in with MindsHub or add a key in Settings before using coding mode.' };
   }
+  const inferenceBaseUrl = (await revealMindsBaseUrl()) || MINDSHUB_INFERENCE_FALLBACK_URL;
 
   // Each task runs in its own git worktree so concurrent Claude Code tasks
   // in the same project can never step on each other's uncommitted edits.
@@ -231,7 +236,7 @@ export async function startCodingTerminal(
         PATH: getEnvPath(),
         TERM: 'xterm-256color',
         COLORTERM: 'truecolor',
-        ANTHROPIC_BASE_URL: MINDSHUB_INFERENCE_BASE_URL,
+        ANTHROPIC_BASE_URL: inferenceBaseUrl,
         ANTHROPIC_AUTH_TOKEN: authToken,
         CLAUDE_CONFIG_DIR: claudeConfigDir,
         // The model alias/id (e.g. "mindshub_air") isn't one Claude Code's

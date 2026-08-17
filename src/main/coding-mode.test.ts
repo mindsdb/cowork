@@ -12,7 +12,7 @@ vi.mock('./uv-paths', () => ({
   findOnPath: findOnPathMock,
 }));
 
-import { detectClaudeCode, revealMindsApiKey } from './coding-mode';
+import { detectClaudeCode, revealMindsApiKey, revealMindsBaseUrl } from './coding-mode';
 
 describe('detectClaudeCode', () => {
   beforeEach(() => findOnPathMock.mockReset());
@@ -54,5 +54,42 @@ describe('revealMindsApiKey', () => {
   it('returns null when the request throws (server unreachable)', async () => {
     (globalThis.fetch as any).mockRejectedValue(new Error('ECONNREFUSED'));
     await expect(revealMindsApiKey()).resolves.toBeNull();
+  });
+});
+
+describe('revealMindsBaseUrl', () => {
+  beforeEach(() => {
+    globalThis.fetch = vi.fn() as unknown as typeof fetch;
+  });
+
+  it('finds the minds_url entry in the settings list', async () => {
+    (globalThis.fetch as any).mockResolvedValue({
+      ok: true,
+      json: async () => ([
+        { key: 'minds_api_key', value: 'mdb_test_token' },
+        { key: 'minds_url', value: 'https://api.staging.mindshub.ai' },
+      ]),
+    });
+    await expect(revealMindsBaseUrl()).resolves.toBe('https://api.staging.mindshub.ai');
+  });
+
+  it('returns null when minds_url is missing from the settings list', async () => {
+    (globalThis.fetch as any).mockResolvedValue({ ok: true, json: async () => ([{ key: 'minds_api_key', value: 'mdb_x' }]) });
+    await expect(revealMindsBaseUrl()).resolves.toBeNull();
+  });
+
+  it('returns null when the response is not a list', async () => {
+    (globalThis.fetch as any).mockResolvedValue({ ok: true, json: async () => ({ minds_url: 'https://api.mindshub.ai' }) });
+    await expect(revealMindsBaseUrl()).resolves.toBeNull();
+  });
+
+  it('returns null when the request fails', async () => {
+    (globalThis.fetch as any).mockResolvedValue({ ok: false });
+    await expect(revealMindsBaseUrl()).resolves.toBeNull();
+  });
+
+  it('returns null when the request throws (server unreachable)', async () => {
+    (globalThis.fetch as any).mockRejectedValue(new Error('ECONNREFUSED'));
+    await expect(revealMindsBaseUrl()).resolves.toBeNull();
   });
 });
