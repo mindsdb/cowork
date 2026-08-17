@@ -23,6 +23,8 @@ import {
 } from '../api';
 import { copyText } from '../lib/clipboard';
 import { projectNameOf } from '../lib/artifactProject';
+import { isArtifactActionAvailable } from '../lib/artifactActions';
+import { useOrgMode } from '../../lib/orgMode';
 import { downloadArtifactFile } from '../lib/artifactDownload';
 import { isHtmlArtifact, isPublishableArtifact, isBackendArtifact, publishBlockedReason } from '../lib/artifactKinds';
 import { trackArtifactPublished } from '../lib/analytics';
@@ -199,11 +201,15 @@ const CardIconButton = forwardRef(function CardIconButton({ onClick, ariaLabel, 
 });
 
 function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isMenuOpen, phase, onRetry, onOpenProject }) {
-  const canPreview = isInlinePreviewable(artifact);
+  const orgMode = useOrgMode();
+  // No in-app preview in org mode: the server serves no artifact content there, so
+  // the iframe would have nothing to load. The published URL is the only route to
+  // it, and it is the one that carries an access check.
+  const canPreview = !orgMode && isInlinePreviewable(artifact);
   const published = !!artifact.publishedUrl;
   // In the browser the artifact's address is its HTTP serve URL, not a local
   // OS path the user can't reach — open that "private" URL instead.
-  const privateUrl = host.isWeb ? artifactServeUrl(artifact) : '';
+  const privateUrl = !orgMode && host.isWeb ? artifactServeUrl(artifact) : '';
 
   const { hoverProps } = useRevealOnHover(isMenuOpen);
   const kebabRef = useRef(null);
@@ -244,12 +250,18 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
   // base-truncated with the extension always visible.
   const publishable = isPublishableArtifact(artifact);
   const { base, secondary } = splitArtifactName(artifact);
-  // ↗ — open the live thing: published URL, else served URL, else local file.
-  const onOpenExternal = (e) => {
-    e.stopPropagation();
+  // Open the live thing: published URL, else served URL, else local file. In org
+  // mode the last fallback is skipped — there is no local file the user can reach,
+  // and `privateUrl` is empty there by construction.
+  const openBest = () => {
     if (published) onOpenPublished();
     else if (privateUrl) onOpenPrivate();
-    else openArtifactFile(artifact);
+    else if (!orgMode) openArtifactFile(artifact);
+  };
+  // ↗
+  const onOpenExternal = (e) => {
+    e.stopPropagation();
+    openBest();
   };
 
   return (
@@ -259,7 +271,7 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
       padding="none"
       className="cw-artifact-card flex flex-col overflow-hidden"
       {...hoverProps}
-      onActivate={() => (canPreview ? onOpenViewer(artifact) : openArtifactFile(artifact))}
+      onActivate={() => (canPreview ? onOpenViewer(artifact) : openBest())}
     >
       {/* Body — icon + name·ext + actions, then the status row. */}
       <div className="flex flex-col gap-3 py-[14px] px-4 flex-1">
@@ -369,6 +381,7 @@ function ListHeaderRow() {
 
 function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onReveal, onDownload, onCopyUrl, onPublish, onUnpublish, onUpdate, onDelete, isMacPlatform = false }) {
   const isHtml = isHtmlArtifact(artifact);
+  const orgMode = useOrgMode();
   const published = !!artifact.publishedUrl;
   // Non-empty when this artifact's type may never be published (e.g.
   // fullstack-stateful-app). Keeps the item visible but disabled.
@@ -376,7 +389,9 @@ function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onReveal, onDown
   const items = [
     {
       id: 'open',
-      label: isHtml ? 'Open viewer' : 'Open',
+      // "Open viewer" would be a lie in org mode: no in-app viewer opens there,
+      // the published URL does.
+      label: isHtml && !orgMode ? 'Open viewer' : 'Open',
       icon: Ico.externalLink(13),
       onClick: onOpen,
     },
@@ -428,7 +443,12 @@ function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onReveal, onDown
       danger: true,
       onClick: onDelete,
     },
-  ].filter(Boolean);
+  ]
+    .filter(Boolean)
+    // Mode gate on top of each item's own condition — see lib/artifactActions.
+    .filter((it) => it.divider || isArtifactActionAvailable(it.id, {
+      orgMode, hasBridge: host.isElectron, published,
+    }));
 
   return (
     <HoverMenu
@@ -447,10 +467,13 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
   const triggerRef = useRef(null);
   const { hovered, hoverProps } = useRevealOnHover(menuOpen);
 
-  const canPreview = isInlinePreviewable(artifact);
+  const orgMode = useOrgMode();
+  // See the ArtifactBubble note: no in-app preview and no private serve URL in org
+  // mode — the server serves no artifact content there.
+  const canPreview = !orgMode && isInlinePreviewable(artifact);
   const published = !!artifact.publishedUrl;
   const publishable = isPublishableArtifact(artifact);   // HTML + Markdown — see ArtifactBubble note
-  const privateUrl = host.isWeb ? artifactServeUrl(artifact) : '';
+  const privateUrl = !orgMode && host.isWeb ? artifactServeUrl(artifact) : '';
   const { base, secondary } = splitArtifactName(artifact);
   const project = projectNameOf(artifact, projects);
   const projectMatch = projectOf(artifact, projects);
@@ -460,15 +483,21 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
     if (!published) return false;
     return copyText(artifact.publishedUrl);
   };
+  const openUrl = async (url) => {
+    try { await host.openExternal(url); } catch { window.open(url, '_blank', 'noreferrer'); }
+  };
   const onRowOpen = () => {
     if (canPreview) onOpenViewer?.(artifact);
-    else openArtifactFile(artifact);
+    else if (published) openUrl(artifact.publishedUrl);
+    else if (privateUrl) openUrl(privateUrl);
+    else if (!orgMode) openArtifactFile(artifact);
   };
   const onOpenExternal = async (e) => {
     e.stopPropagation();
     const url = published ? artifact.publishedUrl : privateUrl;
-    if (url) { try { await host.openExternal(url); } catch { window.open(url, '_blank', 'noreferrer'); } }
-    else openArtifactFile(artifact);
+    // Org mode has no local file to fall back to, and no serve URL either.
+    if (url) await openUrl(url);
+    else if (!orgMode) openArtifactFile(artifact);
   };
   const openMenu = (e) => {
     e.stopPropagation();
