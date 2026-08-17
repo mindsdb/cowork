@@ -17,15 +17,22 @@ const IS_MAC = host.isMac() || /Mac|iPhone|iPod|iPad/.test(typeof navigator !== 
 const MOD_LABEL = IS_MAC ? '⌘' : 'Ctrl+';
 const shortcut = (key) => `${MOD_LABEL}${key}`;
 
-function NavItem({ icon, label, active, onClick, badge, comingSoon, elementRef }) {
-  return (
+function NavItem({ icon, label, active, onClick, badge, comingSoon, disabled, tooltip, elementRef }) {
+  // `comingSoon` and `disabled` share the same visual/interaction treatment
+  // (dimmed, non-clickable). `disabled` is the generic gate — used e.g. to
+  // turn off a surface-specific feature — while `comingSoon` also appends the
+  // "Soon" badge. `tooltip` renders the reason on hover/focus via the styled
+  // Tooltip primitive (works even on a dimmed row).
+  const inert = comingSoon || disabled;
+  const button = (
     <button
       ref={elementRef}
       className={`nav-item${active ? ' active' : ''}`}
-      onClick={comingSoon ? undefined : onClick}
+      onClick={inert ? undefined : onClick}
       aria-label={label}
+      aria-disabled={inert ? true : undefined}
       data-coming-soon={comingSoon ? '' : undefined}
-      style={comingSoon ? { opacity: 0.55, cursor: 'default' } : undefined}
+      style={inert ? { opacity: 0.55, cursor: 'default' } : undefined}
     >
       <span className="nav-row__icon inline-flex shrink-0 items-center">{icon}</span>
       {/* Keep long labels ("Connected Apps and Data") on one line — at the
@@ -41,6 +48,8 @@ function NavItem({ icon, label, active, onClick, badge, comingSoon, elementRef }
       )}
     </button>
   );
+  if (!tooltip) return button;
+  return <Tooltip content={tooltip}>{button}</Tooltip>;
 }
 
 function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelete, onMoveToProject, showTimestamp = true, isActive = false, selected = false, agentLabel }) {
@@ -587,7 +596,18 @@ export default function Sidebar({
         {/* Primary nav */}
         <div className="nav-list px-2.5 flex flex-col gap-px">
           <NavItem icon={Ico.folder(15)}  label="Projects"        onClick={() => onNavigate('projects')}  active={activeRoute === 'projects'}  badge={showCounters ? (projectsCount  || null) : null} />
-          <NavItem icon={Ico.clock(15)}   label="Scheduled Tasks" onClick={() => onNavigate('scheduled')} active={activeRoute === 'scheduled'} badge={showCounters ? (scheduledCount || null) : null} />
+          {/* Scheduled Tasks is desktop-only for now — the web surface has no
+              scheduler backend yet, so disable the entry and explain why on
+              hover. Remove the `host.isWeb` gate once cloud scheduling ships. */}
+          <NavItem
+            icon={Ico.clock(15)}
+            label="Scheduled Tasks"
+            onClick={() => onNavigate('scheduled')}
+            active={activeRoute === 'scheduled'}
+            badge={showCounters && !host.isWeb ? (scheduledCount || null) : null}
+            disabled={host.isWeb}
+            tooltip={host.isWeb ? 'Scheduled tasks available on the Desktop App. Coming to cloud soon.' : undefined}
+          />
           <NavItem
             icon={Ico.sparkle(15)}
             label="Live Artifacts"

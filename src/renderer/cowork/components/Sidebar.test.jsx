@@ -78,6 +78,31 @@ describe('Sidebar — Settings is reachable on web (ENG-932)', () => {
   });
 });
 
+describe('Sidebar — Scheduled Tasks is desktop-only for now', () => {
+  // The web surface has no scheduler backend yet, so the entry is disabled on
+  // web and explains itself on hover. Desktop keeps full access. Remove the
+  // gate once cloud scheduling ships.
+  it('disables the Scheduled Tasks entry on the web build and does not navigate', () => {
+    const onNavigate = vi.fn();
+    hostMock.isWeb = true;
+    render(<Sidebar {...baseProps} onNavigate={onNavigate} />);
+    const item = screen.getByRole('button', { name: 'Scheduled Tasks' });
+    expect(item).toHaveAttribute('aria-disabled', 'true');
+    item.click();
+    expect(onNavigate).not.toHaveBeenCalled();
+  });
+
+  it('keeps the Scheduled Tasks entry active and navigable on the Electron build', () => {
+    const onNavigate = vi.fn();
+    hostMock.isWeb = false;
+    render(<Sidebar {...baseProps} serverOnline onNavigate={onNavigate} />);
+    const item = screen.getByRole('button', { name: 'Scheduled Tasks' });
+    expect(item).not.toHaveAttribute('aria-disabled');
+    item.click();
+    expect(onNavigate).toHaveBeenCalledWith('scheduled');
+  });
+});
+
 describe('Sidebar — footer theme toggle (design polish PR 3: chrome)', () => {
   beforeEach(() => {
     hostMock.isWeb = true;
