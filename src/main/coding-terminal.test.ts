@@ -12,6 +12,22 @@ vi.mock('./uv-paths', () => ({
   getEnvPath: () => '/fake/path',
 }));
 
+const fsStore = vi.hoisted(() => new Map<string, string>());
+vi.mock('fs', () => ({
+  mkdirSync: vi.fn(),
+  readFileSync: (p: string) => {
+    if (!fsStore.has(p)) {
+      const err: any = new Error('ENOENT: no such file or directory');
+      err.code = 'ENOENT';
+      throw err;
+    }
+    return fsStore.get(p);
+  },
+  writeFileSync: (p: string, data: string) => {
+    fsStore.set(p, data);
+  },
+}));
+
 class FakeUtilityProcess extends EventEmitter {
   postMessage = vi.fn();
   kill = vi.fn();
@@ -39,6 +55,7 @@ describe('coding-terminal', () => {
     forkMock.mockReset();
     detectClaudeCodeMock.mockReset();
     revealMindsApiKeyMock.mockReset();
+    fsStore.clear();
     detectClaudeCodeMock.mockResolvedValue({ installed: true, path: '/usr/local/bin/claude' });
     revealMindsApiKeyMock.mockResolvedValue('mdb_test_token');
   });
@@ -65,9 +82,41 @@ describe('coding-terminal', () => {
         ANTHROPIC_AUTH_TOKEN: 'mdb_test_token',
         PATH: '/fake/path',
         CLAUDE_CONFIG_DIR: '/proj/.claude-mindshub',
+        CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT: '1',
       }),
     }));
     expect(isCodingTerminalRunning('task-1')).toBe(true);
+  });
+
+  it('seeds a fresh project config dir with a dark theme and onboarding already done', async () => {
+    const { startCodingTerminal } = await import('./coding-terminal');
+    const child = new FakeUtilityProcess();
+    forkMock.mockReturnValue(child);
+
+    const resultPromise = startCodingTerminal('task-seed', { projectPath: '/proj', message: '', model: 'kimi' }, 80, 24, fakeSender());
+    await waitForStartPosted(child);
+    child.emit('message', { type: 'started' });
+    await resultPromise;
+
+    expect(JSON.parse(fsStore.get('/proj/.claude-mindshub/settings.json')!)).toEqual({ theme: 'dark' });
+    expect(JSON.parse(fsStore.get('/proj/.claude-mindshub/.claude.json')!)).toEqual({ hasCompletedOnboarding: true });
+  });
+
+  it('does not clobber an existing config dir\'s other settings/state', async () => {
+    fsStore.set('/proj/.claude-mindshub/settings.json', JSON.stringify({ theme: 'light', tui: 'fullscreen' }));
+    fsStore.set('/proj/.claude-mindshub/.claude.json', JSON.stringify({ hasCompletedOnboarding: true, userID: 'abc' }));
+    const { startCodingTerminal } = await import('./coding-terminal');
+    const child = new FakeUtilityProcess();
+    forkMock.mockReturnValue(child);
+
+    const resultPromise = startCodingTerminal('task-preserve', { projectPath: '/proj', message: '', model: 'kimi' }, 80, 24, fakeSender());
+    await waitForStartPosted(child);
+    child.emit('message', { type: 'started' });
+    await resultPromise;
+
+    // theme was already 'light' (a deliberate choice, e.g. via /theme) — must survive untouched
+    expect(JSON.parse(fsStore.get('/proj/.claude-mindshub/settings.json')!)).toEqual({ theme: 'light', tui: 'fullscreen' });
+    expect(JSON.parse(fsStore.get('/proj/.claude-mindshub/.claude.json')!)).toEqual({ hasCompletedOnboarding: true, userID: 'abc' });
   });
 
   it('is a no-op reconnect when a session for the task is already running', async () => {

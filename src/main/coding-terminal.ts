@@ -10,6 +10,7 @@
 // (see package.json) — its native build is not guaranteed on every platform/
 // Node ABI combination; the host process degrades to a clear "not available"
 // error (via an `error` message) instead of crashing when it's missing.
+import * as fs from 'fs';
 import * as path from 'path';
 import { utilityProcess } from 'electron';
 import type { UtilityProcess, WebContents } from 'electron';
@@ -19,6 +20,46 @@ import { getEnvPath } from './uv-paths';
 
 const MINDSHUB_INFERENCE_BASE_URL = 'https://api.mindshub.ai';
 const START_TIMEOUT_MS = 15_000;
+
+function readJsonFile(filePath: string): Record<string, unknown> {
+  try {
+    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch {
+    return {};
+  }
+}
+
+/** Pre-seed the per-project Claude Code config dir so the CLI's first-run
+ *  wizard (theme picker, security notice) never appears in the embedded
+ *  terminal — there's no way to "skip ahead" once it's already streaming
+ *  into an xterm the user is watching. `theme: 'dark'` matches
+ *  CodingTerminal.jsx's fixed dark background; `hasCompletedOnboarding`
+ *  is the flag Claude Code itself writes after a human clicks through the
+ *  wizard once (confirmed empirically — it has no dedicated flag/env var).
+ *  Merges into whatever's already there so later CLI-managed state (trust
+ *  records, migration flags, etc.) is never clobbered. Best-effort: a
+ *  filesystem error here just means the CLI falls back to prompting. */
+function ensureClaudeConfigDefaults(configDir: string): void {
+  try {
+    fs.mkdirSync(configDir, { recursive: true });
+
+    const settingsPath = path.join(configDir, 'settings.json');
+    const settings = readJsonFile(settingsPath);
+    if (!settings.theme) {
+      settings.theme = 'dark';
+      fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+    }
+
+    const statePath = path.join(configDir, '.claude.json');
+    const state = readJsonFile(statePath);
+    if (!state.hasCompletedOnboarding) {
+      state.hasCompletedOnboarding = true;
+      fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
+    }
+  } catch {
+    // Non-fatal — worst case the CLI prompts as it would without this.
+  }
+}
 
 interface CodingTerminalOptions {
   projectPath: string;
@@ -112,6 +153,12 @@ export async function startCodingTerminal(
       finish({ ok: false, reason: 'Coding terminal process exited unexpectedly.' });
     });
 
+    // Per-project, not a single shared dir — keeps MindsHub Claude Code
+    // sessions/config isolated per project and separate from the user's
+    // own claude.ai profile (~/.claude).
+    const claudeConfigDir = path.join(opts.projectPath, '.claude-mindshub');
+    ensureClaudeConfigDefaults(claudeConfigDir);
+
     const startMsg = {
       type: 'start',
       claudePath: detection.path,
@@ -126,10 +173,12 @@ export async function startCodingTerminal(
         COLORTERM: 'truecolor',
         ANTHROPIC_BASE_URL: MINDSHUB_INFERENCE_BASE_URL,
         ANTHROPIC_AUTH_TOKEN: authToken,
-        // Per-project, not a single shared dir — keeps MindsHub Claude Code
-        // sessions/config isolated per project and separate from the
-        // user's own claude.ai profile (~/.claude).
-        CLAUDE_CONFIG_DIR: path.join(opts.projectPath, '.claude-mindshub'),
+        CLAUDE_CONFIG_DIR: claudeConfigDir,
+        // The model alias/id (e.g. "mindshub_air") isn't one Claude Code's
+        // installed version recognizes by name, which otherwise surfaces a
+        // wall-of-text warning on every session start — MindsHub-routed
+        // models aren't meant to be in its hardcoded list.
+        CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT: '1',
       },
     };
 
