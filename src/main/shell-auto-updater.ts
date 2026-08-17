@@ -41,7 +41,23 @@ export interface ShellAutoUpdater {
 
 function defaultClassifyError(error: Error): { code: string; recoverable: boolean } {
   const text = `${error.name} ${error.message}`.toLowerCase();
-  if (text.includes('signature') || text.includes('sha512') || text.includes('checksum')) {
+  // Prefer electron-updater's stable machine `code` for integrity failures.
+  // The wrong-signer rejection (NsisUpdater `ERR_UPDATER_INVALID_SIGNATURE`)
+  // throws "New version … is not signed by the application owner: …", whose
+  // message contains none of the substrings below — matching text alone would
+  // misclassify a refused foreign-signed installer as a recoverable network
+  // error and offer Retry instead of failing terminally. Checksum mismatches
+  // carry `ERR_CHECKSUM_MISMATCH` (message already says sha512/checksum).
+  const rawCode = (error as { code?: unknown }).code;
+  const code = typeof rawCode === 'string' ? rawCode.toUpperCase() : '';
+  if (
+    code.includes('SIGNATURE')
+    || code.includes('CHECKSUM')
+    || text.includes('signature')
+    || text.includes('not signed')
+    || text.includes('sha512')
+    || text.includes('checksum')
+  ) {
     return { code: 'artifact-verification-failed', recoverable: false };
   }
   if (text.includes('unsupported') || text.includes('not supported')) {
