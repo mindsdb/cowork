@@ -44,6 +44,7 @@ import {
   isCodingTerminalRunning,
   killCodingTerminal,
   killAllCodingTerminals,
+  removeCodingTask,
 } from './coding-terminal';
 
 function getAntonEnvPath(): string {
@@ -1292,6 +1293,10 @@ function setupIPC() {
 
   ipcMain.handle(IPC.CODING_TERMINAL_KILL, async (_event, taskId: string) => {
     killCodingTerminal(taskId);
+  });
+
+  ipcMain.handle(IPC.CODING_REMOVE_TASK, async (_event, taskId: string, projectPath: string) => {
+    await removeCodingTask(taskId, projectPath);
   });
 
   ipcMain.handle(IPC.APP_UI_VERSION, async () => {

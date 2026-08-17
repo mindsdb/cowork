@@ -98,4 +98,7 @@ export const IPC = {
   CODING_TERMINAL_EXIT: 'coding:terminal-exit',
   CODING_TERMINAL_IS_RUNNING: 'coding:terminal-is-running',
   CODING_TERMINAL_KILL: 'coding:terminal-kill',
+  // Task deletion: stop its PTY host (if running) and remove its git
+  // worktree/branch under <project>/.claude_tasks/<taskId>/.
+  CODING_REMOVE_TASK: 'coding:remove-task',
 } as const;

@@ -16,6 +16,7 @@ import { utilityProcess } from 'electron';
 import type { UtilityProcess, WebContents } from 'electron';
 import { IPC } from '../shared/ipc-channels';
 import { detectClaudeCode, revealMindsApiKey } from './coding-mode';
+import { ensureTaskWorktree, removeTaskWorktree } from './coding-workspace';
 import { getEnvPath } from './uv-paths';
 
 const MINDSHUB_INFERENCE_BASE_URL = 'https://api.mindshub.ai';
@@ -30,16 +31,21 @@ function readJsonFile(filePath: string): Record<string, unknown> {
 }
 
 /** Pre-seed the per-project Claude Code config dir so the CLI's first-run
- *  wizard (theme picker, security notice) never appears in the embedded
- *  terminal — there's no way to "skip ahead" once it's already streaming
- *  into an xterm the user is watching. `theme: 'dark'` matches
- *  CodingTerminal.jsx's fixed dark background; `hasCompletedOnboarding`
- *  is the flag Claude Code itself writes after a human clicks through the
- *  wizard once (confirmed empirically — it has no dedicated flag/env var).
- *  Merges into whatever's already there so later CLI-managed state (trust
+ *  wizard (theme picker, security notice) and its per-directory "do you
+ *  trust this folder?" prompt never appear in the embedded terminal —
+ *  there's no way to "skip ahead" once it's already streaming into an
+ *  xterm the user is watching. `theme: 'dark'` matches CodingTerminal.jsx's
+ *  fixed dark background; `hasCompletedOnboarding` and a `projects[cwd]`
+ *  entry with `hasTrustDialogAccepted: true` are exactly what Claude Code
+ *  itself writes after a human clicks through the wizard once (confirmed
+ *  empirically for both — neither has a dedicated flag/env var). The trust
+ *  entry is keyed by the REAL (symlink-resolved) path — Claude Code
+ *  resolves `cwd` before checking the map, so e.g. macOS's /tmp → /private/
+ *  tmp means a raw, unresolved key silently never matches. Merges into
+ *  whatever's already there so later CLI-managed state (other trust
  *  records, migration flags, etc.) is never clobbered. Best-effort: a
  *  filesystem error here just means the CLI falls back to prompting. */
-function ensureClaudeConfigDefaults(configDir: string): void {
+function ensureClaudeConfigDefaults(configDir: string, cwd: string): void {
   try {
     fs.mkdirSync(configDir, { recursive: true });
 
@@ -52,8 +58,19 @@ function ensureClaudeConfigDefaults(configDir: string): void {
 
     const statePath = path.join(configDir, '.claude.json');
     const state = readJsonFile(statePath);
+    let changed = false;
     if (!state.hasCompletedOnboarding) {
       state.hasCompletedOnboarding = true;
+      changed = true;
+    }
+    const realCwd = fs.realpathSync(cwd);
+    const projects = (state.projects && typeof state.projects === 'object' ? state.projects : {}) as Record<string, any>;
+    if (!projects[realCwd]?.hasTrustDialogAccepted) {
+      projects[realCwd] = { ...projects[realCwd], hasTrustDialogAccepted: true };
+      state.projects = projects;
+      changed = true;
+    }
+    if (changed) {
       fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
     }
   } catch {
@@ -113,6 +130,33 @@ export async function startCodingTerminal(
     return { ok: false, reason: 'No MindsHub API key configured — sign in with MindsHub or add a key in Settings before using coding mode.' };
   }
 
+  // Each task runs in its own git worktree so concurrent Claude Code tasks
+  // in the same project can never step on each other's uncommitted edits.
+  // `isNew` distinguishes a true first launch (type the opening message)
+  // from reconnecting to a task whose process died since (resume its own
+  // history with --continue instead of replaying the first line as a
+  // brand-new prompt). Falls back to running directly in the project — no
+  // isolation, always "new" — if git isn't available at all; that's still
+  // strictly better than refusing to launch.
+  let cwd = opts.projectPath;
+  let isNewSession = true;
+  try {
+    const worktree = await ensureTaskWorktree(opts.projectPath, taskId);
+    cwd = worktree.path;
+    isNewSession = worktree.isNew;
+  } catch (err: any) {
+    // eslint-disable-next-line no-console
+    console.error('[coding-terminal] failed to set up task worktree, falling back to project dir', err?.message || err);
+  }
+
+  // Per-project, not a single shared dir — keeps MindsHub Claude Code
+  // sessions/config isolated per project and separate from the user's own
+  // claude.ai profile (~/.claude). Trust is recorded against `cwd`
+  // (resolved above), not the project root, since that's the CLI's actual
+  // working directory once worktrees are in play.
+  const claudeConfigDir = path.join(opts.projectPath, '.claude-mindshub');
+  ensureClaudeConfigDefaults(claudeConfigDir, cwd);
+
   const child = utilityProcess.fork(hostScriptPath(), [], { stdio: 'ignore' });
 
   return new Promise((resolve) => {
@@ -131,7 +175,7 @@ export async function startCodingTerminal(
       switch (msg?.type) {
         case 'started':
           sessions.set(taskId, child);
-          if (opts.message) child.postMessage({ type: 'write', data: `${opts.message}\r` });
+          if (isNewSession && opts.message) child.postMessage({ type: 'write', data: `${opts.message}\r` });
           finish({ ok: true });
           break;
         case 'data':
@@ -153,17 +197,11 @@ export async function startCodingTerminal(
       finish({ ok: false, reason: 'Coding terminal process exited unexpectedly.' });
     });
 
-    // Per-project, not a single shared dir — keeps MindsHub Claude Code
-    // sessions/config isolated per project and separate from the user's
-    // own claude.ai profile (~/.claude).
-    const claudeConfigDir = path.join(opts.projectPath, '.claude-mindshub');
-    ensureClaudeConfigDefaults(claudeConfigDir);
-
     const startMsg = {
       type: 'start',
       claudePath: detection.path,
-      args: ['--model', opts.model],
-      cwd: opts.projectPath,
+      args: isNewSession ? ['--model', opts.model] : ['--model', opts.model, '--continue'],
+      cwd,
       cols,
       rows,
       env: {
@@ -224,4 +262,12 @@ export function killCodingTerminal(taskId: string): void {
 
 export function killAllCodingTerminals(): void {
   for (const taskId of Array.from(sessions.keys())) killCodingTerminal(taskId);
+}
+
+/** Called when a Claude-Code task is deleted — stops its process (if still
+ *  running) and removes its worktree/branch so `.claude_tasks/` doesn't
+ *  accumulate directories for tasks that no longer exist. */
+export async function removeCodingTask(taskId: string, projectPath: string): Promise<void> {
+  killCodingTerminal(taskId);
+  await removeTaskWorktree(projectPath, taskId);
 }

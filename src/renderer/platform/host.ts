@@ -245,6 +245,15 @@ export function killCodingTerminal(taskId: string): void {
   }
 }
 
+/** Stops a Claude-Code task's PTY (if running) and removes its git worktree
+ *  and branch under `<projectPath>/.claude_tasks/<taskId>/` — call when the
+ *  task itself is deleted. */
+export async function removeCodingTask(taskId: string, projectPath: string): Promise<void> {
+  if (isElectron && typeof bridge.removeCodingTask === 'function') {
+    await bridge.removeCodingTask(taskId, projectPath);
+  }
+}
+
 export function onCodingTerminalData(cb: (taskId: string, data: string) => void): () => void {
   if (isElectron && typeof bridge.onCodingTerminalData === 'function') {
     return bridge.onCodingTerminalData(cb);
@@ -948,6 +957,7 @@ export const host = {
   resizeCodingTerminal,
   isCodingTerminalRunning,
   killCodingTerminal,
+  removeCodingTask,
   onCodingTerminalData,
   onCodingTerminalExit,
   getPathForFile,

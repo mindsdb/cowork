@@ -12,6 +12,13 @@ vi.mock('./uv-paths', () => ({
   getEnvPath: () => '/fake/path',
 }));
 
+const ensureTaskWorktreeMock = vi.hoisted(() => vi.fn());
+const removeTaskWorktreeMock = vi.hoisted(() => vi.fn());
+vi.mock('./coding-workspace', () => ({
+  ensureTaskWorktree: ensureTaskWorktreeMock,
+  removeTaskWorktree: removeTaskWorktreeMock,
+}));
+
 const fsStore = vi.hoisted(() => new Map<string, string>());
 vi.mock('fs', () => ({
   mkdirSync: vi.fn(),
@@ -26,6 +33,9 @@ vi.mock('fs', () => ({
   writeFileSync: (p: string, data: string) => {
     fsStore.set(p, data);
   },
+  // No real symlinks in these fake paths — identity is the correct
+  // "resolved" path for every test here.
+  realpathSync: (p: string) => p,
 }));
 
 class FakeUtilityProcess extends EventEmitter {
@@ -58,6 +68,13 @@ describe('coding-terminal', () => {
     fsStore.clear();
     detectClaudeCodeMock.mockResolvedValue({ installed: true, path: '/usr/local/bin/claude' });
     revealMindsApiKeyMock.mockResolvedValue('mdb_test_token');
+    ensureTaskWorktreeMock.mockReset();
+    removeTaskWorktreeMock.mockReset();
+    ensureTaskWorktreeMock.mockImplementation(async (repoPath: string, taskId: string) => ({
+      path: `${repoPath}/.claude_tasks/${taskId}`,
+      isNew: true,
+    }));
+    removeTaskWorktreeMock.mockResolvedValue(undefined);
   });
 
   it('forks the pty host and reports ok once it acks "started"', async () => {
@@ -76,7 +93,7 @@ describe('coding-terminal', () => {
       type: 'start',
       claudePath: '/usr/local/bin/claude',
       args: ['--model', 'kimi'],
-      cwd: '/proj',
+      cwd: '/proj/.claude_tasks/task-1',
       env: expect.objectContaining({
         ANTHROPIC_BASE_URL: 'https://api.mindshub.ai',
         ANTHROPIC_AUTH_TOKEN: 'mdb_test_token',
@@ -99,7 +116,10 @@ describe('coding-terminal', () => {
     await resultPromise;
 
     expect(JSON.parse(fsStore.get('/proj/.claude-mindshub/settings.json')!)).toEqual({ theme: 'dark' });
-    expect(JSON.parse(fsStore.get('/proj/.claude-mindshub/.claude.json')!)).toEqual({ hasCompletedOnboarding: true });
+    expect(JSON.parse(fsStore.get('/proj/.claude-mindshub/.claude.json')!)).toEqual({
+      hasCompletedOnboarding: true,
+      projects: { '/proj/.claude_tasks/task-seed': { hasTrustDialogAccepted: true } },
+    });
   });
 
   it('does not clobber an existing config dir\'s other settings/state', async () => {
@@ -116,7 +136,68 @@ describe('coding-terminal', () => {
 
     // theme was already 'light' (a deliberate choice, e.g. via /theme) — must survive untouched
     expect(JSON.parse(fsStore.get('/proj/.claude-mindshub/settings.json')!)).toEqual({ theme: 'light', tui: 'fullscreen' });
-    expect(JSON.parse(fsStore.get('/proj/.claude-mindshub/.claude.json')!)).toEqual({ hasCompletedOnboarding: true, userID: 'abc' });
+    expect(JSON.parse(fsStore.get('/proj/.claude-mindshub/.claude.json')!)).toEqual({
+      hasCompletedOnboarding: true,
+      userID: 'abc',
+      projects: { '/proj/.claude_tasks/task-preserve': { hasTrustDialogAccepted: true } },
+    });
+  });
+
+  it('does not re-mark trust for a cwd that already has it, and preserves other project entries', async () => {
+    fsStore.set('/proj/.claude-mindshub/.claude.json', JSON.stringify({
+      hasCompletedOnboarding: true,
+      projects: {
+        '/proj/.claude_tasks/task-other': { hasTrustDialogAccepted: true, allowedTools: ['Bash'] },
+        '/proj/.claude_tasks/task-trust': { hasTrustDialogAccepted: true },
+      },
+    }));
+    const { startCodingTerminal } = await import('./coding-terminal');
+    const child = new FakeUtilityProcess();
+    forkMock.mockReturnValue(child);
+
+    const resultPromise = startCodingTerminal('task-trust', { projectPath: '/proj', message: '', model: 'kimi' }, 80, 24, fakeSender());
+    await waitForStartPosted(child);
+    child.emit('message', { type: 'started' });
+    await resultPromise;
+
+    expect(JSON.parse(fsStore.get('/proj/.claude-mindshub/.claude.json')!).projects).toEqual({
+      '/proj/.claude_tasks/task-other': { hasTrustDialogAccepted: true, allowedTools: ['Bash'] },
+      '/proj/.claude_tasks/task-trust': { hasTrustDialogAccepted: true },
+    });
+  });
+
+  it('falls back to running directly in the project when worktree setup fails', async () => {
+    ensureTaskWorktreeMock.mockRejectedValue(new Error('git not found'));
+    const { startCodingTerminal } = await import('./coding-terminal');
+    const child = new FakeUtilityProcess();
+    forkMock.mockReturnValue(child);
+
+    const resultPromise = startCodingTerminal('task-nogit', { projectPath: '/proj', message: 'hi', model: 'kimi' }, 80, 24, fakeSender());
+    await waitForStartPosted(child);
+    child.emit('message', { type: 'started' });
+    await resultPromise;
+
+    expect(child.postMessage).toHaveBeenCalledWith(expect.objectContaining({ cwd: '/proj', args: ['--model', 'kimi'] }));
+    // Still treated as a first launch — the message is typed, not skipped.
+    expect(child.postMessage).toHaveBeenCalledWith({ type: 'write', data: 'hi\r' });
+  });
+
+  it('reconnecting to a task whose worktree already exists uses --continue and skips retyping the message', async () => {
+    ensureTaskWorktreeMock.mockResolvedValue({ path: '/proj/.claude_tasks/task-old', isNew: false });
+    const { startCodingTerminal } = await import('./coding-terminal');
+    const child = new FakeUtilityProcess();
+    forkMock.mockReturnValue(child);
+
+    const resultPromise = startCodingTerminal('task-old', { projectPath: '/proj', message: 'the original opening line', model: 'kimi' }, 80, 24, fakeSender());
+    await waitForStartPosted(child);
+    child.emit('message', { type: 'started' });
+    await resultPromise;
+
+    expect(child.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      cwd: '/proj/.claude_tasks/task-old',
+      args: ['--model', 'kimi', '--continue'],
+    }));
+    expect(child.postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'write' }));
   });
 
   it('is a no-op reconnect when a session for the task is already running', async () => {
@@ -290,5 +371,21 @@ describe('coding-terminal', () => {
     expect(childB.kill).toHaveBeenCalled();
     expect(isCodingTerminalRunning('task-a')).toBe(false);
     expect(isCodingTerminalRunning('task-b')).toBe(false);
+  });
+
+  it('removeCodingTask kills a running session and removes its worktree', async () => {
+    const { startCodingTerminal, removeCodingTask, isCodingTerminalRunning } = await import('./coding-terminal');
+    const child = new FakeUtilityProcess();
+    forkMock.mockReturnValue(child);
+    const resultPromise = startCodingTerminal('task-del', { projectPath: '/proj', message: '', model: 'kimi' }, 80, 24, fakeSender());
+    await waitForStartPosted(child);
+    child.emit('message', { type: 'started' });
+    await resultPromise;
+
+    await removeCodingTask('task-del', '/proj');
+
+    expect(child.kill).toHaveBeenCalled();
+    expect(isCodingTerminalRunning('task-del')).toBe(false);
+    expect(removeTaskWorktreeMock).toHaveBeenCalledWith('/proj', 'task-del');
   });
 });

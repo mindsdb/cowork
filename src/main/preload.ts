@@ -89,6 +89,8 @@ contextBridge.exposeInMainWorld('antontron', {
     ipcRenderer.invoke(IPC.CODING_TERMINAL_IS_RUNNING, taskId),
   killCodingTerminal: (taskId: string) =>
     ipcRenderer.invoke(IPC.CODING_TERMINAL_KILL, taskId),
+  removeCodingTask: (taskId: string, projectPath: string) =>
+    ipcRenderer.invoke(IPC.CODING_REMOVE_TASK, taskId, projectPath),
   onCodingTerminalData: (cb: (taskId: string, data: string) => void) => {
     const listener = (_: any, taskId: string, data: string) => cb(taskId, data);
     ipcRenderer.on(IPC.CODING_TERMINAL_DATA, listener);

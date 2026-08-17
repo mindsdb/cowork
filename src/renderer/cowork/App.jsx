@@ -3957,6 +3957,14 @@ function AppCore() {
     if (!taskId) return;
     // eslint-disable-next-line no-console
     console.log('[performDeleteTask] confirmed', taskId);
+    const task = tasks.find((t) => t.id === taskId);
+    // Fire-and-forget: stop the PTY (if still running) and remove its git
+    // worktree/branch under <project>/.claude_tasks/<taskId>/ so deleted
+    // tasks don't leave orphaned directories behind. A no-op on web/for
+    // non-claude-code tasks (host.removeCodingTask itself no-ops there).
+    if (task?.harness === 'claude-code' && task?.projectPath) {
+      host.removeCodingTask(taskId, task.projectPath).catch(() => {});
+    }
     deletedTaskIdsRef.current.add(taskId);
     setTasks((prev) => prev.filter((t) => t.id !== taskId));
     // Its unsent reply draft has nowhere to go back to.
