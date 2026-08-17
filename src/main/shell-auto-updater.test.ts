@@ -159,6 +159,32 @@ describe('createShellAutoUpdater', () => {
     });
   });
 
+  it('classifies a foreign-signed installer (ERR_UPDATER_INVALID_SIGNATURE) as terminal', async () => {
+    // The real electron-updater rejection: NsisUpdater.verifySignature throws
+    // this exact message shape with code ERR_UPDATER_INVALID_SIGNATURE. The
+    // message deliberately contains none of the integrity substrings
+    // (signature/sha512/checksum), so classification must fall back to `code`
+    // — otherwise a refused foreign-signed installer reads as a recoverable
+    // network error and the UI offers Retry instead of refusing terminally.
+    const signer = setup();
+    await signer.updater.check('boot');
+    const rejected = Object.assign(
+      new Error(
+        'New version 2.0.8 is not signed by the application owner: '
+        + 'publisherNames: "Mindsdb, Inc.", raw info: {"StatusMessage":'
+        + '"A certificate chain processed, but terminated in a root certificate '
+        + 'which is not trusted by the trust provider."}',
+      ),
+      { code: 'ERR_UPDATER_INVALID_SIGNATURE' },
+    );
+    signer.adapter.emit('updater-error', rejected);
+    expect(signer.updater.getSnapshot()).toMatchObject({
+      phase: 'failed',
+      errorCode: 'artifact-verification-failed',
+      recoverable: false,
+    });
+  });
+
   it('immediately supplies the authoritative snapshot to subscribers', () => {
     const { updater } = setup();
     const listener = vi.fn();
