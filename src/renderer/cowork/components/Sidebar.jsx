@@ -143,9 +143,13 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
             className="absolute inset-0 inline-flex items-center justify-end font-[family-name:var(--font-sans)] text-xs text-ink-4 gap-1.5 [transition:opacity_120ms_ease]"
             style={{ opacity: (showKebab || (!showTimestamp && !isActive)) ? 0 : 1 }}
           >
+            {/* mr aligns the dot's center with the kebab's (which sits ~11px in
+                from the slot edge inside its 22px box), so the two trailing marks
+                share one column — the dot no longer jams against the reduced right
+                padding, and toggling active↔hover doesn't shift the mark. */}
             {isActive ? (
               <span
-                className="pulse-dot inline-block w-[7px] h-[7px] rounded-full bg-accent shadow-[0_0_0_2px_color-mix(in_srgb,var(--sage-500)_18%,transparent)]"
+                className="pulse-dot inline-block w-[7px] h-[7px] mr-[7.5px] rounded-full bg-accent shadow-[0_0_0_2px_color-mix(in_srgb,var(--sage-500)_18%,transparent)]"
                 title={`${agentLabel || 'Anton'} is working on this task`}
                 aria-label="Active"
               />
