@@ -89,10 +89,6 @@ function PhaseRow({
     >
       <span
         className={clsx(
-          // items-start top-aligns the 14px circle with the first text line
-          // (correct when a sublabel wraps below). mt centers it on that line:
-          // the label inherits line-height 1.5, so the first line box is
-          // 12.5px × 1.5 = 18.75px and the nudge is (18.75 − 14) / 2 ≈ 2px.
           'mt-0.5 flex h-3.5 w-3.5 flex-none items-center justify-center rounded-full',
           isDone && 'phase-check-done bg-accent border-[1.4px] border-accent text-white',
           isActive && 'border-[1.4px] border-accent',
