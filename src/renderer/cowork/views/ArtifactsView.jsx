@@ -22,6 +22,7 @@ import {
   publishTargetPath, artifactServeUrl, openArtifactFile,
 } from '../api';
 import { copyText } from '../lib/clipboard';
+import { projectNameOf } from '../lib/artifactProject';
 import { downloadArtifactFile } from '../lib/artifactDownload';
 import { isHtmlArtifact, isPublishableArtifact, isBackendArtifact, publishBlockedReason } from '../lib/artifactKinds';
 import { trackArtifactPublished } from '../lib/analytics';
@@ -62,21 +63,9 @@ const SORT_OPTIONS = [
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
 
-function projectNameOf(artifact, projects = []) {
-  const p = (artifact.path || '');
-  const match = projects.find((proj) => {
-    if (!proj.path) return false;
-    const pre = proj.path.replace(/\/+$/, '') + '/';
-    return p.startsWith(pre);
-  });
-  if (match) return match.name;
-  // Fallback — best-effort guess from path. Look for a /projects/X/
-  // segment, otherwise just show the parent dir name.
-  const m = p.match(/\/projects\/([^/]+)\//);
-  if (m) return m[1];
-  const parts = p.split('/').filter(Boolean);
-  return parts[parts.length - 2] || '—';
-}
+// projectNameOf moved to lib/artifactProject.js — in org mode the list spans every
+// project of the organization, so the label has to come from the card's projectId /
+// projectName rather than from its filesystem path.
 
 // Resolve to the actual project object so the label can navigate
 // the user to that project's detail view. Returns null when the
@@ -801,7 +790,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
       if (artifact.publishedUrl) {
         await unpublishArtifact(artifact.path);
       }
-      await deleteArtifact(artifact.folder || artifact.path);
+      await deleteArtifact(artifact);
       removeOne(artifact.path);
       showToast({ kind: 'ok', message: 'Deleted.' });
     } catch (e) {

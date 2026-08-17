@@ -112,15 +112,15 @@ export function WorkingFolderLive({ project, isStreaming }) {
   useEffect(() => {
     const proj = effectiveProject;
     const ticket = ++loadVersion.current;
-    if (!proj?.name || !proj?.path) {
+    if (!proj?.name || !(proj?.id || proj?.path)) {
       setRows([]);
       return;
     }
     setRows([]);
-    fetchArtifacts({ projectPath: proj.path })
+    fetchArtifacts({ projectId: proj.id, projectPath: proj.path })
       .then((list) => applyArtifacts(proj, list, ticket))
       .catch(() => { if (ticket === loadVersion.current) setRows([]); });
-  }, [effectiveProject?.name, effectiveProject?.path]);
+  }, [effectiveProject?.name, effectiveProject?.id, effectiveProject?.path]);
 
   // Streaming poll — every 3s while live, plus once shortly after
   // streaming ends (catches artifacts written near the very end of
@@ -131,9 +131,9 @@ export function WorkingFolderLive({ project, isStreaming }) {
   useEffect(() => {
     const tick = () => {
       const proj = effectiveProject;
-      if (!proj?.name || !proj?.path) return;
+      if (!proj?.name || !(proj?.id || proj?.path)) return;
       const ticket = ++loadVersion.current;
-      fetchArtifacts({ projectPath: proj.path })
+      fetchArtifacts({ projectId: proj.id, projectPath: proj.path })
         .then((list) => applyArtifacts(proj, list, ticket))
         .catch(() => { /* swallow — keep current rows */ });
     };
@@ -286,7 +286,7 @@ export function WorkingFolderLive({ project, isStreaming }) {
       // Deletion is centralized through cowork-server (not shell.trashItem),
       // so it works in every shell and the server's unpublish-before-delete
       // guard always runs.
-      await deleteArtifact(a.folder || a.path);
+      await deleteArtifact(a);
     } catch (e) {
       setRowError(e?.message || 'Delete failed.');
       // Restore the row on failure.

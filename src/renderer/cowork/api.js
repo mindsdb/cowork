@@ -712,10 +712,18 @@ export async function unpublishArtifact(path) {
   return res.json();
 }
 
-export async function deleteArtifact(path) {
-  const res = await authFetch(BASE + `/artifacts/?path=${encodeURIComponent(path)}`, {
-    method: 'DELETE',
-  });
+// Accepts the artifact card, not a path: org mode addresses artifacts by slug
+// within a project, desktop still by path. Keeping the choice here means call sites
+// don't each have to branch on the mode. A bare string is still accepted so any
+// stray caller keeps working on desktop.
+export async function deleteArtifact(artifact) {
+  const url = artifact?.projectId && artifact?.slug
+    ? `/artifacts/${encodeURIComponent(artifact.slug)}`
+      + `?project_id=${encodeURIComponent(artifact.projectId)}`
+    : `/artifacts/?path=${encodeURIComponent(
+        typeof artifact === 'string' ? artifact : (artifact?.folder || artifact?.path || ''),
+      )}`;
+  const res = await authFetch(BASE + url, { method: 'DELETE' });
   if (!res.ok) {
     let detail = '';
     try { detail = (await res.json())?.detail || ''; } catch {}
@@ -917,17 +925,20 @@ export async function setActiveProject(projectOrName) {
 // the `dedupe` wrapper that meant N copies of the same request on
 // every list render. With coalescing, one network request fans out
 // to all subscribers and the cache entry releases on settle.
-export async function fetchArtifacts({ projectPath } = {}) {
-  // `projectPath` scopes the response to one project's
-  // `<base>/artifacts/` tree. Used by the project-detail rail card
-  // so the response is small and the server skips reading every
-  // other project's metadata.json. Omit it (or pass undefined) for
-  // the system-wide list the global Live Artifacts page wants.
-  const suffix = projectPath
-    ? `?project_path=${encodeURIComponent(projectPath)}`
-    : '';
-  // Dedupe key includes the path so a global fetch and a scoped
-  // fetch don't share an in-flight promise.
+export async function fetchArtifacts({ projectId, projectPath } = {}) {
+  // Either parameter scopes the response to one project's `<base>/artifacts/`
+  // tree, so the server skips reading every other project's metadata.json. Omit
+  // both for the system-wide list the global Live Artifacts page wants.
+  //
+  // `projectId` is the org-mode addressing: the server resolves the project
+  // through a scoped DB read, so no filesystem path crosses the wire (and a path
+  // would carry no tenant for it to check). `projectPath` stays for desktop, where
+  // the client legitimately knows it; org deployments reject it outright.
+  let suffix = '';
+  if (projectId) suffix = `?project_id=${encodeURIComponent(projectId)}`;
+  else if (projectPath) suffix = `?project_path=${encodeURIComponent(projectPath)}`;
+  // Dedupe key includes the suffix so a global fetch and a scoped fetch don't
+  // share an in-flight promise.
   return dedupe(`artifacts${suffix}`, async () => {
     try {
       return await req(`/artifacts/${suffix}`);
