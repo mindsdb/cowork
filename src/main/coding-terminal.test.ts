@@ -95,6 +95,20 @@ describe('coding-terminal', () => {
     expect(forkMock).not.toHaveBeenCalled();
   });
 
+  it('fails without spawning when model is an object instead of an id string', async () => {
+    const { startCodingTerminal } = await import('./coding-terminal');
+    const sender = fakeSender();
+
+    // A caller violating the TS contract (e.g. a bug in untyped renderer
+    // code forwarding the model object instead of its id) is exactly what
+    // this guard exists to catch — hence the deliberate `as any`.
+    const badOpts = { projectPath: '/proj', message: '', model: { id: 'mindshub_air', name: 'MindsHub Air' } } as any;
+    const result = await startCodingTerminal('task-objmodel', badOpts, 80, 24, sender);
+
+    expect(result.ok).toBe(false);
+    expect(forkMock).not.toHaveBeenCalled();
+  });
+
   it('fails when the claude CLI is not installed', async () => {
     detectClaudeCodeMock.mockResolvedValue({ installed: false, path: null });
     const { startCodingTerminal } = await import('./coding-terminal');

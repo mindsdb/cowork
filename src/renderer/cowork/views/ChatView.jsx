@@ -1686,7 +1686,7 @@ export default function ChatView({
             taskId={task.id}
             projectPath={artifactProjectPath}
             message={task.messages?.[0]?.content}
-            model={model}
+            model={typeof model === 'string' ? model : model?.id}
           />
         ) : (
         <>
