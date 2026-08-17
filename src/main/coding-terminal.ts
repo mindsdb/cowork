@@ -202,7 +202,6 @@ export async function startCodingTerminal(
       switch (msg?.type) {
         case 'started':
           sessions.set(taskId, child);
-          if (isNewSession && opts.message) child.postMessage({ type: 'write', data: `${opts.message}\r` });
           finish({ ok: true });
           break;
         case 'data':
@@ -231,6 +230,12 @@ export async function startCodingTerminal(
       cwd,
       cols,
       rows,
+      // The host process (not here) delays typing this until the CLI's
+      // first real output, so the PTY's own line-discipline echo doesn't
+      // print it a second time above the TUI before claude switches into
+      // raw/alt-screen mode. Undefined on reconnect — --continue resumes
+      // the CLI's own history for this cwd instead of replaying it.
+      initialInput: isNewSession && opts.message ? `${opts.message}\r` : undefined,
       env: {
         ...sanitizedParentEnv(),
         PATH: getEnvPath(),

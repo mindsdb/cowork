@@ -71,6 +71,12 @@ export default function CodingTerminal({ taskId, projectPath, message, model }) 
         cursorBlink: true,
         theme: readTerminalTheme(),
         allowProposedApi: true,
+        // xterm's default (1000) is easy to exhaust — Claude Code's TUI
+        // repaints its live status/spinner frequently, each repaint
+        // consuming scrollback lines, so a longer session can evict the
+        // true beginning of the conversation well before the user tries
+        // to scroll back to it.
+        scrollback: 100_000,
       });
       fitAddon = new FitAddon();
       term.loadAddon(fitAddon);
@@ -106,7 +112,20 @@ export default function CodingTerminal({ taskId, projectPath, message, model }) 
           return;
         }
       } else {
-        host.resizeCodingTerminal(taskId, term.cols, term.rows);
+        // Reconnecting to an already-running session: this xterm instance
+        // is brand new and has no scrollback of whatever happened while
+        // the task view was unmounted, so it starts fully blank. Claude
+        // Code (like most TUIs) only repaints on an actual SIGWINCH size
+        // change — resizing to the SAME cols/rows the terminal already
+        // has is a no-op that never reaches the child, so the screen
+        // would otherwise stay blank until something else (e.g. the user
+        // manually resizing the window) happens to change the size for
+        // real. Nudging down a column and immediately back forces two
+        // real size changes, guaranteeing a redraw either way.
+        host.resizeCodingTerminal(taskId, Math.max(1, term.cols - 1), term.rows);
+        setTimeout(() => {
+          if (!disposed) host.resizeCodingTerminal(taskId, term.cols, term.rows);
+        }, 50);
       }
 
       resizeObserver = new ResizeObserver(() => {

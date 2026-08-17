@@ -219,9 +219,9 @@ describe('coding-terminal', () => {
     child.emit('message', { type: 'started' });
     await resultPromise;
 
-    expect(child.postMessage).toHaveBeenCalledWith(expect.objectContaining({ cwd: '/proj', args: ['--model', 'kimi'] }));
-    // Still treated as a first launch — the message is typed, not skipped.
-    expect(child.postMessage).toHaveBeenCalledWith({ type: 'write', data: 'hi\r' });
+    // Still treated as a first launch — the message is queued via
+    // initialInput (the host delays actually typing it), not skipped.
+    expect(child.postMessage).toHaveBeenCalledWith(expect.objectContaining({ cwd: '/proj', args: ['--model', 'kimi'], initialInput: 'hi\r' }));
   });
 
   it('reconnecting to a task whose worktree already exists uses --continue and skips retyping the message', async () => {
@@ -238,8 +238,8 @@ describe('coding-terminal', () => {
     expect(child.postMessage).toHaveBeenCalledWith(expect.objectContaining({
       cwd: '/proj/.claude-mindshub/tasks/task-old',
       args: ['--model', 'kimi', '--continue'],
+      initialInput: undefined,
     }));
-    expect(child.postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'write' }));
   });
 
   it('is a no-op reconnect when a session for the task is already running', async () => {
@@ -320,7 +320,7 @@ describe('coding-terminal', () => {
     }));
   });
 
-  it('types the opening message into stdin once the host is up', async () => {
+  it('sends the opening message as initialInput on the start payload', async () => {
     const { startCodingTerminal } = await import('./coding-terminal');
     const child = new FakeUtilityProcess();
     forkMock.mockReturnValue(child);
@@ -330,7 +330,7 @@ describe('coding-terminal', () => {
     child.emit('message', { type: 'started' });
     await resultPromise;
 
-    expect(child.postMessage).toHaveBeenCalledWith({ type: 'write', data: 'build me a login form\r' });
+    expect(child.postMessage).toHaveBeenCalledWith(expect.objectContaining({ initialInput: 'build me a login form\r' }));
   });
 
   it('streams PTY data to the renderer and cleans up on exit', async () => {

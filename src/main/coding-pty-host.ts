@@ -17,12 +17,21 @@ type ParentPort = {
 const parentPort: ParentPort = (process as unknown as { parentPort: ParentPort }).parentPort;
 
 interface PtyProcess {
-  onData(cb: (data: string) => void): void;
+  onData(cb: (data: string) => void): { dispose(): void };
   onExit(cb: (e: { exitCode: number }) => void): void;
   write(data: string): void;
   resize(cols: number, rows: number): void;
   kill(): void;
 }
+
+// Cap on waiting for the CLI's first output before typing the opening
+// message anyway — a CLI that never produces output for some reason
+// shouldn't leave the prompt permanently untyped.
+const FIRST_OUTPUT_FALLBACK_MS = 1500;
+// Once real output starts, give the TUI a moment to actually finish
+// switching into raw/alt-screen mode before typing — the first chunk is
+// typically just the start of that switch, not the end of it.
+const POST_FIRST_OUTPUT_DELAY_MS = 150;
 
 let proc: PtyProcess | null = null;
 
@@ -58,6 +67,29 @@ parentPort.on('message', async (e) => {
         proc.onData((data) => parentPort.postMessage({ type: 'data', data }));
         proc.onExit(({ exitCode }) => parentPort.postMessage({ type: 'exit', exitCode }));
         parentPort.postMessage({ type: 'started' });
+
+        // Typed immediately, this would land while the PTY's own line
+        // discipline is still echoing keystrokes as plain text — claude
+        // hasn't switched into raw/alt-screen mode yet at the instant
+        // spawn() returns. Waiting for its first real output (a sign it's
+        // actually drawing) before typing avoids the opening message
+        // appearing twice: once as stray echoed text above the TUI, once
+        // in the TUI's own prompt.
+        if (typeof msg.initialInput === 'string' && msg.initialInput) {
+          const initialInput = msg.initialInput;
+          let sent = false;
+          const send = () => {
+            if (sent || !proc) return;
+            sent = true;
+            proc.write(initialInput);
+          };
+          const fallback = setTimeout(send, FIRST_OUTPUT_FALLBACK_MS);
+          const onFirstOutput = proc.onData(() => {
+            clearTimeout(fallback);
+            onFirstOutput.dispose();
+            setTimeout(send, POST_FIRST_OUTPUT_DELAY_MS);
+          });
+        }
       } catch (err) {
         reportError(err, 'start');
       }
