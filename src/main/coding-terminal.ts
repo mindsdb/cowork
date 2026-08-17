@@ -10,7 +10,6 @@
 // (see package.json) — its native build is not guaranteed on every platform/
 // Node ABI combination; the host process degrades to a clear "not available"
 // error (via an `error` message) instead of crashing when it's missing.
-import * as os from 'os';
 import * as path from 'path';
 import { utilityProcess } from 'electron';
 import type { UtilityProcess, WebContents } from 'electron';
@@ -127,7 +126,10 @@ export async function startCodingTerminal(
         COLORTERM: 'truecolor',
         ANTHROPIC_BASE_URL: MINDSHUB_INFERENCE_BASE_URL,
         ANTHROPIC_AUTH_TOKEN: authToken,
-        CLAUDE_CONFIG_DIR: path.join(os.homedir(), '.cowork', 'claude-code'),
+        // Per-project, not a single shared dir — keeps MindsHub Claude Code
+        // sessions/config isolated per project and separate from the
+        // user's own claude.ai profile (~/.claude).
+        CLAUDE_CONFIG_DIR: path.join(opts.projectPath, '.claude-mindshub'),
       },
     };
 

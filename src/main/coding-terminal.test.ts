@@ -64,6 +64,7 @@ describe('coding-terminal', () => {
         ANTHROPIC_BASE_URL: 'https://api.mindshub.ai',
         ANTHROPIC_AUTH_TOKEN: 'mdb_test_token',
         PATH: '/fake/path',
+        CLAUDE_CONFIG_DIR: '/proj/.claude-mindshub',
       }),
     }));
     expect(isCodingTerminalRunning('task-1')).toBe(true);
