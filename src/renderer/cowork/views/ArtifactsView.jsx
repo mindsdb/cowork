@@ -610,6 +610,10 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
 // ─── Composed view ───────────────────────────────────────────────────────
 
 export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, projects = [], onOpenProject, agentLabel = 'the agent' }) {
+  // For the grid's shared menu below. The list view's menu (ArtifactMenu) reads
+  // this for itself; the grid's is built here, so the gate has to be applied at
+  // both sites or one view silently keeps the desktop-only actions.
+  const orgMode = useOrgMode();
   const [list, setList] = useState(initial);
   const [viewer, setViewer] = useState(null);
   const { isMobile } = useBreakpoint();
@@ -1052,7 +1056,12 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
             danger: true,
             onClick: () => handleTrash(a),
           });
-          return items;
+          // Same mode gate the list view's menu applies — see lib/artifactActions.
+          // Note this menu marks its rule with `separator`, not `divider` like
+          // ArtifactMenu, so the pass-through key differs.
+          return items.filter((it) => it.separator || isArtifactActionAvailable(it.id, {
+            orgMode, hasBridge: host.isElectron, published,
+          }));
         })()}
       />
     </div>
