@@ -122,6 +122,8 @@ vi.mock('./lib/analytics', () => ({
   trackAgentSessionStarted: vi.fn(),
   trackAppInstalled: vi.fn(),
   trackFirstQuery: vi.fn(),
+  classifyFirstResponse: vi.fn(() => ({})),
+  fireFirstResponse: vi.fn(),
 }));
 
 import App from './App';
@@ -888,5 +890,40 @@ describe('a manual send racing another task mid-reserve (ENG-1378 parallel-strea
     await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(1));
     expect(spies.streamMessage.mock.calls[0][0]).toBe('conv-b');
     expect(spies.streamMessage.mock.calls[0][1]).toBe('beta with file');
+  });
+});
+
+describe('a drained message whose send fails (ENG-1378)', () => {
+  afterEach(() => {
+    uploadAttachments.mockReset();
+    uploadAttachments.mockResolvedValue([]);
+  });
+
+  it('re-queues the item instead of dropping it silently', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user); // conv-a, project general
+
+    // Turn 1 holds the slot.
+    await send(user, composer, 'first message');
+    const stream = streams[streams.length - 1];
+
+    // Queue a second message carrying a file.
+    await attach(user, 'shot.png');
+    await send(user, composer, 'queued with file');
+    expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
+    const streamCallsBefore = spies.streamMessage.mock.calls.length;
+
+    // The drained send will fail to upload.
+    uploadAttachments.mockRejectedValue(new Error('Upload failed (500)'));
+
+    // Turn 1 completes → drain fires → the queued send throws.
+    await act(async () => { stream.opts.onDone('conv-a'); await Promise.resolve(); });
+
+    // The message is NOT lost — it's back on the queue — and no doomed stream
+    // was started for it.
+    expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(spies.streamMessage.mock.calls.length).toBe(streamCallsBefore),
+    );
   });
 });

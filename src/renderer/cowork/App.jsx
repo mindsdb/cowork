@@ -3724,14 +3724,17 @@ function AppCore() {
     if (!targetTask) return;
     const next = popQueueHead(taskId);
     if (!next) return;
-    // .catch: handleSendInTask throws when an answer submit fails (and can
-    // reject while resolving attachments). The item is already popped, so a
-    // bare then() would surface an unhandled rejection; the user has been
-    // told via the toast handleSendInTask itself raised.
+    // handleSendInTask can reject (answer submit, or attachment resolution).
+    // The item is already popped, so a bare then() would both surface an
+    // unhandled rejection AND silently lose the message + its file. Put it back
+    // on the queue instead — it stays visible as "queued" rather than
+    // vanishing, and handleSendInTask surfaces why it failed.
     Promise.resolve().then(() => handleSendInTask(next.text, next.attachments || [], {
       targetTask,
       disabledConnections: next.disabledConnections,
-    })).catch(() => {});
+    })).catch(() => {
+      enqueueMessage(taskId, next.text, next.attachments || [], next.disabledConnections || []);
+    });
   };
   // Keep the mount-frozen reconnect closure pointed at the current drain (and
   // thus the current handleSendInTask). See the ref declaration above.
