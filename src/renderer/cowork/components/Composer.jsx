@@ -277,6 +277,11 @@ export default function Composer({
   // on every keystroke / selection event.
   const parsedFences = useMemo(() => parseFences(value), [value]);
 
+  // Controlled so the Model Router row's settings shortcut can force the
+  // popup closed itself — otherwise it lingers open behind the Settings
+  // modal the shortcut opens, which reads as a stuck/broken dropdown.
+  const [modelMenuOpen, setModelMenuOpen] = useState(false);
+
   // Don't re-pay the round trip for a menu reopened moments later. -Infinity, not
   // 0: performance.now() is already well past 0 by first render, so a 0 sentinel
   // would read as "refreshed at page load" and skip the first open of the session.
@@ -336,7 +341,8 @@ export default function Composer({
         // stopPropagation: a plain click on this row would otherwise also
         // fire Base UI's Combobox.Item select handler (it listens on the
         // row itself), selecting Model Router as a side effect of opening
-        // Settings.
+        // Settings. Closing the popup first (setModelMenuOpen(false))
+        // avoids it lingering open behind the Settings modal this opens.
         ...(onOpenSettings ? {
           action: (
             <Tooltip content="Router Settings">
@@ -344,7 +350,11 @@ export default function Composer({
                 type="button"
                 aria-label="Router Settings"
                 className="composer-icon shrink-0"
-                onClick={(e) => { e.stopPropagation(); onOpenSettings('agent'); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setModelMenuOpen(false);
+                  onOpenSettings('agent');
+                }}
                 onMouseDown={(e) => e.stopPropagation()}
               >
                 {Ico.settings(13)}
@@ -1199,7 +1209,8 @@ export default function Composer({
                   const found = modelPickerOptions.find((o) => o.value === id);
                   onModelChange({ id, name: found?.label || id });
                 }}
-                onOpenChange={(open) => { if (open) openModelMenu(); }}
+                open={modelMenuOpen}
+                onOpenChange={(open) => { setModelMenuOpen(open); if (open) openModelMenu(); }}
                 options={modelPickerOptions}
                 variant="unstyled"
                 className="meta-pill"

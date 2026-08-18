@@ -229,6 +229,20 @@ describe('Composer — "Model Router" default option (ENG-1656 follow-up)', () =
     expect(props.onModelChange).not.toHaveBeenCalled();
   });
 
+  it('closes the dropdown itself before Settings opens, rather than leaving it stuck open behind the modal', async () => {
+    const user = userEvent.setup();
+    renderComposer({
+      models: MODELS, modelMeta: MODEL_META, model: MODELS[0], onOpenSettings: vi.fn(),
+    });
+
+    await user.click(screen.getByRole('combobox', { name: 'Choose model' }));
+    expect(screen.getByRole('option', { name: 'Model Router' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Router Settings' }));
+
+    expect(screen.queryByRole('option', { name: 'Model Router' })).toBeNull();
+  });
+
   it('hides the settings shortcut when onOpenSettings is not provided', async () => {
     const user = userEvent.setup();
     renderComposer({ models: MODELS, modelMeta: MODEL_META, model: MODELS[0] });

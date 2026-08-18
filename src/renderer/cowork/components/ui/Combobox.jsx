@@ -47,6 +47,11 @@ const SEARCH = <Search size={14} strokeWidth={1.5} aria-hidden="true" />;
 export function Combobox({
   value,
   onValueChange,
+  // Optional controlled open state — omit for the usual uncontrolled
+  // popup. Lets a caller force-close the popup itself (e.g. a row's own
+  // action navigates elsewhere and the popup underneath would otherwise
+  // linger open behind whatever that action opens).
+  open,
   // Fires on open and on close, same contract as Select — callers refresh
   // their options on open and the popup reconciles in place.
   onOpenChange,
@@ -90,6 +95,7 @@ export function Combobox({
       items={groups}
       value={selected}
       onValueChange={(item) => onValueChange?.(item ? item.value : '')}
+      open={open}
       onOpenChange={onOpenChange}
       isItemEqualToValue={(a, b) => a?.value === b?.value}
       itemToStringLabel={(item) => item?.label ?? ''}
