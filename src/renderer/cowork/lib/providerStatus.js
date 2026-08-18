@@ -1,5 +1,5 @@
 // Pure derivations for LLM-provider connectivity state, shared by the Settings
-// LLM Providers rows and the Agent Models picker so the two can't drift. No
+// LLM Providers rows and the Model Router picker so the two can't drift. No
 // hooks, no JSX — everything here is a function of the persisted status maps
 // plus a little view context, which keeps it directly unit-testable without
 // rendering SettingsView.

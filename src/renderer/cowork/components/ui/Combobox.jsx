@@ -176,7 +176,7 @@ export function Combobox({
                         title={item.title}
                         className={cn(
                           'grid items-center gap-[6px]',
-                          item.tag ? 'grid-cols-[16px_1fr_auto]' : 'grid-cols-[16px_1fr]',
+                          (item.tag || item.action) ? 'grid-cols-[16px_1fr_auto]' : 'grid-cols-[16px_1fr]',
                           'w-[calc(100%-8px)] mx-[4px] px-[10px] py-[7px] rounded-[5px]',
                           'text-[13px] text-ink-2 cursor-pointer select-none outline-none box-border',
                           'data-[highlighted]:bg-surface-2',
@@ -187,9 +187,18 @@ export function Combobox({
                           <BaseCombobox.ItemIndicator>{CHECK}</BaseCombobox.ItemIndicator>
                         </span>
                         <span className="min-w-0 truncate">{item.label}</span>
-                        {item.tag && (
-                          <span className="shrink-0 rounded-full border border-line px-[7px] py-[1px] text-[10.5px] leading-[15px] text-ink-4 select-none">
-                            {item.tag}
+                        {(item.tag || item.action) && (
+                          <span className="shrink-0 flex items-center gap-[6px]">
+                            {item.tag && (
+                              <span className="rounded-full border border-line px-[7px] py-[1px] text-[10.5px] leading-[15px] text-ink-4 select-none">
+                                {item.tag}
+                              </span>
+                            )}
+                            {/* A per-item trailing action (e.g. a settings
+                                shortcut) — a plain React node so the caller
+                                owns its own onClick (must stopPropagation,
+                                or the click also selects this item). */}
+                            {item.action}
                           </span>
                         )}
                       </BaseCombobox.Item>

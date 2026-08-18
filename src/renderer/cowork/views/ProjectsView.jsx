@@ -569,6 +569,7 @@ function ProjectDetail({
   // the schedule detail page. Wired by App.jsx — same handler the
   // ScheduledView grid uses.
   onOpenSchedule,
+  onOpenSettings,
 }) {
   const projectTasks = (tasks || [])
     .filter((t) => t.projectName === project.name || t.projectPath === project.path)
@@ -719,6 +720,7 @@ function ProjectDetail({
               metaReadOnly
               modelReadOnly={false}
               codingModeEnabled={codingModeEnabled}
+              onOpenSettings={onOpenSettings}
               sendsMeta
               placeholder={`Start a new task in ${project.name}…`}
               // Keyed on the id, not the name: renaming a project must not
@@ -806,6 +808,7 @@ export default function ProjectsView({
   // clicking a row routes to the schedule detail page.
   onOpenSchedule,
   agentLabel = 'the agent',
+  onOpenSettings,
 }) {
   const { pinned, togglePin } = usePinnedProjects();
   const { isMobile } = useBreakpoint();
@@ -959,6 +962,7 @@ export default function ProjectsView({
         onRemoveAttachment={onRemoveAttachment}
         disabledConnections={disabledConnections}
         onUpdateConnectorMute={onUpdateConnectorMute}
+        onOpenSettings={onOpenSettings}
         onShowAll={() => setDetailProject(null)}
         editing={editingProjectName === detailProject.name}
         onRenameStart={handleRenameStart}

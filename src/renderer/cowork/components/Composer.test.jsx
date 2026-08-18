@@ -214,4 +214,26 @@ describe('Composer — "Model Router" default option (ENG-1656 follow-up)', () =
     await user.click(screen.getByRole('combobox', { name: 'Choose model' }));
     expect(screen.queryByRole('option', { name: 'Model Router' })).toBeNull();
   });
+
+  it('the Model Router row has a settings shortcut that opens Settings without selecting it', async () => {
+    const user = userEvent.setup();
+    const props = renderComposer({
+      models: MODELS, modelMeta: MODEL_META, model: MODELS[0],
+      onModelChange: vi.fn(), onOpenSettings: vi.fn(),
+    });
+
+    await user.click(screen.getByRole('combobox', { name: 'Choose model' }));
+    await user.click(screen.getByRole('button', { name: 'Router Settings' }));
+
+    expect(props.onOpenSettings).toHaveBeenCalledWith('agent');
+    expect(props.onModelChange).not.toHaveBeenCalled();
+  });
+
+  it('hides the settings shortcut when onOpenSettings is not provided', async () => {
+    const user = userEvent.setup();
+    renderComposer({ models: MODELS, modelMeta: MODEL_META, model: MODELS[0] });
+
+    await user.click(screen.getByRole('combobox', { name: 'Choose model' }));
+    expect(screen.queryByRole('button', { name: 'Router Settings' })).toBeNull();
+  });
 });

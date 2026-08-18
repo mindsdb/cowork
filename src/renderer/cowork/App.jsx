@@ -4743,6 +4743,7 @@ function AppCore() {
               setRoute('schedule-detail');
             }}
             agentLabel={agentLabel}
+            onOpenSettings={openSettings}
           />
         )}
 

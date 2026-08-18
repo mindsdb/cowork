@@ -549,6 +549,7 @@ export default function HomeView({
               onCreateProject={onCreateProject}
               onTypingChange={setIsTyping}
               codingModeEnabled={codingModeEnabled}
+              onOpenSettings={onOpenSettings}
               sendsMeta
             />
           )}

@@ -148,6 +148,10 @@ export default function Composer({
   // failing loudly. Only HomeView/ProjectsView's handleSendFromHome uses
   // this position for meta, so only they opt in.
   sendsMeta = false,
+  // Opens the Settings modal to a given section (e.g. 'agent') — same
+  // callback App.jsx hands every other "Open Settings" affordance. Used by
+  // the Model Router row's settings shortcut below.
+  onOpenSettings,
 }) {
   const [value, setValue] = useDraft(draftKey || conversationId || 'new');
   const [focused, setFocused] = useState(false);
@@ -324,10 +328,34 @@ export default function Composer({
     // send.
     const isClaudeCode = codingModeEnabled && codingHarness === 'claude-code';
     return isClaudeCode ? catalogOptions : [
-      { value: MODEL_ROUTER_ID, label: MODEL_ROUTER_LABEL, pin: 'top', title: "Routes to this account's configured model automatically" },
+      {
+        value: MODEL_ROUTER_ID,
+        label: MODEL_ROUTER_LABEL,
+        pin: 'top',
+        title: "Routes to this account's configured model automatically",
+        // stopPropagation: a plain click on this row would otherwise also
+        // fire Base UI's Combobox.Item select handler (it listens on the
+        // row itself), selecting Model Router as a side effect of opening
+        // Settings.
+        ...(onOpenSettings ? {
+          action: (
+            <Tooltip content="Router Settings">
+              <button
+                type="button"
+                aria-label="Router Settings"
+                className="composer-icon shrink-0"
+                onClick={(e) => { e.stopPropagation(); onOpenSettings('agent'); }}
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                {Ico.settings(13)}
+              </button>
+            </Tooltip>
+          ),
+        } : {}),
+      },
       ...catalogOptions,
     ];
-  }, [models, modelMeta, codingModeEnabled, codingHarness]);
+  }, [models, modelMeta, codingModeEnabled, codingHarness, onOpenSettings]);
 
 
   // Auto-resize the textarea up to a max height; past that it scrolls.

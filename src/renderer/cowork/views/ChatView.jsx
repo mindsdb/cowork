@@ -2182,6 +2182,7 @@ export default function ChatView({
             streaming={isStreaming}
             onStop={onStop}
             prefill={composerPrefill}
+            onOpenSettings={onOpenSettings}
           />
         </div>
         </>

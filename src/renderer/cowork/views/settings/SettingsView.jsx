@@ -1431,7 +1431,7 @@ export default function SettingsView({
             </SettingsGroup>
           </div>
           <div className={anyProviderConfigured ? 'order-1' : 'order-none'}>
-            <SettingsGroup title="Agent Models">
+            <SettingsGroup title="Model Router">
               {(() => {
                 // The default-mode provider is the implicit fallback for
                 // any role that hasn't been explicitly assigned an
