@@ -122,9 +122,12 @@ vi.mock('./lib/analytics', () => ({
   trackAgentSessionStarted: vi.fn(),
   trackAppInstalled: vi.fn(),
   trackFirstQuery: vi.fn(),
+  classifyFirstResponse: vi.fn(() => ({})),
+  fireFirstResponse: vi.fn(),
 }));
 
 import App from './App';
+import { uploadAttachments } from './api';
 import {
   setForm as setDataVaultForm,
   clearForm as clearDataVaultForm,
@@ -815,5 +818,112 @@ describe('superseded data-vault stream', () => {
     expect(spies.submitAnswer).toHaveBeenCalledWith('conv-a', 'ask:1', {
       text: 'the postgres one',
     });
+  });
+});
+
+describe('Stop while a sibling task is queued (ENG-1378 stop-drain)', () => {
+  it('drains another task\'s queue when the streaming task is stopped', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user); // Alpha (conv-a)
+
+    // Alpha starts a turn and holds the single shared stream slot.
+    await send(user, composer, 'alpha turn');
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(1));
+
+    // Switch to Beta and fire a message — it queues behind Alpha's live slot
+    // rather than starting a second parallel turn.
+    const betaComposer = await openByTitle(user, 'Beta task');
+    await send(user, betaComposer, 'queued for beta');
+    expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
+    expect(spies.streamMessage).toHaveBeenCalledTimes(1); // still only Alpha's
+
+    // Back to Alpha and press Stop. Freeing the slot must sweep Beta's queue —
+    // Stop bumps the generation and silences Alpha's cancelled callback, so
+    // without an explicit drain Beta strands at "waiting for Anton" with no
+    // future turn to release it.
+    await openByTitle(user, 'Alpha task');
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-a'));
+
+    // Beta's queued message is now sent against its own conversation, and its
+    // queue chip is gone.
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(2));
+    expect(spies.streamMessage.mock.calls[1][0]).toBe('conv-b');
+    expect(spies.streamMessage.mock.calls[1][1]).toBe('queued for beta');
+    await waitFor(() =>
+      expect(screen.queryByLabelText('Remove from queue')).toBeNull(),
+    );
+  });
+});
+
+describe('a manual send racing another task mid-reserve (ENG-1378 parallel-stream guard)', () => {
+  it('queues rather than starting a second stream while another task is between reserving the slot and its controller', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user); // Alpha (conv-a)
+
+    // Beta sends with a file. Its upload is held open, parking Beta's send
+    // between reserving the shared slot (activeStreamingTaskIdRef = conv-b) and
+    // assigning its stream controller — the exact window where the old guard,
+    // keyed to `=== id`, let a different task slip through.
+    let releaseUpload;
+    uploadAttachments.mockImplementationOnce(
+      () => new Promise((resolve) => { releaseUpload = () => resolve([]); }),
+    );
+    const betaComposer = await openByTitle(user, 'Beta task');
+    await attach(user, 'beta-notes.txt');
+    await send(user, betaComposer, 'beta with file');
+    // Parked on the upload: no stream has started for anyone yet.
+    await waitFor(() => expect(uploadAttachments).toHaveBeenCalledTimes(1));
+    expect(spies.streamMessage).not.toHaveBeenCalled();
+
+    // A manual send to Alpha lands in that window. anton-core runs one turn at
+    // a time, so it must queue behind Beta's reservation, not launch a second
+    // parallel stream.
+    await openByTitle(user, 'Alpha task');
+    await send(user, composer, 'manual alpha');
+    expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
+    expect(spies.streamMessage).not.toHaveBeenCalled();
+
+    // Beta's upload completes: its (single) stream starts, against its own
+    // conversation. Alpha stays queued for the next drain.
+    await act(async () => { releaseUpload(); await Promise.resolve(); });
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(1));
+    expect(spies.streamMessage.mock.calls[0][0]).toBe('conv-b');
+    expect(spies.streamMessage.mock.calls[0][1]).toBe('beta with file');
+  });
+});
+
+describe('a drained message whose send fails (ENG-1378)', () => {
+  afterEach(() => {
+    uploadAttachments.mockReset();
+    uploadAttachments.mockResolvedValue([]);
+  });
+
+  it('re-queues the item instead of dropping it silently', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user); // conv-a, project general
+
+    // Turn 1 holds the slot.
+    await send(user, composer, 'first message');
+    const stream = streams[streams.length - 1];
+
+    // Queue a second message carrying a file.
+    await attach(user, 'shot.png');
+    await send(user, composer, 'queued with file');
+    expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
+    const streamCallsBefore = spies.streamMessage.mock.calls.length;
+
+    // The drained send will fail to upload.
+    uploadAttachments.mockRejectedValue(new Error('Upload failed (500)'));
+
+    // Turn 1 completes → drain fires → the queued send throws.
+    await act(async () => { stream.opts.onDone('conv-a'); await Promise.resolve(); });
+
+    // The message is NOT lost — it's back on the queue — and no doomed stream
+    // was started for it.
+    expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(spies.streamMessage.mock.calls.length).toBe(streamCallsBefore),
+    );
   });
 });

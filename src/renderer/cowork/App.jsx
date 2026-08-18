@@ -38,6 +38,7 @@ import { loadSkin, persistSkin, nextSkin, skinLabel } from '../lib/skins';
 import { loadCustomTheme, persistCustomTheme, applyCustomTheme } from '../lib/customTheme';
 import { applyNavTitleColor } from '../lib/navBranding';
 import { getAgentLabel } from './lib/agentLabel';
+import { selectNextQueuedTask, mergeQueuesForAdoptedId } from './lib/messageQueue';
 import { loadCachedSettings } from './lib/settingsCache';
 import { clearDraft, moveDraft } from './lib/draftStore';
 import { useBreakpoint } from './hooks/useBreakpoint';
@@ -999,6 +1000,13 @@ function AppCore() {
   const [messageQueue, setMessageQueue] = useState({}); // { [taskId]: [{id, text, attachments}] }
   const messageQueueRef = useRef({});
   useEffect(() => { messageQueueRef.current = messageQueue; }, [messageQueue]);
+  // `reconnectInFlight` is a mount-frozen useCallback (all its deps are
+  // stable), so it cannot close over the render-fresh `drainNextQueuedMessage`
+  // without also capturing a stale `handleSendInTask` (and its stale
+  // `projects`/`health` fallbacks). It reads the latest drain through this ref
+  // instead — assigned right after the drain is defined and read only from
+  // async completion callbacks, never during render.
+  const drainNextQueuedMessageRef = useRef(null);
 
   // Live steps per task, so handleSendInTask can see a pending question
   // without threading stream state through the composer.
@@ -1128,11 +1136,15 @@ function AppCore() {
     return () => clearInterval(timer);
   }, [inFlightSet.size, refreshInFlightSet]);
 
-  const enqueueMessage = (taskId, text, attachments = []) => {
+  const enqueueMessage = (taskId, text, attachments = [], disabledConnections = []) => {
     // `attachments` rides with the queued item so a message sent while a
     // turn is in flight keeps its files — the drain re-resolves/uploads
     // them. Without this the queue stored text only and files were lost.
-    const item = { id: `q_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`, text, attachments };
+    // `disabledConnections` is likewise captured at enqueue so a drained
+    // turn honors the connection-disable state as it was when the user hit
+    // send, not whatever the composer happens to show when it finally
+    // drains (which, for a cross-task drain, belongs to another task).
+    const item = { id: `q_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`, text, attachments, disabledConnections };
     setMessageQueue((prev) => ({ ...prev, [taskId]: [...(prev[taskId] || []), item] }));
   };
   const removeFromQueue = (taskId, itemId) => {
@@ -1155,6 +1167,13 @@ function AppCore() {
       return next;
     });
     return head;
+  };
+  // When the server mints a canonical id for a task that was streaming under
+  // a tmp id, move any messages queued under the old id(s) onto the new one.
+  // The drain finds a task by its queue key, so a queue left under a stale
+  // id would never re-match the task (ENG-1378).
+  const migrateQueuedMessages = (fromIds, toId) => {
+    setMessageQueue((prev) => mergeQueuesForAdoptedId(prev, fromIds, toId));
   };
 
   const clearQueueForTask = (taskId) => {
@@ -1305,10 +1324,26 @@ function AppCore() {
         delete next[cidToCancel];
         return next;
       });
+      // Prune the ref in lockstep: the sibling drain below reads
+      // messageQueueRef synchronously and the state→ref effect hasn't run yet,
+      // so without this it would still see (and could re-pick) the cancelled
+      // task's own queue.
+      const prunedQueue = { ...messageQueueRef.current };
+      delete prunedQueue[cidToCancel];
+      messageQueueRef.current = prunedQueue;
     }
 
     activeScratchpadRef.current = null;
     activeStreamingTaskIdRef.current = null;
+
+    // Stop frees the shared stream slot with no onDone/onError behind it — the
+    // generation bump above silences the aborted run's cancelled callback — so
+    // a message queued against a *different* task would strand forever at
+    // "N queued · waiting for Anton" with no future turn to release it. Sweep
+    // the siblings now (the cancelled task's own queue was just deleted). Via
+    // the ref because a memoized handleStopStream would close over a stale
+    // drain (same reason reconnect uses it).
+    drainNextQueuedMessageRef.current?.();
 
     if (silent || !cidToCancel) return;
 
@@ -2133,23 +2168,29 @@ function AppCore() {
   // Tasks belong to one project for life. Resolve via projectName
   // first (server's canonical id), then projectPath, then fall back
   // to the currently-selected project for orphans.
-  const currentTaskProject = (() => {
-    if (!currentTask) return selectedProject;
-    if (currentTask.projectName) {
-      const byName = projects.find((p) => p.name === currentTask.projectName);
+  // Resolve the project a given task belongs to (by name, then path,
+  // else a synthetic entry from its path). Returns null when the task
+  // carries no project hints — callers decide the fallback. Shared by
+  // `currentTaskProject` and the cross-task queue drain, which must
+  // resolve a project for a task the user isn't currently viewing.
+  const resolveTaskProject = (task) => {
+    if (!task) return null;
+    if (task.projectName) {
+      const byName = projects.find((p) => p.name === task.projectName);
       if (byName) return byName;
     }
-    if (currentTask.projectPath) {
-      const byPath = projects.find((p) => p.path === currentTask.projectPath);
+    if (task.projectPath) {
+      const byPath = projects.find((p) => p.path === task.projectPath);
       if (byPath) return byPath;
       return {
-        id: currentTask.projectPath,
-        name: currentTask.projectName || currentTask.projectPath.split('/').pop(),
-        path: currentTask.projectPath,
+        id: task.projectPath,
+        name: task.projectName || task.projectPath.split('/').pop(),
+        path: task.projectPath,
       };
     }
-    return selectedProject;
-  })();
+    return null;
+  };
+  const currentTaskProject = resolveTaskProject(currentTask) || selectedProject;
   const currentTaskModel = currentTask?.model
     ? (models.find((m) => m.id === currentTask.model) || { id: currentTask.model, name: currentTask.model, desc: 'Configured planning model' })
     : selectedModel;
@@ -2298,6 +2339,11 @@ function AppCore() {
           openStreamedForm(taskId, finalContent);
         }
         fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
+        // A reconnect tail also holds the shared stream slot, so a message
+        // queued against any task while it ran must be drained here too —
+        // otherwise it strands at "N queued · waiting for Anton" (ENG-1378).
+        // Via the ref because this closure is mount-frozen (see its decl).
+        drainNextQueuedMessageRef.current?.(taskId);
       },
       onError(message, event) {
         // Order matters twice over. The generation guard comes first: a
@@ -2308,7 +2354,11 @@ function AppCore() {
         if (streamGen !== activeStreamGenerationRef.current) return;
         releaseLiveSteps([taskId]);
         if (event?.code === 'cancelled') return;
-        void handleStreamError([taskId], taskId, message, event);
+        void (async () => {
+          await handleStreamError([taskId], taskId, message, event);
+          // See onDone — the reconnect slot frees here, so drain too.
+          drainNextQueuedMessageRef.current?.(taskId);
+        })();
       },
     });
     return true;
@@ -3122,6 +3172,7 @@ function AppCore() {
       markInFlightDone(previousId);
       markInFlight(sid);
       setActiveTaskId((curr) => (curr === previousId ? sid : curr));
+      migrateQueuedMessages([previousId, taskId], sid);
     };
     // Adapter state — folded by every raw SSE event so the streaming
     // message can carry structured ThinkingStep[] for the UI.
@@ -3267,12 +3318,18 @@ function AppCore() {
           openStreamedForm(finalId, finalContent);
         }
         fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
+        // This turn held the shared stream slot; drain anything queued
+        // against any task while it ran (ENG-1378).
+        drainNextQueuedMessage(finalId);
       },
       onError(message, event) {
         if (streamGen !== activeStreamGenerationRef.current) return;
         releaseLiveSteps([resolvedId, taskId]);
         if (event?.code === 'cancelled') return;
-        void handleStreamError([resolvedId, taskId], resolvedId, message, event);
+        void (async () => {
+          await handleStreamError([resolvedId, taskId], resolvedId, message, event);
+          drainNextQueuedMessage(resolvedId);
+        })();
       },
     });
 
@@ -3287,8 +3344,12 @@ function AppCore() {
 
   // Send inside an existing task
   const handleSendInTask = async (text, queuedAttachments = null, opts = {}) => {
-    if (!currentTask) return;
-    const id = currentTask.id;
+    // opts.targetTask lets the queue drain re-send to a specific task the
+    // user may not currently be viewing (ENG-1378); a fresh composer send
+    // defaults to the task on screen.
+    const targetTask = opts.targetTask || currentTask;
+    if (!targetTask) return;
+    const id = targetTask.id;
 
     // Preflight: same gate as handleSendFromHome. Append the user's
     // turn + the action card and stop before any in-flight reservation.
@@ -3307,7 +3368,9 @@ function AppCore() {
             }
           : t,
       ));
-      setComposerAttachments([]);
+      // Only a fresh send owns the live composer's attachments; a drained
+      // queued item must not clear the composer of whatever task is on screen.
+      if (queuedAttachments == null) setComposerAttachments([]);
       return;
     }
 
@@ -3379,17 +3442,27 @@ function AppCore() {
     // The check covers two race conditions:
     //   1) `activeStreamCtrlRef` is already set — a fully launched
     //      stream is in flight.
-    //   2) `activeStreamingTaskIdRef` matches but the controller
-    //      hasn't been assigned yet — a previous invocation is mid-
-    //      await (resolving attachments). Without this leg, two
-    //      rapid clicks both pass the guard and we'd end up with
-    //      two parallel streams, the first one's controller leaked.
-    if (activeStreamingTaskIdRef.current === id || activeStreamCtrlRef.current) {
+    //   2) `activeStreamingTaskIdRef` is set but the controller hasn't
+    //      been assigned yet — a previous invocation is mid-await
+    //      (resolving attachments). This holds for ANY task's
+    //      reservation, not just this id: two rapid clicks on the same
+    //      task, or a manual send that lands while a cross-task drain
+    //      (ENG-1378) is between reserving the slot and awaiting
+    //      attachments, both otherwise pass the guard and start a second
+    //      parallel stream against anton-core (which runs one turn at a
+    //      time). The reservation is always cleared on done/error, so a
+    //      broadened guard cannot wedge later sends.
+    if (activeStreamingTaskIdRef.current || activeStreamCtrlRef.current) {
       // Queue with the files attached so a mid-stream send doesn't drop
       // them. A fresh send takes the composer's attachments and clears
       // them (the queued item now owns them); a re-enqueued queued item
       // reuses its own and leaves the live composer untouched.
-      enqueueMessage(id, text, queuedAttachments ?? composerAttachments);
+      enqueueMessage(
+        id,
+        text,
+        queuedAttachments ?? composerAttachments,
+        opts.disabledConnections != null ? opts.disabledConnections : composerDisabledConnections,
+      );
       if (queuedAttachments == null) setComposerAttachments([]);
       return;
     }
@@ -3402,22 +3475,39 @@ function AppCore() {
     // never has to lie when another tab opens this conversation.
     markInFlight(id);
 
-    const disabledForSend = normalizeComposerDisabledConnections(composerDisabledConnections);
+    const disabledForSend = normalizeComposerDisabledConnections(
+      opts.disabledConnections != null ? opts.disabledConnections : composerDisabledConnections,
+    );
 
-    const taskProjectName = currentTask.projectName
-      || (currentTaskProject?.name)
+    // A drained item's target task may not be the one on screen, so resolve
+    // its project independently rather than reusing the current view's
+    // `currentTaskProject`. Keep the same `|| selectedProject` last-resort
+    // that `currentTaskProject` has, so a project-less task's drained send
+    // resolves the same project a live send to it would (parity — otherwise
+    // even the on-screen task's own follow-up loses the fallback on drain).
+    const taskProject = opts.targetTask
+      ? (resolveTaskProject(targetTask) || selectedProject)
+      : currentTaskProject;
+    const taskProjectName = targetTask.projectName
+      || (taskProject?.name)
       || null;
-    const taskProjectId = currentTask.projectId
-      || currentTaskProject?.id
+    const taskProjectId = targetTask.projectId
+      || taskProject?.id
       || null;
-    const taskProjectPath = currentTask.projectPath
-      || currentTaskProject?.path
+    const taskProjectPath = targetTask.projectPath
+      || taskProject?.path
       || null;
     // opts.modelOverride carries a same-tick model switch (the "Switch to
-    // MindsHub Air" card action, ENG-1304) — currentTask is a render-scope
+    // MindsHub Air" card action, ENG-1304) — targetTask is a render-scope
     // closure, so a setTasks({...model}) just before this call would not be
-    // visible here yet.
-    const taskModel = opts.modelOverride || currentTask.model || selectedModel?.id || null;
+    // visible here yet. The `selectedModel` fallback is the on-screen model
+    // picker, so only a live send to the task on screen may inherit it; a
+    // drained off-screen task must not pick up whatever model the current
+    // view happens to show — it falls through to the server default instead.
+    const taskModel = opts.modelOverride
+      || targetTask.model
+      || (opts.targetTask ? null : selectedModel?.id)
+      || null;
 
     let sendingAttachments, attachmentIds, driveReference;
     try {
@@ -3486,6 +3576,7 @@ function AppCore() {
       markInFlightDone(previousId);
       markInFlight(sid);
       setActiveTaskId((curr) => (curr === previousId ? sid : curr));
+      migrateQueuedMessages([previousId, id], sid);
       // Migrate the form store so a success-state panel (e.g. the
       // OAuth success screen set just before onContinue was called)
       // survives the ID change and stays visible under the new task id.
@@ -3594,17 +3685,12 @@ function AppCore() {
           openStreamedForm(resolvedId, finalContent);
         }
         fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
-        // Drain the next queued message for this task (if any) so a
-        // user who fired multiple prompts mid-stream gets each one
-        // sent in order. Keyed off the original local id since that's
-        // what enqueueMessage used while the adoption was pending.
-        const next = popQueueHead(id);
-        if (next) {
-          // .catch: handleSendInTask throws when an answer submit fails, and a
-          // bare then() would surface that as an unhandled rejection. The user
-          // has already been told via the toast.
-          Promise.resolve().then(() => handleSendInTask(next.text, next.attachments || [])).catch(() => {});
-        }
+        // Drain the next queued message now that the single stream slot is
+        // free. Sweeps every task's queue (preferring this task for FIFO
+        // order on its own follow-ups), not just the finishing task's — a
+        // message queued for a different task while this one streamed must
+        // not strand forever at "N queued · waiting for Anton" (ENG-1378).
+        drainNextQueuedMessage(resolvedId);
       },
       onError(message, event) {
         if (streamGen !== activeStreamGenerationRef.current) return;
@@ -3612,14 +3698,47 @@ function AppCore() {
         if (event?.code === 'cancelled') return;
         void (async () => {
           await handleStreamError([resolvedId, id], resolvedId, message, event);
-          const next = popQueueHead(id);
-          if (next) {
-            Promise.resolve().then(() => handleSendInTask(next.text, next.attachments || [])).catch(() => {});
-          }
+          // See onDone — drain across all tasks once the slot frees.
+          drainNextQueuedMessage(resolvedId);
         })();
       },
     });
   };
+
+  // Drain the next queued message once the single stream slot is free.
+  // Sending is serialized app-wide (anton-core runs one turn at a time),
+  // but queues are per-task — so after a turn ends we must sweep every
+  // task's queue, not just the finishing one. `preferredTaskId` (the
+  // finishing task) is tried first so its own follow-ups keep FIFO order.
+  const drainNextQueuedMessage = (preferredTaskId) => {
+    // Slot re-reserved (a new turn already started) — that turn's own
+    // onDone/onError will drain next. Prevents launching two parallel turns.
+    if (activeStreamCtrlRef.current || activeStreamingTaskIdRef.current) return;
+    const taskId = selectNextQueuedTask(
+      messageQueueRef.current,
+      new Set(tasksRef.current.map((t) => t.id)),
+      preferredTaskId,
+    );
+    if (!taskId) return;
+    const targetTask = tasksRef.current.find((t) => t.id === taskId);
+    if (!targetTask) return;
+    const next = popQueueHead(taskId);
+    if (!next) return;
+    // handleSendInTask can reject (answer submit, or attachment resolution).
+    // The item is already popped, so a bare then() would both surface an
+    // unhandled rejection AND silently lose the message + its file. Put it back
+    // on the queue instead — it stays visible as "queued" rather than
+    // vanishing, and handleSendInTask surfaces why it failed.
+    Promise.resolve().then(() => handleSendInTask(next.text, next.attachments || [], {
+      targetTask,
+      disabledConnections: next.disabledConnections,
+    })).catch(() => {
+      enqueueMessage(taskId, next.text, next.attachments || [], next.disabledConnections || []);
+    });
+  };
+  // Keep the mount-frozen reconnect closure pointed at the current drain (and
+  // thus the current handleSendInTask). See the ref declaration above.
+  drainNextQueuedMessageRef.current = drainNextQueuedMessage;
 
   // Submit a data-vault form. Drives a fresh assistant turn from the
   // cowork agent endpoint instead of the LLM — same SSE stream shape,
@@ -3657,6 +3776,7 @@ function AppCore() {
         activeStreamingTaskIdRef.current = sid;
       }
       setActiveTaskId((curr) => (curr === previousId ? sid : curr));
+      migrateQueuedMessages([previousId, id], sid);
       // Migrate the formStore entry so the DataVaultFormPanel
       // (which re-subscribes under the new id) and incoming
       // data-vault-form-patch blocks (keyed to the new id) both
@@ -3811,6 +3931,9 @@ function AppCore() {
         fetchDatasources()
           .then((data) => setConnectors(Array.isArray(data?.connections) ? data.connections : []))
           .catch(() => {});
+        // This turn held the shared stream slot; drain anything queued
+        // against any task while it ran (ENG-1378).
+        drainNextQueuedMessage(resolvedId);
       },
       // No `cancelled` bail here, unlike the other three sites: this
       // transport's onError takes a message only, with no event/code to
@@ -3830,6 +3953,7 @@ function AppCore() {
             content: message || 'Form submission failed.',
           }] };
         }));
+        drainNextQueuedMessage(resolvedId);
       },
     });
   };
