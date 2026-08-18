@@ -213,7 +213,7 @@ export default function UpdatesSection({
         {isElectron && (
           <Section
             title="Software updates"
-            subtitle="UI and server updates apply automatically when the app restarts. Only a new app version has to be downloaded and reinstalled by hand."
+            subtitle="UI and server updates apply automatically when the app restarts. A new app version downloads in the background and installs the next time you relaunch."
           >
             {(() => {
               const r = checkResult;
