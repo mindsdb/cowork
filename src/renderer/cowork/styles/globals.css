@@ -2798,16 +2798,23 @@ body[data-theme="dark"] .chrome-btn--small.is-on {
   box-shadow: 0 0 14px rgba(34,211,238,0.30);
 }
 
-/* Floating corner button (opens ThemeModal — Light/Dark + Normal/8-Bit)
-   — restored to the bottom-right placement the onboarding pages always
-   kept (App.tsx's .arcade-theme-toggle, which never moved: CoworkApp
-   hasn't mounted yet there, so those pages have no sidebar footer to
-   host it). Same geometry/tokens as that version so the transition from
+/* Floating corner row — the Display Settings toggle (opens ThemeModal —
+   Light/Dark + Normal/8-Bit) and, on desktop, a bare Coding Mode toggle
+   beside it. Restored to the bottom-right placement the onboarding pages
+   always kept (App.tsx's .arcade-theme-toggle, which never moved: CoworkApp
+   hasn't mounted yet there, so those pages have no sidebar footer to host
+   it). Same geometry/tokens as that version so the transition from
    onboarding into the signed-in app is seamless. */
-.floating-toggle {
+.floating-toggle-row {
   position: fixed;
   right: 18px;
   bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 50;
+}
+.floating-toggle {
   width: 32px;
   height: 32px;
   display: inline-flex;
@@ -2818,7 +2825,6 @@ body[data-theme="dark"] .chrome-btn--small.is-on {
   border-radius: var(--r-8);
   color: var(--ink-2);
   cursor: pointer;
-  z-index: 50;
   box-shadow: var(--sh-1);
   transition: background .15s, color .15s, transform .15s, box-shadow .2s;
 }
@@ -2830,14 +2836,30 @@ body[data-theme="dark"] .floating-toggle:hover {
   color: var(--accent);
   box-shadow: 0 0 18px rgba(34,211,238,0.3);
 }
-/* Lit while coding mode is on — same treatment the old floating 8-bit
-   toggle used for a non-default skin. */
-.floating-toggle.is-on {
-  color: var(--accent);
-  border-color: var(--accent);
+/* Coding Mode toggle — deliberately bare (no border/background box) so it
+   reads as a status glyph next to the boxed Display Settings button, not a
+   second button of the same weight. Greyed out (--ink-4) when off, lit
+   accent when on; toggles coding mode directly on click (no modal). */
+.coding-mode-toggle {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 0;
+  color: var(--ink-4);
+  cursor: pointer;
+  transition: color .15s, opacity .15s;
 }
-body[data-theme="dark"] .floating-toggle.is-on {
-  box-shadow: 0 0 14px rgba(34,211,238,0.30);
+.coding-mode-toggle:hover {
+  color: var(--ink-2);
+}
+.coding-mode-toggle.is-on {
+  color: var(--accent);
+}
+.coding-mode-toggle.is-on:hover {
+  opacity: 0.85;
 }
 
 /* Hide focus ring on mouse-clicked buttons so a stray Space/Enter

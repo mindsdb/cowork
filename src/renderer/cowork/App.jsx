@@ -4390,31 +4390,55 @@ function AppCore() {
         />
       )}
 
-      {/* Single floating corner button — back to its original bottom-right
-          placement, matching the onboarding pages (App.tsx's
-          .arcade-theme-toggle, which never moved). Opens ThemeModal (now
-          titled "Display Settings"), the same Light/Dark + Normal/8-Bit
-          (+ desktop-only Coding mode) picker as the sidebar's old
-          "Display settings" button (now removed — this is the one entry
-          point). Icon doubles as status: the same sun/moon the old
-          separate theme toggle used, switching to the lit gamepad/
-          console mark while coding mode is on (desktop only) — the same
-          way the old floating 8-bit toggle lit for a non-default skin. */}
+      {/* Floating corner row — back to its original bottom-right placement,
+          matching the onboarding pages (App.tsx's .arcade-theme-toggle,
+          which never moved). Same corner on every route, task view
+          included — one consistent location, not a bespoke per-view
+          control.
+            - Display Settings: opens ThemeModal (Light/Dark + Normal/8-Bit
+              picker) — the sidebar's old "Display settings" button (now
+              removed) folded into this.
+            - Coding Mode (desktop only): a bare "</>" glyph beside it,
+              deliberately un-boxed so it reads as a status indicator, not
+              a second button of the same weight — lit accent when on,
+              greyed out when off. Toggles the setting directly on click;
+              no modal, since there's nothing else to configure here. */}
       {(() => {
-        const codingModeOn = !host.isWeb && settings.codingModeEnabled;
-        // Same corner button on every route, task view included — the
-        // one entry point for Display Settings, not a bespoke per-view
-        // control.
-        return (settings.showThemeToggle !== false || settings.show8bitToggle !== false) && (
-          <Tooltip content="Display settings">
-            <button
-              onClick={() => setThemeModalOpen(true)}
-              aria-label="Open display settings"
-              className={'floating-toggle [-webkit-app-region:no-drag]' + (codingModeOn ? ' is-on' : '')}
-            >
-              {codingModeOn ? Ico.gamepad(15) : (theme === 'dark' ? Ico.sun(15) : Ico.moon(15))}
-            </button>
-          </Tooltip>
+        const showCodingToggle = !host.isWeb;
+        const codingModeOn = showCodingToggle && settings.codingModeEnabled;
+        const showThemeToggle = settings.showThemeToggle !== false || settings.show8bitToggle !== false;
+        if (!showCodingToggle && !showThemeToggle) return null;
+        return (
+          <div className="floating-toggle-row [-webkit-app-region:no-drag]">
+            {showCodingToggle && (
+              <Tooltip content={codingModeOn ? 'Turn off coding mode' : 'Turn on coding mode'}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = !settings.codingModeEnabled;
+                    setSetting('codingModeEnabled', next);
+                    saveSettings({ codingModeEnabled: next }).catch(() => {});
+                  }}
+                  aria-label={codingModeOn ? 'Turn off coding mode' : 'Turn on coding mode'}
+                  aria-pressed={codingModeOn}
+                  className={'coding-mode-toggle' + (codingModeOn ? ' is-on' : '')}
+                >
+                  {Ico.code(15)}
+                </button>
+              </Tooltip>
+            )}
+            {showThemeToggle && (
+              <Tooltip content="Display settings">
+                <button
+                  onClick={() => setThemeModalOpen(true)}
+                  aria-label="Open display settings"
+                  className="floating-toggle"
+                >
+                  {theme === 'dark' ? Ico.sun(15) : Ico.moon(15)}
+                </button>
+              </Tooltip>
+            )}
+          </div>
         );
       })()}
 
