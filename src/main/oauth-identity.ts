@@ -44,6 +44,20 @@ async function fetchGithubIdentity(accessToken: string): Promise<{ email: string
   return { email: data.email || data.login || '' };
 }
 
+async function fetchPostHogIdentity(accessToken: string): Promise<{ email: string }> {
+  // Queried against the US Cloud API host; PostHog's OAuth authorize/token
+  // endpoints are region-agnostic (oauth.posthog.com), but we haven't yet
+  // confirmed a token issued that way is accepted against every regional
+  // API host — matches the same caveat on the server-side
+  // _fetch_userinfo_posthog. May need adjusting for EU-hosted accounts.
+  const res = await fetch('https://us.posthog.com/api/users/@me/', {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) return { email: '' };
+  const data = await res.json() as { email?: string };
+  return { email: data.email || '' };
+}
+
 const FETCHERS: Record<string, (accessToken: string) => Promise<{ email: string }>> = {
   google_drive: fetchGoogleIdentity,
   google_calendar: fetchGoogleIdentity,
@@ -52,6 +66,7 @@ const FETCHERS: Record<string, (accessToken: string) => Promise<{ email: string 
   google_analytics_4: fetchGoogleIdentity,
   linear: fetchLinearIdentity,
   github: fetchGithubIdentity,
+  posthog: fetchPostHogIdentity,
 };
 
 export async function fetchAccountEmail(engine: string, accessToken: string): Promise<string> {

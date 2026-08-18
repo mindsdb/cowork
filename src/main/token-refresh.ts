@@ -119,15 +119,18 @@ async function tick(engine: string, accountEmail: string, key: string): Promise<
   }
 
   try {
+    const refreshParams = new URLSearchParams({
+      grant_type: 'refresh_token',
+      client_id: clientId,
+      refresh_token: refreshToken,
+    });
+    // Omitted entirely for public clients (PostHog) rather than sent as an
+    // empty string — there's no secret to authenticate the refresh with.
+    if (clientSecret) refreshParams.set('client_secret', clientSecret);
     const res = await fetch(state.tokenUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        grant_type: 'refresh_token',
-        client_id: clientId,
-        client_secret: clientSecret,
-        refresh_token: refreshToken,
-      }).toString(),
+      body: refreshParams.toString(),
     });
 
     // Google's token endpoint returns 400 { error: "invalid_grant" } for a
