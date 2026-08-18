@@ -31,6 +31,36 @@ function detectSlashToken(text, caret) {
   return { start: caret - m[2].length - 1, query: m[2].toLowerCase() };
 }
 
+// Selected task-mode chip in the composer toolbar (ENG-1594). One button —
+// the whole chip removes the mode. Both glyphs (mode icon + X) stay in the
+// DOM, absolutely stacked, and cross-fade on hover/focus-visible (touch
+// pointers show the X permanently — no hover to reveal it), so the swap is
+// interruptible and needs no state. Hover styles are gated behind
+// (hover:hover) and (pointer:fine) via arbitrary variants; Tailwind's bare
+// hover: compiles to plain :hover here, which sticks on touch.
+// (Class strings stay whole literals — Tailwind's scanner can't see through
+// template interpolation, and a missed candidate fails silently.)
+function TaskModeChip({ mode, onClear }) {
+  return (
+    <button
+      type="button"
+      className="group inline-flex h-7 cursor-pointer items-center gap-[6px] rounded-full px-[11px] border border-solid border-[color-mix(in_srgb,var(--accent)_28%,transparent)] bg-[var(--primary-50)] text-[var(--primary-700)] [font-family:inherit] text-[13px] font-medium dark:border-[color-mix(in_srgb,var(--accent)_40%,transparent)] dark:text-accent [transition:background_140ms_ease,border-color_140ms_ease,transform_160ms_cubic-bezier(0.23,1,0.32,1)] animate-chip-in motion-reduce:animate-none active:scale-[0.96] motion-reduce:active:transform-none [@media(hover:hover)_and_(pointer:fine)]:hover:bg-[color-mix(in_srgb,var(--accent)_16%,var(--surface-0))] [@media(hover:hover)_and_(pointer:fine)]:hover:border-[color-mix(in_srgb,var(--accent)_45%,transparent)]"
+      aria-label={`Remove ${mode.chipNoun || mode.chipLabel} mode`}
+      onClick={onClear}
+    >
+      <span className="relative inline-flex h-3.5 w-3.5" aria-hidden>
+        <span className="absolute inset-0 inline-flex [transition:opacity_150ms_cubic-bezier(0.2,0,0,1),transform_150ms_cubic-bezier(0.2,0,0,1)] group-focus-visible:scale-[0.25] group-focus-visible:opacity-0 [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[0.25] [@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-0 [@media(hover:none)]:scale-[0.25] [@media(hover:none)]:opacity-0">
+          {Ico[mode.icon](14)}
+        </span>
+        <span className="absolute inset-0 inline-flex [transition:opacity_150ms_cubic-bezier(0.2,0,0,1),transform_150ms_cubic-bezier(0.2,0,0,1)] scale-[0.25] opacity-0 group-focus-visible:scale-100 group-focus-visible:opacity-100 [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-100 [@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-100 [@media(hover:none)]:scale-100 [@media(hover:none)]:opacity-100">
+          {Ico.close(14)}
+        </span>
+      </span>
+      {mode.chipLabel}
+    </button>
+  );
+}
+
 function AttachmentChip({ attachment, onRemove }) {
   const src = attachment.source || attachment.kind || 'file';
   const isImage = attachment.mime && String(attachment.mime).startsWith('image/');
@@ -179,6 +209,11 @@ export default function Composer({
   // with it so the new project is pre-selected for the task being
   // composed. When omitted, the row is hidden.
   onCreateProject = null,
+  // Selected task mode (ENG-1594) — when set, a removable chip renders in
+  // the toolbar next to the + button. The caller owns the selection state
+  // (and the matching placeholder); `onClearTaskMode` removes it.
+  taskMode = null,
+  onClearTaskMode,
   // Names the surface this composer's unsent text belongs to, so a draft
   // survives navigation (every composer unmounts on route change) and doesn't
   // leak between surfaces. Defaults to the conversation for in-chat replies
@@ -526,6 +561,17 @@ export default function Composer({
       setValue(value.slice(0, start) + mention + value.slice(caret));
     }
   }, [value]);
+
+  // Task-mode change (select from the pill row or clear via the chip) moves
+  // focus into the textarea: the user's next act is typing, and for a screen
+  // reader the focus event reads out the freshly-swapped placeholder — the
+  // otherwise-silent mode switch gets announced (ENG-1594 review finding).
+  const prevTaskModeRef = useRef(taskMode);
+  useEffect(() => {
+    if (prevTaskModeRef.current === taskMode) return;
+    prevTaskModeRef.current = taskMode;
+    taRef.current?.focus();
+  }, [taskMode]);
 
   // Edit-and-resend: when ChatView bumps `prefill`, drop the supplied
   // text into the composer and focus the textarea so the user can
@@ -1162,6 +1208,7 @@ export default function Composer({
                 </div>
               )}
             </span>
+            {taskMode && <TaskModeChip mode={taskMode} onClear={onClearTaskMode} />}
             <div className="flex-1" />
             {/* Mic / voice input intentionally hidden — voice flow isn't
                 wired through anton yet. We keep speechSupported state
