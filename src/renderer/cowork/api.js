@@ -354,7 +354,7 @@ export function allocateConversationId() {
 // callback shape the rest of the app already speaks. `conversationId` is
 // optional — omit it to start a new conversation; the caller learns the
 // new id via the first onChunk/onProgress/onDone callback's second arg.
-function _streamResponse(text, { conversationId, projectName, projectId, projectPath, model, attachmentIds = [], disabledConnections, onChunk, onProgress, onToolResult, onDone, onError, onEvent } = {}) {
+function _streamResponse(text, { conversationId, projectName, projectId, projectPath, model, harness, attachmentIds = [], disabledConnections, onChunk, onProgress, onToolResult, onDone, onError, onEvent } = {}) {
   const ctrl = new AbortController();
   (async () => {
     try {
@@ -368,6 +368,12 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
           // (modelCatalog.js). The server already treats a null/absent
           // model as exactly that.
           model: (model && model !== MODEL_ROUTER_ID) ? model : null,
+          // The composer's per-task harness pick (ENG-1656 follow-up) —
+          // overrides the account-wide harness setting for this
+          // conversation only. Omitted (server keeps the account default)
+          // when the caller doesn't pass one, e.g. an in-task reply, where
+          // the harness pill never shows.
+          ...(harness ? { harness } : {}),
           stream: true,
           conversation: conversationId || null,
           // Server's `project` field is a project NAME (folder under

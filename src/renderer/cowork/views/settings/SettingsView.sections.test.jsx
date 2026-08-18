@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 
 // Behavior-lock: every Settings section must mount and render its defining
@@ -88,8 +89,11 @@ describe('SettingsView — every section mounts (behavior lock)', () => {
   });
 
   it('renders the Agent section', async () => {
+    // Desktop (host.isWeb: false, mocked above) shows "Coding Mode" — the
+    // per-task harness picker's group — rather than the web-only static
+    // Anton/Hermes toggle labeled "Harness".
     render(<Harness section="agent" />);
-    expect(await screen.findByText('Harness')).toBeInTheDocument();
+    expect(await screen.findByText('Coding mode')).toBeInTheDocument();
   });
 
   it('renders the Appearance section', async () => {
@@ -120,5 +124,62 @@ describe('SettingsView — every section mounts (behavior lock)', () => {
     render(<Harness section="account" />);
     expect(await screen.findByText(/Sign in \/ Sign up to MindsHub/i)).toBeInTheDocument();
     expect(spies.getAccessToken).toHaveBeenCalled();
+  });
+});
+
+// ─── Coding Mode's per-harness picker (ENG-1656 follow-up) ────────────
+//
+// Desktop only (host.isWeb: false throughout this file). The per-harness
+// enable toggles are nested under Coding Mode itself — hidden until it's
+// on — and Hermes specifically is hidden unless the server actually has it
+// registered (settings.harnessOptions, from available_harness_ids()).
+
+describe('SettingsView — Coding Mode harness picker', () => {
+  it('hides the per-harness toggles while Coding mode itself is off', async () => {
+    render(<Harness section="agent" />);
+    await screen.findByText('Coding mode');
+    expect(screen.queryByRole('switch', { name: /enable anton/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('switch', { name: /enable claude-code/i })).not.toBeInTheDocument();
+  });
+
+  it('reveals Anton and Claude-Code toggles once Coding mode is switched on', async () => {
+    const user = userEvent.setup();
+    render(<Harness section="agent" />);
+    await user.click(await screen.findByRole('switch', { name: 'Coding mode' }));
+
+    expect(screen.getByRole('switch', { name: /enable anton/i })).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: /enable claude-code/i })).toBeInTheDocument();
+  });
+
+  it('hides Hermes when the server does not report it as available', async () => {
+    const user = userEvent.setup();
+    render(<Harness section="agent" />);
+    await user.click(await screen.findByRole('switch', { name: 'Coding mode' }));
+
+    // baseSettings() carries no harnessOptions — server never reported
+    // hermes-agent as installed.
+    expect(screen.queryByRole('switch', { name: /enable hermes/i })).not.toBeInTheDocument();
+  });
+
+  it('shows Hermes when the server reports it as available', async () => {
+    const user = userEvent.setup();
+    function HermesHarness() {
+      const [settings, setSettings] = useState({ ...baseSettings(), harnessOptions: ['anton', 'hermes'] });
+      const setSetting = (key, value) => setSettings((s) => ({ ...s, [key]: value }));
+      return (
+        <SettingsView
+          settings={settings} setSetting={setSetting} onSave={vi.fn(async () => {})}
+          theme="dark" onThemeChange={vi.fn()} skin="default" onSkinChange={vi.fn()}
+          customTheme={{}} onCustomThemeChange={vi.fn()} agentLabel="Anton"
+          serverOnline serverBusy={false} onStartServer={vi.fn()} onStopServer={vi.fn()}
+          section="agent" onSectionChange={vi.fn()} isSsoConnected={false} onSsoSignIn={vi.fn()}
+          shellUpdate={null} onDownloadShellUpdate={vi.fn()}
+        />
+      );
+    }
+    render(<HermesHarness />);
+    await user.click(await screen.findByRole('switch', { name: 'Coding mode' }));
+
+    expect(screen.getByRole('switch', { name: /enable hermes/i })).toBeInTheDocument();
   });
 });

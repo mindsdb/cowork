@@ -1743,32 +1743,68 @@ export default function SettingsView({
           </div>
         </div>
 
-        <SettingsGroup title="Agent Harness">
-          <Section title="Harness" subtitle={`Which AI agent powers your tasks. ${agentLabel || 'Anton'} is the default; Hermes is an alternative agent with its own tool and memory system.`}>
-            <ToggleGroup
-              value={settings.harness || 'anton'}
-              onValueChange={(v) => { setSetting('harness', v); setLlmDirty(true); }}
-              aria-label="Agent harness"
-              options={[
-                { value: 'anton', label: 'Anton', 'aria-label': 'Use Anton agent', title: 'Anton — the default AI agent.' },
-                { value: 'hermes', label: 'Hermes', 'aria-label': 'Use Hermes agent', title: 'Hermes — alternative agent with independent tools and memory.' },
-              ]}
-            />
-          </Section>
-          {/* Desktop only: launching an external CLI in a terminal is an
-              Electron main-process capability (child_process spawn) with no
-              web equivalent — a browser tab can't open a terminal window on
-              the visitor's machine. */}
-          {!host.isWeb && (
-            <Section title="Coding mode" subtitle="Let a task launch in an external coding CLI (e.g. Claude Code) instead of the in-app chat, when one is installed.">
+        {/* Coding Mode is desktop-only — launching an external CLI in a
+            terminal is an Electron main-process capability (child_process
+            spawn) with no web equivalent, a browser tab can't open a
+            terminal window on the visitor's machine. Web keeps the old,
+            simpler single-select Anton/Hermes toggle (unaffected by Coding
+            Mode, since that concept doesn't exist there); desktop gets the
+            full picker: a top-level on/off switch, and — only once it's
+            on — which harnesses the per-task composer pill offers. */}
+        {host.isWeb ? (
+          <SettingsGroup title="Agent Harness">
+            <Section title="Harness" subtitle={`Which AI agent powers your tasks. ${agentLabel || 'Anton'} is the default; Hermes is an alternative agent with its own tool and memory system.`}>
+              <ToggleGroup
+                value={settings.harness || 'anton'}
+                onValueChange={(v) => { setSetting('harness', v); setLlmDirty(true); }}
+                aria-label="Agent harness"
+                options={[
+                  { value: 'anton', label: 'Anton', 'aria-label': 'Use Anton agent', title: 'Anton — the default AI agent.' },
+                  ...((settings.harnessOptions || []).includes('hermes') ? [
+                    { value: 'hermes', label: 'Hermes', 'aria-label': 'Use Hermes agent', title: 'Hermes — alternative agent with independent tools and memory.' },
+                  ] : []),
+                ]}
+              />
+            </Section>
+          </SettingsGroup>
+        ) : (
+          <SettingsGroup title="Coding Mode">
+            <Section title="Coding mode" subtitle="Let a task pick its own agent per task — including launching in an external coding CLI (e.g. Claude Code) instead of the in-app chat, when one is installed.">
               <Switch
                 checked={settings.codingModeEnabled ?? false}
                 onCheckedChange={(v) => setSetting('codingModeEnabled', v)}
                 aria-label="Coding mode"
               />
             </Section>
-          )}
-        </SettingsGroup>
+            {!!settings.codingModeEnabled && (
+              <>
+                <Section title="Anton" subtitle="Offer Anton as a per-task harness choice.">
+                  <Switch
+                    checked={settings.harnessAntonEnabled ?? true}
+                    onCheckedChange={(v) => setSetting('harnessAntonEnabled', v)}
+                    aria-label="Enable Anton in the harness picker"
+                  />
+                </Section>
+                {(settings.harnessOptions || []).includes('hermes') && (
+                  <Section title="Hermes" subtitle="Offer Hermes — an alternative agent with independent tools and memory — as a per-task harness choice.">
+                    <Switch
+                      checked={settings.harnessHermesEnabled ?? true}
+                      onCheckedChange={(v) => setSetting('harnessHermesEnabled', v)}
+                      aria-label="Enable Hermes in the harness picker"
+                    />
+                  </Section>
+                )}
+                <Section title="Claude-Code" subtitle="Offer Claude Code as a per-task harness choice, when the CLI is installed on this machine.">
+                  <Switch
+                    checked={settings.harnessClaudeCodeEnabled ?? true}
+                    onCheckedChange={(v) => setSetting('harnessClaudeCodeEnabled', v)}
+                    aria-label="Enable Claude-Code in the harness picker"
+                  />
+                </Section>
+              </>
+            )}
+          </SettingsGroup>
+        )}
 
         <SettingsGroup title="Memory">
           <Section title="Memory mode" subtitle={`How ${agentLabel || 'Anton'} updates its long-term memory.`}>

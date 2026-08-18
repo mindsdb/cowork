@@ -431,6 +431,42 @@ describe('agent tool-budget settings (max_tool_rounds / max_continuations)', () 
   });
 });
 
+describe('harness picker enable flags + availability (ENG-1656 follow-up)', () => {
+  it('transforms the three per-harness enable flags into camelCase booleans', async () => {
+    const { transformSettingsRows } = await import('./settingsTransform');
+    const rows = [
+      { key: 'harness_anton_enabled', value: 'True', is_sensitive: false, is_set: true },
+      { key: 'harness_hermes_enabled', value: 'False', is_sensitive: false, is_set: true },
+      { key: 'harness_claude_code_enabled', value: 'True', is_sensitive: false, is_set: true },
+    ];
+    const s = transformSettingsRows(rows);
+    expect(s.harnessAntonEnabled).toBe(true);
+    expect(s.harnessHermesEnabled).toBe(false);
+    expect(s.harnessClaudeCodeEnabled).toBe(true);
+  });
+
+  it('surfaces the harness row\'s `options` as harnessOptions, separate from its own value', async () => {
+    const { transformSettingsRows } = await import('./settingsTransform');
+    const rows = [
+      { key: 'harness', value: 'anton', is_sensitive: false, is_set: true, options: ['anton'] },
+    ];
+    const s = transformSettingsRows(rows);
+    // Server's available_harness_ids() omitted "hermes" (not installed) —
+    // the picker needs this to hide the enable-toggle entirely, distinct
+    // from "hermes is available but the account disabled it."
+    expect(s.harnessOptions).toEqual(['anton']);
+    expect(s.harness).toBe('anton');
+  });
+
+  it('leaves harnessOptions unset when the harness row carries no options', async () => {
+    const { transformSettingsRows } = await import('./settingsTransform');
+    const rows = [
+      { key: 'harness', value: 'anton', is_sensitive: false, is_set: true },
+    ];
+    expect(transformSettingsRows(rows).harnessOptions).toBeUndefined();
+  });
+});
+
 describe('per-turn spend ceiling (max_turn_tokens, ENG-1286)', () => {
   it('transforms the server row into a camelCase string value', async () => {
     const { transformSettingsRows } = await import('./settingsTransform');

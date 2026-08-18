@@ -379,6 +379,78 @@ describe('Composer — no provider configured (ENG-1656 follow-up)', () => {
   });
 });
 
+// ─── Harness picker reflects Settings → Coding Mode (ENG-1656 follow-up) ──
+//
+// The pill's options come from the three harnessXEnabled props (default
+// true), not a fixed Anton/Claude-Code list — Hermes is now offerable too,
+// and any of the three can be individually turned off.
+
+describe('Composer — harness picker honors the per-harness enable flags', () => {
+  it('offers all three harnesses by default', async () => {
+    const user = userEvent.setup();
+    renderComposer({ models: MODELS, modelMeta: MODEL_META, model: MODELS[0], codingModeEnabled: true });
+
+    expect(await screen.findByRole('button', { name: 'Anton' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Hermes' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Claude-Code' })).toBeInTheDocument();
+  });
+
+  it('hides Hermes when harnessHermesEnabled is false', async () => {
+    renderComposer({
+      models: MODELS, modelMeta: MODEL_META, model: MODELS[0], codingModeEnabled: true,
+      harnessHermesEnabled: false,
+    });
+
+    expect(await screen.findByRole('button', { name: 'Anton' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Hermes' })).toBeNull();
+  });
+
+  it('hides Claude-Code when harnessClaudeCodeEnabled is false', async () => {
+    renderComposer({
+      models: MODELS, modelMeta: MODEL_META, model: MODELS[0], codingModeEnabled: true,
+      harnessClaudeCodeEnabled: false,
+    });
+
+    expect(await screen.findByRole('button', { name: 'Anton' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Claude-Code' })).toBeNull();
+  });
+
+  it('hides the whole pill when every harness is disabled', () => {
+    renderComposer({
+      models: MODELS, modelMeta: MODEL_META, model: MODELS[0], codingModeEnabled: true,
+      harnessAntonEnabled: false, harnessHermesEnabled: false, harnessClaudeCodeEnabled: false,
+    });
+
+    expect(screen.queryByRole('group', { name: 'Choose harness' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Anton' })).toBeNull();
+  });
+
+  it('falls back to a still-enabled harness if the picked one gets disabled underneath it (e.g. Settings changed elsewhere)', async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    const baseProps = {
+      onSend, project: { name: 'general' }, projects: [{ name: 'general' }],
+      onProjectChange: vi.fn(), onCreateProject: vi.fn(async ({ name }) => ({ name })),
+      models: MODELS, modelMeta: MODEL_META, model: MODELS[0], codingModeEnabled: true,
+      sendsMeta: true, draftKey: 'harness-fallback-test',
+    };
+    const { rerender } = render(<Composer {...baseProps} />);
+
+    await user.click(await screen.findByRole('button', { name: 'Hermes' }));
+    // Hermes gets disabled from underneath the already-open composer.
+    rerender(<Composer {...baseProps} harnessHermesEnabled={false} />);
+
+    // The reset effect corrects the pill itself...
+    expect(screen.queryByRole('button', { name: 'Hermes' })).toBeNull();
+    expect(await screen.findByRole('button', { name: 'Anton', pressed: true })).toBeInTheDocument();
+
+    // ...and a send reflects the corrected value, never the disabled one.
+    await user.type(screen.getByRole('textbox'), 'hello');
+    await user.keyboard('{Enter}');
+    expect(onSend).toHaveBeenCalledWith('hello', expect.objectContaining({ harness: 'anton' }));
+  });
+});
+
 describe('Composer — task-mode chip (ENG-1594)', () => {
   const MODE = {
     id: 'slides', pillLabel: 'Create slides', chipLabel: 'Slides',

@@ -1189,6 +1189,9 @@ export default function ChatView({
   onOpenProjectsList,
   onOpenSettings,
   codingModelDefault,
+  harnessAntonEnabled,
+  harnessHermesEnabled,
+  harnessClaudeCodeEnabled,
   onStop,
   projects = [],
   // Messages the user typed while Anton was mid-turn. Displayed as
@@ -2214,6 +2217,9 @@ export default function ChatView({
             prefill={composerPrefill}
             onOpenSettings={onOpenSettings}
             codingModelDefault={codingModelDefault}
+            harnessAntonEnabled={harnessAntonEnabled}
+            harnessHermesEnabled={harnessHermesEnabled}
+            harnessClaudeCodeEnabled={harnessClaudeCodeEnabled}
           />
         </div>
         </>

@@ -571,6 +571,9 @@ function ProjectDetail({
   onOpenSchedule,
   onOpenSettings,
   codingModelDefault,
+  harnessAntonEnabled,
+  harnessHermesEnabled,
+  harnessClaudeCodeEnabled,
 }) {
   const projectTasks = (tasks || [])
     .filter((t) => t.projectName === project.name || t.projectPath === project.path)
@@ -723,6 +726,9 @@ function ProjectDetail({
               codingModeEnabled={codingModeEnabled}
               onOpenSettings={onOpenSettings}
               codingModelDefault={codingModelDefault}
+              harnessAntonEnabled={harnessAntonEnabled}
+              harnessHermesEnabled={harnessHermesEnabled}
+              harnessClaudeCodeEnabled={harnessClaudeCodeEnabled}
               sendsMeta
               placeholder={`Start a new task in ${project.name}…`}
               // Keyed on the id, not the name: renaming a project must not
@@ -812,6 +818,9 @@ export default function ProjectsView({
   agentLabel = 'the agent',
   onOpenSettings,
   codingModelDefault,
+  harnessAntonEnabled,
+  harnessHermesEnabled,
+  harnessClaudeCodeEnabled,
 }) {
   const { pinned, togglePin } = usePinnedProjects();
   const { isMobile } = useBreakpoint();
@@ -967,6 +976,9 @@ export default function ProjectsView({
         onUpdateConnectorMute={onUpdateConnectorMute}
         onOpenSettings={onOpenSettings}
         codingModelDefault={codingModelDefault}
+        harnessAntonEnabled={harnessAntonEnabled}
+        harnessHermesEnabled={harnessHermesEnabled}
+        harnessClaudeCodeEnabled={harnessClaudeCodeEnabled}
         onShowAll={() => setDetailProject(null)}
         editing={editingProjectName === detailProject.name}
         onRenameStart={handleRenameStart}

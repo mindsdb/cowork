@@ -3146,6 +3146,10 @@ function AppCore() {
       projectName: effectiveProjectName,
       projectId: effectiveProjectId,
       model: selectedModel?.id ?? null,
+      // The composer's harness pick (ENG-1656 follow-up) — Anton or
+      // Hermes here; 'claude-code' never reaches this function (the top
+      // of handleSendFromHome routes it to launchCodingModeTask instead).
+      harness: meta?.harness || null,
       attachments: sendingAttachments,
       disabledConnections: disabledForSend,
       // Stamp a client-side timestamp so the Sidebar's sort-by-
@@ -3235,6 +3239,7 @@ function AppCore() {
       projectId: effectiveProjectId,
       projectPath: effectiveProjectPath,
       model: selectedModel?.id,
+      harness: meta?.harness,
       attachmentIds,
       disabledConnections: disabledForSend,
       onEvent(ev) {
@@ -4592,6 +4597,9 @@ function AppCore() {
             configError={health.config_error ?? settings.configError}
             onOpenSettings={openSettings}
             codingModelDefault={settings.codingModel}
+            harnessAntonEnabled={settings.harnessAntonEnabled ?? true}
+            harnessHermesEnabled={settings.harnessHermesEnabled ?? true}
+            harnessClaudeCodeEnabled={settings.harnessClaudeCodeEnabled ?? true}
             serverOnline={serverOnline}
             agentLabel={agentLabel}
             onShowServerHelp={() => openSettings('backend')}
@@ -4609,6 +4617,9 @@ function AppCore() {
             onSwitchToAirAndResend={airAvailableForSwitch ? handleSwitchToAirAndResend : undefined}
             onOpenSettings={openSettings}
             codingModelDefault={settings.codingModel}
+            harnessAntonEnabled={settings.harnessAntonEnabled ?? true}
+            harnessHermesEnabled={settings.harnessHermesEnabled ?? true}
+            harnessClaudeCodeEnabled={settings.harnessClaudeCodeEnabled ?? true}
             queuedMessages={messageQueue[currentTask?.id] || []}
             onRemoveFromQueue={(itemId) => removeFromQueue(currentTask?.id, itemId)}
             onBack={() => {
@@ -4768,6 +4779,9 @@ function AppCore() {
             agentLabel={agentLabel}
             onOpenSettings={openSettings}
             codingModelDefault={settings.codingModel}
+            harnessAntonEnabled={settings.harnessAntonEnabled ?? true}
+            harnessHermesEnabled={settings.harnessHermesEnabled ?? true}
+            harnessClaudeCodeEnabled={settings.harnessClaudeCodeEnabled ?? true}
           />
         )}
 

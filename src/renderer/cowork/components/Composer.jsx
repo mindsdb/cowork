@@ -196,6 +196,12 @@ export default function Composer({
   // nothing to choose from), this is what gets auto-selected instead of
   // leaving the picker empty and blocking send.
   codingModelDefault,
+  // Which harnesses the pill below offers, per Settings → Coding Mode
+  // (default true — an account that never visits that setting sees every
+  // harness it's otherwise eligible for).
+  harnessAntonEnabled = true,
+  harnessHermesEnabled = true,
+  harnessClaudeCodeEnabled = true,
 }) {
   const [value, setValue] = useDraft(draftKey || conversationId || 'new');
   const [focused, setFocused] = useState(false);
@@ -340,12 +346,53 @@ export default function Composer({
     Promise.resolve(modelMeta.onRefresh()).catch(() => {});
   }, [modelMeta]);
 
+  // Which harnesses the pill offers — Settings → Coding Mode's per-harness
+  // enable flags, filtered live. Claude Code's detection hint (installed?)
+  // stays a non-blocking title tooltip, not a gate — see claudeCodeInfo above.
+  const harnessPickerOptions = useMemo(() => {
+    const opts = [];
+    if (harnessAntonEnabled) opts.push({ value: 'anton', label: 'Anton' });
+    if (harnessHermesEnabled) opts.push({ value: 'hermes', label: 'Hermes' });
+    if (harnessClaudeCodeEnabled) {
+      opts.push({
+        value: 'claude-code',
+        label: 'Claude-Code',
+        title: claudeCodeInfo.installed ? undefined : 'Claude-Code — not detected on this machine',
+      });
+    }
+    return opts;
+  }, [harnessAntonEnabled, harnessHermesEnabled, harnessClaudeCodeEnabled, claudeCodeInfo.installed]);
+
+  // If the currently-picked harness gets disabled out from under it (an
+  // admin turned it off between page loads, or Coding mode just turned on
+  // for the first time), fall back to whatever's still offered rather than
+  // silently sending a harness the pill no longer shows as selected.
+  useEffect(() => {
+    if (!codingModeEnabled || harnessPickerOptions.length === 0) return;
+    if (harnessPickerOptions.some((o) => o.value === codingHarness)) return;
+    setCodingHarness(harnessPickerOptions[0].value);
+  }, [codingModeEnabled, harnessPickerOptions, codingHarness]);
+
   // Claude Code needs a real, concrete model for its `--model` flag — no
   // auto-routing concept in the CLI — so Model Router is hidden whenever
   // that harness is the one about to send. Computed once, reused by both
   // modelPickerOptions below and the no-real-models render branch further
   // down (which needs it outside the memo).
-  const isClaudeCode = codingModeEnabled && codingHarness === 'claude-code';
+  // Requires harnessClaudeCodeEnabled too, not just a stale codingHarness
+  // value — e.g. an admin disabling it after it was already selected must
+  // not leave the composer still routing to it.
+  const isClaudeCode = codingModeEnabled && harnessClaudeCodeEnabled && codingHarness === 'claude-code';
+
+  // What actually gets sent (handleSend below) — never the raw codingHarness
+  // state directly, so a value that just got disabled (the reset effect
+  // above hasn't re-rendered yet, or every harness is disabled) can't slip
+  // through as e.g. a stale "claude-code" that would launch the external
+  // CLI despite the toggle being off.
+  const effectiveHarness = !codingModeEnabled
+    ? 'anton'
+    : (harnessPickerOptions.some((o) => o.value === codingHarness)
+      ? codingHarness
+      : (harnessPickerOptions[0]?.value || 'anton'));
 
   // No provider configured (MindsHub or BYOK) leaves `models` (the real
   // catalog — recommendedModelOptions returns [] for an unconfigured
@@ -869,11 +916,11 @@ export default function Composer({
       // just coding mode); harness only matters once coding mode is on —
       // otherwise every task is implicitly Anton regardless of local state.
       // See `sendsMeta` above for why this can't unconditionally be onSend's
-      // 2nd argument. `effectiveModelId` (not the raw `model?.id`) so a
-      // same-tick send can't race the Coding-model-default sync effect
-      // above and slip through with nothing pickable for Claude Code.
+      // 2nd argument. `effectiveHarness`/`effectiveModelId` (not the raw
+      // `codingHarness`/`model?.id`) so a same-tick send can't slip through
+      // with a disabled harness or nothing pickable for Claude Code.
       const result = sendsMeta
-        ? onSend(value.trim(), { harness: codingModeEnabled ? codingHarness : 'anton', model: effectiveModelId })
+        ? onSend(value.trim(), { harness: effectiveHarness, model: effectiveModelId })
         : onSend(value.trim());
       await Promise.resolve(result);
       setValue('');
@@ -1564,29 +1611,26 @@ export default function Composer({
           )}
 
           {/* Coding mode (MVP): the harness choice itself still gates on the
-              setting — offering Claude Code as an option only makes sense
-              when it's turned on. Model selection above applies regardless
-              of which harness is picked. Desktop-only regardless of the
-              setting's value: it's an account-wide setting, so a web
-              session for the same account would otherwise still see the
-              option — launching a terminal is an Electron capability the
-              web build has no equivalent for. Same ToggleGroup as the
-              Settings Anton/Hermes control, not a dropdown — a segmented
-              toggle reads better for a 2-way, always-visible choice. */}
-          {codingModeEnabled && !host.isWeb && (
+              setting — offering it at all only makes sense once it's turned
+              on. Options come from Settings → Coding Mode's per-harness
+              enable flags (harnessPickerOptions above), not a fixed list —
+              e.g. Claude Code disappears entirely once its toggle is off,
+              same as Hermes when the server doesn't have it installed.
+              Model selection above applies regardless of which harness is
+              picked. Desktop-only regardless of the setting's value: it's
+              an account-wide setting, so a web session for the same account
+              would otherwise still see the option — launching a terminal
+              is an Electron capability the web build has no equivalent
+              for. Same ToggleGroup as the Settings Anton/Hermes control,
+              not a dropdown — a segmented toggle reads better for a small,
+              always-visible choice. */}
+          {codingModeEnabled && !host.isWeb && harnessPickerOptions.length > 0 && (
             <ToggleGroup
               value={codingHarness}
               onValueChange={setCodingHarness}
               aria-label="Choose harness"
               size="sm"
-              options={[
-                { value: 'anton', label: 'Anton' },
-                {
-                  value: 'claude-code',
-                  label: 'Claude-Code',
-                  title: claudeCodeInfo.installed ? undefined : 'Claude-Code — not detected on this machine',
-                },
-              ]}
+              options={harnessPickerOptions}
             />
           )}
         </div>

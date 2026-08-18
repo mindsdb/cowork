@@ -258,3 +258,40 @@ describe('streamNewSession — Model Router translation', () => {
     expect(body.model).toBe('sonnet');
   });
 });
+
+// ─── ENG-1656 follow-up: the composer's harness pick reaches the server ──
+describe('streamNewSession — harness pick', () => {
+  const closedStreamResponse = () => ({
+    ok: true,
+    status: 200,
+    body: { getReader: () => ({ read: async () => ({ done: true, value: undefined }) }) },
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('sends the picked harness', async () => {
+    const fetchMock = vi.fn(async () => closedStreamResponse());
+    vi.stubGlobal('fetch', fetchMock);
+
+    await new Promise((resolve) => {
+      streamNewSession('hi', { harness: 'hermes', onDone: resolve, onError: resolve });
+    });
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.harness).toBe('hermes');
+  });
+
+  it('omits the field when the caller passes no harness (e.g. an in-task reply)', async () => {
+    const fetchMock = vi.fn(async () => closedStreamResponse());
+    vi.stubGlobal('fetch', fetchMock);
+
+    await new Promise((resolve) => {
+      streamNewSession('hi', { onDone: resolve, onError: resolve });
+    });
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body).not.toHaveProperty('harness');
+  });
+});

@@ -69,6 +69,9 @@ export const SETTINGS_KEY_MAP = {
   tone: 'tone',
   harness: 'harness',
   coding_mode_enabled: 'codingModeEnabled',
+  harness_anton_enabled: 'harnessAntonEnabled',
+  harness_hermes_enabled: 'harnessHermesEnabled',
+  harness_claude_code_enabled: 'harnessClaudeCodeEnabled',
 };
 
 /** Client camelCase → server snake_case */
@@ -489,6 +492,14 @@ export function transformSettingsRows(rows) {
   for (const row of rows) {
     const clientKey = SETTINGS_KEY_MAP[row.key];
     if (!clientKey) continue;
+    // The `harness` row's `options` is the server's actual
+    // available_harness_ids() — e.g. omits "hermes" when hermes-agent
+    // isn't installed. Surfaced separately from the row's own value so a
+    // picker can tell "not currently selected" apart from "not offered
+    // at all."
+    if (row.key === 'harness' && Array.isArray(row.options)) {
+      result.harnessOptions = row.options;
+    }
     if (row.is_sensitive) {
       result[clientKey] = row.is_set ? '***' : '';
     } else if (row.value != null) {
