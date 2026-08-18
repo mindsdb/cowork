@@ -1324,10 +1324,26 @@ function AppCore() {
         delete next[cidToCancel];
         return next;
       });
+      // Prune the ref in lockstep: the sibling drain below reads
+      // messageQueueRef synchronously and the state→ref effect hasn't run yet,
+      // so without this it would still see (and could re-pick) the cancelled
+      // task's own queue.
+      const prunedQueue = { ...messageQueueRef.current };
+      delete prunedQueue[cidToCancel];
+      messageQueueRef.current = prunedQueue;
     }
 
     activeScratchpadRef.current = null;
     activeStreamingTaskIdRef.current = null;
+
+    // Stop frees the shared stream slot with no onDone/onError behind it — the
+    // generation bump above silences the aborted run's cancelled callback — so
+    // a message queued against a *different* task would strand forever at
+    // "N queued · waiting for Anton" with no future turn to release it. Sweep
+    // the siblings now (the cancelled task's own queue was just deleted). Via
+    // the ref because a memoized handleStopStream would close over a stale
+    // drain (same reason reconnect uses it).
+    drainNextQueuedMessageRef.current?.();
 
     if (silent || !cidToCancel) return;
 
@@ -3692,10 +3708,14 @@ function AppCore() {
     if (!targetTask) return;
     const next = popQueueHead(taskId);
     if (!next) return;
+    // .catch: handleSendInTask throws when an answer submit fails (and can
+    // reject while resolving attachments). The item is already popped, so a
+    // bare then() would surface an unhandled rejection; the user has been
+    // told via the toast handleSendInTask itself raised.
     Promise.resolve().then(() => handleSendInTask(next.text, next.attachments || [], {
       targetTask,
       disabledConnections: next.disabledConnections,
-    }));
+    })).catch(() => {});
   };
   // Keep the mount-frozen reconnect closure pointed at the current drain (and
   // thus the current handleSendInTask). See the ref declaration above.

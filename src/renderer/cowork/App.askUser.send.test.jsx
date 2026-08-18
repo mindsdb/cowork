@@ -817,3 +817,38 @@ describe('superseded data-vault stream', () => {
     });
   });
 });
+
+describe('Stop while a sibling task is queued (ENG-1378 stop-drain)', () => {
+  it('drains another task\'s queue when the streaming task is stopped', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user); // Alpha (conv-a)
+
+    // Alpha starts a turn and holds the single shared stream slot.
+    await send(user, composer, 'alpha turn');
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(1));
+
+    // Switch to Beta and fire a message — it queues behind Alpha's live slot
+    // rather than starting a second parallel turn.
+    const betaComposer = await openByTitle(user, 'Beta task');
+    await send(user, betaComposer, 'queued for beta');
+    expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
+    expect(spies.streamMessage).toHaveBeenCalledTimes(1); // still only Alpha's
+
+    // Back to Alpha and press Stop. Freeing the slot must sweep Beta's queue —
+    // Stop bumps the generation and silences Alpha's cancelled callback, so
+    // without an explicit drain Beta strands at "waiting for Anton" with no
+    // future turn to release it.
+    await openByTitle(user, 'Alpha task');
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-a'));
+
+    // Beta's queued message is now sent against its own conversation, and its
+    // queue chip is gone.
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(2));
+    expect(spies.streamMessage.mock.calls[1][0]).toBe('conv-b');
+    expect(spies.streamMessage.mock.calls[1][1]).toBe('queued for beta');
+    await waitFor(() =>
+      expect(screen.queryByLabelText('Remove from queue')).toBeNull(),
+    );
+  });
+});
