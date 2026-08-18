@@ -40,12 +40,12 @@ export const OTHER_MAKER = { key: 'other', name: 'Other' };
 // id and never sent to the backend as-is — api.js's _streamResponse
 // translates it to `model: null`, which cowork-server already treats as
 // "use account settings" (see ResponsesRequest.model in cowork-server).
-export const AUTO_MODEL_ID = 'auto';
-export const AUTO_MODEL_LABEL = 'Auto';
-export const AUTO_MODEL = {
-  id: AUTO_MODEL_ID,
-  name: AUTO_MODEL_LABEL,
-  desc: "Uses your account's configured model",
+export const MODEL_ROUTER_ID = 'model-router';
+export const MODEL_ROUTER_LABEL = 'Model Router';
+export const MODEL_ROUTER = {
+  id: MODEL_ROUTER_ID,
+  name: MODEL_ROUTER_LABEL,
+  desc: "Routes to this account's configured model automatically",
 };
 
 // ─── Picker sections ────────────────────────────────────────────────

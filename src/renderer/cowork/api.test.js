@@ -16,7 +16,7 @@ vi.mock('../platform/host', async (importOriginal) => ({
 }));
 
 import { fetchRecommendedModels, updateSettings, revealSettingKey, streamNewSession } from './api';
-import { AUTO_MODEL_ID } from './lib/modelCatalog';
+import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 
 const jsonRes = (body, ok = true, status = 200) => ({
   ok,
@@ -217,13 +217,13 @@ describe('fetchSession error hydration (ENG-1304)', () => {
   });
 });
 
-// ─── ENG-1656 follow-up: "Auto" model pick never reaches the server ───
+// ─── ENG-1656 follow-up: "Model Router" pick never reaches the server ──
 //
-// AUTO_MODEL_ID is a renderer-only sentinel (the composer's default,
+// MODEL_ROUTER_ID is a renderer-only sentinel (the composer's default,
 // meaning "use this account's Settings"). The server contract is a null/
 // absent `model` field, so it must be translated at the request boundary
-// rather than sent verbatim as the literal string "auto".
-describe('streamNewSession — Auto model translation', () => {
+// rather than sent verbatim as the literal string "model-router".
+describe('streamNewSession — Model Router translation', () => {
   const closedStreamResponse = () => ({
     ok: true,
     status: 200,
@@ -234,12 +234,12 @@ describe('streamNewSession — Auto model translation', () => {
     vi.unstubAllGlobals();
   });
 
-  it('sends model: null when the picked model is the Auto sentinel', async () => {
+  it('sends model: null when the picked model is the Model Router sentinel', async () => {
     const fetchMock = vi.fn(async () => closedStreamResponse());
     vi.stubGlobal('fetch', fetchMock);
 
     await new Promise((resolve) => {
-      streamNewSession('hi', { model: AUTO_MODEL_ID, onDone: resolve, onError: resolve });
+      streamNewSession('hi', { model: MODEL_ROUTER_ID, onDone: resolve, onError: resolve });
     });
 
     const body = JSON.parse(fetchMock.mock.calls[0][1].body);

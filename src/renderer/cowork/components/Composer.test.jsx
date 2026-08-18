@@ -20,8 +20,9 @@ vi.mock('../api', async (importOriginal) => {
 
 // The coding-mode harness pill only renders on desktop (`!host.isWeb`) —
 // jsdom's default host reads as web, which would hide it from every test
-// in this file. Only the "Auto" test below exercises it; everything else
-// (api.js's getApiOrigin() at import time, etc.) keeps the real host.
+// in this file. Only the "Model Router" harness-switch test below
+// exercises it; everything else (api.js's getApiOrigin() at import time,
+// etc.) keeps the real host.
 vi.mock('../../platform/host', async (importOriginal) => {
   const actual = await importOriginal();
   return {
@@ -166,51 +167,51 @@ describe('Composer — model picker (ENG-1656)', () => {
   });
 });
 
-// ─── "Auto" default option (ENG-1656 follow-up) ──────────────────────
+// ─── "Model Router" default option (ENG-1656 follow-up) ──────────────
 //
 // The picker's first, pinned entry defers to whichever model this
 // account's Settings has configured, instead of forcing a task to pin one
 // specific model up front. It's hidden for Claude Code specifically — the
 // CLI's `--model` flag needs a real, concrete model id.
 
-describe('Composer — "Auto" default option (ENG-1656 follow-up)', () => {
-  it('lists Auto first, ahead of the maker groups', async () => {
+describe('Composer — "Model Router" default option (ENG-1656 follow-up)', () => {
+  it('lists Model Router first, ahead of the maker groups', async () => {
     const user = userEvent.setup();
     renderComposer({ models: MODELS, modelMeta: MODEL_META, model: MODELS[0] });
 
     await user.click(screen.getByRole('combobox', { name: 'Choose model' }));
     const options = screen.getAllByRole('option');
-    expect(options[0]).toHaveTextContent('Auto');
+    expect(options[0]).toHaveTextContent('Model Router');
   });
 
-  it('selecting Auto calls onModelChange with the auto sentinel id', async () => {
+  it('selecting Model Router calls onModelChange with the sentinel id', async () => {
     const user = userEvent.setup();
     const props = renderComposer({
       models: MODELS, modelMeta: MODEL_META, model: MODELS[0], onModelChange: vi.fn(),
     });
 
     await user.click(screen.getByRole('combobox', { name: 'Choose model' }));
-    await user.click(screen.getByRole('option', { name: 'Auto' }));
+    await user.click(screen.getByRole('option', { name: 'Model Router' }));
 
-    expect(props.onModelChange).toHaveBeenCalledWith({ id: 'auto', name: 'Auto' });
+    expect(props.onModelChange).toHaveBeenCalledWith({ id: 'model-router', name: 'Model Router' });
   });
 
-  it('hides Auto once Claude Code is the harness about to send', async () => {
+  it('hides Model Router once Claude Code is the harness about to send', async () => {
     const user = userEvent.setup();
     renderComposer({
       models: MODELS, modelMeta: MODEL_META, model: MODELS[0], codingModeEnabled: true,
     });
 
     // Coding mode defaults to the Anton harness pill until switched —
-    // Auto is still offered until Claude Code is actually picked. The
-    // harness pill is a ToggleGroup (radiogroup semantics), not a combobox.
+    // Model Router is still offered until Claude Code is actually picked.
+    // The harness pill is a ToggleGroup (radiogroup semantics), not a combobox.
     await user.click(screen.getByRole('combobox', { name: 'Choose model' }));
-    expect(screen.queryByRole('option', { name: 'Auto' })).not.toBeNull();
+    expect(screen.queryByRole('option', { name: 'Model Router' })).not.toBeNull();
     await user.keyboard('{Escape}');
 
     await user.click(await screen.findByRole('button', { name: 'Claude-Code' }));
 
     await user.click(screen.getByRole('combobox', { name: 'Choose model' }));
-    expect(screen.queryByRole('option', { name: 'Auto' })).toBeNull();
+    expect(screen.queryByRole('option', { name: 'Model Router' })).toBeNull();
   });
 });

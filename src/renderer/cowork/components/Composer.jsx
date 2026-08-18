@@ -13,7 +13,7 @@ import {
 import { HighlightOverlay } from './composerHighlight';
 import {
   isMovingAlias, isFrozenAlias, hasFrozenVersions, orderByFamily,
-  AUTO_MODEL_ID, AUTO_MODEL_LABEL,
+  MODEL_ROUTER_ID, MODEL_ROUTER_LABEL,
 } from '../lib/modelCatalog';
 import { MODEL_REFRESH_TTL_MS } from '../lib/modelRefresh';
 import ModelSelect from './ModelSelect.jsx';
@@ -317,13 +317,14 @@ export default function Composer({
         ...(modelProviders[m.id] ? { provider: modelProviders[m.id] } : {}),
       };
     });
-    // "Auto" (defer to this account's Settings) leads the list, pinned so it
-    // sits outside the maker groups. Claude Code needs a real, concrete
-    // model for its `--model` flag — no "auto" concept in the CLI — so it's
-    // hidden whenever that harness is the one about to send.
+    // "Model Router" (defer to this account's Settings) leads the list,
+    // pinned so it sits outside the maker groups. Claude Code needs a real,
+    // concrete model for its `--model` flag — no auto-routing concept in
+    // the CLI — so it's hidden whenever that harness is the one about to
+    // send.
     const isClaudeCode = codingModeEnabled && codingHarness === 'claude-code';
     return isClaudeCode ? catalogOptions : [
-      { value: AUTO_MODEL_ID, label: AUTO_MODEL_LABEL, pin: 'top', title: "Uses your account's configured model" },
+      { value: MODEL_ROUTER_ID, label: MODEL_ROUTER_LABEL, pin: 'top', title: "Routes to this account's configured model automatically" },
       ...catalogOptions,
     ];
   }, [models, modelMeta, codingModeEnabled, codingHarness]);
@@ -1162,9 +1163,9 @@ export default function Composer({
             ) : (
               <ModelSelect
                 // Falls back to unselected (rather than a synthesized
-                // "auto" row) if the current pick isn't a valid option
-                // right now — e.g. Auto was picked, then the harness pill
-                // switched to Claude Code, which hides Auto from the list.
+                // "model-router" row) if the current pick isn't a valid
+                // option right now — e.g. Model Router was picked, then the
+                // harness pill switched to Claude Code, which hides it.
                 value={modelPickerOptions.some((o) => o.value === model?.id) ? model.id : ''}
                 onValueChange={(id) => {
                   const found = modelPickerOptions.find((o) => o.value === id);
