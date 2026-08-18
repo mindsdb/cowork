@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  resolveRoleModel,
   resolveModelPickerValue,
   buildModelOptions,
   diffSettingsForWrite,
@@ -17,6 +18,41 @@ import {
 // The minds-cloud recommended list holds bare aliases — never `latest:`-prefixed.
 const MINDS_LIST = ['sonnet', 'opus', 'mindshub_air', 'haiku'];
 const ANTHROPIC_LIST = ['claude-opus-4-8', 'claude-sonnet-5'];
+
+describe('resolveRoleModel', () => {
+  // Regression: an SSO sign-in writes the role's PROVIDER to minds-cloud
+  // server-side without touching the paired model field. providerWasRepointed
+  // is false (the provider itself isn't stale — minds-cloud IS configured),
+  // so without this substitution the stale Anthropic model rides along
+  // unchanged and surfaces as "legacy — re-select a model" for the user to
+  // fix by hand, instead of silently landing on the provider's default.
+  it('falls back when the provider is already correct but the stored model is from a different provider', () => {
+    const model = resolveRoleModel(
+      /* providerWasRepointed */ false, 'claude-opus-4-8', MINDS_LIST, /* allowOther */ false, 'mindshub_air',
+    );
+    expect(model).toBe('mindshub_air');
+  });
+
+  it('also falls back when the provider field itself was stale', () => {
+    const model = resolveRoleModel(true, 'sonnet', MINDS_LIST, false, 'mindshub_air');
+    expect(model).toBe('mindshub_air');
+  });
+
+  it('keeps a stored model that is actually listed under the current provider', () => {
+    const model = resolveRoleModel(false, 'sonnet', MINDS_LIST, false, 'mindshub_air');
+    expect(model).toBe('sonnet');
+  });
+
+  it('does not treat an unlisted model as stale for an allowOther (BYOK) provider — it is a legitimate custom id', () => {
+    const model = resolveRoleModel(false, 'my-fine-tune-123', ANTHROPIC_LIST, true, 'claude-opus-4-8');
+    expect(model).toBe('my-fine-tune-123');
+  });
+
+  it('passes an unset stored model straight through (nothing to be stale)', () => {
+    const model = resolveRoleModel(false, '', MINDS_LIST, false, 'mindshub_air');
+    expect(model).toBe('');
+  });
+});
 
 describe('resolveModelPickerValue', () => {
   // ─── ENG-739 regression ─────────────────────────────────────────────

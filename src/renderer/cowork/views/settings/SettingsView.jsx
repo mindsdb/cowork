@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef, useContext } from 'react';
 import { useId } from 'react';
 import Ico from '../../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchRecommendedModels } from '../../api';
-import { providerTypeToKeyField, providerValueToType, resolveModelPickerValue, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore } from '../../lib/settingsTransform';
+import { providerTypeToKeyField, providerValueToType, resolveRoleModel, resolveModelPickerValue, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore } from '../../lib/settingsTransform';
 import { MODEL_REFRESH_TTL_MS } from '../../lib/modelRefresh';
 import { trackHarnessSwapped } from '../../lib/analytics';
 import { copyText as copyToClipboard } from '../../lib/clipboard';
@@ -1465,9 +1465,22 @@ export default function SettingsView({
                   const roleIdx = role === 'planning' ? 0 : role === 'router' ? 2 : 1;
                   const fallbackPair = recommendedPair[curType] || ['', '', ''];
                   const fallbackModel = fallbackPair[roleIdx] || fallbackPair[1] || '';
-                  const curModel = providerWasRepointed ? fallbackModel : roleModelValue(role, fallbackModel);
                   const provider = providers.find((p) => p.type === curType);
                   const modelList = recommendedModels[curType] || [];
+                  // minds-cloud has no free-text mode (unlike a BYOK provider,
+                  // where an unlisted id is just a user-typed custom model) —
+                  // same condition resolveModelPickerValue uses for its
+                  // "legacy — re-select a model" stale pin.
+                  const allowOther = curType !== 'minds-cloud';
+                  // See resolveRoleModel: substitutes the fallback not just
+                  // when the PROVIDER field was stale, but also when the
+                  // provider is already correct (e.g. after an SSO sign-in)
+                  // yet the paired model still names a different provider's
+                  // model — the case that used to surface as "legacy —
+                  // re-select a model" for the user to fix by hand.
+                  const curModel = resolveRoleModel(
+                    providerWasRepointed, roleModelValue(role, fallbackModel), modelList, allowOther, fallbackModel,
+                  );
                   /* Per-model availability (settings.modelEnabled, sourced from MindsHub
                    * /v1/models). A model the org's wallet can't currently pay for (or
                    * whose free allowance is spent) is listed here as false — it stays
@@ -1580,8 +1593,9 @@ export default function SettingsView({
                         )}
                         {modelList.length > 0 ? (
                           (() => {
-                            const allowOther = curType !== 'minds-cloud';
-                            // See resolveModelPickerValue + buildModelOptions: keeps the Select's
+                            // allowOther is hoisted above (also feeds curModel's
+                            // staleness check). See resolveModelPickerValue +
+                            // buildModelOptions: keeps the Select's
                             // value matched to a rendered option so picking a model always fires
                             // a real change and Save writes it — a login-written `latest:` pin no
                             // longer wedges the control into a no-op "Saved" (ENG-739).
