@@ -1189,6 +1189,10 @@ export default function ChatView({
   onOpenProjectsList,
   onOpenSettings,
   codingModelDefault,
+  // Light/dark toggle in the task header (App.jsx owns the actual state —
+  // same setter the Display settings modal uses).
+  theme,
+  onThemeChange,
   onStop,
   projects = [],
   // Messages the user typed while Anton was mid-turn. Displayed as
@@ -1644,11 +1648,25 @@ export default function ChatView({
             </div>
           </div>
 
-          {/* Right side reserved for future header chips. The kebab
-              and rail toggle moved out; pin lives inline with the
-              title now (above) so it stays visually attached to the
-              task it acts on. */}
-          <div className="flex items-center gap-1 flex-shrink-0" />
+          <div className="flex items-center gap-1 flex-shrink-0">
+            {/* The floating corner toggle (App.jsx) hides itself on the
+                task route — it competes with the composer/task content
+                here — so the task view needs its own way to flip theme
+                without a trip to Settings. Same setter, same icon logic
+                (sun in dark mode = "switch to light", and vice versa). */}
+            {typeof onThemeChange === 'function' && (
+              <Tooltip content={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>
+                <button
+                  type="button"
+                  aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+                  onClick={() => onThemeChange(theme === 'dark' ? 'light' : 'dark')}
+                  className="w-[22px] h-[22px] rounded-[5px] border-0 inline-grid place-items-center flex-shrink-0 cursor-pointer transition-[opacity,color,background] duration-150 ease-[ease] [-webkit-app-region:no-drag] text-ink-3 hover:text-ink hover:bg-surface-2 bg-transparent"
+                >
+                  {theme === 'dark' ? Ico.sun(15) : Ico.moon(15)}
+                </button>
+              </Tooltip>
+            )}
+          </div>
         </div>
         {/* Task menu — anchored to the kebab next to the title.
             Items: Pin/Unpin · Rename · Delete. Move-to-project,

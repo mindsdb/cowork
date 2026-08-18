@@ -4586,6 +4586,8 @@ function AppCore() {
             onSwitchToAirAndResend={airAvailableForSwitch ? handleSwitchToAirAndResend : undefined}
             onOpenSettings={openSettings}
             codingModelDefault={settings.codingModel}
+            theme={theme}
+            onThemeChange={setTheme}
             queuedMessages={messageQueue[currentTask?.id] || []}
             onRemoveFromQueue={(itemId) => removeFromQueue(currentTask?.id, itemId)}
             onBack={() => {
