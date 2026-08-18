@@ -62,6 +62,20 @@ describe('billing_opened trigger per call site', () => {
     expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
   });
 
+  it('included_allowance_exhausted: the free-allowance card records its own trigger (ENG-1537)', async () => {
+    const user = userEvent.setup();
+    // A spent monthly grant is a different cohort from a drained wallet — the
+    // org has never paid — so its "Add credits" click cannot be filed under
+    // token_limit. Without this the card was the one route to billing that
+    // opened the page and counted nothing.
+    render(<ChatView task={taskWith(failedTurn('included_allowance_exhausted', "You've used this month's free tokens.", { resetAt: '2099-01-01T00:00:00Z' }))} />);
+
+    await user.click(screen.getByRole('button', { name: 'Add credits' }));
+
+    expect(analyticsMock.trackBillingOpened).toHaveBeenCalledWith('included_allowance_exhausted');
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
+  });
+
   it('model_access_denied: the credits-denial card records its own trigger', async () => {
     const user = userEvent.setup();
     render(<ModelUnavailableCard code="model_access_denied" failedModel="gpt-5.6-sol" />);

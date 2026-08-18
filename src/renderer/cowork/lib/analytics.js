@@ -32,7 +32,7 @@ const EVENTS = {
   FIRST_QUERY:              'first_query',              // {}  once per user (ENG-501)
   FIRST_RESPONSE:           'first_response',           // { outcome: 'success'|'error', reason } once per user (ENG-736)
   TOKEN_CAP_HIT:            'token_cap_hit',            // { reason: 'token_limit'|'included_allowance_exhausted'|'model_access_denied' } credit-block impression (ENG-385, widened ENG-1533 + ENG-1537)
-  BILLING_OPENED:           'billing_opened',           // { trigger: 'token_limit'|'model_access_denied'|'model_disabled'|'key_provisioning_refused'|'connect_provider'|'no_credits_notice'|'locked_model_hint'|'nav' } every route to the billing page; 'nav' is NOT upgrade intent (ENG-1533)
+  BILLING_OPENED:           'billing_opened',           // { trigger: 'token_limit'|'included_allowance_exhausted'|'model_access_denied'|'model_disabled'|'key_provisioning_refused'|'connect_provider'|'no_credits_notice'|'locked_model_hint'|'nav' } every route to the billing page; 'nav' is NOT upgrade intent (ENG-1533)
   KEY_PROVISIONING_REFUSED: 'key_provisioning_refused', // { outcome: 'byok_offered'|'billing_opened'|'unhandled' } (ENG-1533)
   HARNESS_SWAPPED:          'harness_swapped',          // { from, to }
   APP_INSTALLED:            'app_installed',            // {}  desktop, once per install
@@ -421,6 +421,8 @@ export function trackTokenCapHit(reason) {
 // someone remembered. `trigger` names the condition that sent them, because the
 // causes have different fixes and probably different conversion rates:
 //   token_limit               out of credits mid-turn; pairs with token_cap_hit
+//   included_allowance_exhausted  the month's free allowance is spent, not the
+//                             wallet; also pairs with token_cap_hit (ENG-1537)
 //   model_access_denied       legacy per-model credit denial (pre-wallet gateways)
 //   model_disabled            legacy admin-disabled model; credits do not unlock it
 //   key_provisioning_refused  MindsHub would not mint an LLM key on reconnect

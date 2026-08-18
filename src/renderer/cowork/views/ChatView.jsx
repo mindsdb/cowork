@@ -1985,7 +1985,19 @@ export default function ChatView({
                       title="You've used this month's free tokens"
                       body={`Your free allowance resets on ${formatAllowanceReset(m.resetAt)}. Add credits to keep working now and unlock Claude, GPT, Gemini, Kimi, DeepSeek and more.`}
                       buttons={[
-                        { label: 'Add credits', onClick: () => host.openExternal(MINDS_BILLING_URL), primary: true },
+                        {
+                          label: 'Add credits',
+                          // ENG-1533: the click, not an impression — same rule as
+                          // the drained-wallet card above. token_cap_hit already
+                          // counts this impression once per receipt in the stream
+                          // adapter, so every route to billing is counted exactly
+                          // once and this one is not the exception.
+                          onClick: () => {
+                            trackBillingOpened('included_allowance_exhausted');
+                            host.openExternal(MINDS_BILLING_URL);
+                          },
+                          primary: true,
+                        },
                       ]}
                     />
                   );
