@@ -941,7 +941,8 @@ describe('attachment send that would strand at "Queued"', () => {
   afterEach(() => {
     fetchSessions.mockResolvedValue(DEFAULT_SESSIONS);
     fetchProjects.mockResolvedValue([{ name: 'general', path: '/tmp/general' }]);
-    createProject.mockClear();
+    createProject.mockReset();
+    createProject.mockResolvedValue({});
     uploadAttachments.mockReset();
     uploadAttachments.mockResolvedValue([]);
   });
@@ -984,6 +985,27 @@ describe('attachment send that would strand at "Queued"', () => {
     expect(spies.streamMessage).not.toHaveBeenCalled();
     // Text and the staged file are kept for a retry, not silently dropped.
     expect(composer.value).toBe('here it is');
+    expect(screen.getByText('shot.png')).toBeInTheDocument();
+  });
+
+  it('surfaces the failure instead of sending against a phantom project when the bootstrap fails', async () => {
+    const user = userEvent.setup();
+    // No project, none loaded, and creating one fails.
+    fetchSessions.mockResolvedValue([
+      { id: 'conv-np', title: 'No project task', messages: [], status: 'idle' },
+    ]);
+    fetchProjects.mockResolvedValue([]);
+    createProject.mockRejectedValueOnce(new Error('boom'));
+
+    render(<App />);
+    const composer = await openByTitle(user, 'No project task');
+    await attach(user, 'shot.png');
+    await send(user, composer, 'look at this');
+
+    // The bootstrap failure is surfaced (toast) rather than masked by sending
+    // against a 'general' project that was never created.
+    expect(await screen.findByText(/pick a project/i)).toBeInTheDocument();
+    expect(spies.streamMessage).not.toHaveBeenCalled();
     expect(screen.getByText('shot.png')).toBeInTheDocument();
   });
 });

@@ -3051,6 +3051,28 @@ function AppCore() {
     return health?.config_ready !== false;
   }, [health]);
 
+  // Ensure the fallback `general` project exists and return it, or null if it
+  // could not be found or created. Shared by the home and in-chat send paths so
+  // the bootstrap dance (find-by-name → createProject → refetch) lives in one
+  // place. Returns null rather than throwing so a caller can surface an
+  // actionable error instead of sending against a project that isn't there.
+  const ensureGeneralProject = async () => {
+    const existing = projects.find((p) => p.name === 'general');
+    if (existing) return existing;
+    try {
+      await createProject('general');
+      const fresh = await fetchProjects();
+      if (Array.isArray(fresh)) setProjects(fresh);
+      // createProject resolved, so `general` exists even if this refetch came
+      // back stale — fall back to a name-only record so the caller adopts it.
+      return (fresh || []).find((p) => p.name === 'general') || { name: 'general' };
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn('[ensureGeneralProject] could not bootstrap general project', e);
+      return null;
+    }
+  };
+
   // Send from the home screen — creates a new session
   const handleSendFromHome = async (text) => {
     // Preflight: no provider configured → render an action card task
@@ -3092,15 +3114,7 @@ function AppCore() {
     // from a build that didn't auto-create it), bootstrap it now.
     let generalProject = projects.find((p) => p.name === 'general');
     if (!selectedProject && !generalProject) {
-      try {
-        await createProject('general');
-        const fresh = await fetchProjects();
-        if (Array.isArray(fresh)) setProjects(fresh);
-        generalProject = (fresh || []).find((p) => p.name === 'general');
-      } catch (e) {
-        // eslint-disable-next-line no-console
-        console.warn('[handleSendFromHome] could not bootstrap general project', e);
-      }
+      generalProject = await ensureGeneralProject();
     }
     const effectiveProjectName = selectedProject?.name || 'general';
     const effectiveProjectId = (selectedProject ? selectedProject.id : generalProject?.id) || null;
@@ -3506,21 +3520,16 @@ function AppCore() {
     // in-chat attachment send doesn't dead-end where a home send wouldn't.
     const attachmentsForSend = queuedAttachments ?? composerAttachments;
     if (!taskProjectName && (attachmentsForSend || []).some(isPendingFileAttachment)) {
-      let generalProject = projects.find((p) => p.name === 'general');
-      if (!generalProject) {
-        try {
-          await createProject('general');
-          const fresh = await fetchProjects();
-          if (Array.isArray(fresh)) setProjects(fresh);
-          generalProject = (fresh || []).find((p) => p.name === 'general');
-        } catch (e) {
-          // eslint-disable-next-line no-console
-          console.warn('[handleSendInTask] could not bootstrap general project', e);
-        }
+      const general = await ensureGeneralProject();
+      // Only adopt `general` if it actually exists now. If the bootstrap
+      // failed, leave the project unset so resolveComposerAttachmentsForSend
+      // throws the actionable "Pick a project…" error (surfaced via the toast
+      // below) rather than sending against a project that isn't there.
+      if (general) {
+        taskProjectName = general.name || 'general';
+        taskProjectId = general.id || null;
+        taskProjectPath = general.path || null;
       }
-      taskProjectName = 'general';
-      taskProjectId = generalProject?.id || null;
-      taskProjectPath = generalProject?.path || null;
     }
     // opts.modelOverride carries a same-tick model switch (the "Switch to
     // MindsHub Air" card action, ENG-1304) — targetTask is a render-scope
