@@ -1119,6 +1119,37 @@ export async function updateSettings(patch) {
     const keys = Object.keys(writes);
     let updated = keys;
 
+    // A `null` in the patch is a tombstone: clear the stored row entirely so
+    // the server's own resolution (enabled-aware defaults) governs the key
+    // again — deliberately NOT a `''` write, which creates a permanent empty
+    // row the raw readers and apply_model_defaults mishandle (ENG-1632).
+    // Tombstones run BEFORE the bulk PUT: the PUT is what repoints providers,
+    // and a repointed provider with the old provider's model row left behind
+    // misroutes every turn — with no retry path, because the next save's
+    // repoint guard sees a matching provider and never re-attempts the
+    // DELETE. Deleting first leaves only consistent, retryable states: a
+    // failed DELETE aborts the save before anything is repointed, and a
+    // failed PUT after the DELETEs leaves the untouched provider on its own
+    // server-side default. Only 404 (no row to clear — the fetched value was
+    // the server's resolved default) and 400 (a pre-ENG-660 server that
+    // doesn't know the key) are skipped; anything else surfaces like the
+    // PUT's own failures. The `k in _lastFetchedSettings` gate skips servers
+    // that never served the key at all (mirrors the BUDGET_FIELDS
+    // absent-key rule).
+    const tombstones = Object.keys(patch).filter(
+      (k) => patch[k] === null && CLIENT_TO_SERVER[k] && k in _lastFetchedSettings,
+    );
+    for (const k of tombstones) {
+      try {
+        await req(`/settings/${encodeURIComponent(CLIENT_TO_SERVER[k])}`, { method: 'DELETE' });
+      } catch (err) {
+        if (err?.status === 400 || err?.status === 404) continue;
+        const e = new Error(`Failed to save settings: ${err?.message || String(err)}`);
+        e.failed = [k];
+        throw e;
+      }
+    }
+
     if (keys.length > 0) {
       // One transactional bulk write: the server applies every key or none, so
       // a partial failure can't leave settings half-saved the way the former
@@ -1131,24 +1162,6 @@ export async function updateSettings(patch) {
         e.failed = keys;
         throw e;
       }
-    }
-
-    // A `null` in the patch is a tombstone: clear the stored row entirely so
-    // the server's own resolution (enabled-aware defaults) governs the key
-    // again — deliberately NOT a `''` write, which creates a permanent empty
-    // row the raw readers and apply_model_defaults mishandle (ENG-1632).
-    // Best-effort by design: 404 = no row to clear (the fetched value was the
-    // server's resolved default), 400 = a pre-ENG-660 server that doesn't
-    // know the key — neither may fail the save the user just made. The
-    // `k in _lastFetchedSettings` gate skips servers that never served the
-    // key at all (mirrors the BUDGET_FIELDS absent-key rule).
-    const tombstones = Object.keys(patch).filter(
-      (k) => patch[k] === null && CLIENT_TO_SERVER[k] && k in _lastFetchedSettings,
-    );
-    for (const k of tombstones) {
-      try {
-        await req(`/settings/${encodeURIComponent(CLIENT_TO_SERVER[k])}`, { method: 'DELETE' });
-      } catch { /* best-effort clear — see above */ }
     }
 
     // Re-fetch so _lastFetchedSettings reflects the server's canonical state
