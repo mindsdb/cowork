@@ -361,3 +361,27 @@ describe('Composer — model menu sections', () => {
     expect(screen.getByText('Model')).toBeTruthy();
   });
 });
+
+describe('Composer — task-mode chip (ENG-1594)', () => {
+  const MODE = {
+    id: 'slides', pillLabel: 'Create slides', chipLabel: 'Slides',
+    icon: 'presentation', placeholder: 'Describe your presentation topic',
+    instruction: 'Create a slide presentation.', samplesVariant: 'cards', samples: [],
+  };
+
+  it('renders no chip without a taskMode', () => {
+    renderComposer();
+    expect(screen.queryByRole('button', { name: /remove .* mode/i })).not.toBeInTheDocument();
+  });
+
+  it('renders the chip and clears the mode on click', async () => {
+    const user = userEvent.setup();
+    const onClearTaskMode = vi.fn();
+    renderComposer({ taskMode: MODE, onClearTaskMode, placeholder: MODE.placeholder });
+    const chip = screen.getByRole('button', { name: 'Remove Slides mode' });
+    expect(chip).toHaveTextContent('Slides');
+    expect(screen.getByPlaceholderText(MODE.placeholder)).toBeInTheDocument();
+    await user.click(chip);
+    expect(onClearTaskMode).toHaveBeenCalledTimes(1);
+  });
+});

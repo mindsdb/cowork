@@ -1,7 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import Composer from '../components/Composer';
-import HomeSuggestions from '../components/onboarding/HomeSuggestions';
+import TaskModePills from '../components/taskmodes/TaskModePills';
+import TaskModeSamples from '../components/taskmodes/TaskModeSamples';
+import { composeModeMessage } from '../components/taskmodes/taskModes';
 import { completeStep } from '../components/onboarding/onboardingStore';
 import { HABIT_TRACKER_PREFIX } from '../components/onboarding/steps';
 import { OrbitMorph, Button } from '../components/ui';
@@ -243,24 +245,29 @@ export default function HomeView({
   skipIntro = false,
   agentLabel,
   prefill = null,
-  // First-run suggestion chips (ENG-1137): total counts decide chip
-  // visibility (both zero = brand-new account); onPrefill drops a chip's
-  // prompt into the composer with its [placeholder] range selected.
-  tasksCount = 0,
-  artifactsCount = 0,
+  // Fills the composer without sending — task-mode sample prompts (ENG-1594)
+  // and any other surface that pre-drafts text route through this.
   onPrefill,
 }) {
   const greetingText = greeting || GREETING_FALLBACK;
   const blocked = configReady === false;
 
+  // Selected task mode (ENG-1594). Null = default view (pill row visible).
+  // Owns the composer placeholder, the toolbar chip, and the sample list.
+  const [taskMode, setTaskMode] = useState(null);
+
   // Sending the habit-tracker prompt completes onboarding step 1 no
-  // matter which surface filled the composer (suggestion chip, sidebar
-  // checklist, or the user typing it by hand).
-  const sendTracked = (text) => {
+  // matter which surface filled the composer (sidebar checklist or the
+  // user typing it by hand). A selected task mode appends its
+  // instruction line after the user text (titles and search derive from
+  // the message head) and clears itself after a successful send.
+  const sendTracked = async (text) => {
     if (typeof text === 'string' && text.trim().startsWith(HABIT_TRACKER_PREFIX)) {
       completeStep('see-it-work');
     }
-    return onSend(text);
+    const result = await onSend(composeModeMessage(taskMode, text));
+    setTaskMode(null);
+    return result;
   };
 
   const { phase, typedCount } = useBootPhase({
@@ -536,6 +543,9 @@ export default function HomeView({
           ) : (
             <Composer
               onSend={sendTracked}
+              placeholder={taskMode ? taskMode.placeholder : undefined}
+              taskMode={taskMode}
+              onClearTaskMode={() => setTaskMode(null)}
               prefill={prefill}
               project={project}
               onProjectChange={onProjectChange}
@@ -557,14 +567,27 @@ export default function HomeView({
               onTypingChange={setIsTyping}
             />
           )}
-          {!blocked && onPrefill && (
-            <HomeSuggestions
-              tasksCount={tasksCount}
-              artifactsCount={artifactsCount}
-              onPick={onPrefill}
-            />
-          )}
-          <ActiveList tasks={activeTasks} onSelect={onSelectTask} onClear={onClearActive} />
+          {/* Everything below the composer lives in a zero-height wrapper:
+              the centered column lays out as if nothing is here, so the
+              greeting + composer never shift when pills swap for the
+              (taller) sample list or when active tasks appear. The content
+              overflows downward; the scroll container still reaches it
+              because descendant overflow extends the scrollable area. */}
+          <div style={{
+            width: '100%', height: 0, overflow: 'visible',
+            display: 'flex', flexDirection: 'column', alignItems: 'center',
+          }}>
+            {/* Samples only render when onPrefill exists — a sample click's
+                whole job is prefilling the composer, so without the callback
+                it would be a silent dead click (same gate the old
+                HomeSuggestions had). */}
+            {!blocked && (
+              taskMode
+                ? (onPrefill && <TaskModeSamples mode={taskMode} onPick={onPrefill} />)
+                : <TaskModePills onPick={setTaskMode} />
+            )}
+            <ActiveList tasks={activeTasks} onSelect={onSelectTask} onClear={onClearActive} />
+          </div>
         </div>
       )}
     </div>

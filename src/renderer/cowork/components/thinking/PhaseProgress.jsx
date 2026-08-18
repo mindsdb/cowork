@@ -89,7 +89,7 @@ function PhaseRow({
     >
       <span
         className={clsx(
-          'mt-1 flex h-3.5 w-3.5 flex-none items-center justify-center rounded-full',
+          'mt-0.5 flex h-3.5 w-3.5 flex-none items-center justify-center rounded-full',
           isDone && 'phase-check-done bg-accent border-[1.4px] border-accent text-white',
           isActive && 'border-[1.4px] border-accent',
           !isDone && !isActive && 'border-[1.4px] border-line'

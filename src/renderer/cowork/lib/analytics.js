@@ -31,7 +31,7 @@ const EVENTS = {
   AGENT_SESSION_STARTED:    'agent_session_started',    // {}
   FIRST_QUERY:              'first_query',              // {}  once per user (ENG-501)
   FIRST_RESPONSE:           'first_response',           // { outcome: 'success'|'error', reason } once per user (ENG-736)
-  TOKEN_CAP_HIT:            'token_cap_hit',            // { code: 'token_limit'|'model_access_denied' } credit-block impression (ENG-385, widened ENG-1533)
+  TOKEN_CAP_HIT:            'token_cap_hit',            // { reason: 'token_limit'|'included_allowance_exhausted'|'model_access_denied' } credit-block impression (ENG-385, widened ENG-1533 + ENG-1537)
   BILLING_OPENED:           'billing_opened',           // { trigger: 'token_limit'|'model_access_denied'|'model_disabled'|'key_provisioning_refused'|'connect_provider'|'no_credits_notice'|'locked_model_hint'|'nav' } every route to the billing page; 'nav' is NOT upgrade intent (ENG-1533)
   KEY_PROVISIONING_REFUSED: 'key_provisioning_refused', // { outcome: 'byok_offered'|'billing_opened'|'unhandled' } (ENG-1533)
   HARNESS_SWAPPED:          'harness_swapped',          // { from, to }
@@ -402,14 +402,18 @@ export function trackAgentSessionStarted() {
 }
 
 // The key upgrade-intent signal: a turn was blocked on credits. Fired from the
-// stream adapter on receipt of the failure (ENG-385). `code` is the wire code
-// that blocked the turn — `token_limit`, or `model_access_denied`, whose card
-// used to be shown with no impression at all (ENG-1533). One event with a `code`
-// rather than two events, so the impression count stays a single series and the
-// once-per-receipt guarantee is not duplicated. Historic events predate the
-// property and carry no `code`; they are all `token_limit`.
-export function trackTokenCapHit(code) {
-  capture(EVENTS.TOKEN_CAP_HIT, { code: code || 'token_limit' });
+// stream adapter on receipt of the failure (ENG-385). `reason` is the wire code
+// that blocked the turn — a drained wallet (`token_limit`), a spent free monthly
+// allowance (`included_allowance_exhausted`, ENG-1537) or the legacy per-model
+// credit denial (`model_access_denied`, ENG-1533), whose card used to be shown
+// with no impression at all. One event with a `reason` rather than three events,
+// so the impression count stays a single series and the once-per-receipt
+// guarantee is not duplicated. Named `reason` to read consistently beside
+// `trigger` on billing_opened and `outcome` on key_provisioning_refused.
+// Historic events predate the property and carry no `reason`; they are all
+// `token_limit` — see the discontinuity note on EVENTS.TOKEN_CAP_HIT.
+export function trackTokenCapHit(reason) {
+  capture(EVENTS.TOKEN_CAP_HIT, { reason: reason || 'token_limit' });
 }
 
 // The desktop sent the user to the console billing page (ENG-1533). Fired at

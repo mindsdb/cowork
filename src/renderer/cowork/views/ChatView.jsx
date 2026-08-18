@@ -853,6 +853,94 @@ function ActionCard({ time, agentLabel, title, body, buttons = [] }) {
   );
 }
 
+// ── AllowanceExhaustedCard: the free monthly grant, not a drained wallet ───
+// ENG-1537. auth's `access.py` issues `included_allowance_exhausted` ONLY for a
+// free-bucket model on an org that has NEVER topped up, so this user has not
+// spent money — they used the monthly grant, and it resets. Two things follow,
+// and the old shared out-of-credits card got both wrong: the reset date is a
+// genuinely free way forward (hiding it while asking for money is the defect),
+// and "unlock" is literally true, because non-free models need a wallet this
+// org doesn't have.
+//
+// The date is formatted here, not server-side: only the client knows the
+// viewer's timezone, and parsing it on the server shifts the day for some
+// users. Anything unusable — absent, malformed, or already past on a reloaded
+// conversation — degrades to "next month" rather than rendering "Invalid Date"
+// or a stale month.
+function formatAllowanceReset(resetAt) {
+  if (!resetAt) return 'next month';
+  const d = new Date(resetAt);
+  if (Number.isNaN(d.getTime())) return 'next month';
+  if (d.getTime() <= Date.now()) return 'next month';
+  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'long' });
+}
+
+// ── RateLimitedCard: a velocity limit, NOT an out-of-credits state ─────────
+// ENG-1537. The org exceeded requests/tokens per minute; credits cannot lift
+// that ceiling, so this card must never offer a top-up. anton already waited
+// in-turn (up to ~90s) before this rendered, so reaching it means the window
+// hadn't cleared — which is precisely why Retry is time-gated against the
+// gateway's own Retry-After: an immediate retry re-sends a large context into
+// the limiter that just refused it, reproducing the amplification loop the fix
+// removed, only user-initiated.
+//
+// No hint (older gateway, stripped header) → an ungated Retry. Better an
+// honest button than an invented countdown.
+// Longest we will ever disable Retry. The server clamps nothing, and anton
+// cards immediately above its own 60s cap rather than sleeping — so a large
+// hint arrives here as a real value. Ungated it would disable the button for
+// hours (measured: retryAfter=30000 gated for 8.3h), which is indistinguishable
+// from a broken card (ENG-1537 review).
+const MAX_RETRY_GATE_MS = 10 * 60 * 1000;
+
+function RateLimitedCard({ time, agentLabel, body, retryAt, onRetry }) {
+  const readyAt = useMemo(() => {
+    // The server sends an ABSOLUTE, offset-bearing instant. Deliberately not
+    // derived from the message's created_at + retryAfter: created_at is
+    // serialised offset-less, so JS parses it as local time — the gate lasts
+    // hours west of UTC and no-ops east of it, and a TZ=UTC suite sees neither.
+    if (typeof retryAt !== 'string') return null;
+    // REQUIRE an offset. An offset-less timestamp is what made the original bug
+    // invisible: JS parses "2026-08-12T01:04:55" as LOCAL time, so the gate ran
+    // ~7h long west of UTC and no-opped east of it — and the suite pins TZ=UTC
+    // globally, so no assertion could see either direction. Rejecting the naive
+    // form here turns that whole class of regression into "no gate" rather than
+    // "a wrong gate", and makes it testable in any zone.
+    if (!/(?:Z|[+-]\d{2}:?\d{2})$/.test(retryAt)) return null;
+    const at = new Date(retryAt).getTime();
+    if (Number.isNaN(at)) return null;
+    return Math.min(at, Date.now() + MAX_RETRY_GATE_MS);
+  }, [retryAt]);
+
+  const [now, setNow] = useState(() => Date.now());
+  const remaining = readyAt ? Math.max(0, Math.ceil((readyAt - now) / 1000)) : 0;
+
+  useEffect(() => {
+    if (!readyAt || remaining <= 0) return undefined;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [readyAt, remaining]);
+
+  const buttons = onRetry
+    ? [{
+        label: remaining > 0 ? `Try again in ${remaining}s` : 'Try again',
+        onClick: remaining > 0 ? undefined : onRetry,
+        disabled: remaining > 0,
+        primary: true,
+      }]
+    : [];
+
+  return (
+    <ActionCard
+      time={time}
+      agentLabel={agentLabel}
+      title="Too many requests too quickly"
+      body={body}
+      buttons={buttons}
+    />
+  );
+}
+
 // For **MindsHub** (`reconnectable`), the fix is to re-provision the key in
 // place via mindshubFinalize (the same step login runs) — no logout. For a
 // **BYOK** provider, only the user can fix their own key, so we point them to
@@ -1806,17 +1894,46 @@ export default function ChatView({
                     />
                   );
                 }
-                // Unknown/removed model alias (gateway 404 `unknown_model`):
-                // credits can't fix it — the next step is picking a different
-                // model in Settings.
-                if (m.code === 'unknown_model') {
+                /* A model the provider can't serve (404 `model_not_found`) —
+                 * removed, renamed, or never existed (a provider name pasted
+                 * where an alias belongs). Credits can't fix it; the next step
+                 * is picking a real model.
+                 *
+                 * The body quotes the RAW id, not modelLabel's prettified
+                 * version: the point is for the user to recognise the exact
+                 * string sitting in their settings, and prettifying an id that
+                 * isn't a real model would obscure the typo (ENG-1358).
+                 * `failedModel` is absent from a server too old to send it, so
+                 * the copy degrades to the unnamed wording rather than
+                 * rendering an empty quote. */
+                /* `unknown_model` is the pre-rename code. Accept BOTH: the
+                 * renderer updates OTA and can lead a pinned server (a server
+                 * update isn't always pending, so updater.ts applies the UI
+                 * alone), and dropping the old code would regress those users to
+                 * the buttonless danger alert ENG-1282 removed. It also covers
+                 * disabled-auto-update and git-pinned installs, which no
+                 * minServerVersion bump would reach. */
+                if (m.code === 'model_not_found' || m.code === 'unknown_model') {
+                  const badModel = typeof m.failedModel === 'string' ? m.failedModel.trim() : '';
                   return (
                     <ActionCard
                       key={i}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
-                      title="That model isn't available"
-                      body="The selected model was removed or isn't offered anymore. Switch to another model in Settings."
+                      title={badModel ? `"${badModel}" isn't a model we can use` : "That model isn't available"}
+                      body={badModel
+                        ? `Your settings point at "${badModel}", which this provider doesn't offer — so nothing was sent. Pick a model from the list in Settings.`
+                        : "The selected model was removed or isn't offered anymore. Switch to another model in Settings."}
+                      // Open Settings only. A "Switch to MindsHub Air" button was
+                      // tried here and removed: it routes through
+                      // handleSendInTask's `modelOverride`, which the in-process
+                      // harness ignores entirely (stream_response takes no
+                      // `model` — harness.py), so the turn would rerun on the
+                      // same dead id while the composer chip claimed otherwise.
+                      // The neighbouring model-denial card has the same latent
+                      // problem; making that switch real is a product decision
+                      // (it means writing the global planning_model setting),
+                      // tracked separately rather than faked here.
                       buttons={[
                         { label: 'Open Settings', onClick: () => onOpenSettings?.('agent'), primary: true },
                       ]}
@@ -1852,6 +1969,40 @@ export default function ChatView({
                       buttons={retryText
                         ? [{ label: 'Try again', onClick: () => onSend?.(retryText), primary: true }]
                         : []}
+                    />
+                  );
+                }
+                // Spent FREE monthly allowance (gateway 429
+                // `included_allowance_exhausted`): not a drained wallet, so it
+                // names the reset date as a free alternative and says what
+                // credits actually unlock (ENG-1537).
+                if (m.code === 'included_allowance_exhausted') {
+                  return (
+                    <ActionCard
+                      key={i}
+                      time={formatMetaTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      title="You've used this month's free tokens"
+                      body={`Your free allowance resets on ${formatAllowanceReset(m.resetAt)}. Add credits to keep working now and unlock Claude, GPT, Gemini, Kimi, DeepSeek and more.`}
+                      buttons={[
+                        { label: 'Add credits', onClick: () => host.openExternal(MINDS_BILLING_URL), primary: true },
+                      ]}
+                    />
+                  );
+                }
+                // Velocity rate-limit (gateway 429 `rate_limited`): waiting is
+                // the fix, so the card says so and offers a time-gated Retry —
+                // never a top-up, which is what this used to show (ENG-1537).
+                if (m.code === 'rate_limited') {
+                  const rlRetryText = lastUserTextBefore(visibleMessages, i);
+                  return (
+                    <RateLimitedCard
+                      key={i}
+                      time={formatMetaTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      body={m.content}
+                      retryAt={m.retryAt}
+                      onRetry={rlRetryText ? () => onSend?.(rlRetryText) : undefined}
                     />
                   );
                 }

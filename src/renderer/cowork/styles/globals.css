@@ -2446,26 +2446,6 @@ body[data-theme="dark"] .onboarding-card {
 .onboarding-step-row[data-done] .onboarding-step-desc { grid-template-rows: 0fr; opacity: 0; }
 .onboarding-step-row[data-done]:hover .onboarding-step-desc { grid-template-rows: 1fr; opacity: 1; }
 
-/* Home starter chips — icon tile lifts on hover, label darkens. */
-.home-suggestion-chip__tile {
-  width: 34px; height: 34px; border-radius: 9px; flex-shrink: 0;
-  display: grid; place-items: center;
-  color: var(--frost-600);
-  background: var(--surface-0);
-  border: 1px solid var(--line-2);
-  box-shadow: var(--sh-1);
-  transform: translateY(0);
-  transition: box-shadow 160ms ease, transform 160ms cubic-bezier(0.23, 1, 0.32, 1);
-}
-.home-suggestion-chip__label {
-  font-size: 14px; font-weight: 500;
-  color: var(--frost-700);
-  transition: color 140ms ease;
-}
-.home-suggestion-chip:hover .home-suggestion-chip__tile { box-shadow: var(--sh-2); transform: translateY(-1px); }
-.home-suggestion-chip:hover .home-suggestion-chip__label { color: var(--text-strong); }
-.home-suggestion-chip:active .home-suggestion-chip__tile { transform: translateY(0) scale(0.96); }
-
 /* First-artifact tip buttons — the tip sits on an inverted ink surface,
    so the shared Button variants get an on-ink skin here. body-prefixed
    to outrank the theme-keyed `.btn.default` / `.btn.primary` rules

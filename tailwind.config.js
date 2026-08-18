@@ -149,10 +149,13 @@ export default {
       keyframes: {
         'scale-in':  { from: { opacity: 0, transform: 'scale(0.97)' }, to: { opacity: 1, transform: 'scale(1)' } },
         'scale-out': { from: { opacity: 1, transform: 'scale(1)' },    to: { opacity: 0, transform: 'scale(0.97)' } },
+        // Task-mode chip entrance (ENG-1594) — softer scale, springier curve.
+        'chip-in':   { from: { opacity: 0, transform: 'scale(0.95)' }, to: { opacity: 1, transform: 'scale(1)' } },
       },
       animation: {
         'scale-in':  'scale-in 130ms ease-out',
         'scale-out': 'scale-out 90ms ease-in',
+        'chip-in':   'chip-in 180ms cubic-bezier(0.23, 1, 0.32, 1) both',
       },
     },
   },

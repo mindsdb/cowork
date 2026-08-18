@@ -622,23 +622,33 @@ describe('billing + provisioning events (ENG-1533)', () => {
     expect(event.properties.outcome).toBe('byok_offered');
   });
 
-  it('token_cap_hit carries the code so the two credit blocks are distinguishable', async () => {
+  it('token_cap_hit carries the reason so the three credit blocks are distinguishable', async () => {
     const fetchMock = mockFetch();
     const { trackTokenCapHit } = await importAnalytics();
 
     trackTokenCapHit('model_access_denied');
 
     const event = await sentEvent(fetchMock, 'token_cap_hit');
-    expect(event.properties.code).toBe('model_access_denied');
+    expect(event.properties.reason).toBe('model_access_denied');
   });
 
-  it('token_cap_hit defaults to token_limit, matching the events logged before the code property existed', async () => {
+  it('token_cap_hit carries the spent-free-allowance reason (ENG-1537)', async () => {
+    const fetchMock = mockFetch();
+    const { trackTokenCapHit } = await importAnalytics();
+
+    trackTokenCapHit('included_allowance_exhausted');
+
+    const event = await sentEvent(fetchMock, 'token_cap_hit');
+    expect(event.properties.reason).toBe('included_allowance_exhausted');
+  });
+
+  it('token_cap_hit defaults to token_limit, matching the events logged before the reason property existed', async () => {
     const fetchMock = mockFetch();
     const { trackTokenCapHit } = await importAnalytics();
 
     trackTokenCapHit();
 
     const event = await sentEvent(fetchMock, 'token_cap_hit');
-    expect(event.properties.code).toBe('token_limit');
+    expect(event.properties.reason).toBe('token_limit');
   });
 });

@@ -670,6 +670,20 @@ function failedEventMeta(events) {
     // gateway rejected, so the card can name it. `failedModel` locally —
     // "model" is too overloaded in message objects.
     failedModel: ev.model ?? null,
+    // rate_limited: the gateway's own Retry-After, in seconds, so the card can
+    // time-gate its Retry (ENG-1537). Null when the gateway sent no hint — the
+    // card then offers an ungated Retry rather than inventing an interval.
+    retryAfter: typeof ev.retry_after === 'number' ? ev.retry_after : null,
+    // included_allowance_exhausted: when the free grant refreshes, as the
+    // gate's opaque ISO string. Formatted at render time — the server
+    // deliberately doesn't parse it, since only the client knows the
+    // viewer's timezone (ENG-1537).
+    resetAt: typeof ev.reset_at === 'string' ? ev.reset_at : null,
+    // Absolute instant to gate Retry against. The message's own created_at
+    // is NOT a substitute: the server serialises it offset-less, so JS reads
+    // it as local time — the gate would last hours west of UTC and no-op east
+    // of it, invisible to a TZ=UTC suite (ENG-1537 review).
+    retryAt: typeof ev.retry_at === 'string' ? ev.retry_at : null,
   };
 }
 
@@ -715,6 +729,9 @@ function hydrateMessagesFromServerEvents(messages) {
           reconnectable: failed?.reconnectable ?? null,
           providerLabel: failed?.providerLabel ?? null,
           failedModel: failed?.failedModel ?? null,
+          retryAfter: failed?.retryAfter ?? null,
+          resetAt: failed?.resetAt ?? null,
+          retryAt: failed?.retryAt ?? null,
         });
       }
     }
@@ -1361,6 +1378,14 @@ function AppCore() {
             reconnectable: event?.reconnectable ?? null,
             providerLabel: event?.provider_label ?? null,
             failedModel: event?.model ?? null,
+            // ENG-1537 review: this local trailer is reached when
+            // loadSessionMessagesWithRetry gives up after 3 attempts — which is
+            // MORE likely precisely when the gateway is rate-limiting. Without
+            // these the rate-limit card loses its gate and the allowance card
+            // always reads "resets on next month".
+            retryAfter: typeof event?.retry_after === 'number' ? event.retry_after : null,
+            retryAt: typeof event?.retry_at === 'string' ? event.retry_at : null,
+            resetAt: typeof event?.reset_at === 'string' ? event.reset_at : null,
           };
       return {
         ...t,
@@ -4480,8 +4505,6 @@ function AppCore() {
             onShowServerHelp={() => openSettings('backend')}
             skipIntro={bootIntroDone}
             prefill={composerPrefill}
-            tasksCount={tasks.length}
-            artifactsCount={artifacts.length}
             onPrefill={(text, select) => setComposerPrefill({ text, bump: Date.now(), select })}
           />
         )}

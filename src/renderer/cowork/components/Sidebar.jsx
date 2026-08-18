@@ -145,7 +145,7 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
           >
             {isActive ? (
               <span
-                className="pulse-dot inline-block w-[7px] h-[7px] rounded-full bg-accent shadow-[0_0_0_2px_color-mix(in_srgb,var(--sage-500)_18%,transparent)]"
+                className="pulse-dot inline-block w-[7px] h-[7px] mr-[7.5px] rounded-full bg-accent shadow-[0_0_0_2px_color-mix(in_srgb,var(--sage-500)_18%,transparent)]"
                 title={`${agentLabel || 'Anton'} is working on this task`}
                 aria-label="Active"
               />

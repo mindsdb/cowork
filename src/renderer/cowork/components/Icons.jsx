@@ -14,12 +14,15 @@
 // deliberately smaller than Lucide's filled shapes to fit the composer
 // button design.
 import {
+  AppWindow,
   ArrowUp,
+  ArrowUpLeft,
   ArrowUpRight,
   Bot,
   Box,
   Brain,
   CalendarClock,
+  ChartColumn,
   Check,
   ChevronDown,
   ChevronLeft,
@@ -63,6 +66,7 @@ import {
   Plus,
   Power,
   PowerOff,
+  Presentation,
   RefreshCw,
   RotateCw,
   Save,
@@ -73,6 +77,8 @@ import {
   Sparkles,
   SquareCheckBig,
   Sun,
+  Table,
+  Telescope,
   ThumbsDown,
   ThumbsUp,
   Trash2,
@@ -175,6 +181,14 @@ const Ico = {
   reload:       ico(RefreshCw),
   // "Open in the default browser".
   arrowUpRight: ico(ArrowUpRight),
+  // "Insert into the input above" — task-mode sample prompts (ENG-1594).
+  arrowUpLeft: ico(ArrowUpLeft, 14),
+  // ── Task-mode pills / chips (ENG-1594) ────────────────────────────────
+  presentation: ico(Presentation),
+  appWindow:    ico(AppWindow),
+  table:        ico(Table),
+  chartColumn:  ico(ChartColumn),
+  telescope:    ico(Telescope),
   // Save — thinking-step marker (mdb-ai adapter `step.icon` string).
   save:     ico(Save),
 
