@@ -184,7 +184,7 @@ for (const platform of PLATFORMS) {
         expect(headers['cache-control'] ?? '').toMatch(/no-store/);
       });
 
-      test('the versioned installer is immutable, attachment-named and resumable', async ({
+      test('the versioned installer carries its channel TTL, is attachment-named and resumable', async ({
         request,
       }) => {
         const manifest = await fetchManifest(request, platform, channel);
@@ -193,8 +193,22 @@ for (const platform of PLATFORMS) {
         const head = await request.head(manifest.url);
         expect(head.status(), `${manifest.url} should resolve`).toBe(200);
         const headers = head.headers();
-        expect(headers['cache-control'] ?? '').toMatch(/max-age=31536000/);
-        expect(headers['cache-control'] ?? '').toMatch(/immutable/);
+        /*
+         * The header this channel actually sets, not one of them. A prod
+         * version is cut once and its URL goes out to users, so it is
+         * advertised as immutable. A stable snapshot is named after a commit
+         * and is rewritten whenever the build re-runs, so it carries the short
+         * alias TTL: advertising a key as immutable while overwriting it is
+         * what strands a stale copy at the edge. What both have to prove is
+         * that SOME explicit Cache-Control survives to the edge, because
+         * without one CloudFront applies its own hour.
+         */
+        const cacheControl = headers['cache-control'] ?? '';
+        const immutable = channel.kind === 'prod';
+        expect(cacheControl).toMatch(immutable ? /max-age=31536000/ : /max-age=60\b/);
+        expect(/immutable/.test(cacheControl), `unexpected Cache-Control: ${cacheControl}`).toBe(
+          immutable,
+        );
         expect(headers['content-disposition'] ?? '').toBe(`attachment; filename="${fileName}"`);
         expect(headers['accept-ranges'] ?? '').toBe('bytes');
         expect(Number(headers['content-length'])).toBe(manifest.size_bytes);

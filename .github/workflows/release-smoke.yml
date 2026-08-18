@@ -2,8 +2,9 @@ name: Release smoke (public downloads)
 
 # Downloads the installers the way a user does, from downloads.mindshub.ai in a
 # real Chromium, and checks that what arrives is what the release published:
-# the manifest resolves, the versioned URL is immutable and attachment-named,
-# an interrupted transfer resumes, and the finished bytes match the checksum.
+# the manifest resolves, the versioned URL carries its channel's cache policy
+# and is attachment-named, an interrupted transfer resumes, and the finished
+# bytes match the checksum.
 #
 # Runs AFTER a prod release rather than on a PR, because there is nothing to
 # check until a release has published. Also nightly, which is what catches a

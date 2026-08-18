@@ -87,7 +87,7 @@ function FormLogo({ logo, logoUrl, color, connectorId }) {
   );
 }
 
-function FieldInput({ field, value, onChange, disabled }) {
+function FieldInput({ field, value, onChange, disabled, inputRef }) {
   const baseStyle = {
     width: '100%', boxSizing: 'border-box',
     padding: '8px 10px', borderRadius: 7,
@@ -138,6 +138,7 @@ function FieldInput({ field, value, onChange, disabled }) {
   if (field.type === 'textarea') {
     return (
       <Textarea
+        ref={inputRef}
         value={displayValue}
         placeholder={placeholder}
         disabled={disabled}
@@ -175,6 +176,7 @@ function FieldInput({ field, value, onChange, disabled }) {
   // text, password, url, default
   return (
     <Input
+      ref={inputRef}
       type={field.type === 'password' ? 'password' : (field.type === 'url' ? 'url' : 'text')}
       value={displayValue}
       placeholder={placeholder}
@@ -254,6 +256,14 @@ export function DataVaultForm({
   // and easy to reset on a brand-new form.
   const [valuesByKey, setValuesByKey] = useState({});
   const [skippedByKey, setSkippedByKey] = useState({});
+  const [requiredErrorsByKey, setRequiredErrorsByKey] = useState({});
+  /* Focus target for the first field that fails the required check.
+     `fieldRefs` holds the real control, which is what we want the caret in,
+     but only `Input` and `Textarea` forward a ref — a `select` or `boolean`
+     field puts nothing there. `fieldContainerRefs` holds the wrapper, which
+     every field type has, so the error is at least scrolled into view. */
+  const fieldRefs = useRef({});
+  const fieldContainerRefs = useRef({});
 
   const initialFor = (fs) => {
     const out = {};
@@ -270,6 +280,7 @@ export function DataVaultForm({
       lastFormIdRef.current = spec?.form_id;
       setValuesByKey({});
       setSkippedByKey({});
+      setRequiredErrorsByKey({});
       setLocalSelectedMethod(null);
     }
   }, [spec?.form_id]);
@@ -277,6 +288,7 @@ export function DataVaultForm({
   const stateKey = `${spec?.form_id || ''}::${activeMethodId || 'default'}`;
   const values = valuesByKey[stateKey] || initialFor(fields);
   const skipped = skippedByKey[stateKey] || new Set();
+  const requiredErrors = requiredErrorsByKey[stateKey] || {};
 
   // Publish a redacted snapshot of the form state so the chat layer
   // can inject context into messages sent during a connect task.
@@ -385,6 +397,12 @@ export function DataVaultForm({
 
   const updateField = (name, v) => {
     setValues((prev) => ({ ...prev, [name]: v }));
+    setRequiredErrorsByKey((prev) => {
+      if (!prev[stateKey]?.[name]) return prev;
+      const next = { ...prev[stateKey] };
+      delete next[name];
+      return { ...prev, [stateKey]: next };
+    });
     setSkipped((prev) => {
       if (!prev.has(name)) return prev;
       const next = new Set(prev);
@@ -406,6 +424,39 @@ export function DataVaultForm({
     if (action.kind === 'cancel') {
       onAction({ id: action.id, kind: 'cancel' });
       return;
+    }
+    if (action.kind === 'primary') {
+      const missing = fields.filter((field) => {
+        if (!field.required || skipped.has(field.name)) return false;
+        /* PostHog resolves its numeric project ID from the user's personal
+           API key in the panel before the connector request is sent, and the
+           user can supply it either by picking from the discovered list or by
+           typing it directly. So require one of the two rather than both.
+           Until discovery has added the choice field an empty `project_id` is
+           what triggers discovery, so nothing is required yet; once the choice
+           exists, a submit with neither filled in has to say so instead of
+           running discovery a second time. */
+        if (spec?._connector_id === 'posthog'
+          && (field.name === 'project_id' || field.name === 'posthog_project_choice')) {
+          if (!fields.some((f) => f.name === 'posthog_project_choice')) return false;
+          const supplied = String(values.project_id || '').trim()
+            || String(values.posthog_project_choice || '').trim();
+          return !supplied && field.name === 'posthog_project_choice';
+        }
+        const value = values[field.name];
+        return value === null || value === undefined || String(value).trim() === '';
+      });
+      if (missing.length) {
+        const errors = Object.fromEntries(
+          missing.map((field) => [field.name, `${field.label || field.name} is required.`]),
+        );
+        setRequiredErrorsByKey((prev) => ({ ...prev, [stateKey]: errors }));
+        requestAnimationFrame(() => {
+          const name = missing[0].name;
+          (fieldRefs.current[name] || fieldContainerRefs.current[name])?.focus?.();
+        });
+        return;
+      }
     }
     // Strip any field marked as skipped from the values payload.
     const cleanValues = {};
@@ -547,7 +598,12 @@ export function DataVaultForm({
           // the skip affordance.
           const isLocked = !!f._locked;
           return (
-            <div key={f.name} style={{ display: 'flex', flexDirection: 'column', gap: 4, opacity: isSkipped ? 0.55 : 1 }}>
+            <div
+              key={f.name}
+              ref={(node) => { fieldContainerRefs.current[f.name] = node; }}
+              tabIndex={-1}
+              style={{ display: 'flex', flexDirection: 'column', gap: 4, opacity: isSkipped ? 0.55 : 1, outline: 'none' }}
+            >
               <div style={{
                 display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
                 gap: 8,
@@ -589,6 +645,7 @@ export function DataVaultForm({
                   value={values[f.name]}
                   onChange={(v) => updateField(f.name, v)}
                   disabled={busy || isLocked}
+                  inputRef={(node) => { fieldRefs.current[f.name] = node; }}
                 />
               )}
               {isSkipped && (
@@ -600,10 +657,10 @@ export function DataVaultForm({
                   fontFamily: FONT_BODY, fontStyle: 'italic',
                 }}>Skipped — the agent will figure this one out.</div>
               )}
-              {f.error && !isSkipped && (
+              {(requiredErrors[f.name] || f.error) && !isSkipped && (
                 <div style={{
                   fontSize: 11.5, color: 'var(--danger)',
-                }}>{f.error}</div>
+                }}>{requiredErrors[f.name] || f.error}</div>
               )}
               {f.warning && !isSkipped && (
                 <div style={{

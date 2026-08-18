@@ -35,19 +35,74 @@ const failedTurn = (code, content, extra = {}) => [
   { role: 'error', content, code, ...extra },
 ];
 
-describe('unknown_model failure card', () => {
-  it('offers Open Settings instead of a finished-looking answer', async () => {
+describe('model_not_found failure card', () => {
+  it('names the offending model id and offers Open Settings (ENG-1358)', async () => {
     const user = userEvent.setup();
     const onOpenSettings = vi.fn();
     render(
       <ChatView
-        task={taskWith(failedTurn('unknown_model', 'That model isn\'t available. Switch to another model in Settings.'))}
+        task={taskWith(failedTurn(
+          'model_not_found',
+          "The model 'deepseek-v4-flash' isn't available. Switch models in Settings.",
+          { failedModel: 'deepseek-v4-flash' },
+        ))}
         onOpenSettings={onOpenSettings}
       />,
     );
-    expect(screen.getByText("That model isn't available")).toBeInTheDocument();
+    // The id the user actually has in settings must be on screen — recognising
+    // it is what makes the mistake fixable. It appears in both title and body.
+    expect(screen.getAllByText(/deepseek-v4-flash/).length).toBeGreaterThan(0);
     await user.click(screen.getByRole('button', { name: 'Open Settings' }));
     expect(onOpenSettings).toHaveBeenCalledWith('agent');
+  });
+
+  it('renders the raw id verbatim rather than a prettified label', () => {
+    render(
+      <ChatView
+        task={taskWith(failedTurn('model_not_found', 'nope', { failedModel: 'deepseek-v4-flash' }))}
+      />,
+    );
+    // modelLabel would render this as "Deepseek V4 Flash", which hides the
+    // exact string sitting in the user's settings.
+    expect(screen.queryByText(/Deepseek V4 Flash/)).not.toBeInTheDocument();
+  });
+
+  it('degrades to unnamed copy when an older server sends no model', () => {
+    render(
+      <ChatView task={taskWith(failedTurn('model_not_found', 'That model isn\'t available.'))} />,
+    );
+    expect(screen.getByText("That model isn't available")).toBeInTheDocument();
+    // No empty quotes where the id would have been.
+    expect(screen.queryByText(/""/)).not.toBeInTheDocument();
+  });
+
+  // The renderer updates OTA and can lead a pinned server, so the PRE-rename
+  // code must keep its card — otherwise those users fall through to the
+  // buttonless danger alert that ENG-1282 exists to remove.
+  it('still renders the card for the pre-rename unknown_model code', async () => {
+    const user = userEvent.setup();
+    const onOpenSettings = vi.fn();
+    render(
+      <ChatView
+        task={taskWith(failedTurn('unknown_model', "That model isn't available."))}
+        onOpenSettings={onOpenSettings}
+      />,
+    );
+    await user.click(screen.getByRole('button', { name: 'Open Settings' }));
+    expect(onOpenSettings).toHaveBeenCalledWith('agent');
+  });
+
+  // handleSendInTask's `modelOverride` is ignored by the in-process harness
+  // (stream_response takes no `model`), so the button would rerun the turn on
+  // the same dead id while the composer chip claimed the switch happened.
+  it('offers no Switch to MindsHub Air button, which could not take effect', () => {
+    render(
+      <ChatView
+        task={taskWith(failedTurn('model_not_found', 'nope', { failedModel: 'bad-model' }))}
+        onSwitchToAirAndResend={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: 'Switch to MindsHub Air' })).not.toBeInTheDocument();
   });
 });
 
@@ -244,7 +299,7 @@ describe('anton_error / unmapped failure fallback', () => {
 const WIRE_CODES = [
   'token_limit',
   'policy_unavailable',
-  'unknown_model',
+  'model_not_found',
   'provider_auth',
   'model_access_denied',
   'model_disabled',

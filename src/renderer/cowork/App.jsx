@@ -4573,8 +4573,6 @@ function AppCore() {
             onShowServerHelp={() => openSettings('backend')}
             skipIntro={bootIntroDone}
             prefill={composerPrefill}
-            tasksCount={tasks.length}
-            artifactsCount={artifacts.length}
             onPrefill={(text, select) => setComposerPrefill({ text, bump: Date.now(), select })}
             codingModeEnabled={settings.codingModeEnabled}
           />
