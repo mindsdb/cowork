@@ -125,9 +125,10 @@ PR #401); update polling and server updates run in every packaged build.
 
 - Non-prod kinds keep the renderer bundled in the build so testers always run
   the branch-under-test UI, never a hot-updated one.
-- The shell channels are separate from UI OTA: `stable` gets automatic shell
-  updates by default while running its bundled UI, and `prod` gets the ENG-849
-  manual "download the installer" notice even when auto-update is left opt-out.
+- The shell channels are separate from UI OTA: both `stable` and `prod` get
+  automatic shell updates by default (`stable` while running its bundled UI),
+  with the ENG-849 manual "download the installer" notice as the
+  disabled/failure fallback.
 - Resolution order: `COWORK_BUILD_KIND` env → `build-config.json` → `dev` if
   unpackaged. The OTA gate uses the strict resolver (`buildKindStrict()`):
   a missing/malformed/unrecognized kind is **never** treated as `prod`, so a
@@ -168,8 +169,8 @@ mechanism and its own on-screen surface:
 - **UI** (React renderer) — hot-swapped OTA bundle (`prod` builds only).
 - **Server** (`cowork-server` sidecar) — reinstalled and restarted in place.
 - **Shell** (the Electron app binary) — cannot hot-update; replaced by an
-  automatic background download that installs on relaunch (`stable` by default,
-  `prod` opt-in), or a hand-downloaded installer.
+  automatic background download that installs on relaunch (`stable` and `prod`
+  by default), or a hand-downloaded installer.
 
 UI and server are **coupled** and auto-apply together at boot (server first).
 The shell is **independent** and always needs a restart to take effect. That
