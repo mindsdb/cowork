@@ -127,7 +127,12 @@ vi.mock('./lib/analytics', () => ({
 }));
 
 import App from './App';
-import { uploadAttachments } from './api';
+import {
+  fetchSessions,
+  fetchProjects,
+  createProject,
+  uploadAttachments,
+} from './api';
 import {
   setForm as setDataVaultForm,
   clearForm as clearDataVaultForm,
@@ -925,5 +930,82 @@ describe('a drained message whose send fails (ENG-1378)', () => {
     await waitFor(() =>
       expect(spies.streamMessage.mock.calls.length).toBe(streamCallsBefore),
     );
+  });
+});
+
+describe('attachment send that would strand at "Queued"', () => {
+  const DEFAULT_SESSIONS = [
+    { id: 'conv-a', title: 'Alpha task', messages: [], status: 'idle', projectName: 'general' },
+    { id: 'conv-b', title: 'Beta task', messages: [], status: 'idle', projectName: 'general' },
+  ];
+  afterEach(() => {
+    fetchSessions.mockResolvedValue(DEFAULT_SESSIONS);
+    fetchProjects.mockResolvedValue([{ name: 'general', path: '/tmp/general' }]);
+    createProject.mockReset();
+    createProject.mockResolvedValue({});
+    uploadAttachments.mockReset();
+    uploadAttachments.mockResolvedValue([]);
+  });
+
+  it('bootstraps a project and sends instead of stranding the file (no project set)', async () => {
+    const user = userEvent.setup();
+    // A task with no project, and no projects loaded — so nothing is
+    // auto-selected and resolveComposerAttachmentsForSend would otherwise throw
+    // "Pick a project…", leaving the image stuck at "Queued".
+    fetchSessions.mockResolvedValue([
+      { id: 'conv-np', title: 'No project task', messages: [], status: 'idle' },
+    ]);
+    fetchProjects.mockResolvedValue([]);
+
+    render(<App />);
+    const composer = await openByTitle(user, 'No project task');
+    await attach(user, 'shot.png');
+    await send(user, composer, 'look at this');
+
+    // The fix bootstraps `general` and the send goes through against it.
+    await waitFor(() => expect(createProject).toHaveBeenCalledWith('general'));
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(1));
+    expect(spies.streamMessage.mock.calls[0][0]).toBe('conv-np');
+    // The staged file was consumed by the send, not left stranded.
+    await waitFor(() => expect(screen.queryByText('shot.png')).toBeNull());
+  });
+
+  it('surfaces a toast when the attachment upload fails, instead of failing silently', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user); // conv-a, project general
+    uploadAttachments.mockRejectedValueOnce(new Error('Upload failed (500)'));
+
+    await attach(user, 'shot.png');
+    await send(user, composer, 'here it is');
+
+    // Before the toast this failure was silent — nothing visible surfaced (the
+    // image just kept sitting at "Queued"). The toast is now the one thing that
+    // tells the user the upload failed.
+    expect(await screen.findByText(/upload failed/i)).toBeInTheDocument();
+    expect(spies.streamMessage).not.toHaveBeenCalled();
+    // Text and the staged file are kept for a retry, not silently dropped.
+    expect(composer.value).toBe('here it is');
+    expect(screen.getByText('shot.png')).toBeInTheDocument();
+  });
+
+  it('surfaces the failure instead of sending against a phantom project when the bootstrap fails', async () => {
+    const user = userEvent.setup();
+    // No project, none loaded, and creating one fails.
+    fetchSessions.mockResolvedValue([
+      { id: 'conv-np', title: 'No project task', messages: [], status: 'idle' },
+    ]);
+    fetchProjects.mockResolvedValue([]);
+    createProject.mockRejectedValueOnce(new Error('boom'));
+
+    render(<App />);
+    const composer = await openByTitle(user, 'No project task');
+    await attach(user, 'shot.png');
+    await send(user, composer, 'look at this');
+
+    // The bootstrap failure is surfaced (toast) rather than masked by sending
+    // against a 'general' project that was never created.
+    expect(await screen.findByText(/pick a project/i)).toBeInTheDocument();
+    expect(spies.streamMessage).not.toHaveBeenCalled();
+    expect(screen.getByText('shot.png')).toBeInTheDocument();
   });
 });

@@ -3051,6 +3051,28 @@ function AppCore() {
     return health?.config_ready !== false;
   }, [health]);
 
+  // Ensure the fallback `general` project exists and return it, or null if it
+  // could not be found or created. Shared by the home and in-chat send paths so
+  // the bootstrap dance (find-by-name → createProject → refetch) lives in one
+  // place. Returns null rather than throwing so a caller can surface an
+  // actionable error instead of sending against a project that isn't there.
+  const ensureGeneralProject = async () => {
+    const existing = projects.find((p) => p.name === 'general');
+    if (existing) return existing;
+    try {
+      await createProject('general');
+      const fresh = await fetchProjects();
+      if (Array.isArray(fresh)) setProjects(fresh);
+      // createProject resolved, so `general` exists even if this refetch came
+      // back stale — fall back to a name-only record so the caller adopts it.
+      return (fresh || []).find((p) => p.name === 'general') || { name: 'general' };
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn('[ensureGeneralProject] could not bootstrap general project', e);
+      return null;
+    }
+  };
+
   // Send from the home screen — creates a new session
   const handleSendFromHome = async (text) => {
     // Preflight: no provider configured → render an action card task
@@ -3092,15 +3114,7 @@ function AppCore() {
     // from a build that didn't auto-create it), bootstrap it now.
     let generalProject = projects.find((p) => p.name === 'general');
     if (!selectedProject && !generalProject) {
-      try {
-        await createProject('general');
-        const fresh = await fetchProjects();
-        if (Array.isArray(fresh)) setProjects(fresh);
-        generalProject = (fresh || []).find((p) => p.name === 'general');
-      } catch (e) {
-        // eslint-disable-next-line no-console
-        console.warn('[handleSendFromHome] could not bootstrap general project', e);
-      }
+      generalProject = await ensureGeneralProject();
     }
     const effectiveProjectName = selectedProject?.name || 'general';
     const effectiveProjectId = (selectedProject ? selectedProject.id : generalProject?.id) || null;
@@ -3488,15 +3502,35 @@ function AppCore() {
     const taskProject = opts.targetTask
       ? (resolveTaskProject(targetTask) || selectedProject)
       : currentTaskProject;
-    const taskProjectName = targetTask.projectName
+    let taskProjectName = targetTask.projectName
       || (taskProject?.name)
       || null;
-    const taskProjectId = targetTask.projectId
+    let taskProjectId = targetTask.projectId
       || taskProject?.id
       || null;
-    const taskProjectPath = targetTask.projectPath
+    let taskProjectPath = targetTask.projectPath
       || taskProject?.path
       || null;
+
+    // A file upload needs a project (uploadAttachments writes the bytes under
+    // one). An existing task with no project — the user never picked a working
+    // folder — would otherwise throw in resolveComposerAttachmentsForSend and
+    // strand the image at "Queued" with the send going nowhere. A home send
+    // already bootstraps `general` in this case; do the same here so an
+    // in-chat attachment send doesn't dead-end where a home send wouldn't.
+    const attachmentsForSend = queuedAttachments ?? composerAttachments;
+    if (!taskProjectName && (attachmentsForSend || []).some(isPendingFileAttachment)) {
+      const general = await ensureGeneralProject();
+      // Only adopt `general` if it actually exists now. If the bootstrap
+      // failed, leave the project unset so resolveComposerAttachmentsForSend
+      // throws the actionable "Pick a project…" error (surfaced via the toast
+      // below) rather than sending against a project that isn't there.
+      if (general) {
+        taskProjectName = general.name || 'general';
+        taskProjectId = general.id || null;
+        taskProjectPath = general.path || null;
+      }
+    }
     // opts.modelOverride carries a same-tick model switch (the "Switch to
     // MindsHub Air" card action, ENG-1304) — targetTask is a render-scope
     // closure, so a setTasks({...model}) just before this call would not be
@@ -3523,6 +3557,15 @@ function AppCore() {
       // stream — release the reservation so the user's next send
       // doesn't get stuck in the queue forever.
       activeStreamingTaskIdRef.current = null;
+      // Make the failure impossible to miss. The inline composer error alone
+      // was easy to overlook, so a file that couldn't upload just sat at
+      // "Queued" with no visible reason (the exact shape of the stuck-upload
+      // report). Surface a toast too, then re-throw so Composer keeps the text
+      // and the staged file for a retry.
+      toastManager.add({
+        type: 'danger',
+        title: err?.message || 'Could not send your attachment. Please try again.',
+      });
       throw err;
     }
 
