@@ -4402,11 +4402,10 @@ function AppCore() {
           way the old floating 8-bit toggle lit for a non-default skin. */}
       {(() => {
         const codingModeOn = !host.isWeb && settings.codingModeEnabled;
-        // Hidden in an actual task (route === 'task'/ChatView) — the
-        // corner it floats in competes with the composer/task content
-        // there. Still available everywhere else (Home, Projects, etc.).
-        return route !== 'task'
-          && (settings.showThemeToggle !== false || settings.show8bitToggle !== false) && (
+        // Same corner button on every route, task view included — the
+        // one entry point for Display Settings, not a bespoke per-view
+        // control.
+        return (settings.showThemeToggle !== false || settings.show8bitToggle !== false) && (
           <Tooltip content="Display settings">
             <button
               onClick={() => setThemeModalOpen(true)}
