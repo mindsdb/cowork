@@ -16,6 +16,7 @@ import {
 import { MODEL_REFRESH_TTL_MS } from '../lib/modelRefresh';
 import ProviderIcon from './ProviderIcon.jsx';
 import { useFileDrop, FileDropOverlay, extractClipboardFiles } from '../lib/useFileDrop';
+import { renameClipboardImages } from '../lib/clipboardImageName';
 import { AttachmentThumbnail } from './AttachmentThumbnail';
 import { useSkills } from '../lib/skillsStore';
 import { useDraft } from '../hooks/useDraft';
@@ -776,10 +777,14 @@ export default function Composer({
   // to the textarea's default handling.
   const handlePaste = (event) => {
     if (disabled || busy || !onAttachFiles) return;
+    // Read the clipboard and consume the event BEFORE anything else — both need
+    // the live event. Renaming is sync on purpose (see lib/clipboardImageName):
+    // making this handler async would let an Enter right after Ctrl+V send the
+    // message before the attachment chip exists. ENG-1100.
     const files = extractClipboardFiles(event.clipboardData);
     if (!files.length) return;
     event.preventDefault();
-    handleAttachFiles(files);
+    handleAttachFiles(renameClipboardImages(files));
   };
 
   function pairKey(engine, name) {
