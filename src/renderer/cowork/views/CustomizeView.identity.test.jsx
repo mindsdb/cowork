@@ -6,7 +6,7 @@
 // prove the user-visible bug is fixed. This file covers the wiring.
 
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 
 const CONNECTIONS = [
   // Unlabelled, has a registry spec → titles from the registry's casing.
@@ -43,10 +43,11 @@ import CustomizeView from './CustomizeView';
 
 describe('CustomizeView connection cards — ENG-1705 wiring', () => {
   it('renders no em-dash title for any connection', () => {
-    render(<CustomizeView connectors={CONNECTIONS} />);
-    // The regression rendered one '—' per unlabelled card. Scope the query to
-    // the rendered container so it cannot be satisfied by unrelated chrome.
-    expect(screen.queryAllByText('—')).toHaveLength(0);
+    const { container } = render(<CustomizeView connectors={CONNECTIONS} />);
+    // The regression rendered one '—' per unlabelled card. Scoped to the
+    // rendered container so unrelated chrome elsewhere in the document can
+    // never fail this spuriously.
+    expect(within(container).queryAllByText('—')).toHaveLength(0);
   });
 
   it('titles an unlabelled connection with the registry label, not the engine id', () => {
