@@ -27,8 +27,8 @@ const CONTAINER_SIZE = {
   sm: { padding: 1,     borderRadius: 5 },
 };
 const ITEM_SIZE = {
-  md: { padding: '5px 10px', borderRadius: 5, fontSize: 12.5, dividerMargin: '4px 0' },
-  sm: { padding: '3px 7px',  borderRadius: 3, fontSize: 11,   dividerMargin: '3px 0' },
+  md: { padding: '5px 10px', borderRadius: 5, fontSize: 12.5, dividerHeight: 12 },
+  sm: { padding: '3px 7px',  borderRadius: 3, fontSize: 11,   dividerHeight: 10 },
 };
 
 export interface ToggleGroupOption {
@@ -94,9 +94,12 @@ export function ToggleGroup({
                 aria-hidden="true"
                 style={{
                   width: 1,
-                  alignSelf: 'stretch',
-                  margin: is.dividerMargin,
-                  background: 'var(--line)',
+                  height: is.dividerHeight,
+                  alignSelf: 'center',
+                  // color-mix, not the bare token: a bit more subtle than a
+                  // full-strength line between such small, tightly-packed
+                  // items.
+                  background: 'color-mix(in srgb, var(--line) 55%, transparent)',
                   opacity: dividerHidden ? 0 : 1,
                   transition: 'opacity 0.15s ease',
                 }}
