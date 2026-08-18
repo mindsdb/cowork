@@ -17,6 +17,7 @@ import {
 } from '../lib/modelCatalog';
 import { MODEL_REFRESH_TTL_MS } from '../lib/modelRefresh';
 import ModelSelect from './ModelSelect.jsx';
+import ProviderIcon from './ProviderIcon.jsx';
 import { useFileDrop, FileDropOverlay, extractClipboardFiles } from '../lib/useFileDrop';
 import { AttachmentThumbnail } from './AttachmentThumbnail';
 import { useSkills } from '../lib/skillsStore';
@@ -296,6 +297,19 @@ export default function Composer({
     Promise.resolve(modelMeta.onRefresh()).catch(() => {});
   }, [modelMeta]);
 
+  // Claude Code needs a real, concrete model for its `--model` flag — no
+  // auto-routing concept in the CLI — so Model Router is hidden whenever
+  // that harness is the one about to send. Computed once, reused by both
+  // modelPickerOptions below and the no-real-models render branch further
+  // down (which needs it outside the memo).
+  const isClaudeCode = codingModeEnabled && codingHarness === 'claude-code';
+
+  // No provider configured (MindsHub or BYOK) leaves `models` (the real
+  // catalog — recommendedModelOptions returns [] for an unconfigured
+  // provider) empty. Claude Code still needs its own real model regardless,
+  // so this only applies to the Anton-routed picker.
+  const noRealModels = !isClaudeCode && (models?.length || 0) === 0 && !!onOpenSettings;
+
   // Flat options for <ModelSelect> — the same searchable, bounded-height,
   // provider-grouped picker the Settings model rows use (ui/Combobox).
   // ModelSelect groups internally (lib/modelCatalog), so this only builds the
@@ -327,11 +341,7 @@ export default function Composer({
       };
     });
     // "Model Router" (defer to this account's Settings) leads the list,
-    // pinned so it sits outside the maker groups. Claude Code needs a real,
-    // concrete model for its `--model` flag — no auto-routing concept in
-    // the CLI — so it's hidden whenever that harness is the one about to
-    // send.
-    const isClaudeCode = codingModeEnabled && codingHarness === 'claude-code';
+    // pinned so it sits outside the maker groups.
     return isClaudeCode ? catalogOptions : [
       {
         value: MODEL_ROUTER_ID,
@@ -365,7 +375,7 @@ export default function Composer({
       },
       ...catalogOptions,
     ];
-  }, [models, modelMeta, codingModeEnabled, codingHarness, onOpenSettings]);
+  }, [models, modelMeta, isClaudeCode, onOpenSettings]);
 
 
   // Auto-resize the textarea up to a max height; past that it scrolls.
@@ -1198,6 +1208,34 @@ export default function Composer({
               <span className="meta-pill" title="Model is fixed for this task">
                 <span>{model?.name ?? 'Model'}</span>
               </span>
+            ) : noRealModels ? (
+              // No provider connected (MindsHub or BYOK) — `models` (the
+              // real catalog, before Model Router gets pinned on) is empty,
+              // so Model Router would be the only pickable row anyway. A
+              // dropdown with one unpickable-in-practice option reads as
+              // broken; show a plain button instead — no caret, since there
+              // is nothing to open — that goes straight to where a model
+              // actually gets connected.
+              <Tooltip content="Connect a provider in Settings to choose a model">
+                <button
+                  type="button"
+                  className="meta-pill"
+                  onClick={() => onOpenSettings('agent')}
+                >
+                  {/* Same left icon + label layout as the closed
+                      ModelSelect pill (see ModelSelect.jsx's renderValue) —
+                      only the trailing glyph differs (gear, not a caret),
+                      so this reads as "the model pill" that happens to open
+                      Settings, not as an unrelated control. */}
+                  <span className="flex items-center gap-[8px] min-w-0">
+                    <ProviderIcon maker="other" className="text-ink-2" />
+                    <span className="truncate">{MODEL_ROUTER_LABEL}</span>
+                  </span>
+                  <span className="inline-flex shrink-0 text-ink-3">
+                    {Ico.settings(13)}
+                  </span>
+                </button>
+              </Tooltip>
             ) : (
               <ModelSelect
                 // Falls back to unselected (rather than a synthesized

@@ -251,3 +251,48 @@ describe('Composer — "Model Router" default option (ENG-1656 follow-up)', () =
     expect(screen.queryByRole('button', { name: 'Router Settings' })).toBeNull();
   });
 });
+
+// ─── No provider configured: a plain button, not a dropdown ──────────
+//
+// With no MindsHub/BYOK provider connected, `models` (the real catalog)
+// is empty, so Model Router would be the only pickable row anyway — a
+// dropdown that opens to one unpickable-in-practice option reads as
+// broken. Composer shows a plain button styled like the closed picker
+// pill (so it doesn't look like an unrelated control) with a settings
+// gear instead of the dropdown caret, going straight to Settings.
+
+describe('Composer — no provider configured (ENG-1656 follow-up)', () => {
+  it('shows a plain Model Router button, not a combobox, when models is empty', () => {
+    renderComposer({ models: [], modelMeta: MODEL_META, model: null, onOpenSettings: vi.fn() });
+
+    expect(screen.queryByRole('combobox', { name: 'Choose model' })).toBeNull();
+    const button = screen.getByRole('button', { name: 'Model Router' });
+    expect(button).toHaveTextContent('Model Router');
+  });
+
+  it('clicking the button opens Settings directly, with no dropdown to open first', async () => {
+    const user = userEvent.setup();
+    const props = renderComposer({
+      models: [], modelMeta: MODEL_META, model: null, onOpenSettings: vi.fn(),
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Model Router' }));
+
+    expect(props.onOpenSettings).toHaveBeenCalledWith('agent');
+  });
+
+  it('falls back to the normal dropdown when onOpenSettings is not provided', () => {
+    renderComposer({ models: [], modelMeta: MODEL_META, model: null });
+
+    expect(screen.getByRole('combobox', { name: 'Choose model' })).toBeInTheDocument();
+  });
+
+  it('keeps the normal dropdown once real models are available', () => {
+    renderComposer({
+      models: MODELS, modelMeta: MODEL_META, model: MODELS[0], onOpenSettings: vi.fn(),
+    });
+
+    expect(screen.getByRole('combobox', { name: 'Choose model' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Model Router' })).toBeNull();
+  });
+});
