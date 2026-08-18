@@ -9,6 +9,7 @@ import { isAntonConfigError } from './lib/antonErrors';
 import { host } from '../platform/host';
 import { relativeAge } from './lib/formatTime';
 import { transformSettingsRows, diffSettingsForWrite, mergeRecommendedModels } from './lib/settingsTransform';
+import { AUTO_MODEL_ID } from './lib/modelCatalog';
 import { cacheSettings } from './lib/settingsCache';
 import {
   buildMemoryDeletePayload,
@@ -362,7 +363,10 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           input: text,
-          model: model || null,
+          // AUTO_MODEL_ID never leaves the renderer — it's how the composer
+          // represents "let this account's Settings decide" (modelCatalog.js).
+          // The server already treats a null/absent model as exactly that.
+          model: (model && model !== AUTO_MODEL_ID) ? model : null,
           stream: true,
           conversation: conversationId || null,
           // Server's `project` field is a project NAME (folder under

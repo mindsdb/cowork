@@ -15,7 +15,8 @@ vi.mock('../platform/host', async (importOriginal) => ({
   host: hostMock,
 }));
 
-import { fetchRecommendedModels, updateSettings, revealSettingKey } from './api';
+import { fetchRecommendedModels, updateSettings, revealSettingKey, streamNewSession } from './api';
+import { AUTO_MODEL_ID } from './lib/modelCatalog';
 
 const jsonRes = (body, ok = true, status = 200) => ({
   ok,
@@ -213,5 +214,47 @@ describe('fetchSession error hydration (ENG-1304)', () => {
     expect(err).toBeTruthy();
     expect(err.code).toBe('token_limit');
     expect(task.messages.map((m) => m.role)).not.toContain('provider_required');
+  });
+});
+
+// ─── ENG-1656 follow-up: "Auto" model pick never reaches the server ───
+//
+// AUTO_MODEL_ID is a renderer-only sentinel (the composer's default,
+// meaning "use this account's Settings"). The server contract is a null/
+// absent `model` field, so it must be translated at the request boundary
+// rather than sent verbatim as the literal string "auto".
+describe('streamNewSession — Auto model translation', () => {
+  const closedStreamResponse = () => ({
+    ok: true,
+    status: 200,
+    body: { getReader: () => ({ read: async () => ({ done: true, value: undefined }) }) },
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('sends model: null when the picked model is the Auto sentinel', async () => {
+    const fetchMock = vi.fn(async () => closedStreamResponse());
+    vi.stubGlobal('fetch', fetchMock);
+
+    await new Promise((resolve) => {
+      streamNewSession('hi', { model: AUTO_MODEL_ID, onDone: resolve, onError: resolve });
+    });
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.model).toBeNull();
+  });
+
+  it('sends a real model id through unchanged', async () => {
+    const fetchMock = vi.fn(async () => closedStreamResponse());
+    vi.stubGlobal('fetch', fetchMock);
+
+    await new Promise((resolve) => {
+      streamNewSession('hi', { model: 'sonnet', onDone: resolve, onError: resolve });
+    });
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.model).toBe('sonnet');
   });
 });

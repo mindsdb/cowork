@@ -56,9 +56,10 @@ import { fetchSessions, fetchSession, fetchConversationList, fetchProjects, fetc
          fetchRecommendedModels, createConversation, revealSettingKey } from './api';
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
 import { isArtifactTipDismissed, dismissArtifactTip, dismissIfUntouched } from './components/onboarding/onboardingStore';
-import { modelLabel, recommendedModelOptions, providerValueToType,
+import { recommendedModelOptions, providerValueToType,
          mergeRecommendedModels } from './lib/settingsTransform';
 import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery, trackFirstResponse, classifyFirstResponse } from './lib/analytics';
+import { AUTO_MODEL_ID, AUTO_MODEL } from './lib/modelCatalog';
 
 // One-of-ten encouraging follow-ups picked when a connect task is
 // created. Reads as a friendly nudge after the connect-intro card —
@@ -1657,8 +1658,12 @@ function AppCore() {
   const [activeTaskId, setActiveTaskId] = useState(null);
   const [selectedScheduleId, setSelectedScheduleId] = useState(null);
   const [selectedProject, setSelectedProject] = useState(null);
-  // Set from the configured planning model once settings load.
-  const [selectedModel, setSelectedModel] = useState(null);
+  // Defaults to "Auto" — defer to whatever this account's Settings has
+  // configured — until a composer picks a concrete model for a task. Never
+  // re-synced from settings after that: Auto's whole point is that it
+  // always tracks Settings live, server-side, without the renderer needing
+  // to know the current planning/coding/router model.
+  const [selectedModel, setSelectedModel] = useState(AUTO_MODEL);
   // In the hosted web shell the FastAPI process IS the host — there
   // is no subprocess to start/stop, and the SPA only loads at all if
   // the server is up. Seed online so downstream gates (`if (!serverOnline) return;`)
@@ -1741,12 +1746,6 @@ function AppCore() {
     fetchSettings().then((data) => {
       if (data && typeof data === 'object') {
         setSettings((prev) => ({ ...prev, ...data }));
-        const modelId = data.defaultModel || data.planningModel;
-        setSelectedModel({
-          id: modelId,
-          name: modelLabel(modelId) || modelId || 'Planning model',
-          desc: data.providerLabel ? `${data.providerLabel} planning model` : 'Configured planning model',
-        });
       }
     });
   }, []);
@@ -2122,8 +2121,6 @@ function AppCore() {
     const latest = await fetchSettings();
     if (latest && typeof latest === 'object') {
       setSettings((prev) => ({ ...prev, ...latest }));
-      const modelId = latest.defaultModel || latest.planningModel;
-      setSelectedModel({ id: modelId, name: modelLabel(modelId) || modelId || 'Planning model', desc: 'Configured planning model' });
     }
     return result;
   }, [settings]);
@@ -2151,7 +2148,9 @@ function AppCore() {
     return selectedProject;
   })();
   const currentTaskModel = currentTask?.model
-    ? (models.find((m) => m.id === currentTask.model) || { id: currentTask.model, name: currentTask.model, desc: 'Configured planning model' })
+    ? (currentTask.model === AUTO_MODEL_ID
+        ? AUTO_MODEL
+        : (models.find((m) => m.id === currentTask.model) || { id: currentTask.model, name: currentTask.model, desc: 'Configured planning model' }))
     : selectedModel;
 
   // "Switch to MindsHub Air" escape hatch on the model-denial card
@@ -3014,7 +3013,7 @@ function AppCore() {
     if (!effectiveProject?.path) {
       throw new Error('Pick a project with a folder before launching Claude Code.');
     }
-    if (!meta.model) {
+    if (!meta.model || meta.model === AUTO_MODEL_ID) {
       throw new Error('Pick a model before launching Claude Code.');
     }
     const authToken = await revealSettingKey('minds');
@@ -4302,7 +4301,10 @@ function AppCore() {
   const contentChromeExposed = isNarrow || sidebarCollapsedEffective;
   const titlebarSafeTop = contentChromeExposed ? 52 : 0;
 
-  const modelOptions = selectedModel && !models.some((m) => m.id === selectedModel.id)
+  // Auto isn't a real catalog model — Composer.jsx injects its own pinned
+  // "Auto" row directly, so it must not also get merged in here or it'd
+  // show up twice (once pinned, once sorted into the "Other" maker group).
+  const modelOptions = selectedModel && selectedModel.id !== AUTO_MODEL_ID && !models.some((m) => m.id === selectedModel.id)
     ? [selectedModel, ...models]
     : models;
 

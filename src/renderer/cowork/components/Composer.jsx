@@ -13,6 +13,7 @@ import {
 import { HighlightOverlay } from './composerHighlight';
 import {
   isMovingAlias, isFrozenAlias, hasFrozenVersions, orderByFamily,
+  AUTO_MODEL_ID, AUTO_MODEL_LABEL,
 } from '../lib/modelCatalog';
 import { MODEL_REFRESH_TTL_MS } from '../lib/modelRefresh';
 import ModelSelect from './ModelSelect.jsx';
@@ -300,7 +301,7 @@ export default function Composer({
     // Only tag once something listed is NOT the latest; on an all-moving catalog the
     // tag would sit on every row and distinguish nothing.
     const tagMoving = hasFrozenVersions(ids, modelFamilies);
-    return ordered.map((m) => {
+    const catalogOptions = ordered.map((m) => {
       const tag = [
         tagMoving && isMovingAlias(m.id, modelFamilies) ? 'Latest' : '',
         // A frozen version whose head is also listed. An orphan carries no
@@ -316,7 +317,16 @@ export default function Composer({
         ...(modelProviders[m.id] ? { provider: modelProviders[m.id] } : {}),
       };
     });
-  }, [models, modelMeta]);
+    // "Auto" (defer to this account's Settings) leads the list, pinned so it
+    // sits outside the maker groups. Claude Code needs a real, concrete
+    // model for its `--model` flag — no "auto" concept in the CLI — so it's
+    // hidden whenever that harness is the one about to send.
+    const isClaudeCode = codingModeEnabled && codingHarness === 'claude-code';
+    return isClaudeCode ? catalogOptions : [
+      { value: AUTO_MODEL_ID, label: AUTO_MODEL_LABEL, pin: 'top', title: "Uses your account's configured model" },
+      ...catalogOptions,
+    ];
+  }, [models, modelMeta, codingModeEnabled, codingHarness]);
 
 
   // Auto-resize the textarea up to a max height; past that it scrolls.
@@ -1151,7 +1161,11 @@ export default function Composer({
               </span>
             ) : (
               <ModelSelect
-                value={model?.id || ''}
+                // Falls back to unselected (rather than a synthesized
+                // "auto" row) if the current pick isn't a valid option
+                // right now — e.g. Auto was picked, then the harness pill
+                // switched to Claude Code, which hides Auto from the list.
+                value={modelPickerOptions.some((o) => o.value === model?.id) ? model.id : ''}
                 onValueChange={(id) => {
                   const found = modelPickerOptions.find((o) => o.value === id);
                   onModelChange({ id, name: found?.label || id });

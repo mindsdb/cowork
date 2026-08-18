@@ -34,6 +34,20 @@ const MAKERS = [
 
 export const OTHER_MAKER = { key: 'other', name: 'Other' };
 
+// Sentinel model "id" for the composer's default pick: defer to whatever
+// this account's Settings has configured (planning/coding/router model),
+// rather than pinning one specific model for the task. Never a real model
+// id and never sent to the backend as-is — api.js's _streamResponse
+// translates it to `model: null`, which cowork-server already treats as
+// "use account settings" (see ResponsesRequest.model in cowork-server).
+export const AUTO_MODEL_ID = 'auto';
+export const AUTO_MODEL_LABEL = 'Auto';
+export const AUTO_MODEL = {
+  id: AUTO_MODEL_ID,
+  name: AUTO_MODEL_LABEL,
+  desc: "Uses your account's configured model",
+};
+
 // ─── Picker sections ────────────────────────────────────────────────
 //
 // Makers are the *icon* identity (one mark per company). Sections are the
