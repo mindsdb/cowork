@@ -5016,16 +5016,6 @@ function AppCore() {
         onThemeChange={setTheme}
         skin={skin}
         onSkinChange={setSkin}
-        codingModeEnabled={settings.codingModeEnabled}
-        onCodingModeChange={(v) => {
-          // ThemeModal's own convention: changes apply live, no Apply/
-          // Cancel. Unlike Settings' harness section (setSetting alone,
-          // persisted only when its page-wide Save is clicked), this
-          // needs to actually reach the server right away — mirrors
-          // autoSaveSetting's setSetting-then-onSave(patch) pair.
-          setSetting('codingModeEnabled', v);
-          saveSettings({ codingModeEnabled: v }).catch(() => {});
-        }}
       />
 
       {!host.isWeb && (
