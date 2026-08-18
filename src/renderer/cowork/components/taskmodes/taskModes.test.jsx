@@ -37,6 +37,15 @@ describe('TASK_MODES data', () => {
     expect(composeModeMessage(slides, 'AI in 2026')).toBe('AI in 2026\n\nCreate a slide presentation.');
     expect(composeModeMessage(null, 'hello')).toBe('hello');
   });
+
+  it('composeModeMessage skips the instruction for an untouched sample prompt (no doubled signal)', () => {
+    const games = TASK_MODES.find((m) => m.id === 'games');
+    const snake = games.samples.find((s) => s.label === 'Classic snake game');
+    expect(composeModeMessage(games, snake.prompt)).toBe(snake.prompt);
+    // An edited sample is user text again — the instruction comes back.
+    expect(composeModeMessage(games, `${snake.prompt} Make it two-player.`))
+      .toBe(`${snake.prompt} Make it two-player.\n\n${games.instruction}`);
+  });
 });
 
 describe('TaskModePills', () => {

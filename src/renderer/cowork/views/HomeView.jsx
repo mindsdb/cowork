@@ -570,9 +570,13 @@ export default function HomeView({
             width: '100%', height: 0, overflow: 'visible',
             display: 'flex', flexDirection: 'column', alignItems: 'center',
           }}>
+            {/* Samples only render when onPrefill exists — a sample click's
+                whole job is prefilling the composer, so without the callback
+                it would be a silent dead click (same gate the old
+                HomeSuggestions had). */}
             {!blocked && (
               taskMode
-                ? <TaskModeSamples mode={taskMode} onPick={(text) => onPrefill?.(text)} />
+                ? (onPrefill && <TaskModeSamples mode={taskMode} onPick={onPrefill} />)
                 : <TaskModePills onPick={setTaskMode} />
             )}
             <ActiveList tasks={activeTasks} onSelect={onSelectTask} onClear={onClearActive} />

@@ -84,7 +84,8 @@ describe('HomeView task modes (ENG-1594)', () => {
     const user = userEvent.setup();
     renderHome();
     await user.click(screen.getByRole('button', { name: 'Create games' }));
-    await user.click(screen.getByRole('button', { name: 'Remove Create games mode' }));
+    // Verb-phrase chip labels expose a noun in the remove label (chipNoun).
+    await user.click(screen.getByRole('button', { name: 'Remove Games mode' }));
     expect(screen.queryByRole('button', { name: /remove .* mode/i })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Create games' })).toBeInTheDocument();
   });

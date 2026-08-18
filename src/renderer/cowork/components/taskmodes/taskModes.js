@@ -9,7 +9,10 @@
 //
 // `icon` is an Icons.jsx key (resolved dynamically — keep keys in sync with
 // that file). `samplesVariant` mirrors Manus: slides + visualization render
-// sample cards under a heading, the rest render plain rows.
+// sample cards under a heading, the rest render plain rows. `chipNoun`
+// (optional) is the noun the chip's remove aria-label uses when `chipLabel`
+// is a verb phrase — "Remove Games mode" reads better than
+// "Remove Create games mode".
 
 export const TASK_MODES = [
   {
@@ -74,6 +77,7 @@ export const TASK_MODES = [
     id: 'apps',
     pillLabel: 'Develop apps',
     chipLabel: 'Develop apps',
+    chipNoun: 'Apps',
     icon: 'phone',
     placeholder: 'Describe the app you want to build',
     instruction: 'Build an app.',
@@ -194,6 +198,7 @@ export const TASK_MODES = [
     id: 'games',
     pillLabel: 'Create games',
     chipLabel: 'Create games',
+    chipNoun: 'Games',
     icon: 'gamepad',
     placeholder: 'Describe the game you want to create',
     instruction: 'Create a playable game.',
@@ -229,5 +234,8 @@ export const TASK_MODES = [
     make every task of a mode read identically and bury the user's actual ask. */
 export function composeModeMessage(mode, text) {
   if (!mode) return text;
+  // A picked sample is already a full prompt — appending the instruction
+  // would send a doubled signal ("…zen garden.\n\nCreate a playable game.").
+  if (mode.samples.some((s) => s.prompt === text.trim())) return text;
   return `${text}\n\n${mode.instruction}`;
 }
