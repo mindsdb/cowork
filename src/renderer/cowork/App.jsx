@@ -3488,15 +3488,40 @@ function AppCore() {
     const taskProject = opts.targetTask
       ? (resolveTaskProject(targetTask) || selectedProject)
       : currentTaskProject;
-    const taskProjectName = targetTask.projectName
+    let taskProjectName = targetTask.projectName
       || (taskProject?.name)
       || null;
-    const taskProjectId = targetTask.projectId
+    let taskProjectId = targetTask.projectId
       || taskProject?.id
       || null;
-    const taskProjectPath = targetTask.projectPath
+    let taskProjectPath = targetTask.projectPath
       || taskProject?.path
       || null;
+
+    // A file upload needs a project (uploadAttachments writes the bytes under
+    // one). An existing task with no project — the user never picked a working
+    // folder — would otherwise throw in resolveComposerAttachmentsForSend and
+    // strand the image at "Queued" with the send going nowhere. A home send
+    // already bootstraps `general` in this case; do the same here so an
+    // in-chat attachment send doesn't dead-end where a home send wouldn't.
+    const attachmentsForSend = queuedAttachments ?? composerAttachments;
+    if (!taskProjectName && (attachmentsForSend || []).some(isPendingFileAttachment)) {
+      let generalProject = projects.find((p) => p.name === 'general');
+      if (!generalProject) {
+        try {
+          await createProject('general');
+          const fresh = await fetchProjects();
+          if (Array.isArray(fresh)) setProjects(fresh);
+          generalProject = (fresh || []).find((p) => p.name === 'general');
+        } catch (e) {
+          // eslint-disable-next-line no-console
+          console.warn('[handleSendInTask] could not bootstrap general project', e);
+        }
+      }
+      taskProjectName = 'general';
+      taskProjectId = generalProject?.id || null;
+      taskProjectPath = generalProject?.path || null;
+    }
     // opts.modelOverride carries a same-tick model switch (the "Switch to
     // MindsHub Air" card action, ENG-1304) — targetTask is a render-scope
     // closure, so a setTasks({...model}) just before this call would not be
@@ -3523,6 +3548,15 @@ function AppCore() {
       // stream — release the reservation so the user's next send
       // doesn't get stuck in the queue forever.
       activeStreamingTaskIdRef.current = null;
+      // Make the failure impossible to miss. The inline composer error alone
+      // was easy to overlook, so a file that couldn't upload just sat at
+      // "Queued" with no visible reason (the exact shape of the stuck-upload
+      // report). Surface a toast too, then re-throw so Composer keeps the text
+      // and the staged file for a retry.
+      toastManager.add({
+        type: 'danger',
+        title: err?.message || 'Could not send your attachment. Please try again.',
+      });
       throw err;
     }
 
