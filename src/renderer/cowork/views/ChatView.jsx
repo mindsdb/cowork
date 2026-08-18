@@ -1188,6 +1188,7 @@ export default function ChatView({
   onOpenProject,
   onOpenProjectsList,
   onOpenSettings,
+  codingModelDefault,
   onStop,
   projects = [],
   // Messages the user typed while Anton was mid-turn. Displayed as
@@ -2212,6 +2213,7 @@ export default function ChatView({
             onStop={onStop}
             prefill={composerPrefill}
             onOpenSettings={onOpenSettings}
+            codingModelDefault={codingModelDefault}
           />
         </div>
         </>

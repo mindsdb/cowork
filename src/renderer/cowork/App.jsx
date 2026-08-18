@@ -4568,6 +4568,7 @@ function AppCore() {
             configReady={health.config_ready ?? settings.configReady}
             configError={health.config_error ?? settings.configError}
             onOpenSettings={openSettings}
+            codingModelDefault={settings.codingModel}
             serverOnline={serverOnline}
             agentLabel={agentLabel}
             onShowServerHelp={() => openSettings('backend')}
@@ -4584,6 +4585,7 @@ function AppCore() {
             onSend={handleSendInTask}
             onSwitchToAirAndResend={airAvailableForSwitch ? handleSwitchToAirAndResend : undefined}
             onOpenSettings={openSettings}
+            codingModelDefault={settings.codingModel}
             queuedMessages={messageQueue[currentTask?.id] || []}
             onRemoveFromQueue={(itemId) => removeFromQueue(currentTask?.id, itemId)}
             onBack={() => {
@@ -4742,6 +4744,7 @@ function AppCore() {
             }}
             agentLabel={agentLabel}
             onOpenSettings={openSettings}
+            codingModelDefault={settings.codingModel}
           />
         )}
 

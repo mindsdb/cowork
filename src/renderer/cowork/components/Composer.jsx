@@ -188,6 +188,14 @@ export default function Composer({
   // callback App.jsx hands every other "Open Settings" affordance. Used by
   // the Model Router row's settings shortcut below.
   onOpenSettings,
+  // The account's configured Coding model (Settings → Model Router →
+  // Coding model), a raw model id or undefined/empty if never set.
+  // Claude Code needs a real, concrete model and can't use Model Router —
+  // when the harness pill switches to Claude Code with nothing picked
+  // (e.g. no MindsHub session, so the catalog is empty and there's
+  // nothing to choose from), this is what gets auto-selected instead of
+  // leaving the picker empty and blocking send.
+  codingModelDefault,
 }) {
   const [value, setValue] = useDraft(draftKey || conversationId || 'new');
   const [focused, setFocused] = useState(false);
@@ -412,6 +420,30 @@ export default function Composer({
     ];
   }, [models, modelMeta, isClaudeCode, onOpenSettings]);
 
+  // True once the picked model isn't valid for Claude Code — nothing
+  // picked yet, or still Model Router (hidden from the picker once this
+  // harness is selected, but the underlying value doesn't change itself).
+  const needsClaudeCodeModel = isClaudeCode && (!model?.id || model.id === MODEL_ROUTER_ID);
+
+  // Falls back to the account's configured Coding model (Settings → Model
+  // Router → Coding model) so switching to Claude Code with no MindsHub
+  // session (empty catalog, nothing to pick) doesn't leave the task
+  // unlaunchable — used both to keep the pill in sync (effect below) and
+  // as a same-tick safety net in handleSend, in case Send fires before
+  // that effect's onModelChange round-trips back down as a prop.
+  const effectiveModelId = (needsClaudeCodeModel && codingModelDefault) ? codingModelDefault : model?.id;
+
+  // Sync the visible pill: without this, the picker would show blank (or
+  // a stale Model Router label) even though handleSend is about to send
+  // the Coding model default underneath it.
+  useEffect(() => {
+    if (!needsClaudeCodeModel || !codingModelDefault) return;
+    const found = modelPickerOptions.find((o) => o.value === codingModelDefault);
+    onModelChange({ id: codingModelDefault, name: found?.label || codingModelDefault });
+    // onModelChange intentionally omitted: some callers (ChatView) pass a
+    // fresh closure every render, which would refire this every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [needsClaudeCodeModel, codingModelDefault, modelPickerOptions]);
 
   // Auto-resize the textarea up to a max height; past that it scrolls.
   // The overlay is absolutely positioned with `inset: 0`, so it follows
@@ -837,9 +869,11 @@ export default function Composer({
       // just coding mode); harness only matters once coding mode is on —
       // otherwise every task is implicitly Anton regardless of local state.
       // See `sendsMeta` above for why this can't unconditionally be onSend's
-      // 2nd argument.
+      // 2nd argument. `effectiveModelId` (not the raw `model?.id`) so a
+      // same-tick send can't race the Coding-model-default sync effect
+      // above and slip through with nothing pickable for Claude Code.
       const result = sendsMeta
-        ? onSend(value.trim(), { harness: codingModeEnabled ? codingHarness : 'anton', model: model?.id })
+        ? onSend(value.trim(), { harness: codingModeEnabled ? codingHarness : 'anton', model: effectiveModelId })
         : onSend(value.trim());
       await Promise.resolve(result);
       setValue('');

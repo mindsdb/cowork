@@ -252,6 +252,88 @@ describe('Composer — "Model Router" default option (ENG-1656 follow-up)', () =
   });
 });
 
+// ─── Claude Code falls back to the account's Coding model ────────────
+//
+// Model Router can't drive Claude Code (no auto-routing concept in the
+// CLI), so switching harness to Claude Code with nothing pickable — e.g.
+// no MindsHub session, so `models` (the catalog) is empty — must not
+// leave the task unlaunchable. It falls back to Settings' configured
+// Coding model instead.
+
+describe('Composer — Claude Code falls back to the Coding model default (ENG-1656 follow-up)', () => {
+  it('auto-selects the Coding model default once Claude Code is picked with nothing selected', async () => {
+    const user = userEvent.setup();
+    const props = renderComposer({
+      models: [], codingModeEnabled: true, onModelChange: vi.fn(),
+      codingModelDefault: 'claude-sonnet-4-6',
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Claude-Code' }));
+
+    expect(props.onModelChange).toHaveBeenCalledWith({ id: 'claude-sonnet-4-6', name: 'claude-sonnet-4-6' });
+  });
+
+  it('uses the catalog label when the Coding model default is also a listed model', async () => {
+    const user = userEvent.setup();
+    const props = renderComposer({
+      models: MODELS, modelMeta: MODEL_META, codingModeEnabled: true, onModelChange: vi.fn(),
+      codingModelDefault: 'kimi',
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Claude-Code' }));
+
+    expect(props.onModelChange).toHaveBeenCalledWith({ id: 'kimi', name: 'Kimi K3' });
+  });
+
+  it('does not touch model selection when a real model is already picked', async () => {
+    const user = userEvent.setup();
+    const props = renderComposer({
+      models: MODELS, modelMeta: MODEL_META, model: MODELS[1], codingModeEnabled: true,
+      onModelChange: vi.fn(), codingModelDefault: 'claude-sonnet-4-6',
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Claude-Code' }));
+
+    expect(props.onModelChange).not.toHaveBeenCalled();
+  });
+
+  it('leaves nothing selected when no Coding model default is configured either', async () => {
+    const user = userEvent.setup();
+    const props = renderComposer({
+      models: [], codingModeEnabled: true, onModelChange: vi.fn(),
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Claude-Code' }));
+
+    expect(props.onModelChange).not.toHaveBeenCalled();
+  });
+
+  it('sends the Coding model default even if the sync round-trip has not landed yet (same-tick safety net)', async () => {
+    const user = userEvent.setup();
+    const props = renderComposer({
+      models: [], codingModeEnabled: true, sendsMeta: true,
+      // onModelChange deliberately a no-op mock — this Composer instance's
+      // `model` prop never actually updates, simulating a Send that races
+      // ahead of the parent's state round-trip.
+      onModelChange: vi.fn(),
+      codingModelDefault: 'claude-sonnet-4-6',
+      // Draft text persists (useDraft) keyed by conversationId — a fresh
+      // key keeps this test isolated from any draft another test in this
+      // file left behind under the shared default 'new' key.
+      draftKey: 'claude-code-safety-net-test',
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Claude-Code' }));
+    await user.type(screen.getByRole('textbox'), 'fix the bug');
+    await user.keyboard('{Enter}');
+
+    expect(props.onSend).toHaveBeenCalledWith(
+      'fix the bug',
+      { harness: 'claude-code', model: 'claude-sonnet-4-6' },
+    );
+  });
+});
+
 // ─── No provider configured: a plain button, not a dropdown ──────────
 //
 // With no MindsHub/BYOK provider connected, `models` (the real catalog)

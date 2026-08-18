@@ -570,6 +570,7 @@ function ProjectDetail({
   // ScheduledView grid uses.
   onOpenSchedule,
   onOpenSettings,
+  codingModelDefault,
 }) {
   const projectTasks = (tasks || [])
     .filter((t) => t.projectName === project.name || t.projectPath === project.path)
@@ -721,6 +722,7 @@ function ProjectDetail({
               modelReadOnly={false}
               codingModeEnabled={codingModeEnabled}
               onOpenSettings={onOpenSettings}
+              codingModelDefault={codingModelDefault}
               sendsMeta
               placeholder={`Start a new task in ${project.name}…`}
               // Keyed on the id, not the name: renaming a project must not
@@ -809,6 +811,7 @@ export default function ProjectsView({
   onOpenSchedule,
   agentLabel = 'the agent',
   onOpenSettings,
+  codingModelDefault,
 }) {
   const { pinned, togglePin } = usePinnedProjects();
   const { isMobile } = useBreakpoint();
@@ -963,6 +966,7 @@ export default function ProjectsView({
         disabledConnections={disabledConnections}
         onUpdateConnectorMute={onUpdateConnectorMute}
         onOpenSettings={onOpenSettings}
+        codingModelDefault={codingModelDefault}
         onShowAll={() => setDetailProject(null)}
         editing={editingProjectName === detailProject.name}
         onRenameStart={handleRenameStart}

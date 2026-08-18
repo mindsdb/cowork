@@ -248,6 +248,7 @@ export default function HomeView({
   // and any other surface that pre-drafts text route through this.
   onPrefill,
   codingModeEnabled = false,
+  codingModelDefault,
 }) {
   const greetingText = greeting || GREETING_FALLBACK;
   const blocked = configReady === false;
@@ -569,6 +570,7 @@ export default function HomeView({
               onTypingChange={setIsTyping}
               codingModeEnabled={codingModeEnabled}
               onOpenSettings={onOpenSettings}
+              codingModelDefault={codingModelDefault}
               sendsMeta
             />
           )}
