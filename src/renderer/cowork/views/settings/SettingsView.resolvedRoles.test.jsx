@@ -16,9 +16,14 @@ import { useState } from 'react';
 // could not pay for them: the completion verifier then 402'd every turn,
 // surfaced as a spurious "internal error".
 //
-// Locked now: a default-mode save (1) repoints the providers, (2) TOMBSTONES
-// the aux models (null → DELETE, so the server's enabled-aware default
-// governs), and (3) seeds planning with a wallet-affordable model.
+// Locked now: a default-mode save (1) repoints the providers and (2)
+// TOMBSTONES all three role models — planning included (null → DELETE, so the
+// server's enabled-aware default governs). No model value is ever invented
+// client-side in default mode: a written row is indistinguishable from a real
+// user pick, so even an "affordable" seed would freeze (a topped-up account
+// would stay stranded on the free model — ENG-597's spring-back). The picker
+// stays honest because GET /settings returns the server-computed value for
+// unset fields (pnewsam review on #663).
 
 const spies = vi.hoisted(() => ({
   getAccessToken: vi.fn(async () => ''),
@@ -120,22 +125,27 @@ describe('withResolvedRoles — default-mode save (ENG-1632)', () => {
     expect(saved.routerModel).not.toBe('kimi');
   });
 
-  it('seeds planning with a wallet-affordable model, not the locked pair head', async () => {
+  it('tombstones planning too — no model value is invented for any role', async () => {
     const saved = await saveAndCapture(lockedSettings());
     expect(saved.planningProvider).toBe('minds-cloud');
-    expect(saved.planningModel).toBe('mindshub_air');
-    expect(saved.defaultModel).toBe('mindshub_air');
+    expect(saved.planningModel).toBeNull();
+    expect(saved.defaultModel).toBeNull();
+    // The exact regression pnewsam flagged: neither the locked pair head nor
+    // a client-derived "affordable" value may be written as an explicit row.
+    expect(saved.planningModel).not.toBe('sonnet');
+    expect(saved.planningModel).not.toBe('mindshub_air');
   });
 
-  it('keeps the canonical pair head for planning when the wallet covers it', async () => {
+  it('tombstones planning regardless of wallet state — the server owns the default', async () => {
     const funded = {
       ...lockedSettings(),
       modelEnabled: { mindshub_air: true, sonnet: true, haiku: true, kimi: true },
     };
     const saved = await saveAndCapture(funded);
-    expect(saved.planningModel).toBe('sonnet');
-    // Aux roles are tombstoned regardless — the server default already picks
-    // the canonical models for a funded wallet; no pin is needed.
+    // Funded or locked makes no difference: default mode writes no models.
+    // The server's enabled-aware default resolves sonnet for a funded wallet
+    // and the free model for a locked one — and keeps adapting (spring-back).
+    expect(saved.planningModel).toBeNull();
     expect(saved.codingModel).toBeNull();
     expect(saved.routerModel).toBeNull();
   });
