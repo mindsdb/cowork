@@ -89,4 +89,16 @@ describe('mergeQueuesForAdoptedId', () => {
     expect(next.a).toBeUndefined();
     expect(next.b).toBeUndefined();
   });
+
+  it('returns the input unchanged for a falsy destination id (never strands under next[undefined])', () => {
+    // A falsy toId would otherwise write an unreachable `next[undefined]` key
+    // and lose every moved message — the ENG-1378 stranding symptom.
+    const queues = { tmp: [item('m1')] };
+    for (const bad of [undefined, null, '', 0]) {
+      const next = mergeQueuesForAdoptedId(queues, ['tmp'], bad);
+      expect(next).toBe(queues);
+      expect(next.tmp.map((m) => m.id)).toEqual(['m1']);
+      expect(next).not.toHaveProperty('undefined');
+    }
+  });
 });

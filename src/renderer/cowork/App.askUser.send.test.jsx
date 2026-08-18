@@ -125,6 +125,7 @@ vi.mock('./lib/analytics', () => ({
 }));
 
 import App from './App';
+import { uploadAttachments } from './api';
 import {
   setForm as setDataVaultForm,
   clearForm as clearDataVaultForm,
@@ -850,5 +851,42 @@ describe('Stop while a sibling task is queued (ENG-1378 stop-drain)', () => {
     await waitFor(() =>
       expect(screen.queryByLabelText('Remove from queue')).toBeNull(),
     );
+  });
+});
+
+describe('a manual send racing another task mid-reserve (ENG-1378 parallel-stream guard)', () => {
+  it('queues rather than starting a second stream while another task is between reserving the slot and its controller', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user); // Alpha (conv-a)
+
+    // Beta sends with a file. Its upload is held open, parking Beta's send
+    // between reserving the shared slot (activeStreamingTaskIdRef = conv-b) and
+    // assigning its stream controller — the exact window where the old guard,
+    // keyed to `=== id`, let a different task slip through.
+    let releaseUpload;
+    uploadAttachments.mockImplementationOnce(
+      () => new Promise((resolve) => { releaseUpload = () => resolve([]); }),
+    );
+    const betaComposer = await openByTitle(user, 'Beta task');
+    await attach(user, 'beta-notes.txt');
+    await send(user, betaComposer, 'beta with file');
+    // Parked on the upload: no stream has started for anyone yet.
+    await waitFor(() => expect(uploadAttachments).toHaveBeenCalledTimes(1));
+    expect(spies.streamMessage).not.toHaveBeenCalled();
+
+    // A manual send to Alpha lands in that window. anton-core runs one turn at
+    // a time, so it must queue behind Beta's reservation, not launch a second
+    // parallel stream.
+    await openByTitle(user, 'Alpha task');
+    await send(user, composer, 'manual alpha');
+    expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
+    expect(spies.streamMessage).not.toHaveBeenCalled();
+
+    // Beta's upload completes: its (single) stream starts, against its own
+    // conversation. Alpha stays queued for the next drain.
+    await act(async () => { releaseUpload(); await Promise.resolve(); });
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(1));
+    expect(spies.streamMessage.mock.calls[0][0]).toBe('conv-b');
+    expect(spies.streamMessage.mock.calls[0][1]).toBe('beta with file');
   });
 });

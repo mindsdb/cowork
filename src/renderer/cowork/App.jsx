@@ -3442,12 +3442,17 @@ function AppCore() {
     // The check covers two race conditions:
     //   1) `activeStreamCtrlRef` is already set — a fully launched
     //      stream is in flight.
-    //   2) `activeStreamingTaskIdRef` matches but the controller
-    //      hasn't been assigned yet — a previous invocation is mid-
-    //      await (resolving attachments). Without this leg, two
-    //      rapid clicks both pass the guard and we'd end up with
-    //      two parallel streams, the first one's controller leaked.
-    if (activeStreamingTaskIdRef.current === id || activeStreamCtrlRef.current) {
+    //   2) `activeStreamingTaskIdRef` is set but the controller hasn't
+    //      been assigned yet — a previous invocation is mid-await
+    //      (resolving attachments). This holds for ANY task's
+    //      reservation, not just this id: two rapid clicks on the same
+    //      task, or a manual send that lands while a cross-task drain
+    //      (ENG-1378) is between reserving the slot and awaiting
+    //      attachments, both otherwise pass the guard and start a second
+    //      parallel stream against anton-core (which runs one turn at a
+    //      time). The reservation is always cleared on done/error, so a
+    //      broadened guard cannot wedge later sends.
+    if (activeStreamingTaskIdRef.current || activeStreamCtrlRef.current) {
       // Queue with the files attached so a mid-stream send doesn't drop
       // them. A fresh send takes the composer's attachments and clears
       // them (the queued item now owns them); a re-enqueued queued item
@@ -3476,8 +3481,13 @@ function AppCore() {
 
     // A drained item's target task may not be the one on screen, so resolve
     // its project independently rather than reusing the current view's
-    // `currentTaskProject` (which falls back to selectedProject).
-    const taskProject = opts.targetTask ? resolveTaskProject(targetTask) : currentTaskProject;
+    // `currentTaskProject`. Keep the same `|| selectedProject` last-resort
+    // that `currentTaskProject` has, so a project-less task's drained send
+    // resolves the same project a live send to it would (parity — otherwise
+    // even the on-screen task's own follow-up loses the fallback on drain).
+    const taskProject = opts.targetTask
+      ? (resolveTaskProject(targetTask) || selectedProject)
+      : currentTaskProject;
     const taskProjectName = targetTask.projectName
       || (taskProject?.name)
       || null;
@@ -3490,8 +3500,14 @@ function AppCore() {
     // opts.modelOverride carries a same-tick model switch (the "Switch to
     // MindsHub Air" card action, ENG-1304) — targetTask is a render-scope
     // closure, so a setTasks({...model}) just before this call would not be
-    // visible here yet.
-    const taskModel = opts.modelOverride || targetTask.model || selectedModel?.id || null;
+    // visible here yet. The `selectedModel` fallback is the on-screen model
+    // picker, so only a live send to the task on screen may inherit it; a
+    // drained off-screen task must not pick up whatever model the current
+    // view happens to show — it falls through to the server default instead.
+    const taskModel = opts.modelOverride
+      || targetTask.model
+      || (opts.targetTask ? null : selectedModel?.id)
+      || null;
 
     let sendingAttachments, attachmentIds, driveReference;
     try {
