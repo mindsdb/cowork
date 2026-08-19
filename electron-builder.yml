@@ -96,10 +96,15 @@ linux:
 
 deb:
   packageName: mindshub-cowork
-  artifactName: "mindshub-cowork_${version}_${arch}.${ext}"
+  # ${productFilename} resolves to linux.executableName, so the file name
+  # follows the per-channel package name instead of always claiming to be prod.
+  artifactName: "${productFilename}_${version}_${arch}.${ext}"
   # Stages the credentials out of root-owned /opt into the installing user's
   # home; without it they persist world-readable and the app can never clean up.
   afterInstall: build/deb-scripts/postinst.sh
+  # Removes the staged credentials an install that was never launched left in
+  # the user's home. Carries upstream's after-remove.tpl for the same reason.
+  afterRemove: build/deb-scripts/postrm.sh
   # Overriding depends replaces electron-builder's defaults, so the default
   # runtime libs are repeated here. git and curl are required by the
   # first-run cowork-server installer (uv bootstrap + git-based install).

@@ -8,6 +8,9 @@ import {
 } from './channels';
 import { EXPECTED_API_ORIGIN } from '../../scripts/channel-origins.mjs';
 import { channelIdentity, linuxBuilderArgs } from '../../scripts/channel-identity.mjs';
+import { readFileSync } from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 describe('channels — canonical table', () => {
   it('every build kind has a spec whose envSlug matches its apiHost', () => {
@@ -196,5 +199,23 @@ describe('channel-identity — linux builder args', () => {
     expect(linuxBuilderArgs('prod')).toEqual([]);
     expect(linuxBuilderArgs('dev')).toEqual([]);
     expect(linuxBuilderArgs('')).toEqual([]);
+  });
+});
+
+// The deb's FILE name should name the package inside it. It was pinned to the
+// literal `mindshub-cowork_`, so a preview build produced a file called
+// mindshub-cowork_… containing package mindshub-cowork-preview. CI renames the
+// artifact before upload, so nothing broke — it just misled anyone reading
+// release/. ${productFilename} resolves to linux.executableName (AppInfo is
+// constructed with the platform options), so it follows the channel for free.
+describe('deb artifact name follows the package name', () => {
+  it('derives the file name from the executable rather than a fixed literal', () => {
+    const yml = readFileSync(
+      path.join(path.dirname(fileURLToPath(import.meta.url)), '../../electron-builder.yml'),
+      'utf8',
+    );
+    const deb = yml.slice(yml.indexOf('\ndeb:'));
+    const artifactName = /^\s*artifactName:\s*"(.+)"\s*$/m.exec(deb)?.[1];
+    expect(artifactName).toBe('${productFilename}_${version}_${arch}.${ext}');
   });
 });

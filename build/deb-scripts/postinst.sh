@@ -61,7 +61,7 @@ fi
 # after-install.tpl verbatim — `deb.afterInstall` REPLACES that script rather
 # than adding to it, so dropping it would cost the /usr/bin symlink, the
 # chrome-sandbox mode Electron needs to start, and the AppArmor profile.
-# deb-postinst.invariant.test.ts fails if upstream's copy changes.
+# deb-maintainer-scripts.invariant.test.ts fails if upstream's copy changes.
 #
 # Keep this block LAST and in a subshell: its early exits then end the block,
 # never the steps above. Note electron-builder text-substitutes dollar-brace
