@@ -162,7 +162,13 @@ export function Combobox({
                 className="flex-1 min-w-0 border-0 bg-transparent p-0 outline-none font-body text-[13px] text-ink placeholder:text-ink-4"
               />
             </div>
-            <BaseCombobox.Empty className="px-[14px] py-[10px] text-[12.5px] text-ink-4">
+            {/* Base UI keeps this root element mounted at all times (needed
+                for its live-region announcement), only nulling out the
+                children once the list has matches — so with no `empty:`
+                guard the padding alone renders as a blank strip above the
+                results. `:empty` only matches when there are truly no
+                child nodes, which is exactly the has-results case here. */}
+            <BaseCombobox.Empty className="empty:p-0 px-[14px] py-[10px] text-[12.5px] text-ink-4">
               {emptyText}
             </BaseCombobox.Empty>
             <BaseCombobox.List className="max-h-[min(320px,calc(var(--available-height,320px)-44px))] overflow-y-auto overscroll-contain py-[4px] outline-none empty:p-0">

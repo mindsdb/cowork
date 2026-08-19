@@ -431,12 +431,16 @@ export default function Composer({
       };
     });
     // "Model Router" (defer to this account's Settings) leads the list,
-    // pinned so it sits outside the maker groups.
+    // inside the MindsHub group rather than pinned above every section —
+    // `maker: 'mindshub'` is the same escape hatch modelSection() gives an
+    // explicit maker over inference, and prepending it here (before any
+    // catalog option) keeps it first within that group without needing
+    // per-group sorting.
     return isClaudeCode ? catalogOptions : [
       {
         value: MODEL_ROUTER_ID,
         label: MODEL_ROUTER_LABEL,
-        pin: 'top',
+        maker: 'mindshub',
         title: "Routes to this account's configured model automatically",
         // stopPropagation: a plain click on this row would otherwise also
         // fire Base UI's Combobox.Item select handler (it listens on the

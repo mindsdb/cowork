@@ -3,7 +3,7 @@
 // It must open the "Start a new project" modal, and a create from that
 // modal must select the new project on the composer.
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import Composer from './Composer';
 
@@ -169,19 +169,30 @@ describe('Composer — model picker (ENG-1656)', () => {
 
 // ─── "Model Router" default option (ENG-1656 follow-up) ──────────────
 //
-// The picker's first, pinned entry defers to whichever model this
-// account's Settings has configured, instead of forcing a task to pin one
-// specific model up front. It's hidden for Claude Code specifically — the
-// CLI's `--model` flag needs a real, concrete model id.
+// The picker's first entry defers to whichever model this account's
+// Settings has configured, instead of forcing a task to pin one specific
+// model up front. It lives inside the MindsHub group (leading it) rather
+// than pinned above every section. It's hidden for Claude Code
+// specifically — the CLI's `--model` flag needs a real, concrete model id.
 
 describe('Composer — "Model Router" default option (ENG-1656 follow-up)', () => {
-  it('lists Model Router first, ahead of the maker groups', async () => {
+  it('lists Model Router first overall, leading the MindsHub group', async () => {
     const user = userEvent.setup();
     renderComposer({ models: MODELS, modelMeta: MODEL_META, model: MODELS[0] });
 
     await user.click(screen.getByRole('combobox', { name: 'Choose model' }));
     const options = screen.getAllByRole('option');
     expect(options[0]).toHaveTextContent('Model Router');
+  });
+
+  it('groups Model Router under the MindsHub heading, ahead of MindsHub Air', async () => {
+    const user = userEvent.setup();
+    renderComposer({ models: MODELS, modelMeta: MODEL_META, model: MODELS[0] });
+
+    await user.click(screen.getByRole('combobox', { name: 'Choose model' }));
+    const listbox = screen.getByRole('listbox');
+    const rows = within(listbox).getAllByText(/^(MindsHub|Model Router|MindsHub Air)$/);
+    expect(rows.map((r) => r.textContent)).toEqual(['MindsHub', 'Model Router', 'MindsHub Air']);
   });
 
   it('selecting Model Router calls onModelChange with the sentinel id', async () => {
