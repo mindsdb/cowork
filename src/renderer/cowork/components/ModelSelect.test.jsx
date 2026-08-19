@@ -37,10 +37,13 @@ describe('ModelSelect', () => {
     expect(Number(svg.getAttribute('height'))).toBeLessThan(15);
   });
 
-  it('nudges the (now un-letterboxed) mindshub icon the same as every other icon', () => {
+  it('nudges the mindshub icon down against the trigger\'s blanket -1, per visual feedback', () => {
+    // Even un-letterboxed, the bear's own ink isn't vertically centered
+    // within its tight viewBox crop — its mark-level nudgeY (which wins
+    // outright over the trigger's -1) corrects that residual.
     render(<Harness />);
     const svg = screen.getByRole('combobox').querySelector('svg');
-    expect(svg).toHaveStyle({ transform: 'translateY(-1px)' });
+    expect(svg).toHaveStyle({ transform: 'translateY(1px)' });
   });
 
   it('opens on click with provider group headers and a focused search input', async () => {
