@@ -21,6 +21,21 @@ const STABLE = {
   channel: 'stable',
 };
 
+// The deb carries its arch in the file name (Debian convention,
+// `pkg_version_arch.deb`) and in its S3 prefix, so both must be understood
+// without the arch leaking into the version the download page advertises.
+const LINUX_PROD = {
+  ...PROD,
+  key: 'mindshub-cowork/linux-amd64/mindshub-cowork-2.26.8.10.1-amd64.deb',
+  fileName: 'mindshub-cowork-2.26.8.10.1-amd64.deb',
+};
+
+const LINUX_STABLE = {
+  ...STABLE,
+  key: 'mindshub-cowork/linux-arm64/snapshots/mindshub-cowork-2.260810.1-stable-9021d7b7-arm64.deb',
+  fileName: 'mindshub-cowork-2.260810.1-stable-9021d7b7-arm64.deb',
+};
+
 describe('installerVersionFromFileName', () => {
   it('reads a released version on both platforms', () => {
     expect(installerVersionFromFileName('mindshub-cowork-2.26.8.10.1.pkg', 'prod')).toBe(
@@ -29,6 +44,14 @@ describe('installerVersionFromFileName', () => {
     expect(installerVersionFromFileName('mindshub-cowork-2.26.8.10.1.exe', 'prod')).toBe(
       '2.26.8.10.1',
     );
+  });
+
+  it('strips the deb arch suffix, which is file naming rather than version', () => {
+    expect(installerVersionFromFileName('mindshub-cowork-2.26.8.10.1-amd64.deb', 'prod')).toBe('2.26.8.10.1');
+    expect(installerVersionFromFileName('mindshub-cowork-2.26.8.10.1-arm64.deb', 'prod')).toBe('2.26.8.10.1');
+    expect(
+      installerVersionFromFileName('mindshub-cowork-2.260810.1-stable-9021d7b7-amd64.deb', 'stable'),
+    ).toBe('2.260810.1-stable-9021d7b7');
   });
 
   it('reads a stable build identifier, channel and commit included', () => {
@@ -110,6 +133,17 @@ describe('downloadManifest', () => {
     );
   });
 
+  it('puts each linux deb under its own per-arch prefix', () => {
+    expect(downloadManifest(LINUX_PROD)).toMatchObject({
+      version: '2.26.8.10.1',
+      url: 'https://downloads.mindshub.ai/mindshub-cowork/linux-amd64/mindshub-cowork-2.26.8.10.1-amd64.deb',
+    });
+    expect(downloadManifest(LINUX_STABLE)).toMatchObject({
+      version: '2.260810.1-stable-9021d7b7',
+      url: 'https://downloads.mindshub.ai/mindshub-cowork/linux-arm64/snapshots/mindshub-cowork-2.260810.1-stable-9021d7b7-arm64.deb',
+    });
+  });
+
   it('the url is the cdn base joined to the key, with no doubled slash', () => {
     const manifest = downloadManifest({ ...PROD, cdnBase: 'https://downloads.mindshub.ai/' });
     expect(manifest.url).toBe(`https://downloads.mindshub.ai/${manifest.key}`);
@@ -123,7 +157,7 @@ describe('downloadManifest', () => {
 
   it('refuses a key outside the published prefixes', () => {
     expect(() =>
-      downloadManifest({ ...PROD, key: `mindshub-cowork/linux/${PROD.fileName}` }),
+      downloadManifest({ ...PROD, key: `mindshub-cowork/solaris/${PROD.fileName}` }),
     ).toThrow(/Not an installer key/);
     expect(() =>
       downloadManifest({ ...PROD, key: `mindshub-cowork/mac/previews/${PROD.fileName}` }),
