@@ -208,7 +208,6 @@ export default function OnboardingScreen({
   const [phase, setPhase] = useState<Phase>('choose');
   const [errorMsg, setErrorMsg] = useState('');
   const [skippedMinds, setSkippedMinds] = useState(false);
-  const [mindsNoCredits, setMindsNoCredits] = useState(false);
   // Which stage's layout to render. Decoupled from `phase` so the
   // validating spinner shows in the right place without inferring it
   // from whether the API-key field happens to be non-empty.
@@ -395,7 +394,7 @@ export default function OnboardingScreen({
         `ANTON_MINDS_URL=${mindsBase}`,
       ];
 
-      /* One probe, not two. The check above is already a one-token chat
+      /* One probe, not two. The check above is already a small chat
        * completion against this same host on the free model, so it has proved
        * reachability, the key, and that inference answers. A second probe used
        * to re-send the same request on the recommended *paid* model, which an
@@ -557,7 +556,6 @@ export default function OnboardingScreen({
       // Best-effort in web (loopback-gated; consent also persists client-side
       // on completion). See host.saveSettings / ENG-817.
       await host.saveSettings('ANTON_TERMS_CONSENT=true');
-      setMindsNoCredits(true);
       setStep('byok');
       setPhase('minds-no-llm');
       return;
@@ -723,11 +721,14 @@ export default function OnboardingScreen({
           {showLlmForm && (
             <>
               <div style={{ fontSize: 11.5, lineHeight: 1.65, letterSpacing: '0.03em', color: 'var(--arc-muted)', textAlign: 'center' }}>
+                {/* Two arms, not three. Reaching this screen means either
+                    "Continue without an account" (skippedMinds) or a finalize that
+                    came back upgradeRequired. The third arm used to cover a valid
+                    key whose paid-model probe failed, and that probe is gone, so
+                    the flag that told the two credit cases apart went with it. */}
                 {skippedMinds
                   ? <>Pick an LLM provider to run on. You can connect MindsHub later in Settings → Providers (needed to share to the web).</>
-                  : mindsNoCredits
-                    ? <>Your MindsHub account has no LLM credits yet. Top up to use managed models — or connect your own provider below.</>
-                    : <>Your MindsHub key is valid and saved for sharing and connectors, but it has no LLM credits. Top up — or plug in your own provider below.</>}
+                  : <>Your MindsHub account has no LLM credits yet. Top up to use managed models — or connect your own provider below.</>}
               </div>
 
               <button
