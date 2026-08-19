@@ -2,7 +2,7 @@
 
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/mindsdb/cowork)
 
-The Electron desktop app and web SPA for **MindsHub Cowork** — MindsDB's AI coworker platform. Cross-platform (macOS + Windows), auto-installs the backend on first run, and provides a chat-based UI backed by a FastAPI server, with Minds integration.
+The Electron desktop app and web SPA for **MindsHub Cowork** — MindsDB's AI coworker platform. Cross-platform (macOS + Windows + Linux), auto-installs the backend on first run, and provides a chat-based UI backed by a FastAPI server, with Minds integration.
 
 The project is split across two repos:
 
@@ -23,7 +23,7 @@ MindsHub Cowork runs in several contexts. The React SPA is identical across all 
 |-------------|----------|---------|------------|
 | **Local dev (Electron)** | Vite dev server on `:5173` | `uv run cowork-server` from sibling source dir | `npm run dev` |
 | **Local dev (web)** | Vite dev server on `:5173` | `uv run cowork-server` from sibling source dir | `npm run dev:web` |
-| **Packaged Electron** (macOS/Windows) | Bundled or OTA-cached React build | `cowork-server` binary via `uv tool install` from PyPI | Download from [downloads.mindshub.ai](https://downloads.mindshub.ai) |
+| **Packaged Electron** (macOS/Windows/Linux) | Bundled or OTA-cached React build | `cowork-server` binary via `uv tool install` from PyPI | Download from [downloads.mindshub.ai](https://downloads.mindshub.ai) / `npm run dist:linux` for AppImage |
 | **Docker** (web deployment) | Static files served by uvicorn | `cowork-server` installed in `/opt/venv` | `docker build` + `docker run` |
 
 ---
@@ -440,7 +440,7 @@ GitHub Releases:
 
 ## Desktop Builds & Releasing
 
-> This section applies to the **packaged Electron app** (macOS `.pkg` / Windows `.exe`). Not relevant for local development or Docker deployments.
+> This section applies to the **packaged Electron app** (macOS `.pkg` / Windows `.exe` / Linux `.AppImage`). Not relevant for local development or Docker deployments.
 
 ### Releasing
 
@@ -470,9 +470,12 @@ npm run pack
 
 # Windows — NSIS installer (x64)
 npm run dist:win
+
+# Linux — AppImage (x64)
+npm run dist:linux
 ```
 
-Prerequisites: Node.js 18+, npm. For signed builds: Apple Developer certificates (macOS) or EV code signing certificate (Windows).
+Prerequisites: Node.js 18+, npm. For signed builds: Apple Developer certificates (macOS) or EV code signing certificate (Windows). Linux builds are unsigned (AppImage); no signing setup is required.
 
 #### Building from local uncommitted source (via parent Makefile)
 
