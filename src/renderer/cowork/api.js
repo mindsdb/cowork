@@ -519,14 +519,34 @@ export async function fetchInFlightList() {
   }
 }
 
+// A live tail that goes fully silent for this long is treated as dead: the
+// producer is wedged or the sidecar stopped answering, and no terminal record
+// is coming. Aborting lets the reconnect release the shared stream slot rather
+// than hold it forever — a held slot wedges sends in every conversation
+// (ENG-1717). Mirrors the server's REDIS_TAIL_IDLE_TIMEOUT_SECONDS. The
+// server's turn-duration bound is the primary belt; this is the independent
+// client-side one for when the server never sends a terminal at all.
+const TAIL_IDLE_TIMEOUT_MS = 300_000;
+
 export function tailInFlight(conversationId, {
   fromSeq = 0,
   model = 'anton',
+  idleTimeoutMs = TAIL_IDLE_TIMEOUT_MS,
   onChunk, onProgress, onToolResult, onDone, onError, onEvent,
 } = {}) {
   const ctrl = new AbortController();
+  // Reset on every received frame; fires only after a full idle window with no
+  // bytes at all. Cleared in the finally so a cleanly-finished tail leaves no
+  // dangling timer.
+  let idleTimer = null;
+  let idledOut = false;
+  const bumpIdle = () => {
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => { idledOut = true; ctrl.abort(); }, idleTimeoutMs);
+  };
   (async () => {
     try {
+      bumpIdle();
       const url = `${BASE}/responses/tail?conversation_id=${encodeURIComponent(conversationId)}&from_seq=${fromSeq}&model=${encodeURIComponent(model)}`;
       const res = await authFetch(url, {
         method: 'GET',
@@ -549,6 +569,7 @@ export function tailInFlight(conversationId, {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
+        bumpIdle();
         buffer += dec.decode(value, { stream: true });
         const events = buffer.split('\n\n');
         buffer = events.pop() ?? '';
@@ -600,7 +621,16 @@ export function tailInFlight(conversationId, {
       }
       onDone?.(cid);
     } catch (err) {
-      if (err.name !== 'AbortError') onError?.(err.message);
+      // An idle-timeout abort surfaces as an AbortError too, but unlike a
+      // caller-initiated abort (a new send or navigation) it must release the
+      // slot — so report it as an error the reconnect's onError acts on.
+      if (idledOut) {
+        onError?.('The response stalled and was ended. Please try sending again.');
+      } else if (err.name !== 'AbortError') {
+        onError?.(err.message);
+      }
+    } finally {
+      if (idleTimer) clearTimeout(idleTimer);
     }
   })();
   return ctrl;
