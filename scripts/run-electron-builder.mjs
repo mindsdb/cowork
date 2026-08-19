@@ -27,6 +27,10 @@ const targetPlatform = userArgs.includes('--mac')
   : userArgs.includes('--win')
     ? 'win32'
     : null;
+// Linux has no shell update feed (a deb updates through apt), so it is not a
+// `targetPlatform` above — but it does need the per-channel bundle identity
+// that the mac script and dist-win.mjs each apply for themselves.
+const targetsLinux = userArgs.includes('--linux');
 const buildKind = (process.env.COWORK_BUILD_KIND || '').trim().toLowerCase();
 const feed = targetPlatform
   ? resolveShellUpdateFeed(buildKind, targetPlatform)
@@ -79,6 +83,7 @@ if (feed && !skipFeedConfig) {
 const builderArgs = [
   ...userArgs,
   `-c.extraMetadata.version=${updaterVersion}`,
+  ...(targetsLinux ? linuxBuilderArgs(buildKind) : []),
 ];
 if (feed && !skipFeedConfig) {
   builderArgs.push(
@@ -98,6 +103,10 @@ if (feed && !skipFeedConfig) {
 console.log(
   `[electron-builder] display=${displayVersion} updater=${updaterVersion} feed=${feed?.url || '(disabled)'}`,
 );
+if (targetsLinux) {
+  const identity = linuxBuilderArgs(buildKind);
+  console.log(`[electron-builder] linux identity: ${identity.length ? identity.join(' ') : '(prod defaults)'}`);
+}
 
 const binary = process.platform === 'win32'
   ? join(root, 'node_modules', '.bin', 'electron-builder.cmd')
