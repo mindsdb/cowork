@@ -80,6 +80,11 @@ export const MINDS_PROBE_MODEL = 'mindshub_air';
  *
  * A self-hosted gateway on another hostname does not match, and keeps the
  * generic default it has today.
+ *
+ * Matching an `mdb.ai` host picks the model, not the path: the openai-compatible
+ * probe appends `/v1` generically and never applies validateMinds's `mdb.ai` ->
+ * `/api/v1` rule, so a bare `mdb.ai` base is still probed where that host does not
+ * serve. Same caveat as the sidecar's is_minds_host.
  */
 export function isMindsHost(url: string | null | undefined): boolean {
   const raw = (url || '').trim();

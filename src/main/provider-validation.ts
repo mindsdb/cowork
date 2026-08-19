@@ -1,7 +1,7 @@
 /*
  * Provider credential validation for the main process.
  *
- * This is the copy a packaged desktop build actually runs: the renderer's
+ * This is the copy a packaged desktop build runs: the renderer's
  * `host.validateProvider` goes over IPC to `settings:validate`, which is
  * answered here and never reaches the Python sidecar. The sidecar has its own
  * copy (`cowork-server/cowork/services/providers.py`) serving the web build,
@@ -10,6 +10,15 @@
  * moved the sidecar's MindsHub probe onto the free model and left this side
  * probing a paid one, so an account with an empty wallet was told its working
  * key was invalid.
+ *
+ * `validateMinds` is the exception and worth knowing before you reason about a
+ * desktop bug from it: nothing calls it today. The only `provider: 'minds'` call
+ * site is the pasted-key form in OnboardingScreen, which renders on web only, and
+ * web posts the sidecar rather than using IPC. Electron's MindsHub path goes
+ * through `mindshub:finalize` and probes no model at all. So the desktop-reachable
+ * validators here are the openai-compatible and anthropic ones, from the BYOK
+ * step. `validateMinds` stays in step with the sidecar regardless, because the
+ * next caller should inherit the fix rather than the drift.
  *
  * Every function takes its request function as a required argument. That is what
  * makes the model on the wire assertable without a network, and it keeps the
@@ -72,10 +81,12 @@ export async function validateMinds(
   request: RequestFn,
 ): Promise<ValidationResult> {
   try {
-    // Probe the real inference path (a 1-token chat completion) instead
-    // of a listing route. `/v1/minds/` and `/models` are not deployed on
-    // every MindsHub host and 404/401 even for valid keys, which blocked
-    // onboarding with a working key. Mirrors minds_chat_base_url in
+    // Probe the real inference path (a small chat completion) instead of a
+    // listing route. `/v1/minds/` and `/models` are not deployed on every
+    // MindsHub host and 404/401 even for valid keys, which blocked onboarding
+    // with a working key. `max_tokens` is 20 rather than 1 because some models
+    // refuse a 1-token budget and fail the probe for a good key, which the
+    // sidecar's _chat_probe documents. Mirrors minds_chat_base_url in
     // cowork-server: mdb.ai needs /api/v1, others need /v1.
     const base = baseUrl.replace(/\/+$/, '');
     const chatBase = base.endsWith('/v1')
