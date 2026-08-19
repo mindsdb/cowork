@@ -23,7 +23,7 @@ import { getPickedFiles, savePickedFiles, verifyPickedFiles, type PickedFile } f
 import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefreshTokenStore, isAccessTokenExpired } from './token-store';
 import { refreshTokensOnly, writeMindsKeyToEnvAndRestart, provisionAntonApiKey, scheduleRefresh, cancelScheduledRefresh, startKeyLifecycleChecks, cancelKeyLifecycleChecks, revokeDeviceKeyAndEndSession, getRevokeToken, KEYCLOAK_AUTH_URL, KEYCLOAK_REGISTRATION_URL, KEYCLOAK_TOKEN_URL, SIGNUP_CALLBACK_TIMEOUT_MS } from './minds-auth';
 import { scrubEnvCredentials } from './logout-env';
-import { MINDS_API_HOST } from './minds-urls';
+import { MINDS_API_HOST, MINDS_PROBE_MODEL, isMindsHost } from './minds-urls';
 import { sendEvent } from './analytics';
 import { getRendererPath, getBundledPath, checkForUIUpdate, applyUIUpdate, hasInternet, getCachedVersion, isServingOta, rollbackUI } from './ui-updater';
 import type { UpdateCheckResult } from './ui-updater';
@@ -229,7 +229,10 @@ async function validateMinds(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'latest:haiku',
+        /* Never the configured or recommended model: this is a reachability and
+         * key check, and MindsHub denies a paid model to an empty wallet, which
+         * arrives here indistinguishable from a bad key. See MINDS_PROBE_MODEL. */
+        model: MINDS_PROBE_MODEL,
         max_tokens: 20,
         messages: [{ role: 'user', content: 'ping' }],
       }),
@@ -264,7 +267,12 @@ async function validateOpenAICompatible(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: model || 'gpt-5.5',
+        /* An omitted model against a MindsHub host takes the free probe model.
+         * The generic default below is not a MindsHub alias, so it 404s there,
+         * and the recommended MindsHub model is paid, so it 402s on an empty
+         * wallet. An explicit model is always sent as asked, or validating one
+         * model in the provider card would silently validate another. */
+        model: model || (isMindsHost(normalizedBase) ? MINDS_PROBE_MODEL : 'gpt-5.5'),
         messages: [{ role: 'user', content: 'ping' }],
       }),
     });

@@ -286,6 +286,29 @@ All channels defined in `src/shared/ipc-channels.ts`:
 | `app:get-platform/ui-version/open-external`         | invoke    | Platform info, open URLs                  |
 | `shell:show-item-in-folder`                         | invoke    | OS shell operations                       |
 
+### Provider validation is answered in main, not proxied to the sidecar
+
+`settings:validate` is handled entirely in the main process (`src/main/index.ts`),
+which holds its own `validateMinds` / `validateOpenAICompatible` / `validateAnthropic`.
+The identical logic also lives in the sidecar
+(`cowork-server/cowork/services/providers.py`), and that copy answers
+`POST /api/v1/settings/validate-provider`, which is the path the **web** build
+takes because it has no main process.
+
+So a change to how a provider is validated has to land in both places. The two
+have drifted before: a fix that moved the MindsHub probe onto the free model
+landed in the sidecar and left main probing a paid one, and probing a paid model
+means an account with an empty wallet is told its working key is invalid.
+
+The rule both copies follow: probe `mindshub_air`, whose usage draws the monthly
+included allowance rather than the wallet, so the result reports reachability and
+key validity instead of billing state. A model the caller asked for explicitly is
+always sent as asked.
+
+Only the sidecar and the renderer bundle update over the air. `src/main/**`
+reaches users through a new installer, so the main-process copy is the slower half
+to fix.
+
 ---
 
 ## Minds Integration

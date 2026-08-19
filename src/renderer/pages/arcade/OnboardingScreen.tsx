@@ -27,27 +27,6 @@ const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/openai
 
 const CUSTOM_MODEL = '__custom__';
 
-// Last-resort MindsHub model, used only if the backend returns nothing. We
-// avoid maintaining model names in this repo, but a single safe fallback is
-// worth it: the validator's generic openai-compatible default is not served
-// by MindsHub. `latest:*` is a stable alias, not a pinned version, so it
-// won't drift. The backend's own default (apply_model_defaults) is the real
-// source — this only guards a failed `/recommended-models` fetch.
-const FALLBACK_MINDS_MODEL = 'latest:sonnet';
-
-/**
- * The model to probe MindsHub LLM availability with, sourced from the
- * backend's recommended minds-cloud (planning, coding) pair. Returns the
- * coding model, falling back to planning, then to FALLBACK_MINDS_MODEL if the
- * backend is unreachable — never undefined, so the probe always sends a
- * MindsHub-served model rather than the validator's generic default.
- */
-async function mindsProbeModel(): Promise<string> {
-  const rec = await fetchRecommendedModels();
-  const pair = rec?.recommendedPair?.['minds-cloud'];
-  return pair?.[1] || pair?.[0] || FALLBACK_MINDS_MODEL;
-}
-
 /** Persist the cartridge choice as the `harness` setting (best-effort). */
 async function syncHarness(harnessId: string): Promise<void> {
   try {
@@ -416,31 +395,23 @@ export default function OnboardingScreen({
         `ANTON_MINDS_URL=${mindsBase}`,
       ];
 
-      // The probe model is the backend's recommended minds-cloud coding
-      // model — fetched, never hardcoded here, so model names live only in
-      // cowork-server.
-      const llmResult = await host.validateProvider(
-        'openai-compatible',
-        apiKey.trim(),
-        `${mindsBase}/v1`,
-        await mindsProbeModel()
-      );
-
-      if (llmResult.ok) {
-        // Set only the provider; the backend resolves the default
-        // planning/coding model on load and reports it back to the UI
-        // (apply_model_defaults), so we never write model names.
-        const lines = [
-          ...mindsLines,
-          'ANTON_PLANNING_PROVIDER=minds-cloud',
-          'ANTON_CODING_PROVIDER=minds-cloud',
-        ];
-        await saveFinal(lines);
-      } else {
-        await host.saveSettings(mindsLines.join('\n'));
-        setStep('byok');
-        setPhase('minds-no-llm');
-      }
+      /* One probe, not two. The check above is already a one-token chat
+       * completion against this same host on the free model, so it has proved
+       * reachability, the key, and that inference answers. A second probe used
+       * to re-send the same request on the recommended *paid* model, which an
+       * empty wallet denies; that denial read as "MindsHub does not work" and
+       * sent a brand-new user to bring-your-own-key with a valid MindsHub key
+       * already saved. Whether the wallet can afford a paid model is not
+       * something onboarding should decide. */
+      // Set only the provider; the backend resolves the default
+      // planning/coding model on load and reports it back to the UI
+      // (apply_model_defaults), so we never write model names.
+      const lines = [
+        ...mindsLines,
+        'ANTON_PLANNING_PROVIDER=minds-cloud',
+        'ANTON_CODING_PROVIDER=minds-cloud',
+      ];
+      await saveFinal(lines);
     } else {
       const { provider: validationProvider, baseUrl: validationBaseUrl } =
         resolveValidationTarget(byokProvider, customBaseUrl);
