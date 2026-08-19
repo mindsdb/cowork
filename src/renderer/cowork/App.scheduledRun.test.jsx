@@ -1,14 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { reconcileTaskMessages } from './App';
 
-// Regression coverage for ENG-289: opening a scheduled "Run now" run must show
-// an in-progress state instead of a blank chat. The chat view's working
-// indicator is driven entirely by a `_streaming` / `activity` placeholder in
-// the task's messages; those are injected by reconcileTaskMessages when the
-// conversation is server-in-flight but has no visible content yet. The nav
-// paths (handleRunScheduleNow / onOpenRunSession) now route through
-// openScheduledRun, which reconciles with isServerInFlight=true — so this locks
-// the exact placeholder contract that surfaces the loading state.
+// Regression (ENG-289): the scheduled-run in-progress state is a `_streaming` /
+// `activity` placeholder that reconcileTaskMessages injects for a
+// server-in-flight run with no content yet. Locks that placeholder contract.
 describe('reconcileTaskMessages — scheduled run in-progress state', () => {
   const isStreamingPlaceholder = (m) =>
     m.role === '_streaming' && m._placeholderLabel === 'Running task…';
@@ -22,15 +17,13 @@ describe('reconcileTaskMessages — scheduled run in-progress state', () => {
   });
 
   it('still shows the placeholder when only the injected user prompt exists', () => {
-    // A just-started run may already carry its prompt but no answer yet; the
-    // user row is not "content", so the loading state must still appear.
+    // A user row isn't "content", so a started-but-unanswered run still shows it.
     const out = reconcileTaskMessages([{ role: 'user', content: 'Say hello' }], false, true);
     expect(out.some(isStreamingPlaceholder)).toBe(true);
   });
 
   it('does NOT add a placeholder once the run has an assistant answer', () => {
-    // Opening a completed run (e.g. from run history) must not fake a loading
-    // state over a finished conversation.
+    // A completed run (from history) must not fake a loading state.
     const messages = [
       { role: 'user', content: 'Say hello' },
       { role: 'assistant', content: 'Hello!' },
