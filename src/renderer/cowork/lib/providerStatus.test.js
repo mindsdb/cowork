@@ -57,6 +57,30 @@ describe('deriveProviderStatus', () => {
     expect(st.raw).toBe('fail');
   });
 
+  it('treats an SSO-connected MindsHub as configured even without a local key', () => {
+    // Cloud/multitenancy: SSO session, key held server-side, so `configured`
+    // is false — but the picker must not warn "isn't configured".
+    const st = deriveProviderStatus('minds-cloud', {
+      providerStatus: {},
+      providerStatusDetails: {},
+      configured: false,
+      isSsoConnected: true,
+    });
+    expect(st.unconfigured).toBe(false);
+    expect(st.settled).toBe('ok');
+  });
+
+  it('reports an SSO-disconnected MindsHub with no local key as unconfigured', () => {
+    const st = deriveProviderStatus('minds-cloud', {
+      providerStatus: {},
+      providerStatusDetails: {},
+      configured: false,
+      isSsoConnected: false,
+    });
+    expect(st.unconfigured).toBe(true);
+    expect(st.settled).toBe('untested');
+  });
+
   it('does not apply the SSO override to non-MindsHub providers', () => {
     const st = deriveProviderStatus('anthropic', {
       providerStatus: { anthropic: 'fail' },

@@ -15,7 +15,7 @@ vi.mock('../platform/host', async (importOriginal) => ({
   host: hostMock,
 }));
 
-import { fetchRecommendedModels, updateSettings, revealSettingKey } from './api';
+import { fetchRecommendedModels, fetchSettings, updateSettings, revealSettingKey } from './api';
 
 const jsonRes = (body, ok = true, status = 200) => ({
   ok,
@@ -117,6 +117,70 @@ describe('updateSettings', () => {
       return jsonRes({});
     }));
     await expect(updateSettings({ greeting: 'x' })).rejects.toThrow(/Failed to save settings/);
+  });
+});
+
+// ENG-1632 tombstones: a `null` in the patch clears the stored row (DELETE)
+// so the server's enabled-aware resolution governs the key again. The DELETEs
+// must run BEFORE the bulk PUT — the PUT repoints providers, and a repointed
+// provider whose old model row survives a failed DELETE misroutes every turn
+// with no retry path (the next save's repoint guard sees a matching provider
+// and never re-attempts the DELETE).
+describe('updateSettings — tombstones (ENG-1632)', () => {
+  let calls;
+
+  // Seed _lastFetchedSettings (the tombstone gate requires the key to have
+  // been served) by running a real fetchSettings against stubbed rows.
+  const seed = async (deleteImpl) => {
+    calls = [];
+    vi.stubGlobal('fetch', vi.fn(async (url, options = {}) => {
+      const method = options.method || 'GET';
+      const u = String(url);
+      calls.push({ url: u, method, body: options.body });
+      if (method === 'DELETE') return deleteImpl(u);
+      if (method === 'PUT' && u.endsWith('/settings/')) return jsonRes({ updated: [] });
+      if (method === 'GET' && u.endsWith('/settings/')) {
+        return jsonRes([
+          { key: 'planning_model', value: 'claude-opus-4-8', is_sensitive: false, is_set: true },
+          { key: 'planning_provider', value: 'anthropic', is_sensitive: false, is_set: true },
+        ]);
+      }
+      return jsonRes({});
+    }));
+    await fetchSettings();
+    calls = [];
+  };
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('runs the DELETE before the bulk PUT and never PUTs a null', async () => {
+    await seed(() => jsonRes({ ok: true }));
+    await updateSettings({ planningModel: null, planningProvider: 'minds-cloud' });
+
+    const del = calls.findIndex((c) => c.method === 'DELETE' && c.url.includes('/settings/planning_model'));
+    const put = calls.findIndex((c) => c.method === 'PUT' && c.url.endsWith('/settings/'));
+    expect(del).toBeGreaterThanOrEqual(0);
+    expect(put).toBeGreaterThanOrEqual(0);
+    expect(del).toBeLessThan(put);
+    expect(JSON.parse(calls[put].body).values).not.toHaveProperty('planning_model');
+  });
+
+  it('skips 404 (no row) and 400 (old server) and still saves', async () => {
+    await seed(() => jsonRes({ detail: 'not found' }, false, 404));
+    const res = await updateSettings({ planningModel: null, planningProvider: 'minds-cloud' });
+    expect(res.status).toBe('ok');
+    expect(calls.some((c) => c.method === 'PUT' && c.url.endsWith('/settings/'))).toBe(true);
+  });
+
+  it('a 500 on the DELETE aborts the save before anything is repointed', async () => {
+    await seed(() => jsonRes({ detail: 'boom' }, false, 500));
+    await expect(
+      updateSettings({ planningModel: null, planningProvider: 'minds-cloud' }),
+    ).rejects.toThrow(/Failed to save settings/);
+    // The load-bearing assertion: no PUT was issued, so the provider was NOT
+    // repointed — the stored state stays consistent and the retry re-runs the
+    // whole save (guard still true).
+    expect(calls.some((c) => c.method === 'PUT' && c.url.endsWith('/settings/'))).toBe(false);
   });
 });
 

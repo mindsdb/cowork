@@ -826,7 +826,9 @@ export default function SettingsView({
   const roleModelValue = (role, fallback = '') => canonicalModelForRole(role) || fallback || '';
   const setRoleDriver = (role, providerType, model) => {
     const normalizedType = providerValueToType(providerType) || 'minds-cloud';
-    const nextModel = model || '';
+    // null is a tombstone ("clear the stored row so the server's enabled-aware
+    // default governs", ENG-1632) and must survive to the save path untouched.
+    const nextModel = model === null ? null : (model || '');
     if (role === 'planning') {
       setSetting('planningProvider', normalizedType);
       setSetting('planningModel', nextModel);
@@ -947,17 +949,20 @@ export default function SettingsView({
     const keyField = providerTypeToKeyField(type);
     if (keyField) setSetting(keyField, '');
 
-    // Role settings referencing the removed provider get re-pointed
-    // at MindsHub with its recommended pair for the role.
+    // Role settings referencing the removed provider get re-pointed at
+    // MindsHub with NO model value — tombstoned (null → row cleared) so the
+    // server's enabled-aware default governs every role. Writing any model
+    // here fabricates a user choice: the raw pair used to pin haiku/kimi for
+    // exactly the accounts that couldn't pay for them (ENG-1632), and an
+    // "affordable" seed would strand a later top-up on the free model
+    // (ENG-597 spring-back). The picker shows the server-computed value for
+    // unset fields after the post-save refetch.
     const adjustedOverrides = {};
     for (const role of ['planning', 'coding', 'router']) {
       const o = roleOverride(role);
       if (roleProviderType(role) === type) {
-        const pair = recommendedPair['minds-cloud'] || ['', '', ''];
-        const roleIdx = role === 'planning' ? 0 : role === 'router' ? 2 : 1;
-        const fallback = pair[roleIdx] || pair[1] || (recommendedModels['minds-cloud']?.[0] || '');
-        adjustedOverrides[role] = { providerType: 'minds-cloud', model: fallback };
-        setRoleDriver(role, 'minds-cloud', fallback);
+        adjustedOverrides[role] = { providerType: 'minds-cloud', model: null };
+        setRoleDriver(role, 'minds-cloud', null);
       } else {
         if (o) adjustedOverrides[role] = o;
       }
@@ -1023,20 +1028,31 @@ export default function SettingsView({
   const withResolvedRoles = (s) => {
     if (modelMode === 'custom') return s;
     const type = defaultModeProviderType;
-    const pair = recommendedPair[type] || [];
     const next = { ...s };
+    // Default mode means "the server decides the models" — so a repoint writes
+    // NO model value for any role, planning included. Writing one claims a
+    // user intent that doesn't exist: the row is indistinguishable from a real
+    // pick, so the server honors it forever, which both pinned unaffordable
+    // models on wallet-locked accounts (ENG-1632 — the write survived the save
+    // diff exactly for them) and, seeded "affordably", would strand a
+    // topped-up account on the free model (defeats ENG-597's spring-back).
+    // Tombstone instead (null → DELETE in updateSettings): the server's
+    // enabled-aware default governs, and GET /settings returns the computed
+    // value for unset fields, so the picker displays exactly what runs.
+    // The provider still repoints: keeping a stale model id from another
+    // provider would misroute (pnewsam review on #663).
     if ((providerValueToType(s.planningProvider) || 'minds-cloud') !== type) {
       next.planningProvider = type;
-      next.planningModel = pair[0] || '';
-      next.defaultModel = pair[0] || '';
+      next.planningModel = null;
+      next.defaultModel = null;
     }
     if ((providerValueToType(s.codingProvider) || 'minds-cloud') !== type) {
       next.codingProvider = type;
-      next.codingModel = pair[1] || '';
+      next.codingModel = null;
     }
     if ((providerValueToType(s.routerProvider) || 'minds-cloud') !== type) {
       next.routerProvider = type;
-      next.routerModel = pair[2] || pair[1] || '';
+      next.routerModel = null;
     }
     return next;
   };
@@ -1566,8 +1582,26 @@ export default function SettingsView({
                             <Select
                               value={curType}
                               onValueChange={(t) => {
+                                // Seed the first wallet-affordable candidate,
+                                // not the raw pair value: writing a locked
+                                // model on a provider switch converts the
+                                // server's dynamic default into a hard pin
+                                // that 402s (ENG-1632). This is the ONE place
+                                // the client still derives a model — allowed
+                                // because it's custom mode and the value lands
+                                // visibly in the model field for the user to
+                                // see and change before saving (ENG-1248's
+                                // informed-consent lane). ENG-1650 (server
+                                // exposes resolved per-role models) retires
+                                // this derivation too.
                                 const pair = recommendedPair[t] || ['', '', ''];
-                                const newModel = pair[roleIdx] || pair[1] || (recommendedModels[t]?.[0] || '');
+                                const candidates = [
+                                  pair[roleIdx] || pair[1],
+                                  ...(recommendedModels[t] || []),
+                                ].filter(Boolean);
+                                const newModel =
+                                  candidates.find((m) => modelEnabled[m] !== false)
+                                  || candidates[0] || '';
                                 setModelInputMode((m) => ({ ...m, [role]: false }));
                                 writeOverride({ providerType: t, model: newModel });
                               }}
