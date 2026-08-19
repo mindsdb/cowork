@@ -2814,6 +2814,16 @@ body[data-theme="dark"] .chrome-btn--small.is-on {
   gap: 8px;
   z-index: 50;
 }
+/* Narrow/tablet band (sidebar popout, not yet the phone MobileShell): the
+   bottom-right corner overlaps task-list rows and the composer's send
+   button at this width, so the row moves up to the top-right instead —
+   just left of the per-view expand/collapse-right-panel button (ChatView /
+   ProjectsView), which sits ~14px from the content edge at ~28px wide. */
+.floating-toggle-row--top-right {
+  top: 18px;
+  right: 60px;
+  bottom: auto;
+}
 .floating-toggle {
   width: 32px;
   height: 32px;

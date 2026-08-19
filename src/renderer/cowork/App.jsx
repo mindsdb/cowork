@@ -4591,14 +4591,19 @@ function AppCore() {
             - Hidden entirely on mobile — MobileShell renders its own theme
               toggle in the top bar (opposite the hamburger) instead, and
               the coding-mode toggle is dropped there rather than given a
-              second spot. */}
+              second spot.
+            - Narrow/tablet band (popout sidebar, not yet phone-width): the
+              bottom-right corner overlaps task rows and the composer's
+              send button there, so the row moves to the top-right instead
+              — just left of the per-view expand/collapse-right-panel
+              button (see .floating-toggle-row--top-right). */}
       {!isMobile && (() => {
         const showCodingToggle = !host.isWeb && settings.showCodingModeToggle !== false;
         const codingModeOn = showCodingToggle && settings.codingModeEnabled;
         const showThemeToggle = settings.showThemeToggle !== false || settings.show8bitToggle !== false;
         if (!showCodingToggle && !showThemeToggle) return null;
         return (
-          <div className="floating-toggle-row [-webkit-app-region:no-drag]">
+          <div className={`floating-toggle-row [-webkit-app-region:no-drag]${isNarrow ? ' floating-toggle-row--top-right' : ''}`}>
             {showCodingToggle && (
               <Tooltip content={codingModeOn ? 'Turn off coding mode' : 'Turn on coding mode'}>
                 <button
