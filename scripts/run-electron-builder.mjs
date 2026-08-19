@@ -4,6 +4,9 @@ import { readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+// Static, unlike the dist/ imports below: this one is a source module, so a
+// missing export fails at load with a clear error instead of at the point of use.
+import { linuxBuilderArgs } from './channel-identity.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const displayVersion = readFileSync(

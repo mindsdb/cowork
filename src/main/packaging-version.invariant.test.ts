@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { existsSync, readFileSync, readdirSync } from 'fs';
 import path from 'path';
+import * as channelIdentityModule from '../../scripts/channel-identity.mjs';
 import { fileURLToPath } from 'url';
 
 // Regression guard: every Linux .deb shipped with internal version 2.0.7.
@@ -77,6 +78,28 @@ describe('installer builds inject the resolved app version', () => {
       (name) => !INJECTS_VERSION.test(reachableText(pkg.scripts[name] ?? '')),
     );
     expect(missing).toEqual([]);
+  });
+
+  // A helper used but never imported is a ReferenceError at BUILD time, not a
+  // syntax error — `node --check` passes and no test executes this script, so
+  // CI first learns about it halfway through a release build. That is exactly
+  // how `linuxBuilderArgs` shipped uncalled-for: a merge had changed the import
+  // line an edit was anchored to, so the import silently never landed.
+  it('imports every channel-identity helper the builder wrapper calls', () => {
+    const src = readFileSync(path.join(SCRIPTS, 'run-electron-builder.mjs'), 'utf8');
+    const imported = new Set(
+      [...src.matchAll(/import\s*\{([^}]+)\}\s*from\s*'\.\/channel-identity\.mjs'/g)]
+        .flatMap((m) => m[1].split(',').map((name) => name.trim()))
+        .filter(Boolean),
+    );
+    const called = Object.keys(channelIdentityModule)
+      .filter((name) => new RegExp(`(?<![\\w.])${name}\\s*\\(`).test(src));
+    expect(called.length, 'no channel-identity helper is called — has the wiring been removed?')
+      .toBeGreaterThan(0);
+    expect(
+      called.filter((name) => !imported.has(name)),
+      'called but not imported — this fails the build at runtime',
+    ).toEqual([]);
   });
 
   // Self-checks: prove both matchers discriminate, independent of the real repo.
