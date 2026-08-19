@@ -23,6 +23,7 @@ import {
   deleteArtifact,
 } from '../../api';
 import { ArtifactViewer } from '../artifact';
+import { Tooltip } from '../ui';
 import { ConfirmModal } from '../ConfirmModal';
 import { host } from '../../../platform/host';
 
@@ -320,12 +321,12 @@ export function WorkingFolderLive({ project, isStreaming }) {
   return (
     <div className="pt-2">
       {rowError && (
-        <p className="text-[11px] px-1 pb-0.5" style={{ color: 'var(--danger)' }}>
+        <p className="text-xs px-1 pb-0.5 text-danger">
           {rowError}
         </p>
       )}
       {rows.length === 0 ? (
-        <p className="text-[12.5px] text-ink-4 px-1 pb-1">
+        <p className="text-sm text-ink-4 px-1 pb-1">
           No artifacts yet — the agent will save dashboards, reports, and
           datasets here as it produces them.
         </p>
@@ -350,9 +351,8 @@ export function WorkingFolderLive({ project, isStreaming }) {
                 className={clsx(
                   'group relative grid items-center gap-2 rounded-md px-1 py-1 text-left',
                   'cursor-pointer transition-colors hover:bg-surface-2',
-                  'outline-none focus-visible:ring-2 focus-visible:ring-offset-0 focus-visible:ring-accent'
+                  'outline-none focus-visible:ring-2 focus-visible:ring-offset-0 focus-visible:ring-accent grid-cols-[14px_minmax(0,1fr)_auto] [font:inherit]'
                 )}
-                style={{ gridTemplateColumns: '14px minmax(0,1fr) auto', font: 'inherit' }}
               >
                 {/* Icon — picks up the accent color when the artifact
                     has a publishedUrl so the user can spot what's
@@ -363,13 +363,13 @@ export function WorkingFolderLive({ project, isStreaming }) {
                 >
                   {(Ico[iconForRow(a)] || Ico.doc)(13)}
                 </span>
-                <span className="text-[12.5px] text-ink truncate">
+                <span className="text-sm text-ink truncate">
                   {a.title || (a.path?.split('/').pop() || '')}
                 </span>
                 {/* Trailing slot: timestamp normally, kebab on hover
                     or while THIS row's menu is open. Shared-slot
                     trick keeps row width stable. */}
-                <span className="relative inline-flex items-center justify-end flex-none" style={{ minWidth: 22 }}>
+                <span className="relative inline-flex items-center justify-end flex-none min-w-[22px]">
                   <span className={clsx(
                     'text-[10.5px] text-ink-4 transition-opacity',
                     'group-hover:opacity-0',
@@ -381,35 +381,36 @@ export function WorkingFolderLive({ project, isStreaming }) {
                         rather than a sentence. */}
                     {String(a.updated || '').replace(/^updated\s+/i, '')}
                   </span>
-                  <button
-                    ref={setKebabRef(a.path)}
-                    type="button"
-                    aria-label="More actions"
-                    aria-haspopup="menu"
-                    aria-expanded={menuOpen}
-                    title="More actions"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (menuOpen) setOpenMenuPath(null);
-                      else openMenuFor(a.path);
-                    }}
-                    className={clsx(
-                      // `justify-end` (not center) pins the kebab to
-                      // the right edge of the trailing slot so it sits
-                      // flush against the row's right margin — matching
-                      // where the project-files trash icon lands. The
-                      // artifact timestamp ("3h ago") is wider than the
-                      // project-file one ("3h"), so a centered kebab
-                      // floated noticeably left of the edge.
-                      'absolute inset-0 inline-flex items-center justify-end',
-                      menuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100',
-                      'transition-opacity rounded',
-                      'text-ink-4 hover:text-ink',
-                      'bg-transparent border-0 cursor-pointer p-0',
-                    )}
-                  >
-                    {Ico.moreVert(13)}
-                  </button>
+                  <Tooltip content="More actions">
+                    <button
+                      ref={setKebabRef(a.path)}
+                      type="button"
+                      aria-label="More actions"
+                      aria-haspopup="menu"
+                      aria-expanded={menuOpen}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (menuOpen) setOpenMenuPath(null);
+                        else openMenuFor(a.path);
+                      }}
+                      className={clsx(
+                        // `justify-end` (not center) pins the kebab to
+                        // the right edge of the trailing slot so it sits
+                        // flush against the row's right margin — matching
+                        // where the project-files trash icon lands. The
+                        // artifact timestamp ("3h ago") is wider than the
+                        // project-file one ("3h"), so a centered kebab
+                        // floated noticeably left of the edge.
+                        'absolute inset-0 inline-flex items-center justify-end',
+                        menuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100',
+                        'transition-opacity rounded',
+                        'text-ink-4 hover:text-ink',
+                        'bg-transparent border-0 cursor-pointer p-0',
+                      )}
+                    >
+                      {Ico.moreVert(13)}
+                    </button>
+                  </Tooltip>
                 </span>
               </div>
             );
@@ -450,12 +451,12 @@ export function WorkingFolderLive({ project, isStreaming }) {
                   openArtifactExternal(a);
                 }}
               >
-                <span style={{ display: 'inline-flex', color: 'var(--frost-700)' }}>
+                <span className="inline-flex text-[var(--frost-700)]">
                   {(Ico.externalLink || Ico.upload)(13)}
                 </span>
                 <span>{openLabel}</span>
               </button>
-              <div style={{ height: 1, background: 'var(--border-0)', margin: '4px 0' }} />
+              <div className="h-px bg-[var(--border-0)] my-1" />
               <button
                 type="button"
                 className="menu-item"
@@ -470,7 +471,7 @@ export function WorkingFolderLive({ project, isStreaming }) {
                 }}
                 style={{ color: 'var(--danger)' }}
               >
-                <span style={{ display: 'inline-flex', color: 'var(--danger)' }}>{Ico.trash(13)}</span>
+                <span className="inline-flex text-danger">{Ico.trash(13)}</span>
                 <span>Delete</span>
               </button>
             </div>

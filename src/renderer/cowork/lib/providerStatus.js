@@ -1,5 +1,5 @@
 // Pure derivations for LLM-provider connectivity state, shared by the Settings
-// LLM Providers rows and the Agent Models picker so the two can't drift. No
+// LLM Providers rows and the Model Router picker so the two can't drift. No
 // hooks, no JSX — everything here is a function of the persisted status maps
 // plus a little view context, which keeps it directly unit-testable without
 // rendering SettingsView.
@@ -17,7 +17,9 @@
 //                   overrides. 'untested' when absent.
 //   failed        — raw === 'fail'. Deliberately keyed off raw, not settled:
 //                   the picker flags a provider by its recorded result.
-//   unconfigured  — carries no usable credential.
+//   unconfigured  — carries no usable credential. An active SSO session is
+//                   MindsHub's credential (its key lives server-side), so an
+//                   SSO-connected MindsHub is never unconfigured.
 //   detail        — the persisted status detail string for this type ('' when
 //                   absent). Caller decides whether to gate it on `configured`.
 //   checking      — a recorded failure is being re-verified, so failure UI
@@ -31,14 +33,15 @@ export function deriveProviderStatus(type, {
   initialTestDone = true,
 } = {}) {
   const raw = providerStatus[type] || 'untested';
-  const settled = (type === 'minds-cloud' && isSsoConnected) ? 'ok'
+  const ssoOk = type === 'minds-cloud' && isSsoConnected;
+  const settled = ssoOk ? 'ok'
     : configured ? raw : 'untested';
   const failed = raw === 'fail';
   return {
     raw,
     settled,
     failed,
-    unconfigured: !configured,
+    unconfigured: !configured && !ssoOk,
     detail: providerStatusDetails[type] || '',
     checking: configured && failed && (!initialTestDone || testInProgress),
   };

@@ -3,15 +3,15 @@
 // opens a fresh chat seeded with `prompt`, the message Cowork answers to
 // show off that capability. Edit copy or reorder here; the UI follows.
 //
-// Step 1 doubles as the "Build me a habit tracker" home suggestion chip —
-// both surfaces send the same prompt and both mark this step done.
+// Step 1 is also completed when the habit-tracker prompt is sent from the
+// home composer by any route — HomeView prefix-matches outgoing sends.
 
 export const HABIT_TRACKER_PROMPT =
   'Build me a habit tracker as a live artifact: a simple week grid I can tick off each day. Start with three sensible habits and make them easy to rename.';
 
 // Stable prefix used to recognize a (possibly user-edited) habit-tracker
 // send and complete step 1. Kept next to the prompt so a copy edit can't
-// silently break the match — a test asserts the prompt starts with it.
+// silently break the match — steps.test.js asserts the prompt starts with it.
 export const HABIT_TRACKER_PREFIX = 'Build me a habit tracker';
 
 export const ONBOARDING_STEPS = [

@@ -18,13 +18,11 @@ import {
   useCollectionShortcut,
 } from '../components/collection';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
-import { Alert, Button, CardRow, EmptyState } from '../components/ui';
+import { Alert, Button, CardRow, EmptyState, Tooltip } from '../components/ui';
 import OverflowMenu from '../components/OverflowMenu';
 import { ConfirmModal } from '../components/ConfirmModal';
 import ScheduleTaskModal from '../components/schedule/ScheduleTaskModal';
 import ScheduleCard, { taskMenuItems } from '../components/schedule/ScheduleCard';
-
-const FONT_BODY = 'var(--font-body)';
 
 const SORT_OPTIONS = [
   { id: 'next', label: 'Next run' },
@@ -165,7 +163,7 @@ export default function ScheduledView({
   }
 
   return (
-    <div className="scroll-clean" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+    <div className="scroll-clean flex-1 overflow-y-auto flex flex-col">
       <PageHeader
         title="Scheduled Tasks"
         subtitle={`Local scheduled ${agentLabel} tasks run while MindsHub Cowork is open. Runs that slip while the app is closed are skipped — ${agentLabel} resumes from the next scheduled occurrence.`}
@@ -197,7 +195,7 @@ export default function ScheduledView({
               {totalMissed > 0 && (
                 <>
                   {' · '}
-                  <span style={{ color: 'var(--ink-3)' }}>
+                  <span className="text-ink-3">
                     {totalMissed} missed run{totalMissed === 1 ? '' : 's'}
                   </span>
                 </>
@@ -216,12 +214,7 @@ export default function ScheduledView({
         <EmptyState
           bordered
           icon={
-            <span style={{
-              display: 'inline-grid', placeItems: 'center',
-              width: 48, height: 48, borderRadius: 12,
-              background: 'color-mix(in srgb, var(--accent) 12%, var(--surface-2))',
-              color: 'var(--accent)',
-            }}>
+            <span className="inline-grid place-items-center w-[48px] h-[48px] rounded-card bg-[color-mix(in_srgb,var(--accent)_12%,var(--surface-2))] text-accent">
               {Ico.schedule ? Ico.schedule(20) : Ico.clock(20)}
             </span>
           }
@@ -235,12 +228,7 @@ export default function ScheduledView({
           style={{ margin: '40px 28px' }}
         />
       ) : viewMode === 'grid' ? (
-        <div style={{
-          padding: '8px 28px 28px',
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-          gap: 14,
-        }}>
+        <div className="pt-2 px-7 pb-7 grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-[14px]">
           {visible.map((task) => (
             <ScheduleCard
               key={task.id}
@@ -258,7 +246,7 @@ export default function ScheduledView({
           ))}
         </div>
       ) : (
-        <div style={{ padding: '8px 28px 28px' }}>
+        <div className="pt-2 px-7 pb-7">
           <ListHeaderRow />
           {visible.map((task) => (
             <ScheduleListRow
@@ -320,9 +308,6 @@ export default function ScheduledView({
 //   • Last run
 //   • action menu (hover-revealed)
 
-const FONT_DISPLAY = 'var(--font-display)';
-const FONT_MONO = 'var(--font-mono)';
-
 // 24px dot · 2.2fr title · 90px cadence · 1.1fr project · 130px next ·
 // 110px last · fixed-width actions slot.
 //
@@ -336,19 +321,13 @@ const LIST_GRID = '24px minmax(0, 2.2fr) 90px minmax(0, 1.1fr) 130px 110px 190px
 
 function ListHeaderRow() {
   const Cell = ({ children, align }) => (
-    <div style={{
-      fontFamily: FONT_MONO, fontSize: 10.5,
-      color: 'var(--ink-4)', letterSpacing: '0.10em',
-      textTransform: 'uppercase',
-      textAlign: align || 'left',
-    }}>{children}</div>
+    <div className={`font-[family-name:var(--font-mono)] text-[10.5px] text-ink-4 tracking-[0.10em] uppercase ${align === 'center' ? 'text-center' : align === 'right' ? 'text-right' : 'text-left'}`}>{children}</div>
   );
   return (
-    <div style={{
-      display: 'grid', gridTemplateColumns: LIST_GRID, gap: 14,
-      padding: '10px 14px',
-      borderBottom: '1px solid var(--line)',
-    }}>
+    <div
+      className="grid gap-[14px] py-2.5 px-[14px] border-b border-t-0 border-x-0 border-solid border-line"
+      style={{ gridTemplateColumns: LIST_GRID }}
+    >
       <Cell />
       <Cell>Title</Cell>
       <Cell>Cadence</Cell>
@@ -395,104 +374,75 @@ function ScheduleListRow({
       onActivate={open}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
+      className="grid gap-[14px] py-3 px-[14px] items-center"
       style={{
-        display: 'grid', gridTemplateColumns: LIST_GRID, gap: 14,
-        padding: '12px 14px',
+        gridTemplateColumns: LIST_GRID,
         borderBottom: '1px solid var(--line)',
-        alignItems: 'center',
       }}
     >
-      <div style={{ display: 'flex', justifyContent: 'center' }}>
-        <span aria-hidden title={status.label} style={{
-          width: 8, height: 8, borderRadius: 99,
-          background: status.dot,
-          boxShadow: status.dot === 'var(--success)'
-            ? '0 0 6px var(--success-glow)'
-            : 'none',
-        }} />
+      <div className="flex justify-center">
+        <span aria-hidden title={status.label}
+          className="w-2 h-2 rounded-full"
+          style={{
+            background: status.dot,
+            boxShadow: status.dot === 'var(--success)'
+              ? '0 0 6px var(--success-glow)'
+              : 'none',
+          }}
+        />
       </div>
 
-      <div style={{ minWidth: 0 }}>
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 8,
-          minWidth: 0,
-        }}>
-          <span style={{
-            fontFamily: FONT_DISPLAY, fontSize: 14, fontWeight: 600,
-            color: 'var(--ink)', letterSpacing: '0',
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>{task.title || 'Untitled schedule'}</span>
+      <div className="min-w-0">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="font-[family-name:var(--font-display)] text-base font-semibold text-ink tracking-[0] overflow-hidden text-ellipsis whitespace-nowrap">{task.title || 'Untitled schedule'}</span>
           {/* Missed-runs annotation — shows alongside the title so the
               user sees how many cadence ticks were skipped while the
               app was off. Cleared on the next successful run. */}
           {missedRuns > 0 && (
-            <span style={{
-              fontFamily: FONT_MONO, fontSize: 10.5,
-              color: 'var(--ink-4)', letterSpacing: '0.04em',
-              flexShrink: 0,
-            }}>
+            <span className="font-[family-name:var(--font-mono)] text-[10.5px] text-ink-4 tracking-[0.04em] shrink-0">
               missed {missedRuns}
             </span>
           )}
         </div>
         {task.prompt && (
-          <div style={{
-            fontFamily: FONT_BODY, fontSize: 11.5, color: 'var(--ink-4)',
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            marginTop: 2,
-          }}>{task.prompt}</div>
+          <div className="font-[family-name:var(--font-body)] text-[11.5px] text-ink-4 overflow-hidden text-ellipsis whitespace-nowrap mt-0.5">{task.prompt}</div>
         )}
       </div>
 
-      <div style={{
-        fontFamily: FONT_MONO, fontSize: 11,
-        color: 'var(--ink-3)', letterSpacing: '0.06em', textTransform: 'uppercase',
-      }}>{cadenceLabel}</div>
+      <div className="font-[family-name:var(--font-mono)] text-xs text-ink-3 tracking-[0.06em] uppercase">{cadenceLabel}</div>
 
-      <div style={{
-        fontFamily: FONT_BODY, fontSize: 12.5,
-        color: 'var(--ink-2)',
-        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        minWidth: 0,
-      }}>
+      <div className="font-[family-name:var(--font-body)] text-sm text-ink-2 overflow-hidden text-ellipsis whitespace-nowrap min-w-0">
         {projectName ? (
           canOpenProject ? (
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); onOpenProject(projectMatch); }}
-              title={`Open ${projectMatch.name}`}
-              style={{
-                all: 'unset', cursor: 'pointer',
-                color: 'var(--ink-2)',
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                maxWidth: '100%', display: 'inline-block',
-                transition: 'color 120ms ease',
-              }}
-              onMouseOver={(e) => {
-                e.currentTarget.style.color = 'var(--accent)';
-                e.currentTarget.style.textDecoration = 'underline';
-                e.currentTarget.style.textUnderlineOffset = '2px';
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.color = 'var(--ink-2)';
-                e.currentTarget.style.textDecoration = 'none';
-              }}
-            >{projectName}</button>
+            <Tooltip content={`Open ${projectMatch.name}`}>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onOpenProject(projectMatch); }}
+                style={{
+                  all: 'unset', cursor: 'pointer',
+                  color: 'var(--ink-2)',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  maxWidth: '100%', display: 'inline-block',
+                  transition: 'color 120ms ease',
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.color = 'var(--accent)';
+                  e.currentTarget.style.textDecoration = 'underline';
+                  e.currentTarget.style.textUnderlineOffset = '2px';
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.color = 'var(--ink-2)';
+                  e.currentTarget.style.textDecoration = 'none';
+                }}
+              >{projectName}</button>
+            </Tooltip>
           ) : projectName
-        ) : <span style={{ color: 'var(--ink-5)' }}>—</span>}
+        ) : <span className="text-ink-5">—</span>}
       </div>
 
-      <div title={absoluteFull(task.nextRunAt)} style={{
-        fontFamily: FONT_MONO, fontSize: 11,
-        color: 'var(--ink-3)', letterSpacing: '0.04em',
-        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-      }}>{task.enabled ? formatAbsolute(task.nextRunAt) : 'Paused'}</div>
+      <div title={absoluteFull(task.nextRunAt)} className="font-[family-name:var(--font-mono)] text-xs text-ink-3 tracking-[0.04em] overflow-hidden text-ellipsis whitespace-nowrap">{task.enabled ? formatAbsolute(task.nextRunAt) : 'Paused'}</div>
 
-      <div title={task.lastRunAt ? absoluteFull(task.lastRunAt) : ''} style={{
-        fontFamily: FONT_MONO, fontSize: 11,
-        color: 'var(--ink-4)', letterSpacing: '0.04em',
-        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-      }}>{task.lastRunAt ? formatAbsolute(task.lastRunAt) : '—'}</div>
+      <div title={task.lastRunAt ? absoluteFull(task.lastRunAt) : ''} className="font-[family-name:var(--font-mono)] text-xs text-ink-4 tracking-[0.04em] overflow-hidden text-ellipsis whitespace-nowrap">{task.lastRunAt ? formatAbsolute(task.lastRunAt) : '—'}</div>
 
       <div onClick={stop} onMouseDown={stop}
         style={{
@@ -544,7 +494,6 @@ function RowAction({ icon, label, onClick, busy }) {
     <Button
       onClick={onClick}
       disabled={busy}
-      title={label}
     >{icon}{label}</Button>
   );
 }

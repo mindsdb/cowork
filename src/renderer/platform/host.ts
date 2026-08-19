@@ -32,6 +32,14 @@ const bridge: any =
 export const isElectron: boolean = typeof bridge === 'object' && bridge !== null;
 export const isWeb: boolean = !isElectron;
 
+// Coding Mode kill switch (CODING_MODE_OPTIONS_ENABLED, main/preload —
+// unset/anything else defaults false) while the feature is parked. A plain
+// module-level const, not a function — it's a static per-process value read
+// once from the environment, same as isElectron/isWeb above. Web has no
+// bridge at all, so it's always false there too.
+export const codingModeOptionsEnabled: boolean =
+  isElectron && bridge.codingModeOptionsEnabled === true;
+
 // ---- Platform identity --------------------------------------------------
 
 export type PlatformId = 'darwin' | 'win32' | 'linux' | 'web';
@@ -199,6 +207,75 @@ export async function showItemInFolder(path: string): Promise<{ ok: boolean; rea
   return { ok: false, reason: 'unsupported' };
 }
 
+// ---- Coding mode (MVP) ---------------------------------------------------
+
+export async function detectClaudeCode(): Promise<{ installed: boolean; path: string | null }> {
+  if (isElectron && typeof bridge.detectClaudeCode === 'function') {
+    return bridge.detectClaudeCode();
+  }
+  return { installed: false, path: null };
+}
+
+export async function startCodingTerminal(
+  taskId: string,
+  opts: { projectPath: string; message: string; model: string },
+  cols: number,
+  rows: number,
+): Promise<{ ok: boolean; reason?: string }> {
+  if (isElectron && typeof bridge.startCodingTerminal === 'function') {
+    return bridge.startCodingTerminal(taskId, opts, cols, rows);
+  }
+  return { ok: false, reason: 'unsupported' };
+}
+
+export function sendCodingTerminalInput(taskId: string, data: string): void {
+  if (isElectron && typeof bridge.sendCodingTerminalInput === 'function') {
+    bridge.sendCodingTerminalInput(taskId, data);
+  }
+}
+
+export function resizeCodingTerminal(taskId: string, cols: number, rows: number): void {
+  if (isElectron && typeof bridge.resizeCodingTerminal === 'function') {
+    bridge.resizeCodingTerminal(taskId, cols, rows);
+  }
+}
+
+export async function isCodingTerminalRunning(taskId: string): Promise<boolean> {
+  if (isElectron && typeof bridge.isCodingTerminalRunning === 'function') {
+    return bridge.isCodingTerminalRunning(taskId);
+  }
+  return false;
+}
+
+export function killCodingTerminal(taskId: string): void {
+  if (isElectron && typeof bridge.killCodingTerminal === 'function') {
+    bridge.killCodingTerminal(taskId);
+  }
+}
+
+/** Stops a Claude-Code task's PTY (if running) and removes its git worktree
+ *  and branch under `<projectPath>/.claude_tasks/<taskId>/` — call when the
+ *  task itself is deleted. */
+export async function removeCodingTask(taskId: string, projectPath: string): Promise<void> {
+  if (isElectron && typeof bridge.removeCodingTask === 'function') {
+    await bridge.removeCodingTask(taskId, projectPath);
+  }
+}
+
+export function onCodingTerminalData(cb: (taskId: string, data: string) => void): () => void {
+  if (isElectron && typeof bridge.onCodingTerminalData === 'function') {
+    return bridge.onCodingTerminalData(cb);
+  }
+  return () => {};
+}
+
+export function onCodingTerminalExit(cb: (taskId: string, exitCode: number) => void): () => void {
+  if (isElectron && typeof bridge.onCodingTerminalExit === 'function') {
+    return bridge.onCodingTerminalExit(cb);
+  }
+  return () => {};
+}
+
 // ---- File drop / clipboard ---------------------------------------------
 
 // In Electron, dropped files expose an OS path via webUtils. In web, the
@@ -234,6 +311,17 @@ export interface VersionInfo {
   ui: string | null;
   /** Where the running renderer came from. */
   source: 'bundled' | 'ota' | 'web';
+  /** The shell's build kind (update ring). Null on web and on legacy shells
+   *  that predate the field — an OTA renderer can run on an older shell. */
+  buildKind: 'dev' | 'preview' | 'stable' | 'prod' | null;
+}
+
+const BUILD_KINDS = ['dev', 'preview', 'stable', 'prod'] as const;
+
+function normalizeBuildKind(value: unknown): VersionInfo['buildKind'] {
+  return (BUILD_KINDS as readonly string[]).includes(value as string)
+    ? (value as VersionInfo['buildKind'])
+    : null;
 }
 
 /** Structured version facts for the unified version display (ENG-213). The
@@ -249,10 +337,10 @@ export async function getVersionInfo(): Promise<VersionInfo> {
       const ui = v.ui != null && v.ui !== 'bundled' ? String(v.ui) : null;
       const source: VersionInfo['source'] =
         v.source === 'ota' || v.source === 'bundled' ? v.source : ui ? 'ota' : 'bundled';
-      return { app: String(v.app ?? ''), ui, source };
+      return { app: String(v.app ?? ''), ui, source, buildKind: normalizeBuildKind(v.buildKind) };
     }
   }
-  return { app: '', ui: null, source: 'web' };
+  return { app: '', ui: null, source: 'web', buildKind: null };
 }
 
 // ---- Onboarding -------------------------------------------------------
@@ -859,6 +947,7 @@ export async function logout(): Promise<void> {
 export const host = {
   isWeb,
   isElectron,
+  codingModeOptionsEnabled,
   getPlatform,
   isMac,
   getApiOrigin,
@@ -871,6 +960,15 @@ export const host = {
   openExternal,
   openPath,
   showItemInFolder,
+  detectClaudeCode,
+  startCodingTerminal,
+  sendCodingTerminalInput,
+  resizeCodingTerminal,
+  isCodingTerminalRunning,
+  killCodingTerminal,
+  removeCodingTask,
+  onCodingTerminalData,
+  onCodingTerminalExit,
   getPathForFile,
   getUIVersion,
   getVersionInfo,

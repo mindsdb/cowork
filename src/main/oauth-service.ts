@@ -187,7 +187,7 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
         }
         const code = url.searchParams.get('code');
         const returnedState = url.searchParams.get('state');
-        if (!code || returnedState !== state) {
+        if (!code || !secureEqual(returnedState, state)) {
           res.statusCode = 400;
           res.setHeader('Content-Type', 'text/html');
           res.end(callbackPage('Authorization failed', 'Missing code or state mismatch.'));
@@ -362,6 +362,19 @@ export function base64UrlEncode(buf: Buffer): string {
     .replace(/=/g, '')
     .replace(/\+/g, '-')
     .replace(/\//g, '_');
+}
+
+// Constant-time comparison for the PKCE state param, so response timing
+// can't leak how much of it an attacker has guessed correctly. The length
+// check is unavoidable (timingSafeEqual throws on mismatched lengths) and
+// isn't itself sensitive — state is a fixed-length random value, so a
+// length mismatch alone gives an attacker nothing to narrow down.
+function secureEqual(a: string | null, b: string): boolean {
+  if (a === null) return false;
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
 }
 
 async function safeReadText(res: Response): Promise<string> {

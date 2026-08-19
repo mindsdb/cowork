@@ -38,10 +38,19 @@ stage_for_console_user() {
   local user="$1" home="$2"
   local dest_dir="$home/.cowork-provision"
   local dest_file="$dest_dir/server-credentials.json"
-  install -d -o "$user" -g staff -m 700 "$dest_dir" \
+  # $home belongs to the console user, so nothing already at $dest_dir can be
+  # trusted: a symlink there redirects install and chown at its target, and a
+  # directory they own can hold a symlink at $dest_file that cp, chown and
+  # chmod all follow. Clear the path, create the directory root-owned so
+  # nothing can be planted inside while the file is written, and hand it over
+  # last. mkdir fails on an existing path rather than adopting it. The caller
+  # has already checked $home is non-empty and a real directory.
+  rm -rf "$dest_dir" || return 1
+  mkdir -m 700 "$dest_dir" \
     && cp "$SRC_FILE" "$dest_file" \
-    && chown "$user" "$dest_file" \
-    && chmod 600 "$dest_file"
+    && chmod 600 "$dest_file" \
+    && chown "$user:staff" "$dest_file" \
+    && chown "$user:staff" "$dest_dir"
 }
 
 stage_shared_fallback() {

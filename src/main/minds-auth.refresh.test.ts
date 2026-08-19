@@ -9,15 +9,6 @@ vi.mock('electron', () => ({
   BrowserWindow: class {},
 }));
 
-// minds-auth also transitively imports server-process → credential-provisioning
-// (ENG-1241) → keychain-service, which loads the native `keytar` module at
-// import time — fine on macOS/Windows, but it requires libsecret on Linux,
-// which CI's runner doesn't have. Mocked here purely to make the import chain
-// safe; this suite never calls anything credential-related.
-vi.mock('./credential-provisioning', () => ({
-  loadBundledServerCredentials: vi.fn().mockResolvedValue({}),
-}));
-
 // Isolate the refresh logic from disk/keychain: the token store is the
 // unit boundary here — we assert WHICH store transitions the refresh
 // outcome drives (save on ok, clear on invalid_grant, neither on

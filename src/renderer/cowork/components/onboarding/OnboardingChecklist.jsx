@@ -28,8 +28,10 @@ export default function OnboardingChecklist({ onStartChat }) {
   if (dismissed) return null;
 
   // Mark the step done first so it shows struck through afterwards, then
-  // hand its prompt to the composer to open the new chat.
+  // hand its prompt to the composer to open the new chat. A done step is
+  // inert — re-clicking it must not spawn another chat (ENG-1502).
   const start = (step) => {
+    if (isComplete(step.id)) return;
     complete(step.id);
     onStartChat(step.prompt);
   };
@@ -66,6 +68,25 @@ export default function OnboardingChecklist({ onStartChat }) {
     </button>
   );
 
+  // Always-available close — dismisses the checklist for good without
+  // requiring the four steps to be completed first (ENG-1502).
+  const closeBtn = (
+    <button
+      type="button"
+      className="onboarding-collapse-toggle"
+      aria-label="Close checklist"
+      title="Close"
+      onClick={dismiss}
+      style={{
+        display: 'inline-flex', flexShrink: 0, alignSelf: 'center',
+        border: 0, cursor: 'pointer', borderRadius: 'var(--r-sm)',
+        padding: 4, color: 'var(--frost-600)',
+      }}
+    >
+      {Ico.close(14)}
+    </button>
+  );
+
   // Thin progress track under the header — fills left-to-right as steps
   // complete. Width transition (not transform) is fine here: it changes
   // at most 4 times, ever.
@@ -90,7 +111,10 @@ export default function OnboardingChecklist({ onStartChat }) {
     <OnboardingComplete onDismiss={dismiss} />
   ) : (
     <>
-      {header}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+        {header}
+        {closeBtn}
+      </div>
       {/* Collapsible body: a 0fr→1fr grid row animates height open/closed
           without hard-coding a pixel value (same idiom as OnboardingItem). */}
       <div

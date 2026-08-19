@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  resolveRoleModel,
   resolveModelPickerValue,
   buildModelOptions,
   diffSettingsForWrite,
@@ -9,11 +10,49 @@ import {
   mergeRecommendedModels,
   clampBudgetValue,
   clampBudgets,
+  BUDGET_FIELDS,
+  isBudgetUnlimited,
+  resolveBudgetRestore,
 } from './settingsTransform';
 
 // The minds-cloud recommended list holds bare aliases — never `latest:`-prefixed.
 const MINDS_LIST = ['sonnet', 'opus', 'mindshub_air', 'haiku'];
 const ANTHROPIC_LIST = ['claude-opus-4-8', 'claude-sonnet-5'];
+
+describe('resolveRoleModel', () => {
+  // Regression: an SSO sign-in writes the role's PROVIDER to minds-cloud
+  // server-side without touching the paired model field. providerWasRepointed
+  // is false (the provider itself isn't stale — minds-cloud IS configured),
+  // so without this substitution the stale Anthropic model rides along
+  // unchanged and surfaces as "legacy — re-select a model" for the user to
+  // fix by hand, instead of silently landing on the provider's default.
+  it('falls back when the provider is already correct but the stored model is from a different provider', () => {
+    const model = resolveRoleModel(
+      /* providerWasRepointed */ false, 'claude-opus-4-8', MINDS_LIST, /* allowOther */ false, 'mindshub_air',
+    );
+    expect(model).toBe('mindshub_air');
+  });
+
+  it('also falls back when the provider field itself was stale', () => {
+    const model = resolveRoleModel(true, 'sonnet', MINDS_LIST, false, 'mindshub_air');
+    expect(model).toBe('mindshub_air');
+  });
+
+  it('keeps a stored model that is actually listed under the current provider', () => {
+    const model = resolveRoleModel(false, 'sonnet', MINDS_LIST, false, 'mindshub_air');
+    expect(model).toBe('sonnet');
+  });
+
+  it('does not treat an unlisted model as stale for an allowOther (BYOK) provider — it is a legitimate custom id', () => {
+    const model = resolveRoleModel(false, 'my-fine-tune-123', ANTHROPIC_LIST, true, 'claude-opus-4-8');
+    expect(model).toBe('my-fine-tune-123');
+  });
+
+  it('passes an unset stored model straight through (nothing to be stale)', () => {
+    const model = resolveRoleModel(false, '', MINDS_LIST, false, 'mindshub_air');
+    expect(model).toBe('');
+  });
+});
 
 describe('resolveModelPickerValue', () => {
   // ─── ENG-739 regression ─────────────────────────────────────────────
@@ -392,6 +431,90 @@ describe('agent tool-budget settings (max_tool_rounds / max_continuations)', () 
   });
 });
 
+describe('harness picker enable flags + availability (ENG-1656 follow-up)', () => {
+  it('transforms the per-harness enable flags into camelCase booleans', async () => {
+    // Anton has no enable flag — it's the default agent and always offered.
+    const { transformSettingsRows } = await import('./settingsTransform');
+    const rows = [
+      { key: 'harness_hermes_enabled', value: 'False', is_sensitive: false, is_set: true },
+      { key: 'harness_claude_code_enabled', value: 'True', is_sensitive: false, is_set: true },
+    ];
+    const s = transformSettingsRows(rows);
+    expect(s.harnessHermesEnabled).toBe(false);
+    expect(s.harnessClaudeCodeEnabled).toBe(true);
+  });
+
+  it('surfaces the harness row\'s `options` as harnessOptions, separate from its own value', async () => {
+    const { transformSettingsRows } = await import('./settingsTransform');
+    const rows = [
+      { key: 'harness', value: 'anton', is_sensitive: false, is_set: true, options: ['anton'] },
+    ];
+    const s = transformSettingsRows(rows);
+    // Server's available_harness_ids() omitted "hermes" (not installed) —
+    // the picker needs this to hide the enable-toggle entirely, distinct
+    // from "hermes is available but the account disabled it."
+    expect(s.harnessOptions).toEqual(['anton']);
+    expect(s.harness).toBe('anton');
+  });
+
+  it('leaves harnessOptions unset when the harness row carries no options', async () => {
+    const { transformSettingsRows } = await import('./settingsTransform');
+    const rows = [
+      { key: 'harness', value: 'anton', is_sensitive: false, is_set: true },
+    ];
+    expect(transformSettingsRows(rows).harnessOptions).toBeUndefined();
+  });
+});
+
+describe('per-turn spend ceiling (max_turn_tokens, ENG-1286)', () => {
+  it('transforms the server row into a camelCase string value', async () => {
+    const { transformSettingsRows } = await import('./settingsTransform');
+    const rows = [
+      { key: 'max_turn_tokens', value: '1250000', is_sensitive: false, is_set: false },
+    ];
+    expect(transformSettingsRows(rows).maxTurnTokens).toBe('1250000');
+  });
+
+  it('writes the changed ceiling to its snake_case key', () => {
+    expect(
+      diffSettingsForWrite({ maxTurnTokens: '2000000' }, { maxTurnTokens: '1250000' }),
+    ).toEqual({ max_turn_tokens: '2000000' });
+  });
+
+  it('is not written to a server that did not send it', () => {
+    // The renderer ships OTA and leads the installed server, so it will run
+    // against a cowork-server that has the other two budgets but not this one.
+    // A PUT there 400s and fails the WHOLE multi-key save — taking the user's
+    // other settings changes down with it, which is why this is budget-scoped
+    // rather than best-effort.
+    expect(
+      diffSettingsForWrite(
+        { maxTurnTokens: '2000000', maxToolRounds: '80' },
+        { maxToolRounds: '50' },
+      ),
+    ).toEqual({ max_tool_rounds: '80' });
+  });
+
+  it('clamps to bounds that match the server, and cannot be switched off', () => {
+    const spec = BUDGET_FIELDS.maxTurnTokens;
+    // The floor is 750_000, and it is not arbitrary: below roughly a couple of
+    // LLM calls' worth of context the ceiling stops the turn before it has done
+    // any work. This input clamps UP into the valid range, so a user typing 0 —
+    // the natural way to say "no limit" — must not land in that band.
+    // No sentinel: 0 is just below the floor and clamps up like anything else.
+    expect(clampBudgetValue('0', spec)).toBe('750000');
+    expect(clampBudgetValue('1', spec)).toBe('750000');
+    expect(clampBudgetValue('100000', spec)).toBe('750000');
+    expect(clampBudgetValue('749999', spec)).toBe('750000');
+    expect(clampBudgetValue('999999999', spec)).toBe('50000000');
+    expect(clampBudgetValue('2000000', spec)).toBe('2000000');
+    // Mirrors UserSettings' ge/le exactly; a value the client allows and the
+    // server rejects 400s the whole multi-key save (cowork-server asserts the
+    // other direction in test_agent_budget_settings.py).
+    expect([spec.min, spec.max]).toEqual([750_000, 50_000_000]);
+  });
+});
+
 describe('clampBudgetValue / clampBudgets', () => {
   const spec = { min: 5, max: 500, fallback: 50 };
 
@@ -636,5 +759,52 @@ describe('mergeRecommendedModels — the section/version maps', () => {
       .toEqual(held.modelProviders);
     expect(mergeRecommendedModels(held, { recommendedModels: {} }).modelFamilies)
       .toEqual(held.modelFamilies);
+  });
+});
+
+
+describe('the "no limit" switch (ENG-1286)', () => {
+  const spec = BUDGET_FIELDS.maxTurnTokens;
+
+  it('reads the top of the range as unlimited, and nothing else', () => {
+    expect(isBudgetUnlimited('50000000', spec)).toBe(true);
+    expect(isBudgetUnlimited('1250000', spec)).toBe(false);
+    expect(isBudgetUnlimited('750000', spec)).toBe(false);
+    expect(isBudgetUnlimited('', spec)).toBe(false);
+    expect(isBudgetUnlimited(null, spec)).toBe(false);
+    // 0 is NOT unlimited — it is below the floor. `maxContinuations` next door
+    // uses 0 to mean literally zero auto-continues, and letting 0 mean "no
+    // limit" here would give the same number opposite meanings two fields apart.
+    expect(isBudgetUnlimited('0', spec)).toBe(false);
+  });
+
+  it('restores the pre-toggle value when the switch goes off', () => {
+    expect(resolveBudgetRestore('2000000', '1250000', spec)).toBe('2000000');
+  });
+
+  it('falls back to the last committed value, then the factory default', () => {
+    expect(resolveBudgetRestore(null, '1250000', spec)).toBe('1250000');
+    expect(resolveBudgetRestore(null, null, spec)).toBe('1250000');
+    expect(resolveBudgetRestore('', '', spec)).toBe('1250000');
+  });
+
+  it('never restores the max, which would leave the switch stuck on', () => {
+    expect(resolveBudgetRestore('50000000', '50000000', spec)).toBe('1250000');
+  });
+
+  it('clamps a remembered value that predates a floor change', () => {
+    // Someone who saved 100_000 before the floor moved must come back legal —
+    // the settings write is all-or-nothing, so one out-of-range key 400s the lot.
+    expect(resolveBudgetRestore('100000', null, spec)).toBe('750000');
+  });
+});
+
+describe('diffSettingsForWrite — null tombstones (ENG-1632)', () => {
+  it('never PUTs a null value — a tombstone is a DELETE, not a write of "null"', () => {
+    const writes = diffSettingsForWrite(
+      { codingModel: null, routerModel: null, actFirst: 'true' },
+      { codingModel: 'haiku', routerModel: 'kimi', actFirst: 'false' },
+    );
+    expect(writes).toEqual({ act_first: 'true' });
   });
 });

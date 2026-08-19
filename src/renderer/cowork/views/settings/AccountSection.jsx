@@ -1,74 +1,31 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { ArrowLeftRight, Server, Cloud, Sparkle, LogIn, LogOut } from 'lucide-react';
 import { Alert, Button, Tooltip } from '../../components/ui';
 import { ConfirmModal } from '../../components/ConfirmModal';
-import { host, getAccessToken } from '../../../platform/host';
-import { resetDeviceIdentity } from '../../lib/analytics';
-import { accountUserFromToken } from '../../lib/accountUser';
+import { host } from '../../../platform/host';
+import { useAccountUser } from '../../hooks/useAccountUser';
+import { useLogout, LOGOUT_CONFIRM_COPY } from '../../hooks/useLogout';
+import { accountInitials } from '../../lib/accountUser';
 import { MINDS_CONSOLE_URL } from '../../../lib/mindsUrls';
 import { Section, SettingsSectionPanel } from './settingsLayout';
 
 // The Account settings section: the signed-in user card, the MindsHub sign-in
-// pitch when signed out, and sign-out. Owns the account identity (decoded from
-// the access token) and the sign-out flow, including its confirm modal — the
-// modal only opens from this section, so it lives here rather than at the
-// SettingsView root.
+// pitch when signed out, and sign-out. The account identity and the sign-out
+// sequence live in shared hooks (useAccountUser / useLogout) since the sidebar
+// user menu (ENG-1408) runs the same flows; this section owns only its confirm
+// modal and layout.
 export default function AccountSection({ isSsoConnected = false, ssoError = '', onSsoSignIn }) {
   // Decoded from the JWT, null until loaded.
-  const [accountUser, setAccountUser] = useState(null);
-  const [loggingOut, setLoggingOut] = useState(false);
+  const accountUser = useAccountUser(isSsoConnected);
+  const { loggingOut, logout } = useLogout();
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
-
-  // Re-runs when the signed-in state flips (ENG-761): previously signing in
-  // while this section was already open never re-read the token — the card
-  // stayed on "Sign in". The cancelled guard means a stale resolution (from a
-  // slow network refresh in getAccessToken) can't overwrite a newer run.
-  useEffect(() => {
-    let cancelled = false;
-    getAccessToken().then((token) => {
-      if (!cancelled) setAccountUser(accountUserFromToken(token));
-    }).catch(() => { });
-    return () => { cancelled = true; };
-  }, [isSsoConnected]);
-
-  const handleLogout = async () => {
-    if (loggingOut) return; // Guard against double-fire (Enter / re-click).
-    setLoggingOut(true);
-    let ok = true;
-    try {
-      await host.logout();
-    } catch {
-      // logout() rejected. The main handler clears the refresh token + the
-      // server-DB credentials early, before anything that can throw, so the
-      // user IS signed out — main just threw before it could drive its own
-      // reload. Fall through and reload from here (see below).
-      ok = false;
-    }
-    // Rotate the analytics device identity so the next account on this machine
-    // starts anonymous-fresh (ENG-537) — only on a confirmed sign-out, not on
-    // a rejected attempt (which would otherwise re-rotate on every retry).
-    if (ok) {
-      resetDeviceIdentity();
-    }
-    // Exactly ONE reload must happen, or two compete and leave the page stuck
-    // on this confirm modal (flaky in packaged builds). On Electron SUCCESS the
-    // main process drives webContents.reload() after the IPC reply, so the
-    // renderer must NOT also reload. We reload here only when nothing else
-    // will: on web (no main process), and on an Electron REJECTION — main threw
-    // before its own reload, and since the user is already signed out a
-    // renderer reload is race-free and re-routes to onboarding (the correct end
-    // state) rather than a misleading "sign-out didn't complete". (ENG-1206)
-    if (host.isWeb || !ok) {
-      window.location.reload();
-    }
-  };
 
   // Base card shell without colors — border-color/background differ per card
   // (Tailwind can't reliably "override" a same-property utility later in the
   // class string, so each card states its own colors exactly once).
   const CARD_BASE =
     'border border-solid rounded-card backdrop-blur-[var(--surface-glass-blur)] mb-[14px] overflow-hidden';
-  const CARD = `${CARD_BASE} border-line bg-[var(--surface-glass)]`;
+  const CARD = `${CARD_BASE} border-line bg-surface-glass`;
 
   // User info card — shown on both Electron and web if we have a token
   const userCard = accountUser && (
@@ -78,11 +35,7 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
         <div
           className="w-[44px] h-[44px] rounded-full shrink-0 bg-[color-mix(in_srgb,var(--accent)_18%,var(--surface))] border border-solid border-[color-mix(in_srgb,var(--accent)_35%,transparent)] inline-flex items-center justify-center text-[16px] font-bold text-accent select-none"
           aria-hidden="true">
-          {accountUser.name
-            ? accountUser.name.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase()
-            : accountUser.email
-              ? accountUser.email[0].toUpperCase()
-              : '?'}
+          {accountInitials(accountUser)}
         </div>
         <div className="flex-1 min-w-0">
           {accountUser.name && (
@@ -111,13 +64,13 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
         <div className="border-t border-x-0 border-b-0 border-solid border-line py-2.5 px-[18px] flex gap-5">
           {accountUser.username && (
             <div>
-              <div className="text-[10px] font-semibold tracking-[0.07em] uppercase text-ink-4 mb-0.5">Username</div>
+              <div className="text-2xs font-semibold tracking-[0.07em] uppercase text-ink-4 mb-0.5">Username</div>
               <div className="text-[13px] text-ink-2 font-[family-name:var(--font-mono)]">{accountUser.username}</div>
             </div>
           )}
           {accountUser.org && (
             <div>
-              <div className="text-[10px] font-semibold tracking-[0.07em] uppercase text-ink-4 mb-0.5">Organization</div>
+              <div className="text-2xs font-semibold tracking-[0.07em] uppercase text-ink-4 mb-0.5">Organization</div>
               <div className="text-[13px] text-ink-2">{accountUser.org}</div>
             </div>
           )}
@@ -181,14 +134,14 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
   const logoutConfirm = (
     <ConfirmModal
       open={logoutConfirmOpen}
-      title="Sign out of Cowork?"
-      message="This clears your stored API keys and disconnects from MindsHub. You'll need to sign in again to keep using Cowork."
-      confirmLabel="Sign out"
+      title={LOGOUT_CONFIRM_COPY.title}
+      message={LOGOUT_CONFIRM_COPY.message}
+      confirmLabel={LOGOUT_CONFIRM_COPY.confirmLabel}
       cancelLabel="Cancel"
       destructive
       busy={loggingOut}
       busyLabel="Signing out…"
-      onConfirm={handleLogout}
+      onConfirm={logout}
       onClose={() => setLogoutConfirmOpen(false)}
     />
   );

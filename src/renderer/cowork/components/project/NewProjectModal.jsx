@@ -15,7 +15,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
-import { Alert, Button, Field, Input, Textarea } from '../ui';
+import { Alert, Button, Field, Input, Textarea, Tooltip } from '../ui';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
 import {
   createProject,
@@ -52,20 +52,21 @@ function FileList({ files, onRemove }) {
           <span style={{ fontFamily: FONT_MONO, fontSize: 10.5, color: 'var(--ink-4)' }}>
             {Math.ceil(f.size / 1024)} KB
           </span>
-          <button
-            type="button"
-            onClick={() => onRemove(i)}
-            title="Remove"
-            aria-label="Remove"
-            style={{
-              background: 'transparent', border: 0, padding: 0,
-              color: 'var(--ink-4)', cursor: 'pointer',
-              display: 'inline-grid', placeItems: 'center',
-              width: 20, height: 20, borderRadius: 4,
-            }}
-            onMouseOver={(e) => { e.currentTarget.style.color = 'var(--danger)'; }}
-            onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-4)'; }}
-          >×</button>
+          <Tooltip content="Remove">
+            <button
+              type="button"
+              onClick={() => onRemove(i)}
+              aria-label="Remove"
+              style={{
+                background: 'transparent', border: 0, padding: 0,
+                color: 'var(--ink-4)', cursor: 'pointer',
+                display: 'inline-grid', placeItems: 'center',
+                width: 20, height: 20, borderRadius: 4,
+              }}
+              onMouseOver={(e) => { e.currentTarget.style.color = 'var(--danger)'; }}
+              onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-4)'; }}
+            >×</button>
+          </Tooltip>
         </div>
       ))}
     </div>

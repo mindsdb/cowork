@@ -6,7 +6,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
-import { Card } from '../ui';
+import { Card, Tooltip } from '../ui';
 import { fetchMemory, fetchArtifacts, countNonEmptyMemory } from '../../api';
 import { useRevealOnHover } from '../../hooks/useRevealOnHover';
 import { relativeAge } from '../../lib/formatTime';
@@ -223,55 +223,57 @@ export function ProjectCard({
         )}
 
         {/* Pin button — visible on hover for unpinned, always for pinned */}
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); onTogglePin?.(project, !pinned); }}
-          title={pinned ? 'Unpin project' : 'Pin project'}
-          aria-label={pinned ? 'Unpin project' : 'Pin project'}
-          aria-pressed={pinned}
-          style={{
-            width: 26, height: 26, borderRadius: 6,
-            background: 'transparent', border: 0,
-            color: pinned ? 'var(--accent)' : 'var(--ink-4)',
-            opacity: pinned || showHoverActions ? 1 : 0,
-            display: 'inline-grid', placeItems: 'center',
-            cursor: 'pointer', flexShrink: 0,
-            transition: 'opacity .15s ease, color .15s ease, background .15s ease',
-            font: 'inherit',
-          }}
-          onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-3)'; }}
-          onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; }}
-        >
-          {Ico.pin(13)}
-        </button>
+        <Tooltip content={pinned ? 'Unpin project' : 'Pin project'}>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onTogglePin?.(project, !pinned); }}
+            aria-label={pinned ? 'Unpin project' : 'Pin project'}
+            aria-pressed={pinned}
+            style={{
+              width: 26, height: 26, borderRadius: 6,
+              background: 'transparent', border: 0,
+              color: pinned ? 'var(--accent)' : 'var(--ink-4)',
+              opacity: pinned || showHoverActions ? 1 : 0,
+              display: 'inline-grid', placeItems: 'center',
+              cursor: 'pointer', flexShrink: 0,
+              transition: 'opacity .15s ease, color .15s ease, background .15s ease',
+              font: 'inherit',
+            }}
+            onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-3)'; }}
+            onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; }}
+          >
+            {Ico.pin(13)}
+          </button>
+        </Tooltip>
 
         {/* ⋯ menu trigger */}
-        <button
-          ref={triggerRef}
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            const rect = triggerRef.current?.getBoundingClientRect();
-            onMenuOpen?.(project, rect);
-          }}
-          title="Project menu"
-          aria-label="Project menu"
-          style={{
-            width: 26, height: 26, borderRadius: 6,
-            background: 'transparent', border: 0,
-            color: 'var(--ink-3)',
-            opacity: showHoverActions ? 1 : 0,
-            display: isReserved ? 'none' : 'inline-grid',
-            placeItems: 'center',
-            cursor: 'pointer', flexShrink: 0,
-            transition: 'opacity .15s ease, color .15s ease, background .15s ease',
-            font: 'inherit',
-          }}
-          onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-3)'; e.currentTarget.style.color = 'var(--ink)'; }}
-          onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-3)'; }}
-        >
-          {Ico.moreVert(15)}
-        </button>
+        <Tooltip content="Project menu">
+          <button
+            ref={triggerRef}
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              const rect = triggerRef.current?.getBoundingClientRect();
+              onMenuOpen?.(project, rect);
+            }}
+            aria-label="Project menu"
+            style={{
+              width: 26, height: 26, borderRadius: 6,
+              background: 'transparent', border: 0,
+              color: 'var(--ink-3)',
+              opacity: showHoverActions ? 1 : 0,
+              display: isReserved ? 'none' : 'inline-grid',
+              placeItems: 'center',
+              cursor: 'pointer', flexShrink: 0,
+              transition: 'opacity .15s ease, color .15s ease, background .15s ease',
+              font: 'inherit',
+            }}
+            onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-3)'; e.currentTarget.style.color = 'var(--ink)'; }}
+            onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-3)'; }}
+          >
+            {Ico.moreVert(15)}
+          </button>
+        </Tooltip>
       </div>
 
       {/* Activity block — clamp 2 lines. Falls back to a soft prompt

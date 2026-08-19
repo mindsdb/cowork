@@ -21,7 +21,7 @@ import { fetchAccountEmail } from './oauth-identity';
 import { openDrivePickerFlow, cancelCurrentDrivePicker, isValidDriveFileIds } from './drive-picker-service';
 import { getPickedFiles, savePickedFiles, verifyPickedFiles, type PickedFile } from './picked-files';
 import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefreshTokenStore, isAccessTokenExpired } from './token-store';
-import { refreshTokensOnly, writeMindsKeyToEnvAndRestart, provisionAntonApiKey, scheduleRefresh, cancelScheduledRefresh, endKeycloakSession, KEYCLOAK_AUTH_URL, KEYCLOAK_REGISTRATION_URL, KEYCLOAK_TOKEN_URL, SIGNUP_CALLBACK_TIMEOUT_MS } from './minds-auth';
+import { refreshTokensOnly, writeMindsKeyToEnvAndRestart, provisionAntonApiKey, scheduleRefresh, cancelScheduledRefresh, startKeyLifecycleChecks, cancelKeyLifecycleChecks, revokeDeviceKeyAndEndSession, getRevokeToken, KEYCLOAK_AUTH_URL, KEYCLOAK_REGISTRATION_URL, KEYCLOAK_TOKEN_URL, SIGNUP_CALLBACK_TIMEOUT_MS } from './minds-auth';
 import { scrubEnvCredentials } from './logout-env';
 import { MINDS_API_HOST } from './minds-urls';
 import { sendEvent } from './analytics';
@@ -30,12 +30,22 @@ import type { UpdateCheckResult } from './ui-updater';
 import { coworkHome, coworkEnvPath, coworkStatePath, migrateLegacyHome, readEnvFile, buildKind, buildKindStrict } from './cowork-home';
 import { checkChannelConsistency } from './channels';
 import { resolveChannelIconPath } from './app-icon';
-import { applyChannelUvIsolation } from './uv-paths';
+import { applyChannelUvIsolation, primeLoginShellPath } from './uv-paths';
 import { shellAutoUpdateEnabledFor } from './shell-auto-update-rollout';
 import { getServerAuthToken, authHeader, resetServerAuthTokenCache } from './server-auth';
 import { getAppDisplayVersion } from './server-source';
 import { extractProviderError, classifyOpenAICompatibleResult } from './provider-error';
 import { unifiedVersion, SKEW_WARN_DAYS } from '../shared/version';
+import { detectClaudeCode } from './coding-mode';
+import {
+  startCodingTerminal,
+  writeToCodingTerminal,
+  resizeCodingTerminal,
+  isCodingTerminalRunning,
+  killCodingTerminal,
+  killAllCodingTerminals,
+  removeCodingTask,
+} from './coding-terminal';
 
 function getAntonEnvPath(): string {
   return coworkEnvPath();
@@ -544,6 +554,7 @@ function createWindow() {
 
   mainWindow.on('closed', () => {
     mainWindow = null;
+    killAllCodingTerminals();
   });
 }
 
@@ -931,6 +942,9 @@ function setupIPC() {
       console.error('[mindshub:finalize] writeMindsKeyToEnvAndRestart failed:', err);
       return { ok: false, reason: `Failed to save MindsHub credentials: ${err?.message || err}` };
     }
+    // ENG-498: (re)arm the key lifecycle watch for this fresh sign-in —
+    // logout cancels it, and boot only starts it when already signed in.
+    startKeyLifecycleChecks();
     return { ok: true, apiKey: result.key };
   });
 
@@ -961,16 +975,26 @@ function setupIPC() {
     // ANTON_TERMS_CONSENT (the user already agreed) and non-credential
     // preferences (memory mode, theme, etc.).
     //
-    // SSO end-session is fire-and-forget — endKeycloakSession reads
-    // the refresh token before this returns, so it has what it needs
-    // even though we drop the local copy in the next line. We must
-    // NOT await it: when the dev Keycloak hangs (which has happened),
-    // a synchronous await freezes the whole logout, leaving the
-    // confirm modal stuck on "Signing out…" because the renderer is
-    // waiting on this IPC. The end-session call has its own 3s
-    // timeout regardless, so worst case it tidies up in background.
-    endKeycloakSession();
+    // We must NOT await the chain below: when the dev Keycloak hangs
+    // (which has happened), a synchronous await freezes the whole
+    // logout, leaving the confirm modal stuck on "Signing out…"
+    // because the renderer is waiting on this IPC.
+    //
+    // ENG-498: revoke THIS device's key while the session is still valid,
+    // then end the Keycloak session — one detached chain (see
+    // revokeDeviceKeyAndEndSession for the ordering rationale). Tokens are
+    // snapshotted here because clearTokens() below wipes them; the token
+    // fetch is bounded (~5s) so a dead IdP can't stall sign-out, in which
+    // case the key simply falls to the server-side TTL.
+    const revokeAccessToken = await getRevokeToken();
+    // Read the refresh token only AFTER the exchange above settles: a
+    // refresh inside getRevokeToken may ROTATE the persisted refresh token
+    // (see its NOTE), and reading earlier would hand end-session a
+    // superseded token.
+    const logoutRefreshToken = getRefreshToken();
+    void revokeDeviceKeyAndEndSession(revokeAccessToken, logoutRefreshToken);
     cancelScheduledRefresh();
+    cancelKeyLifecycleChecks();
     // Tear down any sign-in still waiting on its browser tab. Without
     // this, the loopback server stays armed for up to 3 minutes and
     // completing that stale tab silently signs the user back in after
@@ -1247,6 +1271,34 @@ function setupIPC() {
     }
   });
 
+  ipcMain.handle(IPC.CODING_DETECT_CLI, async () => {
+    return detectClaudeCode();
+  });
+
+  ipcMain.handle(IPC.CODING_TERMINAL_START, async (event, taskId: string, opts: { projectPath: string; message: string; model: string }, cols: number, rows: number) => {
+    return startCodingTerminal(taskId, opts, cols, rows, event.sender);
+  });
+
+  ipcMain.handle(IPC.CODING_TERMINAL_INPUT, async (_event, taskId: string, data: string) => {
+    writeToCodingTerminal(taskId, data);
+  });
+
+  ipcMain.handle(IPC.CODING_TERMINAL_RESIZE, async (_event, taskId: string, cols: number, rows: number) => {
+    resizeCodingTerminal(taskId, cols, rows);
+  });
+
+  ipcMain.handle(IPC.CODING_TERMINAL_IS_RUNNING, async (_event, taskId: string) => {
+    return isCodingTerminalRunning(taskId);
+  });
+
+  ipcMain.handle(IPC.CODING_TERMINAL_KILL, async (_event, taskId: string) => {
+    killCodingTerminal(taskId);
+  });
+
+  ipcMain.handle(IPC.CODING_REMOVE_TASK, async (_event, taskId: string, projectPath: string) => {
+    await removeCodingTask(taskId, projectPath);
+  });
+
   ipcMain.handle(IPC.APP_UI_VERSION, async () => {
     // `ui` is the OTA-activated bundle version, or null when running the
     // renderer bundled with the installer. The renderer resolves the effective
@@ -1257,6 +1309,10 @@ function setupIPC() {
       app: getAppDisplayVersion(),
       ui: uiVersion,
       source: uiVersion ? 'ota' : 'bundled',
+      // Which update ring this install is on — staging-ring builds
+      // (preview/stable) legitimately run rc server versions, and without
+      // this in the About panel such reports look like corruption.
+      buildKind: buildKind(),
     };
   });
 
@@ -1482,6 +1538,9 @@ app.whenReady().then(async () => {
   // checkConfigured() can await the real readiness without polling.
   let resolveBootServer: () => void = () => {};
   bootServerSettled = new Promise<void>((resolve) => { resolveBootServer = resolve; });
+  // Bounded by primeLoginShellPath()'s own timeout — checkInstallStatus and
+  // the server spawn below both resolve uv through the PATH it caches.
+  await primeLoginShellPath();
   checkInstallStatus().then(async ({ antonInstalled }) => {
     if (!antonInstalled) {
       console.log('[server] skipped: cowork-server not installed; setup screen will handle.');
@@ -1558,6 +1617,12 @@ app.whenReady().then(async () => {
     } else {
       console.error(`[server] start failed: ${result.reason}`);
     }
+    // ENG-498: watch this device's MindsHub key and renew it ahead of its
+    // TTL deadline. Armed even when the boot start failed: the check itself
+    // no-ops until the server is running/starting, so a sidecar the user
+    // starts manually later still gets its daily renewal ticks instead of
+    // staying disarmed until the next app launch.
+    startKeyLifecycleChecks();
     // A constrained OTA cache that booted bundled (fail-closed) is re-verified
     // and, if compatible, swapped in by the updater's boot check after the
     // server-update pass — see settleConstrainedCache in updater.ts.

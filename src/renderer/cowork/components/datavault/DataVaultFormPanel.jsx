@@ -16,14 +16,15 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
-import { Alert, Button } from '../ui';
+import { Alert, Button, Tooltip } from '../ui';
 import { DataVaultForm } from './DataVaultForm';
+import { providerNameFromSpec } from './methodHero';
 import {
   clearForm, getForm, patchForm, subscribe,
   getSelectedMethod, subscribeSelectedMethod, setSelectedMethod,
 } from './formStore';
 
-import { saveConnector, fetchDatasources, startConnectorOAuth, pollConnectorOAuth } from '../../api';
+import { discoverPostHogProjects, saveConnector, fetchDatasources, startConnectorOAuth, pollConnectorOAuth } from '../../api';
 import { host } from '../../../platform/host';
 import { trackDataSourceConnected } from '../../lib/analytics';
 
@@ -42,7 +43,7 @@ function getBrowserOAuthMethod(spec) {
 
 const FONT_BODY = 'var(--font-body)';
 
-export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNavigateToConnectors, highlighted = false }) {
+export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNavigateToConnectors, onClose, highlighted = false }) {
   const [spec, setSpec] = useState(() => getForm(conversationId));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -61,10 +62,11 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
   // than on the spec so server-side updates don't have to know
   // anything about UI dismissal state.
   const [dismissedStatus, setDismissedStatus] = useState(null);
-  // Active method for the panel chrome — when set, the header bar
-  // becomes the "← Back to options · <method>" breadcrumb. Source of
-  // truth lives in formStore so DataVaultForm can write it (on pick)
-  // and the panel can clear it (on "back").
+  // Active method for the panel chrome — when set (and not on the
+  // success screen), the header bar becomes the "← Back to options ·
+  // <method>" breadcrumb. Source of truth lives in formStore so
+  // DataVaultForm can write it (on pick) and the panel can clear it
+  // (on "back").
   const [activeMethodId, setActiveMethodId] = useState(
     () => (conversationId ? getSelectedMethod(conversationId) : null)
   );
@@ -223,11 +225,58 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
       return;
     }
 
+    // PostHog projects are account-scoped. Users know their project by name,
+    // not the numeric ID that the connector engine needs, so discover choices
+    // before posting the generic connector submission.
+    if (spec._connector_id === 'posthog' && kind === 'primary'
+      && !String(values?.project_id || '').trim()
+      && !String(values?.posthog_project_choice || '').trim()) {
+      setBusy(true);
+      try {
+        const result = await discoverPostHogProjects({
+          personalApiKey: values?.personal_api_key,
+          host: values?.host,
+          customHost: values?.custom_host,
+        });
+        const options = (result.projects || []).map((project) => ({
+          value: String(project.id),
+          label: project.name || `Project ${project.id}`,
+        }));
+        if (!options.length) {
+          throw new Error('No PostHog projects are available to this personal API key. Enter a project ID manually or check the key access.');
+        }
+        patchForm(conversationId, {
+          form_id: spec.form_id,
+          form_error: null,
+          subtitle: 'Choose the PostHog project to connect.',
+          methods: {
+            [authMethod || 'personal-api-key']: {
+              fields: {
+                posthog_project_choice: {
+                  name: 'posthog_project_choice',
+                  label: 'PostHog project',
+                  type: 'select',
+                  required: true,
+                  options,
+                  help: 'Choose the PostHog project to connect, or type its numeric ID directly in the Project ID field.',
+                },
+              },
+            },
+          },
+        });
+      } catch (err) {
+        setError(err?.message || 'Could not find PostHog projects.');
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
     // Built-in browser OAuth — user clicked Submit after filling any
     // required fields (e.g. developer token for Google Ads).
     if (authMethod === 'browser_oauth_builtin' && kind === 'primary') {
       const engine = spec.engine || spec._connector_id || 'google_drive';
-      const providerLabel = spec.label || 'Provider';
+      const providerLabel = providerNameFromSpec(spec);
       const successTitle = `${providerLabel} connected`;
       setBusy(true);
       setError('');
@@ -510,6 +559,20 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
 
     setBusy(true);
     try {
+      const submissionValues = { ...(values || {}) };
+      /* The discovered picker and the manual Project ID box both feed
+         `project_id`, so one of them has to win when both carry a value.
+         A typed id wins: it is the one still visible on screen, and a user
+         who picks a project and then types over it has corrected
+         themselves. `posthog_project_choice` is a UI-only field and never
+         reaches the wire either way. */
+      if (spec._connector_id === 'posthog') {
+        const typedProjectId = String(submissionValues.project_id || '').trim();
+        if (!typedProjectId && submissionValues.posthog_project_choice) {
+          submissionValues.project_id = submissionValues.posthog_project_choice;
+        }
+        delete submissionValues.posthog_project_choice;
+      }
       // Endpoint-as-agent path: hand the submission off to the
       // host (App.jsx → handleSubmitDataVaultForm). It opens an SSE
       // stream against /v1/datavault/submissions and pipes the
@@ -530,7 +593,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
           formSpec: wireMethodId
             ? { ...spec, auth_method: wireMethodId, selected_method: wireMethodId }
             : spec,
-          values: { ...(values || {}), user_label: userLabel },
+          values: { ...submissionValues, user_label: userLabel },
           skipped: skipped || [],
           name: connectionName,
           method: wireMethodId || null,
@@ -546,7 +609,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
           formId: spec.form_id,
           conversationId,
           formSpec: spec,
-          values: { ...(values || {}), user_label: userLabel },
+          values: { ...submissionValues, user_label: userLabel },
           skipped: skipped || [],
           name: connectionName,
           method: wireMethodId || null,
@@ -572,6 +635,9 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
   // a stuck/abandoned form is sitting there. Clears the form from
   // the conversation's store; the panel unmounts.
   const handleClose = () => {
+    // Host may own dismissal (e.g. returning the user to where they opened
+    // the connect flow, ENG-1534); fall back to a plain form-clear.
+    if (onClose) { onClose(conversationId); return; }
     if (conversationId) clearForm(conversationId);
   };
 
@@ -627,21 +693,24 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
         animation: 'dvf-appear 320ms cubic-bezier(0.2, 0.7, 0.2, 1) both',
       }}
     >
-      {/* Header bar — when a method is active, the bar IS the
-          "← Back to options · <method>" navigation. Otherwise it's
-          a plain "Connect" label. The X close button sits flush
-          right in either case. */}
+      {/* Header bar — during the connect flow it's the
+          "← Back to options · <method>" navigation (when a method is
+          active) or a plain "Connect" label. On the SUCCESS screen the
+          breadcrumb is dropped — the connection is done, there's nothing
+          to go back to — leaving just the close button (ENG-1534). The X
+          sits flush right in every case. */}
       <div style={{
         display: 'flex', alignItems: 'stretch',
         borderBottom: '1px solid var(--line)',
         minHeight: 42,
       }}>
-        {activeMethodSpec ? (
+        {spec._is_success ? (
+          <div style={{ flex: 1, minWidth: 0 }} />
+        ) : activeMethodSpec ? (
           <button
             type="button"
             onClick={onBackToOptions}
             disabled={busy}
-            title="Back to options"
             style={{
               flex: 1, minWidth: 0,
               display: 'flex', alignItems: 'center', gap: 8,
@@ -685,25 +754,26 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
             Connect
           </div>
         )}
-        <button
-          type="button"
-          onClick={handleClose}
-          title="Close form"
-          aria-label="Close form"
-          style={{
-            flexShrink: 0,
-            width: 38, alignSelf: 'stretch',
-            background: 'transparent', border: 0,
-            color: 'var(--ink-4)',
-            display: 'inline-grid', placeItems: 'center',
-            cursor: 'pointer',
-            transition: 'color 140ms ease, background 140ms ease',
-          }}
-          onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
-          onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-4)'; e.currentTarget.style.background = 'transparent'; }}
-        >
-          {Ico.close ? Ico.close(13) : <span style={{ fontSize: 16, lineHeight: 1 }}>×</span>}
-        </button>
+        <Tooltip content="Close form">
+          <button
+            type="button"
+            onClick={handleClose}
+            aria-label="Close form"
+            style={{
+              flexShrink: 0,
+              width: 38, alignSelf: 'stretch',
+              background: 'transparent', border: 0,
+              color: 'var(--ink-4)',
+              display: 'inline-grid', placeItems: 'center',
+              cursor: 'pointer',
+              transition: 'color 140ms ease, background 140ms ease',
+            }}
+            onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
+            onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-4)'; e.currentTarget.style.background = 'transparent'; }}
+          >
+            {Ico.close ? Ico.close(13) : <span style={{ fontSize: 16, lineHeight: 1 }}>×</span>}
+          </button>
+        </Tooltip>
       </div>
 
       <div style={{ padding: '10px 14px 14px' }}>
@@ -808,24 +878,25 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
                 <span style={{ minWidth: 0, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {spec.status_text}
                 </span>
-                <button
-                  type="button"
-                  onClick={() => setDismissedStatus(spec.status_text)}
-                  title="Dismiss"
-                  aria-label="Dismiss status"
-                  style={{
-                    width: 20, height: 20, borderRadius: 5,
-                    background: 'transparent', border: 0, padding: 0,
-                    color: 'var(--ink-4)',
-                    display: 'inline-grid', placeItems: 'center',
-                    cursor: 'pointer', flex: '0 0 20px',
-                    transition: 'color 120ms ease, background 120ms ease',
-                  }}
-                  onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
-                  onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-4)'; e.currentTarget.style.background = 'transparent'; }}
-                >
-                  {Ico.close ? Ico.close(11) : <span style={{ fontSize: 14, lineHeight: 1 }}>×</span>}
-                </button>
+                <Tooltip content="Dismiss">
+                  <button
+                    type="button"
+                    onClick={() => setDismissedStatus(spec.status_text)}
+                    aria-label="Dismiss status"
+                    style={{
+                      width: 20, height: 20, borderRadius: 5,
+                      background: 'transparent', border: 0, padding: 0,
+                      color: 'var(--ink-4)',
+                      display: 'inline-grid', placeItems: 'center',
+                      cursor: 'pointer', flex: '0 0 20px',
+                      transition: 'color 120ms ease, background 120ms ease',
+                    }}
+                    onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
+                    onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-4)'; e.currentTarget.style.background = 'transparent'; }}
+                  >
+                    {Ico.close ? Ico.close(11) : <span style={{ fontSize: 14, lineHeight: 1 }}>×</span>}
+                  </button>
+                </Tooltip>
               </div>
             )}
             <DataVaultForm
@@ -842,7 +913,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
                 if (method?.fields?.length) return;
                 // No fields — auto-start immediately on method selection.
                 const engine = spec.engine || spec._connector_id || 'google_drive';
-                const providerLabel = spec.label || 'Provider';
+                const providerLabel = providerNameFromSpec(spec);
                 const successTitle = `${providerLabel} connected`;
                 setBusy(true);
                 setError('');

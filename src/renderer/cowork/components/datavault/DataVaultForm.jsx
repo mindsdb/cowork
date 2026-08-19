@@ -31,7 +31,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
-import { Alert, Badge, Button, Checkbox, Select, Input, Textarea } from '../ui';
+import { Alert, Badge, Button, Checkbox, Collapsible, Select, Input, Textarea } from '../ui';
 import {
   setFormState,
   setSelectedMethod,
@@ -39,6 +39,7 @@ import {
   subscribeSelectedMethod,
 } from './formStore';
 import HowToModal from './HowToModal';
+import { computeHeroView, orderMethods } from './methodHero';
 import { host } from '../../../platform/host';
 import { ANTON_VAULT_KEEP } from '../../api';
 
@@ -46,15 +47,30 @@ const FONT_BODY    = 'var(--font-body)';
 const FONT_DISPLAY = 'var(--font-display)';
 const FONT_MONO    = 'var(--font-mono)';
 
-function FormLogo({ logo, logoUrl, color }) {
-  if (logoUrl) {
+function FormLogo({ logo, logoUrl, color, connectorId }) {
+  // Prefer the real brand mark: an explicit logo_url, else the static
+  // `logos/<connector_id>.svg` asset the connectors list uses (ENG-1534).
+  // The form spec's `logo_url` is often empty at runtime, which used to
+  // drop us to the generic `logo` glyph ("code" → "<>") on the
+  // "Authorize with <Provider>" button. On a missing/broken asset the
+  // `onError` swaps to the glyph, so connectors without an svg still look
+  // fine. `failedSrc` (not a boolean) means a new connector's src is
+  // retried rather than stuck on the previous one's failure.
+  const [failedSrc, setFailedSrc] = useState(null);
+  const src = logoUrl || (connectorId ? `logos/${connectorId}.svg` : null);
+  if (src && src !== failedSrc) {
     return (
       <span style={{
         display: 'inline-grid', placeItems: 'center',
         width: 36, height: 36, borderRadius: 8,
         background: 'var(--surface-2)',
       }}>
-        <img src={logoUrl} alt="" style={{ width: 22, height: 22, objectFit: 'contain' }} />
+        <img
+          src={src}
+          alt=""
+          onError={() => setFailedSrc(src)}
+          style={{ width: 22, height: 22, objectFit: 'contain' }}
+        />
       </span>
     );
   }
@@ -71,7 +87,7 @@ function FormLogo({ logo, logoUrl, color }) {
   );
 }
 
-function FieldInput({ field, value, onChange, disabled }) {
+function FieldInput({ field, value, onChange, disabled, inputRef }) {
   const baseStyle = {
     width: '100%', boxSizing: 'border-box',
     padding: '8px 10px', borderRadius: 7,
@@ -122,6 +138,7 @@ function FieldInput({ field, value, onChange, disabled }) {
   if (field.type === 'textarea') {
     return (
       <Textarea
+        ref={inputRef}
         value={displayValue}
         placeholder={placeholder}
         disabled={disabled}
@@ -159,6 +176,7 @@ function FieldInput({ field, value, onChange, disabled }) {
   // text, password, url, default
   return (
     <Input
+      ref={inputRef}
       type={field.type === 'password' ? 'password' : (field.type === 'url' ? 'url' : 'text')}
       value={displayValue}
       placeholder={placeholder}
@@ -238,6 +256,14 @@ export function DataVaultForm({
   // and easy to reset on a brand-new form.
   const [valuesByKey, setValuesByKey] = useState({});
   const [skippedByKey, setSkippedByKey] = useState({});
+  const [requiredErrorsByKey, setRequiredErrorsByKey] = useState({});
+  /* Focus target for the first field that fails the required check.
+     `fieldRefs` holds the real control, which is what we want the caret in,
+     but only `Input` and `Textarea` forward a ref — a `select` or `boolean`
+     field puts nothing there. `fieldContainerRefs` holds the wrapper, which
+     every field type has, so the error is at least scrolled into view. */
+  const fieldRefs = useRef({});
+  const fieldContainerRefs = useRef({});
 
   const initialFor = (fs) => {
     const out = {};
@@ -254,6 +280,7 @@ export function DataVaultForm({
       lastFormIdRef.current = spec?.form_id;
       setValuesByKey({});
       setSkippedByKey({});
+      setRequiredErrorsByKey({});
       setLocalSelectedMethod(null);
     }
   }, [spec?.form_id]);
@@ -261,6 +288,7 @@ export function DataVaultForm({
   const stateKey = `${spec?.form_id || ''}::${activeMethodId || 'default'}`;
   const values = valuesByKey[stateKey] || initialFor(fields);
   const skipped = skippedByKey[stateKey] || new Set();
+  const requiredErrors = requiredErrorsByKey[stateKey] || {};
 
   // Publish a redacted snapshot of the form state so the chat layer
   // can inject context into messages sent during a connect task.
@@ -369,6 +397,12 @@ export function DataVaultForm({
 
   const updateField = (name, v) => {
     setValues((prev) => ({ ...prev, [name]: v }));
+    setRequiredErrorsByKey((prev) => {
+      if (!prev[stateKey]?.[name]) return prev;
+      const next = { ...prev[stateKey] };
+      delete next[name];
+      return { ...prev, [stateKey]: next };
+    });
     setSkipped((prev) => {
       if (!prev.has(name)) return prev;
       const next = new Set(prev);
@@ -391,6 +425,39 @@ export function DataVaultForm({
       onAction({ id: action.id, kind: 'cancel' });
       return;
     }
+    if (action.kind === 'primary') {
+      const missing = fields.filter((field) => {
+        if (!field.required || skipped.has(field.name)) return false;
+        /* PostHog resolves its numeric project ID from the user's personal
+           API key in the panel before the connector request is sent, and the
+           user can supply it either by picking from the discovered list or by
+           typing it directly. So require one of the two rather than both.
+           Until discovery has added the choice field an empty `project_id` is
+           what triggers discovery, so nothing is required yet; once the choice
+           exists, a submit with neither filled in has to say so instead of
+           running discovery a second time. */
+        if (spec?._connector_id === 'posthog'
+          && (field.name === 'project_id' || field.name === 'posthog_project_choice')) {
+          if (!fields.some((f) => f.name === 'posthog_project_choice')) return false;
+          const supplied = String(values.project_id || '').trim()
+            || String(values.posthog_project_choice || '').trim();
+          return !supplied && field.name === 'posthog_project_choice';
+        }
+        const value = values[field.name];
+        return value === null || value === undefined || String(value).trim() === '';
+      });
+      if (missing.length) {
+        const errors = Object.fromEntries(
+          missing.map((field) => [field.name, `${field.label || field.name} is required.`]),
+        );
+        setRequiredErrorsByKey((prev) => ({ ...prev, [stateKey]: errors }));
+        requestAnimationFrame(() => {
+          const name = missing[0].name;
+          (fieldRefs.current[name] || fieldContainerRefs.current[name])?.focus?.();
+        });
+        return;
+      }
+    }
     // Strip any field marked as skipped from the values payload.
     const cleanValues = {};
     for (const k of Object.keys(values)) {
@@ -406,6 +473,22 @@ export function DataVaultForm({
       // to test and to write into the saved connection.
       authMethod: activeMethodId || null,
     });
+  };
+
+  // One-click "Authorize with <Provider>" from the picker (ENG-1534).
+  // Selects the recommended in-browser OAuth method — same as a plain
+  // card pick — which is enough on its own: the host's onMethodChange
+  // already auto-starts the connect immediately for a fields-less
+  // method (see DataVaultFormPanel). We must NOT also dispatch onAction
+  // here: for `browser_oauth_builtin` that hits handleAction's own
+  // auto-start branch too, so a single hero click would launch the
+  // OAuth flow twice concurrently. Only wired for fields-less methods
+  // (see MethodPicker), so a method with required fields still reveals
+  // them first via the normal pick-then-submit path.
+  const authorizeWithMethod = (method) => {
+    if (!method) return;
+    setLocalSelectedMethod(method.id);
+    onMethodChange?.(method.id);
   };
 
   return (
@@ -424,7 +507,7 @@ export function DataVaultForm({
           "Pick how you want to connect:" caption). */}
       {!(isMultiMethod && !activeMethod) && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <FormLogo logo={spec.logo} logoUrl={spec.logo_url} color={spec.logo_color} />
+          <FormLogo logo={spec.logo} logoUrl={spec.logo_url} color={spec.logo_color} connectorId={spec._connector_id || spec.engine} />
           <div style={{ minWidth: 0, flex: 1 }}>
             <div className="s-h3" style={{
               color: 'var(--ink)',
@@ -468,11 +551,13 @@ export function DataVaultForm({
           server-pre-selected). User clicks a card to pick. */}
       {isMultiMethod && !activeMethod && (
         <MethodPicker
+          spec={spec}
           methods={visibleMethods}
           onPick={(id) => {
             setLocalSelectedMethod(id);
             onMethodChange?.(id);
           }}
+          onAuthorize={authorizeWithMethod}
           busy={busy}
         />
       )}
@@ -513,7 +598,12 @@ export function DataVaultForm({
           // the skip affordance.
           const isLocked = !!f._locked;
           return (
-            <div key={f.name} style={{ display: 'flex', flexDirection: 'column', gap: 4, opacity: isSkipped ? 0.55 : 1 }}>
+            <div
+              key={f.name}
+              ref={(node) => { fieldContainerRefs.current[f.name] = node; }}
+              tabIndex={-1}
+              style={{ display: 'flex', flexDirection: 'column', gap: 4, opacity: isSkipped ? 0.55 : 1, outline: 'none' }}
+            >
               <div style={{
                 display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
                 gap: 8,
@@ -555,6 +645,7 @@ export function DataVaultForm({
                   value={values[f.name]}
                   onChange={(v) => updateField(f.name, v)}
                   disabled={busy || isLocked}
+                  inputRef={(node) => { fieldRefs.current[f.name] = node; }}
                 />
               )}
               {isSkipped && (
@@ -566,10 +657,10 @@ export function DataVaultForm({
                   fontFamily: FONT_BODY, fontStyle: 'italic',
                 }}>Skipped — the agent will figure this one out.</div>
               )}
-              {f.error && !isSkipped && (
+              {(requiredErrors[f.name] || f.error) && !isSkipped && (
                 <div style={{
                   fontSize: 11.5, color: 'var(--danger)',
-                }}>{f.error}</div>
+                }}>{requiredErrors[f.name] || f.error}</div>
               )}
               {f.warning && !isSkipped && (
                 <div style={{
@@ -725,31 +816,116 @@ export function DataVaultForm({
 // description, and an optional "Recommended" pill. Click selects
 // the method (host pulls the choice into local state and the form
 // switches to the picked method's fields).
-function MethodPicker({ methods, onPick, busy }) {
+function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
   // When a method exposes `how_to` markdown, clicking the help
   // affordance opens an in-app modal instead of an external URL.
   // We hold the active method so the modal can show its title.
   const [howToFor, setHowToFor] = useState(null);
-  // Recommended methods float to the top — relative order within
-  // each group is preserved (stable sort). Spec authors signal the
-  // simplest path with `recommended: true`; the picker should lead
-  // with it.
-  const orderedMethods = (() => {
-    if (!Array.isArray(methods)) return [];
-    const recommended = methods.filter((m) => m && m.recommended);
-    const rest = methods.filter((m) => !m || !m.recommended);
-    return [...recommended, ...rest];
-  })();
-  return (
-    <div style={{
-      display: 'flex', flexDirection: 'column', gap: 8,
-    }}>
-      <div style={{
-        fontSize: 12.5, color: 'var(--ink-3)', marginBottom: 2,
-      }}>
-        Pick how you want to connect:
+  // ── Hero promotion (ENG-1534) ───────────────────────────────────
+  // Lead with the single recommended method as a prominent button, and
+  // tuck the rest under a quiet "See other options" disclosure — so an
+  // OAuth connector reads as one obvious "Authorize with X" action
+  // instead of a menu of technical-sounding cards. Recommended methods
+  // already float to the front (stable). Decision logic lives in the
+  // pure, unit-tested `computeHeroView`.
+  const { hero, rest, heroOneClick, heroLabel, heroHelper, providerName } =
+    computeHeroView(methods, spec);
+  const orderedMethods = orderMethods(methods);
+
+  const helpFor = (m) => {
+    const hasHowTo = typeof m.how_to === 'string' && m.how_to.trim().length > 0;
+    const hasHelp = hasHowTo || !!m.help_url;
+    const handleHelp = (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      if (hasHowTo) setHowToFor(m);
+      else if (m.help_url) {
+        try { host.openExternal(m.help_url); }
+        catch { window.open(m.help_url, '_blank', 'noreferrer'); }
+      }
+    };
+    return { hasHowTo, hasHelp, handleHelp };
+  };
+
+  const renderHero = () => {
+    const { hasHelp, hasHowTo, handleHelp } = helpFor(hero);
+    const label = heroLabel;
+    const helper = heroHelper;
+    const onHeroClick = () => {
+      if (busy) return;
+      if (heroOneClick) onAuthorize?.(hero);
+      else onPick?.(hero.id);
+    };
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onHeroClick}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 12,
+            width: '100%', textAlign: 'left',
+            padding: '12px 14px', borderRadius: 10,
+            background: 'color-mix(in srgb, var(--accent) 12%, var(--surface))',
+            border: '1px solid color-mix(in srgb, var(--accent) 45%, transparent)',
+            color: 'var(--ink)', cursor: busy ? 'not-allowed' : 'pointer',
+            fontFamily: FONT_BODY, minWidth: 0,
+            transition: 'transform 120ms ease, background 120ms ease, border-color 120ms ease',
+            outline: 'none',
+          }}
+          onMouseOver={(e) => { if (!busy) e.currentTarget.style.transform = 'translateY(-1px)'; }}
+          onMouseOut={(e) => { e.currentTarget.style.transform = 'translateY(0)'; }}
+          onFocus={(e) => { e.currentTarget.style.boxShadow = '0 0 0 2px var(--accent)'; }}
+          onBlur={(e) => { e.currentTarget.style.boxShadow = 'none'; }}
+        >
+          <FormLogo logo={spec?.logo} logoUrl={spec?.logo_url} color={spec?.logo_color} connectorId={spec?._connector_id || spec?.engine} />
+          <span style={{
+            display: 'flex', flexDirection: 'column', gap: 2,
+            minWidth: 0, flex: '1 1 auto', overflowWrap: 'anywhere', wordBreak: 'break-word',
+          }}>
+            <span style={{ fontWeight: 600, fontSize: 14.5, color: 'var(--ink)' }}>
+              {busy ? 'Working…' : label}
+            </span>
+            {helper && !busy && (
+              <span style={{ fontSize: 11.5, fontWeight: 400, color: 'var(--ink-3)', lineHeight: 1.35 }}>
+                {helper}
+              </span>
+            )}
+          </span>
+        </button>
+        {hasHelp && (
+          hasHowTo ? (
+            <button
+              type="button"
+              onClick={handleHelp}
+              style={{
+                alignSelf: 'flex-start', fontSize: 11.5, color: 'var(--accent)',
+                background: 'transparent', border: 0, padding: 0, cursor: 'pointer',
+                fontWeight: 500, fontFamily: 'inherit',
+              }}
+              onMouseOver={(e) => { e.currentTarget.style.textDecoration = 'underline'; }}
+              onMouseOut={(e) => { e.currentTarget.style.textDecoration = 'none'; }}
+            >How to?</button>
+          ) : (
+            <a
+              href={hero.help_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={handleHelp}
+              style={{
+                alignSelf: 'flex-start', fontSize: 11.5, color: 'var(--accent)',
+                textDecoration: 'none', fontWeight: 500,
+              }}
+              onMouseOver={(e) => { e.currentTarget.style.textDecoration = 'underline'; }}
+              onMouseOut={(e) => { e.currentTarget.style.textDecoration = 'none'; }}
+            >How to?</a>
+          )
+        )}
       </div>
-      {orderedMethods.map((m) => {
+    );
+  };
+
+  const renderCard = (m) => {
         const hasHowTo = typeof m.how_to === 'string' && m.how_to.trim().length > 0;
         const hasHelp = hasHowTo || !!m.help_url;
         const handleHelp = (e) => {
@@ -914,7 +1090,50 @@ function MethodPicker({ methods, onPick, busy }) {
             )}
           </div>
         );
-      })}
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {hero ? (
+        // Lead with the recommended method as a prominent button; the
+        // rest fold away under a quiet disclosure (ENG-1534).
+        <>
+          {renderHero()}
+          {rest.length > 0 && (
+            <Collapsible
+              hideChevron
+              triggerClassName="justify-center"
+              panelClassName="pt-2"
+              title={(
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+                  width: '100%', fontSize: 11.5, color: 'var(--ink-3)',
+                }}>
+                  See other options to connect {providerName}
+                  <span
+                    className="inline-flex transition-transform duration-200 group-data-[panel-open]:rotate-180"
+                    aria-hidden
+                  >
+                    {Ico.chevDown(13)}
+                  </span>
+                </span>
+              )}
+            >
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {rest.map(renderCard)}
+              </div>
+            </Collapsible>
+          )}
+        </>
+      ) : (
+        // No recommended method — fall back to today's flat card list.
+        <>
+          <div style={{ fontSize: 12.5, color: 'var(--ink-3)', marginBottom: 2 }}>
+            Pick how you want to connect:
+          </div>
+          {orderedMethods.map(renderCard)}
+        </>
+      )}
 
       <HowToModal
         open={!!howToFor}

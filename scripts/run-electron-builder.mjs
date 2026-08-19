@@ -15,7 +15,7 @@ const displayVersion = readFileSync(
 const { calVerToUpdaterSemVer } = await import(
   pathToFileURL(join(root, 'dist', 'main', 'shared', 'version.js')).href
 );
-const { resolveShellUpdateFeed, shellUpdaterCacheDirName, resolveWindowsPublisherNames } = await import(
+const { resolveShellUpdateFeed, shellUpdaterCacheDirName, resolveWindowsPublisherNames, SHELL_UPDATE_CHANNEL } = await import(
   pathToFileURL(join(root, 'dist', 'main', 'shared', 'shell-update-feed.js')).href
 );
 
@@ -60,6 +60,9 @@ if (feed && !skipFeedConfig) {
   const lines = [
     'provider: generic',
     `url: ${feed.url}`,
+    // Fixed channel matching the published manifest name (see
+    // SHELL_UPDATE_CHANNEL); the afterPack hook re-asserts it on the package.
+    `channel: ${SHELL_UPDATE_CHANNEL}`,
     `updaterCacheDirName: ${shellUpdaterCacheDirName(feed.channel)}`,
   ];
   if (publisherNames.length) {
@@ -81,6 +84,8 @@ if (feed && !skipFeedConfig) {
   builderArgs.push(
     '-c.publish.provider=generic',
     `-c.publish.url=${feed.url}`,
+    // Keep PublishManager's regenerated app-update.yml on the same fixed channel.
+    `-c.publish.channel=${SHELL_UPDATE_CHANNEL}`,
   );
   // publisherName on the publish config (win.publisherName is rejected by
   // electron-builder 26's schema); electron-builder writes it into the

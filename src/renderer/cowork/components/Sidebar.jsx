@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import Ico from './Icons';
-import { Spinner, Kbd, Badge, Input, Button } from './ui';
+import { Spinner, Kbd, Badge, Input, Button, Tooltip } from './ui';
 import { TaskMenu } from './TaskMenu';
 import RecentsModal from './RecentsModal';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { host } from '../../platform/host';
 import { relativeAge } from '../lib/formatTime';
+import { useAccountUser } from '../hooks/useAccountUser';
+import UserMenu from './UserMenu';
 import OnboardingChecklist from './onboarding/OnboardingChecklist';
 import FirstArtifactTip from './onboarding/FirstArtifactTip';
 
@@ -143,7 +145,7 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
           >
             {isActive ? (
               <span
-                className="pulse-dot inline-block w-[7px] h-[7px] rounded-full bg-accent shadow-[0_0_0_2px_color-mix(in_srgb,var(--sage-500)_18%,transparent)]"
+                className="pulse-dot inline-block w-[7px] h-[7px] mr-[7.5px] rounded-full bg-accent shadow-[0_0_0_2px_color-mix(in_srgb,var(--sage-500)_18%,transparent)]"
                 title={`${agentLabel || 'Anton'} is working on this task`}
                 aria-label="Active"
               />
@@ -230,24 +232,11 @@ export default function Sidebar({
   onDownloadShellUpdate,
   onDismissShellUpdate,
   agentLabel,
-  // Light/dark theme + 8-bit skin toggles — the sidebar footer hosts
-  // both switches (relocated from the old floating bottom-right
-  // buttons; see App.jsx). Defaults keep the buttons harmless if a
-  // caller (e.g. a test) doesn't wire them up.
-  theme = 'dark',
-  onToggleTheme,
-  skin = 'normal',
-  onToggleSkin,
-  // Whether the 8-bit button should render "on". While skin === 'custom',
-  // the caller repurposes onToggleSkin to flip the mono font instead of
-  // skin itself, so "on" needs to track that font choice, not `skin`.
-  // Defaults to the plain skin-based reading for callers that don't pass it.
-  is8bitActive,
-  // Settings → Appearance → Theme/8-bit toggle buttons. Hide either
-  // footer button independently; both default to shown.
-  showThemeToggle = true,
-  show8bitToggle = true,
   settingsActive = false,
+  // Signed-in state, pushed from App — the user-menu hook re-reads the
+  // access token when this flips (ENG-761 pattern), so the footer swaps
+  // between the plain Settings row and the account row without a reload.
+  isSsoConnected = false,
   // Settings → Personalization → Show nav-panel counters. When
   // false, hide the per-nav badge counts AND the time-since slot
   // on each Recent row. Default true.
@@ -266,6 +255,18 @@ export default function Sidebar({
   artifactTipOpen = false,
   onArtifactTipDismiss,
 }) {
+  // Signed-in account identity (null when signed out) — decides whether the
+  // footer shows the account row + user menu or the plain Settings row.
+  const accountUser = useAccountUser(isSsoConnected);
+
+  // Footer states. The status pill wins over everything (Electron-only, the
+  // server needs attention); otherwise a signed-in user gets the account row.
+  // The quick toggles are keyed off "is the user menu actually rendered", not
+  // "is the user signed in" — while the pill shows, the menu (which hosts the
+  // theme switch) isn't on screen, so the toggles must stay.
+  const showsStatusPill = !host.isWeb && (!serverOnline || serverBusy);
+  const showsUserMenu = !showsStatusPill && !!accountUser;
+
   // Decorate every task with its pinned state. Tasks come from the
   // conversations endpoint which doesn't know about pins (they live
   // in a separate /pins store), so without this the menu shows
@@ -398,12 +399,6 @@ export default function Sidebar({
     })
     .slice(0, 8);
 
-  // "On" state for the 8-bit button: while skin === 'custom', onToggleSkin
-  // is repurposed to flip the mono font (see App.jsx) rather than skin
-  // itself, so the caller passes is8bitActive to track that. Falls back to
-  // the plain skin-based reading for callers that don't pass it (tests).
-  const resolved8bitActive = is8bitActive ?? (skin !== 'normal');
-
   return (
     <aside
       className={`app-sidebar${collapsed ? ' collapsed' : ''} shrink-0 h-full bg-[var(--sidebar-bg,var(--surface))] border border-solid border-line rounded-[14px] shadow-sh-2 origin-left flex flex-col overflow-hidden will-change-[width,opacity,transform,filter] [transition:width_380ms_cubic-bezier(0.22,1,0.36,1),opacity_260ms_cubic-bezier(0.32,0.72,0,1),transform_420ms_cubic-bezier(0.22,1,0.36,1),filter_240ms_cubic-bezier(0.32,0.72,0,1)]`}
@@ -464,54 +459,52 @@ export default function Sidebar({
             {(() => {
               const canToggle = typeof onToggleCollapsed === 'function';
               return (
-                <button
-                  className="icon-btn [-webkit-app-region:no-drag] origin-center"
-                  onClick={canToggle ? onToggleCollapsed : undefined}
-                  disabled={!canToggle}
-                  aria-hidden={canToggle ? undefined : 'true'}
-                  tabIndex={canToggle ? undefined : -1}
-                  title={
-                    canToggle
-                      ? `${collapsed ? 'Expand sidebar' : 'Collapse sidebar'}  (${shortcut('B')})`
-                      : undefined
-                  }
-                  aria-label={canToggle ? (collapsed ? 'Expand sidebar' : 'Collapse sidebar') : undefined}
-                  style={{
-                    // All dynamic (canToggle-gated), plus `transition` stays
-                    // inline: .icon-btn sets its own `transition: background
-                    // .12s, color .12s` — a Tailwind class would lose that
-                    // cascade tie (same specificity, .icon-btn declared later
-                    // in the stylesheet), silently dropping this custom
-                    // opacity/transform/filter transition.
-                    opacity: canToggle ? 1 : 0,
-                    // Slight scale + tilt + blur on hide so the
-                    // motion is recognisable from the corner of the
-                    // eye but never noisy. Origin pinned to center
-                    // so the slot's geometry stays symmetric.
-                    transform: canToggle
-                      ? 'scale(1) rotate(0deg)'
-                      : 'scale(0.72) rotate(-8deg)',
-                    filter: canToggle ? 'blur(0)' : 'blur(2px)',
-                    pointerEvents: canToggle ? 'auto' : 'none',
-                    cursor: canToggle ? 'pointer' : 'default',
-                    transition:
-                      'opacity 220ms cubic-bezier(0.32, 0.72, 0, 1), ' +
-                      'transform 320ms cubic-bezier(0.22, 1, 0.36, 1), ' +
-                      'filter 220ms cubic-bezier(0.32, 0.72, 0, 1)',
-                  }}
-                >
-                  {collapsed ? Ico.sidebarExpandRight(15) : Ico.sidebarCollapseLeft(15)}
-                </button>
+                <Tooltip content={canToggle ? `${collapsed ? 'Expand sidebar' : 'Collapse sidebar'}  (${shortcut('B')})` : ''}>
+                  <button
+                    className="icon-btn [-webkit-app-region:no-drag] origin-center"
+                    onClick={canToggle ? onToggleCollapsed : undefined}
+                    disabled={!canToggle}
+                    aria-hidden={canToggle ? undefined : 'true'}
+                    tabIndex={canToggle ? undefined : -1}
+                    aria-label={canToggle ? (collapsed ? 'Expand sidebar' : 'Collapse sidebar') : undefined}
+                    style={{
+                      // All dynamic (canToggle-gated), plus `transition` stays
+                      // inline: .icon-btn sets its own `transition: background
+                      // .12s, color .12s` — a Tailwind class would lose that
+                      // cascade tie (same specificity, .icon-btn declared later
+                      // in the stylesheet), silently dropping this custom
+                      // opacity/transform/filter transition.
+                      opacity: canToggle ? 1 : 0,
+                      // Slight scale + tilt + blur on hide so the
+                      // motion is recognisable from the corner of the
+                      // eye but never noisy. Origin pinned to center
+                      // so the slot's geometry stays symmetric.
+                      transform: canToggle
+                        ? 'scale(1) rotate(0deg)'
+                        : 'scale(0.72) rotate(-8deg)',
+                      filter: canToggle ? 'blur(0)' : 'blur(2px)',
+                      pointerEvents: canToggle ? 'auto' : 'none',
+                      cursor: canToggle ? 'pointer' : 'default',
+                      transition:
+                        'opacity 220ms cubic-bezier(0.32, 0.72, 0, 1), ' +
+                        'transform 320ms cubic-bezier(0.22, 1, 0.36, 1), ' +
+                        'filter 220ms cubic-bezier(0.32, 0.72, 0, 1)',
+                    }}
+                  >
+                    {collapsed ? Ico.sidebarExpandRight(15) : Ico.sidebarCollapseLeft(15)}
+                  </button>
+                </Tooltip>
               );
             })()}
-            <button
-              className="icon-btn [-webkit-app-region:no-drag]"
-              onClick={onOpenSearch}
-              title={`Search  (${shortcut('K')})`}
-              aria-label="Search"
-            >
-              {Ico.search(15)}
-            </button>
+            <Tooltip content={`Search  (${shortcut('K')})`}>
+              <button
+                className="icon-btn [-webkit-app-region:no-drag]"
+                onClick={onOpenSearch}
+                aria-label="Search"
+              >
+                {Ico.search(15)}
+              </button>
+            </Tooltip>
           </div>
           <span
             aria-hidden="true"
@@ -556,7 +549,6 @@ export default function Sidebar({
             block
             size="lg"
             onClick={onNewTask}
-            title={`New task  (${shortcut('N')})`}
             // cascade-forced: .btn sets `gap: 6px`; match the nav rows' 9px.
             style={{ gap: 9 }}
           >
@@ -659,22 +651,23 @@ export default function Sidebar({
           onMouseLeave={() => setRecentsHeadingHover(false)}
         >
           <span className="flex-1">RECENT TASKS</span>
-          <button
-            type="button"
-            className="recents-viewall bg-transparent border-0 p-0 font-[family-name:var(--font-body)] text-xs tracking-[0.02em] normal-case"
-            onClick={() => onNavigate?.('tasks')}
-            style={{
-              // Dynamic: hover state (recentsHeadingHover), driven by the
-              // parent row's onMouseEnter/onMouseLeave above.
-              cursor: recentsHeadingHover ? 'pointer' : 'default',
-              opacity: recentsHeadingHover ? 1 : 0,
-              transform: recentsHeadingHover ? 'translateX(0)' : 'translateX(2px)',
-              pointerEvents: recentsHeadingHover ? 'auto' : 'none',
-            }}
-            title="View all tasks"
-          >
-            View all →
-          </button>
+          <Tooltip content="View all tasks">
+            <button
+              type="button"
+              className="recents-viewall bg-transparent border-0 p-0 font-[family-name:var(--font-body)] text-xs tracking-[0.02em] normal-case"
+              onClick={() => onNavigate?.('tasks')}
+              style={{
+                // Dynamic: hover state (recentsHeadingHover), driven by the
+                // parent row's onMouseEnter/onMouseLeave above.
+                cursor: recentsHeadingHover ? 'pointer' : 'default',
+                opacity: recentsHeadingHover ? 1 : 0,
+                transform: recentsHeadingHover ? 'translateX(0)' : 'translateX(2px)',
+                pointerEvents: recentsHeadingHover ? 'auto' : 'none',
+              }}
+            >
+              View all →
+            </button>
+          </Tooltip>
         </div>
         <div className="scroll-clean px-2.5 flex-1 min-h-0 overflow-y-auto flex flex-col gap-px">
           {recents.map((t) => {
@@ -797,10 +790,10 @@ export default function Sidebar({
             and is dismissible per-version (ENG-849). */}
         {shellUpdate && (!shellAutoUpdate || shellAutoUpdate.phase === 'disabled') && (
           <div className="mt-0 mx-2.5 mb-1.5 py-2 px-3 bg-[color-mix(in_srgb,var(--sage-500)_12%,transparent)] border border-solid border-[color-mix(in_srgb,var(--sage-500)_30%,transparent)] rounded-lg flex items-center gap-2 w-[calc(100%-20px)] [-webkit-app-region:no-drag]">
+            <Tooltip content={`A new version of MindsHub Cowork is available${shellUpdate.version ? ` (${shellUpdate.version})` : ''} — download the installer, then quit the app and open it to update`}>
             <button
               type="button"
               onClick={onDownloadShellUpdate}
-              title={`A new version of MindsHub Cowork is available${shellUpdate.version ? ` (${shellUpdate.version})` : ''} — download the installer, then quit the app and open it to update`}
               className="flex-1 flex items-center gap-2 bg-transparent border-0 p-0 m-0 cursor-pointer text-left font-[inherit]"
             >
               <span className="w-1.5 h-1.5 rounded-full bg-[var(--sage-500,#5D9287)] shrink-0" />
@@ -811,26 +804,26 @@ export default function Sidebar({
                 Download
               </span>
             </button>
-            <button
-              type="button"
-              onClick={onDismissShellUpdate}
-              aria-label="Dismiss update notice"
-              title="Dismiss"
-              className="bg-transparent border-0 py-0 px-0.5 m-0 cursor-pointer text-ink-3 text-[14px] leading-none shrink-0"
-            >
-              ×
-            </button>
+            </Tooltip>
+            <Tooltip content="Dismiss">
+              <button
+                type="button"
+                onClick={onDismissShellUpdate}
+                aria-label="Dismiss update notice"
+                className="bg-transparent border-0 py-0 px-0.5 m-0 cursor-pointer text-ink-3 text-base leading-none shrink-0"
+              >
+                ×
+              </button>
+            </Tooltip>
           </div>
         )}
 
-        {/* Footer — always rendered so the theme toggle (relocated here
-            from the old floating bottom-right button) is reachable on
-            both Electron and the hosted web shell. The settings /
-            backend-status controls stay Electron-only: the FastAPI
-            process IS the host on web, so start/stop/diagnostics don't
-            apply. Settings itself is NOT Electron-only any more — the web
-            shell used to hide it entirely, which also hid the only
-            workaround for ENG-1042; see the gate below (ENG-932).
+        {/* Footer — the settings / backend-status controls stay
+            Electron-only: the FastAPI process IS the host on web, so
+            start/stop/diagnostics don't apply. Settings itself is NOT
+            Electron-only any more — the web shell used to hide it
+            entirely, which also hid the only workaround for ENG-1042;
+            see the gate below (ENG-932).
 
             Normal state: a settings nav row — no server noise when everything
             is working fine.
@@ -844,79 +837,78 @@ export default function Sidebar({
               only user-side workaround for a turn that burns its whole
               output budget and returns nothing (ENG-1042). So web always
               gets the plain Settings row; only the pill is gated. */}
-          {(!host.isWeb && (!serverOnline || serverBusy)) ? (
+          {showsStatusPill ? (
               <>
-                <button
-                  type="button"
-                  className={
-                    'backend-status-control is-clickable flex-1 [-webkit-app-region:no-drag]' +
-                    (serverBusy ? ' is-busy' : '')
-                  }
-                  onClick={onShowServerHelp}
-                  title="Backend status — click for details"
-                  aria-label="Backend status — click for details"
-                >
-                  <span className={'status-dot' + (serverBusy ? ' busy' : ' offline')} />
-                  <span className="status-text">
-                    <span className="status-text__faded">backend ·</span>{' '}
-                    {serverBusy ? (
-                      <>
-                        <span className="status-text__live">{serverBusyKind}</span>{' '}
-                        <Spinner />
-                      </>
-                    ) : (
-                      <span className="status-text__faded">offline</span>
-                    )}
-                  </span>
-                </button>
-                <button
-                  className={'chrome-btn--small shrink-0 [-webkit-app-region:no-drag]' + (settingsActive ? ' is-on' : '')}
-                  onClick={() => onNavigate('settings:backend')}
-                  title="Settings"
-                  aria-label="Settings"
-                >
-                  {Ico.settings(13)}
-                </button>
+                <Tooltip content="Backend status — click for details">
+                  <button
+                    type="button"
+                    className={
+                      'backend-status-control is-clickable flex-1 [-webkit-app-region:no-drag]' +
+                      (serverBusy ? ' is-busy' : '')
+                    }
+                    onClick={onShowServerHelp}
+                    aria-label="Backend status — click for details"
+                  >
+                    <span className={'status-dot' + (serverBusy ? ' busy' : ' offline')} />
+                    <span className="status-text">
+                      <span className="status-text__faded">backend ·</span>{' '}
+                      {serverBusy ? (
+                        <>
+                          <span className="status-text__live">{serverBusyKind}</span>{' '}
+                          <Spinner />
+                        </>
+                      ) : (
+                        <span className="status-text__faded">offline</span>
+                      )}
+                    </span>
+                  </button>
+                </Tooltip>
+                <Tooltip content="Settings">
+                  <button
+                    className={'chrome-btn--small shrink-0 [-webkit-app-region:no-drag]' + (settingsActive ? ' is-on' : '')}
+                    onClick={() => onNavigate('settings:backend')}
+                    aria-label="Settings"
+                  >
+                    {Ico.settings(13)}
+                  </button>
+                </Tooltip>
+              </>
+            ) : showsUserMenu ? (
+              // Signed in: the account row + user menu (ENG-1408), curated to
+              // the account destinations (Settings, Billing & Usage, Members,
+              // Help & Feedback, Logout).
+              <>
+                <UserMenu
+                  user={accountUser}
+                  onOpenSettings={() => onNavigate('settings')}
+                />
+                {/* Quick shortcut — kept visible even with the user menu
+                    present, so Settings stays one click away rather than
+                    buried behind opening the menu first. The status-pill
+                    and signed-out states already show a Settings button
+                    directly, so this only adds value here. Display
+                    settings (theme/8-bit/coding mode) moved to the
+                    floating corner button — see App.jsx. */}
+                <Tooltip content="Settings">
+                  <button
+                    className="chrome-btn--small shrink-0 ml-auto [-webkit-app-region:no-drag]"
+                    onClick={() => onNavigate('settings')}
+                    aria-label="Open Settings"
+                  >
+                    {Ico.settings(15)}
+                  </button>
+                </Tooltip>
               </>
             ) : (
               <button
                 className={'anton-sidebar__footer-settings flex-1 min-w-0 [-webkit-app-region:no-drag]' + (settingsActive ? ' is-on' : '')}
-                onClick={() => onNavigate('settings:agent')}
-                title="Settings"
+                onClick={() => onNavigate('settings')}
                 aria-label="Settings"
               >
                 <span className="inline-flex shrink-0">{Ico.settings(13)}</span>
                 <span>Settings</span>
               </button>
             )}
-          {(show8bitToggle || showThemeToggle) && (
-            // Marks these as quick display toggles, not settings — separate
-            // from the Settings/backend-status controls to the left.
-            <span
-              aria-hidden="true"
-              className="anton-sidebar__footer-divider ml-auto [-webkit-app-region:no-drag]"
-            />
-          )}
-          {show8bitToggle && (
-            <button
-              className={'chrome-btn--small shrink-0 [-webkit-app-region:no-drag]' + (resolved8bitActive ? ' is-on' : '')}
-              onClick={onToggleSkin}
-              title={skin === 'custom' ? '8-bit font' : '8-bit style'}
-              aria-label={skin === 'custom' ? 'Toggle 8-bit font' : 'Toggle 8-bit style'}
-            >
-              {Ico.gamepad(15)}
-            </button>
-          )}
-          {showThemeToggle && (
-            <button
-              className="chrome-btn--small shrink-0 [-webkit-app-region:no-drag]"
-              onClick={onToggleTheme}
-              title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
-              aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
-            >
-              {theme === 'dark' ? Ico.sun(15) : Ico.moon(15)}
-            </button>
-          )}
         </div>
 
         {/* Version is shown on the Settings page — no need to repeat here. */}

@@ -38,12 +38,14 @@ import {
   parseVcsInfo,
   decideGitUpdate,
   decidePypiUpdate,
+  decideStreamRepair,
   looksLikeBrokenInstall,
   parseAntonPin,
   parseAntonConstraint,
   satisfiesAntonConstraint,
   selectLatestPypiVersion,
   selectLatestConstrainedPypiVersion,
+  type StreamRepairDecision,
   type VcsInfo,
 } from './update-logic';
 import {
@@ -230,6 +232,8 @@ async function reinstallFromSource(uv: string, toolsDir?: string): Promise<{ ok:
   // stream is a silent downgrade — and a downgraded server can face a
   // database migrated ahead of it and fail to boot. Unknown version
   // (corrupt venv metadata) falls back to the latest stable, best effort.
+  // This deliberately re-pins an off-stream pre-release on prod too: this
+  // path has no health check, so the stream repair in _pypiUpdate owns that.
   const installed = await getInstalledVersion(uv);
   const withArgs = installed ? await antonWithArgs(installed) : [];
   return runUv(uv, [
@@ -389,19 +393,25 @@ export async function repairServerInstall(failureLog?: string): Promise<boolean>
 
 // ---- PyPI path helpers (release channel) ----------------------------------
 
+/** `buildKind()` with the same defensive fallback as server-source's
+ *  build-kind reads. Null when the kind cannot be determined. */
+function currentBuildKind(): string | null {
+  try {
+    return buildKind();
+  } catch {
+    return null;
+  }
+}
+
 // Staging-ring builds (preview/stable) follow the rc stream, so their
 // "latest" scans the full releases map including pre-releases; prod AND dev
 // trust info.version, which PyPI computes excluding pre-releases — a prod
 // build can never be offered an rc, and a dev machine's shared uv tool
 // (uv tools are per-user, not per-build) is not dragged onto rcs by a dev
-// session. Defensive try/catch mirrors server-source's build-kind fallbacks.
+// session.
 function includePrereleases(): boolean {
-  try {
-    const kind = buildKind();
-    return kind === 'preview' || kind === 'stable';
-  } catch {
-    return false;
-  }
+  const kind = currentBuildKind();
+  return kind === 'preview' || kind === 'stable';
 }
 
 function fetchPypiJson(url: string): Promise<Record<string, unknown> | null> {
@@ -535,6 +545,9 @@ export interface ServerUpdateCheckResult {
   // to say what's actually changing. Absent on the git channel (both components
   // move together as one commit-pair update).
   component?: 'cowork-server' | 'anton-agent';
+  // Set when the "update" is the stream repair (a deliberate downgrade).
+  // Boot-only: the caller must not surface it mid-session or offer it as a pill.
+  repair?: boolean;
 }
 
 /** Check whether a server update is available WITHOUT applying it. */
@@ -578,18 +591,36 @@ export async function checkForServerUpdate(): Promise<ServerUpdateCheckResult> {
     }
 
     // PyPI channel: compare version numbers
-    const [currentVersion, latestVersion] = await Promise.all([
+    const [currentVersion, latestVersion, toolsDir] = await Promise.all([
       getInstalledVersion(uv),
       fetchLatestVersion(),
+      uvToolsDir(uv),
     ]);
+    // Logged before the early return: the run someone digs into a log for is
+    // the one where the check could NOT conclude, and it must say so.
+    const kind = currentBuildKind();
+    const repair = decideStreamRepair({ buildKind: kind, currentVersion, latestVersion });
+    console.log(
+      `[server-updater] stream check: build=${kind ?? 'unknown'} ` +
+      `cowork-server=${currentVersion ?? 'unknown'} ` +
+      `anton-agent=${readInstalledDistVersion(ANTON_DIST_NAME, toolsDir ?? undefined) ?? 'unknown'} — ${streamCheckOutcome(repair)}`,
+    );
     if (!currentVersion || !latestVersion) return { updateAvailable: false, error: true };
-    if (decidePypiUpdate(currentVersion, latestVersion).action === 'update') {
-      return { updateAvailable: true, currentVersion, latestVersion, component: 'cowork-server' };
+    // A stream repair counts as an available update: the boot flow gates the
+    // apply path on this check, so an off-stream install must surface here.
+    if (repair.action === 'repair' || decidePypiUpdate(currentVersion, latestVersion).action === 'update') {
+      return {
+        updateAvailable: true,
+        currentVersion,
+        latestVersion,
+        component: 'cowork-server',
+        ...(repair.action === 'repair' ? { repair: true } : {}),
+      };
     }
     // cowork-server is current — an anton-only release may still be pending.
     // Detected the SAME way maybeUpdateServer applies it, so the banner and the
     // action can never disagree.
-    const anton = await resolveAntonPypiUpdate((await uvToolsDir(uv)) ?? undefined);
+    const anton = await resolveAntonPypiUpdate(toolsDir ?? undefined);
     if (anton.update) {
       return { updateAvailable: true, currentVersion: anton.update.from, latestVersion: anton.update.to, component: 'anton-agent' };
     }
@@ -698,13 +729,30 @@ async function _gitUpdate(uv: string, coworkVcs: VcsInfo): Promise<ServerUpdateR
 
 // ---- PyPI channel (release) ------------------------------------------------
 
+/** The one-line stream verdict for the boot log, keyed by the repair decision. */
+function streamCheckOutcome(repair: StreamRepairDecision): string {
+  if (repair.action === 'repair') return `off stream, repairing to ${repair.to}`;
+  switch (repair.reason) {
+    case 'not-prod': return 'not a prod build, repair not applicable';
+    case 'unknown-installed-version': return 'installed version unknown';
+    case 'on-stream': return 'on stream, nothing to repair';
+    case 'no-latest-version': return 'off stream, but PyPI was unreachable; repair deferred';
+    case 'latest-not-stable': return "off stream, but PyPI's latest is a pre-release; repair deferred";
+  }
+}
+
 async function _pypiUpdate(uv: string): Promise<ServerUpdateResult> {
   const [currentVersion, latestVersion] = await Promise.all([
     getInstalledVersion(uv),
     fetchLatestVersion(),
   ]);
 
-  const decision = decidePypiUpdate(currentVersion, latestVersion);
+  // An rc sorts above its stable, so decidePypiUpdate alone reports a stranded
+  // prod install up to date forever; repair reuses the health-checked block below.
+  const repair = decideStreamRepair({ buildKind: currentBuildKind(), currentVersion, latestVersion });
+  const decision = repair.action === 'repair'
+    ? { action: 'update' as const, from: repair.from, to: repair.to }
+    : decidePypiUpdate(currentVersion, latestVersion);
   if (decision.action === 'skip') {
     return decision.reason === 'unknown-installed-version'
       ? { updated: false, error: 'could not determine installed version' }
@@ -736,9 +784,12 @@ async function _pypiUpdate(uv: string): Promise<ServerUpdateResult> {
     // this one package; the wheel's anton rc pin is restated as a direct
     // requirement via antonWithArgs, so no resolution-wide prerelease flag
     // is ever set).
+    // The rollback pin is resolved up front: fetching it mid-failure would
+    // fail open on a flaky network and leave the rollback unresolvable.
+    const [toWithArgs, fromWithArgs] = await Promise.all([antonWithArgs(to), antonWithArgs(from)]);
     const upgrade = await runUv(
       uv,
-      ['tool', 'install', '--force', '--reinstall', '--python', PYTHON_RANGE, `${PACKAGE_NAME}==${to}`, ...(await antonWithArgs(to))],
+      ['tool', 'install', '--force', '--reinstall', '--python', PYTHON_RANGE, `${PACKAGE_NAME}==${to}`, ...toWithArgs],
     );
     if (!upgrade.ok) {
       console.error('[server-updater] upgrade failed:', upgrade.stderr);
@@ -749,7 +800,7 @@ async function _pypiUpdate(uv: string): Promise<ServerUpdateResult> {
     const result = await startServer();
     if (!result.ok) {
       console.error('[server-updater] new version failed health check, rolling back...');
-      const rollback = await runUv(uv, ['tool', 'install', '--force', '--reinstall', '--python', PYTHON_RANGE, `${PACKAGE_NAME}==${from}`, ...(await antonWithArgs(from))]);
+      const rollback = await runUv(uv, ['tool', 'install', '--force', '--reinstall', '--python', PYTHON_RANGE, `${PACKAGE_NAME}==${from}`, ...fromWithArgs]);
       if (rollback.ok) {
         const restored = await startServer();
         if (restored.ok) {

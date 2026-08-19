@@ -23,9 +23,9 @@ developerID_application.cer
 src/main/build-channel.gen.ts
 src/main/app-version.gen.txt
 
-# ENG-1241: real OAuth secrets, written here transiently by CI
-# (build-macos-pkg.yml / build-windows-installer.yml) alongside the checked-in
-# postinstall script. Never meant to be committed.
+# ENG-1241: real OAuth secrets, written transiently by CI. Never committed.
+# build-macos-pkg.yml writes the first, packaged by `pkgbuild --scripts`;
+# build-windows-installer.yml writes the second, packaged by extraResources.
 build/pkg-scripts/server-credentials.json
 # Same secrets, at the repo root — where the Windows and Linux build jobs write
 # them. This repo is public; anyone reproducing those builds locally is

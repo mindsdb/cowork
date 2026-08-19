@@ -31,6 +31,11 @@ describe('web mode (no bridge)', () => {
     await expect(host.getUIVersion()).resolves.toBe('web');
   });
 
+  it('codingModeOptionsEnabled is always false on web — no bridge to read the flag from', async () => {
+    const host = await importHost();
+    expect(host.codingModeOptionsEnabled).toBe(false);
+  });
+
   it('getApiOrigin is the page origin; localhost counts as local', async () => {
     const host = await importHost();
     expect(host.getApiOrigin()).toBe('http://localhost:3000');
@@ -95,6 +100,21 @@ describe('electron mode (bridge present)', () => {
     expect(host.isWeb).toBe(false);
     expect(host.getPlatform()).toBe('darwin');
     expect(host.isMac()).toBe(true);
+  });
+
+  it('codingModeOptionsEnabled mirrors the bridge value exactly — only literal true counts', async () => {
+    (window as unknown as Record<string, unknown>).antontron = { codingModeOptionsEnabled: true };
+    let host = await importHost();
+    expect(host.codingModeOptionsEnabled).toBe(true);
+
+    (window as unknown as Record<string, unknown>).antontron = { codingModeOptionsEnabled: false };
+    host = await importHost();
+    expect(host.codingModeOptionsEnabled).toBe(false);
+
+    // Missing field (older/partial bridge) defaults to off, same as web.
+    (window as unknown as Record<string, unknown>).antontron = {};
+    host = await importHost();
+    expect(host.codingModeOptionsEnabled).toBe(false);
   });
 
   it('getApiOrigin under file:// uses the preload-supplied port, falling back to 26866', async () => {
@@ -183,7 +203,7 @@ describe('electron mode (bridge present)', () => {
     await host.cancelDrivePicker();
     expect(oauthCancelPicker).toHaveBeenCalledOnce();
   });
-  
+
   it('getVersionInfo reports app/ui/source distinctly (OTA never masks the shell)', async () => {
     // OTA active: ui is the cached bundle, app is the installed shell — kept
     // separate so the App row can't drift to the OTA version (ENG-213 / G1).
@@ -192,7 +212,7 @@ describe('electron mode (bridge present)', () => {
     };
     let host = await importHost();
     await expect(host.getVersionInfo()).resolves.toEqual({
-      app: '2.26.7.6.1', ui: '2.26.7.13.1', source: 'ota',
+      app: '2.26.7.6.1', ui: '2.26.7.13.1', source: 'ota', buildKind: null,
     });
 
     // Bundled: no OTA cache → ui null, source 'bundled'.
@@ -201,7 +221,7 @@ describe('electron mode (bridge present)', () => {
     };
     host = await importHost();
     await expect(host.getVersionInfo()).resolves.toEqual({
-      app: '2.26.7.6.1', ui: null, source: 'bundled',
+      app: '2.26.7.6.1', ui: null, source: 'bundled', buildKind: null,
     });
   });
 
@@ -346,7 +366,7 @@ describe('electron mode (bridge present)', () => {
   it('getVersionInfo degrades to web facts when the bridge lacks the method', async () => {
     (window as unknown as Record<string, unknown>).antontron = {}; // partial bridge
     const host = await importHost();
-    await expect(host.getVersionInfo()).resolves.toEqual({ app: '', ui: null, source: 'web' });
+    await expect(host.getVersionInfo()).resolves.toEqual({ app: '', ui: null, source: 'web', buildKind: null });
   });
 
   it('getVersionInfo normalizes legacy shells that omit `source`', async () => {
@@ -357,7 +377,7 @@ describe('electron mode (bridge present)', () => {
     };
     let host = await importHost();
     await expect(host.getVersionInfo()).resolves.toEqual({
-      app: '2.26.7.6.1', ui: null, source: 'bundled',
+      app: '2.26.7.6.1', ui: null, source: 'bundled', buildKind: null,
     });
 
     // Old OTA shape: a real `ui` version but no `source` → infer OTA.
@@ -366,8 +386,24 @@ describe('electron mode (bridge present)', () => {
     };
     host = await importHost();
     await expect(host.getVersionInfo()).resolves.toEqual({
-      app: '2.26.7.6.1', ui: '2.26.7.13.1', source: 'ota',
+      app: '2.26.7.6.1', ui: '2.26.7.13.1', source: 'ota', buildKind: null,
     });
+  });
+
+  it('getVersionInfo passes through a known buildKind and nulls an unrecognized one', async () => {
+    (window as unknown as Record<string, unknown>).antontron = {
+      getUIVersion: async () => ({ app: 'x.y.z', ui: null, source: 'bundled', buildKind: 'stable' }),
+    };
+    let host = await importHost();
+    await expect(host.getVersionInfo()).resolves.toMatchObject({ buildKind: 'stable' });
+
+    // A kind this renderer doesn't know (newer shell) must not leak through
+    // untyped — the UI treats unknown as absent.
+    (window as unknown as Record<string, unknown>).antontron = {
+      getUIVersion: async () => ({ app: 'x.y.z', ui: null, source: 'bundled', buildKind: 'canary' }),
+    };
+    host = await importHost();
+    await expect(host.getVersionInfo()).resolves.toMatchObject({ buildKind: null });
   });
 });
 

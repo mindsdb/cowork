@@ -107,6 +107,48 @@ describe('currentThought (ENG-1108 — live train of thought, not a step)', () =
     expect(state.steps).toEqual([]);
   });
 
+  it('surfaces a rate-limit wait as a live line, not silence (ENG-1537)', () => {
+    // anton pauses in-turn to wait out a velocity limit. Every OTHER ad-hoc
+    // progress phase is discarded by this reducer as noise ("the live step
+    // state is enough"), so without an explicit branch the notice was sent by
+    // the server and thrown away here — leaving a silent 90s pause that is
+    // indistinguishable from a hang.
+    const state = reduceAll([
+      { type: 'response.created', response: { id: 'r1' } },
+      {
+        type: 'response.in_progress',
+        thought_role: 'thought.progress',
+        phase: 'rate_limited',
+        message: 'waiting 30s before continuing',
+      },
+    ], initialStreamState(), now);
+
+    expect(state.currentThought).toEqual({
+      text: 'waiting 30s before continuing',
+      startedAt: 1000,
+    });
+    // The turn is still alive and this is not an error state.
+    expect(state.status).not.toBe('error');
+    expect(state.errorCode).toBeNull();
+    // Ephemeral, exactly like a reasoning burst — never a persisted step.
+    expect(state.steps).toEqual([]);
+  });
+
+  it('still discards other ad-hoc progress phases as noise', () => {
+    // Guard the narrowness of the branch above: it must not turn every phase
+    // marker into a visible line.
+    const state = reduceAll([
+      { type: 'response.created', response: { id: 'r1' } },
+      {
+        type: 'response.in_progress',
+        thought_role: 'thought.progress',
+        phase: 'reasoning_done',
+        message: 'ignored',
+      },
+    ], initialStreamState(), now);
+    expect(state.currentThought).toBeNull();
+  });
+
   it('clears the burst once body text starts streaming', () => {
     const state = reduceAll([
       { type: 'response.created', response: { id: 'r1' } },

@@ -37,14 +37,14 @@ import { navItemsForHost, shouldRevealStoredKey } from './SettingsView';
 const ids = (items) => items.map((i) => i.id);
 
 describe('navItemsForHost — which Settings sections a host offers (ENG-932)', () => {
-  it('gives Electron every section', () => {
-    expect(ids(navItemsForHost(false))).toEqual([
-      'agent', 'appearance', 'channels', 'updates', 'backend', 'account',
+  it('gives Electron every section when Coding Mode options are enabled', () => {
+    expect(ids(navItemsForHost(false, true))).toEqual([
+      'agent', 'codingMode', 'appearance', 'channels', 'updates', 'backend', 'account',
     ]);
   });
 
   it('gives web exactly Agent, Appearance, Channels', () => {
-    expect(ids(navItemsForHost(true))).toEqual(['agent', 'appearance', 'channels']);
+    expect(ids(navItemsForHost(true, true))).toEqual(['agent', 'appearance', 'channels']);
   });
 
   it('keeps Agent on web — it carries the reasoning-effort control', () => {
@@ -52,11 +52,11 @@ describe('navItemsForHost — which Settings sections a host offers (ENG-932)', 
     // workaround for a turn that spends its entire output budget on internal
     // reasoning and returns nothing (ENG-1042). If Agent ever drops off the
     // web nav, hosted users lose their only recourse again.
-    expect(ids(navItemsForHost(true))).toContain('agent');
+    expect(ids(navItemsForHost(true, true))).toContain('agent');
   });
 
   it('omits the three sections web cannot act on', () => {
-    const web = ids(navItemsForHost(true));
+    const web = ids(navItemsForHost(true, true));
     // backend — start/stop/diagnostics of a server the user doesn't control.
     // updates — App-shell version / OTA source are meaningless on hosted.
     // account — a second sign-in surface for an already-authenticated user.
@@ -69,30 +69,49 @@ describe('navItemsForHost — which Settings sections a host offers (ENG-932)', 
     // Pins the intent from the ticket: absent, not present-and-inert. The old
     // renderBackendSection web branch rendered a "managed server-side" panel,
     // which is a dead end the user had to discover by clicking.
-    expect(navItemsForHost(true).some((i) => i.id === 'backend')).toBe(false);
+    expect(navItemsForHost(true, true).some((i) => i.id === 'backend')).toBe(false);
   });
 
   it('preserves each section\'s label and icon, and the desktop ordering', () => {
-    const web = navItemsForHost(true);
+    const web = navItemsForHost(true, true);
     expect(web.map((i) => i.label)).toEqual(['Agent', 'Appearance', 'Channels']);
     expect(web.every((i) => typeof i.icon === 'string' && i.icon.length > 0)).toBe(true);
     // Filtered, not reordered — web order must be a subsequence of desktop's.
-    const desktop = ids(navItemsForHost(false));
+    const desktop = ids(navItemsForHost(false, true));
     expect(ids(web)).toEqual(desktop.filter((id) => ids(web).includes(id)));
   });
 
   it('does not hand out the shared array for callers to mutate', () => {
-    const a = navItemsForHost(true);
+    const a = navItemsForHost(true, true);
     a.pop();
-    expect(ids(navItemsForHost(true))).toEqual(['agent', 'appearance', 'channels']);
+    expect(ids(navItemsForHost(true, true))).toEqual(['agent', 'appearance', 'channels']);
     // Desktop returns a copy too — without the spread it would hand back the
     // module-level NAV_ITEMS itself, and this pop() would corrupt every
     // later call on both platforms.
-    const b = navItemsForHost(false);
+    const b = navItemsForHost(false, true);
     b.pop();
-    expect(ids(navItemsForHost(false))).toEqual([
+    expect(ids(navItemsForHost(false, true))).toEqual([
+      'agent', 'codingMode', 'appearance', 'channels', 'updates', 'backend', 'account',
+    ]);
+  });
+});
+
+describe('navItemsForHost — Coding Mode parked behind CODING_MODE_OPTIONS_ENABLED', () => {
+  it('hides the Coding Mode section on desktop when the flag is off', () => {
+    expect(ids(navItemsForHost(false, false))).toEqual([
       'agent', 'appearance', 'channels', 'updates', 'backend', 'account',
     ]);
+  });
+
+  it('has no Coding Mode section on web either way — it was never in WEB_NAV_IDS', () => {
+    expect(ids(navItemsForHost(true, false))).toEqual(['agent', 'appearance', 'channels']);
+    expect(ids(navItemsForHost(true, true))).toEqual(['agent', 'appearance', 'channels']);
+  });
+
+  it('treats a falsy flag (undefined, 0, "") the same as explicit false', () => {
+    expect(ids(navItemsForHost(false))).not.toContain('codingMode');
+    expect(ids(navItemsForHost(false, 0))).not.toContain('codingMode');
+    expect(ids(navItemsForHost(false, ''))).not.toContain('codingMode');
   });
 });
 

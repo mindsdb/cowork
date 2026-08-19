@@ -66,7 +66,14 @@ win:
 
 nsis:
   oneClick: false
-  allowToChangeInstallationDirectory: true
+  # ENG-1367: keep this off. When it's on, a manual (non-auto-update) upgrade
+  # run tells the previous version's uninstaller to delete its Start-Menu
+  # shortcut and unregister the AppUserModelID, which destroys the user's
+  # taskbar pin on every update. With it off the installer passes
+  # --keep-shortcuts instead, and the pin survives. Upgrades still land in the
+  # previously recorded install directory either way; only the fresh-install
+  # directory chooser is lost (the /D installer switch remains for that).
+  allowToChangeInstallationDirectory: false
   perMachine: false
 
 linux:

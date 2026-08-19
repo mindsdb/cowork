@@ -32,9 +32,13 @@
 //
 // Item shape — matches the legacy hand-rolled menus so call sites port
 // 1:1: { icon?, label, onClick?, danger?, disabled?, hint?, title?,
-//        divider?|separator?, submenu?: Item[], id?|key? }.
+//        divider?|separator?, submenu?: Item[], heading?, id?|key? }.
 // An item with a `submenu` array renders a nested fly-out (replaces
 // TaskMenu's hand-rolled "Move to project" corridor).
+// An item with a `heading` node renders as a non-interactive group label
+// (Base UI Group + GroupLabel — announced by screen readers, skipped by
+// arrow-key navigation). Used for identity headers like the user menu's
+// email/org block.
 
 import { useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
@@ -92,6 +96,16 @@ function renderItems(items, z, onActivate) {
 
     if (it.divider || it.separator) {
       return <BaseMenu.Separator key={`sep-${key}-${i}`} className="h-px bg-line my-[4px]" />;
+    }
+
+    if (it.heading) {
+      return (
+        <BaseMenu.Group key={`heading-${key}-${i}`}>
+          <BaseMenu.GroupLabel className="px-[14px] pt-[6px] pb-[4px] select-none cursor-default">
+            {it.heading}
+          </BaseMenu.GroupLabel>
+        </BaseMenu.Group>
+      );
     }
 
     if (Array.isArray(it.submenu)) {

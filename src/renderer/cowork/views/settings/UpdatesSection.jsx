@@ -12,6 +12,15 @@ const UPDATE_CARD_CLASS =
   'border-[color-mix(in_srgb,var(--sage-500)_30%,transparent)] bg-[color-mix(in_srgb,var(--sage-500)_12%,transparent)] rounded-lg';
 const UPDATE_CARD_BODY_CLASS = 'flex flex-col gap-0.5 flex-1 min-w-[160px]';
 
+// Naming the ring makes an rc Server version self-explanatory in bug reports:
+// staging-ring builds (preview/stable) follow the pre-release server stream.
+const BUILD_KIND_LABELS = {
+  dev: 'dev (local source)',
+  preview: 'preview (staging update ring)',
+  stable: 'stable (staging update ring)',
+  prod: 'prod',
+};
+
 // The Updates settings section: current-version readout plus the on-demand
 // update check/apply flow. Self-contained — it owns every piece of state its
 // UI needs (versions, the check result, in-flight/applied flags), so nothing
@@ -28,7 +37,7 @@ export default function UpdatesSection({
   onInstallShellAutoUpdate,
   onRetryShellAutoUpdate,
 }) {
-  const [versionInfo, setVersionInfo] = useState({ app: '', ui: null, source: 'web' });
+  const [versionInfo, setVersionInfo] = useState({ app: '', ui: null, source: 'web', buildKind: null });
   const [serverVersion, setServerVersion] = useState('');
   const [antonVersion, setAntonVersion] = useState('');
   const [showVersionDetails, setShowVersionDetails] = useState(false);
@@ -95,7 +104,7 @@ export default function UpdatesSection({
 
   return (
     <SettingsSectionPanel footer={footer}>
-      <div className="border border-solid border-line rounded-card bg-[var(--surface-glass)] backdrop-blur-[var(--surface-glass-blur)] mb-[14px] overflow-hidden pt-0 px-[18px] pb-2">
+      <div className="border border-solid border-line rounded-card bg-surface-glass backdrop-blur-[var(--surface-glass-blur)] mb-[14px] overflow-hidden pt-0 px-[18px] pb-2">
         <Section
           title="Current version"
           subtitle="The version currently running. Server and UI updates are applied automatically at launch; components under the hood are shown in details."
@@ -117,8 +126,10 @@ export default function UpdatesSection({
             // excluded — it updates via reinstall and is shown on its own line.
             const unified = unifiedVersion([uiVer, serverVersion, antonVersion]);
             const outOfSync = !!unified && unified.skewDays >= SKEW_WARN_DAYS;
+            const buildLabel = BUILD_KIND_LABELS[versionInfo.buildKind];
             const rows = [
               ['App shell', shellVer || '—'],
+              ...(buildLabel ? [['Build', buildLabel]] : []),
               ['UI', uiVer ? `${uiVer} (${uiSource})` : '—'],
               ['Server', serverVersion || '—'],
               ['Agent', antonVersion || '—'],
@@ -161,7 +172,7 @@ export default function UpdatesSection({
                   {showVersionDetails ? 'Hide details' : 'Details'}
                 </button>
                 {showVersionDetails && (
-                  <div className="flex flex-col gap-1 font-[family-name:var(--font-mono)] text-[12px] py-2 px-2.5 border border-solid border-line rounded-lg bg-[var(--surface-glass)]">
+                  <div className="flex flex-col gap-1 font-[family-name:var(--font-mono)] text-[12px] py-2 px-2.5 border border-solid border-line rounded-lg bg-surface-glass">
                     {rows.map(([k, v]) => (
                       <span key={k} className="select-text">
                         <span className="text-ink-3 mr-1.5 inline-block min-w-[64px]">{k}</span>{v}

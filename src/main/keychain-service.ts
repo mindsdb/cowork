@@ -1,6 +1,17 @@
-import keytar from 'keytar';
 import { buildKind } from './cowork-home';
 import { getFallbackPassword, setFallbackPassword, deleteFallbackPassword } from './keychain-fallback';
+
+// keytar is a native module — an eager top-level import forces every consumer
+// of this file (even one that never touches the keychain) to load that native
+// binding at module-load time, which fails on Linux CI without libsecret.
+// Load it lazily so importing this module (directly or transitively) stays
+// safe everywhere; the native module only loads when a function below
+// actually runs. `import()` is still intercepted by `vi.mock('keytar', ...)`
+// the same way a static import would be, so keychain-service.test.ts is
+// unaffected.
+async function getKeytar() {
+  return (await import('keytar')).default;
+}
 
 // Namespace the keychain service per channel so build kinds on one machine don't
 // share OAuth refresh tokens. prod keeps the historical 'cowork-oauth' (existing
@@ -22,6 +33,7 @@ function accountKey(engine: string, accountEmail: string): string {
 async function getPassword(service: string, account: string): Promise<string | null> {
   let value: string | null;
   try {
+    const keytar = await getKeytar();
     value = await keytar.getPassword(service, account);
   } catch (err) {
     console.warn(`[keychain-service] keytar.getPassword failed for ${service}, using file fallback:`, err);
@@ -35,6 +47,7 @@ async function getPassword(service: string, account: string): Promise<string | n
 
 async function setPassword(service: string, account: string, value: string): Promise<void> {
   try {
+    const keytar = await getKeytar();
     await keytar.setPassword(service, account, value);
     // Real write succeeded - clear any stale fallback copy so a later
     // real-keychain deletion can never be shadowed by an old fallback value.
@@ -47,6 +60,7 @@ async function setPassword(service: string, account: string, value: string): Pro
 
 async function deletePassword(service: string, account: string): Promise<void> {
   try {
+    const keytar = await getKeytar();
     await keytar.deletePassword(service, account);
   } catch (err) {
     console.warn(`[keychain-service] keytar.deletePassword failed for ${service}:`, err);
@@ -75,6 +89,7 @@ export async function deleteRefreshToken(engine: string, accountEmail: string): 
 // vs. the `engine:accountEmail` shape above), so the two can never collide.
 // See credential-provisioning.ts for the provisioning/rotation logic that
 // calls these.
+// deepcode ignore HardcodedNonCryptoSecret: '__generation__' is a public keychain account-key identifier (the keytar entry's *name*), not a secret value — the actual secrets live in the OS secure store, never in source. See credential-provisioning.ts.
 const GENERATION_ACCOUNT_KEY = '__generation__'; // reserved — never a valid
 // credential name (those are always uppercase env-var-style), so this can
 // never collide with a real entry.

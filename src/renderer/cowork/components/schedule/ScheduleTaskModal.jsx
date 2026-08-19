@@ -51,13 +51,6 @@ function formatNextRunEcho(local) {
   });
 }
 
-const fieldLabel = {
-  fontFamily: FONT_BODY, fontSize: 11.5, fontWeight: 500,
-  color: 'var(--ink-3)', letterSpacing: '0.02em',
-  textTransform: 'uppercase',
-  marginBottom: 6,
-};
-
 const fieldInput = {
   width: '100%', boxSizing: 'border-box',
   padding: '8px 10px', borderRadius: 7,
@@ -183,7 +176,7 @@ export default function ScheduleTaskModal({
         onClose={onClose}
       />
       <ModalBody padding="18px 20px">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div className="flex flex-col gap-[14px]">
           <Field label="Title">
             <Input
               value={form.title}
@@ -194,7 +187,7 @@ export default function ScheduleTaskModal({
             />
           </Field>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <div className="grid grid-cols-[1fr_1fr] gap-[14px]">
             <Field label="Cadence">
               <Select
                 value={form.cadence}
@@ -219,10 +212,7 @@ export default function ScheduleTaskModal({
                 style={fieldInput}
               />
               {formatNextRunEcho(form.nextRunAt) && (
-                <span style={{
-                  marginTop: 5, fontFamily: FONT_BODY, fontSize: 11.5,
-                  color: 'var(--ink-3)',
-                }}>
+                <span className="mt-[5px] font-[family-name:var(--font-body)] text-[11.5px] text-ink-3">
                   {formatNextRunEcho(form.nextRunAt)}
                 </span>
               )}
@@ -246,7 +236,7 @@ export default function ScheduleTaskModal({
           </Field>
 
           <div>
-            <span style={{ ...fieldLabel, display: 'block' }}>Status</span>
+            <span className="block font-[family-name:var(--font-body)] text-[11.5px] font-medium text-ink-3 tracking-[0.02em] uppercase mb-1.5">Status</span>
             {/* Block-level `flex` with a fixed height (not `inline-flex`): an
                 inline-flex row sits on a text baseline in the parent's line
                 box, so toggling the label between "Enabled" and "Paused"
@@ -262,17 +252,14 @@ export default function ScheduleTaskModal({
                 deliberately not a clickable <span> (mouse-only + unassociated)
                 nor a <label> (the Switch's own hidden input would be
                 double-activated). */}
-            <div style={{
-              display: 'flex', width: 'fit-content', alignItems: 'center', gap: 8, height: 22,
-              fontFamily: FONT_BODY, fontSize: 13.5, color: 'var(--ink)',
-            }}>
+            <div className="flex w-fit items-center gap-2 h-[22px] font-[family-name:var(--font-body)] text-[13.5px] text-ink">
               <Switch
                 checked={form.enabled}
                 onCheckedChange={(v) => update('enabled', v)}
                 size="sm"
                 aria-label="Schedule enabled"
               />
-              <span aria-hidden="true" style={{ userSelect: 'none' }}>
+              <span aria-hidden="true" className="select-none">
                 {form.enabled ? 'Enabled' : 'Paused'}
               </span>
             </div>
@@ -297,7 +284,7 @@ export default function ScheduleTaskModal({
           card/detail overflow menu (with its own confirm), not inside this
           form, so the footer never carries a destructive action. */}
       <ModalFooter align="flex-end">
-        <div style={{ display: 'inline-flex', gap: 8 }}>
+        <div className="inline-flex gap-2">
           <Button variant="subtle" onClick={onClose} disabled={busy}>
             Cancel
           </Button>

@@ -345,6 +345,34 @@ export function decidePypiUpdate(
   return { action: 'update', from: currentVersion, to: latestVersion };
 }
 
+/** Is this an rc-stream pre-release? Only the rc grammar this project
+ *  publishes counts; dev/local tails are not the rc stream. */
+export function isPrereleaseVersion(version: string): boolean {
+  return version.split('.').some((segment) => RC_SEGMENT.test(segment));
+}
+
+export type StreamRepairDecision =
+  | { action: 'repair'; from: string; to: string }
+  | {
+      action: 'skip';
+      reason: 'not-prod' | 'unknown-installed-version' | 'on-stream' | 'no-latest-version' | 'latest-not-stable';
+    };
+
+/** The deliberate-downgrade decision that puts a prod install holding a
+ *  pre-release back on the stable stream, which the forward-only update path never does. */
+export function decideStreamRepair(input: {
+  buildKind: string | null | undefined;
+  currentVersion: string | null;
+  latestVersion: string | null;
+}): StreamRepairDecision {
+  if (input.buildKind !== 'prod') return { action: 'skip', reason: 'not-prod' };
+  if (!input.currentVersion) return { action: 'skip', reason: 'unknown-installed-version' };
+  if (!isPrereleaseVersion(input.currentVersion)) return { action: 'skip', reason: 'on-stream' };
+  if (!input.latestVersion) return { action: 'skip', reason: 'no-latest-version' };
+  if (isPrereleaseVersion(input.latestVersion)) return { action: 'skip', reason: 'latest-not-stable' };
+  return { action: 'repair', from: input.currentVersion, to: input.latestVersion };
+}
+
 // ---------------------------------------------------------------------------
 // Boot-recovery: is a start failure a broken install?
 // ---------------------------------------------------------------------------
@@ -402,11 +430,14 @@ export function decideUpdateApply(input: {
   serverDown: boolean;
   isBootCheck: boolean;
   mode: 'auto' | 'manual';
+  repairOnly?: boolean;
 }): UpdateApplyDecision {
-  const { serverUpdateAvailable, uiUpdateAvailable, serverDown, isBootCheck, mode } = input;
+  const { serverUpdateAvailable, uiUpdateAvailable, serverDown, isBootCheck, mode, repairOnly } = input;
   const autoOk = isBootCheck && mode === 'auto';
+  // A stream repair is boot-only: it gets no mid-session banner, so boot must
+  // apply it even in manual mode, and the serverDown override never fires it.
   return {
-    applyServer: serverUpdateAvailable && (serverDown || autoOk),
+    applyServer: serverUpdateAvailable && (repairOnly ? isBootCheck : (serverDown || autoOk)),
     applyUi: uiUpdateAvailable && autoOk,
   };
 }
