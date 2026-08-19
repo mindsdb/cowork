@@ -7,6 +7,7 @@
  * helpers so the DB stays in sync.
  */
 import { BASE, authFetch } from '../cowork/api';
+import { isMindsBaseUrl } from '../../shared/minds-endpoint';
 
 // Env-var names (ANTON_FOO_BAR) → backend DB setting keys (foo_bar).
 const ENV_TO_SETTING: Record<string, string> = {
@@ -17,6 +18,10 @@ const ENV_TO_SETTING: Record<string, string> = {
   ANTON_MINDS_URL: 'minds_url',
   ANTON_PLANNING_PROVIDER: 'planning_provider',
   ANTON_CODING_PROVIDER: 'coding_provider',
+  // The router role (turn routing + history summarization) is a provider like
+  // any other. Without this key a role repointed elsewhere is never restored,
+  // so it stays on whatever it was last set to forever.
+  ANTON_ROUTER_PROVIDER: 'router_provider',
   // ANTON_PLANNING_MODEL / ANTON_CODING_MODEL are deliberately absent (ENG-739).
   // This helper runs on every login, post-install, and web token-refresh from
   // the *full* .env, so mapping the model keys here re-pins a user who just
@@ -29,25 +34,20 @@ const ENV_TO_SETTING: Record<string, string> = {
 };
 
 /**
- * Whether the endpoint is MindsHub. 
+ * Whether an `openai-compatible` provider line denotes MindsHub.
  *
- *  The base URL will determine if the provider is MindsHub.
- *  If the base URL is not mindshub.ai, then it is a custom endpoint.
+ * The base URL decides. With no base URL there are two cases, and the API keys
+ * separate them: anton serves MindsHub through the openai-compatible provider
+ * and derives the base from `minds_url` when only a MindsHub key is present, so
+ * that shape really is MindsHub. Once an OpenAI key is set anton stops
+ * deriving, nothing identifies the endpoint, and the provider stays
+ * openai_compatible so the server's "set a base URL" gate stops the turn rather
+ * than sending the prompt to the hosted gateway.
  */
 function isMindsEndpoint(envMap: Record<string, string>): boolean {
   const base = (envMap.ANTON_OPENAI_BASE_URL || '').trim();
-  if (!base) return true; // no custom endpoint -> the legacy MindsHub shape
-  const host = (() => {
-    try { return new URL(base).hostname.toLowerCase(); } catch { return ''; }
-  })();
-  if (!host) return false; // unparseable -> treat as the user's, never MindsHub
-  const mindsHost = (() => {
-    try { return new URL(envMap.ANTON_MINDS_URL || '').hostname.toLowerCase(); }
-    catch { return ''; }
-  })();
-  if (mindsHost && host === mindsHost) return true;
-  return host === 'mdb.ai' || host === 'mindshub.ai'
-    || host.endsWith('.mdb.ai') || host.endsWith('.mindshub.ai');
+  if (!base) return !envMap.ANTON_OPENAI_API_KEY;
+  return isMindsBaseUrl(base, envMap.ANTON_MINDS_URL || '');
 }
 
 /**
@@ -67,7 +67,8 @@ export async function syncSettingsToDb(lines: string[]): Promise<boolean> {
     if (eq <= 0) continue;
     envMap[line.slice(0, eq)] = line.slice(eq + 1);
   }
-  // A MindsHub key is necessary but NOT sufficient to call the endpoint
+  // A MindsHub key is necessary but not sufficient to call the endpoint
+  // MindsHub -- the base URL is what settles it.
   const mindsIsTheEndpoint =
     Boolean(envMap.ANTON_MINDS_API_KEY) && isMindsEndpoint(envMap);
 

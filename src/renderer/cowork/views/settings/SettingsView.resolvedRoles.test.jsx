@@ -164,6 +164,43 @@ describe('withResolvedRoles — default-mode save (ENG-1632)', () => {
     expect(saved.routerModel).toBeUndefined();
   });
 
+  // A local endpoint is a deliberate choice, and a MindsHub card is keyed for
+  // everyone who signed in. Repointing on "differs from the default-mode
+  // provider" alone moved a LAN user onto the hosted gateway on any save --
+  // including one that only changed a theme dot.
+  const lanSettings = () => ({
+    ...lockedSettings(),
+    planningProvider: 'openai-compatible',
+    codingProvider: 'openai-compatible',
+    routerProvider: 'openai-compatible',
+    planningModel: 'qwen/qwen3.5-9b',
+    providers: [
+      { type: 'minds-cloud', apiKey: '***', mindsUrl: 'https://api.mindshub.ai' },
+      { type: 'openai-compatible', name: 'LM Studio', baseUrl: 'http://192.168.1.100:1234/v1' },
+    ],
+    providerTypeLabels: { 'minds-cloud': 'MindsHub', 'openai-compatible': 'OpenAI-compatible' },
+  });
+
+  it('leaves a configured local endpoint alone even though MindsHub is keyed', async () => {
+    const saved = await saveAndCapture(lanSettings());
+    expect(saved.planningProvider).toBe('openai-compatible');
+    expect(saved.codingProvider).toBe('openai-compatible');
+    expect(saved.routerProvider).toBe('openai-compatible');
+    // The model must survive too -- a tombstone here would drop the local id.
+    expect(saved.planningModel).toBe('qwen/qwen3.5-9b');
+  });
+
+  it('still repoints a local endpoint that has no base URL to run against', async () => {
+    const unusable = lanSettings();
+    unusable.providers = [
+      unusable.providers[0],
+      { type: 'openai-compatible', name: 'LM Studio', baseUrl: '' },
+    ];
+    const saved = await saveAndCapture(unusable);
+    expect(saved.planningProvider).toBe('minds-cloud');
+    expect(saved.planningModel).toBeNull();
+  });
+
   it('does not touch roles at all in custom mode', async () => {
     const custom = { ...lockedSettings(), modelMode: 'custom' };
     const saved = await saveAndCapture(custom);
