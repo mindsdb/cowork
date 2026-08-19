@@ -31,6 +31,11 @@ describe('web mode (no bridge)', () => {
     await expect(host.getUIVersion()).resolves.toBe('web');
   });
 
+  it('codingModeOptionsEnabled is always false on web — no bridge to read the flag from', async () => {
+    const host = await importHost();
+    expect(host.codingModeOptionsEnabled).toBe(false);
+  });
+
   it('getApiOrigin is the page origin; localhost counts as local', async () => {
     const host = await importHost();
     expect(host.getApiOrigin()).toBe('http://localhost:3000');
@@ -95,6 +100,21 @@ describe('electron mode (bridge present)', () => {
     expect(host.isWeb).toBe(false);
     expect(host.getPlatform()).toBe('darwin');
     expect(host.isMac()).toBe(true);
+  });
+
+  it('codingModeOptionsEnabled mirrors the bridge value exactly — only literal true counts', async () => {
+    (window as unknown as Record<string, unknown>).antontron = { codingModeOptionsEnabled: true };
+    let host = await importHost();
+    expect(host.codingModeOptionsEnabled).toBe(true);
+
+    (window as unknown as Record<string, unknown>).antontron = { codingModeOptionsEnabled: false };
+    host = await importHost();
+    expect(host.codingModeOptionsEnabled).toBe(false);
+
+    // Missing field (older/partial bridge) defaults to off, same as web.
+    (window as unknown as Record<string, unknown>).antontron = {};
+    host = await importHost();
+    expect(host.codingModeOptionsEnabled).toBe(false);
   });
 
   it('getApiOrigin under file:// uses the preload-supplied port, falling back to 26866', async () => {

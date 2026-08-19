@@ -32,6 +32,14 @@ const bridge: any =
 export const isElectron: boolean = typeof bridge === 'object' && bridge !== null;
 export const isWeb: boolean = !isElectron;
 
+// Coding Mode kill switch (CODING_MODE_OPTIONS_ENABLED, main/preload —
+// unset/anything else defaults false) while the feature is parked. A plain
+// module-level const, not a function — it's a static per-process value read
+// once from the environment, same as isElectron/isWeb above. Web has no
+// bridge at all, so it's always false there too.
+export const codingModeOptionsEnabled: boolean =
+  isElectron && bridge.codingModeOptionsEnabled === true;
+
 // ---- Platform identity --------------------------------------------------
 
 export type PlatformId = 'darwin' | 'win32' | 'linux' | 'web';
@@ -939,6 +947,7 @@ export async function logout(): Promise<void> {
 export const host = {
   isWeb,
   isElectron,
+  codingModeOptionsEnabled,
   getPlatform,
   isMac,
   getApiOrigin,

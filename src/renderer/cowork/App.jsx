@@ -1562,7 +1562,16 @@ function AppCore() {
   // composer needs the room for its harness-picker chrome. Desktop-only
   // (Coding Mode doesn't exist on web) and never applies on true mobile
   // (<640) — MobileShell already owns that layout outright.
-  const sidebarPopout = isNarrow || (!isMobile && !host.isWeb && !!settings.codingModeEnabled);
+  // Coding Mode is parked behind CODING_MODE_OPTIONS_ENABLED (main/preload —
+  // defaults false when unset) while it's unfinished: this forces every
+  // consumer of the user's own codingModeEnabled preference to read as off
+  // when the build-level flag is off, even if a stale `true` is already
+  // sitting in someone's local settings from earlier testing — there'd be no
+  // UI left to turn it back off otherwise, since the toggle and its Settings
+  // section are hidden the same way (see navItemsForHost / the floating
+  // corner toggle below).
+  const codingModeActive = host.codingModeOptionsEnabled && !!settings.codingModeEnabled;
+  const sidebarPopout = isNarrow || (!isMobile && !host.isWeb && codingModeActive);
   // Theme (light | dark) — persisted in localStorage so the choice
   // survives reloads. The animated background canvas (gravity-field)
   // and the body's bg colour both follow this value.
@@ -4620,8 +4629,8 @@ function AppCore() {
               Coding Mode's popout sidebar is desktop-width, so this row
               stays put in its usual bottom-right corner there. */}
       {!isMobile && (() => {
-        const showCodingToggle = !host.isWeb && settings.showCodingModeToggle !== false;
-        const codingModeOn = showCodingToggle && settings.codingModeEnabled;
+        const showCodingToggle = !host.isWeb && host.codingModeOptionsEnabled && settings.showCodingModeToggle !== false;
+        const codingModeOn = showCodingToggle && codingModeActive;
         const showThemeToggle = settings.showThemeToggle !== false || settings.show8bitToggle !== false;
         if (!showCodingToggle && !showThemeToggle) return null;
         return (
@@ -4827,7 +4836,7 @@ function AppCore() {
             skipIntro={bootIntroDone}
             prefill={composerPrefill}
             onPrefill={(text, select) => setComposerPrefill({ text, bump: Date.now(), select })}
-            codingModeEnabled={settings.codingModeEnabled}
+            codingModeEnabled={codingModeActive}
           />
         )}
 
@@ -4974,7 +4983,7 @@ function AppCore() {
               // the new task lands in the right workspace.
               handleSendFromHome(text, meta);
             }}
-            codingModeEnabled={settings.codingModeEnabled}
+            codingModeEnabled={codingModeActive}
             onSelectTask={selectTask}
             onDeleteTask={handleDeleteTask}
             onMoveTaskToProject={handleOpenMoveModal}

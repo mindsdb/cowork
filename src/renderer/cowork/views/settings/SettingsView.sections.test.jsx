@@ -28,6 +28,10 @@ vi.mock('../../../platform/host', () => ({
   host: {
     isElectron: true,
     isWeb: false,
+    // Coding Mode's own tests below need its nav section reachable; the
+    // parked-by-default behavior (flag off) is covered separately in
+    // SettingsView.hostGating.test.js.
+    codingModeOptionsEnabled: true,
     isMac: () => false,
     openExternal: vi.fn(),
     serverDiagnostics: spies.serverDiagnostics,

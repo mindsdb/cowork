@@ -14,6 +14,10 @@ function parseServerPort(): number | null {
 contextBridge.exposeInMainWorld('antontron', {
   // Resolved loopback server port (ENG-439); null if main didn't pass one.
   serverPort: parseServerPort(),
+  // Coding Mode kill switch: the feature (its Settings section, the toggle,
+  // the floating corner button) is parked behind this while unfinished.
+  // Unset/anything other than 'true' defaults to off.
+  codingModeOptionsEnabled: process.env.CODING_MODE_OPTIONS_ENABLED === 'true',
   // Installer
   checkInstall: () => ipcRenderer.invoke(IPC.INSTALL_CHECK),
   startInstall: () => ipcRenderer.invoke(IPC.INSTALL_START),

@@ -613,11 +613,15 @@ const NAV_ITEMS = [
 // hidden on web.
 const WEB_NAV_IDS = new Set(['agent', 'appearance', 'channels']);
 
-export function navItemsForHost(isWeb) {
+export function navItemsForHost(isWeb, codingModeOptionsEnabled) {
   // Fresh array on both branches — filter() already copies for web, and the
   // desktop spread keeps a caller's mutation from reaching the shared module
   // constant.
-  return isWeb ? NAV_ITEMS.filter((i) => WEB_NAV_IDS.has(i.id)) : [...NAV_ITEMS];
+  const items = isWeb ? NAV_ITEMS.filter((i) => WEB_NAV_IDS.has(i.id)) : [...NAV_ITEMS];
+  // Coding Mode is parked behind CODING_MODE_OPTIONS_ENABLED while the
+  // feature is unfinished — hide its whole nav section (and, transitively,
+  // any way to reach the toggle or harness picker) until it's flipped on.
+  return codingModeOptionsEnabled ? items : items.filter((i) => i.id !== 'codingMode');
 }
 
 function SettingsNav({ section, onSectionChange, serverOnline = true }) {
@@ -628,7 +632,7 @@ function SettingsNav({ section, onSectionChange, serverOnline = true }) {
       className="w-[180px] shrink-0 border-r border-y-0 border-l-0 border-solid border-line py-5 px-2.5 flex flex-col gap-0.5"
     >
       <div className="text-2xs tracking-[0.08em] uppercase text-ink-4 pt-0 px-2.5 pb-1.5 font-semibold">Settings</div>
-      {navItemsForHost(host.isWeb).map((item) => {
+      {navItemsForHost(host.isWeb, host.codingModeOptionsEnabled).map((item) => {
         const active = section === item.id;
         // `!host.isWeb &&`: the offline-disable exists because a dead local
         // server can't accept a save, and Backend stays enabled as the escape
@@ -2266,16 +2270,18 @@ export default function SettingsView({
               <AutoSaveTag settingKey="show8bitToggle" />
             </div>
           </Section>
-          <Section title="Coding mode toggle button" subtitle="The floating </> button next to the theme toggle that switches Coding mode on/off.">
-            <div className="flex items-center">
-              <Switch
-                checked={settings.showCodingModeToggle !== false}
-                onCheckedChange={(v) => autoSaveSetting('showCodingModeToggle', v)}
-                aria-label="Coding mode toggle button"
-              />
-              <AutoSaveTag settingKey="showCodingModeToggle" />
-            </div>
-          </Section>
+          {host.codingModeOptionsEnabled && (
+            <Section title="Coding mode toggle button" subtitle="The floating </> button next to the theme toggle that switches Coding mode on/off.">
+              <div className="flex items-center">
+                <Switch
+                  checked={settings.showCodingModeToggle !== false}
+                  onCheckedChange={(v) => autoSaveSetting('showCodingModeToggle', v)}
+                  aria-label="Coding mode toggle button"
+                />
+                <AutoSaveTag settingKey="showCodingModeToggle" />
+              </div>
+            </Section>
+          )}
         </div>
       </SettingsGroup>
     </SettingsSectionPanel>
@@ -2335,7 +2341,7 @@ export default function SettingsView({
       backend: renderBackendSection,
       account: renderAccountSection,
     };
-    const activeItem = navItemsForHost(host.isWeb).find((i) => i.id === section) || null;
+    const activeItem = navItemsForHost(host.isWeb, host.codingModeOptionsEnabled).find((i) => i.id === section) || null;
     const inDetail = Boolean(activeItem);
     return (
       <SettingsLayoutContext.Provider value={{ mobile: true }}>
@@ -2360,7 +2366,7 @@ export default function SettingsView({
             </div>
           ) : (
             <nav className="settings-list" role="navigation" aria-label="Settings sections">
-              {navItemsForHost(host.isWeb).map((item) => {
+              {navItemsForHost(host.isWeb, host.codingModeOptionsEnabled).map((item) => {
                 // `!host.isWeb &&`: the offline-disable exists because a dead local
                 // server can't accept a save, and Backend stays enabled as the
                 // escape hatch to restart it. On web there is no Backend row —
@@ -2402,7 +2408,7 @@ export default function SettingsView({
   // sets the section directly, so a deep link (or a stale persisted section)
   // could still render one this host doesn't offer. Resolve through the visible
   // set and fall back to its first entry (Agent).
-  const visibleNav = navItemsForHost(host.isWeb);
+  const visibleNav = navItemsForHost(host.isWeb, host.codingModeOptionsEnabled);
   const effectiveSection = visibleNav.some((i) => i.id === section)
     ? section
     : visibleNav[0]?.id;
