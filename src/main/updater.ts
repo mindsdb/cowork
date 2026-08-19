@@ -10,13 +10,14 @@ import { checkForUIUpdate, applyUIUpdate, getRendererPath, hasInternet, rollback
 import type { UpdateCheckResult } from './ui-updater';
 import { checkForServerUpdate, maybeUpdateServer } from './server-updater';
 import { isServerRunning } from './server-process';
-import { decideUpdateApply, summarizeUpdateCheck, shellUpdateIsNewer, shellDownloadUrl, shellAutoUpdateIsActive } from './update-logic';
+import { decideUpdateApply, summarizeUpdateCheck, shellUpdateIsNewer, shellDownloadUrl, shellAutoUpdateIsActive, shellManualNoticeIsFallback } from './update-logic';
 import type { UpdateCheckSummary } from '../shared/update-types';
 import { buildKindStrict } from './cowork-home';
 import { getAppDisplayVersion } from './server-source';
 import {
   checkShellAutoUpdate,
   configureShellAutoUpdate,
+  getShellAutoUpdateSnapshot,
   registerShellAutoUpdateHandlers,
   startShellAutoUpdatePolling,
 } from './shell-auto-update-runtime';
@@ -265,8 +266,13 @@ export function initUpdater(
       checkForServerUpdate(),
     ]);
 
-    // Shell notices are independent of OTA and never auto-applied.
-    if (manifestReachable) {
+    // Shell notices are independent of OTA and never auto-applied. Poll the
+    // ENG-849 manifest only when it's the fallback path — auto-update disabled
+    // or terminally failed. When ENG-850 auto-update is enabled and healthy it
+    // owns the shell update and its own poll+banner cover it, so this would be
+    // a second redundant boot+4h check on prod (ENG-1739).
+    const autoSnap = getShellAutoUpdateSnapshot();
+    if (manifestReachable && shellManualNoticeIsFallback(autoSnap.phase, autoSnap.recoverable)) {
       const shell = await checkForShellUpdate().catch(() => ({ available: false as const }));
       lastShellStatus = shell;
       if (shell.available) {
