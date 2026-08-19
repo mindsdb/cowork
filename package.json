@@ -41,6 +41,8 @@
     "dist:win": "npm run build && node scripts/dist-win.mjs",
     "dist:win:all": "npm run build && node scripts/dist-win.mjs --all",
     "release:win:local": "npm run dist:win",
+    "dist:linux": "npm run build && node scripts/run-electron-builder.mjs --linux",
+    "dist:linux:dir": "npm run build && node scripts/run-electron-builder.mjs --linux --dir",
     "rebuild": "electron-rebuild"
   },
   "devDependencies": {

@@ -26,7 +26,9 @@ const targetPlatform = userArgs.includes('--mac')
   ? 'darwin'
   : userArgs.includes('--win')
     ? 'win32'
-    : null;
+    : userArgs.includes('--linux')
+      ? 'linux'
+      : null;
 const buildKind = (process.env.COWORK_BUILD_KIND || '').trim().toLowerCase();
 const feed = targetPlatform
   ? resolveShellUpdateFeed(buildKind, targetPlatform)

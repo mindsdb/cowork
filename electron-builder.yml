@@ -46,6 +46,16 @@ dmg:
       type: link
       path: /Applications
 
+linux:
+  icon: icon.png
+  category: Utility
+  target:
+    - target: AppImage
+      arch: [x64]
+  artifactName: "${productName}-${version}.${ext}"
+  maintainer: MindsDB
+  synopsis: MindsHub Cowork — autonomous AI coworker
+
 win:
   icon: icon.png
   target:
