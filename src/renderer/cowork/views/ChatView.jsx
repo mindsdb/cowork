@@ -36,6 +36,8 @@ import { Crumb as CrumbButton, CrumbSep } from '../components/ui/Crumb';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { harnessLabel } from '../lib/agentLabel';
+import { artifactOpenTarget, isArtifactActionAvailable } from '../lib/artifactActions';
+import { useOrgMode } from '../../lib/orgMode';
 import { modelLabel } from '../lib/settingsTransform';
 import { providerOverloadedButtons } from '../lib/turnErrorActions';
 import { isSkippedFailedAssistant, isOrphanUser as isOrphanUserPure, lastVisibleTurnIdx } from '../lib/turnVisibility';
@@ -513,6 +515,11 @@ function StepSkills({ steps, latestByKey, messageIndex, projectName }) {
 }
 
 function ArtifactCard({ artifact, onOpen }) {
+  // This card is an artifact surface like the panel's rows, so it answers to the
+  // same deployment gate. Without it the chat offered a local preview, Export
+  // and Show in Finder for content an org deployment does not serve, while the
+  // panel had already stopped offering them for the very same artifact.
+  const orgMode = useOrgMode();
   const [status, setStatus] = useState(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -553,10 +560,18 @@ function ArtifactCard({ artifact, onOpen }) {
   const isInlineText = _INLINE_TEXT_EXTS.includes(lcExt)
     || _INLINE_TEXT_EXTS.some((e) => lcPath.endsWith(e));
   const canPreviewInline = isHtml || isInlineText;
+  const published = !!artifact.publishedUrl;
+  const openTarget = artifactOpenTarget({
+    orgMode, published, canPreviewInline, hasBridge: host.isElectron || !host.isWeb,
+  });
   // Document artifacts (markdown/HTML/text) can be exported to PDF/Word/HTML.
   const _EXPORTABLE_EXTS = ['.md', '.markdown', '.html', '.htm', '.txt'];
   const canExport = canAct
+    && isArtifactActionAvailable('export', { orgMode, hasBridge: !host.isWeb, published })
     && (_EXPORTABLE_EXTS.includes(lcExt) || _EXPORTABLE_EXTS.some((e) => lcPath.endsWith(e)));
+  const canReveal = isArtifactActionAvailable('reveal', {
+    orgMode, hasBridge: host.isElectron, published,
+  });
   const handleExport = async (fmt) => {
     setExportOpen(false);
     if (!canAct) {
@@ -582,11 +597,24 @@ function ArtifactCard({ artifact, onOpen }) {
     }
   };
   const handleOpen = async () => {
+    if (openTarget === 'published') {
+      // The published URL is the ONLY route to this artifact's bytes on an org
+      // deployment, and it carries the access check.
+      try { host.openExternal(artifact.publishedUrl); }
+      catch { window.open(artifact.publishedUrl, '_blank', 'noreferrer'); }
+      return;
+    }
+    if (openTarget === null) {
+      showStatus('error', orgMode
+        ? 'This artifact has no published link yet.'
+        : (disabledReason || 'No artifact file path is available.'));
+      return;
+    }
     if (!canAct) {
       showStatus('error', disabledReason || 'No artifact file path is available.');
       return;
     }
-    if (canPreviewInline && onOpen) {
+    if (openTarget === 'preview' && onOpen) {
       onOpen(artifact);
       return;
     }
@@ -737,16 +765,23 @@ function ArtifactCard({ artifact, onOpen }) {
             )}
           </div>
         )}
-        {!host.isWeb && (
+        {!host.isWeb && canReveal && (
           <Tooltip content={canAct ? `${revealLabel}: ${path}` : ''}>
             <SmallBtn disabled={!canAct} onClick={handleReveal} title={canAct ? undefined : (disabledReason || 'No file path')}>
               {revealLabel}
             </SmallBtn>
           </Tooltip>
         )}
-        {(!host.isWeb || isHtml) && (
-          <Tooltip content={canAct ? `Open ${path}` : ''}>
-            <SmallBtn primary disabled={!canAct} onClick={handleOpen} title={canAct ? undefined : (disabledReason || 'No file path')}>
+        {/* Org mode drops the file-path conditions entirely: there the button
+            opens the published URL, which has no local path behind it. */}
+        {(orgMode ? openTarget === 'published' : (!host.isWeb || isHtml)) && (
+          <Tooltip content={orgMode ? 'Open the published artifact' : (canAct ? `Open ${path}` : '')}>
+            <SmallBtn
+              primary
+              disabled={!orgMode && !canAct}
+              onClick={handleOpen}
+              title={(orgMode || canAct) ? undefined : (disabledReason || 'No file path')}
+            >
               Open
             </SmallBtn>
           </Tooltip>

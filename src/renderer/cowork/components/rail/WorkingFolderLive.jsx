@@ -26,6 +26,8 @@ import { ArtifactViewer } from '../artifact';
 import { Tooltip } from '../ui';
 import { ConfirmModal } from '../ConfirmModal';
 import { host } from '../../../platform/host';
+import { useOrgMode } from '../../../lib/orgMode';
+import { artifactOpenTarget } from '../../lib/artifactActions';
 
 // Map a file extension to a glyph from `Icons.jsx`. Buckets group
 // extensions that read the same at glance — code files all get the
@@ -63,6 +65,7 @@ function iconForRow(row) {
 
 
 export function WorkingFolderLive({ project, isStreaming }) {
+  const orgMode = useOrgMode();
   const [resolvedProject, setResolvedProject] = useState(null);
   useEffect(() => {
     if (project) return;
@@ -303,11 +306,23 @@ export function WorkingFolderLive({ project, isStreaming }) {
   const onOpenArtifact = (artifact) => {
     const ext = (artifact.ext || '').toLowerCase();
     const path = (artifact.path || '').toLowerCase();
-    const canPreview = _INLINE_PREVIEW_EXTS.includes(ext)
+    const canPreviewInline = _INLINE_PREVIEW_EXTS.includes(ext)
       || _INLINE_PREVIEW_EXTS.some((e) => path.endsWith(e));
-    if (canPreview) {
+    // Same gate the panel and the inline chat card apply: in org mode neither
+    // the local preview nor the OS handoff has anything behind it, and the
+    // published URL is the only route to the content.
+    const target = artifactOpenTarget({
+      orgMode,
+      published: !!artifact.publishedUrl,
+      canPreviewInline,
+      hasBridge: host.isElectron,
+    });
+    if (target === 'published') {
+      try { host.openExternal(artifact.publishedUrl); }
+      catch { window.open(artifact.publishedUrl, '_blank', 'noreferrer'); }
+    } else if (target === 'preview') {
       setPreviewArt(artifact);
-    } else {
+    } else if (target === 'os') {
       onOpen(artifact.path);
     }
   };

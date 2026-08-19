@@ -27,3 +27,26 @@ export function isArtifactActionAvailable(id, { orgMode, hasBridge, published } 
   if (NEEDS_BRIDGE.has(id)) return Boolean(hasBridge);
   return true;
 }
+
+/**
+ * What a click on the artifact's own body should do.
+ *
+ * `'preview'` opens the in-app viewer, `'os'` hands the path to the desktop
+ * shell, `'published'` opens the public URL, `null` means the body is not
+ * clickable at all.
+ *
+ * Separate from `isArtifactActionAvailable` because this is a choice between
+ * mutually exclusive destinations rather than a per-action yes/no, and every
+ * surface that renders an artifact body has to make it: the inline chat card,
+ * the rail's Working-folder list and the artifacts grid each had their own
+ * copy, keyed only on the file extension. In org mode all three then opened a
+ * local preview of content that deployment does not serve.
+ *
+ * `canPreviewInline` stays the caller's to compute — the extension rules differ
+ * slightly per surface and are not what this decides.
+ */
+export function artifactOpenTarget({ orgMode, published, canPreviewInline, hasBridge } = {}) {
+  if (orgMode) return published ? 'published' : null;
+  if (canPreviewInline) return 'preview';
+  return hasBridge ? 'os' : null;
+}
