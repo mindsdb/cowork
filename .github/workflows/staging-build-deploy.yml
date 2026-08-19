@@ -8,6 +8,25 @@ on:
   push:
     branches:
       - staging
+      # TEMPORARY — REVERT BEFORE MERGE (ENG-1680).
+      #
+      # Puts this branch on cowork.staging.mindshub.ai without merging it. The
+      # branch's cowork-server is already rolled out there, so this is the other
+      # half of the same stand. Nothing in the pipeline is branch-aware:
+      # `build-deploy.yml` builds whatever code it is handed and rolls it into the
+      # `staging` namespace, so the `push` trigger above is the only thing tying
+      # the deploy to the `staging` branch.
+      #
+      # A `push` trigger and not `workflow_dispatch`: GitHub resolves a dispatch
+      # against the DEFAULT branch, so that one would have to land on `main`
+      # first, while a push event resolves the workflow file from the pushed
+      # commit — which is this one.
+      #
+      # Consequences while this line exists: every push to the branch redeploys
+      # the SHARED staging stand, clobbering it for everyone until the next merge
+      # to `staging` restores it (that restore is automatic — no revert needed on
+      # the environment, only on this file).
+      - feat/ENG-1680
 
 permissions:
   contents: read
@@ -38,6 +57,11 @@ jobs:
 
   build-installers:
     needs: [run-unit-tests]
+    # TEMPORARY — REVERT BEFORE MERGE (ENG-1680). Signed macOS/Windows installers
+    # are slow and have nothing to do with what the branch deploy is testing, and
+    # `server_ref: staging` below would pin them to the wrong cowork-server anyway.
+    # Inert on the real staging pipeline: there this condition is always true.
+    if: github.ref == 'refs/heads/staging'
     uses: ./.github/workflows/build-installers.yml
     with:
       # stable -> the PyPI rc stream, following cowork-server's publish-staging
@@ -62,7 +86,12 @@ jobs:
     # It cannot cover a run that never started (`startup_failure`, zero jobs) —
     # there is no job to put it in. pipeline-watchdog.yml covers that from outside.
     needs: [run-unit-tests, build-deploy, build-installers]
-    if: ${{ !cancelled() && !contains(needs.*.result, 'cancelled') }}
+    # TEMPORARY — REVERT BEFORE MERGE (ENG-1680): the `github.ref` clause only.
+    # This job posts "staging build + installers failed/recovered" to the eng
+    # channel, and `freeze-scoped: true` can style it as release-blocking. Neither
+    # is true of a branch deploy, so a red here would send people looking at the
+    # release train for a problem that is one person's in-flight branch.
+    if: ${{ github.ref == 'refs/heads/staging' && !cancelled() && !contains(needs.*.result, 'cancelled') }}
     permissions:
       contents: read
       actions: read # the prior-run lookup behind the recovery message
