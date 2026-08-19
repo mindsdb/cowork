@@ -1555,6 +1555,14 @@ function AppCore() {
   // Routes where the user can collapse the sidebar. Currently:
   // chat task only.
   const sidebarCollapsibleRoutes = useMemo(() => new Set(['task']), []);
+  // Coding Mode gets the same off-canvas popout treatment as the narrow/
+  // tablet band (640-900): the docked sidebar is hidden entirely and
+  // replaced by the floating hamburger, sliding in over the content instead
+  // of pushing it — even on a full-width desktop viewport, since the
+  // composer needs the room for its harness-picker chrome. Desktop-only
+  // (Coding Mode doesn't exist on web) and never applies on true mobile
+  // (<640) — MobileShell already owns that layout outright.
+  const sidebarPopout = isNarrow || (!isMobile && !host.isWeb && !!settings.codingModeEnabled);
   // Theme (light | dark) — persisted in localStorage so the choice
   // survives reloads. The animated background canvas (gravity-field)
   // and the body's bg colour both follow this value.
@@ -1687,9 +1695,12 @@ function AppCore() {
   }, [route]);
   // Effective collapse state: only honor the user's preference while
   // the route allows it (chat task). Everywhere else the sidebar
-  // stays expanded — gives the user permanent access to the nav.
+  // stays expanded — gives the user permanent access to the nav. Never
+  // applies in popout mode (narrow band or Coding Mode) — there the
+  // sidebar is either fully hidden or slid in as an overlay, not docked
+  // at a collapsed width.
   const sidebarCollapsedEffective =
-    !isNarrow && sidebarCollapsibleRoutes.has(route) && sidebarCollapsed;
+    !sidebarPopout && sidebarCollapsibleRoutes.has(route) && sidebarCollapsed;
   const [activeTaskId, setActiveTaskId] = useState(null);
   const [selectedScheduleId, setSelectedScheduleId] = useState(null);
   const [selectedProject, setSelectedProject] = useState(null);
@@ -2364,7 +2375,7 @@ function AppCore() {
   }, [markInFlight, markInFlightDone, handleStreamError]);
 
   const selectTask = (id) => {
-    if (isNarrow) setNavPopoutOpen(false);
+    if (sidebarPopout) setNavPopoutOpen(false);
     const task = tasks.find((t) => t.id === id);
     if (task) {
       // Record the visit for recents ordering, but never auto-pin.
@@ -2436,7 +2447,7 @@ function AppCore() {
   };
 
   const newTask = () => {
-    if (isNarrow) setNavPopoutOpen(false);
+    if (sidebarPopout) setNavPopoutOpen(false);
     setActiveTaskId(null);
     setComposerAttachments([]);
     setComposerPrefill(null);
@@ -2949,7 +2960,7 @@ function AppCore() {
   };
 
   const navigate = (key) => {
-    if (isNarrow) setNavPopoutOpen(false);
+    if (sidebarPopout) setNavPopoutOpen(false);
     if (key === 'settings' || key.startsWith('settings:')) {
       // Targeted (settings:backend) opens that section; a bare `settings`
       // opens the mobile section list (null) / desktop's last section.
@@ -4470,7 +4481,7 @@ function AppCore() {
   // sit within the top ~44px, so 52 clears them on either platform (web has
   // no lights but still floats the hamburger). Exposed as `--titlebar-safe-top`
   // on <main> and consumed by PageHeader / view headers.
-  const contentChromeExposed = isNarrow || sidebarCollapsedEffective;
+  const contentChromeExposed = sidebarPopout || sidebarCollapsedEffective;
   const titlebarSafeTop = contentChromeExposed ? 52 : 0;
 
   // Model Router isn't a real catalog model — Composer.jsx injects its own
@@ -4559,7 +4570,7 @@ function AppCore() {
       {/* Narrow-band popout backdrop — dims content behind the slid-in
           sidebar. Same 320ms curve as the drawer so the two read as one
           motion (the old overlay used mismatched 280/380ms durations). */}
-      {isNarrow && !isMobile && (
+      {sidebarPopout && !isMobile && (
         <div
           onClick={() => setNavPopoutOpen(false)}
           aria-hidden="true"
@@ -4567,7 +4578,15 @@ function AppCore() {
             position: 'fixed', inset: 0, zIndex: 100,
             background: 'rgba(0,0,0,0.35)',
             backdropFilter: 'blur(2px)',
-            WebkitAppRegion: 'no-drag',
+            // Only opt out of the window drag region while the scrim is
+            // actually up — it's a full-viewport `inset: 0` box, so leaving
+            // it permanently `no-drag` (as when this only fired for the
+            // rare narrow band) killed dragging the whole window the
+            // moment Coding Mode made this common, even while invisible:
+            // Electron computes the drag region from app-region CSS, not
+            // from opacity/pointer-events. Closed, it just inherits the
+            // ancestor `drag` region again.
+            WebkitAppRegion: navPopoutOpen ? 'no-drag' : 'drag',
             opacity: navPopoutOpen ? 1 : 0,
             pointerEvents: navPopoutOpen ? 'auto' : 'none',
             transition: 'opacity 320ms cubic-bezier(0.32, 0.72, 0, 1)',
@@ -4596,7 +4615,10 @@ function AppCore() {
               bottom-right corner overlaps task rows and the composer's
               send button there, so the row moves to the top-right instead
               — just left of the per-view expand/collapse-right-panel
-              button (see .floating-toggle-row--top-right). */}
+              button (see .floating-toggle-row--top-right). This is keyed
+              on the true viewport band (`isNarrow`), not `sidebarPopout` —
+              Coding Mode's popout sidebar is desktop-width, so this row
+              stays put in its usual bottom-right corner there. */}
       {!isMobile && (() => {
         const showCodingToggle = !host.isWeb && settings.showCodingModeToggle !== false;
         const codingModeOn = showCodingToggle && settings.codingModeEnabled;
@@ -4648,9 +4670,10 @@ function AppCore() {
 
       {!isMobile && (
       <div
-        style={isNarrow ? {
+        style={sidebarPopout ? {
           // Popout: off-canvas fixed drawer, slid in on navPopoutOpen. Same
-          // 320ms curve as the scrim above. Docked (display:contents) ≥900.
+          // 320ms curve as the scrim above. Docked (display:contents)
+          // otherwise — a wide desktop viewport with Coding Mode off.
           position: 'fixed', top: 9, bottom: 9, left: 9, zIndex: 101,
           transform: navPopoutOpen ? 'translateX(0)' : 'translateX(calc(-100% - 18px))',
           transition: 'transform 320ms cubic-bezier(0.32, 0.72, 0, 1)',
@@ -4680,7 +4703,7 @@ function AppCore() {
           onOpenSearch={() => setSearchOpen(true)}
           collapsed={sidebarCollapsedEffective}
           onToggleCollapsed={
-            isNarrow
+            sidebarPopout
               ? () => setNavPopoutOpen(false)
               : (sidebarCollapsibleRoutes.has(route)
                   ? () => setSidebarCollapsed((c) => !c)
@@ -4695,7 +4718,7 @@ function AppCore() {
           schedules={scheduled}
           scheduleRunsIndex={scheduleRunsIndex}
           onOpenSchedule={(scheduleId) => {
-            if (isNarrow) setNavPopoutOpen(false);
+            if (sidebarPopout) setNavPopoutOpen(false);
             setSelectedScheduleId(scheduleId);
             setRoute('schedule-detail');
           }}
@@ -4713,17 +4736,17 @@ function AppCore() {
           onDownloadShellUpdate={handleDownloadShellUpdate}
           onDismissShellUpdate={dismissShellUpdate}
           onStartChat={(text) => {
-            // On narrow desktop the sidebar is an overlay drawer. Close it
-            // like navigate/onOpenSchedule do, so the new task isn't buried
-            // under it.
-            if (isNarrow) setMobileSidebarOpen(false);
+            // Popout sidebar (narrow desktop, or Coding Mode) is an overlay
+            // drawer. Close it like navigate/onOpenSchedule do, so the new
+            // task isn't buried under it.
+            if (sidebarPopout) setNavPopoutOpen(false);
             handleSendFromHome(text);
           }}
-          // Hold the tip while the narrow-desktop drawer is shut: Sidebar
-          // sees collapsed={false} there, but the whole wrapper is
-          // translated off-screen, so its anchor is invisible. The armed
-          // state survives — it opens when the drawer does.
-          artifactTipOpen={artifactTipOpen && !(isNarrow && !mobileSidebarOpen)}
+          // Hold the tip while the popout drawer is shut: Sidebar sees
+          // collapsed={false} there, but the whole wrapper is translated
+          // off-screen, so its anchor is invisible. The armed state
+          // survives — it opens when the drawer does.
+          artifactTipOpen={artifactTipOpen && !(sidebarPopout && !navPopoutOpen)}
           onArtifactTipDismiss={handleArtifactTipDismiss}
           onShowServerHelp={() => openSettings('backend')}
           onToggleServer={async () => {
@@ -4764,8 +4787,8 @@ function AppCore() {
         isMobile={isMobile}
         mainBg={mainBg}
         titlebarSafeTop={titlebarSafeTop}
-        showFloatingHamburger={isNarrow ? !navPopoutOpen : sidebarCollapsedEffective}
-        onOpenSidebar={isNarrow ? () => setNavPopoutOpen(true) : () => setSidebarCollapsed(false)}
+        showFloatingHamburger={sidebarPopout ? !navPopoutOpen : sidebarCollapsedEffective}
+        onOpenSidebar={sidebarPopout ? () => setNavPopoutOpen(true) : () => setSidebarCollapsed(false)}
         mobileShellProps={mobileShellProps}
       >
         {route === 'home' && (

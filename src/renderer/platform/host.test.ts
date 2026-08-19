@@ -183,7 +183,7 @@ describe('electron mode (bridge present)', () => {
     await host.cancelDrivePicker();
     expect(oauthCancelPicker).toHaveBeenCalledOnce();
   });
-  
+
   it('getVersionInfo reports app/ui/source distinctly (OTA never masks the shell)', async () => {
     // OTA active: ui is the cached bundle, app is the installed shell — kept
     // separate so the App row can't drift to the OTA version (ENG-213 / G1).

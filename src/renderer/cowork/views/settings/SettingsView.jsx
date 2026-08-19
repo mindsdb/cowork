@@ -588,6 +588,7 @@ function CredentialRow({ title, subtitle, status, hasValue, children }) {
 
 const NAV_ITEMS = [
   { id: 'agent', label: 'Agent', icon: 'robot' },
+  { id: 'codingMode', label: 'Coding Mode', icon: 'code' },
   { id: 'appearance', label: 'Appearance', icon: 'palette' },
   { id: 'channels', label: 'Channels', icon: 'chats' },
   { id: 'updates', label: 'Updates', icon: 'refresh' },
@@ -603,6 +604,9 @@ const NAV_ITEMS = [
 //   account  — renders an SSO sign-in card, but a hosted user already
 //              authenticated through the console; a second sign-in is
 //              confusing at best.
+//   codingMode — launching an external CLI in a terminal is an Electron
+//              main-process capability with no web equivalent; web keeps
+//              its simple Anton/Hermes toggle inside Agent instead.
 // Agent stays because it carries the model picker and reasoning effort — the
 // point of the ticket. Appearance is purely cosmetic. Channels moved back here
 // from its standalone sidebar entry, which only existed while Settings was
@@ -1743,15 +1747,13 @@ export default function SettingsView({
           </div>
         </div>
 
-        {/* Coding Mode is desktop-only — launching an external CLI in a
-            terminal is an Electron main-process capability (child_process
-            spawn) with no web equivalent, a browser tab can't open a
-            terminal window on the visitor's machine. Web keeps the old,
-            simpler single-select Anton/Hermes toggle (unaffected by Coding
-            Mode, since that concept doesn't exist there); desktop gets the
-            full picker: a top-level on/off switch, and — only once it's
-            on — which harnesses the per-task composer pill offers. */}
-        {host.isWeb ? (
+        {/* Coding Mode itself lives in its own top-level nav section (see
+            renderCodingModeSection) — desktop-only, since launching an
+            external CLI in a terminal is an Electron main-process
+            capability with no web equivalent. Web keeps its simple
+            single-select Anton/Hermes toggle here instead, unaffected by
+            Coding Mode since that concept doesn't exist there. */}
+        {host.isWeb && (
           <SettingsGroup title="Agent Harness">
             <Section title="Harness" subtitle={`Which AI agent powers your tasks. ${agentLabel || 'Anton'} is the default; Hermes is an alternative agent with its own tool and memory system.`}>
               <ToggleGroup
@@ -1767,46 +1769,6 @@ export default function SettingsView({
               />
             </Section>
           </SettingsGroup>
-        ) : (
-          <>
-            <SettingsGroup title="Coding Mode">
-              <Section title="Coding mode" subtitle="Let a task pick its own agent per task — including launching in an external coding CLI (e.g. Claude Code) instead of the in-app chat, when one is installed.">
-                <Switch
-                  checked={settings.codingModeEnabled ?? false}
-                  onCheckedChange={(v) => setSetting('codingModeEnabled', v)}
-                  aria-label="Coding mode"
-                />
-              </Section>
-            </SettingsGroup>
-
-            {!!settings.codingModeEnabled && (
-              <SettingsGroup title="Harnesses">
-                {/* No Switch here — Anton is the default agent and can't be
-                    turned off; a picker with every harness disabled would
-                    have nothing to run. Still listed so it's clear it's
-                    part of the picker. */}
-                <Section title="Anton">
-                  <Badge variant="muted" size="xs" className="uppercase tracking-[0.04em]">Always on</Badge>
-                </Section>
-                {(settings.harnessOptions || []).includes('hermes') && (
-                  <Section title="Hermes">
-                    <Switch
-                      checked={settings.harnessHermesEnabled ?? true}
-                      onCheckedChange={(v) => setSetting('harnessHermesEnabled', v)}
-                      aria-label="Enable Hermes in the harness picker"
-                    />
-                  </Section>
-                )}
-                <Section title="Claude-Code">
-                  <Switch
-                    checked={settings.harnessClaudeCodeEnabled ?? true}
-                    onCheckedChange={(v) => setSetting('harnessClaudeCodeEnabled', v)}
-                    aria-label="Enable Claude-Code in the harness picker"
-                  />
-                </Section>
-              </SettingsGroup>
-            )}
-          </>
         )}
 
         <SettingsGroup title="Memory">
@@ -2003,6 +1965,50 @@ export default function SettingsView({
     reader.onload = () => autoSaveSetting('navLogo', reader.result);
     reader.readAsDataURL(file);
   };
+
+  // Desktop-only (see the WEB_NAV_IDS comment on NAV_ITEMS above) — web
+  // never navigates here since 'codingMode' is absent from WEB_NAV_IDS.
+  const renderCodingModeSection = () => (
+    <SettingsSectionPanel footer={renderSaveFooter()}>
+      <SettingsGroup title="Coding Mode">
+        <Section title="Coding mode" subtitle="Let a task pick its own agent per task — including launching in an external coding CLI (e.g. Claude Code) instead of the in-app chat, when one is installed.">
+          <Switch
+            checked={settings.codingModeEnabled ?? false}
+            onCheckedChange={(v) => setSetting('codingModeEnabled', v)}
+            aria-label="Coding mode"
+          />
+        </Section>
+      </SettingsGroup>
+
+      <SettingsGroup title="Available Agents">
+        {/* No Switch here — Anton is the default agent and can't be
+            turned off; a picker with every harness disabled would
+            have nothing to run. Still listed so it's clear it's
+            part of the picker. */}
+        <Section title="Anton">
+          <Badge variant="muted" size="xs" className="uppercase tracking-[0.04em]">Always on</Badge>
+        </Section>
+        {(settings.harnessOptions || []).includes('hermes') && (
+          <Section title="Hermes">
+            <Switch
+              checked={settings.harnessHermesEnabled ?? true}
+              onCheckedChange={(v) => setSetting('harnessHermesEnabled', v)}
+              disabled={!settings.codingModeEnabled}
+              aria-label="Enable Hermes in the harness picker"
+            />
+          </Section>
+        )}
+        <Section title="Claude-Code">
+          <Switch
+            checked={settings.harnessClaudeCodeEnabled ?? true}
+            onCheckedChange={(v) => setSetting('harnessClaudeCodeEnabled', v)}
+            disabled={!settings.codingModeEnabled}
+            aria-label="Enable Claude-Code in the harness picker"
+          />
+        </Section>
+      </SettingsGroup>
+    </SettingsSectionPanel>
+  );
 
   const renderAppearanceSection = () => (
     // No Save footer here — every control on this page auto-saves itself
@@ -2322,6 +2328,7 @@ export default function SettingsView({
   if (mobile) {
     const renderers = {
       agent: renderAgentSection,
+      codingMode: renderCodingModeSection,
       appearance: renderAppearanceSection,
       channels: renderChannelsSection,
       updates: renderUpdatesSection,
@@ -2405,6 +2412,7 @@ export default function SettingsView({
       <SettingsNav section={effectiveSection} onSectionChange={onSectionChange} serverOnline={serverOnline} />
 
       {effectiveSection === 'agent' && renderAgentSection()}
+      {effectiveSection === 'codingMode' && renderCodingModeSection()}
       {effectiveSection === 'appearance' && renderAppearanceSection()}
       {effectiveSection === 'channels' && renderChannelsSection()}
       {effectiveSection === 'updates' && renderUpdatesSection()}

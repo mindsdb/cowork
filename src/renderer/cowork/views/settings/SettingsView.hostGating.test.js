@@ -39,7 +39,7 @@ const ids = (items) => items.map((i) => i.id);
 describe('navItemsForHost — which Settings sections a host offers (ENG-932)', () => {
   it('gives Electron every section', () => {
     expect(ids(navItemsForHost(false))).toEqual([
-      'agent', 'appearance', 'channels', 'updates', 'backend', 'account',
+      'agent', 'codingMode', 'appearance', 'channels', 'updates', 'backend', 'account',
     ]);
   });
 
@@ -91,7 +91,7 @@ describe('navItemsForHost — which Settings sections a host offers (ENG-932)', 
     const b = navItemsForHost(false);
     b.pop();
     expect(ids(navItemsForHost(false))).toEqual([
-      'agent', 'appearance', 'channels', 'updates', 'backend', 'account',
+      'agent', 'codingMode', 'appearance', 'channels', 'updates', 'backend', 'account',
     ]);
   });
 });
