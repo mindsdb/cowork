@@ -36,6 +36,16 @@ import { getServerAuthToken, authHeader, resetServerAuthTokenCache } from './ser
 import { getAppDisplayVersion } from './server-source';
 import { extractProviderError, classifyOpenAICompatibleResult } from './provider-error';
 import { unifiedVersion, SKEW_WARN_DAYS } from '../shared/version';
+import { detectClaudeCode } from './coding-mode';
+import {
+  startCodingTerminal,
+  writeToCodingTerminal,
+  resizeCodingTerminal,
+  isCodingTerminalRunning,
+  killCodingTerminal,
+  killAllCodingTerminals,
+  removeCodingTask,
+} from './coding-terminal';
 
 function getAntonEnvPath(): string {
   return coworkEnvPath();
@@ -544,6 +554,7 @@ function createWindow() {
 
   mainWindow.on('closed', () => {
     mainWindow = null;
+    killAllCodingTerminals();
   });
 }
 
@@ -1258,6 +1269,34 @@ function setupIPC() {
     } catch (e: any) {
       return { ok: false, reason: e?.message || String(e) };
     }
+  });
+
+  ipcMain.handle(IPC.CODING_DETECT_CLI, async () => {
+    return detectClaudeCode();
+  });
+
+  ipcMain.handle(IPC.CODING_TERMINAL_START, async (event, taskId: string, opts: { projectPath: string; message: string; model: string }, cols: number, rows: number) => {
+    return startCodingTerminal(taskId, opts, cols, rows, event.sender);
+  });
+
+  ipcMain.handle(IPC.CODING_TERMINAL_INPUT, async (_event, taskId: string, data: string) => {
+    writeToCodingTerminal(taskId, data);
+  });
+
+  ipcMain.handle(IPC.CODING_TERMINAL_RESIZE, async (_event, taskId: string, cols: number, rows: number) => {
+    resizeCodingTerminal(taskId, cols, rows);
+  });
+
+  ipcMain.handle(IPC.CODING_TERMINAL_IS_RUNNING, async (_event, taskId: string) => {
+    return isCodingTerminalRunning(taskId);
+  });
+
+  ipcMain.handle(IPC.CODING_TERMINAL_KILL, async (_event, taskId: string) => {
+    killCodingTerminal(taskId);
+  });
+
+  ipcMain.handle(IPC.CODING_REMOVE_TASK, async (_event, taskId: string, projectPath: string) => {
+    await removeCodingTask(taskId, projectPath);
   });
 
   ipcMain.handle(IPC.APP_UI_VERSION, async () => {

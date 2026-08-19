@@ -57,8 +57,11 @@ describe('HomeView task modes (ENG-1594)', () => {
     await user.click(screen.getByRole('button', { name: 'Create slides' }));
     await user.type(screen.getByPlaceholderText(slides.placeholder), 'Make a deck about Q3');
     await user.keyboard('{Enter}');
+    // Composer's sendsMeta (ENG-1656) always passes a {harness, model} 2nd
+    // arg alongside the composed text.
     await waitFor(() => expect(props.onSend).toHaveBeenCalledWith(
       `Make a deck about Q3\n\n${slides.instruction}`,
+      { harness: 'anton', model: undefined },
     ));
     await waitFor(() => {
       expect(screen.queryByRole('button', { name: 'Remove Slides mode' })).not.toBeInTheDocument();
@@ -99,5 +102,47 @@ describe('HomeView task modes (ENG-1594)', () => {
     await user.click(screen.getByRole('button', { name: snake.label }));
     expect(props.onPrefill).toHaveBeenCalledWith(snake.prompt);
     expect(props.onSend).not.toHaveBeenCalled();
+  });
+});
+
+// ─── Hidden in Coding Mode ─────────────────────────────────────────
+//
+// The slides/website/app-style prompt scaffolding these pills offer
+// doesn't apply to a Claude Code task, so the whole surface (pills,
+// samples, any mode already selected) is hidden while Coding Mode is on.
+
+describe('HomeView task modes — hidden in Coding Mode', () => {
+  it('does not render the pill row when Coding Mode is enabled', () => {
+    renderHome({ codingModeEnabled: true });
+    expect(screen.queryByRole('button', { name: 'Create slides' })).not.toBeInTheDocument();
+  });
+
+  it('clears an already-selected mode (chip, samples, placeholder) once Coding Mode turns on', async () => {
+    const user = userEvent.setup();
+    const props = {
+      onSend: vi.fn(async () => {}),
+      activeTasks: [],
+      onSelectTask: vi.fn(),
+      onClearActive: vi.fn(),
+      project: { name: 'general' },
+      projects: [{ name: 'general' }],
+      models: [],
+      onProjectChange: vi.fn(),
+      onModelChange: vi.fn(),
+      configReady: true,
+      serverOnline: true,
+      skipIntro: true,
+      onPrefill: vi.fn(),
+      codingModeEnabled: false,
+    };
+    const { rerender } = render(<HomeView {...props} />);
+    await user.click(screen.getByRole('button', { name: 'Create slides' }));
+    expect(screen.getByRole('button', { name: 'Remove Slides mode' })).toBeInTheDocument();
+
+    rerender(<HomeView {...props} codingModeEnabled />);
+
+    expect(screen.queryByRole('button', { name: 'Remove Slides mode' })).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(slides.placeholder)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Create slides' })).not.toBeInTheDocument();
   });
 });

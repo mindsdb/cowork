@@ -279,7 +279,7 @@ function DriveReferenceRow({ file, onRequestDelete }) {
   );
 }
 
-export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoogleDriveFiles, onFetchGoogleDriveFiles, onRemoveGoogleDriveFile }) {
+export function ContextCard({ project, conversationId, refreshKey = 0, showMemory = true, onAddGoogleDriveFiles, onFetchGoogleDriveFiles, onRemoveGoogleDriveFile }) {
   const [sections, setSections] = useState([]);
   const [projectFiles, setProjectFiles] = useState([]);
   // Google Drive files the user picked via "Attach Google Drive files"
@@ -366,6 +366,10 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
   }, [reloadMemory]);
 
   useEffect(() => {
+    // Hermes has no memory system of its own — Project/Global memory is an
+    // Anton concept, so skip the fetch entirely rather than show sections
+    // the harness never reads or writes.
+    if (!showMemory) return;
     let cancelled = false;
     fetchMemory(project)
       .then((data) => {
@@ -374,7 +378,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
       })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [project?.id, project?.path, refreshKey, applyMemorySections]);
+  }, [project?.id, project?.path, refreshKey, showMemory, applyMemorySections]);
 
   // Ticket pattern: every instructions fetch (mount + reload-on-
   // edit) bumps `loadVersion`. The async response only applies its
@@ -849,7 +853,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
         </div>
       )}
 
-      {ordered.map((section) => {
+      {showMemory && ordered.map((section) => {
         const max = showAll ? section.files.length : 4;
         const visible = section.files.slice(0, max);
         const remaining = section.files.length - visible.length;
