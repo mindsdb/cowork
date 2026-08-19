@@ -2260,6 +2260,16 @@ export default function SettingsView({
               <AutoSaveTag settingKey="show8bitToggle" />
             </div>
           </Section>
+          <Section title="Coding mode toggle button" subtitle="The floating </> button next to the theme toggle that switches Coding mode on/off.">
+            <div className="flex items-center">
+              <Switch
+                checked={settings.showCodingModeToggle !== false}
+                onCheckedChange={(v) => autoSaveSetting('showCodingModeToggle', v)}
+                aria-label="Coding mode toggle button"
+              />
+              <AutoSaveTag settingKey="showCodingModeToggle" />
+            </div>
+          </Section>
         </div>
       </SettingsGroup>
     </SettingsSectionPanel>

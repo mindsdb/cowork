@@ -4576,7 +4576,7 @@ function AppCore() {
               greyed out when off. Toggles the setting directly on click;
               no modal, since there's nothing else to configure here. */}
       {(() => {
-        const showCodingToggle = !host.isWeb;
+        const showCodingToggle = !host.isWeb && settings.showCodingModeToggle !== false;
         const codingModeOn = showCodingToggle && settings.codingModeEnabled;
         const showThemeToggle = settings.showThemeToggle !== false || settings.show8bitToggle !== false;
         if (!showCodingToggle && !showThemeToggle) return null;
@@ -4600,10 +4600,20 @@ function AppCore() {
               </Tooltip>
             )}
             {showThemeToggle && (
-              <Tooltip content="Display settings">
+              // With the 8-bit skin toggle hidden there's nothing else to
+              // pick in the modal — just flip dark/light directly. The
+              // modal only earns the extra click when it actually offers
+              // something beyond that.
+              <Tooltip content={settings.show8bitToggle === false ? 'Toggle dark/light mode' : 'Display settings'}>
                 <button
-                  onClick={() => setThemeModalOpen(true)}
-                  aria-label="Open display settings"
+                  onClick={() => {
+                    if (settings.show8bitToggle === false) {
+                      setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
+                    } else {
+                      setThemeModalOpen(true);
+                    }
+                  }}
+                  aria-label={settings.show8bitToggle === false ? 'Toggle dark/light mode' : 'Open display settings'}
                   className="floating-toggle"
                 >
                   {theme === 'dark' ? Ico.sun(15) : Ico.moon(15)}

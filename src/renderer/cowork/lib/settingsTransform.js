@@ -55,6 +55,7 @@ export const SETTINGS_KEY_MAP = {
   nav_logo: 'navLogo',
   show_theme_toggle: 'showThemeToggle',
   show_8bit_toggle: 'show8bitToggle',
+  show_coding_mode_toggle: 'showCodingModeToggle',
   accent_variant: 'accentVariant',
   memory_enabled: 'memoryEnabled',
   memory_mode: 'memoryMode',
