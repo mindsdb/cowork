@@ -23,6 +23,7 @@ import {
   useCollectionShortcut,
 } from '../components/collection';
 import { cn } from '../lib/cn';
+import { connectionIdentity, humanLabel } from '../lib/connectionIdentity';
 
 // ─── Header ──────────────────────────────────────────────────────────────
 
@@ -80,11 +81,10 @@ function ConnectionCard({ connection, onDelete, onModify }) {
   const [busy, setBusy] = useState(false);
   const engine = connection.engine || 'unknown';
   const name = connection.name || connection.slug || 'unnamed';
-  // Card title is the user-assigned label; a dash for pre-migration
-  // connections that don't have one yet. Identity (host/db, email, etc.)
-  // moves to a subtitle line below instead of being the title.
-  const title = connection.user_label || '—';
-  const subtitle = connection.display_name || connection.displayName || null;
+  // Title and subtitle come from the shared derivation (ENG-1705) — neither is
+  // ever empty, and the subtitle ends at the slug so two connections on the
+  // same engine stay distinguishable.
+  const { title, subtitle } = connectionIdentity(connection);
   const updated = connection.updated_at || connection.updatedAt || null;
   const needsReconnect = connection.status === 'needs_reconnect';
 
@@ -179,10 +179,6 @@ function fmtDate(iso) {
       year: 'numeric', month: 'short', day: 'numeric',
     });
   } catch { return iso; }
-}
-
-function humanLabel(name) {
-  return String(name || '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 function MetaRow({ label, value }) {
