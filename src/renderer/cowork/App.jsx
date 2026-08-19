@@ -440,7 +440,7 @@ const RUNNING_STEP_STATUSES = new Set([
 // navigates into a task:
 //   1. Drop `_streaming` / activity placeholders when not live.
 //   2. Collapse in-progress steps to `completed` when not tailing.
-function reconcileTaskMessages(messages, isLive, isServerInFlight = false) {
+export function reconcileTaskMessages(messages, isLive, isServerInFlight = false) {
   if (!Array.isArray(messages)) return messages;
   if (isLive) return messages; // legitimate in-flight (local), leave alone
   // If the server says this conversation's producer is still running,
@@ -2386,6 +2386,52 @@ function AppCore() {
     reconnectInFlight(id).catch(() => { /* probe failures are silent */ });
   };
 
+  // Open a scheduled run's conversation with a proper in-progress state.
+  // Scheduled runs are produced SERVER-side, so unlike a normal client send
+  // there's nothing streaming locally when the view opens. The old nav paths
+  // (bare setActiveTaskId + setRoute) skipped both the in-flight reconcile
+  // and the live-tail attach, so the chat sat blank/stale while the run
+  // executed (ENG-289). This routes every scheduled-run open through the same
+  // three steps: (1) pull the (possibly brand-new) conversation into the task
+  // list, (2) reconcile it with isServerInFlight so an empty, still-running
+  // run shows the "Running task…" placeholder even before the producer
+  // registers its turn, and (3) attach the live SSE tail. Uses setTasks
+  // updaters (latest state) instead of reading `tasks`, so it is safe to call
+  // synchronously right after triggering the run.
+  const openScheduledRun = useCallback(async (cid, { expectInFlight = false } = {}) => {
+    if (!cid) return;
+    if (expectInFlight) markInFlight(cid);
+    setComposerAttachments([]);
+    setActiveTaskId(cid);
+    setRoute('task');
+    // A just-triggered run's conversation isn't in our local recents yet.
+    try {
+      const data = await fetchSessions();
+      if (Array.isArray(data)) {
+        setTasks((prev) => mergeTasksFromServer(data, prev).filter((t) => !deletedTaskIdsRef.current.has(t.id)));
+      }
+    } catch { /* reconnect below still surfaces progress */ }
+    // Reconcile with the in-flight signal so an empty, still-running run
+    // renders the "Running task…" placeholder instead of a blank chat.
+    const serverInFlight = expectInFlight || inFlightSetRef.current.has(cid);
+    try {
+      const loaded = await loadSessionMessagesWithRetry(cid, { isServerInFlight: serverInFlight });
+      if (loaded) {
+        setTasks((prev) => prev.map((t) => (
+          t.id === cid
+            ? {
+                ...t,
+                messages: loaded.messages,
+                ...(loaded.disabledConnections !== undefined ? { disabledConnections: loaded.disabledConnections } : {}),
+              }
+            : t
+        )));
+      }
+    } catch { /* ignore — reconnect still surfaces the live stream */ }
+    // Attach the live SSE tail when the producer is (or becomes) running.
+    reconnectInFlight(cid).catch(() => { /* probe failures are silent */ });
+  }, [markInFlight, reconnectInFlight]);
+
   const newTask = () => {
     if (isNarrow) setNavPopoutOpen(false);
     setActiveTaskId(null);
@@ -4186,14 +4232,11 @@ function AppCore() {
 
   const handleRunScheduleNow = async (id) => {
     const result = await runScheduleNow(id);
-    // The server creates the conversation eagerly and returns its id.
-    // Mark it in-flight locally so reconcileTaskMessages doesn't inject
-    // a spurious "got interrupted" prompt before the 5s poll catches up,
-    // then navigate straight to the new run so the user sees it stream.
+    // The server creates the conversation eagerly and returns its id. Open it
+    // through openScheduledRun so the task view shows a live in-progress state
+    // (placeholder + streamed tail) instead of a blank/stale chat (ENG-289).
     if (result?.conversation_id) {
-      markInFlight(result.conversation_id);
-      setActiveTaskId(result.conversation_id);
-      setRoute('task');
+      await openScheduledRun(result.conversation_id, { expectInFlight: true });
     }
     await refreshSchedules();
     refreshData();
@@ -4697,24 +4740,13 @@ function AppCore() {
             onResume={handleResumeSchedule}
             onRunNow={handleRunScheduleNow}
             onOpenRunSession={(sessionId) => {
-              if (!sessionId) return;
-              // Scheduled runs create real conversations on the
-              // server, but they may not be in our local recents list
-              // yet (e.g. the run fired while we were on another
-              // device or before this session's last fetch). Refresh
-              // tasks in parallel so currentTask resolves once the
-              // server response lands, and route immediately so the
-              // user sees the navigation happen.
-              fetchSessions().then((data) => {
-                if (Array.isArray(data)) {
-                  setTasks((prev) =>
-                    mergeTasksFromServer(data, prev)
-                      .filter((t) => !deletedTaskIdsRef.current.has(t.id))
-                  );
-                }
-              }).catch(() => {});
-              setActiveTaskId(sessionId);
-              setRoute('task');
+              // Scheduled runs create real conversations on the server, but
+              // they may not be in our local recents yet (fired on another
+              // device, or before this session's last fetch). openScheduledRun
+              // navigates immediately, pulls the conversation into the task
+              // list, reconciles an in-progress placeholder if it's still
+              // running, and attaches the live tail (ENG-289).
+              openScheduledRun(sessionId);
             }}
           />
         )}
