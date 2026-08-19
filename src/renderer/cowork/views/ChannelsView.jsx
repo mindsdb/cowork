@@ -23,6 +23,7 @@ import {
   reloadChannel,
   setupChannel,
   teardownChannel,
+  testChannelConnection,
   fetchChannelAgent,
   setChannelAgent,
 } from '../api';
@@ -180,6 +181,21 @@ function ChannelCard({ plugin, status, onChanged }) {
     }
   }
 
+  // Calls the platform with the stored credentials — "configured" only means
+  // every required field has some value, not that the platform accepts it.
+  async function testConnection() {
+    setBusy(true); setError(''); setNotice('');
+    try {
+      const r = await testChannelConnection(plugin.channel_type);
+      if (r?.ok) setNotice(r.detail || 'Connection verified.');
+      else setError(r?.detail || 'The platform rejected these credentials.');
+    } catch (err) {
+      setError(err?.message || 'Could not test the connection');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const fields = config?.fields || {};
   const configured = status?.configured;
   const active = status?.status === 'active';
@@ -247,6 +263,11 @@ function ChannelCard({ plugin, status, onChanged }) {
         <Button variant="primary" onClick={connect} disabled={busy || !orgReady}>
           {Ico.power(15)}<span>{configured ? 'Save & reconnect' : 'Connect'}</span>
         </Button>
+        {configured && caps.supports_verify ? (
+          <Button variant="subtle" onClick={testConnection} disabled={busy || !orgReady}>
+            Test connection
+          </Button>
+        ) : null}
         {configured ? (
           <Button variant="danger" onClick={disconnect} disabled={busy || !orgReady}>
             Disconnect
