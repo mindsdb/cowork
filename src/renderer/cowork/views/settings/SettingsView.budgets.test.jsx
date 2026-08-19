@@ -113,6 +113,17 @@ describe('SettingsView — Max tokens per task', () => {
     expect(screen.getByLabelText('Max tokens per task')).toBeDisabled();
   });
 
+  it('displays and accepts Max tokens per task in thousands, storing the natural count', () => {
+    const props = baseProps(withBudgets({ maxTurnTokens: '1250000' }));
+    render(<SettingsView {...props} />);
+
+    const input = screen.getByLabelText('Max tokens per task');
+    expect(input).toHaveValue(1250); // 1_250_000 tokens, shown as "1250"
+
+    fireEvent.change(input, { target: { value: '2000' } });
+    expect(props.setSetting).toHaveBeenCalledWith('maxTurnTokens', '2000000');
+  });
+
   it('reverts to the factory default when the field is cleared and blurred', () => {
     const props = baseProps(withBudgets());
     render(<SettingsView {...props} />);

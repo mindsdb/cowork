@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef, useContext } from 'react';
 import { useId } from 'react';
 import Ico from '../../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchRecommendedModels } from '../../api';
-import { providerTypeToKeyField, providerValueToType, resolveRoleModel, resolveModelPickerValue, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore, formatBudgetNumber } from '../../lib/settingsTransform';
+import { providerTypeToKeyField, providerValueToType, resolveRoleModel, resolveModelPickerValue, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore, toDisplayUnits, toNaturalUnits, formatCount } from '../../lib/settingsTransform';
 import { MODEL_REFRESH_TTL_MS } from '../../lib/modelRefresh';
 import { trackHarnessSwapped } from '../../lib/analytics';
 import { copyText as copyToClipboard } from '../../lib/clipboard';
@@ -88,6 +88,14 @@ function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSett
   // survive re-renders without causing one, and it is read only on toggle.
   const preToggle = useRef(null);
   if (showUnlimited && !isUnlimited && value != null) preToggle.current = value;
+  // The input reads/writes in `spec.unitDivisor` units (thousands, for
+  // maxTurnTokens) — seven-digit token counts aren't something anyone wants
+  // to type or read. Storage stays in natural units throughout; only the
+  // displayed text and what onChange/onBlur parse are scaled. See
+  // toDisplayUnits/toNaturalUnits in settingsTransform.js.
+  const hasUnit = !!spec.unitDivisor;
+  const toDisplay = (v) => toDisplayUnits(v, spec);
+  const toNatural = (v) => toNaturalUnits(v, spec);
   return (
     <div className="flex flex-col items-start gap-1.5">
       <div className="inline-flex items-baseline gap-2">
@@ -99,32 +107,40 @@ function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSett
           style={{ width: 90 }}
           type="number"
           inputMode="numeric"
-          min={min}
-          max={max}
+          min={toDisplay(min)}
+          max={toDisplay(max)}
           step={1}
           disabled={isUnlimited}
           // Show the number they'd return to, not the max: a disabled field
           // reading 50000000 invites someone to "fix" it back down by hand.
           value={isUnlimited
-            ? resolveBudgetRestore(preToggle.current, savedValue, spec)
-            : (value ?? String(fallback))}
-          onChange={(e) => setSetting(settingKey, e.target.value)}
+            ? toDisplay(resolveBudgetRestore(preToggle.current, savedValue, spec))
+            : toDisplay(value ?? String(fallback))}
+          onChange={(e) => setSetting(settingKey, toNatural(e.target.value))}
           onBlur={(e) => {
             if (value == null) return; // untouched — don't materialize the key
             // Emptying the field reverts to the factory default — clearing
             // any of the three budget fields is the discoverable way to
             // reset it, not a mid-retype state to preserve.
-            setSetting(settingKey, clampBudgetValue(e.target.value, spec));
+            setSetting(settingKey, clampBudgetValue(toNatural(e.target.value), spec));
           }}
           aria-label={label}
           aria-describedby={hintId}
-          title={`${label} (${formatBudgetNumber(min)}–${formatBudgetNumber(max)}, default ${formatBudgetNumber(fallback)})`}
+          title={`${label} (${formatCount(toDisplay(min))}–${formatCount(toDisplay(max))}, default ${formatCount(toDisplay(fallback))}${hasUnit ? ' thousand tokens' : ''})`}
         />
-        <span id={hintId} className="text-[11.5px] text-ink-3 whitespace-nowrap">
-          {isUnlimited
-            ? 'no limit — only the step and auto-continue caps apply'
-            : <>{formatBudgetNumber(min)}&ndash;{formatBudgetNumber(max)} &middot; default {formatBudgetNumber(fallback)}</>}
-        </span>
+        {hasUnit && <span className="text-[11.5px] text-ink-4">k</span>}
+        <div id={hintId} className="flex flex-col text-[11.5px] text-ink-3">
+          {isUnlimited ? (
+            <span className="whitespace-nowrap">no limit — only the step and auto-continue caps apply</span>
+          ) : (
+            <>
+              <span className="whitespace-nowrap">
+                {formatCount(toDisplay(min))}&ndash;{formatCount(toDisplay(max))}{hasUnit ? ' (thousands of tokens)' : ''}
+              </span>
+              <span className="whitespace-nowrap">default {formatCount(toDisplay(fallback))}</span>
+            </>
+          )}
+        </div>
       </div>
       {showUnlimited && (
         <div className="flex flex-col items-start gap-1.5">

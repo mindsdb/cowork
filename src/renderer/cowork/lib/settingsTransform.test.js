@@ -13,7 +13,9 @@ import {
   BUDGET_FIELDS,
   isBudgetUnlimited,
   resolveBudgetRestore,
-  formatBudgetNumber,
+  toDisplayUnits,
+  toNaturalUnits,
+  formatCount,
 } from './settingsTransform';
 
 // The minds-cloud recommended list holds bare aliases — never `latest:`-prefixed.
@@ -539,13 +541,34 @@ describe('clampBudgetValue / clampBudgets', () => {
     expect(clampBudgetValue('   ', spec)).toBe('50');
   });
 
-  it('formatBudgetNumber abbreviates thousands/millions, leaves small numbers as-is', () => {
-    expect(formatBudgetNumber(50)).toBe('50');
-    expect(formatBudgetNumber(500)).toBe('500');
-    expect(formatBudgetNumber(750_000)).toBe('750k');
-    expect(formatBudgetNumber(50_000_000)).toBe('50m');
-    expect(formatBudgetNumber(1_250_000)).toBe('1.25m');
-    expect(formatBudgetNumber(0)).toBe('0');
+  it('toDisplayUnits/toNaturalUnits round-trip through spec.unitDivisor', () => {
+    const tokenSpec = BUDGET_FIELDS.maxTurnTokens; // unitDivisor: 1000
+    expect(toDisplayUnits('750000', tokenSpec)).toBe('750');
+    expect(toDisplayUnits('50000000', tokenSpec)).toBe('50000');
+    expect(toDisplayUnits('1250000', tokenSpec)).toBe('1250');
+    expect(toNaturalUnits('750', tokenSpec)).toBe('750000');
+    expect(toNaturalUnits('1250', tokenSpec)).toBe('1250000');
+    // Fields with no unitDivisor pass through unchanged.
+    expect(toDisplayUnits('50', spec)).toBe('50');
+    expect(toNaturalUnits('50', spec)).toBe('50');
+  });
+
+  it('toDisplayUnits/toNaturalUnits leave empty and non-numeric drafts alone', () => {
+    const tokenSpec = BUDGET_FIELDS.maxTurnTokens;
+    expect(toDisplayUnits('', tokenSpec)).toBe('');
+    expect(toDisplayUnits(null, tokenSpec)).toBe('');
+    expect(toNaturalUnits('', tokenSpec)).toBe('');
+    // A transient mid-edit fragment (e.g. a lone "-") passes through as-is
+    // rather than rendering "NaN".
+    expect(toDisplayUnits('-', tokenSpec)).toBe('-');
+    expect(toNaturalUnits('-', tokenSpec)).toBe('-');
+  });
+
+  it('formatCount comma-groups a number', () => {
+    expect(formatCount(50)).toBe('50');
+    expect(formatCount('750')).toBe('750');
+    expect(formatCount('50000')).toBe('50,000');
+    expect(formatCount('1250')).toBe('1,250');
   });
 
   it('clampBudgets clamps present keys and never materializes absent ones', () => {
