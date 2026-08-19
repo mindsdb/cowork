@@ -1360,7 +1360,7 @@ export default function Composer({
                       so this reads as "the model pill" that happens to open
                       Settings, not as an unrelated control. */}
                   <span className="flex items-center gap-[8px] min-w-0">
-                    <ProviderIcon maker="other" className="text-ink-2" nudgeY={-1} />
+                    <ProviderIcon maker="other" className="text-ink-2" />
                     <span className="truncate">{MODEL_ROUTER_LABEL}</span>
                   </span>
                   <span className="inline-flex shrink-0 text-ink-3">

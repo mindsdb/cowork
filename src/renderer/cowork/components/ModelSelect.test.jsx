@@ -30,20 +30,20 @@ describe('ModelSelect', () => {
     // padding itself is what's asymmetric, not the glyph's position. Widening
     // the box instead (rather than shrinking its height) was tried and
     // rejected — it grew the icon's footprint next to the fixed flex gap,
-    // making the gap to the label look oversized.
+    // making the gap to the label look oversized. See ProviderIcon.test.jsx
+    // for the full measure/aspect-ratio/no-manual-nudge coverage.
     render(<Harness />); // default initial = 'mindshub_air'
     const svg = screen.getByRole('combobox').querySelector('svg');
     expect(svg).toHaveAttribute('width', '15'); // same footprint as every other icon
     expect(Number(svg.getAttribute('height'))).toBeLessThan(15);
   });
 
-  it('nudges the mindshub icon down against the trigger\'s blanket -1, per visual feedback', () => {
-    // Even un-letterboxed, the bear's own ink isn't vertically centered
-    // within its tight viewBox crop — its mark-level nudgeY (which wins
-    // outright over the trigger's -1) corrects that residual.
+  it('applies no manual nudge to the trigger\'s icon — auto-centering handles alignment', () => {
+    // ProviderIcon measures every mark's true ink bounding box and crops to
+    // it, so the trigger no longer needs (or passes) a blanket nudgeY.
     render(<Harness />);
     const svg = screen.getByRole('combobox').querySelector('svg');
-    expect(svg).toHaveStyle({ transform: 'translateY(1px)' });
+    expect(svg.style.transform).toBe('');
   });
 
   it('opens on click with provider group headers and a focused search input', async () => {
