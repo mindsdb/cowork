@@ -40,7 +40,7 @@ vi.mock('../../lib/analytics', () => ({
 vi.mock('../ChannelsView', () => ({ default: () => <div data-testid="channels-stub" /> }));
 
 import SettingsView from './SettingsView';
-import { BUDGET_FIELDS } from '../../lib/settingsTransform';
+import { BUDGET_FIELDS, diffSettingsForWrite } from '../../lib/settingsTransform';
 
 // The budget group only renders when the server served every budget key — an
 // older server hides it entirely rather than 400ing the save.
@@ -113,15 +113,35 @@ describe('SettingsView — Max tokens per task', () => {
     expect(screen.getByLabelText('Max tokens per task')).toBeDisabled();
   });
 
-  it('displays and accepts Max tokens per task in thousands, storing the natural count', () => {
+  it('displays and accepts Max tokens per task in millions, storing the natural count', () => {
     const props = baseProps(withBudgets({ maxTurnTokens: '1250000' }));
     render(<SettingsView {...props} />);
 
     const input = screen.getByLabelText('Max tokens per task');
-    expect(input).toHaveValue(1250); // 1_250_000 tokens, shown as "1250"
+    expect(input).toHaveValue(1.25); // 1_250_000 tokens, shown as "1.25"
 
-    fireEvent.change(input, { target: { value: '2000' } });
+    fireEvent.change(input, { target: { value: '2' } });
     expect(props.setSetting).toHaveBeenCalledWith('maxTurnTokens', '2000000');
+  });
+
+  it('sends the natural token count over the wire, never the millions-scaled display value', () => {
+    // The million-scale display is entirely a BudgetNumberField rendering
+    // concern (toDisplayUnits/toNaturalUnits) — settings state, the
+    // diff-for-write payload, and the server's max_turn_tokens column must
+    // never see anything but the real token count. This is the guard rail
+    // that would catch it if that boundary ever leaked.
+    const props = baseProps(withBudgets({ maxTurnTokens: '1250000' }));
+    render(<SettingsView {...props} />);
+
+    fireEvent.change(screen.getByLabelText('Max tokens per task'), { target: { value: '2' } });
+    const [, written] = props.setSetting.mock.calls.at(-1);
+    expect(written).toBe('2000000'); // NOT '2' — the agent reads real tokens
+
+    const writes = diffSettingsForWrite(
+      { maxTurnTokens: written },
+      { maxTurnTokens: '1250000' }, // lastFetched, as if freshly loaded from the server
+    );
+    expect(writes).toEqual({ max_turn_tokens: '2000000' });
   });
 
   it('reverts to the factory default when the field is cleared and blurred', () => {

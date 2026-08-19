@@ -542,12 +542,12 @@ describe('clampBudgetValue / clampBudgets', () => {
   });
 
   it('toDisplayUnits/toNaturalUnits round-trip through spec.unitDivisor', () => {
-    const tokenSpec = BUDGET_FIELDS.maxTurnTokens; // unitDivisor: 1000
-    expect(toDisplayUnits('750000', tokenSpec)).toBe('750');
-    expect(toDisplayUnits('50000000', tokenSpec)).toBe('50000');
-    expect(toDisplayUnits('1250000', tokenSpec)).toBe('1250');
-    expect(toNaturalUnits('750', tokenSpec)).toBe('750000');
-    expect(toNaturalUnits('1250', tokenSpec)).toBe('1250000');
+    const tokenSpec = BUDGET_FIELDS.maxTurnTokens; // unitDivisor: 1_000_000
+    expect(toDisplayUnits('750000', tokenSpec)).toBe('0.75');
+    expect(toDisplayUnits('50000000', tokenSpec)).toBe('50');
+    expect(toDisplayUnits('1250000', tokenSpec)).toBe('1.25');
+    expect(toNaturalUnits('0.75', tokenSpec)).toBe('750000');
+    expect(toNaturalUnits('1.25', tokenSpec)).toBe('1250000');
     // Fields with no unitDivisor pass through unchanged.
     expect(toDisplayUnits('50', spec)).toBe('50');
     expect(toNaturalUnits('50', spec)).toBe('50');

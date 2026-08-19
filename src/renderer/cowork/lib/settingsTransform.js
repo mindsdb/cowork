@@ -658,10 +658,10 @@ export const BUDGET_FIELDS = {
   // field. cowork-server pins the mirror in test_agent_budget_settings.py.
   // `unitDivisor`: the stored/written value is always the natural token
   // count (server rows, clamping, and the diff-for-write all stay in real
-  // tokens) — this only tells the input to display and accept thousands
-  // (1250 on screen means 1_250_000 tokens), since nobody wants to type or
+  // tokens) — this only tells the input to display and accept millions
+  // (1.25 on screen means 1_250_000 tokens), since nobody wants to type or
   // read seven digits. See `toDisplayUnits`/`toNaturalUnits` below.
-  maxTurnTokens: { min: 750_000, max: 50_000_000, fallback: 1_250_000, unitDivisor: 1000 },
+  maxTurnTokens: { min: 750_000, max: 50_000_000, fallback: 1_250_000, unitDivisor: 1_000_000 },
 };
 
 /**
