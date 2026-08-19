@@ -1785,11 +1785,11 @@ export default function SettingsView({
                     turned off; a picker with every harness disabled would
                     have nothing to run. Still listed so it's clear it's
                     part of the picker. */}
-                <Section title="Anton" subtitle="The default agent — always offered in the per-task harness picker.">
+                <Section title="Anton">
                   <Badge variant="muted" size="xs" className="uppercase tracking-[0.04em]">Always on</Badge>
                 </Section>
                 {(settings.harnessOptions || []).includes('hermes') && (
-                  <Section title="Hermes" subtitle="Offer Hermes — an alternative agent with independent tools and memory — as a per-task harness choice.">
+                  <Section title="Hermes">
                     <Switch
                       checked={settings.harnessHermesEnabled ?? true}
                       onCheckedChange={(v) => setSetting('harnessHermesEnabled', v)}
@@ -1797,7 +1797,7 @@ export default function SettingsView({
                     />
                   </Section>
                 )}
-                <Section title="Claude-Code" subtitle="Offer Claude Code as a per-task harness choice, when the CLI is installed on this machine.">
+                <Section title="Claude-Code">
                   <Switch
                     checked={settings.harnessClaudeCodeEnabled ?? true}
                     onCheckedChange={(v) => setSetting('harnessClaudeCodeEnabled', v)}
