@@ -22,12 +22,20 @@ describe('ModelSelect', () => {
     expect(screen.getByRole('combobox')).toHaveTextContent('MindsHub Air');
   });
 
-  it('does not double-nudge the mindshub mark — its own -1px wins over the trigger\'s', () => {
-    // Regression: ProviderIcon summed the mark's own nudgeY (mindshub: -1,
-    // the letterboxed bear sits low) with the trigger's blanket nudgeY={-1}
-    // for every icon, lifting the bear -2px total and visibly floating it
-    // above the label text.
+  it('renders the mindshub mark at its own (wider) aspect ratio, not squeezed into a square box', () => {
+    // Regression: squeezing the bear's markedly-wide viewBox (517x287) into
+    // the same size x size box as every square provider mark letterboxed it
+    // (empty vertical padding to fit the width), unbalancing the glyph
+    // within its box in a way translateY nudging can't actually fix — the
+    // padding itself is what's asymmetric, not the glyph's position.
     render(<Harness />); // default initial = 'mindshub_air'
+    const svg = screen.getByRole('combobox').querySelector('svg');
+    expect(svg).toHaveAttribute('height', '15');
+    expect(Number(svg.getAttribute('width'))).toBeGreaterThan(15);
+  });
+
+  it('nudges the (now un-letterboxed) mindshub icon the same as every other icon', () => {
+    render(<Harness />);
     const svg = screen.getByRole('combobox').querySelector('svg');
     expect(svg).toHaveStyle({ transform: 'translateY(-1px)' });
   });
