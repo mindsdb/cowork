@@ -11,6 +11,13 @@ import UserMenu from './UserMenu';
 import OnboardingChecklist from './onboarding/OnboardingChecklist';
 import FirstArtifactTip from './onboarding/FirstArtifactTip';
 
+// Shell auto-update (ENG-850) phases whose own banner is showing. The ENG-849
+// manual reinstall notice is the fallback for every OTHER phase, so the two are
+// mutually exclusive by construction — no double banner, and no gap where an
+// available update surfaces on neither (the reason `phase === 'disabled'` alone
+// was too narrow once prod settles at idle/complete — ENG-1739).
+const SHELL_AUTO_UPDATE_BANNER_PHASES = ['available', 'downloading', 'ready-to-install', 'installing', 'failed'];
+
 // Platform-aware modifier symbol for keyboard hints. Mac uses ⌘ glyph,
 // Windows/Linux use Ctrl+ literal.
 const IS_MAC = host.isMac() || /Mac|iPhone|iPod|iPad/.test(typeof navigator !== 'undefined' ? navigator.userAgent : '');
@@ -753,7 +760,7 @@ export default function Sidebar({
         {/* Shell auto-update (electron-updater): background download, install on
             relaunch. Rendered for the active phases; the action is phase-driven
             (download / restart / retry) and disabled while work is in flight. */}
-        {shellAutoUpdate && ['available', 'downloading', 'ready-to-install', 'installing', 'failed'].includes(shellAutoUpdate.phase) && (
+        {shellAutoUpdate && SHELL_AUTO_UPDATE_BANNER_PHASES.includes(shellAutoUpdate.phase) && (
           <button
             type="button"
             onClick={onShellAutoUpdateAction}
@@ -786,8 +793,10 @@ export default function Sidebar({
 
         {/* Shell (installer) update notice — the app itself is newer than what's
             installed; the shell can't hot-update, so this links to the download
-            and is dismissible per-version (ENG-849). */}
-        {shellUpdate && (!shellAutoUpdate || shellAutoUpdate.phase === 'disabled') && (
+            and is dismissible per-version (ENG-849). Shown whenever the shell
+            auto-updater isn't presenting its own banner (disabled/idle/complete),
+            so an available update never falls between the two. */}
+        {shellUpdate && (!shellAutoUpdate || !SHELL_AUTO_UPDATE_BANNER_PHASES.includes(shellAutoUpdate.phase)) && (
           <div className="mt-0 mx-2.5 mb-1.5 py-2 px-3 bg-[color-mix(in_srgb,var(--sage-500)_12%,transparent)] border border-solid border-[color-mix(in_srgb,var(--sage-500)_30%,transparent)] rounded-lg flex items-center gap-2 w-[calc(100%-20px)] [-webkit-app-region:no-drag]">
             <Tooltip content={`A new version of MindsHub Cowork is available${shellUpdate.version ? ` (${shellUpdate.version})` : ''} — download the installer, then quit the app and open it to update`}>
             <button

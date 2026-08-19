@@ -148,6 +148,32 @@ describe('Sidebar — update banners (ENG-849: shell reinstall supersedes OTA)',
     expect(onShellAutoUpdateAction).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole('button', { name: /New version available/ })).toBeNull();
   });
+
+  it('shows the manual reinstall notice when auto-update is idle with an update pending (no gap, ENG-1739)', () => {
+    // The auto-updater isn't presenting its own banner at idle, so an available
+    // update must still surface via the manual fallback rather than nowhere.
+    render(
+      <Sidebar
+        {...baseProps}
+        serverOnline
+        shellUpdate={{ version: '2.0.0' }}
+        shellAutoUpdate={{ phase: 'idle', mode: 'auto', channel: 'prod', currentVersion: '2.0.0' }}
+      />
+    );
+    expect(screen.getByRole('button', { name: /New version available/ })).toBeInTheDocument();
+  });
+
+  it('shows the manual reinstall notice when shell auto-update is disabled', () => {
+    render(
+      <Sidebar
+        {...baseProps}
+        serverOnline
+        shellUpdate={{ version: '2.0.0' }}
+        shellAutoUpdate={{ phase: 'disabled', mode: 'auto', channel: 'prod', currentVersion: '2.0.0', disabledReason: 'rollout-disabled' }}
+      />
+    );
+    expect(screen.getByRole('button', { name: /New version available/ })).toBeInTheDocument();
+  });
 });
 
 describe('Sidebar — nav title/logo override', () => {
