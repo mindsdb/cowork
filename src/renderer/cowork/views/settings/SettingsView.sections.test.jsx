@@ -131,8 +131,9 @@ describe('SettingsView — every section mounts (behavior lock)', () => {
 //
 // Desktop only (host.isWeb: false throughout this file). The per-harness
 // enable toggles live in their own "Harnesses" card, separate from the
-// "Coding Mode" card — hidden until Coding mode is on. Anton has no toggle
-// of its own (it's the default agent and can't be turned off); Hermes
+// "Coding Mode" card — hidden until Coding mode is on. Anton is still
+// listed there (so it's clear it's part of the picker) but has no
+// Switch — it's the default agent and can't be turned off; Hermes
 // specifically is hidden unless the server actually has it registered
 // (settings.harnessOptions, from available_harness_ids()).
 
@@ -144,13 +145,15 @@ describe('SettingsView — Coding Mode harness picker', () => {
     expect(screen.queryByRole('switch', { name: /enable claude-code/i })).not.toBeInTheDocument();
   });
 
-  it('reveals a separate Harnesses card with a Claude-Code toggle (no Anton toggle) once Coding mode is switched on', async () => {
+  it('reveals a separate Harnesses card with a Claude-Code toggle once Coding mode is switched on; Anton is listed but has no toggle', async () => {
     const user = userEvent.setup();
     render(<Harness section="agent" />);
     await user.click(await screen.findByRole('switch', { name: 'Coding mode' }));
 
     expect(screen.getByText('Harnesses')).toBeInTheDocument();
     expect(screen.getByRole('switch', { name: /enable claude-code/i })).toBeInTheDocument();
+    expect(screen.getByText('Anton')).toBeInTheDocument();
+    expect(screen.getByText('Always on')).toBeInTheDocument();
     expect(screen.queryByRole('switch', { name: /enable anton/i })).not.toBeInTheDocument();
   });
 

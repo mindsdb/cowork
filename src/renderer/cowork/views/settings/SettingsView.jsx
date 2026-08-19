@@ -1781,9 +1781,13 @@ export default function SettingsView({
 
             {!!settings.codingModeEnabled && (
               <SettingsGroup title="Harnesses">
-                {/* Anton has no toggle here — it's the default agent and
-                    can't be turned off; a picker with every harness
-                    disabled would have nothing to run. */}
+                {/* No Switch here — Anton is the default agent and can't be
+                    turned off; a picker with every harness disabled would
+                    have nothing to run. Still listed so it's clear it's
+                    part of the picker. */}
+                <Section title="Anton" subtitle="The default agent — always offered in the per-task harness picker.">
+                  <Badge variant="muted" size="xs" className="uppercase tracking-[0.04em]">Always on</Badge>
+                </Section>
                 {(settings.harnessOptions || []).includes('hermes') && (
                   <Section title="Hermes" subtitle="Offer Hermes — an alternative agent with independent tools and memory — as a per-task harness choice.">
                     <Switch
