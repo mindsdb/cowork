@@ -199,6 +199,75 @@ export async function showItemInFolder(path: string): Promise<{ ok: boolean; rea
   return { ok: false, reason: 'unsupported' };
 }
 
+// ---- Coding mode (MVP) ---------------------------------------------------
+
+export async function detectClaudeCode(): Promise<{ installed: boolean; path: string | null }> {
+  if (isElectron && typeof bridge.detectClaudeCode === 'function') {
+    return bridge.detectClaudeCode();
+  }
+  return { installed: false, path: null };
+}
+
+export async function startCodingTerminal(
+  taskId: string,
+  opts: { projectPath: string; message: string; model: string },
+  cols: number,
+  rows: number,
+): Promise<{ ok: boolean; reason?: string }> {
+  if (isElectron && typeof bridge.startCodingTerminal === 'function') {
+    return bridge.startCodingTerminal(taskId, opts, cols, rows);
+  }
+  return { ok: false, reason: 'unsupported' };
+}
+
+export function sendCodingTerminalInput(taskId: string, data: string): void {
+  if (isElectron && typeof bridge.sendCodingTerminalInput === 'function') {
+    bridge.sendCodingTerminalInput(taskId, data);
+  }
+}
+
+export function resizeCodingTerminal(taskId: string, cols: number, rows: number): void {
+  if (isElectron && typeof bridge.resizeCodingTerminal === 'function') {
+    bridge.resizeCodingTerminal(taskId, cols, rows);
+  }
+}
+
+export async function isCodingTerminalRunning(taskId: string): Promise<boolean> {
+  if (isElectron && typeof bridge.isCodingTerminalRunning === 'function') {
+    return bridge.isCodingTerminalRunning(taskId);
+  }
+  return false;
+}
+
+export function killCodingTerminal(taskId: string): void {
+  if (isElectron && typeof bridge.killCodingTerminal === 'function') {
+    bridge.killCodingTerminal(taskId);
+  }
+}
+
+/** Stops a Claude-Code task's PTY (if running) and removes its git worktree
+ *  and branch under `<projectPath>/.claude_tasks/<taskId>/` — call when the
+ *  task itself is deleted. */
+export async function removeCodingTask(taskId: string, projectPath: string): Promise<void> {
+  if (isElectron && typeof bridge.removeCodingTask === 'function') {
+    await bridge.removeCodingTask(taskId, projectPath);
+  }
+}
+
+export function onCodingTerminalData(cb: (taskId: string, data: string) => void): () => void {
+  if (isElectron && typeof bridge.onCodingTerminalData === 'function') {
+    return bridge.onCodingTerminalData(cb);
+  }
+  return () => {};
+}
+
+export function onCodingTerminalExit(cb: (taskId: string, exitCode: number) => void): () => void {
+  if (isElectron && typeof bridge.onCodingTerminalExit === 'function') {
+    return bridge.onCodingTerminalExit(cb);
+  }
+  return () => {};
+}
+
 // ---- File drop / clipboard ---------------------------------------------
 
 // In Electron, dropped files expose an OS path via webUtils. In web, the
@@ -882,6 +951,15 @@ export const host = {
   openExternal,
   openPath,
   showItemInFolder,
+  detectClaudeCode,
+  startCodingTerminal,
+  sendCodingTerminalInput,
+  resizeCodingTerminal,
+  isCodingTerminalRunning,
+  killCodingTerminal,
+  removeCodingTask,
+  onCodingTerminalData,
+  onCodingTerminalExit,
   getPathForFile,
   getUIVersion,
   getVersionInfo,

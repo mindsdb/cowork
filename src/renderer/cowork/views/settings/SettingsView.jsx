@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef, useContext } from 'react';
 import { useId } from 'react';
 import Ico from '../../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchRecommendedModels } from '../../api';
-import { providerTypeToKeyField, providerValueToType, resolveModelPickerValue, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore } from '../../lib/settingsTransform';
+import { providerTypeToKeyField, providerValueToType, resolveRoleModel, resolveModelPickerValue, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore } from '../../lib/settingsTransform';
 import { MODEL_REFRESH_TTL_MS } from '../../lib/modelRefresh';
 import { trackHarnessSwapped } from '../../lib/analytics';
 import { copyText as copyToClipboard } from '../../lib/clipboard';
@@ -1431,7 +1431,7 @@ export default function SettingsView({
             </SettingsGroup>
           </div>
           <div className={anyProviderConfigured ? 'order-1' : 'order-none'}>
-            <SettingsGroup title="Agent Models">
+            <SettingsGroup title="Model Router">
               {(() => {
                 // The default-mode provider is the implicit fallback for
                 // any role that hasn't been explicitly assigned an
@@ -1465,9 +1465,22 @@ export default function SettingsView({
                   const roleIdx = role === 'planning' ? 0 : role === 'router' ? 2 : 1;
                   const fallbackPair = recommendedPair[curType] || ['', '', ''];
                   const fallbackModel = fallbackPair[roleIdx] || fallbackPair[1] || '';
-                  const curModel = providerWasRepointed ? fallbackModel : roleModelValue(role, fallbackModel);
                   const provider = providers.find((p) => p.type === curType);
                   const modelList = recommendedModels[curType] || [];
+                  // minds-cloud has no free-text mode (unlike a BYOK provider,
+                  // where an unlisted id is just a user-typed custom model) —
+                  // same condition resolveModelPickerValue uses for its
+                  // "legacy — re-select a model" stale pin.
+                  const allowOther = curType !== 'minds-cloud';
+                  // See resolveRoleModel: substitutes the fallback not just
+                  // when the PROVIDER field was stale, but also when the
+                  // provider is already correct (e.g. after an SSO sign-in)
+                  // yet the paired model still names a different provider's
+                  // model — the case that used to surface as "legacy —
+                  // re-select a model" for the user to fix by hand.
+                  const curModel = resolveRoleModel(
+                    providerWasRepointed, roleModelValue(role, fallbackModel), modelList, allowOther, fallbackModel,
+                  );
                   /* Per-model availability (settings.modelEnabled, sourced from MindsHub
                    * /v1/models). A model the org's wallet can't currently pay for (or
                    * whose free allowance is spent) is listed here as false — it stays
@@ -1580,8 +1593,9 @@ export default function SettingsView({
                         )}
                         {modelList.length > 0 ? (
                           (() => {
-                            const allowOther = curType !== 'minds-cloud';
-                            // See resolveModelPickerValue + buildModelOptions: keeps the Select's
+                            // allowOther is hoisted above (also feeds curModel's
+                            // staleness check). See resolveModelPickerValue +
+                            // buildModelOptions: keeps the Select's
                             // value matched to a rendered option so picking a model always fires
                             // a real change and Save writes it — a login-written `latest:` pin no
                             // longer wedges the control into a no-op "Saved" (ENG-739).
@@ -1729,19 +1743,71 @@ export default function SettingsView({
           </div>
         </div>
 
-        <SettingsGroup title="Agent Harness">
-          <Section title="Harness" subtitle={`Which AI agent powers your tasks. ${agentLabel || 'Anton'} is the default; Hermes is an alternative agent with its own tool and memory system.`}>
-            <ToggleGroup
-              value={settings.harness || 'anton'}
-              onValueChange={(v) => { setSetting('harness', v); setLlmDirty(true); }}
-              aria-label="Agent harness"
-              options={[
-                { value: 'anton', label: 'Anton', 'aria-label': 'Use Anton agent', title: 'Anton — the default AI agent.' },
-                { value: 'hermes', label: 'Hermes', 'aria-label': 'Use Hermes agent', title: 'Hermes — alternative agent with independent tools and memory.' },
-              ]}
-            />
-          </Section>
-        </SettingsGroup>
+        {/* Coding Mode is desktop-only — launching an external CLI in a
+            terminal is an Electron main-process capability (child_process
+            spawn) with no web equivalent, a browser tab can't open a
+            terminal window on the visitor's machine. Web keeps the old,
+            simpler single-select Anton/Hermes toggle (unaffected by Coding
+            Mode, since that concept doesn't exist there); desktop gets the
+            full picker: a top-level on/off switch, and — only once it's
+            on — which harnesses the per-task composer pill offers. */}
+        {host.isWeb ? (
+          <SettingsGroup title="Agent Harness">
+            <Section title="Harness" subtitle={`Which AI agent powers your tasks. ${agentLabel || 'Anton'} is the default; Hermes is an alternative agent with its own tool and memory system.`}>
+              <ToggleGroup
+                value={settings.harness || 'anton'}
+                onValueChange={(v) => { setSetting('harness', v); setLlmDirty(true); }}
+                aria-label="Agent harness"
+                options={[
+                  { value: 'anton', label: 'Anton', 'aria-label': 'Use Anton agent', title: 'Anton — the default AI agent.' },
+                  ...((settings.harnessOptions || []).includes('hermes') ? [
+                    { value: 'hermes', label: 'Hermes', 'aria-label': 'Use Hermes agent', title: 'Hermes — alternative agent with independent tools and memory.' },
+                  ] : []),
+                ]}
+              />
+            </Section>
+          </SettingsGroup>
+        ) : (
+          <>
+            <SettingsGroup title="Coding Mode">
+              <Section title="Coding mode" subtitle="Let a task pick its own agent per task — including launching in an external coding CLI (e.g. Claude Code) instead of the in-app chat, when one is installed.">
+                <Switch
+                  checked={settings.codingModeEnabled ?? false}
+                  onCheckedChange={(v) => setSetting('codingModeEnabled', v)}
+                  aria-label="Coding mode"
+                />
+              </Section>
+            </SettingsGroup>
+
+            {!!settings.codingModeEnabled && (
+              <SettingsGroup title="Harnesses">
+                {/* No Switch here — Anton is the default agent and can't be
+                    turned off; a picker with every harness disabled would
+                    have nothing to run. Still listed so it's clear it's
+                    part of the picker. */}
+                <Section title="Anton">
+                  <Badge variant="muted" size="xs" className="uppercase tracking-[0.04em]">Always on</Badge>
+                </Section>
+                {(settings.harnessOptions || []).includes('hermes') && (
+                  <Section title="Hermes">
+                    <Switch
+                      checked={settings.harnessHermesEnabled ?? true}
+                      onCheckedChange={(v) => setSetting('harnessHermesEnabled', v)}
+                      aria-label="Enable Hermes in the harness picker"
+                    />
+                  </Section>
+                )}
+                <Section title="Claude-Code">
+                  <Switch
+                    checked={settings.harnessClaudeCodeEnabled ?? true}
+                    onCheckedChange={(v) => setSetting('harnessClaudeCodeEnabled', v)}
+                    aria-label="Enable Claude-Code in the harness picker"
+                  />
+                </Section>
+              </SettingsGroup>
+            )}
+          </>
+        )}
 
         <SettingsGroup title="Memory">
           <Section title="Memory mode" subtitle={`How ${agentLabel || 'Anton'} updates its long-term memory.`}>
@@ -2192,6 +2258,16 @@ export default function SettingsView({
                 aria-label="8-bit style toggle button"
               />
               <AutoSaveTag settingKey="show8bitToggle" />
+            </div>
+          </Section>
+          <Section title="Coding mode toggle button" subtitle="The floating </> button next to the theme toggle that switches Coding mode on/off.">
+            <div className="flex items-center">
+              <Switch
+                checked={settings.showCodingModeToggle !== false}
+                onCheckedChange={(v) => autoSaveSetting('showCodingModeToggle', v)}
+                aria-label="Coding mode toggle button"
+              />
+              <AutoSaveTag settingKey="showCodingModeToggle" />
             </div>
           </Section>
         </div>

@@ -9,6 +9,7 @@ import { isAntonConfigError } from './lib/antonErrors';
 import { host } from '../platform/host';
 import { relativeAge } from './lib/formatTime';
 import { transformSettingsRows, diffSettingsForWrite, mergeRecommendedModels } from './lib/settingsTransform';
+import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 import { cacheSettings } from './lib/settingsCache';
 import {
   buildMemoryDeletePayload,
@@ -248,7 +249,8 @@ function _conversationToTask(conv, messages = []) {
     projectName: conv.project || null,
     projectId: conv.project_id || null,
     projectPath: conv.project_path || null,
-    model: null,
+    harness: conv.harness || null,
+    model: conv.model || null,
     attachments: [],
     disabledConnections,
     pinned: false,
@@ -275,6 +277,16 @@ export async function fetchConversationList() {
   } catch {
     return [];
   }
+}
+
+/** Create a task record directly (bypassing the `/responses` stream) — used
+ * by coding-mode (MVP): the actual work happens in an external CLI, but the
+ * task should still show up with its harness/model recorded. */
+export async function createConversation({ project, projectId, topic, harness, model } = {}) {
+  return req('/conversations/', {
+    method: 'POST',
+    body: JSON.stringify({ project, projectId, topic, harness, model }),
+  });
 }
 
 export async function fetchSessions() {
@@ -342,7 +354,7 @@ export function allocateConversationId() {
 // callback shape the rest of the app already speaks. `conversationId` is
 // optional — omit it to start a new conversation; the caller learns the
 // new id via the first onChunk/onProgress/onDone callback's second arg.
-function _streamResponse(text, { conversationId, projectName, projectId, projectPath, model, attachmentIds = [], disabledConnections, onChunk, onProgress, onToolResult, onDone, onError, onEvent } = {}) {
+function _streamResponse(text, { conversationId, projectName, projectId, projectPath, model, harness, attachmentIds = [], disabledConnections, onChunk, onProgress, onToolResult, onDone, onError, onEvent } = {}) {
   const ctrl = new AbortController();
   (async () => {
     try {
@@ -351,7 +363,17 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           input: text,
-          model: model || null,
+          // MODEL_ROUTER_ID never leaves the renderer — it's how the
+          // composer represents "let this account's Settings decide"
+          // (modelCatalog.js). The server already treats a null/absent
+          // model as exactly that.
+          model: (model && model !== MODEL_ROUTER_ID) ? model : null,
+          // The composer's per-task harness pick (ENG-1656 follow-up) —
+          // overrides the account-wide harness setting for this
+          // conversation only. Omitted (server keeps the account default)
+          // when the caller doesn't pass one, e.g. an in-task reply, where
+          // the harness pill never shows.
+          ...(harness ? { harness } : {}),
           stream: true,
           conversation: conversationId || null,
           // Server's `project` field is a project NAME (folder under

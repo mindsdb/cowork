@@ -72,6 +72,35 @@ contextBridge.exposeInMainWorld('antontron', {
   // Open a local file/folder in the OS default handler.
   openPath:     (p: string) => ipcRenderer.invoke('shell:open-path', p),
   showItemInFolder: (p: string) => ipcRenderer.invoke(IPC.SHOW_ITEM_IN_FOLDER, p),
+
+  // Coding mode (MVP): detect a local `claude` CLI, run it in an embedded PTY.
+  detectClaudeCode: () => ipcRenderer.invoke(IPC.CODING_DETECT_CLI),
+  startCodingTerminal: (
+    taskId: string,
+    opts: { projectPath: string; message: string; model: string },
+    cols: number,
+    rows: number,
+  ) => ipcRenderer.invoke(IPC.CODING_TERMINAL_START, taskId, opts, cols, rows),
+  sendCodingTerminalInput: (taskId: string, data: string) =>
+    ipcRenderer.invoke(IPC.CODING_TERMINAL_INPUT, taskId, data),
+  resizeCodingTerminal: (taskId: string, cols: number, rows: number) =>
+    ipcRenderer.invoke(IPC.CODING_TERMINAL_RESIZE, taskId, cols, rows),
+  isCodingTerminalRunning: (taskId: string) =>
+    ipcRenderer.invoke(IPC.CODING_TERMINAL_IS_RUNNING, taskId),
+  killCodingTerminal: (taskId: string) =>
+    ipcRenderer.invoke(IPC.CODING_TERMINAL_KILL, taskId),
+  removeCodingTask: (taskId: string, projectPath: string) =>
+    ipcRenderer.invoke(IPC.CODING_REMOVE_TASK, taskId, projectPath),
+  onCodingTerminalData: (cb: (taskId: string, data: string) => void) => {
+    const listener = (_: any, taskId: string, data: string) => cb(taskId, data);
+    ipcRenderer.on(IPC.CODING_TERMINAL_DATA, listener);
+    return () => ipcRenderer.removeListener(IPC.CODING_TERMINAL_DATA, listener);
+  },
+  onCodingTerminalExit: (cb: (taskId: string, exitCode: number) => void) => {
+    const listener = (_: any, taskId: string, exitCode: number) => cb(taskId, exitCode);
+    ipcRenderer.on(IPC.CODING_TERMINAL_EXIT, listener);
+    return () => ipcRenderer.removeListener(IPC.CODING_TERMINAL_EXIT, listener);
+  },
   onInstallLog: (cb: (msg: string) => void) => {
     const listener = (_: any, msg: string) => cb(msg);
     ipcRenderer.on(IPC.INSTALL_LOG, listener);

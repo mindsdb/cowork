@@ -94,6 +94,13 @@ export default function MobileShell({
   onNewProject,          // () — open the "New project" modal (via projects route)
   navTitle = null,       // Settings → Appearance → Sidebar title override
   navLogo = null,        // Settings → Appearance → Sidebar logo override
+  // Top-bar theme toggle, opposite the hamburger — the desktop
+  // floating-toggle-row has no room on mobile, and the coding-mode toggle
+  // that sits beside it there is dropped entirely rather than given a
+  // second spot here.
+  theme = 'dark',
+  showThemeToggle = true,
+  onToggleTheme,
   children,
 }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -209,7 +216,18 @@ export default function MobileShell({
         <div className="mshell__title" title={title}>{title}</div>
         {/* Top-bar "+" removed — the FAB is now the universal create
             entry, so two affordances would just duplicate each other. */}
-        <span className="mshell__top-spacer" aria-hidden="true" />
+        {showThemeToggle ? (
+          <button
+            type="button"
+            className="mshell__theme-toggle"
+            aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            onClick={onToggleTheme}
+          >
+            {theme === 'dark' ? Ico.sun(16) : Ico.moon(16)}
+          </button>
+        ) : (
+          <span className="mshell__top-spacer" aria-hidden="true" />
+        )}
       </header>
 
       <div className="mshell__body">{children}</div>

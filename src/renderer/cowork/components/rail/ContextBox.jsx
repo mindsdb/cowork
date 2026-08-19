@@ -13,6 +13,8 @@ export function ContextBox({
   defaultOpen = true,
   maxBodyHeight = 360,
   slim = true,
+  /** false for harnesses (e.g. Hermes) with no memory system of their own — hides the Project/Global memory sections, keeps attachments/files. */
+  showMemory = true,
   onAddGoogleDriveFiles,
   onFetchGoogleDriveFiles,
   onRemoveGoogleDriveFile,
@@ -23,6 +25,7 @@ export function ContextBox({
         project={project}
         conversationId={conversationId}
         refreshKey={refreshKey}
+        showMemory={showMemory}
         onAddGoogleDriveFiles={onAddGoogleDriveFiles}
         onFetchGoogleDriveFiles={onFetchGoogleDriveFiles}
         onRemoveGoogleDriveFile={onRemoveGoogleDriveFile}

@@ -75,3 +75,41 @@ describe('ContextCard — Google Drive file list invalidation', () => {
     expect(onFetchGoogleDriveFiles).toHaveBeenCalledTimes(1);
   });
 });
+
+// ENG-1656 follow-up: Hermes has no memory system of its own — Project/
+// Global memory is an Anton concept the Context rail shouldn't show (or
+// even fetch) for a Hermes-harnessed task.
+describe('ContextCard — showMemory=false (Hermes tasks)', () => {
+  it('does not fetch memory when showMemory is false', async () => {
+    await act(async () => {
+      render(<ContextCard project={{ name: 'general' }} conversationId={null} showMemory={false} />);
+    });
+
+    expect(apiMock.fetchMemory).not.toHaveBeenCalled();
+  });
+
+  it('fetches memory by default (showMemory omitted)', async () => {
+    await act(async () => {
+      render(<ContextCard project={{ name: 'general' }} conversationId={null} />);
+    });
+
+    expect(apiMock.fetchMemory).toHaveBeenCalledTimes(1);
+  });
+
+  it('hides the Project/Global memory headings when showMemory is false', async () => {
+    apiMock.fetchMemory.mockResolvedValue({
+      sections: [
+        { scope: 'Project', files: [{ path: 'p1', category: 'notes', content: 'x' }] },
+        { scope: 'Global', files: [{ path: 'g1', category: 'notes', content: 'y' }] },
+      ],
+    });
+
+    const { queryByText } = render(
+      <ContextCard project={{ name: 'general' }} conversationId={null} showMemory={false} />
+    );
+    await act(async () => {});
+
+    expect(queryByText('Project memory')).toBeNull();
+    expect(queryByText('Global memory')).toBeNull();
+  });
+});

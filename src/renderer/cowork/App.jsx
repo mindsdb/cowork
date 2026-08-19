@@ -54,12 +54,13 @@ import { fetchSessions, fetchSession, fetchConversationList, fetchProjects, fetc
          deleteProject, cancelScratchpad, cancelResponse, fetchConnector,
          fetchSavedConnection, deleteDatasource, deletePickedFile,
          fetchInFlightStatus, tailInFlight, fetchInFlightList, submitAnswer,
-         fetchRecommendedModels } from './api';
+         fetchRecommendedModels, createConversation, revealSettingKey } from './api';
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
 import { isArtifactTipDismissed, dismissArtifactTip, dismissIfUntouched } from './components/onboarding/onboardingStore';
-import { modelLabel, recommendedModelOptions, providerValueToType,
+import { recommendedModelOptions, providerValueToType,
          mergeRecommendedModels } from './lib/settingsTransform';
 import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery, trackFirstResponse, classifyFirstResponse } from './lib/analytics';
+import { MODEL_ROUTER_ID, MODEL_ROUTER } from './lib/modelCatalog';
 
 // One-of-ten encouraging follow-ups picked when a connect task is
 // created. Reads as a friendly nudge after the connect-intro card —
@@ -1692,8 +1693,12 @@ function AppCore() {
   const [activeTaskId, setActiveTaskId] = useState(null);
   const [selectedScheduleId, setSelectedScheduleId] = useState(null);
   const [selectedProject, setSelectedProject] = useState(null);
-  // Set from the configured planning model once settings load.
-  const [selectedModel, setSelectedModel] = useState(null);
+  // Defaults to "Model Router" — defer to whatever this account's Settings
+  // has configured — until a composer picks a concrete model for a task.
+  // Never re-synced from settings after that: its whole point is that it
+  // always tracks Settings live, server-side, without the renderer needing
+  // to know the current planning/coding/router model.
+  const [selectedModel, setSelectedModel] = useState(MODEL_ROUTER);
   // In the hosted web shell the FastAPI process IS the host — there
   // is no subprocess to start/stop, and the SPA only loads at all if
   // the server is up. Seed online so downstream gates (`if (!serverOnline) return;`)
@@ -1776,12 +1781,6 @@ function AppCore() {
     fetchSettings().then((data) => {
       if (data && typeof data === 'object') {
         setSettings((prev) => ({ ...prev, ...data }));
-        const modelId = data.defaultModel || data.planningModel;
-        setSelectedModel({
-          id: modelId,
-          name: modelLabel(modelId) || modelId || 'Planning model',
-          desc: data.providerLabel ? `${data.providerLabel} planning model` : 'Configured planning model',
-        });
       }
     });
   }, []);
@@ -2157,8 +2156,6 @@ function AppCore() {
     const latest = await fetchSettings();
     if (latest && typeof latest === 'object') {
       setSettings((prev) => ({ ...prev, ...latest }));
-      const modelId = latest.defaultModel || latest.planningModel;
-      setSelectedModel({ id: modelId, name: modelLabel(modelId) || modelId || 'Planning model', desc: 'Configured planning model' });
     }
     return result;
   }, [settings]);
@@ -2192,7 +2189,9 @@ function AppCore() {
   };
   const currentTaskProject = resolveTaskProject(currentTask) || selectedProject;
   const currentTaskModel = currentTask?.model
-    ? (models.find((m) => m.id === currentTask.model) || { id: currentTask.model, name: currentTask.model, desc: 'Configured planning model' })
+    ? (currentTask.model === MODEL_ROUTER_ID
+        ? MODEL_ROUTER
+        : (models.find((m) => m.id === currentTask.model) || { id: currentTask.model, name: currentTask.model, desc: 'Configured planning model' }))
     : selectedModel;
 
   // "Switch to MindsHub Air" escape hatch on the model-denial card
@@ -3051,6 +3050,58 @@ function AppCore() {
     return health?.config_ready !== false;
   }, [health]);
 
+  // Coding mode (MVP, ENG-1656 follow-up): the task never goes through
+  // anton/`/responses` — it's recorded (harness/model) via a direct
+  // conversation-create call, then ChatView renders a live embedded
+  // terminal (CodingTerminal) for it instead of the normal chat transcript,
+  // running `claude` in a real PTY cwd'd to the project folder. Thrown
+  // errors here surface through the composer's existing inline error UI
+  // (same as any other send failure) — no separate toast plumbing needed.
+  const launchCodingModeTask = async (text, meta) => {
+    let generalProject = projects.find((p) => p.name === 'general');
+    const effectiveProject = selectedProject || generalProject;
+    if (!effectiveProject?.path) {
+      throw new Error('Pick a project with a folder before launching Claude Code.');
+    }
+    if (!meta.model || meta.model === MODEL_ROUTER_ID) {
+      throw new Error('Pick a model before launching Claude Code.');
+    }
+    const authToken = await revealSettingKey('minds');
+    if (!authToken) {
+      throw new Error('No MindsHub API key configured — sign in with MindsHub or add a key in Settings before using coding mode.');
+    }
+    const conversation = await createConversation({
+      project: effectiveProject.name,
+      projectId: effectiveProject.id,
+      topic: text.length > 60 ? text.slice(0, 57) + '…' : text,
+      harness: meta.harness,
+      model: meta.model,
+    });
+    const taskId = conversation?.id;
+    if (!taskId) {
+      throw new Error('Could not create the Claude Code task.');
+    }
+    setTasks((prev) => [{
+      id: taskId,
+      title: text.length > 60 ? text.slice(0, 57) + '…' : text,
+      subtitle: 'just now',
+      status: 'idle',
+      messages: [{ role: 'user', content: text, attachments: [] }],
+      projectName: effectiveProject.name,
+      projectId: effectiveProject.id,
+      projectPath: effectiveProject.path,
+      harness: meta.harness,
+      model: meta.model,
+      attachments: [],
+      disabledConnections: [],
+      pinned: false,
+      updatedAt: null,
+      createdAt: null,
+    }, ...prev]);
+    setActiveTaskId(taskId);
+    setRoute('task');
+  };
+
   // Ensure the fallback `general` project exists and return it, or null if it
   // could not be found or created. Shared by the home and in-chat send paths so
   // the bootstrap dance (find-by-name → createProject → refetch) lives in one
@@ -3074,7 +3125,10 @@ function AppCore() {
   };
 
   // Send from the home screen — creates a new session
-  const handleSendFromHome = async (text) => {
+  const handleSendFromHome = async (text, meta) => {
+    if (meta?.harness === 'claude-code') {
+      return launchCodingModeTask(text, meta);
+    }
     // Preflight: no provider configured → render an action card task
     // instead of routing through anton's LLM path.
     if (!(await ensureProviderReady())) {
@@ -3156,6 +3210,10 @@ function AppCore() {
       projectName: effectiveProjectName,
       projectId: effectiveProjectId,
       model: selectedModel?.id ?? null,
+      // The composer's harness pick (ENG-1656 follow-up) — Anton or
+      // Hermes here; 'claude-code' never reaches this function (the top
+      // of handleSendFromHome routes it to launchCodingModeTask instead).
+      harness: meta?.harness || null,
       attachments: sendingAttachments,
       disabledConnections: disabledForSend,
       // Stamp a client-side timestamp so the Sidebar's sort-by-
@@ -3246,6 +3304,7 @@ function AppCore() {
       projectId: effectiveProjectId,
       projectPath: effectiveProjectPath,
       model: selectedModel?.id,
+      harness: meta?.harness,
       attachmentIds,
       disabledConnections: disabledForSend,
       onEvent(ev) {
@@ -4069,6 +4128,14 @@ function AppCore() {
     if (!taskId) return;
     // eslint-disable-next-line no-console
     console.log('[performDeleteTask] confirmed', taskId);
+    const task = tasks.find((t) => t.id === taskId);
+    // Fire-and-forget: stop the PTY (if still running) and remove its git
+    // worktree/branch under <project>/.claude_tasks/<taskId>/ so deleted
+    // tasks don't leave orphaned directories behind. A no-op on web/for
+    // non-claude-code tasks (host.removeCodingTask itself no-ops there).
+    if (task?.harness === 'claude-code' && task?.projectPath) {
+      host.removeCodingTask(taskId, task.projectPath).catch(() => {});
+    }
     deletedTaskIdsRef.current.add(taskId);
     setTasks((prev) => prev.filter((t) => t.id !== taskId));
     // Its unsent reply draft has nowhere to go back to.
@@ -4406,7 +4473,10 @@ function AppCore() {
   const contentChromeExposed = isNarrow || sidebarCollapsedEffective;
   const titlebarSafeTop = contentChromeExposed ? 52 : 0;
 
-  const modelOptions = selectedModel && !models.some((m) => m.id === selectedModel.id)
+  // Model Router isn't a real catalog model — Composer.jsx injects its own
+  // pinned row directly, so it must not also get merged in here or it'd
+  // show up twice (once pinned, once sorted into the "Other" maker group).
+  const modelOptions = selectedModel && selectedModel.id !== MODEL_ROUTER_ID && !models.some((m) => m.id === selectedModel.id)
     ? [selectedModel, ...models]
     : models;
 
@@ -4454,6 +4524,19 @@ function AppCore() {
     },
     navTitle: settings.navTitle || null,
     navLogo: settings.navLogo || null,
+    // Mobile has no room for the desktop floating-toggle-row (bottom-right,
+    // over the FAB) — the theme toggle moves into the top bar, opposite the
+    // hamburger, and the coding-mode toggle is dropped entirely rather than
+    // hunting for a second spot.
+    theme,
+    showThemeToggle: settings.showThemeToggle !== false,
+    onToggleTheme: () => {
+      if (settings.show8bitToggle === false) {
+        setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
+      } else {
+        setThemeModalOpen(true);
+      }
+    },
   };
 
   return (
@@ -4492,6 +4575,77 @@ function AppCore() {
         />
       )}
 
+      {/* Floating corner row — back to its original bottom-right placement,
+          matching the onboarding pages (App.tsx's .arcade-theme-toggle,
+          which never moved). Same corner on every route, task view
+          included — one consistent location, not a bespoke per-view
+          control.
+            - Display Settings: opens ThemeModal (Light/Dark + Normal/8-Bit
+              picker) — the sidebar's old "Display settings" button (now
+              removed) folded into this.
+            - Coding Mode (desktop only): a bare "</>" glyph beside it,
+              deliberately un-boxed so it reads as a status indicator, not
+              a second button of the same weight — lit accent when on,
+              greyed out when off. Toggles the setting directly on click;
+              no modal, since there's nothing else to configure here.
+            - Hidden entirely on mobile — MobileShell renders its own theme
+              toggle in the top bar (opposite the hamburger) instead, and
+              the coding-mode toggle is dropped there rather than given a
+              second spot.
+            - Narrow/tablet band (popout sidebar, not yet phone-width): the
+              bottom-right corner overlaps task rows and the composer's
+              send button there, so the row moves to the top-right instead
+              — just left of the per-view expand/collapse-right-panel
+              button (see .floating-toggle-row--top-right). */}
+      {!isMobile && (() => {
+        const showCodingToggle = !host.isWeb && settings.showCodingModeToggle !== false;
+        const codingModeOn = showCodingToggle && settings.codingModeEnabled;
+        const showThemeToggle = settings.showThemeToggle !== false || settings.show8bitToggle !== false;
+        if (!showCodingToggle && !showThemeToggle) return null;
+        return (
+          <div className={`floating-toggle-row [-webkit-app-region:no-drag]${isNarrow ? ' floating-toggle-row--top-right' : ''}`}>
+            {showCodingToggle && (
+              <Tooltip content={codingModeOn ? 'Turn off coding mode' : 'Turn on coding mode'}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = !settings.codingModeEnabled;
+                    setSetting('codingModeEnabled', next);
+                    saveSettings({ codingModeEnabled: next }).catch(() => {});
+                  }}
+                  aria-label={codingModeOn ? 'Turn off coding mode' : 'Turn on coding mode'}
+                  aria-pressed={codingModeOn}
+                  className={'coding-mode-toggle' + (codingModeOn ? ' is-on' : '')}
+                >
+                  {Ico.code(15)}
+                </button>
+              </Tooltip>
+            )}
+            {showThemeToggle && (
+              // With the 8-bit skin toggle hidden there's nothing else to
+              // pick in the modal — just flip dark/light directly. The
+              // modal only earns the extra click when it actually offers
+              // something beyond that.
+              <Tooltip content={settings.show8bitToggle === false ? 'Toggle dark/light mode' : 'Display settings'}>
+                <button
+                  onClick={() => {
+                    if (settings.show8bitToggle === false) {
+                      setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
+                    } else {
+                      setThemeModalOpen(true);
+                    }
+                  }}
+                  aria-label={settings.show8bitToggle === false ? 'Toggle dark/light mode' : 'Open display settings'}
+                  className="floating-toggle"
+                >
+                  {theme === 'dark' ? Ico.sun(15) : Ico.moon(15)}
+                </button>
+              </Tooltip>
+            )}
+          </div>
+        );
+      })()}
+
       {!isMobile && (
       <div
         style={isNarrow ? {
@@ -4519,27 +4673,7 @@ function AppCore() {
           activeTaskId={route === 'task' ? activeTaskId : null}
           serverOnline={serverOnline}
           agentLabel={agentLabel}
-          theme={theme}
-          onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
           isSsoConnected={ssoConnected}
-          skin={skin}
-          // While a Custom theme is active, the sidebar's "8-bit" button
-          // can't flip `skin` straight to '8bit'/'normal' — that would
-          // silently discard the CustomTheme recipe (it only applies while
-          // skin === 'custom'). Repurpose the same button to toggle just
-          // the mono/8-bit font instead, so it stays meaningful without
-          // resetting anything.
-          onToggleSkin={() => {
-            if (skin === 'custom') {
-              setCustomTheme((prev) => ({ ...prev, font: prev.font === 'mono' ? 'standard' : 'mono' }));
-            } else {
-              setSkin(skin === '8bit' ? 'normal' : '8bit');
-            }
-          }}
-          is8bitActive={skin === 'custom' ? customTheme.font === 'mono' : skin !== 'normal'}
-          onOpenThemeModal={() => setThemeModalOpen(true)}
-          showThemeToggle={settings.showThemeToggle !== false}
-          show8bitToggle={settings.show8bitToggle !== false}
           onNavigate={navigate}
           onSelectTask={selectTask}
           onNewTask={newTask}
@@ -4661,12 +4795,16 @@ function AppCore() {
             configReady={health.config_ready ?? settings.configReady}
             configError={health.config_error ?? settings.configError}
             onOpenSettings={openSettings}
+            codingModelDefault={settings.codingModel}
+            harnessHermesEnabled={settings.harnessHermesEnabled ?? true}
+            harnessClaudeCodeEnabled={settings.harnessClaudeCodeEnabled ?? true}
             serverOnline={serverOnline}
             agentLabel={agentLabel}
             onShowServerHelp={() => openSettings('backend')}
             skipIntro={bootIntroDone}
             prefill={composerPrefill}
             onPrefill={(text, select) => setComposerPrefill({ text, bump: Date.now(), select })}
+            codingModeEnabled={settings.codingModeEnabled}
           />
         )}
 
@@ -4676,6 +4814,9 @@ function AppCore() {
             onSend={handleSendInTask}
             onSwitchToAirAndResend={airAvailableForSwitch ? handleSwitchToAirAndResend : undefined}
             onOpenSettings={openSettings}
+            codingModelDefault={settings.codingModel}
+            harnessHermesEnabled={settings.harnessHermesEnabled ?? true}
+            harnessClaudeCodeEnabled={settings.harnessClaudeCodeEnabled ?? true}
             queuedMessages={messageQueue[currentTask?.id] || []}
             onRemoveFromQueue={(itemId) => removeFromQueue(currentTask?.id, itemId)}
             onBack={() => {
@@ -4686,6 +4827,17 @@ function AppCore() {
             }}
             project={currentTaskProject}
             model={currentTaskModel}
+            onModelChange={(m) => {
+              // Same pattern as handleSwitchToAirAndResend: write the pick
+              // onto the task itself so it's visible immediately (drives
+              // currentTaskModel) and so handleSendInTask's existing
+              // `currentTask.model` fallback picks it up on the very next
+              // send, with no changes needed there.
+              if (!currentTask) return;
+              setTasks((prev) => prev.map((t) => (t.id === currentTask.id ? { ...t, model: m.id } : t)));
+            }}
+            models={modelOptions}
+            modelMeta={modelMeta}
             attachments={composerAttachments}
             connectors={connectors}
             onAttachFiles={handleAttachFiles}
@@ -4789,14 +4941,17 @@ function AppCore() {
             scheduleRunsIndex={scheduleRunsIndex}
             models={modelOptions}
             modelMeta={modelMeta}
+            model={selectedModel}
+            onModelChange={setSelectedModel}
             onSelectProject={(p) => setSelectedProject(p)}
             onCreateProject={handleCreateProject}
-            onSendInProject={(text) => {
+            onSendInProject={(text, meta) => {
               // Sending from project detail = same path as home, but
               // selectedProject is already pinned to this project so
               // the new task lands in the right workspace.
-              handleSendFromHome(text);
+              handleSendFromHome(text, meta);
             }}
+            codingModeEnabled={settings.codingModeEnabled}
             onSelectTask={selectTask}
             onDeleteTask={handleDeleteTask}
             onMoveTaskToProject={handleOpenMoveModal}
@@ -4819,6 +4974,10 @@ function AppCore() {
               setRoute('schedule-detail');
             }}
             agentLabel={agentLabel}
+            onOpenSettings={openSettings}
+            codingModelDefault={settings.codingModel}
+            harnessHermesEnabled={settings.harnessHermesEnabled ?? true}
+            harnessClaudeCodeEnabled={settings.harnessClaudeCodeEnabled ?? true}
           />
         )}
 
