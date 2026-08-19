@@ -1676,6 +1676,13 @@ export async function teardownChannel(channelType) {
   return req(`/channels/${enc(channelType)}/teardown`, { method: 'POST' });
 }
 
+// Calls the platform with the STORED credentials — proof they actually
+// authenticate, not just that every required field has some value typed in.
+// Gate on capabilities.supports_verify.
+export async function testChannelConnection(channelType) {
+  return req(`/channels/${enc(channelType)}/test-connection`, { method: 'POST' });
+}
+
 // ── Channel bindings (wire an external chat/thread to a project/conversation) ──
 
 export async function fetchChannelBindings(channelType) {
