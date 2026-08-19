@@ -86,8 +86,9 @@ Eligible packaged prod/stable builds contain a channel-specific
 rollout, and prod followed once the signed N → N+1 swap-on-relaunch smoke
 passed (macOS and Windows) and its observation window closed.
 `SHELL_AUTO_UPDATE_ENABLED=false` is the emergency kill switch for either ring;
-`true` is an explicit opt-in. The ENG-849 manual installer notice remains the
-disabled/failure fallback.
+since both rings default on, `=false` is the only value that changes behavior
+(`=true` just restates the default). The ENG-849 manual installer notice remains
+the disabled/failure fallback.
 
 When enabled, main owns one immutable shell-update snapshot:
 
@@ -126,9 +127,10 @@ PR #401); update polling and server updates run in every packaged build.
 - Non-prod kinds keep the renderer bundled in the build so testers always run
   the branch-under-test UI, never a hot-updated one.
 - The shell channels are separate from UI OTA: both `stable` and `prod` get
-  automatic shell updates by default (`stable` while running its bundled UI),
-  with the ENG-849 manual "download the installer" notice as the
-  disabled/failure fallback.
+  automatic shell updates by default (`stable` while running its bundled UI).
+  The disabled/failure fallback is the **prod-only** ENG-849 manual "download
+  the installer" notice (see "Prod-only" above) — `stable` has no manual notice,
+  so a disabled or failed `stable` auto-update surfaces only in Settings.
 - Resolution order: `COWORK_BUILD_KIND` env → `build-config.json` → `dev` if
   unpackaged. The OTA gate uses the strict resolver (`buildKindStrict()`):
   a missing/malformed/unrecognized kind is **never** treated as `prod`, so a

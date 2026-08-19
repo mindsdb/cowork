@@ -185,6 +185,60 @@ describe('createShellAutoUpdater', () => {
     });
   });
 
+  it('keys the signer rejection on `code`, not the message text', async () => {
+    // Isolates the code-based branch: a message with none of the integrity
+    // phrases (no "not signed"/"sha512"/"checksum") must still be terminal via
+    // `code` alone — so the check can't silently regress behind the text match.
+    const signer = setup();
+    await signer.updater.check('boot');
+    signer.adapter.emit(
+      'updater-error',
+      Object.assign(new Error('New version rejected'), { code: 'ERR_UPDATER_INVALID_SIGNATURE' }),
+    );
+    expect(signer.updater.getSnapshot()).toMatchObject({
+      phase: 'failed',
+      errorCode: 'artifact-verification-failed',
+      recoverable: false,
+    });
+  });
+
+  it('classifies a transient TLS leaf-signature error as recoverable, not terminal', async () => {
+    // Node's TLS failure carries code UNABLE_TO_VERIFY_LEAF_SIGNATURE and the
+    // message "unable to verify leaf signature" — both contain "signature". A
+    // broad substring match would wedge the updater terminally on a transient
+    // proxy/TLS hiccup; it must stay recoverable so the UI offers Retry.
+    const tls = setup();
+    await tls.updater.check('boot');
+    tls.adapter.emit(
+      'updater-error',
+      Object.assign(new Error('unable to verify leaf signature'), {
+        code: 'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+      }),
+    );
+    expect(tls.updater.getSnapshot()).toMatchObject({
+      phase: 'failed',
+      errorCode: 'update-request-failed',
+      recoverable: true,
+    });
+  });
+
+  it('classifies a permanent updater misconfiguration code as terminal', async () => {
+    // ERR_UPDATER_INVALID_CHANNEL (and its invalid-version/provider siblings)
+    // can never succeed on retry, so they must be terminal rather than offering
+    // an endless Retry from the generic recoverable bucket.
+    const cfg = setup();
+    await cfg.updater.check('boot');
+    cfg.adapter.emit(
+      'updater-error',
+      Object.assign(new Error('invalid channel'), { code: 'ERR_UPDATER_INVALID_CHANNEL' }),
+    );
+    expect(cfg.updater.getSnapshot()).toMatchObject({
+      phase: 'failed',
+      errorCode: 'unsupported-install',
+      recoverable: false,
+    });
+  });
+
   it('immediately supplies the authoritative snapshot to subscribers', () => {
     const { updater } = setup();
     const listener = vi.fn();
