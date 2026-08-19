@@ -22,6 +22,16 @@ describe('ModelSelect', () => {
     expect(screen.getByRole('combobox')).toHaveTextContent('MindsHub Air');
   });
 
+  it('does not double-nudge the mindshub mark — its own -1px wins over the trigger\'s', () => {
+    // Regression: ProviderIcon summed the mark's own nudgeY (mindshub: -1,
+    // the letterboxed bear sits low) with the trigger's blanket nudgeY={-1}
+    // for every icon, lifting the bear -2px total and visibly floating it
+    // above the label text.
+    render(<Harness />); // default initial = 'mindshub_air'
+    const svg = screen.getByRole('combobox').querySelector('svg');
+    expect(svg).toHaveStyle({ transform: 'translateY(-1px)' });
+  });
+
   it('opens on click with provider group headers and a focused search input', async () => {
     const user = userEvent.setup();
     render(<Harness />);

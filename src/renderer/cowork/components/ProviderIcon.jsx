@@ -29,11 +29,15 @@ const MARKS = {
   meta: { viewBox: '0 0 40 40', d: 'M26.6842 9C23.9781 9 21.8626 11.038 19.9474 13.6272C17.3158 10.2763 15.1155 9 12.4825 9C7.11403 9 3 15.9883 3 23.383C3 28.0102 5.2383 30.9298 8.9883 30.9298C11.6871 30.9298 13.6287 29.6579 17.0804 23.6243C17.0804 23.6243 18.519 21.0848 19.5073 19.3348C19.8543 19.8942 20.2198 20.4976 20.6038 21.1447L22.2222 23.8669C25.3743 29.1418 27.1316 30.9298 30.3129 30.9298C33.9678 30.9298 36 27.9707 36 23.2471C36 15.5029 31.7939 9 26.6842 9ZM14.4474 21.9912C11.6506 26.3772 10.6828 27.3611 9.12573 27.3611C7.52193 27.3611 6.56871 25.9532 6.56871 23.443C6.56871 18.0745 9.24561 12.5848 12.4371 12.5848C14.1652 12.5848 15.6097 13.5819 17.8216 16.7485C15.7208 19.9707 14.4474 21.9912 14.4474 21.9912ZM25.0102 21.44L23.0731 18.2105C22.5869 17.4163 22.0838 16.6325 21.5643 15.8596C23.3085 13.1681 24.7456 11.826 26.4576 11.826C30.0102 11.826 32.8538 17.0599 32.8538 23.4868C32.8538 25.9371 32.0512 27.3596 30.3889 27.3596C28.7953 27.3596 28.0351 26.307 25.0088 21.4386' },
 };
 
-// nudgeY (px) lifts/drops the mark; the caller's value adds to the mark's own
-// (e.g. a select nudges every icon while the letterboxed bear keeps its extra).
+// nudgeY (px) lifts/drops the mark. A mark's own nudgeY (e.g. mindshub's
+// letterboxed bear) is its fully-tuned final adjustment and wins outright;
+// the caller's nudgeY is only a per-context fallback for marks with no
+// tuning of their own (most providers). Stacking the two additively used to
+// double-lift the bear specifically (its own -1 plus a caller's -1 inside
+// e.g. ModelSelect's trigger), sitting it visibly above the label text.
 export function ProviderIcon({ maker, size = 15, className, style, nudgeY = 0 }) {
   const mark = MARKS[maker];
-  const totalNudgeY = (mark?.nudgeY ?? 0) + nudgeY;
+  const totalNudgeY = mark?.nudgeY ?? nudgeY;
   return (
     <svg
       width={size}
