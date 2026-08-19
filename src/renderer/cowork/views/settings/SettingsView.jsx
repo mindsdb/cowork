@@ -1768,23 +1768,22 @@ export default function SettingsView({
             </Section>
           </SettingsGroup>
         ) : (
-          <SettingsGroup title="Coding Mode">
-            <Section title="Coding mode" subtitle="Let a task pick its own agent per task — including launching in an external coding CLI (e.g. Claude Code) instead of the in-app chat, when one is installed.">
-              <Switch
-                checked={settings.codingModeEnabled ?? false}
-                onCheckedChange={(v) => setSetting('codingModeEnabled', v)}
-                aria-label="Coding mode"
-              />
-            </Section>
+          <>
+            <SettingsGroup title="Coding Mode">
+              <Section title="Coding mode" subtitle="Let a task pick its own agent per task — including launching in an external coding CLI (e.g. Claude Code) instead of the in-app chat, when one is installed.">
+                <Switch
+                  checked={settings.codingModeEnabled ?? false}
+                  onCheckedChange={(v) => setSetting('codingModeEnabled', v)}
+                  aria-label="Coding mode"
+                />
+              </Section>
+            </SettingsGroup>
+
             {!!settings.codingModeEnabled && (
-              <>
-                <Section title="Anton" subtitle="Offer Anton as a per-task harness choice.">
-                  <Switch
-                    checked={settings.harnessAntonEnabled ?? true}
-                    onCheckedChange={(v) => setSetting('harnessAntonEnabled', v)}
-                    aria-label="Enable Anton in the harness picker"
-                  />
-                </Section>
+              <SettingsGroup title="Harnesses">
+                {/* Anton has no toggle here — it's the default agent and
+                    can't be turned off; a picker with every harness
+                    disabled would have nothing to run. */}
                 {(settings.harnessOptions || []).includes('hermes') && (
                   <Section title="Hermes" subtitle="Offer Hermes — an alternative agent with independent tools and memory — as a per-task harness choice.">
                     <Switch
@@ -1801,9 +1800,9 @@ export default function SettingsView({
                     aria-label="Enable Claude-Code in the harness picker"
                   />
                 </Section>
-              </>
+              </SettingsGroup>
             )}
-          </SettingsGroup>
+          </>
         )}
 
         <SettingsGroup title="Memory">

@@ -432,15 +432,14 @@ describe('agent tool-budget settings (max_tool_rounds / max_continuations)', () 
 });
 
 describe('harness picker enable flags + availability (ENG-1656 follow-up)', () => {
-  it('transforms the three per-harness enable flags into camelCase booleans', async () => {
+  it('transforms the per-harness enable flags into camelCase booleans', async () => {
+    // Anton has no enable flag — it's the default agent and always offered.
     const { transformSettingsRows } = await import('./settingsTransform');
     const rows = [
-      { key: 'harness_anton_enabled', value: 'True', is_sensitive: false, is_set: true },
       { key: 'harness_hermes_enabled', value: 'False', is_sensitive: false, is_set: true },
       { key: 'harness_claude_code_enabled', value: 'True', is_sensitive: false, is_set: true },
     ];
     const s = transformSettingsRows(rows);
-    expect(s.harnessAntonEnabled).toBe(true);
     expect(s.harnessHermesEnabled).toBe(false);
     expect(s.harnessClaudeCodeEnabled).toBe(true);
   });

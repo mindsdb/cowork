@@ -571,7 +571,6 @@ function ProjectDetail({
   onOpenSchedule,
   onOpenSettings,
   codingModelDefault,
-  harnessAntonEnabled,
   harnessHermesEnabled,
   harnessClaudeCodeEnabled,
 }) {
@@ -726,7 +725,6 @@ function ProjectDetail({
               codingModeEnabled={codingModeEnabled}
               onOpenSettings={onOpenSettings}
               codingModelDefault={codingModelDefault}
-              harnessAntonEnabled={harnessAntonEnabled}
               harnessHermesEnabled={harnessHermesEnabled}
               harnessClaudeCodeEnabled={harnessClaudeCodeEnabled}
               sendsMeta
@@ -818,7 +816,6 @@ export default function ProjectsView({
   agentLabel = 'the agent',
   onOpenSettings,
   codingModelDefault,
-  harnessAntonEnabled,
   harnessHermesEnabled,
   harnessClaudeCodeEnabled,
 }) {
@@ -976,7 +973,6 @@ export default function ProjectsView({
         onUpdateConnectorMute={onUpdateConnectorMute}
         onOpenSettings={onOpenSettings}
         codingModelDefault={codingModelDefault}
-        harnessAntonEnabled={harnessAntonEnabled}
         harnessHermesEnabled={harnessHermesEnabled}
         harnessClaudeCodeEnabled={harnessClaudeCodeEnabled}
         onShowAll={() => setDetailProject(null)}

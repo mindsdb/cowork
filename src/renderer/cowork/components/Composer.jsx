@@ -198,8 +198,8 @@ export default function Composer({
   codingModelDefault,
   // Which harnesses the pill below offers, per Settings → Coding Mode
   // (default true — an account that never visits that setting sees every
-  // harness it's otherwise eligible for).
-  harnessAntonEnabled = true,
+  // harness it's otherwise eligible for). Anton has no enable flag — it's
+  // the default agent and always offered.
   harnessHermesEnabled = true,
   harnessClaudeCodeEnabled = true,
 }) {
@@ -350,8 +350,8 @@ export default function Composer({
   // enable flags, filtered live. Claude Code's detection hint (installed?)
   // stays a non-blocking title tooltip, not a gate — see claudeCodeInfo above.
   const harnessPickerOptions = useMemo(() => {
-    const opts = [];
-    if (harnessAntonEnabled) opts.push({ value: 'anton', label: 'Anton' });
+    // Anton is always offered — the default agent, with no enable flag.
+    const opts = [{ value: 'anton', label: 'Anton' }];
     if (harnessHermesEnabled) opts.push({ value: 'hermes', label: 'Hermes' });
     if (harnessClaudeCodeEnabled) {
       opts.push({
@@ -361,7 +361,7 @@ export default function Composer({
       });
     }
     return opts;
-  }, [harnessAntonEnabled, harnessHermesEnabled, harnessClaudeCodeEnabled, claudeCodeInfo.installed]);
+  }, [harnessHermesEnabled, harnessClaudeCodeEnabled, claudeCodeInfo.installed]);
 
   // If the currently-picked harness gets disabled out from under it (an
   // admin turned it off between page loads, or Coding mode just turned on

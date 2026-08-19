@@ -69,7 +69,6 @@ export const SETTINGS_KEY_MAP = {
   tone: 'tone',
   harness: 'harness',
   coding_mode_enabled: 'codingModeEnabled',
-  harness_anton_enabled: 'harnessAntonEnabled',
   harness_hermes_enabled: 'harnessHermesEnabled',
   harness_claude_code_enabled: 'harnessClaudeCodeEnabled',
 };

@@ -249,7 +249,6 @@ export default function HomeView({
   onPrefill,
   codingModeEnabled = false,
   codingModelDefault,
-  harnessAntonEnabled,
   harnessHermesEnabled,
   harnessClaudeCodeEnabled,
 }) {
@@ -574,7 +573,6 @@ export default function HomeView({
               codingModeEnabled={codingModeEnabled}
               onOpenSettings={onOpenSettings}
               codingModelDefault={codingModelDefault}
-              harnessAntonEnabled={harnessAntonEnabled}
               harnessHermesEnabled={harnessHermesEnabled}
               harnessClaudeCodeEnabled={harnessClaudeCodeEnabled}
               sendsMeta

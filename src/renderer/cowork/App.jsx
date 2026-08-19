@@ -4764,7 +4764,6 @@ function AppCore() {
             configError={health.config_error ?? settings.configError}
             onOpenSettings={openSettings}
             codingModelDefault={settings.codingModel}
-            harnessAntonEnabled={settings.harnessAntonEnabled ?? true}
             harnessHermesEnabled={settings.harnessHermesEnabled ?? true}
             harnessClaudeCodeEnabled={settings.harnessClaudeCodeEnabled ?? true}
             serverOnline={serverOnline}
@@ -4784,7 +4783,6 @@ function AppCore() {
             onSwitchToAirAndResend={airAvailableForSwitch ? handleSwitchToAirAndResend : undefined}
             onOpenSettings={openSettings}
             codingModelDefault={settings.codingModel}
-            harnessAntonEnabled={settings.harnessAntonEnabled ?? true}
             harnessHermesEnabled={settings.harnessHermesEnabled ?? true}
             harnessClaudeCodeEnabled={settings.harnessClaudeCodeEnabled ?? true}
             queuedMessages={messageQueue[currentTask?.id] || []}
@@ -4946,7 +4944,6 @@ function AppCore() {
             agentLabel={agentLabel}
             onOpenSettings={openSettings}
             codingModelDefault={settings.codingModel}
-            harnessAntonEnabled={settings.harnessAntonEnabled ?? true}
             harnessHermesEnabled={settings.harnessHermesEnabled ?? true}
             harnessClaudeCodeEnabled={settings.harnessClaudeCodeEnabled ?? true}
           />

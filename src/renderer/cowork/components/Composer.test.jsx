@@ -381,9 +381,10 @@ describe('Composer — no provider configured (ENG-1656 follow-up)', () => {
 
 // ─── Harness picker reflects Settings → Coding Mode (ENG-1656 follow-up) ──
 //
-// The pill's options come from the three harnessXEnabled props (default
-// true), not a fixed Anton/Claude-Code list — Hermes is now offerable too,
-// and any of the three can be individually turned off.
+// The pill's options come from the harnessHermesEnabled / harnessClaudeCodeEnabled
+// props (default true), not a fixed Anton/Claude-Code list — Hermes is now
+// offerable too. Anton has no enable prop: it's the default agent and is
+// always offered, so the pill can never be hidden entirely.
 
 describe('Composer — harness picker honors the per-harness enable flags', () => {
   it('offers all three harnesses by default', async () => {
@@ -415,14 +416,15 @@ describe('Composer — harness picker honors the per-harness enable flags', () =
     expect(screen.queryByRole('button', { name: 'Claude-Code' })).toBeNull();
   });
 
-  it('hides the whole pill when every harness is disabled', () => {
+  it('still offers Anton when Hermes and Claude-Code are both disabled', async () => {
     renderComposer({
       models: MODELS, modelMeta: MODEL_META, model: MODELS[0], codingModeEnabled: true,
-      harnessAntonEnabled: false, harnessHermesEnabled: false, harnessClaudeCodeEnabled: false,
+      harnessHermesEnabled: false, harnessClaudeCodeEnabled: false,
     });
 
-    expect(screen.queryByRole('group', { name: 'Choose harness' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Anton' })).toBeNull();
+    expect(await screen.findByRole('button', { name: 'Anton' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Hermes' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Claude-Code' })).toBeNull();
   });
 
   it('falls back to a still-enabled harness if the picked one gets disabled underneath it (e.g. Settings changed elsewhere)', async () => {
