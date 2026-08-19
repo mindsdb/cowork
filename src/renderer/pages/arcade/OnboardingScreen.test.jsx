@@ -273,14 +273,32 @@ describe('OnboardingScreen — the MindsHub path probes once, on the free model'
   it('sends exactly one probe, and never names a model', async () => {
     await connectWithMindsKey();
 
+    // The count is the assertion that matters, and it is checked only after the
+    // flow has settled on the success screen: the old code reached 2, but it
+    // passes through 1 on the way, so a waitFor on the count alone would go
+    // green against the very code this replaces.
     await waitFor(() => expect(screen.getByText(/You're all set/)).toBeInTheDocument());
     expect(hostMock.validateProvider).toHaveBeenCalledTimes(1);
-    const [provider, key, , model] = hostMock.validateProvider.mock.calls[0];
-    expect(provider).toBe('minds');
-    expect(key).toBe('mdb_test_key');
-    // The model argument is the whole defect: the client must leave the choice
-    // to the server, which probes the free model.
-    expect(model).toBeUndefined();
+    // Every call, not just the first. The paid model rode the *second* probe, so
+    // asserting the first one carried no model would have passed before too.
+    for (const [provider, key, , model] of hostMock.validateProvider.mock.calls) {
+      expect(provider).toBe('minds');
+      expect(key).toBe('mdb_test_key');
+      expect(model).toBeUndefined();
+    }
+  });
+
+  it('commits minds-cloud as the provider for both roles', async () => {
+    // The finalize lines were rewritten by the same diff and nothing else reads
+    // them back. Dropping either one leaves onboarding "successful" with the app
+    // pointed at no provider.
+    await connectWithMindsKey();
+
+    await waitFor(() => expect(hostMock.saveSettings).toHaveBeenCalled());
+    const written = hostMock.saveSettings.mock.calls.map(([c]) => c).join('\n');
+    expect(written).toContain('ANTON_MINDS_API_KEY=mdb_test_key');
+    expect(written).toContain('ANTON_PLANNING_PROVIDER=minds-cloud');
+    expect(written).toContain('ANTON_CODING_PROVIDER=minds-cloud');
   });
 
   it('a wallet-denied paid model can no longer route onboarding to BYOK', async () => {
@@ -293,7 +311,10 @@ describe('OnboardingScreen — the MindsHub path probes once, on the free model'
     );
     await connectWithMindsKey();
 
-    await waitFor(() => expect(hostMock.validateProvider).toHaveBeenCalledTimes(1));
+    // Settle on the success screen first. Waiting on the call count would resolve
+    // the moment it hit 1, which the two-probe version also does.
+    await waitFor(() => expect(screen.getByText(/You're all set/)).toBeInTheDocument());
+    expect(hostMock.validateProvider).toHaveBeenCalledTimes(1);
     expect(screen.queryByText('Anthropic')).toBeNull();
     expect(screen.queryByRole('alert')).toBeNull();
   });

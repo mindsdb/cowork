@@ -80,4 +80,13 @@ describe('MindsHub probe model and host detection', () => {
       expect(isMindsHost(url), String(url)).toBe(false);
     }
   });
+
+  it('answers false rather than throwing on a base URL that will not parse', () => {
+    // The base URL is free text off the provider card, and this runs before the
+    // caller's try/catch in the sidecar's equivalent, where an unguarded parse
+    // turned a failed validation into a 500. Unbalanced brackets are what does it.
+    for (const url of ['https://[', 'https://a[b].mindshub.ai/v1', '[', 'https://]']) {
+      expect(isMindsHost(url), url).toBe(false);
+    }
+  });
 });
