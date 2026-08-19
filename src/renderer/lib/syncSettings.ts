@@ -7,7 +7,7 @@
  * helpers so the DB stays in sync.
  */
 import { BASE, authFetch } from '../cowork/api';
-import { isMindsBaseUrl } from '../../shared/minds-endpoint';
+import { mindsServesOpenAiCompatible } from '../../shared/minds-endpoint';
 
 // Env-var names (ANTON_FOO_BAR) → backend DB setting keys (foo_bar).
 const ENV_TO_SETTING: Record<string, string> = {
@@ -36,18 +36,15 @@ const ENV_TO_SETTING: Record<string, string> = {
 /**
  * Whether an `openai-compatible` provider line denotes MindsHub.
  *
- * The base URL decides. With no base URL there are two cases, and the API keys
- * separate them: anton serves MindsHub through the openai-compatible provider
- * and derives the base from `minds_url` when only a MindsHub key is present, so
- * that shape really is MindsHub. Once an OpenAI key is set anton stops
- * deriving, nothing identifies the endpoint, and the provider stays
- * openai_compatible so the server's "set a base URL" gate stops the turn rather
- * than sending the prompt to the hosted gateway.
+ * The OpenAI key is supplied because this answer decides routing — see
+ * mindsServesOpenAiCompatible.
  */
 function isMindsEndpoint(envMap: Record<string, string>): boolean {
-  const base = (envMap.ANTON_OPENAI_BASE_URL || '').trim();
-  if (!base) return !envMap.ANTON_OPENAI_API_KEY;
-  return isMindsBaseUrl(base, envMap.ANTON_MINDS_URL || '');
+  return mindsServesOpenAiCompatible({
+    baseUrl: envMap.ANTON_OPENAI_BASE_URL,
+    mindsUrl: envMap.ANTON_MINDS_URL,
+    openAiApiKey: envMap.ANTON_OPENAI_API_KEY,
+  });
 }
 
 /**

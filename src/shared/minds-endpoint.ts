@@ -48,3 +48,38 @@ export function isMindsBaseUrl(base: string, mindsUrl = ''): boolean {
   if (minds && url.hostname === minds.hostname && url.port === minds.port) return true;
   return isMindsPublicHost(url.hostname);
 }
+
+/**
+ * Whether an `openai-compatible` provider selection denotes MindsHub.
+ *
+ * The base URL decides. With none, two cases remain and `openAiApiKey`
+ * separates them: anton serves MindsHub through the openai-compatible provider
+ * and derives the base from the MindsHub URL when only a MindsHub key is set,
+ * so that shape really is MindsHub — but once an OpenAI key is set it stops
+ * deriving and nothing identifies the endpoint.
+ *
+ * Pass `openAiApiKey` wherever the answer decides ROUTING, so an
+ * unidentifiable endpoint stays openai-compatible and the server's base-URL
+ * gate stops the turn rather than the prompt reaching the hosted gateway. Omit
+ * it where the answer only decides what the UI shows: there an endpoint that
+ * routes nowhere is better drawn as MindsHub than as an empty custom row.
+ */
+export function mindsServesOpenAiCompatible(
+  opts: { baseUrl?: string; mindsUrl?: string; openAiApiKey?: string },
+): boolean {
+  const base = (opts.baseUrl || '').trim();
+  if (!base) return !opts.openAiApiKey;
+  return isMindsBaseUrl(base, opts.mindsUrl || '');
+}
+
+/**
+ * `host` or `host:port` for an endpoint, or '' when it names none.
+ *
+ * Used to label a provider card reconstructed from a bare base URL, so it
+ * carries the endpoint the user typed rather than a generic placeholder.
+ */
+export function endpointHost(base: string): string {
+  const url = parseEndpoint(base);
+  if (!url) return '';
+  return url.port ? `${url.hostname}:${url.port}` : url.hostname;
+}

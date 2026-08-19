@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isMindsBaseUrl } from './minds-endpoint';
+import { isMindsBaseUrl, mindsServesOpenAiCompatible, endpointHost } from './minds-endpoint';
 
 // Routing is decided here, so every branch gets a case only it can satisfy.
 // Getting this wrong sends a prompt meant for a machine on the user's own
@@ -47,5 +47,40 @@ describe('isMindsBaseUrl', () => {
 
   it('ignores an unparseable minds_url rather than matching on it', () => {
     expect(isMindsBaseUrl('http://192.168.1.100:1234/v1', 'not a url')).toBe(false);
+  });
+});
+
+describe('mindsServesOpenAiCompatible', () => {
+  it('follows the base URL when there is one', () => {
+    expect(mindsServesOpenAiCompatible({ baseUrl: 'https://api.mindshub.ai/v1' })).toBe(true);
+    expect(mindsServesOpenAiCompatible({
+      baseUrl: 'http://192.168.1.100:1234/v1', mindsUrl: 'https://api.mindshub.ai',
+    })).toBe(false);
+  });
+
+  // With no base URL the OpenAI key decides, and only where the answer routes.
+  it('reads a bare MindsHub-key config as MindsHub', () => {
+    expect(mindsServesOpenAiCompatible({ mindsUrl: 'https://api.mindshub.ai' })).toBe(true);
+    expect(mindsServesOpenAiCompatible({ baseUrl: '   ' })).toBe(true);
+  });
+
+  it('declines once an OpenAI key makes the endpoint unidentifiable', () => {
+    expect(mindsServesOpenAiCompatible({ openAiApiKey: 'sk-x' })).toBe(false);
+  });
+});
+
+describe('endpointHost', () => {
+  it('includes the port when one is given', () => {
+    expect(endpointHost('http://192.168.1.100:1234/v1')).toBe('192.168.1.100:1234');
+    expect(endpointHost('192.168.1.100:1234')).toBe('192.168.1.100:1234');
+  });
+
+  it('omits a default port', () => {
+    expect(endpointHost('https://api.mindshub.ai/v1')).toBe('api.mindshub.ai');
+  });
+
+  it('is empty when no host is named', () => {
+    expect(endpointHost('')).toBe('');
+    expect(endpointHost('not a url')).toBe('');
   });
 });
