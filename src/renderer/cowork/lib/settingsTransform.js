@@ -663,18 +663,31 @@ export const BUDGET_FIELDS = {
  * Clamp one budget value into its range, as a string.
  *
  * Number() (not parseInt) so number-input-legal forms like "5e2" mean 500,
- * not 5. Unparseable/empty input falls back to `prev` (the last committed
- * value — clearing a field to retype must not silently reset a saved 500 to
- * the factory default) and only then to the spec fallback.
+ * not 5. Unparseable/empty input reverts to the spec fallback — clearing one
+ * of the three budget fields is the discoverable way to reset it to the
+ * factory default, not a mid-retype state to silently preserve.
  */
-export function clampBudgetValue(raw, spec, prev = null) {
+export function clampBudgetValue(raw, spec) {
   const { min, max, fallback } = spec;
   let n = Math.round(Number(raw));
   if (raw == null || String(raw).trim() === '' || Number.isNaN(n)) {
-    const p = Math.round(Number(prev));
-    n = (prev != null && String(prev).trim() !== '' && !Number.isNaN(p)) ? p : fallback;
+    n = fallback;
   }
   return String(Math.min(max, Math.max(min, n)));
+}
+
+/**
+ * Human-readable form of a budget number for the range hint — e.g.
+ * 750_000 -> "750k", 50_000_000 -> "50m", 1_250_000 -> "1.25m". Values under
+ * 1000 print as-is (maxToolRounds/maxContinuations never need abbreviating).
+ */
+export function formatBudgetNumber(n) {
+  const num = Number(n);
+  if (!Number.isFinite(num)) return String(n);
+  const abs = Math.abs(num);
+  if (abs >= 1_000_000) return `${Math.round((num / 1_000_000) * 100) / 100}m`;
+  if (abs >= 1_000) return `${Math.round((num / 1_000) * 100) / 100}k`;
+  return String(num);
 }
 
 /**

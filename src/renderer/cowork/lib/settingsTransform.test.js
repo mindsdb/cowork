@@ -13,6 +13,7 @@ import {
   BUDGET_FIELDS,
   isBudgetUnlimited,
   resolveBudgetRestore,
+  formatBudgetNumber,
 } from './settingsTransform';
 
 // The minds-cloud recommended list holds bare aliases — never `latest:`-prefixed.
@@ -531,14 +532,20 @@ describe('clampBudgetValue / clampBudgets', () => {
     expect(clampBudgetValue('1e3', spec)).toBe('500'); // 1000, max-clamped
   });
 
-  it('empty/unparseable input reverts to prev, then fallback', () => {
-    // Clearing a saved 500 to retype must not silently save the default.
-    expect(clampBudgetValue('', spec, '500')).toBe('500');
-    expect(clampBudgetValue('abc', spec, '120')).toBe('120');
-    expect(clampBudgetValue('', spec, null)).toBe('50');
-    expect(clampBudgetValue('', spec, 'junk')).toBe('50');
-    // A stale out-of-range prev (e.g. Escape-dismissed draft) still clamps.
-    expect(clampBudgetValue('', spec, '9999')).toBe('500');
+  it('empty/unparseable input reverts to the factory fallback', () => {
+    // Clearing the field is the discoverable way to reset it to default.
+    expect(clampBudgetValue('', spec)).toBe('50');
+    expect(clampBudgetValue('abc', spec)).toBe('50');
+    expect(clampBudgetValue('   ', spec)).toBe('50');
+  });
+
+  it('formatBudgetNumber abbreviates thousands/millions, leaves small numbers as-is', () => {
+    expect(formatBudgetNumber(50)).toBe('50');
+    expect(formatBudgetNumber(500)).toBe('500');
+    expect(formatBudgetNumber(750_000)).toBe('750k');
+    expect(formatBudgetNumber(50_000_000)).toBe('50m');
+    expect(formatBudgetNumber(1_250_000)).toBe('1.25m');
+    expect(formatBudgetNumber(0)).toBe('0');
   });
 
   it('clampBudgets clamps present keys and never materializes absent ones', () => {

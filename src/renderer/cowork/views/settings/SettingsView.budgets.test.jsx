@@ -113,6 +113,38 @@ describe('SettingsView — Max tokens per task', () => {
     expect(screen.getByLabelText('Max tokens per task')).toBeDisabled();
   });
 
+  it('reverts to the factory default when the field is cleared and blurred', () => {
+    const props = baseProps(withBudgets());
+    render(<SettingsView {...props} />);
+
+    const input = screen.getByLabelText('Max tokens per task');
+    fireEvent.change(input, { target: { value: '' } });
+    fireEvent.blur(input);
+
+    expect(props.setSetting).toHaveBeenCalledWith(
+      'maxTurnTokens', String(BUDGET_FIELDS.maxTurnTokens.fallback),
+    );
+  });
+
+  it('reverts Max steps per task and Max auto-continues to default too, on clear + blur', () => {
+    const props = baseProps(withBudgets());
+    render(<SettingsView {...props} />);
+
+    const steps = screen.getByLabelText('Max steps per task');
+    fireEvent.change(steps, { target: { value: '' } });
+    fireEvent.blur(steps);
+    expect(props.setSetting).toHaveBeenCalledWith(
+      'maxToolRounds', String(BUDGET_FIELDS.maxToolRounds.fallback),
+    );
+
+    const continuations = screen.getByLabelText('Max auto-continues');
+    fireEvent.change(continuations, { target: { value: '' } });
+    fireEvent.blur(continuations);
+    expect(props.setSetting).toHaveBeenCalledWith(
+      'maxContinuations', String(BUDGET_FIELDS.maxContinuations.fallback),
+    );
+  });
+
   it('hides the field entirely on a server that does not serve the key', () => {
     // The renderer ships OTA and leads the installed server; writing a key an
     // older server rejects 400s the whole multi-key save.

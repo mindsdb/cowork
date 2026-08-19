@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef, useContext } from 'react';
 import { useId } from 'react';
 import Ico from '../../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchRecommendedModels } from '../../api';
-import { providerTypeToKeyField, providerValueToType, resolveRoleModel, resolveModelPickerValue, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore } from '../../lib/settingsTransform';
+import { providerTypeToKeyField, providerValueToType, resolveRoleModel, resolveModelPickerValue, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore, formatBudgetNumber } from '../../lib/settingsTransform';
 import { MODEL_REFRESH_TTL_MS } from '../../lib/modelRefresh';
 import { trackHarnessSwapped } from '../../lib/analytics';
 import { copyText as copyToClipboard } from '../../lib/clipboard';
@@ -88,66 +88,62 @@ function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSett
   // survive re-renders without causing one, and it is read only on toggle.
   const preToggle = useRef(null);
   if (showUnlimited && !isUnlimited && value != null) preToggle.current = value;
-  // The last COMMITTED value, from the page's saved-state snapshot — never a
-  // draft. Tracking "last parseable edit" instead was a bug (Codex review on
-  // #514): editing a saved 120 to an unsaved 300, then clearing, restored the
-  // 300; an abandoned out-of-range draft resurrected as its clamped form.
-  const saved =
-    savedValue != null && String(savedValue).trim() !== '' ? String(savedValue) : null;
   return (
-    <div className="inline-flex items-baseline gap-2">
+    <div className="flex flex-col items-start gap-1.5">
+      <div className="inline-flex items-baseline gap-2">
+        {/* globals.css `.field-input` sets width:100% and loads after the
+            Tailwind layer, so a w-[90px] utility loses the cascade — inline
+            width is the one reliable override here. */}
+        <input
+          className="field-input"
+          style={{ width: 90 }}
+          type="number"
+          inputMode="numeric"
+          min={min}
+          max={max}
+          step={1}
+          disabled={isUnlimited}
+          // Show the number they'd return to, not the max: a disabled field
+          // reading 50000000 invites someone to "fix" it back down by hand.
+          value={isUnlimited
+            ? resolveBudgetRestore(preToggle.current, savedValue, spec)
+            : (value ?? String(fallback))}
+          onChange={(e) => setSetting(settingKey, e.target.value)}
+          onBlur={(e) => {
+            if (value == null) return; // untouched — don't materialize the key
+            // Emptying the field reverts to the factory default — clearing
+            // any of the three budget fields is the discoverable way to
+            // reset it, not a mid-retype state to preserve.
+            setSetting(settingKey, clampBudgetValue(e.target.value, spec));
+          }}
+          aria-label={label}
+          aria-describedby={hintId}
+          title={`${label} (${formatBudgetNumber(min)}–${formatBudgetNumber(max)}, default ${formatBudgetNumber(fallback)})`}
+        />
+        <span id={hintId} className="text-[11.5px] text-ink-3 whitespace-nowrap">
+          {isUnlimited
+            ? 'no limit — only the step and auto-continue caps apply'
+            : <>{formatBudgetNumber(min)}&ndash;{formatBudgetNumber(max)} &middot; default {formatBudgetNumber(fallback)}</>}
+        </span>
+      </div>
       {showUnlimited && (
-        <label className="inline-flex items-baseline gap-1.5 mr-1 whitespace-nowrap">
-          <Checkbox
-            checked={isUnlimited}
-            onCheckedChange={(on) => setSetting(
-              settingKey,
-              on
-                ? String(spec.max)
-                : resolveBudgetRestore(preToggle.current, savedValue, spec),
-            )}
-            aria-label={unlimitedLabel}
-          />
-          <span className="text-[11.5px] text-ink-3">{unlimitedLabel}</span>
-        </label>
+        <div className="flex flex-col items-start gap-1.5">
+          <span className="text-[11px] text-ink-4">&mdash; or &mdash;</span>
+          <label className="inline-flex items-baseline gap-1.5 whitespace-nowrap">
+            <Checkbox
+              checked={isUnlimited}
+              onCheckedChange={(on) => setSetting(
+                settingKey,
+                on
+                  ? String(spec.max)
+                  : resolveBudgetRestore(preToggle.current, savedValue, spec),
+              )}
+              aria-label={unlimitedLabel}
+            />
+            <span className="text-[11.5px] text-ink-3">{unlimitedLabel}</span>
+          </label>
+        </div>
       )}
-      {/* globals.css `.field-input` sets width:100% and loads after the
-          Tailwind layer, so a w-[90px] utility loses the cascade — inline
-          width is the one reliable override here. */}
-      <input
-        className="field-input"
-        style={{ width: 90 }}
-        type="number"
-        inputMode="numeric"
-        min={min}
-        max={max}
-        step={1}
-        disabled={isUnlimited}
-        // Show the number they'd return to, not the max: a disabled field
-        // reading 50000000 invites someone to "fix" it back down by hand.
-        value={isUnlimited
-          ? resolveBudgetRestore(preToggle.current, savedValue, spec)
-          : (value ?? String(fallback))}
-        onChange={(e) => setSetting(settingKey, e.target.value)}
-        onBlur={(e) => {
-          if (value == null) return; // untouched — don't materialize the key
-          // Emptied field with no committed value to restore (the key was
-          // never saved — e.g. an older server that doesn't serve it): leave
-          // it empty rather than commit the factory default — clampBudgets()
-          // drops empty drafts from the write, and the post-save re-fetch
-          // restores whatever the server holds.
-          if (String(e.target.value).trim() === '' && saved == null) return;
-          setSetting(settingKey, clampBudgetValue(e.target.value, spec, saved));
-        }}
-        aria-label={label}
-        aria-describedby={hintId}
-        title={`${label} (${min}–${max}, default ${fallback})`}
-      />
-      <span id={hintId} className="text-[11.5px] text-ink-3 whitespace-nowrap">
-        {isUnlimited
-          ? 'no limit — only the step and auto-continue caps apply'
-          : <>{min}&ndash;{max} &middot; default {fallback}</>}
-      </span>
     </div>
   );
 }
