@@ -41,6 +41,47 @@ describe('syncSettingsToDb', () => {
     expect(providerCall).toBeTruthy();
     expect(JSON.parse((providerCall![1] as any).body).value).toBe('minds_cloud');
   });
+
+  // ─── ENG-1634 regression: a real BYO endpoint is never rewritten ──────
+  //
+  // The legacy rewrite above must not fire for a genuine custom endpoint. It
+  // did, for everyone who reached BYOK *through* MindsHub (SSO sign-in, or the
+  // minds-no-credits -> BYOK step): the merged env carries both the MindsHub key
+  // and openai-compatible, so planning/coding_provider landed as minds_cloud
+  // while openai_base_url and the model stored the user's LOCAL values. The
+  // turn then went to api.mindshub.ai carrying a local model id -- a
+  // data-residency failure, not just a broken config.
+  const providerValueFor = (calls: any[], key: string) => {
+    const call = calls.find(([url]) => String(url).endsWith(`/settings/${key}`));
+    return call ? JSON.parse((call[1] as any).body).value : undefined;
+  };
+
+  it('keeps openai_compatible for a LAN endpoint even when a minds key is present', async () => {
+    await syncSettingsToDb([
+      'ANTON_MINDS_API_KEY=mdb_abc',
+      'ANTON_MINDS_URL=https://api.mindshub.ai',
+      'ANTON_OPENAI_API_KEY=not-needed',
+      'ANTON_OPENAI_BASE_URL=http://192.168.0.39:1234/v1',
+      'ANTON_PLANNING_PROVIDER=openai-compatible',
+      'ANTON_CODING_PROVIDER=openai-compatible',
+    ]);
+    const calls = fetchMock.mock.calls;
+    expect(providerValueFor(calls, 'planning_provider')).toBe('openai_compatible');
+    expect(providerValueFor(calls, 'coding_provider')).toBe('openai_compatible');
+    // The base URL must reach the DB too — it is the slot provider_base_url()
+    // reads for openai-compatible, and it is dead weight without the provider.
+    expect(providerValueFor(calls, 'openai_base_url')).toBe('http://192.168.0.39:1234/v1');
+  });
+
+  it('still maps a MindsHub-hosted openai-compatible base to minds_cloud', async () => {
+    await syncSettingsToDb([
+      'ANTON_MINDS_API_KEY=mdb_abc',
+      'ANTON_MINDS_URL=https://api.mindshub.ai',
+      'ANTON_OPENAI_BASE_URL=https://api.mindshub.ai/v1',
+      'ANTON_PLANNING_PROVIDER=openai-compatible',
+    ]);
+    expect(providerValueFor(fetchMock.mock.calls, 'planning_provider')).toBe('minds_cloud');
+  });
 });
 
 describe('modelLinesFrom', () => {

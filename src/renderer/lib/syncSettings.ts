@@ -29,6 +29,28 @@ const ENV_TO_SETTING: Record<string, string> = {
 };
 
 /**
+ * Whether the endpoint is MindsHub. 
+ *
+ *  The base URL will determine if the provider is MindsHub.
+ *  If the base URL is not mindshub.ai, then it is a custom endpoint.
+ */
+function isMindsEndpoint(envMap: Record<string, string>): boolean {
+  const base = (envMap.ANTON_OPENAI_BASE_URL || '').trim();
+  if (!base) return true; // no custom endpoint -> the legacy MindsHub shape
+  const host = (() => {
+    try { return new URL(base).hostname.toLowerCase(); } catch { return ''; }
+  })();
+  if (!host) return false; // unparseable -> treat as the user's, never MindsHub
+  const mindsHost = (() => {
+    try { return new URL(envMap.ANTON_MINDS_URL || '').hostname.toLowerCase(); }
+    catch { return ''; }
+  })();
+  if (mindsHost && host === mindsHost) return true;
+  return host === 'mdb.ai' || host === 'mindshub.ai'
+    || host.endsWith('.mdb.ai') || host.endsWith('.mindshub.ai');
+}
+
+/**
  * Push an array of "KEY=value" lines to the backend DB via PUT /settings/:key.
  *
  * Handles the provider-enum translation (hyphens → underscores, detection of
@@ -45,7 +67,9 @@ export async function syncSettingsToDb(lines: string[]): Promise<boolean> {
     if (eq <= 0) continue;
     envMap[line.slice(0, eq)] = line.slice(eq + 1);
   }
-  const hasMindKey = Boolean(envMap.ANTON_MINDS_API_KEY);
+  // A MindsHub key is necessary but NOT sufficient to call the endpoint
+  const mindsIsTheEndpoint =
+    Boolean(envMap.ANTON_MINDS_API_KEY) && isMindsEndpoint(envMap);
 
   let allOk = true;
   for (const [envKey, value] of Object.entries(envMap)) {
@@ -53,7 +77,7 @@ export async function syncSettingsToDb(lines: string[]): Promise<boolean> {
     if (!settingKey) continue;
     let dbValue = value;
     if (settingKey.endsWith('_provider')) {
-      if (dbValue === 'openai-compatible' && hasMindKey) {
+      if (dbValue === 'openai-compatible' && mindsIsTheEndpoint) {
         dbValue = 'minds_cloud';
       } else {
         dbValue = dbValue.replace(/-/g, '_');
