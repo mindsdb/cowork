@@ -4524,6 +4524,19 @@ function AppCore() {
     },
     navTitle: settings.navTitle || null,
     navLogo: settings.navLogo || null,
+    // Mobile has no room for the desktop floating-toggle-row (bottom-right,
+    // over the FAB) — the theme toggle moves into the top bar, opposite the
+    // hamburger, and the coding-mode toggle is dropped entirely rather than
+    // hunting for a second spot.
+    theme,
+    showThemeToggle: settings.showThemeToggle !== false,
+    onToggleTheme: () => {
+      if (settings.show8bitToggle === false) {
+        setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
+      } else {
+        setThemeModalOpen(true);
+      }
+    },
   };
 
   return (
@@ -4574,8 +4587,12 @@ function AppCore() {
               deliberately un-boxed so it reads as a status indicator, not
               a second button of the same weight — lit accent when on,
               greyed out when off. Toggles the setting directly on click;
-              no modal, since there's nothing else to configure here. */}
-      {(() => {
+              no modal, since there's nothing else to configure here.
+            - Hidden entirely on mobile — MobileShell renders its own theme
+              toggle in the top bar (opposite the hamburger) instead, and
+              the coding-mode toggle is dropped there rather than given a
+              second spot. */}
+      {!isMobile && (() => {
         const showCodingToggle = !host.isWeb && settings.showCodingModeToggle !== false;
         const codingModeOn = showCodingToggle && settings.codingModeEnabled;
         const showThemeToggle = settings.showThemeToggle !== false || settings.show8bitToggle !== false;
