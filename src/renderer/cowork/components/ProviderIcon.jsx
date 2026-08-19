@@ -52,17 +52,22 @@ function markAspect(mark) {
 export function ProviderIcon({ maker, size = 15, className, style, nudgeY = 0 }) {
   const mark = MARKS[maker];
   const totalNudgeY = mark?.nudgeY ?? nudgeY;
-  // Render non-square marks at their own aspect ratio (height pinned to
-  // `size`) instead of squeezing them into a square box — squeezing a wide
-  // mark like mindshub's bear letterboxes it (empty vertical padding to fit
-  // the width), unbalancing the glyph within its box in a way no amount of
-  // translateY nudging actually fixes, since the padding itself is what's
-  // asymmetric, not the glyph's position within its own bounds.
-  const width = size * markAspect(mark);
+  // Width stays pinned to `size` — the same footprint every other icon gets,
+  // so the gap to the following label stays consistent across makers. Height
+  // shrinks instead for a wider-than-tall mark (mindshub's bear, 517x287):
+  // squeezing it into a size x size box previously letterboxed it (empty
+  // vertical padding to fit the width), unbalancing the glyph within its
+  // own box in a way translateY nudging can't fix. Shrinking height to match
+  // its true aspect ratio removes the letterboxing entirely, so the row's
+  // existing flex centering (items-center) aligns it against the text
+  // correctly with no per-mark nudge needed.
+  const aspect = markAspect(mark);
+  const width = size;
+  const height = aspect >= 1 ? size / aspect : size;
   return (
     <svg
       width={width}
-      height={size}
+      height={height}
       viewBox={mark ? mark.viewBox : '0 0 40 40'}
       fill="none"
       aria-hidden="true"

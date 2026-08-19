@@ -22,16 +22,19 @@ describe('ModelSelect', () => {
     expect(screen.getByRole('combobox')).toHaveTextContent('MindsHub Air');
   });
 
-  it('renders the mindshub mark at its own (wider) aspect ratio, not squeezed into a square box', () => {
+  it('shrinks the mindshub mark\'s height to its true aspect ratio, keeping the same width as every icon', () => {
     // Regression: squeezing the bear's markedly-wide viewBox (517x287) into
     // the same size x size box as every square provider mark letterboxed it
     // (empty vertical padding to fit the width), unbalancing the glyph
     // within its box in a way translateY nudging can't actually fix — the
-    // padding itself is what's asymmetric, not the glyph's position.
+    // padding itself is what's asymmetric, not the glyph's position. Widening
+    // the box instead (rather than shrinking its height) was tried and
+    // rejected — it grew the icon's footprint next to the fixed flex gap,
+    // making the gap to the label look oversized.
     render(<Harness />); // default initial = 'mindshub_air'
     const svg = screen.getByRole('combobox').querySelector('svg');
-    expect(svg).toHaveAttribute('height', '15');
-    expect(Number(svg.getAttribute('width'))).toBeGreaterThan(15);
+    expect(svg).toHaveAttribute('width', '15'); // same footprint as every other icon
+    expect(Number(svg.getAttribute('height'))).toBeLessThan(15);
   });
 
   it('nudges the (now un-letterboxed) mindshub icon the same as every other icon', () => {
