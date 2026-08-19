@@ -67,7 +67,22 @@ describe('the deb postinst carries electron-builder\'s own install steps', () =>
   it('runs the staging last and in a subshell', () => {
     const text = postinst();
     expect(text).toMatch(/stage_cowork_credentials\(\)\s*\(/); // `name() (` = subshell body
-    expect(text.trimEnd().endsWith('stage_cowork_credentials || true')).toBe(true);
+    expect(text).toMatch(/stage_cowork_credentials \|\| true/);
+  });
+
+  // Credential staging is best-effort and must never fail an install — but it
+  // must not swallow a failure from the steps above it either. Ending on
+  // `... || true` did exactly that: dpkg saw success no matter what upstream
+  // did. The status is captured before the block and restored after it.
+  it('reports the upstream steps\' exit status, not the staging block\'s', () => {
+    const template = readFileSync(TEMPLATE, 'utf8');
+    const ours = postinst().slice(template.length);
+    // Captured before anything of ours runs — a function definition alone
+    // would already have reset $?.
+    const firstStatement = ours.split('\n').map((l) => l.trim())
+      .find((l) => l && !l.startsWith('#'));
+    expect(firstStatement).toBe('upstream_status=$?');
+    expect(postinst().trimEnd().endsWith('exit "$upstream_status"')).toBe(true);
   });
 
   // electron-builder text-substitutes macros over this file and THROWS on an

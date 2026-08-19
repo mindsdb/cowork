@@ -70,6 +70,11 @@ fi
 # other such reference here contains `_` or `:-`, which its matcher skips.
 # ─────────────────────────────────────────────────────────────────────────────
 
+# Captured before anything below runs — a function definition alone would
+# already have reset it. Everything after this point is best-effort and must
+# not change whether dpkg considers the install successful.
+upstream_status=$?
+
 # Moves the OAuth credentials out of root-owned /opt, where the app could never
 # delete them, into a private copy in the installing user's home. Without this
 # the plaintext secrets sit world-readable forever and every launch logs a
@@ -154,3 +159,5 @@ stage_cowork_credentials() (
 )
 
 stage_cowork_credentials || true
+
+exit "$upstream_status"
