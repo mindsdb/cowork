@@ -2973,6 +2973,7 @@ function AppCore() {
   };
 
   const navigate = (key) => {
+    console.info(orgMode, key);
     if (sidebarPopout) setNavPopoutOpen(false);
     // Connectors and channels aren't available on Cloud yet — intercept any
     // entry point (sidebar, Settings, deep link) in org mode and show the
