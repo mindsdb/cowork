@@ -3,11 +3,16 @@ import { host } from '../../platform/host';
 import { resetDeviceIdentity } from '../lib/analytics';
 
 // Confirm-dialog copy for signing out — shared by every sign-out entry point
-// (settings Account section, sidebar user menu) so the warning about cleared
-// credentials can't drift between them.
+// (settings Account section, sidebar user menu) so the wording can't drift
+// between them. The message is platform-aware: Electron clears stored
+// credentials on the device, while web only ends the Keycloak browser session
+// (keys live in MindsHub, not on the machine), so the desktop warning about
+// cleared API keys would be false there.
 export const LOGOUT_CONFIRM_COPY = {
   title: 'Sign out of Cowork?',
-  message: "This clears your stored API keys and disconnects from MindsHub. You'll need to sign in again to keep using Cowork.",
+  message: host.isWeb
+    ? "This signs you out of Cowork. You'll need to sign in again with MindsHub to keep using it."
+    : "This clears your stored API keys and disconnects from MindsHub. You'll need to sign in again to keep using Cowork.",
   confirmLabel: 'Sign out',
 };
 

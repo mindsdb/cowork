@@ -22,7 +22,7 @@ import Menu from './ui/Menu';
 import { ConfirmModal } from './ConfirmModal';
 import { useLogout, LOGOUT_CONFIRM_COPY } from '../hooks/useLogout';
 import { accountInitials } from '../lib/accountUser';
-import { host, openExternal } from '../../platform/host';
+import { openExternal } from '../../platform/host';
 import {
   MINDS_BILLING_URL,
   MINDS_MEMBERS_URL,
@@ -90,13 +90,11 @@ export function UserMenu({ user, onOpenSettings }) {
     externalItem(CreditCard, 'Billing & Usage', MINDS_BILLING_URL),
     externalItem(UsersRound, 'Members', MINDS_MEMBERS_URL),
     externalItem(CircleHelp, 'Help & Feedback', MINDS_SUPPORT_URL),
-    // Logout is Electron-only, matching the Settings account section — the
-    // web shell's session is owned by Keycloak in the browser, and host.logout()
-    // is a no-op there (a reload would leave the user signed in).
-    ...(host.isElectron ? [
-      { divider: true },
-      { icon: icon(LogOut), label: 'Logout', danger: true, onClick: () => setLogoutConfirmOpen(true) },
-    ] : []),
+    // Logout on both shells: Electron clears the refresh token + stored keys via
+    // the bridge; web ends the Keycloak browser session (host.logout()). Both
+    // funnel through useLogout() and the ConfirmModal below.
+    { divider: true },
+    { icon: icon(LogOut), label: 'Logout', danger: true, onClick: () => setLogoutConfirmOpen(true) },
   ];
 
   const trigger = (

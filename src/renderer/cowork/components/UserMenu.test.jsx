@@ -107,16 +107,18 @@ describe('UserMenu — dropdown (ENG-1545 curated items)', () => {
     expect(hostMock.openExternal).toHaveBeenCalledWith(url);
   });
 
-  // The web shell's session is owned by Keycloak in the browser and
-  // host.logout() is a no-op there — a Logout item would silently do
-  // nothing, so it's Electron-only (matching the Settings account section).
-  it('hides Logout on the web shell', () => {
+  // On web, host.logout() ends the Keycloak browser session, so Logout is a
+  // real action and the item renders on both shells.
+  it('shows Logout on the web shell and runs the logout flow', () => {
     hostMock.host.isElectron = false;
     hostMock.host.isWeb = true;
     render(<UserMenu user={user} />);
     openMenu();
     expect(screen.getByRole('menuitem', { name: /Settings/ })).toBeInTheDocument();
-    expect(screen.queryByRole('menuitem', { name: /Logout/ })).toBeNull();
+    fireEvent.click(screen.getByRole('menuitem', { name: /Logout/ }));
+    expect(screen.getByText(LOGOUT_CONFIRM_COPY.title)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: LOGOUT_CONFIRM_COPY.confirmLabel }));
+    expect(hostMock.host.logout).toHaveBeenCalled();
   });
 
   it('asks for confirmation before logging out, then runs the logout flow', async () => {
