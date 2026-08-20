@@ -379,7 +379,7 @@ function ListHeaderRow() {
   );
 }
 
-function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onReveal, onDownload, onCopyUrl, onPublish, onUnpublish, onUpdate, onDelete, isMacPlatform = false }) {
+function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onReveal, onDownload, onCopyUrl, onPublish, onUnpublish, onUpdate, onDelete, busy = false, isMacPlatform = false }) {
   const isHtml = isHtmlArtifact(artifact);
   const orgMode = useOrgMode();
   const published = !!artifact.publishedUrl;
@@ -438,9 +438,11 @@ function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onReveal, onDown
     onDelete && { divider: true },
     onDelete && {
       id: 'delete',
-      label: 'Delete artifact',
+      // See the grid menu's delete for why this is disabled while busy.
+      label: busy ? 'Deleting…' : 'Delete artifact',
       icon: Ico.trash(13),
       danger: true,
+      disabled: busy,
       onClick: onDelete,
     },
   ]
@@ -601,6 +603,9 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
         onUnpublish={() => doUnpublish?.(artifact)}
         onUpdate={() => doUpdate?.(artifact)}
         onDelete={doDelete ? () => doDelete(artifact) : undefined}
+        // Derived from `phase` rather than threading a second prop: the row
+        // already receives it, and 'deleting' is exactly the window to disable.
+        busy={phase === 'deleting'}
         isMacPlatform={host.isMac() || /Mac|iPhone|iPod|iPad/.test(typeof navigator !== 'undefined' ? navigator.userAgent : '')}
       />
     </>
@@ -816,6 +821,11 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
   const handleTrash = async (artifact) => {
     if (!artifact?.path || busyPaths.has(artifact.path)) return;
     setBusy(artifact.path, true);
+    // Delete is the slowest action on the card — it unpublishes remotely before
+    // it removes anything, and in org mode it also mints a turn key first — so
+    // without a phase the card sat there looking untouched for seconds and the
+    // only feedback was the row vanishing at the end.
+    setPhase(artifact.path, 'deleting');
     try {
       // Unpublish first so deletion never leaves an orphaned public copy.
       // If this fails we abort and keep the artifact (the server enforces
@@ -830,6 +840,9 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
       showToast({ kind: 'ok', message: 'Deleted.' });
     } catch (e) {
       showToast({ kind: 'error', message: `Delete failed: ${e?.message || e}` });
+      // Only on failure: on success the row is already gone, and clearing the
+      // phase of a removed path would just leave a dead entry in statusByPath.
+      setPhase(artifact.path, null);
     } finally {
       setBusy(artifact.path, false);
     }
@@ -1053,9 +1066,14 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
           items.push({ separator: true });
           items.push({
             id: 'delete',
-            label: 'Delete',
+            // Delete unpublishes remotely first, so it is the slowest item here.
+            // Disabled while it runs: handleTrash already ignores a re-entrant
+            // call, but a menu item that still looks clickable reads as "nothing
+            // happened" and invites the second click.
+            label: busyA ? 'Deleting…' : 'Delete',
             icon: Ico.trash(13),
             danger: true,
+            disabled: busyA,
             onClick: () => handleTrash(a),
           });
           // Same mode gate the list view's menu applies — see lib/artifactActions.

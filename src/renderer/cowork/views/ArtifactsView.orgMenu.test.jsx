@@ -126,3 +126,47 @@ describe('deleting a published artifact', () => {
     await vi.waitFor(() => expect(api.unpublishArtifact).toHaveBeenCalled());
   });
 });
+
+
+describe('delete gives feedback while it runs', () => {
+  // Delete unpublishes remotely before removing anything (and in org mode mints
+  // a turn key first), so it takes seconds. Without a phase the card looked
+  // untouched the whole time and the only feedback was the row vanishing at the
+  // end — indistinguishable from a click that did not register.
+  const deferred = () => {
+    let resolve;
+    const promise = new Promise((r) => { resolve = r; });
+    return { promise, resolve };
+  };
+
+  it('marks the card Deleting… and disables the menu item', async () => {
+    const gate = deferred();
+    api.deleteArtifact.mockReturnValueOnce(gate.promise);
+    localStorage.setItem('anton:artifacts-view', 'grid');
+    setOrgMode(true);
+    render(<ArtifactsView artifacts={[published]} />);
+    openKebab();
+
+    fireEvent.click(screen.getByText('Delete'));
+
+    await screen.findByText('Deleting…');          // the menu item
+    expect(screen.getAllByText('Deleting…').length).toBeGreaterThan(0);
+
+    gate.resolve();
+    await vi.waitFor(() => expect(screen.queryByText('Weather Dashboard')).toBeNull());
+  });
+
+  it('clears the phase when the delete fails, so the card is usable again', async () => {
+    api.deleteArtifact.mockRejectedValueOnce(new Error('nope'));
+    localStorage.setItem('anton:artifacts-view', 'grid');
+    setOrgMode(true);
+    render(<ArtifactsView artifacts={[published]} />);
+    openKebab();
+
+    fireEvent.click(screen.getByText('Delete'));
+
+    // The row survives a failure, and must not be left stuck in Deleting….
+    await vi.waitFor(() => expect(screen.queryByText('Deleting…')).toBeNull());
+    expect(screen.getByText('Weather Dashboard')).toBeInTheDocument();
+  });
+});
