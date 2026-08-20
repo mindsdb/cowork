@@ -55,6 +55,7 @@ export const SETTINGS_KEY_MAP = {
   nav_logo: 'navLogo',
   show_theme_toggle: 'showThemeToggle',
   show_8bit_toggle: 'show8bitToggle',
+  show_coding_mode_toggle: 'showCodingModeToggle',
   accent_variant: 'accentVariant',
   memory_enabled: 'memoryEnabled',
   memory_mode: 'memoryMode',
@@ -68,6 +69,9 @@ export const SETTINGS_KEY_MAP = {
   greeting: 'greeting',
   tone: 'tone',
   harness: 'harness',
+  coding_mode_enabled: 'codingModeEnabled',
+  harness_hermes_enabled: 'harnessHermesEnabled',
+  harness_claude_code_enabled: 'harnessClaudeCodeEnabled',
 };
 
 /** Client camelCase → server snake_case */
@@ -276,6 +280,40 @@ export function mergeRecommendedModels(prev, rec) {
 // ─── Model picker select-value resolution ───────────────────────────
 
 /**
+ * Resolve which model id a role's picker should treat as "current," given a
+ * provider that may have changed out from under a model saved for a
+ * DIFFERENT provider. Pure so this substitution is unit-tested directly
+ * (SettingsView.jsx's RoleRow inlines the JSX around it).
+ *
+ * `providerWasRepointed` (the role's stored provider itself didn't match any
+ * configured provider card, e.g. it named a provider the user disconnected)
+ * already substitutes the fallback. This covers the other, easy-to-miss way
+ * a stored model goes stale: the PROVIDER field is already correct (e.g. an
+ * SSO sign-in wrote `planning_provider: minds_cloud` server-side) but the
+ * paired model field wasn't touched, so it still names a model from
+ * whatever provider was configured before — an Anthropic id sitting under a
+ * now-minds-cloud provider. minds-cloud has no free-text mode, so that
+ * surfaces as `resolveModelPickerValue`'s "legacy — re-select a model"
+ * stale-pin placeholder instead of just picking a valid model. Defaulting
+ * to `fallbackModel` here is the same substitution an explicit provider
+ * switch already gets via `setRoleDriver`.
+ *
+ * A BYOK provider (`allowOther: true`) is exempt: an unlisted id there is a
+ * legitimate user-typed custom model, not staleness.
+ *
+ * @param {boolean} providerWasRepointed the role's provider field was itself stale
+ * @param {string} storedModel the role's persisted model id ('' when unset)
+ * @param {string[]} modelList the CURRENT provider's recommended model ids
+ * @param {boolean} allowOther whether the current provider accepts a free-text id
+ * @param {string} fallbackModel the current provider's recommended default for this role
+ */
+export function resolveRoleModel(providerWasRepointed, storedModel, modelList, allowOther, fallbackModel) {
+  const list = Array.isArray(modelList) ? modelList : [];
+  const modelStaleForProvider = !!storedModel && !allowOther && !list.includes(storedModel);
+  return (providerWasRepointed || modelStaleForProvider) ? fallbackModel : storedModel;
+}
+
+/**
  * Resolve the controlled <select> value + mode for the Agent-Models model
  * picker, given the currently-stored model and the provider's recommended
  * list. Pure so the desync rule is unit-tested directly (SettingsView.jsx
@@ -454,6 +492,14 @@ export function transformSettingsRows(rows) {
   for (const row of rows) {
     const clientKey = SETTINGS_KEY_MAP[row.key];
     if (!clientKey) continue;
+    // The `harness` row's `options` is the server's actual
+    // available_harness_ids() — e.g. omits "hermes" when hermes-agent
+    // isn't installed. Surfaced separately from the row's own value so a
+    // picker can tell "not currently selected" apart from "not offered
+    // at all."
+    if (row.key === 'harness' && Array.isArray(row.options)) {
+      result.harnessOptions = row.options;
+    }
     if (row.is_sensitive) {
       result[clientKey] = row.is_set ? '***' : '';
     } else if (row.value != null) {

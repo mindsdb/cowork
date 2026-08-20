@@ -12,6 +12,7 @@ import { forwardRef, useEffect, useLayoutEffect, useMemo, useRef, useState, useS
 import { createPortal } from 'react-dom';
 import Ico from '../components/Icons';
 import Composer from '../components/Composer';
+import CodingTerminal from '../components/CodingTerminal';
 import { Alert, Card, Tooltip } from '../components/ui';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import { ThinkingBlock } from '../components/thinking/ThinkingBlock';
@@ -1156,6 +1157,13 @@ export default function ChatView({
   onBack,
   project,
   model,
+  onModelChange,
+  // Full catalog for the model picker (ENG-1656: task view can change its
+  // model, not just display it). Falls back to a single-item list of just
+  // the current model when omitted, so existing callers/tests that don't
+  // pass these keep working exactly as before — a flat, unpickable menu.
+  models,
+  modelMeta,
   attachments,
   connectors,
   onAttachFiles,
@@ -1180,6 +1188,9 @@ export default function ChatView({
   onOpenProject,
   onOpenProjectsList,
   onOpenSettings,
+  codingModelDefault,
+  harnessHermesEnabled,
+  harnessClaudeCodeEnabled,
   onStop,
   projects = [],
   // Messages the user typed while Anton was mid-turn. Displayed as
@@ -1276,6 +1287,13 @@ export default function ChatView({
   // useSyncExternalStore keeps this in sync without useEffect: React
   // re-reads the snapshot whenever the formStore notifies subscribers.
   const taskId = task?.id || '';
+  // Coding mode (ENG-1656 follow-up): a claude-code-harness task never goes
+  // through anton's chat pipeline — it embeds a live PTY terminal instead of
+  // the message transcript + Composer (see CodingTerminal / coding-terminal.ts).
+  const isClaudeCodeTask = task?.harness === 'claude-code';
+  // Hermes has no memory system of its own — the Context rail's Project/
+  // Global memory sections are an Anton concept and don't apply.
+  const isHermesTask = task?.harness === 'hermes';
   const subscribeFormStore = useMemo(
     () => (onChange) => subscribeDataVaultForm(taskId, onChange),
     [taskId],
@@ -1669,6 +1687,15 @@ export default function ChatView({
           }}
         />
 
+        {isClaudeCodeTask ? (
+          <CodingTerminal
+            taskId={task.id}
+            projectPath={artifactProjectPath}
+            message={task.messages?.[0]?.content}
+            model={typeof model === 'string' ? model : model?.id}
+          />
+        ) : (
+        <>
         {/* Scrollable conversation.
             Bottom padding clears the floating composer so every
             message is reachable when scrolled to the end. Sized
@@ -2170,9 +2197,10 @@ export default function ChatView({
             project={project}
             onProjectChange={() => {}}
             model={model}
-            onModelChange={() => {}}
+            onModelChange={onModelChange || (() => {})}
             projects={[]}
-            models={model ? [model] : []}
+            models={models || (model ? [model] : [])}
+            modelMeta={modelMeta}
             attachments={attachments}
             connectors={connectors}
             onNavigateToConnectors={onNavigateToConnectors}
@@ -2184,12 +2212,19 @@ export default function ChatView({
             onRemoveAttachment={onRemoveAttachment}
             placeholder="Reply…"
             metaReadOnly
+            modelReadOnly={false}
             hideMeta
             streaming={isStreaming}
             onStop={onStop}
             prefill={composerPrefill}
+            onOpenSettings={onOpenSettings}
+            codingModelDefault={codingModelDefault}
+            harnessHermesEnabled={harnessHermesEnabled}
+            harnessClaudeCodeEnabled={harnessClaudeCodeEnabled}
           />
         </div>
+        </>
+        )}
       </div>
 
       {/* ─── Right rail ─── */}
@@ -2264,6 +2299,7 @@ export default function ChatView({
           project={project}
           conversationId={task?.id}
           refreshKey={contextRefreshKey}
+          showMemory={!isHermesTask}
           onAddGoogleDriveFiles={onAddGoogleDriveProjectFiles}
           onFetchGoogleDriveFiles={onFetchGoogleDriveProjectFiles}
           onRemoveGoogleDriveFile={onRemoveGoogleDriveProjectFile}

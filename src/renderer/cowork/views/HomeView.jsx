@@ -247,6 +247,10 @@ export default function HomeView({
   // Fills the composer without sending — task-mode sample prompts (ENG-1594)
   // and any other surface that pre-drafts text route through this.
   onPrefill,
+  codingModeEnabled = false,
+  codingModelDefault,
+  harnessHermesEnabled,
+  harnessClaudeCodeEnabled,
 }) {
   const greetingText = greeting || GREETING_FALLBACK;
   const blocked = configReady === false;
@@ -255,16 +259,25 @@ export default function HomeView({
   // Owns the composer placeholder, the toolbar chip, and the sample list.
   const [taskMode, setTaskMode] = useState(null);
 
+  // Task modes (slides/website/app-style prompt scaffolding) don't apply to
+  // a Claude Code task — clear any mode left selected from before Coding
+  // Mode was turned on, so a stale chip/placeholder/instruction can't ride
+  // along into a coding-mode send once the picker itself is hidden below.
+  useEffect(() => {
+    if (codingModeEnabled) setTaskMode(null);
+  }, [codingModeEnabled]);
+
   // Sending the habit-tracker prompt completes onboarding step 1 no
-  // matter which surface filled the composer (sidebar checklist or the
-  // user typing it by hand). A selected task mode appends its
-  // instruction line after the user text (titles and search derive from
-  // the message head) and clears itself after a successful send.
-  const sendTracked = async (text) => {
+  // matter which surface filled the composer (suggestion chip, sidebar
+  // checklist, or the user typing it by hand). A selected task mode
+  // appends its instruction line after the user text (titles and search
+  // derive from the message head) and clears itself after a successful
+  // send. `meta` (harness/model, ENG-1656) passes through untouched.
+  const sendTracked = async (text, meta) => {
     if (typeof text === 'string' && text.trim().startsWith(HABIT_TRACKER_PREFIX)) {
       completeStep('see-it-work');
     }
-    const result = await onSend(composeModeMessage(taskMode, text));
+    const result = await onSend(composeModeMessage(taskMode, text), meta);
     setTaskMode(null);
     return result;
   };
@@ -556,8 +569,13 @@ export default function HomeView({
               disabledConnections={disabledConnections}
               onUpdateConnectorMute={onUpdateConnectorMute}
               onCreateProject={onCreateProject}
-              hideModel
               onTypingChange={setIsTyping}
+              codingModeEnabled={codingModeEnabled}
+              onOpenSettings={onOpenSettings}
+              codingModelDefault={codingModelDefault}
+              harnessHermesEnabled={harnessHermesEnabled}
+              harnessClaudeCodeEnabled={harnessClaudeCodeEnabled}
+              sendsMeta
             />
           )}
           {/* Everything below the composer lives in a zero-height wrapper:
@@ -573,8 +591,10 @@ export default function HomeView({
             {/* Samples only render when onPrefill exists — a sample click's
                 whole job is prefilling the composer, so without the callback
                 it would be a silent dead click (same gate the old
-                HomeSuggestions had). */}
-            {!blocked && (
+                HomeSuggestions had). Hidden entirely in Coding Mode — the
+                slides/website/app-style prompt scaffolding these offer
+                doesn't apply to a Claude Code task. */}
+            {!blocked && !codingModeEnabled && (
               taskMode
                 ? (onPrefill && <TaskModeSamples mode={taskMode} onPick={onPrefill} />)
                 : <TaskModePills onPick={setTaskMode} />
