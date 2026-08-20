@@ -24,6 +24,32 @@ export function selectNextQueuedTask(queues, existingTaskIds, preferredTaskId) {
   return Object.keys(queues || {}).find(hasQueue) || null;
 }
 
+// Decide whether the single app-wide stream slot is stranded and must be
+// force-released. Normally a turn's terminal event (onDone/onError) frees the
+// slot; but a stream that dies with NO terminal — a half-open SSE, or a
+// reconnect tail attached to a turn that ended elsewhere — leaves the slot
+// reserved forever, so every later message strands at "N queued · waiting for
+// <agent>" (both text and un-uploaded attachments). The 5s in-flight poll is
+// the backstop: `serverInFlightIds` is the authoritative list of conversations
+// the server still considers running. If we hold the slot for a task the server
+// no longer lists, the reservation is stale.
+//
+// A single miss is not enough: right after send we mark the task in-flight
+// locally before the server has registered the turn, and the tmp->canonical id
+// swap briefly points the slot at an id the server never listed. Requiring
+// `threshold` consecutive misses (~one per 5s poll) rides out both transients
+// without ever aborting a genuinely-running turn. `prev` is the running
+// { cid, misses } tally; misses reset whenever the task reappears or the slot
+// moves to a different conversation.
+export function reservationReleaseDecision(streamingTaskId, serverInFlightIds, prev, threshold = 2) {
+  if (!streamingTaskId) return { cid: null, misses: 0, release: false };
+  const ids = Array.isArray(serverInFlightIds) ? serverInFlightIds : [];
+  if (ids.includes(streamingTaskId)) return { cid: streamingTaskId, misses: 0, release: false };
+  const priorMisses = prev && prev.cid === streamingTaskId ? prev.misses : 0;
+  const misses = priorMisses + 1;
+  return { cid: streamingTaskId, misses, release: misses >= threshold };
+}
+
 // Re-key queued messages when the server mints a canonical id for a task
 // that was streaming under a tmp id (adoptServerId, ENG-1378). Moves every
 // source id's queue onto `toId`, preserving FIFO order (existing `toId`

@@ -37,7 +37,7 @@ import { loadSkin, persistSkin, nextSkin, skinLabel } from '../lib/skins';
 import { loadCustomTheme, persistCustomTheme, applyCustomTheme } from '../lib/customTheme';
 import { applyNavTitleColor } from '../lib/navBranding';
 import { getAgentLabel } from './lib/agentLabel';
-import { selectNextQueuedTask, mergeQueuesForAdoptedId } from './lib/messageQueue';
+import { selectNextQueuedTask, mergeQueuesForAdoptedId, reservationReleaseDecision } from './lib/messageQueue';
 import { loadCachedSettings } from './lib/settingsCache';
 import { useOrgMode } from '../lib/orgMode';
 import { clearDraft, moveDraft } from './lib/draftStore';
@@ -1009,6 +1009,12 @@ function AppCore() {
   // async completion callbacks, never during render.
   const drainNextQueuedMessageRef = useRef(null);
 
+  // Running { cid, misses } tally for the stranded-reservation self-heal in
+  // refreshInFlightSet. A stream that dies with no terminal event pins the
+  // single stream slot forever; the in-flight poll releases it once the server
+  // has stopped listing the task across consecutive polls (reservationReleaseDecision).
+  const staleReservationRef = useRef({ cid: null, misses: 0 });
+
   // Live steps per task, so handleSendInTask can see a pending question
   // without threading stream state through the composer.
   const liveStepsRef = useRef({});
@@ -1052,6 +1058,38 @@ function AppCore() {
   const refreshInFlightSet = useCallback(async () => {
     const items = await fetchInFlightList();
     const ids = items.map((it) => it.conversation_id).filter(Boolean);
+
+    // Stranded-reservation self-heal. The single app-wide stream slot is
+    // normally freed by a turn's terminal event (onDone/onError). A stream that
+    // dies WITHOUT one — a half-open SSE, or a reconnect tail attached to a turn
+    // that ended elsewhere — leaves activeStreamingTaskIdRef/activeStreamCtrlRef
+    // set forever, so drainNextQueuedMessage self-blocks and every later message
+    // (text and un-uploaded attachments) strands at "N queued · waiting for
+    // Anton". This is the reported "stuck at Queued that survives restarts" bug:
+    // on relaunch reconnectInFlight re-attaches to the same never-terminating
+    // turn and re-wedges. `ids` is the server's authoritative in-flight list —
+    // the same signal the finished-diff below already trusts to mark a turn
+    // idle — so if we hold the slot for a task the server no longer lists across
+    // consecutive polls, release it and drain. The consecutive-miss guard rides
+    // out turn-start registration lag and the tmp->canonical id swap.
+    const streaming = activeStreamingTaskIdRef.current;
+    const decision = reservationReleaseDecision(streaming, ids, staleReservationRef.current);
+    staleReservationRef.current = { cid: decision.cid, misses: decision.misses };
+    if (decision.release && streaming) {
+      const ctrl = activeStreamCtrlRef.current;
+      if (ctrl) { try { ctrl.abort(); } catch { /* already closed */ } }
+      activeStreamCtrlRef.current = null;
+      activeScratchpadRef.current = null;
+      activeStreamingTaskIdRef.current = null;
+      staleReservationRef.current = { cid: null, misses: 0 };
+      // The setInFlightSet below drops `streaming` (it is absent from `ids`),
+      // and its finished-diff refetches the session and marks the task idle —
+      // so the released cid needs no explicit markInFlightDone here. Drain via
+      // the ref: this callback is mount-frozen and would otherwise close over a
+      // stale drain (same reason reconnect/stop use the ref).
+      drainNextQueuedMessageRef.current?.();
+    }
+
     setInFlightSet((prev) => {
       // Diff: if the server says a cid is GONE but we had it, the
       // stream just finished from elsewhere — that's the signal to
