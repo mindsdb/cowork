@@ -22,7 +22,6 @@ import ScheduledView from './views/ScheduledView';
 import TasksView from './views/TasksView';
 import ScheduleDetailView from './views/ScheduleDetailView';
 import ArtifactsView from './views/ArtifactsView';
-import ChannelsView from './views/ChannelsView';
 import CustomizeView from './views/CustomizeView';
 import SettingsView from './views/settings/SettingsView';
 import UtilitiesView from './views/UtilitiesView';
@@ -1694,7 +1693,7 @@ function AppCore() {
     document.body.classList.toggle('gf-dots-off', settings.showDots === false);
   }, [settings.showDots]);
 
-  const [route, setRoute] = useState('home');         // home | task | projects | scheduled | schedule-detail | artifacts | channels | customize
+  const [route, setRoute] = useState('home');         // home | task | projects | scheduled | schedule-detail | artifacts | customize
   // Keep a ref of the live route so the keydown listener (bound
   // once on mount) can read it without a re-bind on every nav.
   routeRef.current = route;
@@ -2967,19 +2966,24 @@ function AppCore() {
   // list — hence the isMobile-gated null. Single home for this rule so the
   // call sites don't each re-spell it.
   const openSettings = (section = null) => {
+    // Channels lives inside Settings, not behind its own route, so it needs
+    // its own org-mode intercept here rather than reusing navigate()'s.
+    if (orgMode && section === 'channels') {
+      setComingSoonFeature('Channels');
+      return;
+    }
     if (section) setSettingsSection(section);
     else if (isMobile) setSettingsSection(null);
     setSettingsOpen(true);
   };
 
   const navigate = (key) => {
-    console.info(orgMode, key);
     if (sidebarPopout) setNavPopoutOpen(false);
-    // Connectors and channels aren't available on Cloud yet — intercept any
-    // entry point (sidebar, Settings, deep link) in org mode and show the
-    // "coming soon" popup instead of routing to a half-working surface.
-    if (orgMode && (key === 'customize' || key === 'channels')) {
-      setComingSoonFeature(key === 'customize' ? 'Connect Apps and Data' : 'Channels');
+    // Connectors aren't available on Cloud yet — intercept any entry point
+    // (sidebar, Settings, deep link) in org mode and show the "coming soon"
+    // popup instead of routing to a half-working surface.
+    if (orgMode && key === 'customize') {
+      setComingSoonFeature('Connect Apps and Data');
       return;
     }
     if (key === 'settings' || key.startsWith('settings:')) {
@@ -3011,14 +3015,23 @@ function AppCore() {
 
   // Safety net: navigate() intercepts the sidebar/Settings entry points, but a
   // direct setRoute (or org mode resolving after a route is already set) could
-  // still land on connectors/channels. Bounce home and show the popup rather
-  // than render a surface that isn't available on Cloud.
+  // still land on connectors. Bounce home and show the popup rather than
+  // render a surface that isn't available on Cloud.
   useEffect(() => {
-    if (orgMode && (route === 'customize' || route === 'channels')) {
-      setComingSoonFeature(route === 'customize' ? 'Connect Apps and Data' : 'Channels');
+    if (orgMode && route === 'customize') {
+      setComingSoonFeature('Connect Apps and Data');
       setRoute('home');
     }
   }, [orgMode, route]);
+
+  // Same safety net for Channels: the in-Settings nav calls onSectionChange
+  // (= setSettingsSection) directly, bypassing openSettings entirely.
+  useEffect(() => {
+    if (orgMode && settingsSection === 'channels') {
+      setComingSoonFeature('Channels');
+      setSettingsSection('agent');
+    }
+  }, [orgMode, settingsSection]);
 
   const attachmentProjectPath = currentTask?.projectPath || selectedProject?.path || null;
   const attachmentProjectName = currentTask?.projectName || selectedProject?.name || null;
@@ -5135,10 +5148,6 @@ function AppCore() {
           />
         )}
 
-
-        {route === 'channels' && (
-          <ChannelsView />
-        )}
 
         {route === 'customize' && (
           <CustomizeView
