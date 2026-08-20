@@ -12,6 +12,14 @@ files:
   - "!dist/**/*.map"
   - node_modules/**/*
   - "!node_modules/*/{CHANGELOG.md,README.md,readme.md}"
+  # appdmg is a build-time DMG tool. Its native transitive deps (fs-xattr,
+  # macos-alias) don't rebuild per-arch, so the same arm64 .node lands in both
+  # halves of the universal app and breaks @electron/universal's merge. npm
+  # hoists them to top level, so each is excluded by name (not via appdmg/**).
+  # None belong in the shipped app.
+  - "!node_modules/appdmg/**"
+  - "!node_modules/fs-xattr/**"
+  - "!node_modules/macos-alias/**"
 
 mac:
   icon: icon.png
