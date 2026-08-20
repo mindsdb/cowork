@@ -25,7 +25,9 @@ export function useOnboarding() {
     isComplete: (id) => completed.has(id),
     completedCount: doneCount,
     total: steps.length,
-    allDone: doneCount === steps.length,
+    // length guard: an (invalid) all-desktopOnly config must not show the
+    // completion card on web for a user who completed nothing.
+    allDone: steps.length > 0 && doneCount === steps.length,
     dismissed,
     complete: completeStep,
     dismiss,
