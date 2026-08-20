@@ -40,6 +40,7 @@ import { applyNavTitleColor } from '../lib/navBranding';
 import { getAgentLabel } from './lib/agentLabel';
 import { selectNextQueuedTask, mergeQueuesForAdoptedId } from './lib/messageQueue';
 import { loadCachedSettings } from './lib/settingsCache';
+import { useOrgMode } from '../lib/orgMode';
 import { clearDraft, moveDraft } from './lib/draftStore';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { useGoogleDrivePicker } from './hooks/useGoogleDrivePicker';
@@ -1589,6 +1590,9 @@ function AppCore() {
   // The full Display / theme picker modal (ENG-1545), opened from the
   // sidebar footer's "Display settings" button.
   const [themeModalOpen, setThemeModalOpen] = useState(false);
+  // Non-null = show the "coming soon to Cloud" popup for this feature name.
+  const [comingSoonFeature, setComingSoonFeature] = useState(null);
+  const orgMode = useOrgMode();
   // The "design your own" recipe behind the `custom` skin — edited in
   // Settings → Appearance, applied as inline body token overrides.
   const [customTheme, setCustomTheme] = useState(loadCustomTheme);
@@ -2970,6 +2974,13 @@ function AppCore() {
 
   const navigate = (key) => {
     if (sidebarPopout) setNavPopoutOpen(false);
+    // Connectors and channels aren't available on Cloud yet — intercept any
+    // entry point (sidebar, Settings, deep link) in org mode and show the
+    // "coming soon" popup instead of routing to a half-working surface.
+    if (orgMode && (key === 'customize' || key === 'channels')) {
+      setComingSoonFeature(key === 'customize' ? 'Connect Apps and Data' : 'Channels');
+      return;
+    }
     if (key === 'settings' || key.startsWith('settings:')) {
       // Targeted (settings:backend) opens that section; a bare `settings`
       // opens the mobile section list (null) / desktop's last section.
@@ -2996,6 +3007,17 @@ function AppCore() {
     }
     setRoute(key);
   };
+
+  // Safety net: navigate() intercepts the sidebar/Settings entry points, but a
+  // direct setRoute (or org mode resolving after a route is already set) could
+  // still land on connectors/channels. Bounce home and show the popup rather
+  // than render a surface that isn't available on Cloud.
+  useEffect(() => {
+    if (orgMode && (route === 'customize' || route === 'channels')) {
+      setComingSoonFeature(route === 'customize' ? 'Connect Apps and Data' : 'Channels');
+      setRoute('home');
+    }
+  }, [orgMode, route]);
 
   const attachmentProjectPath = currentTask?.projectPath || selectedProject?.path || null;
   const attachmentProjectName = currentTask?.projectName || selectedProject?.name || null;
@@ -5259,6 +5281,25 @@ function AppCore() {
         skin={skin}
         onSkinChange={setSkin}
       />
+
+      <Modal
+        open={comingSoonFeature != null}
+        onClose={() => setComingSoonFeature(null)}
+        size="sm"
+        labelledBy="coming-soon-title"
+      >
+        <ModalHeader
+          id="coming-soon-title"
+          title="Coming soon to Cloud"
+          onClose={() => setComingSoonFeature(null)}
+        />
+        <ModalBody>
+          <p>
+            This feature isn’t available on Cloud just yet. In the meantime, you
+            can try it in the local version.
+          </p>
+        </ModalBody>
+      </Modal>
 
       {!host.isWeb && (
       <ServerOfflineHelpModal
