@@ -15,7 +15,8 @@ vi.mock('../platform/host', async (importOriginal) => ({
   host: hostMock,
 }));
 
-import { fetchRecommendedModels, updateSettings, revealSettingKey } from './api';
+import { fetchRecommendedModels, fetchSettings, updateSettings, revealSettingKey, streamNewSession } from './api';
+import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 
 const jsonRes = (body, ok = true, status = 200) => ({
   ok,
@@ -120,6 +121,70 @@ describe('updateSettings', () => {
   });
 });
 
+// ENG-1632 tombstones: a `null` in the patch clears the stored row (DELETE)
+// so the server's enabled-aware resolution governs the key again. The DELETEs
+// must run BEFORE the bulk PUT — the PUT repoints providers, and a repointed
+// provider whose old model row survives a failed DELETE misroutes every turn
+// with no retry path (the next save's repoint guard sees a matching provider
+// and never re-attempts the DELETE).
+describe('updateSettings — tombstones (ENG-1632)', () => {
+  let calls;
+
+  // Seed _lastFetchedSettings (the tombstone gate requires the key to have
+  // been served) by running a real fetchSettings against stubbed rows.
+  const seed = async (deleteImpl) => {
+    calls = [];
+    vi.stubGlobal('fetch', vi.fn(async (url, options = {}) => {
+      const method = options.method || 'GET';
+      const u = String(url);
+      calls.push({ url: u, method, body: options.body });
+      if (method === 'DELETE') return deleteImpl(u);
+      if (method === 'PUT' && u.endsWith('/settings/')) return jsonRes({ updated: [] });
+      if (method === 'GET' && u.endsWith('/settings/')) {
+        return jsonRes([
+          { key: 'planning_model', value: 'claude-opus-4-8', is_sensitive: false, is_set: true },
+          { key: 'planning_provider', value: 'anthropic', is_sensitive: false, is_set: true },
+        ]);
+      }
+      return jsonRes({});
+    }));
+    await fetchSettings();
+    calls = [];
+  };
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('runs the DELETE before the bulk PUT and never PUTs a null', async () => {
+    await seed(() => jsonRes({ ok: true }));
+    await updateSettings({ planningModel: null, planningProvider: 'minds-cloud' });
+
+    const del = calls.findIndex((c) => c.method === 'DELETE' && c.url.includes('/settings/planning_model'));
+    const put = calls.findIndex((c) => c.method === 'PUT' && c.url.endsWith('/settings/'));
+    expect(del).toBeGreaterThanOrEqual(0);
+    expect(put).toBeGreaterThanOrEqual(0);
+    expect(del).toBeLessThan(put);
+    expect(JSON.parse(calls[put].body).values).not.toHaveProperty('planning_model');
+  });
+
+  it('skips 404 (no row) and 400 (old server) and still saves', async () => {
+    await seed(() => jsonRes({ detail: 'not found' }, false, 404));
+    const res = await updateSettings({ planningModel: null, planningProvider: 'minds-cloud' });
+    expect(res.status).toBe('ok');
+    expect(calls.some((c) => c.method === 'PUT' && c.url.endsWith('/settings/'))).toBe(true);
+  });
+
+  it('a 500 on the DELETE aborts the save before anything is repointed', async () => {
+    await seed(() => jsonRes({ detail: 'boom' }, false, 500));
+    await expect(
+      updateSettings({ planningModel: null, planningProvider: 'minds-cloud' }),
+    ).rejects.toThrow(/Failed to save settings/);
+    // The load-bearing assertion: no PUT was issued, so the provider was NOT
+    // repointed — the stored state stays consistent and the retry re-runs the
+    // whole save (guard still true).
+    expect(calls.some((c) => c.method === 'PUT' && c.url.endsWith('/settings/'))).toBe(false);
+  });
+});
+
 // ENG-932: `/settings/reveal-key` returns UNMASKED secrets and is
 // loopback-only server-side, so from a hosted browser it can only 403. The
 // gate lives here in the network helper — not just at the ApiKeyInput call
@@ -213,5 +278,84 @@ describe('fetchSession error hydration (ENG-1304)', () => {
     expect(err).toBeTruthy();
     expect(err.code).toBe('token_limit');
     expect(task.messages.map((m) => m.role)).not.toContain('provider_required');
+  });
+});
+
+// ─── ENG-1656 follow-up: "Model Router" pick never reaches the server ──
+//
+// MODEL_ROUTER_ID is a renderer-only sentinel (the composer's default,
+// meaning "use this account's Settings"). The server contract is a null/
+// absent `model` field, so it must be translated at the request boundary
+// rather than sent verbatim as the literal string "model-router".
+describe('streamNewSession — Model Router translation', () => {
+  const closedStreamResponse = () => ({
+    ok: true,
+    status: 200,
+    body: { getReader: () => ({ read: async () => ({ done: true, value: undefined }) }) },
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('sends model: null when the picked model is the Model Router sentinel', async () => {
+    const fetchMock = vi.fn(async () => closedStreamResponse());
+    vi.stubGlobal('fetch', fetchMock);
+
+    await new Promise((resolve) => {
+      streamNewSession('hi', { model: MODEL_ROUTER_ID, onDone: resolve, onError: resolve });
+    });
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.model).toBeNull();
+  });
+
+  it('sends a real model id through unchanged', async () => {
+    const fetchMock = vi.fn(async () => closedStreamResponse());
+    vi.stubGlobal('fetch', fetchMock);
+
+    await new Promise((resolve) => {
+      streamNewSession('hi', { model: 'sonnet', onDone: resolve, onError: resolve });
+    });
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.model).toBe('sonnet');
+  });
+});
+
+// ─── ENG-1656 follow-up: the composer's harness pick reaches the server ──
+describe('streamNewSession — harness pick', () => {
+  const closedStreamResponse = () => ({
+    ok: true,
+    status: 200,
+    body: { getReader: () => ({ read: async () => ({ done: true, value: undefined }) }) },
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('sends the picked harness', async () => {
+    const fetchMock = vi.fn(async () => closedStreamResponse());
+    vi.stubGlobal('fetch', fetchMock);
+
+    await new Promise((resolve) => {
+      streamNewSession('hi', { harness: 'hermes', onDone: resolve, onError: resolve });
+    });
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.harness).toBe('hermes');
+  });
+
+  it('omits the field when the caller passes no harness (e.g. an in-task reply)', async () => {
+    const fetchMock = vi.fn(async () => closedStreamResponse());
+    vi.stubGlobal('fetch', fetchMock);
+
+    await new Promise((resolve) => {
+      streamNewSession('hi', { onDone: resolve, onError: resolve });
+    });
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body).not.toHaveProperty('harness');
   });
 });

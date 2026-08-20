@@ -999,6 +999,12 @@ export function mindsSignInSettingWrites(apiKey: string, host: string): Array<{ 
     { key: 'minds_url', value: host },
     { key: 'planning_provider', value: 'minds_cloud' },
     { key: 'coding_provider', value: 'minds_cloud' },
+    // router_provider too (ENG-1632): with no stored row the server serializes
+    // its pydantic default (anthropic) and the client can't tell "no row" from
+    // "user chose anthropic" — so the Settings save-path guard saw a
+    // permanently-differing provider and repointed the router on EVERY
+    // default-mode save, materializing an aux-model pin as a side effect.
+    { key: 'router_provider', value: 'minds_cloud' },
   ];
 }
 

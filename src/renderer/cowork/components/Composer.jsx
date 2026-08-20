@@ -1,7 +1,8 @@
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Ico from './Icons';
 import { Tooltip } from './ui';
+import { ToggleGroup } from './ui/ToggleGroup';
 import NewProjectModal from './project/NewProjectModal';
 import {
   parseFences,
@@ -11,14 +12,17 @@ import {
 } from './composerFences';
 import { HighlightOverlay } from './composerHighlight';
 import {
-  groupModelOptions, modelMaker, isMovingAlias, isFrozenAlias, hasFrozenVersions, orderByFamily,
+  isMovingAlias, isFrozenAlias, hasFrozenVersions, orderByFamily,
+  MODEL_ROUTER_ID, MODEL_ROUTER_LABEL,
 } from '../lib/modelCatalog';
 import { MODEL_REFRESH_TTL_MS } from '../lib/modelRefresh';
+import ModelSelect from './ModelSelect.jsx';
 import ProviderIcon from './ProviderIcon.jsx';
 import { useFileDrop, FileDropOverlay, extractClipboardFiles } from '../lib/useFileDrop';
 import { AttachmentThumbnail } from './AttachmentThumbnail';
 import { useSkills } from '../lib/skillsStore';
 import { useDraft } from '../hooks/useDraft';
+import { host } from '../../platform/host';
 
 // Detect a "/" slash-command token immediately before the caret. Returns the
 // token's start index (the "/") and the lowercased query fragment, or null when
@@ -29,6 +33,36 @@ function detectSlashToken(text, caret) {
   const m = before.match(/(^|\s)\/([\w-]*)$/);
   if (!m) return null;
   return { start: caret - m[2].length - 1, query: m[2].toLowerCase() };
+}
+
+// Selected task-mode chip in the composer toolbar (ENG-1594). One button —
+// the whole chip removes the mode. Both glyphs (mode icon + X) stay in the
+// DOM, absolutely stacked, and cross-fade on hover/focus-visible (touch
+// pointers show the X permanently — no hover to reveal it), so the swap is
+// interruptible and needs no state. Hover styles are gated behind
+// (hover:hover) and (pointer:fine) via arbitrary variants; Tailwind's bare
+// hover: compiles to plain :hover here, which sticks on touch.
+// (Class strings stay whole literals — Tailwind's scanner can't see through
+// template interpolation, and a missed candidate fails silently.)
+function TaskModeChip({ mode, onClear }) {
+  return (
+    <button
+      type="button"
+      className="group inline-flex h-7 cursor-pointer items-center gap-[6px] rounded-full px-[11px] border border-solid border-[color-mix(in_srgb,var(--accent)_28%,transparent)] bg-[var(--primary-50)] text-[var(--primary-700)] [font-family:inherit] text-[13px] font-medium dark:border-[color-mix(in_srgb,var(--accent)_40%,transparent)] dark:text-accent [transition:background_140ms_ease,border-color_140ms_ease,transform_160ms_cubic-bezier(0.23,1,0.32,1)] animate-chip-in motion-reduce:animate-none active:scale-[0.96] motion-reduce:active:transform-none [@media(hover:hover)_and_(pointer:fine)]:hover:bg-[color-mix(in_srgb,var(--accent)_16%,var(--surface-0))] [@media(hover:hover)_and_(pointer:fine)]:hover:border-[color-mix(in_srgb,var(--accent)_45%,transparent)]"
+      aria-label={`Remove ${mode.chipNoun || mode.chipLabel} mode`}
+      onClick={onClear}
+    >
+      <span className="relative inline-flex h-3.5 w-3.5" aria-hidden>
+        <span className="absolute inset-0 inline-flex [transition:opacity_150ms_cubic-bezier(0.2,0,0,1),transform_150ms_cubic-bezier(0.2,0,0,1)] group-focus-visible:scale-[0.25] group-focus-visible:opacity-0 [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-[0.25] [@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-0 [@media(hover:none)]:scale-[0.25] [@media(hover:none)]:opacity-0">
+          {Ico[mode.icon](14)}
+        </span>
+        <span className="absolute inset-0 inline-flex [transition:opacity_150ms_cubic-bezier(0.2,0,0,1),transform_150ms_cubic-bezier(0.2,0,0,1)] scale-[0.25] opacity-0 group-focus-visible:scale-100 group-focus-visible:opacity-100 [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-100 [@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-100 [@media(hover:none)]:scale-100 [@media(hover:none)]:opacity-100">
+          {Ico.close(14)}
+        </span>
+      </span>
+      {mode.chipLabel}
+    </button>
+  );
 }
 
 function AttachmentChip({ attachment, onRemove }) {
@@ -67,61 +101,6 @@ function AttachmentChip({ attachment, onRemove }) {
   );
 }
 
-// Shared by the menu's own "Model" label and each section heading, so a grouped
-// and an ungrouped menu can't drift apart visually.
-const MODEL_HEADING = {
-  padding: '6px 10px',
-  fontSize: 11,
-  fontWeight: 600,
-  color: 'var(--frost-600)',
-  textTransform: 'uppercase',
-  letterSpacing: '0.04em',
-};
-
-/**
- * One row of the composer's model menu.
- *
- * `latest` marks an alias whose version moves — picking it always gets the newest
- * release. A locked model is one the org's wallet can't currently pay for; it
- * renders disabled with the same "Add credits to unlock" wording the Settings
- * picker uses, so a model that would fail at send time can't be chosen here.
- */
-function ModelMenuItem({ item, selected, onSelect }) {
-  return (
-    <button
-      className={`menu-item${selected ? ' checked' : ''}`}
-      disabled={item.locked}
-      title={item.locked ? 'Add credits to unlock this model' : undefined}
-      onClick={onSelect}
-      style={{
-        display: 'flex', alignItems: 'center', gap: 8, width: '100%',
-        paddingLeft: item.pinned ? 24 : undefined,
-        opacity: item.locked ? 0.55 : undefined,
-        cursor: item.locked ? 'not-allowed' : undefined,
-      }}
-    >
-      <ProviderIcon maker={item.maker} className="text-ink-2" />
-      <span style={{
-        flex: 1,
-        fontWeight: item.pinned ? 400 : 500,
-        color: item.pinned ? 'var(--frost-700)' : undefined,
-      }}>{item.name}</span>
-      {item.moving && (
-        <span
-          title="This model always points at the newest version."
-          style={{
-            fontSize: 10, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase',
-            padding: '1px 5px', borderRadius: 4,
-            background: 'var(--surface-2)', color: 'var(--frost-600)',
-          }}
-        >latest</span>
-      )}
-      {item.locked && <span style={{ fontSize: 11, color: 'var(--frost-600)' }}>Add credits to unlock</span>}
-      {selected && <span style={{ color: 'var(--primary-700)' }}>{Ico.check(14)}</span>}
-    </button>
-  );
-}
-
 export default function Composer({
   onSend,
   project,
@@ -153,11 +132,12 @@ export default function Composer({
   placeholder = 'Hi Boss, how can I help you today?',
   disabled = false,
   metaReadOnly = false,
+  // Whether the model pill is a fixed label rather than a picker. Defaults
+  // to metaReadOnly (ChatView's prior behavior: "model is fixed once a task
+  // starts") — ProjectsView overrides this to false since its metaReadOnly
+  // is only about locking the project, not the model.
+  modelReadOnly = metaReadOnly,
   hideMeta = false,
-  // When true, suppress the model picker but keep the project picker.
-  // Used on the home (new task) composer where we want the user to
-  // pick a project but not fuss with model selection.
-  hideModel = false,
   // When true, the send button is replaced with a stop button that
   // calls onStop (cancel the in-flight stream + scratchpad).
   streaming = false,
@@ -179,16 +159,69 @@ export default function Composer({
   // with it so the new project is pre-selected for the task being
   // composed. When omitted, the row is hidden.
   onCreateProject = null,
+  // Selected task mode (ENG-1594) — when set, a removable chip renders in
+  // the toolbar next to the + button. The caller owns the selection state
+  // (and the matching placeholder); `onClearTaskMode` removes it.
+  taskMode = null,
+  onClearTaskMode,
   // Names the surface this composer's unsent text belongs to, so a draft
   // survives navigation (every composer unmounts on route change) and doesn't
   // leak between surfaces. Defaults to the conversation for in-chat replies
   // and to the shared "new task" surface otherwise; the project view passes
   // its own so a per-project draft is separate from the home one.
   draftKey = null,
+  // Coding mode (MVP, ENG-1656 follow-up): when true, show a harness pill
+  // (Anton / Claude Code) independent of `metaReadOnly` (which only locks
+  // the project pill). Model selection is a separate, always-on capability
+  // below — it applies to whichever harness is picked, Anton included.
+  codingModeEnabled = false,
+  // Whether onSend's 2nd argument carries {harness, model}. Must default to
+  // false: ChatView's onSend is handleSendInTask(text, queuedAttachments,
+  // opts), where position 2 is a real, differently-shaped parameter — an
+  // in-flight-turn message queues by storing whatever lands there as the
+  // message's `attachments`, so sending a {harness, model} object there
+  // silently corrupts the queue (non-array `.attachments`) instead of
+  // failing loudly. Only HomeView/ProjectsView's handleSendFromHome uses
+  // this position for meta, so only they opt in.
+  sendsMeta = false,
+  // Opens the Settings modal to a given section (e.g. 'agent') — same
+  // callback App.jsx hands every other "Open Settings" affordance. Used by
+  // the Model Router row's settings shortcut below.
+  onOpenSettings,
+  // The account's configured Coding model (Settings → Model Router →
+  // Coding model), a raw model id or undefined/empty if never set.
+  // Claude Code needs a real, concrete model and can't use Model Router —
+  // when the harness pill switches to Claude Code with nothing picked
+  // (e.g. no MindsHub session, so the catalog is empty and there's
+  // nothing to choose from), this is what gets auto-selected instead of
+  // leaving the picker empty and blocking send.
+  codingModelDefault,
+  // Which harnesses the pill below offers, per Settings → Coding Mode
+  // (default true — an account that never visits that setting sees every
+  // harness it's otherwise eligible for). Anton has no enable flag — it's
+  // the default agent and always offered.
+  harnessHermesEnabled = true,
+  harnessClaudeCodeEnabled = true,
 }) {
   const [value, setValue] = useDraft(draftKey || conversationId || 'new');
   const [focused, setFocused] = useState(false);
   const [openMenu, setOpenMenu] = useState(null);
+  const [codingHarness, setCodingHarness] = useState('anton');
+  // Detected but not gating: shown as a non-blocking hint on the Claude Code
+  // option rather than hiding the picker. A user should be able to configure
+  // coding mode (and see what it'd send) regardless of whether detection
+  // succeeded on this machine — the actual launch still surfaces a clear
+  // "command not found" in the opened terminal if the CLI truly isn't there.
+  const [claudeCodeInfo, setClaudeCodeInfo] = useState({ installed: false, path: null });
+
+  useEffect(() => {
+    if (!codingModeEnabled) return;
+    let cancelled = false;
+    host.detectClaudeCode().then((info) => {
+      if (!cancelled) setClaudeCodeInfo(info || { installed: false, path: null });
+    });
+    return () => { cancelled = true; };
+  }, [codingModeEnabled]);
   /** Project-picker menu state. The menu is a search-first picker:
       one input at the top filters the project list AND doubles as
       the "+ Create '<typed>'" entry when no results match — same
@@ -294,10 +327,11 @@ export default function Composer({
   // on every keystroke / selection event.
   const parsedFences = useMemo(() => parseFences(value), [value]);
 
-  // Model menu sections. Grouped here rather than by the caller because ChatView
-  // passes its own one-item list, which must stay ungrouped — and with no
-  // metadata `groupModelOptions` returns exactly one unnamed section holding the
-  // input, so the flat menu needs no separate branch below.
+  // Controlled so the Model Router row's settings shortcut can force the
+  // popup closed itself — otherwise it lingers open behind the Settings
+  // modal the shortcut opens, which reads as a stuck/broken dropdown.
+  const [modelMenuOpen, setModelMenuOpen] = useState(false);
+
   // Don't re-pay the round trip for a menu reopened moments later. -Infinity, not
   // 0: performance.now() is already well past 0 by first render, so a 0 sentinel
   // would read as "refreshed at page load" and skip the first open of the session.
@@ -312,48 +346,155 @@ export default function Composer({
     Promise.resolve(modelMeta.onRefresh()).catch(() => {});
   }, [modelMeta]);
 
-  const modelSections = useMemo(() => {
+  // Which harnesses the pill offers — Settings → Coding Mode's per-harness
+  // enable flags, filtered live. Claude Code's detection hint (installed?)
+  // stays a non-blocking title tooltip, not a gate — see claudeCodeInfo above.
+  const harnessPickerOptions = useMemo(() => {
+    // Anton is always offered — the default agent, with no enable flag.
+    const opts = [{ value: 'anton', label: 'Anton' }];
+    if (harnessHermesEnabled) opts.push({ value: 'hermes', label: 'Hermes' });
+    if (harnessClaudeCodeEnabled) {
+      opts.push({
+        value: 'claude-code',
+        label: 'Claude-Code',
+        title: claudeCodeInfo.installed ? undefined : 'Claude-Code — not detected on this machine',
+      });
+    }
+    return opts;
+  }, [harnessHermesEnabled, harnessClaudeCodeEnabled, claudeCodeInfo.installed]);
+
+  // If the currently-picked harness gets disabled out from under it (an
+  // admin turned it off between page loads, or Coding mode just turned on
+  // for the first time), fall back to whatever's still offered rather than
+  // silently sending a harness the pill no longer shows as selected.
+  useEffect(() => {
+    if (!codingModeEnabled || harnessPickerOptions.length === 0) return;
+    if (harnessPickerOptions.some((o) => o.value === codingHarness)) return;
+    setCodingHarness(harnessPickerOptions[0].value);
+  }, [codingModeEnabled, harnessPickerOptions, codingHarness]);
+
+  // Claude Code needs a real, concrete model for its `--model` flag — no
+  // auto-routing concept in the CLI — so Model Router is hidden whenever
+  // that harness is the one about to send. Computed once, reused by both
+  // modelPickerOptions below and the no-real-models render branch further
+  // down (which needs it outside the memo).
+  // Requires harnessClaudeCodeEnabled too, not just a stale codingHarness
+  // value — e.g. an admin disabling it after it was already selected must
+  // not leave the composer still routing to it.
+  const isClaudeCode = codingModeEnabled && harnessClaudeCodeEnabled && codingHarness === 'claude-code';
+
+  // What actually gets sent (handleSend below) — never the raw codingHarness
+  // state directly, so a value that just got disabled (the reset effect
+  // above hasn't re-rendered yet, or every harness is disabled) can't slip
+  // through as e.g. a stale "claude-code" that would launch the external
+  // CLI despite the toggle being off.
+  const effectiveHarness = !codingModeEnabled
+    ? 'anton'
+    : (harnessPickerOptions.some((o) => o.value === codingHarness)
+      ? codingHarness
+      : (harnessPickerOptions[0]?.value || 'anton'));
+
+  // No provider configured (MindsHub or BYOK) leaves `models` (the real
+  // catalog — recommendedModelOptions returns [] for an unconfigured
+  // provider) empty. Claude Code still needs its own real model regardless,
+  // so this only applies to the Anton-routed picker.
+  const noRealModels = !isClaudeCode && (models?.length || 0) === 0 && !!onOpenSettings;
+
+  // Flat options for <ModelSelect> — the same searchable, bounded-height,
+  // provider-grouped picker the Settings model rows use (ui/Combobox).
+  // ModelSelect groups internally (lib/modelCatalog), so this only builds the
+  // per-row tag/provider metadata, mirroring settingsTransform's
+  // buildModelOptions so the two pickers can't drift apart again.
+  const modelPickerOptions = useMemo(() => {
     const { modelProviders = {}, modelFamilies = {}, modelEnabled = {} } = modelMeta || {};
     const list = models || [];
     const ids = list.map((m) => m.id);
-    // Family rules come from lib/modelCatalog, shared with the Settings picker.
-    // They used to be reimplemented here over `{id, name}` objects while
-    // settingsTransform had its own copy over id strings, which is how the two
-    // drifted — the BYOK "(latest)" bug was live in both and had to be fixed twice.
     const byId = new Map(list.map((m) => [m.id, m]));
     const ordered = orderByFamily(ids, modelFamilies).map((id) => byId.get(id));
     // Only tag once something listed is NOT the latest; on an all-moving catalog the
     // tag would sit on every row and distinguish nothing.
     const tagMoving = hasFrozenVersions(ids, modelFamilies);
-    const items = ordered.map((m) => ({
-      value: m.id,
-      // `label` feeds modelSection's maker inference; `name` is what renders.
-      label: m.name,
-      name: m.name,
-      provider: modelProviders[m.id],
-      maker: modelMaker(m.id, m.name).key,
-      moving: tagMoving && isMovingAlias(m.id, modelFamilies),
-      // Indented under its head only when the head is actually listed. An orphan
-      // reads as a top-level model: indenting it under nothing, or calling it an
-      // older version of a model the user cannot see, is worse than listing it
-      // plainly. It is never `moving` either, so it claims nothing.
-      pinned: isFrozenAlias(m.id, modelFamilies) && byId.has(modelFamilies[m.id]),
-      locked: modelEnabled[m.id] === false,
-    }));
-    // Group only when the server told us who serves the models THESE rows are, not
-    // merely that it knows about some model somewhere: `modelProviders` is global to
-    // the settings blob and keyed by model id, so a MindsHub key populates it even
-    // for a role pointed at BYOK Anthropic, whose ids it never mentions. Gating on
-    // the map being non-empty grouped that list by inference alone. With nothing
-    // known about any listed id — an older cowork-server, a BYOK provider,
-    // ChatView's one-item list — a single unnamed section renders today's flat menu
-    // exactly. An empty list takes that path too: grouping nothing yields no
-    // sections at all, and a menu with neither heading nor rows reads as broken
-    // rather than as still-loading.
-    return items.length && ids.some((id) => modelProviders[id])
-      ? groupModelOptions(items)
-      : [{ key: 'all', name: null, items }];
-  }, [models, modelMeta]);
+    const catalogOptions = ordered.map((m) => {
+      const tag = [
+        tagMoving && isMovingAlias(m.id, modelFamilies) ? 'Latest' : '',
+        // A frozen version whose head is also listed. An orphan carries no
+        // tag: "older version" is a claim relative to a newer one, and with
+        // no head present there is nothing for the user to read it against.
+        (isFrozenAlias(m.id, modelFamilies) && byId.has(modelFamilies[m.id])) ? 'Older version' : '',
+        modelEnabled[m.id] === false ? 'Needs credits' : '',
+      ].filter(Boolean).join(' · ');
+      return {
+        value: m.id,
+        label: m.name,
+        ...(tag ? { tag } : {}),
+        ...(modelProviders[m.id] ? { provider: modelProviders[m.id] } : {}),
+      };
+    });
+    // "Model Router" (defer to this account's Settings) leads the list,
+    // inside the MindsHub group rather than pinned above every section —
+    // `maker: 'mindshub'` is the same escape hatch modelSection() gives an
+    // explicit maker over inference, and prepending it here (before any
+    // catalog option) keeps it first within that group without needing
+    // per-group sorting.
+    return isClaudeCode ? catalogOptions : [
+      {
+        value: MODEL_ROUTER_ID,
+        label: MODEL_ROUTER_LABEL,
+        maker: 'mindshub',
+        title: "Routes to this account's configured model automatically",
+        // stopPropagation: a plain click on this row would otherwise also
+        // fire Base UI's Combobox.Item select handler (it listens on the
+        // row itself), selecting Model Router as a side effect of opening
+        // Settings. Closing the popup first (setModelMenuOpen(false))
+        // avoids it lingering open behind the Settings modal this opens.
+        ...(onOpenSettings ? {
+          action: (
+            <Tooltip content="Router Settings">
+              <button
+                type="button"
+                aria-label="Router Settings"
+                className="composer-icon shrink-0"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setModelMenuOpen(false);
+                  onOpenSettings('agent');
+                }}
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                {Ico.settings(13)}
+              </button>
+            </Tooltip>
+          ),
+        } : {}),
+      },
+      ...catalogOptions,
+    ];
+  }, [models, modelMeta, isClaudeCode, onOpenSettings]);
+
+  // True once the picked model isn't valid for Claude Code — nothing
+  // picked yet, or still Model Router (hidden from the picker once this
+  // harness is selected, but the underlying value doesn't change itself).
+  const needsClaudeCodeModel = isClaudeCode && (!model?.id || model.id === MODEL_ROUTER_ID);
+
+  // Falls back to the account's configured Coding model (Settings → Model
+  // Router → Coding model) so switching to Claude Code with no MindsHub
+  // session (empty catalog, nothing to pick) doesn't leave the task
+  // unlaunchable — used both to keep the pill in sync (effect below) and
+  // as a same-tick safety net in handleSend, in case Send fires before
+  // that effect's onModelChange round-trips back down as a prop.
+  const effectiveModelId = (needsClaudeCodeModel && codingModelDefault) ? codingModelDefault : model?.id;
+
+  // Sync the visible pill: without this, the picker would show blank (or
+  // a stale Model Router label) even though handleSend is about to send
+  // the Coding model default underneath it.
+  useEffect(() => {
+    if (!needsClaudeCodeModel || !codingModelDefault) return;
+    const found = modelPickerOptions.find((o) => o.value === codingModelDefault);
+    onModelChange({ id: codingModelDefault, name: found?.label || codingModelDefault });
+    // onModelChange intentionally omitted: some callers (ChatView) pass a
+    // fresh closure every render, which would refire this every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [needsClaudeCodeModel, codingModelDefault, modelPickerOptions]);
 
   // Auto-resize the textarea up to a max height; past that it scrolls.
   // The overlay is absolutely positioned with `inset: 0`, so it follows
@@ -526,6 +667,17 @@ export default function Composer({
       setValue(value.slice(0, start) + mention + value.slice(caret));
     }
   }, [value]);
+
+  // Task-mode change (select from the pill row or clear via the chip) moves
+  // focus into the textarea: the user's next act is typing, and for a screen
+  // reader the focus event reads out the freshly-swapped placeholder — the
+  // otherwise-silent mode switch gets announced (ENG-1594 review finding).
+  const prevTaskModeRef = useRef(taskMode);
+  useEffect(() => {
+    if (prevTaskModeRef.current === taskMode) return;
+    prevTaskModeRef.current = taskMode;
+    taRef.current?.focus();
+  }, [taskMode]);
 
   // Edit-and-resend: when ChatView bumps `prefill`, drop the supplied
   // text into the composer and focus the textarea so the user can
@@ -764,7 +916,17 @@ export default function Composer({
     if (disabled || !value.trim()) return;
     setBusy(true);
     try {
-      await Promise.resolve(onSend(value.trim()));
+      // Model selection always rides along (it applies to Anton too, not
+      // just coding mode); harness only matters once coding mode is on —
+      // otherwise every task is implicitly Anton regardless of local state.
+      // See `sendsMeta` above for why this can't unconditionally be onSend's
+      // 2nd argument. `effectiveHarness`/`effectiveModelId` (not the raw
+      // `codingHarness`/`model?.id`) so a same-tick send can't slip through
+      // with a disabled harness or nothing pickable for Claude Code.
+      const result = sendsMeta
+        ? onSend(value.trim(), { harness: effectiveHarness, model: effectiveModelId })
+        : onSend(value.trim());
+      await Promise.resolve(result);
       setValue('');
       // Clear the error only AFTER a successful send. Clearing it up
       // front meant a user hammering Send/Enter on a failing send wiped
@@ -1162,7 +1324,70 @@ export default function Composer({
                 </div>
               )}
             </span>
+            {taskMode && <TaskModeChip mode={taskMode} onClear={onClearTaskMode} />}
             <div className="flex-1" />
+            {/* Model selection lives in the toolbar, next to send — a
+                standing composer capability independent of metaReadOnly
+                (which only locks the project pill) and of coding mode: it
+                applies to whichever harness the task runs with, Anton
+                included. Reuses <ModelSelect> — the same searchable,
+                bounded-height, provider-grouped picker (ui/Combobox) the
+                Settings model rows use — so height/scroll/search behavior
+                lives in one place. `modelReadOnly` (defaults to
+                `metaReadOnly`) keeps ChatView's existing "model is fixed
+                once a task starts" behavior. */}
+            {modelReadOnly ? (
+              <span className="meta-pill" title="Model is fixed for this task">
+                <span>{model?.name ?? 'Model'}</span>
+              </span>
+            ) : noRealModels ? (
+              // No provider connected (MindsHub or BYOK) — `models` (the
+              // real catalog, before Model Router gets pinned on) is empty,
+              // so Model Router would be the only pickable row anyway. A
+              // dropdown with one unpickable-in-practice option reads as
+              // broken; show a plain button instead — no caret, since there
+              // is nothing to open — that goes straight to where a model
+              // actually gets connected.
+              <Tooltip content="Connect a provider in Settings to choose a model">
+                <button
+                  type="button"
+                  className="meta-pill"
+                  onClick={() => onOpenSettings('agent')}
+                >
+                  {/* Same left icon + label layout as the closed
+                      ModelSelect pill (see ModelSelect.jsx's renderValue) —
+                      only the trailing glyph differs (gear, not a caret),
+                      so this reads as "the model pill" that happens to open
+                      Settings, not as an unrelated control. */}
+                  <span className="flex items-center gap-[8px] min-w-0">
+                    <ProviderIcon maker="other" className="text-ink-2" />
+                    <span className="truncate">{MODEL_ROUTER_LABEL}</span>
+                  </span>
+                  <span className="inline-flex shrink-0 text-ink-3">
+                    {Ico.settings(13)}
+                  </span>
+                </button>
+              </Tooltip>
+            ) : (
+              <ModelSelect
+                // Falls back to unselected (rather than a synthesized
+                // "model-router" row) if the current pick isn't a valid
+                // option right now — e.g. Model Router was picked, then the
+                // harness pill switched to Claude Code, which hides it.
+                value={modelPickerOptions.some((o) => o.value === model?.id) ? model.id : ''}
+                onValueChange={(id) => {
+                  const found = modelPickerOptions.find((o) => o.value === id);
+                  onModelChange({ id, name: found?.label || id });
+                }}
+                open={modelMenuOpen}
+                onOpenChange={(open) => { setModelMenuOpen(open); if (open) openModelMenu(); }}
+                options={modelPickerOptions}
+                variant="unstyled"
+                className="meta-pill"
+                ariaLabel="Choose model"
+                placeholder="Select model"
+              />
+            )}
             {/* Mic / voice input intentionally hidden — voice flow isn't
                 wired through anton yet. We keep speechSupported state
                 around so we can reinstate later by re-rendering the
@@ -1230,11 +1455,6 @@ export default function Composer({
                 {Ico.folder(14)}
                 <span>{project ? project.name : 'No project'}</span>
               </span>
-              {!hideModel && (
-                <span className="meta-pill" title="Model is fixed for this task">
-                  <span>{model?.name ?? 'Model'}</span>
-                </span>
-              )}
             </>
           ) : (
             <>
@@ -1252,6 +1472,7 @@ export default function Composer({
                   <button
                     ref={projectPillRef}
                     className="meta-pill"
+                    aria-label="Choose project"
                     onClick={() => setOpenMenu(openMenu === 'project' ? null : 'project')}
                   >
                     {Ico.folder(14)}
@@ -1390,49 +1611,32 @@ export default function Composer({
                   </div>
                 )}
               </span>
-              {!hideModel && (
-                <Tooltip content="Choose model">
-                  <button
-                    className="meta-pill"
-                    onClick={() => {
-                      const opening = openMenu !== 'model';
-                      setOpenMenu(opening ? 'model' : null);
-                      if (opening) openModelMenu();
-                    }}
-                  >
-                    <span>{model?.name ?? 'Select model'}</span>
-                    <span className="inline-flex text-ink-4">{Ico.chevDown(13)}</span>
-                  </button>
-                </Tooltip>
-              )}
             </>
           )}
-        </div>
-      )}
 
-      {/* cascade-forced: legacy .menu sets min-width:200px; a same-property
-          Tailwind utility would lose to it (loads after Tailwind). */}
-      {openMenu === 'model' && !metaReadOnly && (
-        <div className="menu right-2 top-[calc(100%_+_6px)]" style={{ minWidth: 260 }}>
-          {/* One unnamed section is the flat case (no metadata, or ChatView's
-              single-item list): keep the "Model" heading this menu has always
-              shown rather than repeating a section name per row. */}
-          {modelSections.length === 1 && !modelSections[0].name && (
-            <div style={MODEL_HEADING}>Model</div>
+          {/* Coding mode (MVP): the harness choice itself still gates on the
+              setting — offering it at all only makes sense once it's turned
+              on. Options come from Settings → Coding Mode's per-harness
+              enable flags (harnessPickerOptions above), not a fixed list —
+              e.g. Claude Code disappears entirely once its toggle is off,
+              same as Hermes when the server doesn't have it installed.
+              Model selection above applies regardless of which harness is
+              picked. Desktop-only regardless of the setting's value: it's
+              an account-wide setting, so a web session for the same account
+              would otherwise still see the option — launching a terminal
+              is an Electron capability the web build has no equivalent
+              for. Same ToggleGroup as the Settings Anton/Hermes control,
+              not a dropdown — a segmented toggle reads better for a small,
+              always-visible choice. */}
+          {codingModeEnabled && !host.isWeb && harnessPickerOptions.length > 0 && (
+            <ToggleGroup
+              value={codingHarness}
+              onValueChange={setCodingHarness}
+              aria-label="Choose harness"
+              size="sm"
+              options={harnessPickerOptions}
+            />
           )}
-          {modelSections.map((section) => (
-            <Fragment key={section.key}>
-              {section.name && <div style={MODEL_HEADING}>{section.name}</div>}
-              {section.items.map((item) => (
-                <ModelMenuItem
-                  key={item.value}
-                  item={item}
-                  selected={model?.id === item.value}
-                  onSelect={() => { onModelChange({ id: item.value, name: item.name }); setOpenMenu(null); }}
-                />
-              ))}
-            </Fragment>
-          ))}
         </div>
       )}
 

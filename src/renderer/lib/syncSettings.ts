@@ -106,11 +106,15 @@ export function modelLinesFrom(lines: string[]): string[] {
  * the tier-aware default). Kept alongside syncSettingsToDb so both model-write
  * and bulk-write logic live in one place (ENG-922).
  *
- * Returns true iff every model PUT it attempted received a 2xx (or there was
- * nothing to write). Callers MUST check this before dropping their retry payload:
- * a failed model write is NOT self-healing — model keys are excluded from the
- * bulk .env re-sync (ENG-739) AND the backend's startup migration, so a silently
- * dropped write leaves a fresh install permanently config-not-ready (#455 review).
+ * Returns true when every model PUT it attempted either succeeded or was
+ * REFUSED on its merits (400/422 — see the branch below), and false only when a
+ * write may still land on a retry. Callers MUST check this before dropping their
+ * retry payload: a *lost* model write is not self-healing — model keys are
+ * excluded from the bulk .env re-sync (ENG-739) AND the backend's startup
+ * migration, so a silently dropped write leaves a fresh install permanently
+ * config-not-ready (#455 review). A refused one is different in kind: retrying
+ * it can never succeed, and the value was rejected precisely because it wouldn't
+ * have worked.
  */
 export async function syncModelsToDb(lines: string[]): Promise<boolean> {
   let allOk = true;
@@ -128,7 +132,32 @@ export async function syncModelsToDb(lines: string[]): Promise<boolean> {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ value }),
       });
-      if (!res.ok) allOk = false;
+      // 400 / 422 are the server REFUSING this value on its merits — for a
+      // model key, an id absent from the live catalog (ENG-1358). Permanent, so
+      // retrying burns the backoff and then strands the caller holding a payload
+      // that can never succeed. Treat it as handled and move on.
+      //
+      // Deliberately NOT the whole 4xx class: 401 in particular is an auth state
+      // that a later attempt can clear, and treating it as permanent would
+      // silently drop a model write that would have succeeded. Everything else —
+      // other 4xx, 5xx, or a response with no usable status — stays retryable,
+      // preserving the #455 contract that a genuinely lost write is reported.
+      const status = typeof res.status === 'number' ? res.status : 0;
+      if (!res.ok) {
+        if (status === 400 || status === 422) {
+          // The row is left as it was: unset on a fresh install (the backend
+          // then resolves its provider default, a working config), or the
+          // PREVIOUS id if one was already stored — which for an install
+          // already holding a bad model means it stays bad until the user
+          // changes it in Settings. The turn-time card is what surfaces that.
+          console.warn(
+            `[settings] server refused ${settingKey}="${value}" (${status}) — ` +
+            'not retrying; the stored value is unchanged',
+          );
+        } else {
+          allOk = false;
+        }
+      }
     } catch {
       allOk = false;
     }
@@ -143,10 +172,12 @@ const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
  * post-install replay (ENG-922). The cowork-server has just been
  * installed/started, so a lone failed request is usually a transient settling
  * blip; the backoff gives it a moment to come up rather than hammering it
- * back-to-back (#455 review). Returns true once a full write succeeds (or
- * there's nothing to write), false if every attempt failed — on false the caller
- * MUST keep its retry payload (see the syncModelsToDb note on why a dropped model
- * doesn't self-heal). `baseDelayMs` is 0 in tests to keep them fast.
+ * back-to-back (#455 review). Returns true once a full write succeeds, is
+ * refused on its merits (400/422 — permanent, so no retry can help), or there's
+ * nothing to write; false if every attempt failed for a reason a retry might
+ * still clear — on false the caller MUST keep its retry payload (see the
+ * syncModelsToDb note on why a lost model write doesn't self-heal).
+ * `baseDelayMs` is 0 in tests to keep them fast.
  */
 export async function syncModelsToDbWithRetry(
   lines: string[],

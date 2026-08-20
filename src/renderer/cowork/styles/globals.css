@@ -2446,26 +2446,6 @@ body[data-theme="dark"] .onboarding-card {
 .onboarding-step-row[data-done] .onboarding-step-desc { grid-template-rows: 0fr; opacity: 0; }
 .onboarding-step-row[data-done]:hover .onboarding-step-desc { grid-template-rows: 1fr; opacity: 1; }
 
-/* Home starter chips — icon tile lifts on hover, label darkens. */
-.home-suggestion-chip__tile {
-  width: 34px; height: 34px; border-radius: 9px; flex-shrink: 0;
-  display: grid; place-items: center;
-  color: var(--frost-600);
-  background: var(--surface-0);
-  border: 1px solid var(--line-2);
-  box-shadow: var(--sh-1);
-  transform: translateY(0);
-  transition: box-shadow 160ms ease, transform 160ms cubic-bezier(0.23, 1, 0.32, 1);
-}
-.home-suggestion-chip__label {
-  font-size: 14px; font-weight: 500;
-  color: var(--frost-700);
-  transition: color 140ms ease;
-}
-.home-suggestion-chip:hover .home-suggestion-chip__tile { box-shadow: var(--sh-2); transform: translateY(-1px); }
-.home-suggestion-chip:hover .home-suggestion-chip__label { color: var(--text-strong); }
-.home-suggestion-chip:active .home-suggestion-chip__tile { transform: translateY(0) scale(0.96); }
-
 /* First-artifact tip buttons — the tip sits on an inverted ink surface,
    so the shared Button variants get an on-ink skin here. body-prefixed
    to outrank the theme-keyed `.btn.default` / `.btn.primary` rules
@@ -2816,6 +2796,80 @@ body[data-theme="dark"] .chrome-btn--small.is-on {
   color: var(--accent);
   background: transparent;
   box-shadow: 0 0 14px rgba(34,211,238,0.30);
+}
+
+/* Floating corner row — the Display Settings toggle (opens ThemeModal —
+   Light/Dark + Normal/8-Bit) and, on desktop, a bare Coding Mode toggle
+   beside it. Restored to the bottom-right placement the onboarding pages
+   always kept (App.tsx's .arcade-theme-toggle, which never moved: CoworkApp
+   hasn't mounted yet there, so those pages have no sidebar footer to host
+   it). Same geometry/tokens as that version so the transition from
+   onboarding into the signed-in app is seamless. */
+.floating-toggle-row {
+  position: fixed;
+  right: 18px;
+  bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 50;
+}
+/* Narrow/tablet band (sidebar popout, not yet the phone MobileShell): the
+   bottom-right corner overlaps task-list rows and the composer's send
+   button at this width, so the row moves up to the top-right instead —
+   just left of the per-view expand/collapse-right-panel button (ChatView /
+   ProjectsView), which sits ~14px from the content edge at ~28px wide. */
+.floating-toggle-row--top-right {
+  top: 18px;
+  right: 60px;
+  bottom: auto;
+}
+.floating-toggle {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-8);
+  color: var(--ink-2);
+  cursor: pointer;
+  box-shadow: var(--sh-1);
+  transition: background .15s, color .15s, transform .15s, box-shadow .2s;
+}
+.floating-toggle:hover {
+  color: var(--ink);
+  transform: translateY(-1px);
+}
+body[data-theme="dark"] .floating-toggle:hover {
+  color: var(--accent);
+  box-shadow: 0 0 18px rgba(34,211,238,0.3);
+}
+/* Coding Mode toggle — deliberately bare (no border/background box) so it
+   reads as a status glyph next to the boxed Display Settings button, not a
+   second button of the same weight. Greyed out (--ink-4) when off, lit
+   accent when on; toggles coding mode directly on click (no modal). */
+.coding-mode-toggle {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 0;
+  color: var(--ink-4);
+  cursor: pointer;
+  transition: color .15s, opacity .15s;
+}
+.coding-mode-toggle:hover {
+  color: var(--ink-2);
+}
+.coding-mode-toggle.is-on {
+  color: var(--accent);
+}
+.coding-mode-toggle.is-on:hover {
+  opacity: 0.85;
 }
 
 /* Hide focus ring on mouse-clicked buttons so a stray Space/Enter
@@ -3275,6 +3329,25 @@ body[data-theme="dark"] .chat-floating-composer .composer-wrap {
 /* Mirrors the hamburger's 40px footprint on the right side so the
    title stays optically centered now that the top-bar "+" is gone. */
 .mshell__top-spacer { display: inline-block; width: 40px; height: 40px; }
+
+/* Theme toggle — same 40px footprint as the hamburger it mirrors, opposite
+   corner of the top bar. */
+.mshell__theme-toggle {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--r-lg);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-default);
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 160ms ease;
+}
+.mshell__theme-toggle:active { background: var(--surface-2); }
 
 /* Hamburger button — three bars that animate into an X when open. */
 .mshell__hamburger {

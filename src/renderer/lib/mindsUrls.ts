@@ -62,8 +62,23 @@ export const MINDS_KEYCLOAK_URL = import.meta.env.VITE_KEYCLOAK_URL
 // URL into "https:/.mindshub.ai/auth", which fails to open.
 const KEYCLOAK_BASE = MINDS_KEYCLOAK_URL.replace(/\/auth\/?$/, '');
 
-// Single source of truth for the MindsHub console. Flip to
-// https://console.mindshub.ai when the desktop app moves to prod.
+// Single source of truth for the MindsHub console, derived from the same
+// resolved API base as auth so a build cannot point billing at one environment
+// while auth points at another.
+//
+// Nothing to flip when the desktop moves to prod. A prod build sets
+// VITE_MINDS_API_URL to https://api.mindshub.ai (or leaves it empty, which
+// falls back to prod), and this yields console.mindshub.ai on its own. An
+// earlier version of this comment asked for the prod host to be hardcoded here;
+// doing that now would break staging and PR builds.
+//
+// Deliberately NOT given its own VITE_ override, though auth has one. There is
+// exactly one guarded input: gen-build-channel.mjs checks VITE_MINDS_API_URL
+// against the build kind and fails the build when they disagree, e.g. a preview
+// baked against the prod API. A separate console override would sit outside
+// that guard, so a prod build could ship billing links pointing at staging with
+// nothing catching it — and since ENG-1533 every one of those links emits a
+// `billing_opened` event, which would then be measurable and wrong.
 export const MINDS_CONSOLE_URL = mindsServiceHost('console');
 export const MINDS_BILLING_URL = `${MINDS_CONSOLE_URL}/settings/organization/billing`;
 export const MINDS_API_KEY_URL = `${MINDS_CONSOLE_URL}/apiKeys`;

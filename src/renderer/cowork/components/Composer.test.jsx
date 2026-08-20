@@ -3,7 +3,7 @@
 // It must open the "Start a new project" modal, and a create from that
 // modal must select the new project on the composer.
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import Composer from './Composer';
 
@@ -18,11 +18,23 @@ vi.mock('../api', async (importOriginal) => {
   };
 });
 
-// `hideModel: true` matches every production call site: the home and projects
-// composers pass it bare and ChatView passes `hideMeta`, so no shipped surface
-// renders the model pill. The model-menu tests below override it to false because
-// that is the only way to exercise the menu at all — read them as coverage of the
-// menu's logic, not of a surface a user can currently reach.
+// The coding-mode harness pill only renders on desktop (`!host.isWeb`) —
+// jsdom's default host reads as web, which would hide it from every test
+// in this file. Only the "Model Router" harness-switch test below
+// exercises it; everything else (api.js's getApiOrigin() at import time,
+// etc.) keeps the real host.
+vi.mock('../../platform/host', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    host: {
+      ...actual.host,
+      isWeb: false,
+      detectClaudeCode: vi.fn(async () => ({ installed: true, path: '/usr/local/bin/claude' })),
+    },
+  };
+});
+
 const renderComposer = (overrides = {}) => {
   const props = {
     onSend: vi.fn(),
@@ -31,7 +43,6 @@ const renderComposer = (overrides = {}) => {
     onProjectChange: vi.fn(),
     onCreateProject: vi.fn(async ({ name }) => ({ name })),
     models: [],
-    hideModel: true,
     ...overrides,
   };
   render(<Composer {...props} />);
@@ -39,10 +50,11 @@ const renderComposer = (overrides = {}) => {
 };
 
 const openNewProjectModal = async (user) => {
-  // Project pill is the first meta-pill trigger. Its ui/Tooltip label
-  // ("Choose project") now portals on hover, so query the button structurally
-  // rather than by the old native title (ENG-1152).
-  await user.click(document.querySelector('button.meta-pill'));
+  // Query by the stable aria-label rather than DOM position/order — the
+  // model picker moved into the composer toolbar (ENG-1656), ahead of the
+  // project pill in document order, so "first .meta-pill" no longer means
+  // "the project pill".
+  await user.click(screen.getByRole('button', { name: 'Choose project' }));
   await user.click(screen.getByRole('button', { name: /new project/i }));
   return screen.findByText('Start a new project');
 };
@@ -72,28 +84,31 @@ describe('Composer — prefill selection (ENG-1137)', () => {
     const text = "Plan my week. I'm working on [things]. Keep it easy.";
     const start = text.indexOf('[');
     const end = text.indexOf(']') + 1;
-    const { rerender } = render(<Composer onSend={vi.fn()} projects={[]} models={[]} hideModel />);
-    rerender(<Composer onSend={vi.fn()} projects={[]} models={[]} hideModel prefill={{ text, bump: 1, select: [start, end] }} />);
+    const { rerender } = render(<Composer onSend={vi.fn()} projects={[]} models={[]} />);
+    rerender(<Composer onSend={vi.fn()} projects={[]} models={[]} prefill={{ text, bump: 1, select: [start, end] }} />);
     const ta = await screen.findByDisplayValue(text);
     expect(ta.value.slice(ta.selectionStart, ta.selectionEnd)).toBe('[things]');
   });
 
   it('parks the caret at the end when prefill has no `select`', async () => {
     const text = 'Build me a habit tracker as a live artifact.';
-    const { rerender } = render(<Composer onSend={vi.fn()} projects={[]} models={[]} hideModel />);
-    rerender(<Composer onSend={vi.fn()} projects={[]} models={[]} hideModel prefill={{ text, bump: 1 }} />);
+    const { rerender } = render(<Composer onSend={vi.fn()} projects={[]} models={[]} />);
+    rerender(<Composer onSend={vi.fn()} projects={[]} models={[]} prefill={{ text, bump: 1 }} />);
     const ta = await screen.findByDisplayValue(text);
     expect(ta.selectionStart).toBe(text.length);
     expect(ta.selectionEnd).toBe(text.length);
   });
 });
 
-// ─── Model menu sections (ENG-1287) ─────────────────────────────────
+// ─── Model picker (ENG-1656) ─────────────────────────────────────────
 //
-// The composer's menu was the one picker ENG-1096 left flat. It now groups by the
-// same sections as Settings and tags the aliases whose version moves. The
-// ungrouped case matters just as much: ChatView passes a one-item list, and an app
-// newer than its server gets no metadata — both keep the flat menu.
+// Section/tag/icon grouping logic itself is <ModelSelect>'s job now (see
+// ModelSelect.test.jsx and lib/modelCatalog.test.js) — the composer just
+// wires its own model state to it. These tests cover that wiring: the
+// picker is reachable by its stable aria-label regardless of layout, a
+// pick round-trips through onModelChange in the {id, name} shape callers
+// expect, and modelReadOnly falls back to a fixed label (ChatView's
+// "model is fixed once a task starts" behavior).
 
 const MODEL_META = {
   modelProviders: { mindshub_air: 'anthropic', sonnet: 'anthropic', kimi: 'moonshot' },
@@ -105,259 +120,370 @@ const MODELS = [
   { id: 'kimi', name: 'Kimi K3' },
 ];
 
-// Model pill is the last meta-pill trigger (the project pill precedes it when
-// shown). Its ui/Tooltip label ("Choose model") now portals on hover, so query
-// the button structurally rather than by the old native title (ENG-1152).
-const openModelMenu = (user) => {
-  const pills = document.querySelectorAll('button.meta-pill');
-  return user.click(pills[pills.length - 1]);
-};
-
-/**
- * The open menu's sections in document order: heading text → its rows' text.
- * Headings are the menu's only <div> children; every row is a <button>.
- */
-const menuSections = () => {
-  const sections = new Map();
-  let heading = null;
-  for (const el of document.querySelector('.menu').children) {
-    if (el.tagName === 'DIV') sections.set((heading = el.textContent), []);
-    else if (heading !== null) sections.get(heading).push(el.textContent);
-  }
-  return sections;
-};
-
-describe('Composer — model menu sections', () => {
-  it('renders the section headings in order, MindsHub first', async () => {
-    const user = userEvent.setup();
-    renderComposer({ models: MODELS, modelMeta: MODEL_META, hideModel: false, model: MODELS[0] });
-    await openModelMenu(user);
-
-    // Read out of the DOM in document order: the order is the design, and three
-    // presence checks pass whatever order the sections come out in. The flat menu's
-    // single "Model" heading is replaced by these, so it must not be among them.
-    expect([...menuSections().keys()]).toEqual(['MindsHub', 'Anthropic', 'Open Weight']);
+describe('Composer — model picker (ENG-1656)', () => {
+  it('shows the current model on a combobox reachable by aria-label', () => {
+    renderComposer({ models: MODELS, modelMeta: MODEL_META, model: MODELS[1] });
+    expect(screen.getByRole('combobox', { name: 'Choose model' })).toHaveTextContent('Claude Sonnet 5');
   });
 
-  it('keeps MindsHub Air out of the vendor section serving it', async () => {
-    // The whole point rests on the fixture reporting Air under the same vendor as
-    // the Claude models, so assert that rather than trusting it: edit the fixture
-    // and this test would otherwise still pass while proving nothing.
-    expect(MODEL_META.modelProviders.mindshub_air).toBe(MODEL_META.modelProviders.sonnet);
-
-    const user = userEvent.setup();
-    renderComposer({ models: MODELS, modelMeta: MODEL_META, hideModel: false, model: MODELS[0] });
-    await openModelMenu(user);
-
-    const sections = menuSections();
-    expect(sections.get('MindsHub')).toEqual(['MindsHub Air']);
-    expect(sections.get('Anthropic')).toEqual(['Claude Sonnet 5']);
-  });
-
-  it('keeps the single "Model" heading for a one-item list (ChatView)', async () => {
-    const user = userEvent.setup();
-    renderComposer({ models: [MODELS[1]], hideModel: false, model: MODELS[1] });
-    await openModelMenu(user);
-
-    expect(screen.getByText('Model')).toBeTruthy();
-    expect(screen.queryByText('Anthropic')).toBeNull();
-  });
-
-  it('renders the flat menu when the server sends no section metadata', async () => {
-    const user = userEvent.setup();
-    renderComposer({ models: MODELS, hideModel: false, model: MODELS[0] });
-    await openModelMenu(user);
-
-    expect(screen.getByText('Model')).toBeTruthy();
-    expect(screen.queryByText('Open Weight')).toBeNull();
-    // getAllByText: the selected model's name also renders in the trigger pill.
-    for (const m of MODELS) expect(screen.getAllByText(m.name).length).toBeGreaterThan(0);
-  });
-
-  it('tags every moving alias "latest" and a frozen version not at all', async () => {
-    const user = userEvent.setup();
-    renderComposer({
-      models: [...MODELS, { id: 'sonnet-4-5', name: 'Claude Sonnet 4.5' }],
-      modelMeta: {
-        modelProviders: { ...MODEL_META.modelProviders, 'sonnet-4-5': 'anthropic' },
-        modelFamilies: { ...MODEL_META.modelFamilies, 'sonnet-4-5': 'sonnet' },
-      },
-      hideModel: false,
-      model: MODELS[1],
-    });
-    await openModelMenu(user);
-
-    // Four models, one of which is a frozen version.
-    expect(screen.getAllByText('latest')).toHaveLength(3);
-    expect(screen.getByText('Claude Sonnet 4.5')).toBeTruthy();
-  });
-
-  it('renders a provider icon on every row, in every section', async () => {
-    // The Open Weight and Other sections were the concern: collapsing several
-    // makers under one heading must not cost a model its mark, because the icon
-    // comes from the per-model maker and not from the section. `glm` still shows
-    // the neutral placeholder — Z.ai has no svg yet (ENG-1112) — but a placeholder
-    // is a rendered mark, not a missing one.
-    const user = userEvent.setup();
-    renderComposer({
-      models: [
-        { id: 'sonnet', name: 'Claude Sonnet 5' },     // Anthropic → has a mark
-        { id: 'kimi', name: 'Kimi K3' },               // Open Weight → Moonshot mark
-        { id: 'glm', name: 'GLM 5.2' },                // Open Weight → placeholder
-        { id: 'muse-spark', name: 'Muse Spark 1.1' },  // Other → Meta mark
-        { id: 'grok', name: 'Grok 4.5' },              // Other → xAI mark
-      ],
-      modelMeta: {
-        modelProviders: {
-          sonnet: 'anthropic', kimi: 'moonshot', glm: 'fireworks',
-          'muse-spark': 'meta', grok: 'xai',
-        },
-        modelFamilies: {
-          sonnet: 'sonnet', kimi: 'kimi', glm: 'glm', 'muse-spark': 'muse-spark', grok: 'grok',
-        },
-      },
-      hideModel: false,
-      model: { id: 'sonnet', name: 'Claude Sonnet 5' },
-    });
-    await openModelMenu(user);
-
-    // Both collapsed sections are present, and every row carries an icon.
-    expect(screen.getByText('Open Weight')).toBeTruthy();
-    expect(screen.getByText('Other')).toBeTruthy();
-    const rows = [...document.querySelectorAll('.menu .menu-item')];
-    expect(rows).toHaveLength(5);
-    // The mark itself, not just "an svg": ProviderIcon always returns the <svg>
-    // wrapper and only switches its children on the maker, so a constant maker for
-    // every row would pass a presence check. Four distinct makers plus Z.ai's
-    // placeholder means five distinct mark bodies.
-    const markOf = (name) => rows.find((row) => row.textContent.includes(name)).querySelector('svg').innerHTML;
-    const marks = ['Claude Sonnet 5', 'Kimi K3', 'GLM 5.2', 'Muse Spark 1.1', 'Grok 4.5'].map(markOf);
-    expect(new Set(marks).size).toBe(rows.length);
-    // And the one without an svg yet is the placeholder, not a wrong company's mark.
-    expect(markOf('GLM 5.2')).toContain('<circle');
-    expect(markOf('Kimi K3')).toContain('<path');
-  });
-
-  it('tags no BYOK model when the metadata covers only MindsHub ids', async () => {
-    // The shape every call site produces: modelFamilies is global to the settings
-    // blob while `models` is the selected provider's list. A user with a MindsHub
-    // key who points a role at Anthropic previously saw every row tagged "latest",
-    // including a dated snapshot that provably never moves.
-    const user = userEvent.setup();
-    renderComposer({
-      models: [
-        { id: 'claude-opus-4-8', name: 'Claude Opus 4.8' },
-        { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5' },
-      ],
-      modelMeta: {
-        modelProviders: { sonnet: 'anthropic' },
-        modelFamilies: { sonnet: 'sonnet' },
-      },
-      hideModel: false,
-      model: { id: 'claude-opus-4-8', name: 'Claude Opus 4.8' },
-    });
-    await openModelMenu(user);
-
-    expect(screen.queryByText('latest')).toBeNull();
-    // And it stays flat: the metadata mentions none of these ids, so there is nothing
-    // authoritative to section them by. Grouping on a non-empty map alone filed them
-    // under sections decided by alias inference, which is the guess the backend field
-    // exists to replace.
-    expect([...menuSections().keys()]).toEqual(['Model']);
-  });
-
-  it('tags nothing until a frozen version is listed', async () => {
-    const user = userEvent.setup();
-    renderComposer({ models: MODELS, modelMeta: MODEL_META, hideModel: false, model: MODELS[0] });
-    await openModelMenu(user);
-    expect(screen.queryByText('latest')).toBeNull();
-  });
-
-  it('never drops a row on a family chain or a cycle', async () => {
-    // Options must stay a permutation of the input; a dropped id is a model the
-    // user can no longer select and, for a persisted selection, a desync.
-    const user = userEvent.setup();
-    const chain = [
-      { id: 'sonnet', name: 'Claude Sonnet 5' },
-      { id: 'sonnet-4-5', name: 'Claude Sonnet 4.5' },
-      { id: 'sonnet-4-1', name: 'Claude Sonnet 4.1' },
-    ];
-    renderComposer({
-      models: chain,
-      modelMeta: {
-        modelProviders: { sonnet: 'anthropic', 'sonnet-4-5': 'anthropic', 'sonnet-4-1': 'anthropic' },
-        modelFamilies: { sonnet: 'sonnet', 'sonnet-4-5': 'sonnet', 'sonnet-4-1': 'sonnet-4-5' },
-      },
-      hideModel: false,
-      model: chain[0],
-    });
-    await openModelMenu(user);
-
-    expect([...document.querySelectorAll('.menu .menu-item')]).toHaveLength(3);
-    for (const m of chain) expect(screen.getAllByText(m.name).length).toBeGreaterThan(0);
-  });
-
-  it('disables a wallet-locked model with the add-credits wording', async () => {
+  it('selects a model and calls onModelChange with {id, name}', async () => {
     const user = userEvent.setup();
     const props = renderComposer({
-      models: MODELS,
-      modelMeta: { ...MODEL_META, modelEnabled: { sonnet: false } },
-      hideModel: false,
-      model: MODELS[0],
-      onModelChange: vi.fn(),
+      models: MODELS, modelMeta: MODEL_META, model: MODELS[0], onModelChange: vi.fn(),
     });
-    await openModelMenu(user);
 
-    expect(screen.getByText('Add credits to unlock')).toBeTruthy();
-    // A turn that would fail at send time can't be started from here — matching
-    // what the Settings picker already does.
-    await user.click(screen.getByText('Claude Sonnet 5'));
-    expect(props.onModelChange).not.toHaveBeenCalled();
-  });
-
-  it('selects by id and label', async () => {
-    const user = userEvent.setup();
-    const props = renderComposer({
-      models: MODELS, modelMeta: MODEL_META, hideModel: false, model: MODELS[0], onModelChange: vi.fn(),
-    });
-    await openModelMenu(user);
-    await user.click(screen.getByText('Kimi K3'));
+    await user.click(screen.getByRole('combobox', { name: 'Choose model' }));
+    await user.click(screen.getByRole('option', { name: 'Kimi K3' }));
 
     expect(props.onModelChange).toHaveBeenCalledWith({ id: 'kimi', name: 'Kimi K3' });
   });
 
-  it('re-checks wallet availability when the menu opens, once per window', async () => {
-    // Parity with the Settings picker. Without it, a user who hits "Add credits"
-    // (external browser), tops up and returns finds the row still greyed until they
-    // visit Settings or restart — which would make disabling locked models here
-    // worse than not disabling them at all.
+  it('re-checks wallet availability when the picker opens, once per window', async () => {
+    // Parity with the Settings picker: without this, a user who hits "Add
+    // credits" (external browser), tops up and returns finds the model
+    // still greyed until they visit Settings or restart.
     const user = userEvent.setup();
     const onRefresh = vi.fn(async () => {});
     renderComposer({
       models: MODELS,
       modelMeta: { ...MODEL_META, onRefresh },
-      hideModel: false,
       model: MODELS[0],
     });
 
-    await openModelMenu(user);
+    const trigger = screen.getByRole('combobox', { name: 'Choose model' });
+    await user.click(trigger); // open
     expect(onRefresh).toHaveBeenCalledTimes(1);
-    await openModelMenu(user); // close
-    await openModelMenu(user); // reopen inside the freshness window
+    await user.click(trigger); // close
+    await user.click(trigger); // reopen inside the freshness window
     expect(onRefresh).toHaveBeenCalledTimes(1);
   });
 
-  it('opens normally when no refresh callback is supplied', async () => {
+  it('renders a fixed label instead of a picker when modelReadOnly', async () => {
     const user = userEvent.setup();
-    renderComposer({ models: MODELS, modelMeta: MODEL_META, hideModel: false, model: MODELS[0] });
-    await openModelMenu(user);
-    expect(screen.getByText('Anthropic')).toBeTruthy();
+    renderComposer({ models: MODELS, modelMeta: MODEL_META, model: MODELS[0], modelReadOnly: true });
+
+    expect(screen.queryByRole('combobox', { name: 'Choose model' })).toBeNull();
+    expect(screen.getByTitle('Model is fixed for this task')).toHaveTextContent('MindsHub Air');
+  });
+});
+
+// ─── "Model Router" default option (ENG-1656 follow-up) ──────────────
+//
+// The picker's first entry defers to whichever model this account's
+// Settings has configured, instead of forcing a task to pin one specific
+// model up front. It lives inside the MindsHub group (leading it) rather
+// than pinned above every section. It's hidden for Claude Code
+// specifically — the CLI's `--model` flag needs a real, concrete model id.
+
+describe('Composer — "Model Router" default option (ENG-1656 follow-up)', () => {
+  it('lists Model Router first overall, leading the MindsHub group', async () => {
+    const user = userEvent.setup();
+    renderComposer({ models: MODELS, modelMeta: MODEL_META, model: MODELS[0] });
+
+    await user.click(screen.getByRole('combobox', { name: 'Choose model' }));
+    const options = screen.getAllByRole('option');
+    expect(options[0]).toHaveTextContent('Model Router');
   });
 
-  it('keeps the "Model" heading when the list is still empty (settings loading)', async () => {
+  it('groups Model Router under the MindsHub heading, ahead of MindsHub Air', async () => {
     const user = userEvent.setup();
-    renderComposer({ models: [], modelMeta: MODEL_META, hideModel: false, model: null });
-    await openModelMenu(user);
-    expect(screen.getByText('Model')).toBeTruthy();
+    renderComposer({ models: MODELS, modelMeta: MODEL_META, model: MODELS[0] });
+
+    await user.click(screen.getByRole('combobox', { name: 'Choose model' }));
+    const listbox = screen.getByRole('listbox');
+    const rows = within(listbox).getAllByText(/^(MindsHub|Model Router|MindsHub Air)$/);
+    expect(rows.map((r) => r.textContent)).toEqual(['MindsHub', 'Model Router', 'MindsHub Air']);
+  });
+
+  it('selecting Model Router calls onModelChange with the sentinel id', async () => {
+    const user = userEvent.setup();
+    const props = renderComposer({
+      models: MODELS, modelMeta: MODEL_META, model: MODELS[0], onModelChange: vi.fn(),
+    });
+
+    await user.click(screen.getByRole('combobox', { name: 'Choose model' }));
+    await user.click(screen.getByRole('option', { name: 'Model Router' }));
+
+    expect(props.onModelChange).toHaveBeenCalledWith({ id: 'model-router', name: 'Model Router' });
+  });
+
+  it('hides Model Router once Claude Code is the harness about to send', async () => {
+    const user = userEvent.setup();
+    renderComposer({
+      models: MODELS, modelMeta: MODEL_META, model: MODELS[0], codingModeEnabled: true,
+    });
+
+    // Coding mode defaults to the Anton harness pill until switched —
+    // Model Router is still offered until Claude Code is actually picked.
+    // The harness pill is a ToggleGroup (radiogroup semantics), not a combobox.
+    await user.click(screen.getByRole('combobox', { name: 'Choose model' }));
+    expect(screen.queryByRole('option', { name: 'Model Router' })).not.toBeNull();
+    await user.keyboard('{Escape}');
+
+    await user.click(await screen.findByRole('button', { name: 'Claude-Code' }));
+
+    await user.click(screen.getByRole('combobox', { name: 'Choose model' }));
+    expect(screen.queryByRole('option', { name: 'Model Router' })).toBeNull();
+  });
+
+  it('the Model Router row has a settings shortcut that opens Settings without selecting it', async () => {
+    const user = userEvent.setup();
+    const props = renderComposer({
+      models: MODELS, modelMeta: MODEL_META, model: MODELS[0],
+      onModelChange: vi.fn(), onOpenSettings: vi.fn(),
+    });
+
+    await user.click(screen.getByRole('combobox', { name: 'Choose model' }));
+    await user.click(screen.getByRole('button', { name: 'Router Settings' }));
+
+    expect(props.onOpenSettings).toHaveBeenCalledWith('agent');
+    expect(props.onModelChange).not.toHaveBeenCalled();
+  });
+
+  it('closes the dropdown itself before Settings opens, rather than leaving it stuck open behind the modal', async () => {
+    const user = userEvent.setup();
+    renderComposer({
+      models: MODELS, modelMeta: MODEL_META, model: MODELS[0], onOpenSettings: vi.fn(),
+    });
+
+    await user.click(screen.getByRole('combobox', { name: 'Choose model' }));
+    expect(screen.getByRole('option', { name: 'Model Router' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Router Settings' }));
+
+    expect(screen.queryByRole('option', { name: 'Model Router' })).toBeNull();
+  });
+
+  it('hides the settings shortcut when onOpenSettings is not provided', async () => {
+    const user = userEvent.setup();
+    renderComposer({ models: MODELS, modelMeta: MODEL_META, model: MODELS[0] });
+
+    await user.click(screen.getByRole('combobox', { name: 'Choose model' }));
+    expect(screen.queryByRole('button', { name: 'Router Settings' })).toBeNull();
+  });
+});
+
+// ─── Claude Code falls back to the account's Coding model ────────────
+//
+// Model Router can't drive Claude Code (no auto-routing concept in the
+// CLI), so switching harness to Claude Code with nothing pickable — e.g.
+// no MindsHub session, so `models` (the catalog) is empty — must not
+// leave the task unlaunchable. It falls back to Settings' configured
+// Coding model instead.
+
+describe('Composer — Claude Code falls back to the Coding model default (ENG-1656 follow-up)', () => {
+  it('auto-selects the Coding model default once Claude Code is picked with nothing selected', async () => {
+    const user = userEvent.setup();
+    const props = renderComposer({
+      models: [], codingModeEnabled: true, onModelChange: vi.fn(),
+      codingModelDefault: 'claude-sonnet-4-6',
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Claude-Code' }));
+
+    expect(props.onModelChange).toHaveBeenCalledWith({ id: 'claude-sonnet-4-6', name: 'claude-sonnet-4-6' });
+  });
+
+  it('uses the catalog label when the Coding model default is also a listed model', async () => {
+    const user = userEvent.setup();
+    const props = renderComposer({
+      models: MODELS, modelMeta: MODEL_META, codingModeEnabled: true, onModelChange: vi.fn(),
+      codingModelDefault: 'kimi',
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Claude-Code' }));
+
+    expect(props.onModelChange).toHaveBeenCalledWith({ id: 'kimi', name: 'Kimi K3' });
+  });
+
+  it('does not touch model selection when a real model is already picked', async () => {
+    const user = userEvent.setup();
+    const props = renderComposer({
+      models: MODELS, modelMeta: MODEL_META, model: MODELS[1], codingModeEnabled: true,
+      onModelChange: vi.fn(), codingModelDefault: 'claude-sonnet-4-6',
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Claude-Code' }));
+
+    expect(props.onModelChange).not.toHaveBeenCalled();
+  });
+
+  it('leaves nothing selected when no Coding model default is configured either', async () => {
+    const user = userEvent.setup();
+    const props = renderComposer({
+      models: [], codingModeEnabled: true, onModelChange: vi.fn(),
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Claude-Code' }));
+
+    expect(props.onModelChange).not.toHaveBeenCalled();
+  });
+
+  it('sends the Coding model default even if the sync round-trip has not landed yet (same-tick safety net)', async () => {
+    const user = userEvent.setup();
+    const props = renderComposer({
+      models: [], codingModeEnabled: true, sendsMeta: true,
+      // onModelChange deliberately a no-op mock — this Composer instance's
+      // `model` prop never actually updates, simulating a Send that races
+      // ahead of the parent's state round-trip.
+      onModelChange: vi.fn(),
+      codingModelDefault: 'claude-sonnet-4-6',
+      // Draft text persists (useDraft) keyed by conversationId — a fresh
+      // key keeps this test isolated from any draft another test in this
+      // file left behind under the shared default 'new' key.
+      draftKey: 'claude-code-safety-net-test',
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Claude-Code' }));
+    await user.type(screen.getByRole('textbox'), 'fix the bug');
+    await user.keyboard('{Enter}');
+
+    expect(props.onSend).toHaveBeenCalledWith(
+      'fix the bug',
+      { harness: 'claude-code', model: 'claude-sonnet-4-6' },
+    );
+  });
+});
+
+// ─── No provider configured: a plain button, not a dropdown ──────────
+//
+// With no MindsHub/BYOK provider connected, `models` (the real catalog)
+// is empty, so Model Router would be the only pickable row anyway — a
+// dropdown that opens to one unpickable-in-practice option reads as
+// broken. Composer shows a plain button styled like the closed picker
+// pill (so it doesn't look like an unrelated control) with a settings
+// gear instead of the dropdown caret, going straight to Settings.
+
+describe('Composer — no provider configured (ENG-1656 follow-up)', () => {
+  it('shows a plain Model Router button, not a combobox, when models is empty', () => {
+    renderComposer({ models: [], modelMeta: MODEL_META, model: null, onOpenSettings: vi.fn() });
+
+    expect(screen.queryByRole('combobox', { name: 'Choose model' })).toBeNull();
+    const button = screen.getByRole('button', { name: 'Model Router' });
+    expect(button).toHaveTextContent('Model Router');
+  });
+
+  it('clicking the button opens Settings directly, with no dropdown to open first', async () => {
+    const user = userEvent.setup();
+    const props = renderComposer({
+      models: [], modelMeta: MODEL_META, model: null, onOpenSettings: vi.fn(),
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Model Router' }));
+
+    expect(props.onOpenSettings).toHaveBeenCalledWith('agent');
+  });
+
+  it('falls back to the normal dropdown when onOpenSettings is not provided', () => {
+    renderComposer({ models: [], modelMeta: MODEL_META, model: null });
+
+    expect(screen.getByRole('combobox', { name: 'Choose model' })).toBeInTheDocument();
+  });
+
+  it('keeps the normal dropdown once real models are available', () => {
+    renderComposer({
+      models: MODELS, modelMeta: MODEL_META, model: MODELS[0], onOpenSettings: vi.fn(),
+    });
+
+    expect(screen.getByRole('combobox', { name: 'Choose model' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Model Router' })).toBeNull();
+  });
+});
+
+// ─── Harness picker reflects Settings → Coding Mode (ENG-1656 follow-up) ──
+//
+// The pill's options come from the harnessHermesEnabled / harnessClaudeCodeEnabled
+// props (default true), not a fixed Anton/Claude-Code list — Hermes is now
+// offerable too. Anton has no enable prop: it's the default agent and is
+// always offered, so the pill can never be hidden entirely.
+
+describe('Composer — harness picker honors the per-harness enable flags', () => {
+  it('offers all three harnesses by default', async () => {
+    const user = userEvent.setup();
+    renderComposer({ models: MODELS, modelMeta: MODEL_META, model: MODELS[0], codingModeEnabled: true });
+
+    expect(await screen.findByRole('button', { name: 'Anton' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Hermes' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Claude-Code' })).toBeInTheDocument();
+  });
+
+  it('hides Hermes when harnessHermesEnabled is false', async () => {
+    renderComposer({
+      models: MODELS, modelMeta: MODEL_META, model: MODELS[0], codingModeEnabled: true,
+      harnessHermesEnabled: false,
+    });
+
+    expect(await screen.findByRole('button', { name: 'Anton' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Hermes' })).toBeNull();
+  });
+
+  it('hides Claude-Code when harnessClaudeCodeEnabled is false', async () => {
+    renderComposer({
+      models: MODELS, modelMeta: MODEL_META, model: MODELS[0], codingModeEnabled: true,
+      harnessClaudeCodeEnabled: false,
+    });
+
+    expect(await screen.findByRole('button', { name: 'Anton' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Claude-Code' })).toBeNull();
+  });
+
+  it('still offers Anton when Hermes and Claude-Code are both disabled', async () => {
+    renderComposer({
+      models: MODELS, modelMeta: MODEL_META, model: MODELS[0], codingModeEnabled: true,
+      harnessHermesEnabled: false, harnessClaudeCodeEnabled: false,
+    });
+
+    expect(await screen.findByRole('button', { name: 'Anton' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Hermes' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Claude-Code' })).toBeNull();
+  });
+
+  it('falls back to a still-enabled harness if the picked one gets disabled underneath it (e.g. Settings changed elsewhere)', async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    const baseProps = {
+      onSend, project: { name: 'general' }, projects: [{ name: 'general' }],
+      onProjectChange: vi.fn(), onCreateProject: vi.fn(async ({ name }) => ({ name })),
+      models: MODELS, modelMeta: MODEL_META, model: MODELS[0], codingModeEnabled: true,
+      sendsMeta: true, draftKey: 'harness-fallback-test',
+    };
+    const { rerender } = render(<Composer {...baseProps} />);
+
+    await user.click(await screen.findByRole('button', { name: 'Hermes' }));
+    // Hermes gets disabled from underneath the already-open composer.
+    rerender(<Composer {...baseProps} harnessHermesEnabled={false} />);
+
+    // The reset effect corrects the pill itself...
+    expect(screen.queryByRole('button', { name: 'Hermes' })).toBeNull();
+    expect(await screen.findByRole('button', { name: 'Anton', pressed: true })).toBeInTheDocument();
+
+    // ...and a send reflects the corrected value, never the disabled one.
+    await user.type(screen.getByRole('textbox'), 'hello');
+    await user.keyboard('{Enter}');
+    expect(onSend).toHaveBeenCalledWith('hello', expect.objectContaining({ harness: 'anton' }));
+  });
+});
+
+describe('Composer — task-mode chip (ENG-1594)', () => {
+  const MODE = {
+    id: 'slides', pillLabel: 'Create slides', chipLabel: 'Slides',
+    icon: 'presentation', placeholder: 'Describe your presentation topic',
+    instruction: 'Create a slide presentation.', samplesVariant: 'cards', samples: [],
+  };
+
+  it('renders no chip without a taskMode', () => {
+    renderComposer();
+    expect(screen.queryByRole('button', { name: /remove .* mode/i })).not.toBeInTheDocument();
+  });
+
+  it('renders the chip and clears the mode on click', async () => {
+    const user = userEvent.setup();
+    const onClearTaskMode = vi.fn();
+    renderComposer({ taskMode: MODE, onClearTaskMode, placeholder: MODE.placeholder });
+    const chip = screen.getByRole('button', { name: 'Remove Slides mode' });
+    expect(chip).toHaveTextContent('Slides');
+    expect(screen.getByPlaceholderText(MODE.placeholder)).toBeInTheDocument();
+    await user.click(chip);
+    expect(onClearTaskMode).toHaveBeenCalledTimes(1);
   });
 });
