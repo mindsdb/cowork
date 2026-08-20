@@ -1,4 +1,8 @@
-// MUST be first: sets the per-channel Electron app name (→ userData dir) before
+// MUST be first: a packaged build scrubs inherited channel-scoping env vars
+// before any module reads them (ENG-1353); app-identity below caches buildKind()
+// at load, so the scrub has to run ahead of it.
+import './sanitize-packaged-env';
+// MUST be second: sets the per-channel Electron app name (→ userData dir) before
 // any module that reads app.getPath('userData') at load time (e.g. token-store).
 import './app-identity';
 import { app, BrowserWindow, ipcMain, Menu, nativeImage, net, powerMonitor, session, shell } from 'electron';
