@@ -7,7 +7,7 @@
 //
 //   <ArtifactStatus artifact={a} phase={statusByPath[a.path]} publishable onRetry={…} />
 //
-// phase: 'publishing' | 'updating' | 'unpublishing' | 'failed' | undefined(idle)
+// phase: 'publishing' | 'updating' | 'unpublishing' | 'deleting' | 'failed' | undefined(idle)
 
 import Ico from '../Icons';
 import { Badge } from '../ui';
@@ -68,6 +68,7 @@ export function ArtifactStatus({ artifact, phase, publishable = true, onRetry, i
   if (phase === 'publishing') return <Badge variant="accent" size="sm">Sharing…</Badge>;
   if (phase === 'updating') return <Badge variant="accent" size="sm">Updating…</Badge>;
   if (phase === 'unpublishing') return <Badge variant="default" size="sm">Stopping sharing…</Badge>;
+  if (phase === 'deleting') return <Badge variant="default" size="sm">Deleting…</Badge>;
 
   // Idle — persisted state.
   if (!artifact?.publishedUrl) {
