@@ -23,6 +23,7 @@ import { Alert, Button, Spinner, Tooltip } from '../../ui';
 import { copyText } from '../../../lib/clipboard';
 import {
   AccessChooser,
+  ACCESS_LABELS,
   buildAccessPayload,
   isAccessDraftValid,
   parseEmailList,
@@ -31,12 +32,6 @@ import {
 const FONT_BODY = "'Inter', system-ui, sans-serif";
 const FONT_DISPLAY = "var(--font-display, 'Inter', sans-serif)";
 const FONT_MONO = "var(--font-mono)";
-
-const ACCESS_LABELS = {
-  public: { icon: Ico.globe, title: 'Public', desc: 'Anyone on the internet with the URL' },
-  password: { icon: Ico.lock, title: 'Password protected', desc: 'Anyone on the internet with the password' },
-  restricted: { icon: Ico.people, title: 'For selected users', desc: 'Only people you list — or your whole org' },
-};
 
 function draftFromController(pub) {
   return {
@@ -149,8 +144,12 @@ function UrlField({ url }) {
 }
 
 // Read-only "current access" card (summary view).
-function AccessSummaryCard({ mode }) {
-  const m = ACCESS_LABELS[mode] || ACCESS_LABELS.public;
+function AccessSummaryCard({ mode, ownerOnly }) {
+  // A restricted publish with no recipients and no org grants access to the
+  // owner alone — saying "people you list" there would be a lie (ENG-1769).
+  const m = (mode === 'restricted' && ownerOnly)
+    ? ACCESS_LABELS.ownerOnly
+    : (ACCESS_LABELS[mode] || ACCESS_LABELS.public);
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 10,
@@ -388,7 +387,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                         <SectionLabel action={<LinkButton onClick={() => { setDraft(draftFromController(pub)); setDraftDirty(false); setView('access'); }}>Change</LinkButton>}>
                           Who can access your app
                         </SectionLabel>
-                        <AccessSummaryCard mode={pub.accessMode} />
+                        <AccessSummaryCard mode={pub.accessMode} ownerOnly={pub.ownerOnly} />
                         {pub.accessMode === 'password' && (
                           <div style={{ marginTop: 8, display: 'flex', justifyContent: 'flex-end' }}>
                             <LinkButton onClick={() => { setPwd({ value: '', reveal: false }); setView('password'); }}>Change password</LinkButton>
