@@ -434,6 +434,15 @@ function artifactStepToCard(step, projectPath) {
     path,
     file_path: path,
     ext: ext ? `.${ext}` : '',
+    // Second hand-written field list this card passes through (the adapter's
+    // step.data is the first). Both have to carry identity and publish state or
+    // the card cannot open, address or delete the artifact in org mode, where
+    // there is no path-based fallback to hide the omission.
+    id: data.id || '',
+    slug: data.slug || '',
+    publishedUrl: data.publishedUrl || '',
+    projectId: data.projectId || '',
+    projectName: data.projectName || '',
     preview: [],
   }, projectPath);
   return {
