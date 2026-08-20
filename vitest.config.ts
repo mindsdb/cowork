@@ -18,6 +18,11 @@ export default defineConfig({
         branches: 1.5,
         lines: 1.7,
         'src/main/update-logic.ts': { statements: 100, branches: 100 },
+        // The validators a packaged build runs. They were inline in the IPC
+        // handler and covered by nothing; pinned here so the tests that made
+        // them assertable cannot quietly go away again.
+        'src/main/provider-validation.ts': { statements: 86, branches: 80 },
+        'src/main/minds-urls.ts': { statements: 96, branches: 89 },
         'src/main/server-source.ts': { statements: 100, branches: 90 },
         'src/shared/server-status.ts': { statements: 100, branches: 100 },
         'src/main/server-process.ts': { statements: 60, branches: 45 },

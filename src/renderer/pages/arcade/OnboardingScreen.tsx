@@ -27,27 +27,6 @@ const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/openai
 
 const CUSTOM_MODEL = '__custom__';
 
-// Last-resort MindsHub model, used only if the backend returns nothing. We
-// avoid maintaining model names in this repo, but a single safe fallback is
-// worth it: the validator's generic openai-compatible default is not served
-// by MindsHub. `latest:*` is a stable alias, not a pinned version, so it
-// won't drift. The backend's own default (apply_model_defaults) is the real
-// source — this only guards a failed `/recommended-models` fetch.
-const FALLBACK_MINDS_MODEL = 'latest:sonnet';
-
-/**
- * The model to probe MindsHub LLM availability with, sourced from the
- * backend's recommended minds-cloud (planning, coding) pair. Returns the
- * coding model, falling back to planning, then to FALLBACK_MINDS_MODEL if the
- * backend is unreachable — never undefined, so the probe always sends a
- * MindsHub-served model rather than the validator's generic default.
- */
-async function mindsProbeModel(): Promise<string> {
-  const rec = await fetchRecommendedModels();
-  const pair = rec?.recommendedPair?.['minds-cloud'];
-  return pair?.[1] || pair?.[0] || FALLBACK_MINDS_MODEL;
-}
-
 /** Persist the cartridge choice as the `harness` setting (best-effort). */
 async function syncHarness(harnessId: string): Promise<void> {
   try {
@@ -229,7 +208,6 @@ export default function OnboardingScreen({
   const [phase, setPhase] = useState<Phase>('choose');
   const [errorMsg, setErrorMsg] = useState('');
   const [skippedMinds, setSkippedMinds] = useState(false);
-  const [mindsNoCredits, setMindsNoCredits] = useState(false);
   // Which stage's layout to render. Decoupled from `phase` so the
   // validating spinner shows in the right place without inferring it
   // from whether the API-key field happens to be non-empty.
@@ -416,31 +394,23 @@ export default function OnboardingScreen({
         `ANTON_MINDS_URL=${mindsBase}`,
       ];
 
-      // The probe model is the backend's recommended minds-cloud coding
-      // model — fetched, never hardcoded here, so model names live only in
-      // cowork-server.
-      const llmResult = await host.validateProvider(
-        'openai-compatible',
-        apiKey.trim(),
-        `${mindsBase}/v1`,
-        await mindsProbeModel()
-      );
-
-      if (llmResult.ok) {
-        // Set only the provider; the backend resolves the default
-        // planning/coding model on load and reports it back to the UI
-        // (apply_model_defaults), so we never write model names.
-        const lines = [
-          ...mindsLines,
-          'ANTON_PLANNING_PROVIDER=minds-cloud',
-          'ANTON_CODING_PROVIDER=minds-cloud',
-        ];
-        await saveFinal(lines);
-      } else {
-        await host.saveSettings(mindsLines.join('\n'));
-        setStep('byok');
-        setPhase('minds-no-llm');
-      }
+      /* One probe, not two. The check above is already a small chat
+       * completion against this same host on the free model, so it has proved
+       * reachability, the key, and that inference answers. A second probe used
+       * to re-send the same request on the recommended *paid* model, which an
+       * empty wallet denies; that denial read as "MindsHub does not work" and
+       * sent a brand-new user to bring-your-own-key with a valid MindsHub key
+       * already saved. Whether the wallet can afford a paid model is not
+       * something onboarding should decide. */
+      // Set only the provider; the backend resolves the default
+      // planning/coding model on load and reports it back to the UI
+      // (apply_model_defaults), so we never write model names.
+      const lines = [
+        ...mindsLines,
+        'ANTON_PLANNING_PROVIDER=minds-cloud',
+        'ANTON_CODING_PROVIDER=minds-cloud',
+      ];
+      await saveFinal(lines);
     } else {
       const { provider: validationProvider, baseUrl: validationBaseUrl } =
         resolveValidationTarget(byokProvider, customBaseUrl);
@@ -586,7 +556,6 @@ export default function OnboardingScreen({
       // Best-effort in web (loopback-gated; consent also persists client-side
       // on completion). See host.saveSettings / ENG-817.
       await host.saveSettings('ANTON_TERMS_CONSENT=true');
-      setMindsNoCredits(true);
       setStep('byok');
       setPhase('minds-no-llm');
       return;
@@ -752,11 +721,14 @@ export default function OnboardingScreen({
           {showLlmForm && (
             <>
               <div style={{ fontSize: 11.5, lineHeight: 1.65, letterSpacing: '0.03em', color: 'var(--arc-muted)', textAlign: 'center' }}>
+                {/* Two arms, not three. Reaching this screen means either
+                    "Continue without an account" (skippedMinds) or a finalize that
+                    came back upgradeRequired. The third arm used to cover a valid
+                    key whose paid-model probe failed, and that probe is gone, so
+                    the flag that told the two credit cases apart went with it. */}
                 {skippedMinds
                   ? <>Pick an LLM provider to run on. You can connect MindsHub later in Settings → Providers (needed to share to the web).</>
-                  : mindsNoCredits
-                    ? <>Your MindsHub account has no LLM credits yet. Top up to use managed models — or connect your own provider below.</>
-                    : <>Your MindsHub key is valid and saved for sharing and connectors, but it has no LLM credits. Top up — or plug in your own provider below.</>}
+                  : <>Your MindsHub account has no LLM credits yet. Top up to use managed models — or connect your own provider below.</>}
               </div>
 
               <button
