@@ -18,7 +18,7 @@ describe('fetchAccountEmail — PostHog US/EU region fallback', () => {
     globalThis.fetch = vi.fn(async (url: string | URL | Request) => {
       const href = typeof url === 'string' ? url : url.toString();
       calledHosts.push(href);
-      if (href.startsWith('https://us.posthog.com')) {
+      if (new URL(href).host === 'us.posthog.com') {
         return new Response('', { status: 401 });
       }
       return new Response(JSON.stringify({ email: 'eu-user@example.com' }), { status: 200 });
