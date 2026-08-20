@@ -31,18 +31,35 @@ const EVENTS = {
   AGENT_SESSION_STARTED:    'agent_session_started',    // {}
   FIRST_QUERY:              'first_query',              // {}  once per user (ENG-501)
   FIRST_RESPONSE:           'first_response',           // { outcome: 'success'|'error', reason } once per user (ENG-736)
-  // SERIES DISCONTINUITY, read this before trending token_cap_hit. From this
-  // change onward the series counts THREE blocking conditions rather than one:
-  // a drained wallet (`token_limit`, the original ENG-385 signal), a spent free
-  // monthly allowance (`included_allowance_exhausted`, ENG-1537) and the legacy
-  // per-model credit denial (`model_access_denied`, ENG-1533). The count
-  // therefore steps up at this release for reasons that have nothing to do with
-  // user behaviour, so a trend line that crosses it is not like-for-like.
+  // SERIES DISCONTINUITY, read this before trending token_cap_hit. The series
+  // steps from TWO blocking conditions to THREE here, and this is the first
+  // change to label any of them:
   //
-  // Every event emitted BEFORE this change carries NO `reason` property at all.
-  // A query that filters on `reason` therefore silently drops all of them —
-  // no error, just a shorter series. Treat property-less events as
-  // `token_limit`, which is what they all were.
+  //   before ENG-1537   token_limit only — a drained wallet (ENG-385)
+  //   ENG-1537 onward   + included_allowance_exhausted, a spent free monthly
+  //                     allowance. Counted, but carrying no `reason`
+  //   this change       + model_access_denied, the legacy per-model credit
+  //                     denial (ENG-1533). All three now carry `reason`
+  //
+  // So the count steps up twice, both times for reasons that have nothing to do
+  // with user behaviour. A trend line crossing either step is not like-for-like.
+  //
+  // Every event emitted BEFORE this change carries NO `reason` at all, so a
+  // query filtering on `reason` silently drops all of them — no error, just a
+  // shorter series. What those unlabelled events MEAN depends on the window:
+  //
+  //   - before ENG-1537: all `token_limit`. Safe to relabel as such.
+  //   - ENG-1537 to this change: an unlabelled MIX of `token_limit` and
+  //     `included_allowance_exhausted`, not separable after the fact. Do NOT
+  //     relabel these as `token_limit` — it overstates drained wallets.
+  //
+  // That mixed window exists in STAGING data (ENG-1537 merged to staging on
+  // 14 Aug 2026). It does not exist in production: ENG-1537 has not been
+  // promoted to main, so prod has never emitted `included_allowance_exhausted`.
+  // If it and this change promote in the same release, production goes straight
+  // from one condition to three with `reason` present throughout and has no
+  // unlabelled mixed window at all. Check which actually happened before
+  // relabelling anything in the prod project.
   TOKEN_CAP_HIT:            'token_cap_hit',            // { reason: 'token_limit'|'included_allowance_exhausted'|'model_access_denied' } credit-block impression (ENG-385, widened ENG-1533 + ENG-1537)
   BILLING_OPENED:           'billing_opened',           // { trigger: 'token_limit'|'included_allowance_exhausted'|'model_access_denied'|'model_disabled'|'key_provisioning_refused'|'connect_provider'|'no_credits_notice'|'locked_model_hint'|'nav' } every route to the billing page; 'nav' is NOT upgrade intent (ENG-1533)
   KEY_PROVISIONING_REFUSED: 'key_provisioning_refused', // { outcome: 'byok_offered'|'billing_opened'|'unhandled' } (ENG-1533)
