@@ -41,6 +41,18 @@ export function selectNextQueuedTask(queues, existingTaskIds, preferredTaskId) {
 // without ever aborting a genuinely-running turn. `prev` is the running
 // { cid, misses } tally; misses reset whenever the task reappears or the slot
 // moves to a different conversation.
+//
+// Safety rests on the server listing a running turn the instant it starts. On
+// the file backend (desktop) that holds: `/in-flight-list` reads the
+// in-process RunRegistry, which `registry.start` populates synchronously under
+// a lock before the client even begins streaming, and a turn blocked on an
+// ask_user card stays `is_running` the whole time — so a live turn is never
+// absent and the two-miss window only ever absorbs the sub-second id swap. The
+// Redis multi-instance backend merges a shared index that can propagate with
+// lag; if that lag exceeds `threshold` polls a client polling another replica
+// could release a live slot early. Revisit this threshold (or gate the
+// self-heal) when that dispatch path ships — see RunRegistry's multi-instance
+// note.
 export function reservationReleaseDecision(streamingTaskId, serverInFlightIds, prev, threshold = 2) {
   if (!streamingTaskId) return { cid: null, misses: 0, release: false };
   const ids = Array.isArray(serverInFlightIds) ? serverInFlightIds : [];
