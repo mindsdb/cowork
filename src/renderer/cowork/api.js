@@ -11,6 +11,7 @@ import { relativeAge } from './lib/formatTime';
 import { transformSettingsRows, diffSettingsForWrite, mergeRecommendedModels, CLIENT_TO_SERVER } from './lib/settingsTransform';
 import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 import { cacheSettings } from './lib/settingsCache';
+import { setAntonVersion } from './lib/analytics';
 import {
   buildMemoryDeletePayload,
   buildMemoryWritePayload,
@@ -124,10 +125,19 @@ async function responseError(res, fallback) {
 }
 
 // ─── Health ──────────────────────────────────────────────────────────────────
+// Feeds the running agent version to analytics on the way through (ENG-1689).
+// Done here rather than at the call sites because there are five of them and a
+// sixth added later would silently stop reporting; this is the one funnel every
+// health read passes through. Same shape as `cacheSettings` below — a lib-level
+// setter written from the transport layer. `setAntonVersion` self-gates to
+// desktop, so the web build is unaffected.
 export async function fetchHealth() {
   try {
-    return await rootReq('/api/v1/health');
+    const health = await rootReq('/api/v1/health');
+    setAntonVersion(health?.anton_version);
+    return health;
   } catch {
+    setAntonVersion(null);
     return { status: 'offline', anton_available: false };
   }
 }

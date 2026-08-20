@@ -15,7 +15,10 @@ vi.mock('../platform/host', async (importOriginal) => ({
   host: hostMock,
 }));
 
-import { fetchRecommendedModels, fetchSettings, updateSettings, revealSettingKey, streamNewSession } from './api';
+const setAntonVersion = vi.hoisted(() => vi.fn());
+vi.mock('./lib/analytics', () => ({ setAntonVersion }));
+
+import { fetchRecommendedModels, fetchSettings, updateSettings, revealSettingKey, streamNewSession, fetchHealth } from './api';
 import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 
 const jsonRes = (body, ok = true, status = 200) => ({
@@ -357,5 +360,50 @@ describe('streamNewSession — harness pick', () => {
 
     const body = JSON.parse(fetchMock.mock.calls[0][1].body);
     expect(body).not.toHaveProperty('harness');
+  });
+});
+
+
+// The funnel seam for ENG-1689. `anton_version` is fed to analytics from
+// fetchHealth rather than from its five call sites, precisely so a sixth call
+// site added later cannot silently stop reporting. That only holds while
+// fetchHealth actually performs the hand-off, which is what these pin — the
+// analytics-side tests cannot see it, because the defect would be here.
+describe('fetchHealth feeds the agent version to analytics (ENG-1689)', () => {
+  beforeEach(() => {
+    setAntonVersion.mockClear();
+  });
+
+  it('hands the version from the health payload to analytics', async () => {
+    globalThis.fetch = vi.fn(async () => jsonRes({ status: 'ok', anton_version: '2.26.8.16.1' }));
+
+    const health = await fetchHealth();
+
+    expect(health.anton_version).toBe('2.26.8.16.1');
+    expect(setAntonVersion).toHaveBeenCalledWith('2.26.8.16.1');
+  });
+
+  it('clears the version when the server is unreachable', async () => {
+    // fetchHealth swallows the error and returns `{status:'offline'}`. Leaving
+    // the previous version in place would keep reporting the OLD agent after an
+    // update, which is the failure this property exists to prevent.
+    globalThis.fetch = vi.fn(async () => {
+      throw new Error('ECONNREFUSED');
+    });
+
+    const health = await fetchHealth();
+
+    expect(health.status).toBe('offline');
+    expect(setAntonVersion).toHaveBeenCalledWith(null);
+  });
+
+  it('hands over undefined when an older server omits the field', async () => {
+    // A sidecar predating the field returns a payload without it. The property
+    // must then be absent, not empty-string or "unknown".
+    globalThis.fetch = vi.fn(async () => jsonRes({ status: 'ok' }));
+
+    await fetchHealth();
+
+    expect(setAntonVersion).toHaveBeenCalledWith(undefined);
   });
 });

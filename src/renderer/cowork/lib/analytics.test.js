@@ -576,3 +576,83 @@ describe('is_internal on captured events (ENG-672)', () => {
     }
   });
 });
+
+// ─── anton_version: agent adoption measured from the shell (ENG-1689) ────────
+//
+// The property exists because `anton_version` on anton's own `turn_completed`
+// can only be sent by an anton new enough to send that event, so adoption built
+// on it reads ~100% forever. These pin the three things that make the
+// shell-side version honest instead: it appears once known, it is absent rather
+// than guessed, and it never appears on web (where the turn runs in a pod on a
+// different anton entirely).
+describe('anton_version stamping', () => {
+  beforeEach(() => {
+    hostState.isElectron = true;
+    // Pre-login: capture() falls back to the anonymous device id. Pinned here
+    // so a prior suite's resolved token can't leak in and change the path.
+    getAccessToken.mockResolvedValue(null);
+  });
+
+  // `trackDataSourceConnected` is deliberate: it is neither surface-gated (so
+  // it works for the web case) nor deduped by a localStorage marker (so it can
+  // be called twice in one test). It is also not async and discards capture()'s
+  // promise, hence the explicit flush.
+  async function captureWith(version) {
+    const fetchMock = mockFetch();
+    const mod = await importAnalytics();
+    if (version !== undefined) mod.setAntonVersion(version);
+    mod.trackDataSourceConnected('postgres');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    return fetchMock.mock.calls
+      .map((c) => JSON.parse(c[1].body))
+      .find((b) => b.event === 'data_source_connected');
+  }
+
+  it('stamps the version on every event once health has resolved it', async () => {
+    const event = await captureWith('2.26.8.16.1');
+    expect(event).toBeDefined();
+    expect(event.properties.anton_version).toBe('2.26.8.16.1');
+  });
+
+  it('omits the property entirely before health resolves', async () => {
+    const event = await captureWith(undefined);
+    expect(event).toBeDefined();
+    expect(event.properties).not.toHaveProperty('anton_version');
+  });
+
+  it('omits it when health is unreachable rather than replaying a stale version', async () => {
+    // fetchHealth degrades to `{status:'offline'}`, so the setter is called with
+    // no version. Keeping the last value would keep reporting the OLD agent
+    // after an update — the exact error this property exists to prevent.
+    const fetchMock = mockFetch();
+    const mod = await importAnalytics();
+    mod.setAntonVersion('2.26.8.16.1');
+    mod.setAntonVersion(null);
+    mod.trackDataSourceConnected('postgres');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const event = fetchMock.mock.calls
+      .map((c) => JSON.parse(c[1].body))
+      .find((b) => b.event === 'data_source_connected');
+    expect(event).toBeDefined();
+    expect(event.properties).not.toHaveProperty('anton_version');
+  });
+
+  it('treats a blank or non-string version as unknown', async () => {
+    const blank = await captureWith('   ');
+    expect(blank.properties).not.toHaveProperty('anton_version');
+    const numeric = await captureWith(42);
+    expect(numeric.properties).not.toHaveProperty('anton_version');
+  });
+
+  it('NEVER stamps it on web, where the turn runs in a pod on a different anton', async () => {
+    // Org tenancy routes the turn over Redis to scratchpad-controller, which
+    // executes it in a pod built on its own pinned anton image. /health there
+    // describes the version cowork-server vendors, not the one that ran the
+    // turn, so the value would be confidently wrong for every web turn.
+    hostState.isElectron = false;
+    const event = await captureWith('2.26.8.16.1');
+    expect(event).toBeDefined();
+    expect(event.properties.surface).toBe('web');
+    expect(event.properties).not.toHaveProperty('anton_version');
+  });
+});

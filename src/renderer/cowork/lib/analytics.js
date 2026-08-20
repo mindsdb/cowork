@@ -21,8 +21,8 @@ import { host } from '../../platform/host';
 
 // The single register of product events, so every event and its own properties
 // are visible at a glance. capture() additionally stamps surface, app_version,
-// device_id, and (once identity resolves) is_internal + a `$set` person update
-// on all of them. `$identify` is a PostHog protocol event, not a product event,
+// anton_version (desktop, once health resolves), device_id, and (once identity
+// resolves) is_internal + a `$set` person update on all of them. `$identify` is a PostHog protocol event, not a product event,
 // so it lives inline in the merge rather than here.
 const EVENTS = {
   DATA_SOURCE_CONNECTED: 'data_source_connected', // { source_type }
@@ -204,6 +204,39 @@ function personSet() {
   return { ...identity.personProps, device_id: getDeviceId(), last_seen_app_version: APP_VERSION };
 }
 
+// Running agent version, learned at runtime from the sidecar's /health rather
+// than baked in like APP_VERSION (ENG-1689).
+//
+// Why it rides the SHELL's events instead of anton's own: `anton_version` on
+// `turn_completed` can only be sent by an anton new enough to send
+// `turn_completed` at all, so any adoption metric built on it reads ~100%
+// forever by construction. The shell's events predate every current release
+// and propagate fast, so stamping here counts installs still running an OLD
+// agent — which is the whole question.
+//
+// `uv tool list` does NOT work as a source, despite being the obvious one:
+// anton-agent is a *dependency* of the cowork-server tool, and uv lists tools
+// and their entry points, never their dependencies (see server-updater.ts's
+// readInstalledDistVersion). /health resolves it via importlib.metadata, which
+// is authoritative for the interpreter actually running the agent.
+let antonVersion = null;
+
+// Desktop only, deliberately. On web the turn does NOT execute in the sidecar
+// — org tenancy routes it over Redis to scratchpad-controller, which runs it
+// in a pod built on its own pinned anton image. So /health there describes the
+// version cowork-server vendors, not the one that ran the turn, and stamping
+// it would report a number that is confidently wrong for every web turn
+// (the ENG-1459 failure mode). Absent beats wrong.
+export function setAntonVersion(version) {
+  if (SURFACE !== 'desktop') return;
+  const next = typeof version === 'string' ? version.trim() : '';
+  // Cleared when health is unreachable (fetchHealth degrades to
+  // `{status:'offline'}`) so events during an outage omit the property rather
+  // than replaying a stale version — which would keep reporting the old agent
+  // after an update, the exact error this property exists to prevent.
+  antonVersion = next || null;
+}
+
 async function getDistinctId() {
   if (identity.distinctId && Date.now() < identity.cacheExpiry) return identity.distinctId;
   try {
@@ -362,6 +395,9 @@ function capture(event, properties = {}) {
         // install -> account joins deterministically even without the merge.
         device_id: deviceId,
       };
+      // Omitted until health resolves, and on web always. A missing property
+      // reads as unknown; a guessed one reads as fact.
+      if (antonVersion) eventProps.anton_version = antonVersion;
       // Only stamp is_internal once identity has resolved it; before then it is
       // unknown, and sending false would tag anonymous traffic as external
       // (ENG-672). The person-level `$set` carries it for the account.
