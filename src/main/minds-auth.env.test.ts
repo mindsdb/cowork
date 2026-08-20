@@ -66,15 +66,24 @@ describe('mindsSignInSettingWrites (DB sync on sign-in)', () => {
   it('writes exactly the credential + provider fields, and no model fields', () => {
     const writes = mindsSignInSettingWrites('mdb_abc', 'https://api.mindshub.ai');
     const keys = writes.map((w) => w.key);
-    expect(keys).toEqual(['minds_api_key', 'minds_url', 'planning_provider', 'coding_provider']);
+    // router_provider included (ENG-1632): without a stored row the server
+    // serializes its pydantic default (anthropic) and the Settings save-path
+    // guard saw a permanently-differing provider — repointing the router and
+    // materializing an aux-model pin on every default-mode save. It rides
+    // LAST so a pre-ENG-660 server that 400s the unknown key still lands the
+    // credential + planning/coding rows (writes are per-key, best-effort).
+    expect(keys).toEqual([
+      'minds_api_key', 'minds_url', 'planning_provider', 'coding_provider', 'router_provider',
+    ]);
     // Ordering is load-bearing: the credential MUST be written first so a
     // failed key write can abort before the provider flips to minds-cloud
     // (avoids a "provider=minds-cloud + dead key" partial state). ENG-739 review.
     expect(keys[0]).toBe('minds_api_key');
-    // The whole point: neither model row is ever touched on sign-in, so a
-    // picker fix (mindshub_air) and an intentional latest:opus both survive.
+    // The whole point: no model row is ever touched on sign-in, so a picker
+    // fix (mindshub_air) and an intentional latest:opus both survive.
     expect(keys).not.toContain('planning_model');
     expect(keys).not.toContain('coding_model');
+    expect(keys).not.toContain('router_model');
   });
 
   it('uses the DB enum provider value (minds_cloud, underscore) — matching the picker', () => {

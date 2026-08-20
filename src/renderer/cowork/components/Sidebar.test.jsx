@@ -54,12 +54,16 @@ describe('Sidebar — Settings is reachable on web (ENG-932)', () => {
     expect(screen.getByRole('button', { name: 'Settings' })).toBeInTheDocument();
   });
 
-  it('opens the Agent section, where reasoning effort lives', () => {
+  it('opens general settings (not forced to a specific section)', () => {
+    // Was: forced straight to 'settings:agent'. The Agent section (where
+    // reasoning effort lives) is still one click away via Settings' own
+    // nav — this button is just a general entry point now, not an
+    // Agent-specific shortcut.
     const onNavigate = vi.fn();
     hostMock.isWeb = true;
     render(<Sidebar {...baseProps} onNavigate={onNavigate} />);
     screen.getByRole('button', { name: 'Settings' }).click();
-    expect(onNavigate).toHaveBeenCalledWith('settings:agent');
+    expect(onNavigate).toHaveBeenCalledWith('settings');
   });
 
   it('still renders Settings on Electron when the server is healthy', () => {
@@ -75,98 +79,6 @@ describe('Sidebar — Settings is reachable on web (ENG-932)', () => {
     render(<Sidebar {...baseProps} serverOnline={false} />);
     expect(screen.queryByRole('button', { name: /Backend status/i })).toBeNull();
     expect(screen.getByRole('button', { name: 'Settings' })).toBeInTheDocument();
-  });
-});
-
-describe('Sidebar — footer theme toggle (design polish PR 3: chrome)', () => {
-  beforeEach(() => {
-    hostMock.isWeb = true;
-  });
-
-  it('renders the theme toggle in the footer and calls onToggleTheme when clicked', () => {
-    hostMock.isWeb = false;
-    const onToggleTheme = vi.fn();
-    render(
-      <Sidebar {...baseProps} serverOnline theme="dark" onToggleTheme={onToggleTheme} />
-    );
-    const toggle = screen.getByRole('button', { name: 'Switch to light theme' });
-    toggle.click();
-    expect(onToggleTheme).toHaveBeenCalledTimes(1);
-  });
-
-  it('shows the theme toggle alongside Settings on the web build', () => {
-    // Was: "…which hides Settings". Web no longer hides it (ENG-932), so this
-    // now pins that the two footer controls coexist rather than that one is
-    // absent.
-    hostMock.isWeb = true;
-    const onToggleTheme = vi.fn();
-    render(
-      <Sidebar {...baseProps} theme="light" onToggleTheme={onToggleTheme} />
-    );
-    expect(screen.getByRole('button', { name: 'Switch to dark theme' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Settings' })).toBeInTheDocument();
-  });
-
-  it('renders the 8-bit skin toggle next to the theme toggle and calls onToggleSkin', () => {
-    hostMock.isWeb = false;
-    const onToggleSkin = vi.fn();
-    render(
-      <Sidebar {...baseProps} serverOnline skin="normal" onToggleSkin={onToggleSkin} />
-    );
-    const toggle = screen.getByRole('button', { name: 'Toggle 8-bit style' });
-    expect(toggle.className).not.toContain('is-on');
-    toggle.click();
-    expect(onToggleSkin).toHaveBeenCalledTimes(1);
-  });
-
-  it('lights the skin toggle when a non-default skin is active', () => {
-    hostMock.isWeb = false;
-    render(<Sidebar {...baseProps} serverOnline skin="8bit" />);
-    expect(
-      screen.getByRole('button', { name: 'Toggle 8-bit style' }).className
-    ).toContain('is-on');
-  });
-
-  it('hides the theme toggle when showThemeToggle is false', () => {
-    hostMock.isWeb = false;
-    render(<Sidebar {...baseProps} serverOnline showThemeToggle={false} />);
-    expect(screen.queryByRole('button', { name: /Switch to (dark|light) theme/ })).toBeNull();
-  });
-
-  it('hides the 8-bit toggle when show8bitToggle is false', () => {
-    hostMock.isWeb = false;
-    render(<Sidebar {...baseProps} serverOnline show8bitToggle={false} />);
-    expect(screen.queryByRole('button', { name: 'Toggle 8-bit style' })).toBeNull();
-  });
-
-  // Flipping this toggle would normally set skin straight to '8bit'/'normal',
-  // which would silently discard an active Custom theme recipe (it only
-  // applies while skin === 'custom'). Rather than hide the button, the
-  // caller (App.jsx) repurposes onToggleSkin to flip just the mono font
-  // while Custom is active, and passes is8bitActive to track that font
-  // choice instead of `skin` itself.
-  it('still shows the 8-bit toggle under the Custom skin, relabeled for the font it actually controls there', () => {
-    hostMock.isWeb = false;
-    render(<Sidebar {...baseProps} serverOnline show8bitToggle skin="custom" />);
-    expect(screen.getByRole('button', { name: 'Toggle 8-bit font' })).toBeInTheDocument();
-  });
-
-  it('reads is8bitActive (not skin) for the "on" state under the Custom skin', () => {
-    hostMock.isWeb = false;
-    render(<Sidebar {...baseProps} serverOnline show8bitToggle skin="custom" is8bitActive={false} />);
-    expect(screen.getByRole('button', { name: 'Toggle 8-bit font' }).className).not.toContain('is-on');
-  });
-
-  it('shows a divider before the toggle group when at least one toggle is visible', () => {
-    hostMock.isWeb = false;
-    render(<Sidebar {...baseProps} serverOnline />);
-    expect(document.querySelector('.anton-sidebar__footer-divider')).not.toBeNull();
-  });
-
-  it('hides the divider when both toggles are hidden', () => {
-    hostMock.isWeb = false;
-    render(<Sidebar {...baseProps} serverOnline showThemeToggle={false} show8bitToggle={false} />);
-    expect(document.querySelector('.anton-sidebar__footer-divider')).toBeNull();
   });
 });
 
@@ -281,8 +193,6 @@ describe('Sidebar — footer user menu when signed in (ENG-1408)', () => {
     const row = await screen.findByRole('button', { name: /Hazem Ahmed/ });
     expect(row.textContent).toContain('MindsDB');
     expect(screen.queryByRole('button', { name: 'Settings' })).toBeNull();
-    // ENG-1545: the quick theme toggle stays in the footer alongside the menu.
-    expect(screen.getByRole('button', { name: /Switch to (light|dark) theme/ })).toBeInTheDocument();
   });
 
   it('keeps the plain Settings row when signed out', async () => {
@@ -292,15 +202,10 @@ describe('Sidebar — footer user menu when signed in (ENG-1408)', () => {
     expect(await screen.findByRole('button', { name: 'Settings' })).toBeInTheDocument();
   });
 
-  // While the backend pill replaces the account row, the menu (which hosts
-  // the theme switch) isn't on screen — so the quick toggles must stay even
-  // though the user is signed in.
-  it('keeps the quick toggles next to the pill when signed in but the server is down', async () => {
+  it('shows the backend status pill instead of the account row when the server is down', async () => {
     hostMock.isWeb = false;
     render(<Sidebar {...baseProps} serverOnline={false} />);
     expect(await screen.findByRole('button', { name: /Backend status/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Switch to (light|dark) theme/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Toggle 8-bit style' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Hazem Ahmed/ })).toBeNull();
   });
 });
