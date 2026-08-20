@@ -120,8 +120,26 @@ describe('key_provisioning_refused on the SSO sign-in path', () => {
 
   it('records nothing when finalize fails for a reason other than a refusal', async () => {
     const user = userEvent.setup();
-    // A transport failure is not a 402. Counting it would put outages into a
-    // metric that is meant to size a paywall cohort.
+    // A non-402 failure is not a refusal. Counting it would put ordinary
+    // failures into a metric meant to size a paywall cohort.
+    //
+    // Resolved rather than rejected on purpose: a rejection throws at the
+    // `await`, so control jumps to the catch and the `?.upgradeRequired` read
+    // never executes — the assertion would then pass with that read deleted,
+    // which is the thing it exists to protect. A resolved non-refusal shape
+    // runs the guard and takes the false branch.
+    spies.mindshubFinalize.mockResolvedValue({ ok: false, reason: 'no session' });
+
+    await signIn(user);
+
+    await waitFor(() => expect(spies.mindshubFinalize).toHaveBeenCalled());
+    expect(spies.trackKeyProvisioningRefused).not.toHaveBeenCalled();
+  });
+
+  it('records nothing when finalize rejects outright', async () => {
+    const user = userEvent.setup();
+    // The transport-failure case the above used to cover. Kept as its own test
+    // rather than folded in, because it exercises the catch, not the guard.
     spies.mindshubFinalize.mockRejectedValue(new Error('socket hang up'));
 
     await signIn(user);
