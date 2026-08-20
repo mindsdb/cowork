@@ -38,6 +38,7 @@ import { resolveChannelIconPath } from './app-icon';
 import { applyChannelUvIsolation, primeLoginShellPath } from './uv-paths';
 import { shellAutoUpdateEnabledFor } from './shell-auto-update-rollout';
 import { getServerAuthToken, authHeader, resetServerAuthTokenCache } from './server-auth';
+import { getCustomServerConfig, setCustomServerConfig } from './custom-server';
 import { getAppDisplayVersion } from './server-source';
 import { unifiedVersion, SKEW_WARN_DAYS } from '../shared/version';
 import { detectClaudeCode } from './coding-mode';
@@ -295,6 +296,11 @@ function createWindow() {
   const icon = nativeImage.createFromPath(getIconPath());
   const isDev = !app.isPackaged && process.env.VITE_DEV === '1';
   const devMode = getDevMode();
+  // A cowork-server this app didn't spawn (COWORK_CUSTOM_SERVER_URL) — read
+  // once here, at window-creation time, since additionalArguments is the only
+  // way to hand the renderer a value before it starts making requests, and
+  // it isn't re-evaluated without recreating the window (see APP_RESTART).
+  const customServer = getCustomServerConfig();
 
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -319,41 +325,54 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       // ENG-439: hand the resolved (per-OS-user) server port to the renderer
       // synchronously, so getApiOrigin() addresses our own sidecar instead of
-      // a hardcoded 26866 that could belong to another OS user.
-      additionalArguments: [`--cowork-server-port=${getServerPort()}`],
+      // a hardcoded 26866 that could belong to another OS user. A configured
+      // custom server hands over its full origin instead — see host.ts's
+      // getApiOrigin(), which prefers this when present.
+      additionalArguments: customServer.url
+        ? [`--cowork-custom-server-url=${customServer.url}`]
+        : [`--cowork-server-port=${getServerPort()}`],
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: false,
       // Disable Chromium's same-origin/mixed-content checks so the renderer
-      // (loaded from file://) can fetch http://127.0.0.1:<antonPort>/v1/*.
-      // Safe in this context: app is local, network calls only target the
-      // loopback python server we spawn ourselves. CSP in index.html still
-      // allowlists the exact origins for defense in depth.
+      // (loaded from file://) can fetch the API origin — normally
+      // http://127.0.0.1:<antonPort>/v1/*, the loopback python server we
+      // spawn ourselves, or (when configured) a custom server elsewhere.
+      // CSP in index.html still allowlists the exact origins for defense
+      // in depth.
       // codeql[js/electron-disable-websecurity]
       webSecurity: false,
     },
   });
 
-  // Inject the server's bearer token into every request the renderer makes to
-  // the loopback API — including browser-initiated loads (images, iframes and
-  // their relative sub-resources, downloads) that can't carry an Authorization
-  // header from renderer JS, and requests that follow a 307 trailing-slash
-  // redirect (Chromium strips the header on those; this re-adds it on the
-  // redirected request). Done at the network layer so it's uniform and the
-  // token never reaches the renderer. Scoped to our loopback server's origin
-  // so it can't leak elsewhere. No-op when the server runs without auth.
+  // Inject a bearer token into every request the renderer makes to the API —
+  // including browser-initiated loads (images, iframes and their relative
+  // sub-resources, downloads) that can't carry an Authorization header from
+  // renderer JS, and requests that follow a 307 trailing-slash redirect
+  // (Chromium strips the header on those; this re-adds it on the redirected
+  // request). Done at the network layer so it's uniform and the token never
+  // reaches the renderer. Scoped to the exact origin(s) in play so it can't
+  // leak elsewhere. No-op when the target runs without auth.
   mainWindow.webContents.session.webRequest.onBeforeSendHeaders(
-    { urls: ['http://127.0.0.1/*', 'http://localhost/*'] },
+    {
+      urls: customServer.url
+        ? ['http://127.0.0.1/*', 'http://localhost/*', `${customServer.url.replace(/\/+$/, '')}/*`]
+        : ['http://127.0.0.1/*', 'http://localhost/*'],
+    },
     (details, callback) => {
-      const token = getServerAuthToken();
-      if (token) {
-        try {
-          if (new URL(details.url).port === String(getServerPort())) {
+      try {
+        if (customServer.url && new URL(details.url).origin === new URL(customServer.url).origin) {
+          if (customServer.token) {
+            details.requestHeaders['Authorization'] = `Bearer ${customServer.token}`;
+          }
+        } else {
+          const token = getServerAuthToken();
+          if (token && new URL(details.url).port === String(getServerPort())) {
             details.requestHeaders['Authorization'] = `Bearer ${token}`;
           }
-        } catch {
-          // Malformed URL — leave the headers untouched.
         }
+      } catch {
+        // Malformed URL — leave the headers untouched.
       }
       callback({ requestHeaders: details.requestHeaders });
     },
@@ -1131,6 +1150,33 @@ function setupIPC() {
     }
   });
 
+  // Custom (remote) server — see custom-server.ts. Read/write only; taking
+  // effect requires APP_RESTART below, since additionalArguments (how the
+  // renderer learns the origin) is fixed at window-creation time.
+  ipcMain.handle(IPC.BACKEND_CUSTOM_SERVER_GET, () => getCustomServerConfig());
+
+  ipcMain.handle(
+    IPC.BACKEND_CUSTOM_SERVER_SET,
+    async (_event, config: { url: string | null; token: string | null }) => {
+      try {
+        await setCustomServerConfig(config);
+        return { ok: true };
+      } catch (error) {
+        console.error('[custom-server] failed to save config', error);
+        return { ok: false };
+      }
+    },
+  );
+
+  // Relaunches the whole app — the one way to pick up a freshly-saved custom
+  // server config (or revert to the local one), since it's read once at
+  // window creation. Fire-and-forget: the app is gone before a response
+  // could matter.
+  ipcMain.handle(IPC.APP_RESTART, () => {
+    app.relaunch();
+    app.exit(0);
+  });
+
   ipcMain.handle(IPC.SETTINGS_CHECK_CONFIGURED, async () => {
     return checkConfigured();
   });
@@ -1454,6 +1500,15 @@ app.whenReady().then(async () => {
   // the server spawn below both resolve uv through the PATH it caches.
   await primeLoginShellPath();
   checkInstallStatus().then(async ({ antonInstalled }) => {
+    // Pointed at a server this app didn't spawn — never start (or manage)
+    // a local one. The renderer's getApiOrigin() already addresses the
+    // custom origin instead (see createWindow's additionalArguments above).
+    const customServerUrl = getCustomServerConfig().url;
+    if (customServerUrl) {
+      console.log(`[server] skipped: pointed at custom server ${customServerUrl} instead of the local sidecar.`);
+      resolveBootServer();
+      return;
+    }
     if (!antonInstalled) {
       console.log('[server] skipped: cowork-server not installed; setup screen will handle.');
       resolveBootServer();

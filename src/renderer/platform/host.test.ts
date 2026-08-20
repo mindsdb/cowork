@@ -66,6 +66,13 @@ describe('web mode (no bridge)', () => {
     expect(host.getPathForFile(new File([], 'x.txt'))).toBeNull();
   });
 
+  it('getCustomServer/setCustomServer/restartApp no-op safely on web (no bridge)', async () => {
+    const host = await importHost();
+    await expect(host.getCustomServer()).resolves.toEqual({ url: null, token: null });
+    await expect(host.setCustomServer({ url: 'x', token: null })).resolves.toBe(false);
+    await expect(host.restartApp()).resolves.toBeUndefined();
+  });
+
   it('serverInfo reports the live origin as running (web host IS the server)', async () => {
     const host = await importHost();
     await expect(host.serverInfo()).resolves.toEqual({
@@ -129,6 +136,24 @@ describe('electron mode (bridge present)', () => {
     expect(host.isLocalApiOrigin()).toBe(true); // loopback → shell-openable
   });
 
+  it('getApiOrigin prefers a configured custom server over the loopback port', async () => {
+    (window as unknown as Record<string, unknown>).antontron = {
+      serverPort: 12345,
+      customServerUrl: 'http://192.168.1.5:26866',
+    };
+    setUrl('file:///Applications/app/index.html');
+    const host = await importHost();
+    expect(host.getApiOrigin()).toBe('http://192.168.1.5:26866');
+    expect(host.isLocalApiOrigin()).toBe(false); // a real remote host, not shell-openable
+
+    // A trailing slash on the configured URL doesn't leak into the origin.
+    (window as unknown as Record<string, unknown>).antontron = {
+      customServerUrl: 'http://192.168.1.5:26866/',
+    };
+    const host2 = await importHost();
+    expect(host2.getApiOrigin()).toBe('http://192.168.1.5:26866');
+  });
+
   it('IPC flows are used: getOAuthRedirectUri is null, calls delegate to the bridge', async () => {
     const serverStart = vi.fn(async () => ({ ok: true }));
     const oauthConnect = vi.fn(async () => ({ ok: true, access_token: 't' }));
@@ -151,6 +176,20 @@ describe('electron mode (bridge present)', () => {
     await expect(host.serverStart()).resolves.toEqual({ ok: false, reason: 'unsupported' });
     await expect(host.getKeychainPref()).resolves.toBe(false);
     await expect(host.mindshubGetCachedToken()).resolves.toBeNull();
+  });
+
+  it('getCustomServer/setCustomServer/restartApp delegate to the bridge when present', async () => {
+    const getCustomServer = vi.fn(async () => ({ url: 'http://192.168.1.5:26866', token: 'abc123' }));
+    const setCustomServer = vi.fn(async () => ({ ok: true }));
+    const restartApp = vi.fn(async () => {});
+    (window as unknown as Record<string, unknown>).antontron = { getCustomServer, setCustomServer, restartApp };
+    const host = await importHost();
+
+    await expect(host.getCustomServer()).resolves.toEqual({ url: 'http://192.168.1.5:26866', token: 'abc123' });
+    await expect(host.setCustomServer({ url: 'x', token: null })).resolves.toBe(true);
+    expect(setCustomServer).toHaveBeenCalledWith({ url: 'x', token: null });
+    await host.restartApp();
+    expect(restartApp).toHaveBeenCalledOnce();
   });
 
   it('getUIVersion unwraps both string and {ui, app} object shapes', async () => {

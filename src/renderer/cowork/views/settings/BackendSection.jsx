@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import Ico from '../../components/Icons';
-import { Alert, Button, Tooltip } from '../../components/ui';
+import { Alert, Button, Collapsible, Input, Tooltip } from '../../components/ui';
 import { host } from '../../../platform/host';
 import { backendFailureCopy, exitCodeLabel } from '../../../../shared/server-status';
 import { Section, SettingsSectionPanel } from './settingsLayout';
@@ -24,7 +24,17 @@ export default function BackendSection({
   const [diag, setDiag] = useState(null);
   const [diagBusy, setDiagBusy] = useState(false);
 
-  // Load diagnostics when the section mounts.
+  // Custom (remote) server config — see main/custom-server.ts. `saved` is
+  // the persisted config (drives whether the local Status card/footer show
+  // at all); the url/token fields below are the draft being edited.
+  const [customServer, setCustomServerState] = useState(null);
+  const [customUrl, setCustomUrl] = useState('');
+  const [customToken, setCustomToken] = useState('');
+  const [customBusy, setCustomBusy] = useState(false);
+  const [customError, setCustomError] = useState(null);
+  const [needsRestart, setNeedsRestart] = useState(false);
+
+  // Load diagnostics + custom server config when the section mounts.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -35,8 +45,54 @@ export default function BackendSection({
         if (!cancelled) setDiag(null);
       }
     })();
+    (async () => {
+      try {
+        const config = await host.getCustomServer();
+        if (cancelled) return;
+        setCustomServerState(config);
+        setCustomUrl(config?.url || '');
+        setCustomToken(config?.token || '');
+      } catch {
+        if (!cancelled) setCustomServerState({ url: null, token: null });
+      }
+    })();
     return () => { cancelled = true; };
   }, []);
+
+  const handleSaveCustomServer = async () => {
+    setCustomBusy(true);
+    setCustomError(null);
+    try {
+      const url = customUrl.trim();
+      const ok = await host.setCustomServer({ url: url || null, token: customToken.trim() || null });
+      if (ok) {
+        setCustomServerState({ url: url || null, token: customToken.trim() || null });
+        setNeedsRestart(true);
+      } else {
+        setCustomError("Couldn't save — check the app's logs and try again.");
+      }
+    } finally {
+      setCustomBusy(false);
+    }
+  };
+
+  const handleUseLocalServer = async () => {
+    setCustomBusy(true);
+    setCustomError(null);
+    try {
+      const ok = await host.setCustomServer({ url: null, token: null });
+      if (ok) {
+        setCustomUrl('');
+        setCustomToken('');
+        setCustomServerState({ url: null, token: null });
+        setNeedsRestart(true);
+      } else {
+        setCustomError("Couldn't clear the custom server — check the app's logs and try again.");
+      }
+    } finally {
+      setCustomBusy(false);
+    }
+  };
 
   const refreshDiag = async () => {
     try {
@@ -157,9 +213,79 @@ export default function BackendSection({
     </>
   );
 
+  // A custom server is one this app didn't spawn — its start/stop/restart
+  // and diagnostics/log tail only ever meant "the local process main
+  // manages", so they're replaced entirely rather than left inert.
+  const isCustomServer = !!customServer?.url;
+
+  const restartBanner = needsRestart && (
+    <Alert variant="warning">
+      <div className="flex items-center gap-2.5 flex-wrap">
+        <span className="flex-1">Saved. Restart the app to connect using this configuration.</span>
+        <Button variant="primary" onClick={() => host.restartApp()}>Restart now</Button>
+      </div>
+    </Alert>
+  );
+
+  const customServerFields = (
+    <div className="flex flex-col gap-2.5">
+      <div className="flex flex-col gap-1">
+        <label className="text-[12px] text-ink-3" htmlFor="custom-server-url">Server URL</label>
+        <Input
+          id="custom-server-url"
+          value={customUrl}
+          onChange={setCustomUrl}
+          placeholder="http://192.168.1.5:26866"
+          aria-label="Server URL"
+        />
+      </div>
+      <div className="flex flex-col gap-1">
+        <label className="text-[12px] text-ink-3" htmlFor="custom-server-token">Bearer token</label>
+        <Input
+          id="custom-server-token"
+          type="password"
+          value={customToken}
+          onChange={setCustomToken}
+          placeholder="Leave blank if that server has no auth"
+          aria-label="Bearer token"
+        />
+      </div>
+      {customError && <Alert variant="danger">{customError}</Alert>}
+    </div>
+  );
+
+  if (isCustomServer) {
+    return (
+      <SettingsSectionPanel
+        footer={(
+          <>
+            <Button onClick={handleUseLocalServer} disabled={customBusy}>
+              {customBusy ? 'Switching…' : 'Use local server instead'}
+            </Button>
+            <Button
+              variant="primary"
+              onClick={handleSaveCustomServer}
+              disabled={customBusy || !customUrl.trim()}
+            >{customBusy ? 'Saving…' : 'Save'}</Button>
+          </>
+        )}
+      >
+        <div className="flex flex-col gap-[14px]">
+          {restartBanner}
+          <div className="text-[12px] text-ink-3 leading-[1.5]">
+            This app is pointed at a server it didn't spawn — the local backend's
+            own status, log, and start/stop controls don't apply here.
+          </div>
+          {customServerFields}
+        </div>
+      </SettingsSectionPanel>
+    );
+  }
+
   return (
     <SettingsSectionPanel footer={backendFooter}>
       <div className="flex flex-col gap-[14px]">
+        {restartBanner}
 
         {/* Status card — status header + port + logs */}
         <div className="border border-solid border-line rounded-card bg-surface-glass backdrop-blur-[var(--surface-glass-blur)] overflow-hidden">
@@ -238,7 +364,26 @@ export default function BackendSection({
           </div>
         )}
 
-
+        {/* Advanced: point this app at a server it didn't spawn instead of
+            the local one above. Collapsed by default — most people never
+            touch this. */}
+        <Collapsible title="Advanced: Custom Server">
+          <div className="flex flex-col gap-2.5">
+            <div className="text-[12px] text-ink-3 leading-[1.5]">
+              Point this app at a cowork-server instance running elsewhere,
+              instead of the one this app manages locally. Requires a restart
+              to take effect.
+            </div>
+            {customServerFields}
+            <div>
+              <Button
+                variant="primary"
+                onClick={handleSaveCustomServer}
+                disabled={customBusy || !customUrl.trim()}
+              >{customBusy ? 'Saving…' : 'Save & Restart'}</Button>
+            </div>
+          </div>
+        </Collapsible>
       </div>
     </SettingsSectionPanel>
   );

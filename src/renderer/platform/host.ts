@@ -59,14 +59,19 @@ export function isMac(): boolean {
 // ---- API origin / OAuth redirect ---------------------------------------
 
 // Where the cowork SPA addresses its FastAPI backend.
-//   Electron (file:// or app://) → loopback at the port main resolved for
-//     THIS OS user and handed us via preload (ENG-439). Falls back to the
-//     legacy fixed port only if the bridge didn't supply one.
+//   Electron (file:// or app://) → a custom server's full origin, when one is
+//     configured (see custom-server.ts) — otherwise loopback at the port
+//     main resolved for THIS OS user and handed us via preload (ENG-439),
+//     falling back to the legacy fixed port only if the bridge didn't
+//     supply one.
 //   Web (http(s)://...)          → same origin (FastAPI serves the SPA).
 export function getApiOrigin(): string {
   if (typeof window === 'undefined') return '';
   const protocol = window.location?.protocol;
   if (protocol === 'file:' || protocol === 'app:') {
+    if (isElectron && typeof bridge.customServerUrl === 'string' && bridge.customServerUrl) {
+      return bridge.customServerUrl.replace(/\/+$/, '');
+    }
     const port = isElectron && typeof bridge.serverPort === 'number' ? bridge.serverPort : ANTON_SERVER_PORT;
     return `http://127.0.0.1:${port}`;
   }
@@ -924,6 +929,32 @@ export async function setKeychainPref(enabled: boolean): Promise<boolean> {
   return false;
 }
 
+// A cowork-server this app didn't spawn (Settings → Backend → Advanced).
+// Electron-only — the web shell always talks same-origin, so both wrappers
+// no-op to "nothing configured" / failure.
+export async function getCustomServer(): Promise<{ url: string | null; token: string | null }> {
+  if (isElectron && typeof bridge.getCustomServer === 'function') {
+    return bridge.getCustomServer();
+  }
+  return { url: null, token: null };
+}
+
+export async function setCustomServer(config: { url: string | null; token: string | null }): Promise<boolean> {
+  if (isElectron && typeof bridge.setCustomServer === 'function') {
+    return (await bridge.setCustomServer(config)).ok;
+  }
+  return false;
+}
+
+// Applying a custom-server change (or reverting to the local one) needs a
+// full restart — the origin is fixed at window-creation time (ENG-439-style
+// additionalArguments), not hot-reloadable. No-op on web.
+export async function restartApp(): Promise<void> {
+  if (isElectron && typeof bridge.restartApp === 'function') {
+    await bridge.restartApp();
+  }
+}
+
 export async function getAccessToken(): Promise<string | null> {
   if (isElectron && typeof bridge.getAccessToken === 'function') {
     return bridge.getAccessToken();
@@ -1004,6 +1035,9 @@ export const host = {
   onMindsHubAuthChanged,
   getKeychainPref,
   setKeychainPref,
+  getCustomServer,
+  setCustomServer,
+  restartApp,
   getAccessToken,
   logout,
   keychainRevoke,

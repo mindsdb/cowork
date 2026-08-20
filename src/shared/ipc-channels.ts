@@ -86,6 +86,19 @@ export const IPC = {
   APP_UI_VERSION: 'app:ui-version',
   OPEN_EXTERNAL: 'app:open-external',
   SHOW_ITEM_IN_FOLDER: 'shell:show-item-in-folder',
+  // Relaunches the whole app (app.relaunch + app.exit) — used after saving a
+  // custom server URL/token, since that's read once at window-creation time
+  // via additionalArguments, not hot-reloadable.
+  APP_RESTART: 'app:restart',
+
+  // Custom (remote) server — points the app at a cowork-server instance this
+  // app didn't spawn, instead of the local loopback one. Stored in the same
+  // ~/.cowork*/.env file as everything else main-process-local, under its
+  // own keys (COWORK_CUSTOM_SERVER_URL / COWORK_CUSTOM_SERVER_TOKEN) —
+  // deliberately separate from COWORK_AUTH_TOKEN, which the LOCAL server
+  // generates/owns for itself.
+  BACKEND_CUSTOM_SERVER_GET: 'backend:custom-server-get',
+  BACKEND_CUSTOM_SERVER_SET: 'backend:custom-server-set',
 
   // Coding mode (MVP) — detect a local `claude` CLI install, then run it in
   // a real PTY embedded in the app (a task view's ChatView, for a
