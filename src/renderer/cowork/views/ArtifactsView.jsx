@@ -23,7 +23,7 @@ import {
 } from '../api';
 import { copyText } from '../lib/clipboard';
 import { projectNameOf } from '../lib/artifactProject';
-import { isArtifactActionAvailable } from '../lib/artifactActions';
+import { isArtifactActionAvailable, needsClientUnpublishBeforeDelete } from '../lib/artifactActions';
 import { useOrgMode } from '../../lib/orgMode';
 import { downloadArtifactFile } from '../lib/artifactDownload';
 import { isHtmlArtifact, isPublishableArtifact, isBackendArtifact, publishBlockedReason } from '../lib/artifactKinds';
@@ -819,8 +819,10 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
     try {
       // Unpublish first so deletion never leaves an orphaned public copy.
       // If this fails we abort and keep the artifact (the server enforces
-      // the same rule as a backstop).
-      if (artifact.publishedUrl) {
+      // the same rule as a backstop). Skipped in org mode — see
+      // needsClientUnpublishBeforeDelete: there this call 501s and the server's
+      // own delete does the unpublish with the right credential.
+      if (needsClientUnpublishBeforeDelete({ orgMode, published: artifact.publishedUrl })) {
         await unpublishArtifact(artifact.path);
       }
       await deleteArtifact(artifact);

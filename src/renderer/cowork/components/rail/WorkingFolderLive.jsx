@@ -27,7 +27,7 @@ import { Tooltip } from '../ui';
 import { ConfirmModal } from '../ConfirmModal';
 import { host } from '../../../platform/host';
 import { useOrgMode } from '../../../lib/orgMode';
-import { artifactOpenTarget } from '../../lib/artifactActions';
+import { artifactOpenTarget, needsClientUnpublishBeforeDelete } from '../../lib/artifactActions';
 
 // Map a file extension to a glyph from `Icons.jsx`. Buckets group
 // extensions that read the same at glance — code files all get the
@@ -282,8 +282,9 @@ export function WorkingFolderLive({ project, isStreaming }) {
     setRows((prev) => prev.filter((r) => r.path !== a.path));
     try {
       // Unpublish first so deletion never leaves an orphaned public copy.
-      // The server enforces the same rule as a backstop.
-      if (a.publishedUrl) {
+      // The server enforces the same rule as a backstop. Skipped in org mode —
+      // see needsClientUnpublishBeforeDelete.
+      if (needsClientUnpublishBeforeDelete({ orgMode, published: a.publishedUrl })) {
         await unpublishArtifact(a.path);
       }
       // Deletion is centralized through cowork-server (not shell.trashItem),

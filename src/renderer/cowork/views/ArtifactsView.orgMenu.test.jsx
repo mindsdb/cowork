@@ -31,6 +31,7 @@ vi.mock('../lib/analytics', () => ({ trackArtifactPublished: vi.fn() }));
 vi.mock('../components/ui/Toast', () => ({ useToastManager: () => ({ add: vi.fn() }) }));
 
 import ArtifactsView from './ArtifactsView';
+import * as api from '../api';
 import { setOrgMode } from '../../lib/orgMode';
 
 const published = {
@@ -86,5 +87,42 @@ describe('grid view kebab on desktop', () => {
     render(<ArtifactsView artifacts={[published]} />);
     openKebab();
     expect(screen.getByText('Preview')).toBeInTheDocument();
+  });
+});
+
+
+describe('deleting a published artifact', () => {
+  // The panel unpublishes before deleting so a delete never leaves an orphaned
+  // public copy. In org mode that call hits DELETE /publish, which is
+  // desktop-only and answers 501 — the await threw and the delete never ran, so
+  // the user got "Delete failed: not available in org deployments" for an
+  // artifact the server was perfectly able to remove. It only became reachable
+  // once auto-publishing started giving artifacts a publishedUrl.
+  beforeEach(() => {
+    api.unpublishArtifact.mockClear();
+    api.deleteArtifact.mockClear();
+  });
+
+  it('leaves the unpublish to the server in org mode', async () => {
+    localStorage.setItem('anton:artifacts-view', 'grid');
+    setOrgMode(true);
+    render(<ArtifactsView artifacts={[published]} />);
+    openKebab();
+
+    fireEvent.click(screen.getByText(/Delete/));
+
+    expect(api.unpublishArtifact).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(api.deleteArtifact).toHaveBeenCalled());
+  });
+
+  it('still unpublishes first on desktop', async () => {
+    localStorage.setItem('anton:artifacts-view', 'grid');
+    setOrgMode(false);
+    render(<ArtifactsView artifacts={[published]} />);
+    openKebab();
+
+    fireEvent.click(screen.getByText(/Delete/));
+
+    await vi.waitFor(() => expect(api.unpublishArtifact).toHaveBeenCalled());
   });
 });

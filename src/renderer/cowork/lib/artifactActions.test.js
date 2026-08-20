@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { artifactOpenTarget, isArtifactActionAvailable } from './artifactActions';
+import { artifactOpenTarget, isArtifactActionAvailable, needsClientUnpublishBeforeDelete } from './artifactActions';
 
 const ALL = ['open', 'reveal', 'download', 'copy-url', 'update', 'publish', 'unpublish', 'delete'];
 
@@ -93,5 +93,31 @@ describe('artifactOpenTarget', () => {
     expect(artifactOpenTarget({
       orgMode: false, published: false, canPreviewInline: false, hasBridge: false,
     })).toBeNull();
+  });
+});
+
+describe('needsClientUnpublishBeforeDelete', () => {
+  // Deleting a published artifact must not leave an orphaned public copy, and
+  // which side enforces that depends on the deployment. Getting it backwards is
+  // not cosmetic: in org mode `DELETE /publish` answers 501, and the await threw
+  // before the delete was ever attempted — the user saw
+  // "Delete failed: not available in org deployments" and the artifact stayed.
+  it('is the client job on desktop, for a published artifact', () => {
+    expect(needsClientUnpublishBeforeDelete({ orgMode: false, published: 'https://x' }))
+      .toBe(true);
+  });
+
+  it('is nobody job when there is nothing published', () => {
+    expect(needsClientUnpublishBeforeDelete({ orgMode: false, published: '' }))
+      .toBe(false);
+  });
+
+  it('is the server job in org mode, published or not', () => {
+    // services/artifacts.delete_artifact unpublishes first itself, with the
+    // acting user's turn key — the credential the client does not have there.
+    expect(needsClientUnpublishBeforeDelete({ orgMode: true, published: 'https://x' }))
+      .toBe(false);
+    expect(needsClientUnpublishBeforeDelete({ orgMode: true, published: '' }))
+      .toBe(false);
   });
 });
