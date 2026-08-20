@@ -46,20 +46,32 @@ const EVENTS = {
   //
   // Every event emitted BEFORE this change carries NO `reason` at all, so a
   // query filtering on `reason` silently drops all of them — no error, just a
-  // shorter series. What those unlabelled events MEAN depends on the window:
+  // shorter series. What those unlabelled events MEAN depends on which project
+  // you are querying and where in it they land. BOTH projects have an
+  // unlabelled mixed window; only the dates differ:
   //
-  //   - before ENG-1537: all `token_limit`. Safe to relabel as such.
-  //   - ENG-1537 to this change: an unlabelled MIX of `token_limit` and
-  //     `included_allowance_exhausted`, not separable after the fact. Do NOT
-  //     relabel these as `token_limit` — it overstates drained wallets.
+  //   staging     up to 14 Aug 2026   all `token_limit`. Safe to relabel
+  //               14 Aug 2026 onward  MIXED — ENG-1537 merged to staging (#648)
+  //   production  up to 17 Aug 2026   all `token_limit`. Safe to relabel
+  //               17 Aug 2026 onward  MIXED — the same gate reached main in the
+  //                                   17 Aug weekly release (#625)
   //
-  // That mixed window exists in STAGING data (ENG-1537 merged to staging on
-  // 14 Aug 2026). It does not exist in production: ENG-1537 has not been
-  // promoted to main, so prod has never emitted `included_allowance_exhausted`.
-  // If it and this change promote in the same release, production goes straight
-  // from one condition to three with `reason` present throughout and has no
-  // unlabelled mixed window at all. Check which actually happened before
-  // relabelling anything in the prod project.
+  // A mixed-window event is `token_limit` OR `included_allowance_exhausted`
+  // with nothing on it to say which, and the two are not separable after the
+  // fact. Do NOT relabel those as `token_limit` — it overstates drained
+  // wallets. Each mixed window closes where a build carrying this change
+  // reaches that project; from there on every event carries `reason`.
+  //
+  // Those are the dates the code landed, not clean cutovers in the data: a
+  // desktop install keeps emitting the shape it was built with until it
+  // updates, so each boundary is smeared across the rollout. `app_version` is
+  // stamped on every event and is the exact per-event discriminator when a
+  // date split is too coarse to trust.
+  //
+  // Whoever next revises these dates: read the file at `ref=main`. The weekly
+  // release squash-merges staging into main, so a branch compare reports
+  // content main already has as diverged and will tell you prod is missing a
+  // condition it has been emitting for weeks.
   TOKEN_CAP_HIT:            'token_cap_hit',            // { reason: 'token_limit'|'included_allowance_exhausted'|'model_access_denied' } credit-block impression (ENG-385, widened ENG-1533 + ENG-1537)
   BILLING_OPENED:           'billing_opened',           // { trigger: 'token_limit'|'included_allowance_exhausted'|'model_access_denied'|'model_disabled'|'key_provisioning_refused'|'connect_provider'|'no_credits_notice'|'locked_model_hint'|'nav' } every route to the billing page; 'nav' is NOT upgrade intent (ENG-1533)
   KEY_PROVISIONING_REFUSED: 'key_provisioning_refused', // { outcome: 'byok_offered'|'billing_opened'|'unhandled' } (ENG-1533)
@@ -439,8 +451,9 @@ export function trackAgentSessionStarted() {
 // so the impression count stays a single series and the once-per-receipt
 // guarantee is not duplicated. Named `reason` to read consistently beside
 // `trigger` on billing_opened and `outcome` on key_provisioning_refused.
-// Historic events predate the property and carry no `reason`; they are all
-// `token_limit` — see the discontinuity note on EVENTS.TOKEN_CAP_HIT.
+// Historic events predate the property and carry no `reason`. What they mean
+// depends on the window — see the discontinuity note on EVENTS.TOKEN_CAP_HIT
+// before relabelling any of them.
 export function trackTokenCapHit(reason) {
   capture(EVENTS.TOKEN_CAP_HIT, { reason: reason || 'token_limit' });
 }
