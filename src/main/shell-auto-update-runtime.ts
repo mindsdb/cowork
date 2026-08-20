@@ -1,6 +1,7 @@
 import { app, type BrowserWindow } from 'electron';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { sendEvent } from './analytics';
 import { IPC } from '../shared/ipc-channels';
 import { resolveShellUpdateFeed } from '../shared/shell-update-feed';
 import { compareUpdaterSemVer } from '../shared/version';
@@ -145,6 +146,23 @@ export function configureShellAutoUpdate(options: {
       currentSnapshot = snapshot;
       writeEvidence(snapshot);
       liveWindow(options.getWindow)?.webContents.send(IPC.SHELL_UPDATE_STATUS, snapshot);
+    },
+    onFailure({ error, code, recoverable, phase }) {
+      const stage = phase === 'checking' ? 'check' : phase;
+      // Full detail to the app log — the durable, screenshot-independent channel.
+      console.error(
+        `[shell-updater] ${stage} failed (code=${code}, recoverable=${recoverable}):`,
+        error,
+      );
+      // Telemetry so a persistently broken feed (e.g. a manifest 404) is visible.
+      const status = (error as { statusCode?: number }).statusCode;
+      sendEvent('shell_update_failed', {
+        stage,
+        code,
+        channel: feed.channel,
+        recoverable: String(recoverable),
+        ...(typeof status === 'number' ? { status: String(status) } : {}),
+      });
     },
   });
   console.log(`[shell-updater] configured ${feed.channel} feed (${feed.url}, mode: ${mode})`);

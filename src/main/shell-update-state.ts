@@ -7,6 +7,9 @@ export type ShellUpdatePhase =
   | 'ready-to-install'
   | 'installing'
   | 'complete'
+  // A check that couldn't reach the feed — distinct from 'failed' (an update
+  // was found but couldn't be applied). Quiet Settings note, never the banner.
+  | 'check-failed'
   | 'failed';
 
 export type ShellUpdateChannel = 'prod' | 'stable' | 'preview';
@@ -79,12 +82,32 @@ export function transitionShellUpdate(
   if (snapshot.phase === 'disabled') return snapshot;
 
   if (event.type === 'FAILED') {
-    if (snapshot.phase === 'complete') return snapshot;
+    // Terminal once complete; ignore stray/duplicate errors once idle.
+    if (snapshot.phase === 'complete' || snapshot.phase === 'idle') return snapshot;
+
+    // Only a download/install failure is a real, user-actionable "update failed".
+    const applying =
+      snapshot.phase === 'downloading'
+      || snapshot.phase === 'ready-to-install'
+      || snapshot.phase === 'installing';
+    if (applying) {
+      return {
+        ...snapshot,
+        phase: 'failed',
+        progress: undefined,
+        recoverable: event.recoverable,
+        errorCode: event.code,
+        errorMessage: event.message,
+      };
+    }
+
+    // A failed check (boot/periodic or manual): kept visible in Settings, not
+    // the banner, and retryable. Full detail goes to the log + telemetry via
+    // onFailure; kept visible so a broken feed stays discoverable (ENG-1544).
     return {
-      ...snapshot,
-      phase: 'failed',
-      progress: undefined,
-      recoverable: event.recoverable,
+      ...clearTransient(snapshot),
+      phase: 'check-failed',
+      recoverable: true,
       errorCode: event.code,
       errorMessage: event.message,
     };
@@ -96,6 +119,7 @@ export function transitionShellUpdate(
         snapshot.phase !== 'idle'
         && snapshot.phase !== 'available'
         && snapshot.phase !== 'failed'
+        && snapshot.phase !== 'check-failed'
         && snapshot.phase !== 'complete'
       ) return snapshot;
       if (snapshot.phase === 'failed' && snapshot.recoverable === false) return snapshot;

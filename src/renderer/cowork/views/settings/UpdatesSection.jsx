@@ -45,6 +45,9 @@ export default function UpdatesSection({
   // clipboard helper's fallback chain (see lib/clipboard.js) also fails,
   // instead of leaving the button looking like it silently did nothing.
   const [versionCopyState, setVersionCopyState] = useState('idle');
+  // Failure detail kept one click away rather than dumped raw (ENG-1544).
+  const [showUpdateErrorDetails, setShowUpdateErrorDetails] = useState(false);
+  const [errorCopyState, setErrorCopyState] = useState('idle');
   // ENG-671 — on-demand "Check for updates". `checkResult` is null (idle) or a
   // summary { ok, offline, updateAvailable, uiUpdateAvailable,
   // serverUpdateAvailable, uiVersion?, serverVersion? } from host.checkForUpdates().
@@ -303,17 +306,55 @@ export default function UpdatesSection({
                                   ? 'App update ready'
                                   : autoPhase === 'installing'
                                     ? 'Installing app update…'
-                                    : 'App update failed'}
+                                    : autoPhase === 'check-failed'
+                                      ? 'Could not check for updates'
+                                      : 'App update failed'}
                         </span>
                         <span className={`text-[11.5px] ${autoPhase === 'failed' ? 'text-warning' : 'text-ink-3'}`}>
                           {autoPhase === 'ready-to-install'
                             ? 'Restart Cowork to finish installing the downloaded update.'
-                            : autoPhase === 'failed'
-                              ? (shellAutoUpdate.errorMessage || 'The automatic update could not be completed. Your current installation is still usable.')
-                              : autoPhase === 'available'
-                                ? (shellAutoUpdate.mode === 'manual' ? 'Download it when you are ready.' : 'The update is ready to download.')
-                                : 'You can continue working while Cowork prepares the update.'}
+                            : autoPhase === 'check-failed'
+                              ? "We couldn't reach the update server. We'll try again automatically."
+                              : autoPhase === 'failed'
+                                ? 'The automatic update could not be completed. Your current installation is still usable.'
+                                : autoPhase === 'available'
+                                  ? (shellAutoUpdate.mode === 'manual' ? 'Download it when you are ready.' : 'The update is ready to download.')
+                                  : 'You can continue working while Cowork prepares the update.'}
                         </span>
+                        {(autoPhase === 'failed' || autoPhase === 'check-failed') && shellAutoUpdate.errorMessage && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => { setShowUpdateErrorDetails((v) => !v); setErrorCopyState('idle'); }}
+                              className="self-start bg-transparent border-none p-0 mt-0.5 cursor-pointer text-accent text-[11.5px]"
+                            >
+                              {showUpdateErrorDetails ? 'Hide details' : 'Show details'}
+                            </button>
+                            {showUpdateErrorDetails && (
+                              <div className="mt-1 flex flex-col gap-1">
+                                <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words select-text font-[family-name:var(--font-mono)] text-[11px] leading-snug py-2 px-2.5 border border-solid border-line rounded-lg bg-surface-glass text-ink-3">
+                                  {shellAutoUpdate.errorMessage}
+                                </pre>
+                                <span role="status" aria-live="polite" className="self-start">
+                                  <Button
+                                    onClick={async () => {
+                                      const ok = await copyToClipboard(shellAutoUpdate.errorMessage);
+                                      if (ok) {
+                                        setErrorCopyState('copied');
+                                        setTimeout(() => setErrorCopyState('idle'), 1500);
+                                      } else {
+                                        setErrorCopyState('failed');
+                                      }
+                                    }}
+                                    onBlur={() => { if (errorCopyState === 'failed') setErrorCopyState('idle'); }}
+                                  >
+                                    {errorCopyState === 'copied' ? 'Copied' : errorCopyState === 'failed' ? "Couldn't copy — select the details above to copy manually" : 'Copy diagnostics'}
+                                  </Button>
+                                </span>
+                              </div>
+                            )}
+                          </>
+                        )}
                       </div>
                       {autoPhase === 'available' && (
                         <Button variant="primary" onClick={onDownloadShellAutoUpdate}>Download update</Button>

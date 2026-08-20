@@ -139,9 +139,13 @@ describe('createShellAutoUpdater', () => {
     });
   });
 
-  it('classifies integrity failures as terminal and network errors as recoverable', async () => {
-    const integrity = setup();
+  it('classifies download integrity failures as terminal and network errors as recoverable', async () => {
+    // Integrity/network errors are reported by electron-updater while an update
+    // is downloading, not while checking — a failed check can't verify an
+    // artifact. Drive to 'downloading' (auto mode) before emitting the error.
+    const integrity = setup('auto');
     await integrity.updater.check('boot');
+    integrity.adapter.emit('available', '2.1.0');
     integrity.adapter.emit('updater-error', new Error('sha512 checksum mismatch'));
     expect(integrity.updater.getSnapshot()).toMatchObject({
       phase: 'failed',
@@ -149,14 +153,55 @@ describe('createShellAutoUpdater', () => {
       recoverable: false,
     });
 
-    const network = setup();
+    const network = setup('auto');
     await network.updater.check('boot');
+    network.adapter.emit('available', '2.1.0');
     network.adapter.emit('updater-error', new Error('ECONNRESET'));
     expect(network.updater.getSnapshot()).toMatchObject({
       phase: 'failed',
       errorCode: 'update-request-failed',
       recoverable: true,
     });
+  });
+
+  it('does not raise the failure banner when a background check cannot reach the feed', async () => {
+    // The reported bug: a fresh install's boot check hits a transient CDN/network
+    // error (or the ENG-1504 404) and the sidebar shows "App update failed". It
+    // must land on the quiet check-failed state — never 'failed' (ENG-1544).
+    const { adapter, updater, snapshots } = setup('auto');
+    await updater.check('boot');
+    adapter.emit('updater-error', new Error('net::ERR_INTERNET_DISCONNECTED'));
+    expect(updater.getSnapshot().phase).toBe('check-failed');
+    expect(snapshots).not.toContain('failed');
+    // Still retryable on the next poll.
+    await updater.check('periodic');
+    expect(updater.getSnapshot().phase).toBe('checking');
+  });
+
+  it('reports every failure through onFailure with the raw error and phase', async () => {
+    const failures: Array<{ phase: string; code: string; message: string }> = [];
+    const adapter = new FakeAdapter();
+    const updater = createShellAutoUpdater({
+      adapter,
+      initialSnapshot: { phase: 'idle', mode: 'auto', channel: 'prod', currentVersion: '2.0.7' },
+      onFailure: ({ error, code, phase }) => failures.push({ phase, code, message: error.message }),
+    });
+
+    // A check failure carries the pre-transition phase ('checking') and the raw
+    // error — the detail that used to live only in the UI.
+    await updater.check('boot');
+    adapter.emit('updater-error', new Error('HttpError: 404 Not Found (latest.yml)'));
+    expect(failures).toEqual([
+      { phase: 'checking', code: 'update-request-failed', message: 'HttpError: 404 Not Found (latest.yml)' },
+    ]);
+    expect(updater.getSnapshot().phase).toBe('check-failed');
+
+    // A download failure is reported from 'downloading' and still raises 'failed'.
+    await updater.check('manual');
+    adapter.emit('available', '2.1.0');
+    adapter.emit('updater-error', new Error('sha512 mismatch'));
+    expect(failures[1]).toMatchObject({ phase: 'downloading', code: 'artifact-verification-failed' });
+    expect(updater.getSnapshot().phase).toBe('failed');
   });
 
   it('immediately supplies the authoritative snapshot to subscribers', () => {

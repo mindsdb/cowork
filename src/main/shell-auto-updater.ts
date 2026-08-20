@@ -6,10 +6,23 @@ import {
 } from 'electron-updater';
 import {
   transitionShellUpdate,
+  type ShellUpdatePhase,
   type ShellUpdateEvent,
   type ShellUpdateSnapshot,
   type ShellUpdateTrigger,
 } from './shell-update-state';
+
+/**
+ * Fired for every update failure at the `fail()` choke point with the raw Error
+ * (stack) and the phase it happened in, so the runtime can log + telemeter it
+ * (ENG-1544).
+ */
+export interface ShellUpdateFailure {
+  error: Error;
+  code: string;
+  recoverable: boolean;
+  phase: ShellUpdatePhase;
+}
 
 export interface ShellUpdaterAdapter {
   onChecking(listener: () => void): void;
@@ -27,6 +40,7 @@ export interface ShellAutoUpdaterOptions {
   initialSnapshot: ShellUpdateSnapshot;
   adapter: ShellUpdaterAdapter;
   onSnapshot?: (snapshot: ShellUpdateSnapshot) => void;
+  onFailure?: (failure: ShellUpdateFailure) => void;
   classifyError?: (error: Error) => { code: string; recoverable: boolean };
 }
 
@@ -85,6 +99,17 @@ export function createShellAutoUpdater(options: ShellAutoUpdaterOptions): ShellA
   const fail = (error: unknown) => {
     const normalized = error instanceof Error ? error : new Error(String(error));
     const classified = classifyError(normalized);
+    // Pre-transition phase: 'checking' ⇒ check failure, else download/install.
+    try {
+      options.onFailure?.({
+        error: normalized,
+        code: classified.code,
+        recoverable: classified.recoverable,
+        phase: snapshot.phase,
+      });
+    } catch {
+      // Never let a reporting error break the reducer.
+    }
     dispatch({
       type: 'FAILED',
       code: classified.code,

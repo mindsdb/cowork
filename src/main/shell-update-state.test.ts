@@ -70,27 +70,77 @@ describe('transitionShellUpdate', () => {
     })).toBe(snapshot);
   });
 
-  it('allows retry only for recoverable failures', () => {
-    const checking = transitionShellUpdate(idle(), { type: 'CHECK_REQUESTED', trigger: 'manual' });
-    const recoverable = transitionShellUpdate(checking, {
+  it('allows retry after a recoverable download failure but blocks it after a terminal one', () => {
+    const downloading = transitionShellUpdate(
+      transitionShellUpdate(idle(), { type: 'CHECK_REQUESTED', trigger: 'manual' }),
+      { type: 'UPDATE_FOUND', targetVersion: '2.1.0' },
+    );
+    expect(downloading.phase).toBe('downloading');
+
+    const recoverable = transitionShellUpdate(downloading, {
       type: 'FAILED',
-      code: 'offline',
+      code: 'update-request-failed',
       recoverable: true,
     });
+    expect(recoverable.phase).toBe('failed');
     expect(transitionShellUpdate(recoverable, {
       type: 'CHECK_REQUESTED',
       trigger: 'retry',
     }).phase).toBe('checking');
 
-    const terminal = transitionShellUpdate(checking, {
+    const terminal = transitionShellUpdate(downloading, {
       type: 'FAILED',
       code: 'bad-signature',
       recoverable: false,
     });
+    expect(terminal.phase).toBe('failed');
     expect(transitionShellUpdate(terminal, {
       type: 'CHECK_REQUESTED',
       trigger: 'retry',
     })).toBe(terminal);
+  });
+
+  it('routes every check failure to the quiet check-failed state, never the banner', () => {
+    // Background boot/periodic AND user-initiated checks all land on
+    // 'check-failed' — visible in Settings on inspection, but never the
+    // sidebar "App update failed" banner ('failed'). Retryable, and the error
+    // is preserved for the details disclosure.
+    for (const trigger of ['boot', 'periodic', 'manual', 'retry'] as const) {
+      const checking = transitionShellUpdate(idle(), { type: 'CHECK_REQUESTED', trigger });
+      const afterFail = transitionShellUpdate(checking, {
+        type: 'FAILED',
+        code: 'update-request-failed',
+        message: 'HTTP 404',
+        recoverable: true,
+      });
+      expect(afterFail).toMatchObject({
+        phase: 'check-failed',
+        recoverable: true,
+        errorCode: 'update-request-failed',
+        errorMessage: 'HTTP 404',
+      });
+      expect(afterFail).not.toHaveProperty('trigger');
+      // Always retryable, even when the underlying error was non-recoverable.
+      expect(transitionShellUpdate(afterFail, {
+        type: 'CHECK_REQUESTED',
+        trigger: 'retry',
+      }).phase).toBe('checking');
+    }
+  });
+
+  it('does not escalate a check failure to the banner when the error fires twice', () => {
+    // A single failed check yields both a rejected checkForUpdates() and an
+    // 'error' event → fail() fires twice. The second must stay check-failed.
+    const checking = transitionShellUpdate(idle(), { type: 'CHECK_REQUESTED', trigger: 'boot' });
+    const first = transitionShellUpdate(checking, { type: 'FAILED', code: 'x', recoverable: true });
+    expect(first.phase).toBe('check-failed');
+    const second = transitionShellUpdate(first, { type: 'FAILED', code: 'x', recoverable: true });
+    expect(second.phase).toBe('check-failed');
+  });
+
+  it('ignores a stray error once genuinely idle', () => {
+    const settled = idle();
+    expect(transitionShellUpdate(settled, { type: 'FAILED', code: 'x', recoverable: true })).toBe(settled);
   });
 
   it('reconciles installation across the relaunch boundary', () => {
