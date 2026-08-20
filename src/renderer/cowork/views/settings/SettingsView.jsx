@@ -654,7 +654,7 @@ export function navItemsForHost(isWeb, codingModeOptionsEnabled) {
   return codingModeOptionsEnabled ? items : items.filter((i) => i.id !== 'codingMode');
 }
 
-function SettingsNav({ section, onSectionChange, serverOnline = true }) {
+function SettingsNav({ section, onSectionChange, serverOnline = true, channelsComingSoon = false }) {
   return (
     <nav
       role="navigation"
@@ -672,28 +672,43 @@ function SettingsNav({ section, onSectionChange, serverOnline = true }) {
         // (proxy 502, auth blip) would otherwise disable EVERY row with no
         // way out.
         const disabled = !host.isWeb && !serverOnline && item.id !== 'backend';
+        // Channels isn't available on Cloud/web yet — show the row but make it
+        // an inert "coming soon" affordance (dimmed + Soon tag + hover
+        // tooltip). Kept separate from `disabled` above: that path uses
+        // pointer-events-none, which would also kill the hover tooltip.
+        const comingSoon = channelsComingSoon && item.id === 'channels';
         const icon = Ico[item.icon] ? Ico[item.icon](15) : null;
-        return (
+        const button = (
           <button
             key={item.id}
             type="button"
-            onClick={disabled ? undefined : () => onSectionChange?.(item.id)}
+            onClick={disabled || comingSoon ? undefined : () => onSectionChange?.(item.id)}
             aria-current={active ? 'page' : undefined}
-            aria-disabled={disabled ? 'true' : undefined}
+            aria-disabled={disabled || comingSoon ? 'true' : undefined}
             className={`w-full flex items-center gap-2 py-2 px-2.5 rounded-[7px] border-0 text-[13px] [font-family:inherit] text-left [transition:background_120ms_ease,color_120ms_ease] ${active
               ? 'bg-surface-2 text-ink font-semibold'
               : 'bg-transparent text-ink-3 font-normal hover:bg-surface-2 hover:text-ink'} ${disabled
               ? 'opacity-35 pointer-events-none cursor-default'
-              : 'cursor-pointer'}`}
+              : comingSoon
+                ? 'opacity-55 cursor-default'
+                : 'cursor-pointer'}`}
           >
             {icon && (
               <span aria-hidden="true" className="inline-flex shrink-0 text-[color:inherit]">
                 {icon}
               </span>
             )}
-            <span>{item.label}</span>
+            <span className="flex-1">{item.label}</span>
+            {comingSoon && <Badge variant="muted" size="xs">Soon</Badge>}
           </button>
         );
+        // Portal-based tooltip so it isn't dimmed by the row's 0.55 opacity
+        // (CSS opacity cascades to descendants) — see NavItem in Sidebar.jsx.
+        return comingSoon ? (
+          <Tooltip key={item.id} content="Coming soon to Cloud — available in the desktop app" side="right">
+            {button}
+          </Tooltip>
+        ) : button;
       })}
     </nav>
   );
@@ -711,6 +726,10 @@ export default function SettingsView({
   onStopServer,
   section = 'agent',
   onSectionChange,
+  // Cloud/web doesn't offer Channels yet — render the nav row as a disabled
+  // "coming soon" affordance (dimmed + Soon tag + hover tooltip) rather than
+  // opening a section that isn't available.
+  channelsComingSoon = false,
   isSsoConnected = false,
   ssoError = '',
   onSsoSignIn,
@@ -2452,16 +2471,19 @@ export default function SettingsView({
                 // failure on hosted (proxy 502, auth blip) would otherwise
                 // disable EVERY row with no way out.
                 const disabled = !host.isWeb && !serverOnline && item.id !== 'backend';
+                // Channels isn't available on Cloud/web yet — inert "coming
+                // soon" row (dimmed + Soon tag) instead of opening a dead end.
+                const comingSoon = channelsComingSoon && item.id === 'channels';
                 const icon = Ico[item.icon] ? Ico[item.icon](18) : null;
                 return (
                   <div className="mshell-accordion" key={item.id}>
                     <button
                       type="button"
                       className="mshell-accordion__head"
-                      aria-disabled={disabled || undefined}
-                      disabled={disabled}
-                      onClick={() => onSectionChange?.(item.id)}
-                      style={disabled ? { opacity: 0.4, cursor: 'default' } : undefined}
+                      aria-disabled={disabled || comingSoon || undefined}
+                      disabled={disabled || comingSoon}
+                      onClick={disabled || comingSoon ? undefined : () => onSectionChange?.(item.id)}
+                      style={(disabled || comingSoon) ? { opacity: comingSoon ? 0.55 : 0.4, cursor: 'default' } : undefined}
                     >
                       {icon && (
                         <span aria-hidden="true" className="inline-flex shrink-0 text-ink-3">
@@ -2469,7 +2491,9 @@ export default function SettingsView({
                         </span>
                       )}
                       <span className="mshell-accordion__label">{item.label}</span>
-                      <span className="mshell-accordion__chev">{Ico.chevronRight(16)}</span>
+                      {comingSoon
+                        ? <Badge variant="muted" size="xs">Soon</Badge>
+                        : <span className="mshell-accordion__chev">{Ico.chevronRight(16)}</span>}
                     </button>
                   </div>
                 );
@@ -2492,7 +2516,7 @@ export default function SettingsView({
 
   return (
     <div className="flex-1 flex flex-row min-h-0">
-      <SettingsNav section={effectiveSection} onSectionChange={onSectionChange} serverOnline={serverOnline} />
+      <SettingsNav section={effectiveSection} onSectionChange={onSectionChange} serverOnline={serverOnline} channelsComingSoon={channelsComingSoon} />
 
       {effectiveSection === 'agent' && renderAgentSection()}
       {effectiveSection === 'codingMode' && renderCodingModeSection()}
