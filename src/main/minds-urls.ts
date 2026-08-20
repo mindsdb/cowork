@@ -53,6 +53,57 @@ export const MINDS_KEYCLOAK_BASE = `${MINDS_AUTH_HOST}/auth`;
 export const MINDS_AUTH_SERVICE_URL = `${MINDS_AUTH_HOST}/v1`;
 export const MINDS_LLM_BASE_URL = `${API_HOST}/v1`;
 
+/*
+ * The model every provider probe sends to MindsHub, and the mirror of
+ * cowork-server's MINDS_PROBE_MODEL (cowork/services/providers.py).
+ *
+ * It has to be a model any valid key can call. MindsHub bills per model, so a
+ * paid model is denied for an account whose wallet is empty, and that denial
+ * arrives as an ordinary error the probe cannot tell apart from a bad key:
+ * onboarding then tells a brand-new user their working key does not work.
+ * MindsHub Air draws the monthly included allowance instead of the wallet, so
+ * the probe reports reachability and key validity, which is what it is for.
+ *
+ * Two copies of this value exist because main is compiled Node with no import
+ * path into the Python sidecar. They have drifted once already: an earlier fix
+ * moved the sidecar onto the free model and left this side probing a paid one,
+ * which is the defect this replaces. Change one and change the other.
+ */
+export const MINDS_PROBE_MODEL = 'mindshub_air';
+
+/*
+ * True when `url` points at a MindsHub inference host. Mirrors is_minds_host in
+ * cowork-server's providers.py, including the deliberate choice to compare the
+ * parsed hostname rather than test a substring of the URL: a substring test also
+ * matches `mindshub.ai.example.test` and a query parameter carrying our host,
+ * and the base URL reaching the openai-compatible probe is partly user-supplied.
+ *
+ * A self-hosted gateway on another hostname does not match, and keeps the
+ * generic default it has today.
+ *
+ * Matching an `mdb.ai` host picks the model, not the path: the openai-compatible
+ * probe appends `/v1` generically and never applies validateMinds's `mdb.ai` ->
+ * `/api/v1` rule, so a bare `mdb.ai` base is still probed where that host does not
+ * serve. Same caveat as the sidecar's is_minds_host.
+ */
+export function isMindsHost(url: string | null | undefined): boolean {
+  const raw = (url || '').trim();
+  if (!raw) return false;
+  try {
+    /* A bare `api.mindshub.ai/v1` carries no scheme, and URL rejects it; the
+     * `//` prefix makes it parse as a host rather than a path. */
+    const host = new URL(raw.includes('//') ? raw : `https://${raw}`).hostname.toLowerCase();
+    return (
+      host === 'mindshub.ai' ||
+      host === 'mdb.ai' ||
+      host.endsWith('.mindshub.ai') ||
+      host.endsWith('.mdb.ai')
+    );
+  } catch {
+    return false;
+  }
+}
+
 // The environment slug embedded in the API host ("staging"/"dev"), or "" for
 // prod. Used to stamp ENV on the cowork-server subprocess we spawn so the
 // server's own env-aware defaults (cowork-server app_settings._env_slug)

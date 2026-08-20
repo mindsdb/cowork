@@ -79,7 +79,7 @@ export function ModelSelect({
       filter={(item, query, contains) => !!item?.pin || contains(item?.label ?? '', query) || contains(item?.value ?? '', query)}
       renderValue={(selected) => (
         <>
-          {selected && <ProviderIcon maker={makerKeyFor(selected)} className="text-ink-2" nudgeY={-1} />}
+          {selected && <ProviderIcon maker={makerKeyFor(selected)} className="text-ink-2" />}
           <span className={cn('truncate', !selected && 'text-ink-4')}>
             {selected ? selected.label : placeholder}
           </span>

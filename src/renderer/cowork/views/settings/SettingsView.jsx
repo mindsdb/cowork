@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef, useContext } from 'react';
 import { useId } from 'react';
 import Ico from '../../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchRecommendedModels } from '../../api';
-import { providerTypeToKeyField, providerValueToType, resolveRoleModel, resolveModelPickerValue, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore } from '../../lib/settingsTransform';
+import { providerTypeToKeyField, providerValueToType, resolveRoleModel, resolveModelPickerValue, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore, toDisplayUnits, toNaturalUnits, formatCount } from '../../lib/settingsTransform';
 import { MODEL_REFRESH_TTL_MS } from '../../lib/modelRefresh';
 import { trackHarnessSwapped } from '../../lib/analytics';
 import { copyText as copyToClipboard } from '../../lib/clipboard';
@@ -88,96 +88,126 @@ function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSett
   // survive re-renders without causing one, and it is read only on toggle.
   const preToggle = useRef(null);
   if (showUnlimited && !isUnlimited && value != null) preToggle.current = value;
-  // The last COMMITTED value, from the page's saved-state snapshot — never a
-  // draft. Tracking "last parseable edit" instead was a bug (Codex review on
-  // #514): editing a saved 120 to an unsaved 300, then clearing, restored the
-  // 300; an abandoned out-of-range draft resurrected as its clamped form.
-  const saved =
-    savedValue != null && String(savedValue).trim() !== '' ? String(savedValue) : null;
+  // The input reads/writes in `spec.unitDivisor` units (millions, for
+  // maxTurnTokens) — seven-digit token counts aren't something anyone wants
+  // to type or read. Storage stays in natural units throughout; only the
+  // displayed text and what onChange/onBlur parse are scaled. See
+  // toDisplayUnits/toNaturalUnits in settingsTransform.js.
+  const hasUnit = !!spec.unitDivisor;
+  const toDisplay = (v) => toDisplayUnits(v, spec);
+  const toNatural = (v) => toNaturalUnits(v, spec);
   return (
-    <div className="inline-flex items-baseline gap-2">
-      {showUnlimited && (
-        <label className="inline-flex items-baseline gap-1.5 mr-1 whitespace-nowrap">
-          <Checkbox
-            checked={isUnlimited}
-            onCheckedChange={(on) => setSetting(
-              settingKey,
-              on
-                ? String(spec.max)
-                : resolveBudgetRestore(preToggle.current, savedValue, spec),
-            )}
-            aria-label={unlimitedLabel}
+    <div className="flex flex-col items-start gap-1.5">
+      <div className="inline-flex items-start gap-2">
+        <div className="flex flex-col items-start gap-1">
+          {/* globals.css `.field-input` sets width:100% and loads after the
+              Tailwind layer, so a w-[90px] utility loses the cascade — inline
+              width is the one reliable override here. */}
+          <input
+            className="field-input"
+            style={{ width: 90 }}
+            type="number"
+            inputMode="decimal"
+            min={toDisplay(min)}
+            max={toDisplay(max)}
+            disabled={isUnlimited}
+            // Show the number they'd return to, not the max: a disabled field
+            // reading 50000000 invites someone to "fix" it back down by hand.
+            value={isUnlimited
+              ? toDisplay(resolveBudgetRestore(preToggle.current, savedValue, spec))
+              : toDisplay(value ?? String(fallback))}
+            onChange={(e) => setSetting(settingKey, toNatural(e.target.value))}
+            onBlur={(e) => {
+              if (value == null) return; // untouched — don't materialize the key
+              // Emptying the field reverts to the factory default — clearing
+              // any of the three budget fields is the discoverable way to
+              // reset it, not a mid-retype state to preserve.
+              setSetting(settingKey, clampBudgetValue(toNatural(e.target.value), spec));
+            }}
+            aria-label={label}
+            aria-describedby={hintId}
+            title={`${label} (${formatCount(toDisplay(min))}–${formatCount(toDisplay(max))}, default ${formatCount(toDisplay(fallback))}${hasUnit ? ' million tokens' : ''})`}
           />
-          <span className="text-[11.5px] text-ink-3">{unlimitedLabel}</span>
-        </label>
+          {hasUnit && <span className="text-[11.5px] text-ink-4 whitespace-nowrap">million tokens</span>}
+        </div>
+        <div id={hintId} className="flex flex-col text-[11.5px] text-ink-3">
+          {isUnlimited ? (
+            <span className="whitespace-nowrap">no limit — only the step and auto-continue caps apply</span>
+          ) : (
+            <>
+              <span className="whitespace-nowrap">{formatCount(toDisplay(min))}&ndash;{formatCount(toDisplay(max))}</span>
+              <span className="whitespace-nowrap">default {formatCount(toDisplay(fallback))}</span>
+            </>
+          )}
+        </div>
+      </div>
+      {showUnlimited && (
+        <div className="flex flex-col items-start gap-1.5">
+          <span className="text-[11px] text-ink-4">&mdash; or &mdash;</span>
+          <label className="inline-flex items-baseline gap-1.5 whitespace-nowrap">
+            <Checkbox
+              checked={isUnlimited}
+              onCheckedChange={(on) => setSetting(
+                settingKey,
+                on
+                  ? String(spec.max)
+                  : resolveBudgetRestore(preToggle.current, savedValue, spec),
+              )}
+              aria-label={unlimitedLabel}
+            />
+            <span className="text-[11.5px] text-ink-3">{unlimitedLabel}</span>
+          </label>
+        </div>
       )}
-      {/* globals.css `.field-input` sets width:100% and loads after the
-          Tailwind layer, so a w-[90px] utility loses the cascade — inline
-          width is the one reliable override here. */}
-      <input
-        className="field-input"
-        style={{ width: 90 }}
-        type="number"
-        inputMode="numeric"
-        min={min}
-        max={max}
-        step={1}
-        disabled={isUnlimited}
-        // Show the number they'd return to, not the max: a disabled field
-        // reading 50000000 invites someone to "fix" it back down by hand.
-        value={isUnlimited
-          ? resolveBudgetRestore(preToggle.current, savedValue, spec)
-          : (value ?? String(fallback))}
-        onChange={(e) => setSetting(settingKey, e.target.value)}
-        onBlur={(e) => {
-          if (value == null) return; // untouched — don't materialize the key
-          // Emptied field with no committed value to restore (the key was
-          // never saved — e.g. an older server that doesn't serve it): leave
-          // it empty rather than commit the factory default — clampBudgets()
-          // drops empty drafts from the write, and the post-save re-fetch
-          // restores whatever the server holds.
-          if (String(e.target.value).trim() === '' && saved == null) return;
-          setSetting(settingKey, clampBudgetValue(e.target.value, spec, saved));
-        }}
-        aria-label={label}
-        aria-describedby={hintId}
-        title={`${label} (${min}–${max}, default ${fallback})`}
-      />
-      <span id={hintId} className="text-[11.5px] text-ink-3 whitespace-nowrap">
-        {isUnlimited
-          ? 'no limit — only the step and auto-continue caps apply'
-          : <>{min}&ndash;{max} &middot; default {fallback}</>}
-      </span>
     </div>
   );
 }
 
 // A titled group of settings sections. Since ENG-1320 these no longer
-// collapse: the settings subnav already isolates one section per screen, so a
-// second collapse level inside a section just hid content behind an extra
-// click for no benefit. The group is now a static titled card whose content is
-// always visible. The heading is kept so groups still surface in SR heading
-// navigation. Mobile stays flat, as it already was (ENG-990).
-function SettingsGroup({ title, children }) {
+// collapse by default: the settings subnav already isolates one section per
+// screen, so a second collapse level inside a section just hid content
+// behind an extra click for no benefit. The group is a static titled card
+// whose content is always visible, UNLESS `collapsible` opts a specific
+// group back in (e.g. Advanced Settings — rarely-touched power-user knobs
+// that read as clutter left expanded by default). The heading is kept as an
+// <h2> either way so groups still surface in SR heading navigation; the
+// collapse toggle lives on a button nested inside it, not the heading itself.
+// Mobile stays flat, as it already was (ENG-990) — collapsible groups behave
+// the same there, just without the card chrome.
+function SettingsGroup({ title, children, collapsible = false, defaultCollapsed = false }) {
   const { mobile } = useContext(SettingsLayoutContext);
+  const [collapsed, setCollapsed] = useState(collapsible && defaultCollapsed);
   const headingClass =
     'm-0 font-[family-name:var(--font-sans)] text-sm font-semibold tracking-[0.04em] uppercase text-ink-3';
+  const heading = collapsible ? (
+    <button
+      type="button"
+      onClick={() => setCollapsed((c) => !c)}
+      aria-expanded={!collapsed}
+      className="inline-flex items-center gap-1 border-0 bg-transparent p-0 cursor-pointer text-inherit"
+    >
+      <span className={`inline-flex shrink-0 text-ink-4 transition-transform ${collapsed ? '' : 'rotate-90'}`} aria-hidden="true">
+        {Ico.chevRight(12)}
+      </span>
+      {title}
+    </button>
+  ) : title;
   // Mobile (ENG-990): the master-detail screen already isolates one section,
   // so render the group title as a plain header with its content flowing
   // below, separated from the next group by spacing.
   if (mobile) {
     return (
       <div className="mb-1.5">
-        <h2 className={`${headingClass} pt-3 px-0.5 pb-2`}>{title}</h2>
-        <div className="pt-0 px-0.5 pb-1">{children}</div>
+        <h2 className={`${headingClass} pt-3 px-0.5 pb-2`}>{heading}</h2>
+        {!collapsed && <div className="pt-0 px-0.5 pb-1">{children}</div>}
       </div>
     );
   }
 
   return (
     <div className="border border-solid border-line rounded-card bg-surface-glass backdrop-blur-[var(--surface-glass-blur)] mb-[14px] overflow-hidden">
-      <h2 className={`${headingClass} pt-[14px] px-[18px] pb-0`}>{title}</h2>
-      <div className="pt-2.5 px-[18px] pb-2">{children}</div>
+      <h2 className={`${headingClass} pt-[14px] px-[18px] ${collapsed ? 'pb-[14px]' : 'pb-0'}`}>{heading}</h2>
+      {!collapsed && <div className="pt-2.5 px-[18px] pb-2">{children}</div>}
     </div>
   );
 }
@@ -1846,7 +1876,7 @@ export default function SettingsView({
         </SettingsGroup>
 
         {hasBudgetSettings && (
-          <SettingsGroup title="Advanced Settings">
+          <SettingsGroup title="Advanced Settings" collapsible defaultCollapsed>
             <Section
               title="Max steps per task"
               subtitle={`How many actions (running code, reading files, searching) ${agentLabel || 'Anton'} may take on one request before pausing to check in with you. Raise it so big tasks finish in one go; lower it for a tighter leash on time and cost.`}

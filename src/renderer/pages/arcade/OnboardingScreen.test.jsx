@@ -242,3 +242,89 @@ describe('OnboardingScreen — BYOK setup-deferral hands the model up (ENG-922)'
     expect(onComplete).not.toHaveBeenCalled();
   });
 });
+
+// The MindsHub path used to probe twice: once on the free model (server-side),
+// then again on the recommended *paid* model. An empty wallet denies the paid
+// one, and that denial was read as a broken key, so a brand-new user was sent to
+// bring-your-own-key holding a MindsHub key that worked. The second probe told us
+// nothing the first had not, so the fix is that it is gone.
+describe('OnboardingScreen — the MindsHub path probes once, on the free model', () => {
+  beforeEach(() => {
+    hostMock.isWeb = true;
+    hostMock.isElectron = false;
+    hostMock.checkConfigured = vi.fn(async () => ({ configured: false, provider: '' }));
+    hostMock.validateProvider = vi.fn(async () => ({ ok: true }));
+    hostMock.saveSettings = vi.fn(async () => true);
+    hostMock.readSettings = vi.fn(async () => ({}));
+    keycloakMock.authenticated = false;
+    syncSettingsToDb.mockResolvedValue(true);
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({}) })));
+  });
+
+  const connectWithMindsKey = async (onComplete = () => {}) => {
+    render(<OnboardingScreen coworker={coworker} onComplete={onComplete} />);
+    await waitFor(() => expect(screen.getByText('MindsHub API Key')).toBeInTheDocument());
+    fireEvent.change(screen.getByPlaceholderText('mdb_...'), {
+      target: { value: 'mdb_test_key' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
+  };
+
+  it('sends exactly one probe, and never names a model', async () => {
+    await connectWithMindsKey();
+
+    // The count is the assertion that matters, and it is checked only after the
+    // flow has settled on the success screen: the old code reached 2, but it
+    // passes through 1 on the way, so a waitFor on the count alone would go
+    // green against the very code this replaces.
+    await waitFor(() => expect(screen.getByText(/You're all set/)).toBeInTheDocument());
+    expect(hostMock.validateProvider).toHaveBeenCalledTimes(1);
+    // Every call, not just the first. The paid model rode the *second* probe, so
+    // asserting the first one carried no model would have passed before too.
+    for (const [provider, key, , model] of hostMock.validateProvider.mock.calls) {
+      expect(provider).toBe('minds');
+      expect(key).toBe('mdb_test_key');
+      expect(model).toBeUndefined();
+    }
+  });
+
+  it('commits minds-cloud as the provider for both roles', async () => {
+    // The finalize lines were rewritten by the same diff and nothing else reads
+    // them back. Dropping either one leaves onboarding "successful" with the app
+    // pointed at no provider.
+    await connectWithMindsKey();
+
+    await waitFor(() => expect(hostMock.saveSettings).toHaveBeenCalled());
+    const written = hostMock.saveSettings.mock.calls.map(([c]) => c).join('\n');
+    expect(written).toContain('ANTON_MINDS_API_KEY=mdb_test_key');
+    expect(written).toContain('ANTON_PLANNING_PROVIDER=minds-cloud');
+    expect(written).toContain('ANTON_CODING_PROVIDER=minds-cloud');
+  });
+
+  it('a wallet-denied paid model can no longer route onboarding to BYOK', async () => {
+    // What a $0 wallet used to answer on the second probe. With one probe left,
+    // there is no call for this to fail, so the BYOK step must not appear.
+    hostMock.validateProvider = vi.fn(async (provider) =>
+      provider === 'minds'
+        ? { ok: true }
+        : { ok: false, error: 'HTTP 402: wallet balance is empty' },
+    );
+    await connectWithMindsKey();
+
+    // Settle on the success screen first. Waiting on the call count would resolve
+    // the moment it hit 1, which the two-probe version also does.
+    await waitFor(() => expect(screen.getByText(/You're all set/)).toBeInTheDocument());
+    expect(hostMock.validateProvider).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('Anthropic')).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('an invalid key still stops onboarding with the error surfaced', async () => {
+    // The remaining probe keeps its job: a key that does not work must not pass.
+    hostMock.validateProvider = vi.fn(async () => ({ ok: false, error: 'Invalid API key' }));
+    await connectWithMindsKey();
+
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    expect(screen.getByText(/Invalid API key/)).toBeInTheDocument();
+  });
+});
