@@ -40,15 +40,19 @@ export function useLogout() {
     if (ok) {
       resetDeviceIdentity();
     }
-    // Exactly ONE reload must happen, or two compete and leave the page stuck
-    // on the confirm modal (flaky in packaged builds). On Electron SUCCESS the
-    // main process drives webContents.reload() after the IPC reply, so the
-    // renderer must NOT also reload. We reload here only when nothing else
-    // will: on web (no main process), and on an Electron REJECTION — main threw
-    // before its own reload, and since the user is already signed out a
-    // renderer reload is race-free and re-routes to onboarding (the correct end
-    // state) rather than a misleading "sign-out didn't complete". (ENG-1206)
-    if (host.isWeb || !ok) {
+    // Exactly ONE navigation must happen. On SUCCESS the platform drives it and
+    // the renderer must NOT also navigate, or the two race and the renderer's
+    // wins: Electron's main process calls webContents.reload() after the IPC
+    // reply, and web's keycloak.logout() calls window.location.replace() to the
+    // end-session endpoint. A renderer reload() here runs in a microtask before
+    // the browser performs that replace(), cancelling the redirect — the SSO
+    // cookie is still valid, login-required silently re-auths, and the user
+    // lands right back in the app ("sign-out had no effect"). We reload only on
+    // REJECTION, where nothing else will: the platform threw before its own
+    // navigation, the user is already signed out, so a renderer reload re-routes
+    // to onboarding / the login screen rather than a misleading stuck modal.
+    // (ENG-1206)
+    if (!ok) {
       window.location.reload();
     }
   };
