@@ -4,11 +4,21 @@
 
 export type BootTarget = 'auth' | 'setup' | 'terminal';
 
+export interface BootDecision {
+  target: BootTarget;
+  /**
+   * Whether the deployment is multi-tenant, or null when /health could not be
+   * read. The caller decides the fail-safe for null: treating it as "standalone"
+   * would render desktop-only artifact actions in an org deployment.
+   */
+  orgMode: boolean | null;
+}
+
 // The minimal host surface the boot decision needs. Kept as its own interface
 // so tests can pass a stub without the full platform bridge.
 export interface BootHost {
   readSettings: () => Promise<Record<string, string>>;
-  checkConfigured: () => Promise<{ configured: boolean; provider: string }>;
+  checkConfigured: () => Promise<{ configured: boolean; provider: string; orgMode?: boolean }>;
   checkInstall: () => Promise<{ antonInstalled: boolean; serverDepsReady: boolean }>;
 }
 
@@ -29,7 +39,10 @@ export interface BootHost {
 export async function resolveBootTarget(
   host: BootHost,
   hasLocalConsent: boolean,
-): Promise<BootTarget> {
+): Promise<BootDecision> {
+  // Unknown until /health answers. Reported as null rather than false so the
+  // caller can tell "standalone" apart from "could not find out".
+  let orgMode: boolean | null = null;
   try {
     // readSettings() and checkConfigured() are independent, so run them
     // concurrently — on web these are two ingress round-trips that used to be
@@ -41,17 +54,20 @@ export async function resolveBootTarget(
     // handled — no unhandledrejection escapes. checkInstall() stays conditional
     // (only consulted once we know we're headed into the app) so the auth path
     // pays no extra request.
-    const [settings, { configured }] = await Promise.all([
+    const [settings, configuredResult] = await Promise.all([
       host.readSettings(),
       host.checkConfigured(),
     ]);
+    const { configured } = configuredResult;
+    orgMode = Boolean(configuredResult.orgMode);
     const consented = settings.ANTON_TERMS_CONSENT === 'true' || hasLocalConsent;
     if (consented && configured) {
       const status = await host.checkInstall();
-      return !status.antonInstalled || !status.serverDepsReady ? 'setup' : 'terminal';
+      const target = !status.antonInstalled || !status.serverDepsReady ? 'setup' : 'terminal';
+      return { target, orgMode };
     }
   } catch {
-    return 'auth';
+    return { target: 'auth', orgMode: null };
   }
-  return 'auth';
+  return { target: 'auth', orgMode };
 }

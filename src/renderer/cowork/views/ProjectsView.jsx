@@ -33,6 +33,7 @@ import {
 import { Button, Menu, EmptyState, Tooltip } from '../components/ui';
 import { Crumb, CrumbSep, CrumbCurrent } from '../components/ui/Crumb';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
+import { belongsToProject } from '../lib/artifactProject';
 import { host } from '../../platform/host';
 
 // ─── Pin persistence (localStorage) ──────────────────────────────────────
@@ -389,8 +390,7 @@ function useRowStats(project) {
     }).catch(() => {});
     fetchArtifacts().then((data) => {
       if (cancelled || !Array.isArray(data)) return;
-      const prefix = project.path.replace(/\/+$/, '') + '/';
-      setArt(data.filter((a) => a.path?.startsWith(prefix)).length);
+      setArt(data.filter((a) => belongsToProject(a, project)).length);
     }).catch(() => {});
     return () => { cancelled = true; };
   }, [project?.id, project?.path]);

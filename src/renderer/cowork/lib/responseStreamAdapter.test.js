@@ -480,3 +480,64 @@ describe('tool_call.progress / tool_call.end (ENG-763 stage 2 — generic tool p
     expect(state.steps[0]._scratchpadTabId).not.toBe(state.steps[1]._scratchpadTabId);
   });
 });
+
+// ─── the artifact card's fields have to survive the adapter ────────────────
+//
+// The server builds this card AFTER the turn's publish reconciliation so it can
+// arrive with `publishedUrl` already set, and on an org deployment that URL is
+// the only route to the content — there is no path-based fallback. The adapter
+// copies a hand-written subset of the payload into `step.data`, and identity and
+// publish state were not in it, so the inline card announced an artifact it then
+// could not open.
+//
+// Nothing else covers the gap between "the server puts a field on the card" and
+// "the card uses it", which is exactly where this went wrong.
+
+const ARTIFACT_EVENT = {
+  type: 'response.artifact_created',
+  artifact: {
+    id: '7db94eb8',
+    slug: 'clock-7db94eb8',
+    title: 'Current time',
+    type: 'html-app',
+    ext: '.html',
+    path: '/proj/.anton/artifacts/clock-7db94eb8/index.html',
+    projectId: 'proj-1',
+    projectName: 'general',
+    publishedUrl: 'https://view.staging.mindshub.ai/view/97901f016/845b3777',
+  },
+};
+
+describe('artifact_created → step.data', () => {
+  const stepOf = (event) => {
+    const state = reduceStream(initialStreamState(), event);
+    return state.steps.find((s) => s.badge === 'Artifact');
+  };
+
+  it('carries the published URL through', () => {
+    expect(stepOf(ARTIFACT_EVENT).data.publishedUrl)
+      .toBe('https://view.staging.mindshub.ai/view/97901f016/845b3777');
+  });
+
+  it('carries the org addressing triple through', () => {
+    const { data } = stepOf(ARTIFACT_EVENT);
+    // projectId + slug is how an artifact is addressed once paths stop being
+    // usable; id is the stable identifier behind it.
+    expect(data.projectId).toBe('proj-1');
+    expect(data.slug).toBe('clock-7db94eb8');
+    expect(data.id).toBe('7db94eb8');
+    expect(data.projectName).toBe('general');
+  });
+
+  it('defaults the new fields to empty rather than undefined', () => {
+    // A desktop card carries no publishedUrl; consumers do `!!publishedUrl`, so
+    // the shape must stay stable instead of gaining and losing keys.
+    const { data } = stepOf({
+      type: 'response.artifact_created',
+      artifact: { title: 'Local', path: '/p/a/index.html' },
+    });
+    expect(data.publishedUrl).toBe('');
+    expect(data.projectId).toBe('');
+    expect(data.slug).toBe('');
+  });
+});

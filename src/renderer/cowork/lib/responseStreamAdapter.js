@@ -336,6 +336,18 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
         path: filePath,
         ext: art.ext || '',
         action: art.type || 'artifact',
+        // Identity + publish state, carried through verbatim. The server builds
+        // this card AFTER the turn's publish reconciliation precisely so it can
+        // arrive with its URL already on it, and on an org deployment that URL is
+        // the only route to the artifact's content — the card is addressed by
+        // projectId + slug there, not by a path the server refuses to serve.
+        // Dropping these left the inline card unable to open the artifact it had
+        // just announced.
+        id: art.id || '',
+        slug: art.slug || '',
+        publishedUrl: art.publishedUrl || '',
+        projectId: art.projectId || '',
+        projectName: art.projectName || '',
       },
       output: null,
       result: null,
