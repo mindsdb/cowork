@@ -12,6 +12,11 @@ files:
   - "!dist/**/*.map"
   - node_modules/**/*
   - "!node_modules/*/{CHANGELOG.md,README.md,readme.md}"
+  # appdmg is a build-time DMG tool; its transitive fs-xattr native module ships
+  # only an arm64 prebuild, which lands identical in both halves of the universal
+  # app and breaks @electron/universal's merge. Neither belongs in the shipped app.
+  - "!node_modules/appdmg/**"
+  - "!node_modules/fs-xattr/**"
 
 mac:
   icon: icon.png
