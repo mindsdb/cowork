@@ -593,7 +593,7 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
       // Unpublish first so deletion never leaves an orphaned public copy.
       // The server enforces the same rule as a backstop.
       if (isPublished) await unpublishArtifact(actionPath);
-      await deleteArtifact(artifact?.folder || actionPath);
+      await deleteArtifact(artifact);
       setConfirmDelete(false);
       onDelete?.(actionPath);
       onClose?.();

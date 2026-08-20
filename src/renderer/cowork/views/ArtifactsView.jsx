@@ -22,6 +22,9 @@ import {
   publishTargetPath, artifactServeUrl, openArtifactFile,
 } from '../api';
 import { copyText } from '../lib/clipboard';
+import { projectNameOf } from '../lib/artifactProject';
+import { isArtifactActionAvailable, needsClientUnpublishBeforeDelete } from '../lib/artifactActions';
+import { useOrgMode } from '../../lib/orgMode';
 import { downloadArtifactFile } from '../lib/artifactDownload';
 import { isHtmlArtifact, isPublishableArtifact, isBackendArtifact, publishBlockedReason } from '../lib/artifactKinds';
 import { trackArtifactPublished } from '../lib/analytics';
@@ -62,21 +65,9 @@ const SORT_OPTIONS = [
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
 
-function projectNameOf(artifact, projects = []) {
-  const p = (artifact.path || '');
-  const match = projects.find((proj) => {
-    if (!proj.path) return false;
-    const pre = proj.path.replace(/\/+$/, '') + '/';
-    return p.startsWith(pre);
-  });
-  if (match) return match.name;
-  // Fallback — best-effort guess from path. Look for a /projects/X/
-  // segment, otherwise just show the parent dir name.
-  const m = p.match(/\/projects\/([^/]+)\//);
-  if (m) return m[1];
-  const parts = p.split('/').filter(Boolean);
-  return parts[parts.length - 2] || '—';
-}
+// projectNameOf moved to lib/artifactProject.js — in org mode the list spans every
+// project of the organization, so the label has to come from the card's projectId /
+// projectName rather than from its filesystem path.
 
 // Resolve to the actual project object so the label can navigate
 // the user to that project's detail view. Returns null when the
@@ -210,11 +201,15 @@ const CardIconButton = forwardRef(function CardIconButton({ onClick, ariaLabel, 
 });
 
 function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isMenuOpen, phase, onRetry, onOpenProject }) {
-  const canPreview = isInlinePreviewable(artifact);
+  const orgMode = useOrgMode();
+  // No in-app preview in org mode: the server serves no artifact content there, so
+  // the iframe would have nothing to load. The published URL is the only route to
+  // it, and it is the one that carries an access check.
+  const canPreview = !orgMode && isInlinePreviewable(artifact);
   const published = !!artifact.publishedUrl;
   // In the browser the artifact's address is its HTTP serve URL, not a local
   // OS path the user can't reach — open that "private" URL instead.
-  const privateUrl = host.isWeb ? artifactServeUrl(artifact) : '';
+  const privateUrl = !orgMode && host.isWeb ? artifactServeUrl(artifact) : '';
 
   const { hoverProps } = useRevealOnHover(isMenuOpen);
   const kebabRef = useRef(null);
@@ -255,12 +250,18 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
   // base-truncated with the extension always visible.
   const publishable = isPublishableArtifact(artifact);
   const { base, secondary } = splitArtifactName(artifact);
-  // ↗ — open the live thing: published URL, else served URL, else local file.
-  const onOpenExternal = (e) => {
-    e.stopPropagation();
+  // Open the live thing: published URL, else served URL, else local file. In org
+  // mode the last fallback is skipped — there is no local file the user can reach,
+  // and `privateUrl` is empty there by construction.
+  const openBest = () => {
     if (published) onOpenPublished();
     else if (privateUrl) onOpenPrivate();
-    else openArtifactFile(artifact);
+    else if (!orgMode) openArtifactFile(artifact);
+  };
+  // ↗
+  const onOpenExternal = (e) => {
+    e.stopPropagation();
+    openBest();
   };
 
   return (
@@ -270,7 +271,7 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
       padding="none"
       className="cw-artifact-card flex flex-col overflow-hidden"
       {...hoverProps}
-      onActivate={() => (canPreview ? onOpenViewer(artifact) : openArtifactFile(artifact))}
+      onActivate={() => (canPreview ? onOpenViewer(artifact) : openBest())}
     >
       {/* Body — icon + name·ext + actions, then the status row. */}
       <div className="flex flex-col gap-3 py-[14px] px-4 flex-1">
@@ -378,8 +379,9 @@ function ListHeaderRow() {
   );
 }
 
-function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onReveal, onDownload, onCopyUrl, onPublish, onUnpublish, onUpdate, onDelete, isMacPlatform = false }) {
+function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onReveal, onDownload, onCopyUrl, onPublish, onUnpublish, onUpdate, onDelete, busy = false, isMacPlatform = false }) {
   const isHtml = isHtmlArtifact(artifact);
+  const orgMode = useOrgMode();
   const published = !!artifact.publishedUrl;
   // Non-empty when this artifact's type may never be published (e.g.
   // fullstack-stateful-app). Keeps the item visible but disabled.
@@ -387,7 +389,9 @@ function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onReveal, onDown
   const items = [
     {
       id: 'open',
-      label: isHtml ? 'Open viewer' : 'Open',
+      // "Open viewer" would be a lie in org mode: no in-app viewer opens there,
+      // the published URL does.
+      label: isHtml && !orgMode ? 'Open viewer' : 'Open',
       icon: Ico.externalLink(13),
       onClick: onOpen,
     },
@@ -434,12 +438,19 @@ function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onReveal, onDown
     onDelete && { divider: true },
     onDelete && {
       id: 'delete',
-      label: 'Delete artifact',
+      // See the grid menu's delete for why this is disabled while busy.
+      label: busy ? 'Deleting…' : 'Delete artifact',
       icon: Ico.trash(13),
       danger: true,
+      disabled: busy,
       onClick: onDelete,
     },
-  ].filter(Boolean);
+  ]
+    .filter(Boolean)
+    // Mode gate on top of each item's own condition — see lib/artifactActions.
+    .filter((it) => it.divider || isArtifactActionAvailable(it.id, {
+      orgMode, hasBridge: host.isElectron, published,
+    }));
 
   return (
     <HoverMenu
@@ -458,10 +469,13 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
   const triggerRef = useRef(null);
   const { hovered, hoverProps } = useRevealOnHover(menuOpen);
 
-  const canPreview = isInlinePreviewable(artifact);
+  const orgMode = useOrgMode();
+  // See the ArtifactBubble note: no in-app preview and no private serve URL in org
+  // mode — the server serves no artifact content there.
+  const canPreview = !orgMode && isInlinePreviewable(artifact);
   const published = !!artifact.publishedUrl;
   const publishable = isPublishableArtifact(artifact);   // HTML + Markdown — see ArtifactBubble note
-  const privateUrl = host.isWeb ? artifactServeUrl(artifact) : '';
+  const privateUrl = !orgMode && host.isWeb ? artifactServeUrl(artifact) : '';
   const { base, secondary } = splitArtifactName(artifact);
   const project = projectNameOf(artifact, projects);
   const projectMatch = projectOf(artifact, projects);
@@ -471,15 +485,21 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
     if (!published) return false;
     return copyText(artifact.publishedUrl);
   };
+  const openUrl = async (url) => {
+    try { await host.openExternal(url); } catch { window.open(url, '_blank', 'noreferrer'); }
+  };
   const onRowOpen = () => {
     if (canPreview) onOpenViewer?.(artifact);
-    else openArtifactFile(artifact);
+    else if (published) openUrl(artifact.publishedUrl);
+    else if (privateUrl) openUrl(privateUrl);
+    else if (!orgMode) openArtifactFile(artifact);
   };
   const onOpenExternal = async (e) => {
     e.stopPropagation();
     const url = published ? artifact.publishedUrl : privateUrl;
-    if (url) { try { await host.openExternal(url); } catch { window.open(url, '_blank', 'noreferrer'); } }
-    else openArtifactFile(artifact);
+    // Org mode has no local file to fall back to, and no serve URL either.
+    if (url) await openUrl(url);
+    else if (!orgMode) openArtifactFile(artifact);
   };
   const openMenu = (e) => {
     e.stopPropagation();
@@ -583,6 +603,9 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
         onUnpublish={() => doUnpublish?.(artifact)}
         onUpdate={() => doUpdate?.(artifact)}
         onDelete={doDelete ? () => doDelete(artifact) : undefined}
+        // Derived from `phase` rather than threading a second prop: the row
+        // already receives it, and 'deleting' is exactly the window to disable.
+        busy={phase === 'deleting'}
         isMacPlatform={host.isMac() || /Mac|iPhone|iPod|iPad/.test(typeof navigator !== 'undefined' ? navigator.userAgent : '')}
       />
     </>
@@ -592,6 +615,10 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
 // ─── Composed view ───────────────────────────────────────────────────────
 
 export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, projects = [], onOpenProject, agentLabel = 'the agent' }) {
+  // For the grid's shared menu below. The list view's menu (ArtifactMenu) reads
+  // this for itself; the grid's is built here, so the gate has to be applied at
+  // both sites or one view silently keeps the desktop-only actions.
+  const orgMode = useOrgMode();
   const [list, setList] = useState(initial);
   const [viewer, setViewer] = useState(null);
   const { isMobile } = useBreakpoint();
@@ -794,18 +821,28 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
   const handleTrash = async (artifact) => {
     if (!artifact?.path || busyPaths.has(artifact.path)) return;
     setBusy(artifact.path, true);
+    // Delete is the slowest action on the card — it unpublishes remotely before
+    // it removes anything, and in org mode it also mints a turn key first — so
+    // without a phase the card sat there looking untouched for seconds and the
+    // only feedback was the row vanishing at the end.
+    setPhase(artifact.path, 'deleting');
     try {
       // Unpublish first so deletion never leaves an orphaned public copy.
       // If this fails we abort and keep the artifact (the server enforces
-      // the same rule as a backstop).
-      if (artifact.publishedUrl) {
+      // the same rule as a backstop). Skipped in org mode — see
+      // needsClientUnpublishBeforeDelete: there this call 501s and the server's
+      // own delete does the unpublish with the right credential.
+      if (needsClientUnpublishBeforeDelete({ orgMode, published: artifact.publishedUrl })) {
         await unpublishArtifact(artifact.path);
       }
-      await deleteArtifact(artifact.folder || artifact.path);
+      await deleteArtifact(artifact);
       removeOne(artifact.path);
       showToast({ kind: 'ok', message: 'Deleted.' });
     } catch (e) {
       showToast({ kind: 'error', message: `Delete failed: ${e?.message || e}` });
+      // Only on failure: on success the row is already gone, and clearing the
+      // phase of a removed path would just leave a dead entry in statusByPath.
+      setPhase(artifact.path, null);
     } finally {
       setBusy(artifact.path, false);
     }
@@ -1029,12 +1066,22 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
           items.push({ separator: true });
           items.push({
             id: 'delete',
-            label: 'Delete',
+            // Delete unpublishes remotely first, so it is the slowest item here.
+            // Disabled while it runs: handleTrash already ignores a re-entrant
+            // call, but a menu item that still looks clickable reads as "nothing
+            // happened" and invites the second click.
+            label: busyA ? 'Deleting…' : 'Delete',
             icon: Ico.trash(13),
             danger: true,
+            disabled: busyA,
             onClick: () => handleTrash(a),
           });
-          return items;
+          // Same mode gate the list view's menu applies — see lib/artifactActions.
+          // Note this menu marks its rule with `separator`, not `divider` like
+          // ArtifactMenu, so the pass-through key differs.
+          return items.filter((it) => it.separator || isArtifactActionAvailable(it.id, {
+            orgMode, hasBridge: host.isElectron, published,
+          }));
         })()}
       />
     </div>
