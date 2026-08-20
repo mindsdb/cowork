@@ -1582,12 +1582,15 @@ export default function SettingsView({
                         <span className="text-danger font-semibold">No credits available. </span>
                         <button
                           type="button"
-                          // ENG-1533: recorded before the branch, so the web
-                          // shell's window.open fallback counts the same as the
-                          // desktop's openExternal.
+                          // ENG-1533: recorded before the navigation, so web and
+                          // desktop count identically. `host.openExternal` is
+                          // always defined and already falls back to window.open
+                          // internally (platform/host.ts), with noopener —
+                          // guarding it here was dead code that would have opened
+                          // an unhardened window if it ever had run.
                           onClick={() => {
                             trackBillingOpened('no_credits_notice');
-                            return host.openExternal ? host.openExternal(MINDS_BILLING_URL) : window.open(MINDS_BILLING_URL, '_blank');
+                            return host.openExternal(MINDS_BILLING_URL);
                           }}
                           className={LINK_BTN}
                         >Top up balance →</button>
@@ -1732,7 +1735,7 @@ export default function SettingsView({
                                     type="button"
                                     onClick={() => {
                                       trackBillingOpened('locked_model_hint');
-                                      return host.openExternal ? host.openExternal(MINDS_BILLING_URL) : window.open(MINDS_BILLING_URL, '_blank');
+                                      return host.openExternal(MINDS_BILLING_URL);
                                     }}
                                     className={LINK_BTN}
                                   >Top up your balance</button>

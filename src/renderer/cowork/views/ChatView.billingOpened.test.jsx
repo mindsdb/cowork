@@ -49,6 +49,10 @@ beforeEach(() => {
   analyticsMock.trackKeyProvisioningRefused.mockClear();
   hostMock.host.openExternal.mockClear();
   hostMock.host.mindshubFinalize.mockReset().mockResolvedValue({ ok: true });
+  // Reset rather than clear: one test below overrides the resolved value, and
+  // without this both that value and the call count leak into every test after
+  // it, in file order.
+  hostMock.host.mindshubLogin.mockReset().mockResolvedValue({ ok: true });
 });
 
 describe('billing_opened trigger per call site', () => {

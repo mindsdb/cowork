@@ -622,6 +622,16 @@ describe('billing + provisioning events (ENG-1533)', () => {
     expect(event.properties.outcome).toBe('byok_offered');
   });
 
+  it('key_provisioning_refused records an unnamed outcome as unknown, never as a real one', async () => {
+    const fetchMock = mockFetch();
+    const { trackKeyProvisioningRefused } = await importAnalytics();
+
+    trackKeyProvisioningRefused();
+
+    const event = await sentEvent(fetchMock, 'key_provisioning_refused');
+    expect(event.properties.outcome).toBe('unknown');
+  });
+
   it('token_cap_hit carries the reason so the three credit blocks are distinguishable', async () => {
     const fetchMock = mockFetch();
     const { trackTokenCapHit } = await importAnalytics();
