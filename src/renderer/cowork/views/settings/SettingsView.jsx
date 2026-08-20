@@ -164,31 +164,50 @@ function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSett
 }
 
 // A titled group of settings sections. Since ENG-1320 these no longer
-// collapse: the settings subnav already isolates one section per screen, so a
-// second collapse level inside a section just hid content behind an extra
-// click for no benefit. The group is now a static titled card whose content is
-// always visible. The heading is kept so groups still surface in SR heading
-// navigation. Mobile stays flat, as it already was (ENG-990).
-function SettingsGroup({ title, children }) {
+// collapse by default: the settings subnav already isolates one section per
+// screen, so a second collapse level inside a section just hid content
+// behind an extra click for no benefit. The group is a static titled card
+// whose content is always visible, UNLESS `collapsible` opts a specific
+// group back in (e.g. Advanced Settings — rarely-touched power-user knobs
+// that read as clutter left expanded by default). The heading is kept as an
+// <h2> either way so groups still surface in SR heading navigation; the
+// collapse toggle lives on a button nested inside it, not the heading itself.
+// Mobile stays flat, as it already was (ENG-990) — collapsible groups behave
+// the same there, just without the card chrome.
+function SettingsGroup({ title, children, collapsible = false, defaultCollapsed = false }) {
   const { mobile } = useContext(SettingsLayoutContext);
+  const [collapsed, setCollapsed] = useState(collapsible && defaultCollapsed);
   const headingClass =
     'm-0 font-[family-name:var(--font-sans)] text-sm font-semibold tracking-[0.04em] uppercase text-ink-3';
+  const heading = collapsible ? (
+    <button
+      type="button"
+      onClick={() => setCollapsed((c) => !c)}
+      aria-expanded={!collapsed}
+      className="inline-flex items-center gap-1 border-0 bg-transparent p-0 cursor-pointer text-inherit"
+    >
+      <span className={`inline-flex shrink-0 text-ink-4 transition-transform ${collapsed ? '' : 'rotate-90'}`} aria-hidden="true">
+        {Ico.chevRight(12)}
+      </span>
+      {title}
+    </button>
+  ) : title;
   // Mobile (ENG-990): the master-detail screen already isolates one section,
   // so render the group title as a plain header with its content flowing
   // below, separated from the next group by spacing.
   if (mobile) {
     return (
       <div className="mb-1.5">
-        <h2 className={`${headingClass} pt-3 px-0.5 pb-2`}>{title}</h2>
-        <div className="pt-0 px-0.5 pb-1">{children}</div>
+        <h2 className={`${headingClass} pt-3 px-0.5 pb-2`}>{heading}</h2>
+        {!collapsed && <div className="pt-0 px-0.5 pb-1">{children}</div>}
       </div>
     );
   }
 
   return (
     <div className="border border-solid border-line rounded-card bg-surface-glass backdrop-blur-[var(--surface-glass-blur)] mb-[14px] overflow-hidden">
-      <h2 className={`${headingClass} pt-[14px] px-[18px] pb-0`}>{title}</h2>
-      <div className="pt-2.5 px-[18px] pb-2">{children}</div>
+      <h2 className={`${headingClass} pt-[14px] px-[18px] ${collapsed ? 'pb-[14px]' : 'pb-0'}`}>{heading}</h2>
+      {!collapsed && <div className="pt-2.5 px-[18px] pb-2">{children}</div>}
     </div>
   );
 }
@@ -1857,7 +1876,7 @@ export default function SettingsView({
         </SettingsGroup>
 
         {hasBudgetSettings && (
-          <SettingsGroup title="Advanced Settings">
+          <SettingsGroup title="Advanced Settings" collapsible defaultCollapsed>
             <Section
               title="Max steps per task"
               subtitle={`How many actions (running code, reading files, searching) ${agentLabel || 'Anton'} may take on one request before pausing to check in with you. Raise it so big tasks finish in one go; lower it for a tighter leash on time and cost.`}

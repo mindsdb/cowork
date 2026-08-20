@@ -76,10 +76,15 @@ const noLimitBox = () => {
   return el;
 };
 
+// Advanced Settings defaults to collapsed — every test below needs its
+// fields visible first.
+const expandAdvanced = () => fireEvent.click(screen.getByRole('button', { name: 'Advanced Settings' }));
+
 describe('SettingsView — Max tokens per task', () => {
   it('writes the top of the range when "No limit" is ticked', () => {
     const props = baseProps(withBudgets());
     render(<SettingsView {...props} />);
+    expandAdvanced();
 
     fireEvent.click(noLimitBox());
 
@@ -93,12 +98,14 @@ describe('SettingsView — Max tokens per task', () => {
 
   it('shows as ticked when the stored value is already the max', () => {
     render(<SettingsView {...baseProps(withBudgets({ maxTurnTokens: '50000000' }))} />);
+    expandAdvanced();
     expect(noLimitBox()).toBeChecked();
   });
 
   it('restores a real number when "No limit" is unticked, never the max', () => {
     const props = baseProps(withBudgets({ maxTurnTokens: '50000000' }));
     render(<SettingsView {...props} />);
+    expandAdvanced();
 
     fireEvent.click(noLimitBox());
 
@@ -110,12 +117,14 @@ describe('SettingsView — Max tokens per task', () => {
 
   it('disables the number input while "No limit" is on', () => {
     render(<SettingsView {...baseProps(withBudgets({ maxTurnTokens: '50000000' }))} />);
+    expandAdvanced();
     expect(screen.getByLabelText('Max tokens per task')).toBeDisabled();
   });
 
   it('displays and accepts Max tokens per task in millions, storing the natural count', () => {
     const props = baseProps(withBudgets({ maxTurnTokens: '1250000' }));
     render(<SettingsView {...props} />);
+    expandAdvanced();
 
     const input = screen.getByLabelText('Max tokens per task');
     expect(input).toHaveValue(1.25); // 1_250_000 tokens, shown as "1.25"
@@ -132,6 +141,7 @@ describe('SettingsView — Max tokens per task', () => {
     // that would catch it if that boundary ever leaked.
     const props = baseProps(withBudgets({ maxTurnTokens: '1250000' }));
     render(<SettingsView {...props} />);
+    expandAdvanced();
 
     fireEvent.change(screen.getByLabelText('Max tokens per task'), { target: { value: '2' } });
     const [, written] = props.setSetting.mock.calls.at(-1);
@@ -147,6 +157,7 @@ describe('SettingsView — Max tokens per task', () => {
   it('reverts to the factory default when the field is cleared and blurred', () => {
     const props = baseProps(withBudgets());
     render(<SettingsView {...props} />);
+    expandAdvanced();
 
     const input = screen.getByLabelText('Max tokens per task');
     fireEvent.change(input, { target: { value: '' } });
@@ -160,6 +171,7 @@ describe('SettingsView — Max tokens per task', () => {
   it('reverts Max steps per task and Max auto-continues to default too, on clear + blur', () => {
     const props = baseProps(withBudgets());
     render(<SettingsView {...props} />);
+    expandAdvanced();
 
     const steps = screen.getByLabelText('Max steps per task');
     fireEvent.change(steps, { target: { value: '' } });
@@ -181,8 +193,30 @@ describe('SettingsView — Max tokens per task', () => {
     // older server rejects 400s the whole multi-key save.
     const { maxTurnTokens, ...older } = withBudgets();
     render(<SettingsView {...baseProps(older)} />);
+    expandAdvanced();
     expect(findNoLimit()).toBeUndefined();
     // …while the two budgets that server DOES have stay visible.
     expect(screen.getByLabelText('Max steps per task')).toBeInTheDocument();
+  });
+});
+
+describe('SettingsView — Advanced Settings collapse', () => {
+  it('starts collapsed, hiding the budget fields', () => {
+    render(<SettingsView {...baseProps(withBudgets())} />);
+    expect(screen.queryByLabelText('Max steps per task')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Advanced Settings' })).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('expands on click, revealing the fields, and collapses again on a second click', () => {
+    render(<SettingsView {...baseProps(withBudgets())} />);
+    const toggle = screen.getByRole('button', { name: 'Advanced Settings' });
+
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByLabelText('Max steps per task')).toBeInTheDocument();
+
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByLabelText('Max steps per task')).not.toBeInTheDocument();
   });
 });
