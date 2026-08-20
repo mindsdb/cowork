@@ -457,10 +457,11 @@ export interface ProvisionResult {
   // The minted key's prefix (identifies it for rollback in the renewal
   // path — see commitRenewedKey).
   prefix?: string;
-  // True iff the auth-service rejected the request because the user
-  // lacks the entitlement to mint LLM keys (free tier). Surfaced to
-  // the renderer so it can route to the paywall instead of treating
-  // this as a generic failure.
+  // True iff the auth-service refused to mint an LLM key (402, or a body
+  // with `code: 'upgrade_required'`). Surfaced to the renderer so it can
+  // route — BYOK on first run, billing on reconnect — instead of treating
+  // this as a generic failure. Not a tier: see the mint call for what the
+  // current auth-service actually returns (ENG-1533).
   upgradeRequired?: boolean;
   // True iff the mint hit the account's active-key cap (HTTP 409). The
   // renewal path treats this as "retry once, deleting own prior key".
@@ -855,9 +856,26 @@ export async function provisionAntonApiKey(
 
   // Step 2: mint a new key. The auth-service returns the full secret
   // exactly once in the create response — store it now. A 402 (or a
-  // body with `code: 'upgrade_required'`) means the user is on the
-  // free tier — surface that distinctly so the renderer can show the
-  // paywall instead of a generic error.
+  // body with `code: 'upgrade_required'`) is a provisioning refusal:
+  // MindsHub would not mint an LLM key. Surfaced distinctly so the
+  // renderer can route (BYOK on first run, billing on reconnect)
+  // instead of showing a generic error.
+  //
+  // ENG-1533: this branch is back-compat, not the live path. It is NOT
+  // "the user is on the free tier", as this comment used to say — there
+  // are no tiers under pay as you go. In the current auth-service the
+  // create handler (`auth/keys/views/api_keys.py`) answers 201, 409
+  // `api_key_limit_reached`, or 401/403/503 from its permission classes;
+  // it has no 402 path, and `upgrade_required_response()` has no callers.
+  // The only live 402 there is `wallet_empty`, on the separate
+  // inference-authorize endpoint. Kept because an older auth-service
+  // deployment can still answer this way, and because the renderer now
+  // counts the refusal (`key_provisioning_refused`) on its three handler
+  // paths. Note what a zero count does and does not prove: it covers only
+  // those three. `doKeyLifecycleCheck` also calls `provisionAntonApiKey` and
+  // consumes the same refusal without reaching a renderer handler, so the
+  // renewal path emits nothing either way. Zero means dead on the instrumented
+  // paths, not dead everywhere.
   try {
     const res = await timedFetch(`${AUTH_SERVICE_URL}/api-keys/`, {
       method: 'POST',

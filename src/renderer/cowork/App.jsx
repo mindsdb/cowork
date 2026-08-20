@@ -59,7 +59,7 @@ import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
 import { isArtifactTipDismissed, dismissArtifactTip, dismissIfUntouched } from './components/onboarding/onboardingStore';
 import { recommendedModelOptions, providerValueToType,
          mergeRecommendedModels } from './lib/settingsTransform';
-import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery, trackFirstResponse, classifyFirstResponse } from './lib/analytics';
+import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery, trackFirstResponse, classifyFirstResponse, trackKeyProvisioningRefused } from './lib/analytics';
 import { MODEL_ROUTER_ID, MODEL_ROUTER } from './lib/modelCatalog';
 
 // One-of-ten encouraging follow-ups picked when a connect task is
@@ -2950,7 +2950,13 @@ function AppCore() {
       // seconds (org bootstrap + server restart) and is not a sign-in gate.
       setSsoConnected(true);
       try {
-        await host.mindshubFinalize();
+        // The result is still not acted on — key provisioning is not a sign-in
+        // gate — but a refusal is now countable (ENG-1533). A 402 here leaves the
+        // user signed in with no working key, no BYOK route and no message; the
+        // `unhandled` outcome is how often that happens. Fixing the UX needs its
+        // own ticket; this only makes it visible.
+        const finalizeResult = await host.mindshubFinalize();
+        if (finalizeResult?.upgradeRequired) trackKeyProvisioningRefused('unhandled');
       } catch (e) {
         console.warn('[sso] finalize failed after sign-in (account is authenticated):', e);
       }

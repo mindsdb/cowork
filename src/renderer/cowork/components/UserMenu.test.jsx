@@ -11,7 +11,11 @@ const hostMock = vi.hoisted(() => ({
   openExternal: vi.fn(async () => { }),
 }));
 vi.mock('../../platform/host', () => hostMock);
-vi.mock('../lib/analytics', () => ({ resetDeviceIdentity: vi.fn() }));
+const analyticsMock = vi.hoisted(() => ({
+  resetDeviceIdentity: vi.fn(),
+  trackBillingOpened: vi.fn(),
+}));
+vi.mock('../lib/analytics', () => analyticsMock);
 
 import UserMenu from './UserMenu';
 import { LOGOUT_CONFIRM_COPY } from '../hooks/useLogout';
@@ -37,6 +41,7 @@ const openMenu = () => {
 beforeEach(() => {
   hostMock.openExternal.mockClear();
   hostMock.host.logout.mockClear();
+  analyticsMock.trackBillingOpened.mockClear();
   hostMock.host.isElectron = true;
   hostMock.host.isWeb = false;
 });
@@ -131,4 +136,28 @@ describe('UserMenu — dropdown (ENG-1545 curated items)', () => {
     fireEvent.click(screen.getByRole('button', { name: LOGOUT_CONFIRM_COPY.confirmLabel }));
     expect(hostMock.host.logout).toHaveBeenCalled();
   });
+});
+
+// ENG-1533: the menu is a real route to the billing page, so it emits
+// billing_opened — but as `nav`, which is not upgrade intent. Keeping it
+// separable is what stops a token_cap_hit -> billing_opened funnel counting
+// people who were only checking their usage.
+describe('UserMenu — billing route is measured as navigation (ENG-1533)', () => {
+  it('records trigger=nav on Billing & Usage', () => {
+    render(<UserMenu user={user} />);
+    openMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: /Billing & Usage/ }));
+    expect(analyticsMock.trackBillingOpened).toHaveBeenCalledWith('nav');
+    expect(hostMock.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
+  });
+
+  it.each([['Members'], ['Help & Feedback'], ['Settings']])(
+    'records nothing for %s — it is not a billing route',
+    (label) => {
+      render(<UserMenu user={user} onOpenSettings={vi.fn()} />);
+      openMenu();
+      fireEvent.click(screen.getByRole('menuitem', { name: new RegExp(label) }));
+      expect(analyticsMock.trackBillingOpened).not.toHaveBeenCalled();
+    },
+  );
 });

@@ -4,7 +4,7 @@ import Ico from '../../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchRecommendedModels } from '../../api';
 import { providerTypeToKeyField, providerValueToType, resolveRoleModel, resolveModelPickerValue, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore, toDisplayUnits, toNaturalUnits, formatCount } from '../../lib/settingsTransform';
 import { MODEL_REFRESH_TTL_MS } from '../../lib/modelRefresh';
-import { trackHarnessSwapped } from '../../lib/analytics';
+import { trackHarnessSwapped, trackBillingOpened } from '../../lib/analytics';
 import { copyText as copyToClipboard } from '../../lib/clipboard';
 import { deriveProviderStatus, friendlyProviderError } from '../../lib/providerStatus';
 import { ToggleGroup } from '../../components/ui/ToggleGroup';
@@ -1625,7 +1625,16 @@ export default function SettingsView({
                         <span className="text-danger font-semibold">No credits available. </span>
                         <button
                           type="button"
-                          onClick={() => host.openExternal ? host.openExternal(MINDS_BILLING_URL) : window.open(MINDS_BILLING_URL, '_blank')}
+                          // ENG-1533: recorded before the navigation, so web and
+                          // desktop count identically. `host.openExternal` is
+                          // always defined and already falls back to window.open
+                          // internally (platform/host.ts), with noopener —
+                          // guarding it here was dead code that would have opened
+                          // an unhardened window if it ever had run.
+                          onClick={() => {
+                            trackBillingOpened('no_credits_notice');
+                            return host.openExternal(MINDS_BILLING_URL);
+                          }}
                           className={LINK_BTN}
                         >Top up balance →</button>
                       </div>
@@ -1767,7 +1776,10 @@ export default function SettingsView({
                                   {displayModelLabel(curModel, settings.modelLabels || {})} needs credits.{' '}
                                   <button
                                     type="button"
-                                    onClick={() => host.openExternal ? host.openExternal(MINDS_BILLING_URL) : window.open(MINDS_BILLING_URL, '_blank')}
+                                    onClick={() => {
+                                      trackBillingOpened('locked_model_hint');
+                                      return host.openExternal(MINDS_BILLING_URL);
+                                    }}
                                     className={LINK_BTN}
                                   >Top up your balance</button>
                                   {' '}to use it.

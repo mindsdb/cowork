@@ -19,6 +19,10 @@ const hostMock = vi.hoisted(() => ({
 // Mutable keycloak mock so a test can flip authenticated (standalone/localhost
 // auto-finalize path). Hosted cloud never authenticates here → stays false.
 const keycloakMock = vi.hoisted(() => ({ authenticated: false }));
+// ENG-1533: the only analytics this screen emits is the provisioning-refusal
+// fork. Mocked so the assertion is on the call, not on a network POST.
+const analyticsMock = vi.hoisted(() => ({ trackKeyProvisioningRefused: vi.fn() }));
+vi.mock('../../cowork/lib/analytics', () => analyticsMock);
 vi.mock('../../platform/host', () => ({ host: hostMock }));
 vi.mock('../../cowork/api', () => ({ BASE: '/api/v1', fetchRecommendedModels: vi.fn(async () => ({})) }));
 vi.mock('../../lib/keycloak', () => ({ keycloak: keycloakMock }));
@@ -240,6 +244,45 @@ describe('OnboardingScreen — BYOK setup-deferral hands the model up (ENG-922)'
 
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
     expect(onComplete).not.toHaveBeenCalled();
+  });
+});
+// ENG-1533: on first run a provisioning refusal does NOT show a paywall — it
+// offers BYOK. That is why the refusal is its own event carrying an `outcome`,
+// rather than a `billing_opened` trigger: on the commonest path there is no
+// billing open to record.
+describe('OnboardingScreen — a refused key routes to BYOK and is counted (ENG-1533)', () => {
+  beforeEach(() => {
+    hostMock.isWeb = false;
+    hostMock.isElectron = true;
+    hostMock.openExternal = vi.fn();
+    hostMock.saveSettings = vi.fn(async () => true);
+    hostMock.checkInstall = vi.fn(async () => ({ antonInstalled: true, serverDepsReady: true }));
+    hostMock.mindshubSignup = vi.fn(async () => ({ ok: true, access_token: 'kc-t' }));
+    keycloakMock.authenticated = false;
+    analyticsMock.trackKeyProvisioningRefused.mockClear();
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({}) })));
+  });
+
+  it('records outcome=byok_offered when MindsHub declines to mint a key', async () => {
+    hostMock.mindshubFinalize = vi.fn(async () => ({ ok: false, upgradeRequired: true }));
+    render(<OnboardingScreen coworker={coworker} onComplete={() => {}} />);
+    (await screen.findByRole('button', { name: /Create a free account/ })).click();
+
+    await waitFor(() =>
+      expect(analyticsMock.trackKeyProvisioningRefused).toHaveBeenCalledWith('byok_offered'),
+    );
+    // The consent write is the BYOK route's first step — proof the outcome name
+    // matches what the handler actually did.
+    expect(hostMock.saveSettings).toHaveBeenCalledWith('ANTON_TERMS_CONSENT=true');
+  });
+
+  it('records nothing when the key is provisioned normally', async () => {
+    hostMock.mindshubFinalize = vi.fn(async () => ({ ok: true, apiKey: 'mdb_t' }));
+    render(<OnboardingScreen coworker={coworker} onComplete={() => {}} />);
+    (await screen.findByRole('button', { name: /Create a free account/ })).click();
+
+    await waitFor(() => expect(hostMock.mindshubFinalize).toHaveBeenCalledTimes(1));
+    expect(analyticsMock.trackKeyProvisioningRefused).not.toHaveBeenCalled();
   });
 });
 

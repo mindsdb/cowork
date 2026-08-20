@@ -22,6 +22,7 @@ import Menu from './ui/Menu';
 import { ConfirmModal } from './ConfirmModal';
 import { useLogout, LOGOUT_CONFIRM_COPY } from '../hooks/useLogout';
 import { accountInitials } from '../lib/accountUser';
+import { trackBillingOpened } from '../lib/analytics';
 import { openExternal } from '../../platform/host';
 import {
   MINDS_BILLING_URL,
@@ -35,12 +36,19 @@ const icon = (I) => <I size={14} strokeWidth={1.5} aria-hidden="true" />;
 const EXTERNAL_HINT = <ArrowUpRight size={12} strokeWidth={1.5} aria-hidden="true" />;
 const OPENS_IN_BROWSER = 'Opens in your browser';
 
-const externalItem = (Ico, label, url) => ({
+// `beforeOpen` runs just before the jump out, for the one destination that is
+// measured (ENG-1533). Per-item rather than inside this helper: Members and
+// Help & Feedback are not billing, and stamping them with a billing event to
+// save a parameter is how an event stops meaning its name.
+const externalItem = (Ico, label, url, beforeOpen) => ({
   icon: icon(Ico),
   label,
   hint: EXTERNAL_HINT,
   title: OPENS_IN_BROWSER,
-  onClick: () => openExternal(url),
+  onClick: () => {
+    beforeOpen?.();
+    openExternal(url);
+  },
 });
 
 function Avatar({ user }) {
@@ -87,7 +95,11 @@ export function UserMenu({ user, onOpenSettings }) {
       ),
     },
     { icon: icon(Settings), label: 'Settings', onClick: onOpenSettings },
-    externalItem(CreditCard, 'Billing & Usage', MINDS_BILLING_URL),
+    // `nav`, not a paywall trigger (ENG-1533): nothing blocked this user, they
+    // went looking. It has to be recorded — it is a real route to the billing
+    // page, and a capped user who dismisses the card and uses the menu instead
+    // is otherwise invisible — but any upgrade-intent analysis must exclude it.
+    externalItem(CreditCard, 'Billing & Usage', MINDS_BILLING_URL, () => trackBillingOpened('nav')),
     externalItem(UsersRound, 'Members', MINDS_MEMBERS_URL),
     externalItem(CircleHelp, 'Help & Feedback', MINDS_SUPPORT_URL),
     // Logout on both shells: Electron clears the refresh token + stored keys via
