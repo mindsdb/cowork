@@ -50,11 +50,16 @@ const EVENTS = {
   // you are querying and where in it they land. BOTH projects have an
   // unlabelled mixed window; only the dates differ:
   //
-  //   staging     up to 14 Aug 2026   all `token_limit`. Safe to relabel
-  //               14 Aug 2026 onward  MIXED — ENG-1537 merged to staging (#648)
-  //   production  up to 17 Aug 2026   all `token_limit`. Safe to relabel
-  //               17 Aug 2026 onward  MIXED — the same gate reached main in the
-  //                                   17 Aug weekly release (#625)
+  //   staging     before 2026-08-14 22:10 UTC  all `token_limit`. Safe to relabel
+  //               after it                     MIXED — ENG-1537 merged to staging (#648)
+  //   production  before 2026-08-17 00:03 UTC  all `token_limit`. Safe to relabel
+  //               after it                     MIXED — the same gate reached main in
+  //                                            the weekly release (#625)
+  //
+  // Those bounds are UTC on purpose. The PostHog project renders in
+  // America/Los_Angeles, where both merges fall on the previous day — 14 Aug
+  // 15:10 and 16 Aug 17:03. A rule written as "up to 17 Aug" would mark prod's
+  // 16 Aug evening events safe to relabel when they are already mixed.
   //
   // A mixed-window event is `token_limit` OR `included_allowance_exhausted`
   // with nothing on it to say which, and the two are not separable after the
