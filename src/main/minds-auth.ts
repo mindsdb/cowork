@@ -5,6 +5,7 @@ import { coworkHome, coworkEnvPath, coworkStatePath } from './cowork-home';
 import { getInstallationId } from './installation-id';
 import { authHeader } from './server-auth';
 import { retryOnTransientLock } from './fs-retry';
+import { isMindsBaseUrl } from '../shared/minds-endpoint';
 import {
   MINDS_API_HOST,
   MINDS_KEYCLOAK_BASE,
@@ -912,8 +913,6 @@ const MINDS_KEYS = [
   // them out means a user's own OpenAI key survives a MindsHub login,
   // the same way the Anthropic key already does.
   'ANTON_MINDS_API_KEY',
-  'ANTON_PLANNING_PROVIDER',
-  'ANTON_CODING_PROVIDER',
   // NOTE: ANTON_PLANNING_MODEL / ANTON_CODING_MODEL are intentionally NOT
   // stripped (ENG-739). They may hold a value the user set deliberately for
   // the standalone `anton` CLI (e.g. `ANTON_PLANNING_MODEL=latest:opus` via a
@@ -926,6 +925,34 @@ const MINDS_KEYS = [
   'ANTON_OPENAI_API_KEY_CUSTOM',
   'ANTON_GEMINI_API_KEY',
 ];
+
+// Provider selection, held apart from MINDS_KEYS because sign-in replaces it
+// only when it is also the thing choosing the provider (see runsOwnEndpoint).
+const PROVIDER_KEYS = ['ANTON_PLANNING_PROVIDER', 'ANTON_CODING_PROVIDER'];
+
+function envValue(content: string, key: string): string {
+  for (const line of content.split('\n')) {
+    if (line.startsWith(key + '=')) return line.slice(key.length + 1).trim();
+  }
+  return '';
+}
+
+/**
+ * Whether the config already points inference at an endpoint of the user's own.
+ *
+ * Signing in is how MindsHub is connected for publishing and connectors too, so
+ * it must not double as a routing change: someone running a local model keeps
+ * running it. Credentials are still written -- only the provider selection is
+ * left alone. Both the stored and incoming MindsHub URLs have to disagree with
+ * the base URL, so a sign-in that moves the account between environments does
+ * not read as a custom endpoint.
+ */
+export function runsOwnEndpoint(existingEnv: string, mindsHost: string): boolean {
+  const base = envValue(existingEnv, 'ANTON_OPENAI_BASE_URL');
+  if (!base) return false;
+  return !isMindsBaseUrl(base, envValue(existingEnv, 'ANTON_MINDS_URL'))
+    && !isMindsBaseUrl(base, mindsHost);
+}
 
 // Writes the MindsHub LLM credentials to the Cowork config home's .env
 // (coworkEnvPath(); merge, not overwrite) and restarts the python server so it
@@ -957,15 +984,18 @@ const MINDS_KEYS = [
 // model unset for a fresh user lets the server resolve the right model per tier
 // (paid → sonnet/haiku, free → first enabled).
 export function buildMindsEnvContent(existing: string, apiKey: string, host: string): string {
+  const keepProvider = runsOwnEndpoint(existing, host);
+  const strip = keepProvider ? MINDS_KEYS : [...MINDS_KEYS, ...PROVIDER_KEYS];
   const lines = existing.split('\n')
-    .filter(l => !MINDS_KEYS.some(k => l.startsWith(k + '=')));
+    .filter(l => !strip.some(k => l.startsWith(k + '=')));
   lines.push(
     'ANTON_MINDS_ENABLED=true',
     `ANTON_MINDS_URL=${host}`,
     `ANTON_MINDS_API_KEY=${apiKey}`,
-    'ANTON_PLANNING_PROVIDER=minds-cloud',
-    'ANTON_CODING_PROVIDER=minds-cloud',
   );
+  if (!keepProvider) {
+    lines.push('ANTON_PLANNING_PROVIDER=minds-cloud', 'ANTON_CODING_PROVIDER=minds-cloud');
+  }
   return lines.filter(Boolean).join('\n') + '\n';
 }
 
@@ -993,10 +1023,20 @@ export function replaceMindsApiKeyLine(existing: string, apiKey: string): string
 // line (or a stale login-written `latest:` pin) would clobber a model the user
 // just fixed via the picker, with no way to leave the model untouched. Writing
 // only these keys leaves the DB's model rows (and any picker fix) alone.
-export function mindsSignInSettingWrites(apiKey: string, host: string): Array<{ key: string; value: string }> {
-  return [
+export function mindsSignInSettingWrites(
+  apiKey: string,
+  host: string,
+  keepProvider = false,
+): Array<{ key: string; value: string }> {
+  const credentials = [
     { key: 'minds_api_key', value: apiKey },
     { key: 'minds_url', value: host },
+  ];
+  // A user on their own endpoint gets the credential and nothing else --
+  // repointing here would undo the choice the .env write just preserved.
+  if (keepProvider) return credentials;
+  return [
+    ...credentials,
     { key: 'planning_provider', value: 'minds_cloud' },
     { key: 'coding_provider', value: 'minds_cloud' },
     // router_provider too (ENG-1632): with no stored row the server serializes
@@ -1063,6 +1103,9 @@ export async function writeMindsKeyToEnvAndRestart(apiKey: string): Promise<void
   }
   const envPath = coworkEnvPath();
   const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
+  // Decided from the .env as it was BEFORE this sign-in rewrote it, so the
+  // provider decision and the credential write agree.
+  const keepProvider = runsOwnEndpoint(existing, MINDS_API_HOST);
   // Atomic + lock-tolerant write that wedged onboarding on Windows (ENG-1209).
   // NOT fatal on the installed path: the DB sync below is the authoritative
   // credential store, so an exhausted-retry .env failure must not abort there and
@@ -1134,7 +1177,7 @@ export async function writeMindsKeyToEnvAndRestart(apiKey: string): Promise<void
     // partial "provider=minds-cloud + no/stale key" state would leave
     // config_ready true while every message 401s. Bailing keeps the prior
     // config intact until the next sign-in retries the whole sequence.
-    for (const { key, value } of mindsSignInSettingWrites(apiKey, MINDS_API_HOST)) {
+    for (const { key, value } of mindsSignInSettingWrites(apiKey, MINDS_API_HOST, keepProvider)) {
       let ok = false;
       try {
         // authHeader(): main-process fetch — the webRequest injection hook

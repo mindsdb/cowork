@@ -9,7 +9,7 @@ vi.mock('electron', () => ({
   BrowserWindow: class {},
 }));
 
-import { buildMindsEnvContent, mindsSignInSettingWrites } from './minds-auth';
+import { buildMindsEnvContent, mindsSignInSettingWrites, runsOwnEndpoint } from './minds-auth';
 
 describe('buildMindsEnvContent (MindsHub sign-in .env)', () => {
   // ─── ENG-739 / ENG-597 regression: sign-in must not pin a model ─────
@@ -97,5 +97,59 @@ describe('mindsSignInSettingWrites (DB sync on sign-in)', () => {
     const byKey = Object.fromEntries(writes.map((w) => [w.key, w.value]));
     expect(byKey.minds_api_key).toBe('mdb_new');
     expect(byKey.minds_url).toBe('https://api.mindshub.ai');
+  });
+});
+
+// Connecting MindsHub is also how publishing and connectors are enabled, so it
+// must not silently move a user's turns off the endpoint they chose.
+describe('sign-in leaves a user-owned endpoint routing alone', () => {
+  const LAN = [
+    'ANTON_OPENAI_API_KEY=not-needed',
+    'ANTON_OPENAI_BASE_URL=http://192.168.1.100:1234/v1',
+    'ANTON_PLANNING_PROVIDER=openai-compatible',
+    'ANTON_CODING_PROVIDER=openai-compatible',
+  ].join('\n') + '\n';
+
+  it('detects a LAN endpoint as the user\'s own', () => {
+    expect(runsOwnEndpoint(LAN, 'https://api.mindshub.ai')).toBe(true);
+  });
+
+  it('does not treat a MindsHub base URL as the user\'s own', () => {
+    const hosted = 'ANTON_OPENAI_BASE_URL=https://api.mindshub.ai/v1\n';
+    expect(runsOwnEndpoint(hosted, 'https://api.mindshub.ai')).toBe(false);
+  });
+
+  it('does not treat the incoming MindsHub host as the user\'s own', () => {
+    const other = [
+      'ANTON_MINDS_URL=https://api.staging.mindshub.ai',
+      'ANTON_OPENAI_BASE_URL=https://api.staging.mindshub.ai/v1',
+    ].join('\n') + '\n';
+    expect(runsOwnEndpoint(other, 'https://api.mindshub.ai')).toBe(false);
+  });
+
+  it('keeps the .env provider lines pointed at the local endpoint', () => {
+    const out = buildMindsEnvContent(LAN, 'mdb_new', 'https://api.mindshub.ai');
+    expect(out).toContain('ANTON_PLANNING_PROVIDER=openai-compatible');
+    expect(out).toContain('ANTON_CODING_PROVIDER=openai-compatible');
+    expect(out).not.toContain('ANTON_PLANNING_PROVIDER=minds-cloud');
+    // The credential still lands -- publishing and connectors need it.
+    expect(out).toContain('ANTON_MINDS_API_KEY=mdb_new');
+    expect(out).toContain('ANTON_MINDS_URL=https://api.mindshub.ai');
+    // ...and the base URL it routes against is untouched.
+    expect(out).toContain('ANTON_OPENAI_BASE_URL=http://192.168.1.100:1234/v1');
+  });
+
+  it('writes only the credential to the DB, never a provider repoint', () => {
+    const keys = mindsSignInSettingWrites('mdb_new', 'https://api.mindshub.ai', true)
+      .map((w) => w.key);
+    expect(keys).toEqual(['minds_api_key', 'minds_url']);
+  });
+
+  it('still repoints when no endpoint of the user\'s own is configured', () => {
+    const out = buildMindsEnvContent('ANTON_TERMS_CONSENT=true\n', 'mdb_new', 'https://api.mindshub.ai');
+    expect(out).toContain('ANTON_PLANNING_PROVIDER=minds-cloud');
+    const keys = mindsSignInSettingWrites('mdb_new', 'https://api.mindshub.ai').map((w) => w.key);
+    expect(keys).toContain('planning_provider');
+    expect(keys).toContain('router_provider');
   });
 });
