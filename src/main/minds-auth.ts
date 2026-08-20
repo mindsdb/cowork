@@ -869,8 +869,12 @@ export async function provisionAntonApiKey(
   // The only live 402 there is `wallet_empty`, on the separate
   // inference-authorize endpoint. Kept because an older auth-service
   // deployment can still answer this way, and because the renderer now
-  // counts the refusal (`key_provisioning_refused`) — if the event never
-  // fires, this branch is dead and can go.
+  // counts the refusal (`key_provisioning_refused`) on its three handler
+  // paths. Note what a zero count does and does not prove: it covers only
+  // those three. `doKeyLifecycleCheck` also calls `provisionAntonApiKey` and
+  // consumes the same refusal without reaching a renderer handler, so the
+  // renewal path emits nothing either way. Zero means dead on the instrumented
+  // paths, not dead everywhere.
   try {
     const res = await timedFetch(`${AUTH_SERVICE_URL}/api-keys/`, {
       method: 'POST',
