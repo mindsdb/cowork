@@ -59,10 +59,12 @@ jobs:
   downloads:
     runs-on: ubuntu-latest
     # The resume test reassembles a whole installer, once per platform per
-    # channel, and the browser test pulls one more per platform. So a nightly
-    # run over both channels moves six ~220 MB installers, and a release run
-    # over prod alone moves four.
-    timeout-minutes: 45
+    # channel, and the browser test pulls one more per platform. Across the four
+    # platforms (mac, windows and a deb per arch) a nightly run over both
+    # channels moves twelve installers and a release run over prod alone moves
+    # eight. The debs are roughly half the size of a .pkg/.exe, so the bytes
+    # grew by about half again rather than doubling.
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

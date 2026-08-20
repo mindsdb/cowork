@@ -106,10 +106,10 @@ deb:
   # the user's home. Carries upstream's after-remove.tpl for the same reason.
   afterRemove: build/deb-scripts/postrm.sh
   # Overriding depends replaces electron-builder's defaults, so the default
-  # runtime libs are repeated here. git and curl are required by the
-  # first-run cowork-server installer (uv bootstrap + git-based install).
-  # lsof backs killProcessOnPort()'s orphan cowork-server reaping
-  # (server-process.ts) — not installed by default on a minimal Debian.
+  # runtime libs are repeated here. curl bootstraps uv on first run; git is for
+  # coding mode's per-task worktrees, NOT the server install (every packaged
+  # kind resolves the pypi channel). lsof backs killProcessOnPort()'s orphan
+  # reaping (server-process.ts) — none are guaranteed on a minimal Debian.
   depends:
     - libgtk-3-0
     - libnotify4

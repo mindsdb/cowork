@@ -33,23 +33,24 @@ output from clobbering the host's.
 
 - Installs to `/opt/MindsHub Cowork/`, with `mindshub-cowork` on `PATH` via
   `update-alternatives`, plus a desktop entry and hicolor icon.
-- Declares `git` and `curl` as dependencies: the first-run installer
-  bootstraps `uv` with `curl | sh` and installs cowork-server from git, so
-  both must exist on the system (there is no winget/Xcode equivalent flow on
-  Linux). `libsecret-1-0` (keytar's runtime dependency) is part of
+- Declares `git` and `curl` as dependencies: `curl` for the first-run `uv`
+  bootstrap (`curl | sh`), and `git` for the per-task worktrees coding mode
+  creates inside a project folder. Neither is guaranteed on a minimal Debian.
+  `libsecret-1-0` (keytar's runtime dependency) is part of
   electron-builder's default deb depends and is kept in the list.
-- Like the Windows installer, the package is unsigned; there is no apt
-  repository yet, so distribution is a direct `.deb` download installed with
-  `sudo apt install ./mindshub-cowork_<version>_<arch>.deb`.
+- The deb is unsigned, unlike the signed mac/windows installers; there is no
+  apt repository yet, so distribution is a direct `.deb` download installed
+  with `sudo apt install ./mindshub-cowork_<version>_<arch>.deb`.
 
 ## CI
 
 `.github/workflows/build-linux-deb.yml` builds each arch natively and is
-wired into the same orchestrators as mac/windows: every PR builds `preview`
-(no label needed — unlike the signed mac/windows installers, the deb is
-unsigned and cheap, so both arches build on each push), pushes to `staging`
-build `stable` (against the staging server ref and API), releases build
-`prod` with the CalVer tag baked in. Uploads go through
+wired into the same orchestrators as mac/windows: label a PR
+`build-linux-deb` to build `preview` (one label, both arches — the upload job
+publishes into the production installer bucket, so it opts in like the signed
+mac/windows installers do), pushes to `staging` build `stable` (against the
+staging server ref and API), releases build `prod` with the CalVer tag baked
+in. Uploads go through
 `upload-installer-to-s3.yml` with
 platforms `linux-amd64` / `linux-arm64` — one call per arch, because the
 uploader's stable/prod alias objects (`mindshub-cowork-staging.deb`,

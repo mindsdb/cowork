@@ -120,15 +120,18 @@ jobs:
       status: ${{ needs.build-deploy.outputs.pr-env-deployed == 'true' && 'up' || 'absent' }}
     secrets: inherit
 
-  # macOS/Windows are signed installers, per platform, by label — each is
-  # expensive and needs signing material, so a PR opts in rather than paying for
-  # both every push. Linux is unsigned and comparatively cheap, so it carries no
-  # label gate and always builds (both arches) once this job runs at all; that is
-  # why this job's own `if` no longer requires either signed-* label — only the
-  # gate above.
+  # Installers, per platform, by label. Not only a build-cost question: the
+  # upload jobs carry no `if:` of their own, so a platform's label is also what
+  # stops `upload-installer-to-s3.yml` — which runs on `mdb-prod` — writing a
+  # preview build into the production installer bucket and posting its public
+  # URL on the PR. So every platform opts in, linux included.
   build-installers:
     needs: [gate]
-    if: needs.gate.outputs.run == 'true'
+    if: >-
+      ${{ needs.gate.outputs.run == 'true'
+          && (contains(github.event.pull_request.labels.*.name, 'signed-macos-pkg')
+              || contains(github.event.pull_request.labels.*.name, 'signed-windows-ev')
+              || contains(github.event.pull_request.labels.*.name, 'build-linux-deb')) }}
     uses: ./.github/workflows/build-installers.yml
     with:
       build_kind: preview
@@ -142,8 +145,10 @@ jobs:
       server_ref: staging
       macos: ${{ contains(github.event.pull_request.labels.*.name, 'signed-macos-pkg') }}
       windows: ${{ contains(github.event.pull_request.labels.*.name, 'signed-windows-ev') }}
-      # No override for linux_amd64/linux_arm64: both default to true in
-      # build-installers.yml and always build on a PR (see the job comment above).
+      # Stated rather than left to default:true — an omitted platform input
+      # publishes on every push. One label covers both arches.
+      linux_amd64: ${{ contains(github.event.pull_request.labels.*.name, 'build-linux-deb') }}
+      linux_arm64: ${{ contains(github.event.pull_request.labels.*.name, 'build-linux-deb') }}
     secrets: inherit
 
   # The installers are the deliverable on a desktop PR, and they used to land in an

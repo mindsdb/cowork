@@ -249,5 +249,21 @@ export async function loadBundledServerCredentials(): Promise<Record<string, str
     // whatever's already provisioned.
     console.error('[credentials] unexpected error while provisioning from staging:', err);
   }
-  return loadStaticCredentials();
+  const credentials = await loadStaticCredentials();
+
+  // Nothing staged AND nothing in the store is the one genuinely broken state,
+  // and it is silent everywhere else: the staging file is absent on every
+  // healthy launch after the first, so the return above cannot say anything.
+  // The common cause on Linux is a deb installed by one user and launched by
+  // another — postinst staged into the installer's home and removed the /opt
+  // copy, so this user's home has neither. macOS has the same hole. Without
+  // this the only symptom is a connector reporting "not configured".
+  if (Object.keys(credentials).length === 0) {
+    console.warn(
+      '[credentials] no OAuth credentials are provisioned for this user. If this machine was set up'
+        + ' by a different user account, the installer staged them into that account instead;'
+        + ' reinstall as this user to provision them here.',
+    );
+  }
+  return credentials;
 }
