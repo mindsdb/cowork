@@ -8,6 +8,16 @@ async function importHost() {
   return await import('./host');
 }
 
+// The web branches of logout()/getAccessToken() dynamically import
+// ../lib/keycloak; mock it so tests never construct a real keycloak-js client
+// (its module ctor touches window). getAccessToken returns null, matching real
+// keycloak when unauthenticated — the state every test here runs under.
+const keycloakMock = vi.hoisted(() => ({
+  logout: vi.fn(async () => {}),
+  getAccessToken: vi.fn(async () => null),
+}));
+vi.mock('../lib/keycloak', () => keycloakMock);
+
 function setUrl(url: string) {
   (window as unknown as { happyDOM: { setURL(u: string): void } }).happyDOM.setURL(url);
 }
@@ -19,6 +29,25 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals();
   setUrl('http://localhost:3000/');
+});
+
+describe('logout()', () => {
+  beforeEach(() => keycloakMock.logout.mockClear());
+
+  it('ends the Keycloak session on web (no bridge)', async () => {
+    const host = await importHost();
+    await host.logout();
+    expect(keycloakMock.logout).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses the bridge on Electron and never touches Keycloak', async () => {
+    const bridgeLogout = vi.fn(async () => {});
+    (window as unknown as Record<string, unknown>).antontron = { logout: bridgeLogout };
+    const host = await importHost();
+    await host.logout();
+    expect(bridgeLogout).toHaveBeenCalledTimes(1);
+    expect(keycloakMock.logout).not.toHaveBeenCalled();
+  });
 });
 
 describe('web mode (no bridge)', () => {

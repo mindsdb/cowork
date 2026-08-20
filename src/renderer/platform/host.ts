@@ -932,15 +932,19 @@ export async function getAccessToken(): Promise<string | null> {
   return kcGetToken();
 }
 
-// Signs the user out: clears the persisted refresh token and strips
-// provider/auth keys from ~/.anton/.env. Caller is responsible for
-// re-routing the UI — usually a full window.location.reload(), which
-// puts App.tsx back through its boot path and (with the env keys gone)
-// lands on onboarding.
+// Signs the user out. On Electron: clears the persisted refresh token and
+// strips provider/auth keys from ~/.anton/.env (the main process re-routes the
+// UI via webContents.reload()). On web: ends the Keycloak browser session via
+// its end-session endpoint, which redirects the tab and — with
+// onLoad:'login-required' — forces a fresh login. The keycloak import stays
+// behind host.ts so cowork/ never touches the bridge directly (check:cowork-purity).
 export async function logout(): Promise<void> {
   if (isElectron && typeof bridge.logout === 'function') {
     await bridge.logout();
+    return;
   }
+  const { logout: kcLogout } = await import('../lib/keycloak');
+  await kcLogout();
 }
 
 // Re-export a single namespace for ergonomic call sites (`host.openPath(...)`).
