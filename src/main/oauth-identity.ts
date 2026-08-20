@@ -44,18 +44,25 @@ async function fetchGithubIdentity(accessToken: string): Promise<{ email: string
   return { email: data.email || data.login || '' };
 }
 
+// PostHog's OAuth authorize/token endpoints are region-agnostic
+// (oauth.posthog.com), but the resource API is split by region
+// (us.posthog.com / eu.posthog.com) and a token issued for one region isn't
+// guaranteed to be accepted by the other's host. Shared by the identity fetch
+// below and PostHog project discovery (oauth-posthog-projects.ts) — both try
+// US Cloud first (the default/most common case) and fall back to EU Cloud.
+export const POSTHOG_API_HOSTS = ['https://us.posthog.com', 'https://eu.posthog.com'] as const;
+
 async function fetchPostHogIdentity(accessToken: string): Promise<{ email: string }> {
-  // Queried against the US Cloud API host; PostHog's OAuth authorize/token
-  // endpoints are region-agnostic (oauth.posthog.com), but we haven't yet
-  // confirmed a token issued that way is accepted against every regional
-  // API host — matches the same caveat on the server-side
-  // _fetch_userinfo_posthog. May need adjusting for EU-hosted accounts.
-  const res = await fetch('https://us.posthog.com/api/users/@me/', {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  if (!res.ok) return { email: '' };
-  const data = await res.json() as { email?: string };
-  return { email: data.email || '' };
+  for (const apiHost of POSTHOG_API_HOSTS) {
+    const res = await fetch(`${apiHost}/api/users/@me/`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (res.ok) {
+      const data = await res.json() as { email?: string };
+      return { email: data.email || '' };
+    }
+  }
+  return { email: '' };
 }
 
 const FETCHERS: Record<string, (accessToken: string) => Promise<{ email: string }>> = {
