@@ -656,23 +656,54 @@ export const BUDGET_FIELDS = {
   // Ranges must stay in lockstep with UserSettings' ge/le — a value this clamp
   // allows but the server rejects 400s the whole multi-key save, not just this
   // field. cowork-server pins the mirror in test_agent_budget_settings.py.
-  maxTurnTokens: { min: 750_000, max: 50_000_000, fallback: 1_250_000 },
+  // `unitDivisor`: the stored/written value is always the natural token
+  // count (server rows, clamping, and the diff-for-write all stay in real
+  // tokens) — this only tells the input to display and accept millions
+  // (1.25 on screen means 1_250_000 tokens), since nobody wants to type or
+  // read seven digits. See `toDisplayUnits`/`toNaturalUnits` below.
+  maxTurnTokens: { min: 750_000, max: 50_000_000, fallback: 1_250_000, unitDivisor: 1_000_000 },
 };
+
+/**
+ * Natural-units value -> what the input displays/accepts, per `spec.unitDivisor`.
+ * Passes non-numeric fragments (a lone "-" mid-edit) through unchanged rather
+ * than showing "NaN" — they're transient typing states, not real values.
+ */
+export function toDisplayUnits(v, spec) {
+  const unit = spec.unitDivisor || 1;
+  if (v == null) return '';
+  if (unit === 1 || v === '') return String(v);
+  const n = Number(v);
+  return Number.isFinite(n) ? String(n / unit) : String(v);
+}
+
+/** Inverse of `toDisplayUnits` — what the input holds -> natural units to store. */
+export function toNaturalUnits(raw, spec) {
+  const unit = spec.unitDivisor || 1;
+  if (unit === 1 || raw === '' || raw == null) return raw;
+  const n = Number(raw);
+  return Number.isFinite(n) ? String(n * unit) : raw;
+}
+
+/** Comma-group a number for display — e.g. 50000 -> "50,000". */
+export function formatCount(n) {
+  const num = Number(n);
+  return Number.isFinite(num) ? num.toLocaleString('en-US') : String(n);
+}
 
 /**
  * Clamp one budget value into its range, as a string.
  *
  * Number() (not parseInt) so number-input-legal forms like "5e2" mean 500,
- * not 5. Unparseable/empty input falls back to `prev` (the last committed
- * value — clearing a field to retype must not silently reset a saved 500 to
- * the factory default) and only then to the spec fallback.
+ * not 5. Unparseable/empty input reverts to the spec fallback — clearing one
+ * of the three budget fields is the discoverable way to reset it to the
+ * factory default, not a mid-retype state to silently preserve.
  */
-export function clampBudgetValue(raw, spec, prev = null) {
+export function clampBudgetValue(raw, spec) {
   const { min, max, fallback } = spec;
   let n = Math.round(Number(raw));
   if (raw == null || String(raw).trim() === '' || Number.isNaN(n)) {
-    const p = Math.round(Number(prev));
-    n = (prev != null && String(prev).trim() !== '' && !Number.isNaN(p)) ? p : fallback;
+    n = fallback;
   }
   return String(Math.min(max, Math.max(min, n)));
 }
