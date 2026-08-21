@@ -21,8 +21,8 @@ import { host } from '../../platform/host';
 
 // The single register of product events, so every event and its own properties
 // are visible at a glance. capture() additionally stamps surface, app_version,
-// device_id, and (once identity resolves) is_internal + a `$set` person update
-// on all of them. `$identify` is a PostHog protocol event, not a product event,
+// device_id, aid (desktop, once health resolves), and (once identity resolves)
+// is_internal + a `$set` person update on all of them. `$identify` is a PostHog protocol event, not a product event,
 // so it lives inline in the merge rather than here.
 const EVENTS = {
   DATA_SOURCE_CONNECTED:    'data_source_connected',    // { source_type }
@@ -252,6 +252,71 @@ function personSet() {
   return { ...identity.personProps, device_id: getDeviceId(), last_seen_app_version: APP_VERSION };
 }
 
+// anton's analytics install id, learned from the sidecar's /health (ENG-1689).
+//
+// This is the join key, and it is the ONLY reason this value exists here.
+// `turn_completed` — written by anton — carries `aid` on 100% of events and an
+// identified person on 0%. cowork's events are the mirror image: aid on 0%,
+// identified on ~85%. Neither side can reach the other, so per-user cost is
+// unanswerable today; we can name the 78 people who hit ENG-1286's spend
+// ceiling but not what a single one of their turns cost.
+//
+// Stamping the same id on an event that already knows the person turns the
+// existing cost rows into attributable ones — including rows already stored.
+// It adds no cost data of its own; it is a lookup table.
+//
+// The app cannot compute it: it is a truncated SHA-256 of the machine's MAC,
+// produced inside anton's Python process and never written to disk on desktop
+// (ENG-440's installation-id.ts documents exactly this, and deliberately mints
+// an unrelated random id for its own purposes). Re-deriving it in Node would
+// mean reproducing `uuid.getnode()`'s platform probe order, which
+// `os.networkInterfaces()` does not match on a multi-NIC machine — and the
+// failure is silent, since a mismatched key looks present and joins nothing.
+let antonInstallId = null;
+
+// PROPERTY ONLY — never an alias, and never a distinct_id. ENG-713 was an
+// over-merge incident where distinct people collapsed into one PostHog person;
+// `aid` is machine-grain, so aliasing on it would merge every user of a shared
+// machine into a single identity and be unrecoverable. As a property it is
+// inert: it joins in a query and changes no identity.
+//
+// Desktop only. The server withholds it in org mode (there it fingerprints the
+// server, not the user), so this is belt-and-braces on a value that should
+// already be empty on web.
+// Shape-checked rather than merely truthy. The case this exists for:
+// `get_installation_id` returns the literal "unknown" when it cannot
+// fingerprint the machine, and anton stamps that same string on its own events
+// — so it would JOIN across every unfingerprintable machine and merge them into
+// one identity. The server filters it; this is the second gate, because the
+// failure is silent and unrecoverable once queries are built on it. A shape
+// check also catches a future sentinel without needing to know its name.
+//
+// **Hex, but deliberately NOT a fixed width.** The producer is
+// `get_installation_id` in `anton/analytics.py` (mindsdb/anton), which today
+// yields 16 lowercase hex from three paths — `sha256(...).hexdigest()[:16]`,
+// `uuid4().hex[:16]`, and a persisted file read `[:16]`. Pinning 16 here would
+// re-encode that width in a third repo with no shared source, and if anton ever
+// widened it this gate would drop 100% of ids and every join would silently
+// return zero rows (#707 review).
+//
+// Pinning the width also buys nothing: both sides of the join come from the
+// SAME anton function, so a width change stays self-consistent and the join
+// keeps working. The width is anton's business. What this gate must reject is a
+// value that is not an id at all — which "unknown" fails on hex alone.
+const AID_SHAPE = /^[0-9a-f]{8,64}$/;
+
+export function setAntonInstallId(id) {
+  if (SURFACE !== 'desktop') return;
+  const next = typeof id === 'string' ? id.trim() : '';
+  if (next && !AID_SHAPE.test(next)) {
+    // Loud rather than silent: if anton's format ever moves outside hex, the
+    // symptom is every join returning zero rows, which looks like "no data"
+    // rather than "the key was thrown away". This line is how that gets found.
+    dlog('rejecting non-hex anton install id', next);
+  }
+  antonInstallId = AID_SHAPE.test(next) ? next : null;
+}
+
 async function getDistinctId() {
   if (identity.distinctId && Date.now() < identity.cacheExpiry) return identity.distinctId;
   try {
@@ -410,6 +475,10 @@ function capture(event, properties = {}) {
         // install -> account joins deterministically even without the merge.
         device_id: deviceId,
       };
+      // The anton join key. Stamped on pre-login events too: those merge into
+      // the account on first sign-in, so an install's early turns stay
+      // attributable rather than being stranded on the anonymous side.
+      if (antonInstallId) eventProps.aid = antonInstallId;
       // Only stamp is_internal once identity has resolved it; before then it is
       // unknown, and sending false would tag anonymous traffic as external
       // (ENG-672). The person-level `$set` carries it for the account.
