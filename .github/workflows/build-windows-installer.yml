@@ -134,6 +134,8 @@ jobs:
           LINEAR_CLIENT_SECRET: ${{ secrets.LINEAR_CLIENT_SECRET }}
           GITHUB_CLIENT_ID: ${{ secrets.GH_OAUTH_CLIENT_ID }}
           GITHUB_CLIENT_SECRET: ${{ secrets.GH_OAUTH_CLIENT_SECRET }}
+          SUPABASE_CLIENT_ID: ${{ secrets.SUPABASE_CLIENT_ID }}
+          SUPABASE_CLIENT_SECRET: ${{ secrets.SUPABASE_CLIENT_SECRET }}
 
         run: |
           python -c "
@@ -147,6 +149,7 @@ jobs:
             'GOOGLE_PICKER_API_KEY',
             'LINEAR_CLIENT_ID', 'LINEAR_CLIENT_SECRET',
             'GITHUB_CLIENT_ID', 'GITHUB_CLIENT_SECRET',
+            'SUPABASE_CLIENT_ID', 'SUPABASE_CLIENT_SECRET',
           ]}
           with open('server-credentials.json', 'w') as f:
               json.dump(creds, f)
