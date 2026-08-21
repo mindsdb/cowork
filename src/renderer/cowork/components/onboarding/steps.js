@@ -1,4 +1,4 @@
-// The four "Get to know Cowork" onboarding steps — the single source of
+// The "Get to know Cowork" onboarding steps — the single source of
 // truth for the sidebar checklist. Each step renders one row; clicking it
 // opens a fresh chat seeded with `prompt`, the message Cowork answers to
 // show off that capability. Edit copy or reorder here; the UI follows.
@@ -43,18 +43,11 @@ export const ONBOARDING_STEPS = [
       'I want to connect my Google Drive so you can work with my real files. Walk me through linking it, then once it\'s connected, do something useful with a file and show me what you found.',
     desktopOnly: true,
   },
-  {
-    // The id predates the copy: it persists in anton.onboarding.completed,
-    // so it stays 'point-at-folder' even though the step no longer promises
-    // one. No host can connect a folder outside the project today — there is
-    // no folder picker, and the old promise ended with the agent's own
-    // skills/ directory reported as "connected" (ENG-1852). Attachment is
-    // the route that works, so that is what the step teaches.
-    id: 'point-at-folder',
-    title: 'Hand it your own files',
-    description: 'Attach files and let Cowork act on them.',
-    prompt:
-      'I want you to work with my own files. I\'ll attach one or more with the + button in the message box — once you can see them, show me a couple of useful things you can do with them.',
-    desktopOnly: true,
-  },
+  // The 'point-at-folder' step ("give you access to a folder on my
+  // computer") is removed, not reworded (ENG-1852): no host can connect a
+  // folder outside the project today — there is no folder picker, and the
+  // promise ended with the agent's own skills/ directory reported as
+  // "connected". Restore a folder step when local-folder access actually
+  // ships (ENG-384 / ENG-497 / ENG-325). Completion state for the old id
+  // persists harmlessly in anton.onboarding.completed.
 ];
