@@ -283,10 +283,23 @@ let antonInstallId = null;
 // Desktop only. The server withholds it in org mode (there it fingerprints the
 // server, not the user), so this is belt-and-braces on a value that should
 // already be empty on web.
+// Shape-checked, not just truthy — 16 lowercase hex, the format anton produces.
+// Mirrors `HEX_ID` in main's installation-id.ts, which rejects a clobbered file
+// "rather than silently adopting its first 16 bytes as a valid id".
+//
+// The case this exists for: `get_installation_id` returns the literal
+// "unknown" when it cannot fingerprint the machine, and anton stamps that same
+// string on its own events — so it would JOIN across every unfingerprintable
+// machine and merge them into one identity. The server filters it, and this is
+// the second gate, because the failure is silent and unrecoverable once queries
+// are built on it. A shape check also catches any future sentinel without
+// needing to know its name.
+const AID_SHAPE = /^[0-9a-f]{16}$/;
+
 export function setAntonInstallId(id) {
   if (SURFACE !== 'desktop') return;
   const next = typeof id === 'string' ? id.trim() : '';
-  antonInstallId = next || null;
+  antonInstallId = AID_SHAPE.test(next) ? next : null;
 }
 
 async function getDistinctId() {

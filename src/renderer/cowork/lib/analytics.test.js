@@ -719,6 +719,25 @@ describe('anton install id (aid) stamping', () => {
     expect(numeric.properties).not.toHaveProperty('aid');
   });
 
+  it('rejects the "unknown" sentinel, which would MERGE distinct machines', async () => {
+    // anton returns the literal "unknown" when it cannot fingerprint the
+    // machine, and stamps the same string on its own events — so this value
+    // would join across every unfingerprintable machine and fuse them into one
+    // identity. ENG-713's outcome without an alias, and worse than an absent
+    // key because it looks valid.
+    const event = await captureWith('unknown');
+    expect(event.properties).not.toHaveProperty('aid');
+  });
+
+  it('rejects anything that is not 16 lowercase hex', async () => {
+    // A shape check rather than a sentinel blocklist, so a future sentinel is
+    // caught without knowing its name. Same rule as main's installation-id.ts.
+    for (const bad of ['ABCDEF0123456789', 'a1b2c3', 'a1b2c3d4e5f6071', 'not-an-id', 'a1b2c3d4e5f60718x']) {
+      const event = await captureWith(bad);
+      expect(event.properties, `should have rejected ${bad}`).not.toHaveProperty('aid');
+    }
+  });
+
   it('stamps it on an IDENTIFIED event — the whole point of the join', async () => {
     // The key is worthless unless it lands on an event that also knows who the
     // person is. That pairing is what makes anton's anonymous cost rows
