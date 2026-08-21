@@ -988,6 +988,15 @@ function AppCore() {
   // mid-turn)" when the user navigates back to it. See
   // `reconcileTaskMessages` for the cleanup it enables.
   const activeStreamingTaskIdRef = useRef(null);
+  // Set true the moment the active stream's own SSE socket delivers any event
+  // (response.created, a delta, anything). That is authoritative client-side
+  // proof the server accepted and started this turn — independent of when it
+  // shows up in the /in-flight-list poll (which lags behind Redis/replica
+  // registration after slow EFS workspace staging). The stranded-slot self-heal
+  // reads it to tell a healthy-but-slow-to-register turn from a never-started
+  // fast-fail, so the never-registered reap can't abort a live turn (ENG-1717).
+  // Reset to false at every new stream reservation below.
+  const activeStreamProducedRef = useRef(false);
   const activeStreamGenerationRef = useRef(0);
   const composerMuteLastTaskIdRef = useRef(null);
   const prevRouteForComposerMuteRef = useRef(null);
@@ -1100,9 +1109,15 @@ function AppCore() {
     // controller; releasing during the upload would let the send flow reassign
     // the refs into a second concurrent stream on one conversation.
     const preflight = Boolean(streaming) && !activeStreamCtrlRef.current;
+    // Authoritative "the server accepted and started this turn" signal from the
+    // stream's own socket. When the turn has produced events but the poll hasn't
+    // listed it yet, its absence is registration/replica lag, not a never-started
+    // fast-fail — so the unseen reap is suppressed and we defer to real in-flight
+    // registration or the stream's own terminal/reconnect belt (ENG-1717).
+    const producedData = activeStreamProducedRef.current;
     // Wall-clock lets the decision space misses across real poll intervals.
     const decision = reservationReleaseDecision(
-      streaming, ids, staleReservationRef.current, { preflight, now: Date.now() },
+      streaming, ids, staleReservationRef.current, { preflight, producedData, now: Date.now() },
     );
     staleReservationRef.current = {
       cid: decision.cid, misses: decision.misses, seen: decision.seen, lastMissAt: decision.lastMissAt,
@@ -1113,6 +1128,7 @@ function AppCore() {
       activeStreamCtrlRef.current = null;
       activeScratchpadRef.current = null;
       activeStreamingTaskIdRef.current = null;
+      activeStreamProducedRef.current = false;
       staleReservationRef.current = { cid: null, misses: 0, seen: false, lastMissAt: 0 };
       // Clear the dead turn's live steps, same as every other terminal path
       // (onDone/onError/stop). Otherwise a stranded turn that was blocked on an
@@ -1292,6 +1308,11 @@ function AppCore() {
   // the user as composer text instead of answering with text written for
   // something else or leaving them queued to deadlock.
   const updateLiveStepsAndDrainQueue = (taskIds, steps) => {
+    // Every stream's onEvent funnels through here, and each already dropped
+    // stale-generation events before calling us — so reaching this line means
+    // the *current* active stream's socket just delivered data. Record it for
+    // the stranded-slot self-heal (see activeStreamProducedRef).
+    activeStreamProducedRef.current = true;
     taskIds.forEach((tid) => {
       if (tid) liveStepsRef.current[tid] = steps;
     });
@@ -2403,6 +2424,7 @@ function AppCore() {
     };
 
     activeStreamingTaskIdRef.current = taskId;
+    activeStreamProducedRef.current = false; // fresh stream: no events yet
     const streamGen = activeStreamGenerationRef.current;
     activeStreamCtrlRef.current = tailInFlight(taskId, {
       fromSeq: 0, // Replay from the start — the reducer is idempotent
@@ -3454,6 +3476,7 @@ function AppCore() {
       // Tag which task is mid-flight so reconcileTaskMessages can
       // tell legitimate running indicators from zombies on reload.
       activeStreamingTaskIdRef.current = taskId;
+      activeStreamProducedRef.current = false; // fresh stream: no events yet
       markInFlight(taskId);
     };
     trackAgentSessionStarted();
@@ -3703,6 +3726,7 @@ function AppCore() {
     // Synchronous reservation so a second invocation that fires
     // before our awaits resolve sees us as "in flight."
     activeStreamingTaskIdRef.current = id;
+    activeStreamProducedRef.current = false; // fresh stream: no events yet
     // Cross-client cache: we know this conversation is about to be
     // mid-stream. Marking immediately (rather than waiting for the
     // /in-flight-list poll to discover it) means reconcileTaskMessages
@@ -4073,6 +4097,7 @@ function AppCore() {
     };
 
     activeStreamingTaskIdRef.current = id;
+    activeStreamProducedRef.current = false; // fresh stream: no events yet
     // Same generation guard the other three stream sites carry, in the same
     // order: generation → release → (`cancelled` bail, where the transport
     // reports one). It is not enough that "this stream cannot carry ask_user"

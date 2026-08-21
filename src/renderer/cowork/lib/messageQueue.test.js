@@ -171,6 +171,45 @@ describe('reservationReleaseDecision', () => {
     expect(reservationReleaseDecision('a', undefined, { cid: 'a', misses: 1, seen: true, lastMissAt: 0 }))
       .toEqual({ cid: 'a', misses: 2, seen: true, lastMissAt: 0, release: true });
   });
+
+  // The reviewer's false-positive: a HEALTHY turn whose Redis/replica
+  // registration lags well past the unseen grace (slow EFS workspace staging on
+  // the remote path). Its own SSE socket is already delivering events, so
+  // `producedData` is true — the client has authoritative proof it started, and
+  // must never reap it as a "never-started fast-fail." Absent from the list for
+  // far longer than the 4-miss unseen window, it is still never released.
+  it('never reaps an unseen turn that has produced stream events, however long it lags the list', () => {
+    let tally = fresh;
+    for (let i = 0; i < 8; i += 1) {
+      tally = reservationReleaseDecision('a', [], tally, { producedData: true });
+      expect(tally).toEqual({ cid: 'a', misses: 0, seen: false, lastMissAt: 0, release: false });
+    }
+    // When the poll finally lists it, it flips to seen and stays clean.
+    expect(reservationReleaseDecision('a', ['a'], tally, { producedData: true }))
+      .toEqual({ cid: 'a', misses: 0, seen: true, lastMissAt: 0, release: false });
+  });
+
+  // The fast-fail this belt exists for is unaffected: a turn that starts and
+  // dies between polls never delivers an event, so `producedData` stays false
+  // and the bounded unseen reap still recovers the slot.
+  it('still reaps an unseen turn that produced nothing (the fast-fail path)', () => {
+    let tally = fresh;
+    for (let i = 1; i < 4; i += 1) {
+      tally = reservationReleaseDecision('a', [], tally, { producedData: false });
+      expect(tally.release).toBe(false);
+    }
+    expect(reservationReleaseDecision('a', [], tally, { producedData: false }).release).toBe(true);
+  });
+
+  // producedData is gated on the unseen path only: once the server has listed a
+  // turn, a later disappearance is a genuine strand (half-open SSE after a real
+  // start), so it still reaps at the fast seen threshold even though events flowed.
+  it('reaps a seen turn that vanishes even though it produced events', () => {
+    const first = reservationReleaseDecision('a', ['b'], seen('a'), { producedData: true });
+    expect(first).toEqual({ cid: 'a', misses: 1, seen: true, lastMissAt: 0, release: false });
+    const second = reservationReleaseDecision('a', ['b'], first, { producedData: true });
+    expect(second.release).toBe(true);
+  });
 });
 
 describe('mergeQueuesForAdoptedId', () => {

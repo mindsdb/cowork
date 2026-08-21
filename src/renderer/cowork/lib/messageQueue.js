@@ -58,6 +58,16 @@ export function selectNextQueuedTask(queues, existingTaskIds, preferredTaskId) {
 //     start. A big upload can outlast the thresholds; its absence is expected,
 //     not a strand, so the tally is held clean. The caller detects pre-flight as
 //     "slot reserved but no stream controller yet."
+//   * `producedData`: the turn's own SSE socket has delivered at least one event
+//     (response.created, a delta), which is authoritative proof the server
+//     accepted and started it. This ONLY affects the unseen path: a turn that is
+//     streaming but not yet in the in-flight list is lagging registration (slow
+//     EFS staging / a lagging Redis replica), NOT the never-started fast-fail the
+//     unseen path reaps — so the reap is suppressed and we defer to real
+//     in-flight registration (→ seen) or the stream's own terminal/reconnect
+//     belt. It does NOT touch the seen path: a turn the server listed and then
+//     dropped is still a genuine strand, reaped at `threshold`. Only a turn that
+//     is BOTH absent from the list AND silent on its own socket is a fast-fail.
 //
 // The tally is `{ cid, misses, seen, lastMissAt }`; misses/seen reset whenever
 // the task reappears or the slot moves to a different conversation. While misses
@@ -67,7 +77,7 @@ export function reservationReleaseDecision(
   streamingTaskId,
   serverInFlightIds,
   prev,
-  { threshold = 2, unseenThreshold = 4, preflight = false, now = 0, minMissSpacingMs = 4000 } = {},
+  { threshold = 2, unseenThreshold = 4, preflight = false, producedData = false, now = 0, minMissSpacingMs = 4000 } = {},
 ) {
   if (!streamingTaskId) return { cid: null, misses: 0, seen: false, lastMissAt: 0, release: false };
 
@@ -87,6 +97,17 @@ export function reservationReleaseDecision(
     // Present: registration confirmed. Reset and mark seen, so a later
     // disappearance is treated as the high-confidence strand.
     return { cid: streamingTaskId, misses: 0, seen: true, lastMissAt: 0, release: false };
+  }
+
+  // Absent, and never registered in the in-flight list. If the turn's own SSE
+  // socket has already delivered events, it provably started — the absence is
+  // registration/replica lag, not the never-started fast-fail this path reaps.
+  // Hold the tally clean and defer: it will either register (→ seen, reaped fast
+  // if it then vanishes) or be cleared by its own terminal/reconnect belt. Note
+  // this is gated on !priorSeen: once the server has listed the turn, a later
+  // disappearance is a genuine strand and reaps normally regardless of events.
+  if (!priorSeen && producedData) {
+    return { cid: streamingTaskId, misses: 0, seen: false, lastMissAt: 0, release: false };
   }
 
   // Absent. A seen turn releases fast; an unseen one gets the wider grace window.
