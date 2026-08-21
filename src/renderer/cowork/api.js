@@ -520,18 +520,14 @@ export async function fetchInFlightList() {
 }
 
 // A live tail whose producer emits no real frame for this long is treated as
-// dead: the producer is wedged or the sidecar stopped answering, and no terminal
-// record is coming. Aborting lets the reconnect release the shared stream slot
-// rather than hold it forever — a held slot wedges sends in every conversation
-// (ENG-1717). Mirrors the server's REDIS_TAIL_IDLE_TIMEOUT_SECONDS (300s). The
-// server's turn-duration bound is the primary belt; this is the independent
-// client-side one for when the server never sends a terminal at all.
+// dead — the producer is wedged or the sidecar stopped answering, no terminal is
+// coming — so we abort and release the shared stream slot rather than hold it
+// forever. Mirrors the server's REDIS_TAIL_IDLE_TIMEOUT_SECONDS (300s).
 //
-// Timed against producer frames only, NOT raw bytes: `sse_from_buffer` emits a
-// `: keepalive` comment every 20s while a producer is silent, so a byte-level
-// timer would be reset by the heartbeat and never fire for the hung-producer
-// case this exists to catch. Keepalive comment blocks carry no `data:` line, so
-// they never parse to an event and never bump the timer.
+// Timed against producer frames, NOT raw bytes: the server emits a `: keepalive`
+// comment every 20s while a producer is silent, so a byte-level timer would
+// never fire for the hung-producer case this exists to catch. Keepalive blocks
+// carry no `data:` line, so they never parse to an event and never bump the timer.
 const TAIL_IDLE_TIMEOUT_MS = 300_000;
 
 export function tailInFlight(conversationId, {
@@ -541,8 +537,7 @@ export function tailInFlight(conversationId, {
   onChunk, onProgress, onToolResult, onDone, onError, onEvent,
 } = {}) {
   const ctrl = new AbortController();
-  // Bumped per real producer frame, not per raw read (see TAIL_IDLE_TIMEOUT_MS);
-  // fires after a full idle window and is cleared in the finally so a cleanly
+  // Bumped per real producer frame; cleared in the finally so a cleanly
   // finished tail leaves no dangling timer.
   let idleTimer = null;
   let idledOut = false;
@@ -585,9 +580,8 @@ export function tailInFlight(conversationId, {
           if (!raw || raw === '[DONE]') continue;
           let msg;
           try { msg = JSON.parse(raw); } catch { continue; }
-          // A real producer frame reached us — reset the idle window. Keepalive
-          // comment blocks never get here (no `data:` line), so a silent hung
-          // producer still trips the timeout.
+          // Real producer frame — reset the idle window. (Keepalives have no
+          // `data:` line and never reach here, so a silent producer still trips.)
           bumpIdle();
           onEvent?.(msg);
           switch (msg.type) {
@@ -635,13 +629,10 @@ export function tailInFlight(conversationId, {
       // slot — so report it as an error the reconnect's onError acts on.
       if (idledOut) {
         // Tell the server to actually drop the wedged turn. Aborting the tail
-        // only tears down our consumer; the producer keeps running and
-        // /in-flight-list keeps listing the conversation, so the next poll would
-        // re-select it and reopen a fresh tail — looping this stall message
-        // instead of resolving. cancelResponse is idempotent and swallows its
-        // own errors, so this is safe fire-and-forget. (Server-side #345 also
-        // bounds the turn; this ends the client loop immediately rather than
-        // after the server's own idle window.)
+        // only tears down our consumer; the producer keeps running and the next
+        // in-flight poll would re-select it and reopen a fresh tail, looping this
+        // message. cancelResponse is idempotent and swallows errors, so
+        // fire-and-forget is safe.
         cancelResponse(conversationId);
         onError?.('The response stalled and was ended. Please try sending again.');
       } else if (err.name !== 'AbortError') {
