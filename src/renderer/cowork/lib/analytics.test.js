@@ -662,3 +662,100 @@ describe('billing + provisioning events (ENG-1533)', () => {
     expect(event.properties.reason).toBe('token_limit');
   });
 });
+
+// ─── aid: the join key between anton's cost events and an identified user ────
+//
+// The defect is structural: `turn_completed` carries `aid` on 100% of events
+// and an identified person on 0%; these events are the mirror image. These pin
+// that the key lands, that it is a PROPERTY and never an identity (ENG-713 was
+// an over-merge incident, and `aid` is machine-grain so aliasing on it would be
+// unrecoverable), and that web never carries it.
+describe('anton install id (aid) stamping', () => {
+  beforeEach(() => {
+    hostState.isElectron = true;
+    getAccessToken.mockResolvedValue(null);
+  });
+
+  async function captureWith(id, { identified = false } = {}) {
+    if (identified) {
+      getAccessToken.mockResolvedValue(fakeJwt({ sub: 'user-1', email: 'ana@example.com' }));
+    }
+    const fetchMock = mockFetch();
+    const mod = await importAnalytics();
+    if (id !== undefined) mod.setAntonInstallId(id);
+    mod.trackDataSourceConnected('postgres');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    return fetchMock.mock.calls
+      .map((c) => JSON.parse(c[1].body))
+      .find((b) => b.event === 'data_source_connected');
+  }
+
+  it('stamps the id once health has served it', async () => {
+    const event = await captureWith('a1b2c3d4e5f60718');
+    expect(event).toBeDefined();
+    expect(event.properties.aid).toBe('a1b2c3d4e5f60718');
+  });
+
+  it('omits it before health resolves', async () => {
+    const event = await captureWith(undefined);
+    expect(event).toBeDefined();
+    expect(event.properties).not.toHaveProperty('aid');
+  });
+
+  it('omits it when the server withholds it (org mode returns "")', async () => {
+    const event = await captureWith('');
+    expect(event).toBeDefined();
+    expect(event.properties).not.toHaveProperty('aid');
+  });
+
+  it('treats a whitespace-only or non-string id as absent', async () => {
+    // The `if (antonInstallId)` guard alone already drops "", so the trim and
+    // the type check are only load-bearing for these two — without them a
+    // whitespace id stamps as "   " and a number stamps as a number, either of
+    // which joins to nothing while looking like a present key.
+    const blank = await captureWith('   ');
+    expect(blank.properties).not.toHaveProperty('aid');
+    const numeric = await captureWith(42);
+    expect(numeric.properties).not.toHaveProperty('aid');
+  });
+
+  it('stamps it on an IDENTIFIED event — the whole point of the join', async () => {
+    // The key is worthless unless it lands on an event that also knows who the
+    // person is. That pairing is what makes anton's anonymous cost rows
+    // attributable, so it is asserted directly rather than inferred.
+    const event = await captureWith('a1b2c3d4e5f60718', { identified: true });
+    expect(event).toBeDefined();
+    expect(event.properties.aid).toBe('a1b2c3d4e5f60718');
+    expect(event.distinct_id).toBe('user-1');
+  });
+
+  it('is a PROPERTY only — never an alias, never the distinct_id (ENG-713)', async () => {
+    // `aid` is machine-grain: a shared machine is several people. Aliasing on
+    // it would merge them into one PostHog person irreversibly, which is the
+    // ENG-713 failure. It must never appear as identity, only as data.
+    const fetchMock = mockFetch();
+    const mod = await importAnalytics();
+    mod.setAntonInstallId('a1b2c3d4e5f60718');
+    mod.trackDataSourceConnected('postgres');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const bodies = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body));
+    for (const b of bodies) {
+      expect(b.event).not.toBe('$create_alias');
+      expect(b.distinct_id).not.toBe('a1b2c3d4e5f60718');
+      expect(b.properties?.alias).toBeUndefined();
+      expect(b.properties?.$anon_distinct_id).not.toBe('a1b2c3d4e5f60718');
+    }
+  });
+
+  it('NEVER stamps it on web', async () => {
+    // The server already withholds it in org mode; this is the client-side half
+    // of the same rule, so a future server change cannot start leaking a host
+    // fingerprint onto web events.
+    hostState.isElectron = false;
+    const event = await captureWith('a1b2c3d4e5f60718');
+    expect(event).toBeDefined();
+    expect(event.properties.surface).toBe('web');
+    expect(event.properties).not.toHaveProperty('aid');
+  });
+});

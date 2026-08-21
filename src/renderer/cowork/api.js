@@ -11,6 +11,7 @@ import { relativeAge } from './lib/formatTime';
 import { transformSettingsRows, diffSettingsForWrite, mergeRecommendedModels, CLIENT_TO_SERVER } from './lib/settingsTransform';
 import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 import { cacheSettings } from './lib/settingsCache';
+import { setAntonInstallId } from './lib/analytics';
 import {
   buildMemoryDeletePayload,
   buildMemoryWritePayload,
@@ -124,10 +125,21 @@ async function responseError(res, fallback) {
 }
 
 // ─── Health ──────────────────────────────────────────────────────────────────
+// Hands anton's install id to analytics on the way through (ENG-1689). Done
+// here rather than at the call sites because there are five of them and a sixth
+// added later would silently stop reporting the join key; this is the one funnel
+// every health read passes through. Same shape as the `cacheSettings` call
+// below — a lib-level setter written from the transport layer.
+// `setAntonInstallId` self-gates to desktop.
 export async function fetchHealth() {
   try {
-    return await rootReq('/api/v1/health');
+    const health = await rootReq('/api/v1/health');
+    setAntonInstallId(health?.aid);
+    return health;
   } catch {
+    // Deliberately NOT cleared on an outage. Unlike a version, this id is a
+    // stable machine fingerprint — it cannot go stale, and dropping it during a
+    // health blip would strand events that could have carried the join key.
     return { status: 'offline', anton_available: false };
   }
 }
