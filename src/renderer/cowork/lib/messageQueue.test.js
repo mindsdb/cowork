@@ -92,10 +92,26 @@ describe('reservationReleaseDecision', () => {
   it('honors a custom threshold', () => {
     let tally = fresh;
     for (let i = 0; i < 2; i += 1) {
-      tally = reservationReleaseDecision('a', [], tally, 3);
+      tally = reservationReleaseDecision('a', [], tally, { threshold: 3 });
       expect(tally.release).toBe(false);
     }
-    expect(reservationReleaseDecision('a', [], tally, 3).release).toBe(true);
+    expect(reservationReleaseDecision('a', [], tally, { threshold: 3 }).release).toBe(true);
+  });
+
+  // Pre-flight: the slot is reserved but the stream (and the server's record of
+  // it) hasn't started — a long attachment upload. Its absence from the server
+  // list is expected, so no miss accrues and it is never released, no matter how
+  // many polls elapse.
+  it('never releases or accrues a miss while pre-flight, even past the threshold', () => {
+    let tally = fresh;
+    for (let i = 0; i < 5; i += 1) {
+      tally = reservationReleaseDecision('a', [], tally, { preflight: true });
+      expect(tally).toEqual({ cid: 'a', misses: 0, release: false });
+    }
+    // Upload finishes, stream starts: the normal registration-lag guard takes
+    // over from a clean tally — one miss, no premature release.
+    const first = reservationReleaseDecision('a', [], tally);
+    expect(first).toEqual({ cid: 'a', misses: 1, release: false });
   });
 
   it('treats a non-array server list as empty (a miss), not a crash', () => {

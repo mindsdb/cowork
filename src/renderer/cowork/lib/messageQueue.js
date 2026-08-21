@@ -42,6 +42,13 @@ export function selectNextQueuedTask(queues, existingTaskIds, preferredTaskId) {
 // { cid, misses } tally; misses reset whenever the task reappears or the slot
 // moves to a different conversation.
 //
+// `preflight` is the other guard: a send reserves the slot synchronously, then
+// awaits attachment uploads before the stream — and the server — ever starts. A
+// big upload can outlast `threshold` polls, and during it the server rightly
+// doesn't list the turn, so its absence is expected, not a strand. When
+// `preflight` is set the tally is held clean and nothing is released; the caller
+// detects pre-flight as "slot reserved but no stream controller yet."
+//
 // Safety rests on the server listing a running turn the instant it starts. On
 // the file backend (desktop) that holds: `/in-flight-list` reads the
 // in-process RunRegistry, which `registry.start` populates synchronously under
@@ -53,8 +60,11 @@ export function selectNextQueuedTask(queues, existingTaskIds, preferredTaskId) {
 // could release a live slot early. Revisit this threshold (or gate the
 // self-heal) when that dispatch path ships — see RunRegistry's multi-instance
 // note.
-export function reservationReleaseDecision(streamingTaskId, serverInFlightIds, prev, threshold = 2) {
+export function reservationReleaseDecision(streamingTaskId, serverInFlightIds, prev, { threshold = 2, preflight = false } = {}) {
   if (!streamingTaskId) return { cid: null, misses: 0, release: false };
+  // Reserved but not yet streaming: the server has not been told about the turn
+  // yet, so hold the tally clean and never release.
+  if (preflight) return { cid: streamingTaskId, misses: 0, release: false };
   const ids = Array.isArray(serverInFlightIds) ? serverInFlightIds : [];
   if (ids.includes(streamingTaskId)) return { cid: streamingTaskId, misses: 0, release: false };
   const priorMisses = prev && prev.cid === streamingTaskId ? prev.misses : 0;

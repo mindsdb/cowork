@@ -1087,7 +1087,17 @@ function AppCore() {
     // consecutive polls, release it and drain. The consecutive-miss guard rides
     // out turn-start registration lag and the tmp->canonical id swap.
     const streaming = activeStreamingTaskIdRef.current;
-    const decision = reservationReleaseDecision(streaming, ids, staleReservationRef.current);
+    // A send reserves the slot (activeStreamingTaskIdRef) synchronously, then
+    // awaits attachment uploads before the stream — and the server — ever starts
+    // (handleSendInTask). During that window the slot has no controller yet, and
+    // the server rightly doesn't list the turn, so its absence from `ids` is
+    // expected, NOT a strand. A big upload can outlast two polls (~10s); without
+    // this guard the self-heal would release a send that simply hasn't reached
+    // the server, and the send flow would then reassign the stream refs — two
+    // concurrent streams on one conversation. A genuine strand always still
+    // holds its (dead) controller, so "reserved but no controller" == pre-flight.
+    const preflight = Boolean(streaming) && !activeStreamCtrlRef.current;
+    const decision = reservationReleaseDecision(streaming, ids, staleReservationRef.current, { preflight });
     staleReservationRef.current = { cid: decision.cid, misses: decision.misses };
     if (decision.release && streaming) {
       const ctrl = activeStreamCtrlRef.current;
