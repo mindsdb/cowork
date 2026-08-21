@@ -55,7 +55,7 @@ describe('OnboardingChecklist', () => {
     expect(screen.getByText('See Cowork work')).toBeTruthy();
     expect(screen.getByText('Customize Cowork to your role')).toBeTruthy();
     expect(screen.getByText('Connect an app')).toBeTruthy();
-    expect(screen.getByText('Point it at a folder')).toBeTruthy();
+    expect(screen.getByText('Hand it your own files')).toBeTruthy();
     expect(screen.getByText('0/4')).toBeTruthy();
   });
 
@@ -67,7 +67,7 @@ describe('OnboardingChecklist', () => {
     expect(screen.getByText('See Cowork work')).toBeTruthy();
     expect(screen.getByText('Customize Cowork to your role')).toBeTruthy();
     expect(screen.queryByText('Connect an app')).toBeNull();
-    expect(screen.queryByText('Point it at a folder')).toBeNull();
+    expect(screen.queryByText('Hand it your own files')).toBeNull();
     expect(screen.getByText('0/2')).toBeTruthy();
   });
 

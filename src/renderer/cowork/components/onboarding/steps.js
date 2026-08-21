@@ -44,11 +44,17 @@ export const ONBOARDING_STEPS = [
     desktopOnly: true,
   },
   {
+    // The id predates the copy: it persists in anton.onboarding.completed,
+    // so it stays 'point-at-folder' even though the step no longer promises
+    // one. No host can connect a folder outside the project today — there is
+    // no folder picker, and the old promise ended with the agent's own
+    // skills/ directory reported as "connected" (ENG-1852). Attachment is
+    // the route that works, so that is what the step teaches.
     id: 'point-at-folder',
-    title: 'Point it at a folder',
-    description: 'Let Cowork read and edit your real files.',
+    title: 'Hand it your own files',
+    description: 'Attach files and let Cowork act on them.',
     prompt:
-      'I\'d like to give you access to a folder on my computer. Help me pick and connect one, then once you can see the files, show me a couple of useful things you can do with them.',
+      'I want you to work with my own files. I\'ll attach one or more with the + button in the message box — once you can see them, show me a couple of useful things you can do with them.',
     desktopOnly: true,
   },
 ];
