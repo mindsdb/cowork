@@ -65,7 +65,7 @@ describe('reservationReleaseDecision', () => {
     expect(d).toEqual({ cid: 'a', misses: 0, seen: true, lastMissAt: 0, release: false });
   });
 
-  // Registration-phase guard (ENG-1717): a turn the server has never listed is
+  // Registration-phase guard: a turn the server has never listed is
   // never reaped — a lagging Redis replica reporting a just-started or
   // not-yet-propagated turn as absent must not abort it, no matter how many
   // polls miss.
@@ -111,7 +111,7 @@ describe('reservationReleaseDecision', () => {
     expect(reservationReleaseDecision('a', [], tally, { threshold: 3 }).release).toBe(true);
   });
 
-  // Miss-spacing guard (ENG-1717): the 5s interval and a focus refresh can fire
+  // Miss-spacing guard: the 5s interval and a focus refresh can fire
   // close together. Two absent polls within the spacing window count as one
   // miss, so the two-miss release window can't collapse to an instant.
   it('does not double-count misses from polls closer than the spacing window', () => {

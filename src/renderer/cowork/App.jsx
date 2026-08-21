@@ -1016,11 +1016,8 @@ function AppCore() {
   // time-spaced polls (reservationReleaseDecision).
   const staleReservationRef = useRef({ cid: null, misses: 0, seen: false, lastMissAt: 0 });
 
-  // Serializes refreshInFlightSet: the 5s interval and the window-focus refresh
-  // can otherwise overlap, and two concurrent polls would each read the same
-  // pre-write tally and advance the miss count back-to-back — collapsing the
-  // deliberate multi-poll release window. A refresh already in flight has fresh
-  // data on the way, so a concurrent caller coalesces onto it and returns.
+  // Serializes refreshInFlightSet so overlapping interval/focus polls can't
+  // double-count a miss (see the wrapper below).
   const refreshInFlightInProgressRef = useRef(false);
 
   // Mirror of "a reservation has an unresolved miss" into state, so the 5s
@@ -1094,25 +1091,16 @@ function AppCore() {
     // turn and re-wedges. `ids` is the server's authoritative in-flight list —
     // the same signal the finished-diff below already trusts to mark a turn
     // idle — so if we hold the slot for a task the server first listed and then
-    // stopped listing across consecutive, time-spaced polls, release it and
-    // drain. reservationReleaseDecision's seen-gate rides out turn-start
-    // registration lag (and replica propagation lag) and the tmp->canonical id
-    // swap; its miss-spacing rides out overlapping interval/focus polls.
+    // stopped listing, release it and drain. reservationReleaseDecision applies
+    // the seen-gate, miss-spacing, and pre-flight guards (see its doc).
     const streaming = activeStreamingTaskIdRef.current;
-    // A send reserves the slot (activeStreamingTaskIdRef) synchronously, then
-    // awaits attachment uploads before the stream — and the server — ever starts
-    // (handleSendInTask). During that window the slot has no controller yet, and
-    // the server rightly doesn't list the turn, so its absence from `ids` is
-    // expected, NOT a strand. A big upload can outlast two polls (~10s); without
-    // this guard the self-heal would release a send that simply hasn't reached
-    // the server, and the send flow would then reassign the stream refs — two
-    // concurrent streams on one conversation. A genuine strand always still
-    // holds its (dead) controller, so "reserved but no controller" == pre-flight.
+    // Pre-flight = slot reserved but no controller yet: a send reserves the slot
+    // synchronously, then awaits attachment uploads before the stream (and the
+    // server's record of it) start. A genuine strand still holds its dead
+    // controller; releasing during the upload would let the send flow reassign
+    // the refs into a second concurrent stream on one conversation.
     const preflight = Boolean(streaming) && !activeStreamCtrlRef.current;
-    // Pass wall-clock so the decision can space consecutive misses ~one poll
-    // apart even if an interval and a focus poll fire close together; the seen
-    // flag inside the tally is what gates release on the turn having actually
-    // been registered by the server first.
+    // Wall-clock lets the decision space misses across real poll intervals.
     const decision = reservationReleaseDecision(
       streaming, ids, staleReservationRef.current, { preflight, now: Date.now() },
     );
