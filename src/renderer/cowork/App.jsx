@@ -1015,6 +1015,14 @@ function AppCore() {
   // has stopped listing the task across consecutive polls (reservationReleaseDecision).
   const staleReservationRef = useRef({ cid: null, misses: 0 });
 
+  // Mirror of "a reservation has an unresolved miss" into state, so the 5s
+  // heartbeat below stays alive to fire the follow-up polls a release needs.
+  // Without it, the first miss empties inFlightSet, the size-gated interval
+  // tears down, and the second miss that would release the slot never arrives
+  // on its own — the common single-wedged-turn case would never self-heal
+  // (ENG-1717).
+  const [hasPendingReservationMiss, setHasPendingReservationMiss] = useState(false);
+
   // Live steps per task, so handleSendInTask can see a pending question
   // without threading stream state through the composer.
   const liveStepsRef = useRef({});
@@ -1057,6 +1065,12 @@ function AppCore() {
 
   const refreshInFlightSet = useCallback(async () => {
     const items = await fetchInFlightList();
+    // A failed poll (network blip / non-200) returns null, NOT []. Do not let
+    // it reconcile anything: treating it as "the server reports nothing" would
+    // both wrongly clear inFlightSet and count a stranded-reservation miss, so
+    // two blips could abort a healthy streaming turn. Skip this cycle entirely;
+    // the pending-miss tally is preserved and the next good poll decides.
+    if (items === null) return;
     const ids = items.map((it) => it.conversation_id).filter(Boolean);
 
     // Stranded-reservation self-heal. The single app-wide stream slot is
@@ -1082,6 +1096,13 @@ function AppCore() {
       activeScratchpadRef.current = null;
       activeStreamingTaskIdRef.current = null;
       staleReservationRef.current = { cid: null, misses: 0 };
+      // Clear the dead turn's live steps, same as every other terminal path
+      // (onDone/onError/stop). Otherwise a stranded turn that was blocked on an
+      // ask_user question leaves it in liveStepsRef, and the next message on
+      // this task gets redirected into answering a question for a run that is
+      // already gone. Use the alias-aware variant so a tmp->canonical stream's
+      // pre-adoption id is cleared too.
+      releaseLiveStepsWithAliases(streaming);
       // The setInFlightSet below drops `streaming` (it is absent from `ids`),
       // and its finished-diff refetches the session and marks the task idle —
       // so the released cid needs no explicit markInFlightDone here. Drain via
@@ -1089,6 +1110,10 @@ function AppCore() {
       // stale drain (same reason reconnect/stop use the ref).
       drainNextQueuedMessageRef.current?.();
     }
+    // Keep the heartbeat alive across an unresolved miss so the follow-up poll
+    // that releases the slot actually fires (see hasPendingReservationMiss).
+    // After a release the tally is reset to 0, so this settles back to false.
+    setHasPendingReservationMiss(staleReservationRef.current.misses > 0);
 
     setInFlightSet((prev) => {
       // Diff: if the server says a cid is GONE but we had it, the
@@ -1170,10 +1195,13 @@ function AppCore() {
   // multi-monitor users who can see both windows at once and don't
   // generate a focus event to trigger a manual refresh.
   useEffect(() => {
-    if (inFlightSet.size === 0) return undefined;
+    // Also runs while a stranded reservation has an unresolved miss, even when
+    // the set is empty: releasing the slot needs a follow-up poll, and the miss
+    // that started the tally is exactly what empties the set (ENG-1717).
+    if (inFlightSet.size === 0 && !hasPendingReservationMiss) return undefined;
     const timer = setInterval(() => { refreshInFlightSet(); }, 5000);
     return () => clearInterval(timer);
-  }, [inFlightSet.size, refreshInFlightSet]);
+  }, [inFlightSet.size, hasPendingReservationMiss, refreshInFlightSet]);
 
   const enqueueMessage = (taskId, text, attachments = [], disabledConnections = []) => {
     // `attachments` rides with the queued item so a message sent while a
