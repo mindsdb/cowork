@@ -489,9 +489,11 @@ export interface InstallStep {
   status: 'pending' | 'running' | 'done' | 'error' | 'skipped' | 'warning';
 }
 
-export async function startInstall(): Promise<void> {
+// installBackend defaults to true (main-process side) when omitted — pass
+// false for the setup wizard's "Install backend server" checkbox unchecked.
+export async function startInstall(installBackend?: boolean): Promise<void> {
   if (isElectron && typeof bridge.startInstall === 'function') {
-    await bridge.startInstall();
+    await bridge.startInstall(installBackend);
   }
 }
 
@@ -955,6 +957,25 @@ export async function restartApp(): Promise<void> {
   }
 }
 
+// Local server auth toggle (Settings → Backend). Unlike the custom-server
+// restart above, toggling only restarts the sidecar — main does that itself
+// as part of the same IPC call, so there's nothing further for the caller to
+// do besides re-reading diagnostics. No-op on web (server-side auth there is
+// whatever the hosting deployment configured, not this app's concern).
+export async function getLocalAuth(): Promise<{ enabled: boolean; token: string | null }> {
+  if (isElectron && typeof bridge.getLocalAuth === 'function') {
+    return bridge.getLocalAuth();
+  }
+  return { enabled: false, token: null };
+}
+
+export async function setLocalAuth(enabled: boolean): Promise<{ ok: boolean; enabled: boolean; token: string | null }> {
+  if (isElectron && typeof bridge.setLocalAuth === 'function') {
+    return bridge.setLocalAuth(enabled);
+  }
+  return { ok: false, enabled: false, token: null };
+}
+
 export async function getAccessToken(): Promise<string | null> {
   if (isElectron && typeof bridge.getAccessToken === 'function') {
     return bridge.getAccessToken();
@@ -1042,6 +1063,8 @@ export const host = {
   getCustomServer,
   setCustomServer,
   restartApp,
+  getLocalAuth,
+  setLocalAuth,
   getAccessToken,
   logout,
   keychainRevoke,

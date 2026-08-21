@@ -10,6 +10,8 @@ exports[`IPC channel contract > locks the full channel map (a rename here is a b
   "AUTH_LOGOUT": "auth:logout",
   "BACKEND_CUSTOM_SERVER_GET": "backend:custom-server-get",
   "BACKEND_CUSTOM_SERVER_SET": "backend:custom-server-set",
+  "BACKEND_LOCAL_AUTH_GET": "backend:local-auth-get",
+  "BACKEND_LOCAL_AUTH_SET": "backend:local-auth-set",
   "CODING_DETECT_CLI": "coding:detect-cli",
   "CODING_REMOVE_TASK": "coding:remove-task",
   "CODING_TERMINAL_DATA": "coding:terminal-data",

@@ -30,7 +30,7 @@ contextBridge.exposeInMainWorld('antontron', {
   codingModeOptionsEnabled: process.env.CODING_MODE_OPTIONS_ENABLED === 'true',
   // Installer
   checkInstall: () => ipcRenderer.invoke(IPC.INSTALL_CHECK),
-  startInstall: () => ipcRenderer.invoke(IPC.INSTALL_START),
+  startInstall: (installBackend?: boolean) => ipcRenderer.invoke(IPC.INSTALL_START, installBackend),
   cancelInstall: () => ipcRenderer.invoke(IPC.INSTALL_CANCEL),
 
   // Anton python server lifecycle
@@ -154,6 +154,10 @@ contextBridge.exposeInMainWorld('antontron', {
   setCustomServer: (config: { url: string | null; token: string | null }) =>
     ipcRenderer.invoke(IPC.BACKEND_CUSTOM_SERVER_SET, config),
   restartApp: () => ipcRenderer.invoke(IPC.APP_RESTART),
+
+  // Local server auth toggle — see local-auth.ts
+  getLocalAuth: () => ipcRenderer.invoke(IPC.BACKEND_LOCAL_AUTH_GET),
+  setLocalAuth: (enabled: boolean) => ipcRenderer.invoke(IPC.BACKEND_LOCAL_AUTH_SET, enabled),
 
   // Settings / Onboarding
   readSettings: () => ipcRenderer.invoke(IPC.SETTINGS_READ),

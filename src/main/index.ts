@@ -39,6 +39,7 @@ import { applyChannelUvIsolation, primeLoginShellPath } from './uv-paths';
 import { shellAutoUpdateEnabledFor } from './shell-auto-update-rollout';
 import { getServerAuthToken, authHeader, resetServerAuthTokenCache } from './server-auth';
 import { getCustomServerConfig, setCustomServerConfig } from './custom-server';
+import { getLocalAuthConfig, setLocalAuthEnabled, verifyLocalAuthChange } from './local-auth';
 import { getAppDisplayVersion } from './server-source';
 import { unifiedVersion, SKEW_WARN_DAYS } from '../shared/version';
 import { detectClaudeCode } from './coding-mode';
@@ -495,7 +496,7 @@ function setupIPC() {
     return checkInstallStatus();
   });
 
-  ipcMain.handle(IPC.INSTALL_START, async () => {
+  ipcMain.handle(IPC.INSTALL_START, async (_event, installBackend?: boolean) => {
     if (!mainWindow) return false;
     if (activeInstall) return false;
     const state = { cancelled: false };
@@ -503,7 +504,9 @@ function setupIPC() {
     try {
       // runInstaller now also spins up the python server as its final
       // visible step (so the install screen shows "Start Cowork server").
-      return await runInstaller(mainWindow, { shouldAbort: () => state.cancelled });
+      // installBackend defaults to true — SetupScreen's checkbox passes
+      // false when the user chose to point at a server it didn't spawn.
+      return await runInstaller(mainWindow, { shouldAbort: () => state.cancelled, installBackend });
     } finally {
       if (activeInstall === state) {
         activeInstall = null;
@@ -1175,6 +1178,34 @@ function setupIPC() {
   ipcMain.handle(IPC.APP_RESTART, () => {
     app.relaunch();
     app.exit(0);
+  });
+
+  // Local server auth (see local-auth.ts) — unlike the custom-server config
+  // above, this only needs the SIDECAR restarted, not the whole app:
+  // onBeforeSendHeaders reads the token live per-request, so resetting the
+  // cache after the sidecar comes back up is enough for the client side too.
+  ipcMain.handle(IPC.BACKEND_LOCAL_AUTH_GET, () => getLocalAuthConfig());
+
+  ipcMain.handle(IPC.BACKEND_LOCAL_AUTH_SET, async (_event, enabled: boolean) => {
+    console.log(`[local-auth] ${enabled ? 'enabling' : 'disabling'} local server auth`);
+    try {
+      const config = await setLocalAuthEnabled(enabled);
+      await stopServer();
+      resetServerAuthTokenCache();
+      const result = await startServer({});
+      if (!result.ok) {
+        console.error(`[local-auth] sidecar failed to restart after toggling auth: ${result.reason}`);
+        return { ok: false, enabled: config.enabled, token: config.token };
+      }
+      console.log(`[local-auth] sidecar restarted on http://127.0.0.1:${result.port}`);
+      if (typeof result.port === 'number') {
+        await verifyLocalAuthChange(result.port, config);
+      }
+      return { ok: true, enabled: config.enabled, token: config.token };
+    } catch (error) {
+      console.error('[local-auth] failed to toggle', error);
+      return { ok: false, enabled: getLocalAuthConfig().enabled, token: null };
+    }
   });
 
   ipcMain.handle(IPC.SETTINGS_CHECK_CONFIGURED, async () => {

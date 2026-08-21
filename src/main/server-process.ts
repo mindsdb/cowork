@@ -311,6 +311,14 @@ function findPortHolders(port: number): Promise<number[]> {
 // otherwise they surface as WinError 10048 / EADDRINUSE on every restart,
 // because neither the OS nor our own quit always reaps the prior python.
 // Best-effort — failures are silently ignored.
+//
+// Waits for the port to actually free up rather than returning the moment
+// the signal is sent: a SIGTERM'd process (esp. one doing a graceful
+// shutdown, like uvicorn) can keep the socket open for a beat, and a caller
+// that immediately re-probes/respawns (resolveServerPort, startServer's own
+// pre-spawn reap) can catch it still alive and wrongly conclude it's healthy
+// — exactly the race that let a toggled-off, still-dying "adopted" server
+// get re-adopted instead of the fresh process the caller actually needed.
 async function killProcessOnPort(port: number): Promise<number[]> {
   const pids = await findPortHolders(port);
   if (pids.length === 0) return [];
@@ -324,7 +332,28 @@ async function killProcessOnPort(port: number): Promise<number[]> {
   for (const pid of pids) {
     try { process.kill(pid, 'SIGTERM'); killed.push(pid); } catch {}
   }
+  if (killed.length === 0) return [];
+
+  let remaining = await waitForPortRelease(port, 4_000);
+  if (remaining.length > 0) {
+    for (const pid of remaining) {
+      try { process.kill(pid, 'SIGKILL'); } catch {}
+    }
+    remaining = await waitForPortRelease(port, 1_500);
+  }
   return killed;
+}
+
+// Polls findPortHolders until empty or the deadline passes, returning
+// whatever (if anything) is still holding the port.
+async function waitForPortRelease(port: number, timeoutMs: number): Promise<number[]> {
+  const deadline = Date.now() + timeoutMs;
+  let holders = await findPortHolders(port);
+  while (holders.length > 0 && Date.now() < deadline) {
+    await sleep(150);
+    holders = await findPortHolders(port);
+  }
+  return holders;
 }
 
 export function getServerPort(): number {
@@ -504,6 +533,16 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       lastStartError = null;
       lastStartErrorKind = null;
       lastPortHolderPid = null;
+      // _adoptPlanned is meant as a one-shot grace for a boot-time orphan —
+      // consume it here too (the fallthrough path below already resets it on
+      // a miss). Left set, a LATER explicit restart (SERVER_RESTART, the
+      // local-auth toggle) would probe again and could "adopt" this exact
+      // process while it's still tearing down from the stopServer() call
+      // that preceded us, returning ok without ever spawning the fresh
+      // process the caller needed (e.g. one that reads a just-rewritten env
+      // var) — a race that self-heals on the NEXT restart but leaves the
+      // sidecar unreachable for a window in between.
+      _adoptPlanned = false;
       console.log(`[server] adopted our own existing instance on port ${serverPort}`);
       return { ok: true, port: serverPort };
     }

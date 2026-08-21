@@ -86,6 +86,11 @@ export default function App() {
   // side effect, not a render; it also must survive the auth→setup→install page
   // transitions without re-rendering.
   const deferredModelRef = useRef<string[] | null>(null);
+  // Set when SetupScreen's "Install backend server" checkbox was unchecked —
+  // consumed once, when 'terminal' first renders, to auto-open Settings >
+  // Backend so the user can immediately point the app at a server it didn't
+  // spawn. A ref for the same reason as deferredModelRef above.
+  const skippedBackendRef = useRef(false);
   // Guards the setupError Retry button so a double-click can't fan out redundant
   // concurrent handshakes.
   const [retrying, setRetrying] = useState(false);
@@ -216,7 +221,11 @@ export default function App() {
   };
 
   // After install: server is up — run the same credential handshake.
-  const handleInstallComplete = async () => {
+  // installedBackend is false when SetupScreen's checkbox was unchecked —
+  // no local server exists yet, so CoworkApp needs to auto-open Settings >
+  // Backend once it mounts.
+  const handleInstallComplete = async (installedBackend: boolean) => {
+    if (!installedBackend) skippedBackendRef.current = true;
     await handlePostAuth();
   };
 
@@ -266,7 +275,9 @@ export default function App() {
         </div>
       )}
 
-      {page === 'terminal' && <CoworkApp />}
+      {page === 'terminal' && (
+        <CoworkApp autoOpenSettingsSection={skippedBackendRef.current ? 'backend' : undefined} />
+      )}
 
       {/* Theme toggle on the onboarding corner. CoworkApp hasn't mounted
           yet on these pages (no sidebar to host it), so the pre-app flow

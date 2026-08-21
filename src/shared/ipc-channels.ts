@@ -100,6 +100,13 @@ export const IPC = {
   BACKEND_CUSTOM_SERVER_GET: 'backend:custom-server-get',
   BACKEND_CUSTOM_SERVER_SET: 'backend:custom-server-set',
 
+  // Local server auth — toggles COWORK_REQUIRE_AUTH/COWORK_AUTH_TOKEN for the
+  // sidecar THIS app spawns (see local-auth.ts). Off by default; enabling
+  // generates a token, restarts the sidecar, and the client picks the token
+  // up on its very next request (onBeforeSendHeaders reads it live).
+  BACKEND_LOCAL_AUTH_GET: 'backend:local-auth-get',
+  BACKEND_LOCAL_AUTH_SET: 'backend:local-auth-set',
+
   // Coding mode (MVP) — detect a local `claude` CLI install, then run it in
   // a real PTY embedded in the app (a task view's ChatView, for a
   // claude-code-harness task) instead of the in-app anton chat.

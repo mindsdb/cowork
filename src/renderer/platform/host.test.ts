@@ -102,6 +102,12 @@ describe('web mode (no bridge)', () => {
     await expect(host.restartApp()).resolves.toBeUndefined();
   });
 
+  it('getLocalAuth/setLocalAuth no-op safely on web (no bridge)', async () => {
+    const host = await importHost();
+    await expect(host.getLocalAuth()).resolves.toEqual({ enabled: false, token: null });
+    await expect(host.setLocalAuth(true)).resolves.toEqual({ ok: false, enabled: false, token: null });
+  });
+
   it('serverInfo reports the live origin as running (web host IS the server)', async () => {
     const host = await importHost();
     await expect(host.serverInfo()).resolves.toEqual({
@@ -219,6 +225,17 @@ describe('electron mode (bridge present)', () => {
     expect(setCustomServer).toHaveBeenCalledWith({ url: 'x', token: null });
     await host.restartApp();
     expect(restartApp).toHaveBeenCalledOnce();
+  });
+
+  it('getLocalAuth/setLocalAuth delegate to the bridge when present', async () => {
+    const getLocalAuth = vi.fn(async () => ({ enabled: true, token: 'abc123' }));
+    const setLocalAuth = vi.fn(async () => ({ ok: true, enabled: false, token: null }));
+    (window as unknown as Record<string, unknown>).antontron = { getLocalAuth, setLocalAuth };
+    const host = await importHost();
+
+    await expect(host.getLocalAuth()).resolves.toEqual({ enabled: true, token: 'abc123' });
+    await expect(host.setLocalAuth(false)).resolves.toEqual({ ok: true, enabled: false, token: null });
+    expect(setLocalAuth).toHaveBeenCalledWith(false);
   });
 
   it('getUIVersion unwraps both string and {ui, app} object shapes', async () => {

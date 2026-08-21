@@ -23,8 +23,9 @@ const STEP_GLYPHS: Record<Step['status'], string> = {
   warning: '!',
 };
 
-export default function SetupScreen({ onComplete }: { onComplete: () => void }) {
-  const [phase, setPhase] = useState<'installing' | 'done' | 'error'>('installing');
+export default function SetupScreen({ onComplete }: { onComplete: (installedBackend: boolean) => void }) {
+  const [phase, setPhase] = useState<'confirm' | 'installing' | 'done' | 'error'>('confirm');
+  const [installBackend, setInstallBackend] = useState(true);
   const [steps, setSteps] = useState<Step[]>([]);
   const [logs, setLogs] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
@@ -32,9 +33,10 @@ export default function SetupScreen({ onComplete }: { onComplete: () => void }) 
   const logRef = useRef<HTMLDivElement>(null);
   const failedStep = steps.find((s) => s.status === 'error');
 
-  useEffect(() => {
-    void host.startInstall();
-  }, []);
+  const handleContinue = () => {
+    setPhase('installing');
+    void host.startInstall(installBackend);
+  };
 
   useEffect(() => {
     const unsubs: (() => void)[] = [];
@@ -59,7 +61,7 @@ export default function SetupScreen({ onComplete }: { onComplete: () => void }) 
     setPhase('installing');
     setLogs('');
     setErrorMsg('');
-    await host.startInstall();
+    await host.startInstall(installBackend);
   };
 
   const handleCancel = async () => {
@@ -71,10 +73,45 @@ export default function SetupScreen({ onComplete }: { onComplete: () => void }) 
   const doneCount = steps.filter((s) => s.status === 'done' || s.status === 'skipped').length;
   const progress = phase === 'done' ? 1 : steps.length ? doneCount / steps.length : 0.05;
 
+  if (phase === 'confirm') {
+    return (
+      <ArcadeShell title="LOADING WORLD" subtitle="ready when you are">
+        <div className="arc-stack arc-fade-in" style={{ gap: 22, width: 'min(540px, 100%)' }}>
+          <PixelSprite name="wrench" size={56} title="Installing" />
+
+          <div className="arc-panel" style={{ width: '100%', boxSizing: 'border-box', padding: '18px 22px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {/* Not a <label>: matches TermsScreen's .arc-check pattern —
+                the row toggles via onClick, the input stopPropagates. */}
+            <div className="arc-check" onClick={() => setInstallBackend((v) => !v)}>
+              <input
+                type="checkbox"
+                checked={installBackend}
+                onChange={(e) => setInstallBackend(e.target.checked)}
+                onClick={(e) => e.stopPropagation()}
+                aria-label="Install backend server"
+              />
+              <span className="arc-check-box" aria-hidden>{installBackend ? '✓' : ''}</span>
+              <span className="arc-check-text">Install backend server</span>
+            </div>
+            <div style={{ fontSize: 10.5, letterSpacing: '0.05em', color: 'var(--arc-dim)', lineHeight: 1.6 }}>
+              MindsHub Cowork can run without installing a local backend — uncheck
+              this to point the app at a server running elsewhere instead. You'll
+              be able to fill in its address as soon as setup finishes.
+            </div>
+          </div>
+
+          <button className="arc-btn" style={{ width: '100%' }} onClick={handleContinue}>
+            {installBackend ? 'INSTALL & CONTINUE ▶' : 'CONTINUE WITHOUT A BACKEND ▶'}
+          </button>
+        </div>
+      </ArcadeShell>
+    );
+  }
+
   if (phase === 'done') {
     return (
       <ArcadeShell title="LOADING WORLD" subtitle="installing the engine">
-        <DoneScreen onComplete={onComplete} />
+        <DoneScreen onComplete={() => onComplete(installBackend)} />
       </ArcadeShell>
     );
   }

@@ -5,9 +5,14 @@
 // Cowork's globals.css ships its own theme tokens (--surface-*, --primary-*,
 // --frost-*, etc.). It's loaded here so cowork views render correctly
 // regardless of antontron's own styles.
+import type { ReactElement } from 'react';
 import './cowork/styles/globals.css';
-import CoworkRoot from './cowork/App';
+import CoworkRootUntyped from './cowork/App';
 
-export default function CoworkApp() {
-  return <CoworkRoot />;
+// cowork/App.jsx is untyped (plain JS) — TS otherwise infers it takes no
+// props at all and rejects the pass-through below.
+const CoworkRoot = CoworkRootUntyped as (props: { autoOpenSettingsSection?: string }) => ReactElement;
+
+export default function CoworkApp({ autoOpenSettingsSection }: { autoOpenSettingsSection?: string }) {
+  return <CoworkRoot autoOpenSettingsSection={autoOpenSettingsSection} />;
 }
