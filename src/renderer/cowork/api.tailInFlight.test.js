@@ -45,6 +45,97 @@ describe('tailInFlight idle timeout (ENG-1717)', () => {
     expect(result.message).toMatch(/stalled/i);
   });
 
+  it('still times out when the producer is silent but the stream keeps sending keepalives', async () => {
+    // `sse_from_buffer` emits a `: keepalive` comment every 20s while a producer
+    // is wedged. The idle timer must be reset only by real producer frames, not
+    // by these heartbeats — otherwise the exact hung-producer case this exists
+    // to catch never trips. Feed a steady drip of keepalives and no terminal.
+    const enc = new TextEncoder();
+    let signal;
+    vi.stubGlobal('fetch', vi.fn(async (_url, options) => {
+      signal = options.signal;
+      return {
+        ok: true,
+        status: 200,
+        body: {
+          getReader: () => ({
+            // A keepalive arrives every 5ms, faster than the 20ms idle window,
+            // so a byte-level timer would be reset on each and never fire. The
+            // read rejects on abort, mirroring a real body reader once the idle
+            // timer trips ctrl.abort().
+            read: () => new Promise((resolve, reject) => {
+              const abort = () => {
+                const err = new Error('aborted');
+                err.name = 'AbortError';
+                reject(err);
+              };
+              if (signal.aborted) return abort();
+              signal.addEventListener('abort', abort, { once: true });
+              setTimeout(() => {
+                signal.removeEventListener('abort', abort);
+                resolve({ done: false, value: enc.encode(': keepalive\n\n') });
+              }, 5);
+            }),
+          }),
+        },
+      };
+    }));
+
+    const result = await new Promise((resolve) => {
+      tailInFlight('conv-1', {
+        idleTimeoutMs: 20,
+        onError: (message) => resolve({ kind: 'error', message }),
+        onDone: () => resolve({ kind: 'done' }),
+      });
+    });
+
+    expect(result.kind).toBe('error');
+    expect(result.message).toMatch(/stalled/i);
+  });
+
+  it('keeps the tail alive while real producer frames keep arriving past the idle window', async () => {
+    // The mirror of the keepalive test: a producer that keeps emitting real
+    // progress frames must NOT be reaped, even well past a single idle window.
+    const enc = new TextEncoder();
+    let frames = 0;
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      body: {
+        getReader: () => ({
+          read: async () => {
+            await delay(5);
+            frames += 1;
+            if (frames <= 8) {
+              return {
+                done: false,
+                value: enc.encode(
+                  'data: {"type":"response.output_text.delta","delta":"x","conversation_id":"conv-1"}\n\n',
+                ),
+              };
+            }
+            return {
+              done: false,
+              value: enc.encode('data: {"type":"response.completed","conversation_id":"conv-1"}\n\n'),
+            };
+          },
+        }),
+      },
+    })));
+
+    const result = await new Promise((resolve) => {
+      tailInFlight('conv-1', {
+        idleTimeoutMs: 20,
+        onError: (message) => resolve({ kind: 'error', message }),
+        onDone: () => resolve({ kind: 'done' }),
+      });
+    });
+
+    // ~40ms of real frames (8 × 5ms) is twice the idle window; the tail survives
+    // because each frame bumps the timer, then finishes cleanly on the terminal.
+    expect(result.kind).toBe('done');
+  });
+
   it('completes cleanly with a terminal frame and fires no stall error', async () => {
     const enc = new TextEncoder();
     const frames = [
