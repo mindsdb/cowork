@@ -51,8 +51,8 @@ describe('selectNextQueuedTask', () => {
 
 describe('reservationReleaseDecision', () => {
   const fresh = { cid: null, misses: 0, seen: false, lastMissAt: 0 };
-  // A tally in the "server has confirmed this turn running" state — the only
-  // state from which an absence can count as a strand.
+  // A tally in the "server has confirmed this turn running" state, which earns
+  // the fast (2-miss) release threshold instead of the wider unseen grace.
   const seen = (cid) => reservationReleaseDecision(cid, [cid], fresh);
 
   it('never releases when no slot is held', () => {
@@ -65,16 +65,38 @@ describe('reservationReleaseDecision', () => {
     expect(d).toEqual({ cid: 'a', misses: 0, seen: true, lastMissAt: 0, release: false });
   });
 
-  // Registration-phase guard: a turn the server has never listed is
-  // never reaped — a lagging Redis replica reporting a just-started or
-  // not-yet-propagated turn as absent must not abort it, no matter how many
-  // polls miss.
-  it('never accrues a miss for a turn that has not yet been seen running', () => {
+  // Unseen turns get a wider grace than the fast 2-miss threshold: a lagging
+  // Redis replica reporting a just-started turn as absent must not abort it too
+  // eagerly. But the grace is BOUNDED — it must not hang forever, or the
+  // crashed/fast-fail send path (a turn that starts and dies between polls, so
+  // it is never observed) would never recover the app-wide slot.
+  it('releases a never-seen turn only after the wider unseen threshold', () => {
     let tally = fresh;
-    for (let i = 0; i < 5; i += 1) {
+    // First unseenThreshold-1 misses accrue without releasing (the grace).
+    for (let i = 1; i < 4; i += 1) {
       tally = reservationReleaseDecision('a', [], tally);
-      expect(tally).toEqual({ cid: 'a', misses: 0, seen: false, lastMissAt: 0, release: false });
+      expect(tally).toEqual({ cid: 'a', misses: i, seen: false, lastMissAt: 0, release: false });
     }
+    // The 4th (unseenThreshold) miss releases — the slot recovers, not hangs.
+    tally = reservationReleaseDecision('a', [], tally);
+    expect(tally).toEqual({ cid: 'a', misses: 4, seen: false, lastMissAt: 0, release: true });
+  });
+
+  it('protects an unseen turn whose registration is merely delayed', () => {
+    // Healthy turn, registration lags a couple of polls, then appears — well
+    // inside the unseen grace, so it is never reaped and resets on arrival.
+    let tally = reservationReleaseDecision('a', [], fresh);
+    tally = reservationReleaseDecision('a', [], tally);
+    expect(tally).toEqual({ cid: 'a', misses: 2, seen: false, lastMissAt: 0, release: false });
+    // Server finally lists it → seen, tally clears, no release.
+    expect(reservationReleaseDecision('a', ['a'], tally)).toEqual({ cid: 'a', misses: 0, seen: true, lastMissAt: 0, release: false });
+  });
+
+  it('honors a custom unseenThreshold', () => {
+    let tally = fresh;
+    tally = reservationReleaseDecision('a', [], tally, { unseenThreshold: 2 });
+    expect(tally.release).toBe(false);
+    expect(reservationReleaseDecision('a', [], tally, { unseenThreshold: 2 }).release).toBe(true);
   });
 
   // The core bug: the slot is held for a task the server ran and then dropped.
@@ -96,10 +118,10 @@ describe('reservationReleaseDecision', () => {
   it('restarts the tally when the slot moves to a different conversation', () => {
     // A miss accrued against a seen `a`, then the slot adopts `b`. `b` is a
     // fresh, unseen turn — it cannot inherit `a`'s count or its seen flag, so it
-    // is not reaped until the server has listed it too.
+    // starts its own grace from one miss and is not reaped on the fast threshold.
     const afterA = reservationReleaseDecision('a', ['x'], seen('a')); // { cid:'a', misses:1, seen:true }
     const b = reservationReleaseDecision('b', ['x'], afterA);
-    expect(b).toEqual({ cid: 'b', misses: 0, seen: false, lastMissAt: 0, release: false });
+    expect(b).toEqual({ cid: 'b', misses: 1, seen: false, lastMissAt: 0, release: false });
   });
 
   it('honors a custom threshold', () => {

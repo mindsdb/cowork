@@ -1091,8 +1091,8 @@ function AppCore() {
     // turn and re-wedges. `ids` is the server's authoritative in-flight list —
     // the same signal the finished-diff below already trusts to mark a turn
     // idle — so if we hold the slot for a task the server first listed and then
-    // stopped listing, release it and drain. reservationReleaseDecision applies
-    // the seen-gate, miss-spacing, and pre-flight guards (see its doc).
+    // stopped listing, release it and drain. reservationReleaseDecision tunes
+    // patience by seen/unseen threshold, miss-spacing, and pre-flight (its doc).
     const streaming = activeStreamingTaskIdRef.current;
     // Pre-flight = slot reserved but no controller yet: a send reserves the slot
     // synchronously, then awaits attachment uploads before the stream (and the

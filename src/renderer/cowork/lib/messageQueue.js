@@ -33,34 +33,41 @@ export function selectNextQueuedTask(queues, existingTaskIds, preferredTaskId) {
 // of running conversations, so holding the slot for a task the server no longer
 // lists means the reservation is stale.
 //
-// Three guards keep this from reaping a HEALTHY turn:
+// Three guards tune how patiently this reaps, so a HEALTHY turn isn't aborted
+// while a genuinely stranded slot still recovers:
 //
-//   * `seen`: only a turn we have positively observed in the server's list can
-//     be reaped. The file backend (desktop) lists a turn synchronously before
-//     the client streams, so it is seen on the first poll; but the Redis backend
-//     writes its shared index only after (possibly slow) EFS staging, and prod
-//     runs two replicas — so a poll to a lagging replica can report a live
-//     just-started turn as absent. Never counting a miss until the turn is seen
-//     means this only ever releases a turn the server listed and then dropped.
+//   * `seen` sets the release threshold, it does NOT block release. A turn the
+//     server has listed at least once and then dropped is a high-confidence
+//     strand, released after `threshold` (2) spaced misses (~10s). A turn we have
+//     never observed is treated more patiently — released only after the larger
+//     `unseenThreshold` (4) — because the Redis backend writes its shared index
+//     only after (possibly slow) EFS staging and prod runs two replicas, so a
+//     poll to a lagging replica can report a live just-started turn as absent;
+//     the wider window rides that out (and a turn that does register mid-window
+//     flips to `seen` and resets). It is still bounded, so the crashed/fast-fail
+//     send path — a turn that starts and dies between polls and is thus never
+//     observed — still recovers the slot rather than hanging forever.
 //   * miss-spacing (`now`/`minMissSpacingMs`): the 5s interval and a focus
 //     refresh can fire close together, so two absent polls could advance the
 //     tally back-to-back instead of ~5s apart, collapsing the release window. A
 //     miss counts only once `minMissSpacingMs` has elapsed since the last, so
-//     `threshold` misses span ~threshold poll intervals. `now === 0` (default)
-//     disables it, for callers/tests that don't need it.
+//     misses span ~one poll interval each. `now === 0` (default) disables it,
+//     for callers/tests that don't need it.
 //   * `preflight`: a send reserves the slot synchronously, then awaits
 //     attachment uploads before the stream (and the server's record of it)
-//     start. A big upload can outlast `threshold` polls; its absence is expected,
+//     start. A big upload can outlast the thresholds; its absence is expected,
 //     not a strand, so the tally is held clean. The caller detects pre-flight as
 //     "slot reserved but no stream controller yet."
 //
 // The tally is `{ cid, misses, seen, lastMissAt }`; misses/seen reset whenever
-// the task reappears or the slot moves to a different conversation.
+// the task reappears or the slot moves to a different conversation. While misses
+// are accruing (seen or not) the caller keeps the 5s heartbeat alive, so an
+// unseen fast-fail is still polled to the point of release.
 export function reservationReleaseDecision(
   streamingTaskId,
   serverInFlightIds,
   prev,
-  { threshold = 2, preflight = false, now = 0, minMissSpacingMs = 4000 } = {},
+  { threshold = 2, unseenThreshold = 4, preflight = false, now = 0, minMissSpacingMs = 4000 } = {},
 ) {
   if (!streamingTaskId) return { cid: null, misses: 0, seen: false, lastMissAt: 0, release: false };
 
@@ -78,23 +85,21 @@ export function reservationReleaseDecision(
   const ids = Array.isArray(serverInFlightIds) ? serverInFlightIds : [];
   if (ids.includes(streamingTaskId)) {
     // Present: registration confirmed. Reset and mark seen, so a later
-    // disappearance counts as a genuine strand.
+    // disappearance is treated as the high-confidence strand.
     return { cid: streamingTaskId, misses: 0, seen: true, lastMissAt: 0, release: false };
   }
 
-  // Absent. Registration-phase guard: never reap a turn we have not yet seen.
-  if (!priorSeen) {
-    return { cid: streamingTaskId, misses: 0, seen: false, lastMissAt: priorLastMissAt, release: false };
-  }
+  // Absent. A seen turn releases fast; an unseen one gets the wider grace window.
+  const limit = priorSeen ? threshold : unseenThreshold;
 
   // Miss-spacing guard: don't let a second poll within the spacing window count
   // a fresh miss on top of the last one.
   if (now && priorMisses > 0 && now - priorLastMissAt < minMissSpacingMs) {
-    return { cid: streamingTaskId, misses: priorMisses, seen: true, lastMissAt: priorLastMissAt, release: priorMisses >= threshold };
+    return { cid: streamingTaskId, misses: priorMisses, seen: priorSeen, lastMissAt: priorLastMissAt, release: priorMisses >= limit };
   }
 
   const misses = priorMisses + 1;
-  return { cid: streamingTaskId, misses, seen: true, lastMissAt: now, release: misses >= threshold };
+  return { cid: streamingTaskId, misses, seen: priorSeen, lastMissAt: now, release: misses >= limit };
 }
 
 // Re-key queued messages when the server mints a canonical id for a task
