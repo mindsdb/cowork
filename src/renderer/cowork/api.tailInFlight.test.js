@@ -46,10 +46,9 @@ describe('tailInFlight idle timeout (ENG-1717)', () => {
   });
 
   it('still times out when the producer is silent but the stream keeps sending keepalives', async () => {
-    // `sse_from_buffer` emits a `: keepalive` comment every 20s while a producer
-    // is wedged. The idle timer must be reset only by real producer frames, not
-    // by these heartbeats — otherwise the exact hung-producer case this exists
-    // to catch never trips. Feed a steady drip of keepalives and no terminal.
+    // The server drips a `: keepalive` comment every 20s while a producer is
+    // wedged. The idle timer must reset only on real producer frames, not on
+    // these heartbeats — so feed a steady drip of keepalives and no terminal.
     const enc = new TextEncoder();
     let signal;
     vi.stubGlobal('fetch', vi.fn(async (_url, options) => {

@@ -528,11 +528,10 @@ export async function fetchInFlightList() {
 // client-side one for when the server never sends a terminal at all.
 //
 // Timed against producer frames only, NOT raw bytes: `sse_from_buffer` emits a
-// `: keepalive` comment every SSE_KEEPALIVE_SECONDS (20s) while a producer is
-// silent, so a byte-level timer would be reset by the heartbeat and never fire
-// for the exact hung-producer case this exists to catch. Keepalive comment
-// blocks carry no `data:` line, so they never parse to an event and never bump
-// the timer.
+// `: keepalive` comment every 20s while a producer is silent, so a byte-level
+// timer would be reset by the heartbeat and never fire for the hung-producer
+// case this exists to catch. Keepalive comment blocks carry no `data:` line, so
+// they never parse to an event and never bump the timer.
 const TAIL_IDLE_TIMEOUT_MS = 300_000;
 
 export function tailInFlight(conversationId, {
@@ -542,11 +541,9 @@ export function tailInFlight(conversationId, {
   onChunk, onProgress, onToolResult, onDone, onError, onEvent,
 } = {}) {
   const ctrl = new AbortController();
-  // Reset on every real producer frame (see TAIL_IDLE_TIMEOUT_MS) — deliberately
-  // NOT on raw bytes, so the server's 20s `: keepalive` heartbeat can't hold a
-  // hung producer's tail open forever. Fires only after a full idle window with
-  // no parseable event. Cleared in the finally so a cleanly-finished tail leaves
-  // no dangling timer.
+  // Bumped per real producer frame, not per raw read (see TAIL_IDLE_TIMEOUT_MS);
+  // fires after a full idle window and is cleared in the finally so a cleanly
+  // finished tail leaves no dangling timer.
   let idleTimer = null;
   let idledOut = false;
   const bumpIdle = () => {
