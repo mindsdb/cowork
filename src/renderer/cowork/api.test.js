@@ -404,3 +404,21 @@ describe('fetchHealth hands the anton install id to analytics (ENG-1689)', () =>
     expect(setAntonInstallId).not.toHaveBeenCalled();
   });
 });
+
+describe('fetchHealth is not affected by an analytics failure (ENG-1689)', () => {
+  it('still reports a healthy server when the analytics setter throws', async () => {
+    // The setter runs inside fetchHealth's try, so without isolation an
+    // exception would fall through to the catch and return status 'offline' —
+    // an analytics fault masquerading as a down server, on the call that gates
+    // boot. Readiness must not depend on a join key.
+    setAntonInstallId.mockImplementationOnce(() => {
+      throw new Error('analytics exploded');
+    });
+    globalThis.fetch = vi.fn(async () => jsonRes({ status: 'ok', aid: 'a1b2c3d4e5f60718' }));
+
+    const health = await fetchHealth();
+
+    expect(health.status).toBe('ok');
+    expect(health.aid).toBe('a1b2c3d4e5f60718');
+  });
+});
