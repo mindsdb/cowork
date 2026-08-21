@@ -25,54 +25,32 @@ export function selectNextQueuedTask(queues, existingTaskIds, preferredTaskId) {
 }
 
 // Decide whether the single app-wide stream slot is stranded and must be
-// force-released. Normally a turn's terminal event (onDone/onError) frees the
-// slot; a stream that dies with NO terminal — a half-open SSE, or a reconnect
-// tail attached to a turn that ended elsewhere — leaves it reserved forever, so
-// every later message strands at "N queued · waiting for <agent>". The 5s
-// in-flight poll is the backstop: `serverInFlightIds` is the authoritative list
-// of running conversations, so holding the slot for a task the server no longer
-// lists means the reservation is stale.
+// force-released. Normally a turn's terminal event (onDone/onError) frees it; a
+// stream that dies with NO terminal — a half-open SSE, or a reconnect tail on a
+// turn that ended elsewhere — leaves it reserved forever, stranding every later
+// message at "N queued". `serverInFlightIds` is the authoritative running list,
+// so holding the slot for a task the server no longer lists means it's stale.
 //
-// Three guards tune how patiently this reaps, so a HEALTHY turn isn't aborted
-// while a genuinely stranded slot still recovers:
+// Four guards keep a HEALTHY turn from being aborted while still recovering a
+// genuinely stranded one:
 //
-//   * `seen` sets the release threshold, it does NOT block release. A turn the
-//     server has listed at least once and then dropped is a high-confidence
-//     strand, released after `threshold` (2) spaced misses (~10s). A turn we have
-//     never observed is treated more patiently — released only after the larger
-//     `unseenThreshold` (4) — because the Redis backend writes its shared index
-//     only after (possibly slow) EFS staging and prod runs two replicas, so a
-//     poll to a lagging replica can report a live just-started turn as absent;
-//     the wider window rides that out (and a turn that does register mid-window
-//     flips to `seen` and resets). It is still bounded, so the crashed/fast-fail
-//     send path — a turn that starts and dies between polls and is thus never
-//     observed — still recovers the slot rather than hanging forever.
-//   * miss-spacing (`now`/`minMissSpacingMs`): the 5s interval and a focus
-//     refresh can fire close together, so two absent polls could advance the
-//     tally back-to-back instead of ~5s apart, collapsing the release window. A
-//     miss counts only once `minMissSpacingMs` has elapsed since the last, so
-//     misses span ~one poll interval each. `now === 0` (default) disables it,
-//     for callers/tests that don't need it.
-//   * `preflight`: a send reserves the slot synchronously, then awaits
-//     attachment uploads before the stream (and the server's record of it)
-//     start. A big upload can outlast the thresholds; its absence is expected,
-//     not a strand, so the tally is held clean. The caller detects pre-flight as
-//     "slot reserved but no stream controller yet."
-//   * `producedData`: the turn's own SSE socket has delivered at least one event
-//     (response.created, a delta), which is authoritative proof the server
-//     accepted and started it. This ONLY affects the unseen path: a turn that is
-//     streaming but not yet in the in-flight list is lagging registration (slow
-//     EFS staging / a lagging Redis replica), NOT the never-started fast-fail the
-//     unseen path reaps — so the reap is suppressed and we defer to real
-//     in-flight registration (→ seen) or the stream's own terminal/reconnect
-//     belt. It does NOT touch the seen path: a turn the server listed and then
-//     dropped is still a genuine strand, reaped at `threshold`. Only a turn that
-//     is BOTH absent from the list AND silent on its own socket is a fast-fail.
+//   * `seen` sets the threshold (not a gate): a turn the server listed and then
+//     dropped is high-confidence, released after `threshold` (2) spaced misses;
+//     one never observed waits for the wider `unseenThreshold` (4), since a
+//     lagging Redis replica can briefly report a live just-started turn as
+//     absent. Still bounded, so a fast-fail that's never listed recovers too.
+//   * miss-spacing (`now`/`minMissSpacingMs`): a miss counts only once
+//     `minMissSpacingMs` has elapsed since the last, so a focus refresh firing
+//     right after the 5s poll can't collapse the window. `now === 0` disables it.
+//   * `preflight`: a send reserves the slot, then awaits attachment uploads
+//     before the stream starts; that expected absence holds the tally clean.
+//   * `producedData`: the turn's own SSE socket has delivered an event, proof it
+//     started. Suppresses only the UNSEEN reap (the absence is registration lag,
+//     not a never-started fast-fail); a seen-then-dropped turn is still a genuine
+//     strand and reaps at `threshold`.
 //
-// The tally is `{ cid, misses, seen, lastMissAt }`; misses/seen reset whenever
-// the task reappears or the slot moves to a different conversation. While misses
-// are accruing (seen or not) the caller keeps the 5s heartbeat alive, so an
-// unseen fast-fail is still polled to the point of release.
+// Tally `{ cid, misses, seen, lastMissAt }` resets when the task reappears or the
+// slot moves conversations.
 export function reservationReleaseDecision(
   streamingTaskId,
   serverInFlightIds,
@@ -99,13 +77,11 @@ export function reservationReleaseDecision(
     return { cid: streamingTaskId, misses: 0, seen: true, lastMissAt: 0, release: false };
   }
 
-  // Absent, and never registered in the in-flight list. If the turn's own SSE
-  // socket has already delivered events, it provably started — the absence is
-  // registration/replica lag, not the never-started fast-fail this path reaps.
-  // Hold the tally clean and defer: it will either register (→ seen, reaped fast
-  // if it then vanishes) or be cleared by its own terminal/reconnect belt. Note
-  // this is gated on !priorSeen: once the server has listed the turn, a later
-  // disappearance is a genuine strand and reaps normally regardless of events.
+  // Absent and never registered, but the turn's own SSE socket has delivered
+  // events — it provably started, so the absence is registration/replica lag,
+  // not the fast-fail this path reaps. Defer to registration (→ seen) or the
+  // stream's own terminal belt. Gated on !priorSeen: once listed, a later
+  // disappearance is a genuine strand and reaps regardless of events.
   if (!priorSeen && producedData) {
     return { cid: streamingTaskId, misses: 0, seen: false, lastMissAt: 0, release: false };
   }
@@ -113,8 +89,7 @@ export function reservationReleaseDecision(
   // Absent. A seen turn releases fast; an unseen one gets the wider grace window.
   const limit = priorSeen ? threshold : unseenThreshold;
 
-  // Miss-spacing guard: don't let a second poll within the spacing window count
-  // a fresh miss on top of the last one.
+  // Miss-spacing guard: a poll within the spacing window doesn't count a fresh miss.
   if (now && priorMisses > 0 && now - priorLastMissAt < minMissSpacingMs) {
     return { cid: streamingTaskId, misses: priorMisses, seen: priorSeen, lastMissAt: priorLastMissAt, release: priorMisses >= limit };
   }

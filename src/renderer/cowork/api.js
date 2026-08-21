@@ -511,12 +511,10 @@ export async function fetchInFlightStatus(conversationId) {
 // "is this conversation alive on the server right now?" without a
 // per-task probe.
 //
-// Returns `null` when the poll itself FAILS (network blip, non-200), as
-// distinct from `[]` (the server answered: nothing is running). Callers must
-// not treat a failed poll as "the server reports nothing" — the stranded-slot
-// self-heal counts a missing conversation as evidence its turn ended, and two
-// network blips would otherwise look like two real misses and abort a healthy
-// streaming turn (ENG-1717).
+// Returns `null` when the poll itself FAILS (network blip, non-200), as distinct
+// from `[]` (server answered: nothing running). The stranded-slot self-heal
+// counts a missing conversation as evidence its turn ended, so a failed poll must
+// not read as "nothing running" — two blips would abort a healthy streaming turn.
 export async function fetchInFlightList() {
   try {
     const res = await req('/responses/in-flight-list');

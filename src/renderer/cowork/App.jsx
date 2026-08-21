@@ -988,13 +988,10 @@ function AppCore() {
   // mid-turn)" when the user navigates back to it. See
   // `reconcileTaskMessages` for the cleanup it enables.
   const activeStreamingTaskIdRef = useRef(null);
-  // Set true the moment the active stream's own SSE socket delivers any event
-  // (response.created, a delta, anything). That is authoritative client-side
-  // proof the server accepted and started this turn — independent of when it
-  // shows up in the /in-flight-list poll (which lags behind Redis/replica
-  // registration after slow EFS workspace staging). The stranded-slot self-heal
-  // reads it to tell a healthy-but-slow-to-register turn from a never-started
-  // fast-fail, so the never-registered reap can't abort a live turn (ENG-1717).
+  // True once the active stream's SSE socket delivers any event — client-side
+  // proof the turn started, independent of when it shows up in the in-flight
+  // poll (which lags Redis/replica registration). The stranded-slot self-heal
+  // reads it to tell a slow-to-register turn from a never-started fast-fail.
   // Reset to false at every new stream reservation below.
   const activeStreamProducedRef = useRef(false);
   const activeStreamGenerationRef = useRef(0);
@@ -1018,23 +1015,19 @@ function AppCore() {
   // async completion callbacks, never during render.
   const drainNextQueuedMessageRef = useRef(null);
 
-  // Running { cid, misses, seen, lastMissAt } tally for the stranded-reservation
-  // self-heal in refreshInFlightSet. A stream that dies with no terminal event
-  // pins the single stream slot forever; the in-flight poll releases it once the
-  // server has listed the task and then stopped listing it across consecutive,
-  // time-spaced polls (reservationReleaseDecision).
+  // Running tally for the stranded-reservation self-heal (reservationReleaseDecision):
+  // a stream that dies with no terminal pins the slot forever, so the in-flight
+  // poll releases it once the server lists then stops listing the task.
   const staleReservationRef = useRef({ cid: null, misses: 0, seen: false, lastMissAt: 0 });
 
   // Serializes refreshInFlightSet so overlapping interval/focus polls can't
   // double-count a miss (see the wrapper below).
   const refreshInFlightInProgressRef = useRef(false);
 
-  // Mirror of "a reservation has an unresolved miss" into state, so the 5s
-  // heartbeat below stays alive to fire the follow-up polls a release needs.
-  // Without it, the first miss empties inFlightSet, the size-gated interval
-  // tears down, and the second miss that would release the slot never arrives
-  // on its own — the common single-wedged-turn case would never self-heal
-  // (ENG-1717).
+  // Mirror "a reservation has an unresolved miss" into state so the 5s heartbeat
+  // stays alive for the follow-up polls a release needs — the first miss empties
+  // inFlightSet, which would otherwise tear down the size-gated interval before
+  // the miss that releases the slot arrives.
   const [hasPendingReservationMiss, setHasPendingReservationMiss] = useState(false);
 
   // Live steps per task, so handleSendInTask can see a pending question
@@ -1081,39 +1074,27 @@ function AppCore() {
   // guard; declared first so the wrapper can reference it without a TDZ.
   const reconcileInFlight = useCallback(async () => {
     const items = await fetchInFlightList();
-    // A failed poll (network blip / non-200) returns null, NOT []. Do not let
-    // it reconcile anything: treating it as "the server reports nothing" would
-    // both wrongly clear inFlightSet and count a stranded-reservation miss, so
-    // two blips could abort a healthy streaming turn. Skip this cycle entirely;
-    // the pending-miss tally is preserved and the next good poll decides.
+    // A failed poll returns null, NOT [] — don't reconcile: treating it as "server
+    // reports nothing" would clear inFlightSet and count a false miss, so two blips
+    // could abort a healthy turn. Skip; the tally is preserved for the next poll.
     if (items === null) return;
     const ids = items.map((it) => it.conversation_id).filter(Boolean);
 
-    // Stranded-reservation self-heal. The single app-wide stream slot is
-    // normally freed by a turn's terminal event (onDone/onError). A stream that
-    // dies WITHOUT one — a half-open SSE, or a reconnect tail attached to a turn
-    // that ended elsewhere — leaves activeStreamingTaskIdRef/activeStreamCtrlRef
-    // set forever, so drainNextQueuedMessage self-blocks and every later message
-    // (text and un-uploaded attachments) strands at "N queued · waiting for
-    // Anton". This is the reported "stuck at Queued that survives restarts" bug:
-    // on relaunch reconnectInFlight re-attaches to the same never-terminating
-    // turn and re-wedges. `ids` is the server's authoritative in-flight list —
-    // the same signal the finished-diff below already trusts to mark a turn
-    // idle — so if we hold the slot for a task the server first listed and then
-    // stopped listing, release it and drain. reservationReleaseDecision tunes
-    // patience by seen/unseen threshold, miss-spacing, and pre-flight (its doc).
+    // Stranded-reservation self-heal (see reservationReleaseDecision). A stream
+    // that dies without a terminal leaves activeStreamingTaskIdRef/CtrlRef set
+    // forever, so drainNextQueuedMessage self-blocks and every later message
+    // strands at "N queued"; on relaunch reconnectInFlight re-attaches and
+    // re-wedges (the "stuck at Queued that survives restarts" bug). `ids` is the
+    // server's authoritative list, so a task we hold but it no longer lists is
+    // released and drained.
     const streaming = activeStreamingTaskIdRef.current;
-    // Pre-flight = slot reserved but no controller yet: a send reserves the slot
-    // synchronously, then awaits attachment uploads before the stream (and the
-    // server's record of it) start. A genuine strand still holds its dead
-    // controller; releasing during the upload would let the send flow reassign
-    // the refs into a second concurrent stream on one conversation.
+    // Pre-flight = slot reserved but no controller yet (send awaiting uploads).
+    // Releasing then would let the send reassign the refs into a second
+    // concurrent stream on one conversation; a real strand still holds its dead
+    // controller.
     const preflight = Boolean(streaming) && !activeStreamCtrlRef.current;
-    // Authoritative "the server accepted and started this turn" signal from the
-    // stream's own socket. When the turn has produced events but the poll hasn't
-    // listed it yet, its absence is registration/replica lag, not a never-started
-    // fast-fail — so the unseen reap is suppressed and we defer to real in-flight
-    // registration or the stream's own terminal/reconnect belt (ENG-1717).
+    // Suppresses the unseen reap when the turn has produced events but the poll
+    // hasn't listed it yet (see reservationReleaseDecision / the ref's decl).
     const producedData = activeStreamProducedRef.current;
     // Wall-clock lets the decision space misses across real poll intervals.
     const decision = reservationReleaseDecision(
@@ -1130,23 +1111,18 @@ function AppCore() {
       activeStreamingTaskIdRef.current = null;
       activeStreamProducedRef.current = false;
       staleReservationRef.current = { cid: null, misses: 0, seen: false, lastMissAt: 0 };
-      // Clear the dead turn's live steps, same as every other terminal path
-      // (onDone/onError/stop). Otherwise a stranded turn that was blocked on an
-      // ask_user question leaves it in liveStepsRef, and the next message on
-      // this task gets redirected into answering a question for a run that is
-      // already gone. Use the alias-aware variant so a tmp->canonical stream's
-      // pre-adoption id is cleared too.
+      // Clear the dead turn's live steps like every terminal path, else a turn
+      // blocked on an ask_user question stays in liveStepsRef and the next
+      // message gets redirected into answering a gone run. Alias-aware so a
+      // tmp->canonical pre-adoption id is cleared too.
       releaseLiveStepsWithAliases(streaming);
-      // The setInFlightSet below drops `streaming` (it is absent from `ids`),
-      // and its finished-diff refetches the session and marks the task idle —
-      // so the released cid needs no explicit markInFlightDone here. Drain via
-      // the ref: this callback is mount-frozen and would otherwise close over a
-      // stale drain (same reason reconnect/stop use the ref).
+      // setInFlightSet below drops `streaming` and its finished-diff marks the
+      // task idle, so no explicit markInFlightDone. Drain via the ref (this
+      // callback is mount-frozen and would close over a stale drain).
       drainNextQueuedMessageRef.current?.();
     }
-    // Keep the heartbeat alive across an unresolved miss so the follow-up poll
-    // that releases the slot actually fires (see hasPendingReservationMiss).
-    // After a release the tally is reset to 0, so this settles back to false.
+    // Keep the heartbeat alive across an unresolved miss so the releasing poll
+    // fires (see hasPendingReservationMiss); a release resets the tally to 0.
     setHasPendingReservationMiss(staleReservationRef.current.misses > 0);
 
     setInFlightSet((prev) => {
@@ -1179,11 +1155,9 @@ function AppCore() {
   }, []);
 
   const refreshInFlightSet = useCallback(async () => {
-    // Coalesce overlapping polls (the 5s interval and a window-focus refresh) so
-    // two concurrent reconciles can't each read the same pre-write tally and
-    // advance the miss count back-to-back, collapsing the deliberate multi-poll
-    // release window. A reconcile already in flight has fresh data on the way,
-    // so a concurrent caller rides on it and returns.
+    // Coalesce overlapping polls (5s interval + focus refresh) so two concurrent
+    // reconciles can't read the same pre-write tally and double-count a miss. An
+    // in-flight reconcile has fresh data coming, so a concurrent caller returns.
     if (refreshInFlightInProgressRef.current) return;
     refreshInFlightInProgressRef.current = true;
     try {
@@ -1244,9 +1218,9 @@ function AppCore() {
   // multi-monitor users who can see both windows at once and don't
   // generate a focus event to trigger a manual refresh.
   useEffect(() => {
-    // Also runs while a stranded reservation has an unresolved miss, even when
-    // the set is empty: releasing the slot needs a follow-up poll, and the miss
-    // that started the tally is exactly what empties the set (ENG-1717).
+    // Also runs on an unresolved reservation miss even when the set is empty:
+    // releasing the slot needs a follow-up poll, and the miss is what empties
+    // the set.
     if (inFlightSet.size === 0 && !hasPendingReservationMiss) return undefined;
     const timer = setInterval(() => { refreshInFlightSet(); }, 5000);
     return () => clearInterval(timer);
@@ -1308,10 +1282,9 @@ function AppCore() {
   // the user as composer text instead of answering with text written for
   // something else or leaving them queued to deadlock.
   const updateLiveStepsAndDrainQueue = (taskIds, steps) => {
-    // Every stream's onEvent funnels through here, and each already dropped
-    // stale-generation events before calling us — so reaching this line means
-    // the *current* active stream's socket just delivered data. Record it for
-    // the stranded-slot self-heal (see activeStreamProducedRef).
+    // Every stream's onEvent funnels through here (after dropping stale-generation
+    // events), so reaching this line means the active stream delivered data.
+    // Record it for the stranded-slot self-heal (see activeStreamProducedRef).
     activeStreamProducedRef.current = true;
     taskIds.forEach((tid) => {
       if (tid) liveStepsRef.current[tid] = steps;
