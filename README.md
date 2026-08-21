@@ -218,6 +218,55 @@ unset (the Electron path), behavior is byte-identical to before.
 
 ---
 
+## Server Configuration
+
+By default the desktop app spawns its own `cowork-server` sidecar on
+`127.0.0.1` and manages its whole lifecycle. Two things make that
+configurable instead of fixed:
+
+### Point the app at a different server (Settings > Backend)
+
+Settings > Backend shows the server the app is currently talking to (its
+URL) and, if one is set, its API key — masked — next to a small **Edit**
+button. Editing lets you replace the local server with one running
+elsewhere (a teammate's shared instance, a different port, a server on
+another machine) by filling in its URL and, if it requires one, a bearer
+token. Saving requires an app restart — the origin is read once at
+window-creation time, not hot-reloadable.
+
+When a custom server is configured, the local server's own status card,
+log tail, and start/stop/restart controls are hidden — they don't apply to
+a server this app didn't spawn.
+
+### Require a bearer token for the local server ("Enable auth key")
+
+The local server is unauthenticated by default — anything that can reach
+`127.0.0.1:<port>` can call it. The same Settings > Backend panel has an
+**Enable auth key** checkbox next to the local server's address: checking
+it generates a random token, writes `COWORK_REQUIRE_AUTH=true` +
+`COWORK_AUTH_TOKEN=<token>` to the server's `.env`, and restarts just the
+sidecar (not the whole app) so it starts enforcing the token immediately —
+the app's own requests pick the token up automatically. Unchecking reverses
+this, clearing both keys and restarting again.
+
+### Build a client that doesn't install a local backend
+
+The setup wizard's first screen ("LOADING WORLD") has an **Install backend
+server** checkbox, checked by default. Unchecking it and continuing skips
+installing cowork-server entirely (no Xcode CLT / git / uv / cowork-server
+steps run) and takes you straight into the app with Settings > Backend
+already open, ready to fill in the URL of a server running elsewhere. The
+choice is remembered (`COWORK_SKIP_BACKEND_INSTALL` in `.env`), so later
+launches don't re-prompt for setup just because no local binary exists.
+
+This is a desktop-only concept — see [Web Build](#web-build) above for
+launching the SPA + `cowork-server` as a **web deployment** instead, which
+has no installer step to skip in the first place (there's no Electron
+shell managing a local sidecar at all; `cowork-server` and the SPA are just
+processes you run or containerize directly).
+
+---
+
 ## Architecture
 
 ```
@@ -234,9 +283,9 @@ src/
   renderer/              # React UI (bundled by Vite)
     App.tsx              # App flow: loading -> setup -> onboarding -> cowork
     CoworkApp.tsx        # Main chat-based cowork shell
-    pages/
-      Setup.tsx          # Install wizard with step progress
-      Onboarding.tsx     # LLM provider selection (Anthropic / Minds)
+    pages/arcade/
+      SetupScreen.tsx    # Install wizard with step progress (+ "Install backend server" checkbox)
+      OnboardingScreen.tsx # Terms consent + LLM provider selection (Anthropic / Minds)
     cowork/              # Shared SPA — never imports window.antontron
     platform/host.ts     # Shell abstraction (the only sanctioned bridge surface)
     styles.css           # Full dark theme
