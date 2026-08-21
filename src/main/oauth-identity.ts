@@ -44,6 +44,19 @@ async function fetchGithubIdentity(accessToken: string): Promise<{ email: string
   return { email: data.email || data.login || '' };
 }
 
+async function fetchSupabaseIdentity(accessToken: string): Promise<{ email: string }> {
+  const res = await fetch('https://api.supabase.com/v1/organizations', {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) return { email: '' };
+  const data = await res.json() as Array<{ slug?: string }> | { organizations?: Array<{ slug?: string }> };
+  const organizations = Array.isArray(data) ? data : (data.organizations || []);
+  const slug = organizations[0]?.slug || '';
+  // Supabase Management API OAuth does not expose an email userinfo field;
+  // use the organization slug as a stable account identity instead.
+  return { email: slug ? `org:${slug}` : '' };
+}
+
 const FETCHERS: Record<string, (accessToken: string) => Promise<{ email: string }>> = {
   google_drive: fetchGoogleIdentity,
   google_calendar: fetchGoogleIdentity,
@@ -52,6 +65,7 @@ const FETCHERS: Record<string, (accessToken: string) => Promise<{ email: string 
   google_analytics_4: fetchGoogleIdentity,
   linear: fetchLinearIdentity,
   github: fetchGithubIdentity,
+  supabase: fetchSupabaseIdentity,
 };
 
 export async function fetchAccountEmail(engine: string, accessToken: string): Promise<string> {

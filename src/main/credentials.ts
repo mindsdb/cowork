@@ -32,4 +32,8 @@ export const OAUTH_CREDENTIALS: Record<string, OAuthCredentials> = {
     clientIdVar: 'GITHUB_CLIENT_ID',
     clientSecretVar: 'GITHUB_CLIENT_SECRET',
   },
+  supabase: {
+    clientIdVar: 'SUPABASE_CLIENT_ID',
+    clientSecretVar: 'SUPABASE_CLIENT_SECRET',
+  },
 };

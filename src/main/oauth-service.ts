@@ -35,6 +35,8 @@ export interface OAuthConnectOpts {
   clientSecret?: string;
   /** Scopes to request, e.g. ["https://www.googleapis.com/auth/gmail.compose"] */
   scopes: string[];
+  /** Client authentication style at the token endpoint. */
+  tokenAuthStyle?: 'body' | 'basic';
   /**
    * Extra params merged into the auth URL. Provider-specific —
    * e.g. Google needs `access_type=offline` + `prompt=consent` to
@@ -155,7 +157,7 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
     response_type: 'code',
     client_id: opts.clientId,
     redirect_uri: redirectUri,
-    scope: opts.scopes.join(' '),
+    ...(opts.scopes.length ? { scope: opts.scopes.join(' ') } : {}),
     state,
     code_challenge: challenge,
     code_challenge_method: 'S256',
@@ -245,16 +247,24 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
   const tokenBody = new URLSearchParams({
     grant_type: 'authorization_code',
     code,
-    client_id: opts.clientId,
     redirect_uri: redirectUri,
     code_verifier: verifier,
   });
-  if (opts.clientSecret) tokenBody.set('client_secret', opts.clientSecret);
+  const tokenHeaders: Record<string, string> = {
+    'Content-Type': 'application/x-www-form-urlencoded',
+    Accept: 'application/json',
+  };
+  if (opts.tokenAuthStyle === 'basic' && opts.clientSecret) {
+    tokenHeaders.Authorization = `Basic ${Buffer.from(`${opts.clientId}:${opts.clientSecret}`).toString('base64')}`;
+  } else {
+    tokenBody.set('client_id', opts.clientId);
+    if (opts.clientSecret) tokenBody.set('client_secret', opts.clientSecret);
+  }
 
   try {
     const res = await fetch(opts.tokenUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+      headers: tokenHeaders,
       body: tokenBody.toString(),
       signal: AbortSignal.any([
         AbortSignal.timeout(TOKEN_EXCHANGE_TIMEOUT_MS),

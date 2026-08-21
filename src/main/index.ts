@@ -597,6 +597,7 @@ function setupIPC() {
         scopes: oauthBlock.scopes,
         extraAuthParams: oauthBlock.extra_auth_params,
         redirectPort: oauthBlock.redirect_port,
+        tokenAuthStyle: oauthBlock.token_auth_style,
       });
       if (!pkceResult.ok || !pkceResult.access_token || (supportsRefresh && !pkceResult.refresh_token)) {
         return { ok: false, reason: pkceResult.reason || 'OAuth flow did not return tokens.' };
@@ -655,7 +656,7 @@ function setupIPC() {
       const saved = await saveRes.json() as { ok: boolean; name?: string };
       const vaultSlug = saved.name || labelName;
 
-      startRefreshLoop(engine, vaultSlug, accountEmail, expiresAt, tokenUrl);
+      startRefreshLoop(engine, vaultSlug, accountEmail, expiresAt, tokenUrl, oauthBlock.token_auth_style);
       return { ok: true, name: vaultSlug, account_email: accountEmail };
     }
 

@@ -13,6 +13,7 @@ interface LoopState {
   intervalId: ReturnType<typeof setInterval>;
   name: string;
   tokenUrl: string;
+  tokenAuthStyle?: 'body' | 'basic';
   expiresAt: number; // epoch ms
   failureCount: number;
   notifiedFailure: boolean;
@@ -38,6 +39,7 @@ export function startRefreshLoop(
   accountEmail: string,
   expiresAtIso: string,
   tokenUrl: string,
+  tokenAuthStyle?: 'body' | 'basic',
 ): void {
   const key = loopKey(engine, accountEmail);
   stopRefreshLoop(engine, accountEmail);
@@ -50,6 +52,7 @@ export function startRefreshLoop(
   const state: LoopState = {
     name,
     tokenUrl,
+    tokenAuthStyle,
     expiresAt: expiresAtMs,
     failureCount: 0,
     notifiedFailure: false,
@@ -119,15 +122,23 @@ async function tick(engine: string, accountEmail: string, key: string): Promise<
   }
 
   try {
+    const refreshBody = new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token: refreshToken,
+    });
+    const refreshHeaders: Record<string, string> = {
+      'Content-Type': 'application/x-www-form-urlencoded',
+    };
+    if (state.tokenAuthStyle === 'basic') {
+      refreshHeaders.Authorization = `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`;
+    } else {
+      refreshBody.set('client_id', clientId);
+      refreshBody.set('client_secret', clientSecret);
+    }
     const res = await fetch(state.tokenUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        grant_type: 'refresh_token',
-        client_id: clientId,
-        client_secret: clientSecret,
-        refresh_token: refreshToken,
-      }).toString(),
+      headers: refreshHeaders,
+      body: refreshBody.toString(),
     });
 
     // Google's token endpoint returns 400 { error: "invalid_grant" } for a
