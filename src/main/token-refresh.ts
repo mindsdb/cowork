@@ -4,6 +4,7 @@ import { getRefreshToken, setRefreshToken } from './keychain-service';
 import { OAUTH_CREDENTIALS } from './credentials';
 import { authHeader } from './server-auth';
 import { IPC } from '../shared/ipc-channels';
+import { describeFetchError } from './fetch-error';
 
 const REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 const PRE_REFRESH_WINDOW_MS = 30 * 60 * 1000;
@@ -247,7 +248,7 @@ export async function getPickerAccess(
       appId,
     };
   } catch (err) {
-    return { ok: false, reason: `Token exchange failed: ${err}` };
+    return { ok: false, reason: `Token exchange failed: ${describeFetchError(err)}` };
   }
 }
 
