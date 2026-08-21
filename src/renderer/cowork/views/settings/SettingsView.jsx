@@ -4,7 +4,7 @@ import Ico from '../../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchRecommendedModels } from '../../api';
 import { providerTypeToKeyField, providerValueToType, resolveRoleModel, resolveModelPickerValue, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore, toDisplayUnits, toNaturalUnits, formatCount } from '../../lib/settingsTransform';
 import { MODEL_REFRESH_TTL_MS } from '../../lib/modelRefresh';
-import { trackHarnessSwapped } from '../../lib/analytics';
+import { trackHarnessSwapped, trackBillingOpened } from '../../lib/analytics';
 import { copyText as copyToClipboard } from '../../lib/clipboard';
 import { deriveProviderStatus, friendlyProviderError } from '../../lib/providerStatus';
 import { ToggleGroup } from '../../components/ui/ToggleGroup';
@@ -1063,6 +1063,16 @@ export default function SettingsView({
   // both roles to the resolved default-mode provider and its recommended
   // pair so a configured key actually drives the agent. Only repoints a role
   // whose provider differs, so unrelated saves don't rewrite the model.
+  // A role is repointed only when its own provider cannot run. The server
+  // resolves a configured provider as-is, so rewriting one the user chose
+  // deliberately -- a local endpoint, say -- moves their turns to a provider
+  // they never picked, and does it on any save, including a theme toggle.
+  const roleProviderUsable = (raw) => {
+    const type = providerValueToType(raw) || 'minds-cloud';
+    const card = providers.find((p) => p.type === type);
+    return Boolean(card && providerConfigured(card));
+  };
+
   const withResolvedRoles = (s) => {
     if (modelMode === 'custom') return s;
     const type = defaultModeProviderType;
@@ -1079,16 +1089,19 @@ export default function SettingsView({
     // value for unset fields, so the picker displays exactly what runs.
     // The provider still repoints: keeping a stale model id from another
     // provider would misroute (pnewsam review on #663).
-    if ((providerValueToType(s.planningProvider) || 'minds-cloud') !== type) {
+    if (!roleProviderUsable(s.planningProvider)
+        && (providerValueToType(s.planningProvider) || 'minds-cloud') !== type) {
       next.planningProvider = type;
       next.planningModel = null;
       next.defaultModel = null;
     }
-    if ((providerValueToType(s.codingProvider) || 'minds-cloud') !== type) {
+    if (!roleProviderUsable(s.codingProvider)
+        && (providerValueToType(s.codingProvider) || 'minds-cloud') !== type) {
       next.codingProvider = type;
       next.codingModel = null;
     }
-    if ((providerValueToType(s.routerProvider) || 'minds-cloud') !== type) {
+    if (!roleProviderUsable(s.routerProvider)
+        && (providerValueToType(s.routerProvider) || 'minds-cloud') !== type) {
       next.routerProvider = type;
       next.routerModel = null;
     }
@@ -1612,7 +1625,16 @@ export default function SettingsView({
                         <span className="text-danger font-semibold">No credits available. </span>
                         <button
                           type="button"
-                          onClick={() => host.openExternal ? host.openExternal(MINDS_BILLING_URL) : window.open(MINDS_BILLING_URL, '_blank')}
+                          // ENG-1533: recorded before the navigation, so web and
+                          // desktop count identically. `host.openExternal` is
+                          // always defined and already falls back to window.open
+                          // internally (platform/host.ts), with noopener —
+                          // guarding it here was dead code that would have opened
+                          // an unhardened window if it ever had run.
+                          onClick={() => {
+                            trackBillingOpened('no_credits_notice');
+                            return host.openExternal(MINDS_BILLING_URL);
+                          }}
                           className={LINK_BTN}
                         >Top up balance →</button>
                       </div>
@@ -1754,7 +1776,10 @@ export default function SettingsView({
                                   {displayModelLabel(curModel, settings.modelLabels || {})} needs credits.{' '}
                                   <button
                                     type="button"
-                                    onClick={() => host.openExternal ? host.openExternal(MINDS_BILLING_URL) : window.open(MINDS_BILLING_URL, '_blank')}
+                                    onClick={() => {
+                                      trackBillingOpened('locked_model_hint');
+                                      return host.openExternal(MINDS_BILLING_URL);
+                                    }}
                                     className={LINK_BTN}
                                   >Top up your balance</button>
                                   {' '}to use it.

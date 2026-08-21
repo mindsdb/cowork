@@ -44,6 +44,7 @@ import { providerOverloadedButtons } from '../lib/turnErrorActions';
 import { isSkippedFailedAssistant, isOrphanUser as isOrphanUserPure, lastVisibleTurnIdx } from '../lib/turnVisibility';
 import { isThinkingActive } from '../lib/thinkingActive';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
+import { trackBillingOpened, trackKeyProvisioningRefused } from '../lib/analytics';
 
 // Token shorthand mapped to our globals.css custom properties so the same
 // inline-styled JSX picks up the active theme.
@@ -1005,6 +1006,12 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
     try {
       let res = await host.mindshubFinalize();
       if (res?.upgradeRequired) {
+        // Two events, not one (ENG-1533). The refusal is the state — countable
+        // here against the other two handlers, which answer it differently (BYOK
+        // on first run, nothing at all on SSO sign-in). The billing open is what
+        // this handler did about it, and joins the paywall funnel.
+        trackKeyProvisioningRefused('billing_opened');
+        trackBillingOpened('key_provisioning_refused');
         host.openExternal(MINDS_BILLING_URL);
         return;
       }
@@ -1097,6 +1104,16 @@ export function ModelUnavailableCard({ time, agentLabel, onOpenSettings, code, f
   const raw = modelLabel(failedModel) || failedModel || 'This model';
   const label = /\s/.test(raw) ? raw : raw.charAt(0).toUpperCase() + raw.slice(1);
   const denied = code === 'model_access_denied';
+  // One handler for both button rows, so the recorded trigger always matches the
+  // card that was actually rendered (ENG-1533). Both rows offer Top up balance,
+  // but only the `denied` row is a credit denial — the other is the
+  // admin-disabled model, where the top-up is a legacy escape hatch (see the
+  // header comment). Labelling both `model_access_denied` would invent a credit
+  // denial that never happened.
+  const openBilling = () => {
+    trackBillingOpened(denied ? 'model_access_denied' : 'model_disabled');
+    host.openExternal(MINDS_BILLING_URL);
+  };
   const title = denied
     ? `${label} needs credits`
     : `${label} isn't available right now`;
@@ -1114,7 +1131,7 @@ export function ModelUnavailableCard({ time, agentLabel, onOpenSettings, code, f
         : 'This model is turned off for your workspace. Choose another model in Settings.'}
       buttons={denied
         ? [
-            { label: 'Top up balance', onClick: () => host.openExternal(MINDS_BILLING_URL), primary: true },
+            { label: 'Top up balance', onClick: openBilling, primary: true },
             // Only while Air can still run (free monthly grant or a payable
             // wallet) — a switch offer into another locked model is the same
             // dead end this card exists to close.
@@ -1122,7 +1139,7 @@ export function ModelUnavailableCard({ time, agentLabel, onOpenSettings, code, f
           ]
         : [
             { label: 'Open Settings', onClick: () => onOpenSettings?.('agent'), primary: true },
-            { label: 'Top up balance', onClick: () => host.openExternal(MINDS_BILLING_URL) },
+            { label: 'Top up balance', onClick: openBilling },
           ]}
     />
   );
@@ -1877,7 +1894,18 @@ export default function ChatView({
                       // gateway's wording predates pay as you go.
                       body="You've used your available MindsHub tokens. Top up your balance to keep working."
                       buttons={[
-                        { label: 'Top up balance', onClick: () => host.openExternal(MINDS_BILLING_URL), primary: true },
+                        {
+                          label: 'Top up balance',
+                          // ENG-1533: the click, not an impression. token_cap_hit
+                          // already counts the impression once per receipt in the
+                          // stream adapter; an impression here would re-fire on
+                          // every paint.
+                          onClick: () => {
+                            trackBillingOpened('token_limit');
+                            host.openExternal(MINDS_BILLING_URL);
+                          },
+                          primary: true,
+                        },
                       ]}
                     />
                   );
@@ -2028,7 +2056,19 @@ export default function ChatView({
                       title="You've used this month's free tokens"
                       body={`Your free allowance resets on ${formatAllowanceReset(m.resetAt)}. Add credits to keep working now and unlock Claude, GPT, Gemini, Kimi, DeepSeek and more.`}
                       buttons={[
-                        { label: 'Add credits', onClick: () => host.openExternal(MINDS_BILLING_URL), primary: true },
+                        {
+                          label: 'Add credits',
+                          // ENG-1533: the click, not an impression — same rule as
+                          // the drained-wallet card above. token_cap_hit already
+                          // counts this impression once per receipt in the stream
+                          // adapter, so every route to billing is counted exactly
+                          // once and this one is not the exception.
+                          onClick: () => {
+                            trackBillingOpened('included_allowance_exhausted');
+                            host.openExternal(MINDS_BILLING_URL);
+                          },
+                          primary: true,
+                        },
                       ]}
                     />
                   );
@@ -2067,7 +2107,17 @@ export default function ChatView({
                     title="Connect a provider to start chatting"
                     body="Start with MindsHub and get free monthly tokens on MindsHub Air, then pay as you go. Or add your own API key in Settings."
                     buttons={[
-                      { label: 'Start for free', onClick: () => host.openExternal(MINDS_BILLING_URL), primary: true },
+                      {
+                        label: 'Start for free',
+                        // ENG-1533: the click only. Whether this card deserves an
+                        // impression event of its own is an open ENG-1305
+                        // question, and is not settled here.
+                        onClick: () => {
+                          trackBillingOpened('connect_provider');
+                          host.openExternal(MINDS_BILLING_URL);
+                        },
+                        primary: true,
+                      },
                       { label: 'Open Settings', onClick: () => onOpenSettings?.('agent') },
                     ]}
                   />

@@ -25,6 +25,7 @@ export default defineConfig({
         'src/main/minds-urls.ts': { statements: 96, branches: 89 },
         'src/main/server-source.ts': { statements: 100, branches: 90 },
         'src/shared/server-status.ts': { statements: 100, branches: 100 },
+        'src/shared/minds-endpoint.ts': { statements: 100, branches: 100 },
         'src/main/server-process.ts': { statements: 60, branches: 45 },
         'src/main/ui-updater.ts': { statements: 75, branches: 68 },
         'src/renderer/platform/host.ts': { statements: 38, branches: 32 },

@@ -22,7 +22,6 @@ import ScheduledView from './views/ScheduledView';
 import TasksView from './views/TasksView';
 import ScheduleDetailView from './views/ScheduleDetailView';
 import ArtifactsView from './views/ArtifactsView';
-import ChannelsView from './views/ChannelsView';
 import CustomizeView from './views/CustomizeView';
 import SettingsView from './views/settings/SettingsView';
 import UtilitiesView from './views/UtilitiesView';
@@ -38,8 +37,9 @@ import { loadSkin, persistSkin, nextSkin, skinLabel } from '../lib/skins';
 import { loadCustomTheme, persistCustomTheme, applyCustomTheme } from '../lib/customTheme';
 import { applyNavTitleColor } from '../lib/navBranding';
 import { getAgentLabel } from './lib/agentLabel';
-import { selectNextQueuedTask, mergeQueuesForAdoptedId } from './lib/messageQueue';
+import { selectNextQueuedTask, mergeQueuesForAdoptedId, reservationReleaseDecision } from './lib/messageQueue';
 import { loadCachedSettings } from './lib/settingsCache';
+import { useOrgMode } from '../lib/orgMode';
 import { clearDraft, moveDraft } from './lib/draftStore';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { useGoogleDrivePicker } from './hooks/useGoogleDrivePicker';
@@ -59,7 +59,7 @@ import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
 import { isArtifactTipDismissed, dismissArtifactTip, dismissIfUntouched } from './components/onboarding/onboardingStore';
 import { recommendedModelOptions, providerValueToType,
          mergeRecommendedModels } from './lib/settingsTransform';
-import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery, trackFirstResponse, classifyFirstResponse } from './lib/analytics';
+import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery, trackFirstResponse, classifyFirstResponse, trackKeyProvisioningRefused } from './lib/analytics';
 import { MODEL_ROUTER_ID, MODEL_ROUTER } from './lib/modelCatalog';
 
 // One-of-ten encouraging follow-ups picked when a connect task is
@@ -988,6 +988,12 @@ function AppCore() {
   // mid-turn)" when the user navigates back to it. See
   // `reconcileTaskMessages` for the cleanup it enables.
   const activeStreamingTaskIdRef = useRef(null);
+  // True once the active stream's SSE socket delivers any event — client-side
+  // proof the turn started, independent of when it shows up in the in-flight
+  // poll (which lags Redis/replica registration). The stranded-slot self-heal
+  // reads it to tell a slow-to-register turn from a never-started fast-fail.
+  // Reset to false at every new stream reservation below.
+  const activeStreamProducedRef = useRef(false);
   const activeStreamGenerationRef = useRef(0);
   const composerMuteLastTaskIdRef = useRef(null);
   const prevRouteForComposerMuteRef = useRef(null);
@@ -1008,6 +1014,21 @@ function AppCore() {
   // instead — assigned right after the drain is defined and read only from
   // async completion callbacks, never during render.
   const drainNextQueuedMessageRef = useRef(null);
+
+  // Running tally for the stranded-reservation self-heal (reservationReleaseDecision):
+  // a stream that dies with no terminal pins the slot forever, so the in-flight
+  // poll releases it once the server lists then stops listing the task.
+  const staleReservationRef = useRef({ cid: null, misses: 0, seen: false, lastMissAt: 0 });
+
+  // Serializes refreshInFlightSet so overlapping interval/focus polls can't
+  // double-count a miss (see the wrapper below).
+  const refreshInFlightInProgressRef = useRef(false);
+
+  // Mirror "a reservation has an unresolved miss" into state so the 5s heartbeat
+  // stays alive for the follow-up polls a release needs — the first miss empties
+  // inFlightSet, which would otherwise tear down the size-gated interval before
+  // the miss that releases the slot arrives.
+  const [hasPendingReservationMiss, setHasPendingReservationMiss] = useState(false);
 
   // Live steps per task, so handleSendInTask can see a pending question
   // without threading stream state through the composer.
@@ -1049,9 +1070,61 @@ function AppCore() {
   const inFlightSetRef = useRef(inFlightSet);
   useEffect(() => { inFlightSetRef.current = inFlightSet; }, [inFlightSet]);
 
-  const refreshInFlightSet = useCallback(async () => {
+  // The reconcile body. Wrapped by refreshInFlightSet below with a re-entrancy
+  // guard; declared first so the wrapper can reference it without a TDZ.
+  const reconcileInFlight = useCallback(async () => {
     const items = await fetchInFlightList();
+    // A failed poll returns null, NOT [] — don't reconcile: treating it as "server
+    // reports nothing" would clear inFlightSet and count a false miss, so two blips
+    // could abort a healthy turn. Skip; the tally is preserved for the next poll.
+    if (items === null) return;
     const ids = items.map((it) => it.conversation_id).filter(Boolean);
+
+    // Stranded-reservation self-heal (see reservationReleaseDecision). A stream
+    // that dies without a terminal leaves activeStreamingTaskIdRef/CtrlRef set
+    // forever, so drainNextQueuedMessage self-blocks and every later message
+    // strands at "N queued"; on relaunch reconnectInFlight re-attaches and
+    // re-wedges (the "stuck at Queued that survives restarts" bug). `ids` is the
+    // server's authoritative list, so a task we hold but it no longer lists is
+    // released and drained.
+    const streaming = activeStreamingTaskIdRef.current;
+    // Pre-flight = slot reserved but no controller yet (send awaiting uploads).
+    // Releasing then would let the send reassign the refs into a second
+    // concurrent stream on one conversation; a real strand still holds its dead
+    // controller.
+    const preflight = Boolean(streaming) && !activeStreamCtrlRef.current;
+    // Suppresses the unseen reap when the turn has produced events but the poll
+    // hasn't listed it yet (see reservationReleaseDecision / the ref's decl).
+    const producedData = activeStreamProducedRef.current;
+    // Wall-clock lets the decision space misses across real poll intervals.
+    const decision = reservationReleaseDecision(
+      streaming, ids, staleReservationRef.current, { preflight, producedData, now: Date.now() },
+    );
+    staleReservationRef.current = {
+      cid: decision.cid, misses: decision.misses, seen: decision.seen, lastMissAt: decision.lastMissAt,
+    };
+    if (decision.release && streaming) {
+      const ctrl = activeStreamCtrlRef.current;
+      if (ctrl) { try { ctrl.abort(); } catch { /* already closed */ } }
+      activeStreamCtrlRef.current = null;
+      activeScratchpadRef.current = null;
+      activeStreamingTaskIdRef.current = null;
+      activeStreamProducedRef.current = false;
+      staleReservationRef.current = { cid: null, misses: 0, seen: false, lastMissAt: 0 };
+      // Clear the dead turn's live steps like every terminal path, else a turn
+      // blocked on an ask_user question stays in liveStepsRef and the next
+      // message gets redirected into answering a gone run. Alias-aware so a
+      // tmp->canonical pre-adoption id is cleared too.
+      releaseLiveStepsWithAliases(streaming);
+      // setInFlightSet below drops `streaming` and its finished-diff marks the
+      // task idle, so no explicit markInFlightDone. Drain via the ref (this
+      // callback is mount-frozen and would close over a stale drain).
+      drainNextQueuedMessageRef.current?.();
+    }
+    // Keep the heartbeat alive across an unresolved miss so the releasing poll
+    // fires (see hasPendingReservationMiss); a release resets the tally to 0.
+    setHasPendingReservationMiss(staleReservationRef.current.misses > 0);
+
     setInFlightSet((prev) => {
       // Diff: if the server says a cid is GONE but we had it, the
       // stream just finished from elsewhere — that's the signal to
@@ -1080,6 +1153,19 @@ function AppCore() {
       return next;
     });
   }, []);
+
+  const refreshInFlightSet = useCallback(async () => {
+    // Coalesce overlapping polls (5s interval + focus refresh) so two concurrent
+    // reconciles can't read the same pre-write tally and double-count a miss. An
+    // in-flight reconcile has fresh data coming, so a concurrent caller returns.
+    if (refreshInFlightInProgressRef.current) return;
+    refreshInFlightInProgressRef.current = true;
+    try {
+      await reconcileInFlight();
+    } finally {
+      refreshInFlightInProgressRef.current = false;
+    }
+  }, [reconcileInFlight]);
 
   const markInFlight = useCallback((cid) => {
     if (!cid) return;
@@ -1132,10 +1218,13 @@ function AppCore() {
   // multi-monitor users who can see both windows at once and don't
   // generate a focus event to trigger a manual refresh.
   useEffect(() => {
-    if (inFlightSet.size === 0) return undefined;
+    // Also runs on an unresolved reservation miss even when the set is empty:
+    // releasing the slot needs a follow-up poll, and the miss is what empties
+    // the set.
+    if (inFlightSet.size === 0 && !hasPendingReservationMiss) return undefined;
     const timer = setInterval(() => { refreshInFlightSet(); }, 5000);
     return () => clearInterval(timer);
-  }, [inFlightSet.size, refreshInFlightSet]);
+  }, [inFlightSet.size, hasPendingReservationMiss, refreshInFlightSet]);
 
   const enqueueMessage = (taskId, text, attachments = [], disabledConnections = []) => {
     // `attachments` rides with the queued item so a message sent while a
@@ -1193,6 +1282,10 @@ function AppCore() {
   // the user as composer text instead of answering with text written for
   // something else or leaving them queued to deadlock.
   const updateLiveStepsAndDrainQueue = (taskIds, steps) => {
+    // Every stream's onEvent funnels through here (after dropping stale-generation
+    // events), so reaching this line means the active stream delivered data.
+    // Record it for the stranded-slot self-heal (see activeStreamProducedRef).
+    activeStreamProducedRef.current = true;
     taskIds.forEach((tid) => {
       if (tid) liveStepsRef.current[tid] = steps;
     });
@@ -1589,6 +1682,9 @@ function AppCore() {
   // The full Display / theme picker modal (ENG-1545), opened from the
   // sidebar footer's "Display settings" button.
   const [themeModalOpen, setThemeModalOpen] = useState(false);
+  // Non-null = show the "coming soon to Cloud" popup for this feature name.
+  const [comingSoonFeature, setComingSoonFeature] = useState(null);
+  const orgMode = useOrgMode();
   // The "design your own" recipe behind the `custom` skin — edited in
   // Settings → Appearance, applied as inline body token overrides.
   const [customTheme, setCustomTheme] = useState(loadCustomTheme);
@@ -1690,7 +1786,7 @@ function AppCore() {
     document.body.classList.toggle('gf-dots-off', settings.showDots === false);
   }, [settings.showDots]);
 
-  const [route, setRoute] = useState('home');         // home | task | projects | scheduled | schedule-detail | artifacts | channels | customize
+  const [route, setRoute] = useState('home');         // home | task | projects | scheduled | schedule-detail | artifacts | customize
   // Keep a ref of the live route so the keydown listener (bound
   // once on mount) can read it without a re-bind on every nav.
   routeRef.current = route;
@@ -2301,6 +2397,7 @@ function AppCore() {
     };
 
     activeStreamingTaskIdRef.current = taskId;
+    activeStreamProducedRef.current = false; // fresh stream: no events yet
     const streamGen = activeStreamGenerationRef.current;
     activeStreamCtrlRef.current = tailInFlight(taskId, {
       fromSeq: 0, // Replay from the start — the reducer is idempotent
@@ -2947,7 +3044,13 @@ function AppCore() {
       // seconds (org bootstrap + server restart) and is not a sign-in gate.
       setSsoConnected(true);
       try {
-        await host.mindshubFinalize();
+        // The result is still not acted on — key provisioning is not a sign-in
+        // gate — but a refusal is now countable (ENG-1533). A 402 here leaves the
+        // user signed in with no working key, no BYOK route and no message; the
+        // `unhandled` outcome is how often that happens. Fixing the UX needs its
+        // own ticket; this only makes it visible.
+        const finalizeResult = await host.mindshubFinalize();
+        if (finalizeResult?.upgradeRequired) trackKeyProvisioningRefused('unhandled');
       } catch (e) {
         console.warn('[sso] finalize failed after sign-in (account is authenticated):', e);
       }
@@ -2963,6 +3066,12 @@ function AppCore() {
   // list — hence the isMobile-gated null. Single home for this rule so the
   // call sites don't each re-spell it.
   const openSettings = (section = null) => {
+    // Channels lives inside Settings, not behind its own route, so it needs
+    // its own org-mode intercept here rather than reusing navigate()'s.
+    if (orgMode && section === 'channels') {
+      setComingSoonFeature('Channels');
+      return;
+    }
     if (section) setSettingsSection(section);
     else if (isMobile) setSettingsSection(null);
     setSettingsOpen(true);
@@ -2970,6 +3079,13 @@ function AppCore() {
 
   const navigate = (key) => {
     if (sidebarPopout) setNavPopoutOpen(false);
+    // Connectors aren't available on Cloud yet — intercept any entry point
+    // (sidebar, Settings, deep link) in org mode and show the "coming soon"
+    // popup instead of routing to a half-working surface.
+    if (orgMode && key === 'customize') {
+      setComingSoonFeature('Connect Apps and Data');
+      return;
+    }
     if (key === 'settings' || key.startsWith('settings:')) {
       // Targeted (settings:backend) opens that section; a bare `settings`
       // opens the mobile section list (null) / desktop's last section.
@@ -2996,6 +3112,26 @@ function AppCore() {
     }
     setRoute(key);
   };
+
+  // Safety net: navigate() intercepts the sidebar/Settings entry points, but a
+  // direct setRoute (or org mode resolving after a route is already set) could
+  // still land on connectors. Bounce home and show the popup rather than
+  // render a surface that isn't available on Cloud.
+  useEffect(() => {
+    if (orgMode && route === 'customize') {
+      setComingSoonFeature('Connect Apps and Data');
+      setRoute('home');
+    }
+  }, [orgMode, route]);
+
+  // Same safety net for Channels: the in-Settings nav calls onSectionChange
+  // (= setSettingsSection) directly, bypassing openSettings entirely.
+  useEffect(() => {
+    if (orgMode && settingsSection === 'channels') {
+      setComingSoonFeature('Channels');
+      setSettingsSection('agent');
+    }
+  }, [orgMode, settingsSection]);
 
   const attachmentProjectPath = currentTask?.projectPath || selectedProject?.path || null;
   const attachmentProjectName = currentTask?.projectName || selectedProject?.name || null;
@@ -3313,6 +3449,7 @@ function AppCore() {
       // Tag which task is mid-flight so reconcileTaskMessages can
       // tell legitimate running indicators from zombies on reload.
       activeStreamingTaskIdRef.current = taskId;
+      activeStreamProducedRef.current = false; // fresh stream: no events yet
       markInFlight(taskId);
     };
     trackAgentSessionStarted();
@@ -3562,6 +3699,7 @@ function AppCore() {
     // Synchronous reservation so a second invocation that fires
     // before our awaits resolve sees us as "in flight."
     activeStreamingTaskIdRef.current = id;
+    activeStreamProducedRef.current = false; // fresh stream: no events yet
     // Cross-client cache: we know this conversation is about to be
     // mid-stream. Marking immediately (rather than waiting for the
     // /in-flight-list poll to discover it) means reconcileTaskMessages
@@ -3932,6 +4070,7 @@ function AppCore() {
     };
 
     activeStreamingTaskIdRef.current = id;
+    activeStreamProducedRef.current = false; // fresh stream: no events yet
     // Same generation guard the other three stream sites carry, in the same
     // order: generation → release → (`cancelled` bail, where the transport
     // reports one). It is not enough that "this stream cannot carry ask_user"
@@ -5113,10 +5252,6 @@ function AppCore() {
         )}
 
 
-        {route === 'channels' && (
-          <ChannelsView />
-        )}
-
         {route === 'customize' && (
           <CustomizeView
             connectors={connectors}
@@ -5259,6 +5394,25 @@ function AppCore() {
         skin={skin}
         onSkinChange={setSkin}
       />
+
+      <Modal
+        open={comingSoonFeature != null}
+        onClose={() => setComingSoonFeature(null)}
+        size="sm"
+        labelledBy="coming-soon-title"
+      >
+        <ModalHeader
+          id="coming-soon-title"
+          title="Coming soon to Cloud"
+          onClose={() => setComingSoonFeature(null)}
+        />
+        <ModalBody>
+          <p>
+            This feature isn’t available on Cloud just yet. In the meantime, you
+            can try it in the local version.
+          </p>
+        </ModalBody>
+      </Modal>
 
       {!host.isWeb && (
       <ServerOfflineHelpModal

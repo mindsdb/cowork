@@ -9,6 +9,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { host } from '../../platform/host';
 import { BASE, authFetch, fetchRecommendedModels } from '../../cowork/api';
 import { recommendedModelOptions, type ProviderModel } from '../../cowork/lib/settingsTransform';
+import { trackKeyProvisioningRefused } from '../../cowork/lib/analytics';
 import { MINDS_API_BASE, MINDS_REGISTER_URL } from '../../lib/mindsUrls';
 import { syncSettingsToDb, syncModelsToDb, modelLinesFrom } from '../../lib/syncSettings';
 import { ArcadeShell, PixelMarquee } from './components';
@@ -553,6 +554,10 @@ export default function OnboardingScreen({
     // No LLM credits — account authenticated but key wasn't provisioned.
     // Save terms consent and redirect to BYOK so the user can pick a provider.
     if (finalizeResult.upgradeRequired) {
+      // ENG-1533: on the commonest path — first run — a provisioning refusal
+      // shows no paywall at all, it offers BYOK. That is why the refusal is its
+      // own event with an `outcome` rather than a paywall trigger.
+      trackKeyProvisioningRefused('byok_offered');
       // Best-effort in web (loopback-gated; consent also persists client-side
       // on completion). See host.saveSettings / ENG-817.
       await host.saveSettings('ANTON_TERMS_CONSENT=true');
