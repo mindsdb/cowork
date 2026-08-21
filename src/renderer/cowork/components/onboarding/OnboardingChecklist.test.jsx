@@ -48,15 +48,17 @@ describe('OnboardingChecklist', () => {
     expect(onStartChat).toHaveBeenCalledTimes(1);
   });
 
-  it('shows all four steps on desktop', async () => {
+  it('shows all steps on desktop', async () => {
     const { OnboardingChecklist } = await load();
     render(<OnboardingChecklist onStartChat={vi.fn()} />);
 
     expect(screen.getByText('See Cowork work')).toBeTruthy();
     expect(screen.getByText('Customize Cowork to your role')).toBeTruthy();
     expect(screen.getByText('Connect an app')).toBeTruthy();
-    expect(screen.getByText('Point it at a folder')).toBeTruthy();
-    expect(screen.getByText('0/4')).toBeTruthy();
+    // The folder step is gone on purpose: no host can deliver its promise
+    // yet (ENG-1852) — restore one when ENG-384/ENG-497 ship.
+    expect(screen.queryByText('Point it at a folder')).toBeNull();
+    expect(screen.getByText('0/3')).toBeTruthy();
   });
 
   it('hides the desktopOnly steps on web and counts only the visible ones', async () => {
@@ -67,7 +69,6 @@ describe('OnboardingChecklist', () => {
     expect(screen.getByText('See Cowork work')).toBeTruthy();
     expect(screen.getByText('Customize Cowork to your role')).toBeTruthy();
     expect(screen.queryByText('Connect an app')).toBeNull();
-    expect(screen.queryByText('Point it at a folder')).toBeNull();
     expect(screen.getByText('0/2')).toBeTruthy();
   });
 
@@ -94,6 +95,6 @@ describe('OnboardingChecklist', () => {
     await user.click(screen.getByText('Customize Cowork to your role'));
 
     expect(screen.queryByText(/got the basics/)).toBeNull();
-    expect(screen.getByText('2/4')).toBeTruthy();
+    expect(screen.getByText('2/3')).toBeTruthy();
   });
 });
