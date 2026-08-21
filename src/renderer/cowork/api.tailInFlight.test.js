@@ -66,14 +66,22 @@ describe('tailInFlight idle timeout (ENG-1717)', () => {
     })));
 
     const onError = vi.fn();
-    const cid = await new Promise((resolve) => {
-      tailInFlight('conv-1', { idleTimeoutMs: 10000, onError, onDone: resolve });
-    });
+    const onDone = vi.fn();
+    // Short window so the idle timer WOULD fire well within the test if the
+    // finally failed to clear it. tailInFlight returns the controller
+    // synchronously; onDone fires a few microtasks later on the terminal frame.
+    const ctrl = tailInFlight('conv-1', { idleTimeoutMs: 20, onError, onDone });
 
-    expect(cid).toBe('conv-1');
-    // A finished tail must not later fire a stall error — the finally cleared
-    // the timer.
+    await delay(5);
+    expect(onDone).toHaveBeenCalledWith('conv-1');
+
+    // Wait PAST the idle window. A dangling idle timer (no finally cleanup)
+    // would fire here and abort the controller; the clear in the finally is
+    // what keeps signal.aborted false. This is the assertion that actually
+    // exercises the cleanup — onError alone stays silent either way, because
+    // the async body already returned before any late timer could report.
     await delay(30);
+    expect(ctrl.signal.aborted).toBe(false);
     expect(onError).not.toHaveBeenCalled();
   });
 

@@ -625,6 +625,15 @@ export function tailInFlight(conversationId, {
       // caller-initiated abort (a new send or navigation) it must release the
       // slot — so report it as an error the reconnect's onError acts on.
       if (idledOut) {
+        // Tell the server to actually drop the wedged turn. Aborting the tail
+        // only tears down our consumer; the producer keeps running and
+        // /in-flight-list keeps listing the conversation, so the next poll would
+        // re-select it and reopen a fresh tail — looping this stall message
+        // instead of resolving. cancelResponse is idempotent and swallows its
+        // own errors, so this is safe fire-and-forget. (Server-side #345 also
+        // bounds the turn; this ends the client loop immediately rather than
+        // after the server's own idle window.)
+        cancelResponse(conversationId);
         onError?.('The response stalled and was ended. Please try sending again.');
       } else if (err.name !== 'AbortError') {
         onError?.(err.message);
