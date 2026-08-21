@@ -49,27 +49,76 @@ export function selectNextQueuedTask(queues, existingTaskIds, preferredTaskId) {
 // `preflight` is set the tally is held clean and nothing is released; the caller
 // detects pre-flight as "slot reserved but no stream controller yet."
 //
-// Safety rests on the server listing a running turn the instant it starts. On
-// the file backend (desktop) that holds: `/in-flight-list` reads the
-// in-process RunRegistry, which `registry.start` populates synchronously under
-// a lock before the client even begins streaming, and a turn blocked on an
-// ask_user card stays `is_running` the whole time — so a live turn is never
-// absent and the two-miss window only ever absorbs the sub-second id swap. The
-// Redis multi-instance backend merges a shared index that can propagate with
-// lag; if that lag exceeds `threshold` polls a client polling another replica
-// could release a live slot early. Revisit this threshold (or gate the
-// self-heal) when that dispatch path ships — see RunRegistry's multi-instance
-// note.
-export function reservationReleaseDecision(streamingTaskId, serverInFlightIds, prev, { threshold = 2, preflight = false } = {}) {
-  if (!streamingTaskId) return { cid: null, misses: 0, release: false };
+// Two guards keep this from reaping a HEALTHY turn:
+//
+//   * `seen` (registration-phase guard). Only a turn we have positively observed
+//     in the server's in-flight list can ever be reaped. On the file backend
+//     (desktop) `/in-flight-list` reads the in-process RunRegistry, populated
+//     synchronously by `registry.start` before the client streams, so a live
+//     turn is seen on the first poll. The Redis multi-instance backend merges a
+//     shared index written only after (possibly slow) EFS workspace staging, and
+//     production runs two replicas — so a poll routed to a lagging replica can
+//     report a just-started or not-yet-propagated turn as absent. Refusing to
+//     count a miss until the turn has been seen means such a false-negative
+//     cannot abort a healthy turn: this path only ever releases a turn the
+//     server first listed and later dropped.
+//   * miss-spacing (`now` / `minMissSpacingMs`). The 5s interval poll and a
+//     window-focus refresh can fire close together, so two absent polls could
+//     advance this shared tally back-to-back instead of ~5s apart, collapsing
+//     the two-miss window to an instant. A new miss counts only once
+//     `minMissSpacingMs` has elapsed since the last, so `threshold` misses
+//     always span ~threshold real poll intervals. `now === 0` (the default)
+//     disables the spacing guard — used by callers/tests that don't need it.
+//
+// `preflight` is the third guard: a send reserves the slot synchronously, then
+// awaits attachment uploads before the stream — and the server — ever starts. A
+// big upload can outlast `threshold` polls, and during it the server rightly
+// doesn't list the turn, so its absence is expected, not a strand. When
+// `preflight` is set the tally is held clean and nothing is released; the caller
+// detects pre-flight as "slot reserved but no stream controller yet."
+//
+// The tally is `{ cid, misses, seen, lastMissAt }`; misses/seen reset whenever
+// the task reappears or the slot moves to a different conversation.
+export function reservationReleaseDecision(
+  streamingTaskId,
+  serverInFlightIds,
+  prev,
+  { threshold = 2, preflight = false, now = 0, minMissSpacingMs = 4000 } = {},
+) {
+  if (!streamingTaskId) return { cid: null, misses: 0, seen: false, lastMissAt: 0, release: false };
+
+  const sameCid = Boolean(prev) && prev.cid === streamingTaskId;
+  const priorMisses = sameCid ? (prev.misses || 0) : 0;
+  const priorSeen = sameCid ? Boolean(prev.seen) : false;
+  const priorLastMissAt = sameCid ? (prev.lastMissAt || 0) : 0;
+
   // Reserved but not yet streaming: the server has not been told about the turn
-  // yet, so hold the tally clean and never release.
-  if (preflight) return { cid: streamingTaskId, misses: 0, release: false };
+  // yet, so hold the tally clean. Preserve `seen` so a mid-turn pre-flight
+  // window can't erase that we already confirmed the turn.
+  if (preflight) {
+    return { cid: streamingTaskId, misses: 0, seen: priorSeen, lastMissAt: 0, release: false };
+  }
+
   const ids = Array.isArray(serverInFlightIds) ? serverInFlightIds : [];
-  if (ids.includes(streamingTaskId)) return { cid: streamingTaskId, misses: 0, release: false };
-  const priorMisses = prev && prev.cid === streamingTaskId ? prev.misses : 0;
+  if (ids.includes(streamingTaskId)) {
+    // Present: registration confirmed. Reset the tally and mark it seen, so a
+    // later disappearance counts as a genuine strand.
+    return { cid: streamingTaskId, misses: 0, seen: true, lastMissAt: 0, release: false };
+  }
+
+  // Absent. Registration-phase guard: never reap a turn we have not yet seen.
+  if (!priorSeen) {
+    return { cid: streamingTaskId, misses: 0, seen: false, lastMissAt: priorLastMissAt, release: false };
+  }
+
+  // Miss-spacing guard: don't let a second poll within the spacing window count
+  // a fresh miss on top of the last one.
+  if (now && priorMisses > 0 && now - priorLastMissAt < minMissSpacingMs) {
+    return { cid: streamingTaskId, misses: priorMisses, seen: true, lastMissAt: priorLastMissAt, release: priorMisses >= threshold };
+  }
+
   const misses = priorMisses + 1;
-  return { cid: streamingTaskId, misses, release: misses >= threshold };
+  return { cid: streamingTaskId, misses, seen: true, lastMissAt: now, release: misses >= threshold };
 }
 
 // Re-key queued messages when the server mints a canonical id for a task

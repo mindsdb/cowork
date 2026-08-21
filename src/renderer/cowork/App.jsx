@@ -1009,11 +1009,19 @@ function AppCore() {
   // async completion callbacks, never during render.
   const drainNextQueuedMessageRef = useRef(null);
 
-  // Running { cid, misses } tally for the stranded-reservation self-heal in
-  // refreshInFlightSet. A stream that dies with no terminal event pins the
-  // single stream slot forever; the in-flight poll releases it once the server
-  // has stopped listing the task across consecutive polls (reservationReleaseDecision).
-  const staleReservationRef = useRef({ cid: null, misses: 0 });
+  // Running { cid, misses, seen, lastMissAt } tally for the stranded-reservation
+  // self-heal in refreshInFlightSet. A stream that dies with no terminal event
+  // pins the single stream slot forever; the in-flight poll releases it once the
+  // server has listed the task and then stopped listing it across consecutive,
+  // time-spaced polls (reservationReleaseDecision).
+  const staleReservationRef = useRef({ cid: null, misses: 0, seen: false, lastMissAt: 0 });
+
+  // Serializes refreshInFlightSet: the 5s interval and the window-focus refresh
+  // can otherwise overlap, and two concurrent polls would each read the same
+  // pre-write tally and advance the miss count back-to-back — collapsing the
+  // deliberate multi-poll release window. A refresh already in flight has fresh
+  // data on the way, so a concurrent caller coalesces onto it and returns.
+  const refreshInFlightInProgressRef = useRef(false);
 
   // Mirror of "a reservation has an unresolved miss" into state, so the 5s
   // heartbeat below stays alive to fire the follow-up polls a release needs.
@@ -1063,7 +1071,9 @@ function AppCore() {
   const inFlightSetRef = useRef(inFlightSet);
   useEffect(() => { inFlightSetRef.current = inFlightSet; }, [inFlightSet]);
 
-  const refreshInFlightSet = useCallback(async () => {
+  // The reconcile body. Wrapped by refreshInFlightSet below with a re-entrancy
+  // guard; declared first so the wrapper can reference it without a TDZ.
+  const reconcileInFlight = useCallback(async () => {
     const items = await fetchInFlightList();
     // A failed poll (network blip / non-200) returns null, NOT []. Do not let
     // it reconcile anything: treating it as "the server reports nothing" would
@@ -1083,9 +1093,11 @@ function AppCore() {
     // on relaunch reconnectInFlight re-attaches to the same never-terminating
     // turn and re-wedges. `ids` is the server's authoritative in-flight list —
     // the same signal the finished-diff below already trusts to mark a turn
-    // idle — so if we hold the slot for a task the server no longer lists across
-    // consecutive polls, release it and drain. The consecutive-miss guard rides
-    // out turn-start registration lag and the tmp->canonical id swap.
+    // idle — so if we hold the slot for a task the server first listed and then
+    // stopped listing across consecutive, time-spaced polls, release it and
+    // drain. reservationReleaseDecision's seen-gate rides out turn-start
+    // registration lag (and replica propagation lag) and the tmp->canonical id
+    // swap; its miss-spacing rides out overlapping interval/focus polls.
     const streaming = activeStreamingTaskIdRef.current;
     // A send reserves the slot (activeStreamingTaskIdRef) synchronously, then
     // awaits attachment uploads before the stream — and the server — ever starts
@@ -1097,15 +1109,23 @@ function AppCore() {
     // concurrent streams on one conversation. A genuine strand always still
     // holds its (dead) controller, so "reserved but no controller" == pre-flight.
     const preflight = Boolean(streaming) && !activeStreamCtrlRef.current;
-    const decision = reservationReleaseDecision(streaming, ids, staleReservationRef.current, { preflight });
-    staleReservationRef.current = { cid: decision.cid, misses: decision.misses };
+    // Pass wall-clock so the decision can space consecutive misses ~one poll
+    // apart even if an interval and a focus poll fire close together; the seen
+    // flag inside the tally is what gates release on the turn having actually
+    // been registered by the server first.
+    const decision = reservationReleaseDecision(
+      streaming, ids, staleReservationRef.current, { preflight, now: Date.now() },
+    );
+    staleReservationRef.current = {
+      cid: decision.cid, misses: decision.misses, seen: decision.seen, lastMissAt: decision.lastMissAt,
+    };
     if (decision.release && streaming) {
       const ctrl = activeStreamCtrlRef.current;
       if (ctrl) { try { ctrl.abort(); } catch { /* already closed */ } }
       activeStreamCtrlRef.current = null;
       activeScratchpadRef.current = null;
       activeStreamingTaskIdRef.current = null;
-      staleReservationRef.current = { cid: null, misses: 0 };
+      staleReservationRef.current = { cid: null, misses: 0, seen: false, lastMissAt: 0 };
       // Clear the dead turn's live steps, same as every other terminal path
       // (onDone/onError/stop). Otherwise a stranded turn that was blocked on an
       // ask_user question leaves it in liveStepsRef, and the next message on
@@ -1153,6 +1173,21 @@ function AppCore() {
       return next;
     });
   }, []);
+
+  const refreshInFlightSet = useCallback(async () => {
+    // Coalesce overlapping polls (the 5s interval and a window-focus refresh) so
+    // two concurrent reconciles can't each read the same pre-write tally and
+    // advance the miss count back-to-back, collapsing the deliberate multi-poll
+    // release window. A reconcile already in flight has fresh data on the way,
+    // so a concurrent caller rides on it and returns.
+    if (refreshInFlightInProgressRef.current) return;
+    refreshInFlightInProgressRef.current = true;
+    try {
+      await reconcileInFlight();
+    } finally {
+      refreshInFlightInProgressRef.current = false;
+    }
+  }, [reconcileInFlight]);
 
   const markInFlight = useCallback((cid) => {
     if (!cid) return;
