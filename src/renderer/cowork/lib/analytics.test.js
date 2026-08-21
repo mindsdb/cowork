@@ -729,12 +729,23 @@ describe('anton install id (aid) stamping', () => {
     expect(event.properties).not.toHaveProperty('aid');
   });
 
-  it('rejects anything that is not 16 lowercase hex', async () => {
+  it('rejects anything that is not lowercase hex', async () => {
     // A shape check rather than a sentinel blocklist, so a future sentinel is
-    // caught without knowing its name. Same rule as main's installation-id.ts.
-    for (const bad of ['ABCDEF0123456789', 'a1b2c3', 'a1b2c3d4e5f6071', 'not-an-id', 'a1b2c3d4e5f60718x']) {
+    // caught without knowing its name.
+    for (const bad of ['ABCDEF0123456789', 'a1b2c3', 'not-an-id', 'a1b2c3d4e5f60718x', 'unknown']) {
       const event = await captureWith(bad);
       expect(event.properties, `should have rejected ${bad}`).not.toHaveProperty('aid');
+    }
+  });
+
+  it('accepts a DIFFERENT width, because the width is anton\'s business', async () => {
+    // Deliberately not pinned to 16 (#707 review). Both sides of the join come
+    // from the same `get_installation_id`, so if anton ever changed the width
+    // the join stays self-consistent — whereas a hard 16 here would drop 100%
+    // of ids and make every join return zero rows, silently.
+    for (const wider of ['a1b2c3d4', 'a1b2c3d4e5f6071', 'a1b2c3d4e5f60718a1b2c3d4e5f60718']) {
+      const event = await captureWith(wider);
+      expect(event.properties.aid, `should have accepted ${wider}`).toBe(wider);
     }
   });
 
