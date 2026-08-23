@@ -1,0 +1,299 @@
+import { useEffect, useState } from 'react';
+import Alert from '../components/ui/Alert';
+import Spinner from '../components/ui/Spinner';
+import { ConfirmModal } from '../components/ConfirmModal';
+import { codingApi, type CodingSession, type EngineCommand } from './api';
+import { ApprovalCard } from './ApprovalCard';
+import { CodeComposer } from './CodeComposer';
+import { EventTimeline } from './EventTimeline';
+import { ExtensionsModal, type ExtensionTab } from './ExtensionsModal';
+import { NewTaskPanel } from './NewTaskPanel';
+import { ReviewPanel } from './ReviewPanel';
+import { RuntimeControlsModal } from './RuntimeControlsModal';
+import { RenameTaskModal } from './RenameTaskModal';
+import { TaskBar } from './TaskBar';
+import { TaskTerminal } from './TaskTerminal';
+import { useCodingSession } from './useCodingSession';
+import { useCodeTaskActions } from './useCodeTaskActions';
+import { useCodeTaskList } from './useCodeTaskList';
+import { useQueuedInstructionResume } from './useQueuedInstructionResume';
+import { codeFixtureReviewOpen } from './fixtures';
+import { isActiveStatus, promptHistory } from './presentation';
+import type { ModelPickerMeta, ModelPickerSource } from '../lib/modelPickerOptions';
+import './code.css';
+
+
+export default function CodeView({
+  sessions,
+  selectedId,
+  newTask,
+  defaultEngineId,
+  defaultModel,
+  models,
+  modelMeta,
+  onSessionsChange,
+  onSelectionChange,
+}: {
+  sessions: CodingSession[];
+  selectedId: string | null;
+  newTask: boolean;
+  defaultEngineId: string;
+  defaultModel: string;
+  models: ModelPickerSource[];
+  modelMeta: ModelPickerMeta;
+  onSessionsChange: (sessions: CodingSession[]) => void;
+  onSelectionChange: (sessionId: string | null, newTask?: boolean) => void;
+}) {
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(codeFixtureReviewOpen);
+  const [terminalOpen, setTerminalOpen] = useState(false);
+  const [commands, setCommands] = useState<EngineCommand[]>([]);
+  const [controlsOpen, setControlsOpen] = useState(false);
+  const [extensionsOpen, setExtensionsOpen] = useState(false);
+  const [extensionTab, setExtensionTab] = useState<ExtensionTab>('skills');
+  const [renameOpen, setRenameOpen] = useState(false);
+  const detail = useCodingSession(newTask ? null : selectedId);
+  const session = detail.session?.id === selectedId ? detail.session : null;
+  const taskList = useCodeTaskList({
+    sessions,
+    selectedId,
+    newTask,
+    currentSession: session,
+    onSessionsChange,
+    onSelectionChange,
+  });
+  const actions = useCodeTaskActions({
+    selectedId,
+    session,
+    refresh: detail.refresh,
+    loadSessions: taskList.load,
+    onSessionsChange,
+    onSelectionChange,
+  });
+  const {
+    busy,
+    error: actionError,
+    setError: setActionError,
+    run: runAction,
+    create: createTask,
+    fork: forkTask,
+    toggleArchive,
+    remove: deleteTask,
+  } = actions;
+  useQueuedInstructionResume(session, detail.refresh, setActionError);
+
+  useEffect(() => {
+    const engineId = session?.engine_id;
+    if (!engineId) {
+      setCommands([]);
+      return undefined;
+    }
+    let alive = true;
+    setCommands([]);
+    codingApi.engines().then((engines) => {
+      if (!alive) return;
+      setCommands(engines.find((engine) => engine.id === engineId)?.commands || []);
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, [session?.engine_id]);
+
+  useEffect(() => {
+    setReviewOpen(codeFixtureReviewOpen());
+    setDeleteOpen(false);
+    setActionError('');
+    setControlsOpen(false);
+    setExtensionsOpen(false);
+    setRenameOpen(false);
+  }, [newTask, selectedId]);
+
+  const restoring = detail.loading || (!!selectedId && detail.session?.id !== selectedId);
+  const taskBarSession = session || sessions.find((item) => item.id === selectedId) || null;
+  const conversationError = detail.error || (reviewOpen ? '' : actionError || taskList.error);
+  // A local folder is a first-class Code workspace, not an exceptional state.
+  // Keep meaningful Git/worktree warnings, but do not turn the absence of Git
+  // into a persistent caution banner.
+  const workspaceWarning = session?.workspace_kind === 'direct_folder'
+    ? ''
+    : session?.workspace_warning || '';
+  const approval = session?.pending_approval;
+  return (
+    <div className="code-page">
+      {!newTask && selectedId && taskBarSession && (
+        <TaskBar
+          session={taskBarSession}
+          git={detail.git}
+          files={detail.diff}
+          modelLabel={models.find((model) => model.id === taskBarSession.model)?.name}
+          reviewOpen={reviewOpen}
+          terminalOpen={terminalOpen}
+          onToggleReview={() => setReviewOpen((current) => !current)}
+          onToggleTerminal={() => setTerminalOpen((current) => !current)}
+          onOpenControls={() => setControlsOpen(true)}
+          onOpenExtensions={() => { setExtensionTab('skills'); setExtensionsOpen(true); }}
+          onRename={() => setRenameOpen(true)}
+          onFork={() => void forkTask()}
+          onCompact={() => void runAction(() => codingApi.turn(taskBarSession.id, '/compact'), true)}
+          onStatus={() => void runAction(
+            () => isActiveStatus(taskBarSession.status)
+              ? codingApi.steer(taskBarSession.id, '/status')
+              : codingApi.turn(taskBarSession.id, '/status'),
+            true,
+          )}
+          onArchive={() => void toggleArchive()}
+          onDelete={() => setDeleteOpen(true)}
+        />
+      )}
+
+      {taskList.loading ? (
+        <div className="code-loading"><Spinner className="text-lg" /> Loading coding tasks…</div>
+      ) : newTask || !selectedId ? (
+        <NewTaskPanel
+          busy={busy}
+          error={actionError || taskList.error}
+          defaultEngineId={defaultEngineId}
+          defaultModel={defaultModel}
+          models={models}
+          modelMeta={modelMeta}
+          onCreate={createTask}
+        />
+      ) : restoring && !session ? (
+        <div className="code-loading"><Spinner className="text-lg" /> Restoring task…</div>
+      ) : session ? (
+        <div className="code-workspace">
+          <section className="code-conversation">
+            {(conversationError || workspaceWarning) && (
+              <div className="code-notices">
+                {conversationError && <Alert variant="danger">{conversationError}</Alert>}
+                {workspaceWarning && workspaceWarning !== conversationError && <Alert variant="warning">{workspaceWarning}</Alert>}
+              </div>
+            )}
+            <EventTimeline key={`timeline-${session.id}`} events={detail.events} session={session} />
+            {approval && (
+              <ApprovalCard
+                approval={approval}
+                busy={busy}
+                onDecision={(decision) => void runAction(
+                  () => codingApi.approve(session.id, approval.id, decision),
+                  true,
+                )}
+              />
+            )}
+            <CodeComposer
+              key={`composer-${session.id}`}
+              session={session}
+              busy={busy}
+              onSend={(prompt, delivery, attachments) => runAction(
+                () => delivery === 'steer'
+                  ? codingApi.steer(session.id, prompt, attachments)
+                  : delivery === 'queue'
+                    ? codingApi.queue(session.id, prompt, attachments)
+                    : codingApi.turn(session.id, prompt, attachments),
+                true,
+                true,
+              )}
+              onStop={() => runAction(() => codingApi.cancel(session.id), true)}
+              commands={commands}
+              history={promptHistory(detail.events)}
+              onRemoveQueued={(instructionId) => runAction(
+                () => codingApi.removeQueued(session.id, instructionId),
+                true,
+                true,
+              )}
+              onClientCommand={(command) => {
+                if (command.client_action === 'terminal') {
+                  setTerminalOpen(true);
+                  return;
+                }
+                if (command.client_action === 'controls') {
+                  setControlsOpen(true);
+                  return;
+                }
+                if (command.client_action === 'skills' || command.client_action === 'mcp') {
+                  setExtensionTab(command.client_action === 'mcp' ? 'mcp_servers' : 'skills');
+                  setExtensionsOpen(true);
+                  return;
+                }
+                if (command.client_action === 'fork') {
+                  void forkTask();
+                  return;
+                }
+                setActionError(`/${command.name} controls are not available in this build yet.`);
+              }}
+            />
+            {terminalOpen && <TaskTerminal sessionId={session.id} onClose={() => setTerminalOpen(false)} />}
+          </section>
+          <ReviewPanel
+            open={reviewOpen}
+            session={session}
+            git={detail.git}
+            files={detail.diff}
+            busy={busy}
+            error={actionError}
+            onClose={() => setReviewOpen(false)}
+            onBranch={(name) => runAction(() => codingApi.branch(session.id, name), false, true)}
+            onCommit={(message) => runAction(() => codingApi.commit(session.id, message), false, true)}
+            onApply={() => runAction(() => codingApi.apply(session.id), false, true)}
+          />
+        </div>
+      ) : (
+        <div className="code-loading"><Alert variant="danger">{detail.error || 'This coding task could not be restored.'}</Alert></div>
+      )}
+      <ConfirmModal
+        open={deleteOpen}
+        title="Delete this coding task?"
+        message="This removes the task history and its managed workspace. Your source folder is left alone."
+        confirmLabel="Delete task"
+        destructive
+        busy={busy}
+        onClose={() => { if (!busy) setDeleteOpen(false); }}
+        onConfirm={async () => {
+          if (await deleteTask()) setDeleteOpen(false);
+        }}
+      />
+      {session && (
+        <RuntimeControlsModal
+          open={controlsOpen}
+          sessionId={session.id}
+          value={{
+            model: session.model,
+            permission_mode: session.permission_mode,
+            reasoning_effort: session.reasoning_effort || 'high',
+            service_tier: session.service_tier || 'standard',
+            personality: session.personality || 'pragmatic',
+            network_access: !!session.network_access,
+            web_search: !!session.web_search,
+            additional_dirs: session.additional_dirs || [],
+          }}
+          models={models}
+          modelMeta={modelMeta}
+          busy={busy}
+          onClose={() => setControlsOpen(false)}
+          onApply={async (value) => {
+            await runAction(() => codingApi.updateSession(session.id, value), true, true);
+            setControlsOpen(false);
+          }}
+        />
+      )}
+      {session && (
+        <ExtensionsModal
+          open={extensionsOpen}
+          sessionId={session.id}
+          initialTab={extensionTab}
+          onClose={() => setExtensionsOpen(false)}
+        />
+      )}
+      {session && (
+        <RenameTaskModal
+          open={renameOpen}
+          title={session.title}
+          busy={busy}
+          onClose={() => setRenameOpen(false)}
+          onRename={async (title) => {
+            await runAction(() => codingApi.renameSession(session.id, title), true, true);
+            setRenameOpen(false);
+          }}
+        />
+      )}
+    </div>
+  );
+}

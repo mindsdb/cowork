@@ -1,0 +1,14 @@
+export interface ConfirmModalProps {
+  open: boolean;
+  title: string;
+  message?: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  destructive?: boolean;
+  busy?: boolean;
+  busyLabel?: string;
+  onClose: () => void;
+  onConfirm: () => void | Promise<void>;
+}
+
+export function ConfirmModal(props: ConfirmModalProps): JSX.Element | null;

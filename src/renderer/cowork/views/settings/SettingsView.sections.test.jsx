@@ -47,6 +47,12 @@ vi.mock('../../lib/analytics', () => ({
   resetDeviceIdentity: vi.fn(),
 }));
 vi.mock('../ChannelsView', () => ({ default: () => <div data-testid="channels-stub" /> }));
+vi.mock('../../code/api', () => ({
+  codingApi: {
+    engines: vi.fn(async () => [{ id: 'codex', label: 'Codex', adapter_version: '1', available: true }]),
+    models: vi.fn(async () => ({ items: ['fable'] })),
+  },
+}));
 
 import SettingsView from './SettingsView';
 
@@ -102,6 +108,13 @@ describe('SettingsView — every section mounts (behavior lock)', () => {
     // section — its own top-level entry, not part of Agent.
     render(<Harness section="codingMode" />);
     expect(await screen.findByText('Coding mode')).toBeInTheDocument();
+  });
+
+  it('renders the independent Coding agent section', async () => {
+    render(<Harness section="codingAgent" />);
+    expect(await screen.findByText('The local coding harness Cowork supervises. Codex is available now; this boundary also supports future engines without changing the Code workspace.')).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Coding agent engine' })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Coding agent model' })).toBeInTheDocument();
   });
 
   it('renders the Appearance section', async () => {

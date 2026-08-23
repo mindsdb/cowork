@@ -208,6 +208,18 @@ export async function showItemInFolder(path: string): Promise<{ ok: boolean; rea
   return { ok: false, reason: 'unsupported' };
 }
 
+export async function pickCodeFolder(): Promise<{
+  ok: boolean;
+  path?: string;
+  cancelled?: boolean;
+  reason?: string;
+}> {
+  if (isElectron && typeof bridge.pickCodeFolder === 'function') {
+    return bridge.pickCodeFolder();
+  }
+  return { ok: false, reason: 'Folder selection is available in the desktop app.' };
+}
+
 // ---- Coding mode (MVP) ---------------------------------------------------
 
 export async function detectClaudeCode(): Promise<{ installed: boolean; path: string | null }> {
@@ -1401,6 +1413,7 @@ export const host = {
   openExternal,
   openPath,
   showItemInFolder,
+  pickCodeFolder,
   detectClaudeCode,
   startCodingTerminal,
   sendCodingTerminalInput,

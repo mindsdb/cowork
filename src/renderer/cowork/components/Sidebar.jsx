@@ -11,6 +11,8 @@ import UserMenu from './UserMenu';
 import WorkspaceSelector from './WorkspaceSelector';
 import OnboardingChecklist from './onboarding/OnboardingChecklist';
 import FirstArtifactTip from './onboarding/FirstArtifactTip';
+import { CodeSidebarSessions } from '../code/CodeSidebarSessions';
+import WorkspaceModeSwitch from './WorkspaceModeSwitch';
 
 // Tone → banner palette (the only place tone becomes pixels). `ready`/`progress`
 // share sage (progress is the same banner mid-download); `error` goes amber.
@@ -216,12 +218,18 @@ export default function Sidebar({
   connectorsCount = 0,
   activeRoute,
   activeTaskId,
+  activeWorkspace = 'cowork',
+  codingSessions = [],
+  activeCodingSessionId = null,
   serverOnline,
   serverBusy = false,
   serverBusyKind = 'starting', // 'starting' | 'stopping'
   onNavigate,
+  onWorkspaceChange = () => {},
   onSelectTask,
   onNewTask,
+  onSelectCodingSession,
+  onNewCodingTask,
   onOpenSearch,
   collapsed = false,
   onToggleCollapsed,
@@ -269,6 +277,7 @@ export default function Sidebar({
   artifactTipOpen = false,
   onArtifactTipDismiss,
 }) {
+  const codeRoute = activeWorkspace === 'code';
   // Signed-in account identity (null when signed out) — decides whether the
   // footer shows the account row + user menu or the plain Settings row.
   const accountUser = useAccountUser(isSsoConnected);
@@ -562,60 +571,80 @@ export default function Sidebar({
             organization selector lands. Renders nothing until the gate is on. */}
         {accountUser && <WorkspaceSelector user={accountUser} />}
 
-        {/* New task CTA — the tinted (accent-wash) variant, full width. */}
+        {!host.isWeb && (
+          <WorkspaceModeSwitch
+            value={activeWorkspace}
+            onChange={onWorkspaceChange}
+          />
+        )}
+
+        {/* The primary action follows the active workspace. Code tasks stay
+            distinct from Cowork conversations, but use the same shell grammar. */}
         <div className="anton-sidebar__cta-wrap">
           <Button
             variant="tinted"
             block
             size="lg"
-            onClick={onNewTask}
+            onClick={codeRoute ? onNewCodingTask : onNewTask}
             // cascade-forced: .btn sets `gap: 6px`; match the nav rows' 9px.
             style={{ gap: 9 }}
           >
             {Ico.plus(14)}
-            <span className="flex-1 text-left font-medium">New task</span>
+            <span className="flex-1 text-left font-medium">{codeRoute ? 'New code task' : 'New task'}</span>
             <Kbd>{shortcut('N')}</Kbd>
           </Button>
         </div>
 
-        {/* Primary nav */}
-        <div className="nav-list px-2.5 flex flex-col gap-px">
-          <NavItem icon={Ico.folder(15)}  label="Projects"        onClick={() => onNavigate('projects')}  active={activeRoute === 'projects'}  badge={showCounters ? (projectsCount  || null) : null} />
-          <NavItem icon={Ico.clock(15)}   label="Scheduled Tasks" onClick={() => onNavigate('scheduled')} active={activeRoute === 'scheduled'} badge={showCounters ? (scheduledCount || null) : null} />
-          <NavItem
-            icon={Ico.sparkle(15)}
-            label="Live Artifacts"
-            elementRef={artifactsNavRef}
-            onClick={() => {
-              // Opening the artifacts view IS the tip's goal — count it
-              // as a dismissal, same as "Got it" / "Show me".
-              if (artifactTipOpen) onArtifactTipDismiss?.();
-              onNavigate('artifacts');
-            }}
-            active={activeRoute === 'artifacts'}
-            badge={showCounters ? (artifactsCount || null) : null}
-          />
-          {/* Connect Apps and Data — replaces "Customize". Reuses the
-              `customize` route key so existing in-flight links still
-              work. The page now lists connected apps + datasources in
-              a Projects-style grid.
-              Label flips to "Connected Apps" once at least one app /
-              data source is connected; the badge then reads as a
-              live "you have N connections" indicator. */}
-          <NavItem
-            icon={Ico.link(15)}
-            label={connectorsCount > 0 ? 'Connected Apps and Data' : 'Connect Apps and Data'}
-            onClick={() => onNavigate('customize')}
-            active={activeRoute === 'customize'}
-            badge={showCounters ? (connectorsCount || null) : null}
-          />
-          {/* Channels used to have a standalone entry here, web-only, purely
-              because the web shell hid Settings entirely — Channels lives
-              under Settings on desktop. Settings is now reachable on web too,
-              so the workaround is removed and both platforms find Channels
-              in the same place. */}
-        </div>
+        {/* Cowork navigation belongs to Cowork. Keeping it out of Code avoids
+            a mixed rail where switching products and navigating within one
+            product look like the same action. */}
+        {!codeRoute && (
+          <div className="nav-list px-2.5 flex flex-col gap-px">
+            <NavItem icon={Ico.folder(15)}  label="Projects"        onClick={() => onNavigate('projects')}  active={activeRoute === 'projects'}  badge={showCounters ? (projectsCount  || null) : null} />
+            <NavItem icon={Ico.clock(15)}   label="Scheduled Tasks" onClick={() => onNavigate('scheduled')} active={activeRoute === 'scheduled'} badge={showCounters ? (scheduledCount || null) : null} />
+            <NavItem
+              icon={Ico.sparkle(15)}
+              label="Live Artifacts"
+              elementRef={artifactsNavRef}
+              onClick={() => {
+                // Opening the artifacts view IS the tip's goal — count it
+                // as a dismissal, same as "Got it" / "Show me".
+                if (artifactTipOpen) onArtifactTipDismiss?.();
+                onNavigate('artifacts');
+              }}
+              active={activeRoute === 'artifacts'}
+              badge={showCounters ? (artifactsCount || null) : null}
+            />
+            {/* Connect Apps and Data — replaces "Customize". Reuses the
+                `customize` route key so existing in-flight links still
+                work. The page now lists connected apps + datasources in
+                a Projects-style grid.
+                Label flips to "Connected Apps" once at least one app /
+                data source is connected; the badge then reads as a
+                live "you have N connections" indicator. */}
+            <NavItem
+              icon={Ico.link(15)}
+              label={connectorsCount > 0 ? 'Connected Apps and Data' : 'Connect Apps and Data'}
+              onClick={() => onNavigate('customize')}
+              active={activeRoute === 'customize'}
+              badge={showCounters ? (connectorsCount || null) : null}
+            />
+            {/* Channels used to have a standalone entry here, web-only, purely
+                because the web shell hid Settings entirely — Channels lives
+                under Settings on desktop. Settings is now reachable on web too,
+                so the workaround is removed and both platforms find Channels
+                in the same place. */}
+          </div>
+        )}
 
+        {codeRoute ? (
+          <CodeSidebarSessions
+            sessions={codingSessions}
+            selectedId={activeCodingSessionId}
+            onSelect={onSelectCodingSession}
+          />
+        ) : (
+        <>
         {/* Agent — the agent's own brain: what it remembers (Memories)
             and what it can do (Skills library). Pulled out of the old
             bordered inset and presented as a labeled group, so it reads
@@ -730,10 +759,12 @@ export default function Sidebar({
             </button>
           )}
         </div>
+        </>
+        )}
 
         {/* Onboarding tracker — docked above the footer on every screen.
             Hides itself once dismissed (post-completion). */}
-        {onStartChat && <OnboardingChecklist onStartChat={onStartChat} />}
+        {!codeRoute && onStartChat && <OnboardingChecklist onStartChat={onStartChat} />}
 
         {/* One banner for all three update mechanisms, chosen by
             deriveUpdateBanner (shell-first). Exactly one banner or none. */}
