@@ -12,9 +12,9 @@ import {
 } from './composerFences';
 import { HighlightOverlay } from './composerHighlight';
 import {
-  isMovingAlias, isFrozenAlias, hasFrozenVersions, orderByFamily,
   MODEL_ROUTER_ID, MODEL_ROUTER_LABEL,
 } from '../lib/modelCatalog';
+import { buildModelPickerOptions } from '../lib/modelPickerOptions';
 import { MODEL_REFRESH_TTL_MS } from '../lib/modelRefresh';
 import ModelSelect from './ModelSelect.jsx';
 import ProviderIcon from './ProviderIcon.jsx';
@@ -407,30 +407,7 @@ export default function Composer({
   // per-row tag/provider metadata, mirroring settingsTransform's
   // buildModelOptions so the two pickers can't drift apart again.
   const modelPickerOptions = useMemo(() => {
-    const { modelProviders = {}, modelFamilies = {}, modelEnabled = {} } = modelMeta || {};
-    const list = models || [];
-    const ids = list.map((m) => m.id);
-    const byId = new Map(list.map((m) => [m.id, m]));
-    const ordered = orderByFamily(ids, modelFamilies).map((id) => byId.get(id));
-    // Only tag once something listed is NOT the latest; on an all-moving catalog the
-    // tag would sit on every row and distinguish nothing.
-    const tagMoving = hasFrozenVersions(ids, modelFamilies);
-    const catalogOptions = ordered.map((m) => {
-      const tag = [
-        tagMoving && isMovingAlias(m.id, modelFamilies) ? 'Latest' : '',
-        // A frozen version whose head is also listed. An orphan carries no
-        // tag: "older version" is a claim relative to a newer one, and with
-        // no head present there is nothing for the user to read it against.
-        (isFrozenAlias(m.id, modelFamilies) && byId.has(modelFamilies[m.id])) ? 'Older version' : '',
-        modelEnabled[m.id] === false ? 'Needs credits' : '',
-      ].filter(Boolean).join(' · ');
-      return {
-        value: m.id,
-        label: m.name,
-        ...(tag ? { tag } : {}),
-        ...(modelProviders[m.id] ? { provider: modelProviders[m.id] } : {}),
-      };
-    });
+    const catalogOptions = buildModelPickerOptions(models, modelMeta);
     // "Model Router" (defer to this account's Settings) leads the list,
     // inside the MindsHub group rather than pinned above every section —
     // `maker: 'mindshub'` is the same escape hatch modelSection() gives an

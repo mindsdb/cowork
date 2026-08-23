@@ -33,6 +33,7 @@ interface AntonTronAPI {
   openExternal: (url: string) => Promise<void>;
   openPath: (path: string) => Promise<{ ok: boolean; reason?: string }>;
   showItemInFolder: (path: string) => Promise<{ ok: boolean; reason?: string }>;
+  pickCodeFolder: () => Promise<{ ok: boolean; path?: string; cancelled?: boolean; reason?: string }>;
   serverInfo: () => Promise<{ running: boolean; starting: boolean; port: number }>;
   serverStart: () => Promise<{ ok: boolean; port?: number; reason?: string }>;
   serverStop: () => Promise<void>;

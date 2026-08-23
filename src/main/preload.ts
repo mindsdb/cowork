@@ -76,6 +76,7 @@ contextBridge.exposeInMainWorld('antontron', {
   // Open a local file/folder in the OS default handler.
   openPath:     (p: string) => ipcRenderer.invoke('shell:open-path', p),
   showItemInFolder: (p: string) => ipcRenderer.invoke(IPC.SHOW_ITEM_IN_FOLDER, p),
+  pickCodeFolder: () => ipcRenderer.invoke(IPC.CODE_PICK_FOLDER),
 
   // Coding mode (MVP): detect a local `claude` CLI, run it in an embedded PTY.
   detectClaudeCode: () => ipcRenderer.invoke(IPC.CODING_DETECT_CLI),

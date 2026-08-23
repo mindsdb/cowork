@@ -21,6 +21,45 @@ const baseProps = { tasks: [], onNavigate: () => {} };
 const jwt = (payload) =>
   `header.${btoa(JSON.stringify(payload)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')}.sig`;
 
+describe('Sidebar — persistent Cowork / Code workspace switch', () => {
+  it('switches to Code from the dedicated Electron workspace control', () => {
+    hostMock.isWeb = false;
+    const onWorkspaceChange = vi.fn();
+    render(<Sidebar {...baseProps} onWorkspaceChange={onWorkspaceChange} />);
+    expect(screen.getByRole('button', { name: 'Cowork' })).toBeInTheDocument();
+    screen.getByRole('button', { name: 'Code' }).click();
+    expect(onWorkspaceChange).toHaveBeenCalledWith('code');
+  });
+
+  it('switches directly back to Cowork without using a Cowork navigation route', () => {
+    hostMock.isWeb = false;
+    const onWorkspaceChange = vi.fn();
+    render(
+      <Sidebar
+        {...baseProps}
+        activeWorkspace="code"
+        onWorkspaceChange={onWorkspaceChange}
+      />
+    );
+    screen.getByRole('button', { name: 'Cowork' }).click();
+    expect(onWorkspaceChange).toHaveBeenCalledWith('cowork');
+  });
+
+  it('keeps Cowork-only navigation out of the Code workspace', () => {
+    hostMock.isWeb = false;
+    render(<Sidebar {...baseProps} activeWorkspace="code" />);
+    expect(screen.queryByRole('button', { name: 'Projects' })).toBeNull();
+    expect(screen.getByText('CODE TASKS')).toBeInTheDocument();
+  });
+
+  it('does not expose local coding on the hosted web shell', () => {
+    hostMock.isWeb = true;
+    render(<Sidebar {...baseProps} />);
+    expect(screen.queryByRole('button', { name: 'Code' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Cowork' })).toBeNull();
+  });
+});
+
 describe('Sidebar — Channels has no standalone entry on either platform (ENG-932)', () => {
   // ENG-720 gave web a standalone Channels row *because* the web shell hid
   // Settings entirely, and Channels lives under Settings. ENG-932 makes

@@ -1,7 +1,7 @@
 // MUST be first: sets the per-channel Electron app name (→ userData dir) before
 // any module that reads app.getPath('userData') at load time (e.g. token-store).
 import './app-identity';
-import { app, BrowserWindow, ipcMain, Menu, nativeImage, net, powerMonitor, session, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, net, powerMonitor, session, shell } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -1181,6 +1181,22 @@ function setupIPC() {
     } catch (e: any) {
       return { ok: false, reason: e?.message || String(e) };
     }
+  });
+
+  // Native directory selection for the first-class Code workspace. The
+  // renderer receives only the user-selected path; filesystem access and Git
+  // orchestration remain in the local sidecar.
+  ipcMain.handle(IPC.CODE_PICK_FOLDER, async () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return { ok: false, reason: 'window unavailable' };
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Choose a folder',
+      // `createDirectory` exposes New Folder in the macOS panel;
+      // `promptToCreate` provides the equivalent typed-path flow on Windows.
+      // The native default confirmation label (Open) matches both platforms.
+      properties: ['openDirectory', 'createDirectory', 'promptToCreate'],
+    });
+    if (result.canceled || !result.filePaths[0]) return { ok: false, cancelled: true };
+    return { ok: true, path: path.resolve(result.filePaths[0]) };
   });
 
   ipcMain.handle(IPC.CODING_DETECT_CLI, async () => {

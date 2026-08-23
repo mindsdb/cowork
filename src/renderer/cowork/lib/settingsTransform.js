@@ -36,6 +36,8 @@ export const SETTINGS_KEY_MAP = {
   coding_provider: 'codingProvider',
   coding_model: 'codingModel',
   coding_reasoning_effort: 'codingReasoningEffort',
+  coding_agent_engine: 'codingAgentEngine',
+  coding_agent_model: 'codingAgentModel',
   // Router (anton's "thalamus" role) — the cheap front-model that gates each
   // turn respond-vs-delegate AND runs history summarization. Selectable so
   // users can point routing+summarization at a cheap model (defaults per

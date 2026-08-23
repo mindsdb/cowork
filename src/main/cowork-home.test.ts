@@ -30,6 +30,7 @@ let originalResourcesPath: string | undefined;
 
 beforeEach(() => {
   delete process.env.COWORK_BUILD_KIND; // deterministic: ignore the dev's shell
+  delete process.env.COWORK_DEV_HOME;
   appState.isPackaged = true;
   resourcesDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cowork-res-'));
   originalResourcesPath = process.resourcesPath;
@@ -41,6 +42,7 @@ afterEach(() => {
   Object.defineProperty(process, 'resourcesPath', { value: originalResourcesPath, configurable: true });
   fs.rmSync(resourcesDir, { recursive: true, force: true });
   delete process.env.COWORK_BUILD_KIND;
+  delete process.env.COWORK_DEV_HOME;
 });
 
 function writeBuildConfig(contents: string) {
@@ -147,6 +149,40 @@ describe('buildKind (composed env → packaging → config resolver)', () => {
     appState.isPackaged = false;
     const buildKind = await freshBuildKind();
     expect(buildKind()).toBe('dev');
+  });
+});
+
+describe('coworkHome development override', () => {
+  async function freshCoworkHome() {
+    vi.resetModules();
+    const mod = await import('./cowork-home');
+    return mod.coworkHome;
+  }
+
+  it('uses an absolute disposable home for an unpackaged app', async () => {
+    appState.isPackaged = false;
+    process.env.COWORK_DEV_HOME = path.join(resourcesDir, 'isolated-home');
+    const coworkHome = await freshCoworkHome();
+
+    expect(coworkHome()).toBe(path.normalize(process.env.COWORK_DEV_HOME));
+  });
+
+  it('rejects a relative override', async () => {
+    appState.isPackaged = false;
+    process.env.COWORK_DEV_HOME = 'relative-home';
+    const coworkHome = await freshCoworkHome();
+
+    expect(() => coworkHome()).toThrow(/must be an absolute path/i);
+  });
+
+  it('ignores the override in packaged applications', async () => {
+    appState.isPackaged = true;
+    process.env.COWORK_DEV_HOME = path.join(resourcesDir, 'must-not-be-used');
+    writeBuildConfig(JSON.stringify({ buildKind: 'preview' }));
+    const coworkHome = await freshCoworkHome();
+
+    expect(coworkHome()).not.toBe(path.normalize(process.env.COWORK_DEV_HOME));
+    expect(coworkHome()).toBe(path.join(os.homedir(), '.cowork-preview'));
   });
 });
 

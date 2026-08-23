@@ -73,6 +73,20 @@ describe('UserMenu — footer row (ENG-1408)', () => {
 });
 
 describe('UserMenu — dropdown (ENG-1545 curated items)', () => {
+  it('owns its open state so the footer trigger works inside Electron drag-region shells', () => {
+    render(<UserMenu user={user} />);
+    const trigger = screen.getByRole('button', { name: /Hazem Ahmed/ });
+
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('menuitem', { name: /Settings/ })).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('menuitem', { name: /Settings/ })).toBeNull();
+  });
+
   it('shows the org header (not the email) and the five curated destinations', () => {
     render(<UserMenu user={user} />);
     openMenu();

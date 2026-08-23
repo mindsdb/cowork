@@ -33,6 +33,12 @@ const COWORKER_KEY = 'anton.coworker';
 // roughly this long before routing onward.
 const WELCOME_MIN_MS = 1600;
 
+function hasCodeFixture(): boolean {
+  return import.meta.env.DEV
+    && typeof window !== 'undefined'
+    && new URLSearchParams(window.location.search).has('codeFixture');
+}
+
 function hasLocalTermsConsent(): boolean {
   try {
     return typeof window !== 'undefined'
@@ -78,7 +84,10 @@ function MoonIcon({ size = 15 }: { size?: number }) {
 }
 
 export default function App() {
-  const [page, setPage] = useState<Page>('loading');
+  // Code fixtures are a development-only visual QA surface. Let them bypass
+  // first-run/auth routing so interrupted, approval, failure, dense, and
+  // responsive states stay deterministic even on a clean local profile.
+  const [page, setPage] = useState<Page>(() => hasCodeFixture() ? 'terminal' : 'loading');
   const [coworker] = useState(recallCoworker);
   // ENG-922: model lines handed up by OnboardingScreen when it deferred to the
   // setup/install screen (server wasn't up to take the DB write). Consumed once
@@ -122,6 +131,7 @@ export default function App() {
   }, [theme, skin]);
 
   useEffect(() => {
+    if (hasCodeFixture()) return;
     async function init() {
       const started = Date.now();
       // Whether this browser has booted before is read up front: the web SPA
