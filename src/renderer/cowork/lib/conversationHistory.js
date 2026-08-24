@@ -1,12 +1,11 @@
-// Pure conversation / stream-history helpers, extracted from App.jsx
-// (ENG-1267). These operate purely on their arguments plus module imports
-// and `localStorage` — they close over nothing in component scope — so they
-// live here beside the other pure adapters (`responseStreamAdapter`,
-// `settingsTransform`) and are unit-tested directly.
+// Pure conversation / stream-history helpers. They operate purely on their
+// arguments plus module imports and `localStorage` — closing over nothing in
+// component scope — so they live beside the other pure adapters
+// (`responseStreamAdapter`, `settingsTransform`) and are unit-tested directly.
 //
-// What stays in App.jsx: `openStreamedForm` (dispatches to the data-vault
-// store) and `loadSessionMessagesWithRetry` (async, hits the API) — both have
-// side effects; the latter simply calls `applySessionMessages` from here.
+// Their side-effecting counterparts stay in App.jsx: `openStreamedForm`
+// (dispatches to the data-vault store) and `loadSessionMessagesWithRetry`
+// (async, hits the API) — the latter just calls `applySessionMessages` here.
 import { initialStreamState, reduceStream } from './responseStreamAdapter';
 import { isAntonConfigError, normalizeAntonError } from './antonErrors';
 
@@ -261,18 +260,18 @@ export function failedEventMeta(events) {
     // "model" is too overloaded in message objects.
     failedModel: ev.model ?? null,
     // rate_limited: the gateway's own Retry-After, in seconds, so the card can
-    // time-gate its Retry (ENG-1537). Null when the gateway sent no hint — the
+    // time-gate its Retry. Null when the gateway sent no hint — the
     // card then offers an ungated Retry rather than inventing an interval.
     retryAfter: typeof ev.retry_after === 'number' ? ev.retry_after : null,
     // included_allowance_exhausted: when the free grant refreshes, as the
     // gate's opaque ISO string. Formatted at render time — the server
     // deliberately doesn't parse it, since only the client knows the
-    // viewer's timezone (ENG-1537).
+    // viewer's timezone.
     resetAt: typeof ev.reset_at === 'string' ? ev.reset_at : null,
     // Absolute instant to gate Retry against. The message's own created_at
     // is NOT a substitute: the server serialises it offset-less, so JS reads
     // it as local time — the gate would last hours west of UTC and no-op east
-    // of it, invisible to a TZ=UTC suite (ENG-1537 review).
+    // of it, invisible to a TZ=UTC suite.
     retryAt: typeof ev.retry_at === 'string' ? ev.retry_at : null,
   };
 }
