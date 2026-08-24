@@ -8,6 +8,7 @@ import { ApprovalCard } from './ApprovalCard';
 import { CodeComposer } from './CodeComposer';
 import { CodeConnectorsView } from './CodeConnectorsView';
 import { CodeProjectsView } from './CodeProjectsView';
+import { CodeSkillsView } from './CodeSkillsView';
 import { EventTimeline } from './EventTimeline';
 import { ExtensionsModal, type ExtensionTab } from './ExtensionsModal';
 import { NewTaskPanel } from './NewTaskPanel';
@@ -34,6 +35,7 @@ export default function CodeView({
   newTask,
   projectsOpen = false,
   connectorsOpen = false,
+  skillsOpen = false,
   defaultEngineId,
   defaultModel,
   models,
@@ -41,6 +43,7 @@ export default function CodeView({
   connections = [],
   onConnectionsChange = () => {},
   onOpenConnectors = () => {},
+  onOpenSkills = () => {},
   onOpenNewTask = () => {},
   onSessionsChange,
   onSelectionChange,
@@ -50,6 +53,7 @@ export default function CodeView({
   newTask: boolean;
   projectsOpen?: boolean;
   connectorsOpen?: boolean;
+  skillsOpen?: boolean;
   defaultEngineId: string;
   defaultModel: string;
   models: ModelPickerSource[];
@@ -57,6 +61,7 @@ export default function CodeView({
   connections?: ConnectorConnection[];
   onConnectionsChange?: (connections: ConnectorConnection[]) => void;
   onOpenConnectors?: () => void;
+  onOpenSkills?: () => void;
   onOpenNewTask?: () => void;
   onSessionsChange: (sessions: CodingSession[]) => void;
   onSelectionChange: (sessionId: string | null, newTask?: boolean) => void;
@@ -73,13 +78,13 @@ export default function CodeView({
   const [projectBusy, setProjectBusy] = useState(false);
   const [connectorReturnProjectId, setConnectorReturnProjectId] = useState<string | null>(null);
   const [connectorReturnToSettings, setConnectorReturnToSettings] = useState(false);
-  const detail = useCodingSession(newTask || projectsOpen || connectorsOpen ? null : selectedId);
+  const detail = useCodingSession(newTask || projectsOpen || connectorsOpen || skillsOpen ? null : selectedId);
   const session = detail.session?.id === selectedId ? detail.session : null;
   const projects = useCodeProjects(newTask ? null : session?.project_id);
   const taskList = useCodeTaskList({
     sessions,
     selectedId,
-    newTask: newTask || projectsOpen || connectorsOpen,
+    newTask: newTask || projectsOpen || connectorsOpen || skillsOpen,
     currentSession: session,
     onSessionsChange,
     onSelectionChange,
@@ -127,11 +132,11 @@ export default function CodeView({
     setControlsOpen(false);
     setExtensionsOpen(false);
     setRenameOpen(false);
-  }, [newTask, projectsOpen, connectorsOpen, selectedId]);
+  }, [newTask, projectsOpen, connectorsOpen, skillsOpen, selectedId]);
 
   useEffect(() => {
     setProjectEditor(null);
-  }, [newTask, projectsOpen, selectedId]);
+  }, [newTask, projectsOpen, skillsOpen, selectedId]);
 
   const restoring = detail.loading || (!!selectedId && detail.session?.id !== selectedId);
   const taskBarSession = session || sessions.find((item) => item.id === selectedId) || null;
@@ -148,7 +153,7 @@ export default function CodeView({
   )?.text.trim() || '';
   return (
     <div className="code-page">
-      {!newTask && !projectsOpen && !connectorsOpen && selectedId && taskBarSession && (
+      {!newTask && !projectsOpen && !connectorsOpen && !skillsOpen && selectedId && taskBarSession && (
         <TaskBar
           session={taskBarSession}
           git={detail.git}
@@ -175,7 +180,9 @@ export default function CodeView({
         />
       )}
 
-      {connectorsOpen ? (
+      {skillsOpen ? (
+        <CodeSkillsView projects={projects.projects} />
+      ) : connectorsOpen ? (
         <CodeConnectorsView
           connections={connections}
           projects={projects.projects}
@@ -409,8 +416,8 @@ export default function CodeView({
         />
       )}
       <ProjectSettingsModal
-        open={projectEditor !== null && !connectorsOpen}
-        suspended={projectEditor !== null && connectorsOpen}
+        open={projectEditor !== null && !connectorsOpen && !skillsOpen}
+        suspended={projectEditor !== null && (connectorsOpen || skillsOpen)}
         project={projectEditor?.id ? projects.projects.find((project) => project.id === projectEditor.id) || null : null}
         connections={connections}
         busy={projectBusy}
@@ -435,12 +442,12 @@ export default function CodeView({
             setProjectBusy(false);
           }
         }}
-        onProjectChanged={projects.load}
         onOpenConnectors={() => {
           setConnectorReturnToSettings(true);
           setConnectorReturnProjectId(projectEditor?.id || null);
           onOpenConnectors();
         }}
+        onOpenSkills={onOpenSkills}
         onDelete={projectEditor?.id ? async () => {
           setProjectBusy(true);
           try {

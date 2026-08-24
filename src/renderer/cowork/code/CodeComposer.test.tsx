@@ -2,9 +2,6 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-const { skills } = vi.hoisted(() => ({ skills: [] as Array<Record<string, unknown>> }));
-vi.mock('../lib/skillsStore', () => ({ useSkills: () => ({ skills }) }));
-
 import { codingApi, type CodingSession, type EngineCommand } from './api';
 import { CodeComposer } from './CodeComposer';
 import { host } from '../../platform/host';
@@ -34,7 +31,7 @@ const commands: EngineCommand[] = [
   { name: 'permissions', label: 'Permissions', description: 'Change task access', action: 'client', client_action: 'controls' },
 ];
 
-afterEach(() => skills.splice(0));
+afterEach(() => vi.restoreAllMocks());
 
 function renderComposer(session: CodingSession = baseSession, history: string[] = []) {
   const onSend = vi.fn(async () => {});
@@ -62,12 +59,16 @@ function renderComposer(session: CodingSession = baseSession, history: string[] 
 
 
 describe('CodeComposer', () => {
-  it('puts searchable MindsHub skills ahead of agent commands', () => {
-    skills.splice(0, skills.length, { label: 'verify-release', description: 'Run the release verification workflow', enabled: true });
+  it('puts searchable MindsHub skills ahead of agent commands', async () => {
+    vi.spyOn(codingApi, 'skillLibrary').mockResolvedValue({
+      sources: [],
+      items: [{ id: 'personal:verify-release', kind: 'skill', name: 'Verify release', description: 'Run the release verification workflow', origin: 'personal', source_name: 'Yours', path: 'verify-release', enabled: true, enabled_project_ids: [] }],
+    });
     renderComposer({ ...baseSession, status: 'completed' });
     const input = screen.getByRole('textbox', { name: 'Follow-up instruction' });
 
     fireEvent.change(input, { target: { value: '/' } });
+    expect(await screen.findByText('$verify-release')).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: 'Search skills and commands' })).toBeInTheDocument();
     const options = screen.getAllByRole('option');
     expect(options[0]).toHaveTextContent('$verify-release');
@@ -78,18 +79,38 @@ describe('CodeComposer', () => {
     expect(input).toHaveValue('$verify-release ');
   });
 
-  it('only offers project-scoped skills inside their project', () => {
-    skills.splice(0, skills.length,
-      { label: 'minds-release', description: 'Release MindsHub', enabled: true, projects: ['MindsHub'] },
-      { label: 'shared-review', description: 'Review any project', enabled: true },
-    );
-    renderComposer({ ...baseSession, status: 'completed', project_name: 'Other project' });
+  it('only offers skills resolved for the task project', async () => {
+    vi.spyOn(codingApi, 'skillLibrary').mockResolvedValue({
+      sources: [],
+      items: [
+        { id: 'team:minds-release', kind: 'skill', name: 'Minds release', description: 'Release MindsHub', origin: 'team', source_id: 'team', source_name: 'Engineering', path: 'minds-release/SKILL.md', enabled: false, enabled_project_ids: ['minds'] },
+        { id: 'personal:shared-review', kind: 'skill', name: 'Shared review', description: 'Review any project', origin: 'personal', source_name: 'Yours', path: 'shared-review', enabled: true, enabled_project_ids: [] },
+      ],
+    });
+    renderComposer({ ...baseSession, status: 'completed', project_id: 'other', project_name: 'Other project' });
     const input = screen.getByRole('textbox', { name: 'Follow-up instruction' });
 
     fireEvent.change(input, { target: { value: '/' } });
 
+    await screen.findByText('$shared-review');
     expect(screen.queryByText('$minds-release')).not.toBeInTheDocument();
     expect(screen.getByText('$shared-review')).toBeInTheDocument();
+  });
+
+  it('shows one deterministic command when team and personal skills share a slug', async () => {
+    vi.spyOn(codingApi, 'skillLibrary').mockResolvedValue({
+      sources: [],
+      items: [
+        { id: 'team:review', kind: 'skill', name: 'Team review', description: 'Use the team standard', origin: 'team', source_id: 'team', source_name: 'Engineering', path: 'skills/review/SKILL.md', enabled: true, enabled_project_ids: ['minds'] },
+        { id: 'personal:review', kind: 'skill', name: 'Review', description: 'Use the personal standard', origin: 'personal', source_name: 'Yours', path: 'review', enabled: true, enabled_project_ids: [] },
+      ],
+    });
+    renderComposer({ ...baseSession, status: 'completed', project_id: 'minds', project_name: 'MindsHub' });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Follow-up instruction' }), { target: { value: '/' } });
+
+    expect(await screen.findAllByText('$review')).toHaveLength(1);
+    expect(screen.getByText('Use the team standard')).toBeInTheDocument();
+    expect(screen.queryByText('Use the personal standard')).not.toBeInTheDocument();
   });
 
   it('supports keyboard slash discovery and preserves a command argument slot', () => {

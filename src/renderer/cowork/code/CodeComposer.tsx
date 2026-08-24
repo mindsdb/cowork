@@ -48,7 +48,7 @@ export function CodeComposer({
   const commandQuery = /^\/([^\s]*)$/.exec(prompt)?.[1]?.toLowerCase() ?? null;
   const mentionMatch = /(?:^|\s)@([^\s@]*)$/.exec(prompt);
   const mentionQuery = mentionMatch?.[1] ?? null;
-  const paletteItems = useCodePaletteItems({ commands, query: commandQuery, projectName: session.project_name });
+  const paletteItems = useCodePaletteItems({ commands, query: commandQuery, projectId: session.project_id });
   useEffect(() => setCommandIndex(0), [commandQuery]);
   useEffect(() => {
     setMentionIndex(0);

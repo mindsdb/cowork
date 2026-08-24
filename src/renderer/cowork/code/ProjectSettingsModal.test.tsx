@@ -55,7 +55,35 @@ describe('ProjectSettingsModal', () => {
     );
 
     expect(screen.getByText('Save this project, then add GitHub or Linear.')).toBeInTheDocument();
+    expect(screen.getByText('Save this project, then choose skills from the organisation library.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Open Connectors' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Manage skills' })).not.toBeInTheDocument();
+  });
+
+  it('summarises project skill selection and opens the shared Skills Library', async () => {
+    const user = userEvent.setup();
+    const onOpenSkills = vi.fn();
+    render(
+      <ProjectSettingsModal
+        open
+        project={{
+          ...project,
+          skill_sources: [
+            { source_id: 'engineering', enabled_paths: ['review/SKILL.md', 'AGENTS.md'] },
+          ],
+        }}
+        connections={[]}
+        busy={false}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+        onOpenSkills={onOpenSkills}
+      />,
+    );
+
+    expect(screen.getByText('2 team items enabled')).toBeInTheDocument();
+    expect(screen.getByText('1 shared source')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Manage skills' }));
+    expect(onOpenSkills).toHaveBeenCalledOnce();
   });
 
   it('uses the first-class developer tools section and routes account management to Connectors', async () => {
@@ -134,53 +162,6 @@ describe('ProjectSettingsModal', () => {
     rerender(<ProjectSettingsModal {...props} open suspended={false} />);
 
     expect(screen.getByRole('textbox', { name: 'Name' })).toHaveValue('Unsaved project name');
-  });
-
-  it('keeps unsaved playbook edits when the selected project object refreshes', async () => {
-    const user = userEvent.setup();
-    const props = {
-      open: true,
-      connections: [],
-      busy: false,
-      onClose: vi.fn(),
-      onSave: vi.fn(async (values) => ({ ...project, ...values } as CodeProject)),
-    };
-    const { rerender } = render(<ProjectSettingsModal {...props} project={project} />);
-    await user.click(screen.getByRole('button', { name: 'Connect repository' }));
-    const repository = screen.getByPlaceholderText('Git URL or local Git folder');
-    const branch = screen.getByPlaceholderText('main');
-
-    await user.type(repository, '/work/team-playbook');
-    await user.clear(branch);
-    await user.type(branch, 'staging');
-    rerender(
-      <ProjectSettingsModal
-        {...props}
-        project={{ ...project, updated_at: '2026-08-23T10:00:00Z' }}
-      />,
-    );
-
-    expect(repository).toHaveValue('/work/team-playbook');
-    expect(branch).toHaveValue('staging');
-  });
-
-  it('keeps Team Setup edits when a newly created project receives its saved identity', async () => {
-    const user = userEvent.setup();
-    const props = {
-      open: true,
-      connections: [],
-      busy: false,
-      onClose: vi.fn(),
-      onSave: vi.fn(async (values) => ({ ...project, ...values } as CodeProject)),
-    };
-    const { rerender } = render(<ProjectSettingsModal {...props} project={null} />);
-    await user.click(screen.getByRole('button', { name: 'Connect repository' }));
-    const repository = screen.getByPlaceholderText('Git URL or local Git folder');
-
-    await user.type(repository, '/work/team-playbook');
-    rerender(<ProjectSettingsModal {...props} project={project} />);
-
-    expect(repository).toHaveValue('/work/team-playbook');
   });
 
   it('resolves the legacy default id to the live GPT 5.6 Sol catalog model', async () => {

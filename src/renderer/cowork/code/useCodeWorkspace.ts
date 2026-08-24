@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 
 import type { CodingSession } from './api';
 
-type CodeManagementRoute = 'projects' | 'connectors' | null;
+type CodeManagementRoute = 'projects' | 'connectors' | 'skills' | null;
 
 export function useCodeWorkspace(openCode: () => void) {
   const [sessions, setSessions] = useState<CodingSession[]>([]);
@@ -28,6 +28,12 @@ export function useCodeWorkspace(openCode: () => void) {
     openCode();
   }, [openCode]);
 
+  const openSkills = useCallback(() => {
+    setNewTask(false);
+    setManagementRoute('skills');
+    openCode();
+  }, [openCode]);
+
   const selectSession = useCallback((sessionId: string) => {
     setSelectedId(sessionId);
     setNewTask(false);
@@ -47,10 +53,12 @@ export function useCodeWorkspace(openCode: () => void) {
     newTask,
     projectsOpen: managementRoute === 'projects',
     connectorsOpen: managementRoute === 'connectors',
+    skillsOpen: managementRoute === 'skills',
     setSessions,
     openNewTask,
     openProjects,
     openConnectors,
+    openSkills,
     selectSession,
     changeSelection,
   };

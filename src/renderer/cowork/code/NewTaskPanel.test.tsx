@@ -12,6 +12,7 @@ const {
   readSourceContext,
   inspectFolder,
   updateProject,
+  skillLibrary,
 } = vi.hoisted(() => ({
   pickCodeFolder: vi.fn<() => Promise<FolderPickResult>>(async () => ({ ok: true, path: 'C:\\Users\\Ian & Team\\plain folder' })),
   getPathForFile: vi.fn(() => 'C:\\Users\\Ian\\design.png'),
@@ -20,6 +21,7 @@ const {
   readSourceContext: vi.fn(),
   inspectFolder: vi.fn(),
   updateProject: vi.fn(),
+  skillLibrary: vi.fn(async () => ({ sources: [], items: [] })),
 }));
 
 vi.mock('../../platform/host', () => ({
@@ -36,6 +38,7 @@ vi.mock('./api', () => ({
     readSourceContext,
     updateProject,
     inspect: inspectFolder,
+    skillLibrary,
   },
 }));
 
