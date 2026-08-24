@@ -18,13 +18,13 @@ const MOD_LABEL = IS_MAC ? '⌘' : 'Ctrl+';
 const shortcut = (key) => `${MOD_LABEL}${key}`;
 
 function NavItem({ icon, label, active, onClick, badge, comingSoon, elementRef }) {
-  return (
+  const button = (
     <button
       ref={elementRef}
       className={`nav-item${active ? ' active' : ''}`}
       onClick={comingSoon ? undefined : onClick}
       aria-label={label}
-      data-coming-soon={comingSoon ? '' : undefined}
+      aria-disabled={comingSoon ? 'true' : undefined}
       style={comingSoon ? { opacity: 0.55, cursor: 'default' } : undefined}
     >
       <span className="nav-row__icon inline-flex shrink-0 items-center">{icon}</span>
@@ -41,6 +41,14 @@ function NavItem({ icon, label, active, onClick, badge, comingSoon, elementRef }
       )}
     </button>
   );
+  // The tooltip must live outside the dimmed button's subtree — CSS opacity
+  // cascades to descendants (including a ::after), so a tooltip drawn on the
+  // 0.55-opacity row would render half-transparent too. The shared Tooltip
+  // portals its popup to the document root, so it stays fully opaque (and
+  // escapes the sidebar's overflow-hidden clipping).
+  return comingSoon
+    ? <Tooltip content="Coming soon to Cloud — available in the desktop app" side="right">{button}</Tooltip>
+    : button;
 }
 
 function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelete, onMoveToProject, showTimestamp = true, isActive = false, selected = false, agentLabel }) {
@@ -193,6 +201,10 @@ export default function Sidebar({
   projectsCount = 0,
   artifactsCount = 0,
   connectorsCount = 0,
+  // Cloud/web doesn't offer connectors yet — render the "Connect Apps and
+  // Data" row as a disabled "coming soon" affordance (dimmed + Soon tag +
+  // hover tooltip) instead of routing to a surface that isn't available.
+  connectorsComingSoon = false,
   activeRoute,
   activeTaskId,
   serverOnline,
@@ -586,15 +598,15 @@ export default function Sidebar({
             icon={Ico.link(15)}
             label={connectorsCount > 0 ? 'Connected Apps and Data' : 'Connect Apps and Data'}
             onClick={() => onNavigate('customize')}
-            active={activeRoute === 'customize'}
+            active={!connectorsComingSoon && activeRoute === 'customize'}
             badge={showCounters ? (connectorsCount || null) : null}
+            comingSoon={connectorsComingSoon}
           />
           {/* Channels used to have a standalone entry here, web-only, purely
               because the web shell hid Settings entirely — Channels lives
-              under Settings on desktop. Settings is now reachable on web
-              (ENG-932), so the workaround is removed and both platforms find
-              Channels in the same place. The `channels` route in App.jsx is
-              left intact so existing deep links still resolve. */}
+              under Settings on desktop. Settings is now reachable on web too,
+              so the workaround is removed and both platforms find Channels
+              in the same place. */}
         </div>
 
         {/* Agent — the agent's own brain: what it remembers (Memories)

@@ -2,9 +2,9 @@ import { useState, useEffect, useMemo, useRef, useContext } from 'react';
 import { useId } from 'react';
 import Ico from '../../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchRecommendedModels } from '../../api';
-import { providerTypeToKeyField, providerValueToType, resolveRoleModel, resolveModelPickerValue, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore } from '../../lib/settingsTransform';
+import { providerTypeToKeyField, providerValueToType, resolveRoleModel, resolveModelPickerValue, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore, toDisplayUnits, toNaturalUnits, formatCount } from '../../lib/settingsTransform';
 import { MODEL_REFRESH_TTL_MS } from '../../lib/modelRefresh';
-import { trackHarnessSwapped } from '../../lib/analytics';
+import { trackHarnessSwapped, trackBillingOpened } from '../../lib/analytics';
 import { copyText as copyToClipboard } from '../../lib/clipboard';
 import { deriveProviderStatus, friendlyProviderError } from '../../lib/providerStatus';
 import { ToggleGroup } from '../../components/ui/ToggleGroup';
@@ -88,96 +88,126 @@ function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSett
   // survive re-renders without causing one, and it is read only on toggle.
   const preToggle = useRef(null);
   if (showUnlimited && !isUnlimited && value != null) preToggle.current = value;
-  // The last COMMITTED value, from the page's saved-state snapshot — never a
-  // draft. Tracking "last parseable edit" instead was a bug (Codex review on
-  // #514): editing a saved 120 to an unsaved 300, then clearing, restored the
-  // 300; an abandoned out-of-range draft resurrected as its clamped form.
-  const saved =
-    savedValue != null && String(savedValue).trim() !== '' ? String(savedValue) : null;
+  // The input reads/writes in `spec.unitDivisor` units (millions, for
+  // maxTurnTokens) — seven-digit token counts aren't something anyone wants
+  // to type or read. Storage stays in natural units throughout; only the
+  // displayed text and what onChange/onBlur parse are scaled. See
+  // toDisplayUnits/toNaturalUnits in settingsTransform.js.
+  const hasUnit = !!spec.unitDivisor;
+  const toDisplay = (v) => toDisplayUnits(v, spec);
+  const toNatural = (v) => toNaturalUnits(v, spec);
   return (
-    <div className="inline-flex items-baseline gap-2">
-      {showUnlimited && (
-        <label className="inline-flex items-baseline gap-1.5 mr-1 whitespace-nowrap">
-          <Checkbox
-            checked={isUnlimited}
-            onCheckedChange={(on) => setSetting(
-              settingKey,
-              on
-                ? String(spec.max)
-                : resolveBudgetRestore(preToggle.current, savedValue, spec),
-            )}
-            aria-label={unlimitedLabel}
+    <div className="flex flex-col items-start gap-1.5">
+      <div className="inline-flex items-start gap-2">
+        <div className="flex flex-col items-start gap-1">
+          {/* globals.css `.field-input` sets width:100% and loads after the
+              Tailwind layer, so a w-[90px] utility loses the cascade — inline
+              width is the one reliable override here. */}
+          <input
+            className="field-input"
+            style={{ width: 90 }}
+            type="number"
+            inputMode="decimal"
+            min={toDisplay(min)}
+            max={toDisplay(max)}
+            disabled={isUnlimited}
+            // Show the number they'd return to, not the max: a disabled field
+            // reading 50000000 invites someone to "fix" it back down by hand.
+            value={isUnlimited
+              ? toDisplay(resolveBudgetRestore(preToggle.current, savedValue, spec))
+              : toDisplay(value ?? String(fallback))}
+            onChange={(e) => setSetting(settingKey, toNatural(e.target.value))}
+            onBlur={(e) => {
+              if (value == null) return; // untouched — don't materialize the key
+              // Emptying the field reverts to the factory default — clearing
+              // any of the three budget fields is the discoverable way to
+              // reset it, not a mid-retype state to preserve.
+              setSetting(settingKey, clampBudgetValue(toNatural(e.target.value), spec));
+            }}
+            aria-label={label}
+            aria-describedby={hintId}
+            title={`${label} (${formatCount(toDisplay(min))}–${formatCount(toDisplay(max))}, default ${formatCount(toDisplay(fallback))}${hasUnit ? ' million tokens' : ''})`}
           />
-          <span className="text-[11.5px] text-ink-3">{unlimitedLabel}</span>
-        </label>
+          {hasUnit && <span className="text-[11.5px] text-ink-4 whitespace-nowrap">million tokens</span>}
+        </div>
+        <div id={hintId} className="flex flex-col text-[11.5px] text-ink-3">
+          {isUnlimited ? (
+            <span className="whitespace-nowrap">no limit — only the step and auto-continue caps apply</span>
+          ) : (
+            <>
+              <span className="whitespace-nowrap">{formatCount(toDisplay(min))}&ndash;{formatCount(toDisplay(max))}</span>
+              <span className="whitespace-nowrap">default {formatCount(toDisplay(fallback))}</span>
+            </>
+          )}
+        </div>
+      </div>
+      {showUnlimited && (
+        <div className="flex flex-col items-start gap-1.5">
+          <span className="text-[11px] text-ink-4">&mdash; or &mdash;</span>
+          <label className="inline-flex items-baseline gap-1.5 whitespace-nowrap">
+            <Checkbox
+              checked={isUnlimited}
+              onCheckedChange={(on) => setSetting(
+                settingKey,
+                on
+                  ? String(spec.max)
+                  : resolveBudgetRestore(preToggle.current, savedValue, spec),
+              )}
+              aria-label={unlimitedLabel}
+            />
+            <span className="text-[11.5px] text-ink-3">{unlimitedLabel}</span>
+          </label>
+        </div>
       )}
-      {/* globals.css `.field-input` sets width:100% and loads after the
-          Tailwind layer, so a w-[90px] utility loses the cascade — inline
-          width is the one reliable override here. */}
-      <input
-        className="field-input"
-        style={{ width: 90 }}
-        type="number"
-        inputMode="numeric"
-        min={min}
-        max={max}
-        step={1}
-        disabled={isUnlimited}
-        // Show the number they'd return to, not the max: a disabled field
-        // reading 50000000 invites someone to "fix" it back down by hand.
-        value={isUnlimited
-          ? resolveBudgetRestore(preToggle.current, savedValue, spec)
-          : (value ?? String(fallback))}
-        onChange={(e) => setSetting(settingKey, e.target.value)}
-        onBlur={(e) => {
-          if (value == null) return; // untouched — don't materialize the key
-          // Emptied field with no committed value to restore (the key was
-          // never saved — e.g. an older server that doesn't serve it): leave
-          // it empty rather than commit the factory default — clampBudgets()
-          // drops empty drafts from the write, and the post-save re-fetch
-          // restores whatever the server holds.
-          if (String(e.target.value).trim() === '' && saved == null) return;
-          setSetting(settingKey, clampBudgetValue(e.target.value, spec, saved));
-        }}
-        aria-label={label}
-        aria-describedby={hintId}
-        title={`${label} (${min}–${max}, default ${fallback})`}
-      />
-      <span id={hintId} className="text-[11.5px] text-ink-3 whitespace-nowrap">
-        {isUnlimited
-          ? 'no limit — only the step and auto-continue caps apply'
-          : <>{min}&ndash;{max} &middot; default {fallback}</>}
-      </span>
     </div>
   );
 }
 
 // A titled group of settings sections. Since ENG-1320 these no longer
-// collapse: the settings subnav already isolates one section per screen, so a
-// second collapse level inside a section just hid content behind an extra
-// click for no benefit. The group is now a static titled card whose content is
-// always visible. The heading is kept so groups still surface in SR heading
-// navigation. Mobile stays flat, as it already was (ENG-990).
-function SettingsGroup({ title, children }) {
+// collapse by default: the settings subnav already isolates one section per
+// screen, so a second collapse level inside a section just hid content
+// behind an extra click for no benefit. The group is a static titled card
+// whose content is always visible, UNLESS `collapsible` opts a specific
+// group back in (e.g. Advanced Settings — rarely-touched power-user knobs
+// that read as clutter left expanded by default). The heading is kept as an
+// <h2> either way so groups still surface in SR heading navigation; the
+// collapse toggle lives on a button nested inside it, not the heading itself.
+// Mobile stays flat, as it already was (ENG-990) — collapsible groups behave
+// the same there, just without the card chrome.
+function SettingsGroup({ title, children, collapsible = false, defaultCollapsed = false }) {
   const { mobile } = useContext(SettingsLayoutContext);
+  const [collapsed, setCollapsed] = useState(collapsible && defaultCollapsed);
   const headingClass =
     'm-0 font-[family-name:var(--font-sans)] text-sm font-semibold tracking-[0.04em] uppercase text-ink-3';
+  const heading = collapsible ? (
+    <button
+      type="button"
+      onClick={() => setCollapsed((c) => !c)}
+      aria-expanded={!collapsed}
+      className="inline-flex items-center gap-1 border-0 bg-transparent p-0 cursor-pointer text-inherit"
+    >
+      <span className={`inline-flex shrink-0 text-ink-4 transition-transform ${collapsed ? '' : 'rotate-90'}`} aria-hidden="true">
+        {Ico.chevRight(12)}
+      </span>
+      {title}
+    </button>
+  ) : title;
   // Mobile (ENG-990): the master-detail screen already isolates one section,
   // so render the group title as a plain header with its content flowing
   // below, separated from the next group by spacing.
   if (mobile) {
     return (
       <div className="mb-1.5">
-        <h2 className={`${headingClass} pt-3 px-0.5 pb-2`}>{title}</h2>
-        <div className="pt-0 px-0.5 pb-1">{children}</div>
+        <h2 className={`${headingClass} pt-3 px-0.5 pb-2`}>{heading}</h2>
+        {!collapsed && <div className="pt-0 px-0.5 pb-1">{children}</div>}
       </div>
     );
   }
 
   return (
     <div className="border border-solid border-line rounded-card bg-surface-glass backdrop-blur-[var(--surface-glass-blur)] mb-[14px] overflow-hidden">
-      <h2 className={`${headingClass} pt-[14px] px-[18px] pb-0`}>{title}</h2>
-      <div className="pt-2.5 px-[18px] pb-2">{children}</div>
+      <h2 className={`${headingClass} pt-[14px] px-[18px] ${collapsed ? 'pb-[14px]' : 'pb-0'}`}>{heading}</h2>
+      {!collapsed && <div className="pt-2.5 px-[18px] pb-2">{children}</div>}
     </div>
   );
 }
@@ -624,7 +654,7 @@ export function navItemsForHost(isWeb, codingModeOptionsEnabled) {
   return codingModeOptionsEnabled ? items : items.filter((i) => i.id !== 'codingMode');
 }
 
-function SettingsNav({ section, onSectionChange, serverOnline = true }) {
+function SettingsNav({ section, onSectionChange, serverOnline = true, channelsComingSoon = false }) {
   return (
     <nav
       role="navigation"
@@ -642,28 +672,43 @@ function SettingsNav({ section, onSectionChange, serverOnline = true }) {
         // (proxy 502, auth blip) would otherwise disable EVERY row with no
         // way out.
         const disabled = !host.isWeb && !serverOnline && item.id !== 'backend';
+        // Channels isn't available on Cloud/web yet — show the row but make it
+        // an inert "coming soon" affordance (dimmed + Soon tag + hover
+        // tooltip). Kept separate from `disabled` above: that path uses
+        // pointer-events-none, which would also kill the hover tooltip.
+        const comingSoon = channelsComingSoon && item.id === 'channels';
         const icon = Ico[item.icon] ? Ico[item.icon](15) : null;
-        return (
+        const button = (
           <button
             key={item.id}
             type="button"
-            onClick={disabled ? undefined : () => onSectionChange?.(item.id)}
+            onClick={disabled || comingSoon ? undefined : () => onSectionChange?.(item.id)}
             aria-current={active ? 'page' : undefined}
-            aria-disabled={disabled ? 'true' : undefined}
+            aria-disabled={disabled || comingSoon ? 'true' : undefined}
             className={`w-full flex items-center gap-2 py-2 px-2.5 rounded-[7px] border-0 text-[13px] [font-family:inherit] text-left [transition:background_120ms_ease,color_120ms_ease] ${active
               ? 'bg-surface-2 text-ink font-semibold'
               : 'bg-transparent text-ink-3 font-normal hover:bg-surface-2 hover:text-ink'} ${disabled
               ? 'opacity-35 pointer-events-none cursor-default'
-              : 'cursor-pointer'}`}
+              : comingSoon
+                ? 'opacity-55 cursor-default'
+                : 'cursor-pointer'}`}
           >
             {icon && (
               <span aria-hidden="true" className="inline-flex shrink-0 text-[color:inherit]">
                 {icon}
               </span>
             )}
-            <span>{item.label}</span>
+            <span className="flex-1">{item.label}</span>
+            {comingSoon && <Badge variant="muted" size="xs">Soon</Badge>}
           </button>
         );
+        // Portal-based tooltip so it isn't dimmed by the row's 0.55 opacity
+        // (CSS opacity cascades to descendants) — see NavItem in Sidebar.jsx.
+        return comingSoon ? (
+          <Tooltip key={item.id} content="Coming soon to Cloud — available in the desktop app" side="right">
+            {button}
+          </Tooltip>
+        ) : button;
       })}
     </nav>
   );
@@ -681,6 +726,10 @@ export default function SettingsView({
   onStopServer,
   section = 'agent',
   onSectionChange,
+  // Cloud/web doesn't offer Channels yet — render the nav row as a disabled
+  // "coming soon" affordance (dimmed + Soon tag + hover tooltip) rather than
+  // opening a section that isn't available.
+  channelsComingSoon = false,
   isSsoConnected = false,
   ssoError = '',
   onSsoSignIn,
@@ -1033,6 +1082,16 @@ export default function SettingsView({
   // both roles to the resolved default-mode provider and its recommended
   // pair so a configured key actually drives the agent. Only repoints a role
   // whose provider differs, so unrelated saves don't rewrite the model.
+  // A role is repointed only when its own provider cannot run. The server
+  // resolves a configured provider as-is, so rewriting one the user chose
+  // deliberately -- a local endpoint, say -- moves their turns to a provider
+  // they never picked, and does it on any save, including a theme toggle.
+  const roleProviderUsable = (raw) => {
+    const type = providerValueToType(raw) || 'minds-cloud';
+    const card = providers.find((p) => p.type === type);
+    return Boolean(card && providerConfigured(card));
+  };
+
   const withResolvedRoles = (s) => {
     if (modelMode === 'custom') return s;
     const type = defaultModeProviderType;
@@ -1049,16 +1108,19 @@ export default function SettingsView({
     // value for unset fields, so the picker displays exactly what runs.
     // The provider still repoints: keeping a stale model id from another
     // provider would misroute (pnewsam review on #663).
-    if ((providerValueToType(s.planningProvider) || 'minds-cloud') !== type) {
+    if (!roleProviderUsable(s.planningProvider)
+        && (providerValueToType(s.planningProvider) || 'minds-cloud') !== type) {
       next.planningProvider = type;
       next.planningModel = null;
       next.defaultModel = null;
     }
-    if ((providerValueToType(s.codingProvider) || 'minds-cloud') !== type) {
+    if (!roleProviderUsable(s.codingProvider)
+        && (providerValueToType(s.codingProvider) || 'minds-cloud') !== type) {
       next.codingProvider = type;
       next.codingModel = null;
     }
-    if ((providerValueToType(s.routerProvider) || 'minds-cloud') !== type) {
+    if (!roleProviderUsable(s.routerProvider)
+        && (providerValueToType(s.routerProvider) || 'minds-cloud') !== type) {
       next.routerProvider = type;
       next.routerModel = null;
     }
@@ -1582,7 +1644,16 @@ export default function SettingsView({
                         <span className="text-danger font-semibold">No credits available. </span>
                         <button
                           type="button"
-                          onClick={() => host.openExternal ? host.openExternal(MINDS_BILLING_URL) : window.open(MINDS_BILLING_URL, '_blank')}
+                          // ENG-1533: recorded before the navigation, so web and
+                          // desktop count identically. `host.openExternal` is
+                          // always defined and already falls back to window.open
+                          // internally (platform/host.ts), with noopener —
+                          // guarding it here was dead code that would have opened
+                          // an unhardened window if it ever had run.
+                          onClick={() => {
+                            trackBillingOpened('no_credits_notice');
+                            return host.openExternal(MINDS_BILLING_URL);
+                          }}
                           className={LINK_BTN}
                         >Top up balance →</button>
                       </div>
@@ -1724,7 +1795,10 @@ export default function SettingsView({
                                   {displayModelLabel(curModel, settings.modelLabels || {})} needs credits.{' '}
                                   <button
                                     type="button"
-                                    onClick={() => host.openExternal ? host.openExternal(MINDS_BILLING_URL) : window.open(MINDS_BILLING_URL, '_blank')}
+                                    onClick={() => {
+                                      trackBillingOpened('locked_model_hint');
+                                      return host.openExternal(MINDS_BILLING_URL);
+                                    }}
                                     className={LINK_BTN}
                                   >Top up your balance</button>
                                   {' '}to use it.
@@ -1846,7 +1920,7 @@ export default function SettingsView({
         </SettingsGroup>
 
         {hasBudgetSettings && (
-          <SettingsGroup title="Advanced Settings">
+          <SettingsGroup title="Advanced Settings" collapsible defaultCollapsed>
             <Section
               title="Max steps per task"
               subtitle={`How many actions (running code, reading files, searching) ${agentLabel || 'Anton'} may take on one request before pausing to check in with you. Raise it so big tasks finish in one go; lower it for a tighter leash on time and cost.`}
@@ -2409,16 +2483,19 @@ export default function SettingsView({
                 // failure on hosted (proxy 502, auth blip) would otherwise
                 // disable EVERY row with no way out.
                 const disabled = !host.isWeb && !serverOnline && item.id !== 'backend';
+                // Channels isn't available on Cloud/web yet — inert "coming
+                // soon" row (dimmed + Soon tag) instead of opening a dead end.
+                const comingSoon = channelsComingSoon && item.id === 'channels';
                 const icon = Ico[item.icon] ? Ico[item.icon](18) : null;
                 return (
                   <div className="mshell-accordion" key={item.id}>
                     <button
                       type="button"
                       className="mshell-accordion__head"
-                      aria-disabled={disabled || undefined}
-                      disabled={disabled}
-                      onClick={() => onSectionChange?.(item.id)}
-                      style={disabled ? { opacity: 0.4, cursor: 'default' } : undefined}
+                      aria-disabled={disabled || comingSoon || undefined}
+                      disabled={disabled || comingSoon}
+                      onClick={disabled || comingSoon ? undefined : () => onSectionChange?.(item.id)}
+                      style={(disabled || comingSoon) ? { opacity: comingSoon ? 0.55 : 0.4, cursor: 'default' } : undefined}
                     >
                       {icon && (
                         <span aria-hidden="true" className="inline-flex shrink-0 text-ink-3">
@@ -2426,7 +2503,9 @@ export default function SettingsView({
                         </span>
                       )}
                       <span className="mshell-accordion__label">{item.label}</span>
-                      <span className="mshell-accordion__chev">{Ico.chevronRight(16)}</span>
+                      {comingSoon
+                        ? <Badge variant="muted" size="xs">Soon</Badge>
+                        : <span className="mshell-accordion__chev">{Ico.chevronRight(16)}</span>}
                     </button>
                   </div>
                 );
@@ -2449,7 +2528,7 @@ export default function SettingsView({
 
   return (
     <div className="flex-1 flex flex-row min-h-0">
-      <SettingsNav section={effectiveSection} onSectionChange={onSectionChange} serverOnline={serverOnline} />
+      <SettingsNav section={effectiveSection} onSectionChange={onSectionChange} serverOnline={serverOnline} channelsComingSoon={channelsComingSoon} />
 
       {effectiveSection === 'agent' && renderAgentSection()}
       {effectiveSection === 'codingMode' && renderCodingModeSection()}

@@ -15,7 +15,10 @@ vi.mock('../platform/host', async (importOriginal) => ({
   host: hostMock,
 }));
 
-import { fetchRecommendedModels, fetchSettings, updateSettings, revealSettingKey, streamNewSession } from './api';
+const setAntonInstallId = vi.hoisted(() => vi.fn());
+vi.mock('./lib/analytics', () => ({ setAntonInstallId }));
+
+import { fetchRecommendedModels, fetchSettings, updateSettings, revealSettingKey, streamNewSession, fetchHealth, fetchInFlightList } from './api';
 import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 
 const jsonRes = (body, ok = true, status = 200) => ({
@@ -357,5 +360,106 @@ describe('streamNewSession — harness pick', () => {
 
     const body = JSON.parse(fetchMock.mock.calls[0][1].body);
     expect(body).not.toHaveProperty('harness');
+  });
+});
+
+// The funnel seam for ENG-1689's join key. It is fed from fetchHealth rather
+// than from its five call sites precisely so a sixth added later cannot
+// silently stop reporting it — and that only holds while fetchHealth performs
+// the hand-off, which the analytics-side tests cannot see.
+describe('fetchHealth hands the anton install id to analytics (ENG-1689)', () => {
+  beforeEach(() => {
+    setAntonInstallId.mockClear();
+  });
+
+  it('passes the id from the health payload', async () => {
+    globalThis.fetch = vi.fn(async () => jsonRes({ status: 'ok', aid: 'a1b2c3d4e5f60718' }));
+
+    const health = await fetchHealth();
+
+    expect(health.aid).toBe('a1b2c3d4e5f60718');
+    expect(setAntonInstallId).toHaveBeenCalledWith('a1b2c3d4e5f60718');
+  });
+
+  it('passes undefined when an older server omits the field', async () => {
+    globalThis.fetch = vi.fn(async () => jsonRes({ status: 'ok' }));
+
+    await fetchHealth();
+
+    expect(setAntonInstallId).toHaveBeenCalledWith(undefined);
+  });
+
+  it('does NOT clear the id when the server is unreachable', async () => {
+    // Deliberately unlike a version: a machine fingerprint cannot go stale, so
+    // clearing it during a health blip would strand events that could have
+    // carried the join key.
+    globalThis.fetch = vi.fn(async () => {
+      throw new Error('ECONNREFUSED');
+    });
+
+    const health = await fetchHealth();
+
+    expect(health.status).toBe('offline');
+    expect(setAntonInstallId).not.toHaveBeenCalled();
+  });
+});
+
+describe('fetchHealth is not affected by an analytics failure (ENG-1689)', () => {
+  it('still reports a healthy server when the analytics setter throws', async () => {
+    // The setter runs inside fetchHealth's try, so without isolation an
+    // exception would fall through to the catch and return status 'offline' —
+    // an analytics fault masquerading as a down server, on the call that gates
+    // boot. Readiness must not depend on a join key.
+    setAntonInstallId.mockImplementationOnce(() => {
+      throw new Error('analytics exploded');
+    });
+    globalThis.fetch = vi.fn(async () => jsonRes({ status: 'ok', aid: 'a1b2c3d4e5f60718' }));
+
+    const health = await fetchHealth();
+
+    expect(health.status).toBe('ok');
+    expect(health.aid).toBe('a1b2c3d4e5f60718');
+  });
+});
+
+describe('fetchInFlightList', () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it('returns the in_flight array on a successful poll', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      headers: { get: () => 'application/json' },
+      json: async () => ({ in_flight: ['conv-a', 'conv-b'] }),
+    })));
+    expect(await fetchInFlightList()).toEqual(['conv-a', 'conv-b']);
+  });
+
+  it('returns [] when the server answers with no running turns', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      headers: { get: () => 'application/json' },
+      json: async () => ({ in_flight: [] }),
+    })));
+    expect(await fetchInFlightList()).toEqual([]);
+  });
+
+  // The distinction the stranded-slot self-heal depends on (ENG-1717): a failed
+  // poll must be null, NOT [], so two network blips can't read as two real
+  // "server no longer lists this turn" misses and abort a healthy stream.
+  it('returns null when the poll itself fails', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('network down'); }));
+    expect(await fetchInFlightList()).toBeNull();
+  });
+
+  it('returns [] (not null) on a malformed but successful response', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      headers: { get: () => 'application/json' },
+      json: async () => ({}),
+    })));
+    expect(await fetchInFlightList()).toEqual([]);
   });
 });

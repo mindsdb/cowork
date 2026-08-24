@@ -286,6 +286,48 @@ All channels defined in `src/shared/ipc-channels.ts`:
 | `app:get-platform/ui-version/open-external`         | invoke    | Platform info, open URLs                  |
 | `shell:show-item-in-folder`                         | invoke    | OS shell operations                       |
 
+### Provider validation is answered in main, not proxied to the sidecar
+
+`settings:validate` is handled entirely in the main process. The IPC handler is in
+`src/main/index.ts` and the validators it calls (`validateMinds`,
+`validateOpenAICompatible`, `validateAnthropic`) live in
+`src/main/provider-validation.ts`. It never reaches the Python sidecar. The same
+logic also lives in the sidecar (`cowork-server/cowork/services/providers.py`), and
+that copy answers `POST /api/v1/settings/validate-provider`, which is the path the
+**web** build takes because it has no main process.
+
+So a change to how a provider is validated has to land in both places. The two
+have drifted before: a fix that moved the MindsHub probe onto the free model
+landed in the sidecar and left main probing a paid one, and probing a paid model
+means an account with an empty wallet is told its working key is invalid.
+
+The rule both copies follow: probe `mindshub_air`, whose usage draws the monthly
+included allowance rather than the wallet, so the result reports reachability and
+key validity instead of billing state. For `openai-compatible` and `anthropic` a
+model the caller asked for explicitly is sent as asked; `provider: 'minds'` always
+sends the probe model and ignores `model` on both copies.
+
+Which copy a given build actually runs is decided by the onboarding screen, not by
+the platform alone. The MindsHub card renders a pasted-key form on web and
+Keycloak sign-in buttons on Electron (`OnboardingScreen.tsx`), and the pasted-key
+form is the only caller that passes `provider: 'minds'`. Since `host.validateProvider`
+reaches this IPC channel only under Electron, **main's `validateMinds` has no live
+caller**: on desktop the MindsHub path goes through `mindshub:finalize`, which
+provisions a key and probes no model. The validators a packaged build does run are
+the openai-compatible and anthropic ones, from the BYOK step. Main's MindsHub probe
+is kept in step with the sidecar anyway, because the drift is what caused this bug
+and a future caller should not have to rediscover it.
+
+Rollout is not symmetric between the two, and not in the obvious direction. On
+`prod` the renderer bundle hot-updates at boot while the Electron shell (so
+everything under `src/main/**`) only changes when a new installer is applied,
+because shell auto-update is opt-in there. On `stable` it is the other way round:
+UI OTA is prod-only (`otaUiEnabled` in `src/main/update-logic.ts`) and shell
+auto-update is on by default (`shellAutoUpdateEnabledFor` in
+`src/main/shell-auto-update-rollout.ts`), so the shell replaces itself in the
+background and applies on the next relaunch. Either way a main-process change lands
+a relaunch later than a sidecar change. See [Shell updates](#shell-updates-auto-update--installer).
+
 ---
 
 ## Minds Integration

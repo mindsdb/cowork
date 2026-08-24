@@ -69,7 +69,7 @@ export default function OnboardingChecklist({ onStartChat }) {
   );
 
   // Always-available close — dismisses the checklist for good without
-  // requiring the four steps to be completed first (ENG-1502).
+  // requiring all the steps to be completed first (ENG-1502).
   const closeBtn = (
     <button
       type="button"

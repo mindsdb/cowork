@@ -10,6 +10,7 @@ import { host } from './platform/host';
 import { loadSkin, persistSkin } from './lib/skins';
 import { syncSettingsToDb, syncModelsToDbWithRetry } from './lib/syncSettings';
 import { resolveBootTarget } from './lib/bootTarget';
+import { setOrgMode } from './lib/orgMode';
 import { trackBootScreenResolved } from './cowork/lib/analytics';
 import { hasBootedBefore, rememberBooted, welcomeFloorMs } from './lib/bootWelcome';
 import { runPostAuthHandshake } from './lib/postAuth';
@@ -136,7 +137,12 @@ export default function App() {
       // hasLocalTermsConsent() is internally try/caught (returns false on any
       // localStorage error), so calling it outside resolveBootTarget's guard is
       // safe — it can't throw and escape init() (ENG-848 review note).
-      const target: Page = await resolveBootTarget(host, hasLocalTermsConsent());
+      const decision = await resolveBootTarget(host, hasLocalTermsConsent());
+      const target: Page = decision.target;
+      // Fail-safe for an unresolved mode: treat it as org in the web build. The
+      // opposite default would render desktop-only artifact actions (Share,
+      // Update, the iframe preview) in an org deployment whose /health blipped.
+      setOrgMode(decision.orgMode ?? host.isWeb);
       // ENG-921: record the resolved first screen + ground-truth server-install
       // state before sign-in, so first-run breakage between download and a
       // healthy server is measurable (app_installed only fires once the server

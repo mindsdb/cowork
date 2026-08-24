@@ -44,6 +44,29 @@ async function fetchGithubIdentity(accessToken: string): Promise<{ email: string
   return { email: data.email || data.login || '' };
 }
 
+// PostHog's OAuth authorize/token endpoints are region-agnostic
+// (oauth.posthog.com), but the resource API is split by region
+// (us.posthog.com / eu.posthog.com) and a token issued for one region isn't
+// guaranteed to be accepted by the other's host. Used by the identity fetch
+// below, which tries US Cloud first (the default/most common case) and falls
+// back to EU Cloud. Note: OAuth-connected PostHog accounts don't currently
+// resolve a project_id (unlike the personal-API-key path) — there's no
+// project-discovery step here.
+export const POSTHOG_API_HOSTS = ['https://us.posthog.com', 'https://eu.posthog.com'] as const;
+
+async function fetchPostHogIdentity(accessToken: string): Promise<{ email: string }> {
+  for (const apiHost of POSTHOG_API_HOSTS) {
+    const res = await fetch(`${apiHost}/api/users/@me/`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (res.ok) {
+      const data = await res.json() as { email?: string };
+      return { email: data.email || '' };
+    }
+  }
+  return { email: '' };
+}
+
 const FETCHERS: Record<string, (accessToken: string) => Promise<{ email: string }>> = {
   google_drive: fetchGoogleIdentity,
   google_calendar: fetchGoogleIdentity,
@@ -52,6 +75,7 @@ const FETCHERS: Record<string, (accessToken: string) => Promise<{ email: string 
   google_analytics_4: fetchGoogleIdentity,
   linear: fetchLinearIdentity,
   github: fetchGithubIdentity,
+  posthog: fetchPostHogIdentity,
 };
 
 export async function fetchAccountEmail(engine: string, accessToken: string): Promise<string> {

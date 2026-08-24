@@ -7,6 +7,7 @@
  * helpers so the DB stays in sync.
  */
 import { BASE, authFetch } from '../cowork/api';
+import { mindsServesOpenAiCompatible } from '../../shared/minds-endpoint';
 
 // Env-var names (ANTON_FOO_BAR) → backend DB setting keys (foo_bar).
 const ENV_TO_SETTING: Record<string, string> = {
@@ -17,6 +18,10 @@ const ENV_TO_SETTING: Record<string, string> = {
   ANTON_MINDS_URL: 'minds_url',
   ANTON_PLANNING_PROVIDER: 'planning_provider',
   ANTON_CODING_PROVIDER: 'coding_provider',
+  // The router role (turn routing + history summarization) is a provider like
+  // any other. Without this key a role repointed elsewhere is never restored,
+  // so it stays on whatever it was last set to forever.
+  ANTON_ROUTER_PROVIDER: 'router_provider',
   // ANTON_PLANNING_MODEL / ANTON_CODING_MODEL are deliberately absent (ENG-739).
   // This helper runs on every login, post-install, and web token-refresh from
   // the *full* .env, so mapping the model keys here re-pins a user who just
@@ -27,6 +32,20 @@ const ENV_TO_SETTING: Record<string, string> = {
   ANTON_MEMORY_MODE: 'memory_mode',
   ANTON_EPISODIC_MEMORY: 'episodic_memory',
 };
+
+/**
+ * Whether an `openai-compatible` provider line denotes MindsHub.
+ *
+ * The OpenAI key is supplied because this answer decides routing — see
+ * mindsServesOpenAiCompatible.
+ */
+function isMindsEndpoint(envMap: Record<string, string>): boolean {
+  return mindsServesOpenAiCompatible({
+    baseUrl: envMap.ANTON_OPENAI_BASE_URL,
+    mindsUrl: envMap.ANTON_MINDS_URL,
+    openAiApiKey: envMap.ANTON_OPENAI_API_KEY,
+  });
+}
 
 /**
  * Push an array of "KEY=value" lines to the backend DB via PUT /settings/:key.
@@ -45,7 +64,10 @@ export async function syncSettingsToDb(lines: string[]): Promise<boolean> {
     if (eq <= 0) continue;
     envMap[line.slice(0, eq)] = line.slice(eq + 1);
   }
-  const hasMindKey = Boolean(envMap.ANTON_MINDS_API_KEY);
+  // A MindsHub key is necessary but not sufficient to call the endpoint
+  // MindsHub -- the base URL is what settles it.
+  const mindsIsTheEndpoint =
+    Boolean(envMap.ANTON_MINDS_API_KEY) && isMindsEndpoint(envMap);
 
   let allOk = true;
   for (const [envKey, value] of Object.entries(envMap)) {
@@ -53,7 +75,7 @@ export async function syncSettingsToDb(lines: string[]): Promise<boolean> {
     if (!settingKey) continue;
     let dbValue = value;
     if (settingKey.endsWith('_provider')) {
-      if (dbValue === 'openai-compatible' && hasMindKey) {
+      if (dbValue === 'openai-compatible' && mindsIsTheEndpoint) {
         dbValue = 'minds_cloud';
       } else {
         dbValue = dbValue.replace(/-/g, '_');

@@ -12,6 +12,14 @@ files:
   - "!dist/**/*.map"
   - node_modules/**/*
   - "!node_modules/*/{CHANGELOG.md,README.md,readme.md}"
+  # appdmg is a build-time DMG tool. Its native transitive deps (fs-xattr,
+  # macos-alias) don't rebuild per-arch, so the same arm64 .node lands in both
+  # halves of the universal app and breaks @electron/universal's merge. npm
+  # hoists them to top level, so each is excluded by name (not via appdmg/**).
+  # None belong in the shipped app.
+  - "!node_modules/appdmg/**"
+  - "!node_modules/fs-xattr/**"
+  - "!node_modules/macos-alias/**"
 
 mac:
   icon: icon.png
@@ -22,6 +30,13 @@ mac:
       arch: [universal]
     - target: zip
       arch: [universal]
+  # node-pty (the Claude Code terminal) builds arm64-only from source with no
+  # x64 prebuild, so its .node is identical in both universal halves and
+  # app-builder-lib 26.15.3 refuses to merge it without this acknowledgement.
+  # keytar and the rest ship real per-arch prebuilds, so they merge normally
+  # and stay correct on Intel. The terminal is arm64-only on Intel until
+  # node-pty gets a real x64 build.
+  x64ArchFiles: "**/node-pty/**"
   hardenedRuntime: true
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist

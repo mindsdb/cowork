@@ -51,7 +51,8 @@ defaults:
 
 jobs:
   build:
-    runs-on: ${{ inputs.build-runner }}
+    # Always build on dev runner because thats where buildkit is  
+    runs-on: mdb-dev
     outputs:
       image: ${{ steps.build.outputs.image }}
     env:
@@ -69,7 +70,7 @@ jobs:
           build-for-environment: ${{ inputs.build-environment }}
 
   scan:
-    runs-on: ${{ inputs.build-runner }}
+    runs-on: mdb-dev
     needs: [build]
     name: Scan Minds Image
     steps:

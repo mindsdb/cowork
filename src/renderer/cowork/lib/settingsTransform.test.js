@@ -13,6 +13,9 @@ import {
   BUDGET_FIELDS,
   isBudgetUnlimited,
   resolveBudgetRestore,
+  toDisplayUnits,
+  toNaturalUnits,
+  formatCount,
 } from './settingsTransform';
 
 // The minds-cloud recommended list holds bare aliases — never `latest:`-prefixed.
@@ -531,14 +534,41 @@ describe('clampBudgetValue / clampBudgets', () => {
     expect(clampBudgetValue('1e3', spec)).toBe('500'); // 1000, max-clamped
   });
 
-  it('empty/unparseable input reverts to prev, then fallback', () => {
-    // Clearing a saved 500 to retype must not silently save the default.
-    expect(clampBudgetValue('', spec, '500')).toBe('500');
-    expect(clampBudgetValue('abc', spec, '120')).toBe('120');
-    expect(clampBudgetValue('', spec, null)).toBe('50');
-    expect(clampBudgetValue('', spec, 'junk')).toBe('50');
-    // A stale out-of-range prev (e.g. Escape-dismissed draft) still clamps.
-    expect(clampBudgetValue('', spec, '9999')).toBe('500');
+  it('empty/unparseable input reverts to the factory fallback', () => {
+    // Clearing the field is the discoverable way to reset it to default.
+    expect(clampBudgetValue('', spec)).toBe('50');
+    expect(clampBudgetValue('abc', spec)).toBe('50');
+    expect(clampBudgetValue('   ', spec)).toBe('50');
+  });
+
+  it('toDisplayUnits/toNaturalUnits round-trip through spec.unitDivisor', () => {
+    const tokenSpec = BUDGET_FIELDS.maxTurnTokens; // unitDivisor: 1_000_000
+    expect(toDisplayUnits('750000', tokenSpec)).toBe('0.75');
+    expect(toDisplayUnits('50000000', tokenSpec)).toBe('50');
+    expect(toDisplayUnits('1250000', tokenSpec)).toBe('1.25');
+    expect(toNaturalUnits('0.75', tokenSpec)).toBe('750000');
+    expect(toNaturalUnits('1.25', tokenSpec)).toBe('1250000');
+    // Fields with no unitDivisor pass through unchanged.
+    expect(toDisplayUnits('50', spec)).toBe('50');
+    expect(toNaturalUnits('50', spec)).toBe('50');
+  });
+
+  it('toDisplayUnits/toNaturalUnits leave empty and non-numeric drafts alone', () => {
+    const tokenSpec = BUDGET_FIELDS.maxTurnTokens;
+    expect(toDisplayUnits('', tokenSpec)).toBe('');
+    expect(toDisplayUnits(null, tokenSpec)).toBe('');
+    expect(toNaturalUnits('', tokenSpec)).toBe('');
+    // A transient mid-edit fragment (e.g. a lone "-") passes through as-is
+    // rather than rendering "NaN".
+    expect(toDisplayUnits('-', tokenSpec)).toBe('-');
+    expect(toNaturalUnits('-', tokenSpec)).toBe('-');
+  });
+
+  it('formatCount comma-groups a number', () => {
+    expect(formatCount(50)).toBe('50');
+    expect(formatCount('750')).toBe('750');
+    expect(formatCount('50000')).toBe('50,000');
+    expect(formatCount('1250')).toBe('1,250');
   });
 
   it('clampBudgets clamps present keys and never materializes absent ones', () => {
