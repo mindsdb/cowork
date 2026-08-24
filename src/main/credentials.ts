@@ -37,6 +37,7 @@ export const OAUTH_CREDENTIALS: Record<string, OAuthCredentials> = {
   supabase: {
     clientIdVar: 'SUPABASE_CLIENT_ID',
     clientSecretVar: 'SUPABASE_CLIENT_SECRET',
+  },
   posthog: {
     clientIdVar: 'POSTHOG_CLIENT_ID',
   },
