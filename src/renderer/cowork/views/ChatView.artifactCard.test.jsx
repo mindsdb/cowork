@@ -16,6 +16,18 @@ import userEvent from '@testing-library/user-event';
 
 const openExternal = vi.fn();
 
+// Liveness is the store's business and is unit-tested there. Here we drive the
+// card against a controllable answer, because what shipped broken was the CARD:
+// it offered Open / Export / Show in Finder for an artifact that was gone.
+const deleted = vi.fn(() => false);
+const revalidate = vi.fn(() => Promise.resolve());
+
+vi.mock('../lib/artifactsStore', () => ({
+  useArtifactLiveness: (card, opts) => deleted(card, opts),
+  setArtifactsScope: vi.fn(),
+  revalidate: (...a) => revalidate(...a),
+}));
+
 vi.mock('../../platform/host', () => ({
   host: {
     isElectron: false,
@@ -67,7 +79,12 @@ const taskWithArtifact = (step) => ({
   ],
 });
 
-beforeEach(() => openExternal.mockClear());
+beforeEach(() => {
+  openExternal.mockClear();
+  deleted.mockReset();
+  deleted.mockReturnValue(false);
+  revalidate.mockClear();
+});
 afterEach(() => setOrgMode(false));
 
 describe('inline artifact banner in org mode', () => {
@@ -102,5 +119,57 @@ describe('inline artifact banner on desktop', () => {
     await user.click(screen.getByRole('button', { name: 'Open' }));
 
     expect(openExternal).not.toHaveBeenCalled();
+  });
+});
+
+describe('inline artifact banner for a deleted artifact', () => {
+  it('offers none of the actions and says it is deleted', () => {
+    // ENG-1673: the card stayed fully active after the artifact was deleted in
+    // Live Artifacts, and Open then 404'd.
+    deleted.mockReturnValue(true);
+    render(<ChatView task={taskWithArtifact(artifactStep())} />);
+
+    expect(screen.queryByRole('button', { name: 'Open' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Export/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Show in/ })).toBeNull();
+    expect(screen.getByText('Deleted')).toBeInTheDocument();
+  });
+
+  it('leaves the title unclickable', () => {
+    deleted.mockReturnValue(true);
+    render(<ChatView task={taskWithArtifact(artifactStep())} />);
+
+    expect(screen.getByRole('button', { name: 'Current time' })).toBeDisabled();
+  });
+
+  it('keeps every action while the artifact is alive', () => {
+    // The inverse case, so the test catches a regression rather than a card
+    // that simply turned everything off.
+    render(<ChatView task={taskWithArtifact(artifactStep())} />);
+
+    expect(screen.getByRole('button', { name: 'Open' })).toBeInTheDocument();
+    expect(screen.queryByText('Deleted')).toBeNull();
+  });
+
+  it('does not judge a card of an unfinished turn', () => {
+    // The streaming render site must ask with live=true: the agent just made
+    // this artifact, and the index predates it (§4.5).
+    render(<ChatView task={{
+      id: 'conv-a',
+      title: 'Alpha task',
+      status: 'active',
+      messages: [
+        { role: 'user', content: 'build me a clock' },
+        { role: '_streaming', content: '', steps: [artifactStep()] },
+      ],
+    }} />);
+
+    expect(deleted).toHaveBeenCalledWith(expect.anything(), { live: true });
+  });
+
+  it('judges a card of a committed turn', () => {
+    render(<ChatView task={taskWithArtifact(artifactStep())} />);
+
+    expect(deleted).toHaveBeenCalledWith(expect.anything(), { live: false });
   });
 });
