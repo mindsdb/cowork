@@ -104,7 +104,8 @@ function getUpdateMode(): 'auto' | 'manual' {
   return vars.UI_UPDATE_MODE === 'manual' ? 'manual' : 'auto';
 }
 
-/** Stable-first ENG-850 rollout with an environment kill switch. */
+/** ENG-850 shell auto-update — on by default for `stable` and `prod`;
+ *  `SHELL_AUTO_UPDATE_ENABLED=false` is the environment kill switch. */
 function shellAutoUpdateEnabled(): boolean {
   const vars = readEnvFile();
   return shellAutoUpdateEnabledFor(buildKindStrict(), vars.SHELL_AUTO_UPDATE_ENABLED);
