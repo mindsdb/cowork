@@ -42,6 +42,10 @@ function mergedEvents(events: CodingEvent[]): CodingEvent[] {
 function timelineItems(events: CodingEvent[]): TimelineItem[] {
   const items: TimelineItem[] = [];
   for (const event of mergedEvents(events)) {
+    // Pending queue entries stay actionable beside the composer. When they
+    // start, the server emits the ordinary completed user message, so showing
+    // this provisional event here would duplicate the same instruction.
+    if (event.type === 'user_message' && event.phase === 'pending' && event.data.queueId) continue;
     // Workspace setup and terminal state live in the task bar/outcome. Keeping
     // raw session notifications here creates contradictory duplicate statuses.
     if (event.type === 'session') continue;

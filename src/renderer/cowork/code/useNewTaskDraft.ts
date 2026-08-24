@@ -71,7 +71,6 @@ export function useNewTaskDraft({
   const [foldersLoading, setFoldersLoading] = useState(false);
   const [folderIssue, setFolderIssue] = useState('');
   const [permissionMode, setPermissionMode] = useState<PermissionMode>('supervised');
-  const [startGuidance, setStartGuidance] = useState('');
   const [attachments, setAttachments] = useState<InputReference[]>([]);
   const [sourceContexts, setSourceContexts] = useState<SourceContext[]>([]);
   const [draggingFiles, setDraggingFiles] = useState(false);
@@ -195,6 +194,7 @@ export function useNewTaskDraft({
     && !loading;
   const startUnavailable = busy
     || loading
+    || !prompt.trim()
     || !!folderIssue
     || !selectedEngineAvailable
     || !selectedModelValid
@@ -207,37 +207,27 @@ export function useNewTaskDraft({
     if (folderIssue) return folderIssue;
     if (!selectedEngineAvailable) return selectedEngine?.reason || (catalogError ? '' : 'No coding agent is available.');
     if (!selectedModelValid || enabledModelOptions.length === 0) return '';
-    if (!prompt.trim() && !selectedProject) return 'Describe the task and choose a Code Project.';
-    if (!prompt.trim()) return 'Describe what you want changed.';
+    if (!prompt.trim()) return '';
     if (!selectedProject) return 'Choose a Code Project to continue.';
-    const count = selectedProject.folders.length;
-    return `Ready in ${selectedProject.name} · ${count} folder${count === 1 ? '' : 's'}.`;
+    return '';
   })();
 
   const readinessKind = loading || busy
     ? 'loading'
-    : taskReady
-      ? 'ready'
-      : !prompt.trim()
-        ? 'prompt'
-        : !selectedProject || !!folderIssue
-          ? 'folder'
-          : 'locked';
+    : !selectedProject || !!folderIssue
+      ? 'folder'
+      : 'locked';
 
   const handleStart = async () => {
-    setStartGuidance('');
     if (!prompt.trim()) {
-      setStartGuidance('Describe what you want changed.');
       promptRef.current?.focus();
       return;
     }
     if (!selectedProject) {
-      setStartGuidance('Choose a Code Project to continue.');
       onOpenProjectSettings();
       return;
     }
     if (folderIssue) {
-      setStartGuidance(folderIssue);
       onOpenProjectSettings();
       return;
     }
@@ -261,11 +251,9 @@ export function useNewTaskDraft({
     setEngineId,
     model,
     setModel,
-    engineLoading: loading,
+    engineLoading,
     permissionMode,
     setPermissionMode,
-    startGuidance,
-    setStartGuidance,
     attachments,
     setAttachments,
     sourceContexts,
@@ -277,6 +265,8 @@ export function useNewTaskDraft({
     modelOptions,
     refreshModels,
     availableEngines,
+    engineCommands: selectedEngine?.commands || [],
+    engineLabel: selectedEngine?.label || engineId,
     attachFiles,
     selectedProject,
     selectedProjectId,

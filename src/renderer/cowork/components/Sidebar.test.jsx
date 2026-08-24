@@ -79,11 +79,14 @@ describe('Sidebar — persistent Cowork / Code workspace switch', () => {
     expect(onWorkspaceChange).toHaveBeenCalledWith('cowork');
   });
 
-  it('keeps Cowork-only navigation out of the Code workspace', () => {
+  it('gives Code its own Projects destination without leaking Cowork navigation', () => {
     hostMock.isWeb = false;
-    render(<Sidebar {...baseProps} activeWorkspace="code" />);
-    expect(screen.queryByRole('button', { name: 'Projects' })).toBeNull();
+    const onOpenCodingProjects = vi.fn();
+    render(<Sidebar {...baseProps} activeWorkspace="code" onOpenCodingProjects={onOpenCodingProjects} />);
+    screen.getByRole('button', { name: 'Projects' }).click();
+    expect(onOpenCodingProjects).toHaveBeenCalledOnce();
     expect(screen.getByText('CODE TASKS')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Scheduled Tasks' })).toBeNull();
   });
 
   it('does not expose local coding on the hosted web shell', () => {

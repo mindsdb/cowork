@@ -219,6 +219,7 @@ export default function Sidebar({
   activeRoute,
   activeTaskId,
   activeWorkspace = 'cowork',
+  activeCodeRoute = null,
   codingSessions = [],
   activeCodingSessionId = null,
   serverOnline,
@@ -230,6 +231,7 @@ export default function Sidebar({
   onNewTask,
   onSelectCodingSession,
   onNewCodingTask,
+  onOpenCodingProjects,
   onOpenSearch,
   collapsed = false,
   onToggleCollapsed,
@@ -638,11 +640,21 @@ export default function Sidebar({
         )}
 
         {codeRoute ? (
-          <CodeSidebarSessions
-            sessions={codingSessions}
-            selectedId={activeCodingSessionId}
-            onSelect={onSelectCodingSession}
-          />
+          <>
+            <div className="nav-list px-2.5 flex flex-col gap-px code-sidebar-nav">
+              <NavItem
+                icon={Ico.folder(15)}
+                label="Projects"
+                onClick={onOpenCodingProjects}
+                active={activeCodeRoute === 'projects'}
+              />
+            </div>
+            <CodeSidebarSessions
+              sessions={codingSessions}
+              selectedId={activeCodingSessionId}
+              onSelect={onSelectCodingSession}
+            />
+          </>
         ) : (
         <>
         {/* Agent — the agent's own brain: what it remembers (Memories)

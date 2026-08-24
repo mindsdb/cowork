@@ -1401,8 +1401,10 @@ function AppCore() {
     sessions: codingSessions,
     selectedId: activeCodingSessionId,
     newTask: codeNewTask,
+    projectsOpen: codeProjectsOpen,
     setSessions: setCodingSessions,
     openNewTask: openNewCodingTask,
+    openProjects: openCodingProjects,
     selectSession: selectCodingSession,
     changeSelection: changeCodingSelection,
   } = useCodeWorkspace(openCode);
@@ -4366,6 +4368,7 @@ function AppCore() {
             ? null
             : (route === 'task' ? null : (route === 'schedule-detail' ? 'scheduled' : route))}
           activeWorkspace={workspaceMode}
+          activeCodeRoute={workspaceMode === 'code' && codeProjectsOpen ? 'projects' : null}
           settingsActive={settingsOpen}
           // Only mark a recent as "selected" while actually viewing a task —
           // activeTaskId persists across navigation, so passing it unconditionally
@@ -4382,6 +4385,7 @@ function AppCore() {
           onNewTask={newTask}
           onSelectCodingSession={selectCodingSession}
           onNewCodingTask={openNewCodingTask}
+          onOpenCodingProjects={openCodingProjects}
           onOpenSearch={() => setSearchOpen(true)}
           collapsed={sidebarCollapsedEffective}
           onToggleCollapsed={
@@ -4842,6 +4846,7 @@ function AppCore() {
               sessions={codingSessions}
               selectedId={activeCodingSessionId}
               newTask={codeNewTask}
+              projectsOpen={codeProjectsOpen}
               defaultEngineId={settings.codingAgentEngine || DEFAULT_CODING_AGENT_ENGINE}
               defaultModel={settings.codingAgentModel || DEFAULT_CODING_AGENT_MODEL}
               models={mindsModels}

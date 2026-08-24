@@ -29,6 +29,22 @@ describe('coding API boundary', () => {
     await expect(codingApi.deleteSession('task-1')).resolves.toBeUndefined();
   });
 
+  it('promotes an exact queued instruction without resending its text from the renderer', async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ id: 'task-1', queued_instructions: [] }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await codingApi.steerQueued('task/1', 'queue 1');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://127.0.0.1:26866/api/v1/coding/sessions/task%2F1/queue/queue%201/steer',
+      expect.objectContaining({ method: 'POST' }),
+    );
+  });
+
   it('surfaces server detail without exposing an HTML error body', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({
       ok: false,

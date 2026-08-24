@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
 import { Textarea } from '../components/ui/Input';
-import { codingApi, type CodingSession, type EngineCommand, type InputReference } from './api';
-import { MentionMenu, PromptQueue, SlashMenu } from './ComposerMenus';
+import Select from '../components/ui/Select';
+import { codingApi, type CodingSession, type EngineCommand, type InputReference, type PermissionMode } from './api';
+import { CodeCommandPalette, useCodePaletteItems, type CodePaletteItem } from './CodeCommandPalette';
+import { MentionMenu, PromptQueue } from './ComposerMenus';
+import { isPermissionMode, PERMISSION_OPTIONS } from './permissions';
 import { isActiveStatus } from './presentation';
 import { mergeReferences, PromptReferenceChips, referencesFromFiles } from './PromptReferences';
 
@@ -15,6 +18,8 @@ export function CodeComposer({
   onStop,
   commands,
   onClientCommand,
+  onPermissionChange,
+  onSteerQueued,
   onRemoveQueued,
   history = [],
 }: {
@@ -24,12 +29,13 @@ export function CodeComposer({
   onStop: () => Promise<void>;
   commands: EngineCommand[];
   onClientCommand: (command: EngineCommand) => void;
+  onPermissionChange: (permission: PermissionMode) => Promise<void>;
+  onSteerQueued: (instructionId: string) => Promise<void>;
   onRemoveQueued: (instructionId: string) => Promise<void>;
   history?: string[];
 }) {
   const [prompt, setPrompt] = useState('');
   const [commandIndex, setCommandIndex] = useState(0);
-  const [activeDelivery, setActiveDelivery] = useState<'steer' | 'queue'>('steer');
   const [attachments, setAttachments] = useState<InputReference[]>([]);
   const [mentionResults, setMentionResults] = useState<InputReference[]>([]);
   const [mentionIndex, setMentionIndex] = useState(0);
@@ -39,13 +45,11 @@ export function CodeComposer({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const historyDraftRef = useRef('');
   const active = isActiveStatus(session.status);
-  const commandQuery = /^\/([^\s]*)$/.exec(prompt)?.[1]?.toLowerCase();
+  const hasDraft = !!prompt.trim();
+  const commandQuery = /^\/([^\s]*)$/.exec(prompt)?.[1]?.toLowerCase() ?? null;
   const mentionMatch = /(?:^|\s)@([^\s@]*)$/.exec(prompt);
   const mentionQuery = mentionMatch?.[1] ?? null;
-  const visibleCommands = useMemo(
-    () => commandQuery == null ? [] : commands.filter((command) => command.name.includes(commandQuery)).slice(0, 8),
-    [commandQuery, commands],
-  );
+  const paletteItems = useCodePaletteItems({ commands, query: commandQuery, projectName: session.project_name });
   useEffect(() => setCommandIndex(0), [commandQuery]);
   useEffect(() => {
     setMentionIndex(0);
@@ -75,10 +79,17 @@ export function CodeComposer({
     const commandPrompt = `/${command.name}`;
     setPrompt('');
     try {
-      await onSend(commandPrompt, active ? activeDelivery : 'turn', []);
+      await onSend(commandPrompt, active ? 'queue' : 'turn', []);
     } catch {
       setPrompt(commandPrompt);
     }
+  };
+  const choosePaletteItem = (item: CodePaletteItem) => {
+    if (item.kind === 'skill') {
+      setPrompt(`${item.invocation} `);
+      return;
+    }
+    void chooseCommand(item.command);
   };
   const chooseMention = (reference: InputReference) => {
     const at = prompt.lastIndexOf('@');
@@ -100,7 +111,7 @@ export function CodeComposer({
     setHistoryIndex(null);
     setAttachments([]);
     try {
-      await onSend(value, active ? activeDelivery : 'turn', submittedAttachments);
+      await onSend(value, active ? 'queue' : 'turn', submittedAttachments);
     } catch {
       setPrompt(value);
       setAttachments(submittedAttachments);
@@ -108,7 +119,13 @@ export function CodeComposer({
   };
   return (
     <div className="code-composer">
-      <PromptQueue items={session.queued_instructions || []} busy={busy} onRemove={onRemoveQueued} />
+      <PromptQueue
+        items={session.queued_instructions || []}
+        active={active}
+        busy={busy}
+        onSteer={onSteerQueued}
+        onRemove={onRemoveQueued}
+      />
       <div
         className={`code-composer__shell${draggingFiles ? ' is-dragging-files' : ''}`}
         onDragEnter={(event) => {
@@ -130,7 +147,18 @@ export function CodeComposer({
         }}
       >
         {draggingFiles && <div className="code-drop-hint">Drop files to attach</div>}
-        <SlashMenu commands={visibleCommands} selectedIndex={commandIndex} onChoose={chooseCommand} />
+        {commandQuery != null && (
+          <CodeCommandPalette
+            items={paletteItems}
+            query={commandQuery}
+            selectedIndex={commandIndex}
+            agentLabel={session.engine_id === 'codex' ? 'Codex' : session.engine_id}
+            onQueryChange={(query) => setPrompt(`/${query}`)}
+            onSelectedIndexChange={setCommandIndex}
+            onChoose={choosePaletteItem}
+            onDismiss={() => setPrompt('')}
+          />
+        )}
         {commandQuery == null && mentionQuery != null && (
           <MentionMenu items={mentionResults} selectedIndex={mentionIndex} onChoose={chooseMention} />
         )}
@@ -143,7 +171,7 @@ export function CodeComposer({
           value={prompt}
           onChange={(value: string) => { setPrompt(value); setHistoryIndex(null); }}
           rows={2}
-          placeholder={active ? 'Guide the agent while it works…' : session.status === 'failed' ? 'Retry with more context…' : 'Ask for another change…'}
+          placeholder={active ? 'Message the agent…' : session.status === 'failed' ? 'Retry with more context…' : 'Ask for another change…'}
           aria-label="Follow-up instruction"
           disabled={busy}
           onPaste={(event: React.ClipboardEvent<HTMLTextAreaElement>) => {
@@ -167,17 +195,17 @@ export function CodeComposer({
               setMentionResults([]);
               return;
             }
-            if (visibleCommands.length > 0 && event.key === 'ArrowDown') {
+            if (paletteItems.length > 0 && event.key === 'ArrowDown') {
               event.preventDefault();
-              setCommandIndex((value) => (value + 1) % visibleCommands.length);
+              setCommandIndex((value) => (value + 1) % paletteItems.length);
               return;
             }
-            if (visibleCommands.length > 0 && event.key === 'ArrowUp') {
+            if (paletteItems.length > 0 && event.key === 'ArrowUp') {
               event.preventDefault();
-              setCommandIndex((value) => (value - 1 + visibleCommands.length) % visibleCommands.length);
+              setCommandIndex((value) => (value - 1 + paletteItems.length) % paletteItems.length);
               return;
             }
-            if (visibleCommands.length > 0 && event.key === 'Escape') {
+            if (commandQuery != null && event.key === 'Escape') {
               event.preventDefault();
               setPrompt('');
               return;
@@ -208,8 +236,8 @@ export function CodeComposer({
                 chooseMention(mentionResults[mentionIndex]);
                 return;
               }
-              if (visibleCommands[commandIndex]) {
-                void chooseCommand(visibleCommands[commandIndex]);
+              if (paletteItems[commandIndex]) {
+                choosePaletteItem(paletteItems[commandIndex]);
                 return;
               }
               void submit();
@@ -232,36 +260,27 @@ export function CodeComposer({
           <Button icon variant="subtle" size="sm" disabled={busy} onClick={() => fileInputRef.current?.click()} aria-label="Attach files or images">
             {Ico.attach(13)}
           </Button>
-          <span className="code-composer__mode">
-            <span className={`code-status-dot is-${session.permission_mode === 'workspace' || session.permission_mode === 'full_access' ? 'accent' : 'neutral'}`} aria-hidden="true" />
-            {{ read_only: 'Read only', supervised: 'Ask first', workspace: 'Workspace auto', full_access: 'Full access' }[session.permission_mode]}
-          </span>
-          {active && (
-            <div className="code-delivery-mode" aria-label="Instruction timing">
-              <button
-                type="button"
-                className={activeDelivery === 'steer' ? 'is-selected' : ''}
-                aria-pressed={activeDelivery === 'steer'}
-                onClick={() => setActiveDelivery('steer')}
-              >Guide now</button>
-              <button
-                type="button"
-                className={activeDelivery === 'queue' ? 'is-selected' : ''}
-                aria-pressed={activeDelivery === 'queue'}
-                onClick={() => setActiveDelivery('queue')}
-              >Queue next</button>
-            </div>
-          )}
+          <Select
+            value={session.permission_mode}
+            onValueChange={(value) => { if (isPermissionMode(value)) void onPermissionChange(value); }}
+            options={PERMISSION_OPTIONS}
+            variant="pill"
+            size="sm"
+            ariaLabel="Coding permissions"
+            disabled={busy}
+            className="code-permission-picker code-permission-picker--compact"
+          />
           <span className="code-composer__actions-spacer" aria-hidden="true" />
-          <span className="code-composer__hint">Enter to send · ↑↓ history · Shift+Enter for a new line</span>
-          {active && (
-            <Button icon variant="subtle" size="sm" disabled={busy} onClick={() => void onStop()} aria-label="Stop coding agent">
+          <span className="code-composer__hint">{active ? 'Enter to queue · Shift+Enter for a new line' : 'Enter to send · ↑↓ history · Shift+Enter for a new line'}</span>
+          {active && !hasDraft ? (
+            <Button icon variant="primary" size="sm" disabled={busy} onClick={() => void onStop()} aria-label="Stop coding agent">
               {Ico.stop(12)}
             </Button>
+          ) : (
+            <Button icon variant="primary" size="sm" disabled={busy || !hasDraft} onClick={() => void submit()} aria-label={active ? 'Queue instruction' : 'Send follow-up'}>
+              {Ico.send(13)}
+            </Button>
           )}
-          <Button icon variant="primary" size="sm" disabled={busy || !prompt.trim()} onClick={() => void submit()} aria-label={active ? activeDelivery === 'queue' ? 'Queue instruction' : 'Send guidance' : 'Send follow-up'}>
-            {Ico.send(13)}
-          </Button>
         </div>
       </div>
     </div>

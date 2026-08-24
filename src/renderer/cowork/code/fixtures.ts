@@ -380,6 +380,16 @@ export function getCodeFixtureApi() {
     removeQueued: async (id: string, instructionId: string) => copy(update(id, {
       queued_instructions: (selected(id).queued_instructions || []).filter((item) => item.id !== instructionId),
     })),
+    steerQueued: async (id: string, instructionId: string) => {
+      const instruction = (selected(id).queued_instructions || []).find((item) => item.id === instructionId);
+      if (!instruction) throw new Error('Queued instruction not found');
+      const events = eventMap.get(id) || [];
+      events.push(event(events.length + 1, 'user_message', { title: 'Guidance', text: instruction.prompt }));
+      eventMap.set(id, events);
+      return copy(update(id, {
+        queued_instructions: (selected(id).queued_instructions || []).filter((item) => item.id !== instructionId),
+      }));
+    },
     runQueued: async (id: string) => copy(selected(id)),
     cancel: async (id: string) => copy(update(id, { status: 'cancelled', active_turn_id: null })),
     approve: async (id: string, _approvalId: string, decision: string) => copy(update(id, {

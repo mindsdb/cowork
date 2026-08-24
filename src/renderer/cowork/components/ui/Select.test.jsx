@@ -170,4 +170,12 @@ describe('Select', () => {
     render(<Harness variant="pill" label="Sort by" initial="date" />);
     expect(screen.getByRole('combobox')).toHaveTextContent('Sort by:Date');
   });
+
+  it('lets domain controls reuse an established trigger treatment', () => {
+    render(<Harness variant="unstyled" className="meta-pill" ariaLabel="Quiet picker" />);
+    const trigger = screen.getByRole('combobox', { name: 'Quiet picker' });
+    expect(trigger).toHaveClass('meta-pill');
+    expect(trigger).not.toHaveClass('border-solid');
+    expect(trigger.querySelector('.lucide-chevrons-up-down')).toBeInTheDocument();
+  });
 });

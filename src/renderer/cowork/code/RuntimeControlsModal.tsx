@@ -12,14 +12,8 @@ import {
 } from '../lib/modelPickerOptions';
 import { codingApi, type PermissionMode, type Personality, type ReasoningEffort, type RuntimeControls } from './api';
 import { host } from '../../platform/host';
+import { PERMISSION_OPTIONS } from './permissions';
 
-
-const PERMISSIONS = [
-  { value: 'read_only', label: 'Read only' },
-  { value: 'supervised', label: 'Ask first' },
-  { value: 'workspace', label: 'Workspace auto' },
-  { value: 'full_access', label: 'Full access' },
-];
 const REASONING = [
   { value: 'minimal', label: 'Minimal' },
   { value: 'low', label: 'Low' },
@@ -143,7 +137,7 @@ export function RuntimeControlsModal({
                 permission_mode: next as PermissionMode,
                 network_access: next === 'full_access' ? true : current.network_access,
               }))}
-              options={PERMISSIONS}
+              options={PERMISSION_OPTIONS}
               ariaLabel="Task permissions"
               disabled={busy}
             />

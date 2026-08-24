@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import Ico from '../components/Icons';
 import ModelSelect from '../components/ModelSelect';
@@ -25,6 +25,7 @@ import {
 } from './api';
 import { formatCommandLine, parseCommandLine } from './commandLine';
 import { DEFAULT_CODING_AGENT_MODEL, preferredCodingModel } from './defaults';
+import { isPermissionMode, PERMISSION_OPTIONS } from './permissions';
 
 type Connection = {
   engine: string;
@@ -55,6 +56,11 @@ function openPlaybookRepository(repository: string): void {
   } else {
     void host.openPath(repository);
   }
+}
+
+function repositoryLabel(repository: string): string {
+  const normalized = repository.replace(/[\\/]+$/, '').replace(/\.git$/i, '');
+  return normalized.split(/[\\/]/).filter(Boolean).at(-1) || repository;
 }
 
 export function ProjectSettingsModal({
@@ -100,7 +106,9 @@ export function ProjectSettingsModal({
   const [error, setError] = useState('');
   const [playbookBusy, setPlaybookBusy] = useState(false);
   const [playbookStatus, setPlaybookStatus] = useState<PlaybookStatus | null>(null);
+  const [teamSetupEditing, setTeamSetupEditing] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const initializedProjectId = useRef<string | null | undefined>(undefined);
   const availableConnections = useMemo(() => {
     const items = new Map(
       connections
@@ -122,7 +130,14 @@ export function ProjectSettingsModal({
   }, [connections, project]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      initializedProjectId.current = undefined;
+      return;
+    }
+    const nextProjectId = project?.id || null;
+    const projectWasJustCreated = initializedProjectId.current === null && nextProjectId !== null;
+    initializedProjectId.current = nextProjectId;
+    if (projectWasJustCreated) return;
     setName(project?.name || '');
     setFolders(project?.folders || []);
     setCommandDrafts(Object.fromEntries((project?.folders || []).flatMap((folder) => [
@@ -141,6 +156,7 @@ export function ProjectSettingsModal({
     setError('');
     setDeleteOpen(false);
     setPlaybookStatus(null);
+    setTeamSetupEditing(false);
     if (project?.playbook) {
       codingApi.playbook(project.id).then(setPlaybookStatus).catch((reason) => {
         setError(reason instanceof Error ? reason.message : 'Could not inspect the team playbook.');
@@ -204,6 +220,17 @@ export function ProjectSettingsModal({
     setFolders((current) => [...current, { id: folderId(result.path!), name: label, path: result.path!, base_branch: null, commands: [] }]);
     if (!name) setName(label);
     setError('');
+  };
+
+  const chooseTeamSetupFolder = async () => {
+    const result = await host.pickCodeFolder();
+    if (result.ok && result.path) {
+      setPlaybookRepository(result.path);
+      setTeamSetupEditing(true);
+      setError('');
+    } else if (!result.cancelled) {
+      setError(result.reason || 'Could not choose that folder.');
+    }
   };
 
   const updateFolder = (id: string, values: Partial<ProjectFolder>) => {
@@ -271,7 +298,7 @@ export function ProjectSettingsModal({
       <ModalHeader
         id="code-project-settings-title"
         title={project ? 'Project settings' : 'New Code Project'}
-        subtitle="Folders and shared context available to every task in this project."
+        subtitle="Folders, team guidance, tools, and defaults shared by this project."
         onClose={onClose}
       />
       <ModalBody padding="0">
@@ -306,42 +333,62 @@ export function ProjectSettingsModal({
             </div>
           </section>
 
-          <section className="code-project-section">
-            <div className="code-project-section__heading"><div><strong>Team playbook</strong><span>Shared skills and engineering guidance from Git</span></div></div>
-            <div className="code-project-inline-fields">
-              <Input value={playbookRepository} onChange={setPlaybookRepository} placeholder="Repository URL or local Git folder" />
-              <Input value={playbookBranch} onChange={setPlaybookBranch} placeholder="Branch" />
+          <section className="code-project-section code-team-setup">
+            <div className="code-project-section__heading">
+              <div><strong>Team Setup</strong><span>Versioned skills, instructions, and workflows shared by the team</span></div>
             </div>
-            {project?.playbook && (
-              <div className="code-playbook-status">
-                <div className="code-project-connected-copy">
-                  {playbookStatus?.items.filter((item) => item.enabled).length || 0} active item{playbookStatus?.items.filter((item) => item.enabled).length === 1 ? '' : 's'} · {playbookStatus?.current_revision?.slice(0, 8) || project.playbook.branch}
+
+            {!project?.playbook && !teamSetupEditing && (
+              <div className="code-team-setup__empty">
+                <span className="code-team-setup__icon" aria-hidden="true">{Ico.cube(16)}</span>
+                <div>
+                  <strong>No Team Setup connected</strong>
+                  <p>Connect a Git repository containing SKILL.md files, AGENTS.md instructions, or team workflows.</p>
+                </div>
+                <Button size="sm" variant="subtle" onClick={() => setTeamSetupEditing(true)}>Connect repository</Button>
+              </div>
+            )}
+
+            {project?.playbook && !teamSetupEditing && (
+              <div className="code-team-setup__connected">
+                <div className="code-team-setup__summary">
+                  <span className="code-team-setup__icon" aria-hidden="true">{Ico.cube(16)}</span>
+                  <div>
+                    <strong>{repositoryLabel(project.playbook.repository)}</strong>
+                    <span>{project.playbook.branch} · {playbookStatus?.items.filter((item) => item.enabled).length || 0} included</span>
+                  </div>
+                  {playbookStatus?.update_available && <em>Update available</em>}
                 </div>
                 <div className="code-playbook-actions">
                   <Button size="sm" variant="subtle" disabled={playbookBusy} onClick={async () => {
                     setPlaybookBusy(true); setError('');
                     try { setPlaybookStatus(await codingApi.refreshPlaybook(project.id)); }
-                    catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not check for playbook updates.'); }
+                    catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not check for Team Setup updates.'); }
                     finally { setPlaybookBusy(false); }
                   }}>Check for updates</Button>
-                  <Button size="sm" variant="subtle" onClick={() => openPlaybookRepository(project.playbook!.repository)}>Open repository</Button>
-                  {project.playbook.cache_path && <Button size="sm" variant="subtle" onClick={() => void host.openPath(project.playbook!.cache_path!)}>Open local copy</Button>}
+                  <Button size="sm" variant="subtle" onClick={() => setTeamSetupEditing(true)}>Change source</Button>
                 </div>
+
                 {playbookStatus?.update_available && (
                   <details className="code-playbook-update">
-                    <summary>Review available update <span>{Ico.chevDown(11)}</span></summary>
-                    <pre>{playbookStatus.diff || 'A newer playbook revision is available.'}</pre>
+                    <summary>Review update <span>{Ico.chevDown(11)}</span></summary>
+                    <pre>{playbookStatus.diff || 'A newer Team Setup revision is available.'}</pre>
                     <Button size="sm" variant="primary" disabled={playbookBusy} onClick={async () => {
                       setPlaybookBusy(true); setError('');
                       try { setPlaybookStatus(await codingApi.applyPlaybook(project.id)); }
-                      catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not apply the playbook update.'); }
+                      catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not apply the Team Setup update.'); }
                       finally { setPlaybookBusy(false); }
                     }}>Apply update</Button>
                   </details>
                 )}
+
                 {!!playbookStatus?.items.length && (
                   <details className="code-playbook-items">
-                    <summary>Choose active guidance <span>{Ico.chevDown(11)}</span></summary>
+                    <summary>
+                      <span>Included guidance</span>
+                      <small>{playbookStatus.items.filter((item) => item.enabled).length} of {playbookStatus.items.length}</small>
+                      <i>{Ico.chevDown(11)}</i>
+                    </summary>
                     <div>
                       {playbookStatus.items.map((item) => (
                         <label key={item.path}>
@@ -351,22 +398,52 @@ export function ProjectSettingsModal({
                               .map((candidate) => candidate.path);
                             setPlaybookBusy(true); setError('');
                             try { setPlaybookStatus(await codingApi.setPlaybookItems(project.id, enabled)); }
-                            catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not update playbook guidance.'); }
+                            catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not update Team Setup guidance.'); }
                             finally { setPlaybookBusy(false); }
                           }} />
-                          <span><strong>{item.name}</strong><small>{item.kind} · {item.path}</small></span>
+                          <span><strong>{item.name}</strong><small>{item.kind}</small></span>
                         </label>
                       ))}
                     </div>
                   </details>
                 )}
+
+                <details className="code-team-setup__details">
+                  <summary>Details <span>{Ico.chevDown(11)}</span></summary>
+                  <dl>
+                    <div><dt>Source</dt><dd title={project.playbook.repository}>{project.playbook.repository}</dd></div>
+                    <div><dt>Revision</dt><dd>{playbookStatus?.current_revision?.slice(0, 8) || 'Checking…'}</dd></div>
+                  </dl>
+                  <div>
+                    <Button size="sm" variant="subtle" onClick={() => openPlaybookRepository(project.playbook!.repository)}>Open source</Button>
+                    {project.playbook.cache_path && <Button size="sm" variant="subtle" onClick={() => void host.openPath(project.playbook!.cache_path!)}>Open local copy</Button>}
+                  </div>
+                </details>
                 {playbookStatus?.error && <div className="code-project-error">{playbookStatus.error}</div>}
+              </div>
+            )}
+
+            {teamSetupEditing && (
+              <div className="code-team-setup__editor">
+                <label>
+                  <span>Repository</span>
+                  <Input value={playbookRepository} onChange={setPlaybookRepository} placeholder="Git URL or local Git folder" autoFocus />
+                </label>
+                <label>
+                  <span>Branch</span>
+                  <Input value={playbookBranch} onChange={setPlaybookBranch} placeholder="main" />
+                </label>
+                <div className="code-team-setup__editor-actions">
+                  <Button size="sm" variant="subtle" onClick={() => void chooseTeamSetupFolder()}>{Ico.folder(13)} Choose local repository</Button>
+                  {project?.playbook && <Button size="sm" variant="subtle" onClick={() => setPlaybookRepository('')}>Remove connection</Button>}
+                </div>
+                <p>The repository stays the source of truth. Cowork keeps a managed local copy and checks before applying updates.</p>
               </div>
             )}
           </section>
 
           <section className="code-project-section">
-            <div className="code-project-section__heading"><div><strong>Developer tools</strong><span>Connections already managed by Cowork</span></div></div>
+            <div className="code-project-section__heading"><div><strong>Connected tools</strong><span>Use issues and pull requests as context, then publish only when you choose</span></div></div>
             {availableConnections.length ? (
               <div className="code-project-connection-list">
                 {availableConnections.map((connection) => {
@@ -382,25 +459,18 @@ export function ProjectSettingsModal({
                   );
                 })}
               </div>
-            ) : <div className="code-project-connected-copy">Connect GitHub, Linear, or Slack from Cowork to make it available here.</div>}
+            ) : <div className="code-project-connected-copy">Connect GitHub, Linear, or Slack in Cowork, then return here to choose the account this project uses.</div>}
           </section>
 
           <details className="code-project-advanced">
             <summary>Task defaults and environment <span>{Ico.chevDown(11)}</span></summary>
             <div className="code-project-advanced__body">
               <div className="code-project-defaults">
-                {availableEngines.length > 1 && (
-                  <label><span>Agent</span><Select value={projectEngineId} onValueChange={(value) => { setProjectEngineId(value); setEngineModelIds([]); }} options={availableEngines.map((engine) => ({ value: engine.id, label: engine.label }))} size="sm" ariaLabel="Default coding agent" /></label>
-                )}
+                <label><span>Agent</span><Select value={projectEngineId} onValueChange={(value) => { setProjectEngineId(value); setEngineModelIds([]); }} options={availableEngines.map((engine) => ({ value: engine.id, label: engine.label }))} size="sm" ariaLabel="Default coding agent" /></label>
                 <label><span>Model</span><ModelSelect value={projectModel} onValueChange={setProjectModel} options={projectModelOptions} size="sm" ariaLabel="Default coding model" placeholder="Select model" emptyText="No coding models available" onOpenChange={(opened: boolean) => { if (opened) void modelMeta.onRefresh?.(); }} /></label>
                 <label><span>Permissions</span><Select value={projectPermission} onValueChange={(value) => {
-                  if (value === 'read_only' || value === 'supervised' || value === 'workspace' || value === 'full_access') setProjectPermission(value);
-                }} options={[
-                  { value: 'read_only', label: 'Read only' },
-                  { value: 'supervised', label: 'Ask first' },
-                  { value: 'workspace', label: 'Workspace auto' },
-                  { value: 'full_access', label: 'Full access' },
-                ]} size="sm" ariaLabel="Default coding permissions" /></label>
+                  if (isPermissionMode(value)) setProjectPermission(value);
+                }} options={PERMISSION_OPTIONS} size="sm" ariaLabel="Default coding permissions" /></label>
               </div>
               <label><span>Variables</span><textarea value={environmentText} onChange={(event) => setEnvironmentText(event.target.value)} placeholder={'API_URL=http://127.0.0.1\nNODE_ENV=development'} rows={3} /></label>
               <label><span>Development ports</span><Input value={portNames} onChange={setPortNames} placeholder="PORT, API_PORT" /></label>

@@ -5,36 +5,50 @@ import type { EngineCommand, InputReference, QueuedInstruction } from './api';
 
 export function PromptQueue({
   items,
+  active,
   busy,
+  onSteer,
   onRemove,
 }: {
   items: QueuedInstruction[];
+  active: boolean;
   busy: boolean;
+  onSteer: (instructionId: string) => Promise<void>;
   onRemove: (instructionId: string) => Promise<void>;
 }) {
   if (items.length === 0) return null;
   return (
     <div className="code-prompt-queue" aria-label="Queued instructions">
-      <span className="code-prompt-queue__label">Next</span>
-      <div className="code-prompt-queue__items">
-        {items.map((instruction, index) => (
-          <div className="code-prompt-queue__item" key={instruction.id}>
-            <span>{index + 1}</span>
-            <p title={instruction.prompt}>{instruction.prompt}</p>
-            {!!instruction.attachments?.length && <small>{instruction.attachments.length} file{instruction.attachments.length === 1 ? '' : 's'}</small>}
+      {items.map((instruction, index) => (
+        <div className="code-prompt-queue__item" key={instruction.id}>
+          <span className="code-prompt-queue__icon" aria-hidden="true">{Ico.arrowUpLeft(12)}</span>
+          <p title={instruction.prompt}>{instruction.prompt}</p>
+          <small>Queued{instruction.attachments?.length ? ` · ${instruction.attachments.length} file${instruction.attachments.length === 1 ? '' : 's'}` : ''}</small>
+          <div className="code-prompt-queue__actions">
+            {active && (
+              <Button
+                variant="subtle"
+                size="xs"
+                disabled={busy}
+                aria-label={`Steer with queued instruction ${index + 1}`}
+                onClick={() => void onSteer(instruction.id)}
+              >
+                {Ico.arrowUpLeft(11)} Steer
+              </Button>
+            )}
             <Button
               icon
               variant="subtle"
-              size="sm"
+              size="xs"
               disabled={busy}
               aria-label={`Remove queued instruction ${index + 1}`}
               onClick={() => void onRemove(instruction.id)}
             >
-              {Ico.close(11)}
+              {Ico.trash(11)}
             </Button>
           </div>
-        ))}
-      </div>
+        </div>
+      ))}
     </div>
   );
 }

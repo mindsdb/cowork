@@ -14,6 +14,8 @@ vi.mock('../../platform/host', () => ({
   host: { pickCodeFolder, getPathForFile },
 }));
 
+vi.mock('../lib/skillsStore', () => ({ useSkills: () => ({ skills: [] }) }));
+
 vi.mock('./api', () => ({
   codingApi: {
     engines: vi.fn(async () => [{ id: 'codex', label: 'Codex', adapter_version: '1', available: true }]),
@@ -122,8 +124,33 @@ describe('NewTaskPanel', () => {
     );
 
     expect(await screen.findByRole('combobox', { name: 'Choose model' })).toHaveTextContent('GPT-5.6 Sol');
+    const agentPicker = screen.getByRole('combobox', { name: 'Coding agent' });
+    const permissionPicker = screen.getByRole('combobox', { name: 'Coding permissions' });
+    expect(agentPicker).toHaveTextContent('Codex');
+    expect(permissionPicker).toHaveTextContent('Ask first');
+    expect(agentPicker).not.toHaveTextContent('Agent:');
+    expect(permissionPicker).not.toHaveTextContent('Coding permissions:');
     expect(screen.queryByRole('button', { name: 'Add folder' })).not.toBeInTheDocument();
     expect(screen.queryByText('Choose an available agent and model.')).not.toBeInTheDocument();
+  });
+
+  it('opens searchable skill and command discovery from slash on a new task', async () => {
+    render(
+      <NewTaskPanel
+        busy={false}
+        error=""
+        defaultEngineId="codex"
+        defaultModel="gpt-5.6-sol"
+        models={models}
+        modelMeta={modelMeta}
+        {...projectProps}
+        onCreate={vi.fn(async () => {})}
+      />,
+    );
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Coding task' }), { target: { value: '/' } });
+    expect(screen.getByRole('listbox', { name: 'Skills and commands' })).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Search skills and commands' })).toBeInTheDocument();
   });
 
   it('uses the Code Project model and permission defaults for a new task', async () => {
@@ -214,7 +241,6 @@ describe('NewTaskPanel', () => {
     await user.type(screen.getByRole('textbox', { name: 'Coding task' }), 'Add a safe feature');
 
     const start = screen.getByRole('button', { name: /start task/i });
-    await waitFor(() => expect(screen.getByText('Ready in MindsHub · 2 folders.')).toBeInTheDocument());
     expect(start).toBeEnabled();
 
     await user.click(start);
@@ -250,9 +276,9 @@ describe('NewTaskPanel', () => {
     );
 
     await user.click(screen.getByRole('combobox', { name: 'Code Project' }));
-    await user.click(screen.getByRole('option', { name: 'New Code Project…' }));
+    await user.click(screen.getByRole('option', { name: /New project/ }));
 
-    expect(onProjectChange).toHaveBeenCalledWith(null);
+    expect(onProjectChange).not.toHaveBeenCalled();
     expect(onOpenProjectSettings).toHaveBeenCalledOnce();
   });
 
@@ -305,7 +331,6 @@ describe('NewTaskPanel', () => {
 
     const input = screen.getByRole('textbox', { name: 'Coding task' });
     await user.type(input, 'Tighten the task composer');
-    await waitFor(() => expect(screen.getByText('Ready in MindsHub · 2 folders.')).toBeInTheDocument());
     fireEvent.keyDown(input, { key: 'Enter', metaKey: true });
 
     await waitFor(() => expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({
@@ -351,7 +376,7 @@ describe('NewTaskPanel', () => {
     })));
   });
 
-  it('keeps Start actionable and opens project creation when one is missing', async () => {
+  it('enables Start after a prompt and opens project creation when one is missing', async () => {
     const user = userEvent.setup();
     const onOpenProjectSettings = vi.fn();
     render(
@@ -371,14 +396,11 @@ describe('NewTaskPanel', () => {
     );
 
     const start = await screen.findByRole('button', { name: /start task/i });
-    await waitFor(() => expect(start).toBeEnabled());
-    expect(screen.getByText('Describe the task and choose a Code Project.')).toBeInTheDocument();
-
-    await user.click(start);
-    expect(screen.getByRole('textbox', { name: 'Coding task' })).toHaveFocus();
-    expect(screen.getByText('Describe what you want changed.')).toBeInTheDocument();
+    await waitFor(() => expect(start).toBeDisabled());
+    expect(screen.queryByText('Describe what you want changed.')).not.toBeInTheDocument();
 
     await user.type(screen.getByRole('textbox', { name: 'Coding task' }), 'Build a small app');
+    expect(start).toBeEnabled();
     expect(screen.getByText('Choose a Code Project to continue.')).toBeInTheDocument();
     await user.click(start);
     expect(onOpenProjectSettings).toHaveBeenCalledOnce();

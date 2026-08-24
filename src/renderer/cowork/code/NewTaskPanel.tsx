@@ -8,33 +8,13 @@ import Spinner from '../components/ui/Spinner';
 import { Textarea } from '../components/ui/Input';
 import type { ModelPickerMeta, ModelPickerSource } from '../lib/modelPickerOptions';
 import { codingApi, type CodeProject, type CreateCodeTaskInput, type SourceContext } from './api';
+import { CodeCommandPalette, useCodePaletteItems, type CodePaletteItem } from './CodeCommandPalette';
+import { CodeProjectPicker } from './CodeProjectPicker';
+import { isPermissionMode, PERMISSION_OPTIONS } from './permissions';
 import { PromptReferenceChips } from './PromptReferences';
 import { useNewTaskDraft } from './useNewTaskDraft';
 
-const PERMISSIONS = [
-  {
-    value: 'read_only',
-    label: 'Read only',
-    title: 'Inspect and explain without changing files.',
-  },
-  {
-    value: 'supervised',
-    label: 'Ask first',
-    title: 'Pause before commands that need your approval.',
-  },
-  {
-    value: 'workspace',
-    label: 'Workspace auto',
-    title: 'Work autonomously inside the isolated task workspace.',
-  },
-  {
-    value: 'full_access',
-    label: 'Full access',
-    title: 'Work autonomously without filesystem restrictions.',
-  },
-];
 const NO_CONNECTIONS: CodeProject['connections'] = [];
-const NEW_PROJECT_VALUE = '__new_code_project__';
 
 function providerLabel(provider: 'github' | 'linear' | 'slack'): string {
   if (provider === 'github') return 'GitHub';
@@ -53,6 +33,7 @@ export function NewTaskPanel({
   selectedProjectId = null,
   onProjectChange = () => {},
   onOpenProjectSettings = () => {},
+  onCreateProject = onOpenProjectSettings,
   onCreate,
 }: {
   busy: boolean;
@@ -65,6 +46,7 @@ export function NewTaskPanel({
   selectedProjectId: string | null;
   onProjectChange: (id: string | null) => void;
   onOpenProjectSettings: () => void;
+  onCreateProject?: () => void;
   onCreate: (args: CreateCodeTaskInput) => Promise<void>;
 }) {
   const draft = useNewTaskDraft({
@@ -74,11 +56,18 @@ export function NewTaskPanel({
   const {
     prompt, setPrompt, catalogError,
     engineId, setEngineId, model, setModel, engineLoading, permissionMode, setPermissionMode,
-    startGuidance, setStartGuidance, attachments, setAttachments, draggingFiles, setDraggingFiles,
+    attachments, setAttachments, draggingFiles, setDraggingFiles,
     fileInputRef, promptRef, modelOptions, refreshModels,
     availableEngines, attachFiles, selectedProject, sourceContexts, setSourceContexts, taskReady,
-    startUnavailable, readinessMessage, readinessKind, handleStart,
+    startUnavailable, readinessMessage, readinessKind, handleStart, engineCommands, engineLabel,
   } = draft;
+  const commandQuery = /^\/([^\s]*)$/.exec(prompt)?.[1] ?? null;
+  const [paletteIndex, setPaletteIndex] = useState(0);
+  const paletteItems = useCodePaletteItems({
+    commands: engineCommands.filter((command) => command.action !== 'client'),
+    query: commandQuery,
+    projectName: selectedProject?.name,
+  });
   const [linkOpen, setLinkOpen] = useState(false);
   const [linkConnectionKey, setLinkConnectionKey] = useState('');
   const [linkUrl, setLinkUrl] = useState('');
@@ -93,16 +82,17 @@ export function NewTaskPanel({
       setLinkConnectionKey(first ? `${first.provider}:${first.name}` : '');
     }
   }, [linkConnectionKey, projectConnections]);
-  const readinessText = startGuidance || readinessMessage;
+  useEffect(() => setPaletteIndex(0), [commandQuery]);
+  const readinessText = readinessMessage;
   const readinessIcon = readinessKind === 'loading'
     ? <Spinner className="text-xs" />
-    : readinessKind === 'ready'
-      ? Ico.check(12)
-      : readinessKind === 'prompt'
-        ? Ico.edit(12)
-        : readinessKind === 'folder'
-          ? Ico.folder(12)
-          : Ico.lock(12);
+    : readinessKind === 'folder'
+      ? Ico.folder(12)
+      : Ico.lock(12);
+  const choosePaletteItem = (item: CodePaletteItem) => {
+    setPrompt(item.kind === 'skill' ? `${item.invocation} ` : `${item.invocation}${item.argumentHint ? ' ' : ''}`);
+    requestAnimationFrame(() => promptRef.current?.focus());
+  };
 
   return (
     <main className="code-new-task">
@@ -110,9 +100,8 @@ export function NewTaskPanel({
         <div className="code-new-task__intro">
           <div className="code-new-task__heading">
             <span className="code-new-task__mark" aria-hidden="true">{Ico.code(18)}</span>
-            <h1>What should the agent change?</h1>
+            <h1>What should we build?</h1>
           </div>
-          <p>Give the agent an outcome, choose a project, and say how you want it verified.</p>
         </div>
 
         <section
@@ -137,12 +126,42 @@ export function NewTaskPanel({
           }}
         >
           {draggingFiles && <div className="code-drop-hint">Drop files to attach</div>}
+          <div className="code-start-project-bar">
+            <CodeProjectPicker
+              projects={projects}
+              value={selectedProjectId}
+              disabled={busy}
+              onValueChange={(id) => onProjectChange(id)}
+              onCreateProject={onCreateProject}
+            />
+            <Button
+              icon
+              variant="subtle"
+              size="sm"
+              onClick={selectedProject ? onOpenProjectSettings : onCreateProject}
+              disabled={busy}
+              aria-label={selectedProject ? `Edit ${selectedProject.name}` : 'Create Code Project'}
+            >
+              {selectedProject ? Ico.settings(13) : Ico.plus(13)}
+            </Button>
+          </div>
+          {commandQuery != null && (
+            <CodeCommandPalette
+              items={paletteItems}
+              query={commandQuery}
+              selectedIndex={paletteIndex}
+              agentLabel={engineLabel}
+              onQueryChange={(query) => setPrompt(`/${query}`)}
+              onSelectedIndexChange={setPaletteIndex}
+              onChoose={choosePaletteItem}
+              onDismiss={() => { setPrompt(''); requestAnimationFrame(() => promptRef.current?.focus()); }}
+            />
+          )}
           <Textarea
             ref={promptRef}
             value={prompt}
             onChange={(value) => {
               setPrompt(value);
-              if (startGuidance) setStartGuidance('');
             }}
             rows={6}
             placeholder="Describe the change, important constraints, and how you want it verified…"
@@ -156,6 +175,28 @@ export function NewTaskPanel({
               attachFiles(event.clipboardData.files);
             }}
             onKeyDown={(event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+              if (commandQuery != null && paletteItems.length > 0) {
+                if (event.key === 'ArrowDown') {
+                  event.preventDefault();
+                  setPaletteIndex((value) => (value + 1) % paletteItems.length);
+                  return;
+                }
+                if (event.key === 'ArrowUp') {
+                  event.preventDefault();
+                  setPaletteIndex((value) => (value - 1 + paletteItems.length) % paletteItems.length);
+                  return;
+                }
+                if (event.key === 'Enter' || event.key === 'Tab') {
+                  event.preventDefault();
+                  choosePaletteItem(paletteItems[Math.min(paletteIndex, paletteItems.length - 1)]);
+                  return;
+                }
+                if (event.key === 'Escape') {
+                  event.preventDefault();
+                  setPrompt('');
+                  return;
+                }
+              }
               if (event.key !== 'Enter' || (!event.metaKey && !event.ctrlKey)) return;
               event.preventDefault();
               void handleStart();
@@ -237,43 +278,36 @@ export function NewTaskPanel({
               {Ico.attach(14)}
             </Button>
             <Select
-              value={selectedProjectId || ''}
+              value={permissionMode}
               onValueChange={(value) => {
-                if (value === NEW_PROJECT_VALUE) {
-                  onProjectChange(null);
-                  onOpenProjectSettings();
-                  return;
-                }
-                onProjectChange(value || null);
+                if (isPermissionMode(value)) setPermissionMode(value);
               }}
-              options={[
-                ...projects.map((project) => ({
-                  value: project.id,
-                  label: project.name,
-                  title: `${project.folders.length} folder${project.folders.length === 1 ? '' : 's'}`,
-                })),
-                { value: NEW_PROJECT_VALUE, label: 'New Code Project…' },
-              ]}
-              variant="pill"
+              options={PERMISSION_OPTIONS}
+              variant="unstyled"
               size="sm"
-              label="Project"
-              ariaLabel="Code Project"
-              placeholder="Choose project"
+              ariaLabel="Coding permissions"
               disabled={busy}
-              minWidth={150}
-              className="code-project-picker"
+              className="meta-pill code-composer-picker code-permission-picker"
             />
-            <Button icon variant="subtle" size="sm" onClick={onOpenProjectSettings} disabled={busy} aria-label={selectedProject ? `Edit ${selectedProject.name}` : 'Create Code Project'}>
-              {selectedProject ? Ico.settings(13) : Ico.plus(13)}
-            </Button>
             <span className="code-start-composer__spacer" />
+            <Select
+              value={engineId}
+              onValueChange={setEngineId}
+              options={availableEngines}
+              variant="unstyled"
+              size="sm"
+              ariaLabel="Coding agent"
+              disabled={busy || engineLoading}
+              loading={engineLoading}
+              className="meta-pill code-composer-picker code-agent-picker"
+            />
             <ModelSelect
               value={model}
               onValueChange={setModel}
               options={modelOptions}
               onOpenChange={refreshModels}
               variant="unstyled"
-              className="meta-pill code-model-picker"
+              className="meta-pill code-composer-picker code-model-picker"
               ariaLabel="Choose model"
               placeholder="Select model"
               emptyText="No coding models available"
@@ -281,7 +315,7 @@ export function NewTaskPanel({
             />
             <Button
               variant="primary"
-              size="lg"
+              size="sm"
               className="code-start-task-button"
               disabled={startUnavailable}
               onClick={() => void handleStart()}
@@ -291,35 +325,8 @@ export function NewTaskPanel({
               {busy ? 'Starting…' : 'Start task'}
             </Button>
           </div>
-          <div className="code-start-composer__context">
-            {availableEngines.length > 1 && (
-              <Select
-                value={engineId}
-                onValueChange={setEngineId}
-                options={availableEngines}
-                variant="pill"
-                size="sm"
-                label="Agent"
-                ariaLabel="Coding agent"
-                disabled={busy || engineLoading}
-                loading={engineLoading}
-                minWidth={126}
-                className="code-agent-picker"
-              />
-            )}
-            <Select
-              value={permissionMode}
-              onValueChange={(value) => {
-                if (value === 'read_only' || value === 'supervised' || value === 'workspace' || value === 'full_access') setPermissionMode(value);
-              }}
-              options={PERMISSIONS}
-              variant="pill"
-              size="sm"
-              label="Permissions"
-              ariaLabel="Coding permissions"
-              disabled={busy}
-              minWidth={144}
-            />
+          {(selectedProject?.connections.length || readinessText) && (
+            <div className="code-start-composer__context">
             {selectedProject?.connections.length ? (
               <Button size="sm" variant="subtle" onClick={() => { setLinkOpen((current) => !current); setLinkError(''); }} disabled={busy}>
                 {Ico.link(12)} Link work
@@ -328,7 +335,7 @@ export function NewTaskPanel({
             {readinessText && (
               <div
                 id="code-start-readiness"
-                className={`code-start-readiness${taskReady ? ' is-ready' : ''}${startGuidance ? ' is-attention' : ''}`}
+                className={`code-start-readiness${taskReady ? ' is-ready' : ''}`}
                 role="status"
                 aria-live="polite"
               >
@@ -336,7 +343,8 @@ export function NewTaskPanel({
                 <span>{readinessText}</span>
               </div>
             )}
-          </div>
+            </div>
+          )}
 
         </section>
         {(error || catalogError) && <Alert variant="danger">{error || catalogError}</Alert>}
