@@ -54,6 +54,46 @@ export interface SavedConnectorConnection {
   fields?: Record<string, unknown>;
 }
 
+export interface ConnectorFieldSpec {
+  name: string;
+  label: string;
+  type: string;
+  required?: boolean;
+  secret?: boolean;
+  [key: string]: unknown;
+}
+
+export interface ConnectorMethodSpec {
+  id: string;
+  label: string;
+  fields?: ConnectorFieldSpec[];
+  [key: string]: unknown;
+}
+
+export interface ConnectorSpec {
+  id: string;
+  logo_url?: string | null;
+  form: {
+    form_id: string;
+    logo_url?: string | null;
+    methods?: ConnectorMethodSpec[];
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
+}
+
+export interface SavedConnectorResult {
+  ok: boolean;
+  name: string;
+  label: string;
+  user_label?: string | null;
+}
+
 export function fetchDatasources(): Promise<{ connections: ConnectorConnection[] }>;
+export function fetchConnector(id: string): Promise<ConnectorSpec>;
 export function fetchSavedConnection(engine: string, name: string): Promise<SavedConnectorConnection>;
 export function deleteDatasource(engine: string, name: string): Promise<unknown>;
+export function validateAndSaveConnector(
+  connectorId: string,
+  payload: { method: string; name?: string; replace_existing?: boolean; values: Record<string, unknown> },
+): Promise<SavedConnectorResult>;

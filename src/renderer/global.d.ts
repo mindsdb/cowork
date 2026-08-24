@@ -55,6 +55,7 @@ interface AntonTronAPI {
     | { authUrl: string; tokenUrl: string; clientId: string; clientSecret?: string; scopes: string[]; extraAuthParams?: Record<string, string>; redirectPort?: number }
   ) => Promise<{
     ok: boolean;
+    code?: 'oauth_credentials_missing';
     reason?: string;
     name?: string;
     account_email?: string;

@@ -1,14 +1,37 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 
-import { deleteDatasource, fetchDatasources, fetchSavedConnection, type ConnectorConnection } from '../api';
+import {
+  deleteDatasource,
+  fetchConnector,
+  fetchDatasources,
+  fetchSavedConnection,
+  validateAndSaveConnector,
+  type ConnectorConnection,
+  type ConnectorSpec,
+} from '../api';
 import { ConfirmModal } from '../components/ConfirmModal';
+import { DataVaultForm } from '../components/datavault/DataVaultForm';
 import Ico from '../components/Icons';
 import Alert from '../components/ui/Alert';
 import Button from '../components/ui/Button';
+import Modal, { ModalBody, ModalHeader } from '../components/ui/Modal';
 import { host } from '../../platform/host';
 import type { CodeProject } from './api';
 
 type ProviderId = 'github' | 'linear';
+
+type CredentialSetup = {
+  provider: ProviderId;
+  connectionName: string;
+  method: string;
+  formSpec: Record<string, unknown>;
+};
+
+type FormAction = {
+  kind?: string;
+  values?: Record<string, unknown>;
+  authMethod?: string | null;
+};
 
 const PROVIDERS: Array<{
   id: ProviderId;
@@ -19,13 +42,13 @@ const PROVIDERS: Array<{
   {
     id: 'github',
     label: 'GitHub',
-    description: 'Repositories, issues, pull requests, reviews, and CI.',
+    description: 'Start from issues, create draft pull requests, and follow reviews and checks.',
     logo: 'logos/github.svg',
   },
   {
     id: 'linear',
     label: 'Linear',
-    description: 'Issues, projects, cycles, and task updates.',
+    description: 'Start from Linear issues and post progress back to them.',
     logo: 'logos/linear.svg',
   },
 ];
@@ -45,18 +68,62 @@ function usageLabel(count: number): string {
   return `Used by ${count} ${count === 1 ? 'project' : 'projects'}`;
 }
 
+function oauthCredentialsMissing(result: { code?: string; reason?: string } | null | undefined): boolean {
+  if (result?.code === 'oauth_credentials_missing') return true;
+  // Renderer and Electron shell can update independently. Keep the fallback
+  // working with an older shell that predates the structured error code.
+  return /oauth credentials (?:are )?not configured/i.test(result?.reason || '');
+}
+
+function personalCredentialForm(provider: ProviderId, spec: ConnectorSpec): CredentialSetup {
+  const methodId = provider === 'github' ? 'fine-grained-pat' : 'personal-api-key';
+  const method = spec.form.methods?.find((candidate) => candidate.id === methodId);
+  if (!method) throw new Error(`Could not load ${provider === 'github' ? 'GitHub' : 'Linear'} connection options.`);
+  return {
+    provider,
+    connectionName: '',
+    method: methodId,
+    formSpec: {
+      ...spec.form,
+      _connector_id: provider,
+      engine: provider,
+      logo_url: spec.logo_url || spec.form?.logo_url,
+      selected_method: methodId,
+      methods: [{
+        ...method,
+        recommended: true,
+        fields: (method.fields || []).map((field) => ({ ...field, skipable: false })),
+        actions: [{ id: 'connect', label: 'Connect', kind: 'primary' }],
+      }],
+    },
+  };
+}
+
 export function CodeConnectorsView({
   connections,
   projects,
   onConnectionsChange,
+  returnProjectName = '',
+  backLabel = 'Back to task',
+  onBack,
+  onConnected,
 }: {
   connections: ConnectorConnection[];
   projects: CodeProject[];
   onConnectionsChange: (connections: ConnectorConnection[]) => void;
+  returnProjectName?: string;
+  backLabel?: string;
+  onBack?: () => void;
+  onConnected?: (provider: ProviderId, connection: ConnectorConnection) => Promise<void> | void;
 }) {
   const [busyKey, setBusyKey] = useState('');
   const [errorByProvider, setErrorByProvider] = useState<Partial<Record<ProviderId, string>>>({});
   const [disconnecting, setDisconnecting] = useState<ConnectorConnection | null>(null);
+  const [credentialSetup, setCredentialSetup] = useState<CredentialSetup | null>(null);
+  const [credentialLabel, setCredentialLabel] = useState('');
+  const [credentialError, setCredentialError] = useState('');
+  const [credentialBusy, setCredentialBusy] = useState(false);
+  const cancelledKey = useRef('');
 
   const providerConnections = useMemo(() => {
     const grouped: Record<ProviderId, ConnectorConnection[]> = { github: [], linear: [] };
@@ -68,29 +135,97 @@ export function CodeConnectorsView({
     return grouped;
   }, [connections]);
 
-  const refresh = async () => {
+  const refresh = async (): Promise<ConnectorConnection[]> => {
     const result = await fetchDatasources();
     const next = Array.isArray(result?.connections) ? result.connections : [];
     onConnectionsChange(next);
     window.dispatchEvent(new CustomEvent('anton:connections-changed'));
+    return next;
+  };
+
+  const openPersonalCredentialSetup = async (provider: ProviderId, connectionName = '') => {
+    const spec = await fetchConnector(provider);
+    setCredentialSetup({ ...personalCredentialForm(provider, spec), connectionName });
+    setCredentialLabel('');
+    setCredentialError('');
   };
 
   const connect = async (provider: ProviderId, connectionName = '') => {
-    const key = `${provider}:${connectionName || 'new'}`;
+    const key = `${provider}:${connectionName || 'new'}:oauth`;
     const providerLabel = PROVIDERS.find((item) => item.id === provider)?.label || provider;
+    cancelledKey.current = '';
     setBusyKey(key);
     setErrorByProvider((current) => ({ ...current, [provider]: '' }));
     try {
+      if (!host.isElectron) {
+        await openPersonalCredentialSetup(provider, connectionName);
+        return;
+      }
       const result = await host.oauthConnect({ engine: provider, name: connectionName });
+      if (cancelledKey.current === key) return;
+      if (!result?.ok && oauthCredentialsMissing(result)) {
+        await openPersonalCredentialSetup(provider, connectionName);
+        return;
+      }
       if (!result?.ok) throw new Error(result?.reason || `Could not connect ${providerLabel}.`);
-      await refresh();
+      const next = await refresh();
+      const connectedName = result.name || connectionName;
+      const connected = next.find((item) => item.engine === provider && (!connectedName || item.name === connectedName));
+      if (connected) await onConnected?.(provider, connected);
     } catch (reason) {
+      if (cancelledKey.current === key || (reason instanceof Error && reason.message === 'cancelled')) return;
       setErrorByProvider((current) => ({
         ...current,
         [provider]: reason instanceof Error ? reason.message : `Could not connect ${providerLabel}.`,
       }));
     } finally {
       setBusyKey('');
+    }
+  };
+
+  const closeCredentialSetup = () => {
+    if (credentialBusy) return;
+    setCredentialSetup(null);
+    setCredentialLabel('');
+    setCredentialError('');
+  };
+
+  const savePersonalCredential = async (action: FormAction) => {
+    if (!credentialSetup || action.kind !== 'primary') return;
+    const { provider, connectionName, method } = credentialSetup;
+    setCredentialBusy(true);
+    setCredentialError('');
+    let saved: { name: string };
+    try {
+      saved = await validateAndSaveConnector(provider, {
+        method,
+        name: connectionName,
+        replace_existing: Boolean(connectionName),
+        values: { ...(action.values || {}), user_label: credentialLabel },
+      });
+    } catch (reason) {
+      setCredentialError(reason instanceof Error ? reason.message : 'Could not validate this credential.');
+      setCredentialBusy(false);
+      return;
+    }
+
+    // The credential is now safely persisted. Unmount the form immediately so
+    // its secret-bearing local state cannot survive a later refresh failure.
+    setCredentialSetup(null);
+    setCredentialLabel('');
+    try {
+      const next = await refresh();
+      const connected = next.find((item) => item.engine === provider && item.name === saved?.name);
+      if (connected) {
+        await onConnected?.(provider, connected);
+      }
+    } catch (reason) {
+      setErrorByProvider((current) => ({
+        ...current,
+        [provider]: `Connected, but could not finish updating Code: ${reason instanceof Error ? reason.message : 'try reopening Connectors.'}`,
+      }));
+    } finally {
+      setCredentialBusy(false);
     }
   };
 
@@ -130,6 +265,13 @@ export function CodeConnectorsView({
         </div>
       </header>
 
+      {returnProjectName && (
+        <div className="code-connector-return" role="status">
+          <span>Adding a developer account to <strong>{returnProjectName}</strong></span>
+          {onBack && <Button size="sm" variant="subtle" onClick={onBack}>{backLabel}</Button>}
+        </div>
+      )}
+
       <div className="code-connectors-list" aria-label="Code Connectors">
         {PROVIDERS.map((provider) => {
           const accounts = providerConnections[provider.id];
@@ -157,7 +299,7 @@ export function CodeConnectorsView({
                   disabled={providerBusy}
                   onClick={() => void connect(provider.id)}
                 >
-                  {providerBusy && busyKey.endsWith(':new') ? 'Connecting…' : accounts.length ? 'Add account' : 'Connect'}
+                  {providerBusy && busyKey.includes(':new:oauth') ? 'Connecting…' : accounts.length ? 'Add account' : 'Connect'}
                 </Button>
               </div>
 
@@ -167,12 +309,23 @@ export function CodeConnectorsView({
                 </div>
               )}
 
+              {providerBusy && busyKey.endsWith(':oauth') && (
+                <div className="code-connector-oauth" role="status">
+                  <span><strong>Continue in your browser</strong><small>Return here when {provider.label} finishes authorizing.</small></span>
+                  <Button size="sm" variant="subtle" onClick={async () => {
+                    cancelledKey.current = busyKey;
+                    await host.oauthCancel();
+                    setBusyKey('');
+                  }}>Cancel</Button>
+                </div>
+              )}
+
               {accounts.length > 0 && (
                 <div className="code-connector-accounts" aria-label={`${provider.label} accounts`}>
                   {accounts.map((connection) => {
                     const needsReconnect = connection.status === 'needs_reconnect';
                     const usage = projectUsage(projects, provider.id, connection.name);
-                    const reconnectKey = `${provider.id}:${connection.name}`;
+                    const reconnectKey = `${provider.id}:${connection.name}:oauth`;
                     return (
                       <div className="code-connector-account" key={`${connection.engine}:${connection.name}`}>
                         <span className="code-connector-account__rail" aria-hidden="true" />
@@ -212,6 +365,37 @@ export function CodeConnectorsView({
           );
         })}
       </div>
+
+      <Modal
+        open={credentialSetup !== null}
+        onClose={closeCredentialSetup}
+        closeOnBackdrop={!credentialBusy}
+        closeOnEsc={!credentialBusy}
+        size="sm"
+        labelledBy="code-credential-title"
+      >
+        <ModalHeader
+          id="code-credential-title"
+          title={`Connect ${credentialSetup?.provider === 'github' ? 'GitHub' : 'Linear'}`}
+          subtitle={credentialSetup?.provider === 'github'
+            ? 'Use a personal access token for this local build.'
+            : 'Use a personal API key for this local build.'}
+          onClose={credentialBusy ? undefined : closeCredentialSetup}
+        />
+        <ModalBody>
+          {credentialError && <Alert variant="danger">{credentialError}</Alert>}
+          {credentialSetup && (
+            <DataVaultForm
+              spec={credentialSetup.formSpec}
+              busy={credentialBusy}
+              hideHeader
+              userLabel={credentialLabel}
+              onUserLabelChange={setCredentialLabel}
+              onAction={(action: FormAction) => void savePersonalCredential(action)}
+            />
+          )}
+        </ModalBody>
+      </Modal>
 
       <ConfirmModal
         open={disconnecting !== null}
