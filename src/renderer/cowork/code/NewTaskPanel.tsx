@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { ConnectorConnection } from '../api';
 import Ico from '../components/Icons';
 import ModelSelect from '../components/ModelSelect';
 import Alert from '../components/ui/Alert';
@@ -25,9 +26,11 @@ export function NewTaskPanel({
   modelMeta,
   projects = [],
   selectedProjectId = null,
+  connections,
   onProjectChange = () => {},
   onOpenProjectSettings = () => {},
   onOpenConnectors = () => {},
+  onProjectConnectionsChange,
   onCreateProject = onOpenProjectSettings,
   onCreate,
 }: {
@@ -39,9 +42,11 @@ export function NewTaskPanel({
   modelMeta: ModelPickerMeta;
   projects: CodeProject[];
   selectedProjectId: string | null;
+  connections?: ConnectorConnection[];
   onProjectChange: (id: string | null) => void;
   onOpenProjectSettings: () => void;
   onOpenConnectors?: () => void;
+  onProjectConnectionsChange?: () => Promise<void> | void;
   onCreateProject?: () => void;
   onCreate: (args: CreateCodeTaskInput) => Promise<void>;
 }) {
@@ -56,6 +61,7 @@ export function NewTaskPanel({
     fileInputRef, promptRef, modelOptions, refreshModels,
     availableEngines, attachFiles, selectedProject, sourceContexts, setSourceContexts, taskReady,
     startUnavailable, readinessMessage, readinessKind, handleStart, engineCommands, engineLabel,
+    standaloneFolderPath, standaloneFolderName, chooseStandaloneFolder,
   } = draft;
   const commandQuery = /^\/([^\s]*)$/.exec(prompt)?.[1] ?? null;
   const [paletteIndex, setPaletteIndex] = useState(0);
@@ -114,19 +120,34 @@ export function NewTaskPanel({
               projects={projects}
               value={selectedProjectId}
               disabled={busy}
-              onValueChange={(id) => onProjectChange(id)}
+              onValueChange={onProjectChange}
               onCreateProject={onCreateProject}
             />
-            <Button
-              icon
-              variant="subtle"
-              size="sm"
-              onClick={selectedProject ? onOpenProjectSettings : onCreateProject}
-              disabled={busy}
-              aria-label={selectedProject ? `Edit ${selectedProject.name}` : 'Create Code Project'}
-            >
-              {selectedProject ? Ico.settings(13) : Ico.plus(13)}
-            </Button>
+            {selectedProject ? (
+              <Button
+                icon
+                variant="subtle"
+                size="sm"
+                onClick={onOpenProjectSettings}
+                disabled={busy}
+                aria-label={`Edit ${selectedProject.name}`}
+              >
+                {Ico.settings(13)}
+              </Button>
+            ) : (
+              <Button
+                variant={standaloneFolderPath ? 'subtle' : 'tinted'}
+                size="sm"
+                className="code-standalone-folder-picker"
+                onClick={() => void chooseStandaloneFolder()}
+                disabled={busy}
+                title={standaloneFolderPath || undefined}
+                aria-label={standaloneFolderPath ? `Change folder, currently ${standaloneFolderName}` : 'Choose folder'}
+              >
+                <span className="code-standalone-folder-picker__icon" aria-hidden="true">{Ico.folder(13)}</span>
+                <span className="code-standalone-folder-picker__label">{standaloneFolderName || 'Choose folder'}</span>
+              </Button>
+            )}
           </div>
           {commandQuery != null && (
             <CodeCommandPalette
@@ -200,12 +221,14 @@ export function NewTaskPanel({
           />
           <TaskSourceLinks
             project={selectedProject}
+            availableConnections={connections}
             value={sourceContexts}
             onChange={setSourceContexts}
             onContextAdded={(context) => {
               if (!prompt.trim()) setPrompt(`Work on ${context.external_id}: ${context.title}`);
             }}
             onOpenConnectors={onOpenConnectors}
+            onProjectConnectionsChange={onProjectConnectionsChange}
             autoLinkUrl={autoLinkUrl}
             onAutoLinkHandled={() => setAutoLinkUrl('')}
             busy={busy}
@@ -276,21 +299,20 @@ export function NewTaskPanel({
               {busy ? 'Starting…' : 'Start task'}
             </Button>
           </div>
+        </section>
+        <div className="code-start-status-slot">
           {readinessText && (
-            <div className="code-start-composer__context">
-              <div
-                id="code-start-readiness"
-                className={`code-start-readiness${taskReady ? ' is-ready' : ''}`}
-                role="status"
-                aria-live="polite"
-              >
-                <span className="code-start-readiness__icon" aria-hidden="true">{readinessIcon}</span>
-                <span>{readinessText}</span>
-              </div>
+            <div
+              id="code-start-readiness"
+              className={`code-start-readiness${taskReady ? ' is-ready' : ''}`}
+              role="status"
+              aria-live="polite"
+            >
+              <span className="code-start-readiness__icon" aria-hidden="true">{readinessIcon}</span>
+              <span>{readinessText}</span>
             </div>
           )}
-
-        </section>
+        </div>
         {(error || catalogError) && <Alert variant="danger">{error || catalogError}</Alert>}
 
       </div>

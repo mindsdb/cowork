@@ -31,8 +31,7 @@ export interface SessionCreateBody {
   source_contexts?: SourceContext[];
 }
 
-export interface CreateCodeTaskInput {
-  projectId: string;
+interface CreateCodeTaskBase {
   prompt: string;
   engineId: string;
   model: string;
@@ -40,6 +39,11 @@ export interface CreateCodeTaskInput {
   attachments: InputReference[];
   sourceContexts: SourceContext[];
 }
+
+export type CreateCodeTaskInput = CreateCodeTaskBase & (
+  | { projectId: string; path?: never }
+  | { projectId: null; path: string }
+);
 
 export type ReasoningEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
 export type ServiceTier = 'standard' | 'priority';

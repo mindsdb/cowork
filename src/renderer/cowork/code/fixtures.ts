@@ -391,7 +391,8 @@ export function getCodeFixtureApi() {
       return { items: copy(items), next_seq: items.at(-1)?.seq || after };
     },
     create: async (body: SessionCreateBody) => {
-      const project = projects.find((item) => item.id === body.project_id) || projects[0];
+      const project = projects.find((item) => item.id === body.project_id)
+        || (body.path ? undefined : projects[0]);
       const sourcePath = body.path || project?.folders[0]?.path || ROOT;
       const created = session({
         id: 'task-created', title: taskTitle(body.prompt), source_path: sourcePath,

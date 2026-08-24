@@ -234,7 +234,9 @@ export default function CodeView({
           onCreate={createTask}
           projects={projects.projects}
           selectedProjectId={projects.selectedId}
+          connections={connections}
           onProjectChange={projects.setSelectedId}
+          onProjectConnectionsChange={projects.load}
           onOpenProjectSettings={() => setProjectEditor({ id: projects.selectedId })}
           onOpenConnectors={() => {
             setConnectorReturnToSettings(false);

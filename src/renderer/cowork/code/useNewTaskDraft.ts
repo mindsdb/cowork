@@ -7,6 +7,7 @@ import {
 } from '../lib/modelPickerOptions';
 import { MODEL_REFRESH_TTL_MS } from '../lib/modelRefresh';
 import { modelLabel } from '../lib/settingsTransform';
+import { host } from '../../platform/host';
 import {
   codingApi,
   type CodeProject,
@@ -48,6 +49,11 @@ function projectFolderIssue(items: ProjectFolderInspection[]): string {
 }
 
 
+function folderName(path: string): string {
+  return path.split(/[\\/]/).filter(Boolean).at(-1) || path;
+}
+
+
 export function useNewTaskDraft({
   busy,
   defaultEngineId,
@@ -70,6 +76,9 @@ export function useNewTaskDraft({
   const [modelsLoading, setModelsLoading] = useState(true);
   const [foldersLoading, setFoldersLoading] = useState(false);
   const [folderIssue, setFolderIssue] = useState('');
+  const [standaloneFolderPath, setStandaloneFolderPath] = useState('');
+  const [standaloneFolderLoading, setStandaloneFolderLoading] = useState(false);
+  const [standaloneFolderIssue, setStandaloneFolderIssue] = useState('');
   const [permissionMode, setPermissionMode] = useState<PermissionMode>('supervised');
   const [attachments, setAttachments] = useState<InputReference[]>([]);
   const [sourceContexts, setSourceContexts] = useState<SourceContext[]>([]);
@@ -177,16 +186,43 @@ export function useNewTaskDraft({
     else setAttachments((current) => mergeReferences(current, result.items));
   };
 
+  const chooseStandaloneFolder = useCallback(async () => {
+    const result = await host.pickCodeFolder();
+    if (!result.ok || !result.path) {
+      if (!result.cancelled) setCatalogError(result.reason || 'Could not choose that folder.');
+      return;
+    }
+
+    const path = result.path;
+    setStandaloneFolderPath(path);
+    setStandaloneFolderIssue('');
+    setCatalogError('');
+    setStandaloneFolderLoading(true);
+    try {
+      const inspection = await codingApi.inspect(path);
+      if (!inspection.exists || !inspection.is_directory) {
+        setStandaloneFolderIssue('That folder is no longer available. Choose another folder.');
+      }
+    } catch (reason) {
+      setStandaloneFolderIssue(reason instanceof Error ? reason.message : 'Could not access that folder.');
+    } finally {
+      setStandaloneFolderLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     setSourceContexts([]);
   }, [selectedProjectId]);
   const selectedModelValid = enabledModelOptions.some((option) => option.value === model);
   const selectedEngine = engines.find((engine) => engine.id === engineId);
   const selectedEngineAvailable = selectedEngine?.available === true;
-  const loading = engineLoading || modelsLoading || foldersLoading;
+  const workspaceLoading = selectedProject ? foldersLoading : standaloneFolderLoading;
+  const workspaceIssue = selectedProject ? folderIssue : standaloneFolderIssue;
+  const workspaceSelected = !!selectedProject || !!standaloneFolderPath;
+  const loading = engineLoading || modelsLoading || workspaceLoading;
   const taskReady = !!prompt.trim()
-    && !!selectedProject
-    && !folderIssue
+    && workspaceSelected
+    && !workspaceIssue
     && selectedEngineAvailable
     && selectedModelValid
     && enabledModelOptions.length > 0
@@ -195,7 +231,8 @@ export function useNewTaskDraft({
   const startUnavailable = busy
     || loading
     || !prompt.trim()
-    || !!folderIssue
+    || !workspaceSelected
+    || !!workspaceIssue
     || !selectedEngineAvailable
     || !selectedModelValid
     || enabledModelOptions.length === 0;
@@ -203,18 +240,18 @@ export function useNewTaskDraft({
   const readinessMessage = (() => {
     if (busy) return 'Starting task…';
     if (engineLoading || modelsLoading) return 'Loading coding agent…';
-    if (foldersLoading) return 'Checking project folders…';
-    if (folderIssue) return folderIssue;
+    if (workspaceLoading) return selectedProject ? 'Checking project folders…' : 'Checking folder…';
+    if (workspaceIssue) return workspaceIssue;
     if (!selectedEngineAvailable) return selectedEngine?.reason || (catalogError ? '' : 'No coding agent is available.');
     if (!selectedModelValid || enabledModelOptions.length === 0) return '';
     if (!prompt.trim()) return '';
-    if (!selectedProject) return 'Choose a Code Project to continue.';
+    if (!workspaceSelected) return 'Choose a folder to continue.';
     return '';
   })();
 
   const readinessKind = loading || busy
     ? 'loading'
-    : !selectedProject || !!folderIssue
+    : !workspaceSelected || !!workspaceIssue
       ? 'folder'
       : 'locked';
 
@@ -223,24 +260,27 @@ export function useNewTaskDraft({
       promptRef.current?.focus();
       return;
     }
-    if (!selectedProject) {
-      onOpenProjectSettings();
+    if (!selectedProject && !standaloneFolderPath) {
+      await chooseStandaloneFolder();
       return;
     }
-    if (folderIssue) {
-      onOpenProjectSettings();
+    if (workspaceIssue) {
+      if (selectedProject) onOpenProjectSettings();
+      else await chooseStandaloneFolder();
       return;
     }
     if (!taskReady) return;
-    await onCreate({
-      projectId: selectedProject.id,
+    const task = {
       prompt: prompt.trim(),
       engineId,
       model,
       permissionMode,
       attachments,
-      sourceContexts,
-    });
+      sourceContexts: selectedProject ? sourceContexts : [],
+    };
+    await onCreate(selectedProject
+      ? { ...task, projectId: selectedProject.id }
+      : { ...task, projectId: null, path: standaloneFolderPath });
   };
 
   return {
@@ -268,6 +308,9 @@ export function useNewTaskDraft({
     engineCommands: selectedEngine?.commands || [],
     engineLabel: selectedEngine?.label || engineId,
     attachFiles,
+    standaloneFolderPath,
+    standaloneFolderName: folderName(standaloneFolderPath),
+    chooseStandaloneFolder,
     selectedProject,
     selectedProjectId,
     onProjectChange,

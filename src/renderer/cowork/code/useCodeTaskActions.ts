@@ -101,8 +101,11 @@ export function useCodeTaskActions({
     setBusy(true);
     setError('');
     try {
+      const workspace = input.projectId
+        ? { project_id: input.projectId }
+        : { path: input.path, allow_direct_folder: true };
       const created = await codingApi.create({
-        project_id: input.projectId,
+        ...workspace,
         prompt: input.prompt,
         engine_id: input.engineId,
         model: input.model,

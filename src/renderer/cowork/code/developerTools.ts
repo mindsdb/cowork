@@ -1,3 +1,4 @@
+import type { ConnectorConnection } from '../api';
 import type { ProjectConnection, SourceContext } from './api';
 
 export type DeveloperProvider = 'github' | 'linear';
@@ -23,6 +24,23 @@ export function sourceProviderLabel(provider: SourceContext['provider']): string
 
 export function developerConnections(connections: ProjectConnection[]): ProjectConnection[] {
   return connections.filter((connection) => connection.provider === 'github' || connection.provider === 'linear');
+}
+
+export function availableDeveloperConnections(connections: ConnectorConnection[]): ProjectConnection[] {
+  const seen = new Set<string>();
+  return connections.flatMap((connection) => {
+    if ((connection.engine !== 'github' && connection.engine !== 'linear') || connection.status === 'needs_reconnect') {
+      return [];
+    }
+    const key = `${connection.engine}:${connection.name}`;
+    if (seen.has(key)) return [];
+    seen.add(key);
+    return [{
+      provider: connection.engine,
+      name: connection.name,
+      label: connection.display_name || connection.user_label || connection.label || connection.name,
+    }];
+  });
 }
 
 export function parseDeveloperSourceUrl(value: string): DeveloperSourceTarget | null {
