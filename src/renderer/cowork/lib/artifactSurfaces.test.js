@@ -37,3 +37,29 @@ describe.each(SURFACES)('%s', (_name, rel) => {
     ).toBe(true);
   });
 });
+
+// Deleting must also TELL someone. Every surface used to call the api helper
+// directly and then patch its own local list, so the conversation's inline
+// cards never learned the artifact was gone (ENG-1673). The wrapper is what
+// records the tombstone, and a surface that skips it silently reintroduces the
+// bug — the same "a caller that never asks" failure this file already guards
+// against for the deployment gate.
+const DELETE_SURFACES = [
+  ['artifacts panel', 'cowork/views/ArtifactsView.jsx'],
+  ['rail working-folder list', 'cowork/components/rail/WorkingFolderLive.jsx'],
+  ['artifact viewer', 'cowork/components/artifact/ArtifactViewer.jsx'],
+];
+
+describe.each(DELETE_SURFACES)('%s deletion', (_name, rel) => {
+  const src = readFileSync(resolve(ROOT, rel), 'utf-8');
+
+  it('deletes through the store wrapper', () => {
+    expect(src).toContain('deleteArtifactAndSync');
+  });
+
+  it('does not reach for the bare api helper', () => {
+    // `\b` cannot match between `deleteArtifact` and `AndSync` — both sides are
+    // word characters — so the wrapper's own name is excluded for free.
+    expect(src).not.toMatch(/\bdeleteArtifact\b/);
+  });
+});
