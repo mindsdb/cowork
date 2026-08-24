@@ -8,6 +8,7 @@ import Select from '../components/ui/Select';
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '../components/ui/Modal';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { host } from '../../platform/host';
+import type { ConnectorConnection } from '../api';
 import {
   buildModelPickerOptions,
   withModelPickerFallback,
@@ -26,16 +27,9 @@ import {
 import { formatCommandLine, parseCommandLine } from './commandLine';
 import { DEFAULT_CODING_AGENT_MODEL, preferredCodingModel } from './defaults';
 import { isPermissionMode, PERMISSION_OPTIONS } from './permissions';
+import { ProjectConnectedTools } from './ProjectConnectedTools';
 
-type Connection = {
-  engine: string;
-  name: string;
-  display_name?: string | null;
-  label?: string | null;
-  status?: string | null;
-};
-
-const supportedProviders = new Set(['github', 'linear', 'slack']);
+const supportedProviders = new Set(['github', 'linear']);
 
 function folderId(path: string): string {
   const stem = path.split(/[\\/]/).filter(Boolean).at(-1) || 'folder';
@@ -65,6 +59,7 @@ function repositoryLabel(repository: string): string {
 
 export function ProjectSettingsModal({
   open,
+  suspended = false,
   project,
   connections,
   busy,
@@ -72,19 +67,22 @@ export function ProjectSettingsModal({
   onSave,
   onDelete,
   onProjectChanged = async () => {},
+  onOpenConnectors = () => {},
   defaultEngineId = 'codex',
   defaultModel = DEFAULT_CODING_AGENT_MODEL,
   models = [],
   modelMeta = {},
 }: {
   open: boolean;
+  suspended?: boolean;
   project: CodeProject | null;
-  connections: Connection[];
+  connections: ConnectorConnection[];
   busy: boolean;
   onClose: () => void;
   onSave: (values: Partial<CodeProject> & Pick<CodeProject, 'name' | 'folders'>) => Promise<CodeProject>;
   onDelete?: () => Promise<void>;
   onProjectChanged?: () => Promise<void>;
+  onOpenConnectors?: () => void;
   defaultEngineId?: string;
   defaultModel?: string;
   models?: ModelPickerSource[];
@@ -109,6 +107,7 @@ export function ProjectSettingsModal({
   const [teamSetupEditing, setTeamSetupEditing] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const initializedProjectId = useRef<string | null | undefined>(undefined);
+  const resumeWithoutReset = useRef(false);
   const availableConnections = useMemo(() => {
     const items = new Map(
       connections
@@ -131,10 +130,20 @@ export function ProjectSettingsModal({
 
   useEffect(() => {
     if (!open) {
+      if (suspended) {
+        resumeWithoutReset.current = true;
+        return;
+      }
       initializedProjectId.current = undefined;
+      resumeWithoutReset.current = false;
       return;
     }
     const nextProjectId = project?.id || null;
+    if (resumeWithoutReset.current) {
+      resumeWithoutReset.current = false;
+      initializedProjectId.current = nextProjectId;
+      return;
+    }
     const projectWasJustCreated = initializedProjectId.current === null && nextProjectId !== null;
     initializedProjectId.current = nextProjectId;
     if (projectWasJustCreated) return;
@@ -166,7 +175,7 @@ export function ProjectSettingsModal({
   // project object before slower playbook work finishes; depending on the full
   // object here would erase the in-progress playbook fields on a recoverable
   // clone/fetch error.
-  }, [defaultEngineId, defaultModel, open, project?.id]);
+  }, [defaultEngineId, defaultModel, open, project?.id, suspended]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -333,6 +342,14 @@ export function ProjectSettingsModal({
             </div>
           </section>
 
+          <ProjectConnectedTools
+            connections={availableConnections}
+            selected={selectedConnections}
+            onChange={setSelectedConnections}
+            onOpenConnectors={onOpenConnectors}
+            canManage={project !== null}
+          />
+
           <section className="code-project-section code-team-setup">
             <div className="code-project-section__heading">
               <div><strong>Team Setup</strong><span>Versioned skills, instructions, and workflows shared by the team</span></div>
@@ -440,26 +457,6 @@ export function ProjectSettingsModal({
                 <p>The repository stays the source of truth. Cowork keeps a managed local copy and checks before applying updates.</p>
               </div>
             )}
-          </section>
-
-          <section className="code-project-section">
-            <div className="code-project-section__heading"><div><strong>Connected tools</strong><span>Use issues and pull requests as context, then publish only when you choose</span></div></div>
-            {availableConnections.length ? (
-              <div className="code-project-connection-list">
-                {availableConnections.map((connection) => {
-                  const key = `${connection.engine}:${connection.name}`;
-                  const selected = selectedConnections.includes(key);
-                  return (
-                    <label key={key} className="code-project-connection">
-                      <input type="checkbox" checked={selected} onChange={() => setSelectedConnections((current) => selected ? current.filter((item) => item !== key) : [...current, key])} />
-                      <span><strong>{connection.display_name || connection.label || connection.name}</strong><small>{connection.engine === 'github' ? 'GitHub' : connection.engine === 'linear' ? 'Linear' : 'Slack'}</small></span>
-                      {connection.status === 'needs_reconnect' && <em>Reconnect in Cowork</em>}
-                      {connection.status === 'missing' && <em>Unavailable in Cowork</em>}
-                    </label>
-                  );
-                })}
-              </div>
-            ) : <div className="code-project-connected-copy">Connect GitHub, Linear, or Slack in Cowork, then return here to choose the account this project uses.</div>}
           </section>
 
           <details className="code-project-advanced">

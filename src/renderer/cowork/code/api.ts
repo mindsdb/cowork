@@ -284,6 +284,24 @@ export interface SourceContext {
   external_id: string;
   connection_name?: string | null;
   body: string;
+  state?: string;
+  author?: string;
+  comments?: SourceComment[];
+  attachments?: SourceAttachment[];
+}
+
+export interface SourceComment {
+  id: string;
+  author: string;
+  body: string;
+  url: string;
+  created_at: string;
+}
+
+export interface SourceAttachment {
+  id: string;
+  title: string;
+  url: string;
 }
 
 export interface DeliveryRecord {
@@ -305,7 +323,29 @@ export interface PullRequestStatus {
   state: 'draft' | 'open' | 'merged' | 'closed';
   review_state: 'approved' | 'changes_requested' | 'pending' | 'none';
   ci_state: 'passing' | 'failing' | 'pending' | 'none';
+  number?: number | null;
+  title?: string;
+  url?: string;
+  updated_at?: string;
+  checks?: PullRequestCheck[];
+  feedback?: PullRequestFeedback[];
   detail: string;
+}
+
+export interface PullRequestCheck {
+  name: string;
+  state: 'passing' | 'failing' | 'pending' | 'neutral';
+  url: string;
+}
+
+export interface PullRequestFeedback {
+  id: string;
+  author: string;
+  state: string;
+  body: string;
+  url: string;
+  path: string;
+  created_at: string;
 }
 
 export interface DeliveryPlanItem {
@@ -318,12 +358,14 @@ export interface DeliveryPlanItem {
   status: 'ready' | 'needs_commit' | 'no_changes' | 'unavailable' | 'published';
   detail: string;
   external_url?: string | null;
+  connection_name?: string | null;
   pull_request_status?: PullRequestStatus | null;
   status_error?: string | null;
 }
 
 export interface DeliveryPlan {
   items: DeliveryPlanItem[];
+  integrations?: IntegrationStatus[];
 }
 
 export interface IntegrationStatus {
@@ -488,7 +530,10 @@ const liveCodingApi = {
   apply: (id: string) => requestJson<{ status: string; snapshot?: string | null }>(`/sessions/${encodeURIComponent(id)}/apply`, { method: 'POST' }),
   validate: (id: string) => requestJson<{ items: ProjectCommandResult[] }>(`/sessions/${encodeURIComponent(id)}/validate`, { method: 'POST' }),
   deliveryPlan: (id: string) => requestJson<DeliveryPlan>(`/sessions/${encodeURIComponent(id)}/delivery`),
-  draftPullRequests: (id: string, body: { title: string; body: string; connection_name?: string | null; confirmed: boolean }) => requestJson<{ items: DeliveryRecord[] }>(`/sessions/${encodeURIComponent(id)}/draft-pull-requests`, {
+  draftPullRequests: (id: string, body: { title: string; body: string; drafts?: Array<{ folder_id: string; title: string; body: string }>; connection_name?: string | null; confirmed: boolean }) => requestJson<{ items: DeliveryRecord[] }>(`/sessions/${encodeURIComponent(id)}/draft-pull-requests`, {
+    method: 'POST', body: JSON.stringify(body),
+  }),
+  pullRequestAction: (id: string, body: { action: 'ready' | 'merge'; target_url: string; connection_name?: string | null; confirmed: boolean }) => requestJson<PullRequestStatus>(`/sessions/${encodeURIComponent(id)}/pull-request-action`, {
     method: 'POST', body: JSON.stringify(body),
   }),
   publish: (id: string, body: { provider: 'github' | 'linear' | 'slack'; action: 'progress' | 'result'; target_url: string; text: string; connection_name?: string | null; confirmed: boolean }) => requestJson<DeliveryRecord>(`/sessions/${encodeURIComponent(id)}/publish`, {

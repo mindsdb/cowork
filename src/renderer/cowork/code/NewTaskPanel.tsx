@@ -7,20 +7,14 @@ import Select from '../components/ui/Select';
 import Spinner from '../components/ui/Spinner';
 import { Textarea } from '../components/ui/Input';
 import type { ModelPickerMeta, ModelPickerSource } from '../lib/modelPickerOptions';
-import { codingApi, type CodeProject, type CreateCodeTaskInput, type SourceContext } from './api';
+import type { CodeProject, CreateCodeTaskInput } from './api';
 import { CodeCommandPalette, useCodePaletteItems, type CodePaletteItem } from './CodeCommandPalette';
 import { CodeProjectPicker } from './CodeProjectPicker';
-import { isPermissionMode, PERMISSION_OPTIONS } from './permissions';
+import { PermissionSelect } from './PermissionSelect';
 import { PromptReferenceChips } from './PromptReferences';
+import { parseDeveloperSourceUrl } from './developerTools';
+import { TaskSourceLinks } from './TaskSourceLinks';
 import { useNewTaskDraft } from './useNewTaskDraft';
-
-const NO_CONNECTIONS: CodeProject['connections'] = [];
-
-function providerLabel(provider: 'github' | 'linear' | 'slack'): string {
-  if (provider === 'github') return 'GitHub';
-  if (provider === 'linear') return 'Linear';
-  return 'Slack';
-}
 
 export function NewTaskPanel({
   busy,
@@ -33,6 +27,7 @@ export function NewTaskPanel({
   selectedProjectId = null,
   onProjectChange = () => {},
   onOpenProjectSettings = () => {},
+  onOpenConnectors = () => {},
   onCreateProject = onOpenProjectSettings,
   onCreate,
 }: {
@@ -46,6 +41,7 @@ export function NewTaskPanel({
   selectedProjectId: string | null;
   onProjectChange: (id: string | null) => void;
   onOpenProjectSettings: () => void;
+  onOpenConnectors?: () => void;
   onCreateProject?: () => void;
   onCreate: (args: CreateCodeTaskInput) => Promise<void>;
 }) {
@@ -68,20 +64,7 @@ export function NewTaskPanel({
     query: commandQuery,
     projectName: selectedProject?.name,
   });
-  const [linkOpen, setLinkOpen] = useState(false);
-  const [linkConnectionKey, setLinkConnectionKey] = useState('');
-  const [linkUrl, setLinkUrl] = useState('');
-  const [linkBusy, setLinkBusy] = useState(false);
-  const [linkError, setLinkError] = useState('');
-  const projectConnections = selectedProject?.connections || NO_CONNECTIONS;
-  const linkedConnection = projectConnections.find((item) => `${item.provider}:${item.name}` === linkConnectionKey)
-    || projectConnections[0];
-  useEffect(() => {
-    if (!projectConnections.some((item) => `${item.provider}:${item.name}` === linkConnectionKey)) {
-      const first = projectConnections[0];
-      setLinkConnectionKey(first ? `${first.provider}:${first.name}` : '');
-    }
-  }, [linkConnectionKey, projectConnections]);
+  const [autoLinkUrl, setAutoLinkUrl] = useState('');
   useEffect(() => setPaletteIndex(0), [commandQuery]);
   const readinessText = readinessMessage;
   const readinessIcon = readinessKind === 'loading'
@@ -170,9 +153,16 @@ export function NewTaskPanel({
             autoFocus
             aria-keyshortcuts="Meta+Enter Control+Enter"
             onPaste={(event: React.ClipboardEvent<HTMLTextAreaElement>) => {
-              if (!event.clipboardData.files.length) return;
-              event.preventDefault();
-              attachFiles(event.clipboardData.files);
+              if (event.clipboardData.files.length) {
+                event.preventDefault();
+                attachFiles(event.clipboardData.files);
+                return;
+              }
+              const pasted = event.clipboardData.getData('text').trim();
+              if (!prompt.trim() && parseDeveloperSourceUrl(pasted)) {
+                event.preventDefault();
+                setAutoLinkUrl(pasted);
+              }
             }}
             onKeyDown={(event: React.KeyboardEvent<HTMLTextAreaElement>) => {
               if (commandQuery != null && paletteItems.length > 0) {
@@ -208,52 +198,18 @@ export function NewTaskPanel({
             busy={busy}
             onRemove={(attachmentPath) => setAttachments((current) => current.filter((item) => item.path !== attachmentPath))}
           />
-          {sourceContexts.length > 0 && (
-            <div className="code-source-contexts" aria-label="Linked work">
-              {sourceContexts.map((item) => (
-                <span key={`${item.provider}:${item.url}`}>
-                  {providerLabel(item.provider)} · {item.title || item.external_id}
-                  <button type="button" aria-label={`Remove ${item.title || item.external_id}`} onClick={() => setSourceContexts((current) => current.filter((context) => context.url !== item.url))}>{Ico.close(10)}</button>
-                </span>
-              ))}
-            </div>
-          )}
-
-          {linkOpen && (
-            <div className="code-source-linker">
-              <Select
-                value={linkConnectionKey}
-                onValueChange={setLinkConnectionKey}
-                options={projectConnections.map((connection) => ({
-                  value: `${connection.provider}:${connection.name}`,
-                  label: `${providerLabel(connection.provider)} · ${connection.label || connection.name}`,
-                }))}
-                size="sm"
-                ariaLabel="Developer tool connection"
-                disabled={linkBusy}
-              />
-              <input value={linkUrl} onChange={(event) => setLinkUrl(event.target.value)} placeholder="Paste an issue, pull request, or conversation link" aria-label="Source link" disabled={linkBusy} />
-              <Button size="sm" disabled={linkBusy || !linkUrl.trim() || !selectedProject || !linkedConnection} onClick={async () => {
-                if (!selectedProject || !linkedConnection) return;
-                setLinkBusy(true); setLinkError('');
-                try {
-                  const kind = linkedConnection.provider === 'github' && /\/pull\//.test(linkUrl) ? 'pull_request' : linkedConnection.provider === 'slack' ? 'conversation' : 'issue';
-                  const context = await codingApi.readSourceContext(selectedProject.id, {
-                    provider: linkedConnection.provider,
-                    kind,
-                    url: linkUrl.trim(),
-                    connection_name: linkedConnection.name,
-                  });
-                  setSourceContexts((current: SourceContext[]) => [...current.filter((item) => item.url !== context.url), context]);
-                  setLinkUrl(''); setLinkOpen(false);
-                } catch (reason) {
-                  setLinkError(reason instanceof Error ? reason.message : 'Could not load that link.');
-                } finally { setLinkBusy(false); }
-              }}>Link</Button>
-              <button type="button" aria-label="Close link work" onClick={() => setLinkOpen(false)}>{Ico.close(12)}</button>
-            </div>
-          )}
-          {linkError && <div className="code-source-linker__error" role="alert">{linkError}</div>}
+          <TaskSourceLinks
+            project={selectedProject}
+            value={sourceContexts}
+            onChange={setSourceContexts}
+            onContextAdded={(context) => {
+              if (!prompt.trim()) setPrompt(`Work on ${context.external_id}: ${context.title}`);
+            }}
+            onOpenConnectors={onOpenConnectors}
+            autoLinkUrl={autoLinkUrl}
+            onAutoLinkHandled={() => setAutoLinkUrl('')}
+            busy={busy}
+          />
 
           <div className="code-start-composer__controls">
             <input
@@ -277,17 +233,10 @@ export function NewTaskPanel({
             >
               {Ico.attach(14)}
             </Button>
-            <Select
+            <PermissionSelect
               value={permissionMode}
-              onValueChange={(value) => {
-                if (isPermissionMode(value)) setPermissionMode(value);
-              }}
-              options={PERMISSION_OPTIONS}
-              variant="unstyled"
-              size="sm"
-              ariaLabel="Coding permissions"
+              onValueChange={setPermissionMode}
               disabled={busy}
-              className="meta-pill code-composer-picker code-permission-picker"
             />
             <span className="code-start-composer__spacer" />
             <Select
@@ -325,14 +274,8 @@ export function NewTaskPanel({
               {busy ? 'Starting…' : 'Start task'}
             </Button>
           </div>
-          {(selectedProject?.connections.length || readinessText) && (
+          {readinessText && (
             <div className="code-start-composer__context">
-            {selectedProject?.connections.length ? (
-              <Button size="sm" variant="subtle" onClick={() => { setLinkOpen((current) => !current); setLinkError(''); }} disabled={busy}>
-                {Ico.link(12)} Link work
-              </Button>
-            ) : null}
-            {readinessText && (
               <div
                 id="code-start-readiness"
                 className={`code-start-readiness${taskReady ? ' is-ready' : ''}`}
@@ -342,7 +285,6 @@ export function NewTaskPanel({
                 <span className="code-start-readiness__icon" aria-hidden="true">{readinessIcon}</span>
                 <span>{readinessText}</span>
               </div>
-            )}
             </div>
           )}
 

@@ -364,16 +364,52 @@ describe('NewTaskPanel', () => {
       />,
     );
 
-    await user.click(await screen.findByRole('button', { name: 'Link work' }));
-    await user.click(screen.getByRole('combobox', { name: 'Developer tool connection' }));
-    await user.click(screen.getByRole('option', { name: 'GitHub · Work' }));
-    await user.type(screen.getByRole('textbox', { name: 'Source link' }), 'https://github.com/mindsdb/cowork/issues/42');
-    await user.click(screen.getByRole('button', { name: 'Link' }));
+    await user.click(await screen.findByRole('button', { name: 'Add issue or PR' }));
+    await user.type(screen.getByRole('textbox', { name: 'Issue or pull-request link' }), 'https://github.com/mindsdb/cowork/issues/42');
+    await user.click(screen.getByRole('combobox', { name: 'GitHub account' }));
+    await user.click(screen.getByRole('option', { name: 'Work' }));
+    await user.click(screen.getByRole('button', { name: 'Add' }));
 
     await waitFor(() => expect(readSourceContext).toHaveBeenCalledWith(connectedProject.id, expect.objectContaining({
       provider: 'github',
       connection_name: 'work',
     })));
+  });
+
+  it('turns a pasted issue link into task context without manual connector setup steps', async () => {
+    const connectedProject = {
+      ...project,
+      connections: [{ provider: 'github' as const, name: 'work', label: 'Work' }],
+    };
+    render(
+      <NewTaskPanel
+        busy={false}
+        error=""
+        defaultEngineId="codex"
+        defaultModel="fable"
+        models={models}
+        modelMeta={modelMeta}
+        projects={[connectedProject]}
+        selectedProjectId={connectedProject.id}
+        onProjectChange={vi.fn()}
+        onOpenProjectSettings={vi.fn()}
+        onCreate={vi.fn(async () => {})}
+      />,
+    );
+
+    fireEvent.paste(screen.getByRole('textbox', { name: 'Coding task' }), {
+      clipboardData: {
+        files: [],
+        getData: () => 'https://github.com/mindsdb/cowork/issues/42',
+      },
+    });
+
+    await waitFor(() => expect(readSourceContext).toHaveBeenCalledWith(connectedProject.id, expect.objectContaining({
+      provider: 'github',
+      connection_name: 'work',
+    })));
+    expect(await screen.findByText('Linked issue')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Coding task' })).toHaveValue('Work on mindsdb/cowork#42: Linked issue');
   });
 
   it('enables Start after a prompt and opens project creation when one is missing', async () => {

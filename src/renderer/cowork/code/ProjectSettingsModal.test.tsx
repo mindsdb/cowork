@@ -41,6 +41,48 @@ const project: CodeProject = {
 };
 
 describe('ProjectSettingsModal', () => {
+  it('keeps account management out of an unsaved project draft', () => {
+    render(
+      <ProjectSettingsModal
+        open
+        project={null}
+        connections={[]}
+        busy={false}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+        onOpenConnectors={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Save this project, then add GitHub or Linear.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Open Connectors' })).not.toBeInTheDocument();
+  });
+
+  it('uses the first-class developer tools section and routes account management to Connectors', async () => {
+    const user = userEvent.setup();
+    const onOpenConnectors = vi.fn();
+    render(
+      <ProjectSettingsModal
+        open
+        project={project}
+        connections={[
+          { engine: 'github', name: 'work', display_name: 'MindsDB GitHub', status: 'connected' },
+          { engine: 'slack', name: 'ignored', display_name: 'Slack', status: 'connected' },
+        ]}
+        busy={false}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+        onOpenConnectors={onOpenConnectors}
+      />,
+    );
+
+    expect(screen.getByText('Developer tools')).toBeInTheDocument();
+    expect(screen.getByText('MindsDB GitHub')).toBeInTheDocument();
+    expect(screen.queryByText('Slack')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Manage' }));
+    expect(onOpenConnectors).toHaveBeenCalledOnce();
+  });
+
   it('persists project task defaults through the shared model picker', async () => {
     const user = userEvent.setup();
     const onSave = vi.fn(async (values) => ({ ...project, ...values } as CodeProject));
@@ -72,6 +114,26 @@ describe('ProjectSettingsModal', () => {
       default_model: 'fable',
       permission_mode: 'workspace',
     })));
+  });
+
+  it('preserves unsaved settings while the user connects a developer account', async () => {
+    const user = userEvent.setup();
+    const props = {
+      project,
+      connections: [],
+      busy: false,
+      onClose: vi.fn(),
+      onSave: vi.fn(),
+    };
+    const { rerender } = render(<ProjectSettingsModal {...props} open suspended={false} />);
+    const name = screen.getByRole('textbox', { name: 'Name' });
+    await user.clear(name);
+    await user.type(name, 'Unsaved project name');
+
+    rerender(<ProjectSettingsModal {...props} open={false} suspended />);
+    rerender(<ProjectSettingsModal {...props} open suspended={false} />);
+
+    expect(screen.getByRole('textbox', { name: 'Name' })).toHaveValue('Unsaved project name');
   });
 
   it('keeps unsaved playbook edits when the selected project object refreshes', async () => {

@@ -2,11 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
 import { Textarea } from '../components/ui/Input';
-import Select from '../components/ui/Select';
 import { codingApi, type CodingSession, type EngineCommand, type InputReference, type PermissionMode } from './api';
 import { CodeCommandPalette, useCodePaletteItems, type CodePaletteItem } from './CodeCommandPalette';
 import { MentionMenu, PromptQueue } from './ComposerMenus';
-import { isPermissionMode, PERMISSION_OPTIONS } from './permissions';
+import { PermissionSelect } from './PermissionSelect';
 import { isActiveStatus } from './presentation';
 import { mergeReferences, PromptReferenceChips, referencesFromFiles } from './PromptReferences';
 
@@ -260,15 +259,10 @@ export function CodeComposer({
           <Button icon variant="subtle" size="sm" disabled={busy} onClick={() => fileInputRef.current?.click()} aria-label="Attach files or images">
             {Ico.attach(13)}
           </Button>
-          <Select
+          <PermissionSelect
             value={session.permission_mode}
-            onValueChange={(value) => { if (isPermissionMode(value)) void onPermissionChange(value); }}
-            options={PERMISSION_OPTIONS}
-            variant="pill"
-            size="sm"
-            ariaLabel="Coding permissions"
+            onValueChange={(value) => void onPermissionChange(value)}
             disabled={busy}
-            className="code-permission-picker code-permission-picker--compact"
           />
           <span className="code-composer__actions-spacer" aria-hidden="true" />
           <span className="code-composer__hint">{active ? 'Enter to queue · Shift+Enter for a new line' : 'Enter to send · ↑↓ history · Shift+Enter for a new line'}</span>

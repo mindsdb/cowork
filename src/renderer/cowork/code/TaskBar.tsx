@@ -3,6 +3,7 @@ import Button from '../components/ui/Button';
 import Menu from '../components/ui/Menu';
 import { host } from '../../platform/host';
 import type { CodingSession, DiffFile, GitState } from './api';
+import { sourceContextLabel, sourceProviderLabel } from './developerTools';
 import { CODE_STATUS, compactPath, diffStats, repositoryLabel } from './presentation';
 
 
@@ -55,6 +56,7 @@ export function TaskBar({
       : session.workspace_kind === 'direct_folder'
         ? 'direct folder'
         : (git?.branch || 'isolated worktree');
+  const origin = session.source_contexts?.[0] || null;
 
   return (
     <header className="code-taskbar">
@@ -65,6 +67,12 @@ export function TaskBar({
           <div className="code-taskbar__meta">
             <span>{repositoryLabel(session)}</span>
             <span aria-hidden="true">·</span>
+            {origin && <>
+              <button type="button" className="code-taskbar__origin" onClick={() => void host.openExternal(origin.url)}>
+                {sourceProviderLabel(origin.provider)} {sourceContextLabel(origin)}
+              </button>
+              <span aria-hidden="true">·</span>
+            </>}
             <span>{workspaceModeLabel}</span>
             <span className="code-taskbar__model" aria-hidden="true">·</span>
             <span className="code-taskbar__model">

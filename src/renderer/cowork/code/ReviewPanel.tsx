@@ -4,12 +4,12 @@ import Alert from '../components/ui/Alert';
 import Badge from '../components/ui/Badge';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
-import Select from '../components/ui/Select';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { host } from '../../platform/host';
-import type { CodingSession, DeliveryRecord, DiffFile, GitState, ProjectCommandResult, ProjectConnection, TaskWorkspace } from './api';
+import type { CodingSession, DeliveryPlanItem, DeliveryRecord, DiffFile, GitState, ProjectCommandResult, ProjectConnection, TaskWorkspace } from './api';
 import { compactPath, diffStats, isActiveStatus } from './presentation';
-import { DraftPullRequestSection } from './DraftPullRequestSection';
+import { DraftPullRequestSection, type DraftPullRequestInput } from './DraftPullRequestSection';
+import { SourceUpdateSection } from './SourceUpdateSection';
 
 
 type ReviewStyle = CSSProperties & { '--code-review-width': string };
@@ -32,6 +32,11 @@ export function ReviewPanel({
   onDraftPullRequests = async () => [],
   connections = NO_CONNECTIONS,
   onResolveConflicts = async () => {},
+  onOpenProjectSettings = () => {},
+  onAgentAction = async () => {},
+  onPullRequestAction = async () => {},
+  onArchive = async () => {},
+  suggestedUpdate = '',
 }: {
   open: boolean;
   session: CodingSession;
@@ -45,16 +50,19 @@ export function ReviewPanel({
   onApply: () => Promise<void>;
   onValidate?: () => Promise<ProjectCommandResult[]>;
   onPublish?: (target: NonNullable<CodingSession['source_contexts']>[number], text: string, action: 'progress' | 'result') => Promise<void>;
-  onDraftPullRequests?: (title: string, body: string, connectionName: string | null) => Promise<DeliveryRecord[]>;
+  onDraftPullRequests?: (title: string, body: string, connectionName: string | null, drafts: DraftPullRequestInput[]) => Promise<DeliveryRecord[]>;
   onResolveConflicts?: () => Promise<void>;
   connections?: ProjectConnection[];
+  onOpenProjectSettings?: () => void;
+  onAgentAction?: (prompt: string) => Promise<void>;
+  onPullRequestAction?: (item: DeliveryPlanItem, action: 'ready' | 'merge') => Promise<void>;
+  onArchive?: () => Promise<void>;
+  suggestedUpdate?: string;
 }) {
   const [tab, setTab] = useState<'changes' | 'git'>('changes');
   const [branch, setBranch] = useState('');
   const [message, setMessage] = useState('');
   const [applyOpen, setApplyOpen] = useState(false);
-  const [deliveryText, setDeliveryText] = useState('');
-  const [deliveryAction, setDeliveryAction] = useState<'progress' | 'result'>('result');
   const [validationNotice, setValidationNotice] = useState<{ variant: 'info' | 'success' | 'danger'; text: string } | null>(null);
   const [appliedChangeKey, setAppliedChangeKey] = useState('');
   const [width, setWidth] = useState(460);
@@ -82,8 +90,6 @@ export function ReviewPanel({
     setBranch('');
     setMessage('');
     setApplyOpen(false);
-    setDeliveryText('');
-    setDeliveryAction('result');
     setValidationNotice(null);
     setAppliedChangeKey('');
   }, [session.id]);
@@ -209,19 +215,9 @@ export function ReviewPanel({
             )}
             {supportsHandoff ? (
               <>
-                <section className="code-handoff-primary">
-                  <div>
-                    <div className="code-field-label">Bring this work back</div>
-                    <p>Apply the reviewed changes to the source folder.</p>
-                  </div>
-                  <Button variant="primary" size="sm" disabled={active || busy || files.length === 0 || applied} onClick={() => setApplyOpen(true)}>
-                    {applied ? 'Applied' : 'Apply to source'}
-                  </Button>
-                </section>
-                {applied && <Alert variant="success">These reviewed changes were applied to the source folders.</Alert>}
                 {session.project_id && (
                   <section className="code-handoff-secondary">
-                    <div><div className="code-field-label">Project checks</div><p>Run this project's validation commands in the task workspace.</p></div>
+                    <div><div className="code-field-label">Project checks</div><p>Run the project's validation commands before delivery.</p></div>
                     <Button size="sm" variant="subtle" disabled={active || busy} onClick={async () => {
                       let results: ProjectCommandResult[];
                       try {
@@ -246,16 +242,31 @@ export function ReviewPanel({
                     busy={busy || active}
                     refreshKey={`${git?.revision || ''}:${git?.dirty ? 'dirty' : 'clean'}:${session.deliveries?.length || 0}`}
                     onCreate={onDraftPullRequests}
+                    onCommit={onCommit}
+                    onOpenProjectSettings={onOpenProjectSettings}
+                    onAgentAction={onAgentAction}
+                    onPullRequestAction={onPullRequestAction}
+                    onArchive={onArchive}
                     connections={connections}
                   />
                 )}
-                {gitWorkspaces.length > 0 && <details className="code-git-advanced">
+                <section className="code-handoff-primary code-handoff-local">
+                  <div>
+                    <div className="code-field-label">Apply locally</div>
+                    <p>Copy the reviewed changes back to the original folders.</p>
+                  </div>
+                  <Button variant="subtle" size="sm" disabled={active || busy || files.length === 0 || applied} onClick={() => setApplyOpen(true)}>
+                    {applied ? 'Applied' : 'Apply locally'}
+                  </Button>
+                </section>
+                {applied && <Alert variant="success">These reviewed changes were applied to the source folders.</Alert>}
+                {!session.project_id && gitWorkspaces.length > 0 && <details className="code-git-advanced">
                   <summary>More Git actions <span>{Ico.chevDown(11)}</span></summary>
                   <div className="code-git-advanced__body">
-                    {!session.project_id && <div className="code-git-action">
+                    <div className="code-git-action">
                       <div className="code-field-label">Create a branch in the task worktree</div>
                       <div className="code-inline-form"><Input value={branch} onChange={setBranch} placeholder="feature/my-change" variant="mono" disabled={active || busy} /><Button size="sm" disabled={!branch.trim() || active || busy} onClick={async () => { try { await onBranch(branch.trim()); setBranch(''); } catch { /* Parent renders the failure. */ } }}>Create</Button></div>
-                    </div>}
+                    </div>
                     <div className="code-git-action">
                       <div className="code-field-label">Commit all task changes</div>
                       <div className="code-inline-form"><Input value={message} onChange={setMessage} placeholder="Describe the change" disabled={active || busy} /><Button size="sm" disabled={!message.trim() || active || busy} onClick={async () => { try { await onCommit(message.trim()); setMessage(''); } catch { /* Parent renders the failure. */ } }}>Commit</Button></div>
@@ -264,36 +275,13 @@ export function ReviewPanel({
                 </details>}
               </>
             ) : <p className="code-empty-copy">This task already works in the selected folder, so there is nothing to apply.</p>}
-            {!!session.source_contexts?.length && (
-              <details className="code-delivery">
-                <summary>Share an update <span>{Ico.chevDown(11)}</span></summary>
-                <div className="code-delivery__body">
-                  <p>Publish a user-approved result back to the linked work.</p>
-                  <textarea value={deliveryText} onChange={(event) => setDeliveryText(event.target.value)} placeholder="Summarize the result for your team…" rows={4} />
-                  <Select
-                    value={deliveryAction}
-                    onValueChange={(value) => { if (value === 'progress' || value === 'result') setDeliveryAction(value); }}
-                    options={[
-                      { value: 'progress', label: 'Progress update' },
-                      { value: 'result', label: 'Final result' },
-                    ]}
-                    size="sm"
-                    ariaLabel="Update type"
-                    minWidth={132}
-                  />
-                  <div className="code-delivery__targets">
-                    {session.source_contexts.map((context) => (
-                      <Button key={context.url} size="sm" variant="subtle" disabled={busy || !deliveryText.trim()} onClick={async () => {
-                        await onPublish(context, deliveryText.trim(), deliveryAction);
-                        setDeliveryText('');
-                      }}>
-                        Publish to {context.provider === 'github' ? 'GitHub' : context.provider === 'linear' ? 'Linear' : 'Slack'}
-                      </Button>
-                    ))}
-                  </div>
-                </div>
-              </details>
-            )}
+            <SourceUpdateSection
+              contexts={session.source_contexts || []}
+              deliveries={session.deliveries || []}
+              suggestedUpdate={suggestedUpdate}
+              busy={busy}
+              onPublish={onPublish}
+            />
           </div>
         )}
         <ConfirmModal

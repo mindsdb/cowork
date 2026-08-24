@@ -5371,6 +5371,8 @@ function AppCore() {
               modelMeta={modelMeta}
               connections={connectors}
               onConnectionsChange={setConnectors}
+              onOpenConnectors={openCodingConnectors}
+              onOpenNewTask={openNewCodingTask}
               onSessionsChange={setCodingSessions}
               onSelectionChange={changeCodingSelection}
             />

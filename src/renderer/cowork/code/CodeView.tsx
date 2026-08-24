@@ -40,6 +40,8 @@ export default function CodeView({
   modelMeta,
   connections = [],
   onConnectionsChange = () => {},
+  onOpenConnectors = () => {},
+  onOpenNewTask = () => {},
   onSessionsChange,
   onSelectionChange,
 }: {
@@ -54,6 +56,8 @@ export default function CodeView({
   modelMeta: ModelPickerMeta;
   connections?: ConnectorConnection[];
   onConnectionsChange?: (connections: ConnectorConnection[]) => void;
+  onOpenConnectors?: () => void;
+  onOpenNewTask?: () => void;
   onSessionsChange: (sessions: CodingSession[]) => void;
   onSelectionChange: (sessionId: string | null, newTask?: boolean) => void;
 }) {
@@ -67,6 +71,8 @@ export default function CodeView({
   const [renameOpen, setRenameOpen] = useState(false);
   const [projectEditor, setProjectEditor] = useState<{ id: string | null } | null>(null);
   const [projectBusy, setProjectBusy] = useState(false);
+  const [connectorReturnProjectId, setConnectorReturnProjectId] = useState<string | null>(null);
+  const [connectorReturnToSettings, setConnectorReturnToSettings] = useState(false);
   const detail = useCodingSession(newTask || projectsOpen || connectorsOpen ? null : selectedId);
   const session = detail.session?.id === selectedId ? detail.session : null;
   const projects = useCodeProjects(newTask ? null : session?.project_id);
@@ -134,6 +140,9 @@ export default function CodeView({
     ? ''
     : session?.workspace_warning || '';
   const approval = session?.pending_approval;
+  const suggestedUpdate = [...detail.events].reverse().find(
+    (event) => event.type === 'agent_message' && event.text.trim(),
+  )?.text.trim() || '';
   return (
     <div className="code-page">
       {!newTask && !projectsOpen && !connectorsOpen && selectedId && taskBarSession && (
@@ -168,6 +177,36 @@ export default function CodeView({
           connections={connections}
           projects={projects.projects}
           onConnectionsChange={onConnectionsChange}
+          returnProjectName={projects.projects.find((project) => project.id === connectorReturnProjectId)?.name || ''}
+          backLabel={connectorReturnToSettings ? 'Back to project' : 'Back to task'}
+          onBack={connectorReturnProjectId ? () => {
+            projects.setSelectedId(connectorReturnProjectId);
+            setConnectorReturnProjectId(null);
+            setConnectorReturnToSettings(false);
+            onOpenNewTask();
+          } : undefined}
+          onConnected={connectorReturnProjectId ? async (provider, connection) => {
+            const project = projects.projects.find((item) => item.id === connectorReturnProjectId);
+            if (!project) return;
+            if (!connectorReturnToSettings) {
+              const key = `${provider}:${connection.name}`;
+              const current = new Set(project.connections.map((item) => `${item.provider}:${item.name}`));
+              if (!current.has(key)) {
+                await codingApi.updateProject(project.id, {
+                  connections: [...project.connections, {
+                    provider,
+                    name: connection.name,
+                    label: connection.display_name || connection.user_label || connection.label || connection.name,
+                  }],
+                });
+                await projects.load();
+              }
+            }
+            projects.setSelectedId(project.id);
+            setConnectorReturnProjectId(null);
+            setConnectorReturnToSettings(false);
+            onOpenNewTask();
+          } : undefined}
         />
       ) : projectsOpen ? (
         <CodeProjectsView
@@ -197,6 +236,11 @@ export default function CodeView({
           selectedProjectId={projects.selectedId}
           onProjectChange={projects.setSelectedId}
           onOpenProjectSettings={() => setProjectEditor({ id: projects.selectedId })}
+          onOpenConnectors={() => {
+            setConnectorReturnToSettings(false);
+            setConnectorReturnProjectId(projects.selectedId);
+            onOpenConnectors();
+          }}
           onCreateProject={() => setProjectEditor({ id: null })}
         />
       ) : restoring && !session ? (
@@ -292,8 +336,8 @@ export default function CodeView({
               true,
             ))?.items || []}
             connections={projects.selected?.connections || []}
-            onDraftPullRequests={async (title, body, connectionName) => (await runResult(async () => {
-              const result = await codingApi.draftPullRequests(session.id, { title, body, connection_name: connectionName, confirmed: true });
+            onDraftPullRequests={async (title, body, connectionName, drafts) => (await runResult(async () => {
+              const result = await codingApi.draftPullRequests(session.id, { title, body, drafts, connection_name: connectionName, confirmed: true });
               return result.items;
             }, true, true)) || []}
             onPublish={(context, text, action) => runAction(() => codingApi.publish(session.id, {
@@ -304,6 +348,16 @@ export default function CodeView({
               connection_name: context.connection_name,
               confirmed: true,
             }), true, true)}
+            onOpenProjectSettings={() => setProjectEditor({ id: session.project_id || null })}
+            onAgentAction={(prompt) => runAction(() => codingApi.turn(session.id, prompt), true, true)}
+            onPullRequestAction={(item, action) => runAction(() => codingApi.pullRequestAction(session.id, {
+              action,
+              target_url: item.external_url || '',
+              connection_name: item.connection_name,
+              confirmed: true,
+            }), true, true)}
+            onArchive={toggleArchive}
+            suggestedUpdate={suggestedUpdate}
             onResolveConflicts={() => runAction(() => codingApi.turn(
               session.id,
               'Resolve the source handoff conflict inside the isolated task workspace. Inspect the current source folders read-only, preserve both the user’s source changes and the intended task changes, update only the task workspace, run the relevant checks, and report when it is ready for review. Do not modify the source folders directly.',
@@ -350,7 +404,8 @@ export default function CodeView({
         />
       )}
       <ProjectSettingsModal
-        open={projectEditor !== null}
+        open={projectEditor !== null && !connectorsOpen}
+        suspended={projectEditor !== null && connectorsOpen}
         project={projectEditor?.id ? projects.projects.find((project) => project.id === projectEditor.id) || null : null}
         connections={connections}
         busy={projectBusy}
@@ -376,6 +431,11 @@ export default function CodeView({
           }
         }}
         onProjectChanged={projects.load}
+        onOpenConnectors={() => {
+          setConnectorReturnToSettings(true);
+          setConnectorReturnProjectId(projectEditor?.id || null);
+          onOpenConnectors();
+        }}
         onDelete={projectEditor?.id ? async () => {
           setProjectBusy(true);
           try {
