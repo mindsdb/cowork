@@ -84,10 +84,11 @@ import {
 } from './CoworkRouter';
 import { Outlet } from 'react-router-dom';
 
-// One-of-ten encouraging follow-ups picked when a connect task is
-// created. Reads as a friendly nudge after the connect-intro card —
-// keeps the chat surface inviting and signals that the agent is
-// available for free-form questions about the form.
+/* One-of-ten encouraging follow-ups picked when a connect task is
+ * created. Reads as a friendly nudge after the connect-intro card —
+ * keeps the chat surface inviting and signals that the agent is
+ * available for free-form questions about the form.
+*/
 const CONNECT_FOLLOWUPS = [
   "Have a question about any of the fields? I'm happy to explain.",
   "Need help finding your credentials? Just ask.",
