@@ -246,6 +246,7 @@ export function NewTaskPanel({
               variant="unstyled"
               size="sm"
               ariaLabel="Coding agent"
+              menuLabel="Agent"
               disabled={busy || engineLoading}
               loading={engineLoading}
               className="meta-pill code-composer-picker code-agent-picker"
@@ -258,6 +259,7 @@ export function NewTaskPanel({
               variant="unstyled"
               className="meta-pill code-composer-picker code-model-picker"
               ariaLabel="Choose model"
+              menuLabel="Model"
               placeholder="Select model"
               emptyText="No coding models available"
               disabled={busy || modelOptions.length === 0}

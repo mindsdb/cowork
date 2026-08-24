@@ -19,6 +19,7 @@ export interface ModelSelectProps {
   options?: ModelSelectOption[];
   placeholder?: string;
   emptyText?: string;
+  menuLabel?: ReactNode;
   variant?: 'field' | 'pill' | 'unstyled';
   size?: 'sm' | 'md';
   disabled?: boolean;
