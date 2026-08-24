@@ -118,7 +118,7 @@ describe('ReviewPanel', () => {
     );
 
     fireEvent.click(screen.getByRole('tab', { name: 'Handoff' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Apply to source' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Apply locally' }));
     fireEvent.click(screen.getByRole('button', { name: 'Apply changes' }));
 
     await waitFor(() => expect(screen.getByRole('button', { name: 'Applied' })).toBeDisabled());
@@ -181,16 +181,50 @@ describe('ReviewPanel', () => {
     );
 
     await user.click(screen.getByRole('tab', { name: 'Handoff' }));
-    await user.click(screen.getByText('Share an update'));
-    await user.type(screen.getByPlaceholderText('Summarize the result for your team…'), 'Tests are running.');
+    await user.click(screen.getByRole('button', { name: 'Post update' }));
+    await user.type(screen.getByPlaceholderText('Write an update for mindsdb/cowork#42…'), 'Tests are running.');
     await user.click(screen.getByRole('combobox', { name: 'Update type' }));
-    await user.click(screen.getByRole('option', { name: 'Progress update' }));
-    await user.click(screen.getByRole('button', { name: 'Publish to GitHub' }));
+    await user.click(screen.getByRole('option', { name: 'Progress' }));
+    await user.click(screen.getByRole('button', { name: 'Post to GitHub' }));
 
     await waitFor(() => expect(onPublish).toHaveBeenCalledWith(
       linkedSession.source_contexts![0],
       'Tests are running.',
       'progress',
     ));
+  });
+
+  it('keeps a durable, destination-specific receipt after an external update', async () => {
+    const linkedSession: CodingSession = {
+      ...projectSession,
+      source_contexts: [{
+        provider: 'linear', kind: 'issue', url: 'https://linear.app/mindsdb/issue/ENG-421',
+        title: 'Checkout recovery', external_id: 'ENG-421', body: '',
+      }],
+      deliveries: [{
+        provider: 'linear', action: 'result', target_url: 'https://linear.app/mindsdb/issue/ENG-421',
+        status: 'published', external_url: 'https://linear.app/mindsdb/issue/ENG-421#comment-1',
+        detail: 'Published with Linear work', created_at: '2026-08-24T10:30:00Z',
+      }],
+    };
+    render(
+      <ReviewPanel
+        open
+        session={linkedSession}
+        git={null}
+        files={[]}
+        busy={false}
+        error=""
+        onClose={vi.fn()}
+        onBranch={vi.fn(async () => {})}
+        onCommit={vi.fn(async () => {})}
+        onApply={vi.fn(async () => {})}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Handoff' }));
+    expect(screen.getByText('Posted')).toBeInTheDocument();
+    expect(screen.getByText(/Published with Linear work/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Post another' })).toBeInTheDocument();
   });
 });

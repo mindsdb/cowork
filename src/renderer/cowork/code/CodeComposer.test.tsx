@@ -118,8 +118,11 @@ describe('CodeComposer', () => {
   it('changes task permissions from the composer', async () => {
     const user = userEvent.setup();
     const { onPermissionChange } = renderComposer();
+    const permissionPicker = screen.getByRole('combobox', { name: 'Coding permissions' });
 
-    await user.click(screen.getByRole('combobox', { name: 'Coding permissions' }));
+    expect(permissionPicker).toHaveClass('meta-pill', 'code-composer-picker', 'code-permission-picker');
+
+    await user.click(permissionPicker);
     await user.click(screen.getByRole('option', { name: 'Full access' }));
 
     expect(onPermissionChange).toHaveBeenCalledWith('full_access');
