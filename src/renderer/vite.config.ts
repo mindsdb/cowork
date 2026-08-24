@@ -4,6 +4,7 @@ import babel from '@rolldown/plugin-babel';
 import path from 'path';
 import { readFileSync, existsSync } from 'fs';
 import { execSync } from 'child_process';
+import { isSpaNavigation } from './web-spa-fallback';
 
 const pkg = JSON.parse(readFileSync(path.resolve(__dirname, '../../package.json'), 'utf-8'));
 
@@ -60,28 +61,16 @@ logger.error = (msg, options) => {
   logError(msg, options);
 };
 
-// In dev, vite's default html serving picks `index.html` for `/`, which
-// is the Electron entry (depends on window.antontron and crashes in a
-// regular browser). When BUILD_TARGET=web, serve the web entry for every
-// client-side route so `http://localhost:5173/`, `/c/:id`, `/projects`,
-// … all boot the SPA (react-router then renders the right view). This is
-// the standard history-API fallback: only HTML navigations are rewritten;
-// `/api` (proxied), vite internals (`/@…`, `/__…`), and any request for a
-// file (has an extension) fall through untouched (ENG-1233).
+// History-API fallback for the web dev server: rewrite client-side navigations
+// to the web entry so `/`, `/c/:id`, `/projects`, `/connect`, … all boot the
+// SPA. The rewrite decision lives in `isSpaNavigation` (web-spa-fallback.ts) so
+// it's unit-tested; see there for the `Accept: text/html` rationale and why we
+// don't treat a dotted last segment as a file (ENG-1233).
 const webSpaFallback = {
   name: 'cowork-web-spa-fallback',
   configureServer(server: any) {
     server.middlewares.use((req: any, _res: any, next: any) => {
-      const url = (req.url || '').split('?')[0];
-      const accept = String(req.headers?.accept || '');
-      const isHtmlNav = req.method === 'GET' && accept.includes('text/html');
-      const isInternal =
-        url.startsWith('/api') || url.startsWith('/@') ||
-        url.startsWith('/node_modules') || url.startsWith('/__');
-      const looksLikeFile = /\.[a-zA-Z0-9]+$/.test(url);
-      if (isHtmlNav && !isInternal && !looksLikeFile) {
-        req.url = '/index-web.html';
-      }
+      if (isSpaNavigation(req)) req.url = '/index-web.html';
       next();
     });
   },
