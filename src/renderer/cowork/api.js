@@ -348,6 +348,41 @@ export async function fetchSession(id) {
 }
 
 /**
+ * Loader-facing conversation fetch. Unlike `fetchSession` (which collapses every
+ * failure to `null`), this separates a gone conversation (`404 → 'not_found'`)
+ * from an operational failure (auth / 5xx / network `→ 'unavailable'`) so the
+ * route can drop a dead link Home but keep the URL + retry on a transient
+ * outage. Metadata is authoritative for existence. A failed transcript is only
+ * treated as an empty conversation on a 404 (the one benign case); any other
+ * items failure is 'unavailable' so a real transcript is never silently blanked.
+ *
+ * @returns {Promise<{status:'ok', task:object} | {status:'not_found'} | {status:'unavailable', code:number}>}
+ */
+export async function fetchSessionResult(id) {
+  const [metaRes, msgsRes] = await Promise.allSettled([
+    req(`/conversations/${encodeURIComponent(id)}`),
+    req(`/conversations/${encodeURIComponent(id)}/items`),
+  ]);
+  if (metaRes.status === 'rejected') {
+    const err = metaRes.reason;
+    if (err && err.status === 404) return { status: 'not_found' };
+    // `err.status` is undefined for a network/abort failure — code 0.
+    return { status: 'unavailable', code: (err && err.status) || 0 };
+  }
+  // The conversation exists but its transcript failed to load. Only a 404 is
+  // benign (existing conversation, nothing recorded yet → render empty); auth /
+  // 5xx / network would blank a real transcript, so surface the retry instead.
+  if (msgsRes.status === 'rejected') {
+    const err = msgsRes.reason;
+    if (!(err && err.status === 404)) {
+      return { status: 'unavailable', code: (err && err.status) || 0 };
+    }
+  }
+  const msgs = msgsRes.status === 'fulfilled' && Array.isArray(msgsRes.value) ? msgsRes.value : [];
+  return { status: 'ok', task: _conversationToTask(metaRes.value, msgs) };
+}
+
+/**
  * Pre-allocates the id for a conversation that doesn't exist yet, so
  * attachments can be uploaded against it before the first stream. The
  * server adopts a client-supplied UUID as the conversation's real id

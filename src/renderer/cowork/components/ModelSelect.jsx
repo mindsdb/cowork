@@ -68,8 +68,11 @@ const PIN_BOTTOM = '__pinned-bottom__';
  * keeps Settings and the composer from drifting apart on it.
  *
  * stopPropagation on both click and mousedown mirrors the Model Router row's
- * action: Base UI's Combobox.Item listens on the row, and a disabled row still
- * receives the events.
+ * action, but it is a second layer here rather than the guard. What stops the
+ * click selecting the row is the row being disabled: Base UI's Combobox.Item
+ * returns early on `disabled` before its select handler runs. No test covers
+ * the stopPropagation, and none can without a `locked` row that is not also
+ * disabled, which the builders never produce.
  */
 function creditsAction() {
   return (

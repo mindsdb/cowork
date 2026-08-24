@@ -20,6 +20,10 @@ export interface BootHost {
   readSettings: () => Promise<Record<string, string>>;
   checkConfigured: () => Promise<{ configured: boolean; provider: string; orgMode?: boolean }>;
   checkInstall: () => Promise<{ antonInstalled: boolean; serverDepsReady: boolean }>;
+  // Resolves once the boot sequence (sidecar start + boot-time update poll) has
+  // settled. Awaited only on the terminal route so the loading screen stays up
+  // through a boot update instead of flashing the app (ENG-749).
+  awaitBootReady: () => Promise<void>;
 }
 
 /**
@@ -63,8 +67,13 @@ export async function resolveBootTarget(
     const consented = settings.ANTON_TERMS_CONSENT === 'true' || hasLocalConsent;
     if (consented && configured) {
       const status = await host.checkInstall();
-      const target = !status.antonInstalled || !status.serverDepsReady ? 'setup' : 'terminal';
-      return { target, orgMode };
+      if (!status.antonInstalled || !status.serverDepsReady) return { target: 'setup', orgMode };
+      // Headed into the app — but wait for the boot sequence to settle first, so
+      // a pending boot-time update (which restarts the sidecar) doesn't flash the
+      // chat UI in a server-down state before reloading (ENG-749). Fast when
+      // nothing is pending.
+      await host.awaitBootReady();
+      return { target: 'terminal', orgMode };
     }
   } catch {
     return { target: 'auth', orgMode: null };

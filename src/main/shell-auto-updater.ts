@@ -41,12 +41,47 @@ export interface ShellAutoUpdater {
 
 function defaultClassifyError(error: Error): { code: string; recoverable: boolean } {
   const text = `${error.name} ${error.message}`.toLowerCase();
-  if (text.includes('signature') || text.includes('sha512') || text.includes('checksum')) {
+  const rawCode = (error as { code?: unknown }).code;
+  const code = typeof rawCode === 'string' ? rawCode.toUpperCase() : '';
+
+  // Integrity failures are terminal — a refused artifact is refused again, so
+  // Retry can't help and the UI must offer manual Download instead.
+  //
+  // Match electron-updater's EXACT machine codes, not substrings. The signer
+  // rejection (NsisUpdater `ERR_UPDATER_INVALID_SIGNATURE`) throws "New version
+  // … is not signed by the application owner: …", whose message contains none
+  // of the integrity words, so the `code` is what identifies it. A broad
+  // `code.includes('SIGNATURE')` / `text.includes('signature')` would also
+  // swallow Node's TLS error `UNABLE_TO_VERIFY_LEAF_SIGNATURE` ("unable to
+  // verify leaf signature") — a *transient* proxy/TLS failure — and wedge the
+  // updater terminally until relaunch. So the code match is exact and the text
+  // fallback is limited to phrases that appear only on a real integrity failure
+  // (checksum mismatches carry no stable code, only an sha512/checksum message).
+  if (
+    code === 'ERR_UPDATER_INVALID_SIGNATURE'
+    || code === 'ERR_CHECKSUM_MISMATCH'
+    || text.includes('not signed by the application owner')
+    || text.includes('sha512')
+    || text.includes('checksum')
+  ) {
     return { code: 'artifact-verification-failed', recoverable: false };
   }
-  if (text.includes('unsupported') || text.includes('not supported')) {
+
+  // Permanent misconfiguration — an invalid version/channel/provider config or a
+  // disabled web installer fails identically on every retry, so it's terminal
+  // too (manual Download, not an endless Retry). Keyed on electron-updater's
+  // stable codes; the text fallback keeps the pre-existing "unsupported" cases.
+  if (
+    code === 'ERR_UPDATER_INVALID_VERSION'
+    || code === 'ERR_UPDATER_INVALID_CHANNEL'
+    || code === 'ERR_UPDATER_INVALID_PROVIDER_CONFIGURATION'
+    || code === 'ERR_UPDATER_WEB_INSTALLER_DISABLED'
+    || text.includes('unsupported')
+    || text.includes('not supported')
+  ) {
     return { code: 'unsupported-install', recoverable: false };
   }
+
   return { code: 'update-request-failed', recoverable: true };
 }
 

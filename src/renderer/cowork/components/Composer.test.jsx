@@ -214,7 +214,9 @@ describe('Composer — model picker (ENG-1656)', () => {
 
     expect(hostSpies.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
     expect(analyticsSpies.trackBillingOpened).toHaveBeenCalledWith('locked_model_row');
-    // stopPropagation: the click must not also land on the row underneath.
+    // The row is disabled, so Base UI never reaches its select handler. This
+    // pins that the button did not somehow route around that, not the
+    // button's own stopPropagation, which no test here can distinguish.
     expect(props.onModelChange).not.toHaveBeenCalled();
   });
 

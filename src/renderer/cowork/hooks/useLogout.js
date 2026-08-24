@@ -16,6 +16,10 @@ export const LOGOUT_CONFIRM_COPY = {
   confirmLabel: 'Sign out',
 };
 
+// Grace window before the Electron success path self-heals with its own
+// reload — long enough that a healthy main reload wins first (see below).
+export const LOGOUT_RELOAD_FALLBACK_MS = 2500;
+
 // The sign-out flow, extracted from the settings Account section so the
 // sidebar user menu (ENG-1408) runs the exact same sequence.
 export function useLogout() {
@@ -40,20 +44,25 @@ export function useLogout() {
     if (ok) {
       resetDeviceIdentity();
     }
-    // Exactly ONE navigation must happen. On SUCCESS the platform drives it and
-    // the renderer must NOT also navigate, or the two race and the renderer's
-    // wins: Electron's main process calls webContents.reload() after the IPC
-    // reply, and web's keycloak.logout() calls window.location.replace() to the
-    // end-session endpoint. A renderer reload() here runs in a microtask before
-    // the browser performs that replace(), cancelling the redirect — the SSO
-    // cookie is still valid, login-required silently re-auths, and the user
-    // lands right back in the app ("sign-out had no effect"). We reload only on
-    // REJECTION, where nothing else will: the platform threw before its own
-    // navigation, the user is already signed out, so a renderer reload re-routes
-    // to onboarding / the login screen rather than a misleading stuck modal.
-    // (ENG-1206)
+    // Exactly ONE navigation must happen, and on SUCCESS the platform drives
+    // it: Electron main calls webContents.reload(), web's keycloak.logout()
+    // redirects to the end-session endpoint. A renderer reload here would race
+    // and win — cancelling the web redirect (SSO cookie survives → silent
+    // re-auth) or double-reloading Electron into a stuck modal. So we reload
+    // immediately only on REJECTION, where the platform threw before its own
+    // navigation and nothing else will. (ENG-1206)
     if (!ok) {
       window.location.reload();
+      return;
+    }
+    // Electron watchdog: main's single reload is all that clears the
+    // "Signing out…" modal, and if it's dropped (intermittently on Windows)
+    // the modal is stuck forever — Esc/Cancel are disabled while busy. A
+    // healthy main reload tears this timer down first, so this fires only as
+    // recovery, never racing into a double reload. Web is excluded (a renderer
+    // reload would cancel keycloak's redirect).
+    if (host.isElectron) {
+      setTimeout(() => window.location.reload(), LOGOUT_RELOAD_FALLBACK_MS);
     }
   };
 

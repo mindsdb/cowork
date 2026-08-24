@@ -98,6 +98,13 @@ export function reservationReleaseDecision(
   return { cid: streamingTaskId, misses, seen: priorSeen, lastMissAt: now, release: misses >= limit };
 }
 
+// Drop a cid we're still tailing ourselves — its own onDone/onError is the
+// real terminal signal, so a poll miss there is lag, not a finish.
+export function finishedCids(prevIds, nextIds, streamingTaskId) {
+  const next = new Set(nextIds);
+  return [...prevIds].filter((cid) => !next.has(cid) && cid !== streamingTaskId);
+}
+
 // Re-key queued messages when the server mints a canonical id for a task
 // that was streaming under a tmp id (adoptServerId, ENG-1378). Moves every
 // source id's queue onto `toId`, preserving FIFO order (existing `toId`

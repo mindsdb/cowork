@@ -10,13 +10,14 @@ import { checkForUIUpdate, applyUIUpdate, getRendererPath, hasInternet, rollback
 import type { UpdateCheckResult } from './ui-updater';
 import { checkForServerUpdate, maybeUpdateServer } from './server-updater';
 import { isServerRunning } from './server-process';
-import { decideUpdateApply, summarizeUpdateCheck, shellUpdateIsNewer, shellDownloadUrl, shellAutoUpdateIsActive } from './update-logic';
+import { decideUpdateApply, summarizeUpdateCheck, shellUpdateIsNewer, shellDownloadUrl, shellAutoUpdateIsActive, shellManualNoticeIsFallback } from './update-logic';
 import type { UpdateCheckSummary } from '../shared/update-types';
 import { buildKindStrict } from './cowork-home';
 import { getAppDisplayVersion } from './server-source';
 import {
   checkShellAutoUpdate,
   configureShellAutoUpdate,
+  getShellAutoUpdateSnapshot,
   registerShellAutoUpdateHandlers,
   startShellAutoUpdatePolling,
 } from './shell-auto-update-runtime';
@@ -132,6 +133,9 @@ async function reloadWithUiHealthCheck(getWindow: GetWindow): Promise<void> {
 // the manual IPC apply and the boot/periodic poll. Args are "apply this",
 // already resolved against update mode + server health by the caller.
 async function applyUpdatesUnlocked(getWindow: GetWindow, applyServer: boolean, applyUi: boolean): Promise<boolean> {
+  // Surface progress before the multi-second, server-down reinstall so the UI
+  // shows "Updating…" instead of a bare config-not-ready state (ENG-749).
+  if (applyServer) sendStatus(getWindow, { phase: 'downloading' });
   const serverOk = applyServer ? await applyServerUpdate() : true;
   // Never activate a UI bundle on top of a server update that failed (and thus
   // rolled back to the old server) — the tandem coupling only holds when the
@@ -243,6 +247,9 @@ export function initUpdater(
   rendererReady: Promise<void>,
   getMode: () => 'auto' | 'manual',
   shellAutoUpdateEnabled = false,
+  // Called once the boot poll settles; the renderer's loading gate awaits it so
+  // it never routes into the app mid-update (ENG-749). Idempotent.
+  onBootPollComplete: () => void = () => {},
 ) {
   configureShellAutoUpdate({
     enabled: shellAutoUpdateEnabled,
@@ -265,8 +272,13 @@ export function initUpdater(
       checkForServerUpdate(),
     ]);
 
-    // Shell notices are independent of OTA and never auto-applied.
-    if (manifestReachable) {
+    // Shell notices are independent of OTA and never auto-applied. Poll the
+    // ENG-849 manifest only when it's the fallback path — auto-update disabled
+    // or terminally failed. When ENG-850 auto-update is enabled and healthy it
+    // owns the shell update and its own poll+banner cover it, so this would be
+    // a second redundant boot+4h check on prod (ENG-1739).
+    const autoSnap = getShellAutoUpdateSnapshot();
+    if (manifestReachable && shellManualNoticeIsFallback(autoSnap.phase, autoSnap.recoverable)) {
       const shell = await checkForShellUpdate().catch(() => ({ available: false as const }));
       lastShellStatus = shell;
       if (shell.available) {
@@ -339,14 +351,18 @@ export function initUpdater(
   }
 
   rendererReady.then(async () => {
-    console.log(`[updater] boot check (mode: ${getMode()})...`);
-    await poll(true).catch(err => console.error('[updater] boot check failed:', err));
+    try {
+      console.log(`[updater] boot check (mode: ${getMode()})...`);
+      await poll(true).catch(err => console.error('[updater] boot check failed:', err));
 
-    // The boot poll has now brought the server current (server-first). Re-verify
-    // a constrained OTA cache that booted bundled (fail-closed) and, if it's now
-    // compatible, swap it in through the health-checked reload so a corrupt or
-    // hanging bundle still self-heals.
-    await settleConstrainedCache(getWindow).catch(err => console.error('[updater] compat settle failed:', err));
+      // The boot poll has now brought the server current (server-first). Re-verify
+      // a constrained OTA cache that booted bundled (fail-closed) and, if it's now
+      // compatible, swap it in through the health-checked reload so a corrupt or
+      // hanging bundle still self-heals.
+      await settleConstrainedCache(getWindow).catch(err => console.error('[updater] compat settle failed:', err));
+    } finally {
+      onBootPollComplete(); // release the loading gate, whatever the poll did
+    }
 
     const timer = setInterval(() => {
       console.log(`[updater] periodic check (mode: ${getMode()})...`);

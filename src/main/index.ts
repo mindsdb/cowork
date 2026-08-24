@@ -12,6 +12,7 @@ import { checkInstallStatus, runInstaller } from './installer';
 import { startServer, stopServer, forceReapServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort, fetchServerVersions } from './server-process';
 import { setUpdateNotifier, recreateVenvIfUnsupportedPython, repairServerInstall } from './server-updater';
 import { initUpdater, registerUpdateHandlers } from './updater';
+import { awaitBootSettled } from './boot-gate';
 import { awaitUpdateMaintenanceIdle } from './update-maintenance';
 import { oauthConnect, cancelCurrentOAuth } from './oauth-service';
 import { setRefreshToken, deleteRefreshToken, getRefreshToken as getOAuthRefreshToken } from './keychain-service';
@@ -104,7 +105,8 @@ function getUpdateMode(): 'auto' | 'manual' {
   return vars.UI_UPDATE_MODE === 'manual' ? 'manual' : 'auto';
 }
 
-/** Stable-first ENG-850 rollout with an environment kill switch. */
+/** ENG-850 shell auto-update — on by default for `stable` and `prod`;
+ *  `SHELL_AUTO_UPDATE_ENABLED=false` is the environment kill switch. */
 function shellAutoUpdateEnabled(): boolean {
   const vars = readEnvFile();
   return shellAutoUpdateEnabledFor(buildKindStrict(), vars.SHELL_AUTO_UPDATE_ENABLED);
@@ -117,6 +119,12 @@ function shellAutoUpdateEnabled(): boolean {
 // Assigned synchronously in app.whenReady() so it exists before the renderer's
 // init() can call through to checkConfigured().
 let bootServerSettled: Promise<void> = Promise.resolve();
+
+// Resolves once the boot-time update poll has settled (applied a server/UI
+// update and reloaded, or decided nothing needs applying). The renderer awaits
+// this via BOOT_AWAIT_READY before leaving the loading screen (ENG-749). Defaults
+// to resolved so paths that never start the updater don't strand the gate.
+let bootUpdateSettled: Promise<void> = Promise.resolve();
 
 // Ask the running server for its readiness. Reads `config_ready` from /health —
 // the SAME signal the in-app chat gate uses (settings.config_status) — so
@@ -163,6 +171,20 @@ async function checkConfigured(): Promise<{ configured: boolean; provider: strin
   if (vars.ANTON_ANTHROPIC_API_KEY) return { configured: true, provider: 'anthropic' };
   if (vars.ANTON_OPENAI_API_KEY) return { configured: true, provider: 'openai' };
   return { configured: false, provider: '' };
+}
+
+// Map a server-updater notification onto the UI update-status shape the renderer
+// already consumes, so a server download shows progress on the loading screen and
+// the in-app overlay (ENG-749). Only "busy" phases are forwarded — errors keep
+// their own channel and must never leave the UI stuck in a spinner.
+function serverPhaseToUiStatus(
+  payload: Record<string, unknown>,
+): { phase: string; version?: string } | null {
+  const phase = typeof payload.phase === 'string' ? payload.phase : '';
+  const version = typeof payload.to === 'string' ? payload.to : undefined;
+  if (phase === 'downloading') return { phase: 'downloading', ...(version ? { version } : {}) };
+  if (phase === 'restarting') return { phase: 'reloading' };
+  return null;
 }
 
 function httpRequest(
@@ -1135,6 +1157,13 @@ function setupIPC() {
     return checkConfigured();
   });
 
+  ipcMain.handle(IPC.BOOT_AWAIT_READY, async () => {
+    // The renderer holds the loading screen across this await, so a boot update
+    // has already reinstalled/reloaded before the UI routes into the app (ENG-749).
+    await awaitBootSettled([bootServerSettled, bootUpdateSettled]);
+    return { ready: true };
+  });
+
   ipcMain.handle(
     IPC.SETTINGS_VALIDATE,
     async (_event, provider: string, apiKey: string, baseUrl?: string, model?: string) => {
@@ -1453,10 +1482,16 @@ app.whenReady().then(async () => {
   // Bounded by primeLoginShellPath()'s own timeout — checkInstallStatus and
   // the server spawn below both resolve uv through the PATH it caches.
   await primeLoginShellPath();
+  // Boot-update barrier (ENG-749): resolved once the boot poll finishes, or
+  // immediately below when no updater runs. `bootUpdateDone` is idempotent.
+  let resolveBootUpdate: () => void = () => {};
+  bootUpdateSettled = new Promise<void>((resolve) => { resolveBootUpdate = resolve; });
+  const bootUpdateDone = () => resolveBootUpdate();
   checkInstallStatus().then(async ({ antonInstalled }) => {
     if (!antonInstalled) {
       console.log('[server] skipped: cowork-server not installed; setup screen will handle.');
       resolveBootServer();
+      bootUpdateDone();  // no boot poll on this path — don't strand the gate
       return;
     }
     // If MindsHub SSO tokens are stored, silently refresh before the Python
@@ -1549,19 +1584,28 @@ app.whenReady().then(async () => {
     // its health probe, so this can't strand a previously-working install.
     setUpdateNotifier((payload) => {
       mainWindow?.webContents.send(IPC.SERVER_UPDATE_STATUS, payload);
+      // Mirror progress onto the UI status channel so the loading screen and
+      // in-app overlay show it during a server download (ENG-749).
+      const mirrored = serverPhaseToUiStatus(payload);
+      if (mirrored) mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, mirrored);
     });
 
     const devMode = getDevMode();
     if (app.isPackaged && !devMode && mainWindow) {
-      initUpdater(() => mainWindow, rendererReady, getUpdateMode, shellAutoUpdateEnabled());
+      initUpdater(() => mainWindow, rendererReady, getUpdateMode, shellAutoUpdateEnabled(), bootUpdateDone);
     } else if (!app.isPackaged) {
       console.log('[updater] skipped — not a packaged build');
+      bootUpdateDone();  // no boot poll → nothing for the loading gate to wait on
     } else if (devMode) {
       console.log(`[updater] skipped — DEV_MODE=${devMode}`);
+      bootUpdateDone();
+    } else {
+      bootUpdateDone();  // no window to update against
     }
   }).catch((err) => {
     console.error('[server] check-and-start failed:', err);
     resolveBootServer();  // never leave checkConfigured() awaiting a stuck boot
+    bootUpdateDone();     // ...or the loading gate awaiting a boot that never ran
   });
 
   app.on('activate', () => {

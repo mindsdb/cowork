@@ -16,8 +16,9 @@
 // every-launch check can pick that up for an already-provisioned install.
 //
 // Keep STATIC_CREDENTIAL_KEYS in sync with the CI steps that generate the
-// staged file: .github/workflows/build-macos-pkg.yml and
-// .github/workflows/build-windows-installer.yml.
+// staged file: .github/workflows/build-macos-pkg.yml,
+// .github/workflows/build-windows-installer.yml and
+// .github/workflows/build-linux-deb.yml.
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -74,6 +75,20 @@ export function getCandidateStagingPaths(): string[] {
       // Fallback: no console user at install time (headless/MDM/pre-login) —
       // postinstall staged a group-readable copy here instead.
       '/Library/Application Support/MindsHub Cowork/.provision/server-credentials.json',
+    ];
+  }
+  if (process.platform === 'linux') {
+    return [
+      // Normal case: the deb's postinst identified the installing user and
+      // staged here, owned by them, mode 600 — then deleted the resources copy
+      // below. A .deb unpacks into root-owned /opt, so (exactly as on macOS,
+      // and unlike Windows's per-user install) the app could never delete a
+      // file left in its own resources dir.
+      path.join(os.homedir(), '.cowork-provision', 'server-credentials.json'),
+      // Fallback: no installing user identifiable at postinst time (headless
+      // `dpkg -i`, container, MDM), so postinst left the resources copy alone
+      // rather than stranding the build with no credentials at all.
+      path.join(process.resourcesPath || '', 'server-credentials.json'),
     ];
   }
   // Windows: no separate staging step. electron-builder.yml gives Windows its
@@ -234,5 +249,21 @@ export async function loadBundledServerCredentials(): Promise<Record<string, str
     // whatever's already provisioned.
     console.error('[credentials] unexpected error while provisioning from staging:', err);
   }
-  return loadStaticCredentials();
+  const credentials = await loadStaticCredentials();
+
+  // Nothing staged AND nothing in the store is the one genuinely broken state,
+  // and it is silent everywhere else: the staging file is absent on every
+  // healthy launch after the first, so the return above cannot say anything.
+  // The common cause on Linux is a deb installed by one user and launched by
+  // another — postinst staged into the installer's home and removed the /opt
+  // copy, so this user's home has neither. macOS has the same hole. Without
+  // this the only symptom is a connector reporting "not configured".
+  if (Object.keys(credentials).length === 0) {
+    console.warn(
+      '[credentials] no OAuth credentials are provisioned for this user. If this machine was set up'
+        + ' by a different user account, the installer staged them into that account instead;'
+        + ' reinstall as this user to provision them here.',
+    );
+  }
+  return credentials;
 }

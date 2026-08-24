@@ -742,6 +742,19 @@ export function shellAutoUpdateIsActive(phase: string): boolean {
   return phase === 'available' || phase === 'downloading' || phase === 'ready-to-install';
 }
 
+/** Whether the ENG-849 manual installer notice is the fallback path for a shell
+ *  update — i.e. ENG-850 auto-update is NOT the live one. True only when
+ *  auto-update is disabled (kill switch / unsupported channel) or has failed
+ *  terminally; a recoverable failure still retries through the auto-updater.
+ *  When auto-update is enabled and healthy it owns the shell update and surfaces
+ *  it itself, so the redundant prod manifest poll can be skipped. */
+export function shellManualNoticeIsFallback(
+  phase: string,
+  recoverable: boolean | undefined,
+): boolean {
+  return phase === 'disabled' || (phase === 'failed' && recoverable === false);
+}
+
 /** Return the installer URL for a supported platform and release channel. */
 export function shellDownloadUrl(
   platform: string,
