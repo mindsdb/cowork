@@ -63,3 +63,24 @@ describe.each(DELETE_SURFACES)('%s deletion', (_name, rel) => {
     expect(src).not.toMatch(/\bdeleteArtifact\b/);
   });
 });
+
+// An artifact the agent creates mid-session is absent from an index loaded
+// before it existed, and would be reported as deleted. The live stream is the
+// only place that knows it was just born, and App owns every live stream — a
+// signal hung on ChatView would miss a turn that finishes while the user is
+// looking at another chat or another route.
+describe('live stream', () => {
+  const src = readFileSync(resolve(ROOT, 'cowork/App.jsx'), 'utf-8');
+
+  it('registers artifacts of the live turn with the liveness store', () => {
+    expect(src).toContain('noteArtifactsFromSteps');
+  });
+
+  it('registers them from the shared live-steps collector', () => {
+    // Not from one of the four onEvent bodies: a fifth stream loop added later
+    // would silently skip it.
+    const collector = src.slice(src.indexOf('const updateLiveStepsAndDrainQueue'));
+    const body = collector.slice(0, collector.indexOf('\n  };'));
+    expect(body).toContain('noteArtifactsFromSteps');
+  });
+});

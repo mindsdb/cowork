@@ -56,6 +56,7 @@ import { fetchSessions, fetchSession, fetchConversationList, fetchProjects, fetc
          fetchInFlightStatus, tailInFlight, fetchInFlightList, submitAnswer,
          fetchRecommendedModels, createConversation, revealSettingKey } from './api';
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
+import { noteArtifactsFromSteps } from './lib/artifactsStore';
 import { isArtifactTipDismissed, dismissArtifactTip, dismissIfUntouched } from './components/onboarding/onboardingStore';
 import { recommendedModelOptions, providerValueToType,
          mergeRecommendedModels } from './lib/settingsTransform';
@@ -1193,6 +1194,11 @@ function AppCore() {
   // the user as composer text instead of answering with text written for
   // something else or leaving them queued to deadlock.
   const updateLiveStepsAndDrainQueue = (taskIds, steps) => {
+    // Anything the agent just produced is alive by definition, whatever a
+    // previously-loaded artifacts index says. This is the only live-stream
+    // collector, and the replay paths do not call it, so registering here
+    // cannot mistake a reopened conversation's old artifacts for new ones.
+    noteArtifactsFromSteps(steps);
     taskIds.forEach((tid) => {
       if (tid) liveStepsRef.current[tid] = steps;
     });
