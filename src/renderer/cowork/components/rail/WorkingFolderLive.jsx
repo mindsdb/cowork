@@ -26,6 +26,8 @@ import { ArtifactViewer } from '../artifact';
 import { Tooltip } from '../ui';
 import { ConfirmModal } from '../ConfirmModal';
 import { host } from '../../../platform/host';
+import { useOrgMode } from '../../../lib/orgMode';
+import { artifactOpenTarget, needsClientUnpublishBeforeDelete } from '../../lib/artifactActions';
 
 // Map a file extension to a glyph from `Icons.jsx`. Buckets group
 // extensions that read the same at glance — code files all get the
@@ -63,6 +65,7 @@ function iconForRow(row) {
 
 
 export function WorkingFolderLive({ project, isStreaming }) {
+  const orgMode = useOrgMode();
   const [resolvedProject, setResolvedProject] = useState(null);
   useEffect(() => {
     if (project) return;
@@ -112,15 +115,15 @@ export function WorkingFolderLive({ project, isStreaming }) {
   useEffect(() => {
     const proj = effectiveProject;
     const ticket = ++loadVersion.current;
-    if (!proj?.name || !proj?.path) {
+    if (!proj?.name || !(proj?.id || proj?.path)) {
       setRows([]);
       return;
     }
     setRows([]);
-    fetchArtifacts({ projectPath: proj.path })
+    fetchArtifacts({ projectId: proj.id, projectPath: proj.path })
       .then((list) => applyArtifacts(proj, list, ticket))
       .catch(() => { if (ticket === loadVersion.current) setRows([]); });
-  }, [effectiveProject?.name, effectiveProject?.path]);
+  }, [effectiveProject?.name, effectiveProject?.id, effectiveProject?.path]);
 
   // Streaming poll — every 3s while live, plus once shortly after
   // streaming ends (catches artifacts written near the very end of
@@ -131,9 +134,9 @@ export function WorkingFolderLive({ project, isStreaming }) {
   useEffect(() => {
     const tick = () => {
       const proj = effectiveProject;
-      if (!proj?.name || !proj?.path) return;
+      if (!proj?.name || !(proj?.id || proj?.path)) return;
       const ticket = ++loadVersion.current;
-      fetchArtifacts({ projectPath: proj.path })
+      fetchArtifacts({ projectId: proj.id, projectPath: proj.path })
         .then((list) => applyArtifacts(proj, list, ticket))
         .catch(() => { /* swallow — keep current rows */ });
     };
@@ -279,14 +282,15 @@ export function WorkingFolderLive({ project, isStreaming }) {
     setRows((prev) => prev.filter((r) => r.path !== a.path));
     try {
       // Unpublish first so deletion never leaves an orphaned public copy.
-      // The server enforces the same rule as a backstop.
-      if (a.publishedUrl) {
+      // The server enforces the same rule as a backstop. Skipped in org mode —
+      // see needsClientUnpublishBeforeDelete.
+      if (needsClientUnpublishBeforeDelete({ orgMode, published: a.publishedUrl })) {
         await unpublishArtifact(a.path);
       }
       // Deletion is centralized through cowork-server (not shell.trashItem),
       // so it works in every shell and the server's unpublish-before-delete
       // guard always runs.
-      await deleteArtifact(a.folder || a.path);
+      await deleteArtifact(a);
     } catch (e) {
       setRowError(e?.message || 'Delete failed.');
       // Restore the row on failure.
@@ -303,11 +307,23 @@ export function WorkingFolderLive({ project, isStreaming }) {
   const onOpenArtifact = (artifact) => {
     const ext = (artifact.ext || '').toLowerCase();
     const path = (artifact.path || '').toLowerCase();
-    const canPreview = _INLINE_PREVIEW_EXTS.includes(ext)
+    const canPreviewInline = _INLINE_PREVIEW_EXTS.includes(ext)
       || _INLINE_PREVIEW_EXTS.some((e) => path.endsWith(e));
-    if (canPreview) {
+    // Same gate the panel and the inline chat card apply: in org mode neither
+    // the local preview nor the OS handoff has anything behind it, and the
+    // published URL is the only route to the content.
+    const target = artifactOpenTarget({
+      orgMode,
+      published: !!artifact.publishedUrl,
+      canPreviewInline,
+      hasBridge: host.isElectron,
+    });
+    if (target === 'published') {
+      try { host.openExternal(artifact.publishedUrl); }
+      catch { window.open(artifact.publishedUrl, '_blank', 'noreferrer'); }
+    } else if (target === 'preview') {
       setPreviewArt(artifact);
-    } else {
+    } else if (target === 'os') {
       onOpen(artifact.path);
     }
   };

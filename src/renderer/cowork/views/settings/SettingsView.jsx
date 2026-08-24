@@ -2,9 +2,9 @@ import { useState, useEffect, useMemo, useRef, useContext } from 'react';
 import { useId } from 'react';
 import Ico from '../../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchRecommendedModels } from '../../api';
-import { providerTypeToKeyField, providerValueToType, resolveModelPickerValue, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore } from '../../lib/settingsTransform';
+import { providerTypeToKeyField, providerValueToType, resolveRoleModel, resolveModelPickerValue, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore, toDisplayUnits, toNaturalUnits, formatCount } from '../../lib/settingsTransform';
 import { MODEL_REFRESH_TTL_MS } from '../../lib/modelRefresh';
-import { trackHarnessSwapped } from '../../lib/analytics';
+import { trackHarnessSwapped, trackBillingOpened } from '../../lib/analytics';
 import { copyText as copyToClipboard } from '../../lib/clipboard';
 import { deriveProviderStatus, friendlyProviderError } from '../../lib/providerStatus';
 import { ToggleGroup } from '../../components/ui/ToggleGroup';
@@ -88,96 +88,126 @@ function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSett
   // survive re-renders without causing one, and it is read only on toggle.
   const preToggle = useRef(null);
   if (showUnlimited && !isUnlimited && value != null) preToggle.current = value;
-  // The last COMMITTED value, from the page's saved-state snapshot — never a
-  // draft. Tracking "last parseable edit" instead was a bug (Codex review on
-  // #514): editing a saved 120 to an unsaved 300, then clearing, restored the
-  // 300; an abandoned out-of-range draft resurrected as its clamped form.
-  const saved =
-    savedValue != null && String(savedValue).trim() !== '' ? String(savedValue) : null;
+  // The input reads/writes in `spec.unitDivisor` units (millions, for
+  // maxTurnTokens) — seven-digit token counts aren't something anyone wants
+  // to type or read. Storage stays in natural units throughout; only the
+  // displayed text and what onChange/onBlur parse are scaled. See
+  // toDisplayUnits/toNaturalUnits in settingsTransform.js.
+  const hasUnit = !!spec.unitDivisor;
+  const toDisplay = (v) => toDisplayUnits(v, spec);
+  const toNatural = (v) => toNaturalUnits(v, spec);
   return (
-    <div className="inline-flex items-baseline gap-2">
-      {showUnlimited && (
-        <label className="inline-flex items-baseline gap-1.5 mr-1 whitespace-nowrap">
-          <Checkbox
-            checked={isUnlimited}
-            onCheckedChange={(on) => setSetting(
-              settingKey,
-              on
-                ? String(spec.max)
-                : resolveBudgetRestore(preToggle.current, savedValue, spec),
-            )}
-            aria-label={unlimitedLabel}
+    <div className="flex flex-col items-start gap-1.5">
+      <div className="inline-flex items-start gap-2">
+        <div className="flex flex-col items-start gap-1">
+          {/* globals.css `.field-input` sets width:100% and loads after the
+              Tailwind layer, so a w-[90px] utility loses the cascade — inline
+              width is the one reliable override here. */}
+          <input
+            className="field-input"
+            style={{ width: 90 }}
+            type="number"
+            inputMode="decimal"
+            min={toDisplay(min)}
+            max={toDisplay(max)}
+            disabled={isUnlimited}
+            // Show the number they'd return to, not the max: a disabled field
+            // reading 50000000 invites someone to "fix" it back down by hand.
+            value={isUnlimited
+              ? toDisplay(resolveBudgetRestore(preToggle.current, savedValue, spec))
+              : toDisplay(value ?? String(fallback))}
+            onChange={(e) => setSetting(settingKey, toNatural(e.target.value))}
+            onBlur={(e) => {
+              if (value == null) return; // untouched — don't materialize the key
+              // Emptying the field reverts to the factory default — clearing
+              // any of the three budget fields is the discoverable way to
+              // reset it, not a mid-retype state to preserve.
+              setSetting(settingKey, clampBudgetValue(toNatural(e.target.value), spec));
+            }}
+            aria-label={label}
+            aria-describedby={hintId}
+            title={`${label} (${formatCount(toDisplay(min))}–${formatCount(toDisplay(max))}, default ${formatCount(toDisplay(fallback))}${hasUnit ? ' million tokens' : ''})`}
           />
-          <span className="text-[11.5px] text-ink-3">{unlimitedLabel}</span>
-        </label>
+          {hasUnit && <span className="text-[11.5px] text-ink-4 whitespace-nowrap">million tokens</span>}
+        </div>
+        <div id={hintId} className="flex flex-col text-[11.5px] text-ink-3">
+          {isUnlimited ? (
+            <span className="whitespace-nowrap">no limit — only the step and auto-continue caps apply</span>
+          ) : (
+            <>
+              <span className="whitespace-nowrap">{formatCount(toDisplay(min))}&ndash;{formatCount(toDisplay(max))}</span>
+              <span className="whitespace-nowrap">default {formatCount(toDisplay(fallback))}</span>
+            </>
+          )}
+        </div>
+      </div>
+      {showUnlimited && (
+        <div className="flex flex-col items-start gap-1.5">
+          <span className="text-[11px] text-ink-4">&mdash; or &mdash;</span>
+          <label className="inline-flex items-baseline gap-1.5 whitespace-nowrap">
+            <Checkbox
+              checked={isUnlimited}
+              onCheckedChange={(on) => setSetting(
+                settingKey,
+                on
+                  ? String(spec.max)
+                  : resolveBudgetRestore(preToggle.current, savedValue, spec),
+              )}
+              aria-label={unlimitedLabel}
+            />
+            <span className="text-[11.5px] text-ink-3">{unlimitedLabel}</span>
+          </label>
+        </div>
       )}
-      {/* globals.css `.field-input` sets width:100% and loads after the
-          Tailwind layer, so a w-[90px] utility loses the cascade — inline
-          width is the one reliable override here. */}
-      <input
-        className="field-input"
-        style={{ width: 90 }}
-        type="number"
-        inputMode="numeric"
-        min={min}
-        max={max}
-        step={1}
-        disabled={isUnlimited}
-        // Show the number they'd return to, not the max: a disabled field
-        // reading 50000000 invites someone to "fix" it back down by hand.
-        value={isUnlimited
-          ? resolveBudgetRestore(preToggle.current, savedValue, spec)
-          : (value ?? String(fallback))}
-        onChange={(e) => setSetting(settingKey, e.target.value)}
-        onBlur={(e) => {
-          if (value == null) return; // untouched — don't materialize the key
-          // Emptied field with no committed value to restore (the key was
-          // never saved — e.g. an older server that doesn't serve it): leave
-          // it empty rather than commit the factory default — clampBudgets()
-          // drops empty drafts from the write, and the post-save re-fetch
-          // restores whatever the server holds.
-          if (String(e.target.value).trim() === '' && saved == null) return;
-          setSetting(settingKey, clampBudgetValue(e.target.value, spec, saved));
-        }}
-        aria-label={label}
-        aria-describedby={hintId}
-        title={`${label} (${min}–${max}, default ${fallback})`}
-      />
-      <span id={hintId} className="text-[11.5px] text-ink-3 whitespace-nowrap">
-        {isUnlimited
-          ? 'no limit — only the step and auto-continue caps apply'
-          : <>{min}&ndash;{max} &middot; default {fallback}</>}
-      </span>
     </div>
   );
 }
 
 // A titled group of settings sections. Since ENG-1320 these no longer
-// collapse: the settings subnav already isolates one section per screen, so a
-// second collapse level inside a section just hid content behind an extra
-// click for no benefit. The group is now a static titled card whose content is
-// always visible. The heading is kept so groups still surface in SR heading
-// navigation. Mobile stays flat, as it already was (ENG-990).
-function SettingsGroup({ title, children }) {
+// collapse by default: the settings subnav already isolates one section per
+// screen, so a second collapse level inside a section just hid content
+// behind an extra click for no benefit. The group is a static titled card
+// whose content is always visible, UNLESS `collapsible` opts a specific
+// group back in (e.g. Advanced Settings — rarely-touched power-user knobs
+// that read as clutter left expanded by default). The heading is kept as an
+// <h2> either way so groups still surface in SR heading navigation; the
+// collapse toggle lives on a button nested inside it, not the heading itself.
+// Mobile stays flat, as it already was (ENG-990) — collapsible groups behave
+// the same there, just without the card chrome.
+function SettingsGroup({ title, children, collapsible = false, defaultCollapsed = false }) {
   const { mobile } = useContext(SettingsLayoutContext);
+  const [collapsed, setCollapsed] = useState(collapsible && defaultCollapsed);
   const headingClass =
     'm-0 font-[family-name:var(--font-sans)] text-sm font-semibold tracking-[0.04em] uppercase text-ink-3';
+  const heading = collapsible ? (
+    <button
+      type="button"
+      onClick={() => setCollapsed((c) => !c)}
+      aria-expanded={!collapsed}
+      className="inline-flex items-center gap-1 border-0 bg-transparent p-0 cursor-pointer text-inherit"
+    >
+      <span className={`inline-flex shrink-0 text-ink-4 transition-transform ${collapsed ? '' : 'rotate-90'}`} aria-hidden="true">
+        {Ico.chevRight(12)}
+      </span>
+      {title}
+    </button>
+  ) : title;
   // Mobile (ENG-990): the master-detail screen already isolates one section,
   // so render the group title as a plain header with its content flowing
   // below, separated from the next group by spacing.
   if (mobile) {
     return (
       <div className="mb-1.5">
-        <h2 className={`${headingClass} pt-3 px-0.5 pb-2`}>{title}</h2>
-        <div className="pt-0 px-0.5 pb-1">{children}</div>
+        <h2 className={`${headingClass} pt-3 px-0.5 pb-2`}>{heading}</h2>
+        {!collapsed && <div className="pt-0 px-0.5 pb-1">{children}</div>}
       </div>
     );
   }
 
   return (
     <div className="border border-solid border-line rounded-card bg-surface-glass backdrop-blur-[var(--surface-glass-blur)] mb-[14px] overflow-hidden">
-      <h2 className={`${headingClass} pt-[14px] px-[18px] pb-0`}>{title}</h2>
-      <div className="pt-2.5 px-[18px] pb-2">{children}</div>
+      <h2 className={`${headingClass} pt-[14px] px-[18px] ${collapsed ? 'pb-[14px]' : 'pb-0'}`}>{heading}</h2>
+      {!collapsed && <div className="pt-2.5 px-[18px] pb-2">{children}</div>}
     </div>
   );
 }
@@ -588,6 +618,7 @@ function CredentialRow({ title, subtitle, status, hasValue, children }) {
 
 const NAV_ITEMS = [
   { id: 'agent', label: 'Agent', icon: 'robot' },
+  { id: 'codingMode', label: 'Coding Mode', icon: 'code' },
   { id: 'appearance', label: 'Appearance', icon: 'palette' },
   { id: 'channels', label: 'Channels', icon: 'chats' },
   { id: 'updates', label: 'Updates', icon: 'refresh' },
@@ -603,17 +634,24 @@ const NAV_ITEMS = [
 //   account  — renders an SSO sign-in card, but a hosted user already
 //              authenticated through the console; a second sign-in is
 //              confusing at best.
+//   codingMode — launching an external CLI in a terminal is an Electron
+//              main-process capability with no web equivalent; web keeps
+//              its simple Anton/Hermes toggle inside Agent instead.
 // Agent stays because it carries the model picker and reasoning effort — the
 // point of the ticket. Appearance is purely cosmetic. Channels moved back here
 // from its standalone sidebar entry, which only existed while Settings was
 // hidden on web.
 const WEB_NAV_IDS = new Set(['agent', 'appearance', 'channels']);
 
-export function navItemsForHost(isWeb) {
+export function navItemsForHost(isWeb, codingModeOptionsEnabled) {
   // Fresh array on both branches — filter() already copies for web, and the
   // desktop spread keeps a caller's mutation from reaching the shared module
   // constant.
-  return isWeb ? NAV_ITEMS.filter((i) => WEB_NAV_IDS.has(i.id)) : [...NAV_ITEMS];
+  const items = isWeb ? NAV_ITEMS.filter((i) => WEB_NAV_IDS.has(i.id)) : [...NAV_ITEMS];
+  // Coding Mode is parked behind CODING_MODE_OPTIONS_ENABLED while the
+  // feature is unfinished — hide its whole nav section (and, transitively,
+  // any way to reach the toggle or harness picker) until it's flipped on.
+  return codingModeOptionsEnabled ? items : items.filter((i) => i.id !== 'codingMode');
 }
 
 function SettingsNav({ section, onSectionChange, serverOnline = true }) {
@@ -624,7 +662,7 @@ function SettingsNav({ section, onSectionChange, serverOnline = true }) {
       className="w-[180px] shrink-0 border-r border-y-0 border-l-0 border-solid border-line py-5 px-2.5 flex flex-col gap-0.5"
     >
       <div className="text-2xs tracking-[0.08em] uppercase text-ink-4 pt-0 px-2.5 pb-1.5 font-semibold">Settings</div>
-      {navItemsForHost(host.isWeb).map((item) => {
+      {navItemsForHost(host.isWeb, host.codingModeOptionsEnabled).map((item) => {
         const active = section === item.id;
         // `!host.isWeb &&`: the offline-disable exists because a dead local
         // server can't accept a save, and Backend stays enabled as the escape
@@ -826,7 +864,9 @@ export default function SettingsView({
   const roleModelValue = (role, fallback = '') => canonicalModelForRole(role) || fallback || '';
   const setRoleDriver = (role, providerType, model) => {
     const normalizedType = providerValueToType(providerType) || 'minds-cloud';
-    const nextModel = model || '';
+    // null is a tombstone ("clear the stored row so the server's enabled-aware
+    // default governs", ENG-1632) and must survive to the save path untouched.
+    const nextModel = model === null ? null : (model || '');
     if (role === 'planning') {
       setSetting('planningProvider', normalizedType);
       setSetting('planningModel', nextModel);
@@ -947,17 +987,20 @@ export default function SettingsView({
     const keyField = providerTypeToKeyField(type);
     if (keyField) setSetting(keyField, '');
 
-    // Role settings referencing the removed provider get re-pointed
-    // at MindsHub with its recommended pair for the role.
+    // Role settings referencing the removed provider get re-pointed at
+    // MindsHub with NO model value — tombstoned (null → row cleared) so the
+    // server's enabled-aware default governs every role. Writing any model
+    // here fabricates a user choice: the raw pair used to pin haiku/kimi for
+    // exactly the accounts that couldn't pay for them (ENG-1632), and an
+    // "affordable" seed would strand a later top-up on the free model
+    // (ENG-597 spring-back). The picker shows the server-computed value for
+    // unset fields after the post-save refetch.
     const adjustedOverrides = {};
     for (const role of ['planning', 'coding', 'router']) {
       const o = roleOverride(role);
       if (roleProviderType(role) === type) {
-        const pair = recommendedPair['minds-cloud'] || ['', '', ''];
-        const roleIdx = role === 'planning' ? 0 : role === 'router' ? 2 : 1;
-        const fallback = pair[roleIdx] || pair[1] || (recommendedModels['minds-cloud']?.[0] || '');
-        adjustedOverrides[role] = { providerType: 'minds-cloud', model: fallback };
-        setRoleDriver(role, 'minds-cloud', fallback);
+        adjustedOverrides[role] = { providerType: 'minds-cloud', model: null };
+        setRoleDriver(role, 'minds-cloud', null);
       } else {
         if (o) adjustedOverrides[role] = o;
       }
@@ -1020,23 +1063,47 @@ export default function SettingsView({
   // both roles to the resolved default-mode provider and its recommended
   // pair so a configured key actually drives the agent. Only repoints a role
   // whose provider differs, so unrelated saves don't rewrite the model.
+  // A role is repointed only when its own provider cannot run. The server
+  // resolves a configured provider as-is, so rewriting one the user chose
+  // deliberately -- a local endpoint, say -- moves their turns to a provider
+  // they never picked, and does it on any save, including a theme toggle.
+  const roleProviderUsable = (raw) => {
+    const type = providerValueToType(raw) || 'minds-cloud';
+    const card = providers.find((p) => p.type === type);
+    return Boolean(card && providerConfigured(card));
+  };
+
   const withResolvedRoles = (s) => {
     if (modelMode === 'custom') return s;
     const type = defaultModeProviderType;
-    const pair = recommendedPair[type] || [];
     const next = { ...s };
-    if ((providerValueToType(s.planningProvider) || 'minds-cloud') !== type) {
+    // Default mode means "the server decides the models" — so a repoint writes
+    // NO model value for any role, planning included. Writing one claims a
+    // user intent that doesn't exist: the row is indistinguishable from a real
+    // pick, so the server honors it forever, which both pinned unaffordable
+    // models on wallet-locked accounts (ENG-1632 — the write survived the save
+    // diff exactly for them) and, seeded "affordably", would strand a
+    // topped-up account on the free model (defeats ENG-597's spring-back).
+    // Tombstone instead (null → DELETE in updateSettings): the server's
+    // enabled-aware default governs, and GET /settings returns the computed
+    // value for unset fields, so the picker displays exactly what runs.
+    // The provider still repoints: keeping a stale model id from another
+    // provider would misroute (pnewsam review on #663).
+    if (!roleProviderUsable(s.planningProvider)
+        && (providerValueToType(s.planningProvider) || 'minds-cloud') !== type) {
       next.planningProvider = type;
-      next.planningModel = pair[0] || '';
-      next.defaultModel = pair[0] || '';
+      next.planningModel = null;
+      next.defaultModel = null;
     }
-    if ((providerValueToType(s.codingProvider) || 'minds-cloud') !== type) {
+    if (!roleProviderUsable(s.codingProvider)
+        && (providerValueToType(s.codingProvider) || 'minds-cloud') !== type) {
       next.codingProvider = type;
-      next.codingModel = pair[1] || '';
+      next.codingModel = null;
     }
-    if ((providerValueToType(s.routerProvider) || 'minds-cloud') !== type) {
+    if (!roleProviderUsable(s.routerProvider)
+        && (providerValueToType(s.routerProvider) || 'minds-cloud') !== type) {
       next.routerProvider = type;
-      next.routerModel = pair[2] || pair[1] || '';
+      next.routerModel = null;
     }
     return next;
   };
@@ -1431,7 +1498,7 @@ export default function SettingsView({
             </SettingsGroup>
           </div>
           <div className={anyProviderConfigured ? 'order-1' : 'order-none'}>
-            <SettingsGroup title="Agent Models">
+            <SettingsGroup title="Model Router">
               {(() => {
                 // The default-mode provider is the implicit fallback for
                 // any role that hasn't been explicitly assigned an
@@ -1465,9 +1532,22 @@ export default function SettingsView({
                   const roleIdx = role === 'planning' ? 0 : role === 'router' ? 2 : 1;
                   const fallbackPair = recommendedPair[curType] || ['', '', ''];
                   const fallbackModel = fallbackPair[roleIdx] || fallbackPair[1] || '';
-                  const curModel = providerWasRepointed ? fallbackModel : roleModelValue(role, fallbackModel);
                   const provider = providers.find((p) => p.type === curType);
                   const modelList = recommendedModels[curType] || [];
+                  // minds-cloud has no free-text mode (unlike a BYOK provider,
+                  // where an unlisted id is just a user-typed custom model) —
+                  // same condition resolveModelPickerValue uses for its
+                  // "legacy — re-select a model" stale pin.
+                  const allowOther = curType !== 'minds-cloud';
+                  // See resolveRoleModel: substitutes the fallback not just
+                  // when the PROVIDER field was stale, but also when the
+                  // provider is already correct (e.g. after an SSO sign-in)
+                  // yet the paired model still names a different provider's
+                  // model — the case that used to surface as "legacy —
+                  // re-select a model" for the user to fix by hand.
+                  const curModel = resolveRoleModel(
+                    providerWasRepointed, roleModelValue(role, fallbackModel), modelList, allowOther, fallbackModel,
+                  );
                   /* Per-model availability (settings.modelEnabled, sourced from MindsHub
                    * /v1/models). A model the org's wallet can't currently pay for (or
                    * whose free allowance is spent) is listed here as false — it stays
@@ -1545,7 +1625,16 @@ export default function SettingsView({
                         <span className="text-danger font-semibold">No credits available. </span>
                         <button
                           type="button"
-                          onClick={() => host.openExternal ? host.openExternal(MINDS_BILLING_URL) : window.open(MINDS_BILLING_URL, '_blank')}
+                          // ENG-1533: recorded before the navigation, so web and
+                          // desktop count identically. `host.openExternal` is
+                          // always defined and already falls back to window.open
+                          // internally (platform/host.ts), with noopener —
+                          // guarding it here was dead code that would have opened
+                          // an unhardened window if it ever had run.
+                          onClick={() => {
+                            trackBillingOpened('no_credits_notice');
+                            return host.openExternal(MINDS_BILLING_URL);
+                          }}
                           className={LINK_BTN}
                         >Top up balance →</button>
                       </div>
@@ -1566,8 +1655,26 @@ export default function SettingsView({
                             <Select
                               value={curType}
                               onValueChange={(t) => {
+                                // Seed the first wallet-affordable candidate,
+                                // not the raw pair value: writing a locked
+                                // model on a provider switch converts the
+                                // server's dynamic default into a hard pin
+                                // that 402s (ENG-1632). This is the ONE place
+                                // the client still derives a model — allowed
+                                // because it's custom mode and the value lands
+                                // visibly in the model field for the user to
+                                // see and change before saving (ENG-1248's
+                                // informed-consent lane). ENG-1650 (server
+                                // exposes resolved per-role models) retires
+                                // this derivation too.
                                 const pair = recommendedPair[t] || ['', '', ''];
-                                const newModel = pair[roleIdx] || pair[1] || (recommendedModels[t]?.[0] || '');
+                                const candidates = [
+                                  pair[roleIdx] || pair[1],
+                                  ...(recommendedModels[t] || []),
+                                ].filter(Boolean);
+                                const newModel =
+                                  candidates.find((m) => modelEnabled[m] !== false)
+                                  || candidates[0] || '';
                                 setModelInputMode((m) => ({ ...m, [role]: false }));
                                 writeOverride({ providerType: t, model: newModel });
                               }}
@@ -1580,8 +1687,9 @@ export default function SettingsView({
                         )}
                         {modelList.length > 0 ? (
                           (() => {
-                            const allowOther = curType !== 'minds-cloud';
-                            // See resolveModelPickerValue + buildModelOptions: keeps the Select's
+                            // allowOther is hoisted above (also feeds curModel's
+                            // staleness check). See resolveModelPickerValue +
+                            // buildModelOptions: keeps the Select's
                             // value matched to a rendered option so picking a model always fires
                             // a real change and Save writes it — a login-written `latest:` pin no
                             // longer wedges the control into a no-op "Saved" (ENG-739).
@@ -1668,7 +1776,10 @@ export default function SettingsView({
                                   {displayModelLabel(curModel, settings.modelLabels || {})} needs credits.{' '}
                                   <button
                                     type="button"
-                                    onClick={() => host.openExternal ? host.openExternal(MINDS_BILLING_URL) : window.open(MINDS_BILLING_URL, '_blank')}
+                                    onClick={() => {
+                                      trackBillingOpened('locked_model_hint');
+                                      return host.openExternal(MINDS_BILLING_URL);
+                                    }}
                                     className={LINK_BTN}
                                   >Top up your balance</button>
                                   {' '}to use it.
@@ -1729,19 +1840,29 @@ export default function SettingsView({
           </div>
         </div>
 
-        <SettingsGroup title="Agent Harness">
-          <Section title="Harness" subtitle={`Which AI agent powers your tasks. ${agentLabel || 'Anton'} is the default; Hermes is an alternative agent with its own tool and memory system.`}>
-            <ToggleGroup
-              value={settings.harness || 'anton'}
-              onValueChange={(v) => { setSetting('harness', v); setLlmDirty(true); }}
-              aria-label="Agent harness"
-              options={[
-                { value: 'anton', label: 'Anton', 'aria-label': 'Use Anton agent', title: 'Anton — the default AI agent.' },
-                { value: 'hermes', label: 'Hermes', 'aria-label': 'Use Hermes agent', title: 'Hermes — alternative agent with independent tools and memory.' },
-              ]}
-            />
-          </Section>
-        </SettingsGroup>
+        {/* Coding Mode itself lives in its own top-level nav section (see
+            renderCodingModeSection) — desktop-only, since launching an
+            external CLI in a terminal is an Electron main-process
+            capability with no web equivalent. Web keeps its simple
+            single-select Anton/Hermes toggle here instead, unaffected by
+            Coding Mode since that concept doesn't exist there. */}
+        {host.isWeb && (
+          <SettingsGroup title="Agent Harness">
+            <Section title="Harness" subtitle={`Which AI agent powers your tasks. ${agentLabel || 'Anton'} is the default; Hermes is an alternative agent with its own tool and memory system.`}>
+              <ToggleGroup
+                value={settings.harness || 'anton'}
+                onValueChange={(v) => { setSetting('harness', v); setLlmDirty(true); }}
+                aria-label="Agent harness"
+                options={[
+                  { value: 'anton', label: 'Anton', 'aria-label': 'Use Anton agent', title: 'Anton — the default AI agent.' },
+                  ...((settings.harnessOptions || []).includes('hermes') ? [
+                    { value: 'hermes', label: 'Hermes', 'aria-label': 'Use Hermes agent', title: 'Hermes — alternative agent with independent tools and memory.' },
+                  ] : []),
+                ]}
+              />
+            </Section>
+          </SettingsGroup>
+        )}
 
         <SettingsGroup title="Memory">
           <Section title="Memory mode" subtitle={`How ${agentLabel || 'Anton'} updates its long-term memory.`}>
@@ -1780,7 +1901,7 @@ export default function SettingsView({
         </SettingsGroup>
 
         {hasBudgetSettings && (
-          <SettingsGroup title="Advanced Settings">
+          <SettingsGroup title="Advanced Settings" collapsible defaultCollapsed>
             <Section
               title="Max steps per task"
               subtitle={`How many actions (running code, reading files, searching) ${agentLabel || 'Anton'} may take on one request before pausing to check in with you. Raise it so big tasks finish in one go; lower it for a tighter leash on time and cost.`}
@@ -1937,6 +2058,50 @@ export default function SettingsView({
     reader.onload = () => autoSaveSetting('navLogo', reader.result);
     reader.readAsDataURL(file);
   };
+
+  // Desktop-only (see the WEB_NAV_IDS comment on NAV_ITEMS above) — web
+  // never navigates here since 'codingMode' is absent from WEB_NAV_IDS.
+  const renderCodingModeSection = () => (
+    <SettingsSectionPanel footer={renderSaveFooter()}>
+      <SettingsGroup title="Coding Mode">
+        <Section title="Coding mode" subtitle="Let a task pick its own agent per task — including launching in an external coding CLI (e.g. Claude Code) instead of the in-app chat, when one is installed.">
+          <Switch
+            checked={settings.codingModeEnabled ?? false}
+            onCheckedChange={(v) => setSetting('codingModeEnabled', v)}
+            aria-label="Coding mode"
+          />
+        </Section>
+      </SettingsGroup>
+
+      <SettingsGroup title="Available Agents">
+        {/* No Switch here — Anton is the default agent and can't be
+            turned off; a picker with every harness disabled would
+            have nothing to run. Still listed so it's clear it's
+            part of the picker. */}
+        <Section title="Anton">
+          <Badge variant="muted" size="xs" className="uppercase tracking-[0.04em]">Always on</Badge>
+        </Section>
+        {(settings.harnessOptions || []).includes('hermes') && (
+          <Section title="Hermes">
+            <Switch
+              checked={settings.harnessHermesEnabled ?? true}
+              onCheckedChange={(v) => setSetting('harnessHermesEnabled', v)}
+              disabled={!settings.codingModeEnabled}
+              aria-label="Enable Hermes in the harness picker"
+            />
+          </Section>
+        )}
+        <Section title="Claude-Code">
+          <Switch
+            checked={settings.harnessClaudeCodeEnabled ?? true}
+            onCheckedChange={(v) => setSetting('harnessClaudeCodeEnabled', v)}
+            disabled={!settings.codingModeEnabled}
+            aria-label="Enable Claude-Code in the harness picker"
+          />
+        </Section>
+      </SettingsGroup>
+    </SettingsSectionPanel>
+  );
 
   const renderAppearanceSection = () => (
     // No Save footer here — every control on this page auto-saves itself
@@ -2194,6 +2359,18 @@ export default function SettingsView({
               <AutoSaveTag settingKey="show8bitToggle" />
             </div>
           </Section>
+          {host.codingModeOptionsEnabled && (
+            <Section title="Coding mode toggle button" subtitle="The floating </> button next to the theme toggle that switches Coding mode on/off.">
+              <div className="flex items-center">
+                <Switch
+                  checked={settings.showCodingModeToggle !== false}
+                  onCheckedChange={(v) => autoSaveSetting('showCodingModeToggle', v)}
+                  aria-label="Coding mode toggle button"
+                />
+                <AutoSaveTag settingKey="showCodingModeToggle" />
+              </div>
+            </Section>
+          )}
         </div>
       </SettingsGroup>
     </SettingsSectionPanel>
@@ -2246,13 +2423,14 @@ export default function SettingsView({
   if (mobile) {
     const renderers = {
       agent: renderAgentSection,
+      codingMode: renderCodingModeSection,
       appearance: renderAppearanceSection,
       channels: renderChannelsSection,
       updates: renderUpdatesSection,
       backend: renderBackendSection,
       account: renderAccountSection,
     };
-    const activeItem = navItemsForHost(host.isWeb).find((i) => i.id === section) || null;
+    const activeItem = navItemsForHost(host.isWeb, host.codingModeOptionsEnabled).find((i) => i.id === section) || null;
     const inDetail = Boolean(activeItem);
     return (
       <SettingsLayoutContext.Provider value={{ mobile: true }}>
@@ -2277,7 +2455,7 @@ export default function SettingsView({
             </div>
           ) : (
             <nav className="settings-list" role="navigation" aria-label="Settings sections">
-              {navItemsForHost(host.isWeb).map((item) => {
+              {navItemsForHost(host.isWeb, host.codingModeOptionsEnabled).map((item) => {
                 // `!host.isWeb &&`: the offline-disable exists because a dead local
                 // server can't accept a save, and Backend stays enabled as the
                 // escape hatch to restart it. On web there is no Backend row —
@@ -2319,7 +2497,7 @@ export default function SettingsView({
   // sets the section directly, so a deep link (or a stale persisted section)
   // could still render one this host doesn't offer. Resolve through the visible
   // set and fall back to its first entry (Agent).
-  const visibleNav = navItemsForHost(host.isWeb);
+  const visibleNav = navItemsForHost(host.isWeb, host.codingModeOptionsEnabled);
   const effectiveSection = visibleNav.some((i) => i.id === section)
     ? section
     : visibleNav[0]?.id;
@@ -2329,6 +2507,7 @@ export default function SettingsView({
       <SettingsNav section={effectiveSection} onSectionChange={onSectionChange} serverOnline={serverOnline} />
 
       {effectiveSection === 'agent' && renderAgentSection()}
+      {effectiveSection === 'codingMode' && renderCodingModeSection()}
       {effectiveSection === 'appearance' && renderAppearanceSection()}
       {effectiveSection === 'channels' && renderChannelsSection()}
       {effectiveSection === 'updates' && renderUpdatesSection()}

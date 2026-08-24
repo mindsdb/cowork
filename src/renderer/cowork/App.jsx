@@ -22,7 +22,6 @@ import ScheduledView from './views/ScheduledView';
 import TasksView from './views/TasksView';
 import ScheduleDetailView from './views/ScheduleDetailView';
 import ArtifactsView from './views/ArtifactsView';
-import ChannelsView from './views/ChannelsView';
 import CustomizeView from './views/CustomizeView';
 import SettingsView from './views/settings/SettingsView';
 import UtilitiesView from './views/UtilitiesView';
@@ -38,7 +37,9 @@ import { loadSkin, persistSkin, nextSkin, skinLabel } from '../lib/skins';
 import { loadCustomTheme, persistCustomTheme, applyCustomTheme } from '../lib/customTheme';
 import { applyNavTitleColor } from '../lib/navBranding';
 import { getAgentLabel } from './lib/agentLabel';
+import { selectNextQueuedTask, mergeQueuesForAdoptedId, reservationReleaseDecision } from './lib/messageQueue';
 import { loadCachedSettings } from './lib/settingsCache';
+import { useOrgMode } from '../lib/orgMode';
 import { clearDraft, moveDraft } from './lib/draftStore';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { useGoogleDrivePicker } from './hooks/useGoogleDrivePicker';
@@ -53,12 +54,13 @@ import { fetchSessions, fetchSession, fetchConversationList, fetchProjects, fetc
          deleteProject, cancelScratchpad, cancelResponse, fetchConnector,
          fetchSavedConnection, deleteDatasource, deletePickedFile,
          fetchInFlightStatus, tailInFlight, fetchInFlightList, submitAnswer,
-         fetchRecommendedModels } from './api';
+         fetchRecommendedModels, createConversation, revealSettingKey } from './api';
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
 import { isArtifactTipDismissed, dismissArtifactTip, dismissIfUntouched } from './components/onboarding/onboardingStore';
-import { modelLabel, recommendedModelOptions, providerValueToType,
+import { recommendedModelOptions, providerValueToType,
          mergeRecommendedModels } from './lib/settingsTransform';
-import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery, trackFirstResponse, classifyFirstResponse } from './lib/analytics';
+import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery, trackFirstResponse, classifyFirstResponse, trackKeyProvisioningRefused } from './lib/analytics';
+import { MODEL_ROUTER_ID, MODEL_ROUTER } from './lib/modelCatalog';
 
 // One-of-ten encouraging follow-ups picked when a connect task is
 // created. Reads as a friendly nudge after the connect-intro card —
@@ -986,6 +988,12 @@ function AppCore() {
   // mid-turn)" when the user navigates back to it. See
   // `reconcileTaskMessages` for the cleanup it enables.
   const activeStreamingTaskIdRef = useRef(null);
+  // True once the active stream's SSE socket delivers any event — client-side
+  // proof the turn started, independent of when it shows up in the in-flight
+  // poll (which lags Redis/replica registration). The stranded-slot self-heal
+  // reads it to tell a slow-to-register turn from a never-started fast-fail.
+  // Reset to false at every new stream reservation below.
+  const activeStreamProducedRef = useRef(false);
   const activeStreamGenerationRef = useRef(0);
   const composerMuteLastTaskIdRef = useRef(null);
   const prevRouteForComposerMuteRef = useRef(null);
@@ -999,6 +1007,28 @@ function AppCore() {
   const [messageQueue, setMessageQueue] = useState({}); // { [taskId]: [{id, text, attachments}] }
   const messageQueueRef = useRef({});
   useEffect(() => { messageQueueRef.current = messageQueue; }, [messageQueue]);
+  // `reconnectInFlight` is a mount-frozen useCallback (all its deps are
+  // stable), so it cannot close over the render-fresh `drainNextQueuedMessage`
+  // without also capturing a stale `handleSendInTask` (and its stale
+  // `projects`/`health` fallbacks). It reads the latest drain through this ref
+  // instead — assigned right after the drain is defined and read only from
+  // async completion callbacks, never during render.
+  const drainNextQueuedMessageRef = useRef(null);
+
+  // Running tally for the stranded-reservation self-heal (reservationReleaseDecision):
+  // a stream that dies with no terminal pins the slot forever, so the in-flight
+  // poll releases it once the server lists then stops listing the task.
+  const staleReservationRef = useRef({ cid: null, misses: 0, seen: false, lastMissAt: 0 });
+
+  // Serializes refreshInFlightSet so overlapping interval/focus polls can't
+  // double-count a miss (see the wrapper below).
+  const refreshInFlightInProgressRef = useRef(false);
+
+  // Mirror "a reservation has an unresolved miss" into state so the 5s heartbeat
+  // stays alive for the follow-up polls a release needs — the first miss empties
+  // inFlightSet, which would otherwise tear down the size-gated interval before
+  // the miss that releases the slot arrives.
+  const [hasPendingReservationMiss, setHasPendingReservationMiss] = useState(false);
 
   // Live steps per task, so handleSendInTask can see a pending question
   // without threading stream state through the composer.
@@ -1040,9 +1070,61 @@ function AppCore() {
   const inFlightSetRef = useRef(inFlightSet);
   useEffect(() => { inFlightSetRef.current = inFlightSet; }, [inFlightSet]);
 
-  const refreshInFlightSet = useCallback(async () => {
+  // The reconcile body. Wrapped by refreshInFlightSet below with a re-entrancy
+  // guard; declared first so the wrapper can reference it without a TDZ.
+  const reconcileInFlight = useCallback(async () => {
     const items = await fetchInFlightList();
+    // A failed poll returns null, NOT [] — don't reconcile: treating it as "server
+    // reports nothing" would clear inFlightSet and count a false miss, so two blips
+    // could abort a healthy turn. Skip; the tally is preserved for the next poll.
+    if (items === null) return;
     const ids = items.map((it) => it.conversation_id).filter(Boolean);
+
+    // Stranded-reservation self-heal (see reservationReleaseDecision). A stream
+    // that dies without a terminal leaves activeStreamingTaskIdRef/CtrlRef set
+    // forever, so drainNextQueuedMessage self-blocks and every later message
+    // strands at "N queued"; on relaunch reconnectInFlight re-attaches and
+    // re-wedges (the "stuck at Queued that survives restarts" bug). `ids` is the
+    // server's authoritative list, so a task we hold but it no longer lists is
+    // released and drained.
+    const streaming = activeStreamingTaskIdRef.current;
+    // Pre-flight = slot reserved but no controller yet (send awaiting uploads).
+    // Releasing then would let the send reassign the refs into a second
+    // concurrent stream on one conversation; a real strand still holds its dead
+    // controller.
+    const preflight = Boolean(streaming) && !activeStreamCtrlRef.current;
+    // Suppresses the unseen reap when the turn has produced events but the poll
+    // hasn't listed it yet (see reservationReleaseDecision / the ref's decl).
+    const producedData = activeStreamProducedRef.current;
+    // Wall-clock lets the decision space misses across real poll intervals.
+    const decision = reservationReleaseDecision(
+      streaming, ids, staleReservationRef.current, { preflight, producedData, now: Date.now() },
+    );
+    staleReservationRef.current = {
+      cid: decision.cid, misses: decision.misses, seen: decision.seen, lastMissAt: decision.lastMissAt,
+    };
+    if (decision.release && streaming) {
+      const ctrl = activeStreamCtrlRef.current;
+      if (ctrl) { try { ctrl.abort(); } catch { /* already closed */ } }
+      activeStreamCtrlRef.current = null;
+      activeScratchpadRef.current = null;
+      activeStreamingTaskIdRef.current = null;
+      activeStreamProducedRef.current = false;
+      staleReservationRef.current = { cid: null, misses: 0, seen: false, lastMissAt: 0 };
+      // Clear the dead turn's live steps like every terminal path, else a turn
+      // blocked on an ask_user question stays in liveStepsRef and the next
+      // message gets redirected into answering a gone run. Alias-aware so a
+      // tmp->canonical pre-adoption id is cleared too.
+      releaseLiveStepsWithAliases(streaming);
+      // setInFlightSet below drops `streaming` and its finished-diff marks the
+      // task idle, so no explicit markInFlightDone. Drain via the ref (this
+      // callback is mount-frozen and would close over a stale drain).
+      drainNextQueuedMessageRef.current?.();
+    }
+    // Keep the heartbeat alive across an unresolved miss so the releasing poll
+    // fires (see hasPendingReservationMiss); a release resets the tally to 0.
+    setHasPendingReservationMiss(staleReservationRef.current.misses > 0);
+
     setInFlightSet((prev) => {
       // Diff: if the server says a cid is GONE but we had it, the
       // stream just finished from elsewhere — that's the signal to
@@ -1071,6 +1153,19 @@ function AppCore() {
       return next;
     });
   }, []);
+
+  const refreshInFlightSet = useCallback(async () => {
+    // Coalesce overlapping polls (5s interval + focus refresh) so two concurrent
+    // reconciles can't read the same pre-write tally and double-count a miss. An
+    // in-flight reconcile has fresh data coming, so a concurrent caller returns.
+    if (refreshInFlightInProgressRef.current) return;
+    refreshInFlightInProgressRef.current = true;
+    try {
+      await reconcileInFlight();
+    } finally {
+      refreshInFlightInProgressRef.current = false;
+    }
+  }, [reconcileInFlight]);
 
   const markInFlight = useCallback((cid) => {
     if (!cid) return;
@@ -1123,16 +1218,23 @@ function AppCore() {
   // multi-monitor users who can see both windows at once and don't
   // generate a focus event to trigger a manual refresh.
   useEffect(() => {
-    if (inFlightSet.size === 0) return undefined;
+    // Also runs on an unresolved reservation miss even when the set is empty:
+    // releasing the slot needs a follow-up poll, and the miss is what empties
+    // the set.
+    if (inFlightSet.size === 0 && !hasPendingReservationMiss) return undefined;
     const timer = setInterval(() => { refreshInFlightSet(); }, 5000);
     return () => clearInterval(timer);
-  }, [inFlightSet.size, refreshInFlightSet]);
+  }, [inFlightSet.size, hasPendingReservationMiss, refreshInFlightSet]);
 
-  const enqueueMessage = (taskId, text, attachments = []) => {
+  const enqueueMessage = (taskId, text, attachments = [], disabledConnections = []) => {
     // `attachments` rides with the queued item so a message sent while a
     // turn is in flight keeps its files — the drain re-resolves/uploads
     // them. Without this the queue stored text only and files were lost.
-    const item = { id: `q_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`, text, attachments };
+    // `disabledConnections` is likewise captured at enqueue so a drained
+    // turn honors the connection-disable state as it was when the user hit
+    // send, not whatever the composer happens to show when it finally
+    // drains (which, for a cross-task drain, belongs to another task).
+    const item = { id: `q_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`, text, attachments, disabledConnections };
     setMessageQueue((prev) => ({ ...prev, [taskId]: [...(prev[taskId] || []), item] }));
   };
   const removeFromQueue = (taskId, itemId) => {
@@ -1156,6 +1258,13 @@ function AppCore() {
     });
     return head;
   };
+  // When the server mints a canonical id for a task that was streaming under
+  // a tmp id, move any messages queued under the old id(s) onto the new one.
+  // The drain finds a task by its queue key, so a queue left under a stale
+  // id would never re-match the task (ENG-1378).
+  const migrateQueuedMessages = (fromIds, toId) => {
+    setMessageQueue((prev) => mergeQueuesForAdoptedId(prev, fromIds, toId));
+  };
 
   const clearQueueForTask = (taskId) => {
     setMessageQueue((prev) => {
@@ -1173,6 +1282,10 @@ function AppCore() {
   // the user as composer text instead of answering with text written for
   // something else or leaving them queued to deadlock.
   const updateLiveStepsAndDrainQueue = (taskIds, steps) => {
+    // Every stream's onEvent funnels through here (after dropping stale-generation
+    // events), so reaching this line means the active stream delivered data.
+    // Record it for the stranded-slot self-heal (see activeStreamProducedRef).
+    activeStreamProducedRef.current = true;
     taskIds.forEach((tid) => {
       if (tid) liveStepsRef.current[tid] = steps;
     });
@@ -1305,10 +1418,26 @@ function AppCore() {
         delete next[cidToCancel];
         return next;
       });
+      // Prune the ref in lockstep: the sibling drain below reads
+      // messageQueueRef synchronously and the state→ref effect hasn't run yet,
+      // so without this it would still see (and could re-pick) the cancelled
+      // task's own queue.
+      const prunedQueue = { ...messageQueueRef.current };
+      delete prunedQueue[cidToCancel];
+      messageQueueRef.current = prunedQueue;
     }
 
     activeScratchpadRef.current = null;
     activeStreamingTaskIdRef.current = null;
+
+    // Stop frees the shared stream slot with no onDone/onError behind it — the
+    // generation bump above silences the aborted run's cancelled callback — so
+    // a message queued against a *different* task would strand forever at
+    // "N queued · waiting for Anton" with no future turn to release it. Sweep
+    // the siblings now (the cancelled task's own queue was just deleted). Via
+    // the ref because a memoized handleStopStream would close over a stale
+    // drain (same reason reconnect uses it).
+    drainNextQueuedMessageRef.current?.();
 
     if (silent || !cidToCancel) return;
 
@@ -1519,6 +1648,23 @@ function AppCore() {
   // Routes where the user can collapse the sidebar. Currently:
   // chat task only.
   const sidebarCollapsibleRoutes = useMemo(() => new Set(['task']), []);
+  // Coding Mode gets the same off-canvas popout treatment as the narrow/
+  // tablet band (640-900): the docked sidebar is hidden entirely and
+  // replaced by the floating hamburger, sliding in over the content instead
+  // of pushing it — even on a full-width desktop viewport, since the
+  // composer needs the room for its harness-picker chrome. Desktop-only
+  // (Coding Mode doesn't exist on web) and never applies on true mobile
+  // (<640) — MobileShell already owns that layout outright.
+  // Coding Mode is parked behind CODING_MODE_OPTIONS_ENABLED (main/preload —
+  // defaults false when unset) while it's unfinished: this forces every
+  // consumer of the user's own codingModeEnabled preference to read as off
+  // when the build-level flag is off, even if a stale `true` is already
+  // sitting in someone's local settings from earlier testing — there'd be no
+  // UI left to turn it back off otherwise, since the toggle and its Settings
+  // section are hidden the same way (see navItemsForHost / the floating
+  // corner toggle below).
+  const codingModeActive = host.codingModeOptionsEnabled && !!settings.codingModeEnabled;
+  const sidebarPopout = isNarrow || (!isMobile && !host.isWeb && codingModeActive);
   // Theme (light | dark) — persisted in localStorage so the choice
   // survives reloads. The animated background canvas (gravity-field)
   // and the body's bg colour both follow this value.
@@ -1536,6 +1682,9 @@ function AppCore() {
   // The full Display / theme picker modal (ENG-1545), opened from the
   // sidebar footer's "Display settings" button.
   const [themeModalOpen, setThemeModalOpen] = useState(false);
+  // Non-null = show the "coming soon to Cloud" popup for this feature name.
+  const [comingSoonFeature, setComingSoonFeature] = useState(null);
+  const orgMode = useOrgMode();
   // The "design your own" recipe behind the `custom` skin — edited in
   // Settings → Appearance, applied as inline body token overrides.
   const [customTheme, setCustomTheme] = useState(loadCustomTheme);
@@ -1637,7 +1786,7 @@ function AppCore() {
     document.body.classList.toggle('gf-dots-off', settings.showDots === false);
   }, [settings.showDots]);
 
-  const [route, setRoute] = useState('home');         // home | task | projects | scheduled | schedule-detail | artifacts | channels | customize
+  const [route, setRoute] = useState('home');         // home | task | projects | scheduled | schedule-detail | artifacts | customize
   // Keep a ref of the live route so the keydown listener (bound
   // once on mount) can read it without a re-bind on every nav.
   routeRef.current = route;
@@ -1651,14 +1800,21 @@ function AppCore() {
   }, [route]);
   // Effective collapse state: only honor the user's preference while
   // the route allows it (chat task). Everywhere else the sidebar
-  // stays expanded — gives the user permanent access to the nav.
+  // stays expanded — gives the user permanent access to the nav. Never
+  // applies in popout mode (narrow band or Coding Mode) — there the
+  // sidebar is either fully hidden or slid in as an overlay, not docked
+  // at a collapsed width.
   const sidebarCollapsedEffective =
-    !isNarrow && sidebarCollapsibleRoutes.has(route) && sidebarCollapsed;
+    !sidebarPopout && sidebarCollapsibleRoutes.has(route) && sidebarCollapsed;
   const [activeTaskId, setActiveTaskId] = useState(null);
   const [selectedScheduleId, setSelectedScheduleId] = useState(null);
   const [selectedProject, setSelectedProject] = useState(null);
-  // Set from the configured planning model once settings load.
-  const [selectedModel, setSelectedModel] = useState(null);
+  // Defaults to "Model Router" — defer to whatever this account's Settings
+  // has configured — until a composer picks a concrete model for a task.
+  // Never re-synced from settings after that: its whole point is that it
+  // always tracks Settings live, server-side, without the renderer needing
+  // to know the current planning/coding/router model.
+  const [selectedModel, setSelectedModel] = useState(MODEL_ROUTER);
   // In the hosted web shell the FastAPI process IS the host — there
   // is no subprocess to start/stop, and the SPA only loads at all if
   // the server is up. Seed online so downstream gates (`if (!serverOnline) return;`)
@@ -1741,12 +1897,6 @@ function AppCore() {
     fetchSettings().then((data) => {
       if (data && typeof data === 'object') {
         setSettings((prev) => ({ ...prev, ...data }));
-        const modelId = data.defaultModel || data.planningModel;
-        setSelectedModel({
-          id: modelId,
-          name: modelLabel(modelId) || modelId || 'Planning model',
-          desc: data.providerLabel ? `${data.providerLabel} planning model` : 'Configured planning model',
-        });
       }
     });
   }, []);
@@ -2122,8 +2272,6 @@ function AppCore() {
     const latest = await fetchSettings();
     if (latest && typeof latest === 'object') {
       setSettings((prev) => ({ ...prev, ...latest }));
-      const modelId = latest.defaultModel || latest.planningModel;
-      setSelectedModel({ id: modelId, name: modelLabel(modelId) || modelId || 'Planning model', desc: 'Configured planning model' });
     }
     return result;
   }, [settings]);
@@ -2133,25 +2281,33 @@ function AppCore() {
   // Tasks belong to one project for life. Resolve via projectName
   // first (server's canonical id), then projectPath, then fall back
   // to the currently-selected project for orphans.
-  const currentTaskProject = (() => {
-    if (!currentTask) return selectedProject;
-    if (currentTask.projectName) {
-      const byName = projects.find((p) => p.name === currentTask.projectName);
+  // Resolve the project a given task belongs to (by name, then path,
+  // else a synthetic entry from its path). Returns null when the task
+  // carries no project hints — callers decide the fallback. Shared by
+  // `currentTaskProject` and the cross-task queue drain, which must
+  // resolve a project for a task the user isn't currently viewing.
+  const resolveTaskProject = (task) => {
+    if (!task) return null;
+    if (task.projectName) {
+      const byName = projects.find((p) => p.name === task.projectName);
       if (byName) return byName;
     }
-    if (currentTask.projectPath) {
-      const byPath = projects.find((p) => p.path === currentTask.projectPath);
+    if (task.projectPath) {
+      const byPath = projects.find((p) => p.path === task.projectPath);
       if (byPath) return byPath;
       return {
-        id: currentTask.projectPath,
-        name: currentTask.projectName || currentTask.projectPath.split('/').pop(),
-        path: currentTask.projectPath,
+        id: task.projectPath,
+        name: task.projectName || task.projectPath.split('/').pop(),
+        path: task.projectPath,
       };
     }
-    return selectedProject;
-  })();
+    return null;
+  };
+  const currentTaskProject = resolveTaskProject(currentTask) || selectedProject;
   const currentTaskModel = currentTask?.model
-    ? (models.find((m) => m.id === currentTask.model) || { id: currentTask.model, name: currentTask.model, desc: 'Configured planning model' })
+    ? (currentTask.model === MODEL_ROUTER_ID
+        ? MODEL_ROUTER
+        : (models.find((m) => m.id === currentTask.model) || { id: currentTask.model, name: currentTask.model, desc: 'Configured planning model' }))
     : selectedModel;
 
   // "Switch to MindsHub Air" escape hatch on the model-denial card
@@ -2241,6 +2397,7 @@ function AppCore() {
     };
 
     activeStreamingTaskIdRef.current = taskId;
+    activeStreamProducedRef.current = false; // fresh stream: no events yet
     const streamGen = activeStreamGenerationRef.current;
     activeStreamCtrlRef.current = tailInFlight(taskId, {
       fromSeq: 0, // Replay from the start — the reducer is idempotent
@@ -2298,6 +2455,11 @@ function AppCore() {
           openStreamedForm(taskId, finalContent);
         }
         fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
+        // A reconnect tail also holds the shared stream slot, so a message
+        // queued against any task while it ran must be drained here too —
+        // otherwise it strands at "N queued · waiting for Anton" (ENG-1378).
+        // Via the ref because this closure is mount-frozen (see its decl).
+        drainNextQueuedMessageRef.current?.(taskId);
       },
       onError(message, event) {
         // Order matters twice over. The generation guard comes first: a
@@ -2308,14 +2470,18 @@ function AppCore() {
         if (streamGen !== activeStreamGenerationRef.current) return;
         releaseLiveSteps([taskId]);
         if (event?.code === 'cancelled') return;
-        void handleStreamError([taskId], taskId, message, event);
+        void (async () => {
+          await handleStreamError([taskId], taskId, message, event);
+          // See onDone — the reconnect slot frees here, so drain too.
+          drainNextQueuedMessageRef.current?.(taskId);
+        })();
       },
     });
     return true;
   }, [markInFlight, markInFlightDone, handleStreamError]);
 
   const selectTask = (id) => {
-    if (isNarrow) setNavPopoutOpen(false);
+    if (sidebarPopout) setNavPopoutOpen(false);
     const task = tasks.find((t) => t.id === id);
     if (task) {
       // Record the visit for recents ordering, but never auto-pin.
@@ -2387,7 +2553,7 @@ function AppCore() {
   };
 
   const newTask = () => {
-    if (isNarrow) setNavPopoutOpen(false);
+    if (sidebarPopout) setNavPopoutOpen(false);
     setActiveTaskId(null);
     setComposerAttachments([]);
     setComposerPrefill(null);
@@ -2878,7 +3044,13 @@ function AppCore() {
       // seconds (org bootstrap + server restart) and is not a sign-in gate.
       setSsoConnected(true);
       try {
-        await host.mindshubFinalize();
+        // The result is still not acted on — key provisioning is not a sign-in
+        // gate — but a refusal is now countable (ENG-1533). A 402 here leaves the
+        // user signed in with no working key, no BYOK route and no message; the
+        // `unhandled` outcome is how often that happens. Fixing the UX needs its
+        // own ticket; this only makes it visible.
+        const finalizeResult = await host.mindshubFinalize();
+        if (finalizeResult?.upgradeRequired) trackKeyProvisioningRefused('unhandled');
       } catch (e) {
         console.warn('[sso] finalize failed after sign-in (account is authenticated):', e);
       }
@@ -2894,13 +3066,26 @@ function AppCore() {
   // list — hence the isMobile-gated null. Single home for this rule so the
   // call sites don't each re-spell it.
   const openSettings = (section = null) => {
+    // Channels lives inside Settings, not behind its own route, so it needs
+    // its own org-mode intercept here rather than reusing navigate()'s.
+    if (orgMode && section === 'channels') {
+      setComingSoonFeature('Channels');
+      return;
+    }
     if (section) setSettingsSection(section);
     else if (isMobile) setSettingsSection(null);
     setSettingsOpen(true);
   };
 
   const navigate = (key) => {
-    if (isNarrow) setNavPopoutOpen(false);
+    if (sidebarPopout) setNavPopoutOpen(false);
+    // Connectors aren't available on Cloud yet — intercept any entry point
+    // (sidebar, Settings, deep link) in org mode and show the "coming soon"
+    // popup instead of routing to a half-working surface.
+    if (orgMode && key === 'customize') {
+      setComingSoonFeature('Connect Apps and Data');
+      return;
+    }
     if (key === 'settings' || key.startsWith('settings:')) {
       // Targeted (settings:backend) opens that section; a bare `settings`
       // opens the mobile section list (null) / desktop's last section.
@@ -2927,6 +3112,26 @@ function AppCore() {
     }
     setRoute(key);
   };
+
+  // Safety net: navigate() intercepts the sidebar/Settings entry points, but a
+  // direct setRoute (or org mode resolving after a route is already set) could
+  // still land on connectors. Bounce home and show the popup rather than
+  // render a surface that isn't available on Cloud.
+  useEffect(() => {
+    if (orgMode && route === 'customize') {
+      setComingSoonFeature('Connect Apps and Data');
+      setRoute('home');
+    }
+  }, [orgMode, route]);
+
+  // Same safety net for Channels: the in-Settings nav calls onSectionChange
+  // (= setSettingsSection) directly, bypassing openSettings entirely.
+  useEffect(() => {
+    if (orgMode && settingsSection === 'channels') {
+      setComingSoonFeature('Channels');
+      setSettingsSection('agent');
+    }
+  }, [orgMode, settingsSection]);
 
   const attachmentProjectPath = currentTask?.projectPath || selectedProject?.path || null;
   const attachmentProjectName = currentTask?.projectName || selectedProject?.name || null;
@@ -3001,8 +3206,85 @@ function AppCore() {
     return health?.config_ready !== false;
   }, [health]);
 
+  // Coding mode (MVP, ENG-1656 follow-up): the task never goes through
+  // anton/`/responses` — it's recorded (harness/model) via a direct
+  // conversation-create call, then ChatView renders a live embedded
+  // terminal (CodingTerminal) for it instead of the normal chat transcript,
+  // running `claude` in a real PTY cwd'd to the project folder. Thrown
+  // errors here surface through the composer's existing inline error UI
+  // (same as any other send failure) — no separate toast plumbing needed.
+  const launchCodingModeTask = async (text, meta) => {
+    let generalProject = projects.find((p) => p.name === 'general');
+    const effectiveProject = selectedProject || generalProject;
+    if (!effectiveProject?.path) {
+      throw new Error('Pick a project with a folder before launching Claude Code.');
+    }
+    if (!meta.model || meta.model === MODEL_ROUTER_ID) {
+      throw new Error('Pick a model before launching Claude Code.');
+    }
+    const authToken = await revealSettingKey('minds');
+    if (!authToken) {
+      throw new Error('No MindsHub API key configured — sign in with MindsHub or add a key in Settings before using coding mode.');
+    }
+    const conversation = await createConversation({
+      project: effectiveProject.name,
+      projectId: effectiveProject.id,
+      topic: text.length > 60 ? text.slice(0, 57) + '…' : text,
+      harness: meta.harness,
+      model: meta.model,
+    });
+    const taskId = conversation?.id;
+    if (!taskId) {
+      throw new Error('Could not create the Claude Code task.');
+    }
+    setTasks((prev) => [{
+      id: taskId,
+      title: text.length > 60 ? text.slice(0, 57) + '…' : text,
+      subtitle: 'just now',
+      status: 'idle',
+      messages: [{ role: 'user', content: text, attachments: [] }],
+      projectName: effectiveProject.name,
+      projectId: effectiveProject.id,
+      projectPath: effectiveProject.path,
+      harness: meta.harness,
+      model: meta.model,
+      attachments: [],
+      disabledConnections: [],
+      pinned: false,
+      updatedAt: null,
+      createdAt: null,
+    }, ...prev]);
+    setActiveTaskId(taskId);
+    setRoute('task');
+  };
+
+  // Ensure the fallback `general` project exists and return it, or null if it
+  // could not be found or created. Shared by the home and in-chat send paths so
+  // the bootstrap dance (find-by-name → createProject → refetch) lives in one
+  // place. Returns null rather than throwing so a caller can surface an
+  // actionable error instead of sending against a project that isn't there.
+  const ensureGeneralProject = async () => {
+    const existing = projects.find((p) => p.name === 'general');
+    if (existing) return existing;
+    try {
+      await createProject('general');
+      const fresh = await fetchProjects();
+      if (Array.isArray(fresh)) setProjects(fresh);
+      // createProject resolved, so `general` exists even if this refetch came
+      // back stale — fall back to a name-only record so the caller adopts it.
+      return (fresh || []).find((p) => p.name === 'general') || { name: 'general' };
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn('[ensureGeneralProject] could not bootstrap general project', e);
+      return null;
+    }
+  };
+
   // Send from the home screen — creates a new session
-  const handleSendFromHome = async (text) => {
+  const handleSendFromHome = async (text, meta) => {
+    if (meta?.harness === 'claude-code') {
+      return launchCodingModeTask(text, meta);
+    }
     // Preflight: no provider configured → render an action card task
     // instead of routing through anton's LLM path.
     if (!(await ensureProviderReady())) {
@@ -3042,15 +3324,7 @@ function AppCore() {
     // from a build that didn't auto-create it), bootstrap it now.
     let generalProject = projects.find((p) => p.name === 'general');
     if (!selectedProject && !generalProject) {
-      try {
-        await createProject('general');
-        const fresh = await fetchProjects();
-        if (Array.isArray(fresh)) setProjects(fresh);
-        generalProject = (fresh || []).find((p) => p.name === 'general');
-      } catch (e) {
-        // eslint-disable-next-line no-console
-        console.warn('[handleSendFromHome] could not bootstrap general project', e);
-      }
+      generalProject = await ensureGeneralProject();
     }
     const effectiveProjectName = selectedProject?.name || 'general';
     const effectiveProjectId = (selectedProject ? selectedProject.id : generalProject?.id) || null;
@@ -3092,6 +3366,10 @@ function AppCore() {
       projectName: effectiveProjectName,
       projectId: effectiveProjectId,
       model: selectedModel?.id ?? null,
+      // The composer's harness pick (ENG-1656 follow-up) — Anton or
+      // Hermes here; 'claude-code' never reaches this function (the top
+      // of handleSendFromHome routes it to launchCodingModeTask instead).
+      harness: meta?.harness || null,
       attachments: sendingAttachments,
       disabledConnections: disabledForSend,
       // Stamp a client-side timestamp so the Sidebar's sort-by-
@@ -3122,6 +3400,7 @@ function AppCore() {
       markInFlightDone(previousId);
       markInFlight(sid);
       setActiveTaskId((curr) => (curr === previousId ? sid : curr));
+      migrateQueuedMessages([previousId, taskId], sid);
     };
     // Adapter state — folded by every raw SSE event so the streaming
     // message can carry structured ThinkingStep[] for the UI.
@@ -3170,6 +3449,7 @@ function AppCore() {
       // Tag which task is mid-flight so reconcileTaskMessages can
       // tell legitimate running indicators from zombies on reload.
       activeStreamingTaskIdRef.current = taskId;
+      activeStreamProducedRef.current = false; // fresh stream: no events yet
       markInFlight(taskId);
     };
     trackAgentSessionStarted();
@@ -3181,6 +3461,7 @@ function AppCore() {
       projectId: effectiveProjectId,
       projectPath: effectiveProjectPath,
       model: selectedModel?.id,
+      harness: meta?.harness,
       attachmentIds,
       disabledConnections: disabledForSend,
       onEvent(ev) {
@@ -3267,12 +3548,18 @@ function AppCore() {
           openStreamedForm(finalId, finalContent);
         }
         fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
+        // This turn held the shared stream slot; drain anything queued
+        // against any task while it ran (ENG-1378).
+        drainNextQueuedMessage(finalId);
       },
       onError(message, event) {
         if (streamGen !== activeStreamGenerationRef.current) return;
         releaseLiveSteps([resolvedId, taskId]);
         if (event?.code === 'cancelled') return;
-        void handleStreamError([resolvedId, taskId], resolvedId, message, event);
+        void (async () => {
+          await handleStreamError([resolvedId, taskId], resolvedId, message, event);
+          drainNextQueuedMessage(resolvedId);
+        })();
       },
     });
 
@@ -3287,8 +3574,12 @@ function AppCore() {
 
   // Send inside an existing task
   const handleSendInTask = async (text, queuedAttachments = null, opts = {}) => {
-    if (!currentTask) return;
-    const id = currentTask.id;
+    // opts.targetTask lets the queue drain re-send to a specific task the
+    // user may not currently be viewing (ENG-1378); a fresh composer send
+    // defaults to the task on screen.
+    const targetTask = opts.targetTask || currentTask;
+    if (!targetTask) return;
+    const id = targetTask.id;
 
     // Preflight: same gate as handleSendFromHome. Append the user's
     // turn + the action card and stop before any in-flight reservation.
@@ -3307,7 +3598,9 @@ function AppCore() {
             }
           : t,
       ));
-      setComposerAttachments([]);
+      // Only a fresh send owns the live composer's attachments; a drained
+      // queued item must not clear the composer of whatever task is on screen.
+      if (queuedAttachments == null) setComposerAttachments([]);
       return;
     }
 
@@ -3379,45 +3672,93 @@ function AppCore() {
     // The check covers two race conditions:
     //   1) `activeStreamCtrlRef` is already set — a fully launched
     //      stream is in flight.
-    //   2) `activeStreamingTaskIdRef` matches but the controller
-    //      hasn't been assigned yet — a previous invocation is mid-
-    //      await (resolving attachments). Without this leg, two
-    //      rapid clicks both pass the guard and we'd end up with
-    //      two parallel streams, the first one's controller leaked.
-    if (activeStreamingTaskIdRef.current === id || activeStreamCtrlRef.current) {
+    //   2) `activeStreamingTaskIdRef` is set but the controller hasn't
+    //      been assigned yet — a previous invocation is mid-await
+    //      (resolving attachments). This holds for ANY task's
+    //      reservation, not just this id: two rapid clicks on the same
+    //      task, or a manual send that lands while a cross-task drain
+    //      (ENG-1378) is between reserving the slot and awaiting
+    //      attachments, both otherwise pass the guard and start a second
+    //      parallel stream against anton-core (which runs one turn at a
+    //      time). The reservation is always cleared on done/error, so a
+    //      broadened guard cannot wedge later sends.
+    if (activeStreamingTaskIdRef.current || activeStreamCtrlRef.current) {
       // Queue with the files attached so a mid-stream send doesn't drop
       // them. A fresh send takes the composer's attachments and clears
       // them (the queued item now owns them); a re-enqueued queued item
       // reuses its own and leaves the live composer untouched.
-      enqueueMessage(id, text, queuedAttachments ?? composerAttachments);
+      enqueueMessage(
+        id,
+        text,
+        queuedAttachments ?? composerAttachments,
+        opts.disabledConnections != null ? opts.disabledConnections : composerDisabledConnections,
+      );
       if (queuedAttachments == null) setComposerAttachments([]);
       return;
     }
     // Synchronous reservation so a second invocation that fires
     // before our awaits resolve sees us as "in flight."
     activeStreamingTaskIdRef.current = id;
+    activeStreamProducedRef.current = false; // fresh stream: no events yet
     // Cross-client cache: we know this conversation is about to be
     // mid-stream. Marking immediately (rather than waiting for the
     // /in-flight-list poll to discover it) means reconcileTaskMessages
     // never has to lie when another tab opens this conversation.
     markInFlight(id);
 
-    const disabledForSend = normalizeComposerDisabledConnections(composerDisabledConnections);
+    const disabledForSend = normalizeComposerDisabledConnections(
+      opts.disabledConnections != null ? opts.disabledConnections : composerDisabledConnections,
+    );
 
-    const taskProjectName = currentTask.projectName
-      || (currentTaskProject?.name)
+    // A drained item's target task may not be the one on screen, so resolve
+    // its project independently rather than reusing the current view's
+    // `currentTaskProject`. Keep the same `|| selectedProject` last-resort
+    // that `currentTaskProject` has, so a project-less task's drained send
+    // resolves the same project a live send to it would (parity — otherwise
+    // even the on-screen task's own follow-up loses the fallback on drain).
+    const taskProject = opts.targetTask
+      ? (resolveTaskProject(targetTask) || selectedProject)
+      : currentTaskProject;
+    let taskProjectName = targetTask.projectName
+      || (taskProject?.name)
       || null;
-    const taskProjectId = currentTask.projectId
-      || currentTaskProject?.id
+    let taskProjectId = targetTask.projectId
+      || taskProject?.id
       || null;
-    const taskProjectPath = currentTask.projectPath
-      || currentTaskProject?.path
+    let taskProjectPath = targetTask.projectPath
+      || taskProject?.path
       || null;
+
+    // A file upload needs a project (uploadAttachments writes the bytes under
+    // one). An existing task with no project — the user never picked a working
+    // folder — would otherwise throw in resolveComposerAttachmentsForSend and
+    // strand the image at "Queued" with the send going nowhere. A home send
+    // already bootstraps `general` in this case; do the same here so an
+    // in-chat attachment send doesn't dead-end where a home send wouldn't.
+    const attachmentsForSend = queuedAttachments ?? composerAttachments;
+    if (!taskProjectName && (attachmentsForSend || []).some(isPendingFileAttachment)) {
+      const general = await ensureGeneralProject();
+      // Only adopt `general` if it actually exists now. If the bootstrap
+      // failed, leave the project unset so resolveComposerAttachmentsForSend
+      // throws the actionable "Pick a project…" error (surfaced via the toast
+      // below) rather than sending against a project that isn't there.
+      if (general) {
+        taskProjectName = general.name || 'general';
+        taskProjectId = general.id || null;
+        taskProjectPath = general.path || null;
+      }
+    }
     // opts.modelOverride carries a same-tick model switch (the "Switch to
-    // MindsHub Air" card action, ENG-1304) — currentTask is a render-scope
+    // MindsHub Air" card action, ENG-1304) — targetTask is a render-scope
     // closure, so a setTasks({...model}) just before this call would not be
-    // visible here yet.
-    const taskModel = opts.modelOverride || currentTask.model || selectedModel?.id || null;
+    // visible here yet. The `selectedModel` fallback is the on-screen model
+    // picker, so only a live send to the task on screen may inherit it; a
+    // drained off-screen task must not pick up whatever model the current
+    // view happens to show — it falls through to the server default instead.
+    const taskModel = opts.modelOverride
+      || targetTask.model
+      || (opts.targetTask ? null : selectedModel?.id)
+      || null;
 
     let sendingAttachments, attachmentIds, driveReference;
     try {
@@ -3433,6 +3774,15 @@ function AppCore() {
       // stream — release the reservation so the user's next send
       // doesn't get stuck in the queue forever.
       activeStreamingTaskIdRef.current = null;
+      // Make the failure impossible to miss. The inline composer error alone
+      // was easy to overlook, so a file that couldn't upload just sat at
+      // "Queued" with no visible reason (the exact shape of the stuck-upload
+      // report). Surface a toast too, then re-throw so Composer keeps the text
+      // and the staged file for a retry.
+      toastManager.add({
+        type: 'danger',
+        title: err?.message || 'Could not send your attachment. Please try again.',
+      });
       throw err;
     }
 
@@ -3486,6 +3836,7 @@ function AppCore() {
       markInFlightDone(previousId);
       markInFlight(sid);
       setActiveTaskId((curr) => (curr === previousId ? sid : curr));
+      migrateQueuedMessages([previousId, id], sid);
       // Migrate the form store so a success-state panel (e.g. the
       // OAuth success screen set just before onContinue was called)
       // survives the ID change and stays visible under the new task id.
@@ -3594,17 +3945,12 @@ function AppCore() {
           openStreamedForm(resolvedId, finalContent);
         }
         fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
-        // Drain the next queued message for this task (if any) so a
-        // user who fired multiple prompts mid-stream gets each one
-        // sent in order. Keyed off the original local id since that's
-        // what enqueueMessage used while the adoption was pending.
-        const next = popQueueHead(id);
-        if (next) {
-          // .catch: handleSendInTask throws when an answer submit fails, and a
-          // bare then() would surface that as an unhandled rejection. The user
-          // has already been told via the toast.
-          Promise.resolve().then(() => handleSendInTask(next.text, next.attachments || [])).catch(() => {});
-        }
+        // Drain the next queued message now that the single stream slot is
+        // free. Sweeps every task's queue (preferring this task for FIFO
+        // order on its own follow-ups), not just the finishing task's — a
+        // message queued for a different task while this one streamed must
+        // not strand forever at "N queued · waiting for Anton" (ENG-1378).
+        drainNextQueuedMessage(resolvedId);
       },
       onError(message, event) {
         if (streamGen !== activeStreamGenerationRef.current) return;
@@ -3612,14 +3958,47 @@ function AppCore() {
         if (event?.code === 'cancelled') return;
         void (async () => {
           await handleStreamError([resolvedId, id], resolvedId, message, event);
-          const next = popQueueHead(id);
-          if (next) {
-            Promise.resolve().then(() => handleSendInTask(next.text, next.attachments || [])).catch(() => {});
-          }
+          // See onDone — drain across all tasks once the slot frees.
+          drainNextQueuedMessage(resolvedId);
         })();
       },
     });
   };
+
+  // Drain the next queued message once the single stream slot is free.
+  // Sending is serialized app-wide (anton-core runs one turn at a time),
+  // but queues are per-task — so after a turn ends we must sweep every
+  // task's queue, not just the finishing one. `preferredTaskId` (the
+  // finishing task) is tried first so its own follow-ups keep FIFO order.
+  const drainNextQueuedMessage = (preferredTaskId) => {
+    // Slot re-reserved (a new turn already started) — that turn's own
+    // onDone/onError will drain next. Prevents launching two parallel turns.
+    if (activeStreamCtrlRef.current || activeStreamingTaskIdRef.current) return;
+    const taskId = selectNextQueuedTask(
+      messageQueueRef.current,
+      new Set(tasksRef.current.map((t) => t.id)),
+      preferredTaskId,
+    );
+    if (!taskId) return;
+    const targetTask = tasksRef.current.find((t) => t.id === taskId);
+    if (!targetTask) return;
+    const next = popQueueHead(taskId);
+    if (!next) return;
+    // handleSendInTask can reject (answer submit, or attachment resolution).
+    // The item is already popped, so a bare then() would both surface an
+    // unhandled rejection AND silently lose the message + its file. Put it back
+    // on the queue instead — it stays visible as "queued" rather than
+    // vanishing, and handleSendInTask surfaces why it failed.
+    Promise.resolve().then(() => handleSendInTask(next.text, next.attachments || [], {
+      targetTask,
+      disabledConnections: next.disabledConnections,
+    })).catch(() => {
+      enqueueMessage(taskId, next.text, next.attachments || [], next.disabledConnections || []);
+    });
+  };
+  // Keep the mount-frozen reconnect closure pointed at the current drain (and
+  // thus the current handleSendInTask). See the ref declaration above.
+  drainNextQueuedMessageRef.current = drainNextQueuedMessage;
 
   // Submit a data-vault form. Drives a fresh assistant turn from the
   // cowork agent endpoint instead of the LLM — same SSE stream shape,
@@ -3657,6 +4036,7 @@ function AppCore() {
         activeStreamingTaskIdRef.current = sid;
       }
       setActiveTaskId((curr) => (curr === previousId ? sid : curr));
+      migrateQueuedMessages([previousId, id], sid);
       // Migrate the formStore entry so the DataVaultFormPanel
       // (which re-subscribes under the new id) and incoming
       // data-vault-form-patch blocks (keyed to the new id) both
@@ -3690,6 +4070,7 @@ function AppCore() {
     };
 
     activeStreamingTaskIdRef.current = id;
+    activeStreamProducedRef.current = false; // fresh stream: no events yet
     // Same generation guard the other three stream sites carry, in the same
     // order: generation → release → (`cancelled` bail, where the transport
     // reports one). It is not enough that "this stream cannot carry ask_user"
@@ -3811,6 +4192,9 @@ function AppCore() {
         fetchDatasources()
           .then((data) => setConnectors(Array.isArray(data?.connections) ? data.connections : []))
           .catch(() => {});
+        // This turn held the shared stream slot; drain anything queued
+        // against any task while it ran (ENG-1378).
+        drainNextQueuedMessage(resolvedId);
       },
       // No `cancelled` bail here, unlike the other three sites: this
       // transport's onError takes a message only, with no event/code to
@@ -3830,6 +4214,7 @@ function AppCore() {
             content: message || 'Form submission failed.',
           }] };
         }));
+        drainNextQueuedMessage(resolvedId);
       },
     });
   };
@@ -3902,6 +4287,14 @@ function AppCore() {
     if (!taskId) return;
     // eslint-disable-next-line no-console
     console.log('[performDeleteTask] confirmed', taskId);
+    const task = tasks.find((t) => t.id === taskId);
+    // Fire-and-forget: stop the PTY (if still running) and remove its git
+    // worktree/branch under <project>/.claude_tasks/<taskId>/ so deleted
+    // tasks don't leave orphaned directories behind. A no-op on web/for
+    // non-claude-code tasks (host.removeCodingTask itself no-ops there).
+    if (task?.harness === 'claude-code' && task?.projectPath) {
+      host.removeCodingTask(taskId, task.projectPath).catch(() => {});
+    }
     deletedTaskIdsRef.current.add(taskId);
     setTasks((prev) => prev.filter((t) => t.id !== taskId));
     // Its unsent reply draft has nowhere to go back to.
@@ -4236,10 +4629,13 @@ function AppCore() {
   // sit within the top ~44px, so 52 clears them on either platform (web has
   // no lights but still floats the hamburger). Exposed as `--titlebar-safe-top`
   // on <main> and consumed by PageHeader / view headers.
-  const contentChromeExposed = isNarrow || sidebarCollapsedEffective;
+  const contentChromeExposed = sidebarPopout || sidebarCollapsedEffective;
   const titlebarSafeTop = contentChromeExposed ? 52 : 0;
 
-  const modelOptions = selectedModel && !models.some((m) => m.id === selectedModel.id)
+  // Model Router isn't a real catalog model — Composer.jsx injects its own
+  // pinned row directly, so it must not also get merged in here or it'd
+  // show up twice (once pinned, once sorted into the "Other" maker group).
+  const modelOptions = selectedModel && selectedModel.id !== MODEL_ROUTER_ID && !models.some((m) => m.id === selectedModel.id)
     ? [selectedModel, ...models]
     : models;
 
@@ -4287,6 +4683,19 @@ function AppCore() {
     },
     navTitle: settings.navTitle || null,
     navLogo: settings.navLogo || null,
+    // Mobile has no room for the desktop floating-toggle-row (bottom-right,
+    // over the FAB) — the theme toggle moves into the top bar, opposite the
+    // hamburger, and the coding-mode toggle is dropped entirely rather than
+    // hunting for a second spot.
+    theme,
+    showThemeToggle: settings.showThemeToggle !== false,
+    onToggleTheme: () => {
+      if (settings.show8bitToggle === false) {
+        setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
+      } else {
+        setThemeModalOpen(true);
+      }
+    },
   };
 
   return (
@@ -4309,7 +4718,7 @@ function AppCore() {
       {/* Narrow-band popout backdrop — dims content behind the slid-in
           sidebar. Same 320ms curve as the drawer so the two read as one
           motion (the old overlay used mismatched 280/380ms durations). */}
-      {isNarrow && !isMobile && (
+      {sidebarPopout && !isMobile && (
         <div
           onClick={() => setNavPopoutOpen(false)}
           aria-hidden="true"
@@ -4317,7 +4726,15 @@ function AppCore() {
             position: 'fixed', inset: 0, zIndex: 100,
             background: 'rgba(0,0,0,0.35)',
             backdropFilter: 'blur(2px)',
-            WebkitAppRegion: 'no-drag',
+            // Only opt out of the window drag region while the scrim is
+            // actually up — it's a full-viewport `inset: 0` box, so leaving
+            // it permanently `no-drag` (as when this only fired for the
+            // rare narrow band) killed dragging the whole window the
+            // moment Coding Mode made this common, even while invisible:
+            // Electron computes the drag region from app-region CSS, not
+            // from opacity/pointer-events. Closed, it just inherits the
+            // ancestor `drag` region again.
+            WebkitAppRegion: navPopoutOpen ? 'no-drag' : 'drag',
             opacity: navPopoutOpen ? 1 : 0,
             pointerEvents: navPopoutOpen ? 'auto' : 'none',
             transition: 'opacity 320ms cubic-bezier(0.32, 0.72, 0, 1)',
@@ -4325,11 +4742,86 @@ function AppCore() {
         />
       )}
 
+      {/* Floating corner row — back to its original bottom-right placement,
+          matching the onboarding pages (App.tsx's .arcade-theme-toggle,
+          which never moved). Same corner on every route, task view
+          included — one consistent location, not a bespoke per-view
+          control.
+            - Display Settings: opens ThemeModal (Light/Dark + Normal/8-Bit
+              picker) — the sidebar's old "Display settings" button (now
+              removed) folded into this.
+            - Coding Mode (desktop only): a bare "</>" glyph beside it,
+              deliberately un-boxed so it reads as a status indicator, not
+              a second button of the same weight — lit accent when on,
+              greyed out when off. Toggles the setting directly on click;
+              no modal, since there's nothing else to configure here.
+            - Hidden entirely on mobile — MobileShell renders its own theme
+              toggle in the top bar (opposite the hamburger) instead, and
+              the coding-mode toggle is dropped there rather than given a
+              second spot.
+            - Narrow/tablet band (popout sidebar, not yet phone-width): the
+              bottom-right corner overlaps task rows and the composer's
+              send button there, so the row moves to the top-right instead
+              — just left of the per-view expand/collapse-right-panel
+              button (see .floating-toggle-row--top-right). This is keyed
+              on the true viewport band (`isNarrow`), not `sidebarPopout` —
+              Coding Mode's popout sidebar is desktop-width, so this row
+              stays put in its usual bottom-right corner there. */}
+      {!isMobile && (() => {
+        const showCodingToggle = !host.isWeb && host.codingModeOptionsEnabled && settings.showCodingModeToggle !== false;
+        const codingModeOn = showCodingToggle && codingModeActive;
+        const showThemeToggle = settings.showThemeToggle !== false || settings.show8bitToggle !== false;
+        if (!showCodingToggle && !showThemeToggle) return null;
+        return (
+          <div className={`floating-toggle-row [-webkit-app-region:no-drag]${isNarrow ? ' floating-toggle-row--top-right' : ''}`}>
+            {showCodingToggle && (
+              <Tooltip content={codingModeOn ? 'Turn off coding mode' : 'Turn on coding mode'}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = !settings.codingModeEnabled;
+                    setSetting('codingModeEnabled', next);
+                    saveSettings({ codingModeEnabled: next }).catch(() => {});
+                  }}
+                  aria-label={codingModeOn ? 'Turn off coding mode' : 'Turn on coding mode'}
+                  aria-pressed={codingModeOn}
+                  className={'coding-mode-toggle' + (codingModeOn ? ' is-on' : '')}
+                >
+                  {Ico.code(15)}
+                </button>
+              </Tooltip>
+            )}
+            {showThemeToggle && (
+              // With the 8-bit skin toggle hidden there's nothing else to
+              // pick in the modal — just flip dark/light directly. The
+              // modal only earns the extra click when it actually offers
+              // something beyond that.
+              <Tooltip content={settings.show8bitToggle === false ? 'Toggle dark/light mode' : 'Display settings'}>
+                <button
+                  onClick={() => {
+                    if (settings.show8bitToggle === false) {
+                      setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
+                    } else {
+                      setThemeModalOpen(true);
+                    }
+                  }}
+                  aria-label={settings.show8bitToggle === false ? 'Toggle dark/light mode' : 'Open display settings'}
+                  className="floating-toggle"
+                >
+                  {theme === 'dark' ? Ico.sun(15) : Ico.moon(15)}
+                </button>
+              </Tooltip>
+            )}
+          </div>
+        );
+      })()}
+
       {!isMobile && (
       <div
-        style={isNarrow ? {
+        style={sidebarPopout ? {
           // Popout: off-canvas fixed drawer, slid in on navPopoutOpen. Same
-          // 320ms curve as the scrim above. Docked (display:contents) ≥900.
+          // 320ms curve as the scrim above. Docked (display:contents)
+          // otherwise — a wide desktop viewport with Coding Mode off.
           position: 'fixed', top: 9, bottom: 9, left: 9, zIndex: 101,
           transform: navPopoutOpen ? 'translateX(0)' : 'translateX(calc(-100% - 18px))',
           transition: 'transform 320ms cubic-bezier(0.32, 0.72, 0, 1)',
@@ -4352,34 +4844,14 @@ function AppCore() {
           activeTaskId={route === 'task' ? activeTaskId : null}
           serverOnline={serverOnline}
           agentLabel={agentLabel}
-          theme={theme}
-          onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
           isSsoConnected={ssoConnected}
-          skin={skin}
-          // While a Custom theme is active, the sidebar's "8-bit" button
-          // can't flip `skin` straight to '8bit'/'normal' — that would
-          // silently discard the CustomTheme recipe (it only applies while
-          // skin === 'custom'). Repurpose the same button to toggle just
-          // the mono/8-bit font instead, so it stays meaningful without
-          // resetting anything.
-          onToggleSkin={() => {
-            if (skin === 'custom') {
-              setCustomTheme((prev) => ({ ...prev, font: prev.font === 'mono' ? 'standard' : 'mono' }));
-            } else {
-              setSkin(skin === '8bit' ? 'normal' : '8bit');
-            }
-          }}
-          is8bitActive={skin === 'custom' ? customTheme.font === 'mono' : skin !== 'normal'}
-          onOpenThemeModal={() => setThemeModalOpen(true)}
-          showThemeToggle={settings.showThemeToggle !== false}
-          show8bitToggle={settings.show8bitToggle !== false}
           onNavigate={navigate}
           onSelectTask={selectTask}
           onNewTask={newTask}
           onOpenSearch={() => setSearchOpen(true)}
           collapsed={sidebarCollapsedEffective}
           onToggleCollapsed={
-            isNarrow
+            sidebarPopout
               ? () => setNavPopoutOpen(false)
               : (sidebarCollapsibleRoutes.has(route)
                   ? () => setSidebarCollapsed((c) => !c)
@@ -4394,7 +4866,7 @@ function AppCore() {
           schedules={scheduled}
           scheduleRunsIndex={scheduleRunsIndex}
           onOpenSchedule={(scheduleId) => {
-            if (isNarrow) setNavPopoutOpen(false);
+            if (sidebarPopout) setNavPopoutOpen(false);
             setSelectedScheduleId(scheduleId);
             setRoute('schedule-detail');
           }}
@@ -4412,17 +4884,17 @@ function AppCore() {
           onDownloadShellUpdate={handleDownloadShellUpdate}
           onDismissShellUpdate={dismissShellUpdate}
           onStartChat={(text) => {
-            // On narrow desktop the sidebar is an overlay drawer. Close it
-            // like navigate/onOpenSchedule do, so the new task isn't buried
-            // under it.
-            if (isNarrow) setMobileSidebarOpen(false);
+            // Popout sidebar (narrow desktop, or Coding Mode) is an overlay
+            // drawer. Close it like navigate/onOpenSchedule do, so the new
+            // task isn't buried under it.
+            if (sidebarPopout) setNavPopoutOpen(false);
             handleSendFromHome(text);
           }}
-          // Hold the tip while the narrow-desktop drawer is shut: Sidebar
-          // sees collapsed={false} there, but the whole wrapper is
-          // translated off-screen, so its anchor is invisible. The armed
-          // state survives — it opens when the drawer does.
-          artifactTipOpen={artifactTipOpen && !(isNarrow && !mobileSidebarOpen)}
+          // Hold the tip while the popout drawer is shut: Sidebar sees
+          // collapsed={false} there, but the whole wrapper is translated
+          // off-screen, so its anchor is invisible. The armed state
+          // survives — it opens when the drawer does.
+          artifactTipOpen={artifactTipOpen && !(sidebarPopout && !navPopoutOpen)}
           onArtifactTipDismiss={handleArtifactTipDismiss}
           onShowServerHelp={() => openSettings('backend')}
           onToggleServer={async () => {
@@ -4463,8 +4935,8 @@ function AppCore() {
         isMobile={isMobile}
         mainBg={mainBg}
         titlebarSafeTop={titlebarSafeTop}
-        showFloatingHamburger={isNarrow ? !navPopoutOpen : sidebarCollapsedEffective}
-        onOpenSidebar={isNarrow ? () => setNavPopoutOpen(true) : () => setSidebarCollapsed(false)}
+        showFloatingHamburger={sidebarPopout ? !navPopoutOpen : sidebarCollapsedEffective}
+        onOpenSidebar={sidebarPopout ? () => setNavPopoutOpen(true) : () => setSidebarCollapsed(false)}
         mobileShellProps={mobileShellProps}
       >
         {route === 'home' && (
@@ -4494,12 +4966,16 @@ function AppCore() {
             configReady={health.config_ready ?? settings.configReady}
             configError={health.config_error ?? settings.configError}
             onOpenSettings={openSettings}
+            codingModelDefault={settings.codingModel}
+            harnessHermesEnabled={settings.harnessHermesEnabled ?? true}
+            harnessClaudeCodeEnabled={settings.harnessClaudeCodeEnabled ?? true}
             serverOnline={serverOnline}
             agentLabel={agentLabel}
             onShowServerHelp={() => openSettings('backend')}
             skipIntro={bootIntroDone}
             prefill={composerPrefill}
             onPrefill={(text, select) => setComposerPrefill({ text, bump: Date.now(), select })}
+            codingModeEnabled={codingModeActive}
           />
         )}
 
@@ -4509,6 +4985,9 @@ function AppCore() {
             onSend={handleSendInTask}
             onSwitchToAirAndResend={airAvailableForSwitch ? handleSwitchToAirAndResend : undefined}
             onOpenSettings={openSettings}
+            codingModelDefault={settings.codingModel}
+            harnessHermesEnabled={settings.harnessHermesEnabled ?? true}
+            harnessClaudeCodeEnabled={settings.harnessClaudeCodeEnabled ?? true}
             queuedMessages={messageQueue[currentTask?.id] || []}
             onRemoveFromQueue={(itemId) => removeFromQueue(currentTask?.id, itemId)}
             onBack={() => {
@@ -4519,6 +4998,17 @@ function AppCore() {
             }}
             project={currentTaskProject}
             model={currentTaskModel}
+            onModelChange={(m) => {
+              // Same pattern as handleSwitchToAirAndResend: write the pick
+              // onto the task itself so it's visible immediately (drives
+              // currentTaskModel) and so handleSendInTask's existing
+              // `currentTask.model` fallback picks it up on the very next
+              // send, with no changes needed there.
+              if (!currentTask) return;
+              setTasks((prev) => prev.map((t) => (t.id === currentTask.id ? { ...t, model: m.id } : t)));
+            }}
+            models={modelOptions}
+            modelMeta={modelMeta}
             attachments={composerAttachments}
             connectors={connectors}
             onAttachFiles={handleAttachFiles}
@@ -4622,14 +5112,17 @@ function AppCore() {
             scheduleRunsIndex={scheduleRunsIndex}
             models={modelOptions}
             modelMeta={modelMeta}
+            model={selectedModel}
+            onModelChange={setSelectedModel}
             onSelectProject={(p) => setSelectedProject(p)}
             onCreateProject={handleCreateProject}
-            onSendInProject={(text) => {
+            onSendInProject={(text, meta) => {
               // Sending from project detail = same path as home, but
               // selectedProject is already pinned to this project so
               // the new task lands in the right workspace.
-              handleSendFromHome(text);
+              handleSendFromHome(text, meta);
             }}
+            codingModeEnabled={codingModeActive}
             onSelectTask={selectTask}
             onDeleteTask={handleDeleteTask}
             onMoveTaskToProject={handleOpenMoveModal}
@@ -4652,6 +5145,10 @@ function AppCore() {
               setRoute('schedule-detail');
             }}
             agentLabel={agentLabel}
+            onOpenSettings={openSettings}
+            codingModelDefault={settings.codingModel}
+            harnessHermesEnabled={settings.harnessHermesEnabled ?? true}
+            harnessClaudeCodeEnabled={settings.harnessClaudeCodeEnabled ?? true}
           />
         )}
 
@@ -4754,10 +5251,6 @@ function AppCore() {
           />
         )}
 
-
-        {route === 'channels' && (
-          <ChannelsView />
-        )}
 
         {route === 'customize' && (
           <CustomizeView
@@ -4901,6 +5394,25 @@ function AppCore() {
         skin={skin}
         onSkinChange={setSkin}
       />
+
+      <Modal
+        open={comingSoonFeature != null}
+        onClose={() => setComingSoonFeature(null)}
+        size="sm"
+        labelledBy="coming-soon-title"
+      >
+        <ModalHeader
+          id="coming-soon-title"
+          title="Coming soon to Cloud"
+          onClose={() => setComingSoonFeature(null)}
+        />
+        <ModalBody>
+          <p>
+            This feature isn’t available on Cloud just yet. In the meantime, you
+            can try it in the local version.
+          </p>
+        </ModalBody>
+      </Modal>
 
       {!host.isWeb && (
       <ServerOfflineHelpModal

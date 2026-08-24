@@ -37,3 +37,12 @@ export const getAccessToken = async (): Promise<string | null> => {
     return keycloak.token ?? null;
   }
 };
+
+// Ends the browser session. keycloak.logout() clears the in-memory token and
+// redirects to Keycloak's end-session endpoint; on return, onLoad:'login-required'
+// (web-main.tsx) forces a fresh login. Guarded on `authenticated` so it's a safe
+// no-op on legacy tenant hosts that render without the Keycloak wrapper.
+export const logout = async (): Promise<void> => {
+  if (!keycloak.authenticated) return;
+  await keycloak.logout({ redirectUri });
+};

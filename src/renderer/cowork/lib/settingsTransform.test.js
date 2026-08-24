@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  resolveRoleModel,
   resolveModelPickerValue,
   buildModelOptions,
   diffSettingsForWrite,
@@ -12,11 +13,49 @@ import {
   BUDGET_FIELDS,
   isBudgetUnlimited,
   resolveBudgetRestore,
+  toDisplayUnits,
+  toNaturalUnits,
+  formatCount,
 } from './settingsTransform';
 
 // The minds-cloud recommended list holds bare aliases — never `latest:`-prefixed.
 const MINDS_LIST = ['sonnet', 'opus', 'mindshub_air', 'haiku'];
 const ANTHROPIC_LIST = ['claude-opus-4-8', 'claude-sonnet-5'];
+
+describe('resolveRoleModel', () => {
+  // Regression: an SSO sign-in writes the role's PROVIDER to minds-cloud
+  // server-side without touching the paired model field. providerWasRepointed
+  // is false (the provider itself isn't stale — minds-cloud IS configured),
+  // so without this substitution the stale Anthropic model rides along
+  // unchanged and surfaces as "legacy — re-select a model" for the user to
+  // fix by hand, instead of silently landing on the provider's default.
+  it('falls back when the provider is already correct but the stored model is from a different provider', () => {
+    const model = resolveRoleModel(
+      /* providerWasRepointed */ false, 'claude-opus-4-8', MINDS_LIST, /* allowOther */ false, 'mindshub_air',
+    );
+    expect(model).toBe('mindshub_air');
+  });
+
+  it('also falls back when the provider field itself was stale', () => {
+    const model = resolveRoleModel(true, 'sonnet', MINDS_LIST, false, 'mindshub_air');
+    expect(model).toBe('mindshub_air');
+  });
+
+  it('keeps a stored model that is actually listed under the current provider', () => {
+    const model = resolveRoleModel(false, 'sonnet', MINDS_LIST, false, 'mindshub_air');
+    expect(model).toBe('sonnet');
+  });
+
+  it('does not treat an unlisted model as stale for an allowOther (BYOK) provider — it is a legitimate custom id', () => {
+    const model = resolveRoleModel(false, 'my-fine-tune-123', ANTHROPIC_LIST, true, 'claude-opus-4-8');
+    expect(model).toBe('my-fine-tune-123');
+  });
+
+  it('passes an unset stored model straight through (nothing to be stale)', () => {
+    const model = resolveRoleModel(false, '', MINDS_LIST, false, 'mindshub_air');
+    expect(model).toBe('');
+  });
+});
 
 describe('resolveModelPickerValue', () => {
   // ─── ENG-739 regression ─────────────────────────────────────────────
@@ -395,6 +434,41 @@ describe('agent tool-budget settings (max_tool_rounds / max_continuations)', () 
   });
 });
 
+describe('harness picker enable flags + availability (ENG-1656 follow-up)', () => {
+  it('transforms the per-harness enable flags into camelCase booleans', async () => {
+    // Anton has no enable flag — it's the default agent and always offered.
+    const { transformSettingsRows } = await import('./settingsTransform');
+    const rows = [
+      { key: 'harness_hermes_enabled', value: 'False', is_sensitive: false, is_set: true },
+      { key: 'harness_claude_code_enabled', value: 'True', is_sensitive: false, is_set: true },
+    ];
+    const s = transformSettingsRows(rows);
+    expect(s.harnessHermesEnabled).toBe(false);
+    expect(s.harnessClaudeCodeEnabled).toBe(true);
+  });
+
+  it('surfaces the harness row\'s `options` as harnessOptions, separate from its own value', async () => {
+    const { transformSettingsRows } = await import('./settingsTransform');
+    const rows = [
+      { key: 'harness', value: 'anton', is_sensitive: false, is_set: true, options: ['anton'] },
+    ];
+    const s = transformSettingsRows(rows);
+    // Server's available_harness_ids() omitted "hermes" (not installed) —
+    // the picker needs this to hide the enable-toggle entirely, distinct
+    // from "hermes is available but the account disabled it."
+    expect(s.harnessOptions).toEqual(['anton']);
+    expect(s.harness).toBe('anton');
+  });
+
+  it('leaves harnessOptions unset when the harness row carries no options', async () => {
+    const { transformSettingsRows } = await import('./settingsTransform');
+    const rows = [
+      { key: 'harness', value: 'anton', is_sensitive: false, is_set: true },
+    ];
+    expect(transformSettingsRows(rows).harnessOptions).toBeUndefined();
+  });
+});
+
 describe('per-turn spend ceiling (max_turn_tokens, ENG-1286)', () => {
   it('transforms the server row into a camelCase string value', async () => {
     const { transformSettingsRows } = await import('./settingsTransform');
@@ -460,14 +534,41 @@ describe('clampBudgetValue / clampBudgets', () => {
     expect(clampBudgetValue('1e3', spec)).toBe('500'); // 1000, max-clamped
   });
 
-  it('empty/unparseable input reverts to prev, then fallback', () => {
-    // Clearing a saved 500 to retype must not silently save the default.
-    expect(clampBudgetValue('', spec, '500')).toBe('500');
-    expect(clampBudgetValue('abc', spec, '120')).toBe('120');
-    expect(clampBudgetValue('', spec, null)).toBe('50');
-    expect(clampBudgetValue('', spec, 'junk')).toBe('50');
-    // A stale out-of-range prev (e.g. Escape-dismissed draft) still clamps.
-    expect(clampBudgetValue('', spec, '9999')).toBe('500');
+  it('empty/unparseable input reverts to the factory fallback', () => {
+    // Clearing the field is the discoverable way to reset it to default.
+    expect(clampBudgetValue('', spec)).toBe('50');
+    expect(clampBudgetValue('abc', spec)).toBe('50');
+    expect(clampBudgetValue('   ', spec)).toBe('50');
+  });
+
+  it('toDisplayUnits/toNaturalUnits round-trip through spec.unitDivisor', () => {
+    const tokenSpec = BUDGET_FIELDS.maxTurnTokens; // unitDivisor: 1_000_000
+    expect(toDisplayUnits('750000', tokenSpec)).toBe('0.75');
+    expect(toDisplayUnits('50000000', tokenSpec)).toBe('50');
+    expect(toDisplayUnits('1250000', tokenSpec)).toBe('1.25');
+    expect(toNaturalUnits('0.75', tokenSpec)).toBe('750000');
+    expect(toNaturalUnits('1.25', tokenSpec)).toBe('1250000');
+    // Fields with no unitDivisor pass through unchanged.
+    expect(toDisplayUnits('50', spec)).toBe('50');
+    expect(toNaturalUnits('50', spec)).toBe('50');
+  });
+
+  it('toDisplayUnits/toNaturalUnits leave empty and non-numeric drafts alone', () => {
+    const tokenSpec = BUDGET_FIELDS.maxTurnTokens;
+    expect(toDisplayUnits('', tokenSpec)).toBe('');
+    expect(toDisplayUnits(null, tokenSpec)).toBe('');
+    expect(toNaturalUnits('', tokenSpec)).toBe('');
+    // A transient mid-edit fragment (e.g. a lone "-") passes through as-is
+    // rather than rendering "NaN".
+    expect(toDisplayUnits('-', tokenSpec)).toBe('-');
+    expect(toNaturalUnits('-', tokenSpec)).toBe('-');
+  });
+
+  it('formatCount comma-groups a number', () => {
+    expect(formatCount(50)).toBe('50');
+    expect(formatCount('750')).toBe('750');
+    expect(formatCount('50000')).toBe('50,000');
+    expect(formatCount('1250')).toBe('1,250');
   });
 
   it('clampBudgets clamps present keys and never materializes absent ones', () => {
@@ -725,5 +826,15 @@ describe('the "no limit" switch (ENG-1286)', () => {
     // Someone who saved 100_000 before the floor moved must come back legal —
     // the settings write is all-or-nothing, so one out-of-range key 400s the lot.
     expect(resolveBudgetRestore('100000', null, spec)).toBe('750000');
+  });
+});
+
+describe('diffSettingsForWrite — null tombstones (ENG-1632)', () => {
+  it('never PUTs a null value — a tombstone is a DELETE, not a write of "null"', () => {
+    const writes = diffSettingsForWrite(
+      { codingModel: null, routerModel: null, actFirst: 'true' },
+      { codingModel: 'haiku', routerModel: 'kimi', actFirst: 'false' },
+    );
+    expect(writes).toEqual({ act_first: 'true' });
   });
 });

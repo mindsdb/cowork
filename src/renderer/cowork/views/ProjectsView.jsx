@@ -33,6 +33,7 @@ import {
 import { Button, Menu, EmptyState, Tooltip } from '../components/ui';
 import { Crumb, CrumbSep, CrumbCurrent } from '../components/ui/Crumb';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
+import { belongsToProject } from '../lib/artifactProject';
 import { host } from '../../platform/host';
 
 // ─── Pin persistence (localStorage) ──────────────────────────────────────
@@ -389,8 +390,7 @@ function useRowStats(project) {
     }).catch(() => {});
     fetchArtifacts().then((data) => {
       if (cancelled || !Array.isArray(data)) return;
-      const prefix = project.path.replace(/\/+$/, '') + '/';
-      setArt(data.filter((a) => a.path?.startsWith(prefix)).length);
+      setArt(data.filter((a) => belongsToProject(a, project)).length);
     }).catch(() => {});
     return () => { cancelled = true; };
   }, [project?.id, project?.path]);
@@ -541,6 +541,8 @@ function SkeletonCard() {
 function ProjectDetail({
   project, projects, tasks, scheduled, scheduleRunsIndex = {}, models, modelMeta, onSend, onSelectTask,
   onDeleteTask, onMoveTaskToProject, onShowAll,
+  model, onModelChange,
+  codingModeEnabled = false,
   attachments = [],
   connectors = [],
   onAttachFiles,
@@ -567,6 +569,10 @@ function ProjectDetail({
   // the schedule detail page. Wired by App.jsx — same handler the
   // ScheduledView grid uses.
   onOpenSchedule,
+  onOpenSettings,
+  codingModelDefault,
+  harnessHermesEnabled,
+  harnessClaudeCodeEnabled,
 }) {
   const projectTasks = (tasks || [])
     .filter((t) => t.projectName === project.name || t.projectPath === project.path)
@@ -701,8 +707,8 @@ function ProjectDetail({
               onSend={onSend}
               project={project}
               onProjectChange={() => {}}
-              model={null}
-              onModelChange={() => {}}
+              model={model}
+              onModelChange={onModelChange}
               projects={projects || []}
               models={models || []}
               modelMeta={modelMeta}
@@ -714,8 +720,14 @@ function ProjectDetail({
               onRemoveAttachment={onRemoveAttachment}
               disabledConnections={disabledConnections}
               onUpdateConnectorMute={onUpdateConnectorMute}
-              hideModel
               metaReadOnly
+              modelReadOnly={false}
+              codingModeEnabled={codingModeEnabled}
+              onOpenSettings={onOpenSettings}
+              codingModelDefault={codingModelDefault}
+              harnessHermesEnabled={harnessHermesEnabled}
+              harnessClaudeCodeEnabled={harnessClaudeCodeEnabled}
+              sendsMeta
               placeholder={`Start a new task in ${project.name}…`}
               // Keyed on the id, not the name: renaming a project must not
               // orphan the draft the user is in the middle of typing.
@@ -776,11 +788,14 @@ export default function ProjectsView({
   scheduleRunsIndex = {},
   models = [],
   modelMeta,
+  model,
+  onModelChange,
   loading = false,
   onSelectProject,
   onCreateProject,
   onDeleteProject,
   onSendInProject,
+  codingModeEnabled = false,
   onSelectTask,
   onDeleteTask,
   onMoveTaskToProject,
@@ -799,6 +814,10 @@ export default function ProjectsView({
   // clicking a row routes to the schedule detail page.
   onOpenSchedule,
   agentLabel = 'the agent',
+  onOpenSettings,
+  codingModelDefault,
+  harnessHermesEnabled,
+  harnessClaudeCodeEnabled,
 }) {
   const { pinned, togglePin } = usePinnedProjects();
   const { isMobile } = useBreakpoint();
@@ -934,10 +953,13 @@ export default function ProjectsView({
         scheduleRunsIndex={scheduleRunsIndex}
         models={models}
         modelMeta={modelMeta}
+        model={model}
+        onModelChange={onModelChange}
         onSend={onSendInProject}
         onSelectTask={onSelectTask}
         onDeleteTask={onDeleteTask}
         onMoveTaskToProject={onMoveTaskToProject}
+        codingModeEnabled={codingModeEnabled}
         attachments={attachments}
         connectors={connectors}
         onNavigateToConnectors={onNavigateToConnectors}
@@ -949,6 +971,10 @@ export default function ProjectsView({
         onRemoveAttachment={onRemoveAttachment}
         disabledConnections={disabledConnections}
         onUpdateConnectorMute={onUpdateConnectorMute}
+        onOpenSettings={onOpenSettings}
+        codingModelDefault={codingModelDefault}
+        harnessHermesEnabled={harnessHermesEnabled}
+        harnessClaudeCodeEnabled={harnessClaudeCodeEnabled}
         onShowAll={() => setDetailProject(null)}
         editing={editingProjectName === detailProject.name}
         onRenameStart={handleRenameStart}

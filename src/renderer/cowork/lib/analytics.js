@@ -21,20 +21,68 @@ import { host } from '../../platform/host';
 
 // The single register of product events, so every event and its own properties
 // are visible at a glance. capture() additionally stamps surface, app_version,
-// device_id, and (once identity resolves) is_internal + a `$set` person update
-// on all of them. `$identify` is a PostHog protocol event, not a product event,
+// device_id, aid (desktop, once health resolves), and (once identity resolves)
+// is_internal + a `$set` person update on all of them. `$identify` is a PostHog protocol event, not a product event,
 // so it lives inline in the merge rather than here.
 const EVENTS = {
-  DATA_SOURCE_CONNECTED: 'data_source_connected', // { source_type }
-  ARTIFACT_BUILT:        'artifact_built',         // { artifact_type }
-  ARTIFACT_PUBLISHED:    'artifact_published',     // { artifact_id, visibility }
-  AGENT_SESSION_STARTED: 'agent_session_started',  // {}
-  FIRST_QUERY:           'first_query',            // {}  once per user (ENG-501)
-  FIRST_RESPONSE:        'first_response',         // { outcome: 'success'|'error', reason } once per user (ENG-736)
-  TOKEN_CAP_HIT:         'token_cap_hit',          // {}  upgrade-intent signal (ENG-385)
-  HARNESS_SWAPPED:       'harness_swapped',        // { from, to }
-  APP_INSTALLED:         'app_installed',          // {}  desktop, once per install
-  BOOT_SCREEN_RESOLVED:  'boot_screen_resolved',   // { target, anton_installed, server_deps_ready } desktop, per launch (ENG-921)
+  DATA_SOURCE_CONNECTED:    'data_source_connected',    // { source_type }
+  ARTIFACT_BUILT:           'artifact_built',           // { artifact_type }
+  ARTIFACT_PUBLISHED:       'artifact_published',       // { artifact_id, visibility }
+  AGENT_SESSION_STARTED:    'agent_session_started',    // {}
+  FIRST_QUERY:              'first_query',              // {}  once per user (ENG-501)
+  FIRST_RESPONSE:           'first_response',           // { outcome: 'success'|'error', reason } once per user (ENG-736)
+  // SERIES DISCONTINUITY, read this before trending token_cap_hit. The series
+  // steps from TWO blocking conditions to THREE here, and this is the first
+  // change to label any of them:
+  //
+  //   before ENG-1537   token_limit only — a drained wallet (ENG-385)
+  //   ENG-1537 onward   + included_allowance_exhausted, a spent free monthly
+  //                     allowance. Counted, but carrying no `reason`
+  //   this change       + model_access_denied, the legacy per-model credit
+  //                     denial (ENG-1533). All three now carry `reason`
+  //
+  // So the count steps up twice, both times for reasons that have nothing to do
+  // with user behaviour. A trend line crossing either step is not like-for-like.
+  //
+  // Every event emitted BEFORE this change carries NO `reason` at all, so a
+  // query filtering on `reason` silently drops all of them — no error, just a
+  // shorter series. What those unlabelled events MEAN depends on which project
+  // you are querying and where in it they land. BOTH projects have an
+  // unlabelled mixed window; only the dates differ:
+  //
+  //   staging     before 2026-08-14 22:10 UTC  all `token_limit`. Safe to relabel
+  //               after it                     MIXED — ENG-1537 merged to staging (#648)
+  //   production  before 2026-08-17 00:03 UTC  all `token_limit`. Safe to relabel
+  //               after it                     MIXED — the same gate reached main in
+  //                                            the weekly release (#625)
+  //
+  // Those bounds are UTC on purpose. The PostHog project renders in
+  // America/Los_Angeles, where both merges fall on the previous day — 14 Aug
+  // 15:10 and 16 Aug 17:03. A rule written as "up to 17 Aug" would mark prod's
+  // 16 Aug evening events safe to relabel when they are already mixed.
+  //
+  // A mixed-window event is `token_limit` OR `included_allowance_exhausted`
+  // with nothing on it to say which, and the two are not separable after the
+  // fact. Do NOT relabel those as `token_limit` — it overstates drained
+  // wallets. Each mixed window closes where a build carrying this change
+  // reaches that project; from there on every event carries `reason`.
+  //
+  // Those are the dates the code landed, not clean cutovers in the data: a
+  // desktop install keeps emitting the shape it was built with until it
+  // updates, so each boundary is smeared across the rollout. `app_version` is
+  // stamped on every event and is the exact per-event discriminator when a
+  // date split is too coarse to trust.
+  //
+  // Whoever next revises these dates: read the file at `ref=main`. The weekly
+  // release squash-merges staging into main, so a branch compare reports
+  // content main already has as diverged and will tell you prod is missing a
+  // condition it has been emitting for weeks.
+  TOKEN_CAP_HIT:            'token_cap_hit',            // { reason: 'token_limit'|'included_allowance_exhausted'|'model_access_denied' } credit-block impression (ENG-385, widened ENG-1533 + ENG-1537)
+  BILLING_OPENED:           'billing_opened',           // { trigger: 'token_limit'|'included_allowance_exhausted'|'model_access_denied'|'model_disabled'|'key_provisioning_refused'|'connect_provider'|'no_credits_notice'|'locked_model_hint'|'nav' } every route to the billing page; 'nav' is NOT upgrade intent (ENG-1533)
+  KEY_PROVISIONING_REFUSED: 'key_provisioning_refused', // { outcome: 'byok_offered'|'billing_opened'|'unhandled' } (ENG-1533)
+  HARNESS_SWAPPED:          'harness_swapped',          // { from, to }
+  APP_INSTALLED:            'app_installed',            // {}  desktop, once per install
+  BOOT_SCREEN_RESOLVED:     'boot_screen_resolved',     // { target, anton_installed, server_deps_ready } desktop, per launch (ENG-921)
 };
 
 const POSTHOG_HOST = 'https://us.i.posthog.com';
@@ -204,6 +252,71 @@ function personSet() {
   return { ...identity.personProps, device_id: getDeviceId(), last_seen_app_version: APP_VERSION };
 }
 
+// anton's analytics install id, learned from the sidecar's /health (ENG-1689).
+//
+// This is the join key, and it is the ONLY reason this value exists here.
+// `turn_completed` — written by anton — carries `aid` on 100% of events and an
+// identified person on 0%. cowork's events are the mirror image: aid on 0%,
+// identified on ~85%. Neither side can reach the other, so per-user cost is
+// unanswerable today; we can name the 78 people who hit ENG-1286's spend
+// ceiling but not what a single one of their turns cost.
+//
+// Stamping the same id on an event that already knows the person turns the
+// existing cost rows into attributable ones — including rows already stored.
+// It adds no cost data of its own; it is a lookup table.
+//
+// The app cannot compute it: it is a truncated SHA-256 of the machine's MAC,
+// produced inside anton's Python process and never written to disk on desktop
+// (ENG-440's installation-id.ts documents exactly this, and deliberately mints
+// an unrelated random id for its own purposes). Re-deriving it in Node would
+// mean reproducing `uuid.getnode()`'s platform probe order, which
+// `os.networkInterfaces()` does not match on a multi-NIC machine — and the
+// failure is silent, since a mismatched key looks present and joins nothing.
+let antonInstallId = null;
+
+// PROPERTY ONLY — never an alias, and never a distinct_id. ENG-713 was an
+// over-merge incident where distinct people collapsed into one PostHog person;
+// `aid` is machine-grain, so aliasing on it would merge every user of a shared
+// machine into a single identity and be unrecoverable. As a property it is
+// inert: it joins in a query and changes no identity.
+//
+// Desktop only. The server withholds it in org mode (there it fingerprints the
+// server, not the user), so this is belt-and-braces on a value that should
+// already be empty on web.
+// Shape-checked rather than merely truthy. The case this exists for:
+// `get_installation_id` returns the literal "unknown" when it cannot
+// fingerprint the machine, and anton stamps that same string on its own events
+// — so it would JOIN across every unfingerprintable machine and merge them into
+// one identity. The server filters it; this is the second gate, because the
+// failure is silent and unrecoverable once queries are built on it. A shape
+// check also catches a future sentinel without needing to know its name.
+//
+// **Hex, but deliberately NOT a fixed width.** The producer is
+// `get_installation_id` in `anton/analytics.py` (mindsdb/anton), which today
+// yields 16 lowercase hex from three paths — `sha256(...).hexdigest()[:16]`,
+// `uuid4().hex[:16]`, and a persisted file read `[:16]`. Pinning 16 here would
+// re-encode that width in a third repo with no shared source, and if anton ever
+// widened it this gate would drop 100% of ids and every join would silently
+// return zero rows (#707 review).
+//
+// Pinning the width also buys nothing: both sides of the join come from the
+// SAME anton function, so a width change stays self-consistent and the join
+// keeps working. The width is anton's business. What this gate must reject is a
+// value that is not an id at all — which "unknown" fails on hex alone.
+const AID_SHAPE = /^[0-9a-f]{8,64}$/;
+
+export function setAntonInstallId(id) {
+  if (SURFACE !== 'desktop') return;
+  const next = typeof id === 'string' ? id.trim() : '';
+  if (next && !AID_SHAPE.test(next)) {
+    // Loud rather than silent: if anton's format ever moves outside hex, the
+    // symptom is every join returning zero rows, which looks like "no data"
+    // rather than "the key was thrown away". This line is how that gets found.
+    dlog('rejecting non-hex anton install id', next);
+  }
+  antonInstallId = AID_SHAPE.test(next) ? next : null;
+}
+
 async function getDistinctId() {
   if (identity.distinctId && Date.now() < identity.cacheExpiry) return identity.distinctId;
   try {
@@ -362,6 +475,10 @@ function capture(event, properties = {}) {
         // install -> account joins deterministically even without the merge.
         device_id: deviceId,
       };
+      // The anton join key. Stamped on pre-login events too: those merge into
+      // the account on first sign-in, so an install's early turns stay
+      // attributable rather than being stranded on the anonymous side.
+      if (antonInstallId) eventProps.aid = antonInstallId;
       // Only stamp is_internal once identity has resolved it; before then it is
       // unknown, and sending false would tag anonymous traffic as external
       // (ENG-672). The person-level `$set` carries it for the account.
@@ -399,10 +516,64 @@ export function trackAgentSessionStarted() {
   capture(EVENTS.AGENT_SESSION_STARTED);
 }
 
-// The key upgrade-intent signal: a free user hit the token cap. Fired from the
-// stream adapter when a turn fails with the `token_limit` code (ENG-385).
-export function trackTokenCapHit() {
-  capture(EVENTS.TOKEN_CAP_HIT);
+// The key upgrade-intent signal: a turn was blocked on credits. Fired from the
+// stream adapter on receipt of the failure (ENG-385). `reason` is the wire code
+// that blocked the turn — a drained wallet (`token_limit`), a spent free monthly
+// allowance (`included_allowance_exhausted`, ENG-1537) or the legacy per-model
+// credit denial (`model_access_denied`, ENG-1533), whose card used to be shown
+// with no impression at all. One event with a `reason` rather than three events,
+// so the impression count stays a single series and the once-per-receipt
+// guarantee is not duplicated. Named `reason` to read consistently beside
+// `trigger` on billing_opened and `outcome` on key_provisioning_refused.
+// Historic events predate the property and carry no `reason`. What they mean
+// depends on the window — see the discontinuity note on EVENTS.TOKEN_CAP_HIT
+// before relabelling any of them.
+export function trackTokenCapHit(reason) {
+  capture(EVENTS.TOKEN_CAP_HIT, { reason: reason || 'token_limit' });
+}
+
+// The desktop sent the user to the console billing page (ENG-1533). Fired at
+// EVERY route there, so the count is the whole story rather than the paths
+// someone remembered. `trigger` names the condition that sent them, because the
+// causes have different fixes and probably different conversion rates:
+//   token_limit               out of credits mid-turn; pairs with token_cap_hit
+//   included_allowance_exhausted  the month's free allowance is spent, not the
+//                             wallet; also pairs with token_cap_hit (ENG-1537)
+//   model_access_denied       legacy per-model credit denial (pre-wallet gateways)
+//   model_disabled            legacy admin-disabled model; credits do not unlock it
+//   key_provisioning_refused  MindsHub would not mint an LLM key on reconnect
+//   connect_provider          "Start for free" on the connect-a-provider card
+//                             (chat and home render the same card)
+//   no_credits_notice         Settings, after a minds-cloud provider test came
+//                             back 402/429/credit/quota
+//   locked_model_hint         Settings, the "<model> needs credits" hint under a
+//                             model the wallet cannot pay for
+//   nav                       the Billing & Usage item in the user menu
+//
+// `nav` is the one value that is NOT upgrade intent — nothing blocked that user,
+// they went looking. It is recorded because it is a real route to the page, but
+// a token_cap_hit -> billing_opened funnel MUST exclude it or the click-through
+// rate is inflated by people checking their usage. PostHog will not do that for
+// you; filter on trigger.
+//
+// Deliberately no impression event alongside any of this: token_cap_hit already
+// fires once per receipt in the stream adapter, and an impression in the render
+// path would re-fire on every paint.
+export function trackBillingOpened(trigger) {
+  capture(EVENTS.BILLING_OPENED, { trigger: trigger || 'unknown' });
+}
+
+// MindsHub declined to provision an LLM key (ENG-1533) — the earliest point a
+// user can be blocked from working at all. The refusal is detected in the main
+// process, but `outcome` is only knowable in the renderer, so this fires there:
+//   byok_offered    first run — routed to Bring Your Own Key, no paywall shown
+//   billing_opened  reconnect — sent to the console billing page
+//   unhandled       SSO sign-in — the result is not acted on, so the user lands
+//                   with no working key, no BYOK route and no message
+// Its own event rather than a `billing_opened` trigger because on the commonest
+// path (first run) no paywall is shown at all; the fork is the measurement.
+export function trackKeyProvisioningRefused(outcome) {
+  capture(EVENTS.KEY_PROVISIONING_REFUSED, { outcome: outcome || 'unknown' });
 }
 
 // User switched the active agent/harness in Settings (e.g. anton -> hermes).

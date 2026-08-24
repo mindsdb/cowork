@@ -32,6 +32,14 @@ const bridge: any =
 export const isElectron: boolean = typeof bridge === 'object' && bridge !== null;
 export const isWeb: boolean = !isElectron;
 
+// Coding Mode kill switch (CODING_MODE_OPTIONS_ENABLED, main/preload —
+// unset/anything else defaults false) while the feature is parked. A plain
+// module-level const, not a function — it's a static per-process value read
+// once from the environment, same as isElectron/isWeb above. Web has no
+// bridge at all, so it's always false there too.
+export const codingModeOptionsEnabled: boolean =
+  isElectron && bridge.codingModeOptionsEnabled === true;
+
 // ---- Platform identity --------------------------------------------------
 
 export type PlatformId = 'darwin' | 'win32' | 'linux' | 'web';
@@ -197,6 +205,75 @@ export async function showItemInFolder(path: string): Promise<{ ok: boolean; rea
     return bridge.showItemInFolder(path);
   }
   return { ok: false, reason: 'unsupported' };
+}
+
+// ---- Coding mode (MVP) ---------------------------------------------------
+
+export async function detectClaudeCode(): Promise<{ installed: boolean; path: string | null }> {
+  if (isElectron && typeof bridge.detectClaudeCode === 'function') {
+    return bridge.detectClaudeCode();
+  }
+  return { installed: false, path: null };
+}
+
+export async function startCodingTerminal(
+  taskId: string,
+  opts: { projectPath: string; message: string; model: string },
+  cols: number,
+  rows: number,
+): Promise<{ ok: boolean; reason?: string }> {
+  if (isElectron && typeof bridge.startCodingTerminal === 'function') {
+    return bridge.startCodingTerminal(taskId, opts, cols, rows);
+  }
+  return { ok: false, reason: 'unsupported' };
+}
+
+export function sendCodingTerminalInput(taskId: string, data: string): void {
+  if (isElectron && typeof bridge.sendCodingTerminalInput === 'function') {
+    bridge.sendCodingTerminalInput(taskId, data);
+  }
+}
+
+export function resizeCodingTerminal(taskId: string, cols: number, rows: number): void {
+  if (isElectron && typeof bridge.resizeCodingTerminal === 'function') {
+    bridge.resizeCodingTerminal(taskId, cols, rows);
+  }
+}
+
+export async function isCodingTerminalRunning(taskId: string): Promise<boolean> {
+  if (isElectron && typeof bridge.isCodingTerminalRunning === 'function') {
+    return bridge.isCodingTerminalRunning(taskId);
+  }
+  return false;
+}
+
+export function killCodingTerminal(taskId: string): void {
+  if (isElectron && typeof bridge.killCodingTerminal === 'function') {
+    bridge.killCodingTerminal(taskId);
+  }
+}
+
+/** Stops a Claude-Code task's PTY (if running) and removes its git worktree
+ *  and branch under `<projectPath>/.claude_tasks/<taskId>/` — call when the
+ *  task itself is deleted. */
+export async function removeCodingTask(taskId: string, projectPath: string): Promise<void> {
+  if (isElectron && typeof bridge.removeCodingTask === 'function') {
+    await bridge.removeCodingTask(taskId, projectPath);
+  }
+}
+
+export function onCodingTerminalData(cb: (taskId: string, data: string) => void): () => void {
+  if (isElectron && typeof bridge.onCodingTerminalData === 'function') {
+    return bridge.onCodingTerminalData(cb);
+  }
+  return () => {};
+}
+
+export function onCodingTerminalExit(cb: (taskId: string, exitCode: number) => void): () => void {
+  if (isElectron && typeof bridge.onCodingTerminalExit === 'function') {
+    return bridge.onCodingTerminalExit(cb);
+  }
+  return () => {};
 }
 
 // ---- File drop / clipboard ---------------------------------------------
@@ -855,21 +932,26 @@ export async function getAccessToken(): Promise<string | null> {
   return kcGetToken();
 }
 
-// Signs the user out: clears the persisted refresh token and strips
-// provider/auth keys from ~/.anton/.env. Caller is responsible for
-// re-routing the UI — usually a full window.location.reload(), which
-// puts App.tsx back through its boot path and (with the env keys gone)
-// lands on onboarding.
+// Signs the user out. On Electron: clears the persisted refresh token and
+// strips provider/auth keys from ~/.anton/.env (the main process re-routes the
+// UI via webContents.reload()). On web: ends the Keycloak browser session via
+// its end-session endpoint, which redirects the tab and — with
+// onLoad:'login-required' — forces a fresh login. The keycloak import stays
+// behind host.ts so cowork/ never touches the bridge directly (check:cowork-purity).
 export async function logout(): Promise<void> {
   if (isElectron && typeof bridge.logout === 'function') {
     await bridge.logout();
+    return;
   }
+  const { logout: kcLogout } = await import('../lib/keycloak');
+  await kcLogout();
 }
 
 // Re-export a single namespace for ergonomic call sites (`host.openPath(...)`).
 export const host = {
   isWeb,
   isElectron,
+  codingModeOptionsEnabled,
   getPlatform,
   isMac,
   getApiOrigin,
@@ -882,6 +964,15 @@ export const host = {
   openExternal,
   openPath,
   showItemInFolder,
+  detectClaudeCode,
+  startCodingTerminal,
+  sendCodingTerminalInput,
+  resizeCodingTerminal,
+  isCodingTerminalRunning,
+  killCodingTerminal,
+  removeCodingTask,
+  onCodingTerminalData,
+  onCodingTerminalExit,
   getPathForFile,
   getUIVersion,
   getVersionInfo,

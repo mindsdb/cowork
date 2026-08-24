@@ -1,10 +1,14 @@
-// The four "Get to know Cowork" onboarding steps — the single source of
+// The "Get to know Cowork" onboarding steps — the single source of
 // truth for the sidebar checklist. Each step renders one row; clicking it
 // opens a fresh chat seeded with `prompt`, the message Cowork answers to
 // show off that capability. Edit copy or reorder here; the UI follows.
 //
 // Step 1 is also completed when the habit-tracker prompt is sent from the
 // home composer by any route — HomeView prefix-matches outgoing sends.
+//
+// `desktopOnly: true` hides a step on the web build (useOnboarding filters
+// on host.isWeb): web runs against a cloud workspace, so steps that walk
+// the user through local-machine access can't be completed there.
 
 export const HABIT_TRACKER_PROMPT =
   'Build me a habit tracker as a live artifact: a simple week grid I can tick off each day. Start with three sensible habits and make them easy to rename.';
@@ -37,12 +41,13 @@ export const ONBOARDING_STEPS = [
     description: 'Link Google Drive, let Cowork act on your files.',
     prompt:
       'I want to connect my Google Drive so you can work with my real files. Walk me through linking it, then once it\'s connected, do something useful with a file and show me what you found.',
+    desktopOnly: true,
   },
-  {
-    id: 'point-at-folder',
-    title: 'Point it at a folder',
-    description: 'Let Cowork read and edit your real files.',
-    prompt:
-      'I\'d like to give you access to a folder on my computer. Help me pick and connect one, then once you can see the files, show me a couple of useful things you can do with them.',
-  },
+  // The 'point-at-folder' step ("give you access to a folder on my
+  // computer") is removed, not reworded (ENG-1852): no host can connect a
+  // folder outside the project today — there is no folder picker, and the
+  // promise ended with the agent's own skills/ directory reported as
+  // "connected". Restore a folder step when local-folder access actually
+  // ships (ENG-384 / ENG-497 / ENG-325). Completion state for the old id
+  // persists harmlessly in anton.onboarding.completed.
 ];

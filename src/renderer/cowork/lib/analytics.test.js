@@ -576,3 +576,216 @@ describe('is_internal on captured events (ENG-672)', () => {
     }
   });
 });
+
+// ENG-1533: the money path between the paywall and the payment. The property
+// values are the whole point of these two events, so they are pinned on the
+// wire, not just at the call site.
+describe('billing + provisioning events (ENG-1533)', () => {
+  // Fire-and-forget helpers (like trackDataSourceConnected) return nothing, so
+  // wait for the POST rather than awaiting the call.
+  const sentEvent = async (fetchMock, name) => {
+    await vi.waitFor(() =>
+      expect(
+        fetchMock.mock.calls.map((c) => JSON.parse(c[1].body)).some((b) => b.event === name)
+      ).toBe(true)
+    );
+    return fetchMock.mock.calls.map((c) => JSON.parse(c[1].body)).find((b) => b.event === name);
+  };
+
+  it('billing_opened carries the trigger that sent the user', async () => {
+    const fetchMock = mockFetch();
+    const { trackBillingOpened } = await importAnalytics();
+
+    trackBillingOpened('token_limit');
+
+    const event = await sentEvent(fetchMock, 'billing_opened');
+    expect(event.properties.trigger).toBe('token_limit');
+  });
+
+  it('billing_opened records an unnamed trigger as unknown, never as a real one', async () => {
+    const fetchMock = mockFetch();
+    const { trackBillingOpened } = await importAnalytics();
+
+    trackBillingOpened();
+
+    const event = await sentEvent(fetchMock, 'billing_opened');
+    expect(event.properties.trigger).toBe('unknown');
+  });
+
+  it('key_provisioning_refused carries the outcome, so the BYOK/billing/nothing fork is countable', async () => {
+    const fetchMock = mockFetch();
+    const { trackKeyProvisioningRefused } = await importAnalytics();
+
+    trackKeyProvisioningRefused('byok_offered');
+
+    const event = await sentEvent(fetchMock, 'key_provisioning_refused');
+    expect(event.properties.outcome).toBe('byok_offered');
+  });
+
+  it('key_provisioning_refused records an unnamed outcome as unknown, never as a real one', async () => {
+    const fetchMock = mockFetch();
+    const { trackKeyProvisioningRefused } = await importAnalytics();
+
+    trackKeyProvisioningRefused();
+
+    const event = await sentEvent(fetchMock, 'key_provisioning_refused');
+    expect(event.properties.outcome).toBe('unknown');
+  });
+
+  it('token_cap_hit carries the reason so the three credit blocks are distinguishable', async () => {
+    const fetchMock = mockFetch();
+    const { trackTokenCapHit } = await importAnalytics();
+
+    trackTokenCapHit('model_access_denied');
+
+    const event = await sentEvent(fetchMock, 'token_cap_hit');
+    expect(event.properties.reason).toBe('model_access_denied');
+  });
+
+  it('token_cap_hit carries the spent-free-allowance reason (ENG-1537)', async () => {
+    const fetchMock = mockFetch();
+    const { trackTokenCapHit } = await importAnalytics();
+
+    trackTokenCapHit('included_allowance_exhausted');
+
+    const event = await sentEvent(fetchMock, 'token_cap_hit');
+    expect(event.properties.reason).toBe('included_allowance_exhausted');
+  });
+
+  it('token_cap_hit defaults to token_limit, matching the events logged before the reason property existed', async () => {
+    const fetchMock = mockFetch();
+    const { trackTokenCapHit } = await importAnalytics();
+
+    trackTokenCapHit();
+
+    const event = await sentEvent(fetchMock, 'token_cap_hit');
+    expect(event.properties.reason).toBe('token_limit');
+  });
+});
+
+// ─── aid: the join key between anton's cost events and an identified user ────
+//
+// The defect is structural: `turn_completed` carries `aid` on 100% of events
+// and an identified person on 0%; these events are the mirror image. These pin
+// that the key lands, that it is a PROPERTY and never an identity (ENG-713 was
+// an over-merge incident, and `aid` is machine-grain so aliasing on it would be
+// unrecoverable), and that web never carries it.
+describe('anton install id (aid) stamping', () => {
+  beforeEach(() => {
+    hostState.isElectron = true;
+    getAccessToken.mockResolvedValue(null);
+  });
+
+  async function captureWith(id, { identified = false } = {}) {
+    if (identified) {
+      getAccessToken.mockResolvedValue(fakeJwt({ sub: 'user-1', email: 'ana@example.com' }));
+    }
+    const fetchMock = mockFetch();
+    const mod = await importAnalytics();
+    if (id !== undefined) mod.setAntonInstallId(id);
+    mod.trackDataSourceConnected('postgres');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    return fetchMock.mock.calls
+      .map((c) => JSON.parse(c[1].body))
+      .find((b) => b.event === 'data_source_connected');
+  }
+
+  it('stamps the id once health has served it', async () => {
+    const event = await captureWith('a1b2c3d4e5f60718');
+    expect(event).toBeDefined();
+    expect(event.properties.aid).toBe('a1b2c3d4e5f60718');
+  });
+
+  it('omits it before health resolves', async () => {
+    const event = await captureWith(undefined);
+    expect(event).toBeDefined();
+    expect(event.properties).not.toHaveProperty('aid');
+  });
+
+  it('omits it when the server withholds it (org mode returns "")', async () => {
+    const event = await captureWith('');
+    expect(event).toBeDefined();
+    expect(event.properties).not.toHaveProperty('aid');
+  });
+
+  it('treats a whitespace-only or non-string id as absent', async () => {
+    // The `if (antonInstallId)` guard alone already drops "", so the trim and
+    // the type check are only load-bearing for these two — without them a
+    // whitespace id stamps as "   " and a number stamps as a number, either of
+    // which joins to nothing while looking like a present key.
+    const blank = await captureWith('   ');
+    expect(blank.properties).not.toHaveProperty('aid');
+    const numeric = await captureWith(42);
+    expect(numeric.properties).not.toHaveProperty('aid');
+  });
+
+  it('rejects the "unknown" sentinel, which would MERGE distinct machines', async () => {
+    // anton returns the literal "unknown" when it cannot fingerprint the
+    // machine, and stamps the same string on its own events — so this value
+    // would join across every unfingerprintable machine and fuse them into one
+    // identity. ENG-713's outcome without an alias, and worse than an absent
+    // key because it looks valid.
+    const event = await captureWith('unknown');
+    expect(event.properties).not.toHaveProperty('aid');
+  });
+
+  it('rejects anything that is not lowercase hex', async () => {
+    // A shape check rather than a sentinel blocklist, so a future sentinel is
+    // caught without knowing its name.
+    for (const bad of ['ABCDEF0123456789', 'a1b2c3', 'not-an-id', 'a1b2c3d4e5f60718x', 'unknown']) {
+      const event = await captureWith(bad);
+      expect(event.properties, `should have rejected ${bad}`).not.toHaveProperty('aid');
+    }
+  });
+
+  it('accepts a DIFFERENT width, because the width is anton\'s business', async () => {
+    // Deliberately not pinned to 16 (#707 review). Both sides of the join come
+    // from the same `get_installation_id`, so if anton ever changed the width
+    // the join stays self-consistent — whereas a hard 16 here would drop 100%
+    // of ids and make every join return zero rows, silently.
+    for (const wider of ['a1b2c3d4', 'a1b2c3d4e5f6071', 'a1b2c3d4e5f60718a1b2c3d4e5f60718']) {
+      const event = await captureWith(wider);
+      expect(event.properties.aid, `should have accepted ${wider}`).toBe(wider);
+    }
+  });
+
+  it('stamps it on an IDENTIFIED event — the whole point of the join', async () => {
+    // The key is worthless unless it lands on an event that also knows who the
+    // person is. That pairing is what makes anton's anonymous cost rows
+    // attributable, so it is asserted directly rather than inferred.
+    const event = await captureWith('a1b2c3d4e5f60718', { identified: true });
+    expect(event).toBeDefined();
+    expect(event.properties.aid).toBe('a1b2c3d4e5f60718');
+    expect(event.distinct_id).toBe('user-1');
+  });
+
+  it('is a PROPERTY only — never an alias, never the distinct_id (ENG-713)', async () => {
+    // `aid` is machine-grain: a shared machine is several people. Aliasing on
+    // it would merge them into one PostHog person irreversibly, which is the
+    // ENG-713 failure. It must never appear as identity, only as data.
+    const fetchMock = mockFetch();
+    const mod = await importAnalytics();
+    mod.setAntonInstallId('a1b2c3d4e5f60718');
+    mod.trackDataSourceConnected('postgres');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const bodies = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body));
+    for (const b of bodies) {
+      expect(b.event).not.toBe('$create_alias');
+      expect(b.distinct_id).not.toBe('a1b2c3d4e5f60718');
+      expect(b.properties?.alias).toBeUndefined();
+      expect(b.properties?.$anon_distinct_id).not.toBe('a1b2c3d4e5f60718');
+    }
+  });
+
+  it('NEVER stamps it on web', async () => {
+    // The server already withholds it in org mode; this is the client-side half
+    // of the same rule, so a future server change cannot start leaking a host
+    // fingerprint onto web events.
+    hostState.isElectron = false;
+    const event = await captureWith('a1b2c3d4e5f60718');
+    expect(event).toBeDefined();
+    expect(event.properties.surface).toBe('web');
+    expect(event.properties).not.toHaveProperty('aid');
+  });
+});

@@ -38,6 +38,7 @@ jobs:
     uses: ./.github/workflows/build-deploy.yml
     with:
       build-environment: production
+      build-runner: mdb-prod
     secrets: inherit
 
   auto-release:

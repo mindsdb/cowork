@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Gamepad2, Sun, Moon } from 'lucide-react';
+import { Sun, Moon } from 'lucide-react';
 import SetupScreen from './pages/arcade/SetupScreen';
 import OnboardingScreen from './pages/arcade/OnboardingScreen';
 import { COWORKERS } from './pages/arcade/CoworkerSelect';
@@ -10,6 +10,7 @@ import { host } from './platform/host';
 import { loadSkin, persistSkin } from './lib/skins';
 import { syncSettingsToDb, syncModelsToDbWithRetry } from './lib/syncSettings';
 import { resolveBootTarget } from './lib/bootTarget';
+import { setOrgMode } from './lib/orgMode';
 import { trackBootScreenResolved } from './cowork/lib/analytics';
 import { hasBootedBefore, rememberBooted, welcomeFloorMs } from './lib/bootWelcome';
 import { runPostAuthHandshake } from './lib/postAuth';
@@ -68,10 +69,6 @@ function applyArcadePreset(skin: string): void {
   else delete document.body.dataset.arcadePreset;
 }
 
-function GamepadIcon({ size = 15 }: { size?: number }) {
-  return <Gamepad2 size={size} strokeWidth={1.5} aria-hidden="true" />;
-}
-
 function SunIcon({ size = 15 }: { size?: number }) {
   return <Sun size={size} strokeWidth={1.5} aria-hidden="true" />;
 }
@@ -92,7 +89,11 @@ export default function App() {
   // Guards the setupError Retry button so a double-click can't fan out redundant
   // concurrent handshakes.
   const [retrying, setRetrying] = useState(false);
-  const [skin, setSkin] = useState(loadSkin);
+  // No setter needed here — the onboarding corner no longer offers a skin
+  // toggle (light/dark only), but a page already in the 8bit skin (set via
+  // the in-app Settings on a prior visit) still reads it to render in that
+  // style.
+  const [skin] = useState(loadSkin);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     try {
       const saved = window.localStorage.getItem('anton.theme');
@@ -136,7 +137,12 @@ export default function App() {
       // hasLocalTermsConsent() is internally try/caught (returns false on any
       // localStorage error), so calling it outside resolveBootTarget's guard is
       // safe — it can't throw and escape init() (ENG-848 review note).
-      const target: Page = await resolveBootTarget(host, hasLocalTermsConsent());
+      const decision = await resolveBootTarget(host, hasLocalTermsConsent());
+      const target: Page = decision.target;
+      // Fail-safe for an unresolved mode: treat it as org in the web build. The
+      // opposite default would render desktop-only artifact actions (Share,
+      // Update, the iframe preview) in an org deployment whose /health blipped.
+      setOrgMode(decision.orgMode ?? host.isWeb);
       // ENG-921: record the resolved first screen + ground-truth server-install
       // state before sign-in, so first-run breakage between download and a
       // healthy server is measurable (app_installed only fires once the server
@@ -262,36 +268,26 @@ export default function App() {
 
       {page === 'terminal' && <CoworkApp />}
 
-      {/* Theme + style toggles on the onboarding corner. CoworkApp hasn't
-          mounted yet on these pages (no sidebar to host them), so the
-          pre-app flow keeps its own floating corner toggles — namespaced
-          `arcade-*` (arcade.css) so they're independent of the in-app
-          sidebar footer toggle (Sidebar.jsx) that replaced the old
-          shared floating-chrome buttons. The CSS stacks the style toggle
-          above the theme toggle. */}
+      {/* Theme toggle on the onboarding corner. CoworkApp hasn't mounted
+          yet on these pages (no sidebar to host it), so the pre-app flow
+          keeps its own floating corner toggle — namespaced `arcade-*`
+          (arcade.css) so it's independent of the in-app sidebar footer
+          toggle (Sidebar.jsx) that replaced the old shared floating-chrome
+          buttons. Just light/dark here, matching the rest of the app — no
+          8-bit skin toggle button; a page already in the 8bit skin (from a
+          prior visit) still renders in it, there's just no control to
+          switch into/out of it from onboarding. */}
       {isArcadePage && (
-        <>
-          <Tooltip content={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}>
-            <button
-              onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
-              aria-label="Toggle colour theme"
-              className="arcade-theme-toggle"
-              style={{ zIndex: 200 }}
-            >
-              {theme === 'dark' ? <SunIcon size={15} /> : <MoonIcon size={15} />}
-            </button>
-          </Tooltip>
-          <Tooltip content={skin === '8bit' ? 'Switch 8-bit arcade style off' : 'Switch style to 8-Bit Arcade mode'}>
-            <button
-              onClick={() => setSkin((s) => (s === '8bit' ? 'normal' : '8bit'))}
-              aria-label="Toggle 8-bit arcade style"
-              className="arcade-theme-toggle arcade-skin-toggle"
-              style={{ zIndex: 200 }}
-            >
-              <GamepadIcon size={15} />
-            </button>
-          </Tooltip>
-        </>
+        <Tooltip content={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}>
+          <button
+            onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+            aria-label="Toggle colour theme"
+            className="arcade-theme-toggle"
+            style={{ zIndex: 200 }}
+          >
+            {theme === 'dark' ? <SunIcon size={15} /> : <MoonIcon size={15} />}
+          </button>
+        </Tooltip>
       )}
     </>
   );

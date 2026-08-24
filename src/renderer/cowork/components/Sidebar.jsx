@@ -232,26 +232,6 @@ export default function Sidebar({
   onDownloadShellUpdate,
   onDismissShellUpdate,
   agentLabel,
-  // Light/dark theme + 8-bit skin toggles — the sidebar footer hosts
-  // both switches (relocated from the old floating bottom-right
-  // buttons; see App.jsx). Defaults keep the buttons harmless if a
-  // caller (e.g. a test) doesn't wire them up.
-  theme = 'dark',
-  onToggleTheme,
-  skin = 'normal',
-  onToggleSkin,
-  // Opens the full Display / ThemeModal picker (ENG-1545). When unset the
-  // footer "Display settings" opener button isn't rendered.
-  onOpenThemeModal,
-  // Whether the 8-bit button should render "on". While skin === 'custom',
-  // the caller repurposes onToggleSkin to flip the mono font instead of
-  // skin itself, so "on" needs to track that font choice, not `skin`.
-  // Defaults to the plain skin-based reading for callers that don't pass it.
-  is8bitActive,
-  // Settings → Appearance → Theme/8-bit toggle buttons. Hide either
-  // footer button independently; both default to shown.
-  showThemeToggle = true,
-  show8bitToggle = true,
   settingsActive = false,
   // Signed-in state, pushed from App — the user-menu hook re-reads the
   // access token when this flips (ENG-761 pattern), so the footer swaps
@@ -418,12 +398,6 @@ export default function Sidebar({
         : { id: pin.item_id, title: pin.title || pin.item_id, status: 'idle', pinned: true };
     })
     .slice(0, 8);
-
-  // "On" state for the 8-bit button: while skin === 'custom', onToggleSkin
-  // is repurposed to flip the mono font (see App.jsx) rather than skin
-  // itself, so the caller passes is8bitActive to track that. Falls back to
-  // the plain skin-based reading for callers that don't pass it (tests).
-  const resolved8bitActive = is8bitActive ?? (skin !== 'normal');
 
   return (
     <aside
@@ -617,10 +591,9 @@ export default function Sidebar({
           />
           {/* Channels used to have a standalone entry here, web-only, purely
               because the web shell hid Settings entirely — Channels lives
-              under Settings on desktop. Settings is now reachable on web
-              (ENG-932), so the workaround is removed and both platforms find
-              Channels in the same place. The `channels` route in App.jsx is
-              left intact so existing deep links still resolve. */}
+              under Settings on desktop. Settings is now reachable on web too,
+              so the workaround is removed and both platforms find Channels
+              in the same place. */}
         </div>
 
         {/* Agent — the agent's own brain: what it remembers (Memories)
@@ -844,14 +817,12 @@ export default function Sidebar({
           </div>
         )}
 
-        {/* Footer — always rendered so the theme toggle (relocated here
-            from the old floating bottom-right button) is reachable on
-            both Electron and the hosted web shell. The settings /
-            backend-status controls stay Electron-only: the FastAPI
-            process IS the host on web, so start/stop/diagnostics don't
-            apply. Settings itself is NOT Electron-only any more — the web
-            shell used to hide it entirely, which also hid the only
-            workaround for ENG-1042; see the gate below (ENG-932).
+        {/* Footer — the settings / backend-status controls stay
+            Electron-only: the FastAPI process IS the host on web, so
+            start/stop/diagnostics don't apply. Settings itself is NOT
+            Electron-only any more — the web shell used to hide it
+            entirely, which also hid the only workaround for ENG-1042;
+            see the gate below (ENG-932).
 
             Normal state: a settings nav row — no server noise when everything
             is working fine.
@@ -904,66 +875,39 @@ export default function Sidebar({
             ) : showsUserMenu ? (
               // Signed in: the account row + user menu (ENG-1408), curated to
               // the account destinations (Settings, Billing & Usage, Members,
-              // Help & Feedback, Logout). Theme + 8-bit stay out of the menu —
-              // they're the quick footer toggles restored just below (ENG-1545).
-              <UserMenu
-                user={accountUser}
-                onOpenSettings={() => onNavigate('settings:agent')}
-              />
+              // Help & Feedback, Logout).
+              <>
+                <UserMenu
+                  user={accountUser}
+                  onOpenSettings={() => onNavigate('settings')}
+                />
+                {/* Quick shortcut — kept visible even with the user menu
+                    present, so Settings stays one click away rather than
+                    buried behind opening the menu first. The status-pill
+                    and signed-out states already show a Settings button
+                    directly, so this only adds value here. Display
+                    settings (theme/8-bit/coding mode) moved to the
+                    floating corner button — see App.jsx. */}
+                <Tooltip content="Settings">
+                  <button
+                    className="chrome-btn--small shrink-0 ml-auto [-webkit-app-region:no-drag]"
+                    onClick={() => onNavigate('settings')}
+                    aria-label="Open Settings"
+                  >
+                    {Ico.settings(15)}
+                  </button>
+                </Tooltip>
+              </>
             ) : (
               <button
                 className={'anton-sidebar__footer-settings flex-1 min-w-0 [-webkit-app-region:no-drag]' + (settingsActive ? ' is-on' : '')}
-                onClick={() => onNavigate('settings:agent')}
+                onClick={() => onNavigate('settings')}
                 aria-label="Settings"
               >
                 <span className="inline-flex shrink-0">{Ico.settings(13)}</span>
                 <span>Settings</span>
               </button>
             )}
-          {/* Quick display toggles — kept visible even when the user menu
-              is present (ENG-1545), so theme + 8-bit stay one click away
-              rather than buried in the menu / Settings → Appearance. */}
-          {(show8bitToggle || showThemeToggle) && (
-            // Marks these as quick display toggles, not settings — separate
-            // from the Settings/backend-status controls to the left.
-            <span
-              aria-hidden="true"
-              className="anton-sidebar__footer-divider ml-auto [-webkit-app-region:no-drag]"
-            />
-          )}
-          {show8bitToggle && (
-            <Tooltip content={skin === 'custom' ? '8-bit font' : '8-bit style'}>
-              <button
-                className={'chrome-btn--small shrink-0 [-webkit-app-region:no-drag]' + (resolved8bitActive ? ' is-on' : '')}
-                onClick={onToggleSkin}
-                aria-label={skin === 'custom' ? 'Toggle 8-bit font' : 'Toggle 8-bit style'}
-              >
-                {Ico.gamepad(15)}
-              </button>
-            </Tooltip>
-          )}
-          {showThemeToggle && (
-            <Tooltip content={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}>
-              <button
-                className="chrome-btn--small shrink-0 [-webkit-app-region:no-drag]"
-                onClick={onToggleTheme}
-                aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
-              >
-                {theme === 'dark' ? Ico.sun(15) : Ico.moon(15)}
-              </button>
-            </Tooltip>
-          )}
-          {onOpenThemeModal && (
-            <Tooltip content="Display settings">
-              <button
-                className="chrome-btn--small shrink-0 [-webkit-app-region:no-drag]"
-                onClick={onOpenThemeModal}
-                aria-label="Open display settings"
-              >
-                {Ico.slider(15)}
-              </button>
-            </Tooltip>
-          )}
         </div>
 
         {/* Version is shown on the Settings page — no need to repeat here. */}

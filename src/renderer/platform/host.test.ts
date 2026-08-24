@@ -8,6 +8,16 @@ async function importHost() {
   return await import('./host');
 }
 
+// The web branches of logout()/getAccessToken() dynamically import
+// ../lib/keycloak; mock it so tests never construct a real keycloak-js client
+// (its module ctor touches window). getAccessToken returns null, matching real
+// keycloak when unauthenticated — the state every test here runs under.
+const keycloakMock = vi.hoisted(() => ({
+  logout: vi.fn(async () => {}),
+  getAccessToken: vi.fn(async () => null),
+}));
+vi.mock('../lib/keycloak', () => keycloakMock);
+
 function setUrl(url: string) {
   (window as unknown as { happyDOM: { setURL(u: string): void } }).happyDOM.setURL(url);
 }
@@ -21,6 +31,25 @@ afterEach(() => {
   setUrl('http://localhost:3000/');
 });
 
+describe('logout()', () => {
+  beforeEach(() => keycloakMock.logout.mockClear());
+
+  it('ends the Keycloak session on web (no bridge)', async () => {
+    const host = await importHost();
+    await host.logout();
+    expect(keycloakMock.logout).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses the bridge on Electron and never touches Keycloak', async () => {
+    const bridgeLogout = vi.fn(async () => {});
+    (window as unknown as Record<string, unknown>).antontron = { logout: bridgeLogout };
+    const host = await importHost();
+    await host.logout();
+    expect(bridgeLogout).toHaveBeenCalledTimes(1);
+    expect(keycloakMock.logout).not.toHaveBeenCalled();
+  });
+});
+
 describe('web mode (no bridge)', () => {
   it('reports isWeb, platform "web", ui version "web"', async () => {
     const host = await importHost();
@@ -29,6 +58,11 @@ describe('web mode (no bridge)', () => {
     expect(host.getPlatform()).toBe('web');
     expect(host.isMac()).toBe(false);
     await expect(host.getUIVersion()).resolves.toBe('web');
+  });
+
+  it('codingModeOptionsEnabled is always false on web — no bridge to read the flag from', async () => {
+    const host = await importHost();
+    expect(host.codingModeOptionsEnabled).toBe(false);
   });
 
   it('getApiOrigin is the page origin; localhost counts as local', async () => {
@@ -95,6 +129,21 @@ describe('electron mode (bridge present)', () => {
     expect(host.isWeb).toBe(false);
     expect(host.getPlatform()).toBe('darwin');
     expect(host.isMac()).toBe(true);
+  });
+
+  it('codingModeOptionsEnabled mirrors the bridge value exactly — only literal true counts', async () => {
+    (window as unknown as Record<string, unknown>).antontron = { codingModeOptionsEnabled: true };
+    let host = await importHost();
+    expect(host.codingModeOptionsEnabled).toBe(true);
+
+    (window as unknown as Record<string, unknown>).antontron = { codingModeOptionsEnabled: false };
+    host = await importHost();
+    expect(host.codingModeOptionsEnabled).toBe(false);
+
+    // Missing field (older/partial bridge) defaults to off, same as web.
+    (window as unknown as Record<string, unknown>).antontron = {};
+    host = await importHost();
+    expect(host.codingModeOptionsEnabled).toBe(false);
   });
 
   it('getApiOrigin under file:// uses the preload-supplied port, falling back to 26866', async () => {
@@ -183,7 +232,7 @@ describe('electron mode (bridge present)', () => {
     await host.cancelDrivePicker();
     expect(oauthCancelPicker).toHaveBeenCalledOnce();
   });
-  
+
   it('getVersionInfo reports app/ui/source distinctly (OTA never masks the shell)', async () => {
     // OTA active: ui is the cached bundle, app is the installed shell — kept
     // separate so the App row can't drift to the OTA version (ENG-213 / G1).

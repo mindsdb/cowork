@@ -21,26 +21,26 @@ describe('resolveBootTarget', () => {
   // treated a readSettings failure as fatal → auth).
   it('boots a configured instance to terminal when server settings are empty but local consent is set', async () => {
     const host = makeHost({ readSettings: async () => ({}) });
-    expect(await resolveBootTarget(host, /* hasLocalConsent */ true)).toBe('terminal');
+    expect((await resolveBootTarget(host, /* hasLocalConsent */ true)).target).toBe('terminal');
   });
 
   it('honors server-side consent when present (no local flag)', async () => {
     const host = makeHost({
       readSettings: async () => ({ ANTON_TERMS_CONSENT: 'true' }),
     });
-    expect(await resolveBootTarget(host, /* hasLocalConsent */ false)).toBe('terminal');
+    expect((await resolveBootTarget(host, /* hasLocalConsent */ false)).target).toBe('terminal');
   });
 
   it('still requires config_ready — an unconfigured instance goes to auth despite consent', async () => {
     const host = makeHost({
       checkConfigured: async () => ({ configured: false, provider: '' }),
     });
-    expect(await resolveBootTarget(host, true)).toBe('auth');
+    expect((await resolveBootTarget(host, true)).target).toBe('auth');
   });
 
   it('routes to auth when not consented (no server flag, no local flag)', async () => {
     const host = makeHost({ readSettings: async () => ({}) });
-    expect(await resolveBootTarget(host, false)).toBe('auth');
+    expect((await resolveBootTarget(host, false)).target).toBe('auth');
   });
 
   it('routes to setup when consented + configured but deps are not ready', async () => {
@@ -48,7 +48,7 @@ describe('resolveBootTarget', () => {
       readSettings: async () => ({ ANTON_TERMS_CONSENT: 'true' }),
       checkInstall: async () => ({ antonInstalled: false, serverDepsReady: false }),
     });
-    expect(await resolveBootTarget(host, false)).toBe('setup');
+    expect((await resolveBootTarget(host, false)).target).toBe('setup');
   });
 
   // A genuine failure (Electron IPC bridge error, or the server unreachable)
@@ -60,7 +60,7 @@ describe('resolveBootTarget', () => {
         throw new Error('bridge failure');
       },
     });
-    expect(await resolveBootTarget(host, true)).toBe('auth');
+    expect((await resolveBootTarget(host, true)).target).toBe('auth');
   });
 
   it('routes to auth when checkConfigured throws (server unreachable)', async () => {
@@ -69,7 +69,7 @@ describe('resolveBootTarget', () => {
         throw new Error('network');
       },
     });
-    expect(await resolveBootTarget(host, true)).toBe('auth');
+    expect((await resolveBootTarget(host, true)).target).toBe('auth');
   });
 
   // ENG-1232: when BOTH concurrent checks reject (server fully unreachable on
@@ -84,7 +84,7 @@ describe('resolveBootTarget', () => {
         throw new Error('network');
       },
     });
-    expect(await resolveBootTarget(host, true)).toBe('auth');
+    expect((await resolveBootTarget(host, true)).target).toBe('auth');
   });
 
   // ENG-1232: pin the parallelization — readSettings() and checkConfigured()
@@ -114,7 +114,7 @@ describe('resolveBootTarget', () => {
         return CONFIGURED;
       },
     });
-    expect(await resolveBootTarget(host, false)).toBe('terminal');
+    expect((await resolveBootTarget(host, false)).target).toBe('terminal');
   });
 
   // ENG-1232: readSettings + checkConfigured now run concurrently to save an
@@ -129,7 +129,38 @@ describe('resolveBootTarget', () => {
         return INSTALLED;
       },
     });
-    expect(await resolveBootTarget(host, true)).toBe('auth');
+    expect((await resolveBootTarget(host, true)).target).toBe('auth');
     expect(installChecked).toBe(false);
+  });
+});
+
+describe('resolveBootTarget orgMode', () => {
+  it('reports orgMode from checkConfigured', async () => {
+    const host = makeHost({
+      readSettings: async () => ({ ANTON_TERMS_CONSENT: 'true' }),
+      checkConfigured: async () => ({ ...CONFIGURED, orgMode: true }),
+    });
+    const res = await resolveBootTarget(host, true);
+    expect(res.target).toBe('terminal');
+    expect(res.orgMode).toBe(true);
+  });
+
+  it('reports orgMode false when the deployment is standalone', async () => {
+    const host = makeHost({ checkConfigured: async () => ({ ...CONFIGURED, orgMode: false }) });
+    expect((await resolveBootTarget(host, true)).orgMode).toBe(false);
+  });
+
+  // A thrown checkConfigured routes to auth; the mode is then UNKNOWN, and the
+  // caller must not read that as "standalone" - in a web build that would render
+  // desktop-only artifact actions in an org deployment whose /health blipped.
+  it('reports orgMode null when the health read failed', async () => {
+    const host = makeHost({
+      checkConfigured: async () => {
+        throw new Error('offline');
+      },
+    });
+    const res = await resolveBootTarget(host, true);
+    expect(res.target).toBe('auth');
+    expect(res.orgMode).toBe(null);
   });
 });

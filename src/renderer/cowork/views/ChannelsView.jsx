@@ -13,6 +13,7 @@
 import { useEffect, useState } from 'react';
 import Ico from '../components/Icons';
 import { Badge, Button, Field, Tooltip } from '../components/ui';
+import { useOrgMode } from '../../lib/orgMode';
 import ChannelBindings from './ChannelBindings';
 import {
   fetchChannelPlugins,
@@ -23,6 +24,7 @@ import {
   reloadChannel,
   setupChannel,
   teardownChannel,
+  testChannelConnection,
   fetchChannelAgent,
   setChannelAgent,
 } from '../api';
@@ -102,7 +104,8 @@ function ChannelLogo({ type, size = 26 }) {
   );
 }
 
-function StatusBadge({ active, configured }) {
+function StatusBadge({ active, configured, orgReady = true }) {
+  if (!orgReady) return <Badge variant="muted" size="xs">Coming soon</Badge>;
   const label = active ? 'Active' : configured ? 'Configured' : 'Not connected';
   // Active and Configured are both "healthy" states (green) — Configured
   // just means set-but-not-necessarily-live, not a warning.
@@ -179,10 +182,26 @@ function ChannelCard({ plugin, status, onChanged }) {
     }
   }
 
+  // Calls the platform with the stored credentials — "configured" only means
+  // every required field has some value, not that the platform accepts it.
+  async function testConnection() {
+    setBusy(true); setError(''); setNotice('');
+    try {
+      const r = await testChannelConnection(plugin.channel_type);
+      if (r?.ok) setNotice(r.detail || 'Connection verified.');
+      else setError(r?.detail || 'The platform rejected these credentials.');
+    } catch (err) {
+      setError(err?.message || 'Could not test the connection');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const fields = config?.fields || {};
   const configured = status?.configured;
   const active = status?.status === 'active';
   const webhookPath = (plugin.webhook_paths || [])[0];
+  const orgReady = plugin.org_ready !== false;
 
   return (
     <section className="channels-card">
@@ -194,7 +213,7 @@ function ChannelCard({ plugin, status, onChanged }) {
             <code className="channels-type">{plugin.channel_type}</code>
           </div>
         </div>
-        <StatusBadge active={active} configured={configured} />
+        <StatusBadge active={active} configured={configured} orgReady={orgReady} />
       </header>
 
       <div className="channels-fields">
@@ -232,15 +251,26 @@ function ChannelCard({ plugin, status, onChanged }) {
         <p className="channels-note">OAuth install isn’t wired yet — enter credentials directly above.</p>
       ) : null}
 
+      {!orgReady ? (
+        <p className="channels-note">
+          Coming soon for team/cloud workspaces — {plugin.display_name} works today on desktop.
+        </p>
+      ) : null}
+
       {error ? <p className="channels-error">{error}</p> : null}
       {notice ? <p className="channels-notice">{notice}</p> : null}
 
       <div className="channels-actions">
-        <Button variant="primary" onClick={connect} disabled={busy}>
+        <Button variant="primary" onClick={connect} disabled={busy || !orgReady}>
           {Ico.power(15)}<span>{configured ? 'Save & reconnect' : 'Connect'}</span>
         </Button>
+        {configured && caps.supports_verify ? (
+          <Button variant="subtle" onClick={testConnection} disabled={busy || !orgReady}>
+            Test connection
+          </Button>
+        ) : null}
         {configured ? (
-          <Button variant="danger" onClick={disconnect} disabled={busy}>
+          <Button variant="danger" onClick={disconnect} disabled={busy || !orgReady}>
             Disconnect
           </Button>
         ) : null}
@@ -250,6 +280,7 @@ function ChannelCard({ plugin, status, onChanged }) {
 }
 
 export default function ChannelsView() {
+  const orgMode = useOrgMode();
   const [plugins, setPlugins] = useState([]);
   const [statusByType, setStatusByType] = useState({});
   const [loading, setLoading] = useState(true);
@@ -286,7 +317,9 @@ export default function ChannelsView() {
       {loading ? (
         <p className="channels-muted channels-pad">Loading channels…</p>
       ) : plugins.length === 0 ? (
-        <p className="channels-muted channels-pad">No channels available. Is the server running?</p>
+        <p className="channels-muted channels-pad">
+          {orgMode ? "Channels aren't available on Cloud just yet." : 'No channels available. Is the server running?'}
+        </p>
       ) : (
         <main className="channels-body">
           <nav className="channels-list scroll-clean" aria-label="Channels">
@@ -306,7 +339,11 @@ export default function ChannelsView() {
                     {p.display_name}
                     <code className="channels-type">{p.channel_type}</code>
                   </span>
-                  <StatusBadge active={st?.status === 'active'} configured={st?.configured} />
+                  <StatusBadge
+                    active={st?.status === 'active'}
+                    configured={st?.configured}
+                    orgReady={p.org_ready !== false}
+                  />
                 </button>
               );
             })}

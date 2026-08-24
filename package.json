@@ -41,7 +41,8 @@
     "dist:win": "npm run build && node scripts/dist-win.mjs",
     "dist:win:all": "npm run build && node scripts/dist-win.mjs --all",
     "release:win:local": "npm run dist:win",
-    "rebuild": "electron-rebuild"
+    "rebuild": "electron-rebuild",
+    "postinstall": "electron-rebuild"
   },
   "devDependencies": {
     "@babel/core": "^8.0.1",
@@ -71,7 +72,10 @@
     "vitest": "^4.1.9"
   },
   "optionalDependencies": {
-    "appdmg": "^0.6.6"
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/xterm": "^5.5.0",
+    "appdmg": "^0.6.6",
+    "node-pty": "^1.2.0-beta.15"
   },
   "overrides": {
     "js-yaml": "^4.3.0"

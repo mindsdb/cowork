@@ -24,6 +24,11 @@ import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefres
 import { refreshTokensOnly, writeMindsKeyToEnvAndRestart, provisionAntonApiKey, scheduleRefresh, cancelScheduledRefresh, startKeyLifecycleChecks, cancelKeyLifecycleChecks, revokeDeviceKeyAndEndSession, getRevokeToken, KEYCLOAK_AUTH_URL, KEYCLOAK_REGISTRATION_URL, KEYCLOAK_TOKEN_URL, SIGNUP_CALLBACK_TIMEOUT_MS } from './minds-auth';
 import { scrubEnvCredentials } from './logout-env';
 import { MINDS_API_HOST } from './minds-urls';
+import {
+  validateAnthropic,
+  validateMinds,
+  validateOpenAICompatible,
+} from './provider-validation';
 import { sendEvent } from './analytics';
 import { getRendererPath, getBundledPath, checkForUIUpdate, applyUIUpdate, hasInternet, getCachedVersion, isServingOta, rollbackUI } from './ui-updater';
 import type { UpdateCheckResult } from './ui-updater';
@@ -34,8 +39,17 @@ import { applyChannelUvIsolation, primeLoginShellPath } from './uv-paths';
 import { shellAutoUpdateEnabledFor } from './shell-auto-update-rollout';
 import { getServerAuthToken, authHeader, resetServerAuthTokenCache } from './server-auth';
 import { getAppDisplayVersion } from './server-source';
-import { extractProviderError, classifyOpenAICompatibleResult } from './provider-error';
 import { unifiedVersion, SKEW_WARN_DAYS } from '../shared/version';
+import { detectClaudeCode } from './coding-mode';
+import {
+  startCodingTerminal,
+  writeToCodingTerminal,
+  resizeCodingTerminal,
+  isCodingTerminalRunning,
+  killCodingTerminal,
+  killAllCodingTerminals,
+  removeCodingTask,
+} from './coding-terminal';
 
 function getAntonEnvPath(): string {
   return coworkEnvPath();
@@ -182,98 +196,6 @@ function httpRequest(
     if (options.body) req.write(options.body);
     req.end();
   });
-}
-
-async function validateAnthropic(apiKey: string, model: string): Promise<{ ok: boolean; error?: string }> {
-  try {
-    const res = await httpRequest('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: 1,
-        messages: [{ role: 'user', content: 'ping' }],
-      }),
-    });
-    if (res.status === 200 || res.status === 201) {
-      return { ok: true };
-    }
-    return { ok: false, error: extractProviderError(res.body) || `HTTP ${res.status}` };
-  } catch (err: any) {
-    return { ok: false, error: `Cannot connect: ${err.message}` };
-  }
-}
-
-async function validateMinds(
-  apiKey: string,
-  baseUrl: string
-): Promise<{ ok: boolean; error?: string }> {
-  try {
-    // Probe the real inference path (a 1-token chat completion) instead
-    // of a listing route. `/v1/minds/` and `/models` are not deployed on
-    // every MindsHub host and 404/401 even for valid keys, which blocked
-    // onboarding with a working key. Mirrors minds_chat_base_url in
-    // cowork-server: mdb.ai needs /api/v1, others need /v1.
-    const base = baseUrl.replace(/\/+$/, '');
-    const chatBase = base.endsWith('/v1')
-      ? base
-      : base.includes('mdb.ai') ? `${base}/api/v1` : `${base}/v1`;
-    const res = await httpRequest(`${chatBase}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'latest:haiku',
-        max_tokens: 20,
-        messages: [{ role: 'user', content: 'ping' }],
-      }),
-    });
-    if (res.status === 401 || res.status === 403) {
-      return { ok: false, error: 'Invalid API key' };
-    }
-    if (res.status >= 200 && res.status < 300) {
-      return { ok: true };
-    }
-    return { ok: false, error: extractProviderError(res.body) || `HTTP ${res.status}` };
-  } catch (err: any) {
-    return { ok: false, error: `Cannot connect: ${err.message}` };
-  }
-}
-
-async function validateOpenAICompatible(
-  apiKey: string,
-  baseUrl: string,
-  model?: string
-): Promise<{ ok: boolean; error?: string }> {
-  try {
-    const normalizedBase = baseUrl.replace(/\/+$/, '');
-    // Support endpoints that already include a versioned path (e.g. Gemini's /v1beta/openai)
-    const chatUrl = /\/v\d/.test(normalizedBase)
-      ? `${normalizedBase}/chat/completions`
-      : `${normalizedBase}/v1/chat/completions`;
-    const res = await httpRequest(chatUrl, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: model || 'gpt-5.5',
-        messages: [{ role: 'user', content: 'ping' }],
-      }),
-    });
-    // Gemini's footguns (ENG-1145) live in classifyOpenAICompatibleResult:
-    // array-shaped error bodies and a bad key that returns 400, not 401/403.
-    return classifyOpenAICompatibleResult(res.status, res.body);
-  } catch (err: any) {
-    return { ok: false, error: `Cannot connect: ${err.message}` };
-  }
 }
 
 // ─── Projects ────────────────────────────────────────────────
@@ -544,6 +466,7 @@ function createWindow() {
 
   mainWindow.on('closed', () => {
     mainWindow = null;
+    killAllCodingTerminals();
   });
 }
 
@@ -1216,11 +1139,11 @@ function setupIPC() {
     IPC.SETTINGS_VALIDATE,
     async (_event, provider: string, apiKey: string, baseUrl?: string, model?: string) => {
       if (provider === 'anthropic') {
-        return validateAnthropic(apiKey, model || 'claude-sonnet-4-6');
+        return validateAnthropic(apiKey, model || 'claude-sonnet-4-6', httpRequest);
       } else if (provider === 'minds') {
-        return validateMinds(apiKey, baseUrl || MINDS_API_HOST);
+        return validateMinds(apiKey, baseUrl || MINDS_API_HOST, httpRequest);
       } else if (provider === 'openai-compatible') {
-        return validateOpenAICompatible(apiKey, baseUrl || 'https://api.openai.com/v1', model);
+        return validateOpenAICompatible(apiKey, baseUrl || 'https://api.openai.com/v1', model, httpRequest);
       }
       return { ok: false, error: 'Unknown provider' };
     }
@@ -1258,6 +1181,34 @@ function setupIPC() {
     } catch (e: any) {
       return { ok: false, reason: e?.message || String(e) };
     }
+  });
+
+  ipcMain.handle(IPC.CODING_DETECT_CLI, async () => {
+    return detectClaudeCode();
+  });
+
+  ipcMain.handle(IPC.CODING_TERMINAL_START, async (event, taskId: string, opts: { projectPath: string; message: string; model: string }, cols: number, rows: number) => {
+    return startCodingTerminal(taskId, opts, cols, rows, event.sender);
+  });
+
+  ipcMain.handle(IPC.CODING_TERMINAL_INPUT, async (_event, taskId: string, data: string) => {
+    writeToCodingTerminal(taskId, data);
+  });
+
+  ipcMain.handle(IPC.CODING_TERMINAL_RESIZE, async (_event, taskId: string, cols: number, rows: number) => {
+    resizeCodingTerminal(taskId, cols, rows);
+  });
+
+  ipcMain.handle(IPC.CODING_TERMINAL_IS_RUNNING, async (_event, taskId: string) => {
+    return isCodingTerminalRunning(taskId);
+  });
+
+  ipcMain.handle(IPC.CODING_TERMINAL_KILL, async (_event, taskId: string) => {
+    killCodingTerminal(taskId);
+  });
+
+  ipcMain.handle(IPC.CODING_REMOVE_TASK, async (_event, taskId: string, projectPath: string) => {
+    await removeCodingTask(taskId, projectPath);
   });
 
   ipcMain.handle(IPC.APP_UI_VERSION, async () => {

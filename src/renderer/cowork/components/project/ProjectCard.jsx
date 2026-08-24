@@ -10,6 +10,7 @@ import { Card, Tooltip } from '../ui';
 import { fetchMemory, fetchArtifacts, countNonEmptyMemory } from '../../api';
 import { useRevealOnHover } from '../../hooks/useRevealOnHover';
 import { relativeAge } from '../../lib/formatTime';
+import { belongsToProject } from '../../lib/artifactProject';
 
 const FONT_BODY    = 'var(--font-body)';
 const FONT_DISPLAY = 'var(--font-display)';
@@ -68,8 +69,7 @@ function useProjectStats(project, { tasks = [], scheduled = [] }) {
     let cancelled = false;
     fetchArtifacts().then((data) => {
       if (cancelled || !Array.isArray(data)) return;
-      const prefix = project.path.replace(/\/+$/, '') + '/';
-      setArtCount(data.filter((a) => a.path?.startsWith(prefix)).length);
+      setArtCount(data.filter((a) => belongsToProject(a, project)).length);
     }).catch(() => setArtCount(0));
     return () => { cancelled = true; };
   }, [project?.path]);
