@@ -17,6 +17,7 @@ export function TaskBar({
   onToggleTerminal,
   onOpenControls,
   onOpenExtensions,
+  onOpenProject = () => {},
   onRename,
   onFork,
   onCompact,
@@ -34,6 +35,7 @@ export function TaskBar({
   onToggleTerminal: () => void;
   onOpenControls: () => void;
   onOpenExtensions: () => void;
+  onOpenProject?: () => void;
   onRename: () => void;
   onFork: () => void;
   onCompact: () => void;
@@ -45,9 +47,14 @@ export function TaskBar({
   const { additions, deletions } = diffStats(files);
   const taskIdle = session.status !== 'running' && session.status !== 'awaiting_approval';
   const worktreeLabel = compactPath(session.workspace_path);
-  const workspaceModeLabel = session.workspace_kind === 'direct_folder'
-    ? 'direct folder'
-    : (git?.branch || 'detached worktree');
+  const folderCount = session.workspaces?.length || 1;
+  const workspaceModeLabel = folderCount > 1
+    ? `${folderCount}-folder workspace`
+    : session.workspace_kind === 'local_copy'
+      ? 'isolated folder'
+      : session.workspace_kind === 'direct_folder'
+        ? 'direct folder'
+        : (git?.branch || 'isolated worktree');
 
   return (
     <header className="code-taskbar">
@@ -121,6 +128,11 @@ export function TaskBar({
               icon: Ico.settings(13),
               onClick: onOpenControls,
             },
+            ...(session.project_id ? [{
+              label: 'Project settings',
+              icon: Ico.folder(13),
+              onClick: onOpenProject,
+            }] : []),
             {
               label: 'Skills and extensions',
               icon: Ico.settings(13),

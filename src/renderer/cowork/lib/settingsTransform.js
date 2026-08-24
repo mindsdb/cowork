@@ -196,7 +196,8 @@ export function modelLabel(id) {
   }
   if (s.startsWith('gpt-')) {
     const [head, ...rest] = s.slice(4).split('-');
-    return `GPT-${head}${rest.map((t) => ` ${_cap(t)}`).join('')}`;
+    const family = /^\d/.test(head) ? `GPT-${head}` : `GPT ${_cap(head)}`;
+    return `${family}${rest.map((t) => ` ${_cap(t)}`).join('')}`;
   }
   if (s.startsWith('gemini-')) {
     return `Gemini ${s.slice(7).split('-').map(_cap).join(' ')}`;

@@ -1,6 +1,7 @@
 import type {
   CodingEvent,
   CodingSession,
+  CodeProject,
   DiffFile,
   EngineCapability,
   GitState,
@@ -213,6 +214,13 @@ function copy<T>(value: T): T {
 }
 
 
+function taskTitle(prompt: string): string {
+  const compact = prompt.trim().replace(/\s+/g, ' ');
+  if (!compact) return 'Coding task';
+  return compact.length <= 72 ? compact : `${compact.slice(0, 71).trimEnd()}…`;
+}
+
+
 export function getCodeFixtureApi() {
   const name = activeFixtureName();
   if (!name) return null;
@@ -250,6 +258,19 @@ export function getCodeFixtureApi() {
     supports_diff_events: true, supports_models: true,
     supports_terminal: true,
   }];
+  let projects: CodeProject[] = [{
+    schema_version: 1,
+    id: 'project-atlas',
+    name: 'Atlas',
+    folders: [{ id: 'atlas-web', name: 'atlas-web', path: ROOT, base_branch: 'staging', commands: [] }],
+    connections: [],
+    environment: { variables: {}, port_names: ['PORT'] },
+    default_engine_id: 'codex',
+    default_model: DEFAULT_CODING_AGENT_MODEL,
+    permission_mode: 'supervised',
+    created_at: NOW,
+    updated_at: NOW,
+  }];
 
   return {
     engines: async () => copy(engines),
@@ -257,6 +278,42 @@ export function getCodeFixtureApi() {
     inspect: async (path: string): Promise<WorkspaceInspection> => ({
       path, exists: true, is_directory: true, is_git: true, repository_root: path,
       branch: 'staging', revision: '91ef52ea6f3ab14d', dirty: false,
+    }),
+    projects: async () => ({ items: copy(projects) }),
+    project: async (id: string) => copy(projects.find((item) => item.id === id) || projects[0]),
+    projectFolders: async (id: string) => ({
+      items: (projects.find((item) => item.id === id)?.folders || []).map((folder) => ({
+        folder: copy(folder),
+        inspection: {
+          path: folder.path, exists: true, is_directory: true, is_git: true,
+          repository_root: folder.path, branch: folder.base_branch || 'staging',
+          revision: '91ef52ea6f3ab14d', dirty: false,
+        },
+        base_branch_available: true,
+      })),
+    }),
+    createProject: async (body: Pick<CodeProject, 'name' | 'folders' | 'default_engine_id' | 'default_model' | 'permission_mode'>) => {
+      const created: CodeProject = {
+        schema_version: 1, id: `project-${Date.now()}`, ...body, connections: [],
+        environment: { variables: {}, port_names: ['PORT'] }, created_at: NOW, updated_at: NOW,
+      };
+      projects = [created, ...projects];
+      return copy(created);
+    },
+    updateProject: async (id: string, body: Partial<CodeProject>) => {
+      projects = projects.map((item) => item.id === id ? { ...item, ...body, updated_at: NOW } : item);
+      return copy(projects.find((item) => item.id === id) || projects[0]);
+    },
+    deleteProject: async (id: string) => { projects = projects.filter((item) => item.id !== id); },
+    configurePlaybook: async () => ({ configured: true, update_available: false, items: [], diff: '' }),
+    playbook: async () => ({ configured: false, update_available: false, items: [], diff: '' }),
+    removePlaybook: async () => undefined,
+    refreshPlaybook: async () => ({ configured: true, update_available: false, items: [], diff: '' }),
+    applyPlaybook: async () => ({ configured: true, update_available: false, items: [], diff: '' }),
+    setPlaybookItems: async () => ({ configured: true, update_available: false, items: [], diff: '' }),
+    integrations: async () => ({ items: [] }),
+    readSourceContext: async (_id: string, body: { provider: 'github' | 'linear' | 'slack'; kind: 'issue' | 'pull_request' | 'conversation'; url: string }) => ({
+      ...body, title: 'Linked work', external_id: 'fixture-1', body: 'Fixture source context',
     }),
     sessions: async (includeArchived = false) => {
       if (name === 'error') throw new Error('Could not reach the local coding service.');
@@ -288,9 +345,12 @@ export function getCodeFixtureApi() {
       return { items: copy(items), next_seq: items.at(-1)?.seq || after };
     },
     create: async (body: SessionCreateBody) => {
+      const project = projects.find((item) => item.id === body.project_id) || projects[0];
+      const sourcePath = body.path || project?.folders[0]?.path || ROOT;
       const created = session({
-        id: 'task-created', title: body.prompt.slice(0, 72), source_path: body.path,
-        workspace_path: `${body.path}/.cowork-task`, repository_root: body.path,
+        id: 'task-created', title: taskTitle(body.prompt), source_path: sourcePath,
+        workspace_path: `${sourcePath}/.cowork-task`, repository_root: sourcePath,
+        project_id: project?.id, project_name: project?.name,
         engine_id: body.engine_id || 'codex', model: body.model || DEFAULT_CODING_AGENT_MODEL,
         permission_mode: body.permission_mode || 'supervised', status: 'running',
       });
@@ -330,6 +390,22 @@ export function getCodeFixtureApi() {
     branch: async (id: string, branch: string) => ({ ...copy(git(id)), branch, detached: false }),
     commit: async (id: string, _message: string) => copy(git(id)),
     apply: async (_id: string) => ({ status: 'applied', snapshot: '/tmp/cowork-recovery.patch' }),
+    validate: async () => ({ items: [] }),
+    deliveryPlan: async () => ({ items: [{
+      folder_id: 'app', folder_name: 'Atlas web', workspace_path: WORKTREE,
+      remote_url: 'https://github.com/mindsdb/atlas-web.git', base_branch: 'staging',
+      task_branch: 'cowork/atlas/task-73c4', status: 'ready' as const, detail: '',
+    }] }),
+    draftPullRequests: async (_id: string, body: { title: string }) => ({ items: [{
+      provider: 'github' as const, action: 'draft_pull_request' as const,
+      target_url: 'https://github.com/mindsdb/atlas-web.git', status: 'published' as const,
+      external_url: 'https://github.com/mindsdb/atlas-web/pull/101', detail: body.title,
+      folder_id: 'app', folder_name: 'Atlas web', base_branch: 'staging',
+      task_branch: 'cowork/atlas/task-73c4', created_at: NOW,
+    }] }),
+    publish: async (_id: string, body: { provider: 'github' | 'linear' | 'slack'; action: 'progress' | 'result'; target_url: string }) => ({
+      ...body, status: 'published' as const, detail: 'Published', created_at: NOW, external_url: body.target_url,
+    }),
     terminal: async () => ({ status: 'stopped' as const, items: [], first_seq: 0, next_seq: 0 }),
     startTerminal: async () => ({ status: 'running' as const, process_id: 'fixture-terminal', items: [], first_seq: 0, next_seq: 0 }),
     terminalInput: async () => ({ status: 'running' as const, process_id: 'fixture-terminal', items: [], first_seq: 0, next_seq: 0 }),

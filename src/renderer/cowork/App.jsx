@@ -5356,6 +5356,7 @@ function AppCore() {
               defaultModel={settings.codingAgentModel || DEFAULT_CODING_AGENT_MODEL}
               models={mindsModels}
               modelMeta={modelMeta}
+              connections={connectors}
               onSessionsChange={setCodingSessions}
               onSelectionChange={changeCodingSelection}
             />
