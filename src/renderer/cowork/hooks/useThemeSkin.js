@@ -9,9 +9,8 @@ import { loadCustomTheme, persistCustomTheme, applyCustomTheme } from '../../lib
 //   skin   → data-skin + persistence
 //   custom → inline body token overrides (only while the custom skin is active)
 //
-// Extracted from App.jsx (ENG-1916). Behavior-preserving — the theme/skin
-// concern closes over nothing else in the component. The settings-driven
-// nav title colour stays in App.jsx: it reads `settings`, a different domain.
+// The settings-driven nav title colour stays in App.jsx — it reads
+// `settings`, a different domain.
 export function useThemeSkin() {
   // Theme (light | dark) — persisted in localStorage so the choice
   // survives reloads. The animated background canvas (gravity-field)
@@ -27,8 +26,8 @@ export function useThemeSkin() {
   // stylesheet keyed on body[data-skin]; both color schemes have a
   // variant per skin, so the two toggles compose freely.
   const [skin, setSkin] = useState(loadSkin);
-  // The full Display / theme picker modal (ENG-1545), opened from the
-  // sidebar footer's "Display settings" button.
+  // The full Display / theme picker modal, opened from the sidebar
+  // footer's "Display settings" button.
   const [themeModalOpen, setThemeModalOpen] = useState(false);
   // The "design your own" recipe behind the `custom` skin — edited in
   // Settings → Appearance, applied as inline body token overrides.
