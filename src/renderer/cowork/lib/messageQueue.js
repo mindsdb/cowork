@@ -24,6 +24,80 @@ export function selectNextQueuedTask(queues, existingTaskIds, preferredTaskId) {
   return Object.keys(queues || {}).find(hasQueue) || null;
 }
 
+// Decide whether the single app-wide stream slot is stranded and must be
+// force-released. Normally a turn's terminal event (onDone/onError) frees it; a
+// stream that dies with NO terminal — a half-open SSE, or a reconnect tail on a
+// turn that ended elsewhere — leaves it reserved forever, stranding every later
+// message at "N queued". `serverInFlightIds` is the authoritative running list,
+// so holding the slot for a task the server no longer lists means it's stale.
+//
+// Four guards keep a HEALTHY turn from being aborted while still recovering a
+// genuinely stranded one:
+//
+//   * `seen` sets the threshold (not a gate): a turn the server listed and then
+//     dropped is high-confidence, released after `threshold` (2) spaced misses;
+//     one never observed waits for the wider `unseenThreshold` (4), since a
+//     lagging Redis replica can briefly report a live just-started turn as
+//     absent. Still bounded, so a fast-fail that's never listed recovers too.
+//   * miss-spacing (`now`/`minMissSpacingMs`): a miss counts only once
+//     `minMissSpacingMs` has elapsed since the last, so a focus refresh firing
+//     right after the 5s poll can't collapse the window. `now === 0` disables it.
+//   * `preflight`: a send reserves the slot, then awaits attachment uploads
+//     before the stream starts; that expected absence holds the tally clean.
+//   * `producedData`: the turn's own SSE socket has delivered an event, proof it
+//     started. Suppresses only the UNSEEN reap (the absence is registration lag,
+//     not a never-started fast-fail); a seen-then-dropped turn is still a genuine
+//     strand and reaps at `threshold`.
+//
+// Tally `{ cid, misses, seen, lastMissAt }` resets when the task reappears or the
+// slot moves conversations.
+export function reservationReleaseDecision(
+  streamingTaskId,
+  serverInFlightIds,
+  prev,
+  { threshold = 2, unseenThreshold = 4, preflight = false, producedData = false, now = 0, minMissSpacingMs = 4000 } = {},
+) {
+  if (!streamingTaskId) return { cid: null, misses: 0, seen: false, lastMissAt: 0, release: false };
+
+  const sameCid = Boolean(prev) && prev.cid === streamingTaskId;
+  const priorMisses = sameCid ? (prev.misses || 0) : 0;
+  const priorSeen = sameCid ? Boolean(prev.seen) : false;
+  const priorLastMissAt = sameCid ? (prev.lastMissAt || 0) : 0;
+
+  // Hold the tally clean, but preserve `seen` so a mid-turn upload window can't
+  // erase that we already confirmed the turn.
+  if (preflight) {
+    return { cid: streamingTaskId, misses: 0, seen: priorSeen, lastMissAt: 0, release: false };
+  }
+
+  const ids = Array.isArray(serverInFlightIds) ? serverInFlightIds : [];
+  if (ids.includes(streamingTaskId)) {
+    // Present: registration confirmed. Reset and mark seen, so a later
+    // disappearance is treated as the high-confidence strand.
+    return { cid: streamingTaskId, misses: 0, seen: true, lastMissAt: 0, release: false };
+  }
+
+  // Absent and never registered, but the turn's own SSE socket has delivered
+  // events — it provably started, so the absence is registration/replica lag,
+  // not the fast-fail this path reaps. Defer to registration (→ seen) or the
+  // stream's own terminal belt. Gated on !priorSeen: once listed, a later
+  // disappearance is a genuine strand and reaps regardless of events.
+  if (!priorSeen && producedData) {
+    return { cid: streamingTaskId, misses: 0, seen: false, lastMissAt: 0, release: false };
+  }
+
+  // Absent. A seen turn releases fast; an unseen one gets the wider grace window.
+  const limit = priorSeen ? threshold : unseenThreshold;
+
+  // Miss-spacing guard: a poll within the spacing window doesn't count a fresh miss.
+  if (now && priorMisses > 0 && now - priorLastMissAt < minMissSpacingMs) {
+    return { cid: streamingTaskId, misses: priorMisses, seen: priorSeen, lastMissAt: priorLastMissAt, release: priorMisses >= limit };
+  }
+
+  const misses = priorMisses + 1;
+  return { cid: streamingTaskId, misses, seen: priorSeen, lastMissAt: now, release: misses >= limit };
+}
+
 // Re-key queued messages when the server mints a canonical id for a task
 // that was streaming under a tmp id (adoptServerId, ENG-1378). Moves every
 // source id's queue onto `toId`, preserving FIFO order (existing `toId`

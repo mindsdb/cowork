@@ -9,6 +9,7 @@ import { HABIT_TRACKER_PREFIX } from '../components/onboarding/steps';
 import { OrbitMorph, Button } from '../components/ui';
 import { host } from '../../platform/host';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
+import { trackBillingOpened } from '../lib/analytics';
 
 // ── Boot choreography ───────────────────────────────────────────────────
 //
@@ -537,7 +538,13 @@ export default function HomeView({
               <div className="home-connect-card__actions">
                 <Button
                   variant="primary"
-                  onClick={() => host.openExternal(MINDS_BILLING_URL)}
+                  onClick={() => {
+                    // Same card, same trigger as ChatView's provider_required
+                    // (ENG-1533) — one surface reached two ways, so the two must
+                    // not read as different causes in the funnel.
+                    trackBillingOpened('connect_provider');
+                    host.openExternal(MINDS_BILLING_URL);
+                  }}
                 >Start for free</Button>
                 <Button
                   variant="primary"

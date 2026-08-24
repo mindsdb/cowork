@@ -50,6 +50,7 @@ vi.mock('../../lib/analytics', () => ({
 vi.mock('../ChannelsView', () => ({ default: () => <div data-testid="channels-stub" /> }));
 
 import SettingsView from './SettingsView';
+import { transformSettingsRows } from '../../lib/settingsTransform';
 
 // A wallet-locked MindsHub account whose role-provider rows carry the server's
 // pydantic default (anthropic) — i.e. no user choice was ever stored.
@@ -162,6 +163,83 @@ describe('withResolvedRoles — default-mode save (ENG-1632)', () => {
     expect(saved.planningModel).toBe('mindshub_air');
     expect(saved.codingModel).toBeUndefined();
     expect(saved.routerModel).toBeUndefined();
+  });
+
+  // A local endpoint is a deliberate choice, and a MindsHub card is keyed for
+  // everyone who signed in. Repointing on "differs from the default-mode
+  // provider" alone moved a LAN user onto the hosted gateway on any save --
+  // including one that only changed a theme dot.
+  const lanSettings = () => ({
+    ...lockedSettings(),
+    planningProvider: 'openai-compatible',
+    codingProvider: 'openai-compatible',
+    routerProvider: 'openai-compatible',
+    planningModel: 'qwen/qwen3.5-9b',
+    providers: [
+      { type: 'minds-cloud', apiKey: '***', mindsUrl: 'https://api.mindshub.ai' },
+      { type: 'openai-compatible', name: 'LM Studio', baseUrl: 'http://192.168.1.100:1234/v1' },
+    ],
+    providerTypeLabels: { 'minds-cloud': 'MindsHub', 'openai-compatible': 'OpenAI-compatible' },
+  });
+
+  it('leaves a configured local endpoint alone even though MindsHub is keyed', async () => {
+    const saved = await saveAndCapture(lanSettings());
+    expect(saved.planningProvider).toBe('openai-compatible');
+    expect(saved.codingProvider).toBe('openai-compatible');
+    expect(saved.routerProvider).toBe('openai-compatible');
+    // The model must survive too -- a tombstone here would drop the local id.
+    expect(saved.planningModel).toBe('qwen/qwen3.5-9b');
+  });
+
+  it('still repoints a local endpoint that has no base URL to run against', async () => {
+    const unusable = lanSettings();
+    unusable.providers = [
+      unusable.providers[0],
+      { type: 'openai-compatible', name: 'LM Studio', baseUrl: '' },
+    ];
+    const saved = await saveAndCapture(unusable);
+    expect(saved.planningProvider).toBe('minds-cloud');
+    expect(saved.planningModel).toBeNull();
+  });
+
+  // Start from DB ROWS, not a hand-built providers array. The traced user's
+  // LM Studio connection save failed, so providers_json was never persisted
+  // while the provider, base URL and model landed anyway -- the card the
+  // usability check looks for does not exist. Seeding `providers` directly
+  // skips the backfill that has to reconstruct it.
+  const lanRows = (providersJson) => [
+    { key: 'planning_provider', value: 'openai_compatible' },
+    { key: 'coding_provider', value: 'openai_compatible' },
+    { key: 'router_provider', value: 'openai_compatible' },
+    { key: 'planning_model', value: 'qwen/qwen3.5-9b' },
+    { key: 'coding_model', value: 'qwen/qwen3.5-9b' },
+    { key: 'openai_base_url', value: 'http://192.168.1.100:1234/v1' },
+    { key: 'minds_url', value: 'https://api.mindshub.ai' },
+    { key: 'minds_api_key', is_sensitive: true, is_set: true },
+    { key: 'model_mode', value: 'default' },
+    { key: 'providers_json', value: providersJson },
+  ];
+
+  const fromRows = (providersJson) => ({
+    ...transformSettingsRows(lanRows(providersJson)),
+    providerStatus: {}, providerStatusDetails: {},
+    providerTypeLabels: { 'minds-cloud': 'MindsHub', 'openai-compatible': 'OpenAI-compatible' },
+  });
+
+  it('keeps a local endpoint whose provider card was never persisted', async () => {
+    const saved = await saveAndCapture(fromRows('[]'));
+    expect(saved.planningProvider).toBe('openai-compatible');
+    expect(saved.codingProvider).toBe('openai-compatible');
+    expect(saved.routerProvider).toBe('openai-compatible');
+    expect(saved.planningModel).toBe('qwen/qwen3.5-9b');
+  });
+
+  it('keeps a local endpoint when the card was persisted', async () => {
+    const cards = JSON.stringify([
+      { type: 'openai-compatible', name: 'LM Studio', baseUrl: 'http://192.168.1.100:1234/v1' },
+    ]);
+    const saved = await saveAndCapture(fromRows(cards));
+    expect(saved.planningProvider).toBe('openai-compatible');
   });
 
   it('does not touch roles at all in custom mode', async () => {

@@ -17,6 +17,7 @@
  */
 
 import { MINDS_API_BASE } from '../../lib/mindsUrls';
+import { mindsServesOpenAiCompatible, endpointHost } from '../../../shared/minds-endpoint';
 import { isMovingAlias, isFrozenAlias, hasFrozenVersions, orderByFamily } from './modelCatalog';
 
 // ─── Key maps ──────────────────────────────────────────────────────────
@@ -538,11 +539,22 @@ function backfillProviders(result) {
   const rawPlanningType = providerValueToType(result.planningProvider);
   const rawCodingType = providerValueToType(result.codingProvider);
 
-  // When providers are set to openai-compatible but a MindsHub API key
-  // exists, the real provider is minds-cloud (the gateway is OpenAI-
-  // compatible under the hood). Promote so the UI shows a MindsHub card
-  // instead of a phantom empty OpenAI-compatible row.
-  const isMindsBacked = result.mindsApiKey === '***';
+  // MindsHub is itself an OpenAI-compatible gateway, so a provider set to
+  // openai-compatible may really be MindsHub — promote it so the UI shows a
+  // MindsHub card instead of a phantom empty OpenAI-compatible row. The key
+  // alone does not establish that, though: a user who signs in and then points
+  // Cowork at a local model has one too, and promoting there hides the endpoint
+  // they actually run on and costs them the card the save path reads to decide
+  // a role can stay put. The base URL is what settles it.
+  //
+  // No OpenAI key is passed: this decides what the UI draws, not where a turn
+  // goes, so a config with no base URL at all stays on the MindsHub card rather
+  // than rendering a custom row that routes nowhere.
+  const isMindsBacked = result.mindsApiKey === '***'
+    && mindsServesOpenAiCompatible({
+      baseUrl: result.openaiBaseUrl,
+      mindsUrl: result.mindsUrl,
+    });
   const planningType = (rawPlanningType === 'openai-compatible' && isMindsBacked) ? 'minds-cloud' : rawPlanningType;
   const codingType = (rawCodingType === 'openai-compatible' && isMindsBacked) ? 'minds-cloud' : rawCodingType;
 
@@ -550,7 +562,18 @@ function backfillProviders(result) {
 
   for (const type of activeTypes) {
     if (!hasType(type) && STATIC_SETTINGS.providerTypes.includes(type)) {
-      providers.push({ type, apiKey: '', isDefault: type === planningType });
+      const card = { type, apiKey: '', isDefault: type === planningType };
+      // A base URL is this provider's credential, so a card reconstructed
+      // without it reads as unconfigured — which is what repoints a role away
+      // from a working local endpoint whose card was never persisted.
+      if (type === 'openai-compatible' && result.openaiBaseUrl) {
+        card.baseUrl = result.openaiBaseUrl;
+        // A custom provider must carry a name or the Save button stays
+        // disabled, so a card the user never created cannot be the reason
+        // their settings will not save. The endpoint is the honest label.
+        card.name = endpointHost(result.openaiBaseUrl) || 'OpenAI-compatible';
+      }
+      providers.push(card);
     }
   }
 

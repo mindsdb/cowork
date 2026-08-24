@@ -272,22 +272,36 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
   }
 
   if (type === 'response.failed') {
-    // Key upgrade-intent signal: a free user hit the token cap. Fire once here,
-    // on receipt — not in the render path (ChatView), which re-runs every paint.
+    // Key upgrade-intent signal: the turn was blocked on credits. Fire once
+    // here, on receipt — not in the render path (ChatView), which re-runs every
+    // paint.
     //
-    // BOTH out-of-credits codes count (ENG-1537). Splitting the spent free
-    // allowance into its own code would otherwise have silently dropped it from
-    // this metric — and that cohort is precisely the one it exists to measure,
-    // since a never-topped-up org is steered onto the free-bucket model by
-    // `_enabled_aware_default`. `rate_limited` is correctly excluded: a
-    // velocity limit was never upgrade intent, and counting it would inflate
-    // the signal with users who already pay.
+    // All THREE out-of-credits codes count, because each one is a paywall
+    // impression and they are simply different ways of being out of credits:
+    //   token_limit                   a drained wallet mid-turn (the original
+    //                                 ENG-385 signal)
+    //   included_allowance_exhausted  the free monthly allowance is spent, not
+    //                                 the wallet (ENG-1537). Splitting it out
+    //                                 into its own code would otherwise have
+    //                                 silently dropped it from this metric —
+    //                                 and a never-topped-up org is precisely
+    //                                 the cohort this exists to measure, since
+    //                                 `_enabled_aware_default` steers it onto
+    //                                 the free-bucket model.
+    //   model_access_denied           legacy per-model credit denial (ENG-1533).
+    //                                 It renders its own "needs credits" card,
+    //                                 so it was a paywall impression with no
+    //                                 impression event at all.
     //
-    // The event carries no properties, so the historical series cannot be
-    // re-segmented retroactively — a `reason` property would be worth adding
-    // before the next question about this metric.
-    if (!replay && (event.code === 'token_limit' || event.code === 'included_allowance_exhausted')) {
-      try { _trackTokenCapHit(); }
+    // Two codes are deliberately NOT counted. `model_disabled` — an admin
+    // turned the model off, and credits do not unlock it, so it is not upgrade
+    // intent. `rate_limited` — a velocity limit was never upgrade intent, and
+    // counting it would inflate the signal with users who already pay.
+    //
+    // One event carrying `reason` rather than three events, so the impression
+    // stays a single series and keeps this once-per-receipt guarantee.
+    if (!replay && (event.code === 'token_limit' || event.code === 'included_allowance_exhausted' || event.code === 'model_access_denied')) {
+      try { _trackTokenCapHit(event.code); }
       catch { /* analytics must never break streaming */ }
     }
     return {
