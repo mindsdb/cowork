@@ -79,12 +79,22 @@ describe('Sidebar — persistent Cowork / Code workspace switch', () => {
     expect(onWorkspaceChange).toHaveBeenCalledWith('cowork');
   });
 
-  it('gives Code its own Projects destination without leaking Cowork navigation', () => {
+  it('gives Code first-class Projects and Connectors destinations without leaking Cowork navigation', () => {
     hostMock.isWeb = false;
     const onOpenCodingProjects = vi.fn();
-    render(<Sidebar {...baseProps} activeWorkspace="code" onOpenCodingProjects={onOpenCodingProjects} />);
+    const onOpenCodingConnectors = vi.fn();
+    render(
+      <Sidebar
+        {...baseProps}
+        activeWorkspace="code"
+        onOpenCodingProjects={onOpenCodingProjects}
+        onOpenCodingConnectors={onOpenCodingConnectors}
+      />,
+    );
     screen.getByRole('button', { name: 'Projects' }).click();
+    screen.getByRole('button', { name: 'Connectors' }).click();
     expect(onOpenCodingProjects).toHaveBeenCalledOnce();
+    expect(onOpenCodingConnectors).toHaveBeenCalledOnce();
     expect(screen.getByText('CODE TASKS')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Scheduled Tasks' })).toBeNull();
   });

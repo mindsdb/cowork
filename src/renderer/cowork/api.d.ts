@@ -37,3 +37,23 @@ export interface RecommendedModels {
  * for minds-cloud). Returns null if the request fails.
  */
 export function fetchRecommendedModels(): Promise<RecommendedModels | null>;
+
+export interface ConnectorConnection {
+  engine: string;
+  name: string;
+  display_name?: string | null;
+  user_label?: string | null;
+  label?: string | null;
+  status?: string | null;
+  updated_at?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface SavedConnectorConnection {
+  method?: string | null;
+  fields?: Record<string, unknown>;
+}
+
+export function fetchDatasources(): Promise<{ connections: ConnectorConnection[] }>;
+export function fetchSavedConnection(engine: string, name: string): Promise<SavedConnectorConnection>;
+export function deleteDatasource(engine: string, name: string): Promise<unknown>;
