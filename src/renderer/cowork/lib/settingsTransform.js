@@ -369,8 +369,9 @@ export function resolveModelPickerValue(curModel, modelList, allowOther, forceCu
  * @param {boolean} allowOther  whether to append the "Other…" custom-id entry
  * @param {boolean} showStalePin from resolveModelPickerValue
  * @param {Record<string, boolean>} modelEnabled per-model availability map
- *   (settings.modelEnabled); a model mapped to `false` renders disabled and
- *   tagged "Needs credits".
+ *   (settings.modelEnabled); a model mapped to `false` renders disabled, tagged
+ *   "Needs credits", and flagged `locked` so the picker puts an "Add credits"
+ *   button on the row.
  * @param {Record<string, string>} modelLabels per-model display label
  *   (settings.modelLabels, MindsHub-supplied). Display-only — the id/alias
  *   passed as `value` is still what's saved/resolved everywhere else. A
@@ -437,6 +438,7 @@ export function buildModelOptions(
 
   const modelOption = (m) => {
     const tag = tagFor(m);
+    const locked = isLocked(m);
     return {
       value: m,
       label: labelFor(m),
@@ -446,14 +448,19 @@ export function buildModelOptions(
        * because resolution substitutes a pin it knows will be denied. So the
        * user was told one model wrote their code while another did.
        *
-       * The row stays visible so the model is still discoverable, and the
-       * tooltip plus the top-up hint the call site renders from this same map
-       * say how to unlock it. A stored pin that is locked also still renders
-       * here, disabled and selected, which is what keeps a saved value from
-       * ever being a value with no matching option.
+       * The row stays visible so the model is still discoverable, and `locked`
+       * is what ModelSelect turns into the "Add credits" button on the row.
+       * Closing the pick without that button would leave the row naming an
+       * action it does not offer: the call site's top-up hint only renders when
+       * the CURRENT model is locked, so it says nothing to someone sitting on an
+       * affordable model and looking at one they can't pay for.
+       *
+       * A stored pin that is locked also still renders here, disabled and
+       * selected, which is what keeps a saved value from ever being a value with
+       * no matching option.
        */
-      disabled: isLocked(m),
-      ...(isLocked(m) ? { title: 'Add credits to use this model' } : {}),
+      disabled: locked,
+      ...(locked ? { locked: true } : {}),
       ...(tag ? { tag } : {}),
       // MindsHub's authoritative serving-vendor field, which decides the picker
       // section. Absent for every BYOK provider, where it falls back to inference.
@@ -477,9 +484,10 @@ export function buildModelOptions(
         }]
       : []),
     // Wallet-based access, pay-as-you-go shape: a model the org's wallet can't
-    // currently pay for renders disabled, and the "Needs credits" state rides in
-    // the same pill as the version state rather than in the label. The label
-    // suffix ate the width (truncated "…Add credits to unl.").
+    // currently pay for renders disabled, carrying the route to credits on the
+    // row. The "Needs credits" state rides in the same pill as the version state
+    // rather than in the label, because a label suffix ate the width and
+    // truncated to "…Add credits to unl.".
     ...ordered.map(modelOption),
     ...(allowOther ? [{ value: '__custom__', label: 'Other…', pin: 'bottom' }] : []),
   ];

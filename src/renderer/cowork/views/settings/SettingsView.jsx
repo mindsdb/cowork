@@ -1785,12 +1785,14 @@ export default function SettingsView({
                                   />
                                 )}
                               </label>
-                              {/* Needs-credits rows stay selectable (ENG-1248) —
-                                  this hint is the informed-consent half: the
-                                  choice is respected, the cost is named, and the
-                                  top-up route is one click away. Outside the
-                                  <label> so it doesn't leak into the combobox's
-                                  accessible name (PR #579 review). */}
+                              {/* The stored pin is never rewritten, so a wallet
+                                  that drains leaves the user sitting on a model
+                                  they can no longer run. This names it and gives
+                                  the way out. It covers only the CURRENT model —
+                                  a locked row the user is merely looking at
+                                  carries its own "Add credits" button instead.
+                                  Outside the <label> so it doesn't leak into the
+                                  combobox's accessible name. */}
                               {!inputMode && !!curModel && isLocked(curModel) && (
                                 <div className="text-[11.5px] text-ink-3">
                                   {displayModelLabel(curModel, settings.modelLabels || {})} needs credits.{' '}
