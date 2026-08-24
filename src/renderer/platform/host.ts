@@ -759,7 +759,10 @@ export type OAuthConnectOpts =
 
 export interface OAuthConnectResult {
   ok: boolean;
+  code?: 'oauth_credentials_missing';
   reason?: string;
+  name?: string;
+  account_email?: string;
   refresh_token?: string;
   access_token?: string;
   expires_in?: number;
