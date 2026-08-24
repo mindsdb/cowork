@@ -13,9 +13,8 @@ import {
 // create/update/delete/pause/resume handlers (each refreshes so the list
 // reflects the server immediately).
 //
-// Extracted from App.jsx (ENG-1916). Behavior-preserving, and deliberately
-// scoped to schedule *data*. Three schedule-adjacent things stay in App.jsx
-// because they cross into other domains:
+// Deliberately scoped to schedule *data*. Three schedule-adjacent things
+// stay in App.jsx because they cross into other domains:
 //   - the self-adjusting poll effect (it also syncs newly-produced
 //     conversations into the task list)
 //   - `selectedScheduleId` (schedule-detail navigation state, set alongside
