@@ -235,9 +235,11 @@ describe('ModelSelect — the route to credits on a locked row', () => {
     await user.click(within(row).getByRole('button', { name: 'Add credits' }));
 
     expect(hostSpies.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
-    expect(analyticsSpies.trackBillingOpened).toHaveBeenCalledWith('locked_model_row');
     // Its own trigger, distinct from the no-credits notice and the top-up hint,
     // so the three are not read as one in the funnel.
+    expect(analyticsSpies.trackBillingOpened).toHaveBeenCalledWith('locked_model_row');
+    // Holds because the row is disabled, NOT because of the button's
+    // stopPropagation — strip that and this still passes.
     expect(onValueChange).not.toHaveBeenCalled();
   });
 
