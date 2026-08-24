@@ -1,6 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import {
   pathForRoute,
+  initialNavState,
   markOptimisticConversation,
   clearOptimisticConversation,
   isOptimisticConversation,
@@ -35,12 +36,35 @@ describe('pathForRoute', () => {
     expect(pathForRoute('artifacts', null)).toBe('/artifacts');
   });
 
+  it('maps the customize route key to the /connect slug (matches "Connect Apps and Data" label)', () => {
+    // The view keeps the legacy `customize` route key internally, but its
+    // user-facing web URL reads `/connect` to match the sidebar label.
+    expect(pathForRoute('customize', null)).toBe('/connect');
+  });
+
   it('nests detail routes under their list with the entity id (ENG-1233 v1)', () => {
     expect(pathForRoute('projects', null, 'proj-1')).toBe('/projects/proj-1');
     expect(pathForRoute('schedule-detail', null, null, 'sched-9')).toBe('/scheduled/sched-9');
     // no id → the list/grid form
     expect(pathForRoute('projects', null, null)).toBe('/projects');
     expect(pathForRoute('schedule-detail', null, null, null)).toBe('/scheduled');
+  });
+});
+
+describe('initialNavState slug parsing (host.isWeb is true in the renderer test env)', () => {
+  const setPath = (p) => window.history.replaceState({}, '', p);
+  afterEach(() => setPath('/'));
+
+  it('parses the /connect slug back to the customize route key', () => {
+    setPath('/connect');
+    expect(initialNavState().route).toBe('customize');
+  });
+
+  it('fails a legacy /customize URL safe to Home, matching the router redirect', () => {
+    // The router registers `/connect`, not `/customize`, so the parser must not
+    // resolve the raw key either — otherwise the two disagree on the same URL.
+    setPath('/customize');
+    expect(initialNavState().route).toBe('home');
   });
 });
 

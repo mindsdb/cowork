@@ -61,6 +61,14 @@ const VIEW_ROUTES = [
   'publish',
 ];
 
+// User-facing URL slugs that differ from the internal `route` key. The
+// "Connect Apps and Data" view keeps the legacy `customize` route key (so
+// AppCore's state, the `navigate('customize')` call sites, and the
+// `.customize-*` CSS stay untouched), but its web URL reads `/connect` to
+// match the sidebar label. Keyed by route → slug; inverted below for parsing.
+const ROUTE_SLUGS = { customize: 'connect' };
+const SLUG_ROUTES = Object.fromEntries(Object.entries(ROUTE_SLUGS).map(([r, s]) => [s, r]));
+
 // Context — AppCore hands the shell + nav state + URL→state handlers down to
 // the route elements.
 const CoworkContext = createContext(null);
@@ -91,7 +99,7 @@ export function pathForRoute(route, activeTaskId, projectId, scheduleId) {
   // Nest detail under the list so `/scheduled` and `/scheduled/:id` share a prefix.
   if (route === 'schedule-detail') return scheduleId ? `/scheduled/${scheduleId}` : '/scheduled';
   if (!route || route === 'home') return '/';
-  return `/${route}`;
+  return `/${ROUTE_SLUGS[route] || route}`;
 }
 
 // Decode one path segment, returning null on a malformed %-escape (a bad deep
@@ -131,7 +139,13 @@ export function initialNavState() {
     return { ...HOME, route: 'schedule-detail', selectedScheduleId: id };
   }
   const key = path.replace(/^\/+/, '');
-  if (VIEW_ROUTES.includes(key)) return { ...HOME, route: key };
+  if (SLUG_ROUTES[key]) return { ...HOME, route: SLUG_ROUTES[key] };
+  // A route with a slug alias is reachable ONLY by its slug (the router
+  // registers the slug path, not the raw key), so `!ROUTE_SLUGS[key]` keeps the
+  // parser in step with the route table — e.g. `/customize` fails safe to Home,
+  // matching the router's `*`-redirect, rather than resolving a URL that no
+  // longer exists.
+  if (VIEW_ROUTES.includes(key) && !ROUTE_SLUGS[key]) return { ...HOME, route: key };
   return HOME;
 }
 
@@ -288,7 +302,9 @@ export const routes = [
       { path: 'c/:conversationId', element: <ConversationRoute />, loader: conversationLoader },
       { path: 'projects/:projectId', element: <ProjectDetailRoute /> },
       { path: 'scheduled/:scheduleId', element: <ScheduleDetailRoute /> },
-      ...VIEW_ROUTES.map((name) => ({ path: name, element: <ViewRoute name={name} /> })),
+      // `path` is the user-facing slug (e.g. `connect`); `name` stays the
+      // internal route key (e.g. `customize`) that ViewRoute feeds enterRoute.
+      ...VIEW_ROUTES.map((name) => ({ path: ROUTE_SLUGS[name] || name, element: <ViewRoute name={name} /> })),
       { path: '*', element: <Navigate to="/" replace /> }, // unknown → home
     ],
   },

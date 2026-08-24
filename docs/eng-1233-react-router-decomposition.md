@@ -100,7 +100,7 @@ route stays on the bridge (no loader) in v1.
 /projects/:projectId   Project detail   stable id (v2 loader; v1 client-side resolve)
 /scheduled             Scheduled
 /scheduled/:scheduleId Schedule detail
-/artifacts /tasks /channels /customize /skills /memory
+/artifacts /tasks /channels /connect /skills /memory   (/connect → `customize` route key)
 /settings/:section?    Settings overlay (v2)
 ```
 

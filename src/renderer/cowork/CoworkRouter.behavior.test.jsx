@@ -161,6 +161,21 @@ describe('new-chat history (ENG-1233 Major 1)', () => {
   });
 });
 
+describe('the customize view is served at its /connect slug, not its route key', () => {
+  it('renders the customize view at /connect and preserves the URL', async () => {
+    const { router, ctl } = renderAt(['/connect'], { route: 'home' });
+    // The URL slug is `connect`; the internal route key stays `customize`.
+    await waitFor(() => expect(ctl.enterRoute).toHaveBeenCalledWith('customize'));
+    expect(router.state.location.pathname).toBe('/connect');
+  });
+
+  it('redirects the legacy /customize URL Home (no route registered for the raw key)', async () => {
+    const { router, ctl } = renderAt(['/customize'], { route: 'home' });
+    await waitFor(() => expect(router.state.location.pathname).toBe('/'));
+    expect(ctl.enterRoute).not.toHaveBeenCalledWith('customize');
+  });
+});
+
 describe('detail routes carry their entity id (ENG-1233 v1)', () => {
   it('resolves a project deep link and preserves the URL', async () => {
     const { router, ctl } = renderAt(['/projects/proj-9'], { route: 'projects' });
