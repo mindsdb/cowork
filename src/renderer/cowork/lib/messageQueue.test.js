@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { selectNextQueuedTask, mergeQueuesForAdoptedId, reservationReleaseDecision } from './messageQueue';
+import { selectNextQueuedTask, mergeQueuesForAdoptedId, reservationReleaseDecision, finishedCids } from './messageQueue';
 
 const item = (id) => ({ id, text: id, attachments: [], disabledConnections: [] });
 
@@ -209,6 +209,20 @@ describe('reservationReleaseDecision', () => {
     expect(first).toEqual({ cid: 'a', misses: 1, seen: true, lastMissAt: 0, release: false });
     const second = reservationReleaseDecision('a', ['b'], first, { producedData: true });
     expect(second.release).toBe(true);
+  });
+});
+
+describe('finishedCids', () => {
+  it('returns cids that dropped out of the server list', () => {
+    expect(finishedCids(['a', 'b'], ['b'], null)).toEqual(['a']);
+  });
+
+  it('excludes the cid this tab is still actively streaming', () => {
+    expect(finishedCids(['a', 'b'], ['b'], 'a')).toEqual([]);
+  });
+
+  it('still flags other dropped cids while one is excluded', () => {
+    expect(finishedCids(['a', 'b', 'c'], [], 'b')).toEqual(['a', 'c']);
   });
 });
 
