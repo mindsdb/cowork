@@ -60,7 +60,7 @@ import { isArtifactTipDismissed, dismissArtifactTip, dismissIfUntouched } from '
 import { recommendedModelOptions, providerValueToType,
          mergeRecommendedModels } from './lib/settingsTransform';
 import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery, trackFirstResponse, classifyFirstResponse, trackKeyProvisioningRefused } from './lib/analytics';
-import { MODEL_ROUTER_ID, MODEL_ROUTER } from './lib/modelCatalog';
+import { MODEL_ROUTER_ID, MODEL_ROUTER, isModelLocked } from './lib/modelCatalog';
 
 // One-of-ten encouraging follow-ups picked when a connect task is
 // created. Reads as a friendly nudge after the connect-intro card —
@@ -2318,7 +2318,7 @@ function AppCore() {
   const AIR_MODEL_ID = 'mindshub_air';
   const airAvailableForSwitch =
     (settings.recommendedModels?.['minds-cloud'] || []).includes(AIR_MODEL_ID)
-    && (settings.modelEnabled || {})[AIR_MODEL_ID] !== false;
+    && !isModelLocked(settings.modelEnabled, AIR_MODEL_ID);
   const handleSwitchToAirAndResend = (text) => {
     if (!currentTask || !text) return;
     // Persist the switch on the task so follow-up sends stay on Air, and
