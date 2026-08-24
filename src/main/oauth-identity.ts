@@ -47,9 +47,11 @@ async function fetchGithubIdentity(accessToken: string): Promise<{ email: string
 // PostHog's OAuth authorize/token endpoints are region-agnostic
 // (oauth.posthog.com), but the resource API is split by region
 // (us.posthog.com / eu.posthog.com) and a token issued for one region isn't
-// guaranteed to be accepted by the other's host. Shared by the identity fetch
-// below and PostHog project discovery (oauth-posthog-projects.ts) — both try
-// US Cloud first (the default/most common case) and fall back to EU Cloud.
+// guaranteed to be accepted by the other's host. Used by the identity fetch
+// below, which tries US Cloud first (the default/most common case) and falls
+// back to EU Cloud. Note: OAuth-connected PostHog accounts don't currently
+// resolve a project_id (unlike the personal-API-key path) — there's no
+// project-discovery step here.
 export const POSTHOG_API_HOSTS = ['https://us.posthog.com', 'https://eu.posthog.com'] as const;
 
 async function fetchPostHogIdentity(accessToken: string): Promise<{ email: string }> {
