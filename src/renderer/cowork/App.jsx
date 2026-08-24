@@ -4836,6 +4836,7 @@ function AppCore() {
           projectsCount={projects.length}
           artifactsCount={artifacts.length}
           connectorsCount={connectors.length}
+          connectorsComingSoon={orgMode}
           activeRoute={route === 'task' ? null : (route === 'schedule-detail' ? 'scheduled' : route)}
           settingsActive={settingsOpen}
           // Only mark a recent as "selected" while actually viewing a task —
@@ -5288,6 +5289,7 @@ function AppCore() {
               agentLabel={agentLabel}
               section={settingsSection}
               onSectionChange={setSettingsSection}
+              channelsComingSoon={orgMode}
               serverOnline={serverOnline}
               serverBusy={serverBusy}
               serverBusyKind={serverBusyKind}
@@ -5340,6 +5342,7 @@ function AppCore() {
                 agentLabel={agentLabel}
                 section={settingsSection || 'agent'}
                 onSectionChange={setSettingsSection}
+                channelsComingSoon={orgMode}
                 serverOnline={serverOnline}
                 serverBusy={serverBusy}
                 serverBusyKind={serverBusyKind}
