@@ -87,6 +87,10 @@ on:
         required: false
       GH_OAUTH_CLIENT_SECRET:
         required: false
+      SUPABASE_CLIENT_ID:
+        required: false
+      SUPABASE_CLIENT_SECRET:
+        required: false
       VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN:
         required: false
 
