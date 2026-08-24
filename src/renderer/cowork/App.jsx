@@ -37,7 +37,7 @@ import { loadSkin, persistSkin, nextSkin, skinLabel } from '../lib/skins';
 import { loadCustomTheme, persistCustomTheme, applyCustomTheme } from '../lib/customTheme';
 import { applyNavTitleColor } from '../lib/navBranding';
 import { getAgentLabel } from './lib/agentLabel';
-import { selectNextQueuedTask, mergeQueuesForAdoptedId, reservationReleaseDecision } from './lib/messageQueue';
+import { selectNextQueuedTask, mergeQueuesForAdoptedId, reservationReleaseDecision, finishedCids } from './lib/messageQueue';
 import { loadCachedSettings } from './lib/settingsCache';
 import { useOrgMode } from '../lib/orgMode';
 import { clearDraft, moveDraft } from './lib/draftStore';
@@ -1130,7 +1130,7 @@ function AppCore() {
       // stream just finished from elsewhere — that's the signal to
       // refetch that conversation's messages so the UI catches up.
       const next = new Set(ids);
-      const finished = [...prev].filter((cid) => !next.has(cid));
+      const finished = finishedCids(prev, ids, activeStreamingTaskIdRef.current);
       if (finished.length > 0) {
         // Defer the refetch so we don't synchronously trigger a
         // re-render storm.
