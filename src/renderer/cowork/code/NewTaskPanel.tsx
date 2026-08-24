@@ -68,7 +68,7 @@ export function NewTaskPanel({
   const paletteItems = useCodePaletteItems({
     commands: engineCommands.filter((command) => command.action !== 'client'),
     query: commandQuery,
-    projectName: selectedProject?.name,
+    projectId: selectedProjectId,
   });
   const [autoLinkUrl, setAutoLinkUrl] = useState('');
   useEffect(() => setPaletteIndex(0), [commandQuery]);

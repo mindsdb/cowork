@@ -1,8 +1,7 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import Ico from '../components/Icons';
-import { useSkills, type CoworkSkill } from '../lib/skillsStore';
-import type { EngineCommand } from './api';
+import { codingApi, type EngineCommand, type SkillLibraryItem } from './api';
 
 
 export type CodePaletteItem =
@@ -14,7 +13,7 @@ export type CodePaletteItem =
       label: string;
       description: string;
       scope: string;
-      skill: CoworkSkill;
+      skill: SkillLibraryItem;
     }
   | {
       id: string;
@@ -27,43 +26,56 @@ export type CodePaletteItem =
       command: EngineCommand;
     };
 
-function skillScope(skill: CoworkSkill): string {
-  const projects = skill.projects || (skill.project ? [skill.project] : []);
-  return projects.length ? projects.join(', ') : 'All projects';
+function skillInvocation(skill: SkillLibraryItem): string {
+  const path = skill.path.replace(/\/SKILL\.md$/i, '');
+  return `$${path.split('/').filter(Boolean).pop() || skill.name}`;
 }
 
 export function useCodePaletteItems({
   commands,
   query,
-  projectName,
+  projectId,
 }: {
   commands: EngineCommand[];
   query: string | null;
-  projectName?: string | null;
+  projectId?: string | null;
 }): CodePaletteItem[] {
-  const { skills } = useSkills();
+  const [skills, setSkills] = useState<SkillLibraryItem[]>([]);
+  useEffect(() => {
+    let alive = true;
+    codingApi.skillLibrary(projectId)
+      .then((library) => { if (alive) setSkills(library.items); })
+      .catch(() => { if (alive) setSkills([]); });
+    return () => { alive = false; };
+  }, [projectId]);
+
   return useMemo(() => {
     if (query == null) return [];
     const normalized = query.trim().toLowerCase();
     const matches = (...values: Array<string | undefined>) => !normalized || values.some((value) => value?.toLowerCase().includes(normalized));
 
-    const skillItems: CodePaletteItem[] = (skills || [])
+    const skillItems: CodePaletteItem[] = skills
       .filter((skill) => {
-        if (!skill.label || skill.enabled === false) return false;
-        const scope = skill.projects || (skill.project ? [skill.project] : []);
-        if (scope.length && (!projectName || !scope.includes(projectName))) return false;
-        return matches(skill.label, skill.description, skillScope(skill));
+        if (skill.kind !== 'skill' || !skill.name || !skill.enabled) return false;
+        return matches(skill.name, skill.description, skill.source_name);
       })
       .map((skill) => ({
-        id: `mindshub-skill:${skill.label}`,
+        id: `mindshub-skill:${skill.id}`,
         kind: 'skill' as const,
         section: 'skills' as const,
-        invocation: `$${skill.label}`,
-        label: skill.label,
+        invocation: skillInvocation(skill),
+        label: skill.name,
         description: skill.description || 'MindsHub skill',
-        scope: skillScope(skill),
+        scope: skill.source_name,
         skill,
       }));
+    const seenInvocations = new Set<string>();
+    const uniqueSkillItems = skillItems.filter((item) => {
+      const invocation = item.invocation.toLowerCase();
+      if (seenInvocations.has(invocation)) return false;
+      seenInvocations.add(invocation);
+      return true;
+    });
 
     const commandItems: CodePaletteItem[] = commands
       .filter((command) => matches(command.name, command.label, command.description, command.argument_hint || undefined))
@@ -78,8 +90,8 @@ export function useCodePaletteItems({
         command,
       }));
 
-    return [...skillItems, ...commandItems];
-  }, [commands, projectName, query, skills]);
+    return [...uniqueSkillItems, ...commandItems];
+  }, [commands, query, skills]);
 }
 
 export function CodeCommandPalette({

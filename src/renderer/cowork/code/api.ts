@@ -73,6 +73,19 @@ export interface PendingApproval {
   allow_session: boolean;
 }
 
+export interface ResolvedSkill {
+  id: string;
+  kind: 'skill' | 'instructions' | 'workflow';
+  name: string;
+  description: string;
+  origin: 'team' | 'personal' | 'built_in';
+  source_id?: string | null;
+  source_name: string;
+  source_path: string;
+  version?: string | null;
+  content_hash: string;
+}
+
 export interface CodingSession {
   schema_version: number;
   id: string;
@@ -99,6 +112,9 @@ export interface CodingSession {
   source_dirty: boolean;
   workspace_warning?: string | null;
   guidance_summary?: string | null;
+  resolved_skills?: ResolvedSkill[];
+  skill_roots?: string[];
+  skill_instructions?: string;
   allocated_ports?: Record<string, number>;
   source_contexts?: SourceContext[];
   deliveries?: DeliveryRecord[];
@@ -247,12 +263,18 @@ export interface PlaybookReference {
   last_checked_at?: string | null;
 }
 
+export interface ProjectSkillSource {
+  source_id: string;
+  enabled_paths: string[];
+}
+
 export interface CodeProject {
   schema_version: number;
   id: string;
   name: string;
   folders: ProjectFolder[];
   playbook?: PlaybookReference | null;
+  skill_sources?: ProjectSkillSource[];
   connections: ProjectConnection[];
   environment: { variables: Record<string, string>; port_names: string[] };
   default_engine_id: string;
@@ -260,6 +282,40 @@ export interface CodeProject {
   permission_mode: PermissionMode;
   created_at: string;
   updated_at: string;
+}
+
+export interface SkillLibraryItem {
+  id: string;
+  kind: 'skill' | 'instructions' | 'workflow';
+  name: string;
+  description: string;
+  origin: 'team' | 'personal' | 'built_in';
+  source_id?: string | null;
+  source_name: string;
+  path: string;
+  version?: string | null;
+  enabled: boolean;
+  enabled_project_ids: string[];
+}
+
+export interface SkillLibrarySource {
+  id: string;
+  name: string;
+  repository: string;
+  branch: string;
+  current_revision: string;
+  available_revision: string;
+  update_available: boolean;
+  last_checked_at: string;
+  item_count: number;
+  enabled_project_count: number;
+  diff: string;
+  error?: string | null;
+}
+
+export interface SkillLibraryPage {
+  sources: SkillLibrarySource[];
+  items: SkillLibraryItem[];
 }
 
 export interface PlaybookItem {
@@ -475,6 +531,19 @@ const liveCodingApi = {
     method: 'PATCH', body: JSON.stringify(body),
   }),
   deleteProject: (id: string) => requestJson<void>(`/projects/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  skillLibrary: (projectId?: string | null) => requestJson<SkillLibraryPage>(
+    `/skills/library${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ''}`,
+  ),
+  addSkillSource: (body: { name?: string; repository: string; branch: string }) => requestJson<SkillLibrarySource>('/skills/sources', {
+    method: 'POST', body: JSON.stringify(body),
+  }),
+  refreshSkillSource: (id: string) => requestJson<SkillLibrarySource>(`/skills/sources/${encodeURIComponent(id)}/refresh`, { method: 'POST' }),
+  applySkillSource: (id: string) => requestJson<SkillLibrarySource>(`/skills/sources/${encodeURIComponent(id)}/apply`, { method: 'POST' }),
+  removeSkillSource: (id: string) => requestJson<void>(`/skills/sources/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  setProjectSkillSource: (projectId: string, sourceId: string, enabledPaths: string[]) => requestJson<SkillLibraryPage>(
+    `/projects/${encodeURIComponent(projectId)}/skills/${encodeURIComponent(sourceId)}`,
+    { method: 'PUT', body: JSON.stringify({ enabled_paths: enabledPaths }) },
+  ),
   configurePlaybook: (id: string, repository: string, branch: string) => requestJson<PlaybookStatus>(`/projects/${encodeURIComponent(id)}/playbook`, {
     method: 'POST', body: JSON.stringify({ repository, branch }),
   }),

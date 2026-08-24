@@ -306,6 +306,7 @@ export function getCodeFixtureApi() {
     id: 'project-atlas',
     name: 'Atlas',
     folders: [{ id: 'atlas-web', name: 'atlas-web', path: ROOT, base_branch: 'staging', commands: [] }],
+    skill_sources: [],
     connections: name.startsWith('delivery-') ? [
       { provider: 'github', name: 'github-work', label: 'MindsDB GitHub' },
       { provider: 'linear', name: 'linear-work', label: 'MindsDB Linear' },
@@ -340,7 +341,7 @@ export function getCodeFixtureApi() {
     }),
     createProject: async (body: Pick<CodeProject, 'name' | 'folders' | 'default_engine_id' | 'default_model' | 'permission_mode'>) => {
       const created: CodeProject = {
-        schema_version: 1, id: `project-${Date.now()}`, ...body, connections: [],
+        schema_version: 1, id: `project-${Date.now()}`, ...body, skill_sources: [], connections: [],
         environment: { variables: {}, port_names: ['PORT'] }, created_at: NOW, updated_at: NOW,
       };
       projects = [created, ...projects];
@@ -351,6 +352,24 @@ export function getCodeFixtureApi() {
       return copy(projects.find((item) => item.id === id) || projects[0]);
     },
     deleteProject: async (id: string) => { projects = projects.filter((item) => item.id !== id); },
+    skillLibrary: async () => ({
+      sources: [{
+        id: 'source-engineering', name: 'Engineering standards', repository: 'https://github.com/mindsdb/engineering-skills',
+        branch: 'main', current_revision: 'a1b2c3d4e5f6', available_revision: 'a1b2c3d4e5f6',
+        update_available: false, last_checked_at: NOW, item_count: 2, enabled_project_count: 1, diff: '',
+      }],
+      items: [
+        { id: 'source-engineering:review/SKILL.md', kind: 'skill' as const, name: 'Code review', description: 'Review changes against team engineering standards.', origin: 'team' as const, source_id: 'source-engineering', source_name: 'Engineering standards', path: 'review/SKILL.md', version: 'a1b2c3d4e5f6', enabled: true, enabled_project_ids: ['project-atlas'] },
+        { id: 'source-engineering:AGENTS.md', kind: 'instructions' as const, name: 'AGENTS.md', description: '', origin: 'team' as const, source_id: 'source-engineering', source_name: 'Engineering standards', path: 'AGENTS.md', version: 'a1b2c3d4e5f6', enabled: true, enabled_project_ids: ['project-atlas'] },
+        { id: 'personal:review', kind: 'skill' as const, name: 'Review', description: 'Run a fresh, skeptical pass over completed work.', origin: 'personal' as const, source_name: 'Yours', path: 'review', enabled: true, enabled_project_ids: [] },
+        { id: 'personal:craft-ui', kind: 'skill' as const, name: 'Craft world-class UI', description: 'Design and verify polished product interfaces.', origin: 'built_in' as const, source_name: 'MindsHub', path: 'craft-ui', enabled: true, enabled_project_ids: [] },
+      ],
+    }),
+    addSkillSource: async () => ({ id: 'source-new', name: 'Team skills', repository: ROOT, branch: 'main', current_revision: 'abc123', available_revision: 'abc123', update_available: false, last_checked_at: NOW, item_count: 1, enabled_project_count: 0, diff: '' }),
+    refreshSkillSource: async () => ({ id: 'source-engineering', name: 'Engineering standards', repository: ROOT, branch: 'main', current_revision: 'a1b2c3', available_revision: 'a1b2c3', update_available: false, last_checked_at: NOW, item_count: 2, enabled_project_count: 1, diff: '' }),
+    applySkillSource: async () => ({ id: 'source-engineering', name: 'Engineering standards', repository: ROOT, branch: 'main', current_revision: 'a1b2c3', available_revision: 'a1b2c3', update_available: false, last_checked_at: NOW, item_count: 2, enabled_project_count: 1, diff: '' }),
+    removeSkillSource: async () => undefined,
+    setProjectSkillSource: async () => ({ sources: [], items: [] }),
     configurePlaybook: async () => ({ configured: true, update_available: false, items: [], diff: '' }),
     playbook: async () => ({ configured: false, update_available: false, items: [], diff: '' }),
     removePlaybook: async () => undefined,

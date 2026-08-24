@@ -1,0 +1,186 @@
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const {
+  skillLibrary,
+  addSkillSource,
+  refreshSkillSource,
+  applySkillSource,
+  removeSkillSource,
+  setProjectSkillSource,
+  openExternal,
+} = vi.hoisted(() => ({
+  skillLibrary: vi.fn(),
+  addSkillSource: vi.fn(),
+  refreshSkillSource: vi.fn(),
+  applySkillSource: vi.fn(),
+  removeSkillSource: vi.fn(),
+  setProjectSkillSource: vi.fn(),
+  openExternal: vi.fn(),
+}));
+
+vi.mock('../../platform/host', () => ({
+  host: { pickCodeFolder: vi.fn(), openExternal, openPath: vi.fn() },
+}));
+
+vi.mock('./api', () => ({
+  codingApi: {
+    skillLibrary,
+    addSkillSource,
+    refreshSkillSource,
+    applySkillSource,
+    removeSkillSource,
+    setProjectSkillSource,
+  },
+}));
+
+import type { CodeProject, SkillLibraryPage } from './api';
+import { CodeSkillsView } from './CodeSkillsView';
+
+const projects: CodeProject[] = [
+  {
+    schema_version: 1,
+    id: 'project-one',
+    name: 'Product',
+    folders: [{ id: 'product', name: 'Product', path: '/work/product', commands: [] }],
+    skill_sources: [{ source_id: 'engineering', enabled_paths: ['skills/review/SKILL.md'] }],
+    connections: [],
+    environment: { variables: {}, port_names: [] },
+    default_engine_id: 'codex',
+    default_model: 'gpt',
+    permission_mode: 'supervised',
+    created_at: '2026-08-24T10:00:00Z',
+    updated_at: '2026-08-24T10:00:00Z',
+  },
+  {
+    schema_version: 1,
+    id: 'project-two',
+    name: 'Inference',
+    folders: [{ id: 'inference', name: 'Inference', path: '/work/inference', commands: [] }],
+    skill_sources: [],
+    connections: [],
+    environment: { variables: {}, port_names: [] },
+    default_engine_id: 'codex',
+    default_model: 'gpt',
+    permission_mode: 'supervised',
+    created_at: '2026-08-24T10:00:00Z',
+    updated_at: '2026-08-24T10:00:00Z',
+  },
+];
+
+const library: SkillLibraryPage = {
+  sources: [{
+    id: 'engineering',
+    name: 'Engineering standards',
+    repository: 'https://github.com/mindsdb/engineering-skills',
+    branch: 'main',
+    current_revision: 'a1b2c3d4e5f6',
+    available_revision: 'a1b2c3d4e5f6',
+    update_available: false,
+    last_checked_at: '2026-08-24T10:00:00Z',
+    item_count: 2,
+    enabled_project_count: 1,
+    diff: '',
+  }],
+  items: [
+    { id: 'engineering:skills/review/SKILL.md', kind: 'skill', name: 'Review', description: 'Review code against team standards.', origin: 'team', source_id: 'engineering', source_name: 'Engineering standards', path: 'skills/review/SKILL.md', version: 'a1b2c3d4e5f6', enabled: false, enabled_project_ids: ['project-one'] },
+    { id: 'engineering:AGENTS.md', kind: 'instructions', name: 'AGENTS.md', description: '', origin: 'team', source_id: 'engineering', source_name: 'Engineering standards', path: 'AGENTS.md', version: 'a1b2c3d4e5f6', enabled: false, enabled_project_ids: [] },
+    { id: 'personal:release', kind: 'skill', name: 'Release', description: 'Prepare a release.', origin: 'personal', source_name: 'Yours', path: 'release', enabled: true, enabled_project_ids: [] },
+  ],
+};
+
+describe('CodeSkillsView', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    skillLibrary.mockResolvedValue(structuredClone(library));
+    setProjectSkillSource.mockResolvedValue(structuredClone(library));
+  });
+
+  it('presents team and personal guidance as a searchable first-class library', async () => {
+    const user = userEvent.setup();
+    render(<CodeSkillsView projects={projects} />);
+
+    expect(await screen.findByRole('heading', { name: 'Skills' })).toBeInTheDocument();
+    expect(screen.getByText('Engineering standards')).toBeInTheDocument();
+    expect(screen.getByText('Review code against team standards.')).toBeInTheDocument();
+    expect(screen.getByText('Personal skills available in Code Mode')).toBeInTheDocument();
+
+    await user.type(screen.getByRole('textbox', { name: 'Search skills' }), 'release');
+    expect(screen.getByText('Prepare a release.')).toBeInTheDocument();
+    expect(screen.queryByText('Review code against team standards.')).not.toBeInTheDocument();
+  });
+
+  it('assigns a team skill to projects without losing other selected items', async () => {
+    const user = userEvent.setup();
+    render(<CodeSkillsView projects={projects} />);
+    await screen.findByText('Review code against team standards.');
+
+    await user.click(screen.getByRole('button', { name: '1 project' }));
+    await user.click(screen.getByRole('checkbox', { name: /Inference/ }));
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(setProjectSkillSource).toHaveBeenCalledWith(
+      'project-two',
+      'engineering',
+      ['skills/review/SKILL.md'],
+    ));
+  });
+
+  it('shows source usage without presenting it as a destructive error', async () => {
+    const user = userEvent.setup();
+    render(<CodeSkillsView projects={projects} />);
+    await user.click(await screen.findByRole('button', { name: /Engineering standards/ }));
+
+    expect(screen.getByText('Used by 1 project')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Remove source' })).not.toBeInTheDocument();
+    expect(removeSkillSource).not.toHaveBeenCalled();
+  });
+
+  it('opens the backing Git repository from source details', async () => {
+    const user = userEvent.setup();
+    render(<CodeSkillsView projects={projects} />);
+    await user.click(await screen.findByRole('button', { name: /Engineering standards/ }));
+
+    await user.click(screen.getByRole('button', { name: 'Open repository' }));
+
+    expect(openExternal).toHaveBeenCalledWith('https://github.com/mindsdb/engineering-skills');
+  });
+
+  it('keeps project assignment failures inside the assignment dialog', async () => {
+    setProjectSkillSource.mockRejectedValueOnce(new Error('A review skill with that name is already selected.'));
+    const user = userEvent.setup();
+    render(<CodeSkillsView projects={projects} />);
+    await user.click(await screen.findByRole('button', { name: '1 project' }));
+    await user.click(screen.getByRole('checkbox', { name: /Inference/ }));
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(await screen.findByText('A review skill with that name is already selected.')).toBeInTheDocument();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('keeps source refresh failures inside source details', async () => {
+    refreshSkillSource.mockRejectedValueOnce(new Error('The repository could not be reached.'));
+    const user = userEvent.setup();
+    render(<CodeSkillsView projects={projects} />);
+    await user.click(await screen.findByRole('button', { name: /Engineering standards/ }));
+    await user.click(screen.getByRole('button', { name: 'Check for updates' }));
+
+    expect(await screen.findByText('The repository could not be reached.')).toBeInTheDocument();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('keeps an unavailable source visible and actionable', async () => {
+    skillLibrary.mockResolvedValue({
+      sources: [{ ...library.sources[0], item_count: 0, error: 'The managed cache is unavailable.' }],
+      items: [],
+    });
+    const user = userEvent.setup();
+    render(<CodeSkillsView projects={projects} />);
+
+    await user.click(await screen.findByRole('button', { name: 'Needs attention' }));
+
+    expect(screen.getByText('The managed cache is unavailable.')).toBeInTheDocument();
+    expect(screen.queryByText('No skills match your search.')).not.toBeInTheDocument();
+  });
+});
