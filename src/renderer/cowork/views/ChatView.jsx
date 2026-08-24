@@ -38,7 +38,7 @@ import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { harnessLabel } from '../lib/agentLabel';
 import { artifactOpenTarget, isArtifactActionAvailable } from '../lib/artifactActions';
-import { setArtifactsScope, useArtifactLiveness } from '../lib/artifactsStore';
+import { revalidate as revalidateArtifacts, setArtifactsScope, useArtifactLiveness } from '../lib/artifactsStore';
 import { useOrgMode } from '../../lib/orgMode';
 import { modelLabel } from '../lib/settingsTransform';
 import { providerOverloadedButtons } from '../lib/turnErrorActions';
@@ -574,6 +574,13 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
     statusTimerRef.current = setTimeout(() => setStatus(null), kind === 'ok' ? 1800 : 3200);
   };
 
+  // An action that failed may have failed because the artifact is gone. Ask the
+  // server rather than guess from the error: a 404 detail, an Electron bridge
+  // `{ ok: false }` and a transient network blip are indistinguishable here, and
+  // only the artifacts list can settle it. Best-effort — a failed revalidation
+  // just leaves the card as it was.
+  const revalidateAfterFailure = () => { revalidateArtifacts().catch(() => {}); };
+
   // Match the Working folder card's behavior: HTML and text artifacts
   // (.md/.txt/.csv) open the in-app viewer — HTML via sandboxed iframe,
   // text via inline markdown / table / preformatted render. Anything
@@ -616,6 +623,7 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
       // eslint-disable-next-line no-console
       console.error('[artifact-export] failed', e);
       showStatus('error', e?.message || `Could not export ${fmt.toUpperCase()}.`);
+      revalidateAfterFailure();
     }
     finally {
       setExporting(false);
@@ -660,6 +668,7 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
       // eslint-disable-next-line no-console
       console.error('[artifact-open] failed', e);
       showStatus('error', e?.message || 'Could not open artifact.');
+      revalidateAfterFailure();
     }
   };
   const handleReveal = async () => {
@@ -686,6 +695,7 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
       // eslint-disable-next-line no-console
       console.error('[artifact-reveal] failed', e || bridgeError);
       showStatus('error', e?.message || bridgeError?.message || bridgeError || 'Could not show artifact.');
+      revalidateAfterFailure();
     }
   };
   const previewText = artifact.preview?.[0]?.heading || artifact.preview?.[0]?.text || displayPath;

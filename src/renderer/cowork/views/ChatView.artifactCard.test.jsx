@@ -15,6 +15,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 const openExternal = vi.fn();
+const openPath = vi.fn();
 
 // Liveness is the store's business and is unit-tested there. Here we drive the
 // card against a controllable answer, because what shipped broken was the CARD:
@@ -35,7 +36,7 @@ vi.mock('../../platform/host', () => ({
     isMac: () => false,
     getPlatform: () => 'linux',
     getApiOrigin: () => 'http://localhost:1',
-    openPath: vi.fn(),
+    openPath: (...a) => openPath(...a),
     openExternal: (...a) => openExternal(...a),
   },
   getAccessToken: vi.fn(async () => null),
@@ -81,6 +82,7 @@ const taskWithArtifact = (step) => ({
 
 beforeEach(() => {
   openExternal.mockClear();
+  openPath.mockReset();
   deleted.mockReset();
   deleted.mockReturnValue(false);
   revalidate.mockClear();
@@ -171,5 +173,38 @@ describe('inline artifact banner for a deleted artifact', () => {
     render(<ChatView task={taskWithArtifact(artifactStep())} />);
 
     expect(deleted).toHaveBeenCalledWith(expect.anything(), { live: false });
+  });
+});
+
+describe('a failed action revalidates', () => {
+  // A .pdf has no inline preview, so Open goes to the OS handler and the
+  // bridge's result is what decides success.
+  const pdfTask = () => taskWithArtifact(artifactStep({
+    ext: '.pdf',
+    file_path: '/proj/.anton/artifacts/report/report.pdf',
+    path: '/proj/.anton/artifacts/report/report.pdf',
+  }));
+
+  it('re-checks liveness when opening fails', async () => {
+    // The card may be racing a delete in another window. Rather than parse the
+    // failure, ask the server again — that also covers the Electron bridge,
+    // which reports { ok: false, reason } and carries no status code.
+    openPath.mockResolvedValue({ ok: false, reason: 'no such file' });
+    const user = userEvent.setup();
+    render(<ChatView task={pdfTask()} />);
+
+    await user.click(screen.getByRole('button', { name: 'Open' }));
+
+    expect(revalidate).toHaveBeenCalled();
+  });
+
+  it('does not revalidate when opening succeeds', async () => {
+    openPath.mockResolvedValue({ ok: true });
+    const user = userEvent.setup();
+    render(<ChatView task={pdfTask()} />);
+
+    await user.click(screen.getByRole('button', { name: 'Open' }));
+
+    expect(revalidate).not.toHaveBeenCalled();
   });
 });
