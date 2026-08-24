@@ -33,8 +33,6 @@ import { setForm as setDataVaultForm, getForm as getDataVaultForm, clearForm as 
 import { extractFormSpec } from './components/datavault/parseFormSpec';
 import { host, getAccessToken } from '../platform/host';
 import { SERVER_START_CAP_MS } from '../../shared/server-status';
-import { loadSkin, persistSkin, nextSkin, skinLabel } from '../lib/skins';
-import { loadCustomTheme, persistCustomTheme, applyCustomTheme } from '../lib/customTheme';
 import { applyNavTitleColor } from '../lib/navBranding';
 import { getAgentLabel } from './lib/agentLabel';
 import { selectNextQueuedTask, mergeQueuesForAdoptedId, reservationReleaseDecision, finishedCids } from './lib/messageQueue';
@@ -43,6 +41,7 @@ import { useOrgMode } from '../lib/orgMode';
 import { clearDraft, moveDraft } from './lib/draftStore';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { useGoogleDrivePicker } from './hooks/useGoogleDrivePicker';
+import { useThemeSkin } from './hooks/useThemeSkin';
 import { fetchSessions, fetchSession, fetchConversationList, fetchProjects, fetchArtifacts, fetchSettings, fetchHealth,
          createProject, updateSettings, streamNewSession, streamMessage,
          streamDataVaultSubmission,
@@ -1271,29 +1270,18 @@ function AppCore() {
   // corner toggle below).
   const codingModeActive = host.codingModeOptionsEnabled && !!settings.codingModeEnabled;
   const sidebarPopout = isNarrow || (!isMobile && !host.isWeb && codingModeActive);
-  // Theme (light | dark) — persisted in localStorage so the choice
-  // survives reloads. The animated background canvas (gravity-field)
-  // and the body's bg colour both follow this value.
-  const [theme, setTheme] = useState(() => {
-    try {
-      const saved = window.localStorage.getItem('anton.theme');
-      return saved === 'light' || saved === 'dark' ? saved : 'dark';
-    } catch { return 'dark'; }
-  });
-  // Skin — a second styling axis, orthogonal to light/dark. Each entry
-  // in the SKINS registry (lib/skins.ts) maps to a token-override
-  // stylesheet keyed on body[data-skin]; both color schemes have a
-  // variant per skin, so the two toggles compose freely.
-  const [skin, setSkin] = useState(loadSkin);
-  // The full Display / theme picker modal (ENG-1545), opened from the
-  // sidebar footer's "Display settings" button.
-  const [themeModalOpen, setThemeModalOpen] = useState(false);
+  // Theme (light | dark), skin, the custom-skin recipe, and the Display
+  // picker modal — plus the body-class / gravity-field / persistence side
+  // effects that keep them applied — all live in useThemeSkin.
+  const {
+    theme, setTheme,
+    skin, setSkin,
+    themeModalOpen, setThemeModalOpen,
+    customTheme, setCustomTheme,
+  } = useThemeSkin();
   // Non-null = show the "coming soon to Cloud" popup for this feature name.
   const [comingSoonFeature, setComingSoonFeature] = useState(null);
   const orgMode = useOrgMode();
-  // The "design your own" recipe behind the `custom` skin — edited in
-  // Settings → Appearance, applied as inline body token overrides.
-  const [customTheme, setCustomTheme] = useState(loadCustomTheme);
 
   // Routes that allow the sidebar to be collapsed via Cmd+B. Read via
   // a ref so the keydown listener (mounted once) sees the live route
@@ -1351,31 +1339,6 @@ function AppCore() {
   // Latest newTask handler kept in a ref so the keydown listener — bound
   // once on mount — always invokes the up-to-date function.
   const newTaskRef = useRef(null);
-
-  useEffect(() => {
-    try { window.localStorage.setItem('anton.theme', theme); } catch {}
-    // Swap body class so kit's gf-theme-* page background colour applies.
-    document.body.classList.remove('gf-theme-dark', 'gf-theme-light');
-    document.body.classList.add(theme === 'light' ? 'gf-theme-light' : 'gf-theme-dark');
-    document.body.dataset.theme = theme;
-    // Tell the gravity field to swap palettes live.
-    if (window.gravityField && typeof window.gravityField.setTheme === 'function') {
-      window.gravityField.setTheme(theme);
-    }
-  }, [theme]);
-
-  useEffect(() => {
-    persistSkin(skin);
-    document.body.dataset.skin = skin;
-  }, [skin]);
-
-  // Custom-skin recipe → inline body tokens. Applied only while the
-  // custom skin is active; cleared otherwise so the stylesheet-driven
-  // skins are untouched.
-  useEffect(() => {
-    persistCustomTheme(customTheme);
-    applyCustomTheme(skin === 'custom' ? customTheme : null, theme === 'light' ? 'light' : 'dark');
-  }, [skin, customTheme, theme]);
 
   // Sidebar title color — a synced Setting (like the greeting), independent
   // of the skin/CustomTheme system above, so it applies in every style.
