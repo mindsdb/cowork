@@ -61,6 +61,17 @@ import { recommendedModelOptions, providerValueToType,
          mergeRecommendedModels } from './lib/settingsTransform';
 import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery, trackFirstResponse, classifyFirstResponse, trackKeyProvisioningRefused } from './lib/analytics';
 import { MODEL_ROUTER_ID, MODEL_ROUTER } from './lib/modelCatalog';
+import {
+  CoworkProvider,
+  CoworkRouterProvider,
+  ConversationUnavailable,
+  ConversationLoading,
+  createCoworkRouter,
+  initialNavState,
+  markOptimisticConversation,
+  clearOptimisticConversation,
+} from './CoworkRouter';
+import { Outlet } from 'react-router-dom';
 
 // One-of-ten encouraging follow-ups picked when a connect task is
 // created. Reads as a friendly nudge after the connect-intro card —
@@ -891,6 +902,21 @@ function nextPollDelay(schedules) {
   const earliest = Math.min(...dueTimes);
   const untilDue = earliest - Date.now() + SCHEDULE_POLL_RUN_BUFFER_MS;
   return Math.min(SCHEDULE_POLL_MAX_DELAY_MS, Math.max(untilDue, SCHEDULE_POLL_MIN_DELAY_MS));
+}
+
+// Monotonic token guarding project-detail resolution. A `/projects/:id` fetch
+// captures the token with begin() and applies its result only while isCurrent()
+// still holds. Both starting a newer detail (begin) AND leaving detail — to the
+// grid, Home, or any other route (leave) — advance the token, so a slow
+// `/projects/:A` response can neither overwrite a later `/projects/:B` nor
+// re-select A after the user has navigated away (e.g. Back to the grid).
+export function makeProjectDetailToken() {
+  let current = 0;
+  return {
+    begin: () => ++current,
+    leave: () => { current += 1; },
+    isCurrent: (captured) => captured === current,
+  };
 }
 
 export default function App() {
@@ -1786,7 +1812,14 @@ function AppCore() {
     document.body.classList.toggle('gf-dots-off', settings.showDots === false);
   }, [settings.showDots]);
 
-  const [route, setRoute] = useState('home');         // home | task | projects | scheduled | schedule-detail | artifacts | customize
+  // Seed nav state from the address bar so a web deep-link / refresh paints the
+  // right view instead of flashing Home. Electron's memory router starts at `/`.
+  const initialNav = useRef(initialNavState()).current;
+  // The router is created once (memory router on Electron, browser router on
+  // web). It's stateless w.r.t. AppCore — nav state flows through context.
+  const routerRef = useRef(null);
+  if (!routerRef.current) routerRef.current = createCoworkRouter();
+  const [route, setRoute] = useState(initialNav.route); // home | task | projects | scheduled | schedule-detail | artifacts | channels | customize
   // Keep a ref of the live route so the keydown listener (bound
   // once on mount) can read it without a re-bind on every nav.
   routeRef.current = route;
@@ -1806,9 +1839,27 @@ function AppCore() {
   // at a collapsed width.
   const sidebarCollapsedEffective =
     !sidebarPopout && sidebarCollapsibleRoutes.has(route) && sidebarCollapsed;
-  const [activeTaskId, setActiveTaskId] = useState(null);
-  const [selectedScheduleId, setSelectedScheduleId] = useState(null);
+  const [activeTaskId, setActiveTaskId] = useState(initialNav.activeTaskId);
+  // Set when the `/c/:id` loader hit an operational failure (not a 404): the
+  // view offers a retry instead of losing the URL.
+  const [conversationError, setConversationError] = useState(null);
+  // Seed from a `/scheduled/:id` deep-link so refresh restores the detail view.
+  // (selectedProject is resolved from its id by the project route, so null here.)
+  const [selectedScheduleId, setSelectedScheduleId] = useState(initialNav.selectedScheduleId ?? null);
   const [selectedProject, setSelectedProject] = useState(null);
+  // The project-detail id currently being resolved from the fetched list, or
+  // null once settled. Distinct from `selectedProject` (which the whole app
+  // reads and the URL bridge mirrors): while this differs from the selection we
+  // render the grid, not a stale project, under `/projects/:id`. Seeded so a
+  // refresh on a detail URL shows the loading grid, not a flash of the list.
+  const [projectDetailPending, setProjectDetailPending] = useState(
+    initialNav.route === 'projects' ? (initialNav.selectedProjectId ?? null) : null
+  );
+  // Monotonic request token so a slow `/projects/:A` response can't overwrite a
+  // later `/projects/:B` resolution, nor re-select A after the user leaves detail
+  // (Back to the grid / Home / any route). See makeProjectDetailToken.
+  const projectDetailTokenRef = useRef(null);
+  if (projectDetailTokenRef.current === null) projectDetailTokenRef.current = makeProjectDetailToken();
   // Defaults to "Model Router" — defer to whatever this account's Settings
   // has configured — until a composer picks a concrete model for a task.
   // Never re-synced from settings after that: its whole point is that it
@@ -2277,7 +2328,29 @@ function AppCore() {
   }, [settings]);
 
   const activeTasks = tasks.filter((t) => t.status === 'active');
-  const currentTask = tasks.find((t) => t.id === activeTaskId) || (route === 'task' ? tasks[0] : null);
+  const resolvedTask = tasks.find((t) => t.id === activeTaskId) || null;
+  // Only fall back to a default task when no id is requested. A requested id
+  // that isn't local yet (deep link / scheduled-run open) is still loading —
+  // falling back to tasks[0] would flash an unrelated recent conversation.
+  const currentTask = resolvedTask || (route === 'task' && !activeTaskId ? tasks[0] : null);
+  // Loader hit a transient failure and there's nothing local — show the retry
+  // rather than an empty (or, via the old `tasks[0]` fallback, wrong) ChatView.
+  // A locally-available conversation keeps rendering during a blip.
+  const showConversationError =
+    route === 'task' &&
+    conversationError != null &&
+    conversationError === activeTaskId &&
+    !resolvedTask;
+  // Requested id not resolved and not (yet) errored: show a loading state, not
+  // the wrong conversation, until openConversation merges it into local state.
+  const showConversationLoading =
+    route === 'task' && activeTaskId != null && !resolvedTask && !showConversationError;
+  // A detail URL whose id isn't yet the selected project (resolving, or cold
+  // deep link): show the grid, never a stale project, under `/projects/:id`.
+  const projectDetailResolving =
+    projectDetailPending != null &&
+    !(selectedProject && (selectedProject.id === projectDetailPending || selectedProject.name === projectDetailPending));
+  const selectedProjectForView = projectDetailResolving ? null : selectedProject;
   // Tasks belong to one project for life. Resolve via projectName
   // first (server's canonical id), then projectPath, then fall back
   // to the currently-selected project for orphans.
@@ -2480,77 +2553,79 @@ function AppCore() {
     return true;
   }, [markInFlight, markInFlightDone, handleStreamError]);
 
+  // Navigation intent only: flipping route + activeTaskId drives the URL to
+  // `/c/:id`, whose loader + openConversation() (below) do the hydration and
+  // stream reattach — so sidebar click / deep link / refresh / Back all run one
+  // path.
   const selectTask = (id) => {
     if (sidebarPopout) setNavPopoutOpen(false);
-    const task = tasks.find((t) => t.id === id);
-    if (task) {
-      // Record the visit for recents ordering, but never auto-pin.
-      // Pin/unpin is now an explicit action via the task menu.
-      recordTaskVisit(task, false).then(() => {
-        fetchPins().then((data) => setPins(data.pins || []));
-        fetchSessions().then((data) => {
-      if (Array.isArray(data)) setTasks((prev) => mergeTasksFromServer(data, prev).filter((t) => !deletedTaskIdsRef.current.has(t.id)));
-    });
-      }).catch(() => {});
-
-      // Is this conversation actually mid-stream right now? If yes,
-      // we LEAVE running indicators alone. If no, reconcile strips
-      // zombie placeholders and collapses stale step state.
-      const isLive = activeStreamingTaskIdRef.current === id;
-
-      // Cross-client cache (Option B): when the server says this
-      // conversation's producer is still running, skip the "things
-      // stopped" continuation prompt. The reconnect path below will
-      // attach to the live tail within ~50ms; showing the stopped
-      // message in between would flicker.
-      const isServerInFlight = inFlightSetRef.current.has(id);
-
-      // If this task didn't get its messages preloaded (we only fan
-      // out to the recent N at startup), fetch them now so the chat
-      // view doesn't render empty.
-      if (!task.messages || task.messages.length === 0) {
-        fetchSession(id).then((fresh) => {
-          if (!fresh || !Array.isArray(fresh.messages)) return;
-          // Server-in-flight conversations may have no messages yet
-          // (e.g. a scheduled task that just started). Don't bail —
-          // reconcile will inject a thinking placeholder.
-          if (fresh.messages.length === 0 && !isServerInFlight) return;
-          // Two layers of restoration, in order of trust:
-          //   1. Server sidecar (`{cid}_turns.json`) — events for each
-          //      assistant turn, replayed through the same reducer the
-          //      live stream uses. Survives any client reset and
-          //      anyone reading the conversation gets the same view.
-          //   2. localStorage sidecar — legacy fallback for turns
-          //      created before the server sidecar shipped.
-          const reconciled = applySessionMessages(id, fresh.messages, { isLive, isServerInFlight });
-          const dc = Array.isArray(fresh.disabledConnections) ? fresh.disabledConnections : undefined;
-          setTasks((prev) => prev.map((t) =>
-            t.id === id ? {
-              ...t,
-              messages: reconciled,
-              ...(dc !== undefined ? { disabledConnections: dc } : {}),
-            } : t
-          ));
-        }).catch(() => {});
-      } else {
-        // Already preloaded — still hydrate once so reopening surfaces
-        // any data persisted in a prior session.
-        setTasks((prev) => prev.map((t) => {
-          if (t.id !== id) return t;
-          return { ...t, messages: applySessionMessages(id, t.messages, { isLive, isServerInFlight }) };
-        }));
-      }
-    }
+    // Clear the composer here (the sync nav intent), not in openConversation:
+    // that runs after the async loader and would wipe a queued-message redirect
+    // ChatView stages for the conversation. Matches staging's ordering.
     setComposerAttachments([]);
     setActiveTaskId(id);
     setRoute('task');
-    // Phase 2 reconnect — fire-and-forget. If a turn is still running
-    // server-side for this conversation (closed-tab-came-back, or
-    // opened from another tab/device), this re-attaches the live SSE
-    // stream and replays from seq 0. Cheap no-op when the producer
-    // isn't running.
-    reconnectInFlight(id).catch(() => { /* probe failures are silent */ });
   };
+
+  // Hydrate + reattach the conversation the `/c/:id` route resolved. `loaded` is
+  // the loader result: `{ task }`, `{ optimistic: true }` (new-chat mid-send —
+  // messages live locally, don't clobber), or `{ unavailable: true }` (transient
+  // failure).
+  const openConversation = useCallback((id, loaded) => {
+    setActiveTaskId(id);
+    setRoute('task');
+    // Composer is cleared by selectTask (sync), not here — see there. On a
+    // loader failure flag it for a retry; any resolvable result clears a stale
+    // error. The render only shows it when the conversation is absent locally,
+    // so a sidebar click during a blip keeps rendering.
+    if (loaded?.unavailable) setConversationError(id);
+    else setConversationError((cur) => (cur === id ? null : cur));
+    // Phase 2 reconnect — fire-and-forget. If a turn is still running
+    // server-side for this conversation (closed-tab-came-back, or opened
+    // from another tab/device), this re-attaches the live SSE stream and
+    // replays from seq 0. Cheap no-op when the producer isn't running.
+    reconnectInFlight(id).catch(() => { /* probe failures are silent */ });
+    if (!loaded || loaded.optimistic || loaded.unavailable || !loaded.task) return;
+    const fresh = loaded.task;
+    // Is this conversation actually mid-stream right now? If yes, we LEAVE
+    // running indicators alone. If no, reconcile strips zombie placeholders
+    // and collapses stale step state.
+    const isLive = activeStreamingTaskIdRef.current === id;
+    // Cross-client cache (Option B): when the server says this
+    // conversation's producer is still running, skip the "things stopped"
+    // continuation prompt — the reconnect above attaches to the live tail.
+    const isServerInFlight = inFlightSetRef.current.has(id);
+
+    // Record the visit for recents ordering (never auto-pin), then refresh
+    // pins + the capped recents list. Runs before the empty-transcript return
+    // below so every successful open updates recency — matching the prior
+    // selectTask path, which recorded a visit regardless of message count.
+    recordTaskVisit(fresh, false).then(() => {
+      fetchPins().then((data) => setPins(data.pins || []));
+      fetchSessions().then((data) => {
+        if (Array.isArray(data)) setTasks((prev) => mergeTasksFromServer(data, prev).filter((t) => !deletedTaskIdsRef.current.has(t.id)));
+      });
+    }).catch(() => {});
+
+    // Empty and not mid-flight: surface the record so a capped-list deep
+    // link (conversation absent from the recents fetch) still renders, but
+    // don't wipe any locally-restored messages.
+    if ((!Array.isArray(fresh.messages) || fresh.messages.length === 0) && !isServerInFlight) {
+      setTasks((prev) => (prev.some((t) => t.id === id) ? prev : [fresh, ...prev]));
+      return;
+    }
+
+    // Two layers of restoration, in order of trust: the server sidecar
+    // (`{cid}_turns.json`) replayed through the live-stream reducer, then a
+    // legacy localStorage sidecar. Merge into recents, inserting the
+    // conversation if it wasn't in the capped fetch.
+    const reconciled = applySessionMessages(id, Array.isArray(fresh.messages) ? fresh.messages : [], { isLive, isServerInFlight });
+    const dc = Array.isArray(fresh.disabledConnections) ? fresh.disabledConnections : undefined;
+    const patch = (t) => ({ ...t, messages: reconciled, ...(dc !== undefined ? { disabledConnections: dc } : {}) });
+    setTasks((prev) => (prev.some((t) => t.id === id)
+      ? prev.map((t) => (t.id === id ? patch(t) : t))
+      : [patch(fresh), ...prev]));
+  }, [reconnectInFlight]);
 
   const newTask = () => {
     if (sidebarPopout) setNavPopoutOpen(false);
@@ -3092,24 +3167,16 @@ function AppCore() {
       openSettings(key.includes(':') ? key.split(':')[1] : null);
       return;
     }
-    if (key === 'artifacts') {
-      fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
-    }
     if (key === 'projects') {
-      fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); });
-      // Clicking "Projects" in the sidebar should always land on the
-      // grid of all projects, not the previously-selected project's
-      // detail. Clear the selection so ProjectsView starts in grid
-      // mode. The chat-header crumb routes through onOpenProject
-      // (which sets selectedProject AFTER routing) so it's unaffected.
+      // Clicking "Projects" in the sidebar should always land on the grid of
+      // all projects, not the previously-selected project's detail. Clearing
+      // here (not in enterRoute) keeps the chat-header crumb path — which
+      // routes through onOpenProject and sets selectedProject AFTER routing —
+      // unaffected.
       setSelectedProject(null);
     }
-    if (key === 'scheduled') {
-      fetchSchedules().then((data) => {
-      setScheduled(data.schedules || []);
-      setScheduleRunsIndex(data.runs_index || {});
-    });
-    }
+    // Flip route state; the URL bridge mirrors it and the route element's
+    // enterRoute() (re)fetches that view's data.
     setRoute(key);
   };
 
@@ -3132,6 +3199,72 @@ function AppCore() {
       setSettingsSection('agent');
     }
   }, [orgMode, settingsSection]);
+
+  // URL → state sync for the route elements. enterRoute is the single place a
+  // view's entry data is (re)fetched, so in-app nav / deep link / refresh /
+  // Back-Forward all run the same path.
+  const enterHome = useCallback(() => {
+    setRoute('home');
+    setConversationError(null);
+    projectDetailTokenRef.current.leave(); // supersede any in-flight detail resolve
+    setProjectDetailPending(null);
+  }, []);
+
+  const enterRoute = useCallback((key) => {
+    setRoute(key);
+    setConversationError(null);
+    projectDetailTokenRef.current.leave(); // supersede any in-flight detail resolve
+    setProjectDetailPending(null); // leaving a detail route (or landing on the grid)
+    if (key === 'artifacts') {
+      fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
+    } else if (key === 'projects') {
+      // Bare `/projects` is the grid — clear the selection so a Back from
+      // `/projects/:id` doesn't render stale detail (detail = enterProjectDetail).
+      setSelectedProject(null);
+      fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); });
+    } else if (key === 'scheduled') {
+      fetchSchedules().then((data) => {
+        setScheduled(data.schedules || []);
+        setScheduleRunsIndex(data.runs_index || {});
+      });
+    }
+  }, []);
+
+  // Detail routes → state (v1). No single-resource loader: resolve the entity
+  // client-side from the fetched list, so refresh / deep-link restore the
+  // selection with no server change.
+  // Returns a promise resolving to `false` when the id isn't in the list (the
+  // route element then replaces the dead URL with `/projects`), else truthy.
+  const enterProjectDetail = useCallback((projectId) => {
+    setRoute('projects');
+    setConversationError(null);
+    // Resolving this id: render the grid (not a stale project) until it settles.
+    setProjectDetailPending(projectId);
+    const reqId = projectDetailTokenRef.current.begin();
+    return fetchProjects().then((data) => {
+      if (!projectDetailTokenRef.current.isCurrent(reqId)) return true; // superseded — a newer id owns pending, or we left detail
+      if (!Array.isArray(data)) { setProjectDetailPending(null); return true; }
+      setProjects(data);
+      const found = data.find((p) => p.id === projectId || p.name === projectId);
+      if (found) { setProjectDetailPending(null); setSelectedProject(found); return true; }
+      // Confirmed missing: keep `pending` set (stays on the grid) — the route
+      // element replaces the URL with `/projects`, whose enterRoute clears it.
+      return false;
+    }).catch(() => {
+      if (projectDetailTokenRef.current.isCurrent(reqId)) setProjectDetailPending(null);
+      return true; // transient failure → keep the URL, don't bounce
+    });
+  }, []);
+
+  const enterScheduleDetail = useCallback((scheduleId) => {
+    setRoute('schedule-detail');
+    setSelectedScheduleId(scheduleId);
+    setConversationError(null);
+    fetchSchedules().then((data) => {
+      setScheduled(data.schedules || []);
+      setScheduleRunsIndex(data.runs_index || {});
+    }).catch(() => {});
+  }, []);
 
   const attachmentProjectPath = currentTask?.projectPath || selectedProject?.path || null;
   const attachmentProjectName = currentTask?.projectName || selectedProject?.name || null;
@@ -3335,6 +3468,9 @@ function AppCore() {
     const rawComposer = composerAttachments;
     const hasPendingFiles = rawComposer.some(isPendingFileAttachment);
     const taskId = hasPendingFiles ? allocateConversationId() : `tmp-${Date.now()}`;
+    // Flag the not-yet-persisted id so the route loader renders from local
+    // state instead of 404ing home.
+    markOptimisticConversation(taskId);
 
     const { merged: sendingAttachments, attachmentIds, reference } = await resolveComposerAttachmentsForSend(
       effectiveProjectName,
@@ -3391,6 +3527,8 @@ function AppCore() {
       resolvedId = sid;
       // Carry over a reply the user started typing under the tmp- id.
       moveDraft(previousId, sid);
+      // The canonical id isn't loadable yet either — keep the loader off it.
+      markOptimisticConversation(sid);
       setTasks((prev) => prev.map((t) => (
         t.id === previousId || t.id === taskId ? { ...t, id: sid } : t
       )));
@@ -3494,6 +3632,9 @@ function AppCore() {
         activeScratchpadRef.current = null;
         activeStreamingTaskIdRef.current = null;
         const finalId = sid || resolvedId;
+        // Turn done → conversation persisted; drop the optimistic flag so a
+        // later revisit hydrates fresh instead of replaying this snapshot.
+        clearOptimisticConversation(finalId);
         markInFlightDone(finalId);
         if (finalId !== taskId) markInFlightDone(taskId);
         releaseLiveSteps([finalId, taskId]);
@@ -3825,6 +3966,7 @@ function AppCore() {
       resolvedId = sid;
       // Carry over a reply the user started typing under the tmp- id.
       moveDraft(previousId, sid);
+      markOptimisticConversation(sid);
       setTasks((prev) => prev.map((t) => (
         t.id === previousId || t.id === id ? { ...t, id: sid } : t
       )));
@@ -3906,6 +4048,9 @@ function AppCore() {
         activeStreamCtrlRef.current = null;
         activeScratchpadRef.current = null;
         activeStreamingTaskIdRef.current = null;
+        // Turn done → conversation persisted; drop the optimistic flag (set if
+        // `id` was a tmp-connect id that adopted a server id).
+        clearOptimisticConversation(resolvedId);
         markInFlightDone(resolvedId);
         if (resolvedId !== id) markInFlightDone(id);
         releaseLiveSteps([resolvedId, id]);
@@ -4029,6 +4174,7 @@ function AppCore() {
       resolvedId = sid;
       // Carry over a reply the user started typing under the tmp- id.
       moveDraft(previousId, sid);
+      markOptimisticConversation(sid);
       setTasks((prev) => prev.map((t) => (
         t.id === previousId || t.id === id ? { ...t, id: sid } : t
       )));
@@ -4164,6 +4310,8 @@ function AppCore() {
         activeStreamCtrlRef.current = null;
         activeStreamingTaskIdRef.current = null;
         releaseLiveSteps([resolvedId, id]);
+        // Turn done → conversation persisted; drop the optimistic flag.
+        clearOptimisticConversation(resolvedId);
         const finalContent = streamState.bodyText;
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
@@ -4698,7 +4846,10 @@ function AppCore() {
     },
   };
 
-  return (
+  // The app chrome — sidebar, content column, modals. Still holds the
+  // `route`-keyed view switch plus the router's <Outlet/>; handed to the router
+  // via context.
+  const shell = (
     <div style={{
       ...appStyle, ...accentCss,
       display: 'flex', gap: 9, padding: 9,
@@ -4940,6 +5091,10 @@ function AppCore() {
         onOpenSidebar={sidebarPopout ? () => setNavPopoutOpen(true) : () => setSidebarCollapsed(false)}
         mobileShellProps={mobileShellProps}
       >
+        {/* Mounts the matched child route element, which syncs `route` /
+            `activeTaskId` to the URL. It renders no visible output — the
+            active view is still chosen by the `route`-keyed switch below. */}
+        <Outlet />
         {route === 'home' && (
           <HomeView
             greeting={settings.greeting}
@@ -4980,7 +5135,11 @@ function AppCore() {
           />
         )}
 
-        {route === 'task' && currentTask && (
+        {route === 'task' && showConversationError && <ConversationUnavailable />}
+
+        {route === 'task' && showConversationLoading && <ConversationLoading />}
+
+        {route === 'task' && currentTask && !showConversationError && (
           <ChatView
             task={currentTask}
             onSend={handleSendInTask}
@@ -5107,7 +5266,8 @@ function AppCore() {
         {route === 'projects' && (
           <ProjectsView
             projects={projects}
-            selectedProject={selectedProject}
+            selectedProject={selectedProjectForView}
+            loading={projectDetailResolving}
             tasks={tasks}
             scheduled={scheduled}
             scheduleRunsIndex={scheduleRunsIndex}
@@ -5567,5 +5727,28 @@ function AppCore() {
         </div>
       )}
     </div>
+  );
+
+  // Hand the shell + nav state + URL→state handlers to the router; CoworkLayout
+  // renders `shell` and the route elements consume the handlers.
+  const coworkValue = {
+    shell,
+    route,
+    activeTaskId,
+    // Bridge mirrors the selected detail entity into the URL. Prefer the stable
+    // id; fall back to name for projects that predate ids.
+    selectedProjectId: selectedProject?.id || selectedProject?.name || null,
+    selectedScheduleId,
+    enterHome,
+    enterRoute,
+    openConversation,
+    enterProjectDetail,
+    enterScheduleDetail,
+  };
+
+  return (
+    <CoworkProvider value={coworkValue}>
+      <CoworkRouterProvider router={routerRef.current} />
+    </CoworkProvider>
   );
 }

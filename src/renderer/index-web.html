@@ -17,10 +17,13 @@
     <!-- Brand favicon: the same MindsHub "minds" mark as the desktop app icon,
          so the web tab matches the dock/taskbar glyph. SVG for crisp tabs on
          all modern browsers; the 180×180 PNG (downscaled from the desktop
-         icon.png) covers iOS/Safari home-screen apple-touch-icon. -->
-    <link rel="icon" type="image/svg+xml" href="./minds-icon.svg" />
-    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
-    <link rel="stylesheet" href="./gravity-field/gravity-field.css" />
+         icon.png) covers iOS/Safari home-screen apple-touch-icon.
+         Root-absolute (not `./`): the web SPA is served over http with a `/`
+         base and has deep client-side routes (`/c/:id`), where a relative path
+         resolves against the route and 404s. These assets live in public/. -->
+    <link rel="icon" type="image/svg+xml" href="/minds-icon.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="stylesheet" href="/gravity-field/gravity-field.css" />
     <!-- Boot veil: solid-black first paint that fades out so the window
          never flashes the half-initialized canvas / pre-skin theme. -->
     <style>
@@ -45,13 +48,13 @@
     <div id="boot-veil"></div>
     <canvas id="gravity-field-bg" class="gravity-field" aria-hidden="true"></canvas>
     <div id="root"></div>
-    <script src="./gravity-field/gravity-field.js"></script>
+    <script src="/gravity-field/gravity-field.js"></script>
     <script>
       window.gravityField = window.GravityField.mount(
         document.getElementById('gravity-field-bg'),
         { theme: 'dark', trackPointer: false },
       );
     </script>
-    <script type="module" src="./web-main.tsx"></script>
+    <script type="module" src="/web-main.tsx"></script>
   </body>
 </html>
