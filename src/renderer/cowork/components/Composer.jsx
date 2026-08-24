@@ -12,7 +12,7 @@ import {
 } from './composerFences';
 import { HighlightOverlay } from './composerHighlight';
 import {
-  isMovingAlias, isFrozenAlias, hasFrozenVersions, orderByFamily,
+  isMovingAlias, isFrozenAlias, hasFrozenVersions, isModelLocked, orderByFamily,
   MODEL_ROUTER_ID, MODEL_ROUTER_LABEL,
 } from '../lib/modelCatalog';
 import { MODEL_REFRESH_TTL_MS } from '../lib/modelRefresh';
@@ -415,17 +415,27 @@ export default function Composer({
     // tag would sit on every row and distinguish nothing.
     const tagMoving = hasFrozenVersions(ids, modelFamilies);
     const catalogOptions = ordered.map((m) => {
+      /*
+       * The wallet can't pay for this one, so it can't be picked here either.
+       * The availability map is re-read whenever this menu opens (App.jsx passes
+       * the refresh in), so a top-up made in the browser unlocks the row on the
+       * next open rather than on a restart. That refresh is what makes disabling
+       * safe: without it a user who topped up would find the row still greyed.
+       */
+      const locked = isModelLocked(modelEnabled, m.id);
       const tag = [
         tagMoving && isMovingAlias(m.id, modelFamilies) ? 'Latest' : '',
         // A frozen version whose head is also listed. An orphan carries no
         // tag: "older version" is a claim relative to a newer one, and with
         // no head present there is nothing for the user to read it against.
         (isFrozenAlias(m.id, modelFamilies) && byId.has(modelFamilies[m.id])) ? 'Older version' : '',
-        modelEnabled[m.id] === false ? 'Needs credits' : '',
+        locked ? 'Needs credits' : '',
       ].filter(Boolean).join(' · ');
       return {
         value: m.id,
         label: m.name,
+        disabled: locked,
+        ...(locked ? { title: 'Add credits to use this model' } : {}),
         ...(tag ? { tag } : {}),
         ...(modelProviders[m.id] ? { provider: modelProviders[m.id] } : {}),
       };

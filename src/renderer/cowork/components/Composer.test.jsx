@@ -158,6 +158,44 @@ describe('Composer — model picker (ENG-1656)', () => {
     expect(onRefresh).toHaveBeenCalledTimes(1);
   });
 
+  // The bug this closes: a free user could pick a model the wallet can't pay
+  // for, and the turn then ran a different, affordable model, because
+  // resolution substitutes a pin it knows the gateway will deny. So the answer
+  // came from one model while the picker named another.
+  it('offers a needs-credits model as a disabled row that cannot be chosen', async () => {
+    const user = userEvent.setup();
+    const props = renderComposer({
+      models: MODELS,
+      modelMeta: { ...MODEL_META, modelEnabled: { mindshub_air: true, sonnet: false } },
+      model: MODELS[0],
+      onModelChange: vi.fn(),
+    });
+
+    await user.click(screen.getByRole('combobox', { name: 'Choose model' }));
+    const locked = screen.getByRole('option', { name: /Claude Sonnet 5/ });
+    expect(locked).toHaveAttribute('data-disabled');
+    expect(locked).toHaveTextContent('Needs credits');
+
+    await user.click(locked);
+    expect(props.onModelChange).not.toHaveBeenCalled();
+  });
+
+  it('leaves a model the wallet can pay for selectable', async () => {
+    const user = userEvent.setup();
+    const props = renderComposer({
+      models: MODELS,
+      modelMeta: { ...MODEL_META, modelEnabled: { mindshub_air: true, sonnet: false } },
+      model: MODELS[0],
+      onModelChange: vi.fn(),
+    });
+
+    await user.click(screen.getByRole('combobox', { name: 'Choose model' }));
+    // Absent from the map, so available. Locking one row must not lock the list.
+    await user.click(screen.getByRole('option', { name: 'Kimi K3' }));
+
+    expect(props.onModelChange).toHaveBeenCalledWith({ id: 'kimi', name: 'Kimi K3' });
+  });
+
   it('renders a fixed label instead of a picker when modelReadOnly', async () => {
     const user = userEvent.setup();
     renderComposer({ models: MODELS, modelMeta: MODEL_META, model: MODELS[0], modelReadOnly: true });

@@ -227,6 +227,22 @@ export function groupModelOptions(options) {
 // including dated snapshots that provably never move. Presence is the signal;
 // global non-emptiness is not.
 
+/**
+ * True when the wallet cannot currently pay for `id`.
+ *
+ * `modelEnabled` is MindsHub's availability map: it flags a model the org's wallet
+ * cannot pay for, or whose free monthly allowance is spent, as `false`. An id it
+ * does not mention counts as available, which is what keeps every BYOK provider
+ * (no such map at all) and an older gateway (no flag for a model it serves)
+ * selectable.
+ *
+ * Both pickers read this one predicate so they cannot disagree about which rows a
+ * user may choose. They already share the family rules below for the same reason.
+ */
+export function isModelLocked(modelEnabled, id) {
+  return (modelEnabled || {})[id] === false;
+}
+
 /** True when `id` is a moving alias according to `families`. */
 export function isMovingAlias(id, families = {}) {
   return !!families && families[id] === id;

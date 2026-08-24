@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  modelMaker, groupModelOptions, hasFrozenVersions, orderByFamily, OTHER_MAKER,
+  modelMaker, groupModelOptions, hasFrozenVersions, isModelLocked, orderByFamily, OTHER_MAKER,
 } from './modelCatalog';
 
 // The live minds-cloud catalog as of ENG-1096 (alias → MindsHub label).
@@ -230,5 +230,36 @@ describe('orderByFamily', () => {
     expect(orderByFamily(['a', 'b'], { a: 'b', b: 'a' })).toEqual(['a', 'b']);
     expect(orderByFamily(['a', 'b', 'c'], { a: 'b', b: 'a', c: 'a' }).slice().sort())
       .toEqual(['a', 'b', 'c']);
+  });
+});
+
+// ─── isModelLocked — the one definition of "the wallet can't pay for this",
+// read by the Settings picker and the composer's menu so the two can never
+// disagree about which rows a user is allowed to choose.
+describe('isModelLocked', () => {
+  it('locks a model the availability map flags false', () => {
+    expect(isModelLocked({ fable: false }, 'fable')).toBe(true);
+  });
+
+  it('leaves a model the map flags true alone', () => {
+    expect(isModelLocked({ fable: true }, 'fable')).toBe(false);
+  });
+
+  // Absent means available, deliberately. Every BYOK provider has no such map,
+  // and an older gateway publishes no flag for a model it does serve, so
+  // reading absence as locked would empty those pickers.
+  it('treats an id the map does not mention as available', () => {
+    expect(isModelLocked({ fable: false }, 'sonnet')).toBe(false);
+    expect(isModelLocked({}, 'sonnet')).toBe(false);
+    expect(isModelLocked(undefined, 'sonnet')).toBe(false);
+    expect(isModelLocked(null, 'sonnet')).toBe(false);
+  });
+
+  // The map is written from real booleans. A stringy value would make
+  // `!value` read "false" as available and, worse, a truthy "false" lock
+  // nothing, so the test pins the strict comparison rather than the coercion.
+  it('only a real false locks, never a falsy lookalike', () => {
+    expect(isModelLocked({ fable: 0 }, 'fable')).toBe(false);
+    expect(isModelLocked({ fable: 'false' }, 'fable')).toBe(false);
   });
 });
