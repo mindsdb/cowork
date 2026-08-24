@@ -22,6 +22,7 @@ export function PermissionSelect({
       variant="unstyled"
       size="sm"
       ariaLabel="Coding permissions"
+      menuLabel="Permissions"
       disabled={disabled}
       className="meta-pill code-composer-picker code-permission-picker"
     />

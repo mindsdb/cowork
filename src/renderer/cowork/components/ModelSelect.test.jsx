@@ -75,6 +75,16 @@ describe('ModelSelect', () => {
     await waitFor(() => expect(screen.getByLabelText('Search models')).toHaveFocus());
   });
 
+  it('can identify the open model menu without adding text to the closed trigger', async () => {
+    const user = userEvent.setup();
+    render(<Harness menuLabel="Model" ariaLabel="Choose model" />);
+
+    expect(screen.getByRole('combobox', { name: 'Choose model' })).not.toHaveTextContent('Model');
+    await user.click(screen.getByRole('combobox', { name: 'Choose model' }));
+
+    expect(screen.getByText('Model')).toBeInTheDocument();
+  });
+
   it('marks the current model as selected', async () => {
     const user = userEvent.setup();
     render(<Harness initial="sonnet" />);

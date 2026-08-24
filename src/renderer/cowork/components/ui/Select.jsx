@@ -95,6 +95,15 @@ export const triggerVariants = cva(
   },
 );
 
+export function PickerMenuHeading({ children }) {
+  if (!children) return null;
+  return (
+    <div className="px-[14px] pt-[9px] pb-[5px] text-[10.5px] font-semibold leading-[16px] text-ink-4 select-none">
+      {children}
+    </div>
+  );
+}
+
 const CHEVRON_DOWN = <ChevronDown size={11} strokeWidth={1.5} aria-hidden="true" />;
 const CARET_UP_DOWN = <ChevronsUpDown size={11} strokeWidth={1.5} aria-hidden="true" />;
 
@@ -188,6 +197,9 @@ export function Select({
   // Pill-variant prefix, e.g. "Sort by". Falls back to `ariaLabel` when
   // omitted so a pill always has an accessible name.
   label,
+  // Optional identity shown only inside the open popup. Composer controls
+  // use this to stay terse when closed without making a menu ambiguous.
+  menuLabel,
   ariaLabel,
   title,
   id,
@@ -273,6 +285,7 @@ export function Select({
               'data-[open]:animate-scale-in data-[closed]:animate-scale-out',
             )}
           >
+            <PickerMenuHeading>{menuLabel}</PickerMenuHeading>
             <BaseSelect.List>
               {renderOptions(options)}
             </BaseSelect.List>

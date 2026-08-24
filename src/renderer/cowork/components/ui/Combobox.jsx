@@ -48,7 +48,7 @@ import { Combobox as BaseCombobox } from '@base-ui/react/combobox';
 import { ChevronsUpDown, Check, Search } from 'lucide-react';
 import { cn } from '../../lib/cn';
 import Spinner from './Spinner.jsx';
-import { triggerVariants } from './Select.jsx';
+import { PickerMenuHeading, triggerVariants } from './Select.jsx';
 
 const CARET_UP_DOWN = <ChevronsUpDown size={11} strokeWidth={1.5} aria-hidden="true" />;
 
@@ -74,6 +74,7 @@ export function Combobox({
   placeholder = 'Select',
   searchPlaceholder = 'Search',
   searchAriaLabel = 'Search',
+  menuLabel,
   emptyText = 'No results',
   variant = 'field',
   size = 'md',
@@ -170,6 +171,7 @@ export function Combobox({
               'data-[open]:animate-scale-in data-[closed]:animate-scale-out',
             )}
           >
+            <PickerMenuHeading>{menuLabel}</PickerMenuHeading>
             {/* Search row — pinned; only the list below scrolls. Border
                 widths are set per-side: with preflight disabled,
                 `border-solid` alone would resurrect the UA's `medium`

@@ -23,6 +23,7 @@ export interface SelectProps {
   loading?: boolean;
   invalid?: boolean;
   label?: ReactNode;
+  menuLabel?: ReactNode;
   ariaLabel?: string;
   title?: string;
   id?: string;

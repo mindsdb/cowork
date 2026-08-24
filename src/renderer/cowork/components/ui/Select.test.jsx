@@ -178,4 +178,14 @@ describe('Select', () => {
     expect(trigger).not.toHaveClass('border-solid');
     expect(trigger.querySelector('.lucide-chevrons-up-down')).toBeInTheDocument();
   });
+
+  it('shows a concise menu title only while the picker is open', async () => {
+    const user = userEvent.setup();
+    render(<Harness menuLabel="Permissions" ariaLabel="Coding permissions" />);
+
+    expect(screen.queryByText('Permissions')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('combobox', { name: 'Coding permissions' }));
+
+    expect(screen.getByText('Permissions')).toBeInTheDocument();
+  });
 });

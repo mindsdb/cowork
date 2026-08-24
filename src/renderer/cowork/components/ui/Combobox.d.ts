@@ -29,6 +29,7 @@ export type ComboboxProps = {
   placeholder?: string;
   searchPlaceholder?: string;
   searchAriaLabel?: string;
+  menuLabel?: ReactNode;
   emptyText?: string;
   variant?: 'field' | 'unstyled';
   size?: 'sm' | 'md';
