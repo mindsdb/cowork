@@ -6,6 +6,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import Composer from './Composer';
+import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 
 vi.mock('../api', async (importOriginal) => {
   const actual = await importOriginal();
@@ -23,6 +24,9 @@ vi.mock('../api', async (importOriginal) => {
 // in this file. Only the "Model Router" harness-switch test below
 // exercises it; everything else (api.js's getApiOrigin() at import time,
 // etc.) keeps the real host.
+// Spread the real modules and override only what these tests assert on, so a
+// new export never has to be added here to keep the file importable.
+const hostSpies = vi.hoisted(() => ({ openExternal: vi.fn() }));
 vi.mock('../../platform/host', async (importOriginal) => {
   const actual = await importOriginal();
   return {
@@ -30,9 +34,16 @@ vi.mock('../../platform/host', async (importOriginal) => {
     host: {
       ...actual.host,
       isWeb: false,
+      openExternal: hostSpies.openExternal,
       detectClaudeCode: vi.fn(async () => ({ installed: true, path: '/usr/local/bin/claude' })),
     },
   };
+});
+
+const analyticsSpies = vi.hoisted(() => ({ trackBillingOpened: vi.fn() }));
+vi.mock('../lib/analytics', async (importOriginal) => {
+  const actual = await importOriginal();
+  return { ...actual, trackBillingOpened: analyticsSpies.trackBillingOpened };
 });
 
 const renderComposer = (overrides = {}) => {
@@ -175,8 +186,35 @@ describe('Composer — model picker (ENG-1656)', () => {
     const locked = screen.getByRole('option', { name: /Claude Sonnet 5/ });
     expect(locked).toHaveAttribute('data-disabled');
     expect(locked).toHaveTextContent('Needs credits');
+    // The row is closed off, so this button is the only thing left on it that
+    // answers "how do I unlock this". Settings' top-up hint does not cover the
+    // case: it renders for the CURRENT model, and the current model here is one
+    // the wallet can pay for.
+    expect(within(locked).getByRole('button', { name: 'Add credits' })).toBeInTheDocument();
 
     await user.click(locked);
+    expect(props.onModelChange).not.toHaveBeenCalled();
+  });
+
+  // The mirror to settingsTransform's own assertion — the two option builders
+  // are meant to produce the same row, and the only thing keeping them honest
+  // is asserting the same facts on both.
+  it('opens billing from a needs-credits row without selecting it', async () => {
+    const user = userEvent.setup();
+    const props = renderComposer({
+      models: MODELS,
+      modelMeta: { ...MODEL_META, modelEnabled: { mindshub_air: true, sonnet: false } },
+      model: MODELS[0],
+      onModelChange: vi.fn(),
+    });
+
+    await user.click(screen.getByRole('combobox', { name: 'Choose model' }));
+    const locked = screen.getByRole('option', { name: /Claude Sonnet 5/ });
+    await user.click(within(locked).getByRole('button', { name: 'Add credits' }));
+
+    expect(hostSpies.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
+    expect(analyticsSpies.trackBillingOpened).toHaveBeenCalledWith('locked_model_row');
+    // stopPropagation: the click must not also land on the row underneath.
     expect(props.onModelChange).not.toHaveBeenCalled();
   });
 

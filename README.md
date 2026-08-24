@@ -358,9 +358,19 @@ reaches the renderer as `settings.modelEnabled`, and `isModelLocked`
 Settings rows and the composer's menu can never disagree about what a user may
 choose.
 
-A locked model renders **visible, tagged "Needs credits", and disabled**. It
-stays on screen so the model is still discoverable, and Settings puts a "Top up
-your balance" link under the row.
+A locked model renders **visible, tagged "Needs credits", disabled, and
+carrying an "Add credits" button**. It stays on screen so the model is still
+discoverable, and the button is what keeps the row from naming an action it does
+not offer: once the row is closed off it is no longer a click target, so a tag
+and a tooltip would leave a user told to add credits with nowhere to do it.
+`ModelSelect` attaches that button from the option's `locked` flag, so Settings
+and the composer cannot end up offering different ways out.
+
+Settings additionally puts a "Top up your balance" link under the picker, but
+only when the **current** model is locked — the stranded-pin case, where the
+wallet drained under a model already saved. It says nothing about a row the user
+is merely looking at, which is why the button on the row is the general answer
+and the hint is the specific one.
 
 Why it is not merely tagged: `cowork-server` resolves a stored model it knows
 the gateway will deny into an affordable one instead, so allowing the pick meant

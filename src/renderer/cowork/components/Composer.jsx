@@ -416,7 +416,11 @@ export default function Composer({
     const tagMoving = hasFrozenVersions(ids, modelFamilies);
     const catalogOptions = ordered.map((m) => {
       /*
-       * The wallet can't pay for this one, so it can't be picked here either.
+       * The wallet can't pay for this one, so it can't be picked here either,
+       * and `locked` is what puts the "Add credits" button on the row — this
+       * menu has no other route to billing, so without it the row names an
+       * action it does not offer.
+       *
        * The availability map is re-read whenever this menu opens (App.jsx passes
        * the refresh in), so a top-up made in the browser unlocks the row on the
        * next open rather than on a restart. That refresh is what makes disabling
@@ -435,7 +439,7 @@ export default function Composer({
         value: m.id,
         label: m.name,
         disabled: locked,
-        ...(locked ? { title: 'Add credits to use this model' } : {}),
+        ...(locked ? { locked: true } : {}),
         ...(tag ? { tag } : {}),
         ...(modelProviders[m.id] ? { provider: modelProviders[m.id] } : {}),
       };

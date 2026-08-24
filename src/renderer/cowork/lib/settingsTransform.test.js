@@ -202,7 +202,10 @@ describe('buildModelOptions', () => {
       value: 'opus',
       label: 'opus',
       disabled: true,
-      title: 'Add credits to use this model',
+      // Paired with `disabled` on purpose: closing the row off without this
+      // leaves it naming an action it does not offer. ModelSelect turns the
+      // flag into the row's "Add credits" button.
+      locked: true,
       tag: 'Needs credits',
     });
   });
@@ -225,6 +228,17 @@ describe('buildModelOptions', () => {
     const opus = options.find((o) => o.value === 'opus');
     expect(opus).toBeTruthy();
     expect(opus.disabled).toBe(true);
+  });
+
+  // `locked` rides with `disabled` and never without it. A row closed off with
+  // no `locked` flag renders no "Add credits" button, which is how the row ends
+  // up telling the user to add credits with nothing to click.
+  it('flags every disabled row as locked, and no affordable row', () => {
+    const options = buildModelOptions('sonnet', MINDS_LIST, false, false, { opus: false });
+    for (const o of options) {
+      if (o.value === '__custom__' || o.value === '__stale__') continue;
+      expect(!!o.locked).toBe(o.disabled === true);
+    }
   });
 
   it('appends an "Other…" entry only when allowOther is true', () => {
@@ -276,7 +290,7 @@ describe('buildModelOptions', () => {
       value: 'opus',
       label: 'Claude Opus 5',
       disabled: true,
-      title: 'Add credits to use this model',
+      locked: true,
       tag: 'Needs credits',
     });
   });
