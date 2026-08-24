@@ -84,8 +84,9 @@ describe('ProjectSettingsModal', () => {
       onSave: vi.fn(async (values) => ({ ...project, ...values } as CodeProject)),
     };
     const { rerender } = render(<ProjectSettingsModal {...props} project={project} />);
-    const repository = screen.getByPlaceholderText('Repository URL or local Git folder');
-    const branch = screen.getByPlaceholderText('Branch');
+    await user.click(screen.getByRole('button', { name: 'Connect repository' }));
+    const repository = screen.getByPlaceholderText('Git URL or local Git folder');
+    const branch = screen.getByPlaceholderText('main');
 
     await user.type(repository, '/work/team-playbook');
     await user.clear(branch);
@@ -99,6 +100,25 @@ describe('ProjectSettingsModal', () => {
 
     expect(repository).toHaveValue('/work/team-playbook');
     expect(branch).toHaveValue('staging');
+  });
+
+  it('keeps Team Setup edits when a newly created project receives its saved identity', async () => {
+    const user = userEvent.setup();
+    const props = {
+      open: true,
+      connections: [],
+      busy: false,
+      onClose: vi.fn(),
+      onSave: vi.fn(async (values) => ({ ...project, ...values } as CodeProject)),
+    };
+    const { rerender } = render(<ProjectSettingsModal {...props} project={null} />);
+    await user.click(screen.getByRole('button', { name: 'Connect repository' }));
+    const repository = screen.getByPlaceholderText('Git URL or local Git folder');
+
+    await user.type(repository, '/work/team-playbook');
+    rerender(<ProjectSettingsModal {...props} project={project} />);
+
+    expect(repository).toHaveValue('/work/team-playbook');
   });
 
   it('resolves the legacy default id to the live GPT 5.6 Sol catalog model', async () => {
@@ -122,6 +142,7 @@ describe('ProjectSettingsModal', () => {
     );
 
     await user.click(screen.getByText('Task defaults and environment'));
+    expect(screen.getByRole('combobox', { name: 'Default coding agent' })).toHaveTextContent('Codex');
     expect(await screen.findByRole('combobox', { name: 'Default coding model' })).toHaveTextContent('GPT 5.6 Sol');
   });
 });

@@ -471,6 +471,8 @@ const liveCodingApi = {
     requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/queue`, { method: 'POST', body: JSON.stringify({ prompt, attachments }) }),
   removeQueued: (id: string, instructionId: string) =>
     requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/queue/${encodeURIComponent(instructionId)}`, { method: 'DELETE' }),
+  steerQueued: (id: string, instructionId: string) =>
+    requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/queue/${encodeURIComponent(instructionId)}/steer`, { method: 'POST' }),
   runQueued: (id: string) =>
     requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/queue/run`, { method: 'POST' }),
   cancel: (id: string) => requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/cancel`, { method: 'POST' }),

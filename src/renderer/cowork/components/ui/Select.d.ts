@@ -17,7 +17,7 @@ export interface SelectProps {
   onOpenChange?: (open: boolean) => void;
   options?: SelectOption[];
   placeholder?: string;
-  variant?: 'field' | 'pill';
+  variant?: 'field' | 'pill' | 'unstyled';
   size?: 'md' | 'sm';
   disabled?: boolean;
   loading?: boolean;

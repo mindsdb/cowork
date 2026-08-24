@@ -57,7 +57,7 @@ export default function CodingAgentSettingsSection({ settings, setSetting, foote
   return (
     <SettingsSectionPanel footer={footer}>
       <SettingsGroup title="Coding agent">
-        <Section title="Engine" subtitle="The local coding harness Cowork supervises. Codex is available now; this boundary also supports future engines without changing the Code workspace.">
+        <Section title="Agent" subtitle="The default coding agent for new projects and tasks. You can change it when starting a task.">
           <Select
             value={engineId}
             onValueChange={(value) => setSetting('codingAgentEngine', value)}
@@ -67,7 +67,7 @@ export default function CodingAgentSettingsSection({ settings, setSetting, foote
             ariaLabel="Coding agent engine"
           />
         </Section>
-        <Section title="Model" subtitle="Models are discovered from MindsHub Inference. The selected model is used for new coding tasks.">
+        <Section title="Model" subtitle="The default model for new coding tasks. You can change it before a task starts.">
           <ModelSelect
             value={modelId}
             onValueChange={(value) => setSetting('codingAgentModel', value)}

@@ -1,5 +1,9 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import userEvent from '@testing-library/user-event';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+const { skills } = vi.hoisted(() => ({ skills: [] as Array<Record<string, unknown>> }));
+vi.mock('../lib/skillsStore', () => ({ useSkills: () => ({ skills }) }));
 
 import { codingApi, type CodingSession, type EngineCommand } from './api';
 import { CodeComposer } from './CodeComposer';
@@ -30,10 +34,14 @@ const commands: EngineCommand[] = [
   { name: 'permissions', label: 'Permissions', description: 'Change task access', action: 'client', client_action: 'controls' },
 ];
 
+afterEach(() => skills.splice(0));
+
 function renderComposer(session: CodingSession = baseSession, history: string[] = []) {
   const onSend = vi.fn(async () => {});
   const onStop = vi.fn(async () => {});
   const onClientCommand = vi.fn();
+  const onPermissionChange = vi.fn(async () => {});
+  const onSteerQueued = vi.fn(async () => {});
   const onRemoveQueued = vi.fn(async () => {});
   render(
     <CodeComposer
@@ -43,15 +51,47 @@ function renderComposer(session: CodingSession = baseSession, history: string[] 
       onStop={onStop}
       commands={commands}
       onClientCommand={onClientCommand}
+      onPermissionChange={onPermissionChange}
+      onSteerQueued={onSteerQueued}
       onRemoveQueued={onRemoveQueued}
       history={history}
     />,
   );
-  return { onSend, onClientCommand, onRemoveQueued };
+  return { onSend, onClientCommand, onPermissionChange, onSteerQueued, onRemoveQueued };
 }
 
 
 describe('CodeComposer', () => {
+  it('puts searchable MindsHub skills ahead of agent commands', () => {
+    skills.splice(0, skills.length, { label: 'verify-release', description: 'Run the release verification workflow', enabled: true });
+    renderComposer({ ...baseSession, status: 'completed' });
+    const input = screen.getByRole('textbox', { name: 'Follow-up instruction' });
+
+    fireEvent.change(input, { target: { value: '/' } });
+    expect(screen.getByRole('textbox', { name: 'Search skills and commands' })).toBeInTheDocument();
+    const options = screen.getAllByRole('option');
+    expect(options[0]).toHaveTextContent('$verify-release');
+    expect(screen.getByText('MindsHub skills')).toBeInTheDocument();
+    expect(screen.getByText('Codex commands')).toBeInTheDocument();
+
+    fireEvent.click(options[0]);
+    expect(input).toHaveValue('$verify-release ');
+  });
+
+  it('only offers project-scoped skills inside their project', () => {
+    skills.splice(0, skills.length,
+      { label: 'minds-release', description: 'Release MindsHub', enabled: true, projects: ['MindsHub'] },
+      { label: 'shared-review', description: 'Review any project', enabled: true },
+    );
+    renderComposer({ ...baseSession, status: 'completed', project_name: 'Other project' });
+    const input = screen.getByRole('textbox', { name: 'Follow-up instruction' });
+
+    fireEvent.change(input, { target: { value: '/' } });
+
+    expect(screen.queryByText('$minds-release')).not.toBeInTheDocument();
+    expect(screen.getByText('$shared-review')).toBeInTheDocument();
+  });
+
   it('supports keyboard slash discovery and preserves a command argument slot', () => {
     const { onSend } = renderComposer({ ...baseSession, status: 'completed' });
     const input = screen.getByRole('textbox', { name: 'Follow-up instruction' });
@@ -75,6 +115,16 @@ describe('CodeComposer', () => {
     expect(onSend).not.toHaveBeenCalled();
   });
 
+  it('changes task permissions from the composer', async () => {
+    const user = userEvent.setup();
+    const { onPermissionChange } = renderComposer();
+
+    await user.click(screen.getByRole('combobox', { name: 'Coding permissions' }));
+    await user.click(screen.getByRole('option', { name: 'Full access' }));
+
+    expect(onPermissionChange).toHaveBeenCalledWith('full_access');
+  });
+
   it('restores an immediate slash command when submission fails', async () => {
     const onSend = vi.fn(async () => { throw new Error('temporarily unavailable'); });
     render(
@@ -85,6 +135,8 @@ describe('CodeComposer', () => {
         onStop={vi.fn(async () => {})}
         commands={commands}
         onClientCommand={vi.fn()}
+        onPermissionChange={vi.fn(async () => {})}
+        onSteerQueued={vi.fn(async () => {})}
         onRemoveQueued={vi.fn(async () => {})}
       />,
     );
@@ -97,24 +149,43 @@ describe('CodeComposer', () => {
     expect(onSend).toHaveBeenCalledWith('/status', 'turn', []);
   });
 
-  it('lets an engineer explicitly queue the next turn instead of steering', async () => {
+  it('queues messages by default while the agent is working', async () => {
     const { onSend } = renderComposer();
-    fireEvent.click(screen.getByRole('button', { name: 'Queue next' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Follow-up instruction' }), {
       target: { value: 'Run the integration suite after this refactor' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Queue instruction' }));
 
     await waitFor(() => expect(onSend).toHaveBeenCalledWith('Run the integration suite after this refactor', 'queue', []));
+    expect(screen.queryByText('Guide now')).not.toBeInTheDocument();
+    expect(screen.queryByText('Queue next')).not.toBeInTheDocument();
+  });
+
+  it('swaps the primary action between Stop and Queue as a draft is entered', () => {
+    renderComposer();
+    const input = screen.getByRole('textbox', { name: 'Follow-up instruction' });
+
+    expect(screen.getByRole('button', { name: 'Stop coding agent' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Queue instruction' })).not.toBeInTheDocument();
+
+    fireEvent.change(input, { target: { value: 'Check the Windows build next' } });
+    expect(screen.queryByRole('button', { name: 'Stop coding agent' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Queue instruction' })).toBeInTheDocument();
+
+    fireEvent.change(input, { target: { value: '' } });
+    expect(screen.getByRole('button', { name: 'Stop coding agent' })).toBeInTheDocument();
   });
 
   it('shows persisted queued work and lets the user remove it', () => {
-    const { onRemoveQueued } = renderComposer({
+    const { onSteerQueued, onRemoveQueued } = renderComposer({
       ...baseSession,
       queued_instructions: [{ id: 'queued-1', prompt: 'Run Windows tests', created_at: '2026-08-22T10:01:00Z' }],
     });
 
     expect(screen.getByText('Run Windows tests')).toBeInTheDocument();
+    expect(screen.getByText('Queued')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Steer with queued instruction 1' }));
+    expect(onSteerQueued).toHaveBeenCalledWith('queued-1');
     fireEvent.click(screen.getByRole('button', { name: 'Remove queued instruction 1' }));
     expect(onRemoveQueued).toHaveBeenCalledWith('queued-1');
   });
