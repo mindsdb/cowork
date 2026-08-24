@@ -42,6 +42,7 @@ import { clearDraft, moveDraft } from './lib/draftStore';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { useGoogleDrivePicker } from './hooks/useGoogleDrivePicker';
 import { useThemeSkin } from './hooks/useThemeSkin';
+import { useAppUpdates } from './hooks/useAppUpdates';
 import { fetchSessions, fetchSession, fetchConversationList, fetchProjects, fetchArtifacts, fetchSettings, fetchHealth,
          createProject, updateSettings, streamNewSession, streamMessage,
          streamDataVaultSubmission,
@@ -1434,16 +1435,23 @@ function AppCore() {
     if (host.isElectron && health.status === 'ok') trackAppInstalled();
   }, [health.status]);
 
-  // OTA UI update state
-  const [updateStatus, setUpdateStatus] = useState(null); // { phase, version }
-  const [updateApplying, setUpdateApplying] = useState(false);
   const toastManager = useToastManager();
-  // Download-only shell notice; dismissal is scoped to the offered version.
-  const [shellUpdate, setShellUpdate] = useState(null); // { version, currentVersion, downloadUrl }
-  const [shellAutoUpdate, setShellAutoUpdate] = useState(null);
-  const [shellUpdateDismissed, setShellUpdateDismissed] = useState(() => {
-    try { return localStorage.getItem('shellUpdateDismissedVersion') || ''; } catch { return ''; }
-  });
+  // OTA UI update + shell (desktop binary) update lifecycle — status, the
+  // apply/download/dismiss handlers, and the host subscriptions that feed
+  // them — all live in useAppUpdates.
+  const {
+    updateStatus,
+    shellUpdate,
+    shellAutoUpdate,
+    shellUpdateDismissed,
+    handleApplyUpdate,
+    handleDownloadShellUpdate,
+    handleShellAutoUpdateDownload,
+    handleShellAutoUpdateInstall,
+    handleShellAutoUpdateRetry,
+    handleShellAutoUpdateAction,
+    dismissShellUpdate,
+  } = useAppUpdates();
 
   // Load data from server on mount
   const refreshData = useCallback(() => {
@@ -1520,22 +1528,6 @@ function AppCore() {
     } catch {} finally { setServerBusy(false); }
   }, []);
 
-  // ENG-850 shell updater snapshot. Pull once for renderer reload recovery,
-  // then subscribe to the same authoritative main-process state.
-  useEffect(() => {
-    let cancelled = false;
-    host.getShellAutoUpdate().then((snapshot) => {
-      if (!cancelled) setShellAutoUpdate(snapshot);
-    }).catch(() => {});
-    const unsubscribe = host.onShellAutoUpdate((snapshot) => {
-      if (!cancelled) setShellAutoUpdate(snapshot);
-    });
-    return () => {
-      cancelled = true;
-      unsubscribe();
-    };
-  }, []);
-
   // Allow descendants (e.g. ProjectsView's rename / create flow) to
   // ask for a fresh projects list without prop-drilling a refetch
   // handler. Also refetch sessions: a rename rewrites every
@@ -1595,25 +1587,6 @@ function AppCore() {
     if (serverOnline && !bootIntroDone) setBootIntroDone(true);
   }, [serverOnline, bootIntroDone]);
 
-  // Listen for OTA update status pushed from main process. No-op in
-  // web — host returns a noop unsubscriber there.
-  useEffect(() => {
-    return host.onUpdateStatus((status) => {
-      if (status?.phase === 'shell-available') {
-        setShellUpdate({ version: status.version, currentVersion: status.currentVersion, downloadUrl: status.downloadUrl });
-        return;
-      }
-      setUpdateStatus(status);
-    });
-  }, []);
-
-  // Recover a cached notice after an OTA reload drops the original push.
-  useEffect(() => {
-    let cancelled = false;
-    host.getShellUpdate().then((s) => { if (!cancelled && s) setShellUpdate(s); }).catch(() => {});
-    return () => { cancelled = true; };
-  }, []);
-
   // Listen for background OAuth refresh failures pushed from main process.
   // timeout: 0 — persists until the user manually dismisses it, same as
   // the previous hand-rolled banner (these need action, not a fade-out).
@@ -1633,75 +1606,6 @@ function AppCore() {
       });
     });
   }, []);
-
-  const handleApplyUpdate = useCallback(async () => {
-    console.log('[ui-update] install clicked, applying update...');
-    if (updateApplying) { console.log('[ui-update] already applying, skipping'); return; }
-    setUpdateApplying(true);
-    setUpdateStatus({ phase: 'downloading', version: updateStatus?.version });
-    try {
-      const result = await host.applyUpdate();
-      console.log('[ui-update] applyUpdate result:', result);
-      // Window will reload with the new bundle — no further action needed
-    } catch (err) {
-      console.error('[ui-update] applyUpdate failed:', err);
-      setUpdateApplying(false);
-      // Keep the version so the sidebar can offer a labelled retry rather than
-      // going silent until the next poll.
-      setUpdateStatus({ phase: 'error', version: updateStatus?.version });
-    }
-  }, [updateApplying, updateStatus]);
-
-  // Settings can pass a URL; a bare click falls back to the cached notice, and
-  // failing that to the human download page. Note: bare downloads.mindshub.ai
-  // now 302s to the marketing homepage — the real per-OS installer page lives
-  // at mindshub.ai/download. Old shells never supply a downloadUrl, so this
-  // last fallback is the only link that cohort ever gets.
-  const handleDownloadShellUpdate = useCallback((url) => {
-    const explicit = typeof url === 'string' && url ? url : null;
-    host.openExternal(explicit || shellUpdate?.downloadUrl || 'https://mindshub.ai/download');
-  }, [shellUpdate]);
-
-  const handleShellAutoUpdateDownload = useCallback(async () => {
-    const snapshot = await host.downloadShellAutoUpdate().catch(() => null);
-    if (snapshot) setShellAutoUpdate(snapshot);
-  }, []);
-
-  const handleShellAutoUpdateInstall = useCallback(async () => {
-    await host.installShellAutoUpdate().catch(() => false);
-  }, []);
-
-  const handleShellAutoUpdateRetry = useCallback(async () => {
-    const snapshot = await host.checkShellAutoUpdate().catch(() => null);
-    if (snapshot) setShellAutoUpdate(snapshot);
-  }, []);
-
-  const handleShellAutoUpdateAction = useCallback(() => {
-    switch (shellAutoUpdate?.phase) {
-      case 'available':
-        return handleShellAutoUpdateDownload();
-      case 'ready-to-install':
-        return handleShellAutoUpdateInstall();
-      case 'failed':
-        if (shellAutoUpdate.recoverable) return handleShellAutoUpdateRetry();
-        return handleDownloadShellUpdate();
-      default:
-        return undefined;
-    }
-  }, [
-    shellAutoUpdate,
-    handleShellAutoUpdateDownload,
-    handleShellAutoUpdateInstall,
-    handleShellAutoUpdateRetry,
-    handleDownloadShellUpdate,
-  ]);
-
-  const dismissShellUpdate = useCallback(() => {
-    const v = shellUpdate?.version;
-    if (!v) return;
-    try { localStorage.setItem('shellUpdateDismissedVersion', v); } catch { /* private mode */ }
-    setShellUpdateDismissed(v);
-  }, [shellUpdate]);
 
   // ── Boot lifecycle decisions ─────────────────────────────────────
   // Both of these used to live inside HomeView, but the user can
