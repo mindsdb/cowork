@@ -35,12 +35,14 @@ import { host, getAccessToken } from '../platform/host';
 import { SERVER_START_CAP_MS } from '../../shared/server-status';
 import { applyNavTitleColor } from '../lib/navBranding';
 import { getAgentLabel } from './lib/agentLabel';
+import { resolveTaskProject } from './lib/resolveTaskProject';
 import { selectNextQueuedTask, mergeQueuesForAdoptedId, reservationReleaseDecision, finishedCids } from './lib/messageQueue';
 import { loadCachedSettings } from './lib/settingsCache';
 import { useOrgMode } from '../lib/orgMode';
 import { clearDraft, moveDraft } from './lib/draftStore';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { useGoogleDrivePicker } from './hooks/useGoogleDrivePicker';
+import { useViewportZoomLock } from './hooks/useViewportZoomLock';
 import { useThemeSkin } from './hooks/useThemeSkin';
 import { useAppUpdates } from './hooks/useAppUpdates';
 import { fetchSessions, fetchSession, fetchConversationList, fetchProjects, fetchArtifacts, fetchSettings, fetchHealth,
@@ -1193,63 +1195,9 @@ function AppCore() {
     return () => window.removeEventListener('keydown', onKey);
   }, [navPopoutOpen]);
 
-  // iOS Safari (and Android Chrome) auto-zoom the page in when a text
-  // input with font-size < 16px gets focus, and don't zoom back out
-  // when it loses focus / the form is submitted — the user is left
-  // viewing a permanently-magnified app after sending a chat message.
-  //
-  // Rather than bumping every input to 16px on mobile (which would
-  // distort the composer's design metrics), we toggle the viewport
-  // meta tag around text-input focus: locking `maximum-scale=1` on
-  // focusin prevents the zoom from happening, restoring the original
-  // value on focusout returns pinch-zoom to the user for the rest of
-  // the app. Net effect matches "auto-dezoom after submit" without
-  // any visible zoom flash.
-  useEffect(() => {
-    if (!isMobile) return undefined;
-    const meta = document.querySelector('meta[name="viewport"]');
-    if (!meta) return undefined;
-    const original = meta.getAttribute('content') || '';
-    const ZOOM_LOCK = 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no';
-
-    // Only the input types that actually trigger iOS auto-zoom — skip
-    // checkboxes / dates / file pickers / buttons (no text caret, no
-    // zoom). contenteditable surfaces count too.
-    const SKIP_INPUT_TYPES = new Set([
-      'button', 'submit', 'reset', 'image', 'file',
-      'checkbox', 'radio', 'range', 'color',
-      'date', 'time', 'datetime-local', 'month', 'week',
-    ]);
-    const isTextInput = (el) => {
-      if (!el || el.nodeType !== 1) return false;
-      const tag = el.tagName;
-      if (tag === 'TEXTAREA' || tag === 'SELECT') return true;
-      if (tag === 'INPUT') {
-        const t = (el.type || 'text').toLowerCase();
-        return !SKIP_INPUT_TYPES.has(t);
-      }
-      return !!el.isContentEditable;
-    };
-
-    const onFocusIn = (e) => {
-      if (isTextInput(e.target)) meta.setAttribute('content', ZOOM_LOCK);
-    };
-    const onFocusOut = (e) => {
-      if (!isTextInput(e.target)) return;
-      // Defer the restore one tick — restoring synchronously can race
-      // with iOS committing the blur and leave the viewport stuck at
-      // the zoomed scale on some iOS versions.
-      setTimeout(() => meta.setAttribute('content', original), 0);
-    };
-
-    document.addEventListener('focusin', onFocusIn);
-    document.addEventListener('focusout', onFocusOut);
-    return () => {
-      document.removeEventListener('focusin', onFocusIn);
-      document.removeEventListener('focusout', onFocusOut);
-      meta.setAttribute('content', original);
-    };
-  }, [isMobile]);
+  // iOS/Android auto-zoom workaround: toggle the viewport meta tag around
+  // text-input focus so mobile browsers don't leave the app magnified.
+  useViewportZoomLock(isMobile);
 
   // Routes where the user can collapse the sidebar. Currently:
   // chat task only.
@@ -1798,32 +1746,7 @@ function AppCore() {
     projectDetailPending != null &&
     !(selectedProject && (selectedProject.id === projectDetailPending || selectedProject.name === projectDetailPending));
   const selectedProjectForView = projectDetailResolving ? null : selectedProject;
-  // Tasks belong to one project for life. Resolve via projectName
-  // first (server's canonical id), then projectPath, then fall back
-  // to the currently-selected project for orphans.
-  // Resolve the project a given task belongs to (by name, then path,
-  // else a synthetic entry from its path). Returns null when the task
-  // carries no project hints — callers decide the fallback. Shared by
-  // `currentTaskProject` and the cross-task queue drain, which must
-  // resolve a project for a task the user isn't currently viewing.
-  const resolveTaskProject = (task) => {
-    if (!task) return null;
-    if (task.projectName) {
-      const byName = projects.find((p) => p.name === task.projectName);
-      if (byName) return byName;
-    }
-    if (task.projectPath) {
-      const byPath = projects.find((p) => p.path === task.projectPath);
-      if (byPath) return byPath;
-      return {
-        id: task.projectPath,
-        name: task.projectName || task.projectPath.split('/').pop(),
-        path: task.projectPath,
-      };
-    }
-    return null;
-  };
-  const currentTaskProject = resolveTaskProject(currentTask) || selectedProject;
+  const currentTaskProject = resolveTaskProject(currentTask, projects) || selectedProject;
   const currentTaskModel = currentTask?.model
     ? (currentTask.model === MODEL_ROUTER_ID
         ? MODEL_ROUTER
@@ -3305,7 +3228,7 @@ function AppCore() {
     // resolves the same project a live send to it would (parity — otherwise
     // even the on-screen task's own follow-up loses the fallback on drain).
     const taskProject = opts.targetTask
-      ? (resolveTaskProject(targetTask) || selectedProject)
+      ? (resolveTaskProject(targetTask, projects) || selectedProject)
       : currentTaskProject;
     let taskProjectName = targetTask.projectName
       || (taskProject?.name)
