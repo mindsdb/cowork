@@ -904,6 +904,21 @@ function nextPollDelay(schedules) {
   return Math.min(SCHEDULE_POLL_MAX_DELAY_MS, Math.max(untilDue, SCHEDULE_POLL_MIN_DELAY_MS));
 }
 
+// Monotonic token guarding project-detail resolution. A `/projects/:id` fetch
+// captures the token with begin() and applies its result only while isCurrent()
+// still holds. Both starting a newer detail (begin) AND leaving detail — to the
+// grid, Home, or any other route (leave) — advance the token, so a slow
+// `/projects/:A` response can neither overwrite a later `/projects/:B` nor
+// re-select A after the user has navigated away (e.g. Back to the grid).
+export function makeProjectDetailToken() {
+  let current = 0;
+  return {
+    begin: () => ++current,
+    leave: () => { current += 1; },
+    isCurrent: (captured) => captured === current,
+  };
+}
+
 export default function App() {
   return (
     <ToastProvider>
@@ -1841,8 +1856,10 @@ function AppCore() {
     initialNav.route === 'projects' ? (initialNav.selectedProjectId ?? null) : null
   );
   // Monotonic request token so a slow `/projects/:A` response can't overwrite a
-  // later `/projects/:B` resolution (rapid detail-to-detail navigation).
-  const projectDetailReqRef = useRef(0);
+  // later `/projects/:B` resolution, nor re-select A after the user leaves detail
+  // (Back to the grid / Home / any route). See makeProjectDetailToken.
+  const projectDetailTokenRef = useRef(null);
+  if (projectDetailTokenRef.current === null) projectDetailTokenRef.current = makeProjectDetailToken();
   // Defaults to "Model Router" — defer to whatever this account's Settings
   // has configured — until a composer picks a concrete model for a task.
   // Never re-synced from settings after that: its whole point is that it
@@ -2579,6 +2596,17 @@ function AppCore() {
     // continuation prompt — the reconnect above attaches to the live tail.
     const isServerInFlight = inFlightSetRef.current.has(id);
 
+    // Record the visit for recents ordering (never auto-pin), then refresh
+    // pins + the capped recents list. Runs before the empty-transcript return
+    // below so every successful open updates recency — matching the prior
+    // selectTask path, which recorded a visit regardless of message count.
+    recordTaskVisit(fresh, false).then(() => {
+      fetchPins().then((data) => setPins(data.pins || []));
+      fetchSessions().then((data) => {
+        if (Array.isArray(data)) setTasks((prev) => mergeTasksFromServer(data, prev).filter((t) => !deletedTaskIdsRef.current.has(t.id)));
+      });
+    }).catch(() => {});
+
     // Empty and not mid-flight: surface the record so a capped-list deep
     // link (conversation absent from the recents fetch) still renders, but
     // don't wipe any locally-restored messages.
@@ -2586,15 +2614,6 @@ function AppCore() {
       setTasks((prev) => (prev.some((t) => t.id === id) ? prev : [fresh, ...prev]));
       return;
     }
-
-    // Record the visit for recents ordering (never auto-pin), then refresh
-    // pins + the capped recents list.
-    recordTaskVisit(fresh, false).then(() => {
-      fetchPins().then((data) => setPins(data.pins || []));
-      fetchSessions().then((data) => {
-        if (Array.isArray(data)) setTasks((prev) => mergeTasksFromServer(data, prev).filter((t) => !deletedTaskIdsRef.current.has(t.id)));
-      });
-    }).catch(() => {});
 
     // Two layers of restoration, in order of trust: the server sidecar
     // (`{cid}_turns.json`) replayed through the live-stream reducer, then a
@@ -3187,12 +3206,14 @@ function AppCore() {
   const enterHome = useCallback(() => {
     setRoute('home');
     setConversationError(null);
+    projectDetailTokenRef.current.leave(); // supersede any in-flight detail resolve
     setProjectDetailPending(null);
   }, []);
 
   const enterRoute = useCallback((key) => {
     setRoute(key);
     setConversationError(null);
+    projectDetailTokenRef.current.leave(); // supersede any in-flight detail resolve
     setProjectDetailPending(null); // leaving a detail route (or landing on the grid)
     if (key === 'artifacts') {
       fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
@@ -3219,9 +3240,9 @@ function AppCore() {
     setConversationError(null);
     // Resolving this id: render the grid (not a stale project) until it settles.
     setProjectDetailPending(projectId);
-    const reqId = ++projectDetailReqRef.current;
+    const reqId = projectDetailTokenRef.current.begin();
     return fetchProjects().then((data) => {
-      if (reqId !== projectDetailReqRef.current) return true; // superseded — a newer id owns pending
+      if (!projectDetailTokenRef.current.isCurrent(reqId)) return true; // superseded — a newer id owns pending, or we left detail
       if (!Array.isArray(data)) { setProjectDetailPending(null); return true; }
       setProjects(data);
       const found = data.find((p) => p.id === projectId || p.name === projectId);
@@ -3230,7 +3251,7 @@ function AppCore() {
       // element replaces the URL with `/projects`, whose enterRoute clears it.
       return false;
     }).catch(() => {
-      if (reqId === projectDetailReqRef.current) setProjectDetailPending(null);
+      if (projectDetailTokenRef.current.isCurrent(reqId)) setProjectDetailPending(null);
       return true; // transient failure → keep the URL, don't bounce
     });
   }, []);
