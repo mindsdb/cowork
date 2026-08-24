@@ -14,7 +14,8 @@ export type PermissionMode = 'read_only' | 'supervised' | 'workspace' | 'full_ac
 export type ApprovalDecision = 'approve_once' | 'approve_session' | 'deny';
 
 export interface SessionCreateBody {
-  path: string;
+  path?: string;
+  project_id?: string;
   prompt: string;
   allow_direct_folder?: boolean;
   engine_id?: string;
@@ -27,16 +28,17 @@ export interface SessionCreateBody {
   web_search?: boolean;
   additional_dirs?: string[];
   attachments?: InputReference[];
+  source_contexts?: SourceContext[];
 }
 
 export interface CreateCodeTaskInput {
-  path: string;
+  projectId: string;
   prompt: string;
-  allowDirect: boolean;
   engineId: string;
   model: string;
   permissionMode: PermissionMode;
   attachments: InputReference[];
+  sourceContexts: SourceContext[];
 }
 
 export type ReasoningEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
@@ -82,13 +84,20 @@ export interface CodingSession {
   web_search?: boolean;
   additional_dirs?: string[];
   status: CodingStatus;
+  project_id?: string | null;
+  project_name?: string | null;
   source_path: string;
   workspace_path: string;
-  workspace_kind: 'git_worktree' | 'direct_folder';
+  workspace_kind: 'git_worktree' | 'local_copy' | 'direct_folder';
+  workspaces?: TaskWorkspace[];
   repository_root?: string | null;
   base_revision?: string | null;
   source_dirty: boolean;
   workspace_warning?: string | null;
+  guidance_summary?: string | null;
+  allocated_ports?: Record<string, number>;
+  source_contexts?: SourceContext[];
+  deliveries?: DeliveryRecord[];
   engine_session_id?: string | null;
   active_turn_id?: string | null;
   pending_approval?: PendingApproval | null;
@@ -163,7 +172,22 @@ export interface WorkspaceInspection {
   warning?: string | null;
 }
 
+export interface TaskWorkspace {
+  folder_id: string;
+  folder_name: string;
+  source_path: string;
+  workspace_path: string;
+  workspace_kind: 'git_worktree' | 'local_copy' | 'direct_folder';
+  repository_root?: string | null;
+  base_revision?: string | null;
+  base_branch?: string | null;
+  task_branch?: string | null;
+  source_dirty: boolean;
+}
+
 export interface GitState {
+  folder_id?: string | null;
+  folder_name?: string | null;
   is_git: boolean;
   branch?: string | null;
   revision?: string | null;
@@ -174,7 +198,145 @@ export interface GitState {
   source_path: string;
 }
 
+export interface ProjectCommand {
+  id: string;
+  label: string;
+  argv: string[];
+  phase: 'setup' | 'validate';
+}
+
+export interface ProjectCommandResult {
+  command_id: string;
+  label: string;
+  folder_id: string;
+  phase: 'setup' | 'validate';
+  return_code: number;
+  output: string;
+}
+
+export interface ProjectFolder {
+  id: string;
+  name: string;
+  path: string;
+  base_branch?: string | null;
+  commands: ProjectCommand[];
+}
+
+export interface ProjectFolderInspection {
+  folder: ProjectFolder;
+  inspection: WorkspaceInspection;
+  base_branch_available: boolean;
+}
+
+export interface ProjectConnection {
+  provider: 'github' | 'linear' | 'slack';
+  name: string;
+  label: string;
+}
+
+export interface PlaybookReference {
+  repository: string;
+  branch: string;
+  applied_revision?: string | null;
+  available_revision?: string | null;
+  cache_path?: string | null;
+  last_checked_at?: string | null;
+}
+
+export interface CodeProject {
+  schema_version: number;
+  id: string;
+  name: string;
+  folders: ProjectFolder[];
+  playbook?: PlaybookReference | null;
+  connections: ProjectConnection[];
+  environment: { variables: Record<string, string>; port_names: string[] };
+  default_engine_id: string;
+  default_model: string;
+  permission_mode: PermissionMode;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PlaybookItem {
+  kind: 'skill' | 'instructions' | 'workflow';
+  name: string;
+  path: string;
+  description: string;
+  enabled: boolean;
+}
+
+export interface PlaybookStatus {
+  configured: boolean;
+  current_revision?: string | null;
+  available_revision?: string | null;
+  update_available: boolean;
+  items: PlaybookItem[];
+  diff: string;
+  error?: string | null;
+}
+
+export interface SourceContext {
+  provider: 'github' | 'linear' | 'slack';
+  kind: 'issue' | 'pull_request' | 'conversation';
+  url: string;
+  title: string;
+  external_id: string;
+  connection_name?: string | null;
+  body: string;
+}
+
+export interface DeliveryRecord {
+  provider: 'github' | 'linear' | 'slack';
+  action: 'progress' | 'result' | 'draft_pull_request';
+  target_url: string;
+  status: 'pending' | 'published' | 'failed';
+  external_url?: string | null;
+  detail: string;
+  folder_id?: string | null;
+  folder_name?: string | null;
+  base_branch?: string | null;
+  task_branch?: string | null;
+  connection_name?: string | null;
+  created_at: string;
+}
+
+export interface PullRequestStatus {
+  state: 'draft' | 'open' | 'merged' | 'closed';
+  review_state: 'approved' | 'changes_requested' | 'pending' | 'none';
+  ci_state: 'passing' | 'failing' | 'pending' | 'none';
+  detail: string;
+}
+
+export interface DeliveryPlanItem {
+  folder_id: string;
+  folder_name: string;
+  workspace_path: string;
+  remote_url?: string | null;
+  base_branch?: string | null;
+  task_branch?: string | null;
+  status: 'ready' | 'needs_commit' | 'no_changes' | 'unavailable' | 'published';
+  detail: string;
+  external_url?: string | null;
+  pull_request_status?: PullRequestStatus | null;
+  status_error?: string | null;
+}
+
+export interface DeliveryPlan {
+  items: DeliveryPlanItem[];
+}
+
+export interface IntegrationStatus {
+  provider: 'github' | 'linear' | 'slack';
+  connection_name: string;
+  label: string;
+  status: 'connected' | 'reconnect' | 'missing';
+  detail: string;
+}
+
 export interface DiffFile {
+  folder_id?: string | null;
+  folder_name?: string | null;
   path: string;
   status: string;
   additions: number;
@@ -258,6 +420,29 @@ const liveCodingApi = {
   engines: () => requestJson<EngineCapability[]>('/engines'),
   models: (engineId: string) => requestJson<{ items: string[] }>(`/models?engineId=${encodeURIComponent(engineId)}`),
   inspect: (path: string) => requestJson<WorkspaceInspection>(`/workspace/inspect?path=${encodeURIComponent(path)}`),
+  projects: () => requestJson<{ items: CodeProject[] }>('/projects'),
+  project: (id: string) => requestJson<CodeProject>(`/projects/${encodeURIComponent(id)}`),
+  projectFolders: (id: string) => requestJson<{ items: ProjectFolderInspection[] }>(`/projects/${encodeURIComponent(id)}/folders`),
+  createProject: (body: Pick<CodeProject, 'name' | 'folders' | 'connections' | 'environment' | 'default_engine_id' | 'default_model' | 'permission_mode'>) =>
+    requestJson<CodeProject>('/projects', { method: 'POST', body: JSON.stringify(body) }),
+  updateProject: (id: string, body: Partial<CodeProject>) => requestJson<CodeProject>(`/projects/${encodeURIComponent(id)}`, {
+    method: 'PATCH', body: JSON.stringify(body),
+  }),
+  deleteProject: (id: string) => requestJson<void>(`/projects/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  configurePlaybook: (id: string, repository: string, branch: string) => requestJson<PlaybookStatus>(`/projects/${encodeURIComponent(id)}/playbook`, {
+    method: 'POST', body: JSON.stringify({ repository, branch }),
+  }),
+  playbook: (id: string) => requestJson<PlaybookStatus>(`/projects/${encodeURIComponent(id)}/playbook`),
+  removePlaybook: (id: string) => requestJson<void>(`/projects/${encodeURIComponent(id)}/playbook`, { method: 'DELETE' }),
+  refreshPlaybook: (id: string) => requestJson<PlaybookStatus>(`/projects/${encodeURIComponent(id)}/playbook/refresh`, { method: 'POST' }),
+  applyPlaybook: (id: string) => requestJson<PlaybookStatus>(`/projects/${encodeURIComponent(id)}/playbook/apply`, { method: 'POST' }),
+  setPlaybookItems: (id: string, enabledPaths: string[]) => requestJson<PlaybookStatus>(`/projects/${encodeURIComponent(id)}/playbook/items`, {
+    method: 'POST', body: JSON.stringify({ enabled_paths: enabledPaths }),
+  }),
+  integrations: (id: string) => requestJson<{ items: IntegrationStatus[] }>(`/projects/${encodeURIComponent(id)}/integrations`),
+  readSourceContext: (id: string, body: Omit<SourceContext, 'title' | 'external_id' | 'body'>) => requestJson<SourceContext>(`/projects/${encodeURIComponent(id)}/source-context`, {
+    method: 'POST', body: JSON.stringify(body),
+  }),
   sessions: (includeArchived = false) => requestJson<{ items: CodingSession[] }>(`/sessions?includeArchived=${includeArchived}`),
   session: (id: string) => requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}`),
   workspaceFiles: (id: string, query = '') => requestJson<{ items: InputReference[] }>(
@@ -299,6 +484,14 @@ const liveCodingApi = {
   branch: (id: string, name: string) => requestJson<GitState>(`/sessions/${encodeURIComponent(id)}/branch`, { method: 'POST', body: JSON.stringify({ name }) }),
   commit: (id: string, message: string) => requestJson<GitState>(`/sessions/${encodeURIComponent(id)}/commit`, { method: 'POST', body: JSON.stringify({ message }) }),
   apply: (id: string) => requestJson<{ status: string; snapshot?: string | null }>(`/sessions/${encodeURIComponent(id)}/apply`, { method: 'POST' }),
+  validate: (id: string) => requestJson<{ items: ProjectCommandResult[] }>(`/sessions/${encodeURIComponent(id)}/validate`, { method: 'POST' }),
+  deliveryPlan: (id: string) => requestJson<DeliveryPlan>(`/sessions/${encodeURIComponent(id)}/delivery`),
+  draftPullRequests: (id: string, body: { title: string; body: string; connection_name?: string | null; confirmed: boolean }) => requestJson<{ items: DeliveryRecord[] }>(`/sessions/${encodeURIComponent(id)}/draft-pull-requests`, {
+    method: 'POST', body: JSON.stringify(body),
+  }),
+  publish: (id: string, body: { provider: 'github' | 'linear' | 'slack'; action: 'progress' | 'result'; target_url: string; text: string; connection_name?: string | null; confirmed: boolean }) => requestJson<DeliveryRecord>(`/sessions/${encodeURIComponent(id)}/publish`, {
+    method: 'POST', body: JSON.stringify(body),
+  }),
   terminal: (id: string, after = 0) => requestJson<TerminalPage>(`/sessions/${encodeURIComponent(id)}/terminal?after=${after}`),
   startTerminal: (id: string, cols: number, rows: number) => requestJson<TerminalPage>(`/sessions/${encodeURIComponent(id)}/terminal/start`, {
     method: 'POST', body: JSON.stringify({ cols, rows }),

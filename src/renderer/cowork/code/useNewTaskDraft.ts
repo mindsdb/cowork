@@ -2,21 +2,22 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   buildModelPickerOptions,
-  withModelPickerFallback,
   type ModelPickerMeta,
   type ModelPickerSource,
 } from '../lib/modelPickerOptions';
 import { MODEL_REFRESH_TTL_MS } from '../lib/modelRefresh';
-import { host } from '../../platform/host';
+import { modelLabel } from '../lib/settingsTransform';
 import {
   codingApi,
+  type CodeProject,
   type CreateCodeTaskInput,
   type EngineCapability,
   type InputReference,
   type PermissionMode,
-  type WorkspaceInspection,
+  type ProjectFolderInspection,
+  type SourceContext,
 } from './api';
-import { DEFAULT_CODING_AGENT_MODEL } from './defaults';
+import { preferredCodingModel } from './defaults';
 import { mergeReferences, referencesFromFiles } from './PromptReferences';
 
 
@@ -26,7 +27,24 @@ interface NewTaskDraftOptions {
   defaultModel: string;
   models: ModelPickerSource[];
   modelMeta: ModelPickerMeta;
+  projects: CodeProject[];
+  selectedProjectId: string | null;
+  onProjectChange: (id: string | null) => void;
+  onOpenProjectSettings: () => void;
   onCreate: (args: CreateCodeTaskInput) => Promise<void>;
+}
+
+
+function projectFolderIssue(items: ProjectFolderInspection[]): string {
+  const unavailable = items.find(({ inspection }) => !inspection.exists || !inspection.is_directory);
+  if (unavailable) {
+    return `${unavailable.folder.name} is unavailable. Remove and re-add it in Project settings.`;
+  }
+  const missingBranch = items.find((item) => !item.base_branch_available);
+  if (missingBranch) {
+    return `${missingBranch.folder.name} cannot find its ${missingBranch.folder.base_branch} base branch. Update it in Project settings.`;
+  }
+  return '';
 }
 
 
@@ -36,25 +54,31 @@ export function useNewTaskDraft({
   defaultModel,
   models,
   modelMeta,
+  projects,
+  selectedProjectId,
+  onProjectChange,
+  onOpenProjectSettings,
   onCreate,
 }: NewTaskDraftOptions) {
-  const [path, setPath] = useState('');
   const [prompt, setPrompt] = useState('');
-  const [inspection, setInspection] = useState<WorkspaceInspection | null>(null);
-  const [checking, setChecking] = useState(false);
   const [catalogError, setCatalogError] = useState('');
-  const [inspectionError, setInspectionError] = useState('');
   const [engines, setEngines] = useState<EngineCapability[]>([]);
   const [engineId, setEngineId] = useState(defaultEngineId);
   const [model, setModel] = useState(defaultModel);
   const [engineLoading, setEngineLoading] = useState(true);
+  const [engineModelIds, setEngineModelIds] = useState<string[] | null>(null);
+  const [modelsLoading, setModelsLoading] = useState(true);
+  const [foldersLoading, setFoldersLoading] = useState(false);
+  const [folderIssue, setFolderIssue] = useState('');
   const [permissionMode, setPermissionMode] = useState<PermissionMode>('supervised');
   const [startGuidance, setStartGuidance] = useState('');
   const [attachments, setAttachments] = useState<InputReference[]>([]);
+  const [sourceContexts, setSourceContexts] = useState<SourceContext[]>([]);
   const [draggingFiles, setDraggingFiles] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const modelRefreshedAt = useRef(-Infinity);
   const promptRef = useRef<HTMLTextAreaElement>(null);
+  const selectedProject = projects.find((project) => project.id === selectedProjectId) || null;
 
   useEffect(() => {
     let active = true;
@@ -75,9 +99,53 @@ export function useNewTaskDraft({
     return () => { active = false; };
   }, [defaultEngineId]);
 
+  useEffect(() => {
+    let active = true;
+    setModelsLoading(true);
+    setEngineModelIds(null);
+    codingApi.models(engineId).then(({ items }) => {
+      if (!active) return;
+      setEngineModelIds(items);
+    }).catch((reason) => {
+      if (!active) return;
+      setCatalogError(reason instanceof Error ? reason.message : 'Could not load coding models.');
+      setEngineModelIds([]);
+    }).finally(() => { if (active) setModelsLoading(false); });
+    return () => { active = false; };
+  }, [engineId]);
+
+  useEffect(() => {
+    let active = true;
+    setFolderIssue('');
+    if (!selectedProject) {
+      setFoldersLoading(false);
+      return () => { active = false; };
+    }
+    setFoldersLoading(true);
+    codingApi.projectFolders(selectedProject.id).then(({ items }) => {
+      if (!active) return;
+      setFolderIssue(projectFolderIssue(items));
+    }).catch((reason) => {
+      if (active) setFolderIssue(reason instanceof Error ? reason.message : 'Could not check this project’s folders.');
+    }).finally(() => { if (active) setFoldersLoading(false); });
+    return () => { active = false; };
+  }, [selectedProject]);
+
+  useEffect(() => {
+    setEngineId(selectedProject?.default_engine_id || defaultEngineId);
+    setModel(selectedProject?.default_model || defaultModel);
+    setPermissionMode(selectedProject?.permission_mode || 'supervised');
+  }, [defaultEngineId, defaultModel, selectedProject?.default_engine_id, selectedProject?.default_model, selectedProject?.id, selectedProject?.permission_mode]);
+
+  const engineModels = useMemo(() => {
+    if (!engineModelIds) return [];
+    const sharedById = new Map(models.map((item) => [item.id, item]));
+    return engineModelIds.map((id) => sharedById.get(id) || { id, name: modelLabel(id) });
+  }, [engineModelIds, models]);
+
   const modelOptions = useMemo(
-    () => buildModelPickerOptions(withModelPickerFallback(models, defaultModel), modelMeta),
-    [defaultModel, modelMeta, models],
+    () => buildModelPickerOptions(engineModels, modelMeta),
+    [engineModels, modelMeta],
   );
   const enabledModelOptions = useMemo(
     () => modelOptions.filter((option) => !option.disabled),
@@ -86,14 +154,8 @@ export function useNewTaskDraft({
 
   useEffect(() => {
     const ids = enabledModelOptions.map((option) => option.value);
-    setModel((current) => ids.includes(current)
-      ? current
-      : (ids.includes(defaultModel)
-          ? defaultModel
-          : (ids.includes(DEFAULT_CODING_AGENT_MODEL)
-              ? DEFAULT_CODING_AGENT_MODEL
-              : (ids.includes('fable') ? 'fable' : ids[0] || ''))));
-  }, [defaultModel, enabledModelOptions]);
+    setModel((current) => preferredCodingModel(current, ids, selectedProject?.default_model || defaultModel));
+  }, [defaultModel, enabledModelOptions, selectedProject?.default_model]);
 
   const refreshModels = useCallback((open: boolean) => {
     if (!open || !modelMeta.onRefresh) return;
@@ -102,24 +164,6 @@ export function useNewTaskDraft({
     Promise.resolve(modelMeta.onRefresh()).catch(() => {});
   }, [modelMeta]);
 
-  useEffect(() => {
-    setInspection(null);
-    setInspectionError('');
-    if (!path) return undefined;
-    let active = true;
-    const timer = window.setTimeout(() => {
-      setChecking(true);
-      codingApi.inspect(path).then((value) => {
-        if (!active) return;
-        setInspection(value);
-        if (!value.exists || !value.is_directory) setInspectionError('Choose an existing folder.');
-      }).catch((reason) => {
-        if (active) setInspectionError(reason instanceof Error ? reason.message : 'Could not inspect this folder.');
-      }).finally(() => { if (active) setChecking(false); });
-    }, 200);
-    return () => { active = false; window.clearTimeout(timer); };
-  }, [path]);
-
   const availableEngines = useMemo(() => engines.map((engine) => ({
     value: engine.id,
     label: engine.label,
@@ -127,60 +171,56 @@ export function useNewTaskDraft({
     title: engine.available ? undefined : engine.reason || 'Unavailable',
   })), [engines]);
 
-  const pickFolder = async () => {
-    setInspectionError('');
-    setStartGuidance('');
-    const result = await host.pickCodeFolder();
-    if (result.ok && result.path) setPath(result.path);
-    else if (!result.cancelled && result.reason) setInspectionError(result.reason);
-  };
-
   const attachFiles = (files: FileList | null) => {
     if (!files?.length) return;
     const result = referencesFromFiles(files);
-    if (result.error) setInspectionError(result.error);
+    if (result.error) setCatalogError(result.error);
     else setAttachments((current) => mergeReferences(current, result.items));
   };
 
-  const directFolder = !!inspection?.is_directory && !inspection.is_git;
+  useEffect(() => {
+    setSourceContexts([]);
+  }, [selectedProjectId]);
   const selectedModelValid = enabledModelOptions.some((option) => option.value === model);
   const selectedEngine = engines.find((engine) => engine.id === engineId);
   const selectedEngineAvailable = selectedEngine?.available === true;
+  const loading = engineLoading || modelsLoading || foldersLoading;
   const taskReady = !!prompt.trim()
-    && !!inspection?.is_directory
+    && !!selectedProject
+    && !folderIssue
     && selectedEngineAvailable
     && selectedModelValid
     && enabledModelOptions.length > 0
     && !busy
-    && !checking
-    && !engineLoading;
+    && !loading;
   const startUnavailable = busy
-    || checking
-    || engineLoading
+    || loading
+    || !!folderIssue
     || !selectedEngineAvailable
     || !selectedModelValid
     || enabledModelOptions.length === 0;
 
   const readinessMessage = (() => {
     if (busy) return 'Starting task…';
-    if (engineLoading) return 'Loading coding agent…';
+    if (engineLoading || modelsLoading) return 'Loading coding agent…';
+    if (foldersLoading) return 'Checking project folders…';
+    if (folderIssue) return folderIssue;
     if (!selectedEngineAvailable) return selectedEngine?.reason || (catalogError ? '' : 'No coding agent is available.');
     if (!selectedModelValid || enabledModelOptions.length === 0) return '';
-    if (!prompt.trim() && !path) return 'Describe the task and choose a local folder.';
+    if (!prompt.trim() && !selectedProject) return 'Describe the task and choose a Code Project.';
     if (!prompt.trim()) return 'Describe what you want changed.';
-    if (!path) return 'Choose a local folder to continue.';
-    if (checking || !inspection) return 'Checking folder…';
-    if (!inspection.is_directory) return 'Choose an existing local folder.';
-    return directFolder ? 'Ready to start in this folder.' : 'Ready to start in an isolated worktree.';
+    if (!selectedProject) return 'Choose a Code Project to continue.';
+    const count = selectedProject.folders.length;
+    return `Ready in ${selectedProject.name} · ${count} folder${count === 1 ? '' : 's'}.`;
   })();
 
-  const readinessKind = checking || engineLoading || busy
+  const readinessKind = loading || busy
     ? 'loading'
     : taskReady
       ? 'ready'
       : !prompt.trim()
         ? 'prompt'
-        : !path || !inspection?.is_directory
+        : !selectedProject || !!folderIssue
           ? 'folder'
           : 'locked';
 
@@ -191,46 +231,45 @@ export function useNewTaskDraft({
       promptRef.current?.focus();
       return;
     }
-    if (!path) {
-      setStartGuidance('Choose a local folder to continue.');
-      await pickFolder();
+    if (!selectedProject) {
+      setStartGuidance('Choose a Code Project to continue.');
+      onOpenProjectSettings();
       return;
     }
-    if (!inspection?.is_directory) {
-      setStartGuidance(checking ? 'Checking folder…' : 'Choose an existing local folder.');
+    if (folderIssue) {
+      setStartGuidance(folderIssue);
+      onOpenProjectSettings();
       return;
     }
     if (!taskReady) return;
     await onCreate({
-      path,
+      projectId: selectedProject.id,
       prompt: prompt.trim(),
-      allowDirect: directFolder,
       engineId,
       model,
       permissionMode,
       attachments,
+      sourceContexts,
     });
   };
 
   return {
-    path,
     prompt,
     setPrompt,
-    inspection,
-    checking,
     catalogError,
-    inspectionError,
     engineId,
     setEngineId,
     model,
     setModel,
-    engineLoading,
+    engineLoading: loading,
     permissionMode,
     setPermissionMode,
     startGuidance,
     setStartGuidance,
     attachments,
     setAttachments,
+    sourceContexts,
+    setSourceContexts,
     draggingFiles,
     setDraggingFiles,
     fileInputRef,
@@ -238,9 +277,10 @@ export function useNewTaskDraft({
     modelOptions,
     refreshModels,
     availableEngines,
-    pickFolder,
     attachFiles,
-    directFolder,
+    selectedProject,
+    selectedProjectId,
+    onProjectChange,
     taskReady,
     startUnavailable,
     readinessMessage,

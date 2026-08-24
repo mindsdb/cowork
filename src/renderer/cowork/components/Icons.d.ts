@@ -16,7 +16,9 @@ declare const Ico: {
   moreVert: IconRenderer;
   openFolder: IconRenderer;
   panelExpandLeft: IconRenderer;
+  plus: IconRenderer;
   refresh: IconRenderer;
+  link: IconRenderer;
   send: IconRenderer;
   settings: IconRenderer;
   stop: IconRenderer;

@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import Ico from '../components/Icons';
 import ModelSelect from '../components/ModelSelect';
 import Alert from '../components/ui/Alert';
@@ -6,7 +7,7 @@ import Select from '../components/ui/Select';
 import Spinner from '../components/ui/Spinner';
 import { Textarea } from '../components/ui/Input';
 import type { ModelPickerMeta, ModelPickerSource } from '../lib/modelPickerOptions';
-import type { CreateCodeTaskInput } from './api';
+import { codingApi, type CodeProject, type CreateCodeTaskInput, type SourceContext } from './api';
 import { PromptReferenceChips } from './PromptReferences';
 import { useNewTaskDraft } from './useNewTaskDraft';
 
@@ -32,6 +33,14 @@ const PERMISSIONS = [
     title: 'Work autonomously without filesystem restrictions.',
   },
 ];
+const NO_CONNECTIONS: CodeProject['connections'] = [];
+const NEW_PROJECT_VALUE = '__new_code_project__';
+
+function providerLabel(provider: 'github' | 'linear' | 'slack'): string {
+  if (provider === 'github') return 'GitHub';
+  if (provider === 'linear') return 'Linear';
+  return 'Slack';
+}
 
 export function NewTaskPanel({
   busy,
@@ -40,6 +49,10 @@ export function NewTaskPanel({
   defaultModel,
   models,
   modelMeta,
+  projects = [],
+  selectedProjectId = null,
+  onProjectChange = () => {},
+  onOpenProjectSettings = () => {},
   onCreate,
 }: {
   busy: boolean;
@@ -48,17 +61,38 @@ export function NewTaskPanel({
   defaultModel: string;
   models: ModelPickerSource[];
   modelMeta: ModelPickerMeta;
+  projects: CodeProject[];
+  selectedProjectId: string | null;
+  onProjectChange: (id: string | null) => void;
+  onOpenProjectSettings: () => void;
   onCreate: (args: CreateCodeTaskInput) => Promise<void>;
 }) {
-  const draft = useNewTaskDraft({ busy, defaultEngineId, defaultModel, models, modelMeta, onCreate });
+  const draft = useNewTaskDraft({
+    busy, defaultEngineId, defaultModel, models, modelMeta,
+    projects, selectedProjectId, onProjectChange, onOpenProjectSettings, onCreate,
+  });
   const {
-    path, prompt, setPrompt, inspection, checking, catalogError, inspectionError,
+    prompt, setPrompt, catalogError,
     engineId, setEngineId, model, setModel, engineLoading, permissionMode, setPermissionMode,
     startGuidance, setStartGuidance, attachments, setAttachments, draggingFiles, setDraggingFiles,
     fileInputRef, promptRef, modelOptions, refreshModels,
-    availableEngines, pickFolder, attachFiles, directFolder, taskReady,
+    availableEngines, attachFiles, selectedProject, sourceContexts, setSourceContexts, taskReady,
     startUnavailable, readinessMessage, readinessKind, handleStart,
   } = draft;
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [linkConnectionKey, setLinkConnectionKey] = useState('');
+  const [linkUrl, setLinkUrl] = useState('');
+  const [linkBusy, setLinkBusy] = useState(false);
+  const [linkError, setLinkError] = useState('');
+  const projectConnections = selectedProject?.connections || NO_CONNECTIONS;
+  const linkedConnection = projectConnections.find((item) => `${item.provider}:${item.name}` === linkConnectionKey)
+    || projectConnections[0];
+  useEffect(() => {
+    if (!projectConnections.some((item) => `${item.provider}:${item.name}` === linkConnectionKey)) {
+      const first = projectConnections[0];
+      setLinkConnectionKey(first ? `${first.provider}:${first.name}` : '');
+    }
+  }, [linkConnectionKey, projectConnections]);
   const readinessText = startGuidance || readinessMessage;
   const readinessIcon = readinessKind === 'loading'
     ? <Spinner className="text-xs" />
@@ -78,7 +112,7 @@ export function NewTaskPanel({
             <span className="code-new-task__mark" aria-hidden="true">{Ico.code(18)}</span>
             <h1>What should the agent change?</h1>
           </div>
-          <p>Give the agent an outcome, a local folder, and anything it should verify.</p>
+          <p>Give the agent an outcome, choose a project, and say how you want it verified.</p>
         </div>
 
         <section
@@ -133,6 +167,52 @@ export function NewTaskPanel({
             busy={busy}
             onRemove={(attachmentPath) => setAttachments((current) => current.filter((item) => item.path !== attachmentPath))}
           />
+          {sourceContexts.length > 0 && (
+            <div className="code-source-contexts" aria-label="Linked work">
+              {sourceContexts.map((item) => (
+                <span key={`${item.provider}:${item.url}`}>
+                  {providerLabel(item.provider)} · {item.title || item.external_id}
+                  <button type="button" aria-label={`Remove ${item.title || item.external_id}`} onClick={() => setSourceContexts((current) => current.filter((context) => context.url !== item.url))}>{Ico.close(10)}</button>
+                </span>
+              ))}
+            </div>
+          )}
+
+          {linkOpen && (
+            <div className="code-source-linker">
+              <Select
+                value={linkConnectionKey}
+                onValueChange={setLinkConnectionKey}
+                options={projectConnections.map((connection) => ({
+                  value: `${connection.provider}:${connection.name}`,
+                  label: `${providerLabel(connection.provider)} · ${connection.label || connection.name}`,
+                }))}
+                size="sm"
+                ariaLabel="Developer tool connection"
+                disabled={linkBusy}
+              />
+              <input value={linkUrl} onChange={(event) => setLinkUrl(event.target.value)} placeholder="Paste an issue, pull request, or conversation link" aria-label="Source link" disabled={linkBusy} />
+              <Button size="sm" disabled={linkBusy || !linkUrl.trim() || !selectedProject || !linkedConnection} onClick={async () => {
+                if (!selectedProject || !linkedConnection) return;
+                setLinkBusy(true); setLinkError('');
+                try {
+                  const kind = linkedConnection.provider === 'github' && /\/pull\//.test(linkUrl) ? 'pull_request' : linkedConnection.provider === 'slack' ? 'conversation' : 'issue';
+                  const context = await codingApi.readSourceContext(selectedProject.id, {
+                    provider: linkedConnection.provider,
+                    kind,
+                    url: linkUrl.trim(),
+                    connection_name: linkedConnection.name,
+                  });
+                  setSourceContexts((current: SourceContext[]) => [...current.filter((item) => item.url !== context.url), context]);
+                  setLinkUrl(''); setLinkOpen(false);
+                } catch (reason) {
+                  setLinkError(reason instanceof Error ? reason.message : 'Could not load that link.');
+                } finally { setLinkBusy(false); }
+              }}>Link</Button>
+              <button type="button" aria-label="Close link work" onClick={() => setLinkOpen(false)}>{Ico.close(12)}</button>
+            </div>
+          )}
+          {linkError && <div className="code-source-linker__error" role="alert">{linkError}</div>}
 
           <div className="code-start-composer__controls">
             <input
@@ -156,18 +236,36 @@ export function NewTaskPanel({
             >
               {Ico.attach(14)}
             </Button>
-            <button
-              type="button"
-              className="meta-pill code-context-control code-context-control--folder"
-              onClick={pickFolder}
+            <Select
+              value={selectedProjectId || ''}
+              onValueChange={(value) => {
+                if (value === NEW_PROJECT_VALUE) {
+                  onProjectChange(null);
+                  onOpenProjectSettings();
+                  return;
+                }
+                onProjectChange(value || null);
+              }}
+              options={[
+                ...projects.map((project) => ({
+                  value: project.id,
+                  label: project.name,
+                  title: `${project.folders.length} folder${project.folders.length === 1 ? '' : 's'}`,
+                })),
+                { value: NEW_PROJECT_VALUE, label: 'New Code Project…' },
+              ]}
+              variant="pill"
+              size="sm"
+              label="Project"
+              ariaLabel="Code Project"
+              placeholder="Choose project"
               disabled={busy}
-              aria-label={path ? `Change folder, currently ${path}` : 'Choose folder'}
-              title={path || 'Choose a local folder'}
-            >
-              <span className="code-context-control__icon">{Ico.folder(14)}</span>
-              <span className="code-context-control__value">{path ? path.split(/[\\/]/).filter(Boolean).at(-1) : 'Choose folder'}</span>
-              <span className="code-context-control__chevron">{Ico.chevDown(11)}</span>
-            </button>
+              minWidth={150}
+              className="code-project-picker"
+            />
+            <Button icon variant="subtle" size="sm" onClick={onOpenProjectSettings} disabled={busy} aria-label={selectedProject ? `Edit ${selectedProject.name}` : 'Create Code Project'}>
+              {selectedProject ? Ico.settings(13) : Ico.plus(13)}
+            </Button>
             <span className="code-start-composer__spacer" />
             <ModelSelect
               value={model}
@@ -194,19 +292,21 @@ export function NewTaskPanel({
             </Button>
           </div>
           <div className="code-start-composer__context">
-            <Select
-              value={engineId}
-              onValueChange={setEngineId}
-              options={availableEngines}
-              variant="pill"
-              size="sm"
-              label="Agent"
-              ariaLabel="Coding agent"
-              disabled={busy || engineLoading || availableEngines.length === 0}
-              loading={engineLoading}
-              minWidth={126}
-              className="code-agent-picker"
-            />
+            {availableEngines.length > 1 && (
+              <Select
+                value={engineId}
+                onValueChange={setEngineId}
+                options={availableEngines}
+                variant="pill"
+                size="sm"
+                label="Agent"
+                ariaLabel="Coding agent"
+                disabled={busy || engineLoading}
+                loading={engineLoading}
+                minWidth={126}
+                className="code-agent-picker"
+              />
+            )}
             <Select
               value={permissionMode}
               onValueChange={(value) => {
@@ -220,6 +320,11 @@ export function NewTaskPanel({
               disabled={busy}
               minWidth={144}
             />
+            {selectedProject?.connections.length ? (
+              <Button size="sm" variant="subtle" onClick={() => { setLinkOpen((current) => !current); setLinkError(''); }} disabled={busy}>
+                {Ico.link(12)} Link work
+              </Button>
+            ) : null}
             {readinessText && (
               <div
                 id="code-start-readiness"
@@ -233,26 +338,8 @@ export function NewTaskPanel({
             )}
           </div>
 
-          {(checking || inspection?.is_git) && (
-            <div className="code-repository-state">
-              {checking ? (
-                <><Spinner className="text-xs" /><span>Checking folder…</span></>
-              ) : (
-                <>
-                  <span className="code-repository-state__ok">{Ico.check(12)}</span>
-                  <span>{inspection?.branch || 'Detached HEAD'}</span>
-                  {inspection?.revision && <code>{inspection.revision.slice(0, 8)}</code>}
-                  <span className="code-repository-state__isolation">isolated worktree</span>
-                </>
-              )}
-            </div>
-          )}
         </section>
-
-        {inspection?.warning && !directFolder && (
-          <Alert variant="warning" title="Local changes stay in the source folder">{inspection.warning}</Alert>
-        )}
-        {(error || inspectionError || catalogError) && <Alert variant="danger">{error || inspectionError || catalogError}</Alert>}
+        {(error || catalogError) && <Alert variant="danger">{error || catalogError}</Alert>}
 
       </div>
     </main>

@@ -12,7 +12,8 @@ export const CODE_STATUS: Record<CodingStatus, { label: string; tone: 'neutral' 
 };
 
 
-export function repositoryLabel(session: Pick<CodingSession, 'repository_root' | 'source_path'>): string {
+export function repositoryLabel(session: Pick<CodingSession, 'repository_root' | 'source_path' | 'project_name'>): string {
+  if (session.project_name) return session.project_name;
   const path = session.repository_root || session.source_path;
   return path.split(/[\\/]/).filter(Boolean).at(-1) || path;
 }

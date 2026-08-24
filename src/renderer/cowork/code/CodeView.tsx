@@ -11,12 +11,14 @@ import { NewTaskPanel } from './NewTaskPanel';
 import { ReviewPanel } from './ReviewPanel';
 import { RuntimeControlsModal } from './RuntimeControlsModal';
 import { RenameTaskModal } from './RenameTaskModal';
+import { ProjectSettingsModal } from './ProjectSettingsModal';
 import { TaskBar } from './TaskBar';
 import { TaskTerminal } from './TaskTerminal';
 import { useCodingSession } from './useCodingSession';
 import { useCodeTaskActions } from './useCodeTaskActions';
 import { useCodeTaskList } from './useCodeTaskList';
 import { useQueuedInstructionResume } from './useQueuedInstructionResume';
+import { useCodeProjects } from './useCodeProjects';
 import { codeFixtureReviewOpen } from './fixtures';
 import { isActiveStatus, promptHistory } from './presentation';
 import type { ModelPickerMeta, ModelPickerSource } from '../lib/modelPickerOptions';
@@ -31,6 +33,7 @@ export default function CodeView({
   defaultModel,
   models,
   modelMeta,
+  connections = [],
   onSessionsChange,
   onSelectionChange,
 }: {
@@ -41,6 +44,7 @@ export default function CodeView({
   defaultModel: string;
   models: ModelPickerSource[];
   modelMeta: ModelPickerMeta;
+  connections?: Array<{ engine: string; name: string; display_name?: string | null; label?: string | null; status?: string | null }>;
   onSessionsChange: (sessions: CodingSession[]) => void;
   onSelectionChange: (sessionId: string | null, newTask?: boolean) => void;
 }) {
@@ -52,8 +56,11 @@ export default function CodeView({
   const [extensionsOpen, setExtensionsOpen] = useState(false);
   const [extensionTab, setExtensionTab] = useState<ExtensionTab>('skills');
   const [renameOpen, setRenameOpen] = useState(false);
+  const [projectSettingsOpen, setProjectSettingsOpen] = useState(false);
+  const [projectBusy, setProjectBusy] = useState(false);
   const detail = useCodingSession(newTask ? null : selectedId);
   const session = detail.session?.id === selectedId ? detail.session : null;
+  const projects = useCodeProjects(newTask ? null : session?.project_id);
   const taskList = useCodeTaskList({
     sessions,
     selectedId,
@@ -75,6 +82,7 @@ export default function CodeView({
     error: actionError,
     setError: setActionError,
     run: runAction,
+    runResult,
     create: createTask,
     fork: forkTask,
     toggleArchive,
@@ -104,6 +112,7 @@ export default function CodeView({
     setControlsOpen(false);
     setExtensionsOpen(false);
     setRenameOpen(false);
+    setProjectSettingsOpen(false);
   }, [newTask, selectedId]);
 
   const restoring = detail.loading || (!!selectedId && detail.session?.id !== selectedId);
@@ -130,6 +139,7 @@ export default function CodeView({
           onToggleTerminal={() => setTerminalOpen((current) => !current)}
           onOpenControls={() => setControlsOpen(true)}
           onOpenExtensions={() => { setExtensionTab('skills'); setExtensionsOpen(true); }}
+          onOpenProject={() => setProjectSettingsOpen(true)}
           onRename={() => setRenameOpen(true)}
           onFork={() => void forkTask()}
           onCompact={() => void runAction(() => codingApi.turn(taskBarSession.id, '/compact'), true)}
@@ -155,6 +165,10 @@ export default function CodeView({
           models={models}
           modelMeta={modelMeta}
           onCreate={createTask}
+          projects={projects.projects}
+          selectedProjectId={projects.selectedId}
+          onProjectChange={projects.setSelectedId}
+          onOpenProjectSettings={() => setProjectSettingsOpen(true)}
         />
       ) : restoring && !session ? (
         <div className="code-loading"><Spinner className="text-lg" /> Restoring task…</div>
@@ -233,6 +247,28 @@ export default function CodeView({
             onBranch={(name) => runAction(() => codingApi.branch(session.id, name), false, true)}
             onCommit={(message) => runAction(() => codingApi.commit(session.id, message), false, true)}
             onApply={() => runAction(() => codingApi.apply(session.id), false, true)}
+            onValidate={async () => (await runResult(
+              () => codingApi.validate(session.id),
+              false,
+              true,
+            ))?.items || []}
+            connections={projects.selected?.connections || []}
+            onDraftPullRequests={async (title, body, connectionName) => (await runResult(async () => {
+              const result = await codingApi.draftPullRequests(session.id, { title, body, connection_name: connectionName, confirmed: true });
+              return result.items;
+            }, true, true)) || []}
+            onPublish={(context, text, action) => runAction(() => codingApi.publish(session.id, {
+              provider: context.provider,
+              action,
+              target_url: context.url,
+              text,
+              connection_name: context.connection_name,
+              confirmed: true,
+            }), true, true)}
+            onResolveConflicts={() => runAction(() => codingApi.turn(
+              session.id,
+              'Resolve the source handoff conflict inside the isolated task workspace. Inspect the current source folders read-only, preserve both the user’s source changes and the intended task changes, update only the task workspace, run the relevant checks, and report when it is ready for review. Do not modify the source folders directly.',
+            ), true, true)}
           />
         </div>
       ) : (
@@ -274,6 +310,35 @@ export default function CodeView({
           }}
         />
       )}
+      <ProjectSettingsModal
+        open={projectSettingsOpen}
+        project={projects.selected}
+        connections={connections}
+        busy={projectBusy}
+        defaultEngineId={defaultEngineId}
+        defaultModel={defaultModel}
+        models={models}
+        modelMeta={modelMeta}
+        onClose={() => setProjectSettingsOpen(false)}
+        onSave={async (values) => {
+          setProjectBusy(true);
+          try {
+            return await projects.save(projects.selected, values);
+          } finally {
+            setProjectBusy(false);
+          }
+        }}
+        onProjectChanged={projects.load}
+        onDelete={projects.selected ? async () => {
+          setProjectBusy(true);
+          try {
+            await projects.remove(projects.selected!.id);
+            setProjectSettingsOpen(false);
+          } finally {
+            setProjectBusy(false);
+          }
+        } : undefined}
+      />
       {session && (
         <ExtensionsModal
           open={extensionsOpen}
