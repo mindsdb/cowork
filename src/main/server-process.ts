@@ -18,6 +18,7 @@ import { app } from 'electron';
 import { coworkHome, buildKind } from './cowork-home';
 import { loadBundledServerCredentials } from './credential-provisioning';
 import { MINDS_ENV_SLUG } from './minds-urls';
+import { authHeader } from './server-auth';
 import { withServerLifecycle } from './server-lifecycle';
 import { decideStartWait, startFailureMessage } from './update-logic';
 import { getEnvPath, resolveUv, coworkServerBinCandidates } from './uv-paths';
@@ -808,6 +809,24 @@ export async function stopServer(): Promise<void> {
   return withServerLifecycle(stopServerUnlocked);
 }
 
+async function prepareCodingTasksForShutdown(): Promise<void> {
+  if (!serverStarted) return;
+  try {
+    const response = await fetch(`${getServerOrigin()}/api/v1/coding/runtime/prepare-shutdown`, {
+      method: 'POST',
+      headers: authHeader(),
+      signal: AbortSignal.timeout(1_000),
+    });
+    if (!response.ok) {
+      console.warn(`[coding] shutdown checkpoint returned HTTP ${response.status}`);
+    }
+  } catch (error) {
+    // The sidecar may already be unhealthy. Continue with the bounded process
+    // teardown; its startup reconciliation remains the crash-safety fallback.
+    console.warn('[coding] could not checkpoint active tasks before shutdown', error);
+  }
+}
+
 async function stopServerUnlocked(): Promise<void> {
   // Allow the next start to re-resolve the port (re-derive the per-user port
   // and re-check whether anything is running there). ENG-439.
@@ -835,6 +854,7 @@ async function stopServerUnlocked(): Promise<void> {
   // Mark not-running immediately so the renderer's `isServerRunning`
   // check reflects intent. We keep `serverProcess` non-null until we
   // actually verify exit so a racing startServer can't double-spawn.
+  await prepareCodingTasksForShutdown();
   serverStarted = false;
 
   const exited = new Promise<void>((resolve) => {

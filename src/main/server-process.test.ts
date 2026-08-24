@@ -20,6 +20,7 @@ vi.mock('electron', () => ({
 vi.mock('./cowork-home', () => ({
   coworkHome: () => '/tmp/cowork-test-home',
   buildKind: () => 'prod',
+  readEnvFile: () => ({}),
 }));
 vi.mock('./minds-urls', () => ({ MINDS_ENV_SLUG: '' }));
 /** What resolveUv reports; the dev-mode tests flip it per scenario. */
@@ -87,6 +88,7 @@ beforeEach(() => {
   execCalls = [];
   execHandler = () => ({ err: new Error('nothing found'), stdout: '' });
   uvState.resolveUv = '/usr/bin/uv';
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200 }));
 
   // process.kill is the real global — killTree calls it directly, so without
   // this stub the POSIX branch would SIGTERM and then SIGKILL whatever process
@@ -144,6 +146,7 @@ beforeEach(() => {
 
 afterEach(() => {
   setPlatform(originalPlatform);
+  vi.unstubAllGlobals();
   vi.clearAllMocks();
 });
 
@@ -235,6 +238,30 @@ describe('startServer failure diagnostics', () => {
     expect(isServerRunning()).toBe(true);
     expect(getServerDiagnostics().lastError).toBeNull();
     await stopServer(); // leave the module's state clean for the next test
+  });
+
+  it('checkpoints active coding tasks before terminating the sidecar tree', async () => {
+    const child = makeChild();
+    healthOwner = 'owner-token';
+    vi.mocked(cp.spawn).mockImplementation((() => child as never) as never);
+    vi.mocked(process.kill).mockImplementation(((pid: number, signal?: string) => {
+      signals.push([pid, String(signal)]);
+      child.exitCode = 0;
+      setTimeout(() => child.emit('exit', 0), 0);
+      return true;
+    }) as never);
+
+    expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
+    await stopServer();
+
+    const checkpoint = vi.mocked(fetch);
+    expect(checkpoint).toHaveBeenCalledWith(
+      `http://127.0.0.1:${PORT}/api/v1/coding/runtime/prepare-shutdown`,
+      expect.objectContaining({ method: 'POST' }),
+    );
+    expect(checkpoint.mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(process.kill).mock.invocationCallOrder[0],
+    );
   });
 
   it('says the backend was still starting when the cap runs out on a live child', async () => {
