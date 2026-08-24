@@ -211,6 +211,7 @@ export default function Sidebar({
   onSelectCodingSession,
   onNewCodingTask,
   onOpenCodingProjects,
+  onOpenCodingConnectors,
   onOpenSearch,
   collapsed = false,
   onToggleCollapsed,
@@ -627,6 +628,12 @@ export default function Sidebar({
                 label="Projects"
                 onClick={onOpenCodingProjects}
                 active={activeCodeRoute === 'projects'}
+              />
+              <NavItem
+                icon={Ico.link(15)}
+                label="Connectors"
+                onClick={onOpenCodingConnectors}
+                active={activeCodeRoute === 'connectors'}
               />
             </div>
             <CodeSidebarSessions

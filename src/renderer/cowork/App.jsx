@@ -1824,9 +1824,11 @@ function AppCore() {
     selectedId: activeCodingSessionId,
     newTask: codeNewTask,
     projectsOpen: codeProjectsOpen,
+    connectorsOpen: codeConnectorsOpen,
     setSessions: setCodingSessions,
     openNewTask: openNewCodingTask,
     openProjects: openCodingProjects,
+    openConnectors: openCodingConnectors,
     selectSession: selectCodingSession,
     changeSelection: changeCodingSelection,
   } = useCodeWorkspace(openCode);
@@ -4896,14 +4898,18 @@ function AppCore() {
             ? null
             : (route === 'task' ? null : (route === 'schedule-detail' ? 'scheduled' : route))}
           activeWorkspace={workspaceMode}
-          activeCodeRoute={workspaceMode === 'code' && codeProjectsOpen ? 'projects' : null}
+          activeCodeRoute={workspaceMode === 'code'
+            ? (codeProjectsOpen ? 'projects' : (codeConnectorsOpen ? 'connectors' : null))
+            : null}
           settingsActive={settingsOpen}
           // Only mark a recent as "selected" while actually viewing a task —
           // activeTaskId persists across navigation, so passing it unconditionally
           // left the last-opened task highlighted on Projects/Settings/etc.
           activeTaskId={workspaceMode === 'cowork' && route === 'task' ? activeTaskId : null}
           codingSessions={codingSessions}
-          activeCodingSessionId={workspaceMode === 'code' && !codeNewTask ? activeCodingSessionId : null}
+          activeCodingSessionId={workspaceMode === 'code' && !codeNewTask && !codeProjectsOpen && !codeConnectorsOpen
+            ? activeCodingSessionId
+            : null}
           serverOnline={serverOnline}
           agentLabel={agentLabel}
           isSsoConnected={ssoConnected}
@@ -4914,6 +4920,7 @@ function AppCore() {
           onSelectCodingSession={selectCodingSession}
           onNewCodingTask={openNewCodingTask}
           onOpenCodingProjects={openCodingProjects}
+          onOpenCodingConnectors={openCodingConnectors}
           onOpenSearch={() => setSearchOpen(true)}
           collapsed={sidebarCollapsedEffective}
           onToggleCollapsed={
@@ -5357,11 +5364,13 @@ function AppCore() {
               selectedId={activeCodingSessionId}
               newTask={codeNewTask}
               projectsOpen={codeProjectsOpen}
+              connectorsOpen={codeConnectorsOpen}
               defaultEngineId={settings.codingAgentEngine || DEFAULT_CODING_AGENT_ENGINE}
               defaultModel={settings.codingAgentModel || DEFAULT_CODING_AGENT_MODEL}
               models={mindsModels}
               modelMeta={modelMeta}
               connections={connectors}
+              onConnectionsChange={setConnectors}
               onSessionsChange={setCodingSessions}
               onSelectionChange={changeCodingSelection}
             />

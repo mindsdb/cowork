@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
+import type { ConnectorConnection } from '../api';
 import Alert from '../components/ui/Alert';
 import Spinner from '../components/ui/Spinner';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { codingApi, type CodingSession, type EngineCommand } from './api';
 import { ApprovalCard } from './ApprovalCard';
 import { CodeComposer } from './CodeComposer';
+import { CodeConnectorsView } from './CodeConnectorsView';
 import { CodeProjectsView } from './CodeProjectsView';
 import { EventTimeline } from './EventTimeline';
 import { ExtensionsModal, type ExtensionTab } from './ExtensionsModal';
@@ -31,11 +33,13 @@ export default function CodeView({
   selectedId,
   newTask,
   projectsOpen = false,
+  connectorsOpen = false,
   defaultEngineId,
   defaultModel,
   models,
   modelMeta,
   connections = [],
+  onConnectionsChange = () => {},
   onSessionsChange,
   onSelectionChange,
 }: {
@@ -43,11 +47,13 @@ export default function CodeView({
   selectedId: string | null;
   newTask: boolean;
   projectsOpen?: boolean;
+  connectorsOpen?: boolean;
   defaultEngineId: string;
   defaultModel: string;
   models: ModelPickerSource[];
   modelMeta: ModelPickerMeta;
-  connections?: Array<{ engine: string; name: string; display_name?: string | null; label?: string | null; status?: string | null }>;
+  connections?: ConnectorConnection[];
+  onConnectionsChange?: (connections: ConnectorConnection[]) => void;
   onSessionsChange: (sessions: CodingSession[]) => void;
   onSelectionChange: (sessionId: string | null, newTask?: boolean) => void;
 }) {
@@ -61,13 +67,13 @@ export default function CodeView({
   const [renameOpen, setRenameOpen] = useState(false);
   const [projectEditor, setProjectEditor] = useState<{ id: string | null } | null>(null);
   const [projectBusy, setProjectBusy] = useState(false);
-  const detail = useCodingSession(newTask || projectsOpen ? null : selectedId);
+  const detail = useCodingSession(newTask || projectsOpen || connectorsOpen ? null : selectedId);
   const session = detail.session?.id === selectedId ? detail.session : null;
   const projects = useCodeProjects(newTask ? null : session?.project_id);
   const taskList = useCodeTaskList({
     sessions,
     selectedId,
-    newTask: newTask || projectsOpen,
+    newTask: newTask || projectsOpen || connectorsOpen,
     currentSession: session,
     onSessionsChange,
     onSelectionChange,
@@ -116,7 +122,7 @@ export default function CodeView({
     setExtensionsOpen(false);
     setRenameOpen(false);
     setProjectEditor(null);
-  }, [newTask, projectsOpen, selectedId]);
+  }, [newTask, projectsOpen, connectorsOpen, selectedId]);
 
   const restoring = detail.loading || (!!selectedId && detail.session?.id !== selectedId);
   const taskBarSession = session || sessions.find((item) => item.id === selectedId) || null;
@@ -130,7 +136,7 @@ export default function CodeView({
   const approval = session?.pending_approval;
   return (
     <div className="code-page">
-      {!newTask && !projectsOpen && selectedId && taskBarSession && (
+      {!newTask && !projectsOpen && !connectorsOpen && selectedId && taskBarSession && (
         <TaskBar
           session={taskBarSession}
           git={detail.git}
@@ -157,7 +163,13 @@ export default function CodeView({
         />
       )}
 
-      {projectsOpen ? (
+      {connectorsOpen ? (
+        <CodeConnectorsView
+          connections={connections}
+          projects={projects.projects}
+          onConnectionsChange={onConnectionsChange}
+        />
+      ) : projectsOpen ? (
         <CodeProjectsView
           projects={projects.projects}
           selectedId={projects.selectedId}
