@@ -1,7 +1,21 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+
+const hostSpies = vi.hoisted(() => ({ openExternal: vi.fn() }));
+vi.mock('../../platform/host', async (importOriginal) => {
+  const actual = await importOriginal();
+  return { ...actual, host: { ...actual.host, openExternal: hostSpies.openExternal } };
+});
+
+const analyticsSpies = vi.hoisted(() => ({ trackBillingOpened: vi.fn() }));
+vi.mock('../lib/analytics', async (importOriginal) => {
+  const actual = await importOriginal();
+  return { ...actual, trackBillingOpened: analyticsSpies.trackBillingOpened };
+});
+
 import { ModelSelect } from './ModelSelect';
+import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 
 const OPTIONS = [
   { value: 'mindshub_air', label: 'MindsHub Air' },
@@ -82,9 +96,11 @@ describe('ModelSelect', () => {
     expect(onValueChange).toHaveBeenCalledWith('gpt-codex');
   });
 
-  // ENG-1248: needs-credits models are selectable — the wall moved from the
-  // picker row (a silent no-op) to use time, where a top-up route exists.
-  it('fires onValueChange for a needs-credits model and shows its tag', async () => {
+  // A tag alone does not close a row off — only `disabled` does. Both option
+  // builders now pair the "Needs credits" tag with `disabled` + `locked`, and
+  // the two tests below that one cover what happens then. This one pins the
+  // primitive: an option carrying a tag and nothing else still selects.
+  it('fires onValueChange for a tagged option that is not disabled', async () => {
     const user = userEvent.setup();
     const onValueChange = vi.fn();
     render(<Harness onValueChange={onValueChange} />);
@@ -195,5 +211,59 @@ describe('ModelSelect', () => {
   it('shows the placeholder when no value is selected', () => {
     render(<Harness initial="" placeholder="Select model" />);
     expect(screen.getByRole('combobox')).toHaveTextContent('Select model');
+  });
+});
+
+// A locked row is disabled, so the row itself stops being a click target. The
+// button this attaches is then the only thing on it that leads anywhere, and
+// both pickers get it from here rather than each building their own.
+describe('ModelSelect — the route to credits on a locked row', () => {
+  const LOCKED = [
+    { value: 'mindshub_air', label: 'MindsHub Air' },
+    { value: 'opus', label: 'Claude Opus 5', tag: 'Needs credits', disabled: true, locked: true },
+  ];
+
+  it('puts an Add credits button on a locked row and opens billing from it', async () => {
+    const user = userEvent.setup();
+    hostSpies.openExternal.mockClear();
+    analyticsSpies.trackBillingOpened.mockClear();
+    const onValueChange = vi.fn();
+    render(<Harness options={LOCKED} onValueChange={onValueChange} />);
+
+    await user.click(screen.getByRole('combobox'));
+    const row = screen.getByRole('option', { name: /Claude Opus 5/ });
+    await user.click(within(row).getByRole('button', { name: 'Add credits' }));
+
+    expect(hostSpies.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
+    // Its own trigger, distinct from the no-credits notice and the top-up hint,
+    // so the three are not read as one in the funnel.
+    expect(analyticsSpies.trackBillingOpened).toHaveBeenCalledWith('locked_model_row');
+    // Holds because the row is disabled, NOT because of the button's
+    // stopPropagation — strip that and this still passes.
+    expect(onValueChange).not.toHaveBeenCalled();
+  });
+
+  it('leaves an affordable row without one', async () => {
+    const user = userEvent.setup();
+    render(<Harness options={LOCKED} />);
+
+    await user.click(screen.getByRole('combobox'));
+    const row = screen.getByRole('option', { name: 'MindsHub Air' });
+    expect(within(row).queryByRole('button', { name: 'Add credits' })).toBeNull();
+  });
+
+  // Model Router carries its own action and is never locked; this pins that a
+  // call site's action is never silently replaced if that ever changes.
+  it('does not overwrite an action the call site already set', async () => {
+    const user = userEvent.setup();
+    render(<Harness options={[
+      { value: 'opus', label: 'Claude Opus 5', disabled: true, locked: true,
+        action: <button type="button">Router Settings</button> },
+    ]} initial="opus" />);
+
+    await user.click(screen.getByRole('combobox'));
+    const row = screen.getByRole('option', { name: /Claude Opus 5/ });
+    expect(within(row).getByRole('button', { name: 'Router Settings' })).toBeInTheDocument();
+    expect(within(row).queryByRole('button', { name: 'Add credits' })).toBeNull();
   });
 });

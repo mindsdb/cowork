@@ -348,6 +348,42 @@ The GUI provides a visual `/connect` flow:
 6. Writes mind's system prompt to project cortex
 7. Auto-restarts the server to pick up new config
 
+### A model the wallet can't pay for is not selectable
+
+MindsHub's `/v1/models` marks each model with whether the org can pay for it
+right now: a paid model on a drained wallet, or any model once a free org has
+spent its monthly included allowance, arrives as `enabled: false`. That map
+reaches the renderer as `settings.modelEnabled`, and `isModelLocked`
+(`lib/modelCatalog.js`) is the single definition both pickers read, so the
+Settings rows and the composer's menu can never disagree about what a user may
+choose.
+
+A locked model renders **visible, tagged "Needs credits", disabled, and
+carrying an "Add credits" button**. It stays on screen so the model is still
+discoverable, and the button is what keeps the row from naming an action it does
+not offer: once the row is closed off it is no longer a click target, so a tag
+and a tooltip would leave a user told to add credits with nowhere to do it.
+`ModelSelect` attaches that button from the option's `locked` flag, so Settings
+and the composer cannot end up offering different ways out.
+
+Settings additionally puts a "Top up your balance" link under the picker, but
+only when the **current** model is locked — the stranded-pin case, where the
+wallet drained under a model already saved. It says nothing about a row the user
+is merely looking at, which is why the button on the row is the general answer
+and the hint is the specific one.
+
+Why it is not merely tagged: `cowork-server` resolves a stored model it knows
+the gateway will deny into an affordable one instead, so allowing the pick meant
+the turn ran a different model from the one the picker named. The user was told
+one model wrote their code while another did. The stored choice is never
+rewritten, so the moment the balance goes positive the original pick resolves
+again with nothing to re-select.
+
+Availability is re-read whenever either picker opens, so a top-up made in a
+browser unlocks the rows on the next open rather than after a restart. A failed
+refresh keeps the map already held, and a model the map does not mention counts
+as available, so a degraded response can never empty a picker.
+
 ---
 
 ## Over-the-Air Updates

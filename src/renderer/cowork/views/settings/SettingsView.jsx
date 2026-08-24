@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef, useContext } from 'react';
 import { useId } from 'react';
 import Ico from '../../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchRecommendedModels } from '../../api';
+import { isModelLocked } from '../../lib/modelCatalog';
 import { providerTypeToKeyField, providerValueToType, resolveRoleModel, resolveModelPickerValue, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore, toDisplayUnits, toNaturalUnits, formatCount } from '../../lib/settingsTransform';
 import { MODEL_REFRESH_TTL_MS } from '../../lib/modelRefresh';
 import { trackHarnessSwapped, trackBillingOpened } from '../../lib/analytics';
@@ -1568,13 +1569,13 @@ export default function SettingsView({
                     providerWasRepointed, roleModelValue(role, fallbackModel), modelList, allowOther, fallbackModel,
                   );
                   /* Per-model availability (settings.modelEnabled, sourced from MindsHub
-                   * /v1/models). A model the org's wallet can't currently pay for (or
-                   * whose free allowance is spent) is listed here as false — it stays
-                   * selectable with a "Needs credits" tag, and picking it shows the
-                   * top-up hint below (ENG-1248). Absent id ⇒ available (backwards
-                   * compatible; direct providers have no such flag). */
+                   * /v1/models). A model the org's wallet can't currently pay for, or
+                   * whose free allowance is spent, is listed here as false. Such a row
+                   * renders disabled with a "Needs credits" tag, and the hint below
+                   * says how to unlock it. An absent id counts as available (direct
+                   * providers have no such flag at all). */
                   const modelEnabled = settings.modelEnabled || {};
-                  const isLocked = (m) => modelEnabled[m] === false;
+                  const isLocked = (m) => isModelLocked(modelEnabled, m);
                   const firstEnabledModel = modelList.find((m) => !isLocked(m)) || modelList[0] || '';
                   const st = deriveProviderStatus(curType, {
                     providerStatus: settings.providerStatus || {},
@@ -1692,7 +1693,7 @@ export default function SettingsView({
                                   ...(recommendedModels[t] || []),
                                 ].filter(Boolean);
                                 const newModel =
-                                  candidates.find((m) => modelEnabled[m] !== false)
+                                  candidates.find((m) => !isModelLocked(modelEnabled, m))
                                   || candidates[0] || '';
                                 setModelInputMode((m) => ({ ...m, [role]: false }));
                                 writeOverride({ providerType: t, model: newModel });
@@ -1784,12 +1785,14 @@ export default function SettingsView({
                                   />
                                 )}
                               </label>
-                              {/* Needs-credits rows stay selectable (ENG-1248) —
-                                  this hint is the informed-consent half: the
-                                  choice is respected, the cost is named, and the
-                                  top-up route is one click away. Outside the
-                                  <label> so it doesn't leak into the combobox's
-                                  accessible name (PR #579 review). */}
+                              {/* The stored pin is never rewritten, so a wallet
+                                  that drains leaves the user sitting on a model
+                                  they can no longer run. This names it and gives
+                                  the way out. It covers only the CURRENT model —
+                                  a locked row the user is merely looking at
+                                  carries its own "Add credits" button instead.
+                                  Outside the <label> so it doesn't leak into the
+                                  combobox's accessible name. */}
                               {!inputMode && !!curModel && isLocked(curModel) && (
                                 <div className="text-[11.5px] text-ink-3">
                                   {displayModelLabel(curModel, settings.modelLabels || {})} needs credits.{' '}
