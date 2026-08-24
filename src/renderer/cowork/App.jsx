@@ -988,6 +988,9 @@ function AppCore() {
   // mid-turn)" when the user navigates back to it. See
   // `reconcileTaskMessages` for the cleanup it enables.
   const activeStreamingTaskIdRef = useRef(null);
+  // Latest toast manager, reachable from callbacks (like handleStopStream)
+  // defined above where useToastManager() is called. Synced in an effect below.
+  const toastManagerRef = useRef(null);
   // True once the active stream's SSE socket delivers any event — client-side
   // proof the turn started, independent of when it shows up in the in-flight
   // poll (which lags Redis/replica registration). The stranded-slot self-heal
@@ -1406,7 +1409,17 @@ function AppCore() {
     }));
 
     if (cidToCancel) {
-      try { await cancelResponse(cidToCancel); } catch { /* idempotent */ }
+      const cancelResult = await cancelResponse(cidToCancel);
+      if (!silent && cancelResult?.status === 'error') {
+        // The cancel request never reached the server, so the cancel flag was
+        // not written and the remote turn may still be running (and spending
+        // tokens). Tell the user rather than silently presenting a stopped
+        // state — the whole point of ENG-1919.
+        toastManagerRef.current?.add({
+          type: 'danger',
+          title: 'Couldn’t stop the task — it may still be running. Check your connection and try again.',
+        });
+      }
       markInFlightDone(cidToCancel);
       // Stop kills the run, and with it any question that run was waiting
       // on. Without this the composer stays hijacked: the next send would be
@@ -1844,6 +1857,7 @@ function AppCore() {
   const [updateStatus, setUpdateStatus] = useState(null); // { phase, version }
   const [updateApplying, setUpdateApplying] = useState(false);
   const toastManager = useToastManager();
+  useEffect(() => { toastManagerRef.current = toastManager; }, [toastManager]);
   // Download-only shell notice; dismissal is scoped to the offered version.
   const [shellUpdate, setShellUpdate] = useState(null); // { version, currentVersion, downloadUrl }
   const [shellAutoUpdate, setShellAutoUpdate] = useState(null);
