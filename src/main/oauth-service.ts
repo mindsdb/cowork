@@ -51,6 +51,8 @@ export interface OAuthConnectOpts {
    * from the connector spec's oauth.redirect_port.
    */
   redirectPort?: number;
+  /** Loopback hostname to advertise in the provider redirect URI. */
+  redirectHost?: '127.0.0.1' | 'localhost' | '::1';
   /**
    * How long the loopback server waits for the browser callback before
    * giving up. Defaults to CALLBACK_TIMEOUT_MS (3 min) — enough to type
@@ -150,7 +152,8 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
   }
   if (cancelled) return { ok: false, reason: 'cancelled' };
 
-  const redirectUri = `http://127.0.0.1:${port}/callback`;
+  const redirectHost = opts.redirectHost || '127.0.0.1';
+  const redirectUri = `http://${redirectHost.includes(':') ? `[${redirectHost}]` : redirectHost}:${port}/callback`;
 
   // Build the authorize URL.
   const authParams = new URLSearchParams({

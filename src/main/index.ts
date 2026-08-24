@@ -17,7 +17,7 @@ import { oauthConnect, cancelCurrentOAuth } from './oauth-service';
 import { setRefreshToken, deleteRefreshToken, getRefreshToken as getOAuthRefreshToken } from './keychain-service';
 import { OAUTH_CREDENTIALS } from './credentials';
 import { startRefreshLoop, stopRefreshLoop, stopAllRefreshLoops, revokedConnections, getPickerAccess } from './token-refresh';
-import { fetchAccountEmail } from './oauth-identity';
+import { fetchAccountIdentity } from './oauth-identity';
 import { openDrivePickerFlow, cancelCurrentDrivePicker, isValidDriveFileIds } from './drive-picker-service';
 import { getPickedFiles, savePickedFiles, verifyPickedFiles, type PickedFile } from './picked-files';
 import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefreshTokenStore, isAccessTokenExpired } from './token-store';
@@ -597,6 +597,7 @@ function setupIPC() {
         scopes: oauthBlock.scopes,
         extraAuthParams: oauthBlock.extra_auth_params,
         redirectPort: oauthBlock.redirect_port,
+        redirectHost: oauthBlock.redirect_host,
         tokenAuthStyle: oauthBlock.token_auth_style,
       });
       if (!pkceResult.ok || !pkceResult.access_token || (supportsRefresh && !pkceResult.refresh_token)) {
@@ -608,11 +609,12 @@ function setupIPC() {
       // record's display name. The token exchange already succeeded at
       // this point, so retry once on a transient failure rather than
       // forcing the user to redo the whole consent flow.
-      let accountEmail = '';
-      for (let attempt = 0; attempt < 2 && !accountEmail; attempt++) {
+      let accountIdentity: Awaited<ReturnType<typeof fetchAccountIdentity>> = { email: '' };
+      for (let attempt = 0; attempt < 2 && !accountIdentity.email; attempt++) {
         if (attempt > 0) await new Promise((r) => setTimeout(r, 500));
-        accountEmail = await fetchAccountEmail(engine, pkceResult.access_token);
+        accountIdentity = await fetchAccountIdentity(engine, pkceResult.access_token);
       }
+      const accountEmail = accountIdentity.email;
       if (!accountEmail) return { ok: false, reason: 'Could not retrieve account email.' };
 
       // Store refresh_token in OS keychain — never sent over the network.
@@ -638,6 +640,7 @@ function setupIPC() {
               access_token: pkceResult.access_token,
               expires_at: expiresAt,
               account_email: accountEmail,
+              ...(accountIdentity.name ? { account_name: accountIdentity.name } : {}),
               token_url: tokenUrl,
               scope: pkceResult.scope || oauthBlock.scopes.join(' '),
               auth_type: 'oauth',

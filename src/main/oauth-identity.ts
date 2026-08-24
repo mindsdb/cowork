@@ -5,7 +5,12 @@
 // spec-JSON data — it's provider-specific code, not configuration. New
 // OAuth-builtin connectors add one entry to FETCHERS below.
 
-async function fetchGoogleIdentity(accessToken: string): Promise<{ email: string }> {
+export interface OAuthIdentity {
+  email: string;
+  name?: string;
+}
+
+async function fetchGoogleIdentity(accessToken: string): Promise<OAuthIdentity> {
   const res = await fetch('https://www.googleapis.com/oauth2/v1/userinfo', {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
@@ -14,7 +19,7 @@ async function fetchGoogleIdentity(accessToken: string): Promise<{ email: string
   return { email: data.email || '' };
 }
 
-async function fetchLinearIdentity(accessToken: string): Promise<{ email: string }> {
+async function fetchLinearIdentity(accessToken: string): Promise<OAuthIdentity> {
   const res = await fetch('https://api.linear.app/graphql', {
     method: 'POST',
     headers: {
@@ -28,7 +33,7 @@ async function fetchLinearIdentity(accessToken: string): Promise<{ email: string
   return { email: data.data?.viewer?.email || '' };
 }
 
-async function fetchGithubIdentity(accessToken: string): Promise<{ email: string }> {
+async function fetchGithubIdentity(accessToken: string): Promise<OAuthIdentity> {
   const res = await fetch('https://api.github.com/user', {
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -44,20 +49,23 @@ async function fetchGithubIdentity(accessToken: string): Promise<{ email: string
   return { email: data.email || data.login || '' };
 }
 
-async function fetchSupabaseIdentity(accessToken: string): Promise<{ email: string }> {
+async function fetchSupabaseIdentity(accessToken: string): Promise<OAuthIdentity> {
   const res = await fetch('https://api.supabase.com/v1/organizations', {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
   if (!res.ok) return { email: '' };
-  const data = await res.json() as Array<{ slug?: string }> | { organizations?: Array<{ slug?: string }> };
+  const data = await res.json() as Array<{ slug?: string; name?: string }> | { organizations?: Array<{ slug?: string; name?: string }> };
   const organizations = Array.isArray(data) ? data : (data.organizations || []);
-  const slug = organizations[0]?.slug || '';
+  const organization = organizations[0];
+  const slug = organization?.slug || '';
+  const name = organization?.name || slug;
   // Supabase Management API OAuth does not expose an email userinfo field;
-  // use the organization slug as a stable account identity instead.
-  return { email: slug ? `org:${slug}` : '' };
+  // use the organization slug as a stable account identity instead, while
+  // retaining the human-readable organization name for the connection tile.
+  return { email: slug ? `org:${slug}` : '', name };
 }
 
-const FETCHERS: Record<string, (accessToken: string) => Promise<{ email: string }>> = {
+const FETCHERS: Record<string, (accessToken: string) => Promise<OAuthIdentity>> = {
   google_drive: fetchGoogleIdentity,
   google_calendar: fetchGoogleIdentity,
   gmail: fetchGoogleIdentity,
@@ -68,12 +76,16 @@ const FETCHERS: Record<string, (accessToken: string) => Promise<{ email: string 
   supabase: fetchSupabaseIdentity,
 };
 
-export async function fetchAccountEmail(engine: string, accessToken: string): Promise<string> {
+export async function fetchAccountIdentity(engine: string, accessToken: string): Promise<OAuthIdentity> {
   const fetcher = FETCHERS[engine] || fetchGoogleIdentity;
   try {
-    const { email } = await fetcher(accessToken);
-    return email;
+    return await fetcher(accessToken);
   } catch {
-    return '';
+    return { email: '' };
   }
+}
+
+export async function fetchAccountEmail(engine: string, accessToken: string): Promise<string> {
+  const { email } = await fetchAccountIdentity(engine, accessToken);
+  return email;
 }

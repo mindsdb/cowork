@@ -79,6 +79,28 @@ describe('oauthConnect', () => {
   // JSON. Without this header the exchange threw "Unexpected token 'a',
   // \"access_tok\"... is not valid JSON" and the caller never saw
   // pkceResult.ok, so the window-refocus step never ran either.
+  it('uses a provider-specific localhost redirect host', async () => {
+    const nextAuthUrl = captureAuthUrl();
+    globalThis.fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ access_token: 'at' }) })) as unknown as typeof fetch;
+
+    const flow = oauthConnect({ ...OPTS, redirectPort: 47292, redirectHost: 'localhost' });
+    const authUrl = await nextAuthUrl();
+    expect(authUrl.searchParams.get('redirect_uri')).toBe('http://localhost:47292/callback');
+    await hitCallback(authUrl, { code: 'c', state: authUrl.searchParams.get('state') as string });
+    await flow;
+  });
+
+  it('uses 127.0.0.1 by default', async () => {
+    const nextAuthUrl = captureAuthUrl();
+    globalThis.fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ access_token: 'at' }) })) as unknown as typeof fetch;
+
+    const flow = oauthConnect({ ...OPTS, redirectPort: 47293 });
+    const authUrl = await nextAuthUrl();
+    expect(authUrl.searchParams.get('redirect_uri')).toBe('http://127.0.0.1:47293/callback');
+    await hitCallback(authUrl, { code: 'c', state: authUrl.searchParams.get('state') as string });
+    await flow;
+  });
+
   it('requests a JSON response from the token endpoint', async () => {
     const nextAuthUrl = captureAuthUrl();
     const fetchMock = vi.fn(async () => ({
