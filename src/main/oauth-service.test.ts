@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import * as http from 'http';
+import * as net from 'net';
 
 vi.mock('electron', () => ({
   shell: { openExternal: vi.fn() },
@@ -31,14 +32,16 @@ function captureAuthUrl(): () => Promise<URL> {
   };
 }
 
-function hitCallback(authUrl: URL, params: Record<string, string>): Promise<{ status: number; body: string }> {
+function hitCallback(
+  authUrl: URL, params: Record<string, string>, opts: http.RequestOptions = {},
+): Promise<{ status: number; body: string; headers: http.IncomingHttpHeaders }> {
   const redirect = new URL(authUrl.searchParams.get('redirect_uri') as string);
   const qs = new URLSearchParams(params).toString();
   return new Promise((resolve, reject) => {
-    http.get(`http://127.0.0.1:${redirect.port}/callback?${qs}`, (res) => {
+    http.get(`http://127.0.0.1:${redirect.port}/callback?${qs}`, opts, (res) => {
       let body = '';
       res.on('data', (c) => { body += c; });
-      res.on('end', () => resolve({ status: res.statusCode || 0, body }));
+      res.on('end', () => resolve({ status: res.statusCode || 0, body, headers: res.headers }));
     }).on('error', reject);
   });
 }
@@ -176,26 +179,34 @@ describe('oauthConnect', () => {
     expect(result.reason).toMatch(/timed out/i);
   });
 
-  it('rejects a callback whose state does not match', async () => {
+  // A mismatched-state hit no longer tears the whole attempt down (see the
+  // fixed-port stray-callback fix below) — it's answered on its own and the
+  // server keeps listening, so it can't be used to abort someone else's
+  // legitimate, still-in-flight authorization.
+  it('answers a callback whose state does not match without failing the flow', async () => {
     const nextAuthUrl = captureAuthUrl();
+    globalThis.fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ access_token: 'at' }) })) as unknown as typeof fetch;
     const flow = oauthConnect(OPTS);
     const authUrl = await nextAuthUrl();
+    const realState = authUrl.searchParams.get('state') as string;
 
     const page = await hitCallback(authUrl, { code: 'c', state: 'forged-state' });
     expect(page.status).toBe(400);
 
+    // The real callback, arriving after the forged one, still completes it.
+    await hitCallback(authUrl, { code: 'the-real-code', state: realState });
     const result = await flow;
-    expect(result.ok).toBe(false);
-    expect(result.reason).toMatch(/state mismatch/i);
+    expect(result.ok).toBe(true);
   });
 
-  it('rejects a same-length forged state (exercises the byte compare, not just the length check)', async () => {
+  it('answers a same-length forged state without failing the flow (exercises the byte compare, not just the length check)', async () => {
     // The state comparison uses crypto.timingSafeEqual, which throws on a
     // length mismatch rather than comparing — this pins that the real
-    // rejection path (mismatched bytes at equal length, the actual state
-    // param's length) is also covered, not just the differently-sized
+    // path (mismatched bytes at equal length, the actual state param's
+    // length) is also tolerated, not just the differently-sized
     // 'forged-state' case above.
     const nextAuthUrl = captureAuthUrl();
+    globalThis.fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ access_token: 'at' }) })) as unknown as typeof fetch;
     const flow = oauthConnect(OPTS);
     const authUrl = await nextAuthUrl();
     const realState = authUrl.searchParams.get('state') as string;
@@ -205,9 +216,115 @@ describe('oauthConnect', () => {
     const page = await hitCallback(authUrl, { code: 'c', state: forgedSameLength });
     expect(page.status).toBe(400);
 
+    await hitCallback(authUrl, { code: 'the-real-code', state: realState });
     const result = await flow;
-    expect(result.ok).toBe(false);
-    expect(result.reason).toMatch(/state mismatch/i);
+    expect(result.ok).toBe(true);
+  });
+
+  // ─── Supabase org2 regression: a stray hit at a reused fixed port must
+  // not abort a legitimate, still-in-flight authorization ───
+  it('tolerates a stray no-code hit at a reused fixed port and still completes on the real callback', async () => {
+    const nextAuthUrl = captureAuthUrl();
+    globalThis.fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ access_token: 'at', refresh_token: 'rt' }) })) as unknown as typeof fetch;
+    const flow = oauthConnect({ ...OPTS, redirectPort: 47298, redirectHost: 'localhost' });
+    const authUrl = await nextAuthUrl();
+    const realState = authUrl.searchParams.get('state') as string;
+
+    // e.g. a leftover browser tab from a prior connect replaying its old,
+    // now-stale redirect at the same fixed port — no code, no valid state.
+    const stray = await hitCallback(authUrl, { state: 'stale-from-a-previous-attempt' });
+    expect(stray.status).toBe(400);
+
+    await hitCallback(authUrl, { code: 'the-real-code', state: realState });
+    const result = await flow;
+    expect(result).toMatchObject({ ok: true, access_token: 'at', refresh_token: 'rt' });
+  });
+
+  // ─── Supabase multi-org regression: a fixed-port reconnect must not ───
+  // land on a stale keep-alive connection from a PRIOR attempt.
+  //
+  // Browsers pool/reuse HTTP/1.1 keep-alive connections per host:port.
+  // For a fixed-port provider (redirectPort set), reconnecting the same
+  // connector reuses the same port — and `server.close()` (called after a
+  // successful attempt) only stops *new* connections; it deliberately
+  // leaves an already-open connection alive. A later attempt's real
+  // redirect could land on that stale connection, hitting the FIRST
+  // attempt's handler (and its `state`) instead of the new one's — a
+  // confusing "state mismatch" on an otherwise perfectly correct callback.
+  // Confirmed live: the *received* state matched the new attempt's own
+  // authorize request exactly, but was checked against the previous
+  // attempt's `state`.
+  it('does not let a keep-alive connection from a completed attempt serve the next attempt on the same fixed port', async () => {
+    const agent = new http.Agent({ keepAlive: true });
+    try {
+      const nextAuthUrl = captureAuthUrl();
+      globalThis.fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ access_token: 'at-1' }) })) as unknown as typeof fetch;
+      const flowA = oauthConnect({ ...OPTS, redirectPort: 47297 });
+      const authUrlA = await nextAuthUrl();
+      const stateA = authUrlA.searchParams.get('state') as string;
+
+      const responseA = await hitCallback(authUrlA, { code: 'code-a', state: stateA }, { agent });
+      expect(responseA.headers.connection).toBe('close');
+      const resultA = await flowA;
+      expect(resultA.ok).toBe(true);
+
+      // Real teardown timing: oauthConnect closes the server ~300ms after
+      // resolving, not synchronously — this is the exact window in which a
+      // pooled keep-alive connection could otherwise get reused.
+      await new Promise((r) => setTimeout(r, 400));
+
+      globalThis.fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ access_token: 'at-2' }) })) as unknown as typeof fetch;
+      const flowB = oauthConnect({ ...OPTS, redirectPort: 47297 });
+      const authUrlB = await nextAuthUrl();
+      const stateB = authUrlB.searchParams.get('state') as string;
+
+      // Same Agent instance as request A — if the connection were reused,
+      // this would be routed to attempt A's already-superseded handler
+      // (still checking against stateA) instead of attempt B's server.
+      const responseB = await hitCallback(authUrlB, { code: 'code-b', state: stateB }, { agent });
+      expect(responseB.status).toBe(200);
+      const resultB = await flowB;
+      expect(resultB).toMatchObject({ ok: true, access_token: 'at-2' });
+    } finally {
+      agent.destroy();
+    }
+  });
+
+  // ─── Supabase multi-org regression, part 2: an idle connection that ───
+  // never sent a request must not survive teardown either.
+  //
+  // `Connection: close` + destroying the socket after a response only
+  // cleans up connections that actually completed a request/response cycle.
+  // A browser can also open a connection to an origin speculatively (e.g. a
+  // preconnect) and hold it open without ever sending a request over it —
+  // that socket is still tracked as "open" by the server and wouldn't be
+  // touched by a per-response cleanup at all. If the browser later reuses
+  // that idle socket for the NEXT attempt's real callback, it would still
+  // land on the superseded server. `closeServer()` must force-close every
+  // connection it's tracking on teardown, not just ones that responded.
+  it('destroys an idle connection that never sent a request when the server tears down', async () => {
+    const nextAuthUrl = captureAuthUrl();
+    globalThis.fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ access_token: 'at' }) })) as unknown as typeof fetch;
+    const flow = oauthConnect({ ...OPTS, redirectPort: 47296 });
+    const authUrl = await nextAuthUrl();
+    const state = authUrl.searchParams.get('state') as string;
+    const port = Number(new URL(authUrl.searchParams.get('redirect_uri') as string).port);
+
+    // A connection that never sends a request — simulates a browser's
+    // idle/speculative keep-alive socket to this origin.
+    const idleSocket = net.connect(port, '127.0.0.1');
+    await new Promise<void>((resolve, reject) => {
+      idleSocket.once('connect', () => resolve());
+      idleSocket.once('error', reject);
+    });
+
+    await hitCallback(authUrl, { code: 'the-code', state });
+    await flow;
+
+    // Real teardown timing (300ms after resolving).
+    const closed = new Promise<void>((resolve) => idleSocket.once('close', () => resolve()));
+    await Promise.race([closed, new Promise((r) => setTimeout(r, 1000))]);
+    expect(idleSocket.destroyed || idleSocket.closed).toBe(true);
   });
 
   // ─── ENG-761: no two live loopback attempts ─────────────────────────

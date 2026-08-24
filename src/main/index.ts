@@ -17,7 +17,7 @@ import { oauthConnect, cancelCurrentOAuth } from './oauth-service';
 import { setRefreshToken, deleteRefreshToken, getRefreshToken as getOAuthRefreshToken } from './keychain-service';
 import { OAUTH_CREDENTIALS } from './credentials';
 import { startRefreshLoop, stopRefreshLoop, stopAllRefreshLoops, revokedConnections, getPickerAccess } from './token-refresh';
-import { fetchAccountIdentity } from './oauth-identity';
+import { fetchAccountIdentity, buildRevokeRequest } from './oauth-identity';
 import { openDrivePickerFlow, cancelCurrentDrivePicker, isValidDriveFileIds } from './drive-picker-service';
 import { getPickedFiles, savePickedFiles, verifyPickedFiles, type PickedFile } from './picked-files';
 import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefreshTokenStore, isAccessTokenExpired } from './token-store';
@@ -615,7 +615,7 @@ function setupIPC() {
         accountIdentity = await fetchAccountIdentity(engine, pkceResult.access_token);
       }
       const accountEmail = accountIdentity.email;
-      if (!accountEmail) return { ok: false, reason: 'Could not retrieve account email.' };
+      if (!accountEmail) return { ok: false, reason: accountIdentity.reason || 'Could not retrieve account email.' };
 
       // Store refresh_token in OS keychain — never sent over the network.
       // Absent entirely for a supports_refresh: false connector.
@@ -752,11 +752,26 @@ function setupIPC() {
           const builtinMethod = spec?.form?.methods?.find((m: any) => m.id === 'browser_oauth_builtin');
           const oauthBlock = builtinMethod?.oauth;
           if (oauthBlock?.supports_revoke !== false && oauthBlock?.revoke_url) {
-            await fetch(oauthBlock.revoke_url, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-              body: new URLSearchParams({ token: refreshToken }).toString(),
-            });
+            // Some providers' revoke endpoints require the app's own
+            // client_id/client_secret alongside the token (e.g. Supabase's
+            // JSON-body /v1/oauth/revoke) rather than the generic RFC-7009
+            // form-encoded `token=` shape — fetch credentials the same way
+            // the connect flow above does, best-effort.
+            let clientId = '';
+            let clientSecret = '';
+            try {
+              const credsRes = await fetch(
+                `http://127.0.0.1:${getServerPort()}/api/v1/connectors/oauth/${engine}/credentials`,
+                { headers: authHeader() },
+              );
+              if (credsRes.ok) {
+                const credsData = await credsRes.json() as { client_id?: string; client_secret?: string };
+                clientId = credsData.client_id || '';
+                clientSecret = credsData.client_secret || '';
+              }
+            } catch {}
+            const { headers, body } = buildRevokeRequest(engine, refreshToken, clientId, clientSecret);
+            await fetch(oauthBlock.revoke_url, { method: 'POST', headers, body });
           }
         }
       }

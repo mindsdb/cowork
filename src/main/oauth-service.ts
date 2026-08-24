@@ -174,6 +174,25 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
   const { server: loopbackServer, resultPromise: codePromise } = startLoopbackServer<string>(port, (resolve, reject) => {
     rejectCode = reject;
     return http.createServer((req, res) => {
+      // Force the connection closed after this one response. For a
+      // fixed-port provider (redirectPort set, e.g. Supabase) the *same*
+      // port gets reused across repeated connects of the same connector —
+      // and browsers pool/reuse HTTP/1.1 keep-alive connections per
+      // host:port. Without this, a browser could still be holding a
+      // keep-alive connection open from a PRIOR attempt's success page
+      // (this server calls `server.close()` on completion, but that only
+      // stops accepting *new* connections — it deliberately leaves already
+      // -open ones alive). A later attempt's real redirect could then land
+      // on that stale connection's original handler, which is still
+      // checking against the PRIOR attempt's `state` — producing an
+      // inexplicable state mismatch on an otherwise completely correct
+      // callback (confirmed live: the "received state" matched the new
+      // attempt's own authorize request exactly, but was checked against
+      // the previous attempt's `state`). `Connection: close` plus
+      // destroying the socket after responding guarantees every attempt's
+      // callback is only ever answered by that attempt's own server.
+      res.setHeader('Connection', 'close');
+      res.on('finish', () => { try { req.socket.destroy(); } catch {} });
       try {
         const url = new URL(req.url || '/', `http://127.0.0.1:${port}`);
         if (url.pathname !== '/callback') {
@@ -193,10 +212,16 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
         const code = url.searchParams.get('code');
         const returnedState = url.searchParams.get('state');
         if (!code || !secureEqual(returnedState, state)) {
+          // Don't reject (and tear the server down) on a callback hit that
+          // doesn't carry our exact code+state — a stray hit (a link
+          // preview/prefetch, or anything else that manages to reach this
+          // port) would otherwise abort a legitimate, still-in-flight
+          // authorization moments before its real callback arrives. Respond
+          // blandly and keep listening; only an explicit provider `error`
+          // above, or the overall CALLBACK_TIMEOUT_MS, ends the attempt.
           res.statusCode = 400;
           res.setHeader('Content-Type', 'text/html');
-          res.end(callbackPage('Authorization failed', 'Missing code or state mismatch.'));
-          reject(new Error('OAuth state mismatch or missing authorization code.'));
+          res.end(callbackPage('Waiting for authorization…', 'This tab is not the active sign-in — you can close it.'));
           return;
         }
         res.statusCode = 200;
@@ -291,7 +316,6 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
       access_token: data.access_token,
       expires_in: typeof data.expires_in === 'number' ? data.expires_in : undefined,
       scope: typeof data.scope === 'string' ? data.scope : undefined,
-      token_type: typeof data.token_type === 'string' ? data.token_type : undefined,
     };
   } catch (e: any) {
     if (cancelled) return { ok: false, reason: 'cancelled' };
@@ -367,6 +391,20 @@ function bindFixedPort(port: number): Promise<number> {
 export function closeServer(server: http.Server | null) {
   if (!server) return;
   try { server.close(); } catch {}
+  // `.close()` alone only stops NEW connections — it leaves existing ones
+  // (including ones that never sent a request at all, e.g. a browser's
+  // speculative/idle keep-alive socket to this origin) tracked and alive
+  // until they end on their own. For a fixed-port provider (redirectPort
+  // set, e.g. Supabase) the same port is reused across repeated connects of
+  // the same connector — a later attempt's real callback could land on such
+  // a leftover idle connection and be answered by THIS (superseded)
+  // server's original handler/state instead of the new attempt's. Per-
+  // response `Connection: close` handles connections that complete a
+  // request, but an idle one that never sent a request wouldn't trigger
+  // that path at all — `closeAllConnections()` (Node 18.2+) force-ends
+  // every socket this server is tracking, active or idle, so nothing from
+  // a superseded attempt can ever answer a later one's callback.
+  try { server.closeAllConnections(); } catch {}
 }
 
 export function base64UrlEncode(buf: Buffer): string {

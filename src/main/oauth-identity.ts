@@ -8,6 +8,7 @@
 export interface OAuthIdentity {
   email: string;
   name?: string;
+  reason?: string;
 }
 
 async function fetchGoogleIdentity(accessToken: string): Promise<OAuthIdentity> {
@@ -73,23 +74,40 @@ async function fetchPostHogIdentity(accessToken: string): Promise<OAuthIdentity>
 }
   
 async function fetchSupabaseIdentity(accessToken: string): Promise<OAuthIdentity> {
-  const res = await fetch('https://api.supabase.com/v1/organizations', {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  if (!res.ok) return { email: '' };
+  const headers = { Authorization: `Bearer ${accessToken}` };
+  let organizations: Array<{ slug?: string; name?: string }> = [];
+  let organizationError = '';
 
-  const data = await res.json() as
-    Array<{ slug?: string; name?: string }> |
-    { organizations?: Array<{ slug?: string; name?: string }> };
+  const organizationsRes = await fetch('https://api.supabase.com/v1/organizations', { headers });
+  if (organizationsRes.ok) {
+    const data = await organizationsRes.json() as
+      Array<{ slug?: string; name?: string }> |
+      { organizations?: Array<{ slug?: string; name?: string }> };
+    organizations = Array.isArray(data) ? data : (data.organizations || []);
+  } else {
+    organizationError = `organizations endpoint returned ${organizationsRes.status}`;
+  }
 
-  const organizations = Array.isArray(data) ? data : (data.organizations || []);
-  const organization = organizations[0];
-  const slug = organization?.slug || '';
-  const name = organization?.name || slug;
+  // Organization-scoped grants may reject the account-wide listing. The
+  // projects endpoint remains available and includes organization_slug.
+  if (!organizations.length) {
+    const projectsRes = await fetch('https://api.supabase.com/v1/projects', { headers });
+    if (projectsRes.ok) {
+      const projects = await projectsRes.json() as Array<{
+        organization_slug?: string;
+        organization_name?: string;
+      }>;
+      organizations = projects
+        .filter((project) => project.organization_slug)
+        .map((project) => ({ slug: project.organization_slug, name: project.organization_name }));
+    } else {
+      return { email: '', reason: `Supabase lookup failed (${organizationError}; projects endpoint returned ${projectsRes.status}).` };
+    }
+  }
 
-  // Supabase Management API OAuth does not expose a user email field;
-  // use the organization slug as a stable account identity while retaining
-  // the human-readable organization name for the connection tile.
+  const organization = organizations.find((item) => item.slug) || {};
+  const slug = organization.slug || '';
+  const name = organization.name || slug;
   return { email: slug ? `org:${slug}` : '', name };
 }
 
@@ -117,4 +135,45 @@ export async function fetchAccountIdentity(engine: string, accessToken: string):
 export async function fetchAccountEmail(engine: string, accessToken: string): Promise<string> {
   const { email } = await fetchAccountIdentity(engine, accessToken);
   return email;
+}
+
+export interface RevokeRequest {
+  headers: Record<string, string>;
+  body: string;
+}
+
+// engine -> custom revoke request builder, for providers whose revoke
+// endpoint doesn't fit the generic RFC-7009 form-body shape (a bare
+// `token=<refresh_token>` POST) every other connector uses. Mirrors
+// cowork-server's `_REVOKE_HANDLERS` (oauth/google.py) — kept here rather
+// than in the spec JSON because the request shape is genuinely
+// provider-specific code, the same reasoning FETCHERS above already
+// documents for identity resolution.
+const REVOKE_REQUEST_BUILDERS: Record<
+  string,
+  (refreshToken: string, clientId: string, clientSecret: string) => RevokeRequest
+> = {
+  // Supabase's /v1/oauth/revoke takes a JSON body naming client_id,
+  // client_secret, and specifically refresh_token — not the generic
+  // form-encoded `token` param. Revoking only an access_token isn't
+  // supported and wouldn't remove mindshub from the user's Supabase-side
+  // Authorized Apps list, since that reflects the underlying grant.
+  supabase: (refreshToken, clientId, clientSecret) => ({
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, refresh_token: refreshToken }),
+  }),
+};
+
+/** Request body/headers to POST to a connector's revoke_url. Falls back to
+ * the generic RFC-7009 shape (`token=<refresh_token>`, form-encoded) for any
+ * engine without a custom builder above. */
+export function buildRevokeRequest(
+  engine: string, refreshToken: string, clientId: string, clientSecret: string,
+): RevokeRequest {
+  const builder = REVOKE_REQUEST_BUILDERS[engine];
+  if (builder) return builder(refreshToken, clientId, clientSecret);
+  return {
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ token: refreshToken }).toString(),
+  };
 }
