@@ -7,7 +7,10 @@ import {
   checkChannelConsistency,
 } from './channels';
 import { EXPECTED_API_ORIGIN } from '../../scripts/channel-origins.mjs';
-import { channelIdentity } from '../../scripts/channel-identity.mjs';
+import { channelIdentity, linuxBuilderArgs } from '../../scripts/channel-identity.mjs';
+import { readFileSync } from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 describe('channels — canonical table', () => {
   it('every build kind has a spec whose envSlug matches its apiHost', () => {
@@ -155,12 +158,64 @@ describe('build-script mirrors of the channel table', () => {
       // same convention electron-builder.yml uses for `icon: icon.png`.
       expect(id!.macIcon).toBe(CHANNELS[kind].iconName);
       expect(id!.winIcon).toBe(CHANNELS[kind].iconName);
+      expect(id!.linuxIcon).toBe(CHANNELS[kind].iconName);
     }
     // prod/dev (and unset) get NO overrides — prod must keep the
     // electron-builder.yml identity byte-for-byte; dev is never packaged.
+    // Debian keys on the package name and refuses to unpack two packages over
+    // the same paths, so a channel that shares any of them cannot be installed
+    // beside prod. Lowercase per Debian policy, and labelled the way the S3
+    // alias already labels the channel (mindshub-cowork-staging.deb).
+    expect(channelIdentity('preview')!.linuxName).toBe('mindshub-cowork-preview');
+    expect(channelIdentity('stable')!.linuxName).toBe('mindshub-cowork-staging');
+    for (const kind of ['stable', 'preview'] as const) {
+      expect(channelIdentity(kind)!.linuxName).toMatch(/^[a-z0-9][a-z0-9+.-]+$/);
+    }
+
     expect(channelIdentity('prod')).toBeNull();
     expect(channelIdentity('dev')).toBeNull();
     expect(channelIdentity('')).toBeNull();
     expect(channelIdentity(undefined)).toBeNull();
+  });
+});
+
+// The Linux deb is the only target whose per-channel identity has to change
+// filesystem PATHS as well as labels: dpkg refuses to unpack two packages over
+// the same files, so preview/staging must differ from prod in package name,
+// /opt directory (productName) and executable name, or they cannot coexist.
+describe('channel-identity — linux builder args', () => {
+  it('overrides every name dpkg would otherwise collide on', () => {
+    const args = linuxBuilderArgs('preview');
+    expect(args).toEqual([
+      '-c.appId=com.mindshub.cowork.preview',
+      '-c.productName=MindsHub Cowork (Preview)',
+      '-c.linux.icon=icon-preview.png',
+      '-c.linux.executableName=mindshub-cowork-preview',
+      '-c.deb.packageName=mindshub-cowork-preview',
+    ]);
+  });
+
+  it('leaves prod on the electron-builder.yml identity, byte for byte', () => {
+    expect(linuxBuilderArgs('prod')).toEqual([]);
+    expect(linuxBuilderArgs('dev')).toEqual([]);
+    expect(linuxBuilderArgs('')).toEqual([]);
+  });
+});
+
+// The deb's FILE name should name the package inside it. It was pinned to the
+// literal `mindshub-cowork_`, so a preview build produced a file called
+// mindshub-cowork_… containing package mindshub-cowork-preview. CI renames the
+// artifact before upload, so nothing broke — it just misled anyone reading
+// release/. ${productFilename} resolves to linux.executableName (AppInfo is
+// constructed with the platform options), so it follows the channel for free.
+describe('deb artifact name follows the package name', () => {
+  it('derives the file name from the executable rather than a fixed literal', () => {
+    const yml = readFileSync(
+      path.join(path.dirname(fileURLToPath(import.meta.url)), '../../electron-builder.yml'),
+      'utf8',
+    );
+    const deb = yml.slice(yml.indexOf('\ndeb:'));
+    const artifactName = /^\s*artifactName:\s*"(.+)"\s*$/m.exec(deb)?.[1];
+    expect(artifactName).toBe('${productFilename}_${version}_${arch}.${ext}');
   });
 });

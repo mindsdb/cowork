@@ -42,6 +42,7 @@
     "dist:win:all": "npm run build && node scripts/dist-win.mjs --all",
     "release:win:local": "npm run dist:win",
     "rebuild": "electron-rebuild",
+    "dist:linux": "npm run build && node scripts/run-electron-builder.mjs --linux --publish never",
     "postinstall": "electron-rebuild"
   },
   "devDependencies": {
