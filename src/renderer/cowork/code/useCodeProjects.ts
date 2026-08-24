@@ -4,6 +4,7 @@ import { codingApi, type CodeProject } from './api';
 import { DEFAULT_CODING_AGENT_MODEL } from './defaults';
 
 const LAST_PROJECT_KEY = 'mindshub-code:last-project';
+const NO_PROJECT_STORAGE_VALUE = '__no_code_project__';
 
 
 export function useCodeProjects(sessionProjectId?: string | null) {
@@ -19,8 +20,11 @@ export function useCodeProjects(sessionProjectId?: string | null) {
       setProjects(page.items);
       setError('');
       setSelectedIdState((current) => {
-        const preferred = sessionProjectId || current || localStorage.getItem(LAST_PROJECT_KEY);
-        return page.items.some((item) => item.id === preferred) ? preferred : page.items[0]?.id || null;
+        if (sessionProjectId && page.items.some((item) => item.id === sessionProjectId)) return sessionProjectId;
+        if (current && page.items.some((item) => item.id === current)) return current;
+        const stored = localStorage.getItem(LAST_PROJECT_KEY);
+        if (stored === NO_PROJECT_STORAGE_VALUE) return null;
+        return page.items.some((item) => item.id === stored) ? stored : page.items[0]?.id || null;
       });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Could not load Code Projects.');
@@ -40,7 +44,7 @@ export function useCodeProjects(sessionProjectId?: string | null) {
   const setSelectedId = useCallback((id: string | null) => {
     setSelectedIdState(id);
     if (id) localStorage.setItem(LAST_PROJECT_KEY, id);
-    else localStorage.removeItem(LAST_PROJECT_KEY);
+    else localStorage.setItem(LAST_PROJECT_KEY, NO_PROJECT_STORAGE_VALUE);
   }, []);
 
   const selected = useMemo(

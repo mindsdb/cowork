@@ -2,12 +2,24 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { pickCodeFolder, getPathForFile, codingModels, projectFolders, readSourceContext } = vi.hoisted(() => ({
-  pickCodeFolder: vi.fn(async () => ({ ok: true, path: 'C:\\Users\\Ian & Team\\plain folder' })),
+type FolderPickResult = { ok: boolean; path?: string; cancelled?: boolean; reason?: string };
+
+const {
+  pickCodeFolder,
+  getPathForFile,
+  codingModels,
+  projectFolders,
+  readSourceContext,
+  inspectFolder,
+  updateProject,
+} = vi.hoisted(() => ({
+  pickCodeFolder: vi.fn<() => Promise<FolderPickResult>>(async () => ({ ok: true, path: 'C:\\Users\\Ian & Team\\plain folder' })),
   getPathForFile: vi.fn(() => 'C:\\Users\\Ian\\design.png'),
   codingModels: vi.fn(async () => ({ items: ['mindshub_air', 'gpt-5.6-sol', 'fable', 'sonnet', 'gpt-codex'] })),
   projectFolders: vi.fn(),
   readSourceContext: vi.fn(),
+  inspectFolder: vi.fn(),
+  updateProject: vi.fn(),
 }));
 
 vi.mock('../../platform/host', () => ({
@@ -22,14 +34,8 @@ vi.mock('./api', () => ({
     models: codingModels,
     projectFolders,
     readSourceContext,
-    inspect: vi.fn(async (path: string) => ({
-      path,
-      exists: true,
-      is_directory: true,
-      is_git: false,
-      dirty: false,
-      warning: 'This folder will be edited directly.',
-    })),
+    updateProject,
+    inspect: inspectFolder,
   },
 }));
 
@@ -91,7 +97,17 @@ const projectProps = {
 
 describe('NewTaskPanel', () => {
   beforeEach(() => {
-    pickCodeFolder.mockClear();
+    pickCodeFolder.mockReset();
+    pickCodeFolder.mockResolvedValue({ ok: true, path: 'C:\\Users\\Ian & Team\\plain folder' });
+    inspectFolder.mockReset();
+    inspectFolder.mockImplementation(async (path: string) => ({
+      path,
+      exists: true,
+      is_directory: true,
+      is_git: false,
+      dirty: false,
+      warning: 'This folder will be edited directly.',
+    }));
     codingModels.mockReset();
     codingModels.mockResolvedValue({ items: ['mindshub_air', 'gpt-5.6-sol', 'fable', 'sonnet', 'gpt-codex'] });
     projectFolders.mockResolvedValue({
@@ -107,6 +123,8 @@ describe('NewTaskPanel', () => {
       external_id: 'mindsdb/cowork#42',
       body: 'Issue context',
     }));
+    updateProject.mockReset();
+    updateProject.mockImplementation(async (id: string, body: object) => ({ ...project, id, ...body }));
   });
 
   it('defaults to GPT-5.6 Sol without exposing secondary folder access in task creation', async () => {
@@ -255,6 +273,36 @@ describe('NewTaskPanel', () => {
     }));
   });
 
+  it('puts No project before existing projects and keeps New project visually separate', async () => {
+    const user = userEvent.setup();
+    const onProjectChange = vi.fn();
+    render(
+      <NewTaskPanel
+        busy={false}
+        error=""
+        defaultEngineId="codex"
+        defaultModel="gpt-5.6-sol"
+        models={models}
+        modelMeta={modelMeta}
+        projects={[project]}
+        selectedProjectId={project.id}
+        onProjectChange={onProjectChange}
+        onOpenProjectSettings={vi.fn()}
+        onCreate={vi.fn(async () => {})}
+      />,
+    );
+
+    await user.click(screen.getByRole('combobox', { name: 'Code Project' }));
+    expect(screen.getByText('Project')).toBeInTheDocument();
+    const options = screen.getAllByRole('option');
+    expect(options[0]).toHaveTextContent('No project');
+    expect(options[1]).toHaveTextContent('MindsHub');
+    expect(options.at(-1)).toHaveTextContent('New project');
+
+    await user.click(options[0]);
+    expect(onProjectChange).toHaveBeenCalledWith(null);
+  });
+
   it('offers a direct route to create another Code Project', async () => {
     const user = userEvent.setup();
     const onProjectChange = vi.fn();
@@ -376,6 +424,51 @@ describe('NewTaskPanel', () => {
     })));
   });
 
+  it('uses a connected developer account immediately and assigns it to the selected project', async () => {
+    const user = userEvent.setup();
+    const onProjectConnectionsChange = vi.fn(async () => {});
+    render(
+      <NewTaskPanel
+        busy={false}
+        error=""
+        defaultEngineId="codex"
+        defaultModel="fable"
+        models={models}
+        modelMeta={modelMeta}
+        projects={[project]}
+        selectedProjectId={project.id}
+        connections={[{
+          engine: 'github',
+          name: 'ianu82',
+          display_name: 'Ian on GitHub',
+          status: 'connected',
+        }]}
+        onProjectChange={vi.fn()}
+        onOpenProjectSettings={vi.fn()}
+        onProjectConnectionsChange={onProjectConnectionsChange}
+        onCreate={vi.fn(async () => {})}
+      />,
+    );
+
+    await user.click(await screen.findByRole('button', { name: 'Add issue or PR' }));
+    expect(screen.queryByText('Connect GitHub or Linear to start from an issue or pull request.')).not.toBeInTheDocument();
+    await user.type(
+      screen.getByRole('textbox', { name: 'Issue or pull-request link' }),
+      'https://github.com/mindsdb/cowork/issues/42',
+    );
+    await user.click(screen.getByRole('button', { name: 'Add' }));
+
+    await waitFor(() => expect(updateProject).toHaveBeenCalledWith(project.id, {
+      connections: [{ provider: 'github', name: 'ianu82', label: 'Ian on GitHub' }],
+    }));
+    expect(onProjectConnectionsChange).toHaveBeenCalledOnce();
+    expect(readSourceContext).toHaveBeenCalledWith(project.id, expect.objectContaining({
+      provider: 'github',
+      connection_name: 'ianu82',
+    }));
+    expect(await screen.findByText('Linked issue')).toBeInTheDocument();
+  });
+
   it('turns a pasted issue link into task context without manual connector setup steps', async () => {
     const connectedProject = {
       ...project,
@@ -412,9 +505,10 @@ describe('NewTaskPanel', () => {
     expect(screen.getByRole('textbox', { name: 'Coding task' })).toHaveValue('Work on mindsdb/cowork#42: Linked issue');
   });
 
-  it('enables Start after a prompt and opens project creation when one is missing', async () => {
+  it('starts a no-project task from a chosen local folder without Git ceremony', async () => {
     const user = userEvent.setup();
     const onOpenProjectSettings = vi.fn();
+    const onCreate = vi.fn(async () => {});
     render(
       <NewTaskPanel
         busy={false}
@@ -423,11 +517,11 @@ describe('NewTaskPanel', () => {
         defaultModel="fable"
         models={models}
         modelMeta={modelMeta}
-        projects={[]}
+        projects={[project]}
         selectedProjectId={null}
         onProjectChange={vi.fn()}
         onOpenProjectSettings={onOpenProjectSettings}
-        onCreate={vi.fn(async () => {})}
+        onCreate={onCreate}
       />,
     );
 
@@ -436,10 +530,115 @@ describe('NewTaskPanel', () => {
     expect(screen.queryByText('Describe what you want changed.')).not.toBeInTheDocument();
 
     await user.type(screen.getByRole('textbox', { name: 'Coding task' }), 'Build a small app');
-    expect(start).toBeEnabled();
-    expect(screen.getByText('Choose a Code Project to continue.')).toBeInTheDocument();
+    expect(start).toBeDisabled();
+    expect(screen.getByText('Choose a folder to continue.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Choose folder' }));
+    await waitFor(() => expect(start).toBeEnabled());
+    expect(screen.getByRole('button', { name: /Change folder, currently plain folder/ })).toHaveTextContent('plain folder');
+    expect(screen.queryByText(/Git repository/i)).not.toBeInTheDocument();
+
     await user.click(start);
-    expect(onOpenProjectSettings).toHaveBeenCalledOnce();
+    await waitFor(() => expect(onCreate).toHaveBeenCalledWith({
+      projectId: null,
+      path: 'C:\\Users\\Ian & Team\\plain folder',
+      prompt: 'Build a small app',
+      engineId: 'codex',
+      model: 'fable',
+      permissionMode: 'supervised',
+      attachments: [],
+      sourceContexts: [],
+    }));
+    expect(pickCodeFolder).toHaveBeenCalledOnce();
+    expect(inspectFolder).toHaveBeenCalledWith('C:\\Users\\Ian & Team\\plain folder');
+    expect(onOpenProjectSettings).not.toHaveBeenCalled();
+  });
+
+  it('keeps readiness feedback outside the stable composer surface', async () => {
+    const user = userEvent.setup();
+    const { container } = render(
+      <NewTaskPanel
+        busy={false}
+        error=""
+        defaultEngineId="codex"
+        defaultModel="gpt-5.6-sol"
+        models={models}
+        modelMeta={modelMeta}
+        projects={[project]}
+        selectedProjectId={null}
+        onProjectChange={vi.fn()}
+        onOpenProjectSettings={vi.fn()}
+        onCreate={vi.fn(async () => {})}
+      />,
+    );
+
+    await user.type(screen.getByRole('textbox', { name: 'Coding task' }), 'Keep the layout still');
+    const status = await screen.findByRole('status');
+    const composer = screen.getByRole('region', { name: 'Create coding task' });
+    const statusSlot = container.querySelector('.code-start-status-slot');
+
+    expect(status).toHaveTextContent('Choose a folder to continue.');
+    expect(composer).not.toContainElement(status);
+    expect(statusSlot).toContainElement(status);
+  });
+
+  it('keeps the no-project draft intact when folder selection is cancelled', async () => {
+    pickCodeFolder.mockResolvedValue({ ok: false, cancelled: true });
+    const user = userEvent.setup();
+    render(
+      <NewTaskPanel
+        busy={false}
+        error=""
+        defaultEngineId="codex"
+        defaultModel="gpt-5.6-sol"
+        models={models}
+        modelMeta={modelMeta}
+        projects={[project]}
+        selectedProjectId={null}
+        onProjectChange={vi.fn()}
+        onOpenProjectSettings={vi.fn()}
+        onCreate={vi.fn(async () => {})}
+      />,
+    );
+
+    await user.type(screen.getByRole('textbox', { name: 'Coding task' }), 'Keep this draft');
+    await user.click(screen.getByRole('button', { name: 'Choose folder' }));
+
+    expect(screen.getByRole('textbox', { name: 'Coding task' })).toHaveValue('Keep this draft');
+    expect(screen.getByRole('button', { name: /start task/i })).toBeDisabled();
+    expect(inspectFolder).not.toHaveBeenCalled();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('keeps Start disabled when a chosen standalone folder becomes unavailable', async () => {
+    inspectFolder.mockResolvedValue({
+      path: 'C:\\Users\\Ian & Team\\plain folder',
+      exists: false,
+      is_directory: false,
+      is_git: false,
+      dirty: false,
+    });
+    const user = userEvent.setup();
+    render(
+      <NewTaskPanel
+        busy={false}
+        error=""
+        defaultEngineId="codex"
+        defaultModel="gpt-5.6-sol"
+        models={models}
+        modelMeta={modelMeta}
+        projects={[project]}
+        selectedProjectId={null}
+        onProjectChange={vi.fn()}
+        onOpenProjectSettings={vi.fn()}
+        onCreate={vi.fn(async () => {})}
+      />,
+    );
+
+    await user.type(screen.getByRole('textbox', { name: 'Coding task' }), 'Use this folder');
+    await user.click(screen.getByRole('button', { name: 'Choose folder' }));
+
+    expect(await screen.findByText('That folder is no longer available. Choose another folder.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /start task/i })).toBeDisabled();
   });
 
   it('accepts files dropped onto the task composer', async () => {

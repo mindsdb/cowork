@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import type { ConnectorConnection } from '../api';
 import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
 import Select from '../components/ui/Select';
@@ -9,6 +10,7 @@ import {
   type SourceContext,
 } from './api';
 import {
+  availableDeveloperConnections,
   connectionForSource,
   developerConnections,
   developerProviderLabel,
@@ -20,19 +22,23 @@ import {
 
 export function TaskSourceLinks({
   project,
+  availableConnections,
   value,
   onChange,
   onContextAdded,
   onOpenConnectors,
+  onProjectConnectionsChange,
   autoLinkUrl,
   onAutoLinkHandled,
   busy,
 }: {
   project: CodeProject | null;
+  availableConnections?: ConnectorConnection[];
   value: SourceContext[];
   onChange: (contexts: SourceContext[]) => void;
   onContextAdded: (context: SourceContext) => void;
   onOpenConnectors: () => void;
+  onProjectConnectionsChange?: () => Promise<void> | void;
   autoLinkUrl: string;
   onAutoLinkHandled: () => void;
   busy: boolean;
@@ -42,7 +48,12 @@ export function TaskSourceLinks({
   const [connectionName, setConnectionName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const connections = useMemo(() => developerConnections(project?.connections || []), [project?.connections]);
+  const connections = useMemo(
+    () => availableConnections === undefined
+      ? developerConnections(project?.connections || [])
+      : availableDeveloperConnections(availableConnections),
+    [availableConnections, project?.connections],
+  );
   const target = useMemo(() => parseDeveloperSourceUrl(url), [url]);
   const matchingConnections = useMemo(
     () => target
@@ -68,8 +79,8 @@ export function TaskSourceLinks({
       setOpen(true);
       return;
     }
-    const connection = connectionForSource(project.connections, parsed, connectionName)
-      || connectionForSource(project.connections, parsed);
+    const connection = connectionForSource(connections, parsed, connectionName)
+      || connectionForSource(connections, parsed);
     if (!connection) {
       setError(`Choose the ${developerProviderLabel(parsed.provider)} account this project should use.`);
       setOpen(true);
@@ -78,6 +89,15 @@ export function TaskSourceLinks({
     setLoading(true);
     setError('');
     try {
+      const alreadyAssigned = project.connections.some((item) => (
+        item.provider === connection.provider && item.name === connection.name
+      ));
+      if (!alreadyAssigned) {
+        await codingApi.updateProject(project.id, {
+          connections: [...project.connections, connection],
+        });
+        await onProjectConnectionsChange?.();
+      }
       const context = await codingApi.readSourceContext(project.id, {
         provider: parsed.provider,
         kind: parsed.kind,
@@ -94,7 +114,7 @@ export function TaskSourceLinks({
     } finally {
       setLoading(false);
     }
-  }, [connectionName, onChange, onContextAdded, project, value]);
+  }, [connectionName, connections, onChange, onContextAdded, onProjectConnectionsChange, project, value]);
 
   useEffect(() => {
     if (!autoLinkUrl) return;
