@@ -28,6 +28,12 @@ export default defineConfig({
         'src/main/server-process.ts': { statements: 60, branches: 45 },
         'src/main/ui-updater.ts': { statements: 75, branches: 68 },
         'src/renderer/platform/host.ts': { statements: 38, branches: 32 },
+        // The liveness decision and its store. Pinned for the same reason as the
+        // entries above: these exist because a stale artifact card shipped, and
+        // the value is entirely in the branch table that proves each fail-open
+        // guard still fires.
+        'src/renderer/cowork/lib/artifactLiveness.js': { statements: 97, branches: 91 },
+        'src/renderer/cowork/lib/artifactsStore.js': { statements: 85, branches: 74 },
       },
     },
     projects: [
