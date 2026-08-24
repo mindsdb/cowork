@@ -43,13 +43,14 @@ import { useBreakpoint } from './hooks/useBreakpoint';
 import { useGoogleDrivePicker } from './hooks/useGoogleDrivePicker';
 import { useThemeSkin } from './hooks/useThemeSkin';
 import { useAppUpdates } from './hooks/useAppUpdates';
+import { useSchedules } from './hooks/useSchedules';
 import { fetchSessions, fetchSession, fetchConversationList, fetchProjects, fetchArtifacts, fetchSettings, fetchHealth,
          createProject, updateSettings, streamNewSession, streamMessage,
          streamDataVaultSubmission,
          allocateConversationId, uploadAttachments,
          deleteAttachment, searchCowork, fetchPins, pinTask, unpinTask,
-         recordTaskVisit, fetchSchedules, createSchedule, updateSchedule, deleteSchedule,
-         pauseSchedule, resumeSchedule, runScheduleNow, fetchDatasources, MOCK_DATA,
+         recordTaskVisit,
+         runScheduleNow, fetchDatasources, MOCK_DATA,
          renameConversation, deleteConversation, deleteConversationTurn, moveConversation, moveTaskToProject,
          deleteProject, cancelScratchpad, cancelResponse, fetchConnector,
          fetchSavedConnection, deleteDatasource, deletePickedFile,
@@ -550,12 +551,20 @@ function AppCore() {
     setArtifactTipOpen(false);
     dismissArtifactTip();
   }, []);
-  const [scheduled, setScheduled] = useState([]);
-  // Flat session→schedule map sourced from `GET /v1/schedules`.
-  // Lets TasksView collapse all conversations belonging to one
-  // schedule into a single grouped row instead of listing each
-  // execution separately.
-  const [scheduleRunsIndex, setScheduleRunsIndex] = useState({});
+  // Scheduled-task data + CRUD lifecycle (list, runs index, refresh, and the
+  // create/update/delete/pause/resume handlers) live in useSchedules. The
+  // poll effect, selectedScheduleId, and handleRunScheduleNow stay below —
+  // they cross into the task-list and routing domains.
+  const {
+    scheduled,
+    scheduleRunsIndex,
+    refreshSchedules,
+    handleCreateSchedule,
+    handleUpdateSchedule,
+    handleDeleteSchedule,
+    handlePauseSchedule,
+    handleResumeSchedule,
+  } = useSchedules();
   const [pins, setPins] = useState([]);
   const [connectors, setConnectors] = useState([]);
   const [composerAttachments, setComposerAttachments] = useState([]);
@@ -1489,10 +1498,7 @@ function AppCore() {
       setArtifacts(data);
     });
     fetchPins().then((data) => setPins(data.pins || []));
-    fetchSchedules().then((data) => {
-      setScheduled(data.schedules || []);
-      setScheduleRunsIndex(data.runs_index || {});
-    });
+    refreshSchedules();
     fetchDatasources()
       .then((data) => setConnectors(Array.isArray(data?.connections) ? data.connections : []))
       .catch(() => setConnectors([]));
@@ -2670,12 +2676,9 @@ function AppCore() {
       setSelectedProject(null);
       fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); });
     } else if (key === 'scheduled') {
-      fetchSchedules().then((data) => {
-        setScheduled(data.schedules || []);
-        setScheduleRunsIndex(data.runs_index || {});
-      });
+      refreshSchedules();
     }
-  }, []);
+  }, [refreshSchedules]);
 
   // Detail routes → state (v1). No single-resource loader: resolve the entity
   // client-side from the fetched list, so refresh / deep-link restore the
@@ -2707,11 +2710,8 @@ function AppCore() {
     setRoute('schedule-detail');
     setSelectedScheduleId(scheduleId);
     setConversationError(null);
-    fetchSchedules().then((data) => {
-      setScheduled(data.schedules || []);
-      setScheduleRunsIndex(data.runs_index || {});
-    }).catch(() => {});
-  }, []);
+    refreshSchedules().catch(() => {});
+  }, [refreshSchedules]);
 
   const attachmentProjectPath = currentTask?.projectPath || selectedProject?.path || null;
   const attachmentProjectName = currentTask?.projectName || selectedProject?.name || null;
@@ -4088,14 +4088,6 @@ function AppCore() {
     if (Array.isArray(freshProjects)) setProjects(freshProjects);
   };
 
-  const refreshSchedules = useCallback(async () => {
-    const data = await fetchSchedules();
-    const list = data.schedules || [];
-    setScheduled(list);
-    setScheduleRunsIndex(data.runs_index || {});
-    return list;
-  }, []);
-
   // Diffs the full conversation list against known tasks and adds any
   // unseen ones — catches every new conversation since the last check,
   // not just the most recent one.
@@ -4146,31 +4138,6 @@ function AppCore() {
     }
     return () => { cancelled = true; clearTimeout(timer); };
   }, [scheduleKey, refreshSchedules, syncNewConversations]);
-
-  const handleCreateSchedule = async (payload) => {
-    await createSchedule(payload);
-    await refreshSchedules();
-  };
-
-  const handleUpdateSchedule = async (id, payload) => {
-    await updateSchedule(id, payload);
-    await refreshSchedules();
-  };
-
-  const handleDeleteSchedule = async (id) => {
-    await deleteSchedule(id);
-    await refreshSchedules();
-  };
-
-  const handlePauseSchedule = async (id) => {
-    await pauseSchedule(id);
-    await refreshSchedules();
-  };
-
-  const handleResumeSchedule = async (id) => {
-    await resumeSchedule(id);
-    await refreshSchedules();
-  };
 
   const handleRunScheduleNow = async (id) => {
     const result = await runScheduleNow(id);
