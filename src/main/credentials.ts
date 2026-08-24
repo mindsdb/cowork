@@ -1,6 +1,8 @@
 export interface OAuthCredentials {
   clientIdVar: string;
-  clientSecretVar: string;
+  // Absent for public, PKCE-only providers (PostHog) — there is no
+  // client_secret to configure for those.
+  clientSecretVar?: string;
 }
 
 export const OAUTH_CREDENTIALS: Record<string, OAuthCredentials> = {
@@ -35,5 +37,7 @@ export const OAUTH_CREDENTIALS: Record<string, OAuthCredentials> = {
   supabase: {
     clientIdVar: 'SUPABASE_CLIENT_ID',
     clientSecretVar: 'SUPABASE_CLIENT_SECRET',
+  posthog: {
+    clientIdVar: 'POSTHOG_CLIENT_ID',
   },
 };

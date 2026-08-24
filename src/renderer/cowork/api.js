@@ -11,6 +11,7 @@ import { relativeAge } from './lib/formatTime';
 import { transformSettingsRows, diffSettingsForWrite, mergeRecommendedModels, CLIENT_TO_SERVER } from './lib/settingsTransform';
 import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 import { cacheSettings } from './lib/settingsCache';
+import { setAntonInstallId } from './lib/analytics';
 import {
   buildMemoryDeletePayload,
   buildMemoryWritePayload,
@@ -124,10 +125,30 @@ async function responseError(res, fallback) {
 }
 
 // ─── Health ──────────────────────────────────────────────────────────────────
+// Hands anton's install id to analytics on the way through (ENG-1689). Done
+// here rather than at the call sites because there are five of them and a sixth
+// added later would silently stop reporting the join key; this is the one funnel
+// every health read passes through. Same shape as the `cacheSettings` call
+// below — a lib-level setter written from the transport layer.
+// `setAntonInstallId` self-gates to desktop.
 export async function fetchHealth() {
   try {
-    return await rootReq('/api/v1/health');
+    const health = await rootReq('/api/v1/health');
+    // Isolated: analytics must never decide whether the server looks healthy.
+    // This sits inside fetchHealth's try, so an exception here would fall to the
+    // catch below and report `status: 'offline'` — making an analytics failure
+    // indistinguishable from a down server, on the call that gates boot. Same
+    // rule anton applies to its own reporting ("must never affect the turn").
+    try {
+      setAntonInstallId(health?.aid);
+    } catch {
+      /* ignore — the join key is worth less than a correct readiness answer */
+    }
+    return health;
   } catch {
+    // Deliberately NOT cleared on an outage. Unlike a version, this id is a
+    // stable machine fingerprint — it cannot go stale, and dropping it during a
+    // health blip would strand events that could have carried the join key.
     return { status: 'offline', anton_available: false };
   }
 }
@@ -489,23 +510,49 @@ export async function fetchInFlightStatus(conversationId) {
 // into a local Set so reconcileTaskMessages can synchronously decide
 // "is this conversation alive on the server right now?" without a
 // per-task probe.
+//
+// Returns `null` when the poll itself FAILS (network blip, non-200), as distinct
+// from `[]` (server answered: nothing running). The stranded-slot self-heal
+// counts a missing conversation as evidence its turn ended, so a failed poll must
+// not read as "nothing running" — two blips would abort a healthy streaming turn.
 export async function fetchInFlightList() {
   try {
     const res = await req('/responses/in-flight-list');
     return Array.isArray(res?.in_flight) ? res.in_flight : [];
   } catch {
-    return [];
+    return null;
   }
 }
+
+// A live tail whose producer emits no real frame for this long is treated as
+// dead — the producer is wedged or the sidecar stopped answering, no terminal is
+// coming — so we abort and release the shared stream slot rather than hold it
+// forever. Mirrors the server's REDIS_TAIL_IDLE_TIMEOUT_SECONDS (300s).
+//
+// Timed against producer frames, NOT raw bytes: the server emits a `: keepalive`
+// comment every 20s while a producer is silent, so a byte-level timer would
+// never fire for the hung-producer case this exists to catch. Keepalive blocks
+// carry no `data:` line, so they never parse to an event and never bump the timer.
+const TAIL_IDLE_TIMEOUT_MS = 300_000;
 
 export function tailInFlight(conversationId, {
   fromSeq = 0,
   model = 'anton',
+  idleTimeoutMs = TAIL_IDLE_TIMEOUT_MS,
   onChunk, onProgress, onToolResult, onDone, onError, onEvent,
 } = {}) {
   const ctrl = new AbortController();
+  // Bumped per real producer frame; cleared in the finally so a cleanly
+  // finished tail leaves no dangling timer.
+  let idleTimer = null;
+  let idledOut = false;
+  const bumpIdle = () => {
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => { idledOut = true; ctrl.abort(); }, idleTimeoutMs);
+  };
   (async () => {
     try {
+      bumpIdle();
       const url = `${BASE}/responses/tail?conversation_id=${encodeURIComponent(conversationId)}&from_seq=${fromSeq}&model=${encodeURIComponent(model)}`;
       const res = await authFetch(url, {
         method: 'GET',
@@ -538,6 +585,9 @@ export function tailInFlight(conversationId, {
           if (!raw || raw === '[DONE]') continue;
           let msg;
           try { msg = JSON.parse(raw); } catch { continue; }
+          // Real producer frame — reset the idle window. (Keepalives have no
+          // `data:` line and never reach here, so a silent producer still trips.)
+          bumpIdle();
           onEvent?.(msg);
           switch (msg.type) {
             case 'response.created':
@@ -579,7 +629,22 @@ export function tailInFlight(conversationId, {
       }
       onDone?.(cid);
     } catch (err) {
-      if (err.name !== 'AbortError') onError?.(err.message);
+      // An idle-timeout abort surfaces as an AbortError too, but unlike a
+      // caller-initiated abort (a new send or navigation) it must release the
+      // slot — so report it as an error the reconnect's onError acts on.
+      if (idledOut) {
+        // Tell the server to actually drop the wedged turn. Aborting the tail
+        // only tears down our consumer; the producer keeps running and the next
+        // in-flight poll would re-select it and reopen a fresh tail, looping this
+        // message. cancelResponse is idempotent and swallows errors, so
+        // fire-and-forget is safe.
+        cancelResponse(conversationId);
+        onError?.('The response stalled and was ended. Please try sending again.');
+      } else if (err.name !== 'AbortError') {
+        onError?.(err.message);
+      }
+    } finally {
+      if (idleTimer) clearTimeout(idleTimer);
     }
   })();
   return ctrl;

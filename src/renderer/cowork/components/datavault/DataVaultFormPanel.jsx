@@ -227,8 +227,12 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
 
     // PostHog projects are account-scoped. Users know their project by name,
     // not the numeric ID that the connector engine needs, so discover choices
-    // before posting the generic connector submission.
+    // before posting the generic connector submission. Only applies to the
+    // personal-API-key method — browser_oauth_builtin has no personal_api_key/
+    // host fields to probe with (its own branch below handles project context
+    // differently, or not at all yet).
     if (spec._connector_id === 'posthog' && kind === 'primary'
+      && authMethod !== 'browser_oauth_builtin'
       && !String(values?.project_id || '').trim()
       && !String(values?.posthog_project_choice || '').trim()) {
       setBusy(true);

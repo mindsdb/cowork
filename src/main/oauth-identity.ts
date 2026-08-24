@@ -49,19 +49,47 @@ async function fetchGithubIdentity(accessToken: string): Promise<OAuthIdentity> 
   return { email: data.email || data.login || '' };
 }
 
+// PostHog's OAuth authorize/token endpoints are region-agnostic
+// (oauth.posthog.com), but the resource API is split by region
+// (us.posthog.com / eu.posthog.com) and a token issued for one region isn't
+// guaranteed to be accepted by the other's host. Used by the identity fetch
+// below, which tries US Cloud first (the default/most common case) and falls
+// back to EU Cloud. Note: OAuth-connected PostHog accounts don't currently
+// resolve a project_id (unlike the personal-API-key path) — there's no
+// project-discovery step here.
+export const POSTHOG_API_HOSTS = ['https://us.posthog.com', 'https://eu.posthog.com'] as const;
+
+async function fetchPostHogIdentity(accessToken: string): Promise<OAuthIdentity> {
+  for (const apiHost of POSTHOG_API_HOSTS) {
+    const res = await fetch(`${apiHost}/api/users/@me/`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (res.ok) {
+      const data = await res.json() as { email?: string };
+      return { email: data.email || '' };
+    }
+  }
+  return { email: '' };
+}
+  
 async function fetchSupabaseIdentity(accessToken: string): Promise<OAuthIdentity> {
   const res = await fetch('https://api.supabase.com/v1/organizations', {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
   if (!res.ok) return { email: '' };
-  const data = await res.json() as Array<{ slug?: string; name?: string }> | { organizations?: Array<{ slug?: string; name?: string }> };
+
+  const data = await res.json() as
+    Array<{ slug?: string; name?: string }> |
+    { organizations?: Array<{ slug?: string; name?: string }> };
+
   const organizations = Array.isArray(data) ? data : (data.organizations || []);
   const organization = organizations[0];
   const slug = organization?.slug || '';
   const name = organization?.name || slug;
-  // Supabase Management API OAuth does not expose an email userinfo field;
-  // use the organization slug as a stable account identity instead, while
-  // retaining the human-readable organization name for the connection tile.
+
+  // Supabase Management API OAuth does not expose a user email field;
+  // use the organization slug as a stable account identity while retaining
+  // the human-readable organization name for the connection tile.
   return { email: slug ? `org:${slug}` : '', name };
 }
 
@@ -73,6 +101,7 @@ const FETCHERS: Record<string, (accessToken: string) => Promise<OAuthIdentity>> 
   google_analytics_4: fetchGoogleIdentity,
   linear: fetchLinearIdentity,
   github: fetchGithubIdentity,
+  posthog: fetchPostHogIdentity,
   supabase: fetchSupabaseIdentity,
 };
 

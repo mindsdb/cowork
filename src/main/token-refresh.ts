@@ -129,17 +129,25 @@ async function tick(engine: string, accountEmail: string, key: string): Promise<
     const refreshHeaders: Record<string, string> = {
       'Content-Type': 'application/x-www-form-urlencoded',
     };
+
     if (state.tokenAuthStyle === 'basic') {
-      refreshHeaders.Authorization = `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`;
+      // Supabase authenticates the refresh request with HTTP Basic auth.
+      refreshHeaders.Authorization = `Basic ${Buffer.from(
+        `${clientId}:${clientSecret}`,
+      ).toString('base64')}`;
     } else {
       refreshBody.set('client_id', clientId);
-      refreshBody.set('client_secret', clientSecret);
+      // Public PKCE-only providers such as PostHog must not receive an
+      // empty client_secret.
+      if (clientSecret) refreshBody.set('client_secret', clientSecret);
     }
+
     const res = await fetch(state.tokenUrl, {
       method: 'POST',
       headers: refreshHeaders,
       body: refreshBody.toString(),
     });
+
 
     // Google's token endpoint returns 400 { error: "invalid_grant" } for a
     // revoked/expired refresh token (RFC 6749) — 401 is what its resource
