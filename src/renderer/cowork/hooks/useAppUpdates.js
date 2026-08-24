@@ -11,11 +11,9 @@ import { host } from '../../platform/host';
 // plus the main-process subscriptions that feed all three. No-ops cleanly in
 // web, where `host` returns stubbed getters and noop unsubscribers.
 //
-// Extracted from App.jsx (ENG-1916). Behavior-preserving — every update
-// setter was already confined to this cluster; nothing else in the component
-// reads or writes it. The server-online/health/`refreshData` cluster stays in
-// App.jsx: `refreshData` is the app-wide data loader (it writes tasks,
-// projects, artifacts, settings, …), so that half is not a self-contained move.
+// The server-online/health/`refreshData` cluster stays in App.jsx:
+// `refreshData` is the app-wide data loader (it writes tasks, projects,
+// artifacts, settings, …), so that half is not a self-contained move.
 export function useAppUpdates() {
   // OTA UI update state
   const [updateStatus, setUpdateStatus] = useState(null); // { phase, version }
@@ -27,7 +25,7 @@ export function useAppUpdates() {
     try { return localStorage.getItem('shellUpdateDismissedVersion') || ''; } catch { return ''; }
   });
 
-  // ENG-850 shell updater snapshot. Pull once for renderer reload recovery,
+  // Shell updater snapshot. Pull once for renderer reload recovery,
   // then subscribe to the same authoritative main-process state.
   useEffect(() => {
     let cancelled = false;
