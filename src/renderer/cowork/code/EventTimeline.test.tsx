@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 
 import type { CodingEvent, CodingSession } from './api';
@@ -55,6 +55,7 @@ describe('EventTimeline', () => {
     expect(screen.getAllByText('Failed')).toHaveLength(1);
     expect(screen.getByText('Connection unavailable')).toBeInTheDocument();
     expect(screen.queryByText('Attempt 1 failed')).toBeNull();
+    fireEvent.click(screen.getByText('Connection retried 5 times'));
     expect(screen.getByText('Attempt 5 failed')).toBeInTheDocument();
   });
 
@@ -124,5 +125,15 @@ describe('EventTimeline', () => {
     );
 
     expect(scrollTo.mock.calls.length).toBeGreaterThan(callsAfterFirstChunk);
+    expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ behavior: 'auto' }));
+  });
+
+  it('does not mount large activity details until the user opens them', () => {
+    const command = { ...event(1, 'command', 'very large command output'), title: 'Run tests' };
+    render(<EventTimeline events={[command]} session={session('completed')} />);
+
+    expect(screen.queryByText('very large command output')).toBeNull();
+    fireEvent.click(screen.getByText('Agent activity'));
+    expect(screen.getByText('very large command output')).toBeInTheDocument();
   });
 });

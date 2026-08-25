@@ -20,6 +20,11 @@ import './code-skills.css';
 type OriginFilter = 'all' | SkillLibraryItem['origin'];
 
 const EMPTY_LIBRARY: SkillLibraryPage = { sources: [], items: [] };
+// CodeView intentionally swaps its first-class screens rather than hiding all
+// of them in the DOM. Retain the last successful catalogue across those
+// mounts so returning to Skills is instant; every mount still revalidates in
+// the background and all mutations replace this cache.
+let libraryCache: SkillLibraryPage | null = null;
 
 function kindLabel(kind: SkillLibraryItem['kind']): string {
   if (kind === 'instructions') return 'Instructions';
@@ -217,8 +222,8 @@ function SkillSourceModal({
 }
 
 export function CodeSkillsView({ projects }: { projects: CodeProject[] }) {
-  const [library, setLibrary] = useState<SkillLibraryPage>(EMPTY_LIBRARY);
-  const [loading, setLoading] = useState(true);
+  const [library, setLibrary] = useState<SkillLibraryPage>(() => libraryCache || EMPTY_LIBRARY);
+  const [loading, setLoading] = useState(() => libraryCache == null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
@@ -233,10 +238,16 @@ export function CodeSkillsView({ projects }: { projects: CodeProject[] }) {
   const [detailItem, setDetailItem] = useState<SkillLibraryItem | null>(null);
 
   const load = useCallback(async () => {
-    setLoading(true);
-    try { setLibrary(await codingApi.skillLibrary()); setError(''); }
+    const needsInitialContent = libraryCache == null;
+    if (needsInitialContent) setLoading(true);
+    try {
+      const next = await codingApi.skillLibrary();
+      libraryCache = next;
+      setLibrary(next);
+      setError('');
+    }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not load the Skills Library.'); }
-    finally { setLoading(false); }
+    finally { if (needsInitialContent) setLoading(false); }
   }, []);
 
   useEffect(() => { void load(); }, [load]);
