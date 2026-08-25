@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { deriveUpdateBanner, SHELL_AUTO_BANNER_PHASES } from './update-banner';
+import { deriveUpdateBanner, shellAutoOwnsBanner, SHELL_AUTO_BANNER_PHASES } from './update-banner';
+import { transitionShellUpdate, type ShellUpdateSnapshot } from '../main/shell-update-state';
 
 describe('deriveUpdateBanner', () => {
   it('returns null when nothing is pending', () => {
@@ -58,11 +59,18 @@ describe('deriveUpdateBanner', () => {
       expect(deriveUpdateBanner({ shellAuto: { phase: 'failed', recoverable: false, targetVersion: 'sh-1' } })).toMatchObject({ tone: 'error', actionLabel: 'Download', action: 'shell-auto' });
     });
 
-    it('a failed phase only banners when targetVersion proves an update was found', () => {
-      // A real download/install failure keeps targetVersion → banner.
-      expect(deriveUpdateBanner({ shellAuto: { phase: 'failed', recoverable: true, targetVersion: 'sh-1' } })?.kind).toBe('shell-auto');
-      // A check-only failure (rejected checkForUpdates) has no targetVersion → nothing.
-      expect(deriveUpdateBanner({ shellAuto: { phase: 'failed', recoverable: true } })).toBeNull();
+    it('a failed phase owns the TOP slot only when targetVersion proves an update was found', () => {
+      expect(shellAutoOwnsBanner({ phase: 'failed', recoverable: true, targetVersion: 'sh-1' })).toBe(true);
+      expect(shellAutoOwnsBanner({ phase: 'failed', recoverable: true })).toBe(false);
+      expect(shellAutoOwnsBanner({ phase: 'ready-to-install' })).toBe(true);
+      expect(shellAutoOwnsBanner({ phase: 'idle' })).toBe(false);
+    });
+
+    it('a targetless failure is still SHOWN (Retry survives a failed retry check), not dropped', () => {
+      // Minor fix: a retry check clears targetVersion; if it also fails, the
+      // Retry affordance must not vanish.
+      const b = deriveUpdateBanner({ shellAuto: { phase: 'failed', recoverable: true } });
+      expect(b).toMatchObject({ kind: 'shell-auto', actionLabel: 'Retry', action: 'shell-auto' });
     });
 
     it('passive phases surface no shell banner', () => {
@@ -142,5 +150,33 @@ describe('deriveUpdateBanner', () => {
         }
       }
     }
+  });
+
+  // Drives the real reducer so the target-clearing behavior the ranking depends
+  // on can't silently change underneath deriveUpdateBanner.
+  describe('sequence: download failure → Retry → check failure (against the real state machine)', () => {
+    it('keeps Retry alive and never hides OTA across the retry', () => {
+      let s: ShellUpdateSnapshot = { phase: 'idle', mode: 'auto', channel: 'prod', currentVersion: '1.0.0' };
+      s = transitionShellUpdate(s, { type: 'CHECK_REQUESTED', trigger: 'periodic' });
+      s = transitionShellUpdate(s, { type: 'UPDATE_FOUND', targetVersion: '2.0.0' });
+      s = transitionShellUpdate(s, { type: 'FAILED', code: 'download-failed', recoverable: true });
+
+      // A real download failure retains the target → owns the top slot over OTA.
+      expect(s.phase).toBe('failed');
+      expect(s.targetVersion).toBe('2.0.0');
+      expect(deriveUpdateBanner({ ota: { phase: 'available' }, shellAuto: s })?.kind).toBe('shell-auto');
+
+      // Retry starts a fresh check, clearing the target; the check then fails.
+      s = transitionShellUpdate(s, { type: 'CHECK_REQUESTED', trigger: 'retry' });
+      expect(s.targetVersion).toBeUndefined();
+      s = transitionShellUpdate(s, { type: 'FAILED', code: 'check-failed', recoverable: true });
+      expect(s.phase).toBe('failed');
+      expect(s.targetVersion).toBeUndefined();
+
+      // Now targetless: it must no longer hide OTA…
+      expect(deriveUpdateBanner({ ota: { phase: 'available' }, shellAuto: s })?.kind).toBe('ota-ready');
+      // …but the Retry affordance survives when nothing else is pending.
+      expect(deriveUpdateBanner({ shellAuto: s })).toMatchObject({ kind: 'shell-auto', actionLabel: 'Retry' });
+    });
   });
 });

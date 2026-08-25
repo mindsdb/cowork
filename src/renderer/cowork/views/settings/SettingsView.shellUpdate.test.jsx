@@ -113,10 +113,10 @@ describe('SettingsView desktop — shell auto-update lifecycle (ENG-850)', () =>
     expect(onInstallShellAutoUpdate).toHaveBeenCalledTimes(1);
   });
 
-  it('a check-only failure (no targetVersion) does not hide the UI/server Restart card', async () => {
-    // A rejected background check leaves phase 'failed' with no targetVersion —
-    // nothing was found to update to, so it must not present a failed card or
-    // suppress a valid OTA update (a shell feed outage otherwise hides Restart).
+  it('a targetless shell failure keeps its Retry card but does not hide the UI/server Restart card', async () => {
+    // A failure with no targetVersion (rejected check / failed retry check) still
+    // shows its own Retry card, but must NOT suppress a valid OTA update — a shell
+    // feed outage would otherwise hide the UI/server Restart. Both cards coexist.
     host.checkForUpdates.mockResolvedValueOnce({
       ok: true, offline: false, updateAvailable: true,
       uiUpdateAvailable: true, uiVersion: '2.26.7.20.1',
@@ -127,12 +127,16 @@ describe('SettingsView desktop — shell auto-update lifecycle (ENG-850)', () =>
         {...baseProps}
         shellUpdate={null}
         shellAutoUpdate={{ phase: 'failed', mode: 'auto', channel: 'prod', currentVersion: '2.26.7.13.1', recoverable: true }}
+        onRetryShellAutoUpdate={vi.fn()}
         onDownloadShellUpdate={vi.fn()}
       />
     );
     fireEvent.click(screen.getByRole('button', { name: /Check for updates/ }));
+    // OTA card not hidden…
     expect(await screen.findByRole('button', { name: /Restart now/ })).toBeInTheDocument();
-    expect(screen.queryByText(/App update failed/)).toBeNull();
+    // …and the shell failure's Retry affordance is preserved.
+    expect(screen.getByText(/App update failed/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Retry/ })).toBeInTheDocument();
   });
 });
 

@@ -225,12 +225,13 @@ export default function UpdatesSection({
               // manual installer-download card only surfaces as a fallback when
               // auto-update isn't running or has failed (ENG-850).
               const autoPhase = shellAutoUpdate?.phase;
-              // A check-only failure (rejected background check) has no
-              // targetVersion — nothing was found to update to — so it must not
-              // present a card or suppress the OTA one (a shell feed outage would
-              // otherwise hide a valid UI/server Restart).
-              const checkOnlyFailure = autoPhase === 'failed' && !shellAutoUpdate?.targetVersion;
-              const autoVisible = !!autoPhase && !['disabled', 'idle', 'complete'].includes(autoPhase) && !checkOnlyFailure;
+              // A failure with no targetVersion (a rejected background check, or a
+              // retry whose check cleared the target and failed) still shows its
+              // own Retry card, but is NOT a pending shell update — so it must not
+              // suppress the OTA card below (a shell feed outage would otherwise
+              // hide a valid UI/server Restart).
+              const targetlessFailure = autoPhase === 'failed' && !shellAutoUpdate?.targetVersion;
+              const autoVisible = !!autoPhase && !['disabled', 'idle', 'complete'].includes(autoPhase);
               const manualFallback = shellPending && (!autoVisible || autoPhase === 'failed');
               let status = null;
               if (!checkingUpdates && r) {
@@ -246,8 +247,9 @@ export default function UpdatesSection({
               const isUpToDate = !checkingUpdates && !!r && r.ok && !r.updateAvailable;
               // Shell-first (mirrors deriveUpdateBanner): a pending shell update's
               // relaunch also applies UI/server OTA at boot, so suppress the
-              // redundant "Restart now" card and show one update surface.
-              const shellSurface = autoVisible || manualFallback;
+              // redundant "Restart now" card. A targetless failure isn't pending,
+              // so it never suppresses OTA (both cards may show).
+              const shellSurface = (autoVisible && !targetlessFailure) || manualFallback;
               const applyAvailable = !checkingUpdates && !!r && r.ok && !shellSurface && (r.uiUpdateAvailable || r.serverUpdateAvailable);
               const busy = checkingUpdates || applyingUpdate;
               const parts = [];

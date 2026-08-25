@@ -8,9 +8,12 @@
 // Priority is SHELL-FIRST: a shell relaunch also auto-applies any pending
 // UI/server OTA at boot, so whenever a shell update is pending it owns the slot
 // and the weaker OTA "Restart" (reload-only) is suppressed. "Pending" excludes a
-// check-only shell failure (see shellAutoOwnsBanner), which must not hide a valid
-// OTA. shellAuto and shellManual are mutually exclusive at the source, but the
-// ordering is safe even if they ever overlap.
+// shell failure with no known target (see shellAutoOwnsBanner) — it must not hide
+// a valid OTA, so it drops to the BOTTOM of the ladder rather than the top:
+//   shell-owned  ►  shell-manual  ►  OTA  ►  targetless shell failure  ►  none
+// Ranking it last (not dropping it) keeps its Retry/Download affordance alive
+// even after a failed retry check clears the target. shellAuto and shellManual
+// are mutually exclusive at the source, but the ordering is safe if they overlap.
 
 /** Shell auto-updater phases that can own a banner. Passive phases
  *  (disabled/idle/checking/complete) surface nothing, leaving the slot for an
@@ -23,15 +26,15 @@ export const SHELL_AUTO_BANNER_PHASES = [
   'failed',
 ] as const;
 
-/** Does this shell-auto snapshot warrant owning the (shell-first) banner slot?
+/** Does this shell-auto snapshot warrant owning the top (shell-first) banner slot?
  *
- *  A `failed` phase is only a *pending shell update* when `targetVersion` proves
- *  an update was actually found (set by UPDATE_FOUND / DOWNLOAD_COMPLETE and
- *  retained through a download/install failure). A check-only failure — a
- *  rejected checkForUpdates() — transitions from `checking`, which cleared
- *  `targetVersion`, so it has none; treating it as pending would let a shell
- *  feed outage outrank and hide a valid OTA "Restart". So a targetless `failed`
- *  surfaces no banner and falls through to OTA/manual. */
+ *  A `failed` phase owns the top slot only when `targetVersion` proves an update
+ *  was actually found (set by UPDATE_FOUND / DOWNLOAD_COMPLETE and retained
+ *  through a download/install failure). A failure with no target — a rejected
+ *  checkForUpdates(), or a *retry* whose CHECK_REQUESTED cleared the target and
+ *  then failed — must not outrank a valid OTA "Restart", so it does not own the
+ *  top slot. It is still rendered at the BOTTOM of deriveUpdateBanner's ladder,
+ *  so its Retry/Download affordance survives a failed retry check. */
 export function shellAutoOwnsBanner(
   shellAuto: NonNullable<UpdateBannerInput['shellAuto']>,
 ): boolean {
@@ -152,6 +155,13 @@ export function deriveUpdateBanner(input: UpdateBannerInput): UpdateBanner | nul
       dismissible: false,
       version: otaVersion,
     };
+  }
+
+  // Bottom of the ladder: a shell failure with no known target (a failed retry
+  // check that cleared the target, or a check-only outage). It never outranks
+  // OTA/manual above, but is shown here so Retry/Download survives.
+  if (shellAuto?.phase === 'failed') {
+    return shellAutoBanner(shellAuto);
   }
 
   return null;
