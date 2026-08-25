@@ -23,11 +23,14 @@ import {
   type PlaybookStatus,
   type ProjectCommand,
   type ProjectFolder,
+  type ProjectSkillSource,
+  type SkillLibraryItem,
 } from './api';
 import { formatCommandLine, parseCommandLine } from './commandLine';
 import { DEFAULT_CODING_AGENT_MODEL, preferredCodingModel } from './defaults';
 import { isPermissionMode, PERMISSION_OPTIONS } from './permissions';
 import { ProjectConnectedTools } from './ProjectConnectedTools';
+import { ProjectSkillSelector } from './ProjectSkillSelector';
 
 const supportedProviders = new Set(['github', 'linear']);
 
@@ -67,7 +70,7 @@ export function ProjectSettingsModal({
   onSave,
   onDelete,
   onOpenConnectors = () => {},
-  onOpenSkills = () => {},
+  onSkillsSaved = async () => {},
   defaultEngineId = 'codex',
   defaultModel = DEFAULT_CODING_AGENT_MODEL,
   models = [],
@@ -82,7 +85,7 @@ export function ProjectSettingsModal({
   onSave: (values: Partial<CodeProject> & Pick<CodeProject, 'name' | 'folders'>) => Promise<CodeProject>;
   onDelete?: () => Promise<void>;
   onOpenConnectors?: () => void;
-  onOpenSkills?: () => void;
+  onSkillsSaved?: () => Promise<void>;
   defaultEngineId?: string;
   defaultModel?: string;
   models?: ModelPickerSource[];
@@ -92,6 +95,11 @@ export function ProjectSettingsModal({
   const [folders, setFolders] = useState<ProjectFolder[]>([]);
   const [commandDrafts, setCommandDrafts] = useState<Record<string, string>>({});
   const [selectedConnections, setSelectedConnections] = useState<string[]>([]);
+  const [skillItems, setSkillItems] = useState<SkillLibraryItem[]>([]);
+  const [selectedSkillSources, setSelectedSkillSources] = useState<ProjectSkillSource[]>([]);
+  const [skillsLoading, setSkillsLoading] = useState(false);
+  const [skillsError, setSkillsError] = useState('');
+  const [skillsSaving, setSkillsSaving] = useState(false);
   const [environmentText, setEnvironmentText] = useState('');
   const [portNames, setPortNames] = useState('PORT');
   const [projectEngineId, setProjectEngineId] = useState(defaultEngineId);
@@ -151,6 +159,10 @@ export function ProjectSettingsModal({
       [`${folder.id}:validate`, formatCommandLine(folder.commands.find((item) => item.phase === 'validate')?.argv || [])],
     ])));
     setSelectedConnections((project?.connections || []).map((item) => `${item.provider}:${item.name}`));
+    setSelectedSkillSources((project?.skill_sources || []).map((source) => ({
+      ...source,
+      enabled_paths: [...source.enabled_paths],
+    })));
     setEnvironmentText(Object.entries(project?.environment.variables || {}).map(([key, value]) => `${key}=${value}`).join('\n'));
     setPortNames((project?.environment.port_names || ['PORT']).join(', '));
     setEngineModelIds([]);
@@ -170,6 +182,23 @@ export function ProjectSettingsModal({
   // object here would erase the in-progress playbook fields on a recoverable
   // clone/fetch error.
   }, [defaultEngineId, defaultModel, open, project?.id, suspended]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    let active = true;
+    setSkillsLoading(true);
+    codingApi.skillLibrary().then((library) => {
+      if (!active) return;
+      setSkillItems(library.items);
+      setSkillsError('');
+    }).catch((reason) => {
+      if (!active) return;
+      setSkillsError(reason instanceof Error ? reason.message : 'Could not load team skills.');
+    }).finally(() => {
+      if (active) setSkillsLoading(false);
+    });
+    return () => { active = false; };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -237,6 +266,7 @@ export function ProjectSettingsModal({
   const save = async () => {
     if (!name.trim()) { setError('Name this Code Project.'); return; }
     if (!folders.length) { setError('Add at least one folder.'); return; }
+    setSkillsSaving(true);
     try {
       const normalizedFolders = folders.map((folder) => {
         const commands = (['setup', 'validate'] as const).flatMap((phase) => {
@@ -258,24 +288,35 @@ export function ProjectSettingsModal({
         return [line.slice(0, separator).trim(), line.slice(separator + 1)];
       }));
       const parsedPortNames = portNames.split(/[\s,]+/).map((item) => item.trim()).filter(Boolean);
-      await onSave({
+      const saved = await onSave({
         name: name.trim(), folders: normalizedFolders, connections: projectConnections,
         environment: { variables, port_names: parsedPortNames },
         default_engine_id: projectEngineId,
         default_model: projectModel,
         permission_mode: projectPermission,
       });
+      const previousBySource = new Map((project?.skill_sources || []).map((source) => [source.source_id, source.enabled_paths]));
+      const nextBySource = new Map(selectedSkillSources.map((source) => [source.source_id, source.enabled_paths]));
+      const sourceIds = new Set([...previousBySource.keys(), ...nextBySource.keys()]);
+      for (const sourceId of sourceIds) {
+        const before = [...(previousBySource.get(sourceId) || [])].sort();
+        const after = [...(nextBySource.get(sourceId) || [])].sort();
+        if (before.length === after.length && before.every((path, index) => path === after[index])) continue;
+        await codingApi.setProjectSkillSource(saved.id, sourceId, after);
+      }
+      await onSkillsSaved();
       onClose();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Could not save this Code Project.');
     } finally {
       setPlaybookBusy(false);
+      setSkillsSaving(false);
     }
   };
 
   return (
     <>
-    <Modal open={open} onClose={onClose} size="md" labelledBy="code-project-settings-title" closeOnBackdrop={!busy} closeOnEsc={!busy}>
+    <Modal open={open} onClose={onClose} size="md" labelledBy="code-project-settings-title" closeOnBackdrop={!busy && !skillsSaving} closeOnEsc={!busy && !skillsSaving}>
       <ModalHeader
         id="code-project-settings-title"
         title={project ? 'Project settings' : 'New Code Project'}
@@ -325,15 +366,14 @@ export function ProjectSettingsModal({
           <section className="code-project-section code-project-skills">
             <div className="code-project-section__heading">
               <div><strong>Skills</strong><span>Team standards and workflows available to every task in this project</span></div>
-              {project && <Button size="sm" variant="subtle" onClick={onOpenSkills}>Manage skills</Button>}
             </div>
-            {project ? <div className="code-project-skills__summary">
-              <span className="code-team-setup__icon" aria-hidden="true">{Ico.cube(16)}</span>
-              <div>
-                <strong>{project.skill_sources?.reduce((total, source) => total + source.enabled_paths.length, 0) || 0} team items enabled</strong>
-                <span>{project.skill_sources?.length ? `${project.skill_sources.length} shared source${project.skill_sources.length === 1 ? '' : 's'}` : 'Choose from the organisation Skills Library'}</span>
-              </div>
-            </div> : <div className="code-project-skills__draft">Save this project, then choose skills from the organisation library.</div>}
+            <ProjectSkillSelector
+              items={skillItems}
+              selected={selectedSkillSources}
+              loading={skillsLoading}
+              error={skillsError}
+              onChange={setSelectedSkillSources}
+            />
 
             {project?.playbook && (
               <details className="code-project-legacy-setup">
@@ -436,8 +476,8 @@ export function ProjectSettingsModal({
       <ModalFooter align={project && onDelete ? 'space-between' : 'flex-end'}>
         {project && onDelete && <Button variant="subtle" disabled={busy} onClick={() => setDeleteOpen(true)}>Delete project</Button>}
         <div className="code-project-footer-actions">
-          <Button variant="subtle" onClick={onClose} disabled={busy}>Cancel</Button>
-          <Button variant="primary" onClick={() => void save()} disabled={busy || playbookBusy || !name.trim() || !folders.length}>{busy || playbookBusy ? 'Saving…' : 'Save project'}</Button>
+          <Button variant="subtle" onClick={onClose} disabled={busy || skillsSaving}>Cancel</Button>
+          <Button variant="primary" onClick={() => void save()} disabled={busy || skillsSaving || playbookBusy || !name.trim() || !folders.length}>{busy || skillsSaving || playbookBusy ? 'Saving…' : 'Save project'}</Button>
         </div>
       </ModalFooter>
     </Modal>

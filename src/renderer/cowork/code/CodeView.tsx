@@ -489,7 +489,7 @@ export default function CodeView({
           setConnectorReturnProjectId(projectEditor?.id || null);
           onOpenConnectors();
         }}
-        onOpenSkills={onOpenSkills}
+        onSkillsSaved={projects.load}
         onDelete={projectEditor?.id ? async () => {
           setProjectBusy(true);
           try {
