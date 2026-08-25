@@ -18,7 +18,7 @@
 
 import { MINDS_API_BASE } from '../../lib/mindsUrls';
 import { mindsServesOpenAiCompatible, endpointHost } from '../../../shared/minds-endpoint';
-import { isMovingAlias, isFrozenAlias, hasFrozenVersions, orderByFamily } from './modelCatalog';
+import { isMovingAlias, isFrozenAlias, hasFrozenVersions, isModelLocked, orderByFamily } from './modelCatalog';
 
 // ─── Key maps ──────────────────────────────────────────────────────────
 
@@ -369,8 +369,9 @@ export function resolveModelPickerValue(curModel, modelList, allowOther, forceCu
  * @param {boolean} allowOther  whether to append the "Other…" custom-id entry
  * @param {boolean} showStalePin from resolveModelPickerValue
  * @param {Record<string, boolean>} modelEnabled per-model availability map
- *   (settings.modelEnabled); a model mapped to `false` renders selectable
- *   with a "Needs credits" tag (ENG-1248).
+ *   (settings.modelEnabled); a model mapped to `false` renders disabled, tagged
+ *   "Needs credits", and flagged `locked` so the picker puts an "Add credits"
+ *   button on the row.
  * @param {Record<string, string>} modelLabels per-model display label
  *   (settings.modelLabels, MindsHub-supplied). Display-only — the id/alias
  *   passed as `value` is still what's saved/resolved everywhere else. A
@@ -387,7 +388,7 @@ export function buildModelOptions(
   meta = {},
 ) {
   const list = Array.isArray(modelList) ? modelList : [];
-  const isLocked = (m) => modelEnabled[m] === false;
+  const isLocked = (m) => isModelLocked(modelEnabled, m);
   const labelFor = (m) => displayModelLabel(m, modelLabels);
 
   const { modelProviders = {}, modelFamilies = {} } = meta || {};
@@ -437,14 +438,29 @@ export function buildModelOptions(
 
   const modelOption = (m) => {
     const tag = tagFor(m);
+    const locked = isLocked(m);
     return {
       value: m,
       label: labelFor(m),
-      // A model the wallet can't currently pay for stays selectable: the wall
-      // moves to use time, where the top-up card offers a way out. A disabled
-      // row was a dead end, and the call site derives its own top-up hint from
-      // the same modelEnabled map.
-      disabled: false,
+      /*
+       * A model the wallet can't currently pay for can't be picked. Letting it
+       * be picked meant the turn ran a different, affordable model instead,
+       * because resolution substitutes a pin it knows will be denied. So the
+       * user was told one model wrote their code while another did.
+       *
+       * The row stays visible so the model is still discoverable, and `locked`
+       * is what ModelSelect turns into the "Add credits" button on the row.
+       * Closing the pick without that button would leave the row naming an
+       * action it does not offer: the call site's top-up hint only renders when
+       * the CURRENT model is locked, so it says nothing to someone sitting on an
+       * affordable model and looking at one they can't pay for.
+       *
+       * A stored pin that is locked also still renders here, disabled and
+       * selected, which is what keeps a saved value from ever being a value with
+       * no matching option.
+       */
+      disabled: locked,
+      ...(locked ? { locked: true } : {}),
       ...(tag ? { tag } : {}),
       // MindsHub's authoritative serving-vendor field, which decides the picker
       // section. Absent for every BYOK provider, where it falls back to inference.
@@ -467,12 +483,11 @@ export function buildModelOptions(
           pin: 'top',
         }]
       : []),
-    // Wallet-based access (ENG-412, #434), pay-as-you-go shape (ENG-1248): a
-    // model the org's wallet can't currently pay for stays selectable, and the
-    // "Needs credits" state rides in the same pill as the version state rather
-    // than in the label. A disabled row was a dead end (click did nothing, no
-    // route to credits), and the label suffix ate the width (truncated
-    // "…Add credits to unl.").
+    // Wallet-based access, pay-as-you-go shape: a model the org's wallet can't
+    // currently pay for renders disabled, carrying the route to credits on the
+    // row. The "Needs credits" state rides in the same pill as the version state
+    // rather than in the label, because a label suffix ate the width and
+    // truncated to "…Add credits to unl.".
     ...ordered.map(modelOption),
     ...(allowOther ? [{ value: '__custom__', label: 'Other…', pin: 'bottom' }] : []),
   ];

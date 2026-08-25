@@ -168,6 +168,10 @@ contextBridge.exposeInMainWorld('antontron', {
     return () => ipcRenderer.removeListener(IPC.UI_UPDATE_STATUS, listener);
   },
 
+  // Resolves once the boot sequence settles; the renderer awaits this before
+  // leaving the loading screen so a boot update can't flash the UI (ENG-749).
+  awaitBootReady: () => ipcRenderer.invoke(IPC.BOOT_AWAIT_READY),
+
   // App
   getPlatform: () => process.platform,
   getUIVersion: () => ipcRenderer.invoke(IPC.APP_UI_VERSION),

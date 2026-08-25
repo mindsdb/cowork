@@ -28,6 +28,7 @@ import {
   shellUpdateIsNewer,
   shellDownloadUrl,
   shellAutoUpdateIsActive,
+  shellManualNoticeIsFallback,
   summarizeUpdateCheck,
 } from './update-logic';
 
@@ -963,6 +964,23 @@ describe('shellAutoUpdateIsActive', () => {
     ['failed', false],
   ])('%s → %s', (phase, expected) => {
     expect(shellAutoUpdateIsActive(phase)).toBe(expected);
+  });
+});
+
+describe('shellManualNoticeIsFallback (ENG-1739: dedupe redundant shell polling)', () => {
+  it.each([
+    ['disabled', undefined, true],   // auto-update off → manual notice is the path
+    ['failed', false, true],         // terminal failure → fall back to manual installer
+    ['failed', true, false],         // recoverable failure still retries via auto-updater
+    ['idle', undefined, false],      // healthy: electron-updater owns it, skip manifest poll
+    ['checking', undefined, false],
+    ['available', undefined, false],
+    ['downloading', undefined, false],
+    ['ready-to-install', undefined, false],
+    ['installing', undefined, false],
+    ['complete', undefined, false],
+  ])('%s (recoverable=%s) → %s', (phase, recoverable, expected) => {
+    expect(shellManualNoticeIsFallback(phase, recoverable)).toBe(expected);
   });
 });
 

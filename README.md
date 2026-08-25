@@ -348,6 +348,42 @@ The GUI provides a visual `/connect` flow:
 6. Writes mind's system prompt to project cortex
 7. Auto-restarts the server to pick up new config
 
+### A model the wallet can't pay for is not selectable
+
+MindsHub's `/v1/models` marks each model with whether the org can pay for it
+right now: a paid model on a drained wallet, or any model once a free org has
+spent its monthly included allowance, arrives as `enabled: false`. That map
+reaches the renderer as `settings.modelEnabled`, and `isModelLocked`
+(`lib/modelCatalog.js`) is the single definition both pickers read, so the
+Settings rows and the composer's menu can never disagree about what a user may
+choose.
+
+A locked model renders **visible, tagged "Needs credits", disabled, and
+carrying an "Add credits" button**. It stays on screen so the model is still
+discoverable, and the button is what keeps the row from naming an action it does
+not offer: once the row is closed off it is no longer a click target, so a tag
+and a tooltip would leave a user told to add credits with nowhere to do it.
+`ModelSelect` attaches that button from the option's `locked` flag, so Settings
+and the composer cannot end up offering different ways out.
+
+Settings additionally puts a "Top up your balance" link under the picker, but
+only when the **current** model is locked — the stranded-pin case, where the
+wallet drained under a model already saved. It says nothing about a row the user
+is merely looking at, which is why the button on the row is the general answer
+and the hint is the specific one.
+
+Why it is not merely tagged: `cowork-server` resolves a stored model it knows
+the gateway will deny into an affordable one instead, so allowing the pick meant
+the turn ran a different model from the one the picker named. The user was told
+one model wrote their code while another did. The stored choice is never
+rewritten, so the moment the balance goes positive the original pick resolves
+again with nothing to re-select.
+
+Availability is re-read whenever either picker opens, so a top-up made in a
+browser unlocks the rows on the next open rather than after a restart. A failed
+refresh keeps the map already held, and a model the map does not mention counts
+as available, so a degraded response can never empty a picker.
+
 ---
 
 ## Over-the-Air Updates
@@ -409,7 +445,7 @@ How it works:
 
 The Electron **shell** (`src/main/`, preload, native deps) can't hot-swap itself while running, so it updates one of two ways:
 
-- **Automatic (ENG-850)** — packaged `stable` and `prod` builds carry a channel-specific [`electron-updater`](https://www.electron.build/auto-update) feed under `downloads.mindshub.ai/mindshub-cowork/updates/`. It checks at boot and every 4h, downloads the new build in the background, and installs it on the next relaunch (auto mode installs on a normal quit; the quit path first drains any in-flight UI/server apply so the two can't overlap). Enabled by default on **stable** (the first rollout ring); **prod** is opt-in via `SHELL_AUTO_UPDATE_ENABLED=true`, and `=false` is the stable emergency kill switch. `preview`/`dev` fail closed. A downloaded target is persisted so the next launch can detect and report a shell update that didn't actually apply. Signature/checksum failures are terminal for auto-update and fall back to the manual path.
+- **Automatic (ENG-850)** — packaged `stable` and `prod` builds carry a channel-specific [`electron-updater`](https://www.electron.build/auto-update) feed under `downloads.mindshub.ai/mindshub-cowork/updates/`. It checks at boot and every 4h, downloads the new build in the background, and installs it on the next relaunch (auto mode installs on a normal quit; the quit path first drains any in-flight UI/server apply so the two can't overlap). Enabled by default on both **stable** and **prod** (stable led the rollout ring); `SHELL_AUTO_UPDATE_ENABLED=false` is the emergency kill switch for either ring. `preview`/`dev` fail closed. A downloaded target is persisted so the next launch can detect and report a shell update that didn't actually apply. Signature/checksum failures are terminal for auto-update and fall back to the manual path.
 - **Manual notice (ENG-849)** — a `prod`-only fallback (also shown when auto-update is disabled or has failed): the poll compares the installed shell CalVer against `shellVersion` in `latest.json` and, if newer, shows a dismissible "New version available — Download" banner (per-version dismissal) linking to the installer on `downloads.mindshub.ai`. **Detection only** — it never downloads or installs.
 
 Both surface in the sidebar and in Settings → Updates. See `src/main/shell-auto-update-runtime.ts` (auto-update state machine) and `checkForShellUpdate()` in `src/main/updater.ts` (manual notice).

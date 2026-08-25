@@ -9,6 +9,7 @@ function makeHost(over: Partial<BootHost> = {}): BootHost {
     readSettings: async () => ({}),
     checkConfigured: async () => CONFIGURED,
     checkInstall: async () => INSTALLED,
+    awaitBootReady: async () => {},
     ...over,
   };
 }
@@ -49,6 +50,40 @@ describe('resolveBootTarget', () => {
       checkInstall: async () => ({ antonInstalled: false, serverDepsReady: false }),
     });
     expect((await resolveBootTarget(host, false)).target).toBe('setup');
+  });
+
+  // ENG-749: the terminal route must not resolve until the boot sequence gate
+  // (awaitBootReady) has settled — otherwise the loading screen hands off to the
+  // chat UI before a boot-time server update has finished restarting the sidecar.
+  it('holds the terminal route until awaitBootReady resolves', async () => {
+    let released = false;
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const host = makeHost({
+      awaitBootReady: async () => { await gate; released = true; },
+    });
+    let settled = false;
+    const routing = resolveBootTarget(host, true).then((t) => { settled = true; return t; });
+    // Let the configured/installed checks flush; routing must still be pending
+    // because the gate hasn't been released.
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    release();
+    expect((await routing).target).toBe('terminal');
+    expect(released).toBe(true);
+  });
+
+  // The gate is only consulted on the terminal route: setup/auth must not pay it.
+  it('does not await the boot gate on the setup route', async () => {
+    let gateAwaited = false;
+    const host = makeHost({
+      readSettings: async () => ({ ANTON_TERMS_CONSENT: 'true' }),
+      checkInstall: async () => ({ antonInstalled: false, serverDepsReady: false }),
+      awaitBootReady: async () => { gateAwaited = true; },
+    });
+    expect((await resolveBootTarget(host, false)).target).toBe('setup');
+    expect(gateAwaited).toBe(false);
   });
 
   // A genuine failure (Electron IPC bridge error, or the server unreachable)
