@@ -1374,7 +1374,6 @@ function AppCore() {
 
   const handleStopStream = useCallback(async (opts = {}) => {
     const silent = opts?.silent === true;
-    activeStreamGenerationRef.current += 1;
 
     let cidToCancel = activeStreamingTaskIdRef.current;
     if (!cidToCancel) {
@@ -1383,6 +1382,27 @@ function AppCore() {
       );
       cidToCancel = streamingTask?.id ?? null;
     }
+
+    // Ask the server to cancel *before* any local teardown. On `error` the
+    // request never landed, so the cancel flag was not written and the remote
+    // turn may still be running (and spending tokens). Bail out with the
+    // in-flight state — Stop control, heartbeat, live stream — fully intact so
+    // the toast's "try again" is actually actionable; tearing down first would
+    // strip the very UI the user needs to retry. This ordering is the whole
+    // point of ENG-1919. The `silent` idle-timeout caller still fires the
+    // cancel but tears down regardless of the result and never toasts.
+    if (cidToCancel) {
+      const cancelResult = await cancelResponse(cidToCancel);
+      if (!silent && cancelResult?.status === 'error') {
+        toastManagerRef.current?.add({
+          type: 'danger',
+          title: 'Couldn’t stop the task — it may still be running. Check your connection and try again.',
+        });
+        return;
+      }
+    }
+
+    activeStreamGenerationRef.current += 1;
 
     const padName = activeScratchpadRef.current;
     if (padName) {
@@ -1409,17 +1429,6 @@ function AppCore() {
     }));
 
     if (cidToCancel) {
-      const cancelResult = await cancelResponse(cidToCancel);
-      if (!silent && cancelResult?.status === 'error') {
-        // The cancel request never reached the server, so the cancel flag was
-        // not written and the remote turn may still be running (and spending
-        // tokens). Tell the user rather than silently presenting a stopped
-        // state — the whole point of ENG-1919.
-        toastManagerRef.current?.add({
-          type: 'danger',
-          title: 'Couldn’t stop the task — it may still be running. Check your connection and try again.',
-        });
-      }
       markInFlightDone(cidToCancel);
       // Stop kills the run, and with it any question that run was waiting
       // on. Without this the composer stays hijacked: the next send would be

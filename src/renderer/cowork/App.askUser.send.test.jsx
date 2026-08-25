@@ -861,6 +861,44 @@ describe('Stop while a sibling task is queued (ENG-1378 stop-drain)', () => {
   });
 });
 
+describe('Stop when the cancel request never lands (ENG-1919)', () => {
+  it('keeps the in-flight turn alive and surfaces an actionable failure', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+
+    await send(user, composer, 'first message');
+    // Commit the `_streaming` message so the composer shows a Stop control.
+    await emit({ type: 'response.created' });
+    const live = streams[streams.length - 1];
+
+    // The cancel POST never reaches the server (network down / 5xx).
+    spies.cancelResponse.mockResolvedValueOnce({
+      status: 'error', conversation_id: 'conv-a',
+    });
+
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-a'));
+
+    // The user is told the turn may still be running instead of seeing a fake
+    // stopped state.
+    expect(await screen.findByText(/may still be running/i)).toBeInTheDocument();
+
+    // The in-flight state was never torn down: the stream was not aborted and
+    // the Stop control is still there, so the toast's "try again" is real.
+    expect(live.abort).not.toHaveBeenCalled();
+    const retry = await screen.findByRole('button', { name: /stop/i });
+
+    // A second Stop actually retries the cancel — this time it lands (the
+    // default mock returns a non-error result) and tears the turn down.
+    await user.click(retry);
+    await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(live.abort).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: /stop/i })).toBeNull(),
+    );
+  });
+});
+
 describe('a manual send racing another task mid-reserve (ENG-1378 parallel-stream guard)', () => {
   it('queues rather than starting a second stream while another task is between reserving the slot and its controller', async () => {
     const user = userEvent.setup();
