@@ -129,9 +129,11 @@ vi.mock('./lib/analytics', () => ({
   trackFirstQuery: vi.fn(),
   classifyFirstResponse: vi.fn(() => ({})),
   fireFirstResponse: vi.fn(),
+  trackTurnFailed: vi.fn(),
 }));
 
 import App from './App';
+import { trackTurnFailed } from './lib/analytics';
 import { markOptimisticConversation, clearOptimisticConversation } from './CoworkRouter';
 import {
   fetchSessions,
@@ -223,6 +225,7 @@ beforeEach(() => {
   spies.submitAnswer.mockClear();
   spies.streamMessage.mockClear();
   spies.cancelResponse.mockClear();
+  trackTurnFailed.mockClear();
   spies.submitAnswer.mockImplementation(async () => ({ accepted: true }));
   spies.fetchInFlightStatus.mockImplementation(async () => ({ in_flight: false }));
   spies.fetchSessionResult.mockReset();
@@ -641,6 +644,33 @@ describe('a superseded stream\'s late abort', () => {
     expect(spies.submitAnswer).toHaveBeenCalledWith('conv-a', 'ask:2', {
       text: 'this is the answer',
     });
+  });
+});
+
+describe('turn failure telemetry', () => {
+  it('tracks a real turn failure, but not a cancelled one', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+
+    await send(user, composer, 'do something');
+    const handle = await waitForStream();
+
+    await act(async () => {
+      handle.opts.onError('boom', { code: 'anton_error' });
+      await Promise.resolve();
+    });
+
+    expect(trackTurnFailed).toHaveBeenCalledWith('conv-a', { code: 'anton_error' });
+
+    trackTurnFailed.mockClear();
+    await send(user, composer, 'try again');
+    const secondHandle = await waitForStream(handle);
+    await act(async () => {
+      secondHandle.opts.onError('aborted', { code: 'cancelled' });
+      await Promise.resolve();
+    });
+
+    expect(trackTurnFailed).not.toHaveBeenCalled();
   });
 });
 
