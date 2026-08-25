@@ -607,6 +607,9 @@ function AppCore() {
   // mid-turn)" when the user navigates back to it. See
   // `reconcileTaskMessages` for the cleanup it enables.
   const activeStreamingTaskIdRef = useRef(null);
+  // Latest toast manager, reachable from callbacks (like handleStopStream)
+  // defined above where useToastManager() is called. Synced in an effect below.
+  const toastManagerRef = useRef(null);
   // True once the active stream's SSE socket delivers any event — client-side
   // proof the turn started, independent of when it shows up in the in-flight
   // poll (which lags Redis/replica registration). The stranded-slot self-heal
@@ -995,7 +998,6 @@ function AppCore() {
 
   const handleStopStream = useCallback(async (opts = {}) => {
     const silent = opts?.silent === true;
-    activeStreamGenerationRef.current += 1;
 
     let cidToCancel = activeStreamingTaskIdRef.current;
     if (!cidToCancel) {
@@ -1004,6 +1006,27 @@ function AppCore() {
       );
       cidToCancel = streamingTask?.id ?? null;
     }
+
+    // Ask the server to cancel *before* any local teardown. On `error` the
+    // request never landed, so the cancel flag was not written and the remote
+    // turn may still be running (and spending tokens). Bail out with the
+    // in-flight state — Stop control, heartbeat, live stream — fully intact so
+    // the toast's "try again" is actually actionable; tearing down first would
+    // strip the very UI the user needs to retry. This ordering is the whole
+    // point of ENG-1919. The `silent` idle-timeout caller still fires the
+    // cancel but tears down regardless of the result and never toasts.
+    if (cidToCancel) {
+      const cancelResult = await cancelResponse(cidToCancel);
+      if (!silent && cancelResult?.status === 'error') {
+        toastManagerRef.current?.add({
+          type: 'danger',
+          title: 'Couldn’t stop the task — it may still be running. Check your connection and try again.',
+        });
+        return;
+      }
+    }
+
+    activeStreamGenerationRef.current += 1;
 
     const padName = activeScratchpadRef.current;
     if (padName) {
@@ -1030,7 +1053,6 @@ function AppCore() {
     }));
 
     if (cidToCancel) {
-      try { await cancelResponse(cidToCancel); } catch { /* idempotent */ }
       markInFlightDone(cidToCancel);
       // Stop kills the run, and with it any question that run was waiting
       // on. Without this the composer stays hijacked: the next send would be
@@ -1400,6 +1422,7 @@ function AppCore() {
   }, [health.status]);
 
   const toastManager = useToastManager();
+  useEffect(() => { toastManagerRef.current = toastManager; }, [toastManager]);
   // OTA UI update + shell (desktop binary) update lifecycle — status, the
   // apply/download/dismiss handlers, and the host subscriptions that feed
   // them — all live in useAppUpdates.
