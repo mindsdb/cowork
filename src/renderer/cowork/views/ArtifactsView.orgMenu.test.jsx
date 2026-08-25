@@ -3,9 +3,9 @@
 // ArtifactsView builds its kebab menu twice: the list view's `ArtifactMenu`
 // component owns its own item list, and the grid view's items are assembled
 // inline by the page-level shared `HoverMenu`. They are separate arrays, so
-// wiring the gate into one leaves the other offering Preview, Show in Finder and
-// the publish controls on a deployment where none of them can work — and
-// `Preview` there does not merely look wrong, it opens the local-content viewer.
+// wiring the gate into one leaves the other offering filesystem and publish
+// controls on a deployment where none of them can work. Preview is available
+// only when an authenticated draft URL is present.
 //
 // lib/artifactActions.test.js covers the gate's own logic. It cannot catch a
 // caller that never asks, which is exactly how the grid menu was missed, so these
@@ -29,6 +29,11 @@ vi.mock('../../platform/host', () => ({
 }));
 vi.mock('../lib/analytics', () => ({ trackArtifactPublished: vi.fn() }));
 vi.mock('../components/ui/Toast', () => ({ useToastManager: () => ({ add: vi.fn() }) }));
+vi.mock('../components/artifact', () => ({
+  ArtifactViewer: ({ open, artifact }) => (open
+    ? <div data-testid="artifact-viewer">Private preview: {artifact.title}</div>
+    : null),
+}));
 
 import ArtifactsView from './ArtifactsView';
 import * as api from '../api';
@@ -40,8 +45,16 @@ const published = {
   publishedUrl: 'https://view.mindshub.ai/r/abc',
 };
 
-// Desktop-only actions, by their menu labels. `Preview` is the one that prompted
-// this test; the rest ride on the same gate and would regress together.
+const cloudDraft = {
+  ...published,
+  stableId: '11111111-1111-1111-1111-111111111111',
+  draftUrl: '/api/v1/artifacts/drafts/project/id/index.html',
+  publishedUrl: '',
+  capabilities: { role: 'owner', canEdit: true },
+};
+
+// Actions unavailable for a published-only card in org mode. Preview is tested
+// separately below with an authenticated cloud draft.
 const DESKTOP_ONLY = ['Preview', 'Show in Finder', 'Show in Explorer', 'Share', 'Stop sharing', 'Update'];
 
 function openKebab() {
@@ -87,6 +100,31 @@ describe('grid view kebab on desktop', () => {
     render(<ArtifactsView artifacts={[published]} />);
     openKebab();
     expect(screen.getByText('Preview')).toBeInTheDocument();
+  });
+});
+
+describe.each([
+  ['grid', 'grid'],
+  ['list', 'list'],
+])('%s view private preview in org mode', (_name, view) => {
+  beforeEach(() => {
+    localStorage.setItem('anton:artifacts-view', view);
+    setOrgMode(true);
+  });
+
+  it('opens the authenticated draft before publication', () => {
+    render(<ArtifactsView artifacts={[cloudDraft]} />);
+    fireEvent.click(screen.getByText('Weather Dashboard'));
+    expect(screen.getByTestId('artifact-viewer')).toHaveTextContent('Private preview');
+  });
+
+  it('does not offer delete to a reviewer', () => {
+    render(<ArtifactsView artifacts={[{
+      ...cloudDraft,
+      capabilities: { role: 'reviewer', canEdit: false },
+    }]} />);
+    openKebab();
+    expect(screen.queryByText(/Delete/)).toBeNull();
   });
 });
 

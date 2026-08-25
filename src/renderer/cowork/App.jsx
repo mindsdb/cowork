@@ -2800,9 +2800,10 @@ function AppCore() {
     if (!(await ensureProviderReady())) {
       const taskId = `tmp-${Date.now()}`;
       const generalFallback = projects.find((p) => p.name === 'general');
-      const effectiveProjectName = selectedProject?.name || 'general';
-      const effectiveProjectId = (selectedProject ? selectedProject.id : generalFallback?.id) || null;
-      const effectiveProjectPath = selectedProject?.path
+      const requestedProject = meta?.project || selectedProject;
+      const effectiveProjectName = requestedProject?.name || 'general';
+      const effectiveProjectId = (requestedProject ? requestedProject.id : generalFallback?.id) || null;
+      const effectiveProjectPath = requestedProject?.path
         || generalFallback?.path
         || null;
       setTasks((prev) => [{
@@ -2825,7 +2826,7 @@ function AppCore() {
       setActiveTaskId(taskId);
       setRoute('task');
       setComposerAttachments([]);
-      return;
+      return false;
     }
 
     // Orphan fallback: if the user hasn't picked a project, route the
@@ -2833,18 +2834,21 @@ function AppCore() {
     // any reason it isn't in the projects list yet (e.g. an upgrade
     // from a build that didn't auto-create it), bootstrap it now.
     let generalProject = projects.find((p) => p.name === 'general');
-    if (!selectedProject && !generalProject) {
+    const requestedProject = meta?.project || selectedProject;
+    if (!requestedProject && !generalProject) {
       generalProject = await ensureGeneralProject();
     }
-    const effectiveProjectName = selectedProject?.name || 'general';
-    const effectiveProjectId = (selectedProject ? selectedProject.id : generalProject?.id) || null;
-    const effectiveProjectPath = selectedProject?.path || generalProject?.path || null;
+    const effectiveProjectName = requestedProject?.name || 'general';
+    const effectiveProjectId = (requestedProject ? requestedProject.id : generalProject?.id) || null;
+    const effectiveProjectPath = requestedProject?.path || generalProject?.path || null;
 
     const disabledForSend = normalizeComposerDisabledConnections(composerDisabledConnections);
 
     const rawComposer = composerAttachments;
     const hasPendingFiles = rawComposer.some(isPendingFileAttachment);
-    const taskId = hasPendingFiles ? allocateConversationId() : `tmp-${Date.now()}`;
+    const suppliedConversationId = meta?.conversationId || null;
+    const taskId = suppliedConversationId
+      || (hasPendingFiles ? allocateConversationId() : `tmp-${Date.now()}`);
     // Flag the not-yet-persisted id so the route loader renders from local
     // state instead of 404ing home.
     markOptimisticConversation(taskId);
@@ -2971,7 +2975,7 @@ function AppCore() {
     trackFirstQuery();
     const streamGen = activeStreamGenerationRef.current;
     const streamNewSessionFn = () => streamNewSession(sendText, {
-      conversationId: hasPendingFiles ? taskId : undefined,
+      conversationId: suppliedConversationId || (hasPendingFiles ? taskId : undefined),
       projectName: effectiveProjectName,
       projectId: effectiveProjectId,
       projectPath: effectiveProjectPath,
@@ -3088,6 +3092,7 @@ function AppCore() {
     // we add the user message + thinking placeholder and start the
     // SSE stream — same shape as handleSendInTask from that point on.
     requestAnimationFrame(() => requestAnimationFrame(startConversation));
+    return true;
   };
 
   // Send inside an existing task
@@ -4726,6 +4731,13 @@ function AppCore() {
             artifacts={artifacts}
             projects={projects}
             agentLabel={agentLabel}
+            onAddressWithAgent={({ artifact, prompt, conversationId }) => {
+              const project = projects.find((item) =>
+                String(item.id || '') === String(artifact?.projectId || ''))
+                || projects.find((item) => item.name === artifact?.projectName)
+                || null;
+              return handleSendFromHome(prompt, { project, conversationId });
+            }}
             onOpenProject={(p) => {
               // Pin the project so ProjectsView opens directly in detail
               // (its `selectedProject` effect mirrors that into local

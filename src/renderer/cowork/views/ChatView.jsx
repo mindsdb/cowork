@@ -424,27 +424,24 @@ function TextBlock({ text, id, complete = true, conversationId = null }) {
 // Convert an artifact step (from the SSE adapter, badge='Artifact')
 // into the shape ArtifactCard expects. Used to render inline cards
 // at the end of an assistant turn — like mdb-ai surfaces results.
-function artifactStepToCard(step, projectPath) {
+export function artifactStepToCard(step, projectPath) {
   const data = step.data || {};
   const path = data.file_path || data.path || '';
   // Lower-cased extension (no leading dot) for HTML detection downstream.
   const ext = (path.match(/\.([a-z0-9]+)$/i)?.[1] || '').toLowerCase();
   const card = normalizeArtifactRecord({
+    // Preserve the complete server card that the stream adapter stored. In
+    // particular, stableId + draftUrl + capabilities are what make the
+    // immediately opened viewer editable and reviewable. Keeping the payload
+    // whole also prevents each new artifact field from requiring another
+    // fragile pass-through list here.
+    ...data,
     title: data.title || step.label || 'Artifact',
     kind: data.action ? `${data.action}` : 'live artifact',
     icon: 'doc',
     path,
     file_path: path,
     ext: ext ? `.${ext}` : '',
-    // Second hand-written field list this card passes through (the adapter's
-    // step.data is the first). Both have to carry identity and publish state or
-    // the card cannot open, address or delete the artifact in org mode, where
-    // there is no path-based fallback to hide the omission.
-    id: data.id || '',
-    slug: data.slug || '',
-    publishedUrl: data.publishedUrl || '',
-    projectId: data.projectId || '',
-    projectName: data.projectName || '',
     preview: [],
   }, projectPath);
   return {
@@ -595,7 +592,11 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
   const canPreviewInline = isHtml || isInlineText;
   const published = !!artifact.publishedUrl;
   const openTarget = artifactOpenTarget({
-    orgMode, published, canPreviewInline, hasBridge: host.isElectron || !host.isWeb,
+    orgMode,
+    published,
+    canPreviewInline,
+    hasPrivateDraft: !!artifact.draftUrl,
+    hasBridge: host.isElectron || !host.isWeb,
   });
   // Document artifacts (markdown/HTML/text) can be exported to PDF/Word/HTML.
   const _EXPORTABLE_EXTS = ['.md', '.markdown', '.html', '.htm', '.txt'];
@@ -640,15 +641,14 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
       return;
     }
     if (openTarget === 'published') {
-      // The published URL is the ONLY route to this artifact's bytes on an org
-      // deployment, and it carries the access check.
+      // Legacy org cards without a draft capability still open the shared URL.
       try { host.openExternal(artifact.publishedUrl); }
       catch { window.open(artifact.publishedUrl, '_blank', 'noreferrer'); }
       return;
     }
     if (openTarget === null) {
       showStatus('error', orgMode
-        ? 'This artifact has no published link yet.'
+        ? 'This artifact has no private preview or shared link yet.'
         : (disabledReason || 'No artifact file path is available.'));
       return;
     }
@@ -822,10 +822,10 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
             </SmallBtn>
           </Tooltip>
         )}
-        {/* Org mode drops the file-path conditions entirely: there the button
-            opens the published URL, which has no local path behind it. */}
-        {!deleted && (orgMode ? openTarget === 'published' : (!host.isWeb || isHtml)) && (
-          <Tooltip content={orgMode ? 'Open the published artifact' : (canAct ? `Open ${path}` : '')}>
+        {!deleted && (orgMode ? openTarget !== null : (!host.isWeb || isHtml)) && (
+          <Tooltip content={orgMode
+            ? (openTarget === 'preview' ? 'Open private preview' : 'Open the shared artifact')
+            : (canAct ? `Open ${path}` : '')}>
             <SmallBtn
               primary
               disabled={!orgMode && !canAct}
@@ -2433,6 +2433,8 @@ export default function ChatView({
         <WorkingFolderBox
           project={project}
           isStreaming={isStreaming}
+          conversationId={task?.id || null}
+          onAddressWithAgent={({ prompt }) => onSend?.(prompt)}
         />
         <ContextBox
           project={project}
@@ -2467,6 +2469,8 @@ export default function ChatView({
         artifact={previewArt}
         onClose={() => setPreviewArt(null)}
         onChange={(updated) => setPreviewArt(updated)}
+        conversationId={task?.id || null}
+        onAddressWithAgent={({ prompt }) => onSend?.(prompt)}
       />
 
       {/* Data-vault connection form — rendered as a centered modal

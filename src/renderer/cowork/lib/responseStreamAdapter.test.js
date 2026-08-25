@@ -502,6 +502,10 @@ const ARTIFACT_EVENT = {
     type: 'html-app',
     ext: '.html',
     path: '/proj/.anton/artifacts/clock-7db94eb8/index.html',
+    stableId: '11111111-1111-4111-8111-111111111111',
+    artifactKey: 'artifact/11111111-1111-4111-8111-111111111111',
+    draftUrl: '/api/v1/artifacts/drafts/proj-1/11111111-1111-4111-8111-111111111111/index.html',
+    capabilities: { role: 'owner', canEdit: true, canComment: true },
     projectId: 'proj-1',
     projectName: 'general',
     publishedUrl: 'https://view.staging.mindshub.ai/view/97901f016/845b3777',
@@ -527,6 +531,16 @@ describe('artifact_created → step.data', () => {
     expect(data.slug).toBe('clock-7db94eb8');
     expect(data.id).toBe('7db94eb8');
     expect(data.projectName).toBe('general');
+  });
+
+  it('keeps workspace identity and permissions for immediate edit and review', () => {
+    const { data } = stepOf(ARTIFACT_EVENT);
+    expect(data).toMatchObject({
+      stableId: '11111111-1111-4111-8111-111111111111',
+      artifactKey: 'artifact/11111111-1111-4111-8111-111111111111',
+      draftUrl: expect.stringContaining('/artifacts/drafts/'),
+      capabilities: { role: 'owner', canEdit: true, canComment: true },
+    });
   });
 
   it('defaults the new fields to empty rather than undefined', () => {

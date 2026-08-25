@@ -839,8 +839,9 @@ export async function unpublishArtifact(path) {
 // don't each have to branch on the mode. A bare string is still accepted so any
 // stray caller keeps working on desktop.
 export async function deleteArtifact(artifact) {
-  const url = artifact?.projectId && artifact?.slug
-    ? `/artifacts/${encodeURIComponent(artifact.slug)}`
+  const artifactRef = artifact?.stableId || artifact?.slug;
+  const url = artifact?.projectId && artifactRef
+    ? `/artifacts/${encodeURIComponent(artifactRef)}`
       + `?project_id=${encodeURIComponent(artifact.projectId)}`
     : `/artifacts/?path=${encodeURIComponent(
         typeof artifact === 'string' ? artifact : (artifact?.folder || artifact?.path || ''),
@@ -2206,10 +2207,12 @@ export function listCommentThreads(userDir, reportId, status = 'open') {
   return req(`${_commentsBase(userDir, reportId)}/threads?status=${encodeURIComponent(status)}`);
 }
 
-export function createCommentThread(userDir, reportId, { selector, text }) {
+export function createCommentThread(userDir, reportId, {
+  selector, text, revisionId = null, kind = 'review',
+}) {
   return req(`${_commentsBase(userDir, reportId)}/threads`, {
     method: 'POST',
-    body: JSON.stringify({ selector: selector ?? null, text }),
+    body: JSON.stringify({ selector: selector ?? null, text, revisionId, kind }),
   });
 }
 
@@ -2224,6 +2227,13 @@ export function setCommentThreadStatus(userDir, reportId, threadId, status) {
   return req(`${_commentsBase(userDir, reportId)}/threads/${encodeURIComponent(threadId)}/status`, {
     method: 'POST',
     body: JSON.stringify({ status }),
+  });
+}
+
+export function markCommentsRead(userDir, reportId) {
+  return req(`${_commentsBase(userDir, reportId)}/read`, {
+    method: 'POST',
+    body: '{}',
   });
 }
 

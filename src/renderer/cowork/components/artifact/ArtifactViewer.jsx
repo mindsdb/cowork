@@ -1,262 +1,71 @@
 // Inline preview modal for artifacts. Renders the artifact's content in a
 // sandboxed iframe (HTML / fullstack) or inline (md / csv / txt). The top
-// bar has three evenly-weighted zones:
+// bar has three responsive zones:
 //
 //   left   — artifact title (truncated)
-//   middle — open-local-folder icon + a link pill (reload · URL/"/" · open-in-browser)
-//   right  — Publish control (self-hosted popover) · ⋯ menu · close
+//   middle — Preview / Edit / Review modes
+//   right  — comments · Publish control · ⋯ menu · close
 //
 // Publish/unpublish/update/change-access all live in the <PublishMenu>
 // popover, backed by the usePublish state machine — so this component is
 // just chrome + preview.
 
-import { forwardRef, useEffect, useMemo, useRef, useState } from 'react';
-import Ico from '../Icons';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  allocateConversationId,
   mountArtifactPreview,
   previewArtifact,
   unpublishArtifact,
 } from '../../api';
 import { deleteArtifactAndSync } from '../../lib/artifactsStore';
+import { needsClientUnpublishBeforeDelete } from '../../lib/artifactActions';
 import { downloadArtifactFile } from '../../lib/artifactDownload';
+import { loadArtifactDraftText } from '../../lib/artifactWorkspaceApi';
 import { isPublishableArtifact, BACKEND_ARTIFACT_TYPES, publishBlockedReason } from '../../lib/artifactKinds';
 import { Modal } from '../ui/Modal';
-import { Button, Menu, Tooltip, Spinner } from '../ui';
 import { ConfirmModal } from '../ConfirmModal';
 import { host } from '../../../platform/host';
-import { MarkdownContent } from '../markdown/MarkdownContent';
+import { useOrgMode } from '../../../lib/orgMode';
 import { usePublish } from './publish/usePublish';
-import { PublishMenu } from './publish/PublishMenu';
+import { useArtifactComments, useArtifactCommentLayer } from './comments';
+import { ArtifactRevisionBar } from './workspace/ArtifactRevisionBar';
+import { useArtifactWorkspace } from './workspace/useArtifactWorkspace';
+import { ArtifactViewerHeader } from './ArtifactViewerHeader';
+import { ArtifactViewerBody } from './ArtifactViewerBody';
 import {
-  CommentsPanel,
-  CommentsToolbar,
-  useArtifactComments,
-  useArtifactCommentLayer,
-} from './comments';
+  artifactExtension,
+  countCsvRows,
+  csvRowsToGfmTable,
+  CSV_PREVIEW_ROW_LIMIT,
+  isTextArtifact,
+  isAbsoluteArtifactPreviewUrl,
+  parseCsv,
+  withArtifactCommentFlag,
+  withArtifactVersion,
+} from './artifactPreviewUtils';
 
 // Extensions we render inline with the lightweight text preview path
 // (server `/v1/artifacts/preview` → text body). `.md` gets the full
 // markdown renderer; `.csv` gets a parsed table; `.txt` and friends
 // fall back to a monospace block.
-const TEXT_PREVIEW_EXTS = new Set(['.md', '.txt', '.csv']);
 
-// Append a content-version cache-buster so the iframe re-fetches fresh
-// content when the artifact is rebuilt in place. Without it the webview
-// keeps serving the first-loaded response for a stable URL, so the panel
-// shows the old version until it's closed and reopened (ENG-375). `version`
-// is the artifact's `mtime` (max content-file mtime) from the server.
-function _withVersion(url, version) {
-  if (!url || version == null || version === '') return url;
-  const sep = url.includes('?') ? '&' : '?';
-  return `${url}${sep}v=${encodeURIComponent(version)}`;
-}
 
-// Opt the iframe's entry document into the server-injected comment marker
-// layer (cowork-server comments_layer.py gates on this flag). Must match
-// ACTIVATION_PARAM there.
-function _withCommentFlag(url) {
-  if (!url) return url;
-  const sep = url.includes('?') ? '&' : '?';
-  return `${url}${sep}__antonComments=1`;
-}
-
-function _extOfPath(p) {
-  if (!p || typeof p !== 'string') return '';
-  const m = p.toLowerCase().match(/\.[a-z0-9]+$/);
-  return m ? m[0] : '';
-}
-
-function _isTextArtifact(a) {
-  if (!a) return false;
-  const declared = (a.ext || '').toLowerCase();
-  const ext = declared || _extOfPath(a.canonicalPath || a.file_path || a.path);
-  return TEXT_PREVIEW_EXTS.has(ext);
-}
-
-// How many CSV rows we render inline. Past this we cut off the table
-// and show a "showing N of M" notice with an Open/Download affordance.
-// 100 keeps the markdown render fast and the modal scroll predictable
-// even for large datasets.
-const CSV_PREVIEW_ROW_LIMIT = 100;
-
-// Minimal CSV parser — handles quoted fields, escaped quotes ("") and
-// commas inside quotes. Good enough for visualising agent-produced
-// CSVs without pulling in a parser dependency. Bails out as soon as
-// we have `limit` rows (counted *after* the header) so we never walk
-// a million-row file just to throw the tail away.
-function _parseCsv(text, limit = Infinity) {
-  const rows = [];
-  let row = [];
-  let field = '';
-  let inQuotes = false;
-  for (let i = 0; i < text.length; i += 1) {
-    const c = text[i];
-    if (inQuotes) {
-      if (c === '"') {
-        if (text[i + 1] === '"') { field += '"'; i += 1; }
-        else inQuotes = false;
-      } else field += c;
-    } else if (c === '"') {
-      inQuotes = true;
-    } else if (c === ',') {
-      row.push(field); field = '';
-    } else if (c === '\n') {
-      row.push(field); field = '';
-      rows.push(row); row = [];
-      // header + `limit` data rows. Stop scanning early on large files.
-      if (rows.length > limit) break;
-    } else if (c === '\r') {
-      // swallow — handled with the next \n
-    } else {
-      field += c;
-    }
-  }
-  if ((field.length || row.length) && rows.length <= limit) {
-    row.push(field);
-    rows.push(row);
-  }
-  return rows;
-}
-
-// Cheap full-file row count — we only need it to decide whether the
-// "showing N of M" notice should appear and what M is. Counting bytes
-// is fine since `previewArtifact` already capped the content at 200KB.
-function _countCsvRows(text) {
-  if (!text) return 0;
-  let n = 0;
-  let inQuotes = false;
-  for (let i = 0; i < text.length; i += 1) {
-    const c = text[i];
-    if (c === '"') {
-      if (inQuotes && text[i + 1] === '"') { i += 1; }
-      else inQuotes = !inQuotes;
-    } else if (!inQuotes && c === '\n') {
-      n += 1;
-    }
-  }
-  // Trailing line without a final newline still counts.
-  if (text.length && text[text.length - 1] !== '\n') n += 1;
-  return n;
-}
-
-// Turn parsed CSV rows into a GFM pipe-table string so we can feed it
-// straight to `MarkdownContent`. Pipes and newlines inside cells would
-// break the table syntax — escape pipes, collapse line breaks to a
-// space. The first row is always treated as the header.
-function _csvRowsToGfmTable(rows) {
-  if (!rows || rows.length === 0) return '';
-
-  const escape = (cell) => String(cell ?? '')
-    // Escape Markdown's escape character first. This must happen before
-    // escaping pipes, otherwise the backslash we add for `|` would also
-    // be doubled.
-    .replace(/\\/g, '\\\\')
-    .replace(/\|/g, '\\|')
-    .replace(/\r?\n/g, ' ');
-
-  const header = rows[0].map(escape);
-  const sep = header.map(() => '---');
-  const body = rows.slice(1).map((r) => {
-    const padded = r.length === header.length
-      ? r
-      : [...r, ...Array(Math.max(0, header.length - r.length)).fill('')];
-
-    return padded.slice(0, header.length).map(escape);
-  });
-
-  const lines = [
-    `| ${header.join(' | ')} |`,
-    `| ${sep.join(' | ')} |`,
-    ...body.map((r) => `| ${r.join(' | ')} |`),
-  ];
-
-  return lines.join('\n');
-}
-
-const FONT_BODY = "'Inter', system-ui, sans-serif";
-const FONT_DISPLAY = "var(--font-display, 'Inter', sans-serif)";
-const FONT_MONO = "var(--font-mono)";
-
-// Ghost icon button shared by every top-bar affordance (folder, reload,
-// open-in-browser, kebab, close). forwardRef so it can be the render
-// target of a Base UI Tooltip/Menu trigger (those inject a ref).
-//
-// `active` gives a persistent toggled-on state (accent-tinted fill + accent
-// glyph) that survives mouse-leave — used by the comments switch so it reads
-// as on/off, not just a hover. Hover-idle colors are resolved from `active`
-// so the two states never fight over the inline background.
-const IconButton = forwardRef(function IconButton(
-  { size = 30, disabled = false, active = false, style, children, ...rest }, ref,
-) {
-  const idleBg = active ? 'var(--accent-bg)' : 'transparent';
-  const idleFg = active ? 'var(--accent)' : 'var(--ink-3)';
-  return (
-    <button
-      ref={ref}
-      type="button"
-      disabled={disabled}
-      aria-pressed={active}
-      {...rest}
-      style={{
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        opacity: disabled ? 0.4 : 1,
-        background: idleBg, border: 0, color: idleFg,
-        width: size, height: size, borderRadius: 8, flexShrink: 0,
-        display: 'inline-grid', placeItems: 'center',
-        transition: 'background .12s ease, color .12s ease',
-        ...style,
-      }}
-      onMouseEnter={(e) => {
-        if (!disabled) {
-          e.currentTarget.style.background = active
-            ? 'color-mix(in srgb, var(--accent) 22%, transparent)'
-            : 'var(--surface-2)';
-          e.currentTarget.style.color = active ? 'var(--accent)' : 'var(--ink)';
-        }
-        rest.onMouseEnter?.(e);
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.background = idleBg;
-        e.currentTarget.style.color = idleFg;
-        rest.onMouseLeave?.(e);
-      }}
-    >
-      {children}
-    </button>
-  );
-});
-
-// Full-bleed "Preview" placeholder shown over the preview region until the
-// iframe has actually painted (or while a text preview is fetching), so the
-// user never sees a flash of empty grey.
-function PreviewPlaceholder() {
-  return (
-    <div aria-hidden="true" style={{
-      position: 'absolute', inset: 0, display: 'grid', placeItems: 'center',
-      background: 'var(--surface-2)', overflow: 'hidden',
-    }}>
-      <span style={{
-        fontFamily: FONT_DISPLAY, fontWeight: 600,
-        fontSize: 'clamp(40px, 9vw, 84px)', color: 'var(--ink)', opacity: 0.06,
-        transform: 'rotate(-12deg)', letterSpacing: '-0.02em',
-        userSelect: 'none', whiteSpace: 'nowrap',
-      }}>Preview</span>
-      <div style={{
-        position: 'absolute', bottom: 22,
-        display: 'flex', alignItems: 'center', gap: 8,
-        color: 'var(--ink-4)', fontFamily: FONT_BODY, fontSize: 12,
-      }}>
-        <Spinner /> Loading preview…
-      </div>
-    </div>
-  );
-}
-
-export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) {
+export function ArtifactViewer({
+  open,
+  artifact,
+  onClose,
+  onChange,
+  onDelete,
+  onAddressWithAgent,
+  conversationId = null,
+}) {
+  const orgMode = useOrgMode();
   const actionPath = artifact?.canonicalPath || artifact?.file_path || artifact?.path || '';
   const displayPath = artifact?.displayPath || actionPath;
   const disabledReason = artifact?.actionDisabledReason || '';
   const hasActionPath = !!actionPath && !disabledReason;
+  const draftPreviewUrl = artifact?.draftUrl || '';
+  const hasPreviewSource = hasActionPath || !!draftPreviewUrl;
   const isBackendArtifact = BACKEND_ARTIFACT_TYPES.has(artifact?.type);
   // Non-empty when this artifact's type may never be published (e.g.
   // fullstack-stateful-app). Drives the Publish action's disabled state.
@@ -296,21 +105,44 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [inboxOpen, setInboxOpen] = useState(false);
   const [markersShown, setMarkersShown] = useState(true);
+  const [repairBusy, setRepairBusy] = useState(false);
+  const [textSelection, setTextSelection] = useState(null);
+  const [feedbackNotice, setFeedbackNotice] = useState('');
   // Per-open counter used as a cache-buster fallback for artifacts whose
   // object carries no `mtime` (e.g. chat-bubble previews built from stream
   // steps). Increments only when there's no mtime, so every (re)open of
   // such an artifact fetches fresh content (ENG-375).
   const openNonceRef = useRef(0);
+  const textContentRef = useRef(null);
 
   // Publish/access state machine — the single source of truth for the
   // <PublishMenu> popover and the link-pill's published-URL display.
   const pub = usePublish(artifact, { onChange, enabled: open });
+  const workspace = useArtifactWorkspace(artifact, { open, onChange });
+  const repairConversationId = useMemo(
+    () => conversationId || (open && artifact?.stableId ? allocateConversationId() : ''),
+    [artifact?.stableId, conversationId, open],
+  );
+  const notifyUnreadFeedback = useCallback(() => {
+    setFeedbackNotice('New feedback arrived. Open Review to see the issue.');
+  }, []);
 
-  // Comments are enabled only for a published, restricted artifact whose composite
-  // key ({user_dir}/{report_id}) the server has surfaced (Plan 5). Derived here
-  // (before the early return) so the comment hooks below can run unconditionally.
-  const commentsEnabled = !!pub.publishedUrl && pub.accessMode === 'restricted' && !!pub.artifactKey;
-  const _akParts = (pub.artifactKey || '').split('/');
+  useEffect(() => {
+    if (!feedbackNotice) return undefined;
+    const timer = window.setTimeout(() => setFeedbackNotice(''), 6000);
+    return () => window.clearTimeout(timer);
+  }, [feedbackNotice]);
+
+  // A stable composite key backs one thread across private drafts and published
+  // versions. Derived before the early return so the hooks run unconditionally.
+  const artifactKey = artifact?.artifactKey
+    || pub.artifactKey
+    || (artifact?.stableId ? `artifact/${artifact.stableId}` : '');
+  const commentsEnabled = !!artifactKey && (
+    workspace.commentsReady
+    || (!!pub.publishedUrl && pub.accessMode === 'restricted')
+  );
+  const _akParts = artifactKey.split('/');
   const commentUserDir = _akParts[0] || '';
   const commentReportId = _akParts.slice(1).join('/') || '';
 
@@ -321,7 +153,12 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
   const iframeRef = useRef(null);
   const comments = useArtifactComments(commentUserDir, commentReportId, {
     enabled: open && commentsEnabled,
+    onUnread: workspace.capabilities?.role === 'owner' ? notifyUnreadFeedback : undefined,
   });
+  const createArtifactComment = useCallback((payload) => comments.create({
+    ...payload,
+    revisionId: workspace.currentRevision?.id || null,
+  }), [comments.create, workspace.currentRevision?.id]);
   // The injected layer owns the on-artifact UI (pins, hover highlight, thread
   // popovers) and reports mode changes; this hook pushes the thread list down
   // and exposes the imperative controls the toolbar + inbox drive. Marker
@@ -330,9 +167,12 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
   const layer = useArtifactCommentLayer(iframeRef, {
     threads: comments.threads,
     viewer: comments.viewer,
-    enabled: open && commentsEnabled,
+    // Only accept mutation intents from the artifact frame while the user has
+    // explicitly opened review controls. Agent-produced scripts otherwise get
+    // no ambient path to act through the owner's comment session.
+    enabled: open && commentsEnabled && commentsOpen,
     markersVisible: commentsOpen && markersShown,
-    onCreate: comments.create,
+    onCreate: createArtifactComment,
     onReply: comments.reply,
     onStatus: comments.setStatus,
     onEditThread: comments.editThread,
@@ -353,11 +193,100 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
     });
   };
 
-  const isText = _isTextArtifact(artifact);
+  useEffect(() => {
+    if (workspace.mode === 'review' && commentsEnabled) {
+      setFeedbackNotice('');
+      setCommentsOpen(true);
+      setInboxOpen(true);
+      return;
+    }
+    if (workspace.mode === 'edit') {
+      layer.exitMode();
+      setCommentsOpen(false);
+      setInboxOpen(false);
+    }
+    if (workspace.mode !== 'review') setTextSelection(null);
+  }, [commentsEnabled, layer.exitMode, workspace.mode]);
+
+  useEffect(() => {
+    if (!open || workspace.repair?.status !== 'queued') return undefined;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const detail = await workspace.refreshRepair();
+        if (!cancelled && detail?.repair?.status === 'queued') {
+          timer = window.setTimeout(poll, 2500);
+        }
+      } catch {
+        if (!cancelled) timer = window.setTimeout(poll, 5000);
+      }
+    };
+    let timer = window.setTimeout(poll, 1200);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [open, workspace.repair?.id, workspace.repair?.status, workspace.refreshRepair]);
+
+  useEffect(() => {
+    if (inboxOpen && comments.unreadCount > 0) comments.markRead();
+  }, [comments.markRead, comments.unreadCount, inboxOpen]);
+
+  const addressCommentWithAgent = async (thread) => {
+    if (!onAddressWithAgent || repairBusy) return;
+    setRepairBusy(true);
+    setErr('');
+    try {
+      const requested = await workspace.addressWithAgent({
+        thread,
+        conversationId: repairConversationId,
+      });
+      if (requested) {
+        let started;
+        try {
+          started = await onAddressWithAgent({
+            artifact,
+            prompt: requested.prompt,
+            repair: requested.repair,
+            conversationId: repairConversationId,
+          });
+        } catch (startError) {
+          try { await workspace.cancelRepair(requested.repair.id); } catch { /* keep original error */ }
+          throw startError;
+        }
+        if (started === false) {
+          await workspace.cancelRepair(requested.repair.id);
+          setErr('Connect an agent provider, then try addressing this comment again.');
+        }
+      }
+    } catch (requestError) {
+      setErr(requestError?.message || 'Could not send this comment to the agent');
+    } finally {
+      setRepairBusy(false);
+    }
+  };
+
+  const captureTextSelection = () => {
+    if (workspace.mode !== 'review' || !commentsEnabled) return;
+    const selection = window.getSelection?.();
+    const quote = selection?.toString().trim();
+    const root = textContentRef.current;
+    if (!quote || !root || !selection?.anchorNode || !root.contains(selection.anchorNode)) return;
+    setTextSelection({
+      type: 'text-quote',
+      path: workspace.source?.path || artifact?.primary || '',
+      quote: quote.slice(0, 500),
+      revisionId: workspace.currentRevision?.id || null,
+    });
+  };
+
+  const isText = isTextArtifact(artifact);
   const textExt = isText
-    ? ((artifact?.ext || '').toLowerCase() || _extOfPath(actionPath))
+    ? ((artifact?.ext || '').toLowerCase() || artifactExtension(actionPath))
     : '';
   const publishable = isPublishableArtifact(artifact);
+  const canManage = workspace.capabilities
+    ? workspace.capabilities.canEdit !== false
+    : artifact?.capabilities
+      ? artifact.capabilities.canEdit !== false
+      : !orgMode;
 
   // Reset the painted flag whenever the mounted URL changes so the
   // placeholder reappears for the new content.
@@ -377,7 +306,7 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
   //     new port keeps working).
   useEffect(() => {
     if (!open || !artifact) return;
-    if (!hasActionPath) {
+    if (!hasPreviewSource) {
       setPreviewUrl('');
       setTextPreview(null);
       setErr(disabledReason || 'This artifact does not have a local file path.');
@@ -391,7 +320,10 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
     setTextPreview(null);
     let cancelled = false;
     if (isText) {
-      previewArtifact(actionPath)
+      const previewRequest = draftPreviewUrl
+        ? loadArtifactDraftText(draftPreviewUrl)
+        : previewArtifact(actionPath);
+      previewRequest
         .then((data) => {
           if (cancelled) return;
           if (!data || typeof data.content !== 'string') {
@@ -412,8 +344,24 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
     // first-loaded copy. Prefer the server's content `mtime` — it changes
     // only on a real edit — and fold in the per-open nonce + manual-reload
     // counter so reopens and the reload button always re-fetch.
-    const baseVersion = artifact?.mtime ?? (openNonceRef.current += 1);
+    // The revision id is the authoritative content version once the workspace
+    // has loaded. It changes after every manual or agent save, even when the
+    // parent artifact list has not refreshed its filesystem mtime yet.
+    const baseVersion = workspace.currentRevision?.id
+      || artifact?.mtime
+      || (openNonceRef.current += 1);
     const cacheVersion = `${baseVersion}.${reloadNonce}`;
+    if (draftPreviewUrl && !isText && (!isBackendArtifact || !hasActionPath)) {
+      const rawUrl = isAbsoluteArtifactPreviewUrl(draftPreviewUrl)
+        ? draftPreviewUrl
+        : `${host.getApiOrigin()}${draftPreviewUrl}`;
+      setPreviewKind('static');
+      setPreviewUrl(commentsEnabled
+        ? withArtifactCommentFlag(withArtifactVersion(rawUrl, cacheVersion))
+        : withArtifactVersion(rawUrl, cacheVersion));
+      setLoading(false);
+      return () => { cancelled = true; };
+    }
     mountArtifactPreview(actionPath)
       .then(async ({ kind, url, artifactDir, port, proxyUrl, backendRunning, launchError }) => {
         if (kind === 'proxy') {
@@ -436,8 +384,8 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
           // preview_proxy.py). Bake it in at mount time — same rationale as the
           // static branch below (stable src, no reactive reload).
           setPreviewUrl(commentsEnabled
-            ? _withCommentFlag(_withVersion(iframeUrl, cacheVersion))
-            : _withVersion(iframeUrl, cacheVersion));
+            ? withArtifactCommentFlag(withArtifactVersion(iframeUrl, cacheVersion))
+            : withArtifactVersion(iframeUrl, cacheVersion));
           if (typeof port === 'number') setBackendPort(port);
           return;
         }
@@ -451,8 +399,8 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
         // comments after load inherently needs a remount; commentsEnabled is in
         // this effect's deps to make that a single, intentional re-run.
         setPreviewUrl(commentsEnabled
-          ? _withCommentFlag(_withVersion(url, cacheVersion))
-          : _withVersion(url, cacheVersion));
+          ? withArtifactCommentFlag(withArtifactVersion(url, cacheVersion))
+          : withArtifactVersion(url, cacheVersion));
         // NOTE (ENG-931): we deliberately do NOT adopt the server's published
         // URL here anymore. usePublish's open refresh() already pulls the
         // authoritative published/access state from /artifacts/status for every
@@ -466,7 +414,7 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, artifact?.path, artifact?.mtime, actionPath, hasActionPath, disabledReason, isText, reloadNonce, commentsEnabled]);
+  }, [open, artifact?.path, artifact?.mtime, actionPath, hasPreviewSource, disabledReason, draftPreviewUrl, isText, reloadNonce, commentsEnabled, workspace.currentRevision?.id]);
 
   // Parse CSV → GFM pipe table once per loaded text. We cap at
   // CSV_PREVIEW_ROW_LIMIT data rows to keep the markdown renderer
@@ -474,12 +422,12 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
   // so we can show a "showing N of M" notice.
   const csvPreview = useMemo(() => {
     if (!isText || textExt !== '.csv' || !textPreview?.content) return null;
-    const rows = _parseCsv(textPreview.content, CSV_PREVIEW_ROW_LIMIT);
+    const rows = parseCsv(textPreview.content, CSV_PREVIEW_ROW_LIMIT);
     if (rows.length === 0) return null;
-    const totalRows = Math.max(0, _countCsvRows(textPreview.content) - 1);
+    const totalRows = Math.max(0, countCsvRows(textPreview.content) - 1);
     const shownRows = Math.max(0, rows.length - 1);
     return {
-      markdown: _csvRowsToGfmTable(rows),
+      markdown: csvRowsToGfmTable(rows),
       totalRows,
       shownRows,
       truncated: shownRows < totalRows,
@@ -511,7 +459,7 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
 
   // Force-refresh the preview (re-mount / re-fetch).
   const onReload = () => {
-    if (!hasActionPath) return;
+    if (!hasPreviewSource) return;
     setIframeReady(false);
     setReloadNonce((n) => n + 1);
   };
@@ -590,9 +538,11 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
     setDeleteBusy(true);
     setErr('');
     try {
-      // Unpublish first so deletion never leaves an orphaned public copy.
-      // The server enforces the same rule as a backstop.
-      if (isPublished) await unpublishArtifact(actionPath);
+      // Desktop's path-addressed delete needs a client-side unpublish first.
+      // SaaS performs both operations atomically on the scoped server route.
+      if (needsClientUnpublishBeforeDelete({ orgMode, published: isPublished })) {
+        await unpublishArtifact(actionPath);
+      }
       await deleteArtifactAndSync(artifact);
       setConfirmDelete(false);
       onDelete?.(actionPath);
@@ -605,14 +555,6 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
     }
   };
 
-  const displayUrl = (pub.publishedUrl || '').replace(/^https?:\/\//, '');
-
-  // Shared style for the small icon buttons inside the link pill. Round to
-  // match the fully-rounded pill.
-  const pillBtn = {
-    width: 26, height: 26, borderRadius: 999, color: 'var(--ink-4)',
-  };
-
   return (
     <Modal
       open={open}
@@ -622,240 +564,103 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
       height="min(820px, 88vh)"
       labelledBy="artifact-viewer-title"
     >
-      {/* Top bar — three evenly-weighted zones (title · link · actions). */}
-      <div style={{
-        flex: '0 0 auto',
-        display: 'flex', alignItems: 'center', gap: 10,
-        padding: '10px 12px',
-        borderBottom: '1px solid var(--line)',
-        background: 'var(--surface)',
-      }}>
-        {/* Left — title */}
-        <div style={{ flex: '1 1 0', minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }}>
-          <div
-            id="artifact-viewer-title"
-            className="s-h3"
-            title={title}
-            style={{
-              color: 'var(--ink)',
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              minWidth: 0, paddingRight: 12,
-            }}
-          >{title}</div>
-        </div>
+      <ArtifactViewerHeader
+        title={title}
+        workspace={workspace}
+        commentsEnabled={commentsEnabled}
+        commentsOpen={commentsOpen}
+        comments={comments}
+        toggleComments={toggleComments}
+        canManage={canManage}
+        publishable={publishable}
+        pub={pub}
+        hasActionPath={hasActionPath}
+        isPublished={isPublished}
+        publishBlock={publishBlock}
+        disabledReason={disabledReason}
+        canOpenInBrowser={canOpenInBrowser}
+        canOpenLocalFile={canOpenLocalFile}
+        isBackendArtifact={isBackendArtifact}
+        backendPort={backendPort}
+        artifact={artifact}
+        deleteBusy={deleteBusy}
+        onReload={onReload}
+        onOpenInBrowser={onOpenInBrowser}
+        onOpenFolder={onOpenFolder}
+        onOpenOS={onOpenOS}
+        onDownload={onDownload}
+        onTrash={onTrash}
+        onClose={onClose}
+      />
 
-        {/* Middle — open-folder + link pill */}
-        <div style={{ flex: '1 1 0', minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-          {canOpenLocalFile && (
-            <Tooltip content="Open local folder">
-              <IconButton onClick={onOpenFolder} aria-label="Open local folder">{Ico.openFolder(20)}</IconButton>
-            </Tooltip>
-          )}
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 2,
-            flex: '0 1 360px', minWidth: 140,
-            background: 'var(--surface-2)', border: '1px solid var(--line)', borderRadius: 999,
-            padding: '3px 6px',
-          }}>
-            <Tooltip content="Reload preview">
-              {/* Native title only while disabled — a disabled button fires no
-                  hover/focus events, so the styled Tooltip can't open. */}
-              <IconButton size={26} onClick={onReload} disabled={!hasActionPath}
-                title={!hasActionPath ? 'Reload preview' : undefined}
-                aria-label="Reload preview" style={pillBtn}>
-                {Ico.reload(20)}
-              </IconButton>
-            </Tooltip>
-            <span
-              title={isPublished ? pub.publishedUrl : undefined}
-              style={{
-                flex: '1 1 auto', minWidth: 0, textAlign: 'center',
-                fontFamily: FONT_MONO, fontSize: 11.5,
-                color: isPublished ? 'var(--ink-2)' : 'var(--ink-4)',
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                padding: '0 2px',
-              }}
-            >{isPublished ? displayUrl : '/'}</span>
-            <Tooltip content="Open in browser">
-              <IconButton size={26} onClick={onOpenInBrowser} disabled={!canOpenInBrowser}
-                title={!canOpenInBrowser ? 'Open in browser' : undefined}
-                aria-label="Open in browser" style={pillBtn}>
-                {Ico.arrowUpRight(20)}
-              </IconButton>
-            </Tooltip>
-          </div>
+      {workspace.currentRevision && (
+        <ArtifactRevisionBar
+          revision={workspace.currentRevision}
+          revisions={workspace.revisions}
+          status={workspace.status}
+          dirty={workspace.dirty}
+          canEdit={workspace.capabilities?.canEdit !== false}
+          onSave={() => workspace.save()}
+          onDiscard={workspace.discard}
+          onCompare={workspace.compareRevision}
+        />
+      )}
+      {(workspace.error || workspace.conflict) && (
+        <div className="artifact-workspace-notice" role="alert">
+          {workspace.conflict
+            ? 'This draft changed elsewhere. Your text is still here; reload the latest revision before saving.'
+            : workspace.error}
         </div>
+      )}
+      {feedbackNotice && (
+        <button
+          type="button"
+          className="artifact-feedback-notice"
+          onClick={() => workspace.setMode('review')}
+        >
+          {Ico.chats(15)} <span>{feedbackNotice}</span>
+        </button>
+      )}
 
-        {/* Right — publish · more · close */}
-        <div style={{ flex: '1 1 0', minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
-          {/* Single comments switch — everything else (mode, inbox, marker
-              visibility, leaving) lives on the floating CommentsToolbar. */}
-          {commentsEnabled && (previewKind === 'static' || previewKind === 'proxy') && (
-            <Tooltip content={commentsOpen ? 'Hide comments' : 'Comments'}>
-              <IconButton
-                aria-label="Comments"
-                onClick={toggleComments}
-                active={commentsOpen}
-              >
-                {Ico.chats(18)}
-              </IconButton>
-            </Tooltip>
-          )}
-          {publishable && (
-            // Block only the Publish direction for forbidden types (e.g.
-            // fullstack-stateful-app); once published, the menu stays usable
-            // so the artifact can still be unpublished.
-            <PublishMenu
-              controller={pub}
-              disabled={!hasActionPath || (!isPublished && !!publishBlock)}
-              disabledReason={(!isPublished && publishBlock) ? publishBlock : disabledReason}
-            />
-          )}
-          <Menu
-            ariaLabel="Artifact actions"
-            align="end"
-            width={190}
-            trigger={
-              <IconButton aria-label="More actions">
-                {Ico.moreVert(16)}
-              </IconButton>
-            }
-            items={[
-              ...(host.isWeb ? [] : [{
-                label: 'Open in OS',
-                icon: Ico.externalLink(13),
-                disabled: !hasActionPath || (isBackendArtifact && !backendPort),
-                title: isBackendArtifact && !backendPort ? 'Waiting for backend port…' : undefined,
-                onClick: onOpenOS,
-              }]),
-              ...(artifact?.serveUrl ? [{
-                label: 'Download',
-                icon: Ico.download(13),
-                onClick: onDownload,
-              }] : []),
-              { divider: true },
-              {
-                label: 'Delete',
-                icon: Ico.trash(13),
-                danger: true,
-                disabled: deleteBusy || !hasActionPath,
-                onClick: onTrash,
-              },
-            ]}
-          />
-          <Tooltip content="Close">
-            <IconButton onClick={onClose} aria-label="Close">{Ico.close(15)}</IconButton>
-          </Tooltip>
-        </div>
-      </div>
-
-      {/* Body — text (.md/.txt/.csv) renders inline; everything else is a
-          sandboxed iframe with a "Preview" placeholder until it paints.
-          `position: relative` so the comments panel can overlay the preview
-          (anchored right) instead of shifting it. */}
-      <div style={{ flex: 1, minHeight: 0, display: 'flex', position: 'relative' }}>
-      <div style={{ flex: 1, minHeight: 0, position: 'relative', background: 'var(--surface-2)', overflow: isText ? 'auto' : 'hidden' }}>
-        {err ? (
-          <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', padding: 28 }}>
-            <div style={{ color: 'var(--danger)', fontSize: 13, textAlign: 'center', maxWidth: 460, fontFamily: FONT_BODY }}>{err}</div>
-          </div>
-        ) : isText ? (
-          loading || !textPreview ? (
-            <PreviewPlaceholder />
-          ) : (
-            <div style={{
-              maxWidth: 920, margin: '0 auto', padding: '24px 28px',
-              background: 'var(--surface)', minHeight: '100%',
-            }}>
-              {textExt === '.md' ? (
-                <MarkdownContent text={textPreview.content} id={artifact.path} />
-              ) : textExt === '.csv' && csvPreview ? (
-                <MarkdownContent text={csvPreview.markdown} id={artifact.path} />
-              ) : (
-                <pre style={{
-                  margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                  fontFamily: FONT_MONO, fontSize: 12.5, color: 'var(--ink-2)', lineHeight: 1.55,
-                }}>{textPreview.content}</pre>
-              )}
-              {(textPreview.truncated || (csvPreview && csvPreview.truncated)) && (
-                <div style={{
-                  marginTop: 18, padding: '10px 14px', borderRadius: 8,
-                  background: 'var(--surface-2)', border: '1px solid var(--line)',
-                  color: 'var(--ink-3)', fontSize: 12.5, fontFamily: FONT_BODY,
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  gap: 12, flexWrap: 'wrap',
-                }}>
-                  <span>
-                    {csvPreview && csvPreview.truncated
-                      ? `Showing first ${csvPreview.shownRows.toLocaleString()} of ${csvPreview.totalRows.toLocaleString()} rows.`
-                      : 'Preview is truncated.'}
-                  </span>
-                  <Button onClick={host.isWeb ? onDownload : onOpenOS}>
-                    {host.isWeb ? Ico.download(13) : Ico.externalLink(13)}
-                    {host.isWeb ? 'Download full file' : 'Open full file in OS'}
-                  </Button>
-                </div>
-              )}
-            </div>
-          )
-        ) : (
-          // src= (not srcdoc) so relative asset refs resolve against the
-          // served URL. `allow-same-origin` is required in the cloud so the
-          // artifact's backend calls carry the auth cookie (see ENG notes).
-          <>
-            {previewUrl && (
-              <iframe
-                ref={iframeRef}
-                title={title || 'Artifact preview'}
-                // The comment-layer activation flag (when applicable) is already
-                // baked into previewUrl at mount time — see the mount effect —
-                // so the src stays stable and doesn't reload reactively.
-                src={previewUrl}
-                onLoad={() => { setIframeReady(true); layer.onIframeLoad(); }}
-                sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-modals"
-                style={{
-                  width: '100%', height: '100%', border: 0, background: '#fff',
-                  opacity: iframeReady ? 1 : 0, transition: 'opacity 180ms ease',
-                }}
-              />
-            )}
-            {(loading || !previewUrl || !iframeReady) && <PreviewPlaceholder />}
-          </>
-        )}
-      </div>
-        {/* Comments chrome: the floating toolbar drives everything; the inbox
-            sidebar opens from its tray button. */}
-        {commentsOpen && commentsEnabled && (
-          <CommentsToolbar
-            mode={layer.mode}
-            onToggleMode={layer.toggleMode}
-            inboxOpen={inboxOpen}
-            onToggleInbox={() => setInboxOpen((v) => !v)}
-            markersShown={markersShown}
-            onToggleMarkers={() => setMarkersShown((v) => !v)}
-            onClose={toggleComments}
-          />
-        )}
-        {/* The panel is a thread INBOX (summaries + resolve/delete) plus a
-            pinned composer for general (unanchored) comments; anchored
-            composing, replying, and editing happen in the on-artifact popover. */}
-        {commentsOpen && inboxOpen && commentsEnabled && commentUserDir && commentReportId && (
-          <CommentsPanel
-            threads={comments.threads}
-            anchorStates={layer.anchorStates}
-            error={comments.error}
-            expired={comments.expired}
-            viewer={comments.viewer}
-            onStatus={comments.setStatus}
-            onDeleteThread={comments.deleteThread}
-            onCreate={comments.create}
-            onHoverThread={layer.hlOn}
-            onLeaveThread={layer.hlOff}
-            onFocusThread={layer.focus}
-            onClose={() => setInboxOpen(false)}
-          />
-        )}
-      </div>
+      <ArtifactViewerBody
+        workspace={workspace}
+        draftPreviewUrl={draftPreviewUrl}
+        err={err}
+        setErr={setErr}
+        isText={isText}
+        loading={loading}
+        textPreview={textPreview}
+        textContentRef={textContentRef}
+        captureTextSelection={captureTextSelection}
+        textExt={textExt}
+        artifact={artifact}
+        csvPreview={csvPreview}
+        onDownload={onDownload}
+        onOpenOS={onOpenOS}
+        previewUrl={previewUrl}
+        previewKind={previewKind}
+        iframeRef={iframeRef}
+        title={title}
+        iframeReady={iframeReady}
+        setIframeReady={setIframeReady}
+        layer={layer}
+        commentsOpen={commentsOpen}
+        commentsEnabled={commentsEnabled}
+        inboxOpen={inboxOpen}
+        setInboxOpen={setInboxOpen}
+        markersShown={markersShown}
+        setMarkersShown={setMarkersShown}
+        toggleComments={toggleComments}
+        commentUserDir={commentUserDir}
+        commentReportId={commentReportId}
+        comments={comments}
+        addressCommentWithAgent={addressCommentWithAgent}
+        createArtifactComment={createArtifactComment}
+        textSelection={textSelection}
+        setTextSelection={setTextSelection}
+        repairBusy={repairBusy}
+        setRepairBusy={setRepairBusy}
+      />
 
       {/* Delete confirmation */}
       <ConfirmModal
