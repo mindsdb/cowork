@@ -6,6 +6,7 @@ import type {
   EngineCapability,
   GitState,
   SessionCreateBody,
+  SkillLibraryItem,
   WorkspaceInspection,
 } from './api';
 import { DEFAULT_CODING_AGENT_MODEL } from './defaults';
@@ -14,6 +15,15 @@ import { DEFAULT_CODING_AGENT_MODEL } from './defaults';
 const NOW = '2026-08-21T19:40:00Z';
 const ROOT = '/Users/developer/Projects/atlas-web';
 const WORKTREE = '/Users/developer/.cowork/coding/worktrees/atlas-web/task-73c4';
+// Keep visual QA representative of the production coding-model contract. A
+// deliberately tiny fixture made a healthy catalogue look regressed when the
+// fixture build was mistaken for the signed-in app.
+const FIXTURE_MODEL_IDS = [
+  'mindshub_air', 'qwen', 'deepseek', 'sonnet', 'fable', 'gpt-mini',
+  'gpt-nano', 'gpt-luna', 'kimi', 'glm', 'grok', 'gpt-codex',
+  'gemini-flash', 'grok-4-5', 'gpt-terra', 'gpt', 'opus', 'muse-spark',
+  'haiku', 'gemini',
+];
 
 
 function activeFixtureName(): string | null {
@@ -318,10 +328,17 @@ export function getCodeFixtureApi() {
     created_at: NOW,
     updated_at: NOW,
   }];
+  const skillItems: SkillLibraryItem[] = [
+    { id: 'source-engineering:review/SKILL.md', kind: 'skill', name: 'Code review', description: 'Review changes against team engineering standards.', origin: 'team', source_id: 'source-engineering', source_name: 'Engineering standards', path: 'review/SKILL.md', version: 'a1b2c3d4e5f6', enabled: true, enabled_project_ids: ['project-atlas'] },
+    { id: 'source-engineering:AGENTS.md', kind: 'instructions', name: 'AGENTS.md', description: '', origin: 'team', source_id: 'source-engineering', source_name: 'Engineering standards', path: 'AGENTS.md', version: 'a1b2c3d4e5f6', enabled: true, enabled_project_ids: ['project-atlas'] },
+    { id: 'personal:review', kind: 'skill', name: 'Review', description: 'Run a fresh, skeptical pass over completed work.', origin: 'personal', source_name: 'Yours', path: 'review', enabled: true, enabled_project_ids: [] },
+    { id: 'personal:craft-ui', kind: 'skill', name: 'Craft world-class UI', description: 'Design and verify polished product interfaces.', origin: 'built_in', source_name: 'MindsHub', path: 'craft-ui', enabled: true, enabled_project_ids: [] },
+    { id: 'personal:thermo-nuclear-code-quality-review', kind: 'skill', name: 'Thermo-Nuclear Code Quality Review', description: 'Run an extremely strict maintainability review for abstraction quality, giant files, and spaghetti-condition growth.', origin: 'built_in', source_name: 'MindsHub', path: 'thermo-nuclear-code-quality-review', enabled: true, enabled_project_ids: [] },
+  ];
 
   return {
     engines: async () => copy(engines),
-    models: async () => ({ items: [DEFAULT_CODING_AGENT_MODEL, 'fable', 'sonnet', 'gpt-5.5-mini'] }),
+    models: async () => ({ items: [...FIXTURE_MODEL_IDS] }),
     inspect: async (path: string): Promise<WorkspaceInspection> => ({
       path, exists: true, is_directory: true, is_git: true, repository_root: path,
       branch: 'staging', revision: '91ef52ea6f3ab14d', dirty: false,
@@ -358,13 +375,19 @@ export function getCodeFixtureApi() {
         branch: 'main', current_revision: 'a1b2c3d4e5f6', available_revision: 'a1b2c3d4e5f6',
         update_available: false, last_checked_at: NOW, item_count: 2, enabled_project_count: 1, diff: '',
       }],
-      items: [
-        { id: 'source-engineering:review/SKILL.md', kind: 'skill' as const, name: 'Code review', description: 'Review changes against team engineering standards.', origin: 'team' as const, source_id: 'source-engineering', source_name: 'Engineering standards', path: 'review/SKILL.md', version: 'a1b2c3d4e5f6', enabled: true, enabled_project_ids: ['project-atlas'] },
-        { id: 'source-engineering:AGENTS.md', kind: 'instructions' as const, name: 'AGENTS.md', description: '', origin: 'team' as const, source_id: 'source-engineering', source_name: 'Engineering standards', path: 'AGENTS.md', version: 'a1b2c3d4e5f6', enabled: true, enabled_project_ids: ['project-atlas'] },
-        { id: 'personal:review', kind: 'skill' as const, name: 'Review', description: 'Run a fresh, skeptical pass over completed work.', origin: 'personal' as const, source_name: 'Yours', path: 'review', enabled: true, enabled_project_ids: [] },
-        { id: 'personal:craft-ui', kind: 'skill' as const, name: 'Craft world-class UI', description: 'Design and verify polished product interfaces.', origin: 'built_in' as const, source_name: 'MindsHub', path: 'craft-ui', enabled: true, enabled_project_ids: [] },
-      ],
+      items: copy(skillItems),
     }),
+    skillDocument: async (itemId: string, selectedPath?: string) => {
+      const item = skillItems.find((candidate) => candidate.id === itemId);
+      if (!item) throw new Error('Skill not found.');
+      const files = item.kind === 'skill' ? ['SKILL.md', 'references/checklist.md'] : [item.path];
+      const path = selectedPath || files[0];
+      if (!files.includes(path)) throw new Error('Skill file not found.');
+      const content = path === 'references/checklist.md'
+        ? '# Review checklist\n\n- Inspect the complete diff.\n- Run focused verification.\n- Report only evidence-backed findings.'
+        : `---\nname: ${item.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}\ndescription: ${item.description}\n---\n\n# ${item.name}\n\n${item.description}\n\n## How to use it\n\nApply this guidance deliberately, verify the result, and report material findings clearly.`;
+      return { item: copy(item), files, selected_path: path, content };
+    },
     addSkillSource: async () => ({ id: 'source-new', name: 'Team skills', repository: ROOT, branch: 'main', current_revision: 'abc123', available_revision: 'abc123', update_available: false, last_checked_at: NOW, item_count: 1, enabled_project_count: 0, diff: '' }),
     refreshSkillSource: async () => ({ id: 'source-engineering', name: 'Engineering standards', repository: ROOT, branch: 'main', current_revision: 'a1b2c3', available_revision: 'a1b2c3', update_available: false, last_checked_at: NOW, item_count: 2, enabled_project_count: 1, diff: '' }),
     applySkillSource: async () => ({ id: 'source-engineering', name: 'Engineering standards', repository: ROOT, branch: 'main', current_revision: 'a1b2c3', available_revision: 'a1b2c3', update_available: false, last_checked_at: NOW, item_count: 2, enabled_project_count: 1, diff: '' }),

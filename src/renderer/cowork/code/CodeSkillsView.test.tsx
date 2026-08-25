@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
   skillLibrary,
+  skillDocument,
   addSkillSource,
   refreshSkillSource,
   applySkillSource,
@@ -12,6 +13,7 @@ const {
   openExternal,
 } = vi.hoisted(() => ({
   skillLibrary: vi.fn(),
+  skillDocument: vi.fn(),
   addSkillSource: vi.fn(),
   refreshSkillSource: vi.fn(),
   applySkillSource: vi.fn(),
@@ -24,9 +26,14 @@ vi.mock('../../platform/host', () => ({
   host: { pickCodeFolder: vi.fn(), openExternal, openPath: vi.fn() },
 }));
 
+vi.mock('../components/markdown/MarkdownContent', () => ({
+  MarkdownContent: ({ text }: { text: string }) => <div>{text}</div>,
+}));
+
 vi.mock('./api', () => ({
   codingApi: {
     skillLibrary,
+    skillDocument,
     addSkillSource,
     refreshSkillSource,
     applySkillSource,
@@ -94,6 +101,12 @@ describe('CodeSkillsView', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     skillLibrary.mockResolvedValue(structuredClone(library));
+    skillDocument.mockResolvedValue({
+      item: structuredClone(library.items[0]),
+      files: ['SKILL.md'],
+      selected_path: 'SKILL.md',
+      content: '---\nname: review\n---\n\n# Review\n\nInspect the complete diff before reporting findings.',
+    });
     setProjectSkillSource.mockResolvedValue(structuredClone(library));
   });
 
@@ -109,6 +122,17 @@ describe('CodeSkillsView', () => {
     await user.type(screen.getByRole('textbox', { name: 'Search skills' }), 'release');
     expect(screen.getByText('Prepare a release.')).toBeInTheDocument();
     expect(screen.queryByText('Review code against team standards.')).not.toBeInTheDocument();
+  });
+
+  it('opens a readable skill document from the library row', async () => {
+    const user = userEvent.setup();
+    render(<CodeSkillsView projects={projects} />);
+
+    await user.click(await screen.findByRole('button', { name: 'View Review' }));
+
+    expect(await screen.findByRole('dialog', { name: 'Review' })).toBeInTheDocument();
+    await waitFor(() => expect(document.querySelector('.code-skill-detail')).toHaveTextContent('Inspect the complete diff before reporting findings.'));
+    expect(skillDocument).toHaveBeenCalledWith('engineering:skills/review/SKILL.md', undefined);
   });
 
   it('assigns a team skill to projects without losing other selected items', async () => {

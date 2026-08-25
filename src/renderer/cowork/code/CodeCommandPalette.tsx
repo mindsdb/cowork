@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import Ico from '../components/Icons';
 import { codingApi, type EngineCommand, type SkillLibraryItem } from './api';
@@ -102,6 +102,7 @@ export function CodeCommandPalette({
   onQueryChange,
   onSelectedIndexChange,
   onChoose,
+  onViewSkill,
   onDismiss,
 }: {
   items: CodePaletteItem[];
@@ -111,11 +112,31 @@ export function CodeCommandPalette({
   onQueryChange: (query: string) => void;
   onSelectedIndexChange: (index: number) => void;
   onChoose: (item: CodePaletteItem) => void;
+  onViewSkill: (skill: SkillLibraryItem) => void;
   onDismiss: () => void;
 }) {
+  const paletteRef = useRef<HTMLDivElement>(null);
+  const [availableHeight, setAvailableHeight] = useState<number>();
   const skills = items.filter((item) => item.section === 'skills');
   const commands = items.filter((item) => item.section === 'commands');
   const selected = Math.min(selectedIndex, Math.max(0, items.length - 1));
+
+  useLayoutEffect(() => {
+    const palette = paletteRef.current;
+    if (!palette?.parentElement?.classList.contains('code-start-composer')) {
+      setAvailableHeight(undefined);
+      return undefined;
+    }
+
+    const fitToViewport = () => {
+      const remainingHeight = window.innerHeight - palette.getBoundingClientRect().top - 12;
+      setAvailableHeight(Math.max(150, Math.min(430, remainingHeight)));
+    };
+    fitToViewport();
+    window.addEventListener('resize', fitToViewport);
+    return () => window.removeEventListener('resize', fitToViewport);
+  }, []);
+
   const handleKeyDown = (event: React.KeyboardEvent) => {
     if (event.key === 'Escape') {
       event.preventDefault();
@@ -142,28 +163,49 @@ export function CodeCommandPalette({
   const renderItem = (item: CodePaletteItem) => {
     const index = items.indexOf(item);
     return (
-      <button
+      <div
         key={item.id}
-        type="button"
-        role="option"
-        aria-selected={index === selected}
-        className={index === selected ? 'is-selected' : ''}
+        className={`code-command-palette__item${index === selected ? ' is-selected' : ''}`}
         onMouseEnter={() => onSelectedIndexChange(index)}
         onMouseDown={(event) => event.preventDefault()}
-        onClick={() => onChoose(item)}
       >
-        <code>{item.invocation}</code>
-        <span>
-          <strong>{item.label}</strong>
-          <small>{item.description}</small>
-        </span>
-        <em>{item.kind === 'skill' ? item.scope : item.argumentHint}</em>
-      </button>
+        <button
+          type="button"
+          role="option"
+          aria-selected={index === selected}
+          className="code-command-palette__choose"
+          onClick={() => onChoose(item)}
+        >
+          <code>{item.invocation}</code>
+          <span>
+            <strong>{item.label}</strong>
+            <small>{item.description}</small>
+          </span>
+          <em>{item.kind === 'skill' ? item.scope : item.argumentHint}</em>
+        </button>
+        {item.kind === 'skill' && (
+          <button
+            type="button"
+            className="code-command-palette__view"
+            aria-label={`View ${item.label}`}
+            onClick={() => onViewSkill(item.skill)}
+          >
+            View
+          </button>
+        )}
+      </div>
     );
   };
 
   return (
-    <div className="code-command-palette" role="listbox" aria-label="Skills and commands" onKeyDown={handleKeyDown}>
+    <div
+      ref={paletteRef}
+      className="code-command-palette"
+      role="listbox"
+      aria-label="Skills and commands"
+      style={availableHeight ? { maxHeight: availableHeight } : undefined}
+      onKeyDown={handleKeyDown}
+    >
       <label className="code-command-palette__search">
         <span aria-hidden="true">{Ico.search(13)}</span>
         <input

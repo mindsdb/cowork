@@ -8,11 +8,12 @@ import Select from '../components/ui/Select';
 import Spinner from '../components/ui/Spinner';
 import { Textarea } from '../components/ui/Input';
 import type { ModelPickerMeta, ModelPickerSource } from '../lib/modelPickerOptions';
-import type { CodeProject, CreateCodeTaskInput } from './api';
+import type { CodeProject, CreateCodeTaskInput, SkillLibraryItem } from './api';
 import { CodeCommandPalette, useCodePaletteItems, type CodePaletteItem } from './CodeCommandPalette';
 import { CodeProjectPicker } from './CodeProjectPicker';
 import { PermissionSelect } from './PermissionSelect';
 import { PromptReferenceChips } from './PromptReferences';
+import { SkillDetailModal } from './SkillDetailModal';
 import { parseDeveloperSourceUrl } from './developerTools';
 import { TaskSourceLinks } from './TaskSourceLinks';
 import { useNewTaskDraft } from './useNewTaskDraft';
@@ -65,6 +66,7 @@ export function NewTaskPanel({
   } = draft;
   const commandQuery = /^\/([^\s]*)$/.exec(prompt)?.[1] ?? null;
   const [paletteIndex, setPaletteIndex] = useState(0);
+  const [detailItem, setDetailItem] = useState<SkillLibraryItem | null>(null);
   const paletteItems = useCodePaletteItems({
     commands: engineCommands.filter((command) => command.action !== 'client'),
     query: commandQuery,
@@ -158,6 +160,7 @@ export function NewTaskPanel({
               onQueryChange={(query) => setPrompt(`/${query}`)}
               onSelectedIndexChange={setPaletteIndex}
               onChoose={choosePaletteItem}
+              onViewSkill={setDetailItem}
               onDismiss={() => { setPrompt(''); requestAnimationFrame(() => promptRef.current?.focus()); }}
             />
           )}
@@ -314,7 +317,7 @@ export function NewTaskPanel({
           )}
         </div>
         {(error || catalogError) && <Alert variant="danger">{error || catalogError}</Alert>}
-
+        <SkillDetailModal item={detailItem} onClose={() => setDetailItem(null)} />
       </div>
     </main>
   );
