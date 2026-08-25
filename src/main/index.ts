@@ -1624,7 +1624,7 @@ async function startOrphanRefreshLoops(): Promise<void> {
         if (!tokenUrl) continue;
         const refreshToken = await getOAuthRefreshToken(engine, accountEmail);
         if (!refreshToken) continue;
-        startRefreshLoop(engine, name, accountEmail, expiresAt, tokenUrl);
+        startRefreshLoop(engine, name, accountEmail, expiresAt, tokenUrl, oauthBlock?.token_auth_style);
         console.log(`[token-refresh] resumed loop for ${engine}:${accountEmail}`);
       } catch (err) {
         console.warn(`[token-refresh] could not resume loop for ${engine}/${name}:`, err);

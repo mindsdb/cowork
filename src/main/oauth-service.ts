@@ -316,6 +316,7 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
       access_token: data.access_token,
       expires_in: typeof data.expires_in === 'number' ? data.expires_in : undefined,
       scope: typeof data.scope === 'string' ? data.scope : undefined,
+      token_type: typeof data.token_type === 'string' ? data.token_type : undefined,
     };
   } catch (e: any) {
     if (cancelled) return { ok: false, reason: 'cancelled' };

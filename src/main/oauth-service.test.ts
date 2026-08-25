@@ -70,7 +70,7 @@ describe('oauthConnect', () => {
     expect(page.body).toMatch(/authorized/i);
 
     const result = await flow;
-    expect(result).toMatchObject({ ok: true, access_token: 'at', refresh_token: 'rt', expires_in: 300 });
+    expect(result).toMatchObject({ ok: true, access_token: 'at', refresh_token: 'rt', expires_in: 300, token_type: 'Bearer' });
     const [, exchangeInit] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     const exchangeBody = String(exchangeInit.body);
     expect(exchangeBody).toContain('grant_type=authorization_code');
