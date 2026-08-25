@@ -60,12 +60,16 @@ const initOptions = { onLoad: 'login-required' as const, pkceMethod: 'S256', che
 // Legacy per-user host (cw-<id>): canonical `cowork.*` and localhost dev are
 // unaffected — see the TRANSITION EXCEPTION note above and lib/legacyHost.ts.
 const legacyTenant = isLegacyTenantHost(window.location.hostname);
+// Match App.tsx's development-only Code fixture bypass. Keeping this outside
+// production builds gives visual QA a browser-renderable surface without ever
+// weakening the canonical web app's Keycloak gate.
+const codeFixture = import.meta.env.DEV && new URLSearchParams(window.location.search).has('codeFixture');
 
 const root = document.getElementById('root')!;
 
 createRoot(root).render(
   <StrictMode>
-    {legacyTenant ? (
+    {legacyTenant || codeFixture ? (
       // Access is gated upstream; render directly without a Keycloak login.
       <App />
     ) : (

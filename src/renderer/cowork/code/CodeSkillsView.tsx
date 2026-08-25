@@ -14,6 +14,7 @@ import {
   type SkillLibraryPage,
   type SkillLibrarySource,
 } from './api';
+import { SkillDetailModal } from './SkillDetailModal';
 import './code-skills.css';
 
 type OriginFilter = 'all' | SkillLibraryItem['origin'];
@@ -229,6 +230,7 @@ export function CodeSkillsView({ projects }: { projects: CodeProject[] }) {
   const [sourceActionError, setSourceActionError] = useState('');
   const [removePending, setRemovePending] = useState<SkillLibrarySource | null>(null);
   const [removeError, setRemoveError] = useState('');
+  const [detailItem, setDetailItem] = useState<SkillLibraryItem | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -295,8 +297,10 @@ export function CodeSkillsView({ projects }: { projects: CodeProject[] }) {
 
   const rows = (items: SkillLibraryItem[]) => items.map((item) => (
     <div className="code-skill-row" key={item.id}>
-      <span className="code-skill-row__icon" aria-hidden="true">{item.kind === 'skill' ? Ico.cube(14) : Ico.code(14)}</span>
-      <div className="code-skill-row__main"><strong>{item.name}</strong><span>{item.description || item.path}</span></div>
+      <button type="button" className="code-skill-row__open" onClick={() => setDetailItem(item)} aria-label={`View ${item.name}`}>
+        <span className="code-skill-row__icon" aria-hidden="true">{item.kind === 'skill' ? Ico.cube(14) : Ico.code(14)}</span>
+        <span className="code-skill-row__main"><strong>{item.name}</strong><span>{item.description || item.path}</span></span>
+      </button>
       <span className="code-skill-row__kind">{kindLabel(item.kind)}</span>
       {item.origin === 'team' ? (
         <Button size="sm" variant="subtle" onClick={() => setProjectItem(item)}>
@@ -387,6 +391,7 @@ export function CodeSkillsView({ projects }: { projects: CodeProject[] }) {
           } finally { setBusy(false); }
         }}
       />
+      <SkillDetailModal item={detailItem} onClose={() => setDetailItem(null)} />
     </main>
   );
 }

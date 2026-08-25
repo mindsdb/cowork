@@ -318,6 +318,13 @@ export interface SkillLibraryPage {
   items: SkillLibraryItem[];
 }
 
+export interface SkillLibraryDocument {
+  item: SkillLibraryItem;
+  files: string[];
+  selected_path: string;
+  content: string;
+}
+
 export interface PlaybookItem {
   kind: 'skill' | 'instructions' | 'workflow';
   name: string;
@@ -533,6 +540,9 @@ const liveCodingApi = {
   deleteProject: (id: string) => requestJson<void>(`/projects/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   skillLibrary: (projectId?: string | null) => requestJson<SkillLibraryPage>(
     `/skills/library${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ''}`,
+  ),
+  skillDocument: (itemId: string, path?: string) => requestJson<SkillLibraryDocument>(
+    `/skills/library/content?itemId=${encodeURIComponent(itemId)}${path ? `&path=${encodeURIComponent(path)}` : ''}`,
   ),
   addSkillSource: (body: { name?: string; repository: string; branch: string }) => requestJson<SkillLibrarySource>('/skills/sources', {
     method: 'POST', body: JSON.stringify(body),

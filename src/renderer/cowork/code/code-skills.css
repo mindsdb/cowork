@@ -22,8 +22,11 @@
 .code-skill-group > header strong { font-size: 12px; font-weight: 650; }
 .code-skill-group > header small { overflow: hidden; color: var(--ink-4); text-overflow: ellipsis; white-space: nowrap; font: 9.5px var(--font-mono); }
 .code-skill-group > header > span { color: var(--ink-4); font-size: 9.5px; }
-.code-skill-row { min-height: 55px; padding: 7px; display: grid; grid-template-columns: 24px minmax(0, 1fr) 78px 112px; align-items: center; gap: 10px; border-bottom: 1px solid var(--line); }
+.code-skill-row { min-height: 55px; padding: 7px; display: grid; grid-template-columns: minmax(0, 1fr) 78px 112px; align-items: center; gap: 10px; border-bottom: 1px solid var(--line); }
 .code-skill-row:hover { background: color-mix(in srgb, var(--surface-2) 54%, transparent); }
+.code-skill-row__open { min-width: 0; padding: 0; display: grid; grid-template-columns: 24px minmax(0, 1fr); align-items: center; gap: 10px; border: 0; border-radius: 7px; background: transparent; color: inherit; cursor: pointer; text-align: left; }
+.code-skill-row__open:hover strong { color: var(--accent); }
+.code-skill-row__open:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .code-skill-row__icon { width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border-radius: 7px; background: var(--surface-2); color: var(--ink-3); }
 .code-skill-row__main { min-width: 0; display: grid; gap: 3px; }
 .code-skill-row__main strong { overflow: hidden; color: var(--ink-2); text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; font-weight: 620; }
@@ -69,13 +72,13 @@
   .code-skills-view__header { align-items: flex-start; flex-direction: column; }
   .code-skills-toolbar { align-items: stretch; flex-direction: column; }
   .code-skills-toolbar > div { align-self: flex-start; }
-  .code-skill-row { grid-template-columns: 24px minmax(0, 1fr) auto; }
+  .code-skill-row { grid-template-columns: minmax(0, 1fr) auto; }
   .code-skill-row__kind { display: none; }
 }
 
 @media (max-width: 520px) {
-  .code-skill-row { grid-template-columns: 24px minmax(0, 1fr); }
+  .code-skill-row { grid-template-columns: minmax(0, 1fr); }
   .code-skill-row > .btn,
-  .code-skill-row__availability { grid-column: 2; justify-self: start; }
+  .code-skill-row__availability { justify-self: start; }
   .code-skill-source-form__pair { grid-template-columns: 1fr; }
 }

@@ -45,7 +45,7 @@ vi.mock('./cowork/styles/globals.css', () => ({}));
 vi.mock('./cowork/styles/skin-8bit.css', () => ({}));
 vi.mock('./styles.css', () => ({}));
 
-async function renderOnHost(hostname: string) {
+async function renderOnHost(hostname: string, search = '') {
   rendered.provider = false;
   rendered.app = false;
 
@@ -53,7 +53,7 @@ async function renderOnHost(hostname: string) {
   Object.defineProperty(window, 'location', {
     configurable: true,
     writable: true,
-    value: { protocol: 'https:', host: hostname, hostname, pathname: '/' },
+    value: { protocol: 'https:', host: hostname, hostname, pathname: '/', search },
   });
 
   const root = document.createElement('div');
@@ -104,5 +104,11 @@ describe('web-main auth wrapper selection', () => {
     const r = await renderOnHost('localhost');
     expect(r.app).toBe(true);
     expect(r.provider).toBe(true);
+  });
+
+  it('renders the development Code fixture without the Keycloak provider', async () => {
+    const r = await renderOnHost('localhost', '?codeFixture=completed');
+    expect(r.app).toBe(true);
+    expect(r.provider).toBe(false);
   });
 });

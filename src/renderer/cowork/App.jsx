@@ -1803,6 +1803,8 @@ function AppCore() {
       ? 'code'
       : 'cowork'
   ));
+  const codeFixtureActive = import.meta.env.DEV
+    && new URLSearchParams(window.location.search).has('codeFixture');
   // Do not boot the coding workspace, its data requests, and its hidden
   // composer during an ordinary Cowork session. Mount it on first use, then
   // keep it alive so later Cowork/Code switches preserve in-progress state.
@@ -1811,11 +1813,11 @@ function AppCore() {
   // home | task | projects | scheduled | schedule-detail | artifacts | customize
   const changeWorkspace = useCallback((next) => {
     if (next !== 'cowork' && next !== 'code') return;
-    if (next === 'code' && host.isWeb) return;
+    if (next === 'code' && host.isWeb && !codeFixtureActive) return;
     if (sidebarPopout) setNavPopoutOpen(false);
     if (next === 'code') setCodeWorkspaceMounted(true);
     setWorkspaceMode(next);
-  }, [sidebarPopout]);
+  }, [codeFixtureActive, sidebarPopout]);
   const openCode = useCallback(() => changeWorkspace('code'), [changeWorkspace]);
   // Code owns a separate task history, but its route-specific navigation is
   // rendered by the canonical Cowork sidebar instead of a second nested rail.
@@ -5356,7 +5358,7 @@ function AppCore() {
         )}
         </div>
 
-        {!host.isWeb && codeWorkspaceMounted && (
+        {(!host.isWeb || codeFixtureActive) && codeWorkspaceMounted && (
           <div
             className="workspace-mode-panel"
             hidden={workspaceMode !== 'code'}

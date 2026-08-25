@@ -302,14 +302,18 @@
 .code-command-palette__section { min-height: 25px; padding: 4px 8px 5px; display: flex; align-items: center; gap: 8px; color: var(--ink-4); }
 .code-command-palette__section span { text-transform: uppercase; font: 650 8.5px var(--font-mono); letter-spacing: .08em; }
 .code-command-palette__section small { margin-left: auto; font-size: 9px; }
-.code-command-palette button { width: 100%; min-height: 48px; padding: 7px 9px; display: grid; grid-template-columns: 108px minmax(0, 1fr) auto; align-items: center; gap: 9px; border: 0; border-radius: var(--r); background: transparent; color: var(--ink); cursor: pointer; text-align: left; }
-.code-command-palette button:hover,
-.code-command-palette button.is-selected { background: var(--surface-2); }
-.code-command-palette button code { overflow: hidden; color: var(--accent); text-overflow: ellipsis; white-space: nowrap; font: 10.5px var(--font-mono); }
-.code-command-palette button > span { min-width: 0; display: grid; gap: 2px; }
-.code-command-palette button strong { color: var(--ink-2); font-size: 11px; font-weight: 620; }
-.code-command-palette button small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-4); font-size: 9.5px; }
-.code-command-palette button em { max-width: 130px; overflow: hidden; color: var(--ink-4); text-overflow: ellipsis; white-space: nowrap; font: normal 8.5px var(--font-sans); }
+.code-command-palette__item { min-height: 48px; display: flex; align-items: stretch; border-radius: var(--r); }
+.code-command-palette__item:hover,
+.code-command-palette__item.is-selected { background: var(--surface-2); }
+.code-command-palette__choose { min-width: 0; min-height: 48px; padding: 7px 9px; flex: 1; display: grid; grid-template-columns: 108px minmax(0, 1fr) auto; align-items: center; gap: 9px; border: 0; border-radius: var(--r); background: transparent; color: var(--ink); cursor: pointer; text-align: left; }
+.code-command-palette__choose code { overflow: hidden; color: var(--accent); text-overflow: ellipsis; white-space: nowrap; font: 10.5px var(--font-mono); }
+.code-command-palette__choose > span { min-width: 0; display: grid; gap: 2px; }
+.code-command-palette__choose strong { color: var(--ink-2); font-size: 11px; font-weight: 620; }
+.code-command-palette__choose small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-4); font-size: 9.5px; }
+.code-command-palette__choose em { max-width: 130px; overflow: hidden; color: var(--ink-4); text-overflow: ellipsis; white-space: nowrap; font: normal 8.5px var(--font-sans); }
+.code-command-palette__view { margin: 8px 8px 8px 0; padding: 0 7px; flex: none; border: 0; border-radius: 6px; background: transparent; color: var(--ink-4); cursor: pointer; font: 550 9.5px var(--font-sans); }
+.code-command-palette__view:hover,
+.code-command-palette__view:focus-visible { background: var(--surface-3); color: var(--ink-2); outline: none; }
 .code-command-palette__empty { padding: 28px 14px; color: var(--ink-4); text-align: center; font-size: 11px; }
 
 /* A task-owned shell survives panel unmounts and Code/Cowork navigation. */

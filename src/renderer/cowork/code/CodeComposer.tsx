@@ -2,12 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
 import { Textarea } from '../components/ui/Input';
-import { codingApi, type CodingSession, type EngineCommand, type InputReference, type PermissionMode } from './api';
+import { codingApi, type CodingSession, type EngineCommand, type InputReference, type PermissionMode, type SkillLibraryItem } from './api';
 import { CodeCommandPalette, useCodePaletteItems, type CodePaletteItem } from './CodeCommandPalette';
 import { MentionMenu, PromptQueue } from './ComposerMenus';
 import { PermissionSelect } from './PermissionSelect';
 import { isActiveStatus } from './presentation';
 import { mergeReferences, PromptReferenceChips, referencesFromFiles } from './PromptReferences';
+import { SkillDetailModal } from './SkillDetailModal';
 
 
 export function CodeComposer({
@@ -41,6 +42,7 @@ export function CodeComposer({
   const [referenceError, setReferenceError] = useState('');
   const [draggingFiles, setDraggingFiles] = useState(false);
   const [historyIndex, setHistoryIndex] = useState<number | null>(null);
+  const [detailItem, setDetailItem] = useState<SkillLibraryItem | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const historyDraftRef = useRef('');
   const active = isActiveStatus(session.status);
@@ -155,6 +157,7 @@ export function CodeComposer({
             onQueryChange={(query) => setPrompt(`/${query}`)}
             onSelectedIndexChange={setCommandIndex}
             onChoose={choosePaletteItem}
+            onViewSkill={setDetailItem}
             onDismiss={() => setPrompt('')}
           />
         )}
@@ -277,6 +280,7 @@ export function CodeComposer({
           )}
         </div>
       </div>
+      <SkillDetailModal item={detailItem} onClose={() => setDetailItem(null)} />
     </div>
   );
 }
