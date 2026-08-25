@@ -9,6 +9,7 @@ export interface MarkdownContentProps {
   variant?: string;
   enableForms?: boolean;
   enableCharts?: boolean;
+  animateStreamingWords?: boolean;
   isAssistant?: boolean;
 }
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import Spinner from '../components/ui/Spinner';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
@@ -86,6 +86,8 @@ function eventSummary(event: CodingEvent): string {
 
 function ActivityGroup({ events, active }: { events: CodingEvent[]; active: boolean }) {
   const failed = events.some((event) => event.phase === 'failed');
+  const [open, setOpen] = useState(failed);
+  useEffect(() => { if (failed) setOpen(true); }, [failed]);
   const inProgress = active && events.some((event) => event.phase === 'progress' || event.phase === 'started');
   const fileCount = events.filter((event) => event.type === 'file_change' || event.type === 'diff').length;
   const commandCount = events.filter((event) => event.type === 'command' || event.type === 'tool').length;
@@ -96,7 +98,11 @@ function ActivityGroup({ events, active }: { events: CodingEvent[]; active: bool
     durationLabel(events),
   ].filter(Boolean).join(' · ');
   return (
-    <details className={`code-activity-group${failed ? ' is-failed' : ''}`} open={failed}>
+    <details
+      className={`code-activity-group${failed ? ' is-failed' : ''}`}
+      open={open}
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+    >
       <summary>
         <span className="code-activity-group__icon">
           {inProgress ? <Spinner className="text-xs" /> : failed ? Ico.close(12) : Ico.check(12)}
@@ -107,33 +113,36 @@ function ActivityGroup({ events, active }: { events: CodingEvent[]; active: bool
         </span>
         <span className="code-activity-group__chevron">{Ico.chevDown(11)}</span>
       </summary>
-      <div className="code-activity-group__body">
-        {events.map((event) => (
-          <div className="code-activity-row" key={`${event.seq}-${event.type}`}>
-            <span className="code-activity-row__kind">{event.type.replace('_', ' ')}</span>
-            <div>
-              <strong>{eventSummary(event)}</strong>
-              {event.text && event.text !== eventSummary(event) && <pre>{event.text}</pre>}
+      {open && (
+        <div className="code-activity-group__body">
+          {events.map((event) => (
+            <div className="code-activity-row" key={`${event.seq}-${event.type}`}>
+              <span className="code-activity-row__kind">{event.type.replace('_', ' ')}</span>
+              <div>
+                <strong>{eventSummary(event)}</strong>
+                {event.text && event.text !== eventSummary(event) && <pre>{event.text}</pre>}
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </details>
   );
 }
 
 
 function ErrorGroup({ events }: { events: CodingEvent[] }) {
+  const [open, setOpen] = useState(false);
   const attempts = events.length;
   const latest = events[events.length - 1];
   return (
-    <details className="code-retry-group">
+    <details className="code-retry-group" open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
       <summary>
         <span>{Ico.refresh(12)}</span>
         <span>{attempts > 1 ? `Connection retried ${attempts} times` : latest.title || 'Agent retry'}</span>
         <span className="code-retry-group__chevron">{Ico.chevDown(11)}</span>
       </summary>
-      <div>{latest.text || 'The agent could not complete this attempt.'}</div>
+      {open && <div>{latest.text || 'The agent could not complete this attempt.'}</div>}
     </details>
   );
 }
@@ -171,7 +180,12 @@ function TimelineEvent({ event }: { event: CodingEvent }) {
   if (event.type === 'agent_message') {
     return (
       <article className="code-agent-message" aria-label="Coding agent message">
-        <MarkdownContent text={event.text} id={`code-event-${event.seq}`} complete={event.phase === 'completed'} />
+        <MarkdownContent
+          text={event.text}
+          id={`code-event-${event.seq}`}
+          complete={event.phase === 'completed'}
+          animateStreamingWords={false}
+        />
       </article>
     );
   }
@@ -201,7 +215,7 @@ function TaskOutcome({ session, events }: { session: CodingSession; events: Codi
 }
 
 
-export function EventTimeline({ events, session }: { events: CodingEvent[]; session: CodingSession }) {
+export const EventTimeline = memo(function EventTimeline({ events, session }: { events: CodingEvent[]; session: CodingSession }) {
   const items = useMemo(() => timelineItems(events), [events]);
   const latestEventSeq = events.at(-1)?.seq || 0;
   const active = isActiveStatus(session.status);
@@ -209,7 +223,11 @@ export function EventTimeline({ events, session }: { events: CodingEvent[]; sess
   const stickToBottom = useRef(true);
   useEffect(() => {
     const element = scrollRef.current;
-    if (element && stickToBottom.current) element.scrollTo({ top: element.scrollHeight, behavior: 'smooth' });
+    // Live deltas can arrive many times a second. Starting a new smooth-scroll
+    // animation for each one keeps layout and the GPU busy long after the text
+    // has rendered, and can make typing visibly lag. Batched updates should
+    // snap a pinned transcript to its new bottom immediately.
+    if (element && stickToBottom.current) element.scrollTo({ top: element.scrollHeight, behavior: 'auto' });
   }, [latestEventSeq, session.status]);
   return (
     <div
@@ -235,4 +253,8 @@ export function EventTimeline({ events, session }: { events: CodingEvent[]; sess
       </div>
     </div>
   );
-}
+}, (left, right) => (
+  left.events === right.events
+  && left.session.status === right.session.status
+  && left.session.last_error === right.session.last_error
+));
