@@ -239,7 +239,13 @@ export default function UpdatesSection({
               }
               const isError = !!r && !r.ok;
               const isUpToDate = !checkingUpdates && !!r && r.ok && !r.updateAvailable;
-              const applyAvailable = !checkingUpdates && !!r && r.ok && (r.uiUpdateAvailable || r.serverUpdateAvailable);
+              // Shell-first (mirrors the sidebar's deriveUpdateBanner): whenever a
+              // shell update is pending, its relaunch also applies any UI/server
+              // OTA at boot, so the separate "Update ready — Restart now" card
+              // would be redundant. Suppress it so Settings shows one update
+              // surface, never a UI/server card stacked over a shell card.
+              const shellSurface = autoVisible || manualFallback;
+              const applyAvailable = !checkingUpdates && !!r && r.ok && !shellSurface && (r.uiUpdateAvailable || r.serverUpdateAvailable);
               const busy = checkingUpdates || applyingUpdate;
               const parts = [];
               if (applyAvailable) {

@@ -129,6 +129,28 @@ describe('SettingsView desktop — UI/server updates framed as a restart', () =>
     expect(screen.queryByRole('button', { name: /Download installer/ })).toBeNull();
   });
 
+  it('suppresses the UI/server "Restart now" card while a shell update is pending (shell-first, no stacked cards)', async () => {
+    // A shell relaunch also applies the UI/server OTA at boot, so the separate
+    // OTA card would be redundant. Only the shell surface shows — mirroring the
+    // sidebar's single shell-first banner.
+    host.checkForUpdates.mockResolvedValueOnce({
+      ok: true, offline: false, updateAvailable: true,
+      uiUpdateAvailable: true, uiVersion: '2.26.7.20.1',
+      serverUpdateAvailable: false, shellUpdateAvailable: true, shellVersion: '2.26.7.20.1',
+    });
+    render(
+      <SettingsView
+        {...baseProps}
+        shellUpdate={{ version: '2.26.7.20.1', downloadUrl: 'https://x/y.pkg' }}
+        onDownloadShellUpdate={vi.fn()}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Check for updates/ }));
+    expect(await screen.findByRole('button', { name: /Download installer/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Restart now/ })).toBeNull();
+    expect(screen.queryByText(/Update ready/)).toBeNull();
+  });
+
   it('returns to a retryable state when applyUpdate resolves false', async () => {
     host.checkForUpdates.mockResolvedValueOnce({
       ok: true, offline: false, updateAvailable: true,
