@@ -135,45 +135,6 @@ describe('SettingsView — every section mounts (behavior lock)', () => {
   });
 });
 
-describe('SettingsView — Channels "coming soon" on Cloud/web', () => {
-  // Cloud/web doesn't offer Channels yet. Instead of opening a dead section
-  // (previously a "Coming soon to Cloud" modal), the nav row is shown as an
-  // inert, dimmed affordance with a "Soon" tag + hover tooltip.
-  function ComingSoonHarness({ onSectionChange }) {
-    const [settings, setSettings] = useState(baseSettings());
-    const setSetting = (key, value) => setSettings((s) => ({ ...s, [key]: value }));
-    return (
-      <SettingsView
-        settings={settings} setSetting={setSetting} onSave={vi.fn(async () => {})}
-        theme="dark" onThemeChange={vi.fn()} skin="default" onSkinChange={vi.fn()}
-        customTheme={{}} onCustomThemeChange={vi.fn()} agentLabel="Anton"
-        serverOnline serverBusy={false} onStartServer={vi.fn()} onStopServer={vi.fn()}
-        section="agent" onSectionChange={onSectionChange}
-        channelsComingSoon isSsoConnected={false} onSsoSignIn={vi.fn()}
-        shellUpdate={null} onDownloadShellUpdate={vi.fn()}
-      />
-    );
-  }
-
-  it('disables the Channels nav row and shows a Soon tag', async () => {
-    const onSectionChange = vi.fn();
-    render(<ComingSoonHarness onSectionChange={onSectionChange} />);
-    const row = await screen.findByRole('button', { name: /Channels/ });
-    row.click();
-    expect(onSectionChange).not.toHaveBeenCalled();
-    expect(row).toHaveAttribute('aria-disabled', 'true');
-    expect(row).toHaveTextContent('Soon');
-  });
-
-  it('leaves Channels navigable when channelsComingSoon is not set', async () => {
-    render(<Harness section="agent" />);
-    // Sanity: the default Harness omits channelsComingSoon, so the row works.
-    const row = await screen.findByRole('button', { name: /Channels/ });
-    expect(row).not.toHaveAttribute('aria-disabled', 'true');
-    expect(row).not.toHaveTextContent('Soon');
-  });
-});
-
 // ─── Coding Mode's per-harness picker ──────────────────────────────────
 //
 // Desktop only (host.isWeb: false throughout this file), and its own
