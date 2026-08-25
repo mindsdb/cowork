@@ -83,6 +83,11 @@ const EVENTS = {
   HARNESS_SWAPPED:          'harness_swapped',          // { from, to }
   APP_INSTALLED:            'app_installed',            // {}  desktop, once per install
   BOOT_SCREEN_RESOLVED:     'boot_screen_resolved',     // { target, anton_installed, server_deps_ready } desktop, per launch (ENG-921)
+  // Every failed turn, not just the first (first_response is once-per-user).
+  // `code` is the wire code (anton_error when nothing more specific was
+  // classified); `model` only rides along for the model-403/404 family, where
+  // the failure event names the rejected model.
+  CHAT_TURN_FAILED:         'chat_turn_failed',         // { conversation_id, code, model? }
 };
 
 const POSTHOG_HOST = 'https://us.i.posthog.com';
@@ -530,6 +535,21 @@ export function trackAgentSessionStarted() {
 // before relabelling any of them.
 export function trackTokenCapHit(reason) {
   capture(EVENTS.TOKEN_CAP_HIT, { reason: reason || 'token_limit' });
+}
+
+// Fired on every turn that lands in an error state, so the failure rate is a
+// measurable series instead of an anecdote. `event` is the same failure-meta
+// object the error bubble renders from — pull whatever it carries rather than
+// widening call sites just for telemetry. `code` defaults to 'unknown' (never
+// dropped) so an event with no code is still countable; `model`/`providerLabel`
+// only ride along when the failure named one.
+export function trackTurnFailed(conversationId, event) {
+  capture(EVENTS.CHAT_TURN_FAILED, {
+    conversation_id: conversationId || '',
+    code: event?.code || 'unknown',
+    model: event?.model || undefined,
+    provider_label: event?.providerLabel || event?.provider_label || undefined,
+  });
 }
 
 // The desktop sent the user to the console billing page (ENG-1533). Fired at

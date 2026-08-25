@@ -663,6 +663,60 @@ describe('billing + provisioning events (ENG-1533)', () => {
   });
 });
 
+// Every failed turn, not just the first one a user ever sends — there was
+// previously no way to measure how often a turn dies, or correlate it with a
+// code/model/conversation.
+describe('chat_turn_failed', () => {
+  const sentEvent = async (fetchMock, name) => {
+    await vi.waitFor(() =>
+      expect(
+        fetchMock.mock.calls.map((c) => JSON.parse(c[1].body)).some((b) => b.event === name)
+      ).toBe(true)
+    );
+    return fetchMock.mock.calls.map((c) => JSON.parse(c[1].body)).find((b) => b.event === name);
+  };
+
+  it('carries the wire code so failures are groupable by reason', async () => {
+    const fetchMock = mockFetch();
+    const { trackTurnFailed } = await importAnalytics();
+
+    trackTurnFailed('conv-1', { code: 'provider_auth' });
+
+    const event = await sentEvent(fetchMock, 'chat_turn_failed');
+    expect(event.properties.code).toBe('provider_auth');
+  });
+
+  it('carries the conversation id so one report can be pinned to its server logs', async () => {
+    const fetchMock = mockFetch();
+    const { trackTurnFailed } = await importAnalytics();
+
+    trackTurnFailed('conv-42', { code: 'anton_error' });
+
+    const event = await sentEvent(fetchMock, 'chat_turn_failed');
+    expect(event.properties.conversation_id).toBe('conv-42');
+  });
+
+  it('defaults code to unknown when the failure event carries none, rather than dropping the property', async () => {
+    const fetchMock = mockFetch();
+    const { trackTurnFailed } = await importAnalytics();
+
+    trackTurnFailed('conv-1', {});
+
+    const event = await sentEvent(fetchMock, 'chat_turn_failed');
+    expect(event.properties.code).toBe('unknown');
+  });
+
+  it('carries the rejected model when the failure event names one', async () => {
+    const fetchMock = mockFetch();
+    const { trackTurnFailed } = await importAnalytics();
+
+    trackTurnFailed('conv-1', { code: 'model_not_found', model: 'deepseek-v4-flash' });
+
+    const event = await sentEvent(fetchMock, 'chat_turn_failed');
+    expect(event.properties.model).toBe('deepseek-v4-flash');
+  });
+});
+
 // ─── aid: the join key between anton's cost events and an identified user ────
 //
 // The defect is structural: `turn_completed` carries `aid` on 100% of events
