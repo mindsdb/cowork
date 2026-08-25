@@ -43,28 +43,6 @@ describe('Sidebar — Channels has no standalone entry on either platform (ENG-9
   });
 });
 
-describe('Sidebar — Connect Apps and Data "coming soon" on Cloud/web', () => {
-  // Cloud/web doesn't offer connectors yet. Rather than routing to a
-  // half-working surface (previously a "Coming soon to Cloud" modal), the row
-  // is shown as an inert, dimmed affordance with a "Soon" tag + hover tooltip.
-  it('navigates normally when connectorsComingSoon is not set', () => {
-    const onNavigate = vi.fn();
-    render(<Sidebar {...baseProps} onNavigate={onNavigate} />);
-    screen.getByRole('button', { name: 'Connect Apps and Data' }).click();
-    expect(onNavigate).toHaveBeenCalledWith('customize');
-  });
-
-  it('disables the row and shows a Soon tag when connectorsComingSoon', () => {
-    const onNavigate = vi.fn();
-    render(<Sidebar {...baseProps} onNavigate={onNavigate} connectorsComingSoon />);
-    const row = screen.getByRole('button', { name: 'Connect Apps and Data' });
-    row.click();
-    expect(onNavigate).not.toHaveBeenCalled();
-    expect(row).toHaveAttribute('aria-disabled', 'true');
-    expect(row).toHaveTextContent('Soon');
-  });
-});
-
 describe('Sidebar — Settings is reachable on web (ENG-932)', () => {
   // The web shell hid the whole Settings entry point, which also hid the
   // reasoning-effort control — the only user-side workaround for a turn that

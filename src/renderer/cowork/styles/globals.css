@@ -1723,6 +1723,31 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
    .page-header / .page-title classes were retired in the ENG-1038 header
    consolidation. */
 
+/* ─── Coming soon tooltip ────────────────────────────────────────────────── */
+[data-coming-soon] {
+  position: relative;
+}
+[data-coming-soon]::after {
+  content: 'Coming soon';
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(8,11,12,0.82);
+  color: #fff;
+  padding: 4px 9px;
+  border-radius: var(--r);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 200;
+  font-family: var(--font-sans);
+  font-weight: 400;
+}
+[data-coming-soon]:hover::after { opacity: 1; }
+
 /* ─── Button system (per brandbook) ──────────────────────────────────────
    `.btn` is the shared shape; each `<Button variant>` adds a modifier class
    (`.btn.primary`, `.btn.danger`, …). Light mode follows the brandbook fill
