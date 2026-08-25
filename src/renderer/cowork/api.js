@@ -1070,6 +1070,21 @@ export async function fetchArtifacts({ projectId, projectPath } = {}) {
   });
 }
 
+// Same URL shapes as `fetchArtifacts` above, but THROWS instead of returning [].
+//
+// The liveness store (lib/artifactsStore.js) has to tell "loaded, and the list
+// is empty" from "the request failed". Its sibling cannot: it swallows every
+// error into `[]`, and an empty list read as authoritative would mark every
+// artifact card in the conversation as deleted. Deliberately not routed through
+// `dedupe` either — the store coalesces its own loads and needs the rejection.
+export async function fetchArtifactsStrict({ projectId, projectPath } = {}) {
+  let suffix = '';
+  if (projectId) suffix = `?project_id=${encodeURIComponent(projectId)}`;
+  else if (projectPath) suffix = `?project_path=${encodeURIComponent(projectPath)}`;
+  const data = await req(`/artifacts/${suffix}`);
+  return Array.isArray(data) ? data : [];
+}
+
 export async function previewArtifact(path) {
   return req(`/artifacts/preview?path=${encodeURIComponent(path)}`);
 }

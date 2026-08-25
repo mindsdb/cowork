@@ -69,6 +69,7 @@ import {
   persistTurnState,
   mergeConvTurns,
 } from './lib/conversationHistory';
+import { noteArtifactsFromSteps } from './lib/artifactsStore';
 import { isArtifactTipDismissed, dismissArtifactTip, dismissIfUntouched } from './components/onboarding/onboardingStore';
 import { recommendedModelOptions, providerValueToType,
          mergeRecommendedModels } from './lib/settingsTransform';
@@ -904,6 +905,11 @@ function AppCore() {
     // events), so reaching this line means the active stream delivered data.
     // Record it for the stranded-slot self-heal (see activeStreamProducedRef).
     activeStreamProducedRef.current = true;
+    // Anything the agent just produced is alive by definition, whatever a
+    // previously-loaded artifacts index says. This is the only live-stream
+    // collector, and the replay paths do not call it, so registering here
+    // cannot mistake a reopened conversation's old artifacts for new ones.
+    noteArtifactsFromSteps(steps);
     taskIds.forEach((tid) => {
       if (tid) liveStepsRef.current[tid] = steps;
     });
