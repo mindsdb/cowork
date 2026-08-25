@@ -342,7 +342,7 @@ export function CodeSkillsView({ projects }: { projects: CodeProject[] }) {
           </section>;
         })}
         {(filter === 'all' || filter === 'personal') && personal.length > 0 && <section className="code-skill-group"><header><div><strong>Yours</strong><small>Personal skills available in Code Mode</small></div><span>{personal.length}</span></header><div>{rows(personal)}</div></section>}
-        {(filter === 'all' || filter === 'built_in') && builtIn.length > 0 && <section className="code-skill-group"><header><div><strong>MindsHub</strong><small>Built-in skills maintained with Cowork</small></div><span>{builtIn.length}</span></header><div>{rows(builtIn)}</div></section>}
+        {(filter === 'all' || filter === 'built_in') && builtIn.length > 0 && <section className="code-skill-group"><header><div><strong>MindsHub</strong><small>Engineering skills maintained by MindsHub</small></div><span>{builtIn.length}</span></header><div>{rows(builtIn)}</div></section>}
         {!library.items.length && !library.sources.length && <div className="code-skills-empty"><span>{Ico.cube(20)}</span><strong>No team skills yet</strong><p>Add a Git repository once, then choose which projects use each item.</p><Button variant="subtle" onClick={() => setAddOpen(true)}>Add team source</Button></div>}
         {!hasVisibleCatalog && (library.sources.length > 0 || library.items.length > 0) && <div className="code-skills-empty">{query.trim() ? 'No skills match your search.' : 'No skills in this view.'}</div>}
       </div>}
