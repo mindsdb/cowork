@@ -85,9 +85,9 @@ const EVENTS = {
   BOOT_SCREEN_RESOLVED:     'boot_screen_resolved',     // { target, anton_installed, server_deps_ready } desktop, per launch (ENG-921)
   // Every failed turn, not just the first (first_response is once-per-user).
   // `code` is the wire code (anton_error when nothing more specific was
-  // classified); `model` only rides along for the model-403/404 family, where
-  // the failure event names the rejected model.
-  CHAT_TURN_FAILED:         'chat_turn_failed',         // { conversation_id, code, model? }
+  // classified); `model`/`provider_label` only ride along when the failure
+  // event names one (the model-403/404 and provider-auth families).
+  CHAT_TURN_FAILED:         'chat_turn_failed',         // { conversation_id?, code, model?, provider_label? }
 };
 
 const POSTHOG_HOST = 'https://us.i.posthog.com';
@@ -541,14 +541,21 @@ export function trackTokenCapHit(reason) {
 // measurable series instead of an anecdote. `event` is the same failure-meta
 // object the error bubble renders from — pull whatever it carries rather than
 // widening call sites just for telemetry. `code` defaults to 'unknown' (never
-// dropped) so an event with no code is still countable; `model`/`providerLabel`
+// dropped) so an event with no code is still countable; `model`/`provider_label`
 // only ride along when the failure named one.
+//
+// `conversationId` is dropped when it's still the client-side placeholder a
+// brand-new task starts under (`tmp-...` / `tmp-connect-...`, before the
+// server's canonical id has been adopted) — sending it would look like a real
+// id but can't be pinned to any server log, which is the whole point of
+// carrying it.
 export function trackTurnFailed(conversationId, event) {
+  const isPlaceholderId = typeof conversationId === 'string' && conversationId.startsWith('tmp-');
   capture(EVENTS.CHAT_TURN_FAILED, {
-    conversation_id: conversationId || '',
+    conversation_id: (conversationId && !isPlaceholderId) ? conversationId : undefined,
     code: event?.code || 'unknown',
     model: event?.model || undefined,
-    provider_label: event?.providerLabel || event?.provider_label || undefined,
+    provider_label: event?.provider_label || undefined,
   });
 }
 

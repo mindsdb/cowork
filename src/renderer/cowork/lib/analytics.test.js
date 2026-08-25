@@ -715,6 +715,26 @@ describe('chat_turn_failed', () => {
     const event = await sentEvent(fetchMock, 'chat_turn_failed');
     expect(event.properties.model).toBe('deepseek-v4-flash');
   });
+
+  it('carries the provider label when the failure event names one', async () => {
+    const fetchMock = mockFetch();
+    const { trackTurnFailed } = await importAnalytics();
+
+    trackTurnFailed('conv-1', { code: 'provider_auth', provider_label: 'Anthropic' });
+
+    const event = await sentEvent(fetchMock, 'chat_turn_failed');
+    expect(event.properties.provider_label).toBe('Anthropic');
+  });
+
+  it('drops the conversation id rather than sending a pre-adoption placeholder', async () => {
+    const fetchMock = mockFetch();
+    const { trackTurnFailed } = await importAnalytics();
+
+    trackTurnFailed('tmp-1755999999999', { code: 'anton_error' });
+
+    const event = await sentEvent(fetchMock, 'chat_turn_failed');
+    expect(event.properties.conversation_id).toBeUndefined();
+  });
 });
 
 // ─── aid: the join key between anton's cost events and an identified user ────
