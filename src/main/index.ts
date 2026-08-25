@@ -18,7 +18,7 @@ import { oauthConnect, cancelCurrentOAuth } from './oauth-service';
 import { setRefreshToken, deleteRefreshToken, getRefreshToken as getOAuthRefreshToken } from './keychain-service';
 import { OAUTH_CREDENTIALS } from './credentials';
 import { startRefreshLoop, stopRefreshLoop, stopAllRefreshLoops, revokedConnections, getPickerAccess } from './token-refresh';
-import { fetchAccountEmail } from './oauth-identity';
+import { fetchAccountIdentity, buildRevokeRequest } from './oauth-identity';
 import { openDrivePickerFlow, cancelCurrentDrivePicker, isValidDriveFileIds } from './drive-picker-service';
 import { getPickedFiles, savePickedFiles, verifyPickedFiles, type PickedFile } from './picked-files';
 import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefreshTokenStore, isAccessTokenExpired } from './token-store';
@@ -619,6 +619,8 @@ function setupIPC() {
         scopes: oauthBlock.scopes,
         extraAuthParams: oauthBlock.extra_auth_params,
         redirectPort: oauthBlock.redirect_port,
+        redirectHost: oauthBlock.redirect_host,
+        tokenAuthStyle: oauthBlock.token_auth_style,
       });
       if (!pkceResult.ok || !pkceResult.access_token || (supportsRefresh && !pkceResult.refresh_token)) {
         return { ok: false, reason: pkceResult.reason || 'OAuth flow did not return tokens.' };
@@ -629,12 +631,13 @@ function setupIPC() {
       // record's display name. The token exchange already succeeded at
       // this point, so retry once on a transient failure rather than
       // forcing the user to redo the whole consent flow.
-      let accountEmail = '';
-      for (let attempt = 0; attempt < 2 && !accountEmail; attempt++) {
+      let accountIdentity: Awaited<ReturnType<typeof fetchAccountIdentity>> = { email: '' };
+      for (let attempt = 0; attempt < 2 && !accountIdentity.email; attempt++) {
         if (attempt > 0) await new Promise((r) => setTimeout(r, 500));
-        accountEmail = await fetchAccountEmail(engine, pkceResult.access_token);
+        accountIdentity = await fetchAccountIdentity(engine, pkceResult.access_token);
       }
-      if (!accountEmail) return { ok: false, reason: 'Could not retrieve account email.' };
+      const accountEmail = accountIdentity.email;
+      if (!accountEmail) return { ok: false, reason: accountIdentity.reason || 'Could not retrieve account email.' };
 
       // Store refresh_token in OS keychain — never sent over the network.
       // Absent entirely for a supports_refresh: false connector.
@@ -659,6 +662,7 @@ function setupIPC() {
               access_token: pkceResult.access_token,
               expires_at: expiresAt,
               account_email: accountEmail,
+              ...(accountIdentity.name ? { account_name: accountIdentity.name } : {}),
               token_url: tokenUrl,
               scope: pkceResult.scope || oauthBlock.scopes.join(' '),
               auth_type: 'oauth',
@@ -677,7 +681,7 @@ function setupIPC() {
       const saved = await saveRes.json() as { ok: boolean; name?: string };
       const vaultSlug = saved.name || labelName;
 
-      startRefreshLoop(engine, vaultSlug, accountEmail, expiresAt, tokenUrl);
+      startRefreshLoop(engine, vaultSlug, accountEmail, expiresAt, tokenUrl, oauthBlock.token_auth_style);
       return { ok: true, name: vaultSlug, account_email: accountEmail };
     }
 
@@ -770,11 +774,26 @@ function setupIPC() {
           const builtinMethod = spec?.form?.methods?.find((m: any) => m.id === 'browser_oauth_builtin');
           const oauthBlock = builtinMethod?.oauth;
           if (oauthBlock?.supports_revoke !== false && oauthBlock?.revoke_url) {
-            await fetch(oauthBlock.revoke_url, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-              body: new URLSearchParams({ token: refreshToken }).toString(),
-            });
+            // Some providers' revoke endpoints require the app's own
+            // client_id/client_secret alongside the token (e.g. Supabase's
+            // JSON-body /v1/oauth/revoke) rather than the generic RFC-7009
+            // form-encoded `token=` shape — fetch credentials the same way
+            // the connect flow above does, best-effort.
+            let clientId = '';
+            let clientSecret = '';
+            try {
+              const credsRes = await fetch(
+                `http://127.0.0.1:${getServerPort()}/api/v1/connectors/oauth/${engine}/credentials`,
+                { headers: authHeader() },
+              );
+              if (credsRes.ok) {
+                const credsData = await credsRes.json() as { client_id?: string; client_secret?: string };
+                clientId = credsData.client_id || '';
+                clientSecret = credsData.client_secret || '';
+              }
+            } catch {}
+            const { headers, body } = buildRevokeRequest(engine, refreshToken, clientId, clientSecret);
+            await fetch(oauthBlock.revoke_url, { method: 'POST', headers, body });
           }
         }
       }
@@ -1649,7 +1668,7 @@ async function startOrphanRefreshLoops(): Promise<void> {
         if (!tokenUrl) continue;
         const refreshToken = await getOAuthRefreshToken(engine, accountEmail);
         if (!refreshToken) continue;
-        startRefreshLoop(engine, name, accountEmail, expiresAt, tokenUrl);
+        startRefreshLoop(engine, name, accountEmail, expiresAt, tokenUrl, oauthBlock?.token_auth_style);
         console.log(`[token-refresh] resumed loop for ${engine}:${accountEmail}`);
       } catch (err) {
         console.warn(`[token-refresh] could not resume loop for ${engine}/${name}:`, err);

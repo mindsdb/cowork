@@ -5,7 +5,13 @@
 // spec-JSON data — it's provider-specific code, not configuration. New
 // OAuth-builtin connectors add one entry to FETCHERS below.
 
-async function fetchGoogleIdentity(accessToken: string): Promise<{ email: string }> {
+export interface OAuthIdentity {
+  email: string;
+  name?: string;
+  reason?: string;
+}
+
+async function fetchGoogleIdentity(accessToken: string): Promise<OAuthIdentity> {
   const res = await fetch('https://www.googleapis.com/oauth2/v1/userinfo', {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
@@ -14,7 +20,7 @@ async function fetchGoogleIdentity(accessToken: string): Promise<{ email: string
   return { email: data.email || '' };
 }
 
-async function fetchLinearIdentity(accessToken: string): Promise<{ email: string }> {
+async function fetchLinearIdentity(accessToken: string): Promise<OAuthIdentity> {
   const res = await fetch('https://api.linear.app/graphql', {
     method: 'POST',
     headers: {
@@ -28,7 +34,7 @@ async function fetchLinearIdentity(accessToken: string): Promise<{ email: string
   return { email: data.data?.viewer?.email || '' };
 }
 
-async function fetchGithubIdentity(accessToken: string): Promise<{ email: string }> {
+async function fetchGithubIdentity(accessToken: string): Promise<OAuthIdentity> {
   const res = await fetch('https://api.github.com/user', {
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -54,7 +60,7 @@ async function fetchGithubIdentity(accessToken: string): Promise<{ email: string
 // project-discovery step here.
 export const POSTHOG_API_HOSTS = ['https://us.posthog.com', 'https://eu.posthog.com'] as const;
 
-async function fetchPostHogIdentity(accessToken: string): Promise<{ email: string }> {
+async function fetchPostHogIdentity(accessToken: string): Promise<OAuthIdentity> {
   for (const apiHost of POSTHOG_API_HOSTS) {
     const res = await fetch(`${apiHost}/api/users/@me/`, {
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -66,8 +72,46 @@ async function fetchPostHogIdentity(accessToken: string): Promise<{ email: strin
   }
   return { email: '' };
 }
+  
+async function fetchSupabaseIdentity(accessToken: string): Promise<OAuthIdentity> {
+  const headers = { Authorization: `Bearer ${accessToken}` };
+  let organizations: Array<{ slug?: string; name?: string }> = [];
+  let organizationError = '';
 
-const FETCHERS: Record<string, (accessToken: string) => Promise<{ email: string }>> = {
+  const organizationsRes = await fetch('https://api.supabase.com/v1/organizations', { headers });
+  if (organizationsRes.ok) {
+    const data = await organizationsRes.json() as
+      Array<{ slug?: string; name?: string }> |
+      { organizations?: Array<{ slug?: string; name?: string }> };
+    organizations = Array.isArray(data) ? data : (data.organizations || []);
+  } else {
+    organizationError = `organizations endpoint returned ${organizationsRes.status}`;
+  }
+
+  // Organization-scoped grants may reject the account-wide listing. The
+  // projects endpoint remains available and includes organization_slug.
+  if (!organizations.length) {
+    const projectsRes = await fetch('https://api.supabase.com/v1/projects', { headers });
+    if (projectsRes.ok) {
+      const projects = await projectsRes.json() as Array<{
+        organization_slug?: string;
+        organization_name?: string;
+      }>;
+      organizations = projects
+        .filter((project) => project.organization_slug)
+        .map((project) => ({ slug: project.organization_slug, name: project.organization_name }));
+    } else {
+      return { email: '', reason: `Supabase lookup failed (${organizationError}; projects endpoint returned ${projectsRes.status}).` };
+    }
+  }
+
+  const organization = organizations.find((item) => item.slug) || {};
+  const slug = organization.slug || '';
+  const name = organization.name || slug;
+  return { email: slug ? `org:${slug}` : '', name };
+}
+
+const FETCHERS: Record<string, (accessToken: string) => Promise<OAuthIdentity>> = {
   google_drive: fetchGoogleIdentity,
   google_calendar: fetchGoogleIdentity,
   gmail: fetchGoogleIdentity,
@@ -76,14 +120,60 @@ const FETCHERS: Record<string, (accessToken: string) => Promise<{ email: string 
   linear: fetchLinearIdentity,
   github: fetchGithubIdentity,
   posthog: fetchPostHogIdentity,
+  supabase: fetchSupabaseIdentity,
 };
 
-export async function fetchAccountEmail(engine: string, accessToken: string): Promise<string> {
+export async function fetchAccountIdentity(engine: string, accessToken: string): Promise<OAuthIdentity> {
   const fetcher = FETCHERS[engine] || fetchGoogleIdentity;
   try {
-    const { email } = await fetcher(accessToken);
-    return email;
+    return await fetcher(accessToken);
   } catch {
-    return '';
+    return { email: '' };
   }
+}
+
+export async function fetchAccountEmail(engine: string, accessToken: string): Promise<string> {
+  const { email } = await fetchAccountIdentity(engine, accessToken);
+  return email;
+}
+
+export interface RevokeRequest {
+  headers: Record<string, string>;
+  body: string;
+}
+
+// engine -> custom revoke request builder, for providers whose revoke
+// endpoint doesn't fit the generic RFC-7009 form-body shape (a bare
+// `token=<refresh_token>` POST) every other connector uses. Mirrors
+// cowork-server's `_REVOKE_HANDLERS` (oauth/google.py) — kept here rather
+// than in the spec JSON because the request shape is genuinely
+// provider-specific code, the same reasoning FETCHERS above already
+// documents for identity resolution.
+const REVOKE_REQUEST_BUILDERS: Record<
+  string,
+  (refreshToken: string, clientId: string, clientSecret: string) => RevokeRequest
+> = {
+  // Supabase's /v1/oauth/revoke takes a JSON body naming client_id,
+  // client_secret, and specifically refresh_token — not the generic
+  // form-encoded `token` param. Revoking only an access_token isn't
+  // supported and wouldn't remove mindshub from the user's Supabase-side
+  // Authorized Apps list, since that reflects the underlying grant.
+  supabase: (refreshToken, clientId, clientSecret) => ({
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, refresh_token: refreshToken }),
+  }),
+};
+
+/** Request body/headers to POST to a connector's revoke_url. Falls back to
+ * the generic RFC-7009 shape (`token=<refresh_token>`, form-encoded) for any
+ * engine without a custom builder above. */
+export function buildRevokeRequest(
+  engine: string, refreshToken: string, clientId: string, clientSecret: string,
+): RevokeRequest {
+  const builder = REVOKE_REQUEST_BUILDERS[engine];
+  if (builder) return builder(refreshToken, clientId, clientSecret);
+  return {
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ token: refreshToken }).toString(),
+  };
 }
