@@ -12,8 +12,8 @@ import Sidebar from './components/Sidebar';
 import ThemeModal from './components/ThemeModal';
 import AppShell from './components/AppShell';
 import { ConfirmModal } from './components/ConfirmModal';
-import { Modal, ModalHeader, ModalBody } from './components/ui/Modal';
-import { Tooltip } from './components/ui';
+import { Modal, ModalHeader, ModalBody, ModalFooter } from './components/ui/Modal';
+import { Button, Tooltip } from './components/ui';
 import { ToastProvider, useToastManager } from './components/ui/Toast';
 import HomeView from './views/HomeView';
 import ChatView from './views/ChatView';
@@ -4934,11 +4934,26 @@ function AppCore() {
           onClose={() => setComingSoonFeature(null)}
         />
         <ModalBody>
-          <p>
-            This feature isn’t available on Cloud just yet. In the meantime, you
-            can try it in the local version.
+          <p className="s-body">
+            {comingSoonFeature ? `${comingSoonFeature} isn’t` : 'This feature isn’t'}{' '}
+            available on Cloud just yet. In the meantime, you can use it in the
+            desktop app.
           </p>
         </ModalBody>
+        <ModalFooter>
+          <Button variant="subtle" onClick={() => setComingSoonFeature(null)}>
+            Not now
+          </Button>
+          <Button
+            variant="primary"
+            onClick={() => {
+              host.openExternal('https://mindshub.ai/download');
+              setComingSoonFeature(null);
+            }}
+          >
+            Download the app
+          </Button>
+        </ModalFooter>
       </Modal>
 
       {!host.isWeb && (
