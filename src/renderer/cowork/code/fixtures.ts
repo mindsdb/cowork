@@ -336,6 +336,19 @@ export function getCodeFixtureApi() {
     { id: 'personal:thermo-nuclear-code-quality-review', kind: 'skill', name: 'Thermo-Nuclear Code Quality Review', description: 'Run an extremely strict maintainability review for abstraction quality, giant files, and spaghetti-condition growth.', origin: 'built_in', source_name: 'MindsHub', path: 'thermo-nuclear-code-quality-review', enabled: true, enabled_project_ids: [] },
   ];
 
+  const skillLibraryPage = () => ({
+    sources: [{
+      id: 'source-engineering', name: 'Engineering standards', repository: 'https://github.com/mindsdb/engineering-skills',
+      branch: 'main', current_revision: 'a1b2c3d4e5f6', available_revision: 'a1b2c3d4e5f6',
+      update_available: false, last_checked_at: NOW, item_count: 2,
+      enabled_project_count: projects.filter((project) => (project.skill_sources || []).some(
+        (source) => source.source_id === 'source-engineering' && source.enabled_paths.length > 0,
+      )).length,
+      diff: '',
+    }],
+    items: copy(skillItems),
+  });
+
   return {
     engines: async () => copy(engines),
     models: async () => ({ items: [...FIXTURE_MODEL_IDS] }),
@@ -369,14 +382,7 @@ export function getCodeFixtureApi() {
       return copy(projects.find((item) => item.id === id) || projects[0]);
     },
     deleteProject: async (id: string) => { projects = projects.filter((item) => item.id !== id); },
-    skillLibrary: async () => ({
-      sources: [{
-        id: 'source-engineering', name: 'Engineering standards', repository: 'https://github.com/mindsdb/engineering-skills',
-        branch: 'main', current_revision: 'a1b2c3d4e5f6', available_revision: 'a1b2c3d4e5f6',
-        update_available: false, last_checked_at: NOW, item_count: 2, enabled_project_count: 1, diff: '',
-      }],
-      items: copy(skillItems),
-    }),
+    skillLibrary: async () => skillLibraryPage(),
     skillDocument: async (itemId: string, selectedPath?: string) => {
       const item = skillItems.find((candidate) => candidate.id === itemId);
       if (!item) throw new Error('Skill not found.');
@@ -392,7 +398,26 @@ export function getCodeFixtureApi() {
     refreshSkillSource: async () => ({ id: 'source-engineering', name: 'Engineering standards', repository: ROOT, branch: 'main', current_revision: 'a1b2c3', available_revision: 'a1b2c3', update_available: false, last_checked_at: NOW, item_count: 2, enabled_project_count: 1, diff: '' }),
     applySkillSource: async () => ({ id: 'source-engineering', name: 'Engineering standards', repository: ROOT, branch: 'main', current_revision: 'a1b2c3', available_revision: 'a1b2c3', update_available: false, last_checked_at: NOW, item_count: 2, enabled_project_count: 1, diff: '' }),
     removeSkillSource: async () => undefined,
-    setProjectSkillSource: async () => ({ sources: [], items: [] }),
+    setProjectSkillSource: async (projectId: string, sourceId: string, enabledPaths: string[]) => {
+      const enabled = new Set(enabledPaths);
+      projects = projects.map((project) => {
+        if (project.id !== projectId) return project;
+        const skillSources = (project.skill_sources || []).filter((source) => source.source_id !== sourceId);
+        if (enabledPaths.length) {
+          skillSources.push({ source_id: sourceId, enabled_paths: [...enabledPaths].sort() });
+        }
+        return { ...project, skill_sources: skillSources, updated_at: NOW };
+      });
+      for (const item of skillItems) {
+        if (item.source_id !== sourceId) continue;
+        const projectIds = new Set(item.enabled_project_ids);
+        if (enabled.has(item.path)) projectIds.add(projectId);
+        else projectIds.delete(projectId);
+        item.enabled_project_ids = [...projectIds];
+        item.enabled = item.enabled_project_ids.length > 0;
+      }
+      return skillLibraryPage();
+    },
     configurePlaybook: async () => ({ configured: true, update_available: false, items: [], diff: '' }),
     playbook: async () => ({ configured: false, update_available: false, items: [], diff: '' }),
     removePlaybook: async () => undefined,

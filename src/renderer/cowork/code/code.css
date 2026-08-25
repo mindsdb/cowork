@@ -470,11 +470,34 @@
 .code-project-section__heading > div { min-width: 0; display: grid; gap: 3px; }
 .code-project-section__heading strong { color: var(--ink-2); font-size: 11.5px; font-weight: 650; }
 .code-project-section__heading span { color: var(--ink-4); font-size: 10.5px; line-height: 1.4; }
-.code-project-skills__summary { min-height: 54px; padding: 8px 9px; display: flex; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface-1); }
-.code-project-skills__summary > div { min-width: 0; display: grid; gap: 3px; }
-.code-project-skills__summary strong { color: var(--ink-2); font-size: 10.5px; font-weight: 620; }
-.code-project-skills__summary span { color: var(--ink-4); font-size: 9px; }
-.code-project-skills__draft { min-height: 48px; padding: 10px; display: flex; align-items: center; border: 1px dashed var(--line-2); border-radius: var(--r-lg); color: var(--ink-4); font-size: 9.5px; }
+.code-project-skills { scroll-margin-block-start: 10px; }
+.code-project-skill-picker { margin-top: 8px; overflow: hidden; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface-1); }
+.code-project-skill-picker > summary { min-height: 52px; padding: 8px 10px; display: flex; align-items: center; gap: 10px; cursor: pointer; list-style: none; }
+.code-project-skill-picker > summary::-webkit-details-marker { display: none; }
+.code-project-skill-picker > summary:hover { background: var(--surface-2); }
+.code-project-skill-picker > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.code-project-skill-picker__icon { width: 28px; height: 28px; display: inline-flex; flex: none; align-items: center; justify-content: center; border-radius: 8px; background: var(--surface-2); color: var(--ink-3); }
+.code-project-skill-picker__summary { min-width: 0; flex: 1; display: grid; gap: 3px; }
+.code-project-skill-picker__summary strong { color: var(--ink-2); font-size: 10.5px; font-weight: 620; }
+.code-project-skill-picker__summary small { overflow: hidden; color: var(--ink-4); text-overflow: ellipsis; white-space: nowrap; font-size: 9px; }
+.code-project-skill-picker__chevron { display: inline-flex; color: var(--ink-4); transition: transform .15s ease; }
+.code-project-skill-picker[open] .code-project-skill-picker__chevron { transform: rotate(180deg); }
+.code-project-skill-picker__panel { border-top: 1px solid var(--line); }
+.code-project-skill-picker__search { height: 36px; margin: 8px 9px; padding: 0 8px; display: flex; align-items: center; gap: 7px; border: 1px solid var(--line); border-radius: var(--r); background: var(--bg); color: var(--ink-4); }
+.code-project-skill-picker__search:focus-within { border-color: var(--accent); box-shadow: var(--ring); }
+.code-project-skill-picker__search > .field-input { height: 32px; padding: 0; border: 0; background: transparent; box-shadow: none; }
+.code-project-skill-picker__groups { max-height: 220px; overflow-y: auto; border-top: 1px solid var(--line); }
+.code-project-skill-picker__groups section > header { min-height: 28px; padding: 7px 11px 5px; color: var(--ink-4); font: 600 8.5px var(--font-mono); }
+.code-project-skill-picker__groups label { min-height: 46px; padding: 6px 11px; display: flex; align-items: center; gap: 10px; border-top: 1px solid var(--line); cursor: pointer; }
+.code-project-skill-picker__groups label:hover { background: var(--surface-2); }
+.code-project-skill-picker__groups input { flex: none; accent-color: var(--accent); }
+.code-project-skill-picker__groups label > span { min-width: 0; display: grid; gap: 3px; }
+.code-project-skill-picker__groups strong { color: var(--ink-2); font-size: 10.5px; font-weight: 600; }
+.code-project-skill-picker__groups small { overflow: hidden; color: var(--ink-4); text-overflow: ellipsis; white-space: nowrap; font-size: 9px; }
+.code-project-skill-picker__message { min-height: 70px; padding: 14px; display: grid; place-items: center; color: var(--ink-4); font-size: 10px; text-align: center; }
+.code-project-skill-picker__message.is-error { color: var(--danger); }
+.code-project-skill-picker__panel > footer { min-height: 32px; padding: 6px 11px; display: flex; align-items: center; border-top: 1px solid var(--line); }
+.code-project-skill-picker__panel > footer > span { color: var(--ink-4); font-size: 8.5px; }
 .code-project-legacy-setup { margin-top: 8px; border-top: 1px solid var(--line); }
 .code-project-legacy-setup > summary { min-height: 42px; display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--ink-3); cursor: pointer; list-style: none; }
 .code-project-legacy-setup > summary::-webkit-details-marker { display: none; }
