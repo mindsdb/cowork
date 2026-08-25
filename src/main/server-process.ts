@@ -17,6 +17,7 @@ import * as path from 'path';
 import { app } from 'electron';
 import { coworkHome, buildKind } from './cowork-home';
 import { loadBundledServerCredentials } from './credential-provisioning';
+import { loadDevOAuthCredentials } from './dev-oauth-credentials';
 import { MINDS_ENV_SLUG } from './minds-urls';
 import { authHeader } from './server-auth';
 import { withServerLifecycle } from './server-lifecycle';
@@ -637,6 +638,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     const env = {
       ...process.env,
       ...(await loadBundledServerCredentials()),
+      ...loadDevOAuthCredentials({ isPackaged: app.isPackaged }),
       PATH: getEnvPath(),
       PYTHONUNBUFFERED: '1',
       // Both port names: COWORK_SERVER_PORT for every shipped server and
