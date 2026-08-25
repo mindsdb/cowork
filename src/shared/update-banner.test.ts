@@ -54,8 +54,15 @@ describe('deriveUpdateBanner', () => {
     });
 
     it('recoverable failure → "Retry"; terminal failure → "Download" (routes to installer)', () => {
-      expect(deriveUpdateBanner({ shellAuto: { phase: 'failed', recoverable: true } })).toMatchObject({ tone: 'error', actionLabel: 'Retry', action: 'shell-auto' });
-      expect(deriveUpdateBanner({ shellAuto: { phase: 'failed', recoverable: false } })).toMatchObject({ tone: 'error', actionLabel: 'Download', action: 'shell-auto' });
+      expect(deriveUpdateBanner({ shellAuto: { phase: 'failed', recoverable: true, targetVersion: 'sh-1' } })).toMatchObject({ tone: 'error', actionLabel: 'Retry', action: 'shell-auto' });
+      expect(deriveUpdateBanner({ shellAuto: { phase: 'failed', recoverable: false, targetVersion: 'sh-1' } })).toMatchObject({ tone: 'error', actionLabel: 'Download', action: 'shell-auto' });
+    });
+
+    it('a failed phase only banners when targetVersion proves an update was found', () => {
+      // A real download/install failure keeps targetVersion → banner.
+      expect(deriveUpdateBanner({ shellAuto: { phase: 'failed', recoverable: true, targetVersion: 'sh-1' } })?.kind).toBe('shell-auto');
+      // A check-only failure (rejected checkForUpdates) has no targetVersion → nothing.
+      expect(deriveUpdateBanner({ shellAuto: { phase: 'failed', recoverable: true } })).toBeNull();
     });
 
     it('passive phases surface no shell banner', () => {
@@ -76,7 +83,6 @@ describe('deriveUpdateBanner', () => {
   describe('shell-first priority (the double-banner bug)', () => {
     it('an active shell auto-update suppresses an available OTA banner', () => {
       const b = deriveUpdateBanner({ ota: { phase: 'available', version: '0.26.8.1' }, shellAuto: { phase: 'available' } });
-      // Exactly the case that used to stack "Restart" + "Download".
       expect(b?.kind).toBe('shell-auto');
     });
 
@@ -85,11 +91,26 @@ describe('deriveUpdateBanner', () => {
       expect(b?.kind).toBe('shell-auto');
     });
 
-    it('every active shell phase suppresses OTA', () => {
+    it('every active shell phase suppresses OTA (failed needs a real target)', () => {
       for (const phase of SHELL_AUTO_BANNER_PHASES) {
-        const b = deriveUpdateBanner({ ota: { phase: 'available' }, shellAuto: { phase } });
+        const b = deriveUpdateBanner({ ota: { phase: 'available' }, shellAuto: { phase, targetVersion: 'sh-1' } });
         expect(b?.kind).toBe('shell-auto');
       }
+    });
+
+    it('a check-only shell failure does NOT outrank OTA (feed outage must not hide Restart)', () => {
+      const b = deriveUpdateBanner({ ota: { phase: 'available', version: 'ui-1' }, shellAuto: { phase: 'failed', recoverable: true } });
+      expect(b?.kind).toBe('ota-ready');
+    });
+
+    it('a check-only shell failure does NOT outrank the manual notice either', () => {
+      const b = deriveUpdateBanner({ shellManual: { version: 'man-1' }, shellAuto: { phase: 'failed', recoverable: true } });
+      expect(b?.kind).toBe('shell-manual');
+    });
+
+    it('a real failed shell update (with target) still suppresses OTA', () => {
+      const b = deriveUpdateBanner({ ota: { phase: 'available', version: 'ui-1' }, shellAuto: { phase: 'failed', recoverable: true, targetVersion: 'sh-2' } });
+      expect(b?.kind).toBe('shell-auto');
     });
 
     it('the manual notice suppresses OTA (unchanged historical behavior)', () => {
@@ -110,15 +131,13 @@ describe('deriveUpdateBanner', () => {
 
   it('never returns more than one banner for any combination of the three sources', () => {
     const otaStates = [null, { phase: 'available' }, { phase: 'error' }, { phase: 'idle' }];
-    const autoStates = [null, { phase: 'idle' }, { phase: 'available' }, { phase: 'downloading' }, { phase: 'ready-to-install' }, { phase: 'installing' }, { phase: 'failed', recoverable: true }, { phase: 'failed', recoverable: false }, { phase: 'complete' }];
+    const autoStates = [null, { phase: 'idle' }, { phase: 'available' }, { phase: 'downloading' }, { phase: 'ready-to-install' }, { phase: 'installing' }, { phase: 'failed', recoverable: true }, { phase: 'failed', recoverable: false }, { phase: 'failed', recoverable: true, targetVersion: 'sh-1' }, { phase: 'complete' }];
     const manualStates = [null, { version: '0.26.8.2' }];
     for (const ota of otaStates) {
       for (const shellAuto of autoStates) {
         for (const shellManual of manualStates) {
           const b = deriveUpdateBanner({ ota, shellAuto, shellManual });
-          // The result is a single object or null — there is structurally no way
-          // to render two. This test documents the invariant and guards the
-          // priority chain against a future edit that returns an array.
+          // Always a single object or null — never two banners.
           expect(b === null || typeof b === 'object').toBe(true);
         }
       }

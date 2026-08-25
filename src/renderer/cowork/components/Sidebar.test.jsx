@@ -83,15 +83,13 @@ describe('Sidebar — Settings is reachable on web (ENG-932)', () => {
   });
 });
 
-describe('Sidebar — the single update banner (ENG: consolidated, shell-first)', () => {
+describe('Sidebar — the single update banner (consolidated, shell-first)', () => {
   beforeEach(() => {
     hostMock.isWeb = false;
   });
 
-  // The which-banner-wins decision is exhaustively tested in
-  // src/shared/update-banner.test.ts. These tests build the banner the same way
-  // App.jsx does (deriveUpdateBanner) and assert the sidebar renders exactly one
-  // banner and wires its action/dismiss to the right callback.
+  // Which-banner-wins is covered in update-banner.test.ts; these assert the
+  // sidebar renders one banner and wires its action/dismiss to the callback.
   const bannerFor = (input) => deriveUpdateBanner(input);
 
   it('renders the OTA "Update ready" (restart) banner and fires apply-ota', () => {

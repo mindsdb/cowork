@@ -112,6 +112,28 @@ describe('SettingsView desktop — shell auto-update lifecycle (ENG-850)', () =>
     fireEvent.click(screen.getByRole('button', { name: /Restart now/ }));
     expect(onInstallShellAutoUpdate).toHaveBeenCalledTimes(1);
   });
+
+  it('a check-only failure (no targetVersion) does not hide the UI/server Restart card', async () => {
+    // A rejected background check leaves phase 'failed' with no targetVersion —
+    // nothing was found to update to, so it must not present a failed card or
+    // suppress a valid OTA update (a shell feed outage otherwise hides Restart).
+    host.checkForUpdates.mockResolvedValueOnce({
+      ok: true, offline: false, updateAvailable: true,
+      uiUpdateAvailable: true, uiVersion: '2.26.7.20.1',
+      serverUpdateAvailable: false, shellUpdateAvailable: false,
+    });
+    render(
+      <SettingsView
+        {...baseProps}
+        shellUpdate={null}
+        shellAutoUpdate={{ phase: 'failed', mode: 'auto', channel: 'prod', currentVersion: '2.26.7.13.1', recoverable: true }}
+        onDownloadShellUpdate={vi.fn()}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Check for updates/ }));
+    expect(await screen.findByRole('button', { name: /Restart now/ })).toBeInTheDocument();
+    expect(screen.queryByText(/App update failed/)).toBeNull();
+  });
 });
 
 describe('SettingsView desktop — UI/server updates framed as a restart', () => {

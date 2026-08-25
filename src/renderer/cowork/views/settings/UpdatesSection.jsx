@@ -225,7 +225,12 @@ export default function UpdatesSection({
               // manual installer-download card only surfaces as a fallback when
               // auto-update isn't running or has failed (ENG-850).
               const autoPhase = shellAutoUpdate?.phase;
-              const autoVisible = !!autoPhase && !['disabled', 'idle', 'complete'].includes(autoPhase);
+              // A check-only failure (rejected background check) has no
+              // targetVersion — nothing was found to update to — so it must not
+              // present a card or suppress the OTA one (a shell feed outage would
+              // otherwise hide a valid UI/server Restart).
+              const checkOnlyFailure = autoPhase === 'failed' && !shellAutoUpdate?.targetVersion;
+              const autoVisible = !!autoPhase && !['disabled', 'idle', 'complete'].includes(autoPhase) && !checkOnlyFailure;
               const manualFallback = shellPending && (!autoVisible || autoPhase === 'failed');
               let status = null;
               if (!checkingUpdates && r) {
@@ -239,11 +244,9 @@ export default function UpdatesSection({
               }
               const isError = !!r && !r.ok;
               const isUpToDate = !checkingUpdates && !!r && r.ok && !r.updateAvailable;
-              // Shell-first (mirrors the sidebar's deriveUpdateBanner): whenever a
-              // shell update is pending, its relaunch also applies any UI/server
-              // OTA at boot, so the separate "Update ready — Restart now" card
-              // would be redundant. Suppress it so Settings shows one update
-              // surface, never a UI/server card stacked over a shell card.
+              // Shell-first (mirrors deriveUpdateBanner): a pending shell update's
+              // relaunch also applies UI/server OTA at boot, so suppress the
+              // redundant "Restart now" card and show one update surface.
               const shellSurface = autoVisible || manualFallback;
               const applyAvailable = !checkingUpdates && !!r && r.ok && !shellSurface && (r.uiUpdateAvailable || r.serverUpdateAvailable);
               const busy = checkingUpdates || applyingUpdate;

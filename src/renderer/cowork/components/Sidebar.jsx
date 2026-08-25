@@ -11,11 +11,8 @@ import UserMenu from './UserMenu';
 import OnboardingChecklist from './onboarding/OnboardingChecklist';
 import FirstArtifactTip from './onboarding/FirstArtifactTip';
 
-// Tone → banner palette. `deriveUpdateBanner` (src/shared/update-banner.ts)
-// collapses all three update mechanisms into one banner and one tone, so the
-// sidebar never stacks a "Restart" over a "Download" again; this map is the only
-// place tone becomes pixels. `ready`/`progress` share the sage palette (progress
-// is the same banner mid-download), `error` goes amber.
+// Tone → banner palette (the only place tone becomes pixels). `ready`/`progress`
+// share sage (progress is the same banner mid-download); `error` goes amber.
 const UPDATE_TONE_CLASS = {
   ready: {
     box: 'bg-[color-mix(in_srgb,var(--sage-500)_12%,transparent)] border-[color-mix(in_srgb,var(--sage-500)_30%,transparent)] hover:bg-[color-mix(in_srgb,var(--sage-500)_22%,transparent)]',
@@ -243,9 +240,7 @@ export default function Sidebar({
   onOpenSchedule,
   onToggleServer,
   onShowServerHelp,
-  // The single derived update banner (deriveUpdateBanner), or null. Collapses
-  // OTA (UI+server), shell auto-update, and the manual installer notice into one
-  // shell-first banner — no more stacked "Restart" + "Download".
+  // The single derived update banner (deriveUpdateBanner), or null.
   updateBanner = null,
   onUpdateAction, // (action: 'apply-ota' | 'shell-auto' | 'download-installer') => void
   onDismissUpdate, // dismisses the (dismissible) manual installer notice
@@ -733,13 +728,8 @@ export default function Sidebar({
             Hides itself once dismissed (post-completion). */}
         {onStartChat && <OnboardingChecklist onStartChat={onStartChat} />}
 
-        {/* One update banner for all three mechanisms (OTA UI/server, shell
-            auto-update, manual installer notice), chosen by deriveUpdateBanner
-            with shell-first priority. Exactly one banner or none — a
-            restart-required shell update never stacks under a seamless OTA
-            "Restart", and an OTA reload no longer leaves a shell banner behind
-            (the shell update owns the slot, and its relaunch applies OTA at
-            boot). */}
+        {/* One banner for all three update mechanisms, chosen by
+            deriveUpdateBanner (shell-first). Exactly one banner or none. */}
         {updateBanner && (() => {
           const tone = UPDATE_TONE_CLASS[updateBanner.tone] || UPDATE_TONE_CLASS.ready;
           const box = `mt-0 mx-2.5 mb-1.5 py-2 px-3 border border-solid rounded-lg flex items-center gap-2 w-[calc(100%-20px)] [-webkit-app-region:no-drag] ${tone.box}`;
@@ -755,9 +745,7 @@ export default function Sidebar({
             </span>
           ) : null;
 
-          // The manual installer notice is the only dismissible banner: a tooltip
-          // explaining the quit-and-reinstall hand-off, plus a × to hide it for
-          // this version.
+          // The manual installer notice is the only dismissible banner.
           if (updateBanner.dismissible) {
             return (
               <div className={box}>
@@ -784,9 +772,7 @@ export default function Sidebar({
             );
           }
 
-          // Everything else is one clickable pill; a download/install in flight
-          // renders the same banner disabled (no action label) so progress reads
-          // as the same object advancing, not a new banner.
+          // One clickable pill; an in-flight download/install renders it disabled.
           return (
             <button
               type="button"
