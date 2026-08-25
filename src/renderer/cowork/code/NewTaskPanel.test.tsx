@@ -2,6 +2,8 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { WorkItemPage } from './api';
+
 type FolderPickResult = { ok: boolean; path?: string; cancelled?: boolean; reason?: string };
 
 const {
@@ -12,6 +14,7 @@ const {
   readSourceContext,
   inspectFolder,
   updateProject,
+  searchWorkItems,
   skillLibrary,
 } = vi.hoisted(() => ({
   pickCodeFolder: vi.fn<() => Promise<FolderPickResult>>(async () => ({ ok: true, path: 'C:\\Users\\Ian & Team\\plain folder' })),
@@ -21,6 +24,7 @@ const {
   readSourceContext: vi.fn(),
   inspectFolder: vi.fn(),
   updateProject: vi.fn(),
+  searchWorkItems: vi.fn<() => Promise<WorkItemPage>>(async () => ({ items: [], incomplete: false })),
   skillLibrary: vi.fn(async () => ({ sources: [], items: [] })),
 }));
 
@@ -37,6 +41,7 @@ vi.mock('./api', () => ({
     projectFolders,
     readSourceContext,
     updateProject,
+    searchWorkItems,
     inspect: inspectFolder,
     skillLibrary,
   },
@@ -128,6 +133,8 @@ describe('NewTaskPanel', () => {
     }));
     updateProject.mockReset();
     updateProject.mockImplementation(async (id: string, body: object) => ({ ...project, id, ...body }));
+    searchWorkItems.mockReset();
+    searchWorkItems.mockResolvedValue({ items: [], incomplete: false });
   });
 
   it('defaults to GPT-5.6 Sol without exposing secondary folder access in task creation', async () => {
@@ -427,6 +434,57 @@ describe('NewTaskPanel', () => {
     })));
   });
 
+  it('finds assigned work and starts the task from the selected issue', async () => {
+    const user = userEvent.setup();
+    const connectedProject = {
+      ...project,
+      connections: [{ provider: 'github' as const, name: 'work', label: 'Work' }],
+    };
+    searchWorkItems.mockResolvedValue({
+      incomplete: false,
+      items: [{
+        provider: 'github',
+        kind: 'issue',
+        url: 'https://github.com/mindsdb/cowork/issues/42',
+        title: 'Make Code projects first class',
+        external_id: 'mindsdb/cowork#42',
+        state: 'open',
+        scope: 'mindsdb/cowork',
+        assignee: 'ian',
+        updated_at: '2026-08-25T08:00:00Z',
+        connection_name: 'work',
+      }],
+    });
+    render(
+      <NewTaskPanel
+        busy={false}
+        error=""
+        defaultEngineId="codex"
+        defaultModel="fable"
+        models={models}
+        modelMeta={modelMeta}
+        projects={[connectedProject]}
+        selectedProjectId={connectedProject.id}
+        onProjectChange={vi.fn()}
+        onOpenProjectSettings={vi.fn()}
+        onCreate={vi.fn(async () => {})}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Add issue or PR' }));
+    await user.click(await screen.findByRole('option', { name: /Make Code projects first class/ }));
+
+    expect(searchWorkItems).toHaveBeenCalledWith(connectedProject.id, expect.objectContaining({
+      provider: 'github',
+      query: '',
+      connection_name: 'work',
+    }));
+    await waitFor(() => expect(readSourceContext).toHaveBeenCalledWith(connectedProject.id, expect.objectContaining({
+      url: 'https://github.com/mindsdb/cowork/issues/42',
+    })));
+    expect(await screen.findByText('Linked issue')).toBeInTheDocument();
+  });
+
   it('uses a connected developer account immediately and assigns it to the selected project', async () => {
     const user = userEvent.setup();
     const onProjectConnectionsChange = vi.fn(async () => {});
@@ -455,6 +513,11 @@ describe('NewTaskPanel', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Add issue or PR' }));
     expect(screen.queryByText('Connect GitHub or Linear to start from an issue or pull request.')).not.toBeInTheDocument();
+    await waitFor(() => expect(searchWorkItems).toHaveBeenCalledWith(project.id, expect.objectContaining({
+      provider: 'github',
+      connection_name: 'ianu82',
+    })));
+    expect(updateProject).not.toHaveBeenCalled();
     await user.type(
       screen.getByRole('textbox', { name: 'Issue or pull-request link' }),
       'https://github.com/mindsdb/cowork/issues/42',

@@ -9,6 +9,7 @@ import { CodeComposer } from './CodeComposer';
 import { CodeConnectorsView } from './CodeConnectorsView';
 import { CodeProjectsView } from './CodeProjectsView';
 import { CodeSkillsView } from './CodeSkillsView';
+import { DeliveryAutomationMonitor } from './DeliveryAutomationMonitor';
 import { EventTimeline } from './EventTimeline';
 import { ExtensionsModal, type ExtensionTab } from './ExtensionsModal';
 import { NewTaskPanel } from './NewTaskPanel';
@@ -78,8 +79,14 @@ export default function CodeView({
   const [projectBusy, setProjectBusy] = useState(false);
   const [connectorReturnProjectId, setConnectorReturnProjectId] = useState<string | null>(null);
   const [connectorReturnToSettings, setConnectorReturnToSettings] = useState(false);
+  const [automationErrors, setAutomationErrors] = useState<Record<string, string>>({});
+  const [resolvingApprovalId, setResolvingApprovalId] = useState<string | null>(null);
   const detail = useCodingSession(newTask || projectsOpen || connectorsOpen || skillsOpen ? null : selectedId);
-  const session = detail.session?.id === selectedId ? detail.session : null;
+  const cachedSession = sessions.find((item) => item.id === selectedId) || null;
+  // The session list already contains enough information to render the task
+  // shell. Keep it interactive while detailed history and review data load in
+  // the background instead of replacing the whole workspace with a spinner.
+  const session = detail.session?.id === selectedId ? detail.session : cachedSession;
   const projects = useCodeProjects(newTask ? null : session?.project_id);
   const taskList = useCodeTaskList({
     sessions,
@@ -132,27 +139,42 @@ export default function CodeView({
     setControlsOpen(false);
     setExtensionsOpen(false);
     setRenameOpen(false);
+    setResolvingApprovalId(null);
   }, [newTask, projectsOpen, connectorsOpen, skillsOpen, selectedId]);
 
   useEffect(() => {
     setProjectEditor(null);
   }, [newTask, projectsOpen, skillsOpen, selectedId]);
 
-  const restoring = detail.loading || (!!selectedId && detail.session?.id !== selectedId);
-  const taskBarSession = session || sessions.find((item) => item.id === selectedId) || null;
-  const conversationError = detail.error || (reviewOpen ? '' : actionError || taskList.error);
+  const restoring = !!selectedId && !session;
+  const taskBarSession = session;
+  const automationError = selectedId ? automationErrors[selectedId] || '' : '';
+  const conversationError = detail.error || (reviewOpen ? '' : actionError || automationError || taskList.error);
   // A local folder is a first-class Code workspace, not an exceptional state.
   // Keep meaningful Git/worktree warnings, but do not turn the absence of Git
   // into a persistent caution banner.
   const workspaceWarning = session?.workspace_kind === 'direct_folder'
     ? ''
     : session?.workspace_warning || '';
-  const approval = session?.pending_approval;
+  const approval = session?.pending_approval?.id === resolvingApprovalId
+    ? null
+    : session?.pending_approval;
   const suggestedUpdate = [...detail.events].reverse().find(
     (event) => event.type === 'agent_message' && event.text.trim(),
   )?.text.trim() || '';
   return (
     <div className="code-page">
+      <DeliveryAutomationMonitor
+        sessions={sessions}
+        onSessionsChange={onSessionsChange}
+        onError={(sessionId, message) => setAutomationErrors((current) => {
+          if ((current[sessionId] || '') === message) return current;
+          const next = { ...current };
+          if (message) next[sessionId] = message;
+          else delete next[sessionId];
+          return next;
+        })}
+      />
       {!newTask && !projectsOpen && !connectorsOpen && !skillsOpen && selectedId && taskBarSession && (
         <TaskBar
           session={taskBarSession}
@@ -231,7 +253,7 @@ export default function CodeView({
           onCreate={() => setProjectEditor({ id: null })}
           onEdit={(id) => setProjectEditor({ id })}
         />
-      ) : taskList.loading ? (
+      ) : taskList.loading && !sessions.length ? (
         <div className="code-loading"><Spinner className="text-lg" /> Loading coding tasks…</div>
       ) : newTask || !selectedId ? (
         <NewTaskPanel
@@ -271,10 +293,17 @@ export default function CodeView({
               <ApprovalCard
                 approval={approval}
                 busy={busy}
-                onDecision={(decision) => void runAction(
-                  () => codingApi.approve(session.id, approval.id, decision),
-                  true,
-                )}
+                onDecision={(decision) => {
+                  // The user's decision is final from the UI's perspective.
+                  // Remove the card synchronously, then reconcile with the
+                  // server; a failed request restores it with the error shown.
+                  setResolvingApprovalId(approval.id);
+                  void runAction(
+                    () => codingApi.approve(session.id, approval.id, decision),
+                    true,
+                    true,
+                  ).catch(() => {}).finally(() => setResolvingApprovalId(null));
+                }}
               />
             )}
             <CodeComposer
@@ -337,7 +366,7 @@ export default function CodeView({
             git={detail.git}
             files={detail.diff}
             busy={busy}
-            error={actionError}
+            error={actionError || automationError}
             onClose={() => setReviewOpen(false)}
             onBranch={(name) => runAction(() => codingApi.branch(session.id, name), false, true)}
             onCommit={(message) => runAction(() => codingApi.commit(session.id, message), false, true)}
@@ -360,14 +389,27 @@ export default function CodeView({
               connection_name: context.connection_name,
               confirmed: true,
             }), true, true)}
+            onCompleteSource={(context) => {
+              if (context.provider !== 'github' && context.provider !== 'linear') return Promise.resolve();
+              const provider = context.provider;
+              return runAction(() => codingApi.completeSource(session.id, {
+                provider,
+                action: 'complete',
+                target_url: context.url,
+                connection_name: context.connection_name,
+                confirmed: true,
+              }), true, true);
+            }}
             onOpenProjectSettings={() => setProjectEditor({ id: session.project_id || null })}
             onAgentAction={(prompt) => runAction(() => codingApi.turn(session.id, prompt), true, true)}
-            onPullRequestAction={(item, action) => runAction(() => codingApi.pullRequestAction(session.id, {
+            onPullRequestAction={(item, action, threadId) => runAction(() => codingApi.pullRequestAction(session.id, {
               action,
               target_url: item.external_url || '',
               connection_name: item.connection_name,
+              thread_id: threadId,
               confirmed: true,
             }), true, true)}
+            onDeliveryPolicyChange={(policy) => runAction(() => codingApi.updateDeliveryPolicy(session.id, policy), true, true)}
             onArchive={toggleArchive}
             suggestedUpdate={suggestedUpdate}
             onResolveConflicts={() => runAction(() => codingApi.turn(

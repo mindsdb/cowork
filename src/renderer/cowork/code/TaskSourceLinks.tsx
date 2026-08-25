@@ -1,13 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import type { ConnectorConnection } from '../api';
 import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
-import Select from '../components/ui/Select';
 import {
   codingApi,
   type CodeProject,
+  type ProjectConnection,
   type SourceContext,
+  type WorkItemSummary,
 } from './api';
 import {
   availableDeveloperConnections,
@@ -18,7 +19,11 @@ import {
   sourceContextLabel,
   sourceContextMeta,
   sourceProviderLabel,
+  type DeveloperProvider,
 } from './developerTools';
+import { WorkItemPicker } from './WorkItemPicker';
+
+const SEARCH_DELAY_MS = 250;
 
 export function TaskSourceLinks({
   project,
@@ -44,60 +49,75 @@ export function TaskSourceLinks({
   busy: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const [url, setUrl] = useState('');
+  const [provider, setProvider] = useState<DeveloperProvider>('github');
+  const [query, setQuery] = useState('');
+  const [link, setLink] = useState('');
   const [connectionName, setConnectionName] = useState('');
+  const [items, setItems] = useState<WorkItemSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const assignedConnections = useRef(new Set<string>());
   const connections = useMemo(
     () => availableConnections === undefined
       ? developerConnections(project?.connections || [])
       : availableDeveloperConnections(availableConnections),
     [availableConnections, project?.connections],
   );
-  const target = useMemo(() => parseDeveloperSourceUrl(url), [url]);
-  const matchingConnections = useMemo(
-    () => target
-      ? connections.filter((connection) => connection.provider === target.provider)
-      : connections,
-    [connections, target],
+  const providers = useMemo(() => (
+    ['github', 'linear'] as DeveloperProvider[]
+  ).filter((candidate) => connections.some((item) => item.provider === candidate)), [connections]);
+  const providerConnections = useMemo(
+    () => connections.filter((item) => item.provider === provider),
+    [connections, provider],
   );
-  const selectedConnection = target
-    ? connectionForSource(connections, target, connectionName)
-    : null;
 
   useEffect(() => {
-    if (!target) return;
-    const inferred = connectionForSource(connections, target);
-    if (inferred) setConnectionName(inferred.name);
-    else if (!matchingConnections.some((connection) => connection.name === connectionName)) setConnectionName('');
-  }, [connectionName, connections, matchingConnections, target]);
+    assignedConnections.current = new Set(
+      (project?.connections || []).map((item) => `${item.provider}:${item.name}`),
+    );
+  }, [project?.connections, project?.id]);
 
-  const addSource = useCallback(async (sourceUrl: string) => {
+  useEffect(() => {
+    if (!providers.length) return;
+    if (!providers.includes(provider)) setProvider(providers[0]);
+  }, [provider, providers]);
+
+  useEffect(() => {
+    if (!providerConnections.some((item) => item.name === connectionName)) {
+      setConnectionName(providerConnections[0]?.name || '');
+    }
+  }, [connectionName, providerConnections]);
+
+  const ensureProjectConnection = useCallback(async (connection: ProjectConnection) => {
+    if (!project) return;
+    const key = `${connection.provider}:${connection.name}`;
+    if (assignedConnections.current.has(key)) return;
+    await codingApi.updateProject(project.id, {
+      connections: [...project.connections, connection],
+    });
+    assignedConnections.current.add(key);
+    await onProjectConnectionsChange?.();
+  }, [onProjectConnectionsChange, project]);
+
+  const addSource = useCallback(async (sourceUrl: string, preferredConnection = '') => {
     const parsed = parseDeveloperSourceUrl(sourceUrl);
     if (!project || !parsed) {
       setError('Paste a GitHub or Linear issue or pull-request link.');
       setOpen(true);
       return;
     }
-    const connection = connectionForSource(connections, parsed, connectionName)
+    const connection = connectionForSource(connections, parsed, preferredConnection)
+      || connectionForSource(connections, parsed, connectionName)
       || connectionForSource(connections, parsed);
     if (!connection) {
-      setError(`Choose the ${developerProviderLabel(parsed.provider)} account this project should use.`);
+      setError(`Choose the ${developerProviderLabel(parsed.provider)} account to use.`);
       setOpen(true);
       return;
     }
     setLoading(true);
     setError('');
     try {
-      const alreadyAssigned = project.connections.some((item) => (
-        item.provider === connection.provider && item.name === connection.name
-      ));
-      if (!alreadyAssigned) {
-        await codingApi.updateProject(project.id, {
-          connections: [...project.connections, connection],
-        });
-        await onProjectConnectionsChange?.();
-      }
+      await ensureProjectConnection(connection);
       const context = await codingApi.readSourceContext(project.id, {
         provider: parsed.provider,
         kind: parsed.kind,
@@ -106,7 +126,7 @@ export function TaskSourceLinks({
       });
       onChange([...value.filter((item) => item.url !== context.url), context]);
       onContextAdded(context);
-      setUrl('');
+      setLink('');
       setOpen(false);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Could not load that work item.');
@@ -114,11 +134,41 @@ export function TaskSourceLinks({
     } finally {
       setLoading(false);
     }
-  }, [connectionName, connections, onChange, onContextAdded, onProjectConnectionsChange, project, value]);
+  }, [connectionName, connections, ensureProjectConnection, onChange, onContextAdded, project, value]);
+
+  useEffect(() => {
+    if (!open || !project || !connectionName || busy) return undefined;
+    const connection = providerConnections.find((item) => item.name === connectionName);
+    if (!connection) return undefined;
+    let active = true;
+    const timer = window.setTimeout(async () => {
+      setLoading(true);
+      setError('');
+      try {
+        const page = await codingApi.searchWorkItems(project.id, {
+          provider,
+          query: query.trim(),
+          connection_name: connection.name,
+          limit: 20,
+        });
+        if (active) setItems(page.items);
+      } catch (reason) {
+        if (active) {
+          setItems([]);
+          setError(reason instanceof Error ? reason.message : 'Could not search connected work.');
+        }
+      } finally {
+        if (active) setLoading(false);
+      }
+    }, SEARCH_DELAY_MS);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [busy, connectionName, open, project, provider, providerConnections, query]);
 
   useEffect(() => {
     if (!autoLinkUrl) return;
-    setUrl(autoLinkUrl);
+    const parsed = parseDeveloperSourceUrl(autoLinkUrl);
+    if (parsed) setProvider(parsed.provider);
+    setLink(autoLinkUrl);
     setOpen(true);
     onAutoLinkHandled();
     void addSource(autoLinkUrl);
@@ -145,41 +195,27 @@ export function TaskSourceLinks({
       )}
 
       {open && (
-        <div className="code-source-linker">
-          {connections.length ? (
-            <>
-              <input
-                value={url}
-                onChange={(event) => { setUrl(event.target.value); setError(''); }}
-                placeholder="Paste a GitHub or Linear issue link"
-                aria-label="Issue or pull-request link"
-                disabled={loading || busy}
-                autoFocus
-              />
-              {target && matchingConnections.length > 1 && (
-                <Select
-                  value={connectionName}
-                  onValueChange={setConnectionName}
-                  options={matchingConnections.map((connection) => ({ value: connection.name, label: connection.label || connection.name }))}
-                  size="sm"
-                  ariaLabel={`${developerProviderLabel(target.provider)} account`}
-                  disabled={loading || busy}
-                />
-              )}
-              <Button size="sm" disabled={loading || busy || !target || !selectedConnection} onClick={() => void addSource(url)}>
-                {loading ? 'Adding…' : 'Add'}
-              </Button>
-            </>
-          ) : (
-            <div className="code-source-linker__empty">
-              <span>Connect GitHub or Linear to start from an issue or pull request.</span>
-              <Button size="sm" variant="subtle" onClick={onOpenConnectors}>Open Connectors</Button>
-            </div>
-          )}
-          <button type="button" aria-label="Close issue linker" onClick={() => { setOpen(false); setError(''); }}>{Ico.close(12)}</button>
-        </div>
+        <WorkItemPicker
+          provider={provider}
+          onProviderChange={(next) => { setProvider(next); setQuery(''); setItems([]); setError(''); }}
+          providers={providers}
+          connections={connections}
+          connectionName={connectionName}
+          onConnectionChange={(name) => { setConnectionName(name); setItems([]); setError(''); }}
+          query={query}
+          onQueryChange={(next) => { setQuery(next); setError(''); }}
+          items={items}
+          loading={loading}
+          error={error}
+          link={link}
+          onLinkChange={(next) => { setLink(next); setError(''); }}
+          onChoose={(item) => void addSource(item.url, item.connection_name)}
+          onAddLink={() => void addSource(link)}
+          onOpenConnectors={onOpenConnectors}
+          onClose={() => { setOpen(false); setError(''); }}
+          busy={busy}
+        />
       )}
-      {error && <div className="code-source-linker__error" role="alert">{error}</div>}
       <Button size="sm" variant="subtle" className="code-add-source" onClick={() => { setOpen((current) => !current); setError(''); }} disabled={busy}>
         {Ico.link(12)} {value.length ? 'Add another issue or PR' : 'Add issue or PR'}
       </Button>

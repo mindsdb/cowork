@@ -245,7 +245,7 @@ function fixtureState(name: string) {
         detail: 'Draft pull request created', folder_id: 'app', folder_name: 'Atlas web',
         base_branch: 'staging', task_branch: 'cowork/atlas/task-73c4', connection_name: 'github-work', created_at: NOW,
       }, {
-        provider: 'linear', action: 'progress', target_url: 'https://linear.app/mindsdb/issue/ENG-421',
+        provider: 'linear', action: 'result', target_url: 'https://linear.app/mindsdb/issue/ENG-421',
         status: 'published', external_url: 'https://linear.app/mindsdb/issue/ENG-421#comment-finish',
         detail: 'Published with Linear work', connection_name: 'linear-work', created_at: NOW,
       }] : [],
@@ -278,7 +278,7 @@ export function getCodeFixtureApi() {
   const name = activeFixtureName();
   if (!name) return null;
   const state = fixtureState(name);
-  let sessions = name === 'new' || name === 'empty' ? [] : state.sessions;
+  let sessions = name === 'new' || name === 'empty' || name === 'work-search' ? [] : state.sessions;
   const eventMap = new Map<string, CodingEvent[]>([[state.primary.id, state.events]]);
   const fileMap = new Map<string, DiffFile[]>([[state.primary.id, state.files]]);
 
@@ -317,7 +317,7 @@ export function getCodeFixtureApi() {
     name: 'Atlas',
     folders: [{ id: 'atlas-web', name: 'atlas-web', path: ROOT, base_branch: 'staging', commands: [] }],
     skill_sources: [],
-    connections: name.startsWith('delivery-') ? [
+    connections: name.startsWith('delivery-') || name === 'work-search' ? [
       { provider: 'github', name: 'github-work', label: 'MindsDB GitHub' },
       { provider: 'linear', name: 'linear-work', label: 'MindsDB Linear' },
     ] : [],
@@ -402,6 +402,21 @@ export function getCodeFixtureApi() {
     integrations: async () => ({ items: [] }),
     readSourceContext: async (_id: string, body: { provider: 'github' | 'linear' | 'slack'; kind: 'issue' | 'pull_request' | 'conversation'; url: string }) => ({
       ...body, title: 'Linked work', external_id: 'fixture-1', body: 'Fixture source context',
+    }),
+    searchWorkItems: async (_id: string, body: { provider: 'github' | 'linear'; query: string; connection_name?: string | null }) => ({
+      incomplete: false,
+      items: [{
+        provider: body.provider,
+        kind: 'issue' as const,
+        url: body.provider === 'github' ? 'https://github.com/mindsdb/cowork/issues/42' : 'https://linear.app/mindsdb/issue/ENG-42',
+        title: body.query || 'Improve Code delivery',
+        external_id: body.provider === 'github' ? 'mindsdb/cowork#42' : 'ENG-42',
+        state: 'Open',
+        scope: body.provider === 'github' ? 'mindsdb/cowork' : 'Engineering',
+        assignee: 'Ian',
+        updated_at: NOW,
+        connection_name: body.connection_name || `${body.provider}-work`,
+      }],
     }),
     sessions: async (includeArchived = false) => {
       if (name === 'error') throw new Error('Could not reach the local coding service.');
@@ -523,20 +538,30 @@ export function getCodeFixtureApi() {
             number: 142, title: 'Refine checkout validation and recovery states',
             url: 'https://github.com/mindsdb/atlas-web/pull/142', updated_at: NOW,
             checks: [
-              { name: 'Frontend tests', state: 'failing' as const, url: 'https://github.com/mindsdb/atlas-web/actions/runs/1' },
+              {
+                id: 'check-frontend', name: 'Frontend tests', state: 'failing' as const,
+                url: 'https://github.com/mindsdb/atlas-web/actions/runs/1', detail: 'Checkout recovery › retains customer details after a rejected request',
+                annotations: [{
+                  path: 'src/checkout/CheckoutForm.test.tsx', start_line: 167, end_line: 167,
+                  level: 'failure' as const, title: 'Expected the email field to retain its value', message: 'Received an empty string.',
+                }],
+              },
               { name: 'Lint', state: 'passing' as const, url: 'https://github.com/mindsdb/atlas-web/actions/runs/2' },
             ],
             feedback: [{
               id: 'review-1', author: 'reviewer', state: 'changes_requested',
               body: 'Please retain the draft if validation itself fails.',
               url: 'https://github.com/mindsdb/atlas-web/pull/142#discussion_r1',
-              path: 'src/checkout/CheckoutForm.tsx', created_at: NOW,
+              path: 'src/checkout/CheckoutForm.tsx', line: 96, thread_id: 'thread-review-1',
+              resolved: false, outdated: false, created_at: NOW,
             }], detail: '',
           },
         }, baseItems[1]] };
       }
       return { items: baseItems, integrations: connected };
     },
+    updateDeliveryPolicy: async (id: string, policy: NonNullable<CodingSession['delivery_policy']>) => copy(update(id, { delivery_policy: policy })),
+    claimDeliveryAutomation: async () => ({ claimed: true, attempts: 1, limit: 2 }),
     draftPullRequests: async (_id: string, body: { title: string }) => ({ items: [{
       provider: 'github' as const, action: 'draft_pull_request' as const,
       target_url: 'https://github.com/mindsdb/atlas-web.git', status: 'published' as const,
@@ -544,7 +569,7 @@ export function getCodeFixtureApi() {
       folder_id: 'app', folder_name: 'Atlas web', base_branch: 'staging',
       task_branch: 'cowork/atlas/task-73c4', created_at: NOW,
     }] }),
-    pullRequestAction: async (_id: string, body: { action: 'ready' | 'merge'; target_url: string }) => ({
+    pullRequestAction: async (_id: string, body: { action: 'ready' | 'merge' | 'resolve_thread'; target_url: string }) => ({
       state: body.action === 'merge' ? 'merged' as const : 'open' as const,
       review_state: 'approved' as const,
       ci_state: 'passing' as const,
@@ -558,6 +583,10 @@ export function getCodeFixtureApi() {
     }),
     publish: async (_id: string, body: { provider: 'github' | 'linear' | 'slack'; action: 'progress' | 'result'; target_url: string }) => ({
       ...body, status: 'published' as const, detail: 'Published', created_at: NOW, external_url: body.target_url,
+    }),
+    completeSource: async (_id: string, body: { provider: 'github' | 'linear'; target_url: string }) => ({
+      ...body, action: 'complete_source' as const, status: 'published' as const,
+      detail: 'Marked complete', created_at: NOW, external_url: body.target_url,
     }),
     terminal: async () => ({ status: 'stopped' as const, items: [], first_seq: 0, next_seq: 0 }),
     startTerminal: async () => ({ status: 'running' as const, process_id: 'fixture-terminal', items: [], first_seq: 0, next_seq: 0 }),
