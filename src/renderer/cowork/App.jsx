@@ -5430,7 +5430,7 @@ function AppCore() {
           onClose={() => setComingSoonFeature(null)}
         />
         <ModalBody>
-          <p>
+          <p className="s-body">
             {comingSoonFeature ? `${comingSoonFeature} isn’t` : 'This feature isn’t'}{' '}
             available on Cloud just yet. In the meantime, you can use it in the
             desktop app.
