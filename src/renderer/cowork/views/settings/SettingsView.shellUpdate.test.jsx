@@ -177,6 +177,29 @@ describe('SettingsView desktop — UI/server updates framed as a restart', () =>
     expect(screen.queryByText(/Update ready/)).toBeNull();
   });
 
+  it('an in-progress shell check does not hide a ready UI/server Restart card (checking is not pending)', async () => {
+    // `checking` renders its own "Checking for an app update…" card but is not a
+    // pending shell update, so — like the sidebar banner (shellAutoOwnsBanner
+    // excludes `checking`) — it must not suppress a valid OTA Restart. Both the
+    // transient check card and the OTA Restart card coexist.
+    host.checkForUpdates.mockResolvedValueOnce({
+      ok: true, offline: false, updateAvailable: true,
+      uiUpdateAvailable: true, uiVersion: '2.26.7.20.1',
+      serverUpdateAvailable: false, shellUpdateAvailable: false,
+    });
+    render(
+      <SettingsView
+        {...baseProps}
+        shellUpdate={null}
+        shellAutoUpdate={{ phase: 'checking', mode: 'auto', channel: 'prod', currentVersion: '2.26.7.13.1' }}
+        onDownloadShellUpdate={vi.fn()}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Check for updates/ }));
+    expect(await screen.findByRole('button', { name: /Restart now/ })).toBeInTheDocument();
+    expect(screen.getByText(/Checking for an app update/)).toBeInTheDocument();
+  });
+
   it('returns to a retryable state when applyUpdate resolves false', async () => {
     host.checkForUpdates.mockResolvedValueOnce({
       ok: true, offline: false, updateAvailable: true,

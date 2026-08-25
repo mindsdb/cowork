@@ -5,6 +5,7 @@ import { copyText as copyToClipboard } from '../../lib/clipboard';
 import { fetchHealth } from '../../api';
 import { host, getVersionInfo, isElectron } from '../../../platform/host';
 import { unifiedVersion, SKEW_WARN_DAYS } from '../../../../shared/version';
+import { shellAutoOwnsBanner } from '../../../../shared/update-banner';
 import { Section, SettingsSectionPanel } from './settingsLayout';
 
 const UPDATE_CARD_CLASS =
@@ -225,12 +226,6 @@ export default function UpdatesSection({
               // manual installer-download card only surfaces as a fallback when
               // auto-update isn't running or has failed (ENG-850).
               const autoPhase = shellAutoUpdate?.phase;
-              // A failure with no targetVersion (a rejected background check, or a
-              // retry whose check cleared the target and failed) still shows its
-              // own Retry card, but is NOT a pending shell update — so it must not
-              // suppress the OTA card below (a shell feed outage would otherwise
-              // hide a valid UI/server Restart).
-              const targetlessFailure = autoPhase === 'failed' && !shellAutoUpdate?.targetVersion;
               const autoVisible = !!autoPhase && !['disabled', 'idle', 'complete'].includes(autoPhase);
               const manualFallback = shellPending && (!autoVisible || autoPhase === 'failed');
               let status = null;
@@ -245,11 +240,15 @@ export default function UpdatesSection({
               }
               const isError = !!r && !r.ok;
               const isUpToDate = !checkingUpdates && !!r && r.ok && !r.updateAvailable;
-              // Shell-first (mirrors deriveUpdateBanner): a pending shell update's
-              // relaunch also applies UI/server OTA at boot, so suppress the
-              // redundant "Restart now" card. A targetless failure isn't pending,
-              // so it never suppresses OTA (both cards may show).
-              const shellSurface = (autoVisible && !targetlessFailure) || manualFallback;
+              // Shell-first suppression of the redundant OTA "Restart now" card,
+              // decided by the SAME rule the sidebar banner uses — reuse
+              // shellAutoOwnsBanner so "which shell-auto phase is a pending update
+              // (and `failed` only with a real target)" lives in one place and the
+              // two surfaces can't drift. A targetless / check-only failure doesn't
+              // own the slot, so it never hides a valid UI/server Restart. The
+              // manual-notice side stays local because here it's derived from the
+              // live check result (shellPending), not the dismissal-filtered prop.
+              const shellSurface = (shellAutoUpdate ? shellAutoOwnsBanner(shellAutoUpdate) : false) || manualFallback;
               const applyAvailable = !checkingUpdates && !!r && r.ok && !shellSurface && (r.uiUpdateAvailable || r.serverUpdateAvailable);
               const busy = checkingUpdates || applyingUpdate;
               const parts = [];
