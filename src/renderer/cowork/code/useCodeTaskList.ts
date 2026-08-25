@@ -38,7 +38,7 @@ export function useCodeTaskList({
     const currentExists = !!currentId && page.items.some((item) => item.id === currentId);
     const firstVisible = page.items.find((item) => !item.archived)?.id || page.items[0]?.id;
     const nextId = preferId || (currentExists ? currentId : firstVisible) || null;
-    if (!page.items.length && !preferId) {
+    if (!page.items.length && !preferId && !newTaskRef.current) {
       onSelectionChangeRef.current(null, true);
     } else if (preferId || (!newTaskRef.current && !currentExists)) {
       onSelectionChangeRef.current(nextId, false);

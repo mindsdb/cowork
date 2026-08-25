@@ -94,6 +94,7 @@ const library: SkillLibraryPage = {
     { id: 'engineering:skills/review/SKILL.md', kind: 'skill', name: 'Review', description: 'Review code against team standards.', origin: 'team', source_id: 'engineering', source_name: 'Engineering standards', path: 'skills/review/SKILL.md', version: 'a1b2c3d4e5f6', enabled: false, enabled_project_ids: ['project-one'] },
     { id: 'engineering:AGENTS.md', kind: 'instructions', name: 'AGENTS.md', description: '', origin: 'team', source_id: 'engineering', source_name: 'Engineering standards', path: 'AGENTS.md', version: 'a1b2c3d4e5f6', enabled: false, enabled_project_ids: [] },
     { id: 'personal:release', kind: 'skill', name: 'Release', description: 'Prepare a release.', origin: 'personal', source_name: 'Yours', path: 'release', enabled: true, enabled_project_ids: [] },
+    { id: 'personal:thermo-nuclear-code-quality-review', kind: 'skill', name: 'Thermo-Nuclear Code Quality Review', description: 'Run an extremely strict maintainability review.', origin: 'built_in', source_name: 'MindsHub', path: 'thermo-nuclear-code-quality-review', enabled: true, enabled_project_ids: [] },
   ],
 };
 
@@ -118,6 +119,7 @@ describe('CodeSkillsView', () => {
     expect(screen.getByText('Engineering standards')).toBeInTheDocument();
     expect(screen.getByText('Review code against team standards.')).toBeInTheDocument();
     expect(screen.getByText('Personal skills available in Code Mode')).toBeInTheDocument();
+    expect(screen.getByText('Engineering skills maintained by MindsHub')).toBeInTheDocument();
 
     await user.type(screen.getByRole('textbox', { name: 'Search skills' }), 'release');
     expect(screen.getByText('Prepare a release.')).toBeInTheDocument();
