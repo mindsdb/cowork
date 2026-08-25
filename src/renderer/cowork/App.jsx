@@ -45,6 +45,7 @@ import { useGoogleDrivePicker } from './hooks/useGoogleDrivePicker';
 import { useViewportZoomLock } from './hooks/useViewportZoomLock';
 import { useThemeSkin } from './hooks/useThemeSkin';
 import { useAppUpdates } from './hooks/useAppUpdates';
+import { deriveUpdateBanner } from '../../shared/update-banner';
 import { useSchedules } from './hooks/useSchedules';
 import { fetchSessions, fetchSession, fetchConversationList, fetchProjects, fetchArtifacts, fetchSettings, fetchHealth,
          createProject, updateSettings, streamNewSession, streamMessage,
@@ -1439,6 +1440,20 @@ function AppCore() {
     handleShellAutoUpdateAction,
     dismissShellUpdate,
   } = useAppUpdates();
+
+  // Collapse the three update mechanisms into one shell-first banner (or null).
+  // The manual notice is dismissal-filtered here before it can win the slot.
+  const updateBanner = deriveUpdateBanner({
+    ota: updateStatus,
+    shellAuto: shellAutoUpdate,
+    shellManual: shellUpdate && shellUpdate.version !== shellUpdateDismissed ? shellUpdate : null,
+  });
+  const handleUpdateAction = useCallback((action) => {
+    if (action === 'apply-ota') return handleApplyUpdate();
+    if (action === 'shell-auto') return handleShellAutoUpdateAction();
+    if (action === 'download-installer') return handleDownloadShellUpdate();
+    return undefined;
+  }, [handleApplyUpdate, handleShellAutoUpdateAction, handleDownloadShellUpdate]);
 
   // Load data from server on mount
   const refreshData = useCallback(() => {
@@ -4393,14 +4408,9 @@ function AppCore() {
           showCounters={settings.showCounters !== false}
           navTitle={settings.navTitle || null}
           navLogo={settings.navLogo || null}
-          updateAvailable={updateStatus?.phase === 'available' ? { version: updateStatus.version } : null}
-          updateError={updateStatus?.phase === 'error' ? { version: updateStatus.version } : null}
-          onApplyUpdate={handleApplyUpdate}
-          shellUpdate={shellUpdate && shellUpdate.version !== shellUpdateDismissed ? shellUpdate : null}
-          shellAutoUpdate={shellAutoUpdate}
-          onShellAutoUpdateAction={handleShellAutoUpdateAction}
-          onDownloadShellUpdate={handleDownloadShellUpdate}
-          onDismissShellUpdate={dismissShellUpdate}
+          updateBanner={updateBanner}
+          onUpdateAction={handleUpdateAction}
+          onDismissUpdate={dismissShellUpdate}
           onStartChat={(text) => {
             // Popout sidebar (narrow desktop, or Coding Mode) is an overlay
             // drawer. Close it like navigate/onOpenSchedule do, so the new
