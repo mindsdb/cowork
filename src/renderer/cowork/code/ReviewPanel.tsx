@@ -6,7 +6,7 @@ import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { host } from '../../platform/host';
-import type { CodingSession, DeliveryPlanItem, DeliveryRecord, DiffFile, GitState, ProjectCommandResult, ProjectConnection, TaskWorkspace } from './api';
+import type { CodingSession, DeliveryAutomationPolicy, DeliveryPlanItem, DeliveryRecord, DiffFile, GitState, ProjectCommandResult, ProjectConnection, TaskWorkspace } from './api';
 import { compactPath, diffStats, isActiveStatus } from './presentation';
 import { DraftPullRequestSection, type DraftPullRequestInput } from './DraftPullRequestSection';
 import { SourceUpdateSection } from './SourceUpdateSection';
@@ -29,12 +29,14 @@ export function ReviewPanel({
   onApply,
   onValidate = async () => [],
   onPublish = async () => {},
+  onCompleteSource = async () => {},
   onDraftPullRequests = async () => [],
   connections = NO_CONNECTIONS,
   onResolveConflicts = async () => {},
   onOpenProjectSettings = () => {},
   onAgentAction = async () => {},
   onPullRequestAction = async () => {},
+  onDeliveryPolicyChange = async () => {},
   onArchive = async () => {},
   suggestedUpdate = '',
 }: {
@@ -50,12 +52,14 @@ export function ReviewPanel({
   onApply: () => Promise<void>;
   onValidate?: () => Promise<ProjectCommandResult[]>;
   onPublish?: (target: NonNullable<CodingSession['source_contexts']>[number], text: string, action: 'progress' | 'result') => Promise<void>;
+  onCompleteSource?: (target: NonNullable<CodingSession['source_contexts']>[number]) => Promise<void>;
   onDraftPullRequests?: (title: string, body: string, connectionName: string | null, drafts: DraftPullRequestInput[]) => Promise<DeliveryRecord[]>;
   onResolveConflicts?: () => Promise<void>;
   connections?: ProjectConnection[];
   onOpenProjectSettings?: () => void;
   onAgentAction?: (prompt: string) => Promise<void>;
-  onPullRequestAction?: (item: DeliveryPlanItem, action: 'ready' | 'merge') => Promise<void>;
+  onPullRequestAction?: (item: DeliveryPlanItem, action: 'ready' | 'merge' | 'resolve_thread', threadId?: string) => Promise<void>;
+  onDeliveryPolicyChange?: (policy: DeliveryAutomationPolicy) => Promise<void>;
   onArchive?: () => Promise<void>;
   suggestedUpdate?: string;
 }) {
@@ -246,6 +250,8 @@ export function ReviewPanel({
                     onOpenProjectSettings={onOpenProjectSettings}
                     onAgentAction={onAgentAction}
                     onPullRequestAction={onPullRequestAction}
+                    deliveryPolicy={session.delivery_policy}
+                    onDeliveryPolicyChange={onDeliveryPolicyChange}
                     onArchive={onArchive}
                     connections={connections}
                   />
@@ -281,6 +287,7 @@ export function ReviewPanel({
               suggestedUpdate={suggestedUpdate}
               busy={busy}
               onPublish={onPublish}
+              onComplete={onCompleteSource}
             />
           </div>
         )}

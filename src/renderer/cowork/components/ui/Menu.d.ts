@@ -10,6 +10,7 @@ export interface MenuItem {
   disabled?: boolean;
   hint?: ReactNode;
   title?: string;
+  keepOpen?: boolean;
   divider?: boolean;
   separator?: boolean;
   submenu?: MenuItem[];
@@ -23,6 +24,12 @@ export interface MenuProps {
   anchor?: DOMRect | Element | null;
   onClose?: () => void;
   zIndex?: number;
+  side?: 'top' | 'bottom' | 'left' | 'right';
+  align?: 'start' | 'center' | 'end';
+  sideOffset?: number;
+  width?: number;
+  ariaLabel?: string;
+  onOpenChange?: (open: boolean, details?: unknown) => void;
 }
 
 declare const Menu: ComponentType<MenuProps>;

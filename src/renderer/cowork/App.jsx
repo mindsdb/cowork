@@ -1791,7 +1791,9 @@ function AppCore() {
   // turned the pattern off — no draw cost while invisible.
   useEffect(() => {
     if (typeof document === 'undefined') return;
-    document.body.classList.toggle('gf-dots-off', settings.showDots === false);
+    const visible = settings.showDots !== false;
+    document.body.classList.toggle('gf-dots-off', !visible);
+    window.gravityField?.setActive?.(visible);
   }, [settings.showDots]);
 
   // Cowork and Code are peer workspaces, not routes within one another.
@@ -1844,7 +1846,12 @@ function AppCore() {
   // with content; the home stage keeps the full ambient motion.
   useEffect(() => {
     if (typeof document === 'undefined') return;
-    document.body.classList.toggle('gf-quiet', workspaceMode === 'code' || route !== 'home');
+    const denseWorkspace = workspaceMode === 'code' || route !== 'home';
+    document.body.classList.toggle('gf-quiet', denseWorkspace);
+    // The field is decorative, so dense work surfaces update it at a much
+    // lower frequency. Its slow drift remains visible without competing with
+    // typing, streaming output, or approval interactions on busy machines.
+    window.gravityField?.setFrameRate?.(denseWorkspace ? 1 : 4);
     return () => document.body.classList.remove('gf-quiet');
   }, [route, workspaceMode]);
   // Effective collapse state: only honor the user's preference while
@@ -1940,15 +1947,22 @@ function AppCore() {
       setScheduled(data.schedules || []);
       setScheduleRunsIndex(data.runs_index || {});
     });
-    fetchDatasources()
-      .then((data) => setConnectors(Array.isArray(data?.connections) ? data.connections : []))
-      .catch(() => setConnectors([]));
+    if (codeFixtureActive) {
+      setConnectors([
+        { engine: 'github', name: 'github-work', display_name: 'MindsDB GitHub', status: 'connected' },
+        { engine: 'linear', name: 'linear-work', display_name: 'MindsDB Linear', status: 'connected' },
+      ]);
+    } else {
+      fetchDatasources()
+        .then((data) => setConnectors(Array.isArray(data?.connections) ? data.connections : []))
+        .catch(() => setConnectors([]));
+    }
     fetchSettings().then((data) => {
       if (data && typeof data === 'object') {
         setSettings((prev) => ({ ...prev, ...data }));
       }
     });
-  }, []);
+  }, [codeFixtureActive]);
 
   useEffect(() => {
     refreshData();

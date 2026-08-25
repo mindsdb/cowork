@@ -138,7 +138,11 @@ function renderItems(items, z, onActivate) {
         className={itemVariants({ danger: it.danger })}
         disabled={it.disabled}
         title={it.title}
-        onClick={() => { it.onClick?.(); onActivate?.(); }}
+        closeOnClick={!it.keepOpen}
+        onClick={() => {
+          it.onClick?.();
+          if (!it.keepOpen) onActivate?.();
+        }}
       >
         {it.icon && (
           <span className={cn('inline-flex shrink-0', it.danger ? 'text-danger' : 'text-ink-3')}>{it.icon}</span>

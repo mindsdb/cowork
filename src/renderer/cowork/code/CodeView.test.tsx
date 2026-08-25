@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   steer: vi.fn(),
   turn: vi.fn(),
   runQueued: vi.fn(),
+  approve: vi.fn(),
   useCodingSession: vi.fn(),
 }));
 
@@ -21,6 +22,7 @@ vi.mock('./api', () => ({
     steer: mocks.steer,
     turn: mocks.turn,
     runQueued: mocks.runQueued,
+    approve: mocks.approve,
   },
 }));
 vi.mock('./useCodingSession', () => ({ useCodingSession: mocks.useCodingSession }));
@@ -33,7 +35,11 @@ vi.mock('./TaskBar', () => ({
 vi.mock('./NewTaskPanel', () => ({ NewTaskPanel: () => <div>New task panel</div> }));
 vi.mock('./EventTimeline', () => ({ EventTimeline: () => <div>Timeline</div> }));
 vi.mock('./CodeComposer', () => ({ CodeComposer: () => <div>Composer</div> }));
-vi.mock('./ApprovalCard', () => ({ ApprovalCard: () => <div>Approval</div> }));
+vi.mock('./ApprovalCard', () => ({
+  ApprovalCard: ({ onDecision }: { onDecision: (decision: 'approve_once') => void }) => (
+    <button type="button" onClick={() => onDecision('approve_once')}>Approval</button>
+  ),
+}));
 vi.mock('./ReviewPanel', () => ({ ReviewPanel: () => null }));
 vi.mock('../components/ui/Alert', () => ({ default: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));
 vi.mock('../components/ui/Spinner', () => ({ default: () => <span>Loading</span> }));
@@ -99,6 +105,7 @@ describe('CodeView session-list reconciliation', () => {
     mocks.steer.mockResolvedValue(session('active'));
     mocks.turn.mockResolvedValue(session('idle'));
     mocks.runQueued.mockResolvedValue(session('queued'));
+    mocks.approve.mockResolvedValue(session('approved'));
     mocks.useCodingSession.mockImplementation((id: string | null) => ({
       session: id ? session(id) : null,
       events: [],
@@ -128,6 +135,55 @@ describe('CodeView session-list reconciliation', () => {
     const { props } = renderCode({ selectedId: 'missing' });
 
     await waitFor(() => expect(props.onSelectionChange).toHaveBeenCalledWith('available', false));
+  });
+
+  it('keeps a cached task interactive while detailed history restores', () => {
+    const cached = session('cached');
+    mocks.useCodingSession.mockReturnValue({
+      session: null,
+      events: [],
+      git: null,
+      diff: [],
+      loading: true,
+      error: '',
+      refresh: vi.fn(async () => {}),
+      refreshReview: vi.fn(async () => {}),
+    });
+
+    renderCode({ sessions: [cached], selectedId: cached.id });
+
+    expect(screen.getByText('Timeline')).toBeInTheDocument();
+    expect(screen.getByText('Composer')).toBeInTheDocument();
+    expect(screen.queryByText('Restoring task…')).toBeNull();
+  });
+
+  it('dismisses an approval immediately while the server confirms it', () => {
+    const pending = deferred<CodingSession>();
+    const awaiting = {
+      ...session('awaiting'),
+      status: 'awaiting_approval' as const,
+      pending_approval: {
+        id: 'approval-1', kind: 'command', title: 'Run command', detail: 'npm test',
+        risk: 'May run a command', scope: 'This task only', allow_session: false,
+      },
+    };
+    mocks.approve.mockReturnValueOnce(pending.promise);
+    mocks.useCodingSession.mockReturnValue({
+      session: awaiting,
+      events: [],
+      git: null,
+      diff: [],
+      loading: false,
+      error: '',
+      refresh: vi.fn(async () => {}),
+      refreshReview: vi.fn(async () => {}),
+    });
+
+    renderCode({ sessions: [awaiting], selectedId: awaiting.id });
+    fireEvent.click(screen.getByRole('button', { name: 'Approval' }));
+
+    expect(screen.queryByRole('button', { name: 'Approval' })).toBeNull();
+    expect(mocks.approve).toHaveBeenCalledWith(awaiting.id, 'approval-1', 'approve_once');
   });
 
   it('closes a delete confirmation when the selected task changes', async () => {
