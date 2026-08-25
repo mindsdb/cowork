@@ -32,6 +32,7 @@ import { ArtifactRevisionBar } from './workspace/ArtifactRevisionBar';
 import { useArtifactWorkspace } from './workspace/useArtifactWorkspace';
 import { ArtifactViewerHeader } from './ArtifactViewerHeader';
 import { ArtifactViewerBody } from './ArtifactViewerBody';
+import './artifactWorkspace.css';
 import {
   artifactExtension,
   countCsvRows,
@@ -555,6 +556,74 @@ export function ArtifactViewer({
     }
   };
 
+  const headerReview = {
+    enabled: commentsEnabled,
+    open: commentsOpen,
+    controller: comments,
+    onToggle: toggleComments,
+  };
+  const publication = {
+    canManage,
+    publishable,
+    controller: pub,
+    hasActionPath,
+    isPublished,
+    blockedReason: publishBlock,
+    disabledReason,
+  };
+  const artifactActions = {
+    canOpenInBrowser,
+    canOpenLocalFile,
+    isBackendArtifact,
+    backendPort,
+    artifact,
+    deleteBusy,
+    onReload,
+    onOpenInBrowser,
+    onOpenFolder,
+    onOpenOS,
+    onDownload,
+    onTrash,
+  };
+  const previewModel = {
+    draftUrl: draftPreviewUrl,
+    error: err,
+    setError: setErr,
+    isText,
+    loading,
+    text: textPreview,
+    textContentRef,
+    captureTextSelection,
+    textExtension: textExt,
+    artifact,
+    csv: csvPreview,
+    onDownload,
+    onOpenOS,
+    url: previewUrl,
+    kind: previewKind,
+    iframeRef,
+    title,
+    iframeReady,
+    setIframeReady,
+  };
+  const bodyReview = {
+    layer,
+    open: commentsOpen,
+    enabled: commentsEnabled,
+    inboxOpen,
+    setInboxOpen,
+    markersShown,
+    setMarkersShown,
+    onToggle: toggleComments,
+    userDir: commentUserDir,
+    reportId: commentReportId,
+    controller: comments,
+    onAddressWithAgent: addressCommentWithAgent,
+    onCreate: createArtifactComment,
+    textSelection,
+    setTextSelection,
+  };
+
   return (
     <Modal
       open={open}
@@ -567,29 +636,9 @@ export function ArtifactViewer({
       <ArtifactViewerHeader
         title={title}
         workspace={workspace}
-        commentsEnabled={commentsEnabled}
-        commentsOpen={commentsOpen}
-        comments={comments}
-        toggleComments={toggleComments}
-        canManage={canManage}
-        publishable={publishable}
-        pub={pub}
-        hasActionPath={hasActionPath}
-        isPublished={isPublished}
-        publishBlock={publishBlock}
-        disabledReason={disabledReason}
-        canOpenInBrowser={canOpenInBrowser}
-        canOpenLocalFile={canOpenLocalFile}
-        isBackendArtifact={isBackendArtifact}
-        backendPort={backendPort}
-        artifact={artifact}
-        deleteBusy={deleteBusy}
-        onReload={onReload}
-        onOpenInBrowser={onOpenInBrowser}
-        onOpenFolder={onOpenFolder}
-        onOpenOS={onOpenOS}
-        onDownload={onDownload}
-        onTrash={onTrash}
+        review={headerReview}
+        publication={publication}
+        actions={artifactActions}
         onClose={onClose}
       />
 
@@ -624,42 +673,9 @@ export function ArtifactViewer({
 
       <ArtifactViewerBody
         workspace={workspace}
-        draftPreviewUrl={draftPreviewUrl}
-        err={err}
-        setErr={setErr}
-        isText={isText}
-        loading={loading}
-        textPreview={textPreview}
-        textContentRef={textContentRef}
-        captureTextSelection={captureTextSelection}
-        textExt={textExt}
-        artifact={artifact}
-        csvPreview={csvPreview}
-        onDownload={onDownload}
-        onOpenOS={onOpenOS}
-        previewUrl={previewUrl}
-        previewKind={previewKind}
-        iframeRef={iframeRef}
-        title={title}
-        iframeReady={iframeReady}
-        setIframeReady={setIframeReady}
-        layer={layer}
-        commentsOpen={commentsOpen}
-        commentsEnabled={commentsEnabled}
-        inboxOpen={inboxOpen}
-        setInboxOpen={setInboxOpen}
-        markersShown={markersShown}
-        setMarkersShown={setMarkersShown}
-        toggleComments={toggleComments}
-        commentUserDir={commentUserDir}
-        commentReportId={commentReportId}
-        comments={comments}
-        addressCommentWithAgent={addressCommentWithAgent}
-        createArtifactComment={createArtifactComment}
-        textSelection={textSelection}
-        setTextSelection={setTextSelection}
-        repairBusy={repairBusy}
-        setRepairBusy={setRepairBusy}
+        preview={previewModel}
+        review={bodyReview}
+        agentReview={{ busy: repairBusy, setBusy: setRepairBusy }}
       />
 
       {/* Delete confirmation */}

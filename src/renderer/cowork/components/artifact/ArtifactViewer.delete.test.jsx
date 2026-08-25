@@ -62,7 +62,7 @@ vi.mock('./workspace/useArtifactWorkspace', () => ({
   }),
 }));
 vi.mock('./ArtifactViewerHeader', () => ({
-  ArtifactViewerHeader: ({ onTrash }) => <button onClick={onTrash}>Open delete</button>,
+  ArtifactViewerHeader: ({ actions }) => <button onClick={actions.onTrash}>Open delete</button>,
 }));
 vi.mock('./ArtifactViewerBody', () => ({ ArtifactViewerBody: () => null }));
 vi.mock('./workspace/ArtifactRevisionBar', () => ({ ArtifactRevisionBar: () => null }));

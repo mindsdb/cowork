@@ -37,6 +37,12 @@ const source = {
   capabilities: { role: 'owner', canEdit: true, canComment: true },
 };
 
+function deferred() {
+  let resolve;
+  const promise = new Promise((resolvePromise) => { resolve = resolvePromise; });
+  return { promise, resolve };
+}
+
 beforeEach(() => {
   platform.isWeb = false;
   api.enableDraftComments.mockReset();
@@ -81,5 +87,35 @@ describe('useArtifactWorkspace collaboration transport', () => {
     act(() => result.current.setMode('edit'));
     expect(result.current.mode).toBe('edit');
     expect(result.current.comparison).toBeNull();
+  });
+
+  it('does not let a late response overwrite a newly opened artifact', async () => {
+    const artifactB = {
+      stableId: '22222222-2222-4222-8222-222222222222',
+      projectId: artifact.projectId,
+    };
+    const first = deferred();
+    const second = deferred();
+    api.loadArtifactSource.mockImplementation((item) => (
+      item.stableId === artifact.stableId ? first.promise : second.promise
+    ));
+    const { result, rerender } = renderHook(
+      ({ item }) => useArtifactWorkspace(item, { open: true }),
+      { initialProps: { item: artifact } },
+    );
+
+    rerender({ item: artifactB });
+    await act(async () => {
+      second.resolve({ ...source, content: '<h1>Second</h1>', artifactId: artifactB.stableId });
+    });
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+
+    await act(async () => {
+      first.resolve({ ...source, content: '<h1>First</h1>', artifactId: artifact.stableId });
+      await first.promise;
+    });
+
+    expect(result.current.source.artifactId).toBe(artifactB.stableId);
+    expect(result.current.source.content).toBe('<h1>Second</h1>');
   });
 });
