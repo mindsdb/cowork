@@ -288,6 +288,24 @@ describe('anton_error / unmapped failure fallback', () => {
     const alert = screen.getByRole('alert');
     expect(alert).toHaveTextContent('An unexpected error occurred.');
   });
+
+  it('surfaces the request id when the failure carries one, so a report is traceable', () => {
+    render(
+      <ChatView task={taskWith(failedTurn(
+        'anton_error', 'An unexpected error occurred.', { requestId: 'corr-abc' },
+      ))} />,
+    );
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent('corr-abc');
+  });
+
+  it('omits the reference line when the failure carries no request id', () => {
+    render(
+      <ChatView task={taskWith(failedTurn('anton_error', 'An unexpected error occurred.'))} />,
+    );
+    const alert = screen.getByRole('alert');
+    expect(alert).not.toHaveTextContent('Reference:');
+  });
 });
 
 // ── The D2 enforcement half (ENG-1282 step 3) ──────────────────────────────

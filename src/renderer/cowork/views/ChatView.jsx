@@ -2138,9 +2138,19 @@ export default function ChatView({
                 // bucket with no known next step, so no card — but still a
                 // failure, rendered as a danger alert so it never reads as a
                 // finished answer. Richer treatment is ENG-1093's review.
+                // `requestId` is the one thing this bucket can still offer —
+                // the turn's own server-side correlation id, so a report of
+                // this generic message can be pinned to actual logs.
                 return (
                   <AnswerTurn key={i} state="done" time={formatMetaTime(m.createdAt)} showActions={false} agentLabel={agentLabel}>
-                    <Alert variant="danger">{m.content}</Alert>
+                    <Alert variant="danger">
+                      <div>{m.content}</div>
+                      {m.requestId && (
+                        <div className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>
+                          Reference: {m.requestId}
+                        </div>
+                      )}
+                    </Alert>
                   </AnswerTurn>
                 );
               }
