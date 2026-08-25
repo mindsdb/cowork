@@ -3875,6 +3875,29 @@ function AppCore() {
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error('[performDeleteTask] server delete failed', e);
+      /*
+        The chat is still on the server, so put the row back rather than leave
+        the sidebar claiming it is gone. Console-only used to mean the user saw
+        a successful delete, deleted it again on the next visit, and only found
+        out on a reload. The access log carried the same ids two and three
+        times over.
+
+        Dropping the tombstone first is what makes the refetch work at all:
+        every consumer of fetchSessions filters through deletedTaskIdsRef, and
+        nothing else ever clears it, so the row would stay hidden for the life
+        of the mount. Same recovery as handleRenameTask above.
+
+        The route is deliberately not restored. The user asked to leave this
+        chat, and yanking them back into it is a bigger surprise than the row
+        reappearing in the list where the toast says to look.
+      */
+      deletedTaskIdsRef.current.delete(taskId);
+      const fresh = await fetchSessions().catch(() => null);
+      if (Array.isArray(fresh)) setTasks(fresh.filter((t) => !deletedTaskIdsRef.current.has(t.id)));
+      toastManager.add({
+        type: 'danger',
+        title: "Couldn't delete this chat. It is back in your list; try again.",
+      });
     }
     fetchPins().then((data) => setPins(data.pins || [])).catch(() => {});
   };
