@@ -273,6 +273,10 @@ export function failedEventMeta(events) {
     // it as local time — the gate would last hours west of UTC and no-op east
     // of it, invisible to a TZ=UTC suite.
     retryAt: typeof ev.retry_at === 'string' ? ev.retry_at : null,
+    // The remote turn's own correlation id (cowork-server), present on every
+    // remote-backend failure regardless of code — the one thing a generic
+    // anton_error bubble can still offer for a support lookup.
+    requestId: typeof ev.request_id === 'string' ? ev.request_id : null,
   };
 }
 
@@ -321,6 +325,7 @@ export function hydrateMessagesFromServerEvents(messages) {
           retryAfter: failed?.retryAfter ?? null,
           resetAt: failed?.resetAt ?? null,
           retryAt: failed?.retryAt ?? null,
+          requestId: failed?.requestId ?? null,
         });
       }
     }

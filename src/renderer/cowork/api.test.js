@@ -282,6 +282,20 @@ describe('fetchSession error hydration (ENG-1304)', () => {
     expect(err.code).toBe('token_limit');
     expect(task.messages.map((m) => m.role)).not.toContain('provider_required');
   });
+
+  it('carries the request id onto a generic error row', async () => {
+    stubEndpoints([
+      { role: 'user', content: 'hi' },
+      { role: 'assistant', content: '', events: [
+        { type: 'response.created' },
+        { type: 'response.failed', code: 'anton_error', error: 'An unexpected error occurred.', request_id: 'corr-abc' },
+      ] },
+    ]);
+    const { fetchSession } = await import('./api');
+    const task = await fetchSession('c1');
+    const err = task.messages.find((m) => m.role === 'error');
+    expect(err.requestId).toBe('corr-abc');
+  });
 });
 
 // ─── ENG-1656 follow-up: "Model Router" pick never reaches the server ──
