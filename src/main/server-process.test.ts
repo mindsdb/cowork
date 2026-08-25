@@ -37,11 +37,15 @@ vi.mock('./uv-paths', () => ({
 vi.mock('./credential-provisioning', () => ({
   loadBundledServerCredentials: vi.fn().mockResolvedValue({}),
 }));
+vi.mock('./dev-oauth-credentials', () => ({
+  loadDevOAuthCredentials: vi.fn().mockReturnValue({}),
+}));
 vi.mock('fs');
 vi.mock('child_process');
 vi.mock('http');
 
 import { app } from 'electron';
+import { loadDevOAuthCredentials } from './dev-oauth-credentials';
 import { startServer, getServerDiagnostics, isServerRunning, stopServer } from './server-process';
 
 const PORT = 27903;
@@ -89,6 +93,7 @@ beforeEach(() => {
   execHandler = () => ({ err: new Error('nothing found'), stdout: '' });
   uvState.resolveUv = '/usr/bin/uv';
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200 }));
+  vi.mocked(loadDevOAuthCredentials).mockReturnValue({});
 
   // process.kill is the real global — killTree calls it directly, so without
   // this stub the POSIX branch would SIGTERM and then SIGKILL whatever process
@@ -415,6 +420,32 @@ describe('dev-mode uv resolution', () => {
     const spawnCall = vi.mocked(cp.spawn).mock.calls[0];
     expect(spawnCall?.[0]).toBe('/custom/tools/uv');
     expect(spawnCall?.[1]).toEqual(['run', 'cowork-server']);
+  });
+
+  it('passes the development OAuth clients to the local server only in dev mode', async () => {
+    enterDevMode();
+    vi.mocked(loadDevOAuthCredentials).mockReturnValue({
+      GITHUB_CLIENT_ID: 'github-id',
+      GITHUB_CLIENT_SECRET: 'github-secret',
+      LINEAR_CLIENT_ID: 'linear-id',
+      LINEAR_CLIENT_SECRET: 'linear-secret',
+    });
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => child.emit('error', new Error('stop after env capture')), 0);
+      return child as never;
+    }) as never);
+
+    await startServer({ port: PORT, readyTimeoutMs: 5_000 });
+
+    expect(loadDevOAuthCredentials).toHaveBeenCalledWith({ isPackaged: false });
+    const options = vi.mocked(cp.spawn).mock.calls[0]?.[2] as cp.SpawnOptions;
+    expect(options.env).toMatchObject({
+      GITHUB_CLIENT_ID: 'github-id',
+      GITHUB_CLIENT_SECRET: 'github-secret',
+      LINEAR_CLIENT_ID: 'linear-id',
+      LINEAR_CLIENT_SECRET: 'linear-secret',
+    });
   });
 
   it('reports a useful reason and never spawns when uv is unresolvable', async () => {
