@@ -29,6 +29,7 @@ import SkillsView from './views/SkillsView';
 import SearchModal from './components/SearchModal';
 import ConnectorPicker from './components/connector/ConnectorPicker';
 import ServerOfflineHelpModal from './components/ServerOfflineHelpModal';
+import ComingSoonModal from './components/ComingSoonModal';
 import { setForm as setDataVaultForm, getForm as getDataVaultForm, clearForm as clearDataVaultForm, patchForm as patchDataVaultForm, getFormState as getDataVaultFormState, setFormState as setDataVaultFormState, getSelectedMethod as getDataVaultSelectedMethod, setSelectedMethod as setDataVaultSelectedMethod, subscribe as subscribeDataVaultForm } from './components/datavault/formStore';
 import { extractFormSpec } from './components/datavault/parseFormSpec';
 import { host, getAccessToken } from '../platform/host';
@@ -5418,39 +5419,10 @@ function AppCore() {
         onSkinChange={setSkin}
       />
 
-      <Modal
-        open={comingSoonFeature != null}
+      <ComingSoonModal
+        feature={comingSoonFeature}
         onClose={() => setComingSoonFeature(null)}
-        size="sm"
-        labelledBy="coming-soon-title"
-      >
-        <ModalHeader
-          id="coming-soon-title"
-          title="Coming soon to Cloud"
-          onClose={() => setComingSoonFeature(null)}
-        />
-        <ModalBody>
-          <p className="s-body">
-            {comingSoonFeature ? `${comingSoonFeature} isn’t` : 'This feature isn’t'}{' '}
-            available on Cloud just yet. In the meantime, you can use it in the
-            desktop app.
-          </p>
-        </ModalBody>
-        <ModalFooter>
-          <Button variant="subtle" onClick={() => setComingSoonFeature(null)}>
-            Not now
-          </Button>
-          <Button
-            variant="primary"
-            onClick={() => {
-              host.openExternal('https://mindshub.ai/download');
-              setComingSoonFeature(null);
-            }}
-          >
-            Download the app
-          </Button>
-        </ModalFooter>
-      </Modal>
+      />
 
       {!host.isWeb && (
       <ServerOfflineHelpModal
