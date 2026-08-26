@@ -9,16 +9,20 @@
 // not an exported helper. Third copy of the block; a shared fixture is worth
 // doing on the next one.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-const spies = vi.hoisted(() => ({
-  deleteConversation: vi.fn(async () => ({ ok: true })),
-  fetchSessions: vi.fn(async () => [
+const spies = vi.hoisted(() => {
+  const sessions = [
     { id: 'conv-a', title: 'Daily report run', messages: [], status: 'idle', projectName: 'general' },
     { id: 'conv-b', title: 'Unrelated chat', messages: [], status: 'idle', projectName: 'general' },
-  ]),
-}));
+  ];
+  return {
+    sessions,
+    deleteConversation: vi.fn(),
+    fetchSessions: vi.fn(),
+  };
+});
 
 vi.mock('./api', async (importOriginal) => ({
   ...(await importOriginal()),
@@ -80,19 +84,27 @@ import { __resetDraftsForTests } from './lib/draftStore';
  *  so the row has to be entered before it can be clicked. fireEvent rather than
  *  user.hover: userEvent's pointer model refuses to move onto an element that
  *  still has pointer-events none, which is the very state the hover clears.
- *  Every row has a kebab, hence scoping the lookup to this row. */
-async function deleteFromSidebar(user, title) {
+ *  Every row has a kebab, hence scoping the lookup to this row.
+ *
+ *  `beforeConfirm` runs after the mount's own fetches have settled and right
+ *  before the confirm click — the seam for re-pointing a mock at the state
+ *  the delete itself should see. */
+async function deleteFromSidebar(user, title, { beforeConfirm } = {}) {
   render(<App />);
   const row = await screen.findByRole('button', { name: title });
   fireEvent.mouseOver(row.parentElement);
   await user.click(within(row.parentElement).getByRole('button', { name: 'Task menu' }));
   await user.click(await screen.findByRole('menuitem', { name: 'Delete' }));
+  if (beforeConfirm) beforeConfirm();
   await user.click(await screen.findByRole('button', { name: 'Delete' }));
 }
 
 beforeEach(() => {
   __resetDraftsForTests();
   spies.deleteConversation.mockReset().mockResolvedValue({ ok: true });
+  spies.fetchSessions.mockReset().mockImplementation(
+    async () => spies.sessions.map((s) => ({ ...s })),
+  );
 });
 
 describe('deleting a chat from the sidebar', () => {
@@ -119,9 +131,41 @@ describe('deleting a chat from the sidebar', () => {
     await waitFor(() => {
       expect(screen.queryByRole('button', { name: 'Daily report run' })).toBeNull();
     });
-    // The negative case: a successful delete must not toast, and the tombstone
-    // must survive the refetch that follows it, or the row comes straight back.
+    // The negative case: a successful delete must not toast.
     expect(screen.queryByText(/Couldn't delete this chat/)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Unrelated chat' })).toBeTruthy();
+
+    // The tombstone must survive a later refetch, or the row comes straight
+    // back: the server still lists the conversation until its delete
+    // propagates everywhere, and the mock here still returns it. Nothing in
+    // the delete flow itself refetches on success, so drive one through the
+    // projects-changed listener, the same consumer path the app uses.
+    const callsBefore = spies.fetchSessions.mock.calls.length;
+    window.dispatchEvent(new Event('anton:projects-changed'));
+    await waitFor(() => {
+      expect(spies.fetchSessions.mock.calls.length).toBeGreaterThan(callsBefore);
+    });
+    await act(async () => {});
+    expect(screen.queryByRole('button', { name: 'Daily report run' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Unrelated chat' })).toBeTruthy();
+  });
+
+  it('keeps the rest of the list when the restore refetch also fails', async () => {
+    const user = userEvent.setup();
+    spies.deleteConversation.mockRejectedValue(new Error('Delete failed (500)'));
+
+    // fetchSessions never rejects — it resolves [] when the server is
+    // unreachable — so this is the delete failing AND the refetch coming
+    // back empty. The restore must re-seat the deleted row from the captured
+    // task, not blank the sidebar with the empty answer.
+    await deleteFromSidebar(user, 'Daily report run', {
+      beforeConfirm: () => spies.fetchSessions.mockResolvedValue([]),
+    });
+
+    expect(await screen.findByText(/Couldn't delete this chat/)).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Daily report run' })).toBeTruthy();
+    });
     expect(screen.getByRole('button', { name: 'Unrelated chat' })).toBeTruthy();
   });
 });

@@ -3866,12 +3866,13 @@ function AppCore() {
       return;
     }
     try {
-      await Promise.all([
-        deleteConversation(taskId),
-        unpinTask(taskId).catch(() => {}), // unpin is a no-op if not pinned
-      ]);
+      await deleteConversation(taskId);
       // eslint-disable-next-line no-console
       console.log('[performDeleteTask] server delete ok');
+      // Unpin only once the delete has really happened. Run in parallel, a
+      // refused delete still committed the unpin server-side, and the
+      // restored row came back silently unpinned across reloads.
+      await unpinTask(taskId).catch(() => {}); // unpin is a no-op if not pinned
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error('[performDeleteTask] server delete failed', e);
@@ -3893,10 +3894,28 @@ function AppCore() {
       */
       deletedTaskIdsRef.current.delete(taskId);
       const fresh = await fetchSessions().catch(() => null);
-      if (Array.isArray(fresh)) setTasks(fresh.filter((t) => !deletedTaskIdsRef.current.has(t.id)));
+      setTasks((prev) => {
+        /*
+          fetchSessions resolves [] when the server is unreachable, so treat
+          an empty answer as no answer — replacing the list with it would
+          blank every chat in the sidebar. mergeTasksFromServer, same as
+          every other consumer, keeps streaming messages, model pins and
+          tmp- rows that a wholesale replace would clobber. prev already
+          lost this row to the optimistic filter above, so when the refetch
+          brought nothing back, re-seat the captured task — the toast says
+          the chat is back in the list, and it has to be true.
+        */
+        const merged = mergeTasksFromServer(fresh?.length ? fresh : null, prev);
+        if (task && !merged.some((t) => t.id === taskId)) merged.unshift(task);
+        return merged.filter((t) => !deletedTaskIdsRef.current.has(t.id));
+      });
       toastManager.add({
         type: 'danger',
+        // Needs action before it makes sense to move on, so it persists
+        // until dismissed, like the OAuth refresh-failure toast.
+        timeout: 0,
         title: "Couldn't delete this chat. It is back in your list; try again.",
+        description: e?.message,
       });
     }
     fetchPins().then((data) => setPins(data.pins || [])).catch(() => {});
