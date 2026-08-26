@@ -45,6 +45,7 @@ import { useOrgMode } from '../lib/orgMode';
 import { clearDraft, moveDraft } from './lib/draftStore';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { useGoogleDrivePicker } from './hooks/useGoogleDrivePicker';
+import { useAccountUser } from './hooks/useAccountUser';
 import { useViewportZoomLock } from './hooks/useViewportZoomLock';
 import { useBootDecisions } from './hooks/useBootDecisions';
 import { useServerControl } from './hooks/useServerControl';
@@ -2447,6 +2448,10 @@ function AppCore() {
     setSettingsOpen,
     refreshData,
   });
+  const codeAccountUser = useAccountUser(ssoConnected);
+  const codeSkillScopeKey = codeAccountUser
+    ? [codeAccountUser.sub, codeAccountUser.email, codeAccountUser.org].filter(Boolean).join(':')
+    : 'signed-out';
 
   // Open the Settings surface. A named section drills straight to it (desktop
   // and the mobile master-detail alike). A bare open leaves desktop on its
@@ -4879,6 +4884,7 @@ function AppCore() {
               defaultModel={settings.codingAgentModel || DEFAULT_CODING_AGENT_MODEL}
               models={mindsModels}
               modelMeta={modelMeta}
+              skillScopeKey={codeSkillScopeKey}
               connections={connectors}
               onConnectionsChange={setConnectors}
               onOpenConnectors={openCodingConnectors}

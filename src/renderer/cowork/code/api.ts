@@ -576,7 +576,7 @@ const liveCodingApi = {
   projects: () => requestJson<{ items: CodeProject[] }>('/projects'),
   project: (id: string) => requestJson<CodeProject>(`/projects/${encodeURIComponent(id)}`),
   projectFolders: (id: string) => requestJson<{ items: ProjectFolderInspection[] }>(`/projects/${encodeURIComponent(id)}/folders`),
-  createProject: (body: Pick<CodeProject, 'name' | 'folders' | 'connections' | 'environment' | 'default_engine_id' | 'default_model' | 'permission_mode'>) =>
+  createProject: (body: Pick<CodeProject, 'name' | 'folders' | 'connections' | 'environment' | 'skill_sources' | 'default_engine_id' | 'default_model' | 'permission_mode'>) =>
     requestJson<CodeProject>('/projects', { method: 'POST', body: JSON.stringify(body) }),
   updateProject: (id: string, body: Partial<CodeProject>) => requestJson<CodeProject>(`/projects/${encodeURIComponent(id)}`, {
     method: 'PATCH', body: JSON.stringify(body),
@@ -597,6 +597,10 @@ const liveCodingApi = {
   setProjectSkillSource: (projectId: string, sourceId: string, enabledPaths: string[]) => requestJson<SkillLibraryPage>(
     `/projects/${encodeURIComponent(projectId)}/skills/${encodeURIComponent(sourceId)}`,
     { method: 'PUT', body: JSON.stringify({ enabled_paths: enabledPaths }) },
+  ),
+  setSkillSourceProjects: (sourceId: string, assignments: Array<{ project_id: string; enabled_paths: string[] }>) => requestJson<SkillLibraryPage>(
+    `/skills/sources/${encodeURIComponent(sourceId)}/projects`,
+    { method: 'PUT', body: JSON.stringify({ assignments }) },
   ),
   configurePlaybook: (id: string, repository: string, branch: string) => requestJson<PlaybookStatus>(`/projects/${encodeURIComponent(id)}/playbook`, {
     method: 'POST', body: JSON.stringify({ repository, branch }),

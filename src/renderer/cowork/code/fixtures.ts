@@ -348,6 +348,25 @@ export function getCodeFixtureApi() {
     }],
     items: copy(skillItems),
   });
+  const assignSkillSource = (projectId: string, sourceId: string, enabledPaths: string[]) => {
+    const enabled = new Set(enabledPaths);
+    projects = projects.map((project) => {
+      if (project.id !== projectId) return project;
+      const skillSources = (project.skill_sources || []).filter((source) => source.source_id !== sourceId);
+      if (enabledPaths.length) {
+        skillSources.push({ source_id: sourceId, enabled_paths: [...enabledPaths].sort() });
+      }
+      return { ...project, skill_sources: skillSources, updated_at: NOW };
+    });
+    for (const item of skillItems) {
+      if (item.source_id !== sourceId) continue;
+      const projectIds = new Set(item.enabled_project_ids);
+      if (enabled.has(item.path)) projectIds.add(projectId);
+      else projectIds.delete(projectId);
+      item.enabled_project_ids = [...projectIds];
+      item.enabled = item.enabled_project_ids.length > 0;
+    }
+  };
 
   return {
     engines: async () => copy(engines),
@@ -369,10 +388,9 @@ export function getCodeFixtureApi() {
         base_branch_available: true,
       })),
     }),
-    createProject: async (body: Pick<CodeProject, 'name' | 'folders' | 'default_engine_id' | 'default_model' | 'permission_mode'>) => {
+    createProject: async (body: Pick<CodeProject, 'name' | 'folders' | 'skill_sources' | 'connections' | 'environment' | 'default_engine_id' | 'default_model' | 'permission_mode'>) => {
       const created: CodeProject = {
-        schema_version: 1, id: `project-${Date.now()}`, ...body, skill_sources: [], connections: [],
-        environment: { variables: {}, port_names: ['PORT'] }, created_at: NOW, updated_at: NOW,
+        schema_version: 1, id: `project-${Date.now()}`, ...body, created_at: NOW, updated_at: NOW,
       };
       projects = [created, ...projects];
       return copy(created);
@@ -399,22 +417,12 @@ export function getCodeFixtureApi() {
     applySkillSource: async () => ({ id: 'source-engineering', name: 'Engineering standards', repository: ROOT, branch: 'main', current_revision: 'a1b2c3', available_revision: 'a1b2c3', update_available: false, last_checked_at: NOW, item_count: 2, enabled_project_count: 1, diff: '' }),
     removeSkillSource: async () => undefined,
     setProjectSkillSource: async (projectId: string, sourceId: string, enabledPaths: string[]) => {
-      const enabled = new Set(enabledPaths);
-      projects = projects.map((project) => {
-        if (project.id !== projectId) return project;
-        const skillSources = (project.skill_sources || []).filter((source) => source.source_id !== sourceId);
-        if (enabledPaths.length) {
-          skillSources.push({ source_id: sourceId, enabled_paths: [...enabledPaths].sort() });
-        }
-        return { ...project, skill_sources: skillSources, updated_at: NOW };
-      });
-      for (const item of skillItems) {
-        if (item.source_id !== sourceId) continue;
-        const projectIds = new Set(item.enabled_project_ids);
-        if (enabled.has(item.path)) projectIds.add(projectId);
-        else projectIds.delete(projectId);
-        item.enabled_project_ids = [...projectIds];
-        item.enabled = item.enabled_project_ids.length > 0;
+      assignSkillSource(projectId, sourceId, enabledPaths);
+      return skillLibraryPage();
+    },
+    setSkillSourceProjects: async (sourceId: string, assignments: Array<{ project_id: string; enabled_paths: string[] }>) => {
+      for (const assignment of assignments) {
+        assignSkillSource(assignment.project_id, sourceId, assignment.enabled_paths);
       }
       return skillLibraryPage();
     },

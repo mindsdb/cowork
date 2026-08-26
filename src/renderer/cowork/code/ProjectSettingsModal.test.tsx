@@ -2,11 +2,10 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { engines, models, pickCodeFolder, setProjectSkillSource, skillLibrary } = vi.hoisted(() => ({
+const { engines, models, pickCodeFolder, skillLibrary } = vi.hoisted(() => ({
   engines: vi.fn(async () => [{ id: 'codex', label: 'Codex', adapter_version: '1', available: true }]),
   models: vi.fn(async () => ({ items: ['gpt-5.6-sol', 'fable'] })),
   pickCodeFolder: vi.fn(async () => ({ ok: true, path: '/work/new-project' })),
-  setProjectSkillSource: vi.fn(async () => ({ sources: [], items: [] })),
   skillLibrary: vi.fn(async () => ({
     sources: [],
     items: [{
@@ -32,7 +31,6 @@ vi.mock('./api', () => ({
     models,
     playbook: vi.fn(),
     skillLibrary,
-    setProjectSkillSource,
   },
 }));
 
@@ -103,7 +101,6 @@ describe('ProjectSettingsModal', () => {
   it('assigns team skills while creating a project for the first time', async () => {
     const user = userEvent.setup();
     const onSave = vi.fn(async (values) => ({ ...project, ...values, id: 'created-project' } as CodeProject));
-    const onSkillsSaved = vi.fn(async () => {});
     render(
       <ProjectSettingsModal
         open
@@ -112,7 +109,6 @@ describe('ProjectSettingsModal', () => {
         busy={false}
         onClose={vi.fn()}
         onSave={onSave}
-        onSkillsSaved={onSkillsSaved}
       />,
     );
 
@@ -121,12 +117,9 @@ describe('ProjectSettingsModal', () => {
     await user.click(screen.getByRole('checkbox', { name: /Thermo-Nuclear Code Quality Review/ }));
     await user.click(screen.getByRole('button', { name: 'Save project' }));
 
-    await waitFor(() => expect(setProjectSkillSource).toHaveBeenCalledWith(
-      'created-project',
-      'engineering',
-      ['skills/quality/SKILL.md'],
-    ));
-    expect(onSkillsSaved).toHaveBeenCalledOnce();
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+      skill_sources: [{ source_id: 'engineering', enabled_paths: ['skills/quality/SKILL.md'] }],
+    })));
   });
 
   it('removes a team skill from an existing project', async () => {
@@ -150,19 +143,13 @@ describe('ProjectSettingsModal', () => {
     await user.click(screen.getByRole('checkbox', { name: /Thermo-Nuclear Code Quality Review/ }));
     await user.click(screen.getByRole('button', { name: 'Save project' }));
 
-    await waitFor(() => expect(setProjectSkillSource).toHaveBeenCalledWith(
-      'project-1',
-      'engineering',
-      [],
-    ));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ skill_sources: [] })));
   });
 
-  it('keeps the project editor open when assigning a skill fails', async () => {
+  it('keeps the project editor open when saving its complete configuration fails', async () => {
     const user = userEvent.setup();
     const onClose = vi.fn();
-    const onSkillsSaved = vi.fn(async () => {});
-    const onSave = vi.fn(async (values) => ({ ...project, ...values } as CodeProject));
-    setProjectSkillSource.mockRejectedValueOnce(new Error('Could not assign this skill.'));
+    const onSave = vi.fn(async () => { throw new Error('Could not assign this skill.'); });
     render(
       <ProjectSettingsModal
         open
@@ -171,7 +158,6 @@ describe('ProjectSettingsModal', () => {
         busy={false}
         onClose={onClose}
         onSave={onSave}
-        onSkillsSaved={onSkillsSaved}
       />,
     );
 
@@ -182,7 +168,6 @@ describe('ProjectSettingsModal', () => {
     expect(await screen.findByText('Could not assign this skill.')).toBeInTheDocument();
     expect(screen.getByRole('dialog', { name: 'Project settings' })).toBeInTheDocument();
     expect(onClose).not.toHaveBeenCalled();
-    expect(onSkillsSaved).not.toHaveBeenCalled();
   });
 
   it('uses the first-class developer tools section and routes account management to Connectors', async () => {

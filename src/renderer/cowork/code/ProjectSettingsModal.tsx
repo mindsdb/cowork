@@ -70,7 +70,6 @@ export function ProjectSettingsModal({
   onSave,
   onDelete,
   onOpenConnectors = () => {},
-  onSkillsSaved = async () => {},
   defaultEngineId = 'codex',
   defaultModel = DEFAULT_CODING_AGENT_MODEL,
   models = [],
@@ -85,7 +84,6 @@ export function ProjectSettingsModal({
   onSave: (values: Partial<CodeProject> & Pick<CodeProject, 'name' | 'folders'>) => Promise<CodeProject>;
   onDelete?: () => Promise<void>;
   onOpenConnectors?: () => void;
-  onSkillsSaved?: () => Promise<void>;
   defaultEngineId?: string;
   defaultModel?: string;
   models?: ModelPickerSource[];
@@ -288,23 +286,14 @@ export function ProjectSettingsModal({
         return [line.slice(0, separator).trim(), line.slice(separator + 1)];
       }));
       const parsedPortNames = portNames.split(/[\s,]+/).map((item) => item.trim()).filter(Boolean);
-      const saved = await onSave({
+      await onSave({
         name: name.trim(), folders: normalizedFolders, connections: projectConnections,
         environment: { variables, port_names: parsedPortNames },
+        skill_sources: selectedSkillSources,
         default_engine_id: projectEngineId,
         default_model: projectModel,
         permission_mode: projectPermission,
       });
-      const previousBySource = new Map((project?.skill_sources || []).map((source) => [source.source_id, source.enabled_paths]));
-      const nextBySource = new Map(selectedSkillSources.map((source) => [source.source_id, source.enabled_paths]));
-      const sourceIds = new Set([...previousBySource.keys(), ...nextBySource.keys()]);
-      for (const sourceId of sourceIds) {
-        const before = [...(previousBySource.get(sourceId) || [])].sort();
-        const after = [...(nextBySource.get(sourceId) || [])].sort();
-        if (before.length === after.length && before.every((path, index) => path === after[index])) continue;
-        await codingApi.setProjectSkillSource(saved.id, sourceId, after);
-      }
-      await onSkillsSaved();
       onClose();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Could not save this Code Project.');
