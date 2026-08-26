@@ -46,6 +46,7 @@ import { useOrgMode } from '../lib/orgMode';
 import { clearDraft, moveDraft } from './lib/draftStore';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { useGoogleDrivePicker } from './hooks/useGoogleDrivePicker';
+import { useAccountUser } from './hooks/useAccountUser';
 import { fetchSessions, fetchSession, fetchConversationList, fetchProjects, fetchArtifacts, fetchSettings, fetchHealth,
          createProject, updateSettings, streamNewSession, streamMessage,
          streamDataVaultSubmission,
@@ -965,6 +966,10 @@ function AppCore() {
   // list; desktop (no list) falls back to 'agent' where it's read.
   const [settingsSection, setSettingsSection] = useState(null);
   const [ssoConnected, setSsoConnected] = useState(false);
+  const codeAccountUser = useAccountUser(ssoConnected);
+  const codeSkillScopeKey = codeAccountUser
+    ? [codeAccountUser.sub, codeAccountUser.email, codeAccountUser.org].filter(Boolean).join(':')
+    : 'signed-out';
   // Last sign-in failure, painted on the Settings account card. Cleared
   // on retry and on any authenticated push from main (ENG-761).
   const [ssoError, setSsoError] = useState('');
@@ -5389,6 +5394,7 @@ function AppCore() {
               defaultModel={settings.codingAgentModel || DEFAULT_CODING_AGENT_MODEL}
               models={mindsModels}
               modelMeta={modelMeta}
+              skillScopeKey={codeSkillScopeKey}
               connections={connectors}
               onConnectionsChange={setConnectors}
               onOpenConnectors={openCodingConnectors}

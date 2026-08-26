@@ -41,6 +41,7 @@ export default function CodeView({
   defaultModel,
   models,
   modelMeta,
+  skillScopeKey = 'signed-out',
   connections = [],
   onConnectionsChange = () => {},
   onOpenConnectors = () => {},
@@ -59,6 +60,7 @@ export default function CodeView({
   defaultModel: string;
   models: ModelPickerSource[];
   modelMeta: ModelPickerMeta;
+  skillScopeKey?: string;
   connections?: ConnectorConnection[];
   onConnectionsChange?: (connections: ConnectorConnection[]) => void;
   onOpenConnectors?: () => void;
@@ -200,7 +202,7 @@ export default function CodeView({
       )}
 
       {skillsOpen ? (
-        <CodeSkillsView projects={projects.projects} />
+        <CodeSkillsView key={skillScopeKey} projects={projects.projects} scopeKey={skillScopeKey} />
       ) : connectorsOpen ? (
         <CodeConnectorsView
           connections={connections}
@@ -486,7 +488,6 @@ export default function CodeView({
           setConnectorReturnProjectId(projectEditor?.id || null);
           onOpenConnectors();
         }}
-        onSkillsSaved={projects.load}
         onDelete={projectEditor?.id ? async () => {
           setProjectBusy(true);
           try {

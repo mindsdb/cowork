@@ -21,10 +21,10 @@ type OriginFilter = 'all' | SkillLibraryItem['origin'];
 
 const EMPTY_LIBRARY: SkillLibraryPage = { sources: [], items: [] };
 // CodeView intentionally swaps its first-class screens rather than hiding all
-// of them in the DOM. Retain the last successful catalogue across those
-// mounts so returning to Skills is instant; every mount still revalidates in
-// the background and all mutations replace this cache.
-let libraryCache: SkillLibraryPage | null = null;
+// of them in the DOM. Retain only the current identity's last successful
+// catalogue so returning to Skills is instant without crossing account/org
+// boundaries after a sign-out or identity change.
+let libraryCache: { scopeKey: string; page: SkillLibraryPage } | null = null;
 
 function kindLabel(kind: SkillLibraryItem['kind']): string {
   if (kind === 'instructions') return 'Instructions';
@@ -221,9 +221,10 @@ function SkillSourceModal({
   );
 }
 
-export function CodeSkillsView({ projects }: { projects: CodeProject[] }) {
-  const [library, setLibrary] = useState<SkillLibraryPage>(() => libraryCache || EMPTY_LIBRARY);
-  const [loading, setLoading] = useState(() => libraryCache == null);
+export function CodeSkillsView({ projects, scopeKey }: { projects: CodeProject[]; scopeKey: string }) {
+  const cachedPage = libraryCache?.scopeKey === scopeKey ? libraryCache.page : null;
+  const [library, setLibrary] = useState<SkillLibraryPage>(() => cachedPage || EMPTY_LIBRARY);
+  const [loading, setLoading] = useState(() => cachedPage == null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
@@ -238,17 +239,17 @@ export function CodeSkillsView({ projects }: { projects: CodeProject[] }) {
   const [detailItem, setDetailItem] = useState<SkillLibraryItem | null>(null);
 
   const load = useCallback(async () => {
-    const needsInitialContent = libraryCache == null;
+    const needsInitialContent = libraryCache?.scopeKey !== scopeKey;
     if (needsInitialContent) setLoading(true);
     try {
       const next = await codingApi.skillLibrary();
-      libraryCache = next;
+      libraryCache = { scopeKey, page: next };
       setLibrary(next);
       setError('');
     }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not load the Skills Library.'); }
     finally { if (needsInitialContent) setLoading(false); }
-  }, []);
+  }, [scopeKey]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -278,13 +279,16 @@ export function CodeSkillsView({ projects }: { projects: CodeProject[] }) {
       const before = new Set(projectItem.enabled_project_ids);
       const after = new Set(selectedProjectIds);
       const changed = projects.filter((project) => before.has(project.id) !== after.has(project.id));
-      for (const project of changed) {
+      const assignments = changed.map((project) => {
         const paths = library.items
           .filter((item) => item.source_id === projectItem.source_id && item.enabled_project_ids.includes(project.id))
           .map((item) => item.path);
         const next = new Set(paths);
         if (after.has(project.id)) next.add(projectItem.path); else next.delete(projectItem.path);
-        await codingApi.setProjectSkillSource(project.id, projectItem.source_id, [...next]);
+        return { project_id: project.id, enabled_paths: [...next] };
+      });
+      if (assignments.length) {
+        await codingApi.setSkillSourceProjects(projectItem.source_id, assignments);
       }
       await load();
       setProjectItem(null);
