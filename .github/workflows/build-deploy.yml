@@ -66,7 +66,17 @@ jobs:
           # Repo-slug default image name (mindsdb-cowork); the web SPA is the only
           # image this repo pushes to ECR.
           module-name: ${{ env.CI_REPOSITORY_SLUG }}
-          extra-build-args: '-f Dockerfile.frontend'
+          # Every desktop build workflow (build-linux-deb.yml, build-macos-pkg.yml,
+          # build-windows-installer.yml, publish-ui.yml) passes this so `vite build`
+          # bakes a real PostHog key; the web SPA never did, so `capture()`'s own
+          # `if (!POSTHOG_KEY) return` silently no-ops every analytics event on
+          # every deployed web build, including this repo's own chat_turn_failed.
+          # Empty-string-safe: Dockerfile.frontend's ARG defaults to "" when unset,
+          # so a missing secret degrades to today's silent no-op rather than
+          # failing the build.
+          extra-build-args: >-
+            -f Dockerfile.frontend
+            --build-arg VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN=${{ secrets.VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN }}
           build-for-environment: ${{ inputs.build-environment }}
 
   scan:
