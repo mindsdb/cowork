@@ -50,6 +50,7 @@ import { useThemeSkin } from './hooks/useThemeSkin';
 import { useAppUpdates } from './hooks/useAppUpdates';
 import { deriveUpdateBanner } from '../../shared/update-banner';
 import { useSchedules } from './hooks/useSchedules';
+import { useModels } from './hooks/useModels';
 import { fetchSessions, fetchSession, fetchConversationList, fetchProjects, fetchArtifacts, fetchSettings, fetchHealth,
          createProject, updateSettings, streamNewSession, streamMessage,
          streamDataVaultSubmission,
@@ -61,7 +62,7 @@ import { fetchSessions, fetchSession, fetchConversationList, fetchProjects, fetc
          deleteProject, cancelScratchpad, cancelResponse, fetchConnector,
          fetchSavedConnection, deleteDatasource, deletePickedFile,
          fetchInFlightStatus, tailInFlight, fetchInFlightList, submitAnswer,
-         fetchRecommendedModels, createConversation, revealSettingKey } from './api';
+         createConversation, revealSettingKey } from './api';
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
 import {
   stripStreaming,
@@ -75,8 +76,6 @@ import {
 } from './lib/conversationHistory';
 import { noteArtifactsFromSteps } from './lib/artifactsStore';
 import { isArtifactTipDismissed, dismissArtifactTip, dismissIfUntouched } from './components/onboarding/onboardingStore';
-import { recommendedModelOptions, providerValueToType,
-         mergeRecommendedModels } from './lib/settingsTransform';
 import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery, trackFirstResponse, classifyFirstResponse } from './lib/analytics';
 import { MODEL_ROUTER_ID, MODEL_ROUTER, isModelLocked } from './lib/modelCatalog';
 import {
@@ -1174,42 +1173,15 @@ function AppCore() {
   // task object via props). Don't compute it here — `activeTaskId` is
   // declared further down and reading it before initialization throws
   // a TDZ ReferenceError at first render.
-  // Composer model options for the active (planning) provider. Sourced from
-  // the backend-overlaid recommendedModels map (single source of truth in
-  // cowork-server) — names come from MindsHub's own label for the model where
-  // it publishes one, else derived from the id, never hardcoded. Empty until
-  // settings load; the composer then shows just the configured model.
-  const models = useMemo(() => {
-    const providerType = providerValueToType(settings.planningProvider) || 'minds-cloud';
-    return recommendedModelOptions(settings.recommendedModels, providerType, settings.modelLabels)
-      .map((o) => ({ id: o.id, name: o.label }));
-  }, [settings.recommendedModels, settings.planningProvider, settings.modelLabels]);
-  // Picker metadata for the composer's model menu, passed as one bag so the
-  // components in between don't grow a prop each. The composer groups rather than
-  // App because ChatView builds its own single-item list, which stays ungrouped.
-  // Re-check wallet availability when the composer's model menu opens, so a top-up
-  // made outside the app unlocks its models without a restart. This is what makes
-  // it safe for the composer to DISABLE a locked model at all: `modelEnabled` is
-  // otherwise refreshed only by the Settings picker, so a user who hits "Add
-  // credits" (which opens an external browser), tops up and comes back would find
-  // the row still greyed until they visited Settings or restarted. Settings has had
-  // this since ENG-412; this is parity with it.
-  //
-  // A failed refresh leaves the map we hold in place — mergeRecommendedModels never
-  // lets an empty response overwrite it, and a model absent from the map counts as
-  // available — so this can never lock the picker.
-  const refreshModelAvailability = useCallback(async () => {
-    const data = await fetchRecommendedModels({ refresh: true });
-    const merged = mergeRecommendedModels(settings, data);
-    if (merged) setSettings((prev) => ({ ...prev, ...merged }));
-  }, [settings]);
-
-  const modelMeta = useMemo(() => ({
-    modelProviders: settings.modelProviders,
-    modelFamilies: settings.modelFamilies,
-    modelEnabled: settings.modelEnabled,
-    onRefresh: refreshModelAvailability,
-  }), [settings.modelProviders, settings.modelFamilies, settings.modelEnabled, refreshModelAvailability]);
+  // Model selection + availability (selected model, recommended-model list,
+  // picker metadata, wallet-availability refresh) live in useModels; the
+  // app-wide settings store stays here and is injected.
+  const {
+    selectedModel,
+    setSelectedModel,
+    models,
+    modelMeta,
+  } = useModels({ settings, setSettings });
   const { isMobile, isNarrow } = useBreakpoint();
 
   // iOS/Android auto-zoom workaround: toggle the viewport meta tag around
@@ -1373,12 +1345,6 @@ function AppCore() {
   // (Back to the grid / Home / any route). See makeProjectDetailToken.
   const projectDetailTokenRef = useRef(null);
   if (projectDetailTokenRef.current === null) projectDetailTokenRef.current = makeProjectDetailToken();
-  // Defaults to "Model Router" — defer to whatever this account's Settings
-  // has configured — until a composer picks a concrete model for a task.
-  // Never re-synced from settings after that: its whole point is that it
-  // always tracks Settings live, server-side, without the renderer needing
-  // to know the current planning/coding/router model.
-  const [selectedModel, setSelectedModel] = useState(MODEL_ROUTER);
   // Local cowork-server lifecycle — online/busy state, start & stop, and the
   // first-paint seed-and-poll — lives in useServerControl. It re-fetches
   // through refreshDataRef after a manual start (refreshData writes
