@@ -87,7 +87,7 @@ const EVENTS = {
   // `code` is the wire code (anton_error when nothing more specific was
   // classified); `model`/`provider_label` only ride along when the failure
   // event names one (the model-403/404 and provider-auth families).
-  CHAT_TURN_FAILED:         'chat_turn_failed',         // { conversation_id?, code, model?, provider_label? }
+  CHAT_TURN_FAILED:         'chat_turn_failed',         // { conversation_id?, code, model?, provider_label?, request_id? }
 };
 
 const POSTHOG_HOST = 'https://us.i.posthog.com';
@@ -556,6 +556,9 @@ export function trackTurnFailed(conversationId, event) {
     code: event?.code || 'unknown',
     model: event?.model || undefined,
     provider_label: event?.provider_label || undefined,
+    // The remote turn's own correlation id (cowork-server) — joins this row
+    // to the server-side log line for the same turn.
+    request_id: event?.request_id || undefined,
   });
 }
 

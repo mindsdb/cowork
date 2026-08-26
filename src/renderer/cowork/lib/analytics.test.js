@@ -726,6 +726,16 @@ describe('chat_turn_failed', () => {
     expect(event.properties.provider_label).toBe('Anthropic');
   });
 
+  it('carries the request id, so a PostHog row can be joined to a server log', async () => {
+    const fetchMock = mockFetch();
+    const { trackTurnFailed } = await importAnalytics();
+
+    trackTurnFailed('conv-1', { code: 'anton_error', request_id: 'corr-abc' });
+
+    const event = await sentEvent(fetchMock, 'chat_turn_failed');
+    expect(event.properties.request_id).toBe('corr-abc');
+  });
+
   it('drops the conversation id rather than sending a pre-adoption placeholder', async () => {
     const fetchMock = mockFetch();
     const { trackTurnFailed } = await importAnalytics();
