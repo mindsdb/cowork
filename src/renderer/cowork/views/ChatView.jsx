@@ -597,11 +597,11 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
   const openTarget = artifactOpenTarget({
     orgMode, published, canPreviewInline, hasBridge: host.isElectron || !host.isWeb,
   });
-  // Document artifacts (markdown/HTML/text) can be exported to PDF/Word/HTML.
-  const _EXPORTABLE_EXTS = ['.md', '.markdown', '.html', '.htm', '.txt'];
-  const canExport = canAct
-    && isArtifactActionAvailable('export', { orgMode, hasBridge: !host.isWeb, published })
-    && (_EXPORTABLE_EXTS.includes(lcExt) || _EXPORTABLE_EXTS.some((e) => lcPath.endsWith(e)));
+  // Export is hidden pending ENG-1988: PDF/DOCX conversion is broken for any
+  // artifact beyond a plain markdown report (crashes, dumps raw JS into the
+  // .docx), and HTML→HTML export can overwrite the source artifact in place.
+  // A broken button is worse than no button — re-enable once ENG-1988 lands.
+  const canExport = false;
   const canReveal = isArtifactActionAvailable('reveal', {
     orgMode, hasBridge: host.isElectron, published,
   });
