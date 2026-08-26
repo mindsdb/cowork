@@ -1285,6 +1285,26 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
   font-weight: 500;
 }
 
+.customize-org-mode-note {
+  margin: 10px 8px 4px;
+  padding: 10px 12px;
+  border-radius: var(--card-radius-row);
+  background: var(--surface-2);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-3);
+}
+
+.customize-inline-link {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--accent, var(--ink));
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 .customize-detail-header {
   display: flex;
   justify-content: flex-end;

@@ -2355,13 +2355,6 @@ function AppCore() {
 
   const navigate = (key) => {
     if (sidebarPopout) setNavPopoutOpen(false);
-    // Connectors aren't available on Cloud yet — intercept any entry point
-    // (sidebar, Settings, deep link) in org mode and show the "coming soon"
-    // popup instead of routing to a half-working surface.
-    if (orgMode && key === 'customize') {
-      setComingSoonFeature('Connect Apps and Data');
-      return;
-    }
     if (key === 'settings' || key.startsWith('settings:')) {
       // Targeted (settings:backend) opens that section; a bare `settings`
       // opens the mobile section list (null) / desktop's last section.
@@ -2380,17 +2373,6 @@ function AppCore() {
     // enterRoute() (re)fetches that view's data.
     setRoute(key);
   };
-
-  // Safety net: navigate() intercepts the sidebar/Settings entry points, but a
-  // direct setRoute (or org mode resolving after a route is already set) could
-  // still land on connectors. Bounce home and show the popup rather than
-  // render a surface that isn't available on Cloud.
-  useEffect(() => {
-    if (orgMode && route === 'customize') {
-      setComingSoonFeature('Connect Apps and Data');
-      setRoute('home');
-    }
-  }, [orgMode, route]);
 
   // Same safety net for Channels: the in-Settings nav calls onSectionChange
   // (= setSettingsSection) directly, bypassing openSettings entirely.
