@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import Spinner from '../components/ui/Spinner';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
@@ -7,6 +7,7 @@ import { CODE_STATUS, isActiveStatus } from './presentation';
 
 
 const ACTIVITY_TYPES = new Set<CodingEvent['type']>(['reasoning', 'tool', 'command', 'file_change', 'diff', 'usage']);
+const TIMELINE_WINDOW_SIZE = 300;
 
 type TimelineItem =
   | { kind: 'event'; event: CodingEvent }
@@ -14,54 +15,100 @@ type TimelineItem =
   | { kind: 'errors'; events: CodingEvent[] };
 
 
-function mergedEvents(events: CodingEvent[]): CodingEvent[] {
-  const merged: CodingEvent[] = [];
-  for (const event of events) {
-    const previous = merged.at(-1);
-    const canMerge = (!!event.text || !!event.item_id)
-      && previous?.type === event.type
-      && previous.item_id === event.item_id
-      && previous.turn_id === event.turn_id
-      && ['agent_message', 'reasoning', 'command', 'file_change'].includes(event.type);
-    if (canMerge) {
-      merged[merged.length - 1] = {
-        ...previous,
-        ...event,
-        title: event.title || previous.title,
-        text: previous.text + event.text,
-        data: Object.keys(event.data).length ? event.data : previous.data,
-      };
-    } else {
-      merged.push(event);
-    }
-  }
-  return merged;
+function lastEvent(item: TimelineItem | undefined): CodingEvent | undefined {
+  if (!item) return undefined;
+  return item.kind === 'event' ? item.event : item.events.at(-1);
 }
 
 
-function timelineItems(events: CodingEvent[]): TimelineItem[] {
-  const items: TimelineItem[] = [];
-  for (const event of mergedEvents(events)) {
-    // Pending queue entries stay actionable beside the composer. When they
-    // start, the server emits the ordinary completed user message, so showing
-    // this provisional event here would duplicate the same instruction.
-    if (event.type === 'user_message' && event.phase === 'pending' && event.data.queueId) continue;
-    // Workspace setup and terminal state live in the task bar/outcome. Keeping
-    // raw session notifications here creates contradictory duplicate statuses.
-    if (event.type === 'session') continue;
-    const kind = ACTIVITY_TYPES.has(event.type) ? 'activity' : event.type === 'error' ? 'errors' : 'event';
-    const previous = items.at(-1);
-    if (kind === 'activity' && previous?.kind === 'activity') {
-      previous.events.push(event);
-    } else if (kind === 'errors' && previous?.kind === 'errors') {
-      previous.events.push(event);
-    } else if (kind === 'activity' || kind === 'errors') {
-      items.push({ kind, events: [event] });
-    } else {
-      items.push({ kind: 'event', event });
-    }
+function appendTimelineEvent(items: TimelineItem[], event: CodingEvent): void {
+  // Pending queue entries stay actionable beside the composer. When they
+  // start, the server emits the ordinary completed user message, so showing
+  // this provisional event here would duplicate the same instruction.
+  if (event.type === 'user_message' && event.phase === 'pending' && event.data.queueId) return;
+  // Workspace setup and terminal state live in the task bar/outcome. Keeping
+  // raw session notifications here creates contradictory duplicate statuses.
+  if (event.type === 'session') return;
+
+  const previousItem = items.at(-1);
+  const previousEvent = lastEvent(previousItem);
+  const canMerge = (!!event.text || !!event.item_id)
+    && previousEvent?.type === event.type
+    && previousEvent.item_id === event.item_id
+    && previousEvent.turn_id === event.turn_id
+    && ['agent_message', 'reasoning', 'command', 'file_change'].includes(event.type);
+  if (canMerge && previousEvent && previousItem) {
+    const merged = {
+      ...previousEvent,
+      ...event,
+      title: event.title || previousEvent.title,
+      text: previousEvent.text + event.text,
+      data: Object.keys(event.data).length ? event.data : previousEvent.data,
+    };
+    if (previousItem.kind === 'event') previousItem.event = merged;
+    else previousItem.events[previousItem.events.length - 1] = merged;
+    return;
   }
-  return items;
+
+  const kind = ACTIVITY_TYPES.has(event.type) ? 'activity' : event.type === 'error' ? 'errors' : 'event';
+  if (kind === 'activity' && previousItem?.kind === 'activity') {
+    previousItem.events.push(event);
+  } else if (kind === 'errors' && previousItem?.kind === 'errors') {
+    previousItem.events.push(event);
+  } else if (kind === 'activity' || kind === 'errors') {
+    items.push({ kind, events: [event] });
+  } else {
+    items.push({ kind: 'event', event });
+  }
+}
+
+
+function firstIndexAfter(events: CodingEvent[], seq: number): number {
+  let low = 0;
+  let high = events.length;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if (events[middle].seq <= seq) low = middle + 1;
+    else high = middle;
+  }
+  return low;
+}
+
+
+function pruneTimelineItems(items: TimelineItem[], minimumSeq: number): TimelineItem[] {
+  const retained: TimelineItem[] = [];
+  for (const item of items) {
+    if (item.kind === 'event') {
+      if (item.event.seq >= minimumSeq) retained.push(item);
+      continue;
+    }
+    const events = item.events.filter((event) => event.seq >= minimumSeq);
+    if (events.length) retained.push({ ...item, events });
+  }
+  return retained;
+}
+
+
+function useTimelineItems(events: CodingEvent[], sessionId: string): TimelineItem[] {
+  const model = useRef({ sessionId: '', firstSeq: 0, lastSeq: 0, items: [] as TimelineItem[] });
+  const firstSeq = events[0]?.seq || 0;
+  const lastSeq = events.at(-1)?.seq || 0;
+  const reset = model.current.sessionId !== sessionId || lastSeq < model.current.lastSeq;
+  if (reset || !events.length) {
+    model.current = { sessionId, firstSeq, lastSeq: 0, items: [] };
+  } else if (firstSeq > model.current.firstSeq) {
+    model.current.items = pruneTimelineItems(model.current.items, firstSeq);
+    model.current.firstSeq = firstSeq;
+  }
+  if (lastSeq > model.current.lastSeq) {
+    const start = firstIndexAfter(events, model.current.lastSeq);
+    for (let index = start; index < events.length; index += 1) {
+      appendTimelineEvent(model.current.items, events[index]);
+    }
+    model.current.lastSeq = lastSeq;
+    model.current.firstSeq = firstSeq;
+  }
+  return model.current.items;
 }
 
 
@@ -216,7 +263,11 @@ function TaskOutcome({ session, events }: { session: CodingSession; events: Codi
 
 
 export const EventTimeline = memo(function EventTimeline({ events, session }: { events: CodingEvent[]; session: CodingSession }) {
-  const items = useMemo(() => timelineItems(events), [events]);
+  const items = useTimelineItems(events, session.id);
+  const [visibleCount, setVisibleCount] = useState(TIMELINE_WINDOW_SIZE);
+  useEffect(() => { setVisibleCount(TIMELINE_WINDOW_SIZE); }, [session.id]);
+  const hiddenCount = Math.max(0, items.length - visibleCount);
+  const visibleItems = hiddenCount ? items.slice(-visibleCount) : items;
   const latestEventSeq = events.at(-1)?.seq || 0;
   const active = isActiveStatus(session.status);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -240,7 +291,16 @@ export const EventTimeline = memo(function EventTimeline({ events, session }: { 
       }}
     >
       <div className="code-timeline__inner">
-        {items.map((item) => {
+        {hiddenCount > 0 && (
+          <button
+            type="button"
+            className="code-timeline__earlier"
+            onClick={() => setVisibleCount((current) => current + TIMELINE_WINDOW_SIZE)}
+          >
+            Show {Math.min(hiddenCount, TIMELINE_WINDOW_SIZE)} earlier updates
+          </button>
+        )}
+        {visibleItems.map((item) => {
           const key = item.kind === 'event' ? `${item.event.seq}-${item.event.type}` : `${item.kind}-${item.events[0]?.seq}`;
           if (item.kind === 'activity') return <ActivityGroup key={key} events={item.events} active={active} />;
           if (item.kind === 'errors') return <ErrorGroup key={key} events={item.events} />;
