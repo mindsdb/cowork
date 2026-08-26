@@ -1,6 +1,28 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
+const workspaceMock = vi.hoisted(() => ({
+  supported: true,
+  mode: 'preview',
+  setMode: vi.fn(),
+  source: null,
+  currentRevision: null,
+  revisions: [],
+  capabilities: { role: 'owner', canEdit: true },
+  commentsReady: true,
+  status: 'ready',
+  dirty: false,
+  error: '',
+  conflict: null,
+  repair: null,
+  save: vi.fn(),
+  discard: vi.fn(),
+  compareRevision: vi.fn(),
+  refreshRepair: vi.fn(),
+  addressWithAgent: vi.fn(),
+  cancelRepair: vi.fn(),
+}));
+
 vi.mock('../../api', () => ({
   allocateConversationId: () => 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
   mountArtifactPreview: vi.fn(async () => ({ kind: 'static', url: '/preview' })),
@@ -39,27 +61,7 @@ vi.mock('./comments', () => ({
   useArtifactCommentLayer: () => ({ exitMode: vi.fn() }),
 }));
 vi.mock('./workspace/useArtifactWorkspace', () => ({
-  useArtifactWorkspace: () => ({
-    supported: false,
-    mode: 'preview',
-    setMode: vi.fn(),
-    source: null,
-    currentRevision: null,
-    revisions: [],
-    capabilities: { role: 'owner', canEdit: true },
-    commentsReady: true,
-    status: 'ready',
-    dirty: false,
-    error: '',
-    conflict: null,
-    repair: null,
-    save: vi.fn(),
-    discard: vi.fn(),
-    compareRevision: vi.fn(),
-    refreshRepair: vi.fn(),
-    addressWithAgent: vi.fn(),
-    cancelRepair: vi.fn(),
-  }),
+  useArtifactWorkspace: () => workspaceMock,
 }));
 vi.mock('./ArtifactViewerHeader', () => ({
   ArtifactViewerHeader: ({ actions }) => <button onClick={actions.onTrash}>Open delete</button>,
@@ -72,7 +74,7 @@ vi.mock('../ConfirmModal', () => ({
 }));
 
 import { ArtifactViewer } from './ArtifactViewer';
-import { unpublishArtifact } from '../../api';
+import { mountArtifactPreview, unpublishArtifact } from '../../api';
 import { deleteArtifactAndSync } from '../../lib/artifactsStore';
 import { setOrgMode } from '../../../lib/orgMode';
 
@@ -96,6 +98,8 @@ async function deleteFromViewer() {
 describe('published artifact deletion from the viewer', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    workspaceMock.commentsReady = true;
+    workspaceMock.currentRevision = null;
   });
 
   afterEach(() => {
@@ -112,5 +116,30 @@ describe('published artifact deletion from the viewer', () => {
     setOrgMode(false);
     await deleteFromViewer();
     expect(unpublishArtifact).toHaveBeenCalledWith(artifact.path);
+  });
+
+  it('does not remount an HTML preview when collaboration state finishes loading', async () => {
+    workspaceMock.commentsReady = false;
+    const { rerender } = render(<ArtifactViewer open artifact={artifact} onClose={vi.fn()} />);
+    await waitFor(() => expect(mountArtifactPreview).toHaveBeenCalledTimes(1));
+
+    workspaceMock.commentsReady = true;
+    workspaceMock.currentRevision = { id: 'rev-1', number: 1 };
+    rerender(<ArtifactViewer open artifact={artifact} onClose={vi.fn()} />);
+
+    await waitFor(() => expect(mountArtifactPreview).toHaveBeenCalledTimes(1));
+  });
+
+  it('keeps a stable hook sequence when the viewer opens', async () => {
+    const onClose = vi.fn();
+    const { rerender } = render(
+      <ArtifactViewer open={false} artifact={artifact} onClose={onClose} />,
+    );
+
+    expect(() => rerender(
+      <ArtifactViewer open artifact={artifact} onClose={onClose} />,
+    )).not.toThrow();
+
+    await waitFor(() => expect(mountArtifactPreview).toHaveBeenCalledTimes(1));
   });
 });

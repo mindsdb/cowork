@@ -68,6 +68,8 @@
 .artifact-viewer-body { flex: 1; min-height: 0; display: flex; position: relative; overflow: hidden; }
 .artifact-review-stage { flex: 1 1 auto; min-width: 0; min-height: 0; position: relative; }
 .artifact-viewer-canvas { width: 100%; height: 100%; min-width: 0; min-height: 0; position: relative; background: var(--surface-2); }
+.artifact-mode-surface { position: absolute; inset: 0; min-width: 0; min-height: 0; }
+.artifact-mode-surface[hidden] { display: none; }
 .artifact-comments-panel {
   position: relative;
   z-index: 30;

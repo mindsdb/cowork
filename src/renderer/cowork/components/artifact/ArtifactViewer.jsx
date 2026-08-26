@@ -143,6 +143,10 @@ export function ArtifactViewer({
     workspace.commentsReady
     || (!!pub.publishedUrl && pub.accessMode === 'restricted')
   );
+  // Injecting the inert marker bridge only needs the stable comment identity;
+  // it does not need to wait for the comments transport to finish provisioning.
+  // Waiting used to remount the whole HTML artifact as commentsReady flipped.
+  const commentLayerRequested = !!artifactKey;
   const _akParts = artifactKey.split('/');
   const commentUserDir = _akParts[0] || '';
   const commentReportId = _akParts.slice(1).join('/') || '';
@@ -345,19 +349,17 @@ export function ArtifactViewer({
     // first-loaded copy. Prefer the server's content `mtime` — it changes
     // only on a real edit — and fold in the per-open nonce + manual-reload
     // counter so reopens and the reload button always re-fetch.
-    // The revision id is the authoritative content version once the workspace
-    // has loaded. It changes after every manual or agent save, even when the
-    // parent artifact list has not refreshed its filesystem mtime yet.
-    const baseVersion = workspace.currentRevision?.id
-      || artifact?.mtime
-      || (openNonceRef.current += 1);
+    // Workspace saves explicitly bump reloadNonce below. Keeping the initial
+    // revision response out of this key prevents a just-painted iframe from
+    // being thrown away merely because editing metadata finished loading.
+    const baseVersion = artifact?.mtime || (openNonceRef.current += 1);
     const cacheVersion = `${baseVersion}.${reloadNonce}`;
     if (draftPreviewUrl && !isText && (!isBackendArtifact || !hasActionPath)) {
       const rawUrl = isAbsoluteArtifactPreviewUrl(draftPreviewUrl)
         ? draftPreviewUrl
         : `${host.getApiOrigin()}${draftPreviewUrl}`;
       setPreviewKind('static');
-      setPreviewUrl(commentsEnabled
+      setPreviewUrl(commentLayerRequested
         ? withArtifactCommentFlag(withArtifactVersion(rawUrl, cacheVersion))
         : withArtifactVersion(rawUrl, cacheVersion));
       setLoading(false);
@@ -384,7 +386,7 @@ export function ArtifactViewer({
           // layer into the root HTML on the same activation flag (see
           // preview_proxy.py). Bake it in at mount time — same rationale as the
           // static branch below (stable src, no reactive reload).
-          setPreviewUrl(commentsEnabled
+          setPreviewUrl(commentLayerRequested
             ? withArtifactCommentFlag(withArtifactVersion(iframeUrl, cacheVersion))
             : withArtifactVersion(iframeUrl, cacheVersion));
           if (typeof port === 'number') setBackendPort(port);
@@ -393,13 +395,10 @@ export function ArtifactViewer({
         if (!url) throw new Error('Preview mount returned no URL');
         if (cancelled) return;
         setPreviewKind('static');
-        // Bake the comment-layer activation flag into the URL at mount time
-        // (rather than swapping the iframe `src` reactively later) so the src
-        // stays stable — no gratuitous reload/flicker. Injecting the layer into
-        // an already-loaded cross-origin iframe is impossible, so enabling
-        // comments after load inherently needs a remount; commentsEnabled is in
-        // this effect's deps to make that a single, intentional re-run.
-        setPreviewUrl(commentsEnabled
+        // Bake the inert comment bridge into the first URL whenever the card
+        // has a stable identity. Transport readiness can then change without
+        // swapping this cross-origin iframe's `src` or flashing the preview.
+        setPreviewUrl(commentLayerRequested
           ? withArtifactCommentFlag(withArtifactVersion(url, cacheVersion))
           : withArtifactVersion(url, cacheVersion));
         // NOTE (ENG-931): we deliberately do NOT adopt the server's published
@@ -415,7 +414,7 @@ export function ArtifactViewer({
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, artifact?.path, artifact?.mtime, actionPath, hasPreviewSource, disabledReason, draftPreviewUrl, isText, reloadNonce, commentsEnabled, workspace.currentRevision?.id]);
+  }, [open, artifact?.path, artifact?.mtime, actionPath, hasPreviewSource, disabledReason, draftPreviewUrl, isText, reloadNonce, commentLayerRequested]);
 
   // Parse CSV → GFM pipe table once per loaded text. We cap at
   // CSV_PREVIEW_ROW_LIMIT data rows to keep the markdown renderer
@@ -434,6 +433,20 @@ export function ArtifactViewer({
       truncated: shownRows < totalRows,
     };
   }, [isText, textExt, textPreview?.content]);
+
+  // Keep these callbacks above the early return: the viewer remains mounted
+  // while `open` changes, so every render must execute the same hook sequence.
+  const onReload = useCallback(() => {
+    if (!hasPreviewSource) return;
+    setIframeReady(false);
+    setReloadNonce((n) => n + 1);
+  }, [hasPreviewSource]);
+
+  const saveWorkspace = useCallback(async (...args) => {
+    const saved = await workspace.save(...args);
+    if (saved) onReload();
+    return saved;
+  }, [onReload, workspace.save]);
 
   if (!open || !artifact) return null;
 
@@ -456,13 +469,6 @@ export function ArtifactViewer({
     } catch (e) {
       setErr(e?.message || 'Could not open folder.');
     }
-  };
-
-  // Force-refresh the preview (re-mount / re-fetch).
-  const onReload = () => {
-    if (!hasPreviewSource) return;
-    setIframeReady(false);
-    setReloadNonce((n) => n + 1);
   };
 
   // Open the published URL in the default browser; falls back to a new
@@ -605,6 +611,7 @@ export function ArtifactViewer({
     title,
     iframeReady,
     setIframeReady,
+    onReload,
   };
   const bodyReview = {
     layer,
@@ -649,7 +656,7 @@ export function ArtifactViewer({
           status={workspace.status}
           dirty={workspace.dirty}
           canEdit={workspace.capabilities?.canEdit !== false}
-          onSave={() => workspace.save()}
+          onSave={() => saveWorkspace()}
           onDiscard={workspace.discard}
           onCompare={workspace.compareRevision}
         />
@@ -672,7 +679,7 @@ export function ArtifactViewer({
       )}
 
       <ArtifactViewerBody
-        workspace={workspace}
+        workspace={{ ...workspace, save: saveWorkspace }}
         preview={previewModel}
         review={bodyReview}
         agentReview={{ busy: repairBusy, setBusy: setRepairBusy }}

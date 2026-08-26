@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import Ico from '../Icons';
 import { Button, Spinner } from '../ui';
 import { host } from '../../../platform/host';
@@ -63,6 +64,7 @@ export function ArtifactViewerBody({
     title,
     iframeReady,
     setIframeReady,
+    onReload,
   } = preview;
   const {
     layer,
@@ -82,96 +84,129 @@ export function ArtifactViewerBody({
     setTextSelection,
   } = review;
   const { busy: repairBusy, setBusy: setRepairBusy } = agentReview;
+  const sourcePath = workspace.source?.path || '';
+  const htmlSource = !!workspace.source && (
+    workspace.source.contentType === 'html'
+    || workspace.source.contentType === 'htm'
+    || /\.html?$/i.test(sourcePath)
+  );
+  const editorKey = htmlSource ? `${workspace.source.artifactId || ''}:${sourcePath}` : '';
+  const showEditor = workspace.mode === 'edit' && !!workspace.source;
+  const [retainedEditorKey, setRetainedEditorKey] = useState('');
+
+  // Once the preview has painted, prepare the HTML editor during idle time.
+  // The first Edit click is then a surface swap, not a second parse/download;
+  // after visiting Edit we keep both iframes alive for instant mode changes.
+  useEffect(() => {
+    if (!editorKey || retainedEditorKey === editorKey) return undefined;
+    if (showEditor) {
+      setRetainedEditorKey(editorKey);
+      return undefined;
+    }
+    if (!iframeReady) return undefined;
+    const prepare = () => setRetainedEditorKey(editorKey);
+    if (typeof window.requestIdleCallback === 'function') {
+      const handle = window.requestIdleCallback(prepare, { timeout: 1200 });
+      return () => window.cancelIdleCallback?.(handle);
+    }
+    const handle = window.setTimeout(prepare, 80);
+    return () => window.clearTimeout(handle);
+  }, [editorKey, iframeReady, retainedEditorKey, showEditor]);
+
+  const sourceEditor = workspace.source ? (
+    <ArtifactSourceEditor
+      source={workspace.source}
+      value={workspace.draft}
+      onChange={workspace.setDraft}
+      onSave={(content) => workspace.save('Edited artifact', content)}
+      draftUrl={draftPreviewUrl}
+    />
+  ) : null;
+
+  const previewContent = err ? (
+    <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', padding: 28 }}>
+      <div style={{ color: 'var(--danger)', fontSize: 13, textAlign: 'center', maxWidth: 460, fontFamily: FONT_BODY }}>{err}</div>
+    </div>
+  ) : isText ? (
+    loading || !textPreview ? (
+      <PreviewPlaceholder />
+    ) : (
+      <div
+        ref={textContentRef}
+        onMouseUp={captureTextSelection}
+        style={{
+          maxWidth: 920, margin: '0 auto', padding: '24px 28px',
+          background: 'var(--surface)', minHeight: '100%',
+        }}
+      >
+        {textExt === '.md' ? (
+          <MarkdownContent text={textPreview.content} id={artifact.path} />
+        ) : textExt === '.csv' && csvPreview ? (
+          <MarkdownContent text={csvPreview.markdown} id={artifact.path} />
+        ) : (
+          <pre style={{
+            margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+            fontFamily: FONT_MONO, fontSize: 12.5, color: 'var(--ink-2)', lineHeight: 1.55,
+          }}>{textPreview.content}</pre>
+        )}
+        {(textPreview.truncated || (csvPreview && csvPreview.truncated)) && (
+          <div style={{
+            marginTop: 18, padding: '10px 14px', borderRadius: 8,
+            background: 'var(--surface-2)', border: '1px solid var(--line)',
+            color: 'var(--ink-3)', fontSize: 12.5, fontFamily: FONT_BODY,
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            gap: 12, flexWrap: 'wrap',
+          }}>
+            <span>
+              {csvPreview && csvPreview.truncated
+                ? `Showing first ${csvPreview.shownRows.toLocaleString()} of ${csvPreview.totalRows.toLocaleString()} rows.`
+                : 'Preview is truncated.'}
+            </span>
+            <Button onClick={host.isWeb ? onDownload : onOpenOS}>
+              {host.isWeb ? Ico.download(13) : Ico.externalLink(13)}
+              {host.isWeb ? 'Download full file' : 'Open full file in OS'}
+            </Button>
+          </div>
+        )}
+      </div>
+    )
+  ) : (
+    <>
+      {previewUrl && (
+        <iframe
+          ref={iframeRef}
+          title={title || 'Artifact preview'}
+          // The comment-layer activation flag (when applicable) is already
+          // baked into previewUrl at mount time, so the src stays stable.
+          src={previewUrl}
+          onLoad={() => { setIframeReady(true); layer.onIframeLoad(); }}
+          sandbox={previewKind === 'proxy'
+            ? 'allow-scripts allow-same-origin allow-popups allow-forms allow-modals'
+            : 'allow-scripts allow-popups allow-forms allow-modals'}
+          style={{
+            width: '100%', height: '100%', border: 0, background: '#fff',
+            opacity: iframeReady ? 1 : 0, transition: 'opacity 180ms ease',
+          }}
+        />
+      )}
+      {(loading || !previewUrl || !iframeReady) && <PreviewPlaceholder />}
+    </>
+  );
+
   return (
     <>
       {/* Text renders inline; other artifacts use a sandboxed iframe. */}
       <div className={`artifact-viewer-body${commentsOpen && inboxOpen ? ' has-comments-inbox' : ''}`}>
         <div className="artifact-review-stage">
           <div className="artifact-viewer-canvas" style={{ overflow: isText ? 'auto' : 'hidden' }}>
-            {workspace.mode === 'edit' && workspace.source ? (
-              <ArtifactSourceEditor
-                source={workspace.source}
-                value={workspace.draft}
-                onChange={workspace.setDraft}
-                onSave={(content) => workspace.save('Edited artifact', content)}
-                draftUrl={draftPreviewUrl}
-              />
-            ) : err ? (
-              <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', padding: 28 }}>
-                <div style={{ color: 'var(--danger)', fontSize: 13, textAlign: 'center', maxWidth: 460, fontFamily: FONT_BODY }}>{err}</div>
-              </div>
-            ) : isText ? (
-              loading || !textPreview ? (
-                <PreviewPlaceholder />
-              ) : (
-                <div
-                  ref={textContentRef}
-                  onMouseUp={captureTextSelection}
-                  style={{
-                    maxWidth: 920, margin: '0 auto', padding: '24px 28px',
-                    background: 'var(--surface)', minHeight: '100%',
-                  }}
-                >
-                  {textExt === '.md' ? (
-                    <MarkdownContent text={textPreview.content} id={artifact.path} />
-                  ) : textExt === '.csv' && csvPreview ? (
-                    <MarkdownContent text={csvPreview.markdown} id={artifact.path} />
-                  ) : (
-                    <pre style={{
-                      margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                      fontFamily: FONT_MONO, fontSize: 12.5, color: 'var(--ink-2)', lineHeight: 1.55,
-                    }}>{textPreview.content}</pre>
-                  )}
-                  {(textPreview.truncated || (csvPreview && csvPreview.truncated)) && (
-                    <div style={{
-                      marginTop: 18, padding: '10px 14px', borderRadius: 8,
-                      background: 'var(--surface-2)', border: '1px solid var(--line)',
-                      color: 'var(--ink-3)', fontSize: 12.5, fontFamily: FONT_BODY,
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      gap: 12, flexWrap: 'wrap',
-                    }}>
-                      <span>
-                        {csvPreview && csvPreview.truncated
-                          ? `Showing first ${csvPreview.shownRows.toLocaleString()} of ${csvPreview.totalRows.toLocaleString()} rows.`
-                          : 'Preview is truncated.'}
-                      </span>
-                      <Button onClick={host.isWeb ? onDownload : onOpenOS}>
-                        {host.isWeb ? Ico.download(13) : Ico.externalLink(13)}
-                        {host.isWeb ? 'Download full file' : 'Open full file in OS'}
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              )
-            ) : (
-              // src= (not srcdoc) so relative asset refs resolve against the
-              // served URL. Static drafts stay in an opaque sandbox origin so
-              // agent-produced scripts cannot reach the authenticated Cowork
-              // document. Desktop full-stack proxies keep same-origin because
-              // their backend calls depend on loopback cookies and the parent is
-              // already on a different (Electron/file) origin.
+            {htmlSource ? (
               <>
-                {previewUrl && (
-                  <iframe
-                    ref={iframeRef}
-                    title={title || 'Artifact preview'}
-                    // The comment-layer activation flag (when applicable) is already
-                    // baked into previewUrl at mount time — see the mount effect —
-                    // so the src stays stable and doesn't reload reactively.
-                    src={previewUrl}
-                    onLoad={() => { setIframeReady(true); layer.onIframeLoad(); }}
-                    sandbox={previewKind === 'proxy'
-                      ? 'allow-scripts allow-same-origin allow-popups allow-forms allow-modals'
-                      : 'allow-scripts allow-popups allow-forms allow-modals'}
-                    style={{
-                      width: '100%', height: '100%', border: 0, background: '#fff',
-                      opacity: iframeReady ? 1 : 0, transition: 'opacity 180ms ease',
-                    }}
-                  />
+                {(showEditor || retainedEditorKey === editorKey) && (
+                  <div className="artifact-mode-surface" hidden={!showEditor}>{sourceEditor}</div>
                 )}
-                {(loading || !previewUrl || !iframeReady) && <PreviewPlaceholder />}
+                <div className="artifact-mode-surface" hidden={showEditor}>{previewContent}</div>
               </>
-            )}
+            ) : showEditor ? sourceEditor : previewContent}
           </div>
           {/* The compact toolbar is for placing and revealing comments. The
               inbox replaces it while open so controls never overlap. */}
@@ -244,6 +279,7 @@ export function ArtifactViewerBody({
                 setErr('The change was accepted, but the comment could not be resolved. Try resolving it again.');
               }
               await workspace.load();
+              onReload();
             } catch (decisionError) {
               setErr(decisionError?.message || 'Could not accept the agent change. Try again.');
             } finally {

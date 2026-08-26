@@ -70,6 +70,21 @@ describe('useArtifactWorkspace collaboration transport', () => {
     expect(api.enableDraftComments).not.toHaveBeenCalled();
   });
 
+  it('uses history bundled with the source without a second workspace request', async () => {
+    api.loadArtifactSource.mockResolvedValue({
+      ...source,
+      revisions: [{ id: 'rev-1', number: 1, path: 'index.html' }],
+    });
+
+    const { result } = renderHook(() => useArtifactWorkspace(artifact, { open: true }));
+
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+    expect(result.current.revisions).toEqual([
+      { id: 'rev-1', number: 1, path: 'index.html' },
+    ]);
+    expect(api.loadArtifactRevisions).not.toHaveBeenCalled();
+  });
+
   it('provisions authenticated draft review in the web SaaS', async () => {
     platform.isWeb = true;
     api.enableDraftComments.mockResolvedValue({
@@ -83,6 +98,42 @@ describe('useArtifactWorkspace collaboration transport', () => {
     await waitFor(() => expect(result.current.status).toBe('ready'));
     expect(result.current.commentsReady).toBe(true);
     expect(api.enableDraftComments).toHaveBeenCalledWith(artifact);
+  });
+
+  it('loads an owner source in parallel with SaaS comments access', async () => {
+    platform.isWeb = true;
+    const access = deferred();
+    api.enableDraftComments.mockReturnValue(access.promise);
+
+    const { result } = renderHook(() => useArtifactWorkspace(artifact, { open: true }));
+
+    await waitFor(() => expect(api.loadArtifactSource).toHaveBeenCalledWith(artifact));
+    expect(result.current.status).toBe('loading');
+
+    await act(async () => {
+      access.resolve({
+        enabled: true,
+        currentRevision: source.revision,
+        capabilities: source.capabilities,
+      });
+      await access.promise;
+    });
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+  });
+
+  it('does not expose a speculative source when SaaS capabilities deny editing', async () => {
+    platform.isWeb = true;
+    api.enableDraftComments.mockResolvedValue({
+      enabled: true,
+      currentRevision: source.revision,
+      capabilities: { role: 'reviewer', canPreview: true, canComment: true, canEdit: false },
+    });
+
+    const { result } = renderHook(() => useArtifactWorkspace(artifact, { open: true }));
+
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+    expect(result.current.source).toBeNull();
+    expect(result.current.capabilities.canEdit).toBe(false);
   });
 
   it('closes a comparison when the user deliberately changes workspace mode', async () => {

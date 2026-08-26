@@ -62,6 +62,15 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
     setError('');
     setConflict(null);
     let nextCapabilities = null;
+    // Source authorization is enforced by the workspace endpoint itself, so
+    // owners can load it in parallel with the separate comments-access check.
+    // Capture failures as values immediately: a reviewer response can finish
+    // first and intentionally ignore the (expected 403) source result without
+    // ever creating an unhandled rejection.
+    const sourceRequest = loadArtifactSource(artifact).then(
+      (value) => ({ value, error: null }),
+      (requestError) => ({ value: null, error: requestError }),
+    );
 
     // Cloud draft comments need an isolated auth rule before the inference
     // comments API can authorize collaborators. Desktop uses its local journal;
@@ -93,12 +102,16 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
     }
 
     try {
-      const loaded = await loadArtifactSource(artifact);
+      const sourceResult = await sourceRequest;
+      if (sourceResult.error) throw sourceResult.error;
+      const loaded = sourceResult.value;
       if (!isCurrent()) return;
       setSource(loaded);
       setDraft(loaded.content);
       setCapabilities(loaded.capabilities || nextCapabilities || OWNER_CAPABILITIES);
       setRepair(loaded.repair || null);
+      const bundledRevisions = Array.isArray(loaded.revisions) ? loaded.revisions : null;
+      if (bundledRevisions) setRevisions(bundledRevisions);
       if (loaded.repair?.status === 'ready') {
         const detail = await loadAgentRepair(artifact, loaded.repair.id);
         if (!isCurrent()) return;
@@ -108,8 +121,14 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
       } else {
         setComparison(null);
       }
-      await refreshHistory(loaded.path, generation);
-      if (!isCurrent()) return;
+      // New servers bundle the initial history with the editable source so an
+      // artifact open needs one stable-id lookup and one request. Keep the
+      // fallback for staged rollouts where Desktop may briefly meet an older
+      // cowork-server.
+      if (!bundledRevisions) {
+        await refreshHistory(loaded.path, generation);
+        if (!isCurrent()) return;
+      }
       setStatus('ready');
     } catch (loadError) {
       if (!isCurrent()) return;
