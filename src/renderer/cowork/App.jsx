@@ -3881,15 +3881,57 @@ function AppCore() {
       return;
     }
     try {
-      await Promise.all([
-        deleteConversation(taskId),
-        unpinTask(taskId).catch(() => {}), // unpin is a no-op if not pinned
-      ]);
+      await deleteConversation(taskId);
       // eslint-disable-next-line no-console
       console.log('[performDeleteTask] server delete ok');
+      // Unpin only once the delete has really happened. Run in parallel, a
+      // refused delete still committed the unpin server-side, and the
+      // restored row came back silently unpinned across reloads.
+      await unpinTask(taskId).catch(() => {}); // unpin is a no-op if not pinned
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error('[performDeleteTask] server delete failed', e);
+      /*
+        The chat is still on the server, so put the row back rather than leave
+        the sidebar claiming it is gone. Console-only used to mean the user saw
+        a successful delete, deleted it again on the next visit, and only found
+        out on a reload. The access log carried the same ids two and three
+        times over.
+
+        Dropping the tombstone first is what makes the refetch work at all:
+        every consumer of fetchSessions filters through deletedTaskIdsRef, and
+        nothing else ever clears it, so the row would stay hidden for the life
+        of the mount. Same recovery as handleRenameTask above.
+
+        The route is deliberately not restored. The user asked to leave this
+        chat, and yanking them back into it is a bigger surprise than the row
+        reappearing in the list where the toast says to look.
+      */
+      deletedTaskIdsRef.current.delete(taskId);
+      const fresh = await fetchSessions().catch(() => null);
+      setTasks((prev) => {
+        /*
+          fetchSessions resolves [] when the server is unreachable, so treat
+          an empty answer as no answer — replacing the list with it would
+          blank every chat in the sidebar. mergeTasksFromServer, same as
+          every other consumer, keeps streaming messages, model pins and
+          tmp- rows that a wholesale replace would clobber. prev already
+          lost this row to the optimistic filter above, so when the refetch
+          brought nothing back, re-seat the captured task — the toast says
+          the chat is back in the list, and it has to be true.
+        */
+        const merged = mergeTasksFromServer(fresh?.length ? fresh : null, prev);
+        if (task && !merged.some((t) => t.id === taskId)) merged.unshift(task);
+        return merged.filter((t) => !deletedTaskIdsRef.current.has(t.id));
+      });
+      toastManager.add({
+        type: 'danger',
+        // Needs action before it makes sense to move on, so it persists
+        // until dismissed, like the OAuth refresh-failure toast.
+        timeout: 0,
+        title: "Couldn't delete this chat. It is back in your list; try again.",
+        description: e?.message,
+      });
     }
     fetchPins().then((data) => setPins(data.pins || [])).catch(() => {});
   };
