@@ -18,7 +18,7 @@ vi.mock('../platform/host', async (importOriginal) => ({
 const setAntonInstallId = vi.hoisted(() => vi.fn());
 vi.mock('./lib/analytics', () => ({ setAntonInstallId }));
 
-import { fetchRecommendedModels, fetchSettings, updateSettings, revealSettingKey, streamNewSession, fetchHealth, fetchInFlightList } from './api';
+import { fetchRecommendedModels, fetchSettings, updateSettings, revealSettingKey, streamNewSession, fetchHealth, fetchInFlightList, cancelResponse } from './api';
 import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 
 const jsonRes = (body, ok = true, status = 200) => ({
@@ -461,5 +461,115 @@ describe('fetchInFlightList', () => {
       json: async () => ({}),
     })));
     expect(await fetchInFlightList()).toEqual([]);
+  });
+});
+
+describe('fetchSessionResult — loader failure classification (ENG-1233 Major 2)', () => {
+  const meta = { id: 'c1', title: 'T', project: null };
+
+  // Drives the two requests independently. A spec is `{ ok?, status?, body? }`,
+  // or the string 'throw' to simulate a network failure (no HTTP status).
+  const stub = (metaSpec, itemsSpec) => {
+    const mk = (spec) => (spec === 'throw'
+      ? () => { throw new Error('offline'); }
+      : async () => ({
+          ok: spec.ok ?? true,
+          status: spec.status ?? 200,
+          headers: { get: () => 'application/json' },
+          json: async () => spec.body ?? {},
+          text: async () => JSON.stringify(spec.body ?? {}),
+        }));
+    const metaFn = mk(metaSpec);
+    const itemsFn = mk(itemsSpec);
+    vi.stubGlobal('fetch', vi.fn(async (url) => (String(url).endsWith('/items') ? itemsFn() : metaFn())));
+  };
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('returns ok with hydrated messages when both requests succeed', async () => {
+    stub({ body: meta }, { body: [{ role: 'user', content: 'hi' }] });
+    const { fetchSessionResult } = await import('./api');
+    const res = await fetchSessionResult('c1');
+    expect(res.status).toBe('ok');
+    expect(res.task.messages.length).toBeGreaterThan(0);
+  });
+
+  it('maps a 404 on metadata to not_found (dead link → redirect)', async () => {
+    stub({ ok: false, status: 404 }, { body: [] });
+    const { fetchSessionResult } = await import('./api');
+    expect(await fetchSessionResult('c1')).toEqual({ status: 'not_found' });
+  });
+
+  it('maps a 5xx on metadata to unavailable with the code', async () => {
+    stub({ ok: false, status: 503 }, { body: [] });
+    const { fetchSessionResult } = await import('./api');
+    expect(await fetchSessionResult('c1')).toEqual({ status: 'unavailable', code: 503 });
+  });
+
+  it('maps a non-404 items failure to unavailable — never a blank ok', async () => {
+    // Metadata exists but the transcript 500s: an ok+[] would silently blank a
+    // real conversation, so the route must offer the retry instead.
+    stub({ body: meta }, { ok: false, status: 500 });
+    const { fetchSessionResult } = await import('./api');
+    expect(await fetchSessionResult('c1')).toEqual({ status: 'unavailable', code: 500 });
+  });
+
+  it('maps an items network failure to unavailable (code 0)', async () => {
+    stub({ body: meta }, 'throw');
+    const { fetchSessionResult } = await import('./api');
+    expect(await fetchSessionResult('c1')).toEqual({ status: 'unavailable', code: 0 });
+  });
+
+  it('treats a 404 on items as an existing-but-empty conversation (the one benign exception)', async () => {
+    stub({ body: meta }, { ok: false, status: 404 });
+    const { fetchSessionResult } = await import('./api');
+    const res = await fetchSessionResult('c1');
+    expect(res.status).toBe('ok');
+    expect(res.task.messages).toEqual([]);
+  });
+});
+
+// ENG-1919: Stop must never silently report success when the cancel request
+// did not actually reach the server — otherwise the UI shows a stopped task
+// that is still running (and still spending tokens) on the remote worker.
+describe('cancelResponse', () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it('reports ok when the server accepts the cancel', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () =>
+      jsonRes({ cancelled: true, conversation_id: 'conv-a' })));
+    expect(await cancelResponse('conv-a')).toEqual({
+      status: 'ok', cancelled: true, conversation_id: 'conv-a',
+    });
+  });
+
+  it('treats a 404 as already-gone (nothing left to stop)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () =>
+      jsonRes({ status: 'not_found' }, false, 404)));
+    expect(await cancelResponse('conv-a')).toEqual({
+      status: 'gone', conversation_id: 'conv-a',
+    });
+  });
+
+  it('reports error (not success) when the request never lands', async () => {
+    // A network failure: fetch rejects, so the cancel flag was never written
+    // and the turn may still be running. The old code returned a fake
+    // {cancelled:false} here, which is the bug.
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('Failed to fetch'); }));
+    expect(await cancelResponse('conv-a')).toEqual({
+      status: 'error', conversation_id: 'conv-a',
+    });
+  });
+
+  it('reports error on a 5xx (the server was reached but the cancel failed)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () =>
+      jsonRes({ detail: 'boom' }, false, 500)));
+    expect(await cancelResponse('conv-a')).toEqual({
+      status: 'error', conversation_id: 'conv-a',
+    });
+  });
+
+  it('never throws on a missing conversation id', async () => {
+    expect(await cancelResponse('')).toEqual({ status: 'gone', conversation_id: '' });
   });
 });

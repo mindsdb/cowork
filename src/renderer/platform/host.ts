@@ -468,6 +468,18 @@ export async function checkConfigured(): Promise<{
   };
 }
 
+// Hold here until main reports the boot sequence has settled — the sidecar start
+// decision plus the boot-time update poll (ENG-749). The caller stays on the
+// loading screen across this await, so a boot update can't first flash the chat
+// UI in a server-down state. The renderer deliberately races no timeout of its
+// own: main resolves on the poll's real completion (see boot-gate.ts), and a
+// shorter renderer cap could release the gate mid-reinstall. Web has no bridge →
+// resolves at once; `.catch` guards an IPC-level rejection.
+export async function awaitBootReady(): Promise<void> {
+  if (!(isElectron && typeof bridge.awaitBootReady === 'function')) return;
+  await Promise.resolve(bridge.awaitBootReady()).catch(() => {});
+}
+
 export async function validateProvider(
   provider: string,
   apiKey: string,
@@ -755,7 +767,7 @@ export async function checkForUpdates(): Promise<UpdateCheckSummary> {
 
 export type OAuthConnectOpts =
   | { engine: string; name?: string }
-  | { authUrl: string; tokenUrl: string; clientId: string; clientSecret?: string; scopes: string[]; extraAuthParams?: Record<string, string>; redirectPort?: number };
+  | { authUrl: string; tokenUrl: string; clientId: string; clientSecret?: string; scopes: string[]; extraAuthParams?: Record<string, string>; redirectPort?: number; tokenAuthStyle?: 'body' | 'basic' };
 
 export interface OAuthConnectResult {
   ok: boolean;
@@ -997,6 +1009,7 @@ export const host = {
   restartServer,
   checkInstall,
   checkConfigured,
+  awaitBootReady,
   validateProvider,
   startInstall,
   cancelInstall,

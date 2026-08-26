@@ -16,8 +16,8 @@ import {
   mountArtifactPreview,
   previewArtifact,
   unpublishArtifact,
-  deleteArtifact,
 } from '../../api';
+import { deleteArtifactAndSync } from '../../lib/artifactsStore';
 import { downloadArtifactFile } from '../../lib/artifactDownload';
 import { isPublishableArtifact, BACKEND_ARTIFACT_TYPES, publishBlockedReason } from '../../lib/artifactKinds';
 import { Modal } from '../ui/Modal';
@@ -593,7 +593,7 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
       // Unpublish first so deletion never leaves an orphaned public copy.
       // The server enforces the same rule as a backstop.
       if (isPublished) await unpublishArtifact(actionPath);
-      await deleteArtifact(artifact);
+      await deleteArtifactAndSync(artifact);
       setConfirmDelete(false);
       onDelete?.(actionPath);
       onClose?.();

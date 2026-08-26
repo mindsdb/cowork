@@ -27,5 +27,10 @@ src/main/app-version.gen.txt
 # build-macos-pkg.yml writes the first, packaged by `pkgbuild --scripts`;
 # build-windows-installer.yml writes the second, packaged by extraResources.
 build/pkg-scripts/server-credentials.json
+# Same secrets, at the repo root — where the Windows and Linux build jobs write
+# them. This repo is public; anyone reproducing those builds locally is
+# otherwise one `git add -A` away from publishing them.
+/server-credentials.json
+
 src/main/updater-version.gen.txt
 build/app-update.yml

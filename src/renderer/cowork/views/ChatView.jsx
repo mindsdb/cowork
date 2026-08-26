@@ -13,7 +13,7 @@ import { createPortal } from 'react-dom';
 import Ico from '../components/Icons';
 import Composer from '../components/Composer';
 import CodingTerminal from '../components/CodingTerminal';
-import { Alert, Card, Tooltip } from '../components/ui';
+import { Alert, Badge, Card, Tooltip } from '../components/ui';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import { ThinkingBlock } from '../components/thinking/ThinkingBlock';
 import { WorkingIndicator } from '../components/thinking/WorkingIndicator';
@@ -38,6 +38,7 @@ import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { harnessLabel } from '../lib/agentLabel';
 import { artifactOpenTarget, isArtifactActionAvailable } from '../lib/artifactActions';
+import { revalidate as revalidateArtifacts, setArtifactsScope, useArtifactLiveness } from '../lib/artifactsStore';
 import { useOrgMode } from '../../lib/orgMode';
 import { modelLabel } from '../lib/settingsTransform';
 import { providerOverloadedButtons } from '../lib/turnErrorActions';
@@ -453,13 +454,23 @@ function artifactStepToCard(step, projectPath) {
 }
 
 // Renders any badge='Artifact' steps as inline ArtifactCards.
-function StepArtifacts({ steps, onOpen, projectPath }) {
+//
+// `live` says whether these steps belong to a turn still in flight. It rides
+// down to the card because an artifact the agent created THIS turn cannot be in
+// an artifacts index that was loaded before it existed, and judging it against
+// one would mark a brand-new artifact "Deleted".
+function StepArtifacts({ steps, onOpen, projectPath, live = false }) {
   const artifacts = steps?.filter((s) => s.badge === 'Artifact') || [];
   if (artifacts.length === 0) return null;
   return (
     <div className="flex flex-col gap-3 mt-1">
       {artifacts.map((s) => (
-        <ArtifactCard key={s.id} artifact={artifactStepToCard(s, projectPath)} onOpen={onOpen} />
+        <ArtifactCard
+          key={s.id}
+          artifact={artifactStepToCard(s, projectPath)}
+          onOpen={onOpen}
+          live={live}
+        />
       ))}
     </div>
   );
@@ -525,12 +536,16 @@ function StepSkills({ steps, latestByKey, messageIndex, projectName }) {
   );
 }
 
-function ArtifactCard({ artifact, onOpen }) {
+function ArtifactCard({ artifact, onOpen, live = false }) {
   // This card is an artifact surface like the panel's rows, so it answers to the
   // same deployment gate. Without it the chat offered a local preview, Export
   // and Show in Finder for content an org deployment does not serve, while the
   // panel had already stopped offering them for the very same artifact.
   const orgMode = useOrgMode();
+  // Same question the artifacts panel answers by simply not listing the row:
+  // is this artifact still there? The card outlives the artifact because it is
+  // rendered from the turn's persisted stream events, which no delete rewrites.
+  const deleted = useArtifactLiveness(artifact, { live });
   const [status, setStatus] = useState(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -550,7 +565,7 @@ function ArtifactCard({ artifact, onOpen }) {
   const path = artifact.canonicalPath || artifact.file_path || artifact.path;
   const displayPath = artifact.displayPath || path;
   const disabledReason = artifact.actionDisabledReason || '';
-  const canAct = !!path && !disabledReason;
+  const canAct = !!path && !disabledReason && !deleted;
   const platform = host.getPlatform();
   const revealLabel = platform === 'darwin' ? 'Show in Finder' : 'Show in folder';
 
@@ -559,6 +574,13 @@ function ArtifactCard({ artifact, onOpen }) {
     setStatus({ kind, text });
     statusTimerRef.current = setTimeout(() => setStatus(null), kind === 'ok' ? 1800 : 3200);
   };
+
+  // An action that failed may have failed because the artifact is gone. Ask the
+  // server rather than guess from the error: a 404 detail, an Electron bridge
+  // `{ ok: false }` and a transient network blip are indistinguishable here, and
+  // only the artifacts list can settle it. Best-effort — a failed revalidation
+  // just leaves the card as it was.
+  const revalidateAfterFailure = () => { revalidateArtifacts().catch(() => {}); };
 
   // Match the Working folder card's behavior: HTML and text artifacts
   // (.md/.txt/.csv) open the in-app viewer — HTML via sandboxed iframe,
@@ -602,12 +624,21 @@ function ArtifactCard({ artifact, onOpen }) {
       // eslint-disable-next-line no-console
       console.error('[artifact-export] failed', e);
       showStatus('error', e?.message || `Could not export ${fmt.toUpperCase()}.`);
+      revalidateAfterFailure();
     }
     finally {
       setExporting(false);
     }
   };
   const handleOpen = async () => {
+    // The org-mode published branch below returns before the `canAct` check, so
+    // it would survive a deletion. Its button is not rendered in that state, but
+    // relying on two conditions in different parts of the file agreeing is not
+    // worth the risk.
+    if (deleted) {
+      showStatus('error', 'This artifact was deleted.');
+      return;
+    }
     if (openTarget === 'published') {
       // The published URL is the ONLY route to this artifact's bytes on an org
       // deployment, and it carries the access check.
@@ -638,6 +669,7 @@ function ArtifactCard({ artifact, onOpen }) {
       // eslint-disable-next-line no-console
       console.error('[artifact-open] failed', e);
       showStatus('error', e?.message || 'Could not open artifact.');
+      revalidateAfterFailure();
     }
   };
   const handleReveal = async () => {
@@ -664,6 +696,7 @@ function ArtifactCard({ artifact, onOpen }) {
       // eslint-disable-next-line no-console
       console.error('[artifact-reveal] failed', e || bridgeError);
       showStatus('error', e?.message || bridgeError?.message || bridgeError || 'Could not show artifact.');
+      revalidateAfterFailure();
     }
   };
   const previewText = artifact.preview?.[0]?.heading || artifact.preview?.[0]?.text || displayPath;
@@ -679,10 +712,15 @@ function ArtifactCard({ artifact, onOpen }) {
       interactive={canAct}
       padding="cozy"
       onActivate={canAct ? handleOpen : undefined}
-      aria-label={canAct ? `Open preview: ${artifact.title}` : disabledReason || 'No file path'}
+      aria-label={deleted
+        ? `Deleted artifact: ${artifact.title}`
+        : (canAct ? `Open preview: ${artifact.title}` : disabledReason || 'No file path')}
       className="grid grid-cols-[64px_1fr_auto] items-center gap-4"
     >
-      <div className="w-16 h-16 bg-surface-2 rounded-lg grid place-items-center text-accent">
+      <div
+        className="w-16 h-16 bg-surface-2 rounded-lg grid place-items-center text-accent"
+        style={{ opacity: deleted ? 0.7 : 1 }}
+      >
         {artifact.icon === 'doc' ? Ico.doc(26) : Ico.sparkle(26)}
       </div>
       <div className="flex flex-col gap-[3px] min-w-0">
@@ -695,7 +733,7 @@ function ArtifactCard({ artifact, onOpen }) {
           type="button"
           onClick={(e) => { e.stopPropagation(); if (canAct) handleOpen(); }}
           disabled={!canAct}
-          title={canAct ? `Open preview: ${artifact.title}` : disabledReason || 'No file path'}
+          title={deleted ? 'This artifact was deleted' : (canAct ? `Open preview: ${artifact.title}` : disabledReason || 'No file path')}
           // kept inline: `all: unset` writes an inline declaration for every
           // longhand (incl. color/background), which always beats a Tailwind
           // utility class of equal-or-lower specificity — so every property
@@ -714,8 +752,9 @@ function ArtifactCard({ artifact, onOpen }) {
           onMouseOver={(e) => { if (canAct) { e.currentTarget.style.color = T.accent; e.currentTarget.style.textDecoration = 'underline'; e.currentTarget.style.textUnderlineOffset = '3px'; } }}
           onMouseOut={(e) => { e.currentTarget.style.color = T.ink; e.currentTarget.style.textDecoration = 'none'; }}
         >{artifact.title}</button>
-        <span className="font-body text-sm text-ink-3">
+        <span className="font-body text-sm text-ink-3 flex items-center gap-1.5">
           {artifact.kind || 'live artifact'}
+          {deleted && <Badge variant="muted" size="xs">Deleted</Badge>}
         </span>
         {previewText && (
           <span
@@ -776,7 +815,7 @@ function ArtifactCard({ artifact, onOpen }) {
             )}
           </div>
         )}
-        {!host.isWeb && canReveal && (
+        {!host.isWeb && canReveal && !deleted && (
           <Tooltip content={canAct ? `${revealLabel}: ${path}` : ''}>
             <SmallBtn disabled={!canAct} onClick={handleReveal} title={canAct ? undefined : (disabledReason || 'No file path')}>
               {revealLabel}
@@ -785,7 +824,7 @@ function ArtifactCard({ artifact, onOpen }) {
         )}
         {/* Org mode drops the file-path conditions entirely: there the button
             opens the published URL, which has no local path behind it. */}
-        {(orgMode ? openTarget === 'published' : (!host.isWeb || isHtml)) && (
+        {!deleted && (orgMode ? openTarget === 'published' : (!host.isWeb || isHtml)) && (
           <Tooltip content={orgMode ? 'Open the published artifact' : (canAct ? `Open ${path}` : '')}>
             <SmallBtn
               primary
@@ -1405,6 +1444,12 @@ export default function ChatView({
   const dialogMessageCount = visibleMessages.filter((m) => ['user', 'assistant', 'error', 'provider_required'].includes(m.role)).length;
   const streamingMsg = task.messages.find((m) => m.role === '_streaming');
   const artifactProjectPath = task.projectPath || project?.path || '';
+  // Which project's artifacts the liveness store should describe. An effect, not
+  // a render-time call: the store emits. Both deps are primitives, so an equal
+  // scope cannot re-trigger it.
+  useEffect(() => {
+    setArtifactsScope({ projectId: project?.id || '', projectPath: artifactProjectPath });
+  }, [project?.id, artifactProjectPath]);
   const taskAttachments = task.attachments || visibleMessages.flatMap((m) => m.attachments || []);
   // Source of truth for the rail Progress card: the live streaming
   // message's steps if a request is in flight, otherwise the steps
@@ -2238,7 +2283,7 @@ export default function ChatView({
                     <StreamCursor />
                   </div>
                 )}
-                <StepArtifacts steps={streamingMsg.steps} onOpen={handleArtifactOpen} projectPath={artifactProjectPath} />
+                <StepArtifacts steps={streamingMsg.steps} onOpen={handleArtifactOpen} projectPath={artifactProjectPath} live />
                 <StepSkills steps={streamingMsg.steps} latestByKey={latestSkillCardByKey} messageIndex={visibleMessages.length} projectName={project?.name} />
               </AnswerTurn>
             ) : isStreaming && (

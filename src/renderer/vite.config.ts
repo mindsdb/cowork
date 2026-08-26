@@ -4,6 +4,7 @@ import babel from '@rolldown/plugin-babel';
 import path from 'path';
 import { readFileSync, existsSync } from 'fs';
 import { execSync } from 'child_process';
+import { isSpaNavigation } from './web-spa-fallback';
 
 const pkg = JSON.parse(readFileSync(path.resolve(__dirname, '../../package.json'), 'utf-8'));
 
@@ -60,17 +61,16 @@ logger.error = (msg, options) => {
   logError(msg, options);
 };
 
-// In dev, vite's default html serving picks `index.html` for `/`, which
-// is the Electron entry (depends on window.antontron and crashes in a
-// regular browser). When BUILD_TARGET=web, rewrite bare `/` to the web
-// entry so `http://localhost:5173/` is the canonical URL.
-const webRootRewrite = {
-  name: 'cowork-web-root-rewrite',
+// History-API fallback for the web dev server: rewrite client-side navigations
+// to the web entry so `/`, `/c/:id`, `/projects`, `/connect`, … all boot the
+// SPA. The rewrite decision lives in `isSpaNavigation` (web-spa-fallback.ts) so
+// it's unit-tested; see there for the `Accept: text/html` rationale and why we
+// don't treat a dotted last segment as a file (ENG-1233).
+const webSpaFallback = {
+  name: 'cowork-web-spa-fallback',
   configureServer(server: any) {
     server.middlewares.use((req: any, _res: any, next: any) => {
-      if (req.url === '/' || req.url === '') {
-        req.url = '/index-web.html';
-      }
+      if (isSpaNavigation(req)) req.url = '/index-web.html';
       next();
     });
   },
@@ -86,7 +86,7 @@ export default defineConfig({
     // rides @rolldown/plugin-babel with the exported preset.
     react(),
     babel({ presets: [reactCompilerPreset()] }),
-    ...(IS_WEB ? [webRootRewrite] : []),
+    ...(IS_WEB ? [webSpaFallback] : []),
   ],
   customLogger: logger,
   define: {
@@ -96,7 +96,11 @@ export default defineConfig({
   },
   root: __dirname,
   envDir: path.resolve(__dirname, '../..'),
-  base: './',
+  // Electron loads over file:// so it needs a relative base; the web SPA is
+  // served over http and now has deep client-side routes (`/c/:id`), where a
+  // relative base would resolve assets against the route path and 404. Absolute
+  // root is the correct SPA base (ENG-1233).
+  base: IS_WEB ? '/' : './',
   build: {
     outDir: path.resolve(
       __dirname,

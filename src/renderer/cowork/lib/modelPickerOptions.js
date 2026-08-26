@@ -1,6 +1,7 @@
 import {
   hasFrozenVersions,
   isFrozenAlias,
+  isModelLocked,
   isMovingAlias,
   orderByFamily,
 } from './modelCatalog';
@@ -31,15 +32,17 @@ export function buildModelPickerOptions(models = [], modelMeta = {}) {
   const tagMoving = hasFrozenVersions(ids, modelFamilies);
 
   return ordered.map((model) => {
+    const locked = isModelLocked(modelEnabled, model.id);
     const tag = [
       tagMoving && isMovingAlias(model.id, modelFamilies) ? 'Latest' : '',
       isFrozenAlias(model.id, modelFamilies) && byId.has(modelFamilies[model.id]) ? 'Older version' : '',
-      modelEnabled[model.id] === false ? 'Needs credits' : '',
+      locked ? 'Needs credits' : '',
     ].filter(Boolean).join(' · ');
 
     return {
       value: model.id,
       label: model.name,
+      ...(locked ? { disabled: true, locked: true } : {}),
       ...(tag ? { tag } : {}),
       ...(modelProviders[model.id] ? { provider: modelProviders[model.id] } : {}),
     };

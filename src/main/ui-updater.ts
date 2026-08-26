@@ -1,6 +1,5 @@
 import { app } from 'electron';
-import * as https from 'https';
-import * as http from 'http';
+import { httpsGet } from './http-get';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
@@ -90,16 +89,6 @@ const DEFAULT_MANIFEST_URL = 'https://mindsdb.github.io/antontron-releases/lates
 // value can't silently downgrade prod OTA to a cleartext remote fetch.
 function getManifestUrl(): string {
   return (process.env.COWORK_OTA_MANIFEST_URL || '').trim() || DEFAULT_MANIFEST_URL;
-}
-
-/** Loopback host? Plaintext http is only ever fetched from these. */
-function isLoopbackUrl(u: string): boolean {
-  try {
-    const host = new URL(u).hostname;
-    return host === '127.0.0.1' || host === 'localhost' || host === '::1';
-  } catch {
-    return false;
-  }
 }
 
 export interface UpdateCheckResult {
@@ -233,46 +222,6 @@ export function getCachedVersion(): string | null {
   return isServingOta() ? readSlotVersion(getCurrentDir()) : null;
 }
 
-function httpsGet(url: string, timeoutMs = 10000): Promise<{ statusCode: number; headers: Record<string, any>; body: Buffer }> {
-  return new Promise((resolve, reject) => {
-    const doGet = (reqUrl: string, redirects: number) => {
-      try {
-        if (redirects > 5) { reject(new Error('Too many redirects')); return; }
-        // https by default; plaintext http only for a loopback QA fixture host
-        // (see getManifestUrl) — never for a remote host, tampered manifest, or
-        // redirect target.
-        const isHttp = reqUrl.startsWith('http://');
-        if (isHttp && !isLoopbackUrl(reqUrl)) {
-          reject(new Error(`refusing plaintext http fetch from a non-loopback host: ${reqUrl}`));
-          return;
-        }
-        const mod = isHttp ? http : https;
-        const req = mod.get(reqUrl, { headers: { 'User-Agent': 'antontron-updater' } }, (res) => {
-          // Follow redirects (GitHub releases use 302)
-          if ((res.statusCode === 301 || res.statusCode === 302) && res.headers.location) {
-            doGet(res.headers.location, redirects + 1);
-            return;
-          }
-          const chunks: Buffer[] = [];
-          res.on('data', (chunk) => chunks.push(chunk));
-          res.on('end', () => {
-            resolve({
-              statusCode: res.statusCode ?? 0,
-              headers: res.headers as Record<string, any>,
-              body: Buffer.concat(chunks),
-            });
-          });
-        });
-        req.on('error', reject);
-        req.setTimeout(timeoutMs, () => { req.destroy(); reject(new Error('Request timed out')); });
-      } catch (err) {
-        reject(err);
-      }
-    };
-    doGet(url, 0);
-  });
-}
-
 /** Quick connectivity check — can we reach the manifest host? */
 export async function hasInternet(): Promise<boolean> {
   try {
@@ -303,20 +252,33 @@ function rmDir(dir: string) {
   }
 }
 
-/** Extracts a .tar.gz buffer into a target directory. */
-async function extractTarGz(buf: Buffer, targetDir: string): Promise<void> {
+// Download caps: per-socket inactivity vs. absolute wall-clock (bounds a
+// trickle-fed download); tar cap force-kills a wedged extraction (ENG-749).
+const UI_DOWNLOAD_INACTIVITY_MS = 60_000;
+const UI_DOWNLOAD_DEADLINE_MS = 300_000;
+const TAR_EXTRACT_TIMEOUT_MS = 60_000;
+
+/** Extracts a .tar.gz buffer into a target directory. Bounded so a wedged tar
+ *  can't hang the caller; throws on failure/timeout. Exported for tests. */
+export async function extractTarGz(buf: Buffer, targetDir: string): Promise<void> {
   fs.mkdirSync(targetDir, { recursive: true });
   const tmpFile = path.join(getCacheDir(), 'download.tar.gz');
   fs.writeFileSync(tmpFile, buf);
   const { execFileSync } = require('child_process');
-  execFileSync('tar', ['xzf', tmpFile, '-C', targetDir]);
-  fs.unlinkSync(tmpFile);
+  try {
+    execFileSync('tar', ['xzf', tmpFile, '-C', targetDir], {
+      timeout: TAR_EXTRACT_TIMEOUT_MS,
+      killSignal: 'SIGKILL',
+    });
+  } finally {
+    try { fs.unlinkSync(tmpFile); } catch { /* best-effort cleanup */ }
+  }
 }
 
 /** Download, verify, and stage a new UI bundle. Returns true on success. */
 async function downloadAndStage(manifest: UIManifest): Promise<boolean> {
   console.log(`[ui-updater] downloading UI ${manifest.version}...`);
-  const res = await httpsGet(manifest.url, 60000);
+  const res = await httpsGet(manifest.url, UI_DOWNLOAD_INACTIVITY_MS, UI_DOWNLOAD_DEADLINE_MS);
   if (res.statusCode !== 200) {
     console.error(`[ui-updater] download failed: HTTP ${res.statusCode}`);
     return false;
@@ -330,7 +292,13 @@ async function downloadAndStage(manifest: UIManifest): Promise<boolean> {
 
   const staging = getStagingDir();
   rmDir(staging);
-  await extractTarGz(res.body, staging);
+  try {
+    await extractTarGz(res.body, staging);
+  } catch (err) {
+    console.error('[ui-updater] extraction failed:', err);
+    rmDir(staging);
+    return false;
+  }
 
   // Verify index.html exists in the extracted bundle
   if (!fs.existsSync(path.join(staging, 'index.html'))) {

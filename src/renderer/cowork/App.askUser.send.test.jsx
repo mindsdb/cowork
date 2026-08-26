@@ -8,6 +8,10 @@ const spies = vi.hoisted(() => ({
   streamMessage: vi.fn(),
   cancelResponse: vi.fn(async () => ({})),
   fetchInFlightStatus: vi.fn(async () => ({ in_flight: false })),
+  // Default matches the real fn under this file's denied-network env (an
+  // unavailable result, which the render ignores for locally-present tasks);
+  // the deep-link test overrides it to control loader resolution.
+  fetchSessionResult: vi.fn(async () => ({ status: 'unavailable', code: 0 })),
 }));
 
 // The live stream handles are captured per streamMessage call so the test can
@@ -23,6 +27,7 @@ vi.mock('./api', async (importOriginal) => ({
     { id: 'conv-b', title: 'Beta task', messages: [], status: 'idle', projectName: 'general' },
   ]),
   fetchSession: vi.fn(async () => ({ messages: [] })),
+  fetchSessionResult: (...args) => spies.fetchSessionResult(...args),
   fetchConversationList: vi.fn(async () => []),
   fetchProjects: vi.fn(async () => [{ name: 'general', path: '/tmp/general' }]),
   fetchArtifacts: vi.fn(async () => []),
@@ -127,6 +132,7 @@ vi.mock('./lib/analytics', () => ({
 }));
 
 import App from './App';
+import { markOptimisticConversation, clearOptimisticConversation } from './CoworkRouter';
 import {
   fetchSessions,
   fetchProjects,
@@ -206,6 +212,10 @@ async function attach(user, name = 'notes.txt') {
 }
 
 beforeEach(() => {
+  // App uses createBrowserRouter under jsdom, which writes the shared window
+  // history that happy-dom keeps across tests — so a URL one test pushes leaks
+  // into the next. Reset to '/' so each test starts on Home.
+  window.history.replaceState(null, '', '/');
   // Composer text lives in a module-level, per-surface store (lib/draftStore),
   // so unsent text from the previous test would otherwise still be in the box.
   __resetDraftsForTests();
@@ -215,6 +225,8 @@ beforeEach(() => {
   spies.cancelResponse.mockClear();
   spies.submitAnswer.mockImplementation(async () => ({ accepted: true }));
   spies.fetchInFlightStatus.mockImplementation(async () => ({ in_flight: false }));
+  spies.fetchSessionResult.mockReset();
+  spies.fetchSessionResult.mockImplementation(async () => ({ status: 'unavailable', code: 0 }));
 });
 
 describe('composer send while a question is pending', () => {
@@ -861,6 +873,44 @@ describe('Stop while a sibling task is queued (ENG-1378 stop-drain)', () => {
   });
 });
 
+describe('Stop when the cancel request never lands (ENG-1919)', () => {
+  it('keeps the in-flight turn alive and surfaces an actionable failure', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+
+    await send(user, composer, 'first message');
+    // Commit the `_streaming` message so the composer shows a Stop control.
+    await emit({ type: 'response.created' });
+    const live = streams[streams.length - 1];
+
+    // The cancel POST never reaches the server (network down / 5xx).
+    spies.cancelResponse.mockResolvedValueOnce({
+      status: 'error', conversation_id: 'conv-a',
+    });
+
+    await user.click(await screen.findByRole('button', { name: /stop/i }));
+    await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-a'));
+
+    // The user is told the turn may still be running instead of seeing a fake
+    // stopped state.
+    expect(await screen.findByText(/may still be running/i)).toBeInTheDocument();
+
+    // The in-flight state was never torn down: the stream was not aborted and
+    // the Stop control is still there, so the toast's "try again" is real.
+    expect(live.abort).not.toHaveBeenCalled();
+    const retry = await screen.findByRole('button', { name: /stop/i });
+
+    // A second Stop actually retries the cancel — this time it lands (the
+    // default mock returns a non-error result) and tears the turn down.
+    await user.click(retry);
+    await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(live.abort).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: /stop/i })).toBeNull(),
+    );
+  });
+});
+
 describe('a manual send racing another task mid-reserve (ENG-1378 parallel-stream guard)', () => {
   it('queues rather than starting a second stream while another task is between reserving the slot and its controller', async () => {
     const user = userEvent.setup();
@@ -1007,5 +1057,25 @@ describe('attachment send that would strand at "Queued"', () => {
     expect(await screen.findByText(/pick a project/i)).toBeInTheDocument();
     expect(spies.streamMessage).not.toHaveBeenCalled();
     expect(screen.getByText('shot.png')).toBeInTheDocument();
+  });
+});
+
+describe('a requested conversation id not present locally (ENG-1233 Major 4)', () => {
+  it('renders a loading state, never the tasks[0] recent-conversation fallback', async () => {
+    // The render condition the fix targets: route === 'task' with a requested
+    // activeTaskId that isn't in `tasks` and hasn't errored. We reach it stably
+    // via the optimistic deep link (the loader returns { optimistic } and
+    // openConversation deliberately doesn't merge it into `tasks`) — the same
+    // "requested id, unresolved" state a deep link / scheduled-run open passes
+    // through transiently. The old `tasks[0]` fallback would have rendered
+    // "Alpha task" (conv-a) here; the fix shows the loading state.
+    markOptimisticConversation('conv-ghost');
+    window.history.replaceState(null, '', '/c/conv-ghost');
+    render(<App />);
+
+    // Loading shows — which means currentTask did NOT fall back to a recent.
+    await waitFor(() => expect(screen.getByTestId('conversation-loading')).toBeInTheDocument());
+
+    clearOptimisticConversation('conv-ghost');
   });
 });

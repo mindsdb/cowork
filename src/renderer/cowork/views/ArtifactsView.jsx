@@ -18,12 +18,12 @@ import { EmptyState } from '../components/ui/EmptyState';
 import { Button, Tooltip } from '../components/ui';
 import {
   revealArtifact, publishArtifact, unpublishArtifact, updateArtifact,
-  deleteArtifact,
   publishTargetPath, artifactServeUrl, openArtifactFile,
 } from '../api';
 import { copyText } from '../lib/clipboard';
 import { projectNameOf } from '../lib/artifactProject';
 import { isArtifactActionAvailable, needsClientUnpublishBeforeDelete } from '../lib/artifactActions';
+import { deleteArtifactAndSync } from '../lib/artifactsStore';
 import { useOrgMode } from '../../lib/orgMode';
 import { downloadArtifactFile } from '../lib/artifactDownload';
 import { isHtmlArtifact, isPublishableArtifact, isBackendArtifact, publishBlockedReason } from '../lib/artifactKinds';
@@ -835,7 +835,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
       if (needsClientUnpublishBeforeDelete({ orgMode, published: artifact.publishedUrl })) {
         await unpublishArtifact(artifact.path);
       }
-      await deleteArtifact(artifact);
+      await deleteArtifactAndSync(artifact);
       removeOne(artifact.path);
       showToast({ kind: 'ok', message: 'Deleted.' });
     } catch (e) {

@@ -14,6 +14,7 @@ vi.mock('../../platform/host', () => ({
 }));
 
 import Sidebar from './Sidebar';
+import { deriveUpdateBanner } from '../../../shared/update-banner';
 
 const baseProps = { tasks: [], onNavigate: () => {} };
 
@@ -134,71 +135,115 @@ describe('Sidebar — Settings is reachable on web (ENG-932)', () => {
   });
 });
 
-describe('Sidebar — update banners (ENG-849: shell reinstall supersedes OTA)', () => {
+describe('Sidebar — the single update banner (consolidated, shell-first)', () => {
   beforeEach(() => {
     hostMock.isWeb = false;
   });
 
-  it('shows the OTA "Update ready" (restart) banner when only an OTA update is pending', () => {
-    render(<Sidebar {...baseProps} serverOnline updateAvailable={{ version: '1.2.3' }} />);
-    expect(screen.getByRole('button', { name: /Update ready/ })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /New version available/ })).toBeNull();
-  });
+  // Which-banner-wins is covered in update-banner.test.ts; these assert the
+  // sidebar renders one banner and wires its action/dismiss to the callback.
+  const bannerFor = (input) => deriveUpdateBanner(input);
 
-  it('shows the shell reinstall notice when only a shell update is pending', () => {
-    render(<Sidebar {...baseProps} serverOnline shellUpdate={{ version: '2.0.0' }} />);
-    expect(screen.getByRole('button', { name: /New version available/ })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Update ready/ })).toBeNull();
-  });
-
-  it('suppresses the OTA banner while a shell reinstall is pending (no double banner)', () => {
-    render(
-      <Sidebar {...baseProps} serverOnline updateAvailable={{ version: '1.2.3' }} shellUpdate={{ version: '2.0.0' }} />
-    );
-    expect(screen.queryByRole('button', { name: /Update ready/ })).toBeNull();
-    expect(screen.getByRole('button', { name: /New version available/ })).toBeInTheDocument();
-  });
-
-  it('surfaces a labelled retry when an apply failed (does not go silent)', () => {
-    const onApplyUpdate = vi.fn();
-    render(
-      <Sidebar {...baseProps} serverOnline updateError={{ version: '1.2.3' }} onApplyUpdate={onApplyUpdate} />
-    );
-    const retry = screen.getByRole('button', { name: /Update failed/ });
-    expect(retry).toBeInTheDocument();
-    expect(retry).toHaveTextContent(/Try again/);
-    retry.click();
-    expect(onApplyUpdate).toHaveBeenCalled();
-  });
-
-  it('lets a pending shell reinstall supersede the failed-apply retry too', () => {
-    render(
-      <Sidebar {...baseProps} serverOnline updateError={{ version: '1.2.3' }} shellUpdate={{ version: '2.0.0' }} />
-    );
-    expect(screen.queryByRole('button', { name: /Update failed/ })).toBeNull();
-    expect(screen.getByRole('button', { name: /New version available/ })).toBeInTheDocument();
-  });
-
-  it('shows the authoritative auto-update action and hides the manual fallback', () => {
-    const onShellAutoUpdateAction = vi.fn();
+  it('renders the OTA "Update ready" (restart) banner and fires apply-ota', () => {
+    const onUpdateAction = vi.fn();
     render(
       <Sidebar
         {...baseProps}
         serverOnline
-        shellUpdate={{ version: '2.0.0' }}
-        shellAutoUpdate={{
-          phase: 'ready-to-install',
-          mode: 'auto',
-          channel: 'prod',
-          currentVersion: '2.0.0',
-          targetVersion: '2.1.0',
-        }}
-        onShellAutoUpdateAction={onShellAutoUpdateAction}
+        updateBanner={bannerFor({ ota: { phase: 'available', version: '1.2.3' } })}
+        onUpdateAction={onUpdateAction}
+      />
+    );
+    const btn = screen.getByRole('button', { name: /Update ready/ });
+    expect(screen.queryByRole('button', { name: /New version available/ })).toBeNull();
+    fireEvent.click(btn);
+    expect(onUpdateAction).toHaveBeenCalledWith('apply-ota');
+  });
+
+  it('renders the dismissible manual installer notice and fires download + dismiss', () => {
+    const onUpdateAction = vi.fn();
+    const onDismissUpdate = vi.fn();
+    render(
+      <Sidebar
+        {...baseProps}
+        serverOnline
+        updateBanner={bannerFor({ shellManual: { version: '2.0.0' } })}
+        onUpdateAction={onUpdateAction}
+        onDismissUpdate={onDismissUpdate}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: /New version available/ }));
+    expect(onUpdateAction).toHaveBeenCalledWith('download-installer');
+    fireEvent.click(screen.getByRole('button', { name: /Dismiss update notice/ }));
+    expect(onDismissUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows exactly one banner (shell-first) when OTA and a shell update both pend', () => {
+    render(
+      <Sidebar
+        {...baseProps}
+        serverOnline
+        updateBanner={bannerFor({
+          ota: { phase: 'available', version: '1.2.3' },
+          shellAuto: { phase: 'ready-to-install' },
+        })}
+        onUpdateAction={vi.fn()}
+      />
+    );
+    // The OTA "Update ready" pill never stacks under the shell banner anymore.
+    expect(screen.queryByRole('button', { name: /Update ready/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /App update ready/ })).toBeInTheDocument();
+  });
+
+  it('surfaces a labelled retry when an OTA apply failed (does not go silent)', () => {
+    const onUpdateAction = vi.fn();
+    render(
+      <Sidebar
+        {...baseProps}
+        serverOnline
+        updateBanner={bannerFor({ ota: { phase: 'error', version: '1.2.3' } })}
+        onUpdateAction={onUpdateAction}
+      />
+    );
+    const retry = screen.getByRole('button', { name: /Update failed/ });
+    expect(retry).toHaveTextContent(/Try again/);
+    fireEvent.click(retry);
+    expect(onUpdateAction).toHaveBeenCalledWith('apply-ota');
+  });
+
+  it('renders the shell auto-update ready banner and fires shell-auto', () => {
+    const onUpdateAction = vi.fn();
+    render(
+      <Sidebar
+        {...baseProps}
+        serverOnline
+        updateBanner={bannerFor({ shellAuto: { phase: 'ready-to-install' } })}
+        onUpdateAction={onUpdateAction}
       />
     );
     fireEvent.click(screen.getByRole('button', { name: /App update ready/ }));
-    expect(onShellAutoUpdateAction).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole('button', { name: /New version available/ })).toBeNull();
+    expect(onUpdateAction).toHaveBeenCalledWith('shell-auto');
+  });
+
+  it('renders an in-flight download as a disabled banner with no action', () => {
+    const onUpdateAction = vi.fn();
+    render(
+      <Sidebar
+        {...baseProps}
+        serverOnline
+        updateBanner={bannerFor({ shellAuto: { phase: 'downloading', progress: { percent: 42 } } })}
+        onUpdateAction={onUpdateAction}
+      />
+    );
+    const btn = screen.getByRole('button', { name: /Downloading update/ });
+    expect(btn).toBeDisabled();
+    fireEvent.click(btn);
+    expect(onUpdateAction).not.toHaveBeenCalled();
+  });
+
+  it('renders no banner when nothing is pending', () => {
+    render(<Sidebar {...baseProps} serverOnline updateBanner={bannerFor({})} />);
+    expect(screen.queryByRole('button', { name: /Update ready|New version available|App update/ })).toBeNull();
   });
 });
 

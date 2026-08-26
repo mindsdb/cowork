@@ -348,6 +348,41 @@ export async function fetchSession(id) {
 }
 
 /**
+ * Loader-facing conversation fetch. Unlike `fetchSession` (which collapses every
+ * failure to `null`), this separates a gone conversation (`404 → 'not_found'`)
+ * from an operational failure (auth / 5xx / network `→ 'unavailable'`) so the
+ * route can drop a dead link Home but keep the URL + retry on a transient
+ * outage. Metadata is authoritative for existence. A failed transcript is only
+ * treated as an empty conversation on a 404 (the one benign case); any other
+ * items failure is 'unavailable' so a real transcript is never silently blanked.
+ *
+ * @returns {Promise<{status:'ok', task:object} | {status:'not_found'} | {status:'unavailable', code:number}>}
+ */
+export async function fetchSessionResult(id) {
+  const [metaRes, msgsRes] = await Promise.allSettled([
+    req(`/conversations/${encodeURIComponent(id)}`),
+    req(`/conversations/${encodeURIComponent(id)}/items`),
+  ]);
+  if (metaRes.status === 'rejected') {
+    const err = metaRes.reason;
+    if (err && err.status === 404) return { status: 'not_found' };
+    // `err.status` is undefined for a network/abort failure — code 0.
+    return { status: 'unavailable', code: (err && err.status) || 0 };
+  }
+  // The conversation exists but its transcript failed to load. Only a 404 is
+  // benign (existing conversation, nothing recorded yet → render empty); auth /
+  // 5xx / network would blank a real transcript, so surface the retry instead.
+  if (msgsRes.status === 'rejected') {
+    const err = msgsRes.reason;
+    if (!(err && err.status === 404)) {
+      return { status: 'unavailable', code: (err && err.status) || 0 };
+    }
+  }
+  const msgs = msgsRes.status === 'fulfilled' && Array.isArray(msgsRes.value) ? msgsRes.value : [];
+  return { status: 'ok', task: _conversationToTask(metaRes.value, msgs) };
+}
+
+/**
  * Pre-allocates the id for a conversation that doesn't exist yet, so
  * attachments can be uploaded against it before the first stream. The
  * server adopts a client-supplied UUID as the conversation's real id
@@ -739,19 +774,31 @@ export async function cancelScratchpad(name) {
 // running. The Stop button needs this dedicated signal to actually
 // halt the work.
 //
-// Idempotent: hitting it for an already-finished conversation returns
-// {cancelled: false} rather than failing.
+// Never throws (a fire-and-forget caller relies on that), but it no longer
+// hides failures behind a fake success. It returns a discriminated status so
+// the Stop handler can tell three cases apart:
+//   'ok'    — 2xx: the server wrote the cancel flag; `cancelled` says whether a
+//             live run was found. The stop request definitely reached the server.
+//   'gone'  — 404: no run the caller may touch (already finished, or another
+//             org's id). Nothing is running, which is the desired end state.
+//   'error' — network error / 5xx: the request never reached the server, so the
+//             cancel flag was NOT written and the turn may still be running (and
+//             still spending tokens). Callers must NOT report this as success.
 export async function cancelResponse(conversationId) {
-  if (!conversationId) return null;
+  if (!conversationId) return { status: 'gone', conversation_id: conversationId };
   try {
-    return await req('/responses/cancel', {
+    const res = await req('/responses/cancel', {
       method: 'POST',
       body: JSON.stringify({ conversation_id: conversationId }),
     });
-  } catch {
-    // 404 / network blip — treat as "already done." The local-state
-    // teardown in handleStopStream is the user-visible part anyway.
-    return { cancelled: false, conversation_id: conversationId };
+    return { status: 'ok', ...res };
+  } catch (err) {
+    // A 404 is the one failure that genuinely means "nothing to stop"; every
+    // other failure means the cancel did not land. Conflating them (the old
+    // behavior) is what let Stop silently report success while the remote turn
+    // kept running.
+    if (err?.status === 404) return { status: 'gone', conversation_id: conversationId };
+    return { status: 'error', conversation_id: conversationId };
   }
 }
 
@@ -1033,6 +1080,21 @@ export async function fetchArtifacts({ projectId, projectPath } = {}) {
       return [];
     }
   });
+}
+
+// Same URL shapes as `fetchArtifacts` above, but THROWS instead of returning [].
+//
+// The liveness store (lib/artifactsStore.js) has to tell "loaded, and the list
+// is empty" from "the request failed". Its sibling cannot: it swallows every
+// error into `[]`, and an empty list read as authoritative would mark every
+// artifact card in the conversation as deleted. Deliberately not routed through
+// `dedupe` either — the store coalesces its own loads and needs the rejection.
+export async function fetchArtifactsStrict({ projectId, projectPath } = {}) {
+  let suffix = '';
+  if (projectId) suffix = `?project_id=${encodeURIComponent(projectId)}`;
+  else if (projectPath) suffix = `?project_path=${encodeURIComponent(projectPath)}`;
+  const data = await req(`/artifacts/${suffix}`);
+  return Array.isArray(data) ? data : [];
 }
 
 export async function previewArtifact(path) {

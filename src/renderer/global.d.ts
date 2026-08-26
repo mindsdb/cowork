@@ -21,6 +21,7 @@ interface AntonTronAPI {
   checkForUpdate: () => Promise<import('../shared/update-types').UpdateCheckSummary>;
   applyUpdate: () => Promise<boolean>;
   onUpdateStatus: (cb: (status: { phase: string; version?: string; currentVersion?: string; downloadUrl?: string }) => void) => () => void;
+  awaitBootReady: () => Promise<{ ready: boolean }>;
   getShellUpdate: () => Promise<{ available: boolean; currentVersion?: string; latestVersion?: string; downloadUrl?: string | null }>;
   getShellAutoUpdate: () => Promise<ShellAutoUpdateSnapshot>;
   checkShellAutoUpdate: () => Promise<ShellAutoUpdateSnapshot>;
