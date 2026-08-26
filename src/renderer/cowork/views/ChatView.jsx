@@ -2090,6 +2090,29 @@ export default function ChatView({
                     />
                   );
                 }
+                // Content-shaped provider rejection (`content_recovery`,
+                // ENG-1992): distinct from `image_format` on purpose — this
+                // is an internal serialization mismatch, not anything wrong
+                // with the image itself, and the server has ALREADY stripped
+                // the offending content from this conversation's history by
+                // the time this code reaches the client. Re-uploading fixes
+                // nothing here, so the card offers "Try again" instead —
+                // the same message now sends clean.
+                if (m.code === 'content_recovery') {
+                  const retryText = lastUserTextBefore(visibleMessages, i);
+                  return (
+                    <ActionCard
+                      key={i}
+                      time={formatMetaTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      title="Fixed an issue with this conversation"
+                      body="An image earlier in this conversation couldn't be sent to the model due to an internal formatting issue. It's been removed automatically — you can keep going."
+                      buttons={retryText
+                        ? [{ label: 'Try again', onClick: () => onSend?.(retryText), primary: true }]
+                        : []}
+                    />
+                  );
+                }
                 // Transient billing/policy outage at the gateway
                 // (`policy_unavailable`): retryable and not the user's fault,
                 // so the next step is simply resending the failed message.

@@ -254,6 +254,38 @@ describe('image_format failure card', () => {
   });
 });
 
+describe('content_recovery failure card', () => {
+  it('says it already fixed the issue, not that the user should re-upload', async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    render(
+      <ChatView
+        task={taskWith(failedTurn(
+          'content_recovery',
+          "An image earlier in this conversation couldn't be sent to the model due to an internal formatting issue. I've fixed it automatically — you can keep going.",
+        ))}
+        onSend={onSend}
+      />,
+    );
+    expect(screen.getByText(/removed automatically/i)).toBeInTheDocument();
+    // Distinct from image_format's "convert to PNG or JPEG" — that advice is
+    // wrong here, the failure isn't anything wrong with the image itself.
+    expect(screen.queryByText(/PNG or JPEG/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(onSend).toHaveBeenCalledWith('draw me a chart');
+  });
+
+  it('hides Try again when there is no user message to resend', () => {
+    render(
+      <ChatView
+        task={taskWith([{ role: 'error', content: 'issue fixed', code: 'content_recovery' }])}
+        onSend={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
+  });
+});
+
 describe('policy_unavailable failure card', () => {
   it('names the outage and retries the failed message', async () => {
     const user = userEvent.setup();
@@ -309,6 +341,8 @@ const WIRE_CODES = [
   'rate_limited',
   // ENG-1537 — the spent free allowance, split off the credits card.
   'included_allowance_exhausted',
+  // ENG-1992 — a content-shaped rejection the server already repaired.
+  'content_recovery',
   'anton_error',
 ];
 
