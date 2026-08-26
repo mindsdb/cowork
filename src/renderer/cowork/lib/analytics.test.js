@@ -43,6 +43,17 @@ function mockFetch() {
   return fn;
 }
 
+// Fire-and-forget helpers (like trackDataSourceConnected) return nothing, so
+// wait for the POST rather than awaiting the call.
+const sentEvent = async (fetchMock, name) => {
+  await vi.waitFor(() =>
+    expect(
+      fetchMock.mock.calls.map((c) => JSON.parse(c[1].body)).some((b) => b.event === name)
+    ).toBe(true)
+  );
+  return fetchMock.mock.calls.map((c) => JSON.parse(c[1].body)).find((b) => b.event === name);
+};
+
 // Minimal unsigned JWT — decodeJwtPayload only base64url-decodes the middle
 // segment, so header/signature are irrelevant.
 function fakeJwt(payload) {
@@ -581,17 +592,6 @@ describe('is_internal on captured events (ENG-672)', () => {
 // values are the whole point of these two events, so they are pinned on the
 // wire, not just at the call site.
 describe('billing + provisioning events (ENG-1533)', () => {
-  // Fire-and-forget helpers (like trackDataSourceConnected) return nothing, so
-  // wait for the POST rather than awaiting the call.
-  const sentEvent = async (fetchMock, name) => {
-    await vi.waitFor(() =>
-      expect(
-        fetchMock.mock.calls.map((c) => JSON.parse(c[1].body)).some((b) => b.event === name)
-      ).toBe(true)
-    );
-    return fetchMock.mock.calls.map((c) => JSON.parse(c[1].body)).find((b) => b.event === name);
-  };
-
   it('billing_opened carries the trigger that sent the user', async () => {
     const fetchMock = mockFetch();
     const { trackBillingOpened } = await importAnalytics();
@@ -667,15 +667,6 @@ describe('billing + provisioning events (ENG-1533)', () => {
 // previously no way to measure how often a turn dies, or correlate it with a
 // code/model/conversation.
 describe('chat_turn_failed', () => {
-  const sentEvent = async (fetchMock, name) => {
-    await vi.waitFor(() =>
-      expect(
-        fetchMock.mock.calls.map((c) => JSON.parse(c[1].body)).some((b) => b.event === name)
-      ).toBe(true)
-    );
-    return fetchMock.mock.calls.map((c) => JSON.parse(c[1].body)).find((b) => b.event === name);
-  };
-
   it('carries the wire code so failures are groupable by reason', async () => {
     const fetchMock = mockFetch();
     const { trackTurnFailed } = await importAnalytics();

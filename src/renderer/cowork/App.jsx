@@ -1117,21 +1117,25 @@ function AppCore() {
       code: event?.code,
       isConfigError: isAntonConfigError(message, event),
     }));
-    // Unlike fireFirstResponse (once per user), this fires on every failed
-    // turn — the failure rate had no measurement at all before this.
-    trackTurnFailed(cid, event);
     activeStreamCtrlRef.current = null;
     activeScratchpadRef.current = null;
     activeStreamingTaskIdRef.current = null;
     ids.forEach((id) => markInFlightDone(id));
 
     const loaded = cid ? await loadSessionMessagesWithRetry(cid) : null;
+    // A stream that merely dropped mid-answer can still have finished on the
+    // server — the reload then carries no error message. Gating on the same
+    // check the UI uses means a turn the user actually saw succeed doesn't
+    // also count as a failure. Unlike fireFirstResponse (once per user), this
+    // fires on every failed turn — the failure rate had no measurement at
+    // all before this.
+    const hasError = loaded
+      ? loaded.messages.some((m) => m.role === 'error' || m.role === 'provider_required')
+      : true;
+    if (hasError) trackTurnFailed(cid, event);
     setTasks((prev) => prev.map((t) => {
       if (!ids.includes(t.id)) return t;
       if (loaded) {
-        const hasError = loaded.messages.some(
-          (m) => m.role === 'error' || m.role === 'provider_required',
-        );
         return {
           ...t,
           status: hasError ? 'error' : 'idle',

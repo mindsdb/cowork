@@ -12,6 +12,10 @@ const spies = vi.hoisted(() => ({
   // unavailable result, which the render ignores for locally-present tasks);
   // the deep-link test overrides it to control loader resolution.
   fetchSessionResult: vi.fn(async () => ({ status: 'unavailable', code: 0 })),
+  // Backs loadSessionMessagesWithRetry's reload after a stream error — empty
+  // by default (a turn that recovered), so a test that wants trackTurnFailed
+  // to fire on a real failure overrides it with an error-role message.
+  fetchSession: vi.fn(async () => ({ messages: [] })),
 }));
 
 // The live stream handles are captured per streamMessage call so the test can
@@ -26,7 +30,7 @@ vi.mock('./api', async (importOriginal) => ({
     { id: 'conv-a', title: 'Alpha task', messages: [], status: 'idle', projectName: 'general' },
     { id: 'conv-b', title: 'Beta task', messages: [], status: 'idle', projectName: 'general' },
   ]),
-  fetchSession: vi.fn(async () => ({ messages: [] })),
+  fetchSession: (...args) => spies.fetchSession(...args),
   fetchSessionResult: (...args) => spies.fetchSessionResult(...args),
   fetchConversationList: vi.fn(async () => []),
   fetchProjects: vi.fn(async () => [{ name: 'general', path: '/tmp/general' }]),
@@ -230,6 +234,8 @@ beforeEach(() => {
   spies.fetchInFlightStatus.mockImplementation(async () => ({ in_flight: false }));
   spies.fetchSessionResult.mockReset();
   spies.fetchSessionResult.mockImplementation(async () => ({ status: 'unavailable', code: 0 }));
+  spies.fetchSession.mockReset();
+  spies.fetchSession.mockImplementation(async () => ({ messages: [] }));
 });
 
 describe('composer send while a question is pending', () => {
@@ -652,6 +658,12 @@ describe('turn failure telemetry', () => {
     const user = userEvent.setup();
     const composer = await openTask(user);
 
+    // The reload after the error must show the failure persisted server-side
+    // for trackTurnFailed to count it — see the recovered-turn test below.
+    spies.fetchSession.mockImplementation(async () => ({
+      messages: [{ role: 'error', content: 'boom' }],
+    }));
+
     await send(user, composer, 'do something');
     const handle = await waitForStream();
 
@@ -667,6 +679,24 @@ describe('turn failure telemetry', () => {
     const secondHandle = await waitForStream(handle);
     await act(async () => {
       secondHandle.opts.onError('aborted', { code: 'cancelled' });
+      await Promise.resolve();
+    });
+
+    expect(trackTurnFailed).not.toHaveBeenCalled();
+  });
+
+  it('does not count a turn as failed when the reload shows it actually finished', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+
+    // Default mock: the reload comes back with no error message — the
+    // stream dropped mid-answer, but the server had already finished the
+    // turn, so the user sees a normal answer and this must not count.
+    await send(user, composer, 'do something');
+    const handle = await waitForStream();
+
+    await act(async () => {
+      handle.opts.onError('boom', { code: 'anton_error' });
       await Promise.resolve();
     });
 

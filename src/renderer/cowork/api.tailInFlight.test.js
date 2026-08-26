@@ -36,13 +36,14 @@ describe('tailInFlight idle timeout (ENG-1717)', () => {
     const result = await new Promise((resolve) => {
       tailInFlight('conv-1', {
         idleTimeoutMs: 20,
-        onError: (message) => resolve({ kind: 'error', message }),
+        onError: (message, event) => resolve({ kind: 'error', message, event }),
         onDone: () => resolve({ kind: 'done' }),
       });
     });
 
     expect(result.kind).toBe('error');
     expect(result.message).toMatch(/stalled/i);
+    expect(result.event?.code).toBe('stalled');
   });
 
   it('still times out when the producer is silent but the stream keeps sending keepalives', async () => {
@@ -83,13 +84,33 @@ describe('tailInFlight idle timeout (ENG-1717)', () => {
     const result = await new Promise((resolve) => {
       tailInFlight('conv-1', {
         idleTimeoutMs: 20,
-        onError: (message) => resolve({ kind: 'error', message }),
+        onError: (message, event) => resolve({ kind: 'error', message, event }),
         onDone: () => resolve({ kind: 'done' }),
       });
     });
 
     expect(result.kind).toBe('error');
     expect(result.message).toMatch(/stalled/i);
+    expect(result.event?.code).toBe('stalled');
+  });
+
+  it('reports a reconnect_error code when the reader fails for a reason other than the idle timeout', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      body: { getReader: () => ({ read: async () => { throw new Error('network drop'); } }) },
+    })));
+
+    const result = await new Promise((resolve) => {
+      tailInFlight('conv-1', {
+        idleTimeoutMs: 10000,
+        onError: (message, event) => resolve({ kind: 'error', message, event }),
+        onDone: () => resolve({ kind: 'done' }),
+      });
+    });
+
+    expect(result.kind).toBe('error');
+    expect(result.event?.code).toBe('reconnect_error');
   });
 
   it('keeps the tail alive while real producer frames keep arriving past the idle window', async () => {

@@ -537,7 +537,7 @@ export function trackTokenCapHit(reason) {
   capture(EVENTS.TOKEN_CAP_HIT, { reason: reason || 'token_limit' });
 }
 
-// Fired on every turn that lands in an error state, so the failure rate is a
+// Fired on every chat-stream turn that lands in an error state, so the rate is a
 // measurable series instead of an anecdote. `event` is the same failure-meta
 // object the error bubble renders from — pull whatever it carries rather than
 // widening call sites just for telemetry. `code` defaults to 'unknown' (never

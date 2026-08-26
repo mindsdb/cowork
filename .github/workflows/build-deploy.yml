@@ -7,8 +7,10 @@
 #
 # The SPA is env-agnostic: it derives every MindsHub service URL from the page
 # origin at runtime (src/renderer/lib/mindsUrls.ts), so one image serves every dev
-# namespace and every PR env with no VITE build args. `-f Dockerfile.frontend`
-# selects the SPA build rather than the all-in-one ./Dockerfile.
+# namespace and every PR env with no VITE build args for service URLs — the one
+# exception is the PostHog token below, gated to production so staging and
+# PR-env builds ship analytics-disabled. `-f Dockerfile.frontend` selects the
+# SPA build rather than the all-in-one ./Dockerfile.
 #
 # ON PERMISSIONS. A called workflow can never exceed its caller's grant, and that
 # cap is checked when the workflow FILE IS LOADED, not when a job runs. A job here
@@ -71,12 +73,15 @@ jobs:
           # bakes a real PostHog key; the web SPA never did, so `capture()`'s own
           # `if (!POSTHOG_KEY) return` silently no-ops every analytics event on
           # every deployed web build, including this repo's own chat_turn_failed.
-          # Empty-string-safe: Dockerfile.frontend's ARG defaults to "" when unset,
-          # so a missing secret degrades to today's silent no-op rather than
-          # failing the build.
+          # Gated to production: this same job builds staging and every
+          # `pr-cowork-<n>` image, and capture() stamps no environment property,
+          # so an ungated token would mix staging/PR-env noise into the prod
+          # chat_turn_failed series with no way to filter it back out. Non-prod
+          # builds fall back to Dockerfile.frontend's empty ARG default, which
+          # degrades to today's silent no-op rather than failing the build.
           extra-build-args: >-
             -f Dockerfile.frontend
-            --build-arg VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN=${{ secrets.VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN }}
+            --build-arg VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN=${{ inputs.build-environment == 'production' && secrets.VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN || '' }}
           build-for-environment: ${{ inputs.build-environment }}
 
   scan:
