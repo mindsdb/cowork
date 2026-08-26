@@ -2141,6 +2141,13 @@ export default function ChatView({
                 // `requestId` is the one thing this bucket can still offer —
                 // the turn's own server-side correlation id, so a report of
                 // this generic message can be pinned to actual logs.
+                //
+                // Deliberately scoped to this bucket only: every carded code
+                // above (rate_limited, model_not_found, etc.) also hydrates
+                // `requestId` but doesn't render it — a card already tells
+                // the user what to do, so a raw id there would be noise, not
+                // help. A user who wants to report a CARDED failure still has
+                // nothing to quote; that's an intentional gap, not a bug.
                 return (
                   <AnswerTurn key={i} state="done" time={formatMetaTime(m.createdAt)} showActions={false} agentLabel={agentLabel}>
                     <Alert variant="danger">
