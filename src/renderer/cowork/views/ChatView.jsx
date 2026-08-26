@@ -31,13 +31,14 @@ import { FormErrorBoundary } from '../components/datavault/FormErrorBoundary';
 import { revealArtifact, exportArtifact, attachmentRawUrl, fetchHealth } from '../api';
 import { AttachmentThumbnail } from '../components/AttachmentThumbnail';
 import { normalizeArtifactRecord } from '../lib/artifactPaths';
+import { downloadArtifactFile } from '../lib/artifactDownload';
 import { latestSkillCardIndexByKey } from '../lib/skillCards';
 import { host, isWeb } from '../../platform/host';
 import { Crumb as CrumbButton, CrumbSep } from '../components/ui/Crumb';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { harnessLabel } from '../lib/agentLabel';
-import { artifactOpenTarget, isArtifactActionAvailable } from '../lib/artifactActions';
+import { artifactOpenTarget } from '../lib/artifactActions';
 import { revalidate as revalidateArtifacts, setArtifactsScope, useArtifactLiveness } from '../lib/artifactsStore';
 import { useOrgMode } from '../../lib/orgMode';
 import { modelLabel } from '../lib/settingsTransform';
@@ -602,9 +603,6 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
   // .docx), and HTML→HTML export can overwrite the source artifact in place.
   // A broken button is worse than no button — re-enable once ENG-1988 lands.
   const canExport = false;
-  const canReveal = isArtifactActionAvailable('reveal', {
-    orgMode, hasBridge: host.isElectron, published,
-  });
   const handleExport = async (fmt) => {
     setExportOpen(false);
     if (!canAct) {
@@ -699,13 +697,44 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
       revalidateAfterFailure();
     }
   };
+  const handleDownload = () => {
+    if (!canAct) {
+      showStatus('error', disabledReason || 'No artifact file path is available.');
+      return;
+    }
+    if (!downloadArtifactFile(artifact, { actionPath: path })) {
+      showStatus('error', 'This artifact has no serve URL yet.');
+      return;
+    }
+    showStatus('ok', 'Downloading…');
+  };
+  // One primary action button instead of an Open/Show-in-Finder pair: org
+  // mode is unchanged (always the published URL, external — there is no
+  // local file to reveal or download there). Locally, what the button does
+  // follows what the artifact actually supports — Preview for anything the
+  // in-app modal can render, otherwise Download (web, streams the file) or
+  // Show in Finder/Explorer (desktop, opens the containing FOLDER, not the
+  // file) — never both, and never a generic "Open" that hides which of the
+  // two it's about to do.
+  const primaryAction = orgMode
+    ? (openTarget === 'published'
+      ? { label: 'Open', onClick: handleOpen, tooltip: 'Open the published artifact' }
+      : null)
+    : canPreviewInline
+      ? { label: 'Preview', onClick: handleOpen, tooltip: canAct ? `Preview ${path}` : '' }
+      : host.isWeb
+        ? { label: 'Download', onClick: handleDownload, tooltip: canAct ? `Download ${path}` : '' }
+        // handleReveal already falls back from the Electron bridge to the
+        // server-side reveal endpoint and surfaces its own error, so this
+        // doesn't gate further on bridge availability the way the old
+        // Open button didn't either.
+        : { label: revealLabel, onClick: handleReveal, tooltip: canAct ? `${revealLabel}: ${path}` : '' };
   const previewText = artifact.preview?.[0]?.heading || artifact.preview?.[0]?.text || displayPath;
-  // Whole-card click → preview. The inner buttons (Show in Finder,
-  // Open, Title) all stopPropagation so their own handlers run
-  // instead of bubbling up to this. Disabled paths fall through to
-  // a status toast instead of opening, mirroring the prior button
-  // behaviour. Cursor + hover lift mark the entire surface as
-  // interactive at a glance.
+  // Whole-card click → preview. The inner buttons (the primary action,
+  // Title) all stopPropagation so their own handlers run instead of
+  // bubbling up to this. Disabled paths fall through to a status toast
+  // instead of opening, mirroring the prior button behaviour. Cursor +
+  // hover lift mark the entire surface as interactive at a glance.
   return (
     <Card
       as="div"
@@ -815,24 +844,15 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
             )}
           </div>
         )}
-        {!host.isWeb && canReveal && !deleted && (
-          <Tooltip content={canAct ? `${revealLabel}: ${path}` : ''}>
-            <SmallBtn disabled={!canAct} onClick={handleReveal} title={canAct ? undefined : (disabledReason || 'No file path')}>
-              {revealLabel}
-            </SmallBtn>
-          </Tooltip>
-        )}
-        {/* Org mode drops the file-path conditions entirely: there the button
-            opens the published URL, which has no local path behind it. */}
-        {!deleted && (orgMode ? openTarget === 'published' : (!host.isWeb || isHtml)) && (
-          <Tooltip content={orgMode ? 'Open the published artifact' : (canAct ? `Open ${path}` : '')}>
+        {!deleted && primaryAction && (
+          <Tooltip content={primaryAction.tooltip}>
             <SmallBtn
               primary
               disabled={!orgMode && !canAct}
-              onClick={handleOpen}
+              onClick={primaryAction.onClick}
               title={(orgMode || canAct) ? undefined : (disabledReason || 'No file path')}
             >
-              Open
+              {primaryAction.label}
             </SmallBtn>
           </Tooltip>
         )}
