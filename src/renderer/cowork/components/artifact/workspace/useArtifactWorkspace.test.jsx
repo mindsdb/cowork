@@ -54,6 +54,14 @@ beforeEach(() => {
 });
 
 describe('useArtifactWorkspace collaboration transport', () => {
+  it('does not report an endless load when a legacy card has no stable identity', async () => {
+    const { result } = renderHook(() => useArtifactWorkspace({ id: 'legacy-artifact' }, { open: true }));
+
+    await waitFor(() => expect(result.current.status).toBe('unsupported'));
+    expect(result.current.supported).toBe(false);
+    expect(api.loadArtifactSource).not.toHaveBeenCalled();
+  });
+
   it('uses local review on desktop even though desktop cards have a project id', async () => {
     const { result } = renderHook(() => useArtifactWorkspace(artifact, { open: true }));
 

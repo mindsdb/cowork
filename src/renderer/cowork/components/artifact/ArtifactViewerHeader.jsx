@@ -91,6 +91,19 @@ export function ArtifactViewerHeader({
     onDownload,
     onTrash,
   } = actions;
+  const workspaceLoading = workspace.status === 'idle' || workspace.status === 'loading';
+  const editDisabledReason = !workspace.supported
+    ? 'Refresh the artifact to load editing tools'
+    : workspaceLoading
+      ? 'Loading editing tools…'
+      : workspace.capabilities?.canEdit === false
+        ? 'Only the artifact owner can edit'
+        : 'This artifact cannot be edited here';
+  const reviewDisabledReason = !workspace.supported
+    ? 'Refresh the artifact to load review tools'
+    : workspaceLoading
+      ? 'Loading review tools…'
+      : 'Review is not available for this artifact';
   return (
     <div className="artifact-viewer-topbar" style={{
       flex: '0 0 auto',
@@ -120,14 +133,8 @@ export function ArtifactViewerHeader({
           onChange={workspace.setMode}
           canEdit={!!workspace.source && workspace.capabilities?.canEdit !== false}
           canReview={commentsEnabled}
-          editDisabledReason={workspace.status === 'idle' || workspace.status === 'loading'
-            ? 'Loading editing tools…'
-            : workspace.capabilities?.canEdit === false
-              ? 'Only the artifact owner can edit'
-              : 'This artifact cannot be edited here'}
-          reviewDisabledReason={workspace.status === 'idle' || workspace.status === 'loading'
-            ? 'Loading review tools…'
-            : 'Review is not available for this artifact'}
+          editDisabledReason={editDisabledReason}
+          reviewDisabledReason={reviewDisabledReason}
         />
       </div>
 
