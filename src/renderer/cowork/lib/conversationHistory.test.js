@@ -204,6 +204,13 @@ describe('failedEventMeta', () => {
       resetAt: null,
     });
   });
+
+  it('extracts the request id so a generic failure stays traceable', () => {
+    const meta = failedEventMeta([
+      { type: 'response.failed', code: 'anton_error', error: 'An unexpected error occurred.', request_id: 'corr-abc' },
+    ]);
+    expect(meta.requestId).toBe('corr-abc');
+  });
 });
 
 describe('hydrateMessagesFromServerEvents', () => {
@@ -227,6 +234,14 @@ describe('hydrateMessagesFromServerEvents', () => {
     ]);
     const err = out.find((m) => m.role === 'error');
     expect(err).toMatchObject({ content: 'Too many requests', code: 'rate_limited' });
+  });
+
+  it('carries the request id onto the error bubble', () => {
+    const out = hydrateMessagesFromServerEvents([
+      { role: 'assistant', content: '', events: [{ type: 'response.failed', code: 'anton_error', error: 'An unexpected error occurred.', request_id: 'corr-abc' }] },
+    ]);
+    const err = out.find((m) => m.role === 'error');
+    expect(err.requestId).toBe('corr-abc');
   });
 
   it('appends a provider_required bubble after a config failure', () => {

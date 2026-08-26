@@ -22,6 +22,7 @@ vi.mock('../../platform/host', () => ({
 }));
 
 import ChatView from './ChatView';
+import { hydrateMessagesFromServerEvents } from '../lib/conversationHistory';
 
 const taskWith = (messages) => ({
   id: 'conv-a',
@@ -287,6 +288,42 @@ describe('anton_error / unmapped failure fallback', () => {
     );
     const alert = screen.getByRole('alert');
     expect(alert).toHaveTextContent('An unexpected error occurred.');
+  });
+
+  it('surfaces the request id when the failure carries one, so a report is traceable', () => {
+    render(
+      <ChatView task={taskWith(failedTurn(
+        'anton_error', 'An unexpected error occurred.', { requestId: 'corr-abc' },
+      ))} />,
+    );
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent('corr-abc');
+  });
+
+  it('omits the reference line when the failure carries no request id', () => {
+    render(
+      <ChatView task={taskWith(failedTurn('anton_error', 'An unexpected error occurred.'))} />,
+    );
+    const alert = screen.getByRole('alert');
+    expect(alert).not.toHaveTextContent('Reference:');
+  });
+
+  it('survives a reload: a persisted response.failed carrying request_id still renders the Reference', () => {
+    // The case that matters most: the user refreshes, THEN goes to copy the
+    // id for support. Spans the real hydrate function, not a hand-built
+    // message shape, so a drift between what conversationHistory.js extracts
+    // and what ChatView reads would be caught here.
+    const messages = hydrateMessagesFromServerEvents([
+      {
+        role: 'assistant', content: '', events: [{
+          type: 'response.failed', code: 'anton_error',
+          error: 'An unexpected error occurred.', request_id: 'corr-reload',
+        }],
+      },
+    ]);
+    render(<ChatView task={taskWith(messages)} />);
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent('corr-reload');
   });
 });
 

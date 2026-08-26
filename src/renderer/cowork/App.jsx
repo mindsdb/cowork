@@ -1159,6 +1159,7 @@ function AppCore() {
             retryAfter: typeof event?.retry_after === 'number' ? event.retry_after : null,
             retryAt: typeof event?.retry_at === 'string' ? event.retry_at : null,
             resetAt: typeof event?.reset_at === 'string' ? event.reset_at : null,
+            requestId: typeof event?.request_id === 'string' ? event.request_id : null,
           };
       return {
         ...t,
