@@ -32,6 +32,7 @@ vi.mock('../../platform/host', () => ({
 
 import ChatView from './ChatView';
 import { setOrgMode } from '../../lib/orgMode';
+import { host } from '../../platform/host';
 
 const PUBLISHED_URL = 'https://view.staging.mindshub.ai/view/97901f016/845b3777';
 
@@ -67,7 +68,10 @@ const taskWithArtifact = (step) => ({
   ],
 });
 
-beforeEach(() => openExternal.mockClear());
+beforeEach(() => {
+  openExternal.mockClear();
+  host.openPath.mockClear();
+});
 afterEach(() => setOrgMode(false));
 
 describe('inline artifact banner in org mode', () => {
@@ -101,6 +105,31 @@ describe('inline artifact banner on desktop', () => {
 
     await user.click(screen.getByRole('button', { name: 'Open' }));
 
+    expect(openExternal).not.toHaveBeenCalled();
+  });
+});
+
+// ENG-1998: an image artifact (create_artifact(type="image")) rendered with a
+// generic doc icon and, on "Open", fell straight through to the OS file
+// handler — canPreviewInline never recognized image extensions, so the card
+// never offered an in-app preview the way it already did for HTML/md/txt/csv.
+describe('inline artifact banner for an image artifact', () => {
+  const imageStep = () => artifactStep({
+    ext: '.png',
+    action: 'image',
+    file_path: '/proj/.anton/artifacts/logo/logo.png',
+    path: '/proj/.anton/artifacts/logo/logo.png',
+    publishedUrl: '',
+  });
+
+  it('opens the in-app preview rather than the OS file handler', async () => {
+    setOrgMode(false);
+    const user = userEvent.setup();
+    render(<ChatView task={taskWithArtifact(imageStep())} />);
+
+    await user.click(screen.getByRole('button', { name: 'Open' }));
+
+    expect(host.openPath).not.toHaveBeenCalled();
     expect(openExternal).not.toHaveBeenCalled();
   });
 });

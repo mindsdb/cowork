@@ -17,9 +17,11 @@ import {
   previewArtifact,
   unpublishArtifact,
   deleteArtifact,
+  artifactServeUrl,
 } from '../../api';
 import { downloadArtifactFile } from '../../lib/artifactDownload';
-import { isPublishableArtifact, BACKEND_ARTIFACT_TYPES, publishBlockedReason } from '../../lib/artifactKinds';
+import { isPublishableArtifact, isImageArtifact, BACKEND_ARTIFACT_TYPES, publishBlockedReason } from '../../lib/artifactKinds';
+import { useBlobImageSrc } from '../AttachmentThumbnail';
 import { Modal } from '../ui/Modal';
 import { Button, Menu, Tooltip, Spinner } from '../ui';
 import { ConfirmModal } from '../ConfirmModal';
@@ -359,6 +361,19 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
     : '';
   const publishable = isPublishableArtifact(artifact);
 
+  // Image artifacts skip the HTML mount pipeline entirely (there's no server
+  // dir to register for iframe serving) and load straight from the artifact's
+  // serve URL — same CSP workaround as AttachmentThumbnail (fetch + blob:,
+  // since a direct loopback <img src> is blocked). `_withVersion` busts the
+  // fetch on a content change or a manual reload, matching the iframe/text
+  // cache-busting below.
+  const isImage = isImageArtifact(artifact);
+  const imageRawUrl = isImage ? artifactServeUrl(artifact) : '';
+  const imageUrl = imageRawUrl
+    ? _withVersion(imageRawUrl, `${artifact?.mtime ?? 0}.${reloadNonce}`)
+    : '';
+  const { src: imageSrc, failed: imageFailed } = useBlobImageSrc({ url: imageUrl || null });
+
   // Reset the painted flag whenever the mounted URL changes so the
   // placeholder reappears for the new content.
   useEffect(() => { setIframeReady(false); }, [previewUrl]);
@@ -405,6 +420,12 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
         })
         .catch((e) => { if (!cancelled) setErr(e?.message || 'Could not load preview'); })
         .finally(() => { if (!cancelled) setLoading(false); });
+      return () => { cancelled = true; };
+    }
+    if (isImage) {
+      // The `imageSrc` hook above does its own fetch keyed on `imageUrl`;
+      // nothing to mount server-side for a plain image file.
+      setLoading(false);
       return () => { cancelled = true; };
     }
     // Cache-buster for the iframe so a content change (or just reopening /
@@ -466,7 +487,7 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, artifact?.path, artifact?.mtime, actionPath, hasActionPath, disabledReason, isText, reloadNonce, commentsEnabled]);
+  }, [open, artifact?.path, artifact?.mtime, actionPath, hasActionPath, disabledReason, isText, isImage, reloadNonce, commentsEnabled]);
 
   // Parse CSV → GFM pipe table once per loaded text. We cap at
   // CSV_PREVIEW_ROW_LIMIT data rows to keep the markdown renderer
@@ -797,6 +818,22 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
                 </div>
               )}
             </div>
+          )
+        ) : isImage ? (
+          imageFailed ? (
+            <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', padding: 28 }}>
+              <div style={{ color: 'var(--ink-3)', fontSize: 13, fontFamily: FONT_BODY }}>Could not load image.</div>
+            </div>
+          ) : imageSrc ? (
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+              <img
+                src={imageSrc}
+                alt={title || 'Artifact preview'}
+                style={{ maxWidth: '100%', maxHeight: '100%', width: 'auto', height: 'auto', objectFit: 'contain' }}
+              />
+            </div>
+          ) : (
+            <PreviewPlaceholder />
           )
         ) : (
           // src= (not srcdoc) so relative asset refs resolve against the

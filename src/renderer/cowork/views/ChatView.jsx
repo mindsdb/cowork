@@ -28,9 +28,10 @@ import AskUserCard from '../components/AskUserCard';
 import { DataVaultFormPanel } from '../components/datavault/DataVaultFormPanel';
 import { getForm as getDataVaultForm, setForm as setDataVaultForm, subscribe as subscribeDataVaultForm, clearForm as clearDataVaultForm } from '../components/datavault/formStore';
 import { FormErrorBoundary } from '../components/datavault/FormErrorBoundary';
-import { revealArtifact, exportArtifact, attachmentRawUrl, fetchHealth } from '../api';
-import { AttachmentThumbnail } from '../components/AttachmentThumbnail';
+import { revealArtifact, exportArtifact, attachmentRawUrl, artifactServeUrl, fetchHealth } from '../api';
+import { AttachmentThumbnail, useBlobImageSrc } from '../components/AttachmentThumbnail';
 import { normalizeArtifactRecord } from '../lib/artifactPaths';
+import { isImageArtifact } from '../lib/artifactKinds';
 import { latestSkillCardIndexByKey } from '../lib/skillCards';
 import { host, isWeb } from '../../platform/host';
 import { Crumb as CrumbButton, CrumbSep } from '../components/ui/Crumb';
@@ -444,6 +445,7 @@ function artifactStepToCard(step, projectPath) {
     publishedUrl: data.publishedUrl || '',
     projectId: data.projectId || '',
     projectName: data.projectName || '',
+    serveUrl: data.serveUrl || '',
     preview: [],
   }, projectPath);
   return {
@@ -570,7 +572,13 @@ function ArtifactCard({ artifact, onOpen }) {
   const _INLINE_TEXT_EXTS = ['.md', '.txt', '.csv'];
   const isInlineText = _INLINE_TEXT_EXTS.includes(lcExt)
     || _INLINE_TEXT_EXTS.some((e) => lcPath.endsWith(e));
-  const canPreviewInline = isHtml || isInlineText;
+  const isImage = isImageArtifact(artifact);
+  const canPreviewInline = isHtml || isInlineText || isImage;
+  // Thumbnail bytes for the icon slot — same CSP workaround AttachmentThumbnail
+  // uses (loopback <img src> is blocked; fetch + blob: URL is not). '' when not
+  // an image, or before the artifact card carries a serveUrl (org mode, or the
+  // live-turn card streamed in ahead of ChatView.jsx's serveUrl passthrough).
+  const { src: thumbSrc } = useBlobImageSrc({ url: isImage ? (artifactServeUrl(artifact) || null) : null });
   const published = !!artifact.publishedUrl;
   const openTarget = artifactOpenTarget({
     orgMode, published, canPreviewInline, hasBridge: host.isElectron || !host.isWeb,
@@ -682,8 +690,12 @@ function ArtifactCard({ artifact, onOpen }) {
       aria-label={canAct ? `Open preview: ${artifact.title}` : disabledReason || 'No file path'}
       className="grid grid-cols-[64px_1fr_auto] items-center gap-4"
     >
-      <div className="w-16 h-16 bg-surface-2 rounded-lg grid place-items-center text-accent">
-        {artifact.icon === 'doc' ? Ico.doc(26) : Ico.sparkle(26)}
+      <div className="w-16 h-16 bg-surface-2 rounded-lg grid place-items-center text-accent overflow-hidden">
+        {thumbSrc ? (
+          <img src={thumbSrc} alt={artifact.title || 'Artifact thumbnail'} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+        ) : (
+          isImage ? Ico.image(26) : (artifact.icon === 'doc' ? Ico.doc(26) : Ico.sparkle(26))
+        )}
       </div>
       <div className="flex flex-col gap-[3px] min-w-0">
         {/* Title doubles as the primary "open preview" affordance —
