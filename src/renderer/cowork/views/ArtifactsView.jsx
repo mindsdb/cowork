@@ -26,7 +26,7 @@ import { isArtifactActionAvailable, needsClientUnpublishBeforeDelete } from '../
 import { deleteArtifactAndSync } from '../lib/artifactsStore';
 import { useOrgMode } from '../../lib/orgMode';
 import { downloadArtifactFile } from '../lib/artifactDownload';
-import { isHtmlArtifact, isPublishableArtifact, isBackendArtifact, publishBlockedReason } from '../lib/artifactKinds';
+import { isHtmlArtifact, isPublishableArtifact, isBackendArtifact } from '../lib/artifactKinds';
 import { trackArtifactPublished } from '../lib/analytics';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
 import { ArtifactViewer } from '../components/artifact';
@@ -383,9 +383,6 @@ function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onReveal, onDown
   const isHtml = isHtmlArtifact(artifact);
   const orgMode = useOrgMode();
   const published = !!artifact.publishedUrl;
-  // Non-empty when this artifact's type may never be published (e.g.
-  // fullstack-stateful-app). Keeps the item visible but disabled.
-  const publishBlock = publishBlockedReason(artifact);
   const items = [
     {
       id: 'open',
@@ -419,15 +416,11 @@ function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onReveal, onDown
       icon: Ico.refresh(13),
       onClick: onUpdate,
     },
-    // Show Share for blocked types too (e.g. fullstack-stateful-app) so it
-    // renders disabled with a reason tooltip rather than vanishing.
-    !published && (isPublishableArtifact(artifact) || publishBlock) && {
+    !published && isPublishableArtifact(artifact) && {
       id: 'publish',
       label: 'Share',
       icon: Ico.upload(13),
       onClick: onPublish,
-      disabled: !!publishBlock,
-      title: publishBlock || undefined,
     },
     published && {
       id: 'unpublish',
@@ -722,11 +715,6 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
   // a protected artifact pre-fills its existing password.
   const handlePublish = (artifact) => {
     if (!artifact?.path || busyPaths.has(artifact.path)) return Promise.resolve();
-    const blocked = publishBlockedReason(artifact);
-    if (blocked) {
-      showToast({ kind: 'error', message: blocked });
-      return Promise.resolve();
-    }
     if (!isPublishableArtifact(artifact)) {
       showToast({ kind: 'error', message: 'Only HTML and Markdown artifacts can be shared.' });
       return Promise.resolve();
@@ -1015,16 +1003,10 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
               onClick: () => handleUnpublish(a),
             });
           } else if (isHtml) {
-            // Forbidden types (e.g. fullstack-stateful-app) keep the item
-            // visible but disabled so the user sees why; handlePublish guards
-            // it too. A disabled item never fires onClick.
-            const blocked = publishBlockedReason(a);
             items.push({
               id: 'publish',
               label: busyA ? 'Sharing…' : 'Share',
               icon: Ico.power(13),
-              disabled: !!blocked,
-              title: blocked || undefined,
               onClick: () => handlePublish(a),
             });
           }

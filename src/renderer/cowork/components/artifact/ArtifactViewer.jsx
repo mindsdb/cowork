@@ -19,7 +19,7 @@ import {
 } from '../../api';
 import { deleteArtifactAndSync } from '../../lib/artifactsStore';
 import { downloadArtifactFile } from '../../lib/artifactDownload';
-import { isPublishableArtifact, BACKEND_ARTIFACT_TYPES, publishBlockedReason } from '../../lib/artifactKinds';
+import { isPublishableArtifact, BACKEND_ARTIFACT_TYPES } from '../../lib/artifactKinds';
 import { Modal } from '../ui/Modal';
 import { Button, Menu, Tooltip, Spinner } from '../ui';
 import { ConfirmModal } from '../ConfirmModal';
@@ -258,9 +258,6 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
   const disabledReason = artifact?.actionDisabledReason || '';
   const hasActionPath = !!actionPath && !disabledReason;
   const isBackendArtifact = BACKEND_ARTIFACT_TYPES.has(artifact?.type);
-  // Non-empty when this artifact's type may never be published (e.g.
-  // fullstack-stateful-app). Drives the Publish action's disabled state.
-  const publishBlock = publishBlockedReason(artifact);
   // Backend artifacts treat the folder, not the entry html, as the
   // "thing" the user opens in their OS or browser. Prefer the server's
   // `folder` (the artifact's slug dir) — for fullstack apps the primary
@@ -702,13 +699,10 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
             </Tooltip>
           )}
           {publishable && (
-            // Block only the Publish direction for forbidden types (e.g.
-            // fullstack-stateful-app); once published, the menu stays usable
-            // so the artifact can still be unpublished.
             <PublishMenu
               controller={pub}
-              disabled={!hasActionPath || (!isPublished && !!publishBlock)}
-              disabledReason={(!isPublished && publishBlock) ? publishBlock : disabledReason}
+              disabled={!hasActionPath}
+              disabledReason={disabledReason}
             />
           )}
           <Menu
