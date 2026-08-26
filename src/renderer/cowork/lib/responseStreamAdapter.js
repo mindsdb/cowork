@@ -152,6 +152,15 @@ export function truncateLabel(text) {
   return last.length > 80 ? last.slice(0, 77) + '…' : last || 'Reasoning…';
 }
 
+/** The tab id of the currently-open (in-progress) scratchpad cell in a reduced
+ *  step list, or null when none is open. The live-stream orchestration reads
+ *  this after each reduceStream so the Stop button can cancel anton's current
+ *  cell, not just abort our stream. */
+export function findOpenScratchpadTabId(steps) {
+  const open = (steps || []).find((s) => s.status === 'in_progress' && s._isScratchpad);
+  return open?._scratchpadTabId || null;
+}
+
 /** A tool call is starting mid-turn — compute the currentThought/bodyText
  *  patch for it.
  *
