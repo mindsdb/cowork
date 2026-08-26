@@ -18,7 +18,6 @@ import {
 import {
   codingApi,
   type CodeProject,
-  type EngineCapability,
   type PermissionMode,
   type PlaybookStatus,
   type ProjectCommand,
@@ -31,6 +30,7 @@ import { DEFAULT_CODING_AGENT_MODEL, preferredCodingModel } from './defaults';
 import { isPermissionMode, PERMISSION_OPTIONS } from './permissions';
 import { ProjectConnectedTools } from './ProjectConnectedTools';
 import { ProjectSkillSelector } from './ProjectSkillSelector';
+import { useCodingCatalog, type CodingCatalog } from './useCodingCatalog';
 
 const supportedProviders = new Set(['github', 'linear']);
 
@@ -74,6 +74,7 @@ export function ProjectSettingsModal({
   defaultModel = DEFAULT_CODING_AGENT_MODEL,
   models = [],
   modelMeta = {},
+  catalog,
 }: {
   open: boolean;
   suspended?: boolean;
@@ -88,7 +89,10 @@ export function ProjectSettingsModal({
   defaultModel?: string;
   models?: ModelPickerSource[];
   modelMeta?: ModelPickerMeta;
+  catalog?: CodingCatalog;
 }) {
+  const localCatalog = useCodingCatalog(catalog === undefined);
+  const codingCatalog = catalog || localCatalog;
   const [name, setName] = useState('');
   const [folders, setFolders] = useState<ProjectFolder[]>([]);
   const [commandDrafts, setCommandDrafts] = useState<Record<string, string>>({});
@@ -103,8 +107,6 @@ export function ProjectSettingsModal({
   const [projectEngineId, setProjectEngineId] = useState(defaultEngineId);
   const [projectModel, setProjectModel] = useState(defaultModel);
   const [projectPermission, setProjectPermission] = useState<PermissionMode>('supervised');
-  const [engines, setEngines] = useState<EngineCapability[]>([]);
-  const [engineModelIds, setEngineModelIds] = useState<string[]>([]);
   const [error, setError] = useState('');
   const [playbookBusy, setPlaybookBusy] = useState(false);
   const [playbookStatus, setPlaybookStatus] = useState<PlaybookStatus | null>(null);
@@ -163,7 +165,6 @@ export function ProjectSettingsModal({
     })));
     setEnvironmentText(Object.entries(project?.environment.variables || {}).map(([key, value]) => `${key}=${value}`).join('\n'));
     setPortNames((project?.environment.port_names || ['PORT']).join(', '));
-    setEngineModelIds([]);
     setProjectEngineId(project?.default_engine_id || defaultEngineId);
     setProjectModel(project?.default_model || defaultModel);
     setProjectPermission(project?.permission_mode || 'supervised');
@@ -199,26 +200,13 @@ export function ProjectSettingsModal({
   }, [open]);
 
   useEffect(() => {
-    if (!open) return undefined;
-    let active = true;
-    codingApi.engines().then((items) => {
-      if (active) setEngines(items);
-    }).catch(() => {
-      if (active) setEngines([]);
-    });
-    return () => { active = false; };
-  }, [open]);
-
-  useEffect(() => {
     if (!open || !projectEngineId) return undefined;
-    let active = true;
-    codingApi.models(projectEngineId).then(({ items }) => {
-      if (active) setEngineModelIds(items);
-    }).catch(() => {
-      if (active) setEngineModelIds([]);
-    });
-    return () => { active = false; };
-  }, [open, projectEngineId]);
+    void codingCatalog.loadModels(projectEngineId);
+    return undefined;
+  }, [codingCatalog.loadModels, open, projectEngineId]);
+
+  const engines = codingCatalog.engines;
+  const engineModelIds = codingCatalog.modelIds(projectEngineId) || [];
 
   useEffect(() => {
     if (!engineModelIds.length) return;
@@ -448,7 +436,7 @@ export function ProjectSettingsModal({
             <summary>Task defaults and environment <span>{Ico.chevDown(11)}</span></summary>
             <div className="code-project-advanced__body">
               <div className="code-project-defaults">
-                <label><span>Agent</span><Select value={projectEngineId} onValueChange={(value) => { setProjectEngineId(value); setEngineModelIds([]); }} options={availableEngines.map((engine) => ({ value: engine.id, label: engine.label }))} size="sm" ariaLabel="Default coding agent" /></label>
+                <label><span>Agent</span><Select value={projectEngineId} onValueChange={setProjectEngineId} options={availableEngines.map((engine) => ({ value: engine.id, label: engine.label }))} size="sm" ariaLabel="Default coding agent" /></label>
                 <label><span>Model</span><ModelSelect value={projectModel} onValueChange={setProjectModel} options={projectModelOptions} size="sm" ariaLabel="Default coding model" placeholder="Select model" emptyText="No coding models available" onOpenChange={(opened: boolean) => { if (opened) void modelMeta.onRefresh?.(); }} /></label>
                 <label><span>Permissions</span><Select value={projectPermission} onValueChange={(value) => {
                   if (isPermissionMode(value)) setProjectPermission(value);

@@ -12,7 +12,6 @@ import {
   codingApi,
   type CodeProject,
   type CreateCodeTaskInput,
-  type EngineCapability,
   type InputReference,
   type PermissionMode,
   type ProjectFolderInspection,
@@ -20,6 +19,7 @@ import {
 } from './api';
 import { preferredCodingModel } from './defaults';
 import { mergeReferences, referencesFromFiles } from './PromptReferences';
+import { useCodingCatalog, type CodingCatalog } from './useCodingCatalog';
 
 
 interface NewTaskDraftOptions {
@@ -33,6 +33,7 @@ interface NewTaskDraftOptions {
   onProjectChange: (id: string | null) => void;
   onOpenProjectSettings: () => void;
   onCreate: (args: CreateCodeTaskInput) => Promise<void>;
+  catalog?: CodingCatalog;
 }
 
 
@@ -65,15 +66,14 @@ export function useNewTaskDraft({
   onProjectChange,
   onOpenProjectSettings,
   onCreate,
+  catalog,
 }: NewTaskDraftOptions) {
+  const localCatalog = useCodingCatalog(catalog === undefined);
+  const codingCatalog = catalog || localCatalog;
   const [prompt, setPrompt] = useState('');
   const [catalogError, setCatalogError] = useState('');
-  const [engines, setEngines] = useState<EngineCapability[]>([]);
   const [engineId, setEngineId] = useState(defaultEngineId);
   const [model, setModel] = useState(defaultModel);
-  const [engineLoading, setEngineLoading] = useState(true);
-  const [engineModelIds, setEngineModelIds] = useState<string[] | null>(null);
-  const [modelsLoading, setModelsLoading] = useState(true);
   const [foldersLoading, setFoldersLoading] = useState(false);
   const [folderIssue, setFolderIssue] = useState('');
   const [standaloneFolderPath, setStandaloneFolderPath] = useState('');
@@ -88,39 +88,21 @@ export function useNewTaskDraft({
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const selectedProject = projects.find((project) => project.id === selectedProjectId) || null;
 
-  useEffect(() => {
-    let active = true;
-    setEngineLoading(true);
-    setCatalogError('');
-    codingApi.engines().then((items) => {
-      if (!active) return;
-      setEngines(items);
-      const preferred = items.find((item) => item.id === defaultEngineId && item.available)
-        || items.find((item) => item.id === 'codex' && item.available)
-        || items.find((item) => item.available);
-      if (preferred) {
-        setEngineId((current) => items.some((item) => item.id === current && item.available) ? current : preferred.id);
-      }
-    }).catch((reason) => {
-      if (active) setCatalogError(reason instanceof Error ? reason.message : 'Could not load coding agents.');
-    }).finally(() => { if (active) setEngineLoading(false); });
-    return () => { active = false; };
-  }, [defaultEngineId]);
+  const engines = codingCatalog.engines;
+  const engineLoading = codingCatalog.enginesLoading;
+  const engineModelIds = codingCatalog.modelIds(engineId);
+  const modelsLoading = codingCatalog.modelsLoading(engineId);
 
   useEffect(() => {
-    let active = true;
-    setModelsLoading(true);
-    setEngineModelIds(null);
-    codingApi.models(engineId).then(({ items }) => {
-      if (!active) return;
-      setEngineModelIds(items);
-    }).catch((reason) => {
-      if (!active) return;
-      setCatalogError(reason instanceof Error ? reason.message : 'Could not load coding models.');
-      setEngineModelIds([]);
-    }).finally(() => { if (active) setModelsLoading(false); });
-    return () => { active = false; };
-  }, [engineId]);
+    const preferred = engines.find((item) => item.id === defaultEngineId && item.available)
+      || engines.find((item) => item.id === 'codex' && item.available)
+      || engines.find((item) => item.available);
+    if (preferred) {
+      setEngineId((current) => engines.some((item) => item.id === current && item.available) ? current : preferred.id);
+    }
+  }, [defaultEngineId, engines]);
+
+  useEffect(() => { void codingCatalog.loadModels(engineId); }, [codingCatalog.loadModels, engineId]);
 
   useEffect(() => {
     let active = true;
@@ -286,7 +268,7 @@ export function useNewTaskDraft({
   return {
     prompt,
     setPrompt,
-    catalogError,
+    catalogError: catalogError || codingCatalog.error || codingCatalog.modelError(engineId),
     engineId,
     setEngineId,
     model,

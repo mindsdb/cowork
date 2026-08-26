@@ -17,6 +17,7 @@ import { SkillDetailModal } from './SkillDetailModal';
 import { parseDeveloperSourceUrl } from './developerTools';
 import { TaskSourceLinks } from './TaskSourceLinks';
 import { useNewTaskDraft } from './useNewTaskDraft';
+import type { CodingCatalog } from './useCodingCatalog';
 
 export function NewTaskPanel({
   busy,
@@ -34,6 +35,7 @@ export function NewTaskPanel({
   onProjectConnectionsChange,
   onCreateProject = onOpenProjectSettings,
   onCreate,
+  catalog,
 }: {
   busy: boolean;
   error: string;
@@ -50,10 +52,11 @@ export function NewTaskPanel({
   onProjectConnectionsChange?: () => Promise<void> | void;
   onCreateProject?: () => void;
   onCreate: (args: CreateCodeTaskInput) => Promise<void>;
+  catalog?: CodingCatalog;
 }) {
   const draft = useNewTaskDraft({
     busy, defaultEngineId, defaultModel, models, modelMeta,
-    projects, selectedProjectId, onProjectChange, onOpenProjectSettings, onCreate,
+    projects, selectedProjectId, onProjectChange, onOpenProjectSettings, onCreate, catalog,
   });
   const {
     prompt, setPrompt, catalogError,
