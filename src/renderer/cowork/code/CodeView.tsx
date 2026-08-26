@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ConnectorConnection } from '../api';
 import Alert from '../components/ui/Alert';
 import Spinner from '../components/ui/Spinner';
 import { ConfirmModal } from '../components/ConfirmModal';
-import { codingApi, type CodingSession, type EngineCommand } from './api';
+import { codingApi, type CodingSession } from './api';
 import { ApprovalCard } from './ApprovalCard';
 import { CodeComposer } from './CodeComposer';
 import { CodeConnectorsView } from './CodeConnectorsView';
@@ -24,6 +24,7 @@ import { useCodeTaskActions } from './useCodeTaskActions';
 import { useCodeTaskList } from './useCodeTaskList';
 import { useQueuedInstructionResume } from './useQueuedInstructionResume';
 import { useCodeProjects } from './useCodeProjects';
+import { useCodingCatalog } from './useCodingCatalog';
 import { codeFixtureReviewOpen } from './fixtures';
 import { isActiveStatus, promptHistory } from './presentation';
 import type { ModelPickerMeta, ModelPickerSource } from '../lib/modelPickerOptions';
@@ -72,7 +73,6 @@ export default function CodeView({
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(codeFixtureReviewOpen);
   const [terminalOpen, setTerminalOpen] = useState(false);
-  const [commands, setCommands] = useState<EngineCommand[]>([]);
   const [controlsOpen, setControlsOpen] = useState(false);
   const [extensionsOpen, setExtensionsOpen] = useState(false);
   const [extensionTab, setExtensionTab] = useState<ExtensionTab>('skills');
@@ -83,6 +83,7 @@ export default function CodeView({
   const [connectorReturnToSettings, setConnectorReturnToSettings] = useState(false);
   const [automationErrors, setAutomationErrors] = useState<Record<string, string>>({});
   const [resolvingApprovalId, setResolvingApprovalId] = useState<string | null>(null);
+  const catalog = useCodingCatalog();
   const detail = useCodingSession(newTask || projectsOpen || connectorsOpen || skillsOpen ? null : selectedId);
   const cachedSession = sessions.find((item) => item.id === selectedId) || null;
   // The session list already contains enough information to render the task
@@ -118,21 +119,10 @@ export default function CodeView({
     remove: deleteTask,
   } = actions;
   useQueuedInstructionResume(session, detail.refresh, setActionError);
-
-  useEffect(() => {
-    const engineId = session?.engine_id;
-    if (!engineId) {
-      setCommands([]);
-      return undefined;
-    }
-    let alive = true;
-    setCommands([]);
-    codingApi.engines().then((engines) => {
-      if (!alive) return;
-      setCommands(engines.find((engine) => engine.id === engineId)?.commands || []);
-    }).catch(() => {});
-    return () => { alive = false; };
-  }, [session?.engine_id]);
+  const commands = useMemo(
+    () => catalog.engines.find((engine) => engine.id === session?.engine_id)?.commands || [],
+    [catalog.engines, session?.engine_id],
+  );
 
   useEffect(() => {
     setReviewOpen(codeFixtureReviewOpen());
@@ -262,6 +252,7 @@ export default function CodeView({
           defaultModel={defaultModel}
           models={models}
           modelMeta={modelMeta}
+          catalog={catalog}
           onCreate={createTask}
           projects={projects.projects}
           selectedProjectId={projects.selectedId}
@@ -466,6 +457,7 @@ export default function CodeView({
         defaultModel={defaultModel}
         models={models}
         modelMeta={modelMeta}
+        catalog={catalog}
         onClose={() => setProjectEditor(null)}
         onSave={async (values) => {
           setProjectBusy(true);
