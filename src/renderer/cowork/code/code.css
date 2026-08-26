@@ -214,6 +214,9 @@
 .code-notices { z-index: 1; display: grid; flex: none; gap: 7px; width: min(var(--code-measure), calc(100% - (var(--code-gutter) * 2))); margin: 2px auto 0; }
 .code-timeline { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; }
 .code-timeline__inner { width: min(var(--code-measure), calc(100% - (var(--code-gutter) * 2))); min-height: 100%; margin: 0 auto; padding: 24px 0 30px; }
+.code-timeline__earlier { display: block; margin: 0 auto 18px; padding: 6px 11px; border: 1px solid var(--border); border-radius: 999px; background: color-mix(in srgb, var(--surface-1) 82%, transparent); color: var(--text-muted); font: inherit; font-size: 12px; cursor: pointer; transition: border-color 120ms ease, color 120ms ease, background 120ms ease; }
+.code-timeline__earlier:hover { border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); background: var(--surface-2); color: var(--text); }
+.code-timeline__earlier:focus-visible { outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: 2px; }
 .code-message-label { margin-bottom: 6px; color: var(--ink-4); font-size: 10.5px; font-weight: 600; }
 .code-user-message { width: fit-content; max-width: 78%; margin: 10px 0 22px auto; padding: 12px 16px; border: 0; border-radius: var(--r-xl); background: var(--surface-3); color: var(--ink-2); white-space: pre-wrap; font-size: 14.5px; line-height: 1.5; letter-spacing: -.012em; }
 .code-agent-message { margin: 8px 0 24px; color: var(--ink-2); font-size: 14.5px; line-height: 1.62; }
