@@ -509,6 +509,7 @@ const ARTIFACT_EVENT = {
     projectId: 'proj-1',
     projectName: 'general',
     publishedUrl: 'https://view.staging.mindshub.ai/view/97901f016/845b3777',
+    serveUrl: '/api/v1/artifacts/serve/general/clock-7db94eb8/index.html',
   },
 };
 
@@ -543,6 +544,16 @@ describe('artifact_created → step.data', () => {
     });
   });
 
+  // ENG-1998: the server's card_for_folder() puts `serveUrl` on every
+  // artifact (services/artifacts.py), including images — but this adapter
+  // dropped it on the floor, so the live-turn card had no URL to fetch an
+  // image thumbnail/preview from until the artifact was reopened from the
+  // persisted list (whose fetch path builds the card differently).
+  it('carries the serve URL through', () => {
+    expect(stepOf(ARTIFACT_EVENT).data.serveUrl)
+      .toBe('/api/v1/artifacts/serve/general/clock-7db94eb8/index.html');
+  });
+
   it('defaults the new fields to empty rather than undefined', () => {
     // A desktop card carries no publishedUrl; consumers do `!!publishedUrl`, so
     // the shape must stay stable instead of gaining and losing keys.
@@ -553,5 +564,6 @@ describe('artifact_created → step.data', () => {
     expect(data.publishedUrl).toBe('');
     expect(data.projectId).toBe('');
     expect(data.slug).toBe('');
+    expect(data.serveUrl).toBe('');
   });
 });

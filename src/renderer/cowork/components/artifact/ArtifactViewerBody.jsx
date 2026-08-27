@@ -49,6 +49,9 @@ export function ArtifactViewerBody({
     error: err,
     setError: setErr,
     isText,
+    isImage,
+    imageSrc,
+    imageFailed,
     loading,
     text: textPreview,
     textContentRef,
@@ -169,6 +172,22 @@ export function ArtifactViewerBody({
           </div>
         )}
       </div>
+    )
+  ) : isImage ? (
+    imageFailed ? (
+      <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', padding: 28 }}>
+        <div style={{ color: 'var(--ink-3)', fontSize: 13, fontFamily: FONT_BODY }}>Could not load image.</div>
+      </div>
+    ) : imageSrc ? (
+      <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+        <img
+          src={imageSrc}
+          alt={title || 'Artifact preview'}
+          style={{ maxWidth: '100%', maxHeight: '100%', width: 'auto', height: 'auto', objectFit: 'contain' }}
+        />
+      </div>
+    ) : (
+      <PreviewPlaceholder />
     )
   ) : (
     <>

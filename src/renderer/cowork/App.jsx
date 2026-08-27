@@ -12,8 +12,8 @@ import Sidebar from './components/Sidebar';
 import ThemeModal from './components/ThemeModal';
 import AppShell from './components/AppShell';
 import { ConfirmModal } from './components/ConfirmModal';
-import { Modal, ModalHeader, ModalBody } from './components/ui/Modal';
-import { Tooltip } from './components/ui';
+import { Modal, ModalHeader, ModalBody, ModalFooter } from './components/ui/Modal';
+import { Button, Tooltip } from './components/ui';
 import { ToastProvider, useToastManager } from './components/ui/Toast';
 import HomeView from './views/HomeView';
 import ChatView from './views/ChatView';
@@ -29,10 +29,10 @@ import SkillsView from './views/SkillsView';
 import SearchModal from './components/SearchModal';
 import ConnectorPicker from './components/connector/ConnectorPicker';
 import ServerOfflineHelpModal from './components/ServerOfflineHelpModal';
+import ComingSoonModal from './components/ComingSoonModal';
 import { setForm as setDataVaultForm, getForm as getDataVaultForm, clearForm as clearDataVaultForm, patchForm as patchDataVaultForm, getFormState as getDataVaultFormState, setFormState as setDataVaultFormState, getSelectedMethod as getDataVaultSelectedMethod, setSelectedMethod as setDataVaultSelectedMethod, subscribe as subscribeDataVaultForm } from './components/datavault/formStore';
 import { extractFormSpec } from './components/datavault/parseFormSpec';
-import { host, getAccessToken } from '../platform/host';
-import { SERVER_START_CAP_MS } from '../../shared/server-status';
+import { host } from '../platform/host';
 import { applyNavTitleColor } from '../lib/navBranding';
 import { getAgentLabel } from './lib/agentLabel';
 import { resolveTaskProject } from './lib/resolveTaskProject';
@@ -43,8 +43,13 @@ import { clearDraft, moveDraft } from './lib/draftStore';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { useGoogleDrivePicker } from './hooks/useGoogleDrivePicker';
 import { useViewportZoomLock } from './hooks/useViewportZoomLock';
+import { useBootDecisions } from './hooks/useBootDecisions';
+import { useServerControl } from './hooks/useServerControl';
+import { useSidebarNav } from './hooks/useSidebarNav';
+import { useSso } from './hooks/useSso';
 import { useThemeSkin } from './hooks/useThemeSkin';
 import { useAppUpdates } from './hooks/useAppUpdates';
+import { deriveUpdateBanner } from '../../shared/update-banner';
 import { useSchedules } from './hooks/useSchedules';
 import { fetchSessions, fetchSession, fetchConversationList, fetchProjects, fetchArtifacts, fetchSettings, fetchHealth,
          createProject, updateSettings, streamNewSession, streamMessage,
@@ -73,7 +78,7 @@ import { noteArtifactsFromSteps } from './lib/artifactsStore';
 import { isArtifactTipDismissed, dismissArtifactTip, dismissIfUntouched } from './components/onboarding/onboardingStore';
 import { recommendedModelOptions, providerValueToType,
          mergeRecommendedModels } from './lib/settingsTransform';
-import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery, trackFirstResponse, classifyFirstResponse, trackKeyProvisioningRefused } from './lib/analytics';
+import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery, trackFirstResponse, classifyFirstResponse } from './lib/analytics';
 import { MODEL_ROUTER_ID, MODEL_ROUTER, isModelLocked } from './lib/modelCatalog';
 import {
   CoworkProvider,
@@ -580,13 +585,6 @@ function AppCore() {
   // null = no section selected: the mobile master-detail shows its section
   // list; desktop (no list) falls back to 'agent' where it's read.
   const [settingsSection, setSettingsSection] = useState(null);
-  const [ssoConnected, setSsoConnected] = useState(false);
-  // Last sign-in failure, painted on the Settings account card. Cleared
-  // on retry and on any authenticated push from main (ENG-761).
-  const [ssoError, setSsoError] = useState('');
-  // Re-entry guard: a second "Sign in" click while a browser flow is
-  // already open would spawn a second loopback attempt.
-  const ssoBusyRef = useRef(false);
   const [connectorPickerOpen, setConnectorPickerOpen] = useState(false);
   const [serverHelpOpen, setServerHelpOpen] = useState(false);
   // Pending delete confirm — task id whose delete is awaiting user
@@ -607,6 +605,9 @@ function AppCore() {
   // mid-turn)" when the user navigates back to it. See
   // `reconcileTaskMessages` for the cleanup it enables.
   const activeStreamingTaskIdRef = useRef(null);
+  // Latest toast manager, reachable from callbacks (like handleStopStream)
+  // defined above where useToastManager() is called. Synced in an effect below.
+  const toastManagerRef = useRef(null);
   // True once the active stream's SSE socket delivers any event — client-side
   // proof the turn started, independent of when it shows up in the in-flight
   // poll (which lags Redis/replica registration). The stranded-slot self-heal
@@ -995,7 +996,6 @@ function AppCore() {
 
   const handleStopStream = useCallback(async (opts = {}) => {
     const silent = opts?.silent === true;
-    activeStreamGenerationRef.current += 1;
 
     let cidToCancel = activeStreamingTaskIdRef.current;
     if (!cidToCancel) {
@@ -1004,6 +1004,27 @@ function AppCore() {
       );
       cidToCancel = streamingTask?.id ?? null;
     }
+
+    // Ask the server to cancel *before* any local teardown. On `error` the
+    // request never landed, so the cancel flag was not written and the remote
+    // turn may still be running (and spending tokens). Bail out with the
+    // in-flight state — Stop control, heartbeat, live stream — fully intact so
+    // the toast's "try again" is actually actionable; tearing down first would
+    // strip the very UI the user needs to retry. This ordering is the whole
+    // point of ENG-1919. The `silent` idle-timeout caller still fires the
+    // cancel but tears down regardless of the result and never toasts.
+    if (cidToCancel) {
+      const cancelResult = await cancelResponse(cidToCancel);
+      if (!silent && cancelResult?.status === 'error') {
+        toastManagerRef.current?.add({
+          type: 'danger',
+          title: 'Couldn’t stop the task — it may still be running. Check your connection and try again.',
+        });
+        return;
+      }
+    }
+
+    activeStreamGenerationRef.current += 1;
 
     const padName = activeScratchpadRef.current;
     if (padName) {
@@ -1030,7 +1051,6 @@ function AppCore() {
     }));
 
     if (cidToCancel) {
-      try { await cancelResponse(cidToCancel); } catch { /* idempotent */ }
       markInFlightDone(cidToCancel);
       // Stop kills the run, and with it any question that run was waiting
       // on. Without this the composer stays hijacked: the next send would be
@@ -1139,6 +1159,7 @@ function AppCore() {
             retryAfter: typeof event?.retry_after === 'number' ? event.retry_after : null,
             retryAt: typeof event?.retry_at === 'string' ? event.retry_at : null,
             resetAt: typeof event?.reset_at === 'string' ? event.reset_at : null,
+            requestId: typeof event?.request_id === 'string' ? event.request_id : null,
           };
       return {
         ...t,
@@ -1191,33 +1212,12 @@ function AppCore() {
     modelEnabled: settings.modelEnabled,
     onRefresh: refreshModelAvailability,
   }), [settings.modelProviders, settings.modelFamilies, settings.modelEnabled, refreshModelAvailability]);
-  // The user's preferred collapsed state for the sidebar. Effective
-  // collapsed-ness is derived below — we only honor this value while
-  // viewing a chat task; every other surface (home, projects,
-  // artifacts, settings, scheduled, …) keeps the sidebar expanded so
-  // the user can navigate via it directly. Locking outside chat
-  // means the collapse affordance is hidden in those views too.
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const { isMobile, isNarrow } = useBreakpoint();
-  // Narrow band (640–900): the docked sidebar becomes an off-canvas popout
-  // opened by the floating hamburger. Docked ≥900; MobileShell owns <640.
-  const [navPopoutOpen, setNavPopoutOpen] = useState(false);
-  // Close the popout on Escape (no-op outside the narrow band, where it stays
-  // closed). Backdrop-click and navigation close it too (below).
-  useEffect(() => {
-    if (!navPopoutOpen) return undefined;
-    const onKey = (e) => { if (e.key === 'Escape') setNavPopoutOpen(false); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [navPopoutOpen]);
 
   // iOS/Android auto-zoom workaround: toggle the viewport meta tag around
   // text-input focus so mobile browsers don't leave the app magnified.
   useViewportZoomLock(isMobile);
 
-  // Routes where the user can collapse the sidebar. Currently:
-  // chat task only.
-  const sidebarCollapsibleRoutes = useMemo(() => new Set(['task']), []);
   // Coding Mode gets the same off-canvas popout treatment as the narrow/
   // tablet band (640-900): the docked sidebar is hidden entirely and
   // replaced by the floating hamburger, sliding in over the content instead
@@ -1234,7 +1234,14 @@ function AppCore() {
   // section are hidden the same way (see navItemsForHost / the floating
   // corner toggle below).
   const codingModeActive = host.codingModeOptionsEnabled && !!settings.codingModeEnabled;
-  const sidebarPopout = isNarrow || (!isMobile && !host.isWeb && codingModeActive);
+  // Nav-shell layout state (collapsed rail, off-canvas popout, collapsible
+  // routes, and the derived popout flag) lives in useSidebarNav.
+  const {
+    sidebarCollapsed, setSidebarCollapsed,
+    navPopoutOpen, setNavPopoutOpen,
+    sidebarCollapsibleRoutes,
+    sidebarPopout,
+  } = useSidebarNav({ isNarrow, isMobile, codingModeActive });
   // Theme (light | dark), skin, the custom-skin recipe, and the Display
   // picker modal — plus the body-class / gravity-field / persistence side
   // effects that keep them applied — all live in useThemeSkin.
@@ -1374,13 +1381,17 @@ function AppCore() {
   // always tracks Settings live, server-side, without the renderer needing
   // to know the current planning/coding/router model.
   const [selectedModel, setSelectedModel] = useState(MODEL_ROUTER);
-  // In the hosted web shell the FastAPI process IS the host — there
-  // is no subprocess to start/stop, and the SPA only loads at all if
-  // the server is up. Seed online so downstream gates (`if (!serverOnline) return;`)
-  // don't block the initial render waiting for a poll that never matters.
-  const [serverOnline, setServerOnline] = useState(host.isWeb);
-  const [serverBusy, setServerBusy] = useState(false);
-  const [serverBusyKind, setServerBusyKind] = useState('starting'); // 'starting' | 'stopping'
+  // Local cowork-server lifecycle — online/busy state, start & stop, and the
+  // first-paint seed-and-poll — lives in useServerControl. It re-fetches
+  // through refreshDataRef after a manual start (refreshData writes
+  // serverOnline via setServerOnline, so it's wired in by ref just below).
+  const refreshDataRef = useRef(null);
+  const {
+    serverOnline, setServerOnline,
+    serverBusy, setServerBusy,
+    serverBusyKind, setServerBusyKind,
+    handleServerStart, handleServerStop,
+  } = useServerControl({ refreshDataRef });
 
   // `config_ready` deliberately omitted from the initial state — the
   // boot-time settings redirect at line ~798 keys off `=== false` so
@@ -1400,6 +1411,7 @@ function AppCore() {
   }, [health.status]);
 
   const toastManager = useToastManager();
+  useEffect(() => { toastManagerRef.current = toastManager; }, [toastManager]);
   // OTA UI update + shell (desktop binary) update lifecycle — status, the
   // apply/download/dismiss handlers, and the host subscriptions that feed
   // them — all live in useAppUpdates.
@@ -1416,6 +1428,20 @@ function AppCore() {
     handleShellAutoUpdateAction,
     dismissShellUpdate,
   } = useAppUpdates();
+
+  // Collapse the three update mechanisms into one shell-first banner (or null).
+  // The manual notice is dismissal-filtered here before it can win the slot.
+  const updateBanner = deriveUpdateBanner({
+    ota: updateStatus,
+    shellAuto: shellAutoUpdate,
+    shellManual: shellUpdate && shellUpdate.version !== shellUpdateDismissed ? shellUpdate : null,
+  });
+  const handleUpdateAction = useCallback((action) => {
+    if (action === 'apply-ota') return handleApplyUpdate();
+    if (action === 'shell-auto') return handleShellAutoUpdateAction();
+    if (action === 'download-installer') return handleDownloadShellUpdate();
+    return undefined;
+  }, [handleApplyUpdate, handleShellAutoUpdateAction, handleDownloadShellUpdate]);
 
   // Load data from server on mount
   const refreshData = useCallback(() => {
@@ -1468,26 +1494,10 @@ function AppCore() {
     refreshData();
   }, [refreshData]);
 
-  const handleServerStart = useCallback(async () => {
-    setServerBusyKind('starting');
-    setServerBusy(true);
-    try {
-      const result = await host.serverStart?.();
-      if (result) {
-        setServerOnline(!!result.running);
-        if (result.running) setTimeout(refreshData, 400);
-      }
-    } catch {} finally { setServerBusy(false); }
-  }, [refreshData]);
-
-  const handleServerStop = useCallback(async () => {
-    setServerBusyKind('stopping');
-    setServerBusy(true);
-    try {
-      const result = await host.serverStop?.();
-      if (result) setServerOnline(!!result.running);
-    } catch {} finally { setServerBusy(false); }
-  }, []);
+  // Expose the latest refreshData to useServerControl (it re-fetches after a
+  // manual start) without a definition-order cycle — refreshData writes the
+  // hook's serverOnline, so the hook can't take it as a direct argument.
+  useEffect(() => { refreshDataRef.current = refreshData; }, [refreshData]);
 
   // Allow descendants (e.g. ProjectsView's rename / create flow) to
   // ask for a fresh projects list without prop-drilling a refetch
@@ -1538,15 +1548,19 @@ function AppCore() {
     wasOnlineRef.current = serverOnline;
   }, [serverOnline, refreshData]);
 
-  // One-shot: once the backend has been online at least once during
-  // this app session, the home view should skip the boot
-  // choreography (orb → caret → typewriter). Re-running the intro on
-  // every "new task" click is jarring; the choreography is a "the
-  // app is starting" cue, not a per-navigation flourish.
-  const [bootIntroDone, setBootIntroDone] = useState(false);
-  useEffect(() => {
-    if (serverOnline && !bootIntroDone) setBootIntroDone(true);
-  }, [serverOnline, bootIntroDone]);
+  // Session-scoped boot decisions (skip-intro flag, offline watchdog,
+  // config-redirect, default-project bootstrap) live in useBootDecisions.
+  const bootIntroDone = useBootDecisions({
+    serverOnline,
+    health,
+    projects,
+    selectedProject,
+    setServerHelpOpen,
+    setSettingsSection,
+    setSettingsOpen,
+    setSelectedProject,
+    setProjects,
+  });
 
   // Listen for background OAuth refresh failures pushed from main process.
   // timeout: 0 — persists until the user manually dismisses it, same as
@@ -1566,156 +1580,6 @@ function AppCore() {
         ),
       });
     });
-  }, []);
-
-  // ── Boot lifecycle decisions ─────────────────────────────────────
-  // Both of these used to live inside HomeView, but the user can
-  // navigate (settings → home → settings) which would re-mount
-  // HomeView and re-fire each. App.jsx is the natural home — these
-  // refs are app-session-level by virtue of being component-scoped
-  // here, not view-scoped.
-
-  // Watchdog — if the local backend never comes online, pop the help
-  // modal so the user has logs / restart available. Once.
-  const bootWatchdogFiredRef = useRef(false);
-  useEffect(() => {
-    if (serverOnline) return undefined;
-    if (bootWatchdogFiredRef.current) return undefined;
-    const t = setTimeout(() => {
-      bootWatchdogFiredRef.current = true;
-      setServerHelpOpen(true);
-    }, 12_000);
-    return () => clearTimeout(t);
-  }, [serverOnline]);
-
-  // Config redirect — server is up but config_ready is explicitly
-  // false → take the user to Settings so they can finish setup.
-  // Tested as `=== false` (not falsy) on purpose: we don't want to
-  // route on initial undefined / pending values, only on a confirmed
-  // negative from the server. Once per session.
-  const bootConfigRedirectFiredRef = useRef(false);
-  useEffect(() => {
-    if (bootConfigRedirectFiredRef.current) return;
-    if (!serverOnline) return;
-    // Web sessions (mobile or desktop browser) always land on the
-    // new-task composer regardless of config state. The auto-redirect
-    // to Settings is Electron-only — there a missing provider means
-    // the install can't reach any LLM at all. In the hosted web
-    // shell, config is centralized server-side, so first-paint
-    // shouldn't shove the user into a configuration screen.
-    if (host.isWeb) return;
-    if (health.config_ready === false) {
-      bootConfigRedirectFiredRef.current = true;
-      // Missing provider → land straight on the Agent (provider) section, on
-      // desktop and in the mobile master-detail alike.
-      setSettingsSection('agent');
-      setSettingsOpen(true);
-    }
-  }, [serverOnline, health.config_ready]);
-
-  // Default the new-task project to "general". If the projects list
-  // is loaded and it doesn't include "general", create it first. The
-  // server provisions general on startup, so this only fires on
-  // upgrades from an older build that didn't have that.
-  const generalDefaultRef = useRef(false);
-  useEffect(() => {
-    if (selectedProject) return;        // user has picked something — don't override
-    if (!serverOnline) return;          // wait for server
-    if (generalDefaultRef.current) return; // only run once per session
-    if (projects.length === 0) return;  // wait for projects to load
-    const general = projects.find((p) => p.name === 'general');
-    if (general) {
-      generalDefaultRef.current = true;
-      setSelectedProject(general);
-      return;
-    }
-    // No general project — bootstrap it then re-fetch + select.
-    generalDefaultRef.current = true;
-    (async () => {
-      try {
-        await createProject('general');
-        const fresh = await fetchProjects();
-        if (Array.isArray(fresh)) setProjects(fresh);
-        const created = (fresh || []).find((p) => p.name === 'general');
-        if (created) setSelectedProject(created);
-      } catch (e) {
-        // eslint-disable-next-line no-console
-        console.warn('[default-project] could not bootstrap general', e);
-        generalDefaultRef.current = false; // allow retry on next render
-      }
-    })();
-  }, [projects, selectedProject, serverOnline]);
-
-  // Seed server state from main's truth on first paint so the toggle
-  // button reflects reality (running OR starting) even before /health
-  // has returned. While main is mid-start, show the spinner; poll
-  // every 600 ms until it resolves — OR until we've polled long
-  // enough that we'd expect main to have decided one way or the
-  // other.
-  //
-  // The earlier version stopped as soon as `info.starting === false`,
-  // which lost the race against main's boot path: the renderer
-  // mounts and runs its first tick before main has finished
-  // `checkInstallStatus()` + spawned the python (so `pendingStart`
-  // is still null and `info.starting === false` even though the
-  // boot path is about to start one). The renderer would settle on
-  // "offline" and never re-poll, leaving the user looking at a
-  // grey status pill while a perfectly healthy server was
-  // listening in the background.
-  //
-  // Fix: keep ticking until either `info.running` flips true OR a
-  // hard ceiling elapses. After the ceiling we stop and trust the
-  // status pill / sidebar toggle to recover by user action.
-  //
-  // The ceiling has to outlast main's start budget, or this loop declares
-  // the backend offline while main is still legitimately waiting for it —
-  // the user sees the failure panel for a start that goes on to succeed.
-  // Derived from the shared cap rather than a second hand-picked number so
-  // the two cannot drift apart.
-  useEffect(() => {
-    if (host.isWeb) return; // No server lifecycle to poll in the hosted web shell.
-    let cancelled = false;
-    let timer = null;
-    const startedAt = Date.now();
-    const POLL_CEILING_MS = SERVER_START_CAP_MS + 60_000;
-
-    // Exactly one timer per tick. An earlier version scheduled inside the
-    // starting/not-running branch AND again below it, overwriting `timer` and
-    // leaking the first — so the poll rate doubled every tick. A warm start
-    // resolved in two ticks and hid it; a slow start would have turned it into
-    // thousands of concurrent polls.
-    const tick = async () => {
-      try {
-        const info = await host.serverInfo();
-        if (cancelled || !info) return;
-        const running = info.running === true;
-        const starting = info.starting === true;
-        if (typeof info.running === 'boolean') setServerOnline(running);
-        if (starting) setServerBusyKind('starting');
-        setServerBusy(starting);
-        if (running) return; // settled
-        // Keep polling while main says it's still starting (main owns the
-        // hard cap, so this can't run forever), and otherwise until the
-        // ceiling — which covers the window where main is still resolving
-        // `checkInstallStatus` before kicking off `startServer`.
-        if (starting || Date.now() - startedAt < POLL_CEILING_MS) {
-          timer = setTimeout(tick, starting ? 600 : 1000);
-        }
-      } catch {
-        // Polling errors (IPC blip, restart) shouldn't kill the
-        // loop — keep trying within the ceiling so a transient
-        // hiccup doesn't strand the renderer in offline state.
-        if (Date.now() - startedAt < POLL_CEILING_MS) {
-          timer = setTimeout(tick, 600);
-        }
-      }
-    };
-
-    tick();
-    return () => {
-      cancelled = true;
-      if (timer) clearTimeout(timer);
-    };
   }, []);
 
   const saveSettings = useCallback(async (patch = settings) => {
@@ -2465,58 +2329,14 @@ function AppCore() {
     setTasks((prev) => prev.map((t) => t.status === 'active' ? { ...t, status: 'idle' } : t));
   }, []);
 
-  useEffect(() => {
-    if (!settingsOpen) return;
-    getAccessToken().then((token) => setSsoConnected(!!token)).catch(() => {});
-  }, [settingsOpen]);
-
-  // Authoritative signed-in state, pushed from the main process on every
-  // token-store transition (login, silent refresh, logout, session
-  // death). The UI no longer depends solely on the promise of whichever
-  // call initiated the sign-in — that promise can be lost (ENG-761)
-  // while the main process is in fact authenticated, or vice versa.
-  useEffect(() => {
-    if (!host.isElectron) return undefined;
-    return host.onMindsHubAuthChanged(({ authenticated }) => {
-      setSsoConnected(!!authenticated);
-      if (authenticated) setSsoError('');
-    });
-  }, []);
-
-  const handleSsoSignIn = async () => {
-    if (!host.isElectron || ssoBusyRef.current) return;
-    ssoBusyRef.current = true;
-    setSsoError('');
-    try {
-      const loginResult = await host.mindshubLogin();
-      if (!loginResult?.ok) {
-        // ENG-761: this used to silently return — the browser said
-        // "You're authorized!" while the app showed nothing. Surface the
-        // failure where the user will look for it: the account card.
-        setSsoError(String(loginResult?.reason || 'Sign in failed. Please try again.'));
-        setSettingsSection('account');
-        setSettingsOpen(true);
-        return;
-      }
-      // Signed in — flip the UI now; key provisioning below takes several
-      // seconds (org bootstrap + server restart) and is not a sign-in gate.
-      setSsoConnected(true);
-      try {
-        // The result is still not acted on — key provisioning is not a sign-in
-        // gate — but a refusal is now countable (ENG-1533). A 402 here leaves the
-        // user signed in with no working key, no BYOK route and no message; the
-        // `unhandled` outcome is how often that happens. Fixing the UX needs its
-        // own ticket; this only makes it visible.
-        const finalizeResult = await host.mindshubFinalize();
-        if (finalizeResult?.upgradeRequired) trackKeyProvisioningRefused('unhandled');
-      } catch (e) {
-        console.warn('[sso] finalize failed after sign-in (account is authenticated):', e);
-      }
-      refreshData();
-    } finally {
-      ssoBusyRef.current = false;
-    }
-  };
+  // MindsHub SSO — connected flag, sign-in error, and the login/provisioning
+  // flow (incl. the main-process auth-changed subscription) live in useSso.
+  const { ssoConnected, ssoError, handleSsoSignIn } = useSso({
+    settingsOpen,
+    setSettingsSection,
+    setSettingsOpen,
+    refreshData,
+  });
 
   // Open the Settings surface. A named section drills straight to it (desktop
   // and the mobile master-detail alike). A bare open leaves desktop on its
@@ -3848,15 +3668,57 @@ function AppCore() {
       return;
     }
     try {
-      await Promise.all([
-        deleteConversation(taskId),
-        unpinTask(taskId).catch(() => {}), // unpin is a no-op if not pinned
-      ]);
+      await deleteConversation(taskId);
       // eslint-disable-next-line no-console
       console.log('[performDeleteTask] server delete ok');
+      // Unpin only once the delete has really happened. Run in parallel, a
+      // refused delete still committed the unpin server-side, and the
+      // restored row came back silently unpinned across reloads.
+      await unpinTask(taskId).catch(() => {}); // unpin is a no-op if not pinned
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error('[performDeleteTask] server delete failed', e);
+      /*
+        The chat is still on the server, so put the row back rather than leave
+        the sidebar claiming it is gone. Console-only used to mean the user saw
+        a successful delete, deleted it again on the next visit, and only found
+        out on a reload. The access log carried the same ids two and three
+        times over.
+
+        Dropping the tombstone first is what makes the refetch work at all:
+        every consumer of fetchSessions filters through deletedTaskIdsRef, and
+        nothing else ever clears it, so the row would stay hidden for the life
+        of the mount. Same recovery as handleRenameTask above.
+
+        The route is deliberately not restored. The user asked to leave this
+        chat, and yanking them back into it is a bigger surprise than the row
+        reappearing in the list where the toast says to look.
+      */
+      deletedTaskIdsRef.current.delete(taskId);
+      const fresh = await fetchSessions().catch(() => null);
+      setTasks((prev) => {
+        /*
+          fetchSessions resolves [] when the server is unreachable, so treat
+          an empty answer as no answer — replacing the list with it would
+          blank every chat in the sidebar. mergeTasksFromServer, same as
+          every other consumer, keeps streaming messages, model pins and
+          tmp- rows that a wholesale replace would clobber. prev already
+          lost this row to the optimistic filter above, so when the refetch
+          brought nothing back, re-seat the captured task — the toast says
+          the chat is back in the list, and it has to be true.
+        */
+        const merged = mergeTasksFromServer(fresh?.length ? fresh : null, prev);
+        if (task && !merged.some((t) => t.id === taskId)) merged.unshift(task);
+        return merged.filter((t) => !deletedTaskIdsRef.current.has(t.id));
+      });
+      toastManager.add({
+        type: 'danger',
+        // Needs action before it makes sense to move on, so it persists
+        // until dismissed, like the OAuth refresh-failure toast.
+        timeout: 0,
+        title: "Couldn't delete this chat. It is back in your list; try again.",
+        description: e?.message,
+      });
     }
     fetchPins().then((data) => setPins(data.pins || [])).catch(() => {});
   };
@@ -4336,7 +4198,6 @@ function AppCore() {
           projectsCount={projects.length}
           artifactsCount={artifacts.length}
           connectorsCount={connectors.length}
-          connectorsComingSoon={orgMode}
           activeRoute={route === 'task' ? null : (route === 'schedule-detail' ? 'scheduled' : route)}
           settingsActive={settingsOpen}
           // Only mark a recent as "selected" while actually viewing a task —
@@ -4376,14 +4237,9 @@ function AppCore() {
           showCounters={settings.showCounters !== false}
           navTitle={settings.navTitle || null}
           navLogo={settings.navLogo || null}
-          updateAvailable={updateStatus?.phase === 'available' ? { version: updateStatus.version } : null}
-          updateError={updateStatus?.phase === 'error' ? { version: updateStatus.version } : null}
-          onApplyUpdate={handleApplyUpdate}
-          shellUpdate={shellUpdate && shellUpdate.version !== shellUpdateDismissed ? shellUpdate : null}
-          shellAutoUpdate={shellAutoUpdate}
-          onShellAutoUpdateAction={handleShellAutoUpdateAction}
-          onDownloadShellUpdate={handleDownloadShellUpdate}
-          onDismissShellUpdate={dismissShellUpdate}
+          updateBanner={updateBanner}
+          onUpdateAction={handleUpdateAction}
+          onDismissUpdate={dismissShellUpdate}
           onStartChat={(text) => {
             // Popout sidebar (narrow desktop, or Coding Mode) is an overlay
             // drawer. Close it like navigate/onOpenSchedule do, so the new
@@ -4805,7 +4661,6 @@ function AppCore() {
               agentLabel={agentLabel}
               section={settingsSection}
               onSectionChange={setSettingsSection}
-              channelsComingSoon={orgMode}
               serverOnline={serverOnline}
               serverBusy={serverBusy}
               serverBusyKind={serverBusyKind}
@@ -4858,7 +4713,6 @@ function AppCore() {
                 agentLabel={agentLabel}
                 section={settingsSection || 'agent'}
                 onSectionChange={setSettingsSection}
-                channelsComingSoon={orgMode}
                 serverOnline={serverOnline}
                 serverBusy={serverBusy}
                 serverBusyKind={serverBusyKind}
@@ -4914,24 +4768,10 @@ function AppCore() {
         onSkinChange={setSkin}
       />
 
-      <Modal
-        open={comingSoonFeature != null}
+      <ComingSoonModal
+        feature={comingSoonFeature}
         onClose={() => setComingSoonFeature(null)}
-        size="sm"
-        labelledBy="coming-soon-title"
-      >
-        <ModalHeader
-          id="coming-soon-title"
-          title="Coming soon to Cloud"
-          onClose={() => setComingSoonFeature(null)}
-        />
-        <ModalBody>
-          <p>
-            This feature isn’t available on Cloud just yet. In the meantime, you
-            can try it in the local version.
-          </p>
-        </ModalBody>
-      </Modal>
+      />
 
       {!host.isWeb && (
       <ServerOfflineHelpModal

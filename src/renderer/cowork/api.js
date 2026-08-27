@@ -186,6 +186,9 @@ function _failedEventMeta(events) {
     // it as local time — the gate would last hours west of UTC and no-op east
     // of it, invisible to a TZ=UTC suite (ENG-1537 review).
     retryAt: typeof ev.retry_at === 'string' ? ev.retry_at : null,
+    // The remote turn's own correlation id (cowork-server) — the one thing a
+    // generic anton_error bubble can still offer for a support lookup.
+    requestId: typeof ev.request_id === 'string' ? ev.request_id : null,
   };
 }
 
@@ -235,6 +238,7 @@ function _hydrateAssistantEvents(messages) {
           resetAt: failed?.resetAt ?? null,
           retryAt: failed?.retryAt ?? null,
           failedModel: failed?.failedModel ?? null,
+          requestId: failed?.requestId ?? null,
         });
       }
     }
@@ -774,19 +778,31 @@ export async function cancelScratchpad(name) {
 // running. The Stop button needs this dedicated signal to actually
 // halt the work.
 //
-// Idempotent: hitting it for an already-finished conversation returns
-// {cancelled: false} rather than failing.
+// Never throws (a fire-and-forget caller relies on that), but it no longer
+// hides failures behind a fake success. It returns a discriminated status so
+// the Stop handler can tell three cases apart:
+//   'ok'    — 2xx: the server wrote the cancel flag; `cancelled` says whether a
+//             live run was found. The stop request definitely reached the server.
+//   'gone'  — 404: no run the caller may touch (already finished, or another
+//             org's id). Nothing is running, which is the desired end state.
+//   'error' — network error / 5xx: the request never reached the server, so the
+//             cancel flag was NOT written and the turn may still be running (and
+//             still spending tokens). Callers must NOT report this as success.
 export async function cancelResponse(conversationId) {
-  if (!conversationId) return null;
+  if (!conversationId) return { status: 'gone', conversation_id: conversationId };
   try {
-    return await req('/responses/cancel', {
+    const res = await req('/responses/cancel', {
       method: 'POST',
       body: JSON.stringify({ conversation_id: conversationId }),
     });
-  } catch {
-    // 404 / network blip — treat as "already done." The local-state
-    // teardown in handleStopStream is the user-visible part anyway.
-    return { cancelled: false, conversation_id: conversationId };
+    return { status: 'ok', ...res };
+  } catch (err) {
+    // A 404 is the one failure that genuinely means "nothing to stop"; every
+    // other failure means the cancel did not land. Conflating them (the old
+    // behavior) is what let Stop silently report success while the remote turn
+    // kept running.
+    if (err?.status === 404) return { status: 'gone', conversation_id: conversationId };
+    return { status: 'error', conversation_id: conversationId };
   }
 }
 

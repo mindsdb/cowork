@@ -175,19 +175,32 @@ mechanism and its own on-screen surface:
   by default), or a hand-downloaded installer.
 
 UI and server are **coupled** and auto-apply together at boot (server first).
-The shell is **independent** and always needs a restart to take effect. That
-split is why there is never a single combined "3 updates" prompt — the seamless
-pair and the restart-required shell are different surfaces:
+The shell is **independent** and always needs a restart to take effect.
 
-- **UI/server auto-apply** (boot) → a brief full-screen overlay (spinner +
-  "Updating…" / "Almost there…"), then the window reloads.
-- **UI/server found mid-session** → a sidebar **"Update ready — Restart"** pill
-  and a Settings → Updates card ("Server → …" / "UI → …").
-- **Shell** (auto-update) → a sidebar pill + Settings card that walk the phases
-  **"New app version available" → "Downloading update (42%)…" → "App update
-  ready — Restart"**.
+The sidebar shows **exactly one update banner** (or none), chosen by the pure
+`deriveUpdateBanner()` in [src/shared/update-banner.ts](../src/shared/update-banner.ts)
+and mirrored by Settings → Updates. Priority is **shell-first**: whenever a
+shell update is pending (auto-update or the manual notice), it owns the banner
+slot and the OTA "Restart" is suppressed. A shell relaunch is the superset
+action — the boot check auto-applies any pending UI/server OTA on relaunch — so
+one click updates everything, and an OTA reload never leaves a shell banner
+behind. Historically each mechanism had its own block with only pairwise guards,
+so an OTA update and a shell auto-update (which poll together) stacked into two
+pills, and an OTA reload — which does *not* relaunch the shell — left the shell
+banner behind; the single derived banner removes both.
+
+The possible banners, in priority order:
+
+- **Shell** (auto-update) → a pill that walks the phases **"New app version
+  available — Download" → "Downloading update (42%)…" → "App update ready —
+  Restart"** (in auto mode the download happens on its own; a restart installs it).
 - **Shell** (manual fallback) → a dismissible **"New version available —
   Download"** notice linking to the installer.
+- **UI/server found mid-session** (only when no shell update is pending) → a
+  sidebar **"Update ready — Restart"** pill and a Settings card ("Server → …" /
+  "UI → …"). The Restart reloads the renderer.
+- **UI/server auto-apply** (boot) is not a banner at all → a brief full-screen
+  overlay (spinner + "Updating…" / "Almost there…"), then the window reloads.
 
 | Updates pending | What the user sees |
 |---|---|
@@ -200,7 +213,7 @@ pair and the restart-required shell are different surfaces:
 | **Server + UI, at boot** | Both auto-apply, server first, in one pass → one overlay + one reload. If the server update fails, the UI is deferred to the next pass (tandem coupling). |
 | **Shell only** (auto-update eligible) | Independent of the overlay. The pill/card walk "available → downloading (%) → ready-to-install". Background download; nothing installs until the user clicks **Restart** (or, in auto mode, on the next normal quit). |
 | **Shell only** (auto-update disabled/failed, `prod`) | Falls back to the "New version available — Download" notice → installer on `downloads.mindshub.ai`. The user downloads it, quits the app, and runs the installer by hand. |
-| **Shell + Server + UI, all pending** | Two experiences at once: server + UI apply seamlessly at boot (overlay + reload), while the shell surfaces as a *separate*, non-blocking "App update ready — Restart" notice the user actions whenever convenient. No combined prompt. |
+| **Shell + Server + UI, all pending** (mid-session) | One shell-first banner. Server + UI apply seamlessly at boot (overlay + reload); mid-session the shell banner owns the slot and the OTA "Restart" is suppressed, because the shell relaunch applies the pending UI/server OTA at boot anyway. One "Restart" resolves all three — no stacked pills, and nothing lingers after the relaunch. |
 
 Notes:
 

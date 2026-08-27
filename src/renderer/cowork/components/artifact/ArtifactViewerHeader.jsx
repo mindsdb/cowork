@@ -74,7 +74,6 @@ export function ArtifactViewerHeader({
     controller: pub,
     hasActionPath,
     isPublished,
-    blockedReason: publishBlock,
     disabledReason,
   } = publication;
   const {
@@ -161,13 +160,10 @@ export function ArtifactViewerHeader({
           </div>
         )}
         {canManage && publishable && (
-          // Block only the Publish direction for forbidden types (e.g.
-          // fullstack-stateful-app); once published, the menu stays usable
-          // so the artifact can still be unpublished.
           <PublishMenu
             controller={pub}
-            disabled={!hasActionPath || (!isPublished && !!publishBlock)}
-            disabledReason={(!isPublished && publishBlock) ? publishBlock : disabledReason}
+            disabled={!hasActionPath}
+            disabledReason={disabledReason}
           />
         )}
         <Menu

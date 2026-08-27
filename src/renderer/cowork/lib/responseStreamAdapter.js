@@ -362,6 +362,10 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
         publishedUrl: art.publishedUrl || '',
         projectId: art.projectId || '',
         projectName: art.projectName || '',
+        // Needed to render an inline thumbnail / in-app preview for image
+        // artifacts (ENG-1998) — without it the card has no URL to fetch
+        // bytes from until the artifact is reopened from the persisted list.
+        serveUrl: art.serveUrl || '',
       },
       output: null,
       result: null,

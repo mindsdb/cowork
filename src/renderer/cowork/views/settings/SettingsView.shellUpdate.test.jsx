@@ -112,6 +112,32 @@ describe('SettingsView desktop — shell auto-update lifecycle (ENG-850)', () =>
     fireEvent.click(screen.getByRole('button', { name: /Restart now/ }));
     expect(onInstallShellAutoUpdate).toHaveBeenCalledTimes(1);
   });
+
+  it('a targetless shell failure keeps its Retry card but does not hide the UI/server Restart card', async () => {
+    // A failure with no targetVersion (rejected check / failed retry check) still
+    // shows its own Retry card, but must NOT suppress a valid OTA update — a shell
+    // feed outage would otherwise hide the UI/server Restart. Both cards coexist.
+    host.checkForUpdates.mockResolvedValueOnce({
+      ok: true, offline: false, updateAvailable: true,
+      uiUpdateAvailable: true, uiVersion: '2.26.7.20.1',
+      serverUpdateAvailable: false, shellUpdateAvailable: false,
+    });
+    render(
+      <SettingsView
+        {...baseProps}
+        shellUpdate={null}
+        shellAutoUpdate={{ phase: 'failed', mode: 'auto', channel: 'prod', currentVersion: '2.26.7.13.1', recoverable: true }}
+        onRetryShellAutoUpdate={vi.fn()}
+        onDownloadShellUpdate={vi.fn()}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Check for updates/ }));
+    // OTA card not hidden…
+    expect(await screen.findByRole('button', { name: /Restart now/ })).toBeInTheDocument();
+    // …and the shell failure's Retry affordance is preserved.
+    expect(screen.getByText(/App update failed/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Retry/ })).toBeInTheDocument();
+  });
 });
 
 describe('SettingsView desktop — UI/server updates framed as a restart', () => {
@@ -127,6 +153,51 @@ describe('SettingsView desktop — UI/server updates framed as a restart', () =>
     // language for the shell reinstall path.
     expect(await screen.findByRole('button', { name: /Restart now/ })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Download installer/ })).toBeNull();
+  });
+
+  it('suppresses the UI/server "Restart now" card while a shell update is pending (shell-first, no stacked cards)', async () => {
+    // A shell relaunch also applies the UI/server OTA at boot, so the separate
+    // OTA card would be redundant. Only the shell surface shows — mirroring the
+    // sidebar's single shell-first banner.
+    host.checkForUpdates.mockResolvedValueOnce({
+      ok: true, offline: false, updateAvailable: true,
+      uiUpdateAvailable: true, uiVersion: '2.26.7.20.1',
+      serverUpdateAvailable: false, shellUpdateAvailable: true, shellVersion: '2.26.7.20.1',
+    });
+    render(
+      <SettingsView
+        {...baseProps}
+        shellUpdate={{ version: '2.26.7.20.1', downloadUrl: 'https://x/y.pkg' }}
+        onDownloadShellUpdate={vi.fn()}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Check for updates/ }));
+    expect(await screen.findByRole('button', { name: /Download installer/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Restart now/ })).toBeNull();
+    expect(screen.queryByText(/Update ready/)).toBeNull();
+  });
+
+  it('an in-progress shell check does not hide a ready UI/server Restart card (checking is not pending)', async () => {
+    // `checking` renders its own "Checking for an app update…" card but is not a
+    // pending shell update, so — like the sidebar banner (shellAutoOwnsBanner
+    // excludes `checking`) — it must not suppress a valid OTA Restart. Both the
+    // transient check card and the OTA Restart card coexist.
+    host.checkForUpdates.mockResolvedValueOnce({
+      ok: true, offline: false, updateAvailable: true,
+      uiUpdateAvailable: true, uiVersion: '2.26.7.20.1',
+      serverUpdateAvailable: false, shellUpdateAvailable: false,
+    });
+    render(
+      <SettingsView
+        {...baseProps}
+        shellUpdate={null}
+        shellAutoUpdate={{ phase: 'checking', mode: 'auto', channel: 'prod', currentVersion: '2.26.7.13.1' }}
+        onDownloadShellUpdate={vi.fn()}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Check for updates/ }));
+    expect(await screen.findByRole('button', { name: /Restart now/ })).toBeInTheDocument();
+    expect(screen.getByText(/Checking for an app update/)).toBeInTheDocument();
   });
 
   it('returns to a retryable state when applyUpdate resolves false', async () => {

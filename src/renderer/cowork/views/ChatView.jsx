@@ -28,16 +28,18 @@ import AskUserCard from '../components/AskUserCard';
 import { DataVaultFormPanel } from '../components/datavault/DataVaultFormPanel';
 import { getForm as getDataVaultForm, setForm as setDataVaultForm, subscribe as subscribeDataVaultForm, clearForm as clearDataVaultForm } from '../components/datavault/formStore';
 import { FormErrorBoundary } from '../components/datavault/FormErrorBoundary';
-import { revealArtifact, exportArtifact, attachmentRawUrl, fetchHealth } from '../api';
-import { AttachmentThumbnail } from '../components/AttachmentThumbnail';
+import { revealArtifact, exportArtifact, attachmentRawUrl, artifactServeUrl, fetchHealth } from '../api';
+import { AttachmentThumbnail, useBlobImageSrc } from '../components/AttachmentThumbnail';
 import { normalizeArtifactRecord } from '../lib/artifactPaths';
+import { isImageArtifact } from '../lib/artifactKinds';
+import { downloadArtifactFile } from '../lib/artifactDownload';
 import { latestSkillCardIndexByKey } from '../lib/skillCards';
 import { host, isWeb } from '../../platform/host';
 import { Crumb as CrumbButton, CrumbSep } from '../components/ui/Crumb';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { harnessLabel } from '../lib/agentLabel';
-import { artifactOpenTarget, isArtifactActionAvailable } from '../lib/artifactActions';
+import { artifactOpenTarget } from '../lib/artifactActions';
 import { revalidate as revalidateArtifacts, setArtifactsScope, useArtifactLiveness } from '../lib/artifactsStore';
 import { useOrgMode } from '../../lib/orgMode';
 import { modelLabel } from '../lib/settingsTransform';
@@ -589,7 +591,13 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
   const _INLINE_TEXT_EXTS = ['.md', '.txt', '.csv'];
   const isInlineText = _INLINE_TEXT_EXTS.includes(lcExt)
     || _INLINE_TEXT_EXTS.some((e) => lcPath.endsWith(e));
-  const canPreviewInline = isHtml || isInlineText;
+  const isImage = isImageArtifact(artifact);
+  const canPreviewInline = isHtml || isInlineText || isImage;
+  // Thumbnail bytes for the icon slot — same CSP workaround AttachmentThumbnail
+  // uses (loopback <img src> is blocked; fetch + blob: URL is not). '' when not
+  // an image, or before the artifact card carries a serveUrl (org mode, or the
+  // live-turn card streamed in ahead of ChatView.jsx's serveUrl passthrough).
+  const { src: thumbSrc } = useBlobImageSrc({ url: isImage ? (artifactServeUrl(artifact) || null) : null });
   const published = !!artifact.publishedUrl;
   const openTarget = artifactOpenTarget({
     orgMode,
@@ -598,14 +606,11 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
     hasPrivateDraft: !!artifact.draftUrl,
     hasBridge: host.isElectron || !host.isWeb,
   });
-  // Document artifacts (markdown/HTML/text) can be exported to PDF/Word/HTML.
-  const _EXPORTABLE_EXTS = ['.md', '.markdown', '.html', '.htm', '.txt'];
-  const canExport = canAct
-    && isArtifactActionAvailable('export', { orgMode, hasBridge: !host.isWeb, published })
-    && (_EXPORTABLE_EXTS.includes(lcExt) || _EXPORTABLE_EXTS.some((e) => lcPath.endsWith(e)));
-  const canReveal = isArtifactActionAvailable('reveal', {
-    orgMode, hasBridge: host.isElectron, published,
-  });
+  // Export is hidden pending ENG-1988: PDF/DOCX conversion is broken for any
+  // artifact beyond a plain markdown report (crashes, dumps raw JS into the
+  // .docx), and HTML→HTML export can overwrite the source artifact in place.
+  // A broken button is worse than no button — re-enable once ENG-1988 lands.
+  const canExport = false;
   const handleExport = async (fmt) => {
     setExportOpen(false);
     if (!canAct) {
@@ -699,13 +704,46 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
       revalidateAfterFailure();
     }
   };
+  const handleDownload = () => {
+    if (!canAct) {
+      showStatus('error', disabledReason || 'No artifact file path is available.');
+      return;
+    }
+    if (!downloadArtifactFile(artifact, { actionPath: path })) {
+      showStatus('error', 'This artifact has no serve URL yet.');
+      return;
+    }
+    showStatus('ok', 'Downloading…');
+  };
+  // One primary action button instead of an Open/Show-in-Finder pair: org
+  // mode is unchanged (always the published URL, external — there is no
+  // local file to reveal or download there). Locally, what the button does
+  // follows what the artifact actually supports — Preview for anything the
+  // in-app modal can render, otherwise Download (web, streams the file) or
+  // Show in Finder/Explorer (desktop, opens the containing FOLDER, not the
+  // file) — never both, and never a generic "Open" that hides which of the
+  // two it's about to do.
+  const primaryAction = orgMode
+    ? (openTarget === 'preview'
+      ? { label: 'Open', onClick: handleOpen, tooltip: 'Open private preview' }
+      : openTarget === 'published'
+        ? { label: 'Open', onClick: handleOpen, tooltip: 'Open the shared artifact' }
+        : null)
+    : canPreviewInline
+      ? { label: 'Preview', onClick: handleOpen, tooltip: canAct ? `Preview ${path}` : '' }
+      : host.isWeb
+        ? { label: 'Download', onClick: handleDownload, tooltip: canAct ? `Download ${path}` : '' }
+        // handleReveal already falls back from the Electron bridge to the
+        // server-side reveal endpoint and surfaces its own error, so this
+        // doesn't gate further on bridge availability the way the old
+        // Open button didn't either.
+        : { label: revealLabel, onClick: handleReveal, tooltip: canAct ? `${revealLabel}: ${path}` : '' };
   const previewText = artifact.preview?.[0]?.heading || artifact.preview?.[0]?.text || displayPath;
-  // Whole-card click → preview. The inner buttons (Show in Finder,
-  // Open, Title) all stopPropagation so their own handlers run
-  // instead of bubbling up to this. Disabled paths fall through to
-  // a status toast instead of opening, mirroring the prior button
-  // behaviour. Cursor + hover lift mark the entire surface as
-  // interactive at a glance.
+  // Whole-card click → preview. The inner buttons (the primary action,
+  // Title) all stopPropagation so their own handlers run instead of
+  // bubbling up to this. Disabled paths fall through to a status toast
+  // instead of opening, mirroring the prior button behaviour. Cursor +
+  // hover lift mark the entire surface as interactive at a glance.
   return (
     <Card
       as="div"
@@ -718,10 +756,14 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
       className="grid grid-cols-[64px_1fr_auto] items-center gap-4"
     >
       <div
-        className="w-16 h-16 bg-surface-2 rounded-lg grid place-items-center text-accent"
+        className="w-16 h-16 bg-surface-2 rounded-lg grid place-items-center text-accent overflow-hidden"
         style={{ opacity: deleted ? 0.7 : 1 }}
       >
-        {artifact.icon === 'doc' ? Ico.doc(26) : Ico.sparkle(26)}
+        {thumbSrc ? (
+          <img src={thumbSrc} alt={artifact.title || 'Artifact thumbnail'} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+        ) : (
+          isImage ? Ico.image(26) : (artifact.icon === 'doc' ? Ico.doc(26) : Ico.sparkle(26))
+        )}
       </div>
       <div className="flex flex-col gap-[3px] min-w-0">
         {/* Title doubles as the primary "open preview" affordance —
@@ -815,24 +857,15 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
             )}
           </div>
         )}
-        {!host.isWeb && canReveal && !deleted && (
-          <Tooltip content={canAct ? `${revealLabel}: ${path}` : ''}>
-            <SmallBtn disabled={!canAct} onClick={handleReveal} title={canAct ? undefined : (disabledReason || 'No file path')}>
-              {revealLabel}
-            </SmallBtn>
-          </Tooltip>
-        )}
-        {!deleted && (orgMode ? openTarget !== null : (!host.isWeb || isHtml)) && (
-          <Tooltip content={orgMode
-            ? (openTarget === 'preview' ? 'Open private preview' : 'Open the shared artifact')
-            : (canAct ? `Open ${path}` : '')}>
+        {!deleted && primaryAction && (
+          <Tooltip content={primaryAction.tooltip}>
             <SmallBtn
               primary
               disabled={!orgMode && !canAct}
-              onClick={handleOpen}
+              onClick={primaryAction.onClick}
               title={(orgMode || canAct) ? undefined : (disabledReason || 'No file path')}
             >
-              Open
+              {primaryAction.label}
             </SmallBtn>
           </Tooltip>
         )}
@@ -2070,6 +2103,29 @@ export default function ChatView({
                     />
                   );
                 }
+                // Content-shaped provider rejection (`content_recovery`,
+                // ENG-1992): distinct from `image_format` on purpose — this
+                // is an internal serialization mismatch, not anything wrong
+                // with the image itself, and the server has ALREADY stripped
+                // the offending content from this conversation's history by
+                // the time this code reaches the client. Re-uploading fixes
+                // nothing here, so the card offers "Try again" instead —
+                // the same message now sends clean.
+                if (m.code === 'content_recovery') {
+                  const retryText = lastUserTextBefore(visibleMessages, i);
+                  return (
+                    <ActionCard
+                      key={i}
+                      time={formatMetaTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      title="Fixed an issue with this conversation"
+                      body="An image earlier in this conversation couldn't be sent to the model due to an internal formatting issue. It's been removed automatically — you can keep going."
+                      buttons={retryText
+                        ? [{ label: 'Try again', onClick: () => onSend?.(retryText), primary: true }]
+                        : []}
+                    />
+                  );
+                }
                 // Transient billing/policy outage at the gateway
                 // (`policy_unavailable`): retryable and not the user's fault,
                 // so the next step is simply resending the failed message.
@@ -2138,9 +2194,26 @@ export default function ChatView({
                 // bucket with no known next step, so no card — but still a
                 // failure, rendered as a danger alert so it never reads as a
                 // finished answer. Richer treatment is ENG-1093's review.
+                // `requestId` is the one thing this bucket can still offer —
+                // the turn's own server-side correlation id, so a report of
+                // this generic message can be pinned to actual logs.
+                //
+                // Deliberately scoped to this bucket only: every carded code
+                // above (rate_limited, model_not_found, etc.) also hydrates
+                // `requestId` but doesn't render it — a card already tells
+                // the user what to do, so a raw id there would be noise, not
+                // help. A user who wants to report a CARDED failure still has
+                // nothing to quote; that's an intentional gap, not a bug.
                 return (
                   <AnswerTurn key={i} state="done" time={formatMetaTime(m.createdAt)} showActions={false} agentLabel={agentLabel}>
-                    <Alert variant="danger">{m.content}</Alert>
+                    <Alert variant="danger">
+                      <div>{m.content}</div>
+                      {m.requestId && (
+                        <div className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>
+                          Reference: {m.requestId}
+                        </div>
+                      )}
+                    </Alert>
                   </AnswerTurn>
                 );
               }

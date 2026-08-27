@@ -16,12 +16,14 @@ import {
   mountArtifactPreview,
   previewArtifact,
   unpublishArtifact,
+  artifactServeUrl,
 } from '../../api';
 import { deleteArtifactAndSync } from '../../lib/artifactsStore';
 import { needsClientUnpublishBeforeDelete } from '../../lib/artifactActions';
 import { downloadArtifactFile } from '../../lib/artifactDownload';
 import { loadArtifactDraftText } from '../../lib/artifactWorkspaceApi';
-import { isPublishableArtifact, BACKEND_ARTIFACT_TYPES, publishBlockedReason } from '../../lib/artifactKinds';
+import { isPublishableArtifact, isImageArtifact, BACKEND_ARTIFACT_TYPES } from '../../lib/artifactKinds';
+import { useBlobImageSrc } from '../AttachmentThumbnail';
 import { Modal } from '../ui/Modal';
 import { ConfirmModal } from '../ConfirmModal';
 import { host } from '../../../platform/host';
@@ -68,9 +70,6 @@ export function ArtifactViewer({
   const draftPreviewUrl = artifact?.draftUrl || '';
   const hasPreviewSource = hasActionPath || !!draftPreviewUrl;
   const isBackendArtifact = BACKEND_ARTIFACT_TYPES.has(artifact?.type);
-  // Non-empty when this artifact's type may never be published (e.g.
-  // fullstack-stateful-app). Drives the Publish action's disabled state.
-  const publishBlock = publishBlockedReason(artifact);
   // Backend artifacts treat the folder, not the entry html, as the
   // "thing" the user opens in their OS or browser. Prefer the server's
   // `folder` (the artifact's slug dir) — for fullstack apps the primary
@@ -293,6 +292,19 @@ export function ArtifactViewer({
       ? artifact.capabilities.canEdit !== false
       : !orgMode;
 
+  // Image artifacts skip the HTML mount pipeline entirely (there's no server
+  // dir to register for iframe serving) and load straight from the artifact's
+  // serve URL — same CSP workaround as AttachmentThumbnail (fetch + blob:,
+  // since a direct loopback <img src> is blocked). `withArtifactVersion` busts the
+  // fetch on a content change or a manual reload, matching the iframe/text
+  // cache-busting below.
+  const isImage = isImageArtifact(artifact);
+  const imageRawUrl = isImage ? artifactServeUrl(artifact) : '';
+  const imageUrl = imageRawUrl
+    ? withArtifactVersion(imageRawUrl, `${artifact?.mtime ?? 0}.${reloadNonce}`)
+    : '';
+  const { src: imageSrc, failed: imageFailed } = useBlobImageSrc({ url: imageUrl || null });
+
   // Reset the painted flag whenever the mounted URL changes so the
   // placeholder reappears for the new content.
   useEffect(() => { setIframeReady(false); }, [previewUrl]);
@@ -342,6 +354,12 @@ export function ArtifactViewer({
         })
         .catch((e) => { if (!cancelled) setErr(e?.message || 'Could not load preview'); })
         .finally(() => { if (!cancelled) setLoading(false); });
+      return () => { cancelled = true; };
+    }
+    if (isImage) {
+      // The `imageSrc` hook above does its own fetch keyed on `imageUrl`;
+      // nothing to mount server-side for a plain image file.
+      setLoading(false);
       return () => { cancelled = true; };
     }
     // Cache-buster for the iframe so a content change (or just reopening /
@@ -414,7 +432,7 @@ export function ArtifactViewer({
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, artifact?.path, artifact?.mtime, actionPath, hasPreviewSource, disabledReason, draftPreviewUrl, isText, reloadNonce, commentLayerRequested]);
+  }, [open, artifact?.path, artifact?.mtime, actionPath, hasPreviewSource, disabledReason, draftPreviewUrl, isText, isImage, reloadNonce, commentLayerRequested]);
 
   // Parse CSV → GFM pipe table once per loaded text. We cap at
   // CSV_PREVIEW_ROW_LIMIT data rows to keep the markdown renderer
@@ -574,7 +592,6 @@ export function ArtifactViewer({
     controller: pub,
     hasActionPath,
     isPublished,
-    blockedReason: publishBlock,
     disabledReason,
   };
   const artifactActions = {
@@ -596,6 +613,9 @@ export function ArtifactViewer({
     error: err,
     setError: setErr,
     isText,
+    isImage,
+    imageSrc,
+    imageFailed,
     loading,
     text: textPreview,
     textContentRef,
