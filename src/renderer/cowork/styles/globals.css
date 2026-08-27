@@ -741,7 +741,14 @@ a[href],
   padding: var(--composer-padding);
   min-height: 56px; max-height: 220px;
   user-select: text;
+  /* Hide the scrollbar to match the overlay. A classic space-consuming
+     scrollbar (Windows/Linux) would narrow the textarea once it overflows,
+     wrapping lines earlier than the full-width overlay and drifting the caret
+     off the visible text. Both must reserve zero. */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
+.composer-textarea::-webkit-scrollbar { display: none; }
 /* Placeholder must opt back IN to a visible fill (the rule above made all
    textarea glyphs transparent). */
 .composer-textarea::placeholder { color: var(--frost-500); -webkit-text-fill-color: var(--frost-500); }
