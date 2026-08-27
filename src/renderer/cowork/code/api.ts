@@ -1,4 +1,4 @@
-import { getApiOrigin } from '../../platform/host';
+import { getApiOrigin, isElectron, serverStart } from '../../platform/host';
 import { getCodeFixtureApi } from './fixtures';
 
 export type CodingStatus =
@@ -551,10 +551,32 @@ const EVENT_PHASES = new Set<NonNullable<CodingEvent['phase']>>([
 ]);
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${getApiOrigin()}/api/v1/coding${path}`, {
+  const url = `${getApiOrigin()}/api/v1/coding${path}`;
+  const method = (init?.method || 'GET').toUpperCase();
+  // Every write gets a sidecar preflight. Retrying after fetch fails would be
+  // unsafe because the server may already have committed the mutation; making
+  // availability an invariant at this shared boundary gives projects, tasks,
+  // approvals, and future writes the same recovery behavior without replaying
+  // any of them.
+  if (method !== 'GET' && method !== 'HEAD') await ensureCodeService();
+  const request = {
     ...init,
     headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
-  });
+  };
+  let response: Response;
+  try {
+    response = await fetch(url, request);
+  } catch (error) {
+    // Reads are safe to repeat. If the desktop sidecar disappeared, ask main
+    // to recover it and retry once. Mutations are deliberately not replayed:
+    // the server may have committed one before the connection dropped.
+    if (!isElectron || (method !== 'GET' && method !== 'HEAD')) throw error;
+    const recovered = await serverStart();
+    if (!recovered.running) {
+      throw new Error(recovered.error || 'The local Code service could not start.');
+    }
+    response = await fetch(url, request);
+  }
   if (!response.ok) {
     let detail = `Coding request failed (${response.status})`;
     try {
@@ -567,6 +589,14 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   }
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
+}
+
+async function ensureCodeService(): Promise<void> {
+  if (!isElectron) return;
+  const result = await serverStart();
+  if (!result.running) {
+    throw new Error(result.error || 'The local Code service could not start.');
+  }
 }
 
 const liveCodingApi = {

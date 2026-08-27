@@ -226,7 +226,7 @@ describe('startServer failure diagnostics', () => {
     expect(diag.lastError).toContain('code 1');
   });
 
-  it('counts a healthy backend as started even when the launcher we spawned has exited', async () => {
+  it('tracks a handed-off backend and replaces it if it later disappears', async () => {
     // On Windows the thing we spawn can hand off to a python child and exit.
     // Health is the authority: the server is up, so this is a start, not a
     // death — and it has to keep reading as running afterwards.
@@ -245,6 +245,28 @@ describe('startServer failure diagnostics', () => {
     expect(result.ok).toBe(true);
     expect(isServerRunning()).toBe(true);
     expect(getServerDiagnostics().lastError).toBeNull();
+
+    // The handed-off python has no ChildProcess handle. Once its health
+    // endpoint disappears, a later ensure must spawn a replacement instead of
+    // trusting the stale `serverStarted` flag forever.
+    healthOwner = null;
+    const replacement = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => { healthOwner = 'owner-token'; }, 0);
+      return replacement as never;
+    }) as never);
+    vi.mocked(process.kill).mockImplementation(((pid: number, signal?: string) => {
+      signals.push([pid, String(signal)]);
+      replacement.exitCode = 0;
+      setTimeout(() => replacement.emit('exit', 0), 0);
+      return true;
+    }) as never);
+    const spawnCount = vi.mocked(cp.spawn).mock.calls.length;
+
+    const recovered = await startServer({ port: PORT, readyTimeoutMs: 5_000 });
+
+    expect(recovered.ok).toBe(true);
+    expect(vi.mocked(cp.spawn).mock.calls).toHaveLength(spawnCount + 1);
     await stopServer(); // leave the module's state clean for the next test
   });
 

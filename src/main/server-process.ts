@@ -521,7 +521,19 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
 }
 
 async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: number }): Promise<StartServerResult> {
-  if (serverStarted) return { ok: true, port: serverPort };
+  if (serverStarted) {
+    // An adopted server has no ChildProcess handle whose exit event can
+    // invalidate our state. Re-probe it when the renderer asks us to ensure
+    // the backend is running; otherwise a dead adopted process leaves every
+    // recovery attempt as a no-op.
+    if (!_adoptedExternal) return { ok: true, port: serverPort };
+    const probe = await probeHealthOnce(serverPort, 700);
+    if (probe.ok && probe.owner === serverOwnerToken()) {
+      return { ok: true, port: serverPort };
+    }
+    console.warn(`[server] adopted instance on port ${serverPort} is no longer healthy; starting a replacement`);
+    await stopServerUnlocked();
+  }
   // If a start is already in progress (e.g. from app boot), reuse it
   // instead of spawning a second python that would clash on the port.
   if (pendingStart) return pendingStart;
