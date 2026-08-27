@@ -1643,12 +1643,28 @@ export default function SettingsView({
                     </div>
                   ) : null;
 
+                  // The router role has two consumers with different needs: history
+                  // summarization, and the respond-or-delegate gate that runs ahead
+                  // of every turn on a budget of seconds. The gate takes the
+                  // provider's fast default and ignores this pick (ENG-1851) — except
+                  // on openai-compatible, where no default exists and the user's
+                  // model is the only one there is. Only there is speed the user's
+                  // problem, so only there does the row say so.
+                  const gateFollowsThisPick = role === 'router' && curType === 'openai-compatible';
+                  const title = gateFollowsThisPick ? 'Routing and summarization model' : label;
+                  const subtitle = role === 'planning'
+                    ? 'Used for reasoning, orchestration, and responses.'
+                    : role === 'coding'
+                      ? 'Used for scratchpad code generation.'
+                      : gateFollowsThisPick
+                        ? 'Used for history summarization and for the respond-or-delegate gate '
+                          + 'that runs on every turn. The gate has a two-second budget: pick your '
+                          + 'fastest model here, not your smartest.'
+                        : 'Used for history summarization. The per-turn respond-or-delegate gate '
+                          + "runs on this provider's fast default and is not affected by this pick.";
+
                   return (
-                    <Section title={label} subtitle={`Used for ${
-                      role === 'planning' ? 'reasoning, orchestration, and responses'
-                        : role === 'router' ? 'fast respond-or-delegate gating on each turn, and history summarization'
-                        : 'scratchpad code generation'
-                    }.`} notice={noCreditsNotice}>
+                    <Section title={title} subtitle={subtitle} notice={noCreditsNotice}>
                       <div className="grid gap-1.5">
                         {multipleProviders && (
                           <label className="grid gap-1">
@@ -1834,7 +1850,7 @@ export default function SettingsView({
                 return (
                   <>
                     {RoleRow({ role: 'planning', label: 'Planning model' })}
-                    {RoleRow({ role: 'router', label: 'Routing and summarization model' })}
+                    {RoleRow({ role: 'router', label: 'Summarization model' })}
                     {RoleRow({ role: 'coding', label: 'Coding model' })}
                   </>
                 );
