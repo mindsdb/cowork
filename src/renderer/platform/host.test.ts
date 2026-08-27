@@ -309,6 +309,36 @@ describe('electron mode (bridge present)', () => {
     await expect(result).resolves.toEqual({ ok: false, reason: 'cancelled' });
   });
 
+  it('pickDriveFiles on web cancels a still-pending previous call when triggered again, so a later message only resolves the latest call', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ url: 'http://localhost:3000/picker?ticket=1' }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ url: 'http://localhost:3000/picker?ticket=2' }) });
+    vi.stubGlobal('fetch', fetchMock);
+    const popup1 = { closed: false, close: vi.fn() } as unknown as Window;
+    const popup2 = { closed: false, close: vi.fn() } as unknown as Window;
+    const open = vi.spyOn(window, 'open')
+      .mockReturnValueOnce(popup1)
+      .mockReturnValueOnce(popup2);
+    open.mockClear();
+    const host = await importHost();
+
+    const firstCall = host.pickDriveFiles('google_drive', 'c', 'e@x.com');
+    await vi.waitFor(() => expect(open).toHaveBeenCalledTimes(1));
+
+    const secondCall = host.pickDriveFiles('google_drive', 'c', 'e@x.com');
+    await vi.waitFor(() => expect(open).toHaveBeenCalledTimes(2));
+
+    // Before the fix, the first call's listener was never torn down, so this
+    // single message would have resolved both calls with the same result.
+    window.dispatchEvent(new MessageEvent('message', {
+      origin: window.location.origin,
+      data: { type: 'drive-picker-result', result: { ok: true, files: [{ id: 'f2' }] } },
+    }));
+
+    await expect(firstCall).resolves.toEqual({ ok: false, reason: 'cancelled' });
+    await expect(secondCall).resolves.toEqual({ ok: true, files: [{ id: 'f2' }] });
+  });
+
   it('cancelDrivePicker calls the bridge when present', async () => {
     const oauthCancelPicker = vi.fn(async () => {});
     (window as unknown as Record<string, unknown>).antontron = { oauthCancelPicker };

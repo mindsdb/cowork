@@ -827,6 +827,9 @@ export interface DrivePickerResult {
 // Web: the popup this session opened, tracked so cancelDrivePicker() (and a
 // second pickDriveFiles call) can close a stale one rather than leaking it.
 let webPickerPopup: Window | null = null;
+// Cancels the in-flight call's message listener and close-poll interval — a
+// settled call's finish() already no-ops, so calling this is always safe.
+let webPickerCancelPrevious: (() => void) | null = null;
 
 // Web equivalent of the Electron flow above. cowork-server serves the SPA
 // and its API from the same origin (getApiOrigin()), but web auth is a
@@ -850,6 +853,7 @@ async function pickDriveFilesWeb(engine: string, name: string, accountEmail: str
   }
 
   if (webPickerPopup && !webPickerPopup.closed) webPickerPopup.close();
+  webPickerCancelPrevious?.();
   const popup = window.open(session.url, '_blank', 'noopener,noreferrer');
   webPickerPopup = popup;
   if (!popup) return { ok: false, reason: 'The browser blocked the file picker popup.' };
@@ -863,6 +867,7 @@ async function pickDriveFilesWeb(engine: string, name: string, accountEmail: str
       window.removeEventListener('message', onMessage);
       resolve(result);
     };
+    webPickerCancelPrevious = () => finish({ ok: false, reason: 'cancelled' });
     const onMessage = (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return;
       if (!event.data || event.data.type !== 'drive-picker-result') return;
