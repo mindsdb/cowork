@@ -12,12 +12,13 @@ import { checkInstallStatus, runInstaller } from './installer';
 import { startServer, stopServer, forceReapServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort, fetchServerVersions } from './server-process';
 import { setUpdateNotifier, recreateVenvIfUnsupportedPython, repairServerInstall } from './server-updater';
 import { initUpdater, registerUpdateHandlers } from './updater';
+import { awaitBootSettled } from './boot-gate';
 import { awaitUpdateMaintenanceIdle } from './update-maintenance';
 import { oauthConnect, cancelCurrentOAuth } from './oauth-service';
 import { setRefreshToken, deleteRefreshToken, getRefreshToken as getOAuthRefreshToken } from './keychain-service';
 import { OAUTH_CREDENTIALS } from './credentials';
 import { startRefreshLoop, stopRefreshLoop, stopAllRefreshLoops, revokedConnections, getPickerAccess } from './token-refresh';
-import { fetchAccountEmail } from './oauth-identity';
+import { fetchAccountIdentity, buildRevokeRequest } from './oauth-identity';
 import { openDrivePickerFlow, cancelCurrentDrivePicker, isValidDriveFileIds } from './drive-picker-service';
 import { getPickedFiles, savePickedFiles, verifyPickedFiles, type PickedFile } from './picked-files';
 import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefreshTokenStore, isAccessTokenExpired } from './token-store';
@@ -119,6 +120,12 @@ function shellAutoUpdateEnabled(): boolean {
 // init() can call through to checkConfigured().
 let bootServerSettled: Promise<void> = Promise.resolve();
 
+// Resolves once the boot-time update poll has settled (applied a server/UI
+// update and reloaded, or decided nothing needs applying). The renderer awaits
+// this via BOOT_AWAIT_READY before leaving the loading screen (ENG-749). Defaults
+// to resolved so paths that never start the updater don't strand the gate.
+let bootUpdateSettled: Promise<void> = Promise.resolve();
+
 // Ask the running server for its readiness. Reads `config_ready` from /health —
 // the SAME signal the in-app chat gate uses (settings.config_status) — so
 // routing and the chat gate read one identical value and cannot disagree.
@@ -164,6 +171,20 @@ async function checkConfigured(): Promise<{ configured: boolean; provider: strin
   if (vars.ANTON_ANTHROPIC_API_KEY) return { configured: true, provider: 'anthropic' };
   if (vars.ANTON_OPENAI_API_KEY) return { configured: true, provider: 'openai' };
   return { configured: false, provider: '' };
+}
+
+// Map a server-updater notification onto the UI update-status shape the renderer
+// already consumes, so a server download shows progress on the loading screen and
+// the in-app overlay (ENG-749). Only "busy" phases are forwarded — errors keep
+// their own channel and must never leave the UI stuck in a spinner.
+function serverPhaseToUiStatus(
+  payload: Record<string, unknown>,
+): { phase: string; version?: string } | null {
+  const phase = typeof payload.phase === 'string' ? payload.phase : '';
+  const version = typeof payload.to === 'string' ? payload.to : undefined;
+  if (phase === 'downloading') return { phase: 'downloading', ...(version ? { version } : {}) };
+  if (phase === 'restarting') return { phase: 'reloading' };
+  return null;
 }
 
 function httpRequest(
@@ -598,6 +619,8 @@ function setupIPC() {
         scopes: oauthBlock.scopes,
         extraAuthParams: oauthBlock.extra_auth_params,
         redirectPort: oauthBlock.redirect_port,
+        redirectHost: oauthBlock.redirect_host,
+        tokenAuthStyle: oauthBlock.token_auth_style,
       });
       if (!pkceResult.ok || !pkceResult.access_token || (supportsRefresh && !pkceResult.refresh_token)) {
         return { ok: false, reason: pkceResult.reason || 'OAuth flow did not return tokens.' };
@@ -608,12 +631,13 @@ function setupIPC() {
       // record's display name. The token exchange already succeeded at
       // this point, so retry once on a transient failure rather than
       // forcing the user to redo the whole consent flow.
-      let accountEmail = '';
-      for (let attempt = 0; attempt < 2 && !accountEmail; attempt++) {
+      let accountIdentity: Awaited<ReturnType<typeof fetchAccountIdentity>> = { email: '' };
+      for (let attempt = 0; attempt < 2 && !accountIdentity.email; attempt++) {
         if (attempt > 0) await new Promise((r) => setTimeout(r, 500));
-        accountEmail = await fetchAccountEmail(engine, pkceResult.access_token);
+        accountIdentity = await fetchAccountIdentity(engine, pkceResult.access_token);
       }
-      if (!accountEmail) return { ok: false, reason: 'Could not retrieve account email.' };
+      const accountEmail = accountIdentity.email;
+      if (!accountEmail) return { ok: false, reason: accountIdentity.reason || 'Could not retrieve account email.' };
 
       // Store refresh_token in OS keychain — never sent over the network.
       // Absent entirely for a supports_refresh: false connector.
@@ -638,6 +662,7 @@ function setupIPC() {
               access_token: pkceResult.access_token,
               expires_at: expiresAt,
               account_email: accountEmail,
+              ...(accountIdentity.name ? { account_name: accountIdentity.name } : {}),
               token_url: tokenUrl,
               scope: pkceResult.scope || oauthBlock.scopes.join(' '),
               auth_type: 'oauth',
@@ -656,7 +681,7 @@ function setupIPC() {
       const saved = await saveRes.json() as { ok: boolean; name?: string };
       const vaultSlug = saved.name || labelName;
 
-      startRefreshLoop(engine, vaultSlug, accountEmail, expiresAt, tokenUrl);
+      startRefreshLoop(engine, vaultSlug, accountEmail, expiresAt, tokenUrl, oauthBlock.token_auth_style);
       return { ok: true, name: vaultSlug, account_email: accountEmail };
     }
 
@@ -749,11 +774,26 @@ function setupIPC() {
           const builtinMethod = spec?.form?.methods?.find((m: any) => m.id === 'browser_oauth_builtin');
           const oauthBlock = builtinMethod?.oauth;
           if (oauthBlock?.supports_revoke !== false && oauthBlock?.revoke_url) {
-            await fetch(oauthBlock.revoke_url, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-              body: new URLSearchParams({ token: refreshToken }).toString(),
-            });
+            // Some providers' revoke endpoints require the app's own
+            // client_id/client_secret alongside the token (e.g. Supabase's
+            // JSON-body /v1/oauth/revoke) rather than the generic RFC-7009
+            // form-encoded `token=` shape — fetch credentials the same way
+            // the connect flow above does, best-effort.
+            let clientId = '';
+            let clientSecret = '';
+            try {
+              const credsRes = await fetch(
+                `http://127.0.0.1:${getServerPort()}/api/v1/connectors/oauth/${engine}/credentials`,
+                { headers: authHeader() },
+              );
+              if (credsRes.ok) {
+                const credsData = await credsRes.json() as { client_id?: string; client_secret?: string };
+                clientId = credsData.client_id || '';
+                clientSecret = credsData.client_secret || '';
+              }
+            } catch {}
+            const { headers, body } = buildRevokeRequest(engine, refreshToken, clientId, clientSecret);
+            await fetch(oauthBlock.revoke_url, { method: 'POST', headers, body });
           }
         }
       }
@@ -1136,6 +1176,13 @@ function setupIPC() {
     return checkConfigured();
   });
 
+  ipcMain.handle(IPC.BOOT_AWAIT_READY, async () => {
+    // The renderer holds the loading screen across this await, so a boot update
+    // has already reinstalled/reloaded before the UI routes into the app (ENG-749).
+    await awaitBootSettled([bootServerSettled, bootUpdateSettled]);
+    return { ready: true };
+  });
+
   ipcMain.handle(
     IPC.SETTINGS_VALIDATE,
     async (_event, provider: string, apiKey: string, baseUrl?: string, model?: string) => {
@@ -1454,10 +1501,16 @@ app.whenReady().then(async () => {
   // Bounded by primeLoginShellPath()'s own timeout — checkInstallStatus and
   // the server spawn below both resolve uv through the PATH it caches.
   await primeLoginShellPath();
+  // Boot-update barrier (ENG-749): resolved once the boot poll finishes, or
+  // immediately below when no updater runs. `bootUpdateDone` is idempotent.
+  let resolveBootUpdate: () => void = () => {};
+  bootUpdateSettled = new Promise<void>((resolve) => { resolveBootUpdate = resolve; });
+  const bootUpdateDone = () => resolveBootUpdate();
   checkInstallStatus().then(async ({ antonInstalled }) => {
     if (!antonInstalled) {
       console.log('[server] skipped: cowork-server not installed; setup screen will handle.');
       resolveBootServer();
+      bootUpdateDone();  // no boot poll on this path — don't strand the gate
       return;
     }
     // If MindsHub SSO tokens are stored, silently refresh before the Python
@@ -1550,19 +1603,28 @@ app.whenReady().then(async () => {
     // its health probe, so this can't strand a previously-working install.
     setUpdateNotifier((payload) => {
       mainWindow?.webContents.send(IPC.SERVER_UPDATE_STATUS, payload);
+      // Mirror progress onto the UI status channel so the loading screen and
+      // in-app overlay show it during a server download (ENG-749).
+      const mirrored = serverPhaseToUiStatus(payload);
+      if (mirrored) mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, mirrored);
     });
 
     const devMode = getDevMode();
     if (app.isPackaged && !devMode && mainWindow) {
-      initUpdater(() => mainWindow, rendererReady, getUpdateMode, shellAutoUpdateEnabled());
+      initUpdater(() => mainWindow, rendererReady, getUpdateMode, shellAutoUpdateEnabled(), bootUpdateDone);
     } else if (!app.isPackaged) {
       console.log('[updater] skipped — not a packaged build');
+      bootUpdateDone();  // no boot poll → nothing for the loading gate to wait on
     } else if (devMode) {
       console.log(`[updater] skipped — DEV_MODE=${devMode}`);
+      bootUpdateDone();
+    } else {
+      bootUpdateDone();  // no window to update against
     }
   }).catch((err) => {
     console.error('[server] check-and-start failed:', err);
     resolveBootServer();  // never leave checkConfigured() awaiting a stuck boot
+    bootUpdateDone();     // ...or the loading gate awaiting a boot that never ran
   });
 
   app.on('activate', () => {
@@ -1606,7 +1668,7 @@ async function startOrphanRefreshLoops(): Promise<void> {
         if (!tokenUrl) continue;
         const refreshToken = await getOAuthRefreshToken(engine, accountEmail);
         if (!refreshToken) continue;
-        startRefreshLoop(engine, name, accountEmail, expiresAt, tokenUrl);
+        startRefreshLoop(engine, name, accountEmail, expiresAt, tokenUrl, oauthBlock?.token_auth_style);
         console.log(`[token-refresh] resumed loop for ${engine}:${accountEmail}`);
       } catch (err) {
         console.warn(`[token-refresh] could not resume loop for ${engine}/${name}:`, err);

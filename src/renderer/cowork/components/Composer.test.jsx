@@ -3,7 +3,7 @@
 // It must open the "Start a new project" modal, and a create from that
 // modal must select the new project on the composer.
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import Composer from './Composer';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
@@ -563,5 +563,71 @@ describe('Composer — task-mode chip (ENG-1594)', () => {
     expect(screen.getByPlaceholderText(MODE.placeholder)).toBeInTheDocument();
     await user.click(chip);
     expect(onClearTaskMode).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ENG-1100: every clipboard paste arrives as "image.png", so two screenshots in
+// one conversation were indistinguishable. The composer renames them on the way
+// in — and does it synchronously, or a user who hits Enter right after Ctrl+V
+// would send the message before the attachment chip exists.
+describe('Composer — pasted image names (ENG-1100)', () => {
+  const CLIPBOARD_NAME = /^clipboard_\d+_[0-9a-f]{8}\.png$/;
+
+  const textarea = () => document.querySelector('textarea.composer-textarea');
+
+  const pasteFiles = (files) => fireEvent.paste(textarea(), {
+    clipboardData: {
+      items: files.map((f) => ({ kind: 'file', getAsFile: () => f })),
+      files,
+    },
+  });
+
+  const pastedImage = (bytes) =>
+    new File([new Uint8Array(bytes)], 'image.png', { type: 'image/png' });
+
+  it('gives two pasted screenshots distinct clipboard_* names', () => {
+    const onAttachFiles = vi.fn();
+    renderComposer({ onAttachFiles });
+
+    // Different byte lengths: extractClipboardFiles dedupes on name+size, and
+    // both files are still called "image.png" at that point.
+    pasteFiles([pastedImage([1, 2, 3]), pastedImage([1, 2, 3, 4])]);
+
+    expect(onAttachFiles).toHaveBeenCalledTimes(1);
+    const attached = onAttachFiles.mock.calls[0][0];
+    expect(attached).toHaveLength(2);
+    expect(attached[0].name).toMatch(CLIPBOARD_NAME);
+    expect(attached[1].name).toMatch(CLIPBOARD_NAME);
+    expect(attached[0].name).not.toBe(attached[1].name);
+  });
+
+  it('attaches synchronously and swallows the paste', () => {
+    const onAttachFiles = vi.fn();
+    renderComposer({ onAttachFiles });
+
+    // No await anywhere: onAttachFiles must have run inside the paste handler.
+    const notPrevented = pasteFiles([pastedImage([1, 2, 3])]);
+
+    expect(onAttachFiles).toHaveBeenCalledTimes(1);
+    expect(notPrevented).toBe(false);
+  });
+
+  it('leaves a text paste alone', () => {
+    const onAttachFiles = vi.fn();
+    renderComposer({ onAttachFiles });
+
+    const notPrevented = pasteFiles([]);
+
+    expect(onAttachFiles).not.toHaveBeenCalled();
+    expect(notPrevented).toBe(true);
+  });
+
+  it('keeps a real filename when a named image is pasted', () => {
+    const onAttachFiles = vi.fn();
+    renderComposer({ onAttachFiles });
+
+    pasteFiles([new File([new Uint8Array([1])], 'chart.png', { type: 'image/png' })]);
+
+    expect(onAttachFiles.mock.calls[0][0][0].name).toBe('chart.png');
   });
 });

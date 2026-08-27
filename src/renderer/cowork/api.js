@@ -186,6 +186,9 @@ function _failedEventMeta(events) {
     // it as local time — the gate would last hours west of UTC and no-op east
     // of it, invisible to a TZ=UTC suite (ENG-1537 review).
     retryAt: typeof ev.retry_at === 'string' ? ev.retry_at : null,
+    // The remote turn's own correlation id (cowork-server) — the one thing a
+    // generic anton_error bubble can still offer for a support lookup.
+    requestId: typeof ev.request_id === 'string' ? ev.request_id : null,
   };
 }
 
@@ -235,6 +238,7 @@ function _hydrateAssistantEvents(messages) {
           resetAt: failed?.resetAt ?? null,
           retryAt: failed?.retryAt ?? null,
           failedModel: failed?.failedModel ?? null,
+          requestId: failed?.requestId ?? null,
         });
       }
     }
@@ -345,6 +349,41 @@ export async function fetchSession(id) {
   } catch {
     return null;
   }
+}
+
+/**
+ * Loader-facing conversation fetch. Unlike `fetchSession` (which collapses every
+ * failure to `null`), this separates a gone conversation (`404 → 'not_found'`)
+ * from an operational failure (auth / 5xx / network `→ 'unavailable'`) so the
+ * route can drop a dead link Home but keep the URL + retry on a transient
+ * outage. Metadata is authoritative for existence. A failed transcript is only
+ * treated as an empty conversation on a 404 (the one benign case); any other
+ * items failure is 'unavailable' so a real transcript is never silently blanked.
+ *
+ * @returns {Promise<{status:'ok', task:object} | {status:'not_found'} | {status:'unavailable', code:number}>}
+ */
+export async function fetchSessionResult(id) {
+  const [metaRes, msgsRes] = await Promise.allSettled([
+    req(`/conversations/${encodeURIComponent(id)}`),
+    req(`/conversations/${encodeURIComponent(id)}/items`),
+  ]);
+  if (metaRes.status === 'rejected') {
+    const err = metaRes.reason;
+    if (err && err.status === 404) return { status: 'not_found' };
+    // `err.status` is undefined for a network/abort failure — code 0.
+    return { status: 'unavailable', code: (err && err.status) || 0 };
+  }
+  // The conversation exists but its transcript failed to load. Only a 404 is
+  // benign (existing conversation, nothing recorded yet → render empty); auth /
+  // 5xx / network would blank a real transcript, so surface the retry instead.
+  if (msgsRes.status === 'rejected') {
+    const err = msgsRes.reason;
+    if (!(err && err.status === 404)) {
+      return { status: 'unavailable', code: (err && err.status) || 0 };
+    }
+  }
+  const msgs = msgsRes.status === 'fulfilled' && Array.isArray(msgsRes.value) ? msgsRes.value : [];
+  return { status: 'ok', task: _conversationToTask(metaRes.value, msgs) };
 }
 
 /**
@@ -1045,6 +1084,21 @@ export async function fetchArtifacts({ projectId, projectPath } = {}) {
       return [];
     }
   });
+}
+
+// Same URL shapes as `fetchArtifacts` above, but THROWS instead of returning [].
+//
+// The liveness store (lib/artifactsStore.js) has to tell "loaded, and the list
+// is empty" from "the request failed". Its sibling cannot: it swallows every
+// error into `[]`, and an empty list read as authoritative would mark every
+// artifact card in the conversation as deleted. Deliberately not routed through
+// `dedupe` either — the store coalesces its own loads and needs the rejection.
+export async function fetchArtifactsStrict({ projectId, projectPath } = {}) {
+  let suffix = '';
+  if (projectId) suffix = `?project_id=${encodeURIComponent(projectId)}`;
+  else if (projectPath) suffix = `?project_path=${encodeURIComponent(projectPath)}`;
+  const data = await req(`/artifacts/${suffix}`);
+  return Array.isArray(data) ? data : [];
 }
 
 export async function previewArtifact(path) {

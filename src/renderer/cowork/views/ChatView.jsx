@@ -13,7 +13,7 @@ import { createPortal } from 'react-dom';
 import Ico from '../components/Icons';
 import Composer from '../components/Composer';
 import CodingTerminal from '../components/CodingTerminal';
-import { Alert, Card, Tooltip } from '../components/ui';
+import { Alert, Badge, Card, Tooltip } from '../components/ui';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import { ThinkingBlock } from '../components/thinking/ThinkingBlock';
 import { WorkingIndicator } from '../components/thinking/WorkingIndicator';
@@ -32,13 +32,15 @@ import { revealArtifact, exportArtifact, attachmentRawUrl, artifactServeUrl, fet
 import { AttachmentThumbnail, useBlobImageSrc } from '../components/AttachmentThumbnail';
 import { normalizeArtifactRecord } from '../lib/artifactPaths';
 import { isImageArtifact } from '../lib/artifactKinds';
+import { downloadArtifactFile } from '../lib/artifactDownload';
 import { latestSkillCardIndexByKey } from '../lib/skillCards';
 import { host, isWeb } from '../../platform/host';
 import { Crumb as CrumbButton, CrumbSep } from '../components/ui/Crumb';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { harnessLabel } from '../lib/agentLabel';
-import { artifactOpenTarget, isArtifactActionAvailable } from '../lib/artifactActions';
+import { artifactOpenTarget } from '../lib/artifactActions';
+import { revalidate as revalidateArtifacts, setArtifactsScope, useArtifactLiveness } from '../lib/artifactsStore';
 import { useOrgMode } from '../../lib/orgMode';
 import { modelLabel } from '../lib/settingsTransform';
 import { providerOverloadedButtons } from '../lib/turnErrorActions';
@@ -455,13 +457,23 @@ function artifactStepToCard(step, projectPath) {
 }
 
 // Renders any badge='Artifact' steps as inline ArtifactCards.
-function StepArtifacts({ steps, onOpen, projectPath }) {
+//
+// `live` says whether these steps belong to a turn still in flight. It rides
+// down to the card because an artifact the agent created THIS turn cannot be in
+// an artifacts index that was loaded before it existed, and judging it against
+// one would mark a brand-new artifact "Deleted".
+function StepArtifacts({ steps, onOpen, projectPath, live = false }) {
   const artifacts = steps?.filter((s) => s.badge === 'Artifact') || [];
   if (artifacts.length === 0) return null;
   return (
     <div className="flex flex-col gap-3 mt-1">
       {artifacts.map((s) => (
-        <ArtifactCard key={s.id} artifact={artifactStepToCard(s, projectPath)} onOpen={onOpen} />
+        <ArtifactCard
+          key={s.id}
+          artifact={artifactStepToCard(s, projectPath)}
+          onOpen={onOpen}
+          live={live}
+        />
       ))}
     </div>
   );
@@ -527,12 +539,16 @@ function StepSkills({ steps, latestByKey, messageIndex, projectName }) {
   );
 }
 
-function ArtifactCard({ artifact, onOpen }) {
+function ArtifactCard({ artifact, onOpen, live = false }) {
   // This card is an artifact surface like the panel's rows, so it answers to the
   // same deployment gate. Without it the chat offered a local preview, Export
   // and Show in Finder for content an org deployment does not serve, while the
   // panel had already stopped offering them for the very same artifact.
   const orgMode = useOrgMode();
+  // Same question the artifacts panel answers by simply not listing the row:
+  // is this artifact still there? The card outlives the artifact because it is
+  // rendered from the turn's persisted stream events, which no delete rewrites.
+  const deleted = useArtifactLiveness(artifact, { live });
   const [status, setStatus] = useState(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -552,7 +568,7 @@ function ArtifactCard({ artifact, onOpen }) {
   const path = artifact.canonicalPath || artifact.file_path || artifact.path;
   const displayPath = artifact.displayPath || path;
   const disabledReason = artifact.actionDisabledReason || '';
-  const canAct = !!path && !disabledReason;
+  const canAct = !!path && !disabledReason && !deleted;
   const platform = host.getPlatform();
   const revealLabel = platform === 'darwin' ? 'Show in Finder' : 'Show in folder';
 
@@ -561,6 +577,13 @@ function ArtifactCard({ artifact, onOpen }) {
     setStatus({ kind, text });
     statusTimerRef.current = setTimeout(() => setStatus(null), kind === 'ok' ? 1800 : 3200);
   };
+
+  // An action that failed may have failed because the artifact is gone. Ask the
+  // server rather than guess from the error: a 404 detail, an Electron bridge
+  // `{ ok: false }` and a transient network blip are indistinguishable here, and
+  // only the artifacts list can settle it. Best-effort — a failed revalidation
+  // just leaves the card as it was.
+  const revalidateAfterFailure = () => { revalidateArtifacts().catch(() => {}); };
 
   // Match the Working folder card's behavior: HTML and text artifacts
   // (.md/.txt/.csv) open the in-app viewer — HTML via sandboxed iframe,
@@ -583,14 +606,11 @@ function ArtifactCard({ artifact, onOpen }) {
   const openTarget = artifactOpenTarget({
     orgMode, published, canPreviewInline, hasBridge: host.isElectron || !host.isWeb,
   });
-  // Document artifacts (markdown/HTML/text) can be exported to PDF/Word/HTML.
-  const _EXPORTABLE_EXTS = ['.md', '.markdown', '.html', '.htm', '.txt'];
-  const canExport = canAct
-    && isArtifactActionAvailable('export', { orgMode, hasBridge: !host.isWeb, published })
-    && (_EXPORTABLE_EXTS.includes(lcExt) || _EXPORTABLE_EXTS.some((e) => lcPath.endsWith(e)));
-  const canReveal = isArtifactActionAvailable('reveal', {
-    orgMode, hasBridge: host.isElectron, published,
-  });
+  // Export is hidden pending ENG-1988: PDF/DOCX conversion is broken for any
+  // artifact beyond a plain markdown report (crashes, dumps raw JS into the
+  // .docx), and HTML→HTML export can overwrite the source artifact in place.
+  // A broken button is worse than no button — re-enable once ENG-1988 lands.
+  const canExport = false;
   const handleExport = async (fmt) => {
     setExportOpen(false);
     if (!canAct) {
@@ -610,12 +630,21 @@ function ArtifactCard({ artifact, onOpen }) {
       // eslint-disable-next-line no-console
       console.error('[artifact-export] failed', e);
       showStatus('error', e?.message || `Could not export ${fmt.toUpperCase()}.`);
+      revalidateAfterFailure();
     }
     finally {
       setExporting(false);
     }
   };
   const handleOpen = async () => {
+    // The org-mode published branch below returns before the `canAct` check, so
+    // it would survive a deletion. Its button is not rendered in that state, but
+    // relying on two conditions in different parts of the file agreeing is not
+    // worth the risk.
+    if (deleted) {
+      showStatus('error', 'This artifact was deleted.');
+      return;
+    }
     if (openTarget === 'published') {
       // The published URL is the ONLY route to this artifact's bytes on an org
       // deployment, and it carries the access check.
@@ -646,6 +675,7 @@ function ArtifactCard({ artifact, onOpen }) {
       // eslint-disable-next-line no-console
       console.error('[artifact-open] failed', e);
       showStatus('error', e?.message || 'Could not open artifact.');
+      revalidateAfterFailure();
     }
   };
   const handleReveal = async () => {
@@ -672,25 +702,62 @@ function ArtifactCard({ artifact, onOpen }) {
       // eslint-disable-next-line no-console
       console.error('[artifact-reveal] failed', e || bridgeError);
       showStatus('error', e?.message || bridgeError?.message || bridgeError || 'Could not show artifact.');
+      revalidateAfterFailure();
     }
   };
+  const handleDownload = () => {
+    if (!canAct) {
+      showStatus('error', disabledReason || 'No artifact file path is available.');
+      return;
+    }
+    if (!downloadArtifactFile(artifact, { actionPath: path })) {
+      showStatus('error', 'This artifact has no serve URL yet.');
+      return;
+    }
+    showStatus('ok', 'Downloading…');
+  };
+  // One primary action button instead of an Open/Show-in-Finder pair: org
+  // mode is unchanged (always the published URL, external — there is no
+  // local file to reveal or download there). Locally, what the button does
+  // follows what the artifact actually supports — Preview for anything the
+  // in-app modal can render, otherwise Download (web, streams the file) or
+  // Show in Finder/Explorer (desktop, opens the containing FOLDER, not the
+  // file) — never both, and never a generic "Open" that hides which of the
+  // two it's about to do.
+  const primaryAction = orgMode
+    ? (openTarget === 'published'
+      ? { label: 'Open', onClick: handleOpen, tooltip: 'Open the published artifact' }
+      : null)
+    : canPreviewInline
+      ? { label: 'Preview', onClick: handleOpen, tooltip: canAct ? `Preview ${path}` : '' }
+      : host.isWeb
+        ? { label: 'Download', onClick: handleDownload, tooltip: canAct ? `Download ${path}` : '' }
+        // handleReveal already falls back from the Electron bridge to the
+        // server-side reveal endpoint and surfaces its own error, so this
+        // doesn't gate further on bridge availability the way the old
+        // Open button didn't either.
+        : { label: revealLabel, onClick: handleReveal, tooltip: canAct ? `${revealLabel}: ${path}` : '' };
   const previewText = artifact.preview?.[0]?.heading || artifact.preview?.[0]?.text || displayPath;
-  // Whole-card click → preview. The inner buttons (Show in Finder,
-  // Open, Title) all stopPropagation so their own handlers run
-  // instead of bubbling up to this. Disabled paths fall through to
-  // a status toast instead of opening, mirroring the prior button
-  // behaviour. Cursor + hover lift mark the entire surface as
-  // interactive at a glance.
+  // Whole-card click → preview. The inner buttons (the primary action,
+  // Title) all stopPropagation so their own handlers run instead of
+  // bubbling up to this. Disabled paths fall through to a status toast
+  // instead of opening, mirroring the prior button behaviour. Cursor +
+  // hover lift mark the entire surface as interactive at a glance.
   return (
     <Card
       as="div"
       interactive={canAct}
       padding="cozy"
       onActivate={canAct ? handleOpen : undefined}
-      aria-label={canAct ? `Open preview: ${artifact.title}` : disabledReason || 'No file path'}
+      aria-label={deleted
+        ? `Deleted artifact: ${artifact.title}`
+        : (canAct ? `Open preview: ${artifact.title}` : disabledReason || 'No file path')}
       className="grid grid-cols-[64px_1fr_auto] items-center gap-4"
     >
-      <div className="w-16 h-16 bg-surface-2 rounded-lg grid place-items-center text-accent overflow-hidden">
+      <div
+        className="w-16 h-16 bg-surface-2 rounded-lg grid place-items-center text-accent overflow-hidden"
+        style={{ opacity: deleted ? 0.7 : 1 }}
+      >
         {thumbSrc ? (
           <img src={thumbSrc} alt={artifact.title || 'Artifact thumbnail'} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
         ) : (
@@ -707,7 +774,7 @@ function ArtifactCard({ artifact, onOpen }) {
           type="button"
           onClick={(e) => { e.stopPropagation(); if (canAct) handleOpen(); }}
           disabled={!canAct}
-          title={canAct ? `Open preview: ${artifact.title}` : disabledReason || 'No file path'}
+          title={deleted ? 'This artifact was deleted' : (canAct ? `Open preview: ${artifact.title}` : disabledReason || 'No file path')}
           // kept inline: `all: unset` writes an inline declaration for every
           // longhand (incl. color/background), which always beats a Tailwind
           // utility class of equal-or-lower specificity — so every property
@@ -726,8 +793,9 @@ function ArtifactCard({ artifact, onOpen }) {
           onMouseOver={(e) => { if (canAct) { e.currentTarget.style.color = T.accent; e.currentTarget.style.textDecoration = 'underline'; e.currentTarget.style.textUnderlineOffset = '3px'; } }}
           onMouseOut={(e) => { e.currentTarget.style.color = T.ink; e.currentTarget.style.textDecoration = 'none'; }}
         >{artifact.title}</button>
-        <span className="font-body text-sm text-ink-3">
+        <span className="font-body text-sm text-ink-3 flex items-center gap-1.5">
           {artifact.kind || 'live artifact'}
+          {deleted && <Badge variant="muted" size="xs">Deleted</Badge>}
         </span>
         {previewText && (
           <span
@@ -788,24 +856,15 @@ function ArtifactCard({ artifact, onOpen }) {
             )}
           </div>
         )}
-        {!host.isWeb && canReveal && (
-          <Tooltip content={canAct ? `${revealLabel}: ${path}` : ''}>
-            <SmallBtn disabled={!canAct} onClick={handleReveal} title={canAct ? undefined : (disabledReason || 'No file path')}>
-              {revealLabel}
-            </SmallBtn>
-          </Tooltip>
-        )}
-        {/* Org mode drops the file-path conditions entirely: there the button
-            opens the published URL, which has no local path behind it. */}
-        {(orgMode ? openTarget === 'published' : (!host.isWeb || isHtml)) && (
-          <Tooltip content={orgMode ? 'Open the published artifact' : (canAct ? `Open ${path}` : '')}>
+        {!deleted && primaryAction && (
+          <Tooltip content={primaryAction.tooltip}>
             <SmallBtn
               primary
               disabled={!orgMode && !canAct}
-              onClick={handleOpen}
+              onClick={primaryAction.onClick}
               title={(orgMode || canAct) ? undefined : (disabledReason || 'No file path')}
             >
-              Open
+              {primaryAction.label}
             </SmallBtn>
           </Tooltip>
         )}
@@ -1417,6 +1476,12 @@ export default function ChatView({
   const dialogMessageCount = visibleMessages.filter((m) => ['user', 'assistant', 'error', 'provider_required'].includes(m.role)).length;
   const streamingMsg = task.messages.find((m) => m.role === '_streaming');
   const artifactProjectPath = task.projectPath || project?.path || '';
+  // Which project's artifacts the liveness store should describe. An effect, not
+  // a render-time call: the store emits. Both deps are primitives, so an equal
+  // scope cannot re-trigger it.
+  useEffect(() => {
+    setArtifactsScope({ projectId: project?.id || '', projectPath: artifactProjectPath });
+  }, [project?.id, artifactProjectPath]);
   const taskAttachments = task.attachments || visibleMessages.flatMap((m) => m.attachments || []);
   // Source of truth for the rail Progress card: the live streaming
   // message's steps if a request is in flight, otherwise the steps
@@ -2037,6 +2102,29 @@ export default function ChatView({
                     />
                   );
                 }
+                // Content-shaped provider rejection (`content_recovery`,
+                // ENG-1992): distinct from `image_format` on purpose — this
+                // is an internal serialization mismatch, not anything wrong
+                // with the image itself, and the server has ALREADY stripped
+                // the offending content from this conversation's history by
+                // the time this code reaches the client. Re-uploading fixes
+                // nothing here, so the card offers "Try again" instead —
+                // the same message now sends clean.
+                if (m.code === 'content_recovery') {
+                  const retryText = lastUserTextBefore(visibleMessages, i);
+                  return (
+                    <ActionCard
+                      key={i}
+                      time={formatMetaTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      title="Fixed an issue with this conversation"
+                      body="An image earlier in this conversation couldn't be sent to the model due to an internal formatting issue. It's been removed automatically — you can keep going."
+                      buttons={retryText
+                        ? [{ label: 'Try again', onClick: () => onSend?.(retryText), primary: true }]
+                        : []}
+                    />
+                  );
+                }
                 // Transient billing/policy outage at the gateway
                 // (`policy_unavailable`): retryable and not the user's fault,
                 // so the next step is simply resending the failed message.
@@ -2105,9 +2193,26 @@ export default function ChatView({
                 // bucket with no known next step, so no card — but still a
                 // failure, rendered as a danger alert so it never reads as a
                 // finished answer. Richer treatment is ENG-1093's review.
+                // `requestId` is the one thing this bucket can still offer —
+                // the turn's own server-side correlation id, so a report of
+                // this generic message can be pinned to actual logs.
+                //
+                // Deliberately scoped to this bucket only: every carded code
+                // above (rate_limited, model_not_found, etc.) also hydrates
+                // `requestId` but doesn't render it — a card already tells
+                // the user what to do, so a raw id there would be noise, not
+                // help. A user who wants to report a CARDED failure still has
+                // nothing to quote; that's an intentional gap, not a bug.
                 return (
                   <AnswerTurn key={i} state="done" time={formatMetaTime(m.createdAt)} showActions={false} agentLabel={agentLabel}>
-                    <Alert variant="danger">{m.content}</Alert>
+                    <Alert variant="danger">
+                      <div>{m.content}</div>
+                      {m.requestId && (
+                        <div className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>
+                          Reference: {m.requestId}
+                        </div>
+                      )}
+                    </Alert>
                   </AnswerTurn>
                 );
               }
@@ -2250,7 +2355,7 @@ export default function ChatView({
                     <StreamCursor />
                   </div>
                 )}
-                <StepArtifacts steps={streamingMsg.steps} onOpen={handleArtifactOpen} projectPath={artifactProjectPath} />
+                <StepArtifacts steps={streamingMsg.steps} onOpen={handleArtifactOpen} projectPath={artifactProjectPath} live />
                 <StepSkills steps={streamingMsg.steps} latestByKey={latestSkillCardByKey} messageIndex={visibleMessages.length} projectName={project?.name} />
               </AnswerTurn>
             ) : isStreaming && (

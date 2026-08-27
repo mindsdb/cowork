@@ -59,8 +59,8 @@ const BODY_TIMEOUT = 10 * 60_000;
 const EXPECTED_VERSION = (process.env.RELEASE_SMOKE_VERSION ?? '').trim().replace(/^v/, '');
 
 interface Platform {
-  readonly name: 'mac' | 'windows';
-  readonly ext: 'pkg' | 'exe';
+  readonly name: 'mac' | 'windows' | 'linux-amd64' | 'linux-arm64';
+  readonly ext: 'pkg' | 'exe' | 'deb';
 }
 
 interface Channel {
@@ -79,9 +79,13 @@ interface Manifest {
   published_at: string;
 }
 
+// Linux is two entries, not one: the deb arches publish under separate
+// prefixes, so each has its own manifest and its own alias to verify.
 const PLATFORMS: Platform[] = [
   { name: 'mac', ext: 'pkg' },
   { name: 'windows', ext: 'exe' },
+  { name: 'linux-amd64', ext: 'deb' },
+  { name: 'linux-arm64', ext: 'deb' },
 ];
 
 const ALL_CHANNELS: Channel[] = [

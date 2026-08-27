@@ -32,41 +32,71 @@ import ServerOfflineHelpModal from './components/ServerOfflineHelpModal';
 import ComingSoonModal from './components/ComingSoonModal';
 import { setForm as setDataVaultForm, getForm as getDataVaultForm, clearForm as clearDataVaultForm, patchForm as patchDataVaultForm, getFormState as getDataVaultFormState, setFormState as setDataVaultFormState, getSelectedMethod as getDataVaultSelectedMethod, setSelectedMethod as setDataVaultSelectedMethod, subscribe as subscribeDataVaultForm } from './components/datavault/formStore';
 import { extractFormSpec } from './components/datavault/parseFormSpec';
-import { host, getAccessToken } from '../platform/host';
-import { SERVER_START_CAP_MS } from '../../shared/server-status';
-import { loadSkin, persistSkin, nextSkin, skinLabel } from '../lib/skins';
-import { loadCustomTheme, persistCustomTheme, applyCustomTheme } from '../lib/customTheme';
+import { host } from '../platform/host';
 import { applyNavTitleColor } from '../lib/navBranding';
 import { getAgentLabel } from './lib/agentLabel';
-import { selectNextQueuedTask, mergeQueuesForAdoptedId, reservationReleaseDecision } from './lib/messageQueue';
+import { resolveTaskProject } from './lib/resolveTaskProject';
+import { selectNextQueuedTask, mergeQueuesForAdoptedId, reservationReleaseDecision, finishedCids } from './lib/messageQueue';
 import { loadCachedSettings } from './lib/settingsCache';
 import { useOrgMode } from '../lib/orgMode';
 import { clearDraft, moveDraft } from './lib/draftStore';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { useGoogleDrivePicker } from './hooks/useGoogleDrivePicker';
+import { useViewportZoomLock } from './hooks/useViewportZoomLock';
+import { useBootDecisions } from './hooks/useBootDecisions';
+import { useServerControl } from './hooks/useServerControl';
+import { useSidebarNav } from './hooks/useSidebarNav';
+import { useSso } from './hooks/useSso';
+import { useThemeSkin } from './hooks/useThemeSkin';
+import { useAppUpdates } from './hooks/useAppUpdates';
+import { deriveUpdateBanner } from '../../shared/update-banner';
+import { useSchedules } from './hooks/useSchedules';
 import { fetchSessions, fetchSession, fetchConversationList, fetchProjects, fetchArtifacts, fetchSettings, fetchHealth,
          createProject, updateSettings, streamNewSession, streamMessage,
          streamDataVaultSubmission,
          allocateConversationId, uploadAttachments,
          deleteAttachment, searchCowork, fetchPins, pinTask, unpinTask,
-         recordTaskVisit, fetchSchedules, createSchedule, updateSchedule, deleteSchedule,
-         pauseSchedule, resumeSchedule, runScheduleNow, fetchDatasources, MOCK_DATA,
+         recordTaskVisit,
+         runScheduleNow, fetchDatasources, MOCK_DATA,
          renameConversation, deleteConversation, deleteConversationTurn, moveConversation, moveTaskToProject,
          deleteProject, cancelScratchpad, cancelResponse, fetchConnector,
          fetchSavedConnection, deleteDatasource, deletePickedFile,
          fetchInFlightStatus, tailInFlight, fetchInFlightList, submitAnswer,
          fetchRecommendedModels, createConversation, revealSettingKey } from './api';
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
+import {
+  stripStreaming,
+  reconcileTaskMessages,
+  removeThinkingPlaceholder,
+  withThinkingPlaceholder,
+  markActivityDone,
+  applySessionMessages,
+  persistTurnState,
+  mergeConvTurns,
+} from './lib/conversationHistory';
+import { noteArtifactsFromSteps } from './lib/artifactsStore';
 import { isArtifactTipDismissed, dismissArtifactTip, dismissIfUntouched } from './components/onboarding/onboardingStore';
 import { recommendedModelOptions, providerValueToType,
          mergeRecommendedModels } from './lib/settingsTransform';
-import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery, trackFirstResponse, classifyFirstResponse, trackKeyProvisioningRefused } from './lib/analytics';
+import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery, trackFirstResponse, classifyFirstResponse } from './lib/analytics';
 import { MODEL_ROUTER_ID, MODEL_ROUTER, isModelLocked } from './lib/modelCatalog';
+import {
+  CoworkProvider,
+  CoworkRouterProvider,
+  ConversationUnavailable,
+  ConversationLoading,
+  createCoworkRouter,
+  initialNavState,
+  markOptimisticConversation,
+  clearOptimisticConversation,
+} from './CoworkRouter';
+import { Outlet } from 'react-router-dom';
 
-// One-of-ten encouraging follow-ups picked when a connect task is
-// created. Reads as a friendly nudge after the connect-intro card —
-// keeps the chat surface inviting and signals that the agent is
-// available for free-form questions about the form.
+/* One-of-ten encouraging follow-ups picked when a connect task is
+ * created. Reads as a friendly nudge after the connect-intro card —
+ * keeps the chat surface inviting and signals that the agent is
+ * available for free-form questions about the form.
+*/
 const CONNECT_FOLLOWUPS = [
   "Have a question about any of the fields? I'm happy to explain.",
   "Need help finding your credentials? Just ask.",
@@ -400,12 +430,6 @@ const ACCENT_VARS = {
   stone: { '--primary-700': '#3A464B', '--primary-600': '#55666D', '--primary-500': '#64777E', '--primary-400': '#7D95A1', '--primary-300': '#A0BECA', '--primary-50': '#EBF2F5' },
 };
 
-const THINKING_PLACEHOLDER = 'Thinking...';
-
-function stripStreaming(messages) {
-  return messages.filter((m) => m.role !== '_streaming');
-}
-
 // Open the data-vault side panel for a form the agent just streamed.
 // Called from the stream `onDone` handlers — the deterministic, fires-
 // exactly-once-per-turn place to do this. We can't rely on the
@@ -429,329 +453,6 @@ function openStreamedForm(conversationId, finalContent) {
   }
 }
 
-// Status values the stream reducer leaves behind for IN-FLIGHT step
-// activity. A clean turn closes everything to 'completed' / 'done' /
-// 'error' / 'cancelled'. Anything else is "this step was running
-// when the stream died" — we'll mark them done on reload so the rail
-// stops claiming work is still happening.
-const RUNNING_STEP_STATUSES = new Set([
-  'pending', 'thinking', 'streaming', 'in_progress', 'running',
-]);
-
-// Reconcile a task's stored streaming/running state against whether
-// a real SSE stream is alive for it RIGHT NOW. Called when the user
-// navigates into a task:
-//   1. Drop `_streaming` / activity placeholders when not live.
-//   2. Collapse in-progress steps to `completed` when not tailing.
-function reconcileTaskMessages(messages, isLive, isServerInFlight = false) {
-  if (!Array.isArray(messages)) return messages;
-  if (isLive) return messages; // legitimate in-flight (local), leave alone
-  // If the server says this conversation's producer is still running,
-  // we're about to (re)attach via tailInFlight — DON'T inject the
-  // "things stopped before I wrapped up" continuation prompt. The
-  // live stream will materialize within ~50ms via the reconnect
-  // path; showing the stopped message first would be both wrong
-  // AND flicker.
-  //
-  // Step-cleanup (RUNNING_STEP_STATUSES → completed) is also skipped
-  // here: those steps may still be progressing under the live tail
-  // and we don't want to prematurely flag them done.
-  if (isServerInFlight) {
-    // If the conversation is in-flight but has no visible content yet
-    // (e.g. a scheduled task that just started), show a thinking
-    // placeholder so the user sees activity instead of a blank chat.
-    const hasContent = messages.length > 0 && messages.some(
-      (m) => m && (m.role === 'assistant' || m.role === '_streaming'),
-    );
-    if (!hasContent) return withThinkingPlaceholder(messages, { label: 'Running task…' });
-    return messages;
-  }
-  const cleaned = messages
-    .filter((m) => m && m.role !== '_streaming' && m.role !== 'activity')
-    .map((m) => {
-      if (m.role !== 'assistant') return m;
-      if (!Array.isArray(m.steps) || m.steps.length === 0) return m;
-      let dirty = false;
-      const nextSteps = m.steps.map((s) => {
-        if (s && RUNNING_STEP_STATUSES.has(s.status)) {
-          dirty = true;
-          return { ...s, status: 'completed', completedAt: s.completedAt || Date.now() };
-        }
-        return s;
-      });
-      // Also shake out a top-level message-level streamStatus if any
-      // (the live stream sets it to 'streaming' / 'tool' / etc.).
-      const streamStatusFix = m.streamStatus && m.streamStatus !== 'done'
-        ? { streamStatus: 'done' }
-        : null;
-      if (!dirty && !streamStatusFix) return m;
-      return { ...m, ...(dirty ? { steps: nextSteps } : {}), ...(streamStatusFix || {}) };
-    });
-
-  return cleaned;
-}
-
-function removeThinkingPlaceholder(messages) {
-  return messages.filter((m) => !(m.role === 'activity' && m.placeholder));
-}
-
-function withThinkingPlaceholder(messages, opts = {}) {
-  // Caller-supplied label so the new-task path can read "Creating
-  // task…" while a reply uses the generic "Thinking…". Both the
-  // activity placeholder (fallback render in ChatView) and the
-  // `_streaming` stub (primary render via the existing streaming
-  // branch) carry the same string, so whichever lands in the
-  // viewport reads consistently.
-  const label = opts.label || 'Thinking…';
-  // Two rows:
-  //   1. The activity placeholder — kept so any code path that
-  //      consumes it (rail Progress card today, future surfaces) sees
-  //      the "user just sent" signal.
-  //   2. A `_streaming` stub — picked up by ChatView's existing
-  //      streaming render block (`!streamingMsg.steps?.length &&
-  //      !streamingMsg.content` branch), which renders an animated
-  //      cursor + label inline below the user's message. Without
-  //      this, the chat scroll is silent between send and the first
-  //      SSE event — fine on a warm session (~sub-second) but
-  //      painful on a brand-new task where anton's bootstrap can
-  //      take 20-30s. The stub gets stripped + replaced by the real
-  //      streaming row on the first `flushStreamingMessage` call,
-  //      at which point `_placeholderLabel` is gone and the label
-  //      naturally falls back to the default "Thinking…".
-  return [
-    ...removeThinkingPlaceholder(stripStreaming(messages)),
-    {
-      role: 'activity',
-      content: label,
-      kind: 'placeholder',
-      phase: 'reasoning',
-      state: 'running',
-      placeholder: true,
-      _label: label,
-    },
-    {
-      role: '_streaming',
-      content: '',
-      steps: [],
-      startedAt: Date.now(),
-      // 'thinking' (not 'starting') so PhaseProgress treats the turn
-      // as `isInFlight` and renders the Thinking phase row in the
-      // rail — otherwise the card falls into its "Steps appear here
-      // while Anton works" placeholder branch, which contradicts
-      // the inline cursor in the chat scroll.
-      streamStatus: 'thinking',
-      _placeholderLabel: label,
-    },
-  ];
-}
-
-function markActivityDone(messages) {
-  return messages.map((m) => (
-    m.role === 'activity' && m.state === 'running'
-      ? { ...m, state: 'done' }
-      : m
-  ));
-}
-
-function humanizeToken(value) {
-  return String(value || '')
-    .replace(/[_-]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function describeActivity(event, agentName = 'Anton') {
-  if (event?.type === 'tool_result') {
-    const action = humanizeToken(event.action || 'used');
-    const name = humanizeToken(event.name || 'tool');
-    return `${action.charAt(0).toUpperCase()}${action.slice(1)} ${name}`.trim();
-  }
-
-  const message = humanizeToken(event?.message);
-  if (message) return message;
-
-  const phase = humanizeToken(event?.phase);
-  const normalizedPhase = phase.toLowerCase();
-  if (normalizedPhase === 'reasoning') return THINKING_PLACEHOLDER;
-  if (normalizedPhase === 'reasoning done') return 'Finished reasoning';
-  if (normalizedPhase === 'context') return 'Updated context';
-
-  return phase ? `${agentName} is ${phase}` : `${agentName} is working`;
-}
-
-// ─── Per-turn step persistence ───────────────────────────────────────────
-//
-// Anton's history file (the canonical conversation record) only stores
-// {role, content}. The streaming adapter builds richer step data —
-// scratchpad cells, artifacts, reasoning timing — but those are dropped
-// on persistence and would be lost on conversation reload, leaving the
-// chat with no Thinking block, no inline artifact cards, and an empty
-// Scratchpad modal.
-//
-// We sidecar the full step list in localStorage keyed by conversation
-// id → assistant turn index. Persistence is local to this install
-// (fine for a desktop app); promote to a server-side sidecar later if
-// cross-device sync matters.
-//
-// Schema (per turn):
-//   { steps: ThinkingStep[], startedAt: number }
-//
-// ThinkingStep shape mirrors `responseStreamAdapter`'s output, including
-// the `_isScratchpad` / `_scratchpadTabId` markers the ScratchpadModal
-// keys off so tabs reattach when the conversation is reopened.
-const CONV_TURNS_KEY = (cid) => `anton:conv-turns:${cid}`;
-const LEGACY_ARTIFACTS_KEY = (cid) => `anton:conv-artifacts:${cid}`;
-
-function readConvTurns(cid) {
-  if (!cid) return null;
-  try {
-    const raw = localStorage.getItem(CONV_TURNS_KEY(cid));
-    if (!raw) return null;
-    const data = JSON.parse(raw);
-    return data && typeof data === 'object' ? data : null;
-  } catch {
-    return null;
-  }
-}
-
-function writeConvTurns(cid, data) {
-  if (!cid) return;
-  try { localStorage.setItem(CONV_TURNS_KEY(cid), JSON.stringify(data)); }
-  catch {} // private mode / quota — fail silently
-}
-
-// One-time migration from the old artifact-only sidecar. Each entry
-// was an array of artifact-shape steps; promote it to the new shape.
-function migrateLegacyArtifacts(cid) {
-  if (!cid) return;
-  try {
-    const legacy = localStorage.getItem(LEGACY_ARTIFACTS_KEY(cid));
-    if (!legacy) return;
-    const map = JSON.parse(legacy);
-    if (!map || typeof map !== 'object') return;
-    const next = readConvTurns(cid) || {};
-    for (const [idx, arts] of Object.entries(map)) {
-      if (!Array.isArray(arts) || arts.length === 0) continue;
-      const existing = next[idx]?.steps || [];
-      next[idx] = { steps: [...existing, ...arts], startedAt: next[idx]?.startedAt || null };
-    }
-    writeConvTurns(cid, next);
-    localStorage.removeItem(LEGACY_ARTIFACTS_KEY(cid));
-  } catch {}
-}
-
-// Replay the server-persisted event log for one assistant turn
-// through the same reducer the live stream uses. The resulting
-// `steps` and `startedAt` are identical to what the client would
-// have built during a fresh stream — no parity drift.
-function reduceServerEvents(events, fallbackStartedAt) {
-  if (!Array.isArray(events) || events.length === 0) return null;
-  let state = initialStreamState();
-  for (const ev of events) {
-    try { state = reduceStream(state, ev, Date.now, { replay: true }); } catch {}
-  }
-  return {
-    steps: state.steps || [],
-    startedAt: state.startedAt || fallbackStartedAt || null,
-    // 'done' once the persisted events carried response.completed,
-    // 'error' on response.failed — the authoritative "this turn
-    // finished" signal from the detached stream buffer.
-    status: state.status,
-  };
-}
-
-function failedEventMeta(events) {
-  if (!Array.isArray(events)) return null;
-  const ev = [...events].reverse().find((e) => e?.type === 'response.failed');
-  if (!ev) return null;
-  return {
-    code: ev.code || null,
-    message: ev.error || ev.message || '',
-    reconnectable: ev.reconnectable ?? null,
-    providerLabel: ev.provider_label ?? null,
-    // model-403 (model_access_denied / model_disabled): which model the
-    // gateway rejected, so the card can name it. `failedModel` locally —
-    // "model" is too overloaded in message objects.
-    failedModel: ev.model ?? null,
-    // rate_limited: the gateway's own Retry-After, in seconds, so the card can
-    // time-gate its Retry (ENG-1537). Null when the gateway sent no hint — the
-    // card then offers an ungated Retry rather than inventing an interval.
-    retryAfter: typeof ev.retry_after === 'number' ? ev.retry_after : null,
-    // included_allowance_exhausted: when the free grant refreshes, as the
-    // gate's opaque ISO string. Formatted at render time — the server
-    // deliberately doesn't parse it, since only the client knows the
-    // viewer's timezone (ENG-1537).
-    resetAt: typeof ev.reset_at === 'string' ? ev.reset_at : null,
-    // Absolute instant to gate Retry against. The message's own created_at
-    // is NOT a substitute: the server serialises it offset-less, so JS reads
-    // it as local time — the gate would last hours west of UTC and no-op east
-    // of it, invisible to a TZ=UTC suite (ENG-1537 review).
-    retryAt: typeof ev.retry_at === 'string' ? ev.retry_at : null,
-  };
-}
-
-// Walk a messages payload from the server and, for any assistant
-// turn that carries an `events` array (the new sidecar), derive
-// `steps`/`startedAt` via the live reducer. A terminal
-// `response.failed` becomes a client-side error bubble after the
-// partial assistant turn. Drops the raw `events` array.
-function hydrateMessagesFromServerEvents(messages) {
-  if (!Array.isArray(messages)) return messages;
-  const out = [];
-  for (const m of messages) {
-    if (!m || m.role !== 'assistant' || !Array.isArray(m.events) || m.events.length === 0) {
-      out.push(m);
-      continue;
-    }
-    const reduced = reduceServerEvents(m.events, m.startedAt);
-    const { events: _drop, ...rest } = m;
-    if (!reduced) {
-      out.push(rest);
-      continue;
-    }
-    const turnComplete = reduced.status === 'done' || reduced.status === 'error';
-    const completeFlag = turnComplete ? { _turnComplete: true } : {};
-    out.push({
-      ...rest,
-      ...completeFlag,
-      ...(reduced.steps.length > 0
-        ? { steps: reduced.steps, startedAt: rest.startedAt || reduced.startedAt }
-        : {}),
-    });
-    if (reduced.status === 'error') {
-      const failed = failedEventMeta(m.events);
-      const code = failed?.code || null;
-      const errText = failed?.message || 'An unexpected error occurred.';
-      if (isAntonConfigError(errText, { code })) {
-        out.push({ role: 'provider_required' });
-      } else {
-        out.push({
-          role: 'error',
-          content: normalizeAntonError(errText, { code }),
-          code,
-          reconnectable: failed?.reconnectable ?? null,
-          providerLabel: failed?.providerLabel ?? null,
-          failedModel: failed?.failedModel ?? null,
-          retryAfter: failed?.retryAfter ?? null,
-          resetAt: failed?.resetAt ?? null,
-          retryAt: failed?.retryAt ?? null,
-        });
-      }
-    }
-  }
-  return out;
-}
-
-function applySessionMessages(
-  cid,
-  rawMessages,
-  { isLive = false, isServerInFlight = false, skipLocalSidecar = false } = {},
-) {
-  const hydrated = hydrateMessagesFromServerEvents(rawMessages);
-  const merged = skipLocalSidecar ? hydrated : mergeConvTurns(cid, hydrated);
-  return reconcileTaskMessages(merged, isLive, isServerInFlight);
-}
-
 async function loadSessionMessagesWithRetry(
   cid,
   { isLive = false, isServerInFlight = false, skipLocalSidecar = false } = {},
@@ -768,107 +469,6 @@ async function loadSessionMessagesWithRetry(
     };
   }
   return null;
-}
-
-// Persist the full step set for one assistant turn so reload restores
-// the Thinking block, scratchpad tabs, and inline artifact cards.
-// `turnIndex` is the 0-based position of this assistant message among
-// all assistant messages in the conversation.
-function persistTurnState(cid, turnIndex, steps, startedAt) {
-  if (!cid || !Array.isArray(steps) || steps.length === 0) return;
-  const map = readConvTurns(cid) || {};
-  // Strip any non-serialisable fields (refs, functions). The step
-  // shape is plain data otherwise.
-  const sanitized = steps.map((s) => ({
-    id: s.id,
-    label: s.label || null,
-    badge: s.badge || null,
-    icon: s.icon || null,
-    status: s.status || 'completed',
-    startedAt: s.startedAt ?? null,
-    completedAt: s.completedAt ?? null,
-    reasoningStartedAt: s.reasoningStartedAt ?? null,
-    executionStartedAt: s.executionStartedAt ?? null,
-    executionCompletedAt: s.executionCompletedAt ?? null,
-    // Distinct from `status` — a failed tool/killed cell is still
-    // status:'completed' (the lifecycle finished), with cellStatus
-    // carrying the actual verdict ('error'/'timeout'). Without these two,
-    // a failed step renders as a plain success after reload: `status`
-    // alone survives, but the reducer's cellStatus:'error' (tool_call.end
-    // with ok:false, or a killed scratchpad_done) and the measured
-    // executionDurationMs both got silently dropped by this whitelist.
-    cellStatus: s.cellStatus || null,
-    executionDurationMs: s.executionDurationMs ?? null,
-    data: s.data || null,
-    output: typeof s.output === 'string' ? s.output : null,
-    result: s.result || null,
-    stderr: s.stderr || null,
-    _isScratchpad: !!s._isScratchpad,
-    _isToolCall: !!s._isToolCall,
-    _scratchpadTabId: s._scratchpadTabId || null,
-  }));
-  map[turnIndex] = { steps: sanitized, startedAt: startedAt ?? null };
-  writeConvTurns(cid, map);
-}
-
-// Merge persisted step + timing data onto assistant messages by turn
-// index. Idempotent — if a message already has steps from a fresh
-// stream we don't overwrite (the live data is more accurate).
-function mergeConvTurns(cid, messages) {
-  if (!cid || !messages) return messages;
-  migrateLegacyArtifacts(cid);
-  const map = readConvTurns(cid);
-  if (!map) return messages;
-  let assistantIdx = 0;
-  return messages.map((m) => {
-    if (m.role !== 'assistant') return m;
-    if (m._turnComplete) return m;
-    const saved = map[assistantIdx];
-    assistantIdx += 1;
-    if (!saved || !Array.isArray(saved.steps) || saved.steps.length === 0) return m;
-    const hasLiveSteps = Array.isArray(m.steps) && m.steps.length > 0;
-    if (hasLiveSteps) return m;
-    return {
-      ...m,
-      steps: saved.steps,
-      startedAt: m.startedAt || saved.startedAt || null,
-    };
-  });
-}
-
-// Merge a fresh fetchSessions response with the existing tasks,
-// preserving any in-memory state the server hasn't seen yet.
-//
-// Why: anton flushes `_history.json` only at the end of a successful
-// turn. While a stream is in flight the user-typed message + the
-// assistant's `_streaming` row + any captured progress live ONLY in
-// React state. A naive `setTasks(serverData)` after fetchSessions
-// blows that away — most visibly when the user navigates to recents
-// during the very first turn of a new task and comes back: the
-// chat is empty and the title shows the raw conversation id.
-//
-// Strategy: take the server's tasks (authoritative for title /
-// project / status / order), but for each task that exists locally
-// AND is mid-stream OR has unsaved messages, keep the local
-// messages array.
-
-function appendActivity(messages, event) {
-  const content = describeActivity(event);
-  const cleaned = removeThinkingPlaceholder(messages);
-  const previous = cleaned[cleaned.length - 1];
-  if (previous?.role === 'activity' && previous.content === content) {
-    return [...cleaned.slice(0, -1), { ...previous, state: 'running' }];
-  }
-  return [
-    ...cleaned,
-    {
-      role: 'activity',
-      content,
-      kind: event?.type || 'progress',
-      phase: event?.phase || null,
-      state: 'running',
-    },
-  ];
 }
 
 // How long to wait before the next `GET /schedules/` poll:
@@ -892,6 +492,21 @@ function nextPollDelay(schedules) {
   const earliest = Math.min(...dueTimes);
   const untilDue = earliest - Date.now() + SCHEDULE_POLL_RUN_BUFFER_MS;
   return Math.min(SCHEDULE_POLL_MAX_DELAY_MS, Math.max(untilDue, SCHEDULE_POLL_MIN_DELAY_MS));
+}
+
+// Monotonic token guarding project-detail resolution. A `/projects/:id` fetch
+// captures the token with begin() and applies its result only while isCurrent()
+// still holds. Both starting a newer detail (begin) AND leaving detail — to the
+// grid, Home, or any other route (leave) — advance the token, so a slow
+// `/projects/:A` response can neither overwrite a later `/projects/:B` nor
+// re-select A after the user has navigated away (e.g. Back to the grid).
+export function makeProjectDetailToken() {
+  let current = 0;
+  return {
+    begin: () => ++current,
+    leave: () => { current += 1; },
+    isCurrent: (captured) => captured === current,
+  };
 }
 
 export default function App() {
@@ -945,12 +560,20 @@ function AppCore() {
     setArtifactTipOpen(false);
     dismissArtifactTip();
   }, []);
-  const [scheduled, setScheduled] = useState([]);
-  // Flat session→schedule map sourced from `GET /v1/schedules`.
-  // Lets TasksView collapse all conversations belonging to one
-  // schedule into a single grouped row instead of listing each
-  // execution separately.
-  const [scheduleRunsIndex, setScheduleRunsIndex] = useState({});
+  // Scheduled-task data + CRUD lifecycle (list, runs index, refresh, and the
+  // create/update/delete/pause/resume handlers) live in useSchedules. The
+  // poll effect, selectedScheduleId, and handleRunScheduleNow stay below —
+  // they cross into the task-list and routing domains.
+  const {
+    scheduled,
+    scheduleRunsIndex,
+    refreshSchedules,
+    handleCreateSchedule,
+    handleUpdateSchedule,
+    handleDeleteSchedule,
+    handlePauseSchedule,
+    handleResumeSchedule,
+  } = useSchedules();
   const [pins, setPins] = useState([]);
   const [connectors, setConnectors] = useState([]);
   const [composerAttachments, setComposerAttachments] = useState([]);
@@ -962,13 +585,6 @@ function AppCore() {
   // null = no section selected: the mobile master-detail shows its section
   // list; desktop (no list) falls back to 'agent' where it's read.
   const [settingsSection, setSettingsSection] = useState(null);
-  const [ssoConnected, setSsoConnected] = useState(false);
-  // Last sign-in failure, painted on the Settings account card. Cleared
-  // on retry and on any authenticated push from main (ENG-761).
-  const [ssoError, setSsoError] = useState('');
-  // Re-entry guard: a second "Sign in" click while a browser flow is
-  // already open would spawn a second loopback attempt.
-  const ssoBusyRef = useRef(false);
   const [connectorPickerOpen, setConnectorPickerOpen] = useState(false);
   const [serverHelpOpen, setServerHelpOpen] = useState(false);
   // Pending delete confirm — task id whose delete is awaiting user
@@ -1134,7 +750,7 @@ function AppCore() {
       // stream just finished from elsewhere — that's the signal to
       // refetch that conversation's messages so the UI catches up.
       const next = new Set(ids);
-      const finished = [...prev].filter((cid) => !next.has(cid));
+      const finished = finishedCids(prev, ids, activeStreamingTaskIdRef.current);
       if (finished.length > 0) {
         // Defer the refetch so we don't synchronously trigger a
         // re-render storm.
@@ -1290,6 +906,11 @@ function AppCore() {
     // events), so reaching this line means the active stream delivered data.
     // Record it for the stranded-slot self-heal (see activeStreamProducedRef).
     activeStreamProducedRef.current = true;
+    // Anything the agent just produced is alive by definition, whatever a
+    // previously-loaded artifacts index says. This is the only live-stream
+    // collector, and the replay paths do not call it, so registering here
+    // cannot mistake a reopened conversation's old artifacts for new ones.
+    noteArtifactsFromSteps(steps);
     taskIds.forEach((tid) => {
       if (tid) liveStepsRef.current[tid] = steps;
     });
@@ -1538,6 +1159,7 @@ function AppCore() {
             retryAfter: typeof event?.retry_after === 'number' ? event.retry_after : null,
             retryAt: typeof event?.retry_at === 'string' ? event.retry_at : null,
             resetAt: typeof event?.reset_at === 'string' ? event.reset_at : null,
+            requestId: typeof event?.request_id === 'string' ? event.request_id : null,
           };
       return {
         ...t,
@@ -1590,87 +1212,12 @@ function AppCore() {
     modelEnabled: settings.modelEnabled,
     onRefresh: refreshModelAvailability,
   }), [settings.modelProviders, settings.modelFamilies, settings.modelEnabled, refreshModelAvailability]);
-  // The user's preferred collapsed state for the sidebar. Effective
-  // collapsed-ness is derived below — we only honor this value while
-  // viewing a chat task; every other surface (home, projects,
-  // artifacts, settings, scheduled, …) keeps the sidebar expanded so
-  // the user can navigate via it directly. Locking outside chat
-  // means the collapse affordance is hidden in those views too.
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const { isMobile, isNarrow } = useBreakpoint();
-  // Narrow band (640–900): the docked sidebar becomes an off-canvas popout
-  // opened by the floating hamburger. Docked ≥900; MobileShell owns <640.
-  const [navPopoutOpen, setNavPopoutOpen] = useState(false);
-  // Close the popout on Escape (no-op outside the narrow band, where it stays
-  // closed). Backdrop-click and navigation close it too (below).
-  useEffect(() => {
-    if (!navPopoutOpen) return undefined;
-    const onKey = (e) => { if (e.key === 'Escape') setNavPopoutOpen(false); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [navPopoutOpen]);
 
-  // iOS Safari (and Android Chrome) auto-zoom the page in when a text
-  // input with font-size < 16px gets focus, and don't zoom back out
-  // when it loses focus / the form is submitted — the user is left
-  // viewing a permanently-magnified app after sending a chat message.
-  //
-  // Rather than bumping every input to 16px on mobile (which would
-  // distort the composer's design metrics), we toggle the viewport
-  // meta tag around text-input focus: locking `maximum-scale=1` on
-  // focusin prevents the zoom from happening, restoring the original
-  // value on focusout returns pinch-zoom to the user for the rest of
-  // the app. Net effect matches "auto-dezoom after submit" without
-  // any visible zoom flash.
-  useEffect(() => {
-    if (!isMobile) return undefined;
-    const meta = document.querySelector('meta[name="viewport"]');
-    if (!meta) return undefined;
-    const original = meta.getAttribute('content') || '';
-    const ZOOM_LOCK = 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no';
+  // iOS/Android auto-zoom workaround: toggle the viewport meta tag around
+  // text-input focus so mobile browsers don't leave the app magnified.
+  useViewportZoomLock(isMobile);
 
-    // Only the input types that actually trigger iOS auto-zoom — skip
-    // checkboxes / dates / file pickers / buttons (no text caret, no
-    // zoom). contenteditable surfaces count too.
-    const SKIP_INPUT_TYPES = new Set([
-      'button', 'submit', 'reset', 'image', 'file',
-      'checkbox', 'radio', 'range', 'color',
-      'date', 'time', 'datetime-local', 'month', 'week',
-    ]);
-    const isTextInput = (el) => {
-      if (!el || el.nodeType !== 1) return false;
-      const tag = el.tagName;
-      if (tag === 'TEXTAREA' || tag === 'SELECT') return true;
-      if (tag === 'INPUT') {
-        const t = (el.type || 'text').toLowerCase();
-        return !SKIP_INPUT_TYPES.has(t);
-      }
-      return !!el.isContentEditable;
-    };
-
-    const onFocusIn = (e) => {
-      if (isTextInput(e.target)) meta.setAttribute('content', ZOOM_LOCK);
-    };
-    const onFocusOut = (e) => {
-      if (!isTextInput(e.target)) return;
-      // Defer the restore one tick — restoring synchronously can race
-      // with iOS committing the blur and leave the viewport stuck at
-      // the zoomed scale on some iOS versions.
-      setTimeout(() => meta.setAttribute('content', original), 0);
-    };
-
-    document.addEventListener('focusin', onFocusIn);
-    document.addEventListener('focusout', onFocusOut);
-    return () => {
-      document.removeEventListener('focusin', onFocusIn);
-      document.removeEventListener('focusout', onFocusOut);
-      meta.setAttribute('content', original);
-    };
-  }, [isMobile]);
-
-  // Routes where the user can collapse the sidebar. Currently:
-  // chat task only.
-  const sidebarCollapsibleRoutes = useMemo(() => new Set(['task']), []);
   // Coding Mode gets the same off-canvas popout treatment as the narrow/
   // tablet band (640-900): the docked sidebar is hidden entirely and
   // replaced by the floating hamburger, sliding in over the content instead
@@ -1687,30 +1234,26 @@ function AppCore() {
   // section are hidden the same way (see navItemsForHost / the floating
   // corner toggle below).
   const codingModeActive = host.codingModeOptionsEnabled && !!settings.codingModeEnabled;
-  const sidebarPopout = isNarrow || (!isMobile && !host.isWeb && codingModeActive);
-  // Theme (light | dark) — persisted in localStorage so the choice
-  // survives reloads. The animated background canvas (gravity-field)
-  // and the body's bg colour both follow this value.
-  const [theme, setTheme] = useState(() => {
-    try {
-      const saved = window.localStorage.getItem('anton.theme');
-      return saved === 'light' || saved === 'dark' ? saved : 'dark';
-    } catch { return 'dark'; }
-  });
-  // Skin — a second styling axis, orthogonal to light/dark. Each entry
-  // in the SKINS registry (lib/skins.ts) maps to a token-override
-  // stylesheet keyed on body[data-skin]; both color schemes have a
-  // variant per skin, so the two toggles compose freely.
-  const [skin, setSkin] = useState(loadSkin);
-  // The full Display / theme picker modal (ENG-1545), opened from the
-  // sidebar footer's "Display settings" button.
-  const [themeModalOpen, setThemeModalOpen] = useState(false);
+  // Nav-shell layout state (collapsed rail, off-canvas popout, collapsible
+  // routes, and the derived popout flag) lives in useSidebarNav.
+  const {
+    sidebarCollapsed, setSidebarCollapsed,
+    navPopoutOpen, setNavPopoutOpen,
+    sidebarCollapsibleRoutes,
+    sidebarPopout,
+  } = useSidebarNav({ isNarrow, isMobile, codingModeActive });
+  // Theme (light | dark), skin, the custom-skin recipe, and the Display
+  // picker modal — plus the body-class / gravity-field / persistence side
+  // effects that keep them applied — all live in useThemeSkin.
+  const {
+    theme, setTheme,
+    skin, setSkin,
+    themeModalOpen, setThemeModalOpen,
+    customTheme, setCustomTheme,
+  } = useThemeSkin();
   // Non-null = show the "coming soon to Cloud" popup for this feature name.
   const [comingSoonFeature, setComingSoonFeature] = useState(null);
   const orgMode = useOrgMode();
-  // The "design your own" recipe behind the `custom` skin — edited in
-  // Settings → Appearance, applied as inline body token overrides.
-  const [customTheme, setCustomTheme] = useState(loadCustomTheme);
 
   // Routes that allow the sidebar to be collapsed via Cmd+B. Read via
   // a ref so the keydown listener (mounted once) sees the live route
@@ -1769,31 +1312,6 @@ function AppCore() {
   // once on mount — always invokes the up-to-date function.
   const newTaskRef = useRef(null);
 
-  useEffect(() => {
-    try { window.localStorage.setItem('anton.theme', theme); } catch {}
-    // Swap body class so kit's gf-theme-* page background colour applies.
-    document.body.classList.remove('gf-theme-dark', 'gf-theme-light');
-    document.body.classList.add(theme === 'light' ? 'gf-theme-light' : 'gf-theme-dark');
-    document.body.dataset.theme = theme;
-    // Tell the gravity field to swap palettes live.
-    if (window.gravityField && typeof window.gravityField.setTheme === 'function') {
-      window.gravityField.setTheme(theme);
-    }
-  }, [theme]);
-
-  useEffect(() => {
-    persistSkin(skin);
-    document.body.dataset.skin = skin;
-  }, [skin]);
-
-  // Custom-skin recipe → inline body tokens. Applied only while the
-  // custom skin is active; cleared otherwise so the stylesheet-driven
-  // skins are untouched.
-  useEffect(() => {
-    persistCustomTheme(customTheme);
-    applyCustomTheme(skin === 'custom' ? customTheme : null, theme === 'light' ? 'light' : 'dark');
-  }, [skin, customTheme, theme]);
-
   // Sidebar title color — a synced Setting (like the greeting), independent
   // of the skin/CustomTheme system above, so it applies in every style.
   useEffect(() => {
@@ -1809,7 +1327,14 @@ function AppCore() {
     document.body.classList.toggle('gf-dots-off', settings.showDots === false);
   }, [settings.showDots]);
 
-  const [route, setRoute] = useState('home');         // home | task | projects | scheduled | schedule-detail | artifacts | customize
+  // Seed nav state from the address bar so a web deep-link / refresh paints the
+  // right view instead of flashing Home. Electron's memory router starts at `/`.
+  const initialNav = useRef(initialNavState()).current;
+  // The router is created once (memory router on Electron, browser router on
+  // web). It's stateless w.r.t. AppCore — nav state flows through context.
+  const routerRef = useRef(null);
+  if (!routerRef.current) routerRef.current = createCoworkRouter();
+  const [route, setRoute] = useState(initialNav.route); // home | task | projects | scheduled | schedule-detail | artifacts | channels | customize
   // Keep a ref of the live route so the keydown listener (bound
   // once on mount) can read it without a re-bind on every nav.
   routeRef.current = route;
@@ -1829,22 +1354,44 @@ function AppCore() {
   // at a collapsed width.
   const sidebarCollapsedEffective =
     !sidebarPopout && sidebarCollapsibleRoutes.has(route) && sidebarCollapsed;
-  const [activeTaskId, setActiveTaskId] = useState(null);
-  const [selectedScheduleId, setSelectedScheduleId] = useState(null);
+  const [activeTaskId, setActiveTaskId] = useState(initialNav.activeTaskId);
+  // Set when the `/c/:id` loader hit an operational failure (not a 404): the
+  // view offers a retry instead of losing the URL.
+  const [conversationError, setConversationError] = useState(null);
+  // Seed from a `/scheduled/:id` deep-link so refresh restores the detail view.
+  // (selectedProject is resolved from its id by the project route, so null here.)
+  const [selectedScheduleId, setSelectedScheduleId] = useState(initialNav.selectedScheduleId ?? null);
   const [selectedProject, setSelectedProject] = useState(null);
+  // The project-detail id currently being resolved from the fetched list, or
+  // null once settled. Distinct from `selectedProject` (which the whole app
+  // reads and the URL bridge mirrors): while this differs from the selection we
+  // render the grid, not a stale project, under `/projects/:id`. Seeded so a
+  // refresh on a detail URL shows the loading grid, not a flash of the list.
+  const [projectDetailPending, setProjectDetailPending] = useState(
+    initialNav.route === 'projects' ? (initialNav.selectedProjectId ?? null) : null
+  );
+  // Monotonic request token so a slow `/projects/:A` response can't overwrite a
+  // later `/projects/:B` resolution, nor re-select A after the user leaves detail
+  // (Back to the grid / Home / any route). See makeProjectDetailToken.
+  const projectDetailTokenRef = useRef(null);
+  if (projectDetailTokenRef.current === null) projectDetailTokenRef.current = makeProjectDetailToken();
   // Defaults to "Model Router" — defer to whatever this account's Settings
   // has configured — until a composer picks a concrete model for a task.
   // Never re-synced from settings after that: its whole point is that it
   // always tracks Settings live, server-side, without the renderer needing
   // to know the current planning/coding/router model.
   const [selectedModel, setSelectedModel] = useState(MODEL_ROUTER);
-  // In the hosted web shell the FastAPI process IS the host — there
-  // is no subprocess to start/stop, and the SPA only loads at all if
-  // the server is up. Seed online so downstream gates (`if (!serverOnline) return;`)
-  // don't block the initial render waiting for a poll that never matters.
-  const [serverOnline, setServerOnline] = useState(host.isWeb);
-  const [serverBusy, setServerBusy] = useState(false);
-  const [serverBusyKind, setServerBusyKind] = useState('starting'); // 'starting' | 'stopping'
+  // Local cowork-server lifecycle — online/busy state, start & stop, and the
+  // first-paint seed-and-poll — lives in useServerControl. It re-fetches
+  // through refreshDataRef after a manual start (refreshData writes
+  // serverOnline via setServerOnline, so it's wired in by ref just below).
+  const refreshDataRef = useRef(null);
+  const {
+    serverOnline, setServerOnline,
+    serverBusy, setServerBusy,
+    serverBusyKind, setServerBusyKind,
+    handleServerStart, handleServerStop,
+  } = useServerControl({ refreshDataRef });
 
   // `config_ready` deliberately omitted from the initial state — the
   // boot-time settings redirect at line ~798 keys off `=== false` so
@@ -1863,17 +1410,38 @@ function AppCore() {
     if (host.isElectron && health.status === 'ok') trackAppInstalled();
   }, [health.status]);
 
-  // OTA UI update state
-  const [updateStatus, setUpdateStatus] = useState(null); // { phase, version }
-  const [updateApplying, setUpdateApplying] = useState(false);
   const toastManager = useToastManager();
   useEffect(() => { toastManagerRef.current = toastManager; }, [toastManager]);
-  // Download-only shell notice; dismissal is scoped to the offered version.
-  const [shellUpdate, setShellUpdate] = useState(null); // { version, currentVersion, downloadUrl }
-  const [shellAutoUpdate, setShellAutoUpdate] = useState(null);
-  const [shellUpdateDismissed, setShellUpdateDismissed] = useState(() => {
-    try { return localStorage.getItem('shellUpdateDismissedVersion') || ''; } catch { return ''; }
+  // OTA UI update + shell (desktop binary) update lifecycle — status, the
+  // apply/download/dismiss handlers, and the host subscriptions that feed
+  // them — all live in useAppUpdates.
+  const {
+    updateStatus,
+    shellUpdate,
+    shellAutoUpdate,
+    shellUpdateDismissed,
+    handleApplyUpdate,
+    handleDownloadShellUpdate,
+    handleShellAutoUpdateDownload,
+    handleShellAutoUpdateInstall,
+    handleShellAutoUpdateRetry,
+    handleShellAutoUpdateAction,
+    dismissShellUpdate,
+  } = useAppUpdates();
+
+  // Collapse the three update mechanisms into one shell-first banner (or null).
+  // The manual notice is dismissal-filtered here before it can win the slot.
+  const updateBanner = deriveUpdateBanner({
+    ota: updateStatus,
+    shellAuto: shellAutoUpdate,
+    shellManual: shellUpdate && shellUpdate.version !== shellUpdateDismissed ? shellUpdate : null,
   });
+  const handleUpdateAction = useCallback((action) => {
+    if (action === 'apply-ota') return handleApplyUpdate();
+    if (action === 'shell-auto') return handleShellAutoUpdateAction();
+    if (action === 'download-installer') return handleDownloadShellUpdate();
+    return undefined;
+  }, [handleApplyUpdate, handleShellAutoUpdateAction, handleDownloadShellUpdate]);
 
   // Load data from server on mount
   const refreshData = useCallback(() => {
@@ -1911,10 +1479,7 @@ function AppCore() {
       setArtifacts(data);
     });
     fetchPins().then((data) => setPins(data.pins || []));
-    fetchSchedules().then((data) => {
-      setScheduled(data.schedules || []);
-      setScheduleRunsIndex(data.runs_index || {});
-    });
+    refreshSchedules();
     fetchDatasources()
       .then((data) => setConnectors(Array.isArray(data?.connections) ? data.connections : []))
       .catch(() => setConnectors([]));
@@ -1929,42 +1494,10 @@ function AppCore() {
     refreshData();
   }, [refreshData]);
 
-  const handleServerStart = useCallback(async () => {
-    setServerBusyKind('starting');
-    setServerBusy(true);
-    try {
-      const result = await host.serverStart?.();
-      if (result) {
-        setServerOnline(!!result.running);
-        if (result.running) setTimeout(refreshData, 400);
-      }
-    } catch {} finally { setServerBusy(false); }
-  }, [refreshData]);
-
-  const handleServerStop = useCallback(async () => {
-    setServerBusyKind('stopping');
-    setServerBusy(true);
-    try {
-      const result = await host.serverStop?.();
-      if (result) setServerOnline(!!result.running);
-    } catch {} finally { setServerBusy(false); }
-  }, []);
-
-  // ENG-850 shell updater snapshot. Pull once for renderer reload recovery,
-  // then subscribe to the same authoritative main-process state.
-  useEffect(() => {
-    let cancelled = false;
-    host.getShellAutoUpdate().then((snapshot) => {
-      if (!cancelled) setShellAutoUpdate(snapshot);
-    }).catch(() => {});
-    const unsubscribe = host.onShellAutoUpdate((snapshot) => {
-      if (!cancelled) setShellAutoUpdate(snapshot);
-    });
-    return () => {
-      cancelled = true;
-      unsubscribe();
-    };
-  }, []);
+  // Expose the latest refreshData to useServerControl (it re-fetches after a
+  // manual start) without a definition-order cycle — refreshData writes the
+  // hook's serverOnline, so the hook can't take it as a direct argument.
+  useEffect(() => { refreshDataRef.current = refreshData; }, [refreshData]);
 
   // Allow descendants (e.g. ProjectsView's rename / create flow) to
   // ask for a fresh projects list without prop-drilling a refetch
@@ -2015,34 +1548,19 @@ function AppCore() {
     wasOnlineRef.current = serverOnline;
   }, [serverOnline, refreshData]);
 
-  // One-shot: once the backend has been online at least once during
-  // this app session, the home view should skip the boot
-  // choreography (orb → caret → typewriter). Re-running the intro on
-  // every "new task" click is jarring; the choreography is a "the
-  // app is starting" cue, not a per-navigation flourish.
-  const [bootIntroDone, setBootIntroDone] = useState(false);
-  useEffect(() => {
-    if (serverOnline && !bootIntroDone) setBootIntroDone(true);
-  }, [serverOnline, bootIntroDone]);
-
-  // Listen for OTA update status pushed from main process. No-op in
-  // web — host returns a noop unsubscriber there.
-  useEffect(() => {
-    return host.onUpdateStatus((status) => {
-      if (status?.phase === 'shell-available') {
-        setShellUpdate({ version: status.version, currentVersion: status.currentVersion, downloadUrl: status.downloadUrl });
-        return;
-      }
-      setUpdateStatus(status);
-    });
-  }, []);
-
-  // Recover a cached notice after an OTA reload drops the original push.
-  useEffect(() => {
-    let cancelled = false;
-    host.getShellUpdate().then((s) => { if (!cancelled && s) setShellUpdate(s); }).catch(() => {});
-    return () => { cancelled = true; };
-  }, []);
+  // Session-scoped boot decisions (skip-intro flag, offline watchdog,
+  // config-redirect, default-project bootstrap) live in useBootDecisions.
+  const bootIntroDone = useBootDecisions({
+    serverOnline,
+    health,
+    projects,
+    selectedProject,
+    setServerHelpOpen,
+    setSettingsSection,
+    setSettingsOpen,
+    setSelectedProject,
+    setProjects,
+  });
 
   // Listen for background OAuth refresh failures pushed from main process.
   // timeout: 0 — persists until the user manually dismisses it, same as
@@ -2064,225 +1582,6 @@ function AppCore() {
     });
   }, []);
 
-  const handleApplyUpdate = useCallback(async () => {
-    console.log('[ui-update] install clicked, applying update...');
-    if (updateApplying) { console.log('[ui-update] already applying, skipping'); return; }
-    setUpdateApplying(true);
-    setUpdateStatus({ phase: 'downloading', version: updateStatus?.version });
-    try {
-      const result = await host.applyUpdate();
-      console.log('[ui-update] applyUpdate result:', result);
-      // Window will reload with the new bundle — no further action needed
-    } catch (err) {
-      console.error('[ui-update] applyUpdate failed:', err);
-      setUpdateApplying(false);
-      // Keep the version so the sidebar can offer a labelled retry rather than
-      // going silent until the next poll.
-      setUpdateStatus({ phase: 'error', version: updateStatus?.version });
-    }
-  }, [updateApplying, updateStatus]);
-
-  // Settings can pass a URL; a bare click falls back to the cached notice, and
-  // failing that to the human download page. Note: bare downloads.mindshub.ai
-  // now 302s to the marketing homepage — the real per-OS installer page lives
-  // at mindshub.ai/download. Old shells never supply a downloadUrl, so this
-  // last fallback is the only link that cohort ever gets.
-  const handleDownloadShellUpdate = useCallback((url) => {
-    const explicit = typeof url === 'string' && url ? url : null;
-    host.openExternal(explicit || shellUpdate?.downloadUrl || 'https://mindshub.ai/download');
-  }, [shellUpdate]);
-
-  const handleShellAutoUpdateDownload = useCallback(async () => {
-    const snapshot = await host.downloadShellAutoUpdate().catch(() => null);
-    if (snapshot) setShellAutoUpdate(snapshot);
-  }, []);
-
-  const handleShellAutoUpdateInstall = useCallback(async () => {
-    await host.installShellAutoUpdate().catch(() => false);
-  }, []);
-
-  const handleShellAutoUpdateRetry = useCallback(async () => {
-    const snapshot = await host.checkShellAutoUpdate().catch(() => null);
-    if (snapshot) setShellAutoUpdate(snapshot);
-  }, []);
-
-  const handleShellAutoUpdateAction = useCallback(() => {
-    switch (shellAutoUpdate?.phase) {
-      case 'available':
-        return handleShellAutoUpdateDownload();
-      case 'ready-to-install':
-        return handleShellAutoUpdateInstall();
-      case 'failed':
-        if (shellAutoUpdate.recoverable) return handleShellAutoUpdateRetry();
-        return handleDownloadShellUpdate();
-      default:
-        return undefined;
-    }
-  }, [
-    shellAutoUpdate,
-    handleShellAutoUpdateDownload,
-    handleShellAutoUpdateInstall,
-    handleShellAutoUpdateRetry,
-    handleDownloadShellUpdate,
-  ]);
-
-  const dismissShellUpdate = useCallback(() => {
-    const v = shellUpdate?.version;
-    if (!v) return;
-    try { localStorage.setItem('shellUpdateDismissedVersion', v); } catch { /* private mode */ }
-    setShellUpdateDismissed(v);
-  }, [shellUpdate]);
-
-  // ── Boot lifecycle decisions ─────────────────────────────────────
-  // Both of these used to live inside HomeView, but the user can
-  // navigate (settings → home → settings) which would re-mount
-  // HomeView and re-fire each. App.jsx is the natural home — these
-  // refs are app-session-level by virtue of being component-scoped
-  // here, not view-scoped.
-
-  // Watchdog — if the local backend never comes online, pop the help
-  // modal so the user has logs / restart available. Once.
-  const bootWatchdogFiredRef = useRef(false);
-  useEffect(() => {
-    if (serverOnline) return undefined;
-    if (bootWatchdogFiredRef.current) return undefined;
-    const t = setTimeout(() => {
-      bootWatchdogFiredRef.current = true;
-      setServerHelpOpen(true);
-    }, 12_000);
-    return () => clearTimeout(t);
-  }, [serverOnline]);
-
-  // Config redirect — server is up but config_ready is explicitly
-  // false → take the user to Settings so they can finish setup.
-  // Tested as `=== false` (not falsy) on purpose: we don't want to
-  // route on initial undefined / pending values, only on a confirmed
-  // negative from the server. Once per session.
-  const bootConfigRedirectFiredRef = useRef(false);
-  useEffect(() => {
-    if (bootConfigRedirectFiredRef.current) return;
-    if (!serverOnline) return;
-    // Web sessions (mobile or desktop browser) always land on the
-    // new-task composer regardless of config state. The auto-redirect
-    // to Settings is Electron-only — there a missing provider means
-    // the install can't reach any LLM at all. In the hosted web
-    // shell, config is centralized server-side, so first-paint
-    // shouldn't shove the user into a configuration screen.
-    if (host.isWeb) return;
-    if (health.config_ready === false) {
-      bootConfigRedirectFiredRef.current = true;
-      // Missing provider → land straight on the Agent (provider) section, on
-      // desktop and in the mobile master-detail alike.
-      setSettingsSection('agent');
-      setSettingsOpen(true);
-    }
-  }, [serverOnline, health.config_ready]);
-
-  // Default the new-task project to "general". If the projects list
-  // is loaded and it doesn't include "general", create it first. The
-  // server provisions general on startup, so this only fires on
-  // upgrades from an older build that didn't have that.
-  const generalDefaultRef = useRef(false);
-  useEffect(() => {
-    if (selectedProject) return;        // user has picked something — don't override
-    if (!serverOnline) return;          // wait for server
-    if (generalDefaultRef.current) return; // only run once per session
-    if (projects.length === 0) return;  // wait for projects to load
-    const general = projects.find((p) => p.name === 'general');
-    if (general) {
-      generalDefaultRef.current = true;
-      setSelectedProject(general);
-      return;
-    }
-    // No general project — bootstrap it then re-fetch + select.
-    generalDefaultRef.current = true;
-    (async () => {
-      try {
-        await createProject('general');
-        const fresh = await fetchProjects();
-        if (Array.isArray(fresh)) setProjects(fresh);
-        const created = (fresh || []).find((p) => p.name === 'general');
-        if (created) setSelectedProject(created);
-      } catch (e) {
-        // eslint-disable-next-line no-console
-        console.warn('[default-project] could not bootstrap general', e);
-        generalDefaultRef.current = false; // allow retry on next render
-      }
-    })();
-  }, [projects, selectedProject, serverOnline]);
-
-  // Seed server state from main's truth on first paint so the toggle
-  // button reflects reality (running OR starting) even before /health
-  // has returned. While main is mid-start, show the spinner; poll
-  // every 600 ms until it resolves — OR until we've polled long
-  // enough that we'd expect main to have decided one way or the
-  // other.
-  //
-  // The earlier version stopped as soon as `info.starting === false`,
-  // which lost the race against main's boot path: the renderer
-  // mounts and runs its first tick before main has finished
-  // `checkInstallStatus()` + spawned the python (so `pendingStart`
-  // is still null and `info.starting === false` even though the
-  // boot path is about to start one). The renderer would settle on
-  // "offline" and never re-poll, leaving the user looking at a
-  // grey status pill while a perfectly healthy server was
-  // listening in the background.
-  //
-  // Fix: keep ticking until either `info.running` flips true OR a
-  // hard ceiling elapses. After the ceiling we stop and trust the
-  // status pill / sidebar toggle to recover by user action.
-  //
-  // The ceiling has to outlast main's start budget, or this loop declares
-  // the backend offline while main is still legitimately waiting for it —
-  // the user sees the failure panel for a start that goes on to succeed.
-  // Derived from the shared cap rather than a second hand-picked number so
-  // the two cannot drift apart.
-  useEffect(() => {
-    if (host.isWeb) return; // No server lifecycle to poll in the hosted web shell.
-    let cancelled = false;
-    let timer = null;
-    const startedAt = Date.now();
-    const POLL_CEILING_MS = SERVER_START_CAP_MS + 60_000;
-
-    // Exactly one timer per tick. An earlier version scheduled inside the
-    // starting/not-running branch AND again below it, overwriting `timer` and
-    // leaking the first — so the poll rate doubled every tick. A warm start
-    // resolved in two ticks and hid it; a slow start would have turned it into
-    // thousands of concurrent polls.
-    const tick = async () => {
-      try {
-        const info = await host.serverInfo();
-        if (cancelled || !info) return;
-        const running = info.running === true;
-        const starting = info.starting === true;
-        if (typeof info.running === 'boolean') setServerOnline(running);
-        if (starting) setServerBusyKind('starting');
-        setServerBusy(starting);
-        if (running) return; // settled
-        // Keep polling while main says it's still starting (main owns the
-        // hard cap, so this can't run forever), and otherwise until the
-        // ceiling — which covers the window where main is still resolving
-        // `checkInstallStatus` before kicking off `startServer`.
-        if (starting || Date.now() - startedAt < POLL_CEILING_MS) {
-          timer = setTimeout(tick, starting ? 600 : 1000);
-        }
-      } catch {
-        // Polling errors (IPC blip, restart) shouldn't kill the
-        // loop — keep trying within the ceiling so a transient
-        // hiccup doesn't strand the renderer in offline state.
-        if (Date.now() - startedAt < POLL_CEILING_MS) {
-          timer = setTimeout(tick, 600);
-        }
-      }
-    };
-
-    tick();
-    return () => {
-      cancelled = true;
-      if (timer) clearTimeout(timer);
-    };
-  }, []);
-
   const saveSettings = useCallback(async (patch = settings) => {
     const result = await updateSettings(patch);
     setSettings((prev) => ({
@@ -2301,33 +1600,30 @@ function AppCore() {
   }, [settings]);
 
   const activeTasks = tasks.filter((t) => t.status === 'active');
-  const currentTask = tasks.find((t) => t.id === activeTaskId) || (route === 'task' ? tasks[0] : null);
-  // Tasks belong to one project for life. Resolve via projectName
-  // first (server's canonical id), then projectPath, then fall back
-  // to the currently-selected project for orphans.
-  // Resolve the project a given task belongs to (by name, then path,
-  // else a synthetic entry from its path). Returns null when the task
-  // carries no project hints — callers decide the fallback. Shared by
-  // `currentTaskProject` and the cross-task queue drain, which must
-  // resolve a project for a task the user isn't currently viewing.
-  const resolveTaskProject = (task) => {
-    if (!task) return null;
-    if (task.projectName) {
-      const byName = projects.find((p) => p.name === task.projectName);
-      if (byName) return byName;
-    }
-    if (task.projectPath) {
-      const byPath = projects.find((p) => p.path === task.projectPath);
-      if (byPath) return byPath;
-      return {
-        id: task.projectPath,
-        name: task.projectName || task.projectPath.split('/').pop(),
-        path: task.projectPath,
-      };
-    }
-    return null;
-  };
-  const currentTaskProject = resolveTaskProject(currentTask) || selectedProject;
+  const resolvedTask = tasks.find((t) => t.id === activeTaskId) || null;
+  // Only fall back to a default task when no id is requested. A requested id
+  // that isn't local yet (deep link / scheduled-run open) is still loading —
+  // falling back to tasks[0] would flash an unrelated recent conversation.
+  const currentTask = resolvedTask || (route === 'task' && !activeTaskId ? tasks[0] : null);
+  // Loader hit a transient failure and there's nothing local — show the retry
+  // rather than an empty (or, via the old `tasks[0]` fallback, wrong) ChatView.
+  // A locally-available conversation keeps rendering during a blip.
+  const showConversationError =
+    route === 'task' &&
+    conversationError != null &&
+    conversationError === activeTaskId &&
+    !resolvedTask;
+  // Requested id not resolved and not (yet) errored: show a loading state, not
+  // the wrong conversation, until openConversation merges it into local state.
+  const showConversationLoading =
+    route === 'task' && activeTaskId != null && !resolvedTask && !showConversationError;
+  // A detail URL whose id isn't yet the selected project (resolving, or cold
+  // deep link): show the grid, never a stale project, under `/projects/:id`.
+  const projectDetailResolving =
+    projectDetailPending != null &&
+    !(selectedProject && (selectedProject.id === projectDetailPending || selectedProject.name === projectDetailPending));
+  const selectedProjectForView = projectDetailResolving ? null : selectedProject;
+  const currentTaskProject = resolveTaskProject(currentTask, projects) || selectedProject;
   const currentTaskModel = currentTask?.model
     ? (currentTask.model === MODEL_ROUTER_ID
         ? MODEL_ROUTER
@@ -2504,77 +1800,79 @@ function AppCore() {
     return true;
   }, [markInFlight, markInFlightDone, handleStreamError]);
 
+  // Navigation intent only: flipping route + activeTaskId drives the URL to
+  // `/c/:id`, whose loader + openConversation() (below) do the hydration and
+  // stream reattach — so sidebar click / deep link / refresh / Back all run one
+  // path.
   const selectTask = (id) => {
     if (sidebarPopout) setNavPopoutOpen(false);
-    const task = tasks.find((t) => t.id === id);
-    if (task) {
-      // Record the visit for recents ordering, but never auto-pin.
-      // Pin/unpin is now an explicit action via the task menu.
-      recordTaskVisit(task, false).then(() => {
-        fetchPins().then((data) => setPins(data.pins || []));
-        fetchSessions().then((data) => {
-      if (Array.isArray(data)) setTasks((prev) => mergeTasksFromServer(data, prev).filter((t) => !deletedTaskIdsRef.current.has(t.id)));
-    });
-      }).catch(() => {});
-
-      // Is this conversation actually mid-stream right now? If yes,
-      // we LEAVE running indicators alone. If no, reconcile strips
-      // zombie placeholders and collapses stale step state.
-      const isLive = activeStreamingTaskIdRef.current === id;
-
-      // Cross-client cache (Option B): when the server says this
-      // conversation's producer is still running, skip the "things
-      // stopped" continuation prompt. The reconnect path below will
-      // attach to the live tail within ~50ms; showing the stopped
-      // message in between would flicker.
-      const isServerInFlight = inFlightSetRef.current.has(id);
-
-      // If this task didn't get its messages preloaded (we only fan
-      // out to the recent N at startup), fetch them now so the chat
-      // view doesn't render empty.
-      if (!task.messages || task.messages.length === 0) {
-        fetchSession(id).then((fresh) => {
-          if (!fresh || !Array.isArray(fresh.messages)) return;
-          // Server-in-flight conversations may have no messages yet
-          // (e.g. a scheduled task that just started). Don't bail —
-          // reconcile will inject a thinking placeholder.
-          if (fresh.messages.length === 0 && !isServerInFlight) return;
-          // Two layers of restoration, in order of trust:
-          //   1. Server sidecar (`{cid}_turns.json`) — events for each
-          //      assistant turn, replayed through the same reducer the
-          //      live stream uses. Survives any client reset and
-          //      anyone reading the conversation gets the same view.
-          //   2. localStorage sidecar — legacy fallback for turns
-          //      created before the server sidecar shipped.
-          const reconciled = applySessionMessages(id, fresh.messages, { isLive, isServerInFlight });
-          const dc = Array.isArray(fresh.disabledConnections) ? fresh.disabledConnections : undefined;
-          setTasks((prev) => prev.map((t) =>
-            t.id === id ? {
-              ...t,
-              messages: reconciled,
-              ...(dc !== undefined ? { disabledConnections: dc } : {}),
-            } : t
-          ));
-        }).catch(() => {});
-      } else {
-        // Already preloaded — still hydrate once so reopening surfaces
-        // any data persisted in a prior session.
-        setTasks((prev) => prev.map((t) => {
-          if (t.id !== id) return t;
-          return { ...t, messages: applySessionMessages(id, t.messages, { isLive, isServerInFlight }) };
-        }));
-      }
-    }
+    // Clear the composer here (the sync nav intent), not in openConversation:
+    // that runs after the async loader and would wipe a queued-message redirect
+    // ChatView stages for the conversation. Matches staging's ordering.
     setComposerAttachments([]);
     setActiveTaskId(id);
     setRoute('task');
-    // Phase 2 reconnect — fire-and-forget. If a turn is still running
-    // server-side for this conversation (closed-tab-came-back, or
-    // opened from another tab/device), this re-attaches the live SSE
-    // stream and replays from seq 0. Cheap no-op when the producer
-    // isn't running.
-    reconnectInFlight(id).catch(() => { /* probe failures are silent */ });
   };
+
+  // Hydrate + reattach the conversation the `/c/:id` route resolved. `loaded` is
+  // the loader result: `{ task }`, `{ optimistic: true }` (new-chat mid-send —
+  // messages live locally, don't clobber), or `{ unavailable: true }` (transient
+  // failure).
+  const openConversation = useCallback((id, loaded) => {
+    setActiveTaskId(id);
+    setRoute('task');
+    // Composer is cleared by selectTask (sync), not here — see there. On a
+    // loader failure flag it for a retry; any resolvable result clears a stale
+    // error. The render only shows it when the conversation is absent locally,
+    // so a sidebar click during a blip keeps rendering.
+    if (loaded?.unavailable) setConversationError(id);
+    else setConversationError((cur) => (cur === id ? null : cur));
+    // Phase 2 reconnect — fire-and-forget. If a turn is still running
+    // server-side for this conversation (closed-tab-came-back, or opened
+    // from another tab/device), this re-attaches the live SSE stream and
+    // replays from seq 0. Cheap no-op when the producer isn't running.
+    reconnectInFlight(id).catch(() => { /* probe failures are silent */ });
+    if (!loaded || loaded.optimistic || loaded.unavailable || !loaded.task) return;
+    const fresh = loaded.task;
+    // Is this conversation actually mid-stream right now? If yes, we LEAVE
+    // running indicators alone. If no, reconcile strips zombie placeholders
+    // and collapses stale step state.
+    const isLive = activeStreamingTaskIdRef.current === id;
+    // Cross-client cache (Option B): when the server says this
+    // conversation's producer is still running, skip the "things stopped"
+    // continuation prompt — the reconnect above attaches to the live tail.
+    const isServerInFlight = inFlightSetRef.current.has(id);
+
+    // Record the visit for recents ordering (never auto-pin), then refresh
+    // pins + the capped recents list. Runs before the empty-transcript return
+    // below so every successful open updates recency — matching the prior
+    // selectTask path, which recorded a visit regardless of message count.
+    recordTaskVisit(fresh, false).then(() => {
+      fetchPins().then((data) => setPins(data.pins || []));
+      fetchSessions().then((data) => {
+        if (Array.isArray(data)) setTasks((prev) => mergeTasksFromServer(data, prev).filter((t) => !deletedTaskIdsRef.current.has(t.id)));
+      });
+    }).catch(() => {});
+
+    // Empty and not mid-flight: surface the record so a capped-list deep
+    // link (conversation absent from the recents fetch) still renders, but
+    // don't wipe any locally-restored messages.
+    if ((!Array.isArray(fresh.messages) || fresh.messages.length === 0) && !isServerInFlight) {
+      setTasks((prev) => (prev.some((t) => t.id === id) ? prev : [fresh, ...prev]));
+      return;
+    }
+
+    // Two layers of restoration, in order of trust: the server sidecar
+    // (`{cid}_turns.json`) replayed through the live-stream reducer, then a
+    // legacy localStorage sidecar. Merge into recents, inserting the
+    // conversation if it wasn't in the capped fetch.
+    const reconciled = applySessionMessages(id, Array.isArray(fresh.messages) ? fresh.messages : [], { isLive, isServerInFlight });
+    const dc = Array.isArray(fresh.disabledConnections) ? fresh.disabledConnections : undefined;
+    const patch = (t) => ({ ...t, messages: reconciled, ...(dc !== undefined ? { disabledConnections: dc } : {}) });
+    setTasks((prev) => (prev.some((t) => t.id === id)
+      ? prev.map((t) => (t.id === id ? patch(t) : t))
+      : [patch(fresh), ...prev]));
+  }, [reconnectInFlight]);
 
   const newTask = () => {
     if (sidebarPopout) setNavPopoutOpen(false);
@@ -3031,58 +2329,14 @@ function AppCore() {
     setTasks((prev) => prev.map((t) => t.status === 'active' ? { ...t, status: 'idle' } : t));
   }, []);
 
-  useEffect(() => {
-    if (!settingsOpen) return;
-    getAccessToken().then((token) => setSsoConnected(!!token)).catch(() => {});
-  }, [settingsOpen]);
-
-  // Authoritative signed-in state, pushed from the main process on every
-  // token-store transition (login, silent refresh, logout, session
-  // death). The UI no longer depends solely on the promise of whichever
-  // call initiated the sign-in — that promise can be lost (ENG-761)
-  // while the main process is in fact authenticated, or vice versa.
-  useEffect(() => {
-    if (!host.isElectron) return undefined;
-    return host.onMindsHubAuthChanged(({ authenticated }) => {
-      setSsoConnected(!!authenticated);
-      if (authenticated) setSsoError('');
-    });
-  }, []);
-
-  const handleSsoSignIn = async () => {
-    if (!host.isElectron || ssoBusyRef.current) return;
-    ssoBusyRef.current = true;
-    setSsoError('');
-    try {
-      const loginResult = await host.mindshubLogin();
-      if (!loginResult?.ok) {
-        // ENG-761: this used to silently return — the browser said
-        // "You're authorized!" while the app showed nothing. Surface the
-        // failure where the user will look for it: the account card.
-        setSsoError(String(loginResult?.reason || 'Sign in failed. Please try again.'));
-        setSettingsSection('account');
-        setSettingsOpen(true);
-        return;
-      }
-      // Signed in — flip the UI now; key provisioning below takes several
-      // seconds (org bootstrap + server restart) and is not a sign-in gate.
-      setSsoConnected(true);
-      try {
-        // The result is still not acted on — key provisioning is not a sign-in
-        // gate — but a refusal is now countable (ENG-1533). A 402 here leaves the
-        // user signed in with no working key, no BYOK route and no message; the
-        // `unhandled` outcome is how often that happens. Fixing the UX needs its
-        // own ticket; this only makes it visible.
-        const finalizeResult = await host.mindshubFinalize();
-        if (finalizeResult?.upgradeRequired) trackKeyProvisioningRefused('unhandled');
-      } catch (e) {
-        console.warn('[sso] finalize failed after sign-in (account is authenticated):', e);
-      }
-      refreshData();
-    } finally {
-      ssoBusyRef.current = false;
-    }
-  };
+  // MindsHub SSO — connected flag, sign-in error, and the login/provisioning
+  // flow (incl. the main-process auth-changed subscription) live in useSso.
+  const { ssoConnected, ssoError, handleSsoSignIn } = useSso({
+    settingsOpen,
+    setSettingsSection,
+    setSettingsOpen,
+    refreshData,
+  });
 
   // Open the Settings surface. A named section drills straight to it (desktop
   // and the mobile master-detail alike). A bare open leaves desktop on its
@@ -3116,24 +2370,16 @@ function AppCore() {
       openSettings(key.includes(':') ? key.split(':')[1] : null);
       return;
     }
-    if (key === 'artifacts') {
-      fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
-    }
     if (key === 'projects') {
-      fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); });
-      // Clicking "Projects" in the sidebar should always land on the
-      // grid of all projects, not the previously-selected project's
-      // detail. Clear the selection so ProjectsView starts in grid
-      // mode. The chat-header crumb routes through onOpenProject
-      // (which sets selectedProject AFTER routing) so it's unaffected.
+      // Clicking "Projects" in the sidebar should always land on the grid of
+      // all projects, not the previously-selected project's detail. Clearing
+      // here (not in enterRoute) keeps the chat-header crumb path — which
+      // routes through onOpenProject and sets selectedProject AFTER routing —
+      // unaffected.
       setSelectedProject(null);
     }
-    if (key === 'scheduled') {
-      fetchSchedules().then((data) => {
-      setScheduled(data.schedules || []);
-      setScheduleRunsIndex(data.runs_index || {});
-    });
-    }
+    // Flip route state; the URL bridge mirrors it and the route element's
+    // enterRoute() (re)fetches that view's data.
     setRoute(key);
   };
 
@@ -3156,6 +2402,66 @@ function AppCore() {
       setSettingsSection('agent');
     }
   }, [orgMode, settingsSection]);
+
+  // URL → state sync for the route elements. enterRoute is the single place a
+  // view's entry data is (re)fetched, so in-app nav / deep link / refresh /
+  // Back-Forward all run the same path.
+  const enterHome = useCallback(() => {
+    setRoute('home');
+    setConversationError(null);
+    projectDetailTokenRef.current.leave(); // supersede any in-flight detail resolve
+    setProjectDetailPending(null);
+  }, []);
+
+  const enterRoute = useCallback((key) => {
+    setRoute(key);
+    setConversationError(null);
+    projectDetailTokenRef.current.leave(); // supersede any in-flight detail resolve
+    setProjectDetailPending(null); // leaving a detail route (or landing on the grid)
+    if (key === 'artifacts') {
+      fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
+    } else if (key === 'projects') {
+      // Bare `/projects` is the grid — clear the selection so a Back from
+      // `/projects/:id` doesn't render stale detail (detail = enterProjectDetail).
+      setSelectedProject(null);
+      fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); });
+    } else if (key === 'scheduled') {
+      refreshSchedules();
+    }
+  }, [refreshSchedules]);
+
+  // Detail routes → state (v1). No single-resource loader: resolve the entity
+  // client-side from the fetched list, so refresh / deep-link restore the
+  // selection with no server change.
+  // Returns a promise resolving to `false` when the id isn't in the list (the
+  // route element then replaces the dead URL with `/projects`), else truthy.
+  const enterProjectDetail = useCallback((projectId) => {
+    setRoute('projects');
+    setConversationError(null);
+    // Resolving this id: render the grid (not a stale project) until it settles.
+    setProjectDetailPending(projectId);
+    const reqId = projectDetailTokenRef.current.begin();
+    return fetchProjects().then((data) => {
+      if (!projectDetailTokenRef.current.isCurrent(reqId)) return true; // superseded — a newer id owns pending, or we left detail
+      if (!Array.isArray(data)) { setProjectDetailPending(null); return true; }
+      setProjects(data);
+      const found = data.find((p) => p.id === projectId || p.name === projectId);
+      if (found) { setProjectDetailPending(null); setSelectedProject(found); return true; }
+      // Confirmed missing: keep `pending` set (stays on the grid) — the route
+      // element replaces the URL with `/projects`, whose enterRoute clears it.
+      return false;
+    }).catch(() => {
+      if (projectDetailTokenRef.current.isCurrent(reqId)) setProjectDetailPending(null);
+      return true; // transient failure → keep the URL, don't bounce
+    });
+  }, []);
+
+  const enterScheduleDetail = useCallback((scheduleId) => {
+    setRoute('schedule-detail');
+    setSelectedScheduleId(scheduleId);
+    setConversationError(null);
+    refreshSchedules().catch(() => {});
+  }, [refreshSchedules]);
 
   const attachmentProjectPath = currentTask?.projectPath || selectedProject?.path || null;
   const attachmentProjectName = currentTask?.projectName || selectedProject?.name || null;
@@ -3359,6 +2665,9 @@ function AppCore() {
     const rawComposer = composerAttachments;
     const hasPendingFiles = rawComposer.some(isPendingFileAttachment);
     const taskId = hasPendingFiles ? allocateConversationId() : `tmp-${Date.now()}`;
+    // Flag the not-yet-persisted id so the route loader renders from local
+    // state instead of 404ing home.
+    markOptimisticConversation(taskId);
 
     const { merged: sendingAttachments, attachmentIds, reference } = await resolveComposerAttachmentsForSend(
       effectiveProjectName,
@@ -3415,6 +2724,8 @@ function AppCore() {
       resolvedId = sid;
       // Carry over a reply the user started typing under the tmp- id.
       moveDraft(previousId, sid);
+      // The canonical id isn't loadable yet either — keep the loader off it.
+      markOptimisticConversation(sid);
       setTasks((prev) => prev.map((t) => (
         t.id === previousId || t.id === taskId ? { ...t, id: sid } : t
       )));
@@ -3518,6 +2829,9 @@ function AppCore() {
         activeScratchpadRef.current = null;
         activeStreamingTaskIdRef.current = null;
         const finalId = sid || resolvedId;
+        // Turn done → conversation persisted; drop the optimistic flag so a
+        // later revisit hydrates fresh instead of replaying this snapshot.
+        clearOptimisticConversation(finalId);
         markInFlightDone(finalId);
         if (finalId !== taskId) markInFlightDone(taskId);
         releaseLiveSteps([finalId, taskId]);
@@ -3741,7 +3055,7 @@ function AppCore() {
     // resolves the same project a live send to it would (parity — otherwise
     // even the on-screen task's own follow-up loses the fallback on drain).
     const taskProject = opts.targetTask
-      ? (resolveTaskProject(targetTask) || selectedProject)
+      ? (resolveTaskProject(targetTask, projects) || selectedProject)
       : currentTaskProject;
     let taskProjectName = targetTask.projectName
       || (taskProject?.name)
@@ -3849,6 +3163,7 @@ function AppCore() {
       resolvedId = sid;
       // Carry over a reply the user started typing under the tmp- id.
       moveDraft(previousId, sid);
+      markOptimisticConversation(sid);
       setTasks((prev) => prev.map((t) => (
         t.id === previousId || t.id === id ? { ...t, id: sid } : t
       )));
@@ -3930,6 +3245,9 @@ function AppCore() {
         activeStreamCtrlRef.current = null;
         activeScratchpadRef.current = null;
         activeStreamingTaskIdRef.current = null;
+        // Turn done → conversation persisted; drop the optimistic flag (set if
+        // `id` was a tmp-connect id that adopted a server id).
+        clearOptimisticConversation(resolvedId);
         markInFlightDone(resolvedId);
         if (resolvedId !== id) markInFlightDone(id);
         releaseLiveSteps([resolvedId, id]);
@@ -4053,6 +3371,7 @@ function AppCore() {
       resolvedId = sid;
       // Carry over a reply the user started typing under the tmp- id.
       moveDraft(previousId, sid);
+      markOptimisticConversation(sid);
       setTasks((prev) => prev.map((t) => (
         t.id === previousId || t.id === id ? { ...t, id: sid } : t
       )));
@@ -4188,6 +3507,8 @@ function AppCore() {
         activeStreamCtrlRef.current = null;
         activeStreamingTaskIdRef.current = null;
         releaseLiveSteps([resolvedId, id]);
+        // Turn done → conversation persisted; drop the optimistic flag.
+        clearOptimisticConversation(resolvedId);
         const finalContent = streamState.bodyText;
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
@@ -4342,15 +3663,57 @@ function AppCore() {
       return;
     }
     try {
-      await Promise.all([
-        deleteConversation(taskId),
-        unpinTask(taskId).catch(() => {}), // unpin is a no-op if not pinned
-      ]);
+      await deleteConversation(taskId);
       // eslint-disable-next-line no-console
       console.log('[performDeleteTask] server delete ok');
+      // Unpin only once the delete has really happened. Run in parallel, a
+      // refused delete still committed the unpin server-side, and the
+      // restored row came back silently unpinned across reloads.
+      await unpinTask(taskId).catch(() => {}); // unpin is a no-op if not pinned
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error('[performDeleteTask] server delete failed', e);
+      /*
+        The chat is still on the server, so put the row back rather than leave
+        the sidebar claiming it is gone. Console-only used to mean the user saw
+        a successful delete, deleted it again on the next visit, and only found
+        out on a reload. The access log carried the same ids two and three
+        times over.
+
+        Dropping the tombstone first is what makes the refetch work at all:
+        every consumer of fetchSessions filters through deletedTaskIdsRef, and
+        nothing else ever clears it, so the row would stay hidden for the life
+        of the mount. Same recovery as handleRenameTask above.
+
+        The route is deliberately not restored. The user asked to leave this
+        chat, and yanking them back into it is a bigger surprise than the row
+        reappearing in the list where the toast says to look.
+      */
+      deletedTaskIdsRef.current.delete(taskId);
+      const fresh = await fetchSessions().catch(() => null);
+      setTasks((prev) => {
+        /*
+          fetchSessions resolves [] when the server is unreachable, so treat
+          an empty answer as no answer — replacing the list with it would
+          blank every chat in the sidebar. mergeTasksFromServer, same as
+          every other consumer, keeps streaming messages, model pins and
+          tmp- rows that a wholesale replace would clobber. prev already
+          lost this row to the optimistic filter above, so when the refetch
+          brought nothing back, re-seat the captured task — the toast says
+          the chat is back in the list, and it has to be true.
+        */
+        const merged = mergeTasksFromServer(fresh?.length ? fresh : null, prev);
+        if (task && !merged.some((t) => t.id === taskId)) merged.unshift(task);
+        return merged.filter((t) => !deletedTaskIdsRef.current.has(t.id));
+      });
+      toastManager.add({
+        type: 'danger',
+        // Needs action before it makes sense to move on, so it persists
+        // until dismissed, like the OAuth refresh-failure toast.
+        timeout: 0,
+        title: "Couldn't delete this chat. It is back in your list; try again.",
+        description: e?.message,
+      });
     }
     fetchPins().then((data) => setPins(data.pins || [])).catch(() => {});
   };
@@ -4517,14 +3880,6 @@ function AppCore() {
     if (Array.isArray(freshProjects)) setProjects(freshProjects);
   };
 
-  const refreshSchedules = useCallback(async () => {
-    const data = await fetchSchedules();
-    const list = data.schedules || [];
-    setScheduled(list);
-    setScheduleRunsIndex(data.runs_index || {});
-    return list;
-  }, []);
-
   // Diffs the full conversation list against known tasks and adds any
   // unseen ones — catches every new conversation since the last check,
   // not just the most recent one.
@@ -4575,31 +3930,6 @@ function AppCore() {
     }
     return () => { cancelled = true; clearTimeout(timer); };
   }, [scheduleKey, refreshSchedules, syncNewConversations]);
-
-  const handleCreateSchedule = async (payload) => {
-    await createSchedule(payload);
-    await refreshSchedules();
-  };
-
-  const handleUpdateSchedule = async (id, payload) => {
-    await updateSchedule(id, payload);
-    await refreshSchedules();
-  };
-
-  const handleDeleteSchedule = async (id) => {
-    await deleteSchedule(id);
-    await refreshSchedules();
-  };
-
-  const handlePauseSchedule = async (id) => {
-    await pauseSchedule(id);
-    await refreshSchedules();
-  };
-
-  const handleResumeSchedule = async (id) => {
-    await resumeSchedule(id);
-    await refreshSchedules();
-  };
 
   const handleRunScheduleNow = async (id) => {
     const result = await runScheduleNow(id);
@@ -4722,7 +4052,10 @@ function AppCore() {
     },
   };
 
-  return (
+  // The app chrome — sidebar, content column, modals. Still holds the
+  // `route`-keyed view switch plus the router's <Outlet/>; handed to the router
+  // via context.
+  const shell = (
     <div style={{
       ...appStyle, ...accentCss,
       display: 'flex', gap: 9, padding: 9,
@@ -4899,14 +4232,9 @@ function AppCore() {
           showCounters={settings.showCounters !== false}
           navTitle={settings.navTitle || null}
           navLogo={settings.navLogo || null}
-          updateAvailable={updateStatus?.phase === 'available' ? { version: updateStatus.version } : null}
-          updateError={updateStatus?.phase === 'error' ? { version: updateStatus.version } : null}
-          onApplyUpdate={handleApplyUpdate}
-          shellUpdate={shellUpdate && shellUpdate.version !== shellUpdateDismissed ? shellUpdate : null}
-          shellAutoUpdate={shellAutoUpdate}
-          onShellAutoUpdateAction={handleShellAutoUpdateAction}
-          onDownloadShellUpdate={handleDownloadShellUpdate}
-          onDismissShellUpdate={dismissShellUpdate}
+          updateBanner={updateBanner}
+          onUpdateAction={handleUpdateAction}
+          onDismissUpdate={dismissShellUpdate}
           onStartChat={(text) => {
             // Popout sidebar (narrow desktop, or Coding Mode) is an overlay
             // drawer. Close it like navigate/onOpenSchedule do, so the new
@@ -4963,6 +4291,10 @@ function AppCore() {
         onOpenSidebar={sidebarPopout ? () => setNavPopoutOpen(true) : () => setSidebarCollapsed(false)}
         mobileShellProps={mobileShellProps}
       >
+        {/* Mounts the matched child route element, which syncs `route` /
+            `activeTaskId` to the URL. It renders no visible output — the
+            active view is still chosen by the `route`-keyed switch below. */}
+        <Outlet />
         {route === 'home' && (
           <HomeView
             greeting={settings.greeting}
@@ -5003,7 +4335,11 @@ function AppCore() {
           />
         )}
 
-        {route === 'task' && currentTask && (
+        {route === 'task' && showConversationError && <ConversationUnavailable />}
+
+        {route === 'task' && showConversationLoading && <ConversationLoading />}
+
+        {route === 'task' && currentTask && !showConversationError && (
           <ChatView
             task={currentTask}
             onSend={handleSendInTask}
@@ -5130,7 +4466,8 @@ function AppCore() {
         {route === 'projects' && (
           <ProjectsView
             projects={projects}
-            selectedProject={selectedProject}
+            selectedProject={selectedProjectForView}
+            loading={projectDetailResolving}
             tasks={tasks}
             scheduled={scheduled}
             scheduleRunsIndex={scheduleRunsIndex}
@@ -5574,5 +4911,28 @@ function AppCore() {
         </div>
       )}
     </div>
+  );
+
+  // Hand the shell + nav state + URL→state handlers to the router; CoworkLayout
+  // renders `shell` and the route elements consume the handlers.
+  const coworkValue = {
+    shell,
+    route,
+    activeTaskId,
+    // Bridge mirrors the selected detail entity into the URL. Prefer the stable
+    // id; fall back to name for projects that predate ids.
+    selectedProjectId: selectedProject?.id || selectedProject?.name || null,
+    selectedScheduleId,
+    enterHome,
+    enterRoute,
+    openConversation,
+    enterProjectDetail,
+    enterScheduleDetail,
+  };
+
+  return (
+    <CoworkProvider value={coworkValue}>
+      <CoworkRouterProvider router={routerRef.current} />
+    </CoworkProvider>
   );
 }

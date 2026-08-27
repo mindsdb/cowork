@@ -44,7 +44,7 @@ describe('renderer-build workflows carry the same VITE_ build vars (regression: 
   it('detects the desktop renderer-build workflows', () => {
     const detected = rendererBuilds.map((w) => w.file).sort();
     expect(detected).toEqual(
-      ['build-macos-pkg.yml', 'build-windows-installer.yml', 'publish-ui.yml'].sort(),
+      ['build-linux-deb.yml', 'build-macos-pkg.yml', 'build-windows-installer.yml', 'publish-ui.yml'].sort(),
     );
   });
 

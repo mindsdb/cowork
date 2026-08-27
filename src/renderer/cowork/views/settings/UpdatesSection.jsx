@@ -5,6 +5,7 @@ import { copyText as copyToClipboard } from '../../lib/clipboard';
 import { fetchHealth } from '../../api';
 import { host, getVersionInfo, isElectron } from '../../../platform/host';
 import { unifiedVersion, SKEW_WARN_DAYS } from '../../../../shared/version';
+import { shellAutoOwnsBanner } from '../../../../shared/update-banner';
 import { Section, SettingsSectionPanel } from './settingsLayout';
 
 const UPDATE_CARD_CLASS =
@@ -239,7 +240,16 @@ export default function UpdatesSection({
               }
               const isError = !!r && !r.ok;
               const isUpToDate = !checkingUpdates && !!r && r.ok && !r.updateAvailable;
-              const applyAvailable = !checkingUpdates && !!r && r.ok && (r.uiUpdateAvailable || r.serverUpdateAvailable);
+              // Shell-first suppression of the redundant OTA "Restart now" card,
+              // decided by the SAME rule the sidebar banner uses — reuse
+              // shellAutoOwnsBanner so "which shell-auto phase is a pending update
+              // (and `failed` only with a real target)" lives in one place and the
+              // two surfaces can't drift. A targetless / check-only failure doesn't
+              // own the slot, so it never hides a valid UI/server Restart. The
+              // manual-notice side stays local because here it's derived from the
+              // live check result (shellPending), not the dismissal-filtered prop.
+              const shellSurface = (shellAutoUpdate ? shellAutoOwnsBanner(shellAutoUpdate) : false) || manualFallback;
+              const applyAvailable = !checkingUpdates && !!r && r.ok && !shellSurface && (r.uiUpdateAvailable || r.serverUpdateAvailable);
               const busy = checkingUpdates || applyingUpdate;
               const parts = [];
               if (applyAvailable) {

@@ -20,7 +20,6 @@ import {
   fetchArtifacts,
   fetchProjects,
   unpublishArtifact,
-  deleteArtifact,
 } from '../../api';
 import { ArtifactViewer } from '../artifact';
 import { Tooltip } from '../ui';
@@ -28,6 +27,7 @@ import { ConfirmModal } from '../ConfirmModal';
 import { host } from '../../../platform/host';
 import { useOrgMode } from '../../../lib/orgMode';
 import { artifactOpenTarget, needsClientUnpublishBeforeDelete } from '../../lib/artifactActions';
+import { deleteArtifactAndSync } from '../../lib/artifactsStore';
 
 // Map a file extension to a glyph from `Icons.jsx`. Buckets group
 // extensions that read the same at glance — code files all get the
@@ -290,7 +290,7 @@ export function WorkingFolderLive({ project, isStreaming }) {
       // Deletion is centralized through cowork-server (not shell.trashItem),
       // so it works in every shell and the server's unpublish-before-delete
       // guard always runs.
-      await deleteArtifact(a);
+      await deleteArtifactAndSync(a);
     } catch (e) {
       setRowError(e?.message || 'Delete failed.');
       // Restore the row on failure.

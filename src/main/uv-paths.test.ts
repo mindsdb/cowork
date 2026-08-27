@@ -20,6 +20,7 @@ import {
   coworkUvBinDir,
   applyChannelUvIsolation,
   getEnvPath,
+  findOnPath,
 } from './uv-paths';
 
 describe('writeUvOverrides', () => {
@@ -167,5 +168,30 @@ describe('coworkServerBinCandidates — global Windows fallback is prod-only', (
     expect(coworkServerBinCandidates('win32', LOCALAPPDATA)[0]).toBe(
       path.join('/home/u/.cowork-stable/uv/bin', process.platform === 'win32' ? 'cowork-server.exe' : 'cowork-server'),
     );
+  });
+});
+
+// Regression coverage for switching the POSIX lookup off the separate
+// `which` binary (not guaranteed present on a minimal Debian install) onto
+// the `command -v` shell builtin. Runs against the real shell rather than a
+// mocked execFile so it actually exercises the fix; skipped on win32, which
+// takes the unchanged `where`-based branch and has no /bin/sh.
+describe.skipIf(process.platform === 'win32')('findOnPath — POSIX lookup', () => {
+  it('resolves a command that exists on PATH', async () => {
+    const resolved = await findOnPath('ls');
+    expect(resolved).toBeTruthy();
+  });
+
+  it('resolves to null for a command that does not exist anywhere on PATH', async () => {
+    const resolved = await findOnPath('this-command-does-not-exist-anywhere-xyz');
+    expect(resolved).toBeNull();
+  });
+
+  it('looks up the command literally rather than interpolating it into the shell script', async () => {
+    // If the argument were ever string-interpolated into the `-c` script,
+    // this would execute `echo pwned` as a side effect instead of failing
+    // a lookup for a nonsense command name.
+    const resolved = await findOnPath('ls; echo pwned');
+    expect(resolved).toBeNull();
   });
 });

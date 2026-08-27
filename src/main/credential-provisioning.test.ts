@@ -80,6 +80,22 @@ describe('getCandidateStagingPaths', () => {
     expect(paths).toHaveLength(1);
     expect(paths[0]).toContain('server-credentials.json');
   });
+
+  // A .deb installs to root-owned /opt, so — unlike Windows's per-user NSIS
+  // install — the app cannot delete a file left in its own resources dir.
+  // The deb postinst stages a user-owned copy first and removes the /opt one;
+  // the resources path stays as the fallback for the case where postinst could
+  // not identify an installing user (headless/container `dpkg -i`) and so left
+  // the original in place.
+  it('prefers the user-owned staged copy over resourcesPath on Linux', () => {
+    setPlatform('linux');
+    Object.defineProperty(process, 'resourcesPath', { value: '/opt/app/resources', configurable: true });
+    const paths = getCandidateStagingPaths();
+    expect(paths).toHaveLength(2);
+    expect(paths[0]).toContain('.cowork-provision/server-credentials.json');
+    expect(paths[0]).not.toContain('/opt/app/resources');
+    expect(paths[1]).toBe('/opt/app/resources/server-credentials.json');
+  });
 });
 
 describe('provisionCredentialsFromStaging', () => {
@@ -194,6 +210,37 @@ describe('loadStaticCredentials', () => {
     const result = await loadStaticCredentials();
     expect(result.GITHUB_CLIENT_SECRET).toBeUndefined();
     expect(result.GITHUB_CLIENT_ID).toBe(SAMPLE.GITHUB_CLIENT_ID);
+  });
+});
+
+describe('loadBundledServerCredentials — unconfigured diagnostics', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setPlatform('linux');
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    setPlatform(originalPlatform);
+    vi.restoreAllMocks();
+  });
+
+  // A deb installed by one user and launched by another misses BOTH paths: the
+  // postinst staged into the installer's home and deleted the /opt copy. The
+  // only symptom was "OAuth credentials not configured" with nothing in the log
+  // saying why, so say it once — but only in that genuinely-broken state, not on
+  // the every-launch path where an absent staged file is the healthy case.
+  it('says so when nothing is staged AND nothing was ever provisioned', async () => {
+    vi.mocked(getStaticCredential).mockResolvedValue(null);
+    await loadBundledServerCredentials();
+    expect(console.warn).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(console.warn).mock.calls[0].join(' ')).toMatch(/no OAuth credentials/i);
+  });
+
+  it('stays quiet once the values are in the store, which is every normal launch', async () => {
+    vi.mocked(getStaticCredential).mockImplementation(async (key) => SAMPLE[key] ?? null);
+    await loadBundledServerCredentials();
+    expect(console.warn).not.toHaveBeenCalled();
   });
 });
 

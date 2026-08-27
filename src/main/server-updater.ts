@@ -416,20 +416,37 @@ function includePrereleases(): boolean {
 
 function fetchPypiJson(url: string): Promise<Record<string, unknown> | null> {
   return new Promise((resolve) => {
-    const req = https.get(
+    let settled = false;
+    let req: import('http').ClientRequest | null = null;
+    // Fail-safe to "no update" once. The `timeout` option below is a per-socket
+    // inactivity timeout; this deadline bounds a trickle-fed body that would
+    // otherwise keep resetting it and hang the boot poll (ENG-749).
+    const done = (v: Record<string, unknown> | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(deadline);
+      try { req?.destroy(); } catch { /* already gone */ }
+      resolve(v);
+    };
+    const deadline = setTimeout(() => done(null), PYPI_TIMEOUT_MS);
+    deadline.unref?.();
+    req = https.get(
       url,
       { headers: { Accept: 'application/json' }, timeout: PYPI_TIMEOUT_MS },
       (res) => {
-        if (res.statusCode !== 200) { res.resume(); resolve(null); return; }
+        if (res.statusCode !== 200) { res.resume(); done(null); return; }
         let data = '';
         res.on('data', (c) => (data += c));
         res.on('end', () => {
-          try { resolve(JSON.parse(data)); } catch { resolve(null); }
+          let parsed: Record<string, unknown> | null = null;
+          try { parsed = JSON.parse(data); } catch { parsed = null; }
+          done(parsed);
         });
+        res.on('error', () => done(null));
       },
     );
-    req.on('error', () => resolve(null));
-    req.on('timeout', () => { req.destroy(); resolve(null); });
+    req.on('error', () => done(null));
+    req.on('timeout', () => done(null));
   });
 }
 
@@ -697,6 +714,7 @@ async function _gitUpdate(uv: string, coworkVcs: VcsInfo): Promise<ServerUpdateR
     const wasRunning = isServerRunning();
     if (wasRunning) await stopServer();
 
+    _notify?.({ phase: 'downloading', to: (coworkRemote || prevCowork).slice(0, 7) }); // sidecar goes down (ENG-749)
     const upgrade = await installGit(uv, coworkRef, antonRef);
     if (!upgrade.ok) {
       console.error('[server-updater] git reinstall failed:', upgrade.stderr);
@@ -704,6 +722,7 @@ async function _gitUpdate(uv: string, coworkVcs: VcsInfo): Promise<ServerUpdateR
       return { updated: false, previousVersion: prevCowork, error: upgrade.stderr };
     }
 
+    _notify?.({ phase: 'restarting' });
     const result = await startServer();
     if (!result.ok) {
       console.error('[server-updater] new commit failed health check, rolling back...');
@@ -787,6 +806,7 @@ async function _pypiUpdate(uv: string): Promise<ServerUpdateResult> {
     // The rollback pin is resolved up front: fetching it mid-failure would
     // fail open on a flaky network and leave the rollback unresolvable.
     const [toWithArgs, fromWithArgs] = await Promise.all([antonWithArgs(to), antonWithArgs(from)]);
+    _notify?.({ phase: 'downloading', to }); // sidecar goes down (ENG-749)
     const upgrade = await runUv(
       uv,
       ['tool', 'install', '--force', '--reinstall', '--python', PYTHON_RANGE, `${PACKAGE_NAME}==${to}`, ...toWithArgs],
@@ -797,6 +817,7 @@ async function _pypiUpdate(uv: string): Promise<ServerUpdateResult> {
       return { updated: false, previousVersion: from, error: upgrade.stderr };
     }
 
+    _notify?.({ phase: 'restarting' });
     const result = await startServer();
     if (!result.ok) {
       console.error('[server-updater] new version failed health check, rolling back...');

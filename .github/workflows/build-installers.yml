@@ -1,19 +1,24 @@
-# Build (and upload) the desktop installers for both platforms, defined once.
+# Build (and upload) the desktop installers for all platforms, defined once.
 #
-# The three per-event installer workflows each wired up the same four jobs —
-# build-macos, upload-macos, build-windows, upload-windows — differing only in
-# `build_kind`, the API host, and whether a PR label gated them. That is twelve
-# jobs' worth of boilerplate expressing three inputs.
+# The three per-event installer workflows each wired up the same shape of jobs —
+# build-<platform>, upload-<platform> — differing only in `build_kind`, the API
+# host, and whether a PR label gated them. That is a lot of boilerplate
+# expressing three inputs.
 #
-# mac and windows stay SEPARATE called workflows rather than a matrix, because
-# they genuinely differ below the surface: different runner OS, different signing
-# material, different notarisation and EV steps. A matrix would have to branch on
+# mac, windows, and linux stay SEPARATE called workflows rather than a matrix,
+# because they genuinely differ below the surface: different runner OS (linux
+# additionally needs two native runners, one per arch, since keytar can't
+# cross-compile), different signing material, different notarisation and EV
+# steps — linux ships unsigned. A matrix would have to branch on
 # `matrix.platform` in every step, which is the duplication moved rather than
 # removed. What is shared is the shape — build, then upload, then hand back a URL —
 # and that is what lives here.
 #
-# Each platform is independently switchable, because a pull request builds only
-# what its labels ask for, while a staging or prod run builds both.
+# Every platform is independently switchable — macOS and Windows because a pull
+# request builds them only when a signing-cost label asks for them, while a
+# staging or prod run builds both; linux_amd64/linux_arm64 because they run as
+# separate native runners regardless. Linux is unsigned and comparatively cheap,
+# so both default to on everywhere.
 
 name: Build installers
 
@@ -53,6 +58,14 @@ on:
         description: "Build and upload the Windows .exe"
         type: boolean
         default: true
+      linux_amd64:
+        description: "Build and upload the Linux .deb (amd64)"
+        type: boolean
+        default: true
+      linux_arm64:
+        description: "Build and upload the Linux .deb (arm64)"
+        type: boolean
+        default: true
     outputs:
       macos_download_url:
         description: "Public CloudFront URL of the uploaded .pkg, empty when not built"
@@ -60,6 +73,12 @@ on:
       windows_download_url:
         description: "Public CloudFront URL of the uploaded .exe, empty when not built"
         value: ${{ jobs.upload-windows.outputs.download_url }}
+      linux_amd64_download_url:
+        description: "Public CloudFront URL of the uploaded amd64 .deb, empty when not built"
+        value: ${{ jobs.upload-linux-amd64.outputs.download_url }}
+      linux_arm64_download_url:
+        description: "Public CloudFront URL of the uploaded arm64 .deb, empty when not built"
+        value: ${{ jobs.upload-linux-arm64.outputs.download_url }}
 
 jobs:
   build-macos:
@@ -98,4 +117,44 @@ jobs:
       platform: windows
       build_kind: ${{ inputs.build_kind }}
       artifact_name: ${{ needs.build-windows.outputs.artifact_name }}
+    secrets: inherit
+
+  build-linux-amd64:
+    if: inputs.linux_amd64
+    uses: ./.github/workflows/build-linux-deb.yml
+    with:
+      arch: amd64
+      build_kind: ${{ inputs.build_kind }}
+      minds_api_url: ${{ inputs.minds_api_url }}
+      server_ref: ${{ inputs.server_ref }}
+      app_version: ${{ inputs.app_version }}
+    secrets: inherit
+
+  upload-linux-amd64:
+    needs: build-linux-amd64
+    uses: ./.github/workflows/upload-installer-to-s3.yml
+    with:
+      platform: linux-amd64
+      build_kind: ${{ inputs.build_kind }}
+      artifact_name: ${{ needs.build-linux-amd64.outputs.artifact_name }}
+    secrets: inherit
+
+  build-linux-arm64:
+    if: inputs.linux_arm64
+    uses: ./.github/workflows/build-linux-deb.yml
+    with:
+      arch: arm64
+      build_kind: ${{ inputs.build_kind }}
+      minds_api_url: ${{ inputs.minds_api_url }}
+      server_ref: ${{ inputs.server_ref }}
+      app_version: ${{ inputs.app_version }}
+    secrets: inherit
+
+  upload-linux-arm64:
+    needs: build-linux-arm64
+    uses: ./.github/workflows/upload-installer-to-s3.yml
+    with:
+      platform: linux-arm64
+      build_kind: ${{ inputs.build_kind }}
+      artifact_name: ${{ needs.build-linux-arm64.outputs.artifact_name }}
     secrets: inherit
