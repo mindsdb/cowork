@@ -61,7 +61,14 @@ export function parseDeveloperSourceUrl(value: string): DeveloperSourceTarget | 
     return null;
   }
   if (host === 'linear.app' || host.endsWith('.linear.app')) {
-    const identifier = parsed.pathname.split('/').filter(Boolean).at(-1) || '';
+    // Linear's API returns canonical browser links with a human-readable slug
+    // after the issue identifier (for example, /issue/ENG-289/fix-scheduler).
+    // Pasted links without the slug remain valid too, so identify the issue by
+    // shape rather than assuming it is the final path segment.
+    const identifier = parsed.pathname
+      .split('/')
+      .filter(Boolean)
+      .find((part) => /^[A-Za-z][A-Za-z0-9]*-\d+$/.test(part)) || '';
     if (/^[A-Za-z][A-Za-z0-9]*-\d+$/.test(identifier)) {
       return { provider: 'linear', kind: 'issue', url: parsed.href };
     }

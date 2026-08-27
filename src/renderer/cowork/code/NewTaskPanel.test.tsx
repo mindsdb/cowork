@@ -485,6 +485,54 @@ describe('NewTaskPanel', () => {
     expect(await screen.findByText('Linked issue')).toBeInTheDocument();
   });
 
+  it('selects a Linear work item whose canonical URL includes a title slug', async () => {
+    const user = userEvent.setup();
+    const connectedProject = {
+      ...project,
+      connections: [{ provider: 'linear' as const, name: 'work', label: 'Work' }],
+    };
+    searchWorkItems.mockResolvedValue({
+      incomplete: false,
+      items: [{
+        provider: 'linear',
+        kind: 'issue',
+        url: 'https://linear.app/mindsdb/issue/ENG-289/schedule-task-state-is-not-accurate',
+        title: 'Schedule task state is not accurate',
+        external_id: 'ENG-289',
+        state: 'QA',
+        scope: 'Engineering',
+        assignee: 'Ian',
+        updated_at: '2026-08-27T08:00:00Z',
+        connection_name: 'work',
+      }],
+    });
+    render(
+      <NewTaskPanel
+        busy={false}
+        error=""
+        defaultEngineId="codex"
+        defaultModel="fable"
+        models={models}
+        modelMeta={modelMeta}
+        projects={[connectedProject]}
+        selectedProjectId={connectedProject.id}
+        onProjectChange={vi.fn()}
+        onOpenProjectSettings={vi.fn()}
+        onCreate={vi.fn(async () => {})}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Add issue or PR' }));
+    await user.click(await screen.findByRole('option', { name: /Schedule task state is not accurate/ }));
+
+    await waitFor(() => expect(readSourceContext).toHaveBeenCalledWith(connectedProject.id, expect.objectContaining({
+      provider: 'linear',
+      url: 'https://linear.app/mindsdb/issue/ENG-289/schedule-task-state-is-not-accurate',
+      connection_name: 'work',
+    })));
+    expect(await screen.findByText('Linked issue')).toBeInTheDocument();
+  });
+
   it('uses a connected developer account immediately and assigns it to the selected project', async () => {
     const user = userEvent.setup();
     const onProjectConnectionsChange = vi.fn(async () => {});
