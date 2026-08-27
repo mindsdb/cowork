@@ -37,8 +37,8 @@ const IS_MAC = host.isMac() || /Mac|iPhone|iPod|iPad/.test(typeof navigator !== 
 const MOD_LABEL = IS_MAC ? '⌘' : 'Ctrl+';
 const shortcut = (key) => `${MOD_LABEL}${key}`;
 
-function NavItem({ icon, label, active, onClick, badge, comingSoon, elementRef }) {
-  return (
+function NavItem({ icon, label, active, onClick, badge, comingSoon, elementRef, tooltip }) {
+  const button = (
     <button
       ref={elementRef}
       className={`nav-item${active ? ' active' : ''}`}
@@ -61,6 +61,12 @@ function NavItem({ icon, label, active, onClick, badge, comingSoon, elementRef }
       )}
     </button>
   );
+  // Users asked what these items actually are (ENG-1993) — a short hover
+  // explanation beats renaming, which just trades one unclear label for
+  // another. Right side: rows are stacked tightly (`gap-px`), so a
+  // bottom-side tooltip would overlap the next row.
+  if (!tooltip) return button;
+  return <Tooltip content={tooltip} side="right">{button}</Tooltip>;
 }
 
 function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelete, onMoveToProject, showTimestamp = true, isActive = false, selected = false, agentLabel }) {
@@ -573,8 +579,8 @@ export default function Sidebar({
 
         {/* Primary nav */}
         <div className="nav-list px-2.5 flex flex-col gap-px">
-          <NavItem icon={Ico.folder(15)}  label="Projects"        onClick={() => onNavigate('projects')}  active={activeRoute === 'projects'}  badge={showCounters ? (projectsCount  || null) : null} />
-          <NavItem icon={Ico.clock(15)}   label="Scheduled Tasks" onClick={() => onNavigate('scheduled')} active={activeRoute === 'scheduled'} badge={showCounters ? (scheduledCount || null) : null} />
+          <NavItem icon={Ico.folder(15)}  label="Projects"        onClick={() => onNavigate('projects')}  active={activeRoute === 'projects'}  badge={showCounters ? (projectsCount  || null) : null} tooltip="Group related tasks, files, and conversations together" />
+          <NavItem icon={Ico.clock(15)}   label="Scheduled Tasks" onClick={() => onNavigate('scheduled')} active={activeRoute === 'scheduled'} badge={showCounters ? (scheduledCount || null) : null} tooltip="Tasks that run automatically, on a schedule you set" />
           <NavItem
             icon={Ico.sparkle(15)}
             label="Live Artifacts"
@@ -587,6 +593,7 @@ export default function Sidebar({
             }}
             active={activeRoute === 'artifacts'}
             badge={showCounters ? (artifactsCount || null) : null}
+            tooltip={`Documents, dashboards, and code ${agentLabel || 'Anton'} produces — open, edit, or share them`}
           />
           {/* Connect Apps and Data — replaces "Customize". Reuses the
               `customize` route key so existing in-flight links still
@@ -601,6 +608,7 @@ export default function Sidebar({
             onClick={() => onNavigate('customize')}
             active={activeRoute === 'customize'}
             badge={showCounters ? (connectorsCount || null) : null}
+            tooltip={`Apps and data sources ${agentLabel || 'Anton'} can use`}
           />
           {/* Channels used to have a standalone entry here, web-only, purely
               because the web shell hid Settings entirely — Channels lives
@@ -617,8 +625,8 @@ export default function Sidebar({
             collections) rather than the engine's abstract concepts. */}
         <div className="section-label">Agent</div>
         <div className="nav-list px-2.5 flex flex-col gap-px">
-          <NavItem icon={Ico.brain(15)} label="Memories"       onClick={() => onNavigate('memory')} active={activeRoute === 'memory'} />
-          <NavItem icon={Ico.cube(15)}  label="Skills library" onClick={() => onNavigate('skills')} active={activeRoute === 'skills'} />
+          <NavItem icon={Ico.brain(15)} label="Memories"       onClick={() => onNavigate('memory')} active={activeRoute === 'memory'} tooltip={`What ${agentLabel || 'Anton'} remembers about you and your work`} />
+          <NavItem icon={Ico.cube(15)}  label="Skills library" onClick={() => onNavigate('skills')} active={activeRoute === 'skills'} tooltip={`Reusable capabilities ${agentLabel || 'Anton'} can call on`} />
         </div>
 
         {/* Pinned — only rendered when there are pinned tasks; an empty
