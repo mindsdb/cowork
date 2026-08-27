@@ -2,14 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { useState } from 'react';
 
-// ENG-1851: the router role's row says what the pick governs.
-//
-// The pre-Anton respond-or-delegate gate runs on the provider's fast default
-// and ignores the user's router pick, which only governs history
-// summarization — except on openai-compatible, where no default exists and
-// the user's model is the only one the gate can run on. The row's title and
-// subtitle follow that split, so a user who picks a large model here is told
-// what it does (and, on openai-compatible, why speed matters).
+// ENG-1851: the router row's copy follows the gate binding the server reports.
 
 const spies = vi.hoisted(() => ({
   getAccessToken: vi.fn(async () => ''),
@@ -37,36 +30,21 @@ vi.mock('../ChannelsView', () => ({ default: () => <div data-testid="channels-st
 
 import SettingsView from './SettingsView';
 
-const mindsSettings = () => ({
+// One factory: only the provider card, the role's provider, and `gate` decide
+// what the router row says. Everything else in a real settings payload falls
+// back inside SettingsView and does not touch this row's copy.
+const settingsFor = (type, card, gate) => ({
   modelMode: 'default',
-  planningProvider: 'minds-cloud',
-  codingProvider: 'minds-cloud',
-  routerProvider: 'minds-cloud',
-  providers: [{ type: 'minds-cloud', apiKey: '***', mindsUrl: 'https://api.mindshub.ai' }],
-  providerStatus: { 'minds-cloud': 'ok' },
-  providerStatusDetails: {},
-  providerTypeLabels: { 'minds-cloud': 'MindsHub' },
-  recommendedPair: { 'minds-cloud': ['mindshub_air', 'mindshub_air', 'mindshub_air'] },
-  recommendedModels: { 'minds-cloud': ['mindshub_air', 'sonnet'] },
-  modelEnabled: { mindshub_air: true, sonnet: true },
+  planningProvider: type,
+  codingProvider: type,
+  routerProvider: type,
+  providers: [card],
+  providerStatus: { [type]: 'ok' },
+  providerTypeLabels: { 'minds-cloud': 'MindsHub', 'openai-compatible': 'OpenAI-compatible' },
+  ...(gate === undefined ? {} : { gate }),
 });
-
-const compatSettings = () => ({
-  modelMode: 'default',
-  planningProvider: 'openai-compatible',
-  codingProvider: 'openai-compatible',
-  routerProvider: 'openai-compatible',
-  planningModel: 'my-model',
-  codingModel: 'my-model',
-  routerModel: 'my-fast-model',
-  providers: [{ type: 'openai-compatible', apiKey: '', baseUrl: 'http://localhost:11434/v1' }],
-  providerStatus: { 'openai-compatible': 'ok' },
-  providerStatusDetails: {},
-  providerTypeLabels: { 'openai-compatible': 'OpenAI-compatible' },
-  recommendedPair: {},
-  recommendedModels: { 'openai-compatible': ['my-model', 'my-fast-model'] },
-  modelEnabled: {},
-});
+const MINDS = { type: 'minds-cloud', apiKey: '***', mindsUrl: 'https://api.mindshub.ai' };
+const COMPAT = { type: 'openai-compatible', apiKey: '', baseUrl: 'http://localhost:11434/v1' };
 
 function Harness({ initial }) {
   const [settings, setSettings] = useState(initial);
@@ -97,19 +75,26 @@ function Harness({ initial }) {
   );
 }
 
-describe('router role row — what the pick governs (ENG-1851)', () => {
-  it('on a provider with a fast default, the pick is a summarization pick', async () => {
-    render(<Harness initial={mindsSettings()} />);
-    expect(await screen.findByText('Summarization model')).toBeInTheDocument();
-    expect(screen.getByText(/not affected by this pick/)).toBeInTheDocument();
-    expect(screen.queryByText('Routing and summarization model')).toBeNull();
+describe('router role row — the copy follows what the server reports (ENG-1851)', () => {
+  it('keeps one stable title whatever the provider', async () => {
+    render(<Harness initial={settingsFor('minds-cloud', MINDS, undefined)} />);
+    expect(await screen.findByText('Routing and summarization model')).toBeInTheDocument();
   });
 
-  it('on openai-compatible, the pick also gates every turn and the row says to pick for speed', async () => {
-    render(<Harness initial={compatSettings()} />);
-    expect(await screen.findByText('Routing and summarization model')).toBeInTheDocument();
-    expect(screen.getByText(/two-second budget/)).toBeInTheDocument();
-    expect(screen.getByText(/fastest model here, not your smartest/)).toBeInTheDocument();
-    expect(screen.queryByText('Summarization model')).toBeNull();
+  it('with no gate reported (older server), describes that server: the gate runs on the pick', async () => {
+    render(<Harness initial={settingsFor('minds-cloud', MINDS, undefined)} />);
+    expect(await screen.findByText(/respond-or-delegate gating on each turn, and history summarization/)).toBeInTheDocument();
+  });
+
+  it('shows the model the server says gates, not a rule about the provider', async () => {
+    render(<Harness initial={settingsFor('minds-cloud', MINDS,
+      { provider: 'minds-cloud', model: 'mindshub_air', followsRouterPick: false })} />);
+    expect(await screen.findByText(/runs on mindshub_air, not on this pick/)).toBeInTheDocument();
+  });
+
+  it('on openai-compatible the server says the gate follows the pick, so the row says to pick for speed', async () => {
+    render(<Harness initial={settingsFor('openai-compatible', COMPAT,
+      { provider: 'openai-compatible', model: 'my-fast-model', followsRouterPick: true })} />);
+    expect(await screen.findByText(/pick your fastest model here, not your smartest/)).toBeInTheDocument();
   });
 });

@@ -3,7 +3,7 @@ import { useId } from 'react';
 import Ico from '../../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchRecommendedModels } from '../../api';
 import { isModelLocked } from '../../lib/modelCatalog';
-import { providerTypeToKeyField, providerValueToType, resolveRoleModel, resolveModelPickerValue, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore, toDisplayUnits, toNaturalUnits, formatCount } from '../../lib/settingsTransform';
+import { providerTypeToKeyField, providerValueToType, resolveRoleModel, resolveModelPickerValue, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore, toDisplayUnits, toNaturalUnits, formatCount, routerRoleSubtitle } from '../../lib/settingsTransform';
 import { MODEL_REFRESH_TTL_MS } from '../../lib/modelRefresh';
 import { trackHarnessSwapped, trackBillingOpened } from '../../lib/analytics';
 import { copyText as copyToClipboard } from '../../lib/clipboard';
@@ -1643,28 +1643,18 @@ export default function SettingsView({
                     </div>
                   ) : null;
 
-                  // The router role has two consumers with different needs: history
-                  // summarization, and the respond-or-delegate gate that runs ahead
-                  // of every turn on a budget of seconds. The gate takes the
-                  // provider's fast default and ignores this pick (ENG-1851) — except
-                  // on openai-compatible, where no default exists and the user's
-                  // model is the only one there is. Only there is speed the user's
-                  // problem, so only there does the row say so.
-                  const gateFollowsThisPick = role === 'router' && curType === 'openai-compatible';
-                  const title = gateFollowsThisPick ? 'Routing and summarization model' : label;
                   const subtitle = role === 'planning'
                     ? 'Used for reasoning, orchestration, and responses.'
                     : role === 'coding'
                       ? 'Used for scratchpad code generation.'
-                      : gateFollowsThisPick
-                        ? 'Used for history summarization and for the respond-or-delegate gate '
-                          + 'that runs on every turn. The gate has a two-second budget: pick your '
-                          + 'fastest model here, not your smartest.'
-                        : 'Used for history summarization. The per-turn respond-or-delegate gate '
-                          + "runs on this provider's fast default and is not affected by this pick.";
+                      // The server says which model gates (ENG-1851); see routerRoleSubtitle.
+                      : routerRoleSubtitle(settings.gate, {
+                        rowProviderType: curType,
+                        providerTypeLabels: settings.providerTypeLabels || {},
+                      });
 
                   return (
-                    <Section title={title} subtitle={subtitle} notice={noCreditsNotice}>
+                    <Section title={label} subtitle={subtitle} notice={noCreditsNotice}>
                       <div className="grid gap-1.5">
                         {multipleProviders && (
                           <label className="grid gap-1">
@@ -1850,7 +1840,7 @@ export default function SettingsView({
                 return (
                   <>
                     {RoleRow({ role: 'planning', label: 'Planning model' })}
-                    {RoleRow({ role: 'router', label: 'Summarization model' })}
+                    {RoleRow({ role: 'router', label: 'Routing and summarization model' })}
                     {RoleRow({ role: 'coding', label: 'Coding model' })}
                   </>
                 );
