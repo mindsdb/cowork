@@ -11,7 +11,6 @@
 import { useState } from 'react';
 import {
   ArrowUpRight,
-  Check,
   CircleHelp,
   CreditCard,
   EllipsisVertical,
@@ -21,11 +20,8 @@ import {
 } from 'lucide-react';
 import Menu from './ui/Menu';
 import { ConfirmModal } from './ConfirmModal';
-import { useToastManager } from './ui/Toast';
 import { useLogout, LOGOUT_CONFIRM_COPY } from '../hooks/useLogout';
-import { useHubWorkspaces } from '../hooks/useHubWorkspaces';
 import { accountInitials } from '../lib/accountUser';
-import { tileLetter, tileStyle } from '../lib/letterTile';
 import { trackBillingOpened } from '../lib/analytics';
 import { openExternal } from '../../platform/host';
 import {
@@ -81,80 +77,11 @@ function Avatar({ user }) {
   );
 }
 
-// The letter square on a workspace row. Colour is hashed from the id, not the
-// name, so a rename keeps the tile people recognise (see lib/letterTile).
-function WorkspaceTile({ id, name }) {
-  return (
-    <span
-      aria-hidden="true"
-      className="w-[18px] h-[18px] rounded-[5px] shrink-0 inline-flex items-center justify-center text-[9.5px] font-bold select-none"
-      style={tileStyle(id)}
-    >
-      {tileLetter(name)}
-    </span>
-  );
-}
-
 export function UserMenu({ user, onOpenSettings }) {
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
   const { loggingOut, logout } = useLogout();
-  const toastManager = useToastManager();
-  const { enabled, workspaces, activeWorkspaceId, switching, switchWorkspace } =
-    useHubWorkspaces(user);
 
   const displayName = user.name || user.username || user.email;
-
-  // A group only earns its place when there is somewhere else to go. One
-  // workspace means nothing to switch to, and Cowork has no create entry
-  // (workspaces are created in the console), so a single row would be a menu
-  // section that does nothing. This also covers the hub being unreachable: the
-  // server answers `reachable: false` with no rows, and an account menu is the
-  // wrong place to report an outage, so the group is simply absent.
-  const showsWorkspaces = enabled && workspaces.length > 1;
-
-  const pickWorkspace = async (workspaceId) => {
-    try {
-      await switchWorkspace(workspaceId);
-    } catch {
-      // A written sentence rather than the error's own message: a refusal
-      // arrives as "API /hub/workspaces/active returned 403", which tells the
-      // reader nothing and reads like a crash.
-      toastManager.add({
-        title: 'We could not switch workspace. Please try again.',
-        type: 'danger',
-      });
-    }
-  };
-
-  const workspaceItems = showsWorkspaces
-    ? [
-        {
-          id: 'workspace-group',
-          heading: (
-            <div className="text-[10px] font-semibold uppercase tracking-[0.06em] text-ink-4">
-              Workspace
-            </div>
-          ),
-        },
-        ...workspaces.map((workspace) => {
-          const isActive = workspace.id === activeWorkspaceId;
-          const name = workspace.displayName || 'Workspace';
-          return {
-            id: `workspace-${workspace.id}`,
-            icon: <WorkspaceTile id={workspace.id} name={name} />,
-            label: name,
-            // Long names truncate in the row, so hover carries the full one.
-            title: name,
-            hint: isActive ? <Check size={13} strokeWidth={2} className="text-accent" /> : undefined,
-            // The active row is not a destination, and a second click during an
-            // in-flight switch would race the first.
-            disabled: isActive || switching,
-            onClick: isActive ? undefined : () => pickWorkspace(workspace.id),
-          };
-        }),
-        { divider: true },
-      ]
-    : [];
 
   const items = [
     // Identity header — just the org name (accounts without an active
@@ -167,8 +94,6 @@ export function UserMenu({ user, onOpenSettings }) {
         </div>
       ),
     },
-    // Under the org name, per the placement decided on the design pass.
-    ...workspaceItems,
     { icon: icon(Settings), label: 'Settings', onClick: onOpenSettings },
     // `nav`, not a paywall trigger (ENG-1533): nothing blocked this user, they
     // went looking. It has to be recorded — it is a real route to the billing

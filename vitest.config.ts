@@ -43,6 +43,7 @@ export default defineConfig({
         // thing that proves the guards still fire.
         'src/renderer/cowork/hooks/useHubWorkspaces.js': { statements: 100, branches: 100 },
         'src/renderer/cowork/lib/letterTile.js': { statements: 100, branches: 100 },
+        'src/renderer/cowork/components/WorkspaceSelector.jsx': { statements: 100, branches: 90 },
       },
     },
     projects: [

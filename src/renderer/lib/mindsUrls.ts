@@ -88,6 +88,11 @@ export const MINDS_API_KEY_URL = `${MINDS_CONSOLE_URL}/apiKeys`;
 export const MINDS_PROFILE_URL = `${MINDS_CONSOLE_URL}/settings/personal/profile`;
 export const MINDS_GENERAL_URL = `${MINDS_CONSOLE_URL}/settings/organization/general`;
 export const MINDS_MEMBERS_URL = `${MINDS_CONSOLE_URL}/settings/organization/members`;
+// The console's workspace list. Creating and managing a workspace lives there,
+// not here, so the desktop selector deep-links out rather than growing a create
+// flow of its own. Plural `workspaces` is the new namespace; singular
+// `/settings/workspace/*` redirects to the organization pages.
+export const MINDS_WORKSPACES_URL = `${MINDS_CONSOLE_URL}/settings/workspaces`;
 
 // Environment-independent MindsHub destinations (docs site + support page).
 export const MINDS_DOCS_URL = 'https://docs.mindshub.ai';

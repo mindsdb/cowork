@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fireEvent, render as rtlRender, screen } from '@testing-library/react';
-import { ToastProvider } from './ui/Toast';
+import { fireEvent, render, screen } from '@testing-library/react';
 
 const hostMock = vi.hoisted(() => ({
   host: {
@@ -17,29 +16,6 @@ const analyticsMock = vi.hoisted(() => ({
   trackBillingOpened: vi.fn(),
 }));
 vi.mock('../lib/analytics', () => analyticsMock);
-
-const hubWorkspacesMock = vi.hoisted(() => ({
-  useHubWorkspaces: vi.fn(() => ({
-    enabled: false,
-    reachable: false,
-    workspaces: [],
-    activeWorkspaceId: null,
-    switching: false,
-    switchWorkspace: vi.fn(),
-    refresh: vi.fn(),
-  })),
-}));
-// Stubbed rather than exercised here: these tests are about the account
-// destinations, and the real hook pulls in api.js, which reads host.getApiOrigin
-// at module load and this file's host mock does not provide one. The workspace
-// group has its own test file.
-vi.mock('../hooks/useHubWorkspaces', () => hubWorkspacesMock);
-
-// UserMenu reports a failed workspace switch through the toast manager, which
-// Base UI requires a provider for. The real tree has one (App wraps AppCore),
-// so wrap here too rather than making the component tolerate its absence.
-const render = (ui, options) => rtlRender(ui, { wrapper: ToastProvider, ...options });
-
 
 import UserMenu from './UserMenu';
 import { LOGOUT_CONFIRM_COPY } from '../hooks/useLogout';
