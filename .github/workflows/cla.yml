@@ -1,7 +1,7 @@
 name: "MindsHub Cowork CLA Assistant"
 
 permissions:
-  actions: write
+  actions: read
   contents: write
   pull-requests: write
   statuses: write
