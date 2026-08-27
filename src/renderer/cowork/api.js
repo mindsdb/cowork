@@ -414,7 +414,7 @@ export function allocateConversationId() {
 // callback shape the rest of the app already speaks. `conversationId` is
 // optional — omit it to start a new conversation; the caller learns the
 // new id via the first onChunk/onProgress/onDone callback's second arg.
-function _streamResponse(text, { conversationId, projectName, projectId, projectPath, model, harness, attachmentIds = [], disabledConnections, onChunk, onProgress, onToolResult, onDone, onError, onEvent } = {}) {
+function _streamResponse(text, { conversationId, projectName, projectId, projectPath, model, harness, reasoningEffort, attachmentIds = [], disabledConnections, onChunk, onProgress, onToolResult, onDone, onError, onEvent } = {}) {
   const ctrl = new AbortController();
   (async () => {
     try {
@@ -434,6 +434,12 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
           // when the caller doesn't pass one, e.g. an in-task reply, where
           // the harness pill never shows.
           ...(harness ? { harness } : {}),
+          // Per-task reasoning-effort override (ENG-1940) — takes precedence
+          // over the account-wide per-role effort setting for this turn only.
+          // Same conditional-key pattern as `harness` just above: omitted
+          // entirely when the caller doesn't pass one, so older servers and
+          // effort-less models never see the field.
+          ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
           stream: true,
           conversation: conversationId || null,
           // Server's `project` field is a project NAME (folder under

@@ -17,6 +17,7 @@ import {
 } from '../lib/modelCatalog';
 import { MODEL_REFRESH_TTL_MS } from '../lib/modelRefresh';
 import ModelSelect from './ModelSelect.jsx';
+import EffortSelect from './EffortSelect.jsx';
 import ProviderIcon from './ProviderIcon.jsx';
 import { useFileDrop, FileDropOverlay, extractClipboardFiles } from '../lib/useFileDrop';
 import { renameClipboardImages } from '../lib/clipboardImageName';
@@ -108,6 +109,14 @@ export default function Composer({
   onProjectChange,
   model,
   onModelChange,
+  // Reasoning-effort pick for the current model (ENG-1940) — a plain
+  // string ('low'/'medium'/'high', model-specific) or '' for "use the
+  // model's default". Sibling to `model`/`onModelChange`: same shape,
+  // same optionality (a caller that never passes these just never renders
+  // the EffortSelect pill, same as ChatView.askUserExpiry.test.jsx-style
+  // callers that omit onModelChange today).
+  effort = '',
+  onEffortChange,
   projects,
   models,
   /**
@@ -394,6 +403,16 @@ export default function Composer({
     : (harnessPickerOptions.some((o) => o.value === codingHarness)
       ? codingHarness
       : (harnessPickerOptions[0]?.value || 'anton'));
+
+  // Harness gate for EffortSelect (ENG-1940) — Hermes has no effort knob,
+  // mirroring SettingsView's harnessSupportsEffort. `effectiveHarness`
+  // already accounts for a coding-mode harness pick (Anton/Hermes/Claude
+  // Code); outside coding mode it's hardcoded 'anton' and says nothing
+  // about the account-wide harness toggle (web-only Settings → Agent
+  // Harness), so fall back to that — threaded in via `modelMeta`, the
+  // existing channel for settings-derived model metadata, rather than a
+  // new prop.
+  const effortHarness = codingModeEnabled ? effectiveHarness : (modelMeta?.harness || 'anton');
 
   // No provider configured (MindsHub or BYOK) leaves `models` (the real
   // catalog — recommendedModelOptions returns [] for an unconfigured
@@ -1405,6 +1424,23 @@ export default function Composer({
                 className="meta-pill"
                 ariaLabel="Choose model"
                 placeholder="Select model"
+              />
+            )}
+            {/* Reasoning-effort sub-picker (ENG-1940) — sits right next to
+                the model pill and renders nothing of its own accord unless
+                the current model advertises effort levels. `autoOpenKey`
+                keyed on the model id is what satisfies "pick a model that
+                has effort → the effort picker expands": EffortSelect opens
+                itself whenever that id changes into one with options. */}
+            {!modelReadOnly && !noRealModels && (
+              <EffortSelect
+                modelId={model?.id}
+                modelEfforts={modelMeta?.modelEfforts}
+                harness={effortHarness}
+                value={effort}
+                onValueChange={onEffortChange}
+                autoOpenKey={model?.id}
+                className="meta-pill"
               />
             )}
             {/* Mic / voice input intentionally hidden — voice flow isn't

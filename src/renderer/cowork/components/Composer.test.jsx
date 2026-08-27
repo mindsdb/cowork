@@ -245,6 +245,65 @@ describe('Composer — model picker (ENG-1656)', () => {
   });
 });
 
+// ─── Reasoning effort sub-picker (ENG-1940) ───────────────────────────
+//
+// EffortSelect's own visibility/value/auto-open logic is covered in
+// isolation by EffortSelect.test.jsx — these cases only check the wiring:
+// Composer threads `modelMeta.modelEfforts` and the current `model.id`
+// into it, `effort`/`onEffortChange` round-trip, and it's suppressed
+// alongside the model picker under modelReadOnly.
+
+const MODEL_EFFORTS = { sonnet: { efforts: ['low', 'medium', 'high'], default: 'medium' } };
+
+describe('Composer — reasoning effort sub-picker (ENG-1940)', () => {
+  it('renders next to the model picker for a model with effort options', () => {
+    renderComposer({
+      models: MODELS,
+      modelMeta: { ...MODEL_META, modelEfforts: MODEL_EFFORTS },
+      model: MODELS[1], // sonnet
+      effort: 'medium',
+    });
+    expect(screen.getByRole('combobox', { name: 'Reasoning effort' })).toHaveTextContent('Medium');
+  });
+
+  it('does not render for a model with no modelEfforts entry', () => {
+    renderComposer({
+      models: MODELS,
+      modelMeta: { ...MODEL_META, modelEfforts: MODEL_EFFORTS },
+      model: MODELS[0], // mindshub_air — not in MODEL_EFFORTS
+      effort: '',
+    });
+    expect(screen.queryByRole('combobox', { name: 'Reasoning effort' })).toBeNull();
+  });
+
+  it('fires onEffortChange with the picked level', async () => {
+    const user = userEvent.setup();
+    const props = renderComposer({
+      models: MODELS,
+      modelMeta: { ...MODEL_META, modelEfforts: MODEL_EFFORTS },
+      model: MODELS[1],
+      effort: 'medium',
+      onEffortChange: vi.fn(),
+    });
+
+    await user.click(screen.getByRole('combobox', { name: 'Reasoning effort' }));
+    await user.click(screen.getByRole('option', { name: 'High' }));
+
+    expect(props.onEffortChange).toHaveBeenCalledWith('high');
+  });
+
+  it('is suppressed under modelReadOnly, same as the model picker', () => {
+    renderComposer({
+      models: MODELS,
+      modelMeta: { ...MODEL_META, modelEfforts: MODEL_EFFORTS },
+      model: MODELS[1],
+      effort: 'medium',
+      modelReadOnly: true,
+    });
+    expect(screen.queryByRole('combobox', { name: 'Reasoning effort' })).toBeNull();
+  });
+});
+
 // ─── "Model Router" default option (ENG-1656 follow-up) ──────────────
 //
 // The picker's first entry defers to whichever model this account's

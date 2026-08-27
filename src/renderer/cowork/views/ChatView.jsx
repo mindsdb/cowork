@@ -1290,6 +1290,11 @@ export default function ChatView({
   project,
   model,
   onModelChange,
+  // Reasoning-effort pick for the current model (ENG-1940) — sibling to
+  // model/onModelChange, same optionality: a caller that omits these just
+  // never sees the EffortSelect pill (Composer defaults `effort` to '').
+  effort,
+  onEffortChange,
   // Full catalog for the model picker (ENG-1656: task view can change its
   // model, not just display it). Falls back to a single-item list of just
   // the current model when omitted, so existing callers/tests that don't
@@ -2409,6 +2414,8 @@ export default function ChatView({
             onProjectChange={() => {}}
             model={model}
             onModelChange={onModelChange || (() => {})}
+            effort={effort}
+            onEffortChange={onEffortChange || (() => {})}
             projects={[]}
             models={models || (model ? [model] : [])}
             modelMeta={modelMeta}
