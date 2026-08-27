@@ -1,9 +1,21 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('../../platform/host', () => ({ getApiOrigin: () => 'http://127.0.0.1:26866' }));
+const hostMock = vi.hoisted(() => ({
+  serverStart: vi.fn(async () => ({ running: true })),
+}));
+
+vi.mock('../../platform/host', () => ({
+  getApiOrigin: () => 'http://127.0.0.1:26866',
+  isElectron: true,
+  serverStart: hostMock.serverStart,
+}));
 
 import { codingApi, isCodingEvent, isTerminalPage } from './api';
 
+
+beforeEach(() => {
+  hostMock.serverStart.mockReset().mockResolvedValue({ running: true });
+});
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -27,6 +39,59 @@ describe('coding API boundary', () => {
   it('accepts an empty 204 response when deleting a local task', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 204 })));
     await expect(codingApi.deleteSession('task-1')).resolves.toBeUndefined();
+  });
+
+  it('starts the local service before creating a project without replaying the write', async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ id: 'project-1', name: 'Project One' }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await codingApi.createProject({
+      name: 'Project One',
+      folders: [],
+      connections: [],
+      environment: { variables: {}, port_names: [] },
+      skill_sources: [],
+      default_engine_id: 'codex',
+      default_model: 'gpt-5.6-sol',
+      permission_mode: 'supervised',
+    });
+
+    expect(hostMock.serverStart).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it('recovers a failed read once after starting the local service', async () => {
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ items: [] }) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(codingApi.projects()).resolves.toEqual({ items: [] });
+
+    expect(hostMock.serverStart).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('never replays a project write after an ambiguous network failure', async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(codingApi.createProject({
+      name: 'Project One',
+      folders: [],
+      connections: [],
+      environment: { variables: {}, port_names: [] },
+      skill_sources: [],
+      default_engine_id: 'codex',
+      default_model: 'gpt-5.6-sol',
+      permission_mode: 'supervised',
+    })).rejects.toThrow('Failed to fetch');
+
+    expect(fetchMock).toHaveBeenCalledOnce();
   });
 
   it('promotes an exact queued instruction without resending its text from the renderer', async () => {

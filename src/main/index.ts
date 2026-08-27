@@ -534,8 +534,10 @@ function setupIPC() {
     return { running: !!result.ok, port: result.port ?? getServerPort(), error: result.reason };
   });
   ipcMain.handle('server:start', async () => {
-    if (isServerRunning()) return { running: true, port: getServerPort() };
-    // If a start is already in progress, await it rather than spawn again.
+    // startServer is also the health-aware ensure path. Do not short-circuit on
+    // isServerRunning(): an adopted sidecar can disappear without an exit
+    // event, leaving that synchronous flag stale until startServer re-probes
+    // it. If a start is already in progress, startServer awaits it.
     const result = await startServer();
     return { running: !!result.ok, port: result.port ?? getServerPort(), error: result.reason };
   });

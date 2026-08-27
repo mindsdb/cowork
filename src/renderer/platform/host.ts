@@ -117,6 +117,12 @@ export interface ServerInfo {
   origin: string;
 }
 
+export interface ServerControlResult {
+  running: boolean;
+  port?: number | null;
+  error?: string;
+}
+
 export async function serverInfo(): Promise<ServerInfo> {
   if (isElectron && typeof bridge.serverInfo === 'function') {
     const info = await bridge.serverInfo();
@@ -135,18 +141,18 @@ export async function serverInfo(): Promise<ServerInfo> {
   };
 }
 
-export async function serverStart(): Promise<{ ok: boolean; reason?: string }> {
+export async function serverStart(): Promise<ServerControlResult> {
   if (isElectron && typeof bridge.serverStart === 'function') {
     return bridge.serverStart();
   }
-  return { ok: false, reason: 'unsupported' };
+  return { running: false, error: 'unsupported' };
 }
 
-export async function serverStop(): Promise<{ ok: boolean; reason?: string }> {
+export async function serverStop(): Promise<ServerControlResult> {
   if (isElectron && typeof bridge.serverStop === 'function') {
     return bridge.serverStop();
   }
-  return { ok: false, reason: 'unsupported' };
+  return { running: false, error: 'unsupported' };
 }
 
 export interface ServerDiagnostics {
