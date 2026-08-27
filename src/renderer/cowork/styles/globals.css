@@ -741,10 +741,10 @@ a[href],
   padding: var(--composer-padding);
   min-height: 56px; max-height: 220px;
   user-select: text;
-  /* ENG-2029: hide the scrollbar to match the overlay. A classic
-     space-consuming scrollbar (Windows/Linux) would narrow the textarea once
-     it overflows, wrapping lines earlier than the full-width overlay and
-     drifting the caret off the visible text. Both must reserve zero. */
+  /* Hide the scrollbar to match the overlay. A classic space-consuming
+     scrollbar (Windows/Linux) would narrow the textarea once it overflows,
+     wrapping lines earlier than the full-width overlay and drifting the caret
+     off the visible text. Both must reserve zero. */
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
