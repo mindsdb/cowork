@@ -35,6 +35,14 @@ export default defineConfig({
         // guard still fires.
         'src/renderer/cowork/lib/artifactLiveness.js': { statements: 97, branches: 91 },
         'src/renderer/cowork/lib/artifactsStore.js': { statements: 85, branches: 74 },
+        // The workspace selector's two pure modules. Both are entirely
+        // fail-closed logic: the hook decides whether a surface appears at all
+        // and drops a read that resolved for the previous account, and the tile
+        // decides a colour that must not move when a workspace is renamed.
+        // Neither has a visible failure mode, so the branch table is the only
+        // thing that proves the guards still fire.
+        'src/renderer/cowork/hooks/useHubWorkspaces.js': { statements: 100, branches: 100 },
+        'src/renderer/cowork/lib/letterTile.js': { statements: 100, branches: 100 },
       },
     },
     projects: [
