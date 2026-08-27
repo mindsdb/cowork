@@ -18,6 +18,17 @@ export function isHtmlArtifact(a) {
   return _ext(a) === '.html' || _path(a).endsWith('.html');
 }
 
+// Raster/vector image extensions a `create_artifact(type="image")` output
+// can carry (anton/core/tools/tool_defs.py). Matched against both the
+// declared `ext` and the path, same convention as isHtmlArtifact.
+const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg']);
+
+/** Image artifact — gates the inline thumbnail / <img> preview (ENG-1998). */
+export function isImageArtifact(a) {
+  if (!a) return false;
+  return IMAGE_EXTS.has(_ext(a)) || [...IMAGE_EXTS].some((e) => _path(a).endsWith(e));
+}
+
 /**
  * Backend (fullstack) artifact types. For these the artifact's "thing" the
  * user points at is the artifact folder (the slug dir) — the backend,

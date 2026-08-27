@@ -151,6 +151,33 @@ describe('inline artifact banner on desktop', () => {
   });
 });
 
+// ENG-1998: an image artifact (create_artifact(type="image")) rendered with a
+// generic doc icon and, on the primary button, fell straight through to the
+// OS file handler — canPreviewInline never recognized image extensions, so
+// the card never offered an in-app preview the way it already did for
+// HTML/md/txt/csv. Now that images are previewable, the ENG-1988 single-
+// button model reads "Preview" for them too, same as HTML.
+describe('inline artifact banner for an image artifact', () => {
+  const imageStep = () => artifactStep({
+    ext: '.png',
+    action: 'image',
+    file_path: '/proj/.anton/artifacts/logo/logo.png',
+    path: '/proj/.anton/artifacts/logo/logo.png',
+    publishedUrl: '',
+  });
+
+  it('opens the in-app preview rather than the OS file handler', async () => {
+    setOrgMode(false);
+    const user = userEvent.setup();
+    render(<ChatView task={taskWithArtifact(imageStep())} />);
+
+    await user.click(screen.getByRole('button', { name: 'Preview' }));
+
+    expect(openPath).not.toHaveBeenCalled();
+    expect(openExternal).not.toHaveBeenCalled();
+  });
+});
+
 describe('inline artifact banner for a deleted artifact', () => {
   it('offers none of the actions and says it is deleted', () => {
     // ENG-1673: the card stayed fully active after the artifact was deleted in
