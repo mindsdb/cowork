@@ -95,7 +95,9 @@ describe('inline artifact banner thumbnail for an image artifact', () => {
     render(<ChatView task={taskWithArtifact(imageArtifactStep())} />);
 
     await screen.findByRole('img', { name: 'MindsDB logo' });
-    await user.click(screen.getByRole('button', { name: 'Open' }));
+    // ENG-1988 collapsed Open/Show-in-Finder into one button that reads
+    // "Preview" for anything the in-app modal can render — images included.
+    await user.click(screen.getByRole('button', { name: 'Preview' }));
 
     const dialog = await screen.findByRole('dialog');
     await within(dialog).findByRole('img', { name: 'MindsDB logo' });
