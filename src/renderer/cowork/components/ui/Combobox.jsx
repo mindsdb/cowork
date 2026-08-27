@@ -30,6 +30,18 @@
 //     label + value. `contains` is Base UI's locale-aware substring test.
 //   - `renderValue(selected)`: replaces the default trigger content
 //     (truncated label, or placeholder styling when nothing is selected).
+//   - `footer`: a plain React node (not a render function — a domain picker
+//     that needs live values, e.g. ModelSelect's effort row, closes over
+//     them itself before passing the node down) rendered inside the popup
+//     AFTER the scrollable list, below a top divider. It sits outside Base
+//     UI's item/filter/keyboard-nav machinery entirely — it is not a
+//     `BaseCombobox.Item`/`BaseCombobox.Collection` child, so it never
+//     participates in search filtering or arrow-key highlighting, and a
+//     click inside it never fires `onValueChange` or closes the popup
+//     (that's on the footer's own content to do, e.g. by driving the same
+//     `open`/`onOpenChange` the caller passed in). Used for a fixed,
+//     always-present row below the model list (ModelSelect's "Effort"
+//     footer) rather than another filterable option.
 
 import { useMemo } from 'react';
 import { Combobox as BaseCombobox } from '@base-ui/react/combobox';
@@ -58,6 +70,7 @@ export function Combobox({
   groups = [],
   filter,
   renderValue,
+  footer,
   placeholder = 'Select',
   searchPlaceholder = 'Search',
   searchAriaLabel = 'Search',
@@ -219,6 +232,16 @@ export function Combobox({
                 </BaseCombobox.Group>
               )}
             </BaseCombobox.List>
+            {/* Trailing footer slot — plain content, NOT a BaseCombobox.Item,
+                so it never enters the list's filter/highlight/keyboard-nav
+                machinery. Top border mirrors the search row's `border-b`
+                convention (same reasoning: `border-solid` is load-bearing
+                with preflight disabled). */}
+            {footer && (
+              <div className="border-solid border-line border-t border-b-0 border-x-0">
+                {footer}
+              </div>
+            )}
           </BaseCombobox.Popup>
         </BaseCombobox.Positioner>
       </BaseCombobox.Portal>

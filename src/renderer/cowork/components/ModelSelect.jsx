@@ -19,6 +19,46 @@
 //     ]}
 //   />
 //
+// Reasoning-effort footer (ENG-1940) — modeled on Claude Desktop's own model
+// picker: the effort control lives INSIDE this popup as a footer row below
+// the model list, not as a sibling control next to ModelSelect. Opt in by
+// passing `modelEfforts` (the `{modelId: {efforts, default}}` map — pass the
+// object even if callers don't yet care about the row's close interaction);
+// omitting it entirely (`undefined`, the default) keeps every call site that
+// hasn't been told about this feature on today's plain model-only behavior:
+//
+//   <ModelSelect
+//     value={modelId}
+//     onValueChange={setModelId}
+//     options={...}
+//     modelEfforts={{ sonnet: { efforts: ['low', 'medium', 'high'], default: 'medium' } }}
+//     effort={effort}
+//     onEffortChange={setEffort}
+//     harness={harness}      // optional — Hermes has no effort knob
+//   />
+//
+// The footer reflects the CURRENTLY SELECTED model (this component's own
+// `value` prop), not whatever row the list is hovering — it renders whenever
+// a model is selected and the harness supports effort, reading "Default" for
+// a model with no effort options rather than disappearing (so the row is a
+// stable landmark, not something that pops in and out per model). Hovering
+// (or focusing) a row with options opens a side flyout — description,
+// then each level with a checkmark on the resolved value and a "Default"
+// tag on the model's own default — built on Base UI's Popover purely for
+// positioning (Portal + Positioner do the side-flyout placement/collision
+// work); the hover-intent open/close timing is hand-rolled here (a small
+// close-grace-period debounce) since Popover.Trigger's own `openOnHover`
+// drives off Floating UI's async rest-detection, which is awkward to drive
+// deterministically from tests and buys nothing over a plain timer for a
+// interaction this simple. Picking a level fires `onEffortChange` and closes
+// both the flyout and this whole popup — mirroring how picking a model item
+// already closes the popup via Base UI's own onValueChange-closes contract,
+// this component takes over the Combobox's open state (falling back to an
+// internal `useState` when the caller doesn't already control `open`) so it
+// has a `close()` to call for the same effect after a footer pick, which
+// Base UI wouldn't grant it for free since the footer is plain content, not
+// a selectable item (see ui/Combobox.jsx's `footer` slot docs).
+//
 // Option shape: { value, label, disabled?, locked?, title?, tag?, maker?, provider?, pin? }.
 //   - `provider`: MindsHub's serving-vendor field (the ENG-1111 backend
 //     contract), which decides the section.
@@ -37,7 +77,9 @@
 //     hatch for typing a model id we don't list, so a search with no
 //     matches must not hide it.
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Popover } from '@base-ui/react/popover';
+import { ChevronRight, Check } from 'lucide-react';
 import { cn } from '../lib/cn';
 import { groupModelOptions, modelMaker } from '../lib/modelCatalog';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
@@ -46,6 +88,23 @@ import { trackBillingOpened } from '../lib/analytics';
 import Combobox from './ui/Combobox.jsx';
 import ProviderIcon from './ProviderIcon.jsx';
 import { Tooltip } from './ui';
+
+// Copy is shared verbatim with the flyout's description paragraph — pulled
+// to a constant so the two can't drift.
+const EFFORT_DESCRIPTION = 'Higher effort means more thorough responses, but takes longer and uses your limits faster.';
+
+// How long a mouse-leave off the footer row (or the flyout panel itself)
+// waits before actually closing — long enough to cross the small gap
+// between the row and its side flyout without the panel flickering shut,
+// short enough that it doesn't feel sticky.
+const EFFORT_FLYOUT_CLOSE_GRACE_MS = 150;
+
+const CHEVRON_RIGHT = <ChevronRight size={11} strokeWidth={1.5} aria-hidden="true" />;
+const CHECK = <Check size={12} strokeWidth={1.5} aria-hidden="true" />;
+
+function capitalize(s) {
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+}
 
 // Pseudo-group keys for pinned (unheaded) entries. Underscored so they can
 // never collide with a real maker key from modelCatalog.
@@ -108,10 +167,143 @@ function makerKeyFor(option) {
   return option.maker || modelMaker(option.value, option.label).key;
 }
 
+/*
+ * The "Effort" row rendered as ModelSelect's `footer` (see ui/Combobox.jsx).
+ * Always rendered when a model is selected and the harness supports effort
+ * (the caller only mounts it at all when both hold — see `showEffortFooter`
+ * below); `hasOptions` distinguishes "Default" read-only text (nothing to
+ * pick — the current model just doesn't advertise effort levels) from the
+ * interactive row that opens a side flyout on hover/focus.
+ *
+ * Positioning is Base UI's Popover (Portal + Positioner) so the flyout gets
+ * the same collision-aware side placement as every other popup in the app;
+ * the open/close timing is a plain `useState` + grace-period timeout rather
+ * than Popover.Trigger's own `openOnHover` — that option drives off Floating
+ * UI's async "rest" hover detection, which doesn't respond deterministically
+ * to synthetic mouse events in tests, and a fixed short grace period is all
+ * this interaction needs (bridge the gap between the row and the flyout).
+ */
+function EffortFooter({
+  valueLabel,
+  hasOptions,
+  effortOptions,
+  resolvedEffort,
+  defaultEffort,
+  onPick,
+  zIndex,
+}) {
+  const [flyoutOpen, setFlyoutOpen] = useState(false);
+  const closeTimerRef = useRef(null);
+
+  useEffect(() => () => { if (closeTimerRef.current) clearTimeout(closeTimerRef.current); }, []);
+
+  const cancelClose = () => {
+    if (closeTimerRef.current) { clearTimeout(closeTimerRef.current); closeTimerRef.current = null; }
+  };
+  const scheduleClose = () => {
+    cancelClose();
+    closeTimerRef.current = setTimeout(() => setFlyoutOpen(false), EFFORT_FLYOUT_CLOSE_GRACE_MS);
+  };
+  const openNow = () => { cancelClose(); setFlyoutOpen(true); };
+
+  const rowClassName = cn(
+    'flex items-center justify-between gap-[8px] w-[calc(100%-8px)] mx-[4px]',
+    'px-[10px] py-[8px] rounded-[5px] text-[13px] text-ink-2 select-none outline-none box-border',
+    hasOptions && 'cursor-pointer data-[popup-open]:bg-surface-2 hover:bg-surface-2',
+  );
+
+  const rowContent = (
+    <>
+      <span>Effort</span>
+      <span className="inline-flex items-center gap-[4px] text-ink-3">
+        <span className="truncate max-w-[110px]">{valueLabel}</span>
+        {CHEVRON_RIGHT}
+      </span>
+    </>
+  );
+
+  if (!hasOptions) {
+    // Nothing to pick — a stable, non-interactive row rather than a control
+    // that opens onto an empty panel.
+    return <div className={rowClassName}>{rowContent}</div>;
+  }
+
+  return (
+    <Popover.Root open={flyoutOpen} onOpenChange={setFlyoutOpen}>
+      <Popover.Trigger
+        className={rowClassName}
+        onMouseEnter={openNow}
+        onMouseLeave={scheduleClose}
+        onFocus={openNow}
+        onBlur={scheduleClose}
+      >
+        {rowContent}
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Positioner side="right" align="start" sideOffset={4} style={{ zIndex }}>
+          <Popover.Popup
+            onMouseEnter={cancelClose}
+            onMouseLeave={scheduleClose}
+            // Identifies this panel's DOM subtree so ModelSelect's own
+            // `onOpenChange` can veto the Combobox's outside-press dismiss
+            // for a press that lands here (see the `data-effort-flyout`
+            // check there for why: this panel is a separate Popover
+            // portaled straight to <body>, not a DOM descendant of the
+            // Combobox's own popup, so without that veto a press on a
+            // level closes the whole model popup — via Base UI's own
+            // capture-phase outside-press listener on `document`, which
+            // runs before any handler placed here ever could — out from
+            // under the pick before its click even fires).
+            data-effort-flyout=""
+            className={cn(
+              'w-[240px] max-w-[calc(var(--available-width)-8px)] box-border',
+              'bg-surface border border-solid border-line rounded-[10px] shadow-sh-popup outline-none font-body',
+              '[transform-origin:var(--transform-origin)]',
+              'data-[open]:animate-scale-in data-[closed]:animate-scale-out',
+            )}
+          >
+            <p className="m-0 px-[14px] pt-[10px] pb-[8px] text-[12px] leading-[1.5] text-ink-3">
+              {EFFORT_DESCRIPTION}
+            </p>
+            <div className="pb-[4px]">
+              {effortOptions.map((lvl) => (
+                <button
+                  key={lvl}
+                  type="button"
+                  onClick={() => { onPick(lvl); cancelClose(); setFlyoutOpen(false); }}
+                  className="grid grid-cols-[16px_1fr_auto] items-center gap-[6px] w-[calc(100%-8px)] mx-[4px] px-[10px] py-[7px] rounded-[5px] border-0 bg-transparent text-[13px] text-ink-2 cursor-pointer select-none outline-none box-border hover:bg-surface-2"
+                >
+                  <span className="inline-flex justify-center text-accent">
+                    {lvl === resolvedEffort && CHECK}
+                  </span>
+                  <span className="min-w-0 truncate text-left">{capitalize(lvl)}</span>
+                  {lvl === defaultEffort && (
+                    <span className="shrink-0 rounded-full border border-line px-[7px] py-[1px] text-[10.5px] leading-[15px] text-ink-4 select-none">
+                      Default
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </Popover.Popup>
+        </Popover.Positioner>
+      </Popover.Portal>
+    </Popover.Root>
+  );
+}
+
 export function ModelSelect({
   options = [],
   placeholder = 'Select model',
   emptyText = 'No models found',
+  // Reasoning-effort footer (ENG-1940) — all optional; omitting `modelEfforts`
+  // entirely keeps this component's behavior identical to before it existed.
+  modelEfforts,
+  effort = '',
+  onEffortChange,
+  harness,
+  open,
+  onOpenChange,
   ...rest
 }) {
   const groups = useMemo(() => {
@@ -130,6 +322,69 @@ export function ModelSelect({
     ];
   }, [options]);
 
+  // This component takes over the Combobox's open state ONLY when the effort
+  // feature is opted into (`modelEfforts` passed at all) — a footer pick
+  // needs a `close()` to call, which Base UI won't grant it for free since
+  // the footer is plain content, not a selectable item. A caller that
+  // already controls `open` (Composer) keeps doing so; one that doesn't
+  // (Settings) gets an internal `useState` standing in for Base UI's own
+  // internal open state, so `onOpenChange` still reaches the caller (e.g.
+  // Settings' wallet-refresh-on-open side effect) exactly as before. A
+  // caller that never passes `modelEfforts` sees `open`/`onOpenChange`
+  // forwarded to Combobox completely unchanged from before this feature
+  // existed — no regression for a call site that hasn't opted in.
+  const effortFeatureEnabled = modelEfforts !== undefined;
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isOpenControlledByCaller = open !== undefined;
+  const comboboxOpen = effortFeatureEnabled
+    ? (isOpenControlledByCaller ? open : internalOpen)
+    : open;
+  const comboboxOnOpenChange = effortFeatureEnabled
+    ? (next, eventDetails, ...args) => {
+      // Base UI's outside-press dismiss runs a capture-phase listener on
+      // `document` — by the time it fires, it has already decided to
+      // close, and nothing a handler placed on the flyout itself (even
+      // one that calls stopPropagation on the initial mousedown) can run
+      // early enough to stop it. The flyout is a SEPARATE Popover
+      // portaled straight to <body>, not a DOM descendant of this
+      // Combobox's own popup, so Base UI's containment check reads a
+      // press there as "outside" and would otherwise close the whole
+      // model popup out from under an effort pick before its click ever
+      // fires. `eventDetails.cancel()` is the sanctioned way to veto a
+      // close Base UI already decided on (see AriaCombobox's own
+      // `if (eventDetails.isCanceled) return;` right after it calls this
+      // same callback) — so instead of racing the DOM event, veto the
+      // specific close reason we don't want.
+      if (!next && eventDetails?.reason === 'outside-press'
+        && eventDetails.event?.target?.closest?.('[data-effort-flyout]')) {
+        eventDetails.cancel();
+        return;
+      }
+      if (!isOpenControlledByCaller) setInternalOpen(next);
+      onOpenChange?.(next, eventDetails, ...args);
+    }
+    : onOpenChange;
+  const closePopup = () => comboboxOnOpenChange?.(false, { reason: 'none' });
+
+  // Resolved off THIS component's own `value` prop (the selected model),
+  // not any list-hover state — the footer always describes the currently
+  // selected model, matching the reference: the footer reads Opus's effort
+  // even while the list above shows every model.
+  const harnessSupportsEffort = (harness || 'anton') !== 'hermes';
+  const effortEntry = modelEfforts ? (modelEfforts[rest.value] || null) : null;
+  const effortOptions = effortEntry?.efforts || [];
+  const resolvedEffort = effortOptions.includes(effort)
+    ? effort
+    : (effortEntry?.default || effortOptions[0] || '');
+  const isDefaultEffort = !resolvedEffort
+    || resolvedEffort === effortEntry?.default
+    || effortOptions.length === 0
+    || !harnessSupportsEffort;
+  // Suppressed entirely (not just showing "Default") with no model selected
+  // at all, or under a harness with no effort knob (Hermes) — everything
+  // else, including a model with zero effort options, still shows the row.
+  const showEffortFooter = effortFeatureEnabled && !!rest.value && harnessSupportsEffort;
+
   return (
     <Combobox
       groups={groups}
@@ -144,10 +399,26 @@ export function ModelSelect({
           {selected && <ProviderIcon maker={makerKeyFor(selected)} className="text-ink-2" />}
           <span className={cn('truncate', !selected && 'text-ink-4')}>
             {selected ? selected.label : placeholder}
+            {selected && !isDefaultEffort && (
+              <span className="text-ink-3"> {capitalize(resolvedEffort)}</span>
+            )}
           </span>
         </>
       )}
+      footer={showEffortFooter ? (
+        <EffortFooter
+          valueLabel={effortOptions.length === 0 ? 'Default' : capitalize(resolvedEffort)}
+          hasOptions={effortOptions.length > 0}
+          effortOptions={effortOptions}
+          resolvedEffort={resolvedEffort}
+          defaultEffort={effortEntry?.default}
+          onPick={(lvl) => { onEffortChange?.(lvl); closePopup(); }}
+          zIndex={(rest.zIndex ?? 95) + 1}
+        />
+      ) : undefined}
       {...rest}
+      open={comboboxOpen}
+      onOpenChange={comboboxOnOpenChange}
     />
   );
 }

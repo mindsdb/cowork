@@ -247,47 +247,69 @@ describe('Composer — model picker (ENG-1656)', () => {
 
 // ─── Reasoning effort sub-picker (ENG-1940) ───────────────────────────
 //
-// EffortSelect's own visibility/value/auto-open logic is covered in
-// isolation by EffortSelect.test.jsx — these cases only check the wiring:
-// Composer threads `modelMeta.modelEfforts` and the current `model.id`
-// into it, `effort`/`onEffortChange` round-trip, and it's suppressed
-// alongside the model picker under modelReadOnly.
+// ModelSelect's own footer/flyout/trigger-suffix behavior is covered
+// thoroughly, in isolation, by ModelSelect.test.jsx — these cases only
+// check the wiring: Composer threads `modelMeta.modelEfforts` and the
+// current `effort`/`onEffortChange` into the SAME "Choose model" picker
+// (there is no longer a separate sibling control), and it round-trips.
 
 const MODEL_EFFORTS = { sonnet: { efforts: ['low', 'medium', 'high'], default: 'medium' } };
 
 describe('Composer — reasoning effort sub-picker (ENG-1940)', () => {
-  it('renders next to the model picker for a model with effort options', () => {
+  it('shows the resolved effort, muted, on the model picker trigger for a model with effort options', () => {
+    renderComposer({
+      models: MODELS,
+      modelMeta: { ...MODEL_META, modelEfforts: MODEL_EFFORTS },
+      model: MODELS[1], // sonnet
+      effort: 'high', // not sonnet's default ("medium") — the trigger suffix only shows then
+    });
+    expect(screen.getByRole('combobox', { name: 'Choose model' })).toHaveTextContent('Claude Sonnet 5 High');
+  });
+
+  it('shows an "Effort" footer row in the model popup for a model with effort options', async () => {
+    const user = userEvent.setup();
     renderComposer({
       models: MODELS,
       modelMeta: { ...MODEL_META, modelEfforts: MODEL_EFFORTS },
       model: MODELS[1], // sonnet
       effort: 'medium',
     });
-    expect(screen.getByRole('combobox', { name: 'Reasoning effort' })).toHaveTextContent('Medium');
+
+    await user.click(screen.getByRole('combobox', { name: 'Choose model' }));
+
+    const footerRow = screen.getByText('Effort').parentElement;
+    expect(within(footerRow).getByText('Medium')).toBeInTheDocument();
   });
 
-  it('does not render for a model with no modelEfforts entry', () => {
+  it('reads "Default" in the footer for a model with no modelEfforts entry', async () => {
+    const user = userEvent.setup();
     renderComposer({
       models: MODELS,
       modelMeta: { ...MODEL_META, modelEfforts: MODEL_EFFORTS },
       model: MODELS[0], // mindshub_air — not in MODEL_EFFORTS
       effort: '',
     });
-    expect(screen.queryByRole('combobox', { name: 'Reasoning effort' })).toBeNull();
+
+    await user.click(screen.getByRole('combobox', { name: 'Choose model' }));
+
+    const footerRow = screen.getByText('Effort').parentElement;
+    expect(within(footerRow).getByText('Default')).toBeInTheDocument();
   });
 
-  it('fires onEffortChange with the picked level', async () => {
+  it('fires onEffortChange with the picked level, from the footer flyout', async () => {
     const user = userEvent.setup();
     const props = renderComposer({
       models: MODELS,
       modelMeta: { ...MODEL_META, modelEfforts: MODEL_EFFORTS },
-      model: MODELS[1],
+      model: MODELS[1], // sonnet
       effort: 'medium',
       onEffortChange: vi.fn(),
     });
 
-    await user.click(screen.getByRole('combobox', { name: 'Reasoning effort' }));
-    await user.click(screen.getByRole('option', { name: 'High' }));
+    await user.click(screen.getByRole('combobox', { name: 'Choose model' }));
+    fireEvent.mouseEnter(screen.getByText('Effort').closest('button'));
+    const panel = screen.getByText(/Higher effort means more thorough responses/).parentElement;
+    await user.click(within(panel).getByText('High').closest('button'));
 
     expect(props.onEffortChange).toHaveBeenCalledWith('high');
   });
@@ -300,7 +322,8 @@ describe('Composer — reasoning effort sub-picker (ENG-1940)', () => {
       effort: 'medium',
       modelReadOnly: true,
     });
-    expect(screen.queryByRole('combobox', { name: 'Reasoning effort' })).toBeNull();
+    expect(screen.queryByRole('combobox', { name: 'Choose model' })).toBeNull();
+    expect(screen.queryByText('Effort')).toBeNull();
   });
 });
 
