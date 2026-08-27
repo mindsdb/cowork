@@ -1,13 +1,14 @@
 import { authFetch, BASE } from '../api';
+import { artifactIdentity } from './artifactIdentity';
 
 function artifactRef(artifact) {
-  const stableId = artifact?.stableId || '';
-  if (!stableId) return null;
+  const artifactId = artifactIdentity(artifact);
+  if (!artifactId) return null;
   const projectRef = artifact?.projectId || 'local';
   return {
-    stableId,
+    artifactId,
     projectRef: String(projectRef),
-    base: `/artifacts/workspace/${encodeURIComponent(projectRef)}/${encodeURIComponent(stableId)}`,
+    base: `/artifacts/workspace/${encodeURIComponent(projectRef)}/${encodeURIComponent(artifactId)}`,
   };
 }
 
@@ -53,14 +54,14 @@ export async function loadArtifactDraftText(draftUrl) {
 
 export function loadArtifactSource(artifact, path = null) {
   const ref = artifactRef(artifact);
-  if (!ref) return Promise.reject(new Error('Artifact has no stable identity'));
+  if (!ref) return Promise.reject(new Error('Artifact has no full identity'));
   const query = path ? `?path=${encodeURIComponent(path)}` : '';
   return request(`${ref.base}${query}`);
 }
 
 export function saveArtifactSource(artifact, { content, expectedRevisionId, path, summary }) {
   const ref = artifactRef(artifact);
-  if (!ref) return Promise.reject(new Error('Artifact has no stable identity'));
+  if (!ref) return Promise.reject(new Error('Artifact has no full identity'));
   return request(ref.base, {
     method: 'PUT',
     body: JSON.stringify({ content, expectedRevisionId, path, summary }),
@@ -69,20 +70,20 @@ export function saveArtifactSource(artifact, { content, expectedRevisionId, path
 
 export function loadArtifactRevisions(artifact, path = null) {
   const ref = artifactRef(artifact);
-  if (!ref) return Promise.reject(new Error('Artifact has no stable identity'));
+  if (!ref) return Promise.reject(new Error('Artifact has no full identity'));
   const query = path ? `?path=${encodeURIComponent(path)}` : '';
   return request(`${ref.base}/revisions${query}`);
 }
 
 export function loadArtifactRevision(artifact, revisionId) {
   const ref = artifactRef(artifact);
-  if (!ref) return Promise.reject(new Error('Artifact has no stable identity'));
+  if (!ref) return Promise.reject(new Error('Artifact has no full identity'));
   return request(`${ref.base}/revisions/${encodeURIComponent(revisionId)}`);
 }
 
 export function restoreArtifactRevision(artifact, revisionId, expectedRevisionId) {
   const ref = artifactRef(artifact);
-  if (!ref) return Promise.reject(new Error('Artifact has no stable identity'));
+  if (!ref) return Promise.reject(new Error('Artifact has no full identity'));
   return request(`${ref.base}/revisions/${encodeURIComponent(revisionId)}/restore`, {
     method: 'POST',
     body: JSON.stringify({ expectedRevisionId }),
@@ -91,13 +92,13 @@ export function restoreArtifactRevision(artifact, revisionId, expectedRevisionId
 
 export function enableDraftComments(artifact) {
   const ref = artifactRef(artifact);
-  if (!ref) return Promise.reject(new Error('Artifact has no stable identity'));
+  if (!ref) return Promise.reject(new Error('Artifact has no full identity'));
   return request(`${ref.base}/comments-access`, { method: 'POST', body: '{}' });
 }
 
 export function requestAgentRepair(artifact, payload) {
   const ref = artifactRef(artifact);
-  if (!ref) return Promise.reject(new Error('Artifact has no stable identity'));
+  if (!ref) return Promise.reject(new Error('Artifact has no full identity'));
   return request(`${ref.base}/agent-repairs`, {
     method: 'POST',
     body: JSON.stringify(payload),
@@ -106,13 +107,13 @@ export function requestAgentRepair(artifact, payload) {
 
 export function loadAgentRepair(artifact, repairId) {
   const ref = artifactRef(artifact);
-  if (!ref) return Promise.reject(new Error('Artifact has no stable identity'));
+  if (!ref) return Promise.reject(new Error('Artifact has no full identity'));
   return request(`${ref.base}/agent-repairs/${encodeURIComponent(repairId)}`);
 }
 
 export function cancelAgentRepair(artifact, repairId) {
   const ref = artifactRef(artifact);
-  if (!ref) return Promise.reject(new Error('Artifact has no stable identity'));
+  if (!ref) return Promise.reject(new Error('Artifact has no full identity'));
   return request(`${ref.base}/agent-repairs/${encodeURIComponent(repairId)}/cancel`, {
     method: 'POST',
     body: '{}',
@@ -121,7 +122,7 @@ export function cancelAgentRepair(artifact, repairId) {
 
 export function decideAgentRepair(artifact, repairId, status) {
   const ref = artifactRef(artifact);
-  if (!ref) return Promise.reject(new Error('Artifact has no stable identity'));
+  if (!ref) return Promise.reject(new Error('Artifact has no full identity'));
   return request(`${ref.base}/agent-repairs/${encodeURIComponent(repairId)}/decision`, {
     method: 'POST',
     body: JSON.stringify({ status }),

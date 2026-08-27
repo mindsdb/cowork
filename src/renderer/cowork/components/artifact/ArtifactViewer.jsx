@@ -22,6 +22,7 @@ import { deleteArtifactAndSync } from '../../lib/artifactsStore';
 import { needsClientUnpublishBeforeDelete } from '../../lib/artifactActions';
 import { downloadArtifactFile } from '../../lib/artifactDownload';
 import { loadArtifactDraftText } from '../../lib/artifactWorkspaceApi';
+import { artifactCommentsKey, artifactIdentity } from '../../lib/artifactIdentity';
 import { isPublishableArtifact, isImageArtifact, BACKEND_ARTIFACT_TYPES } from '../../lib/artifactKinds';
 import { useBlobImageSrc } from '../AttachmentThumbnail';
 import { Modal } from '../ui/Modal';
@@ -120,8 +121,10 @@ export function ArtifactViewer({
   const pub = usePublish(artifact, { onChange, enabled: open });
   const workspace = useArtifactWorkspace(artifact, { open, onChange });
   const repairConversationId = useMemo(
-    () => conversationId || (open && artifact?.stableId ? allocateConversationId() : ''),
-    [artifact?.stableId, conversationId, open],
+    () => conversationId || (open && workspace.supported ? allocateConversationId() : ''),
+    // `artifact?.id` stays in the deps because switching artifacts has to mint a
+    // fresh repair conversation instead of reusing the previous artifact's.
+    [artifact?.id, workspace.supported, conversationId, open],
   );
   const notifyUnreadFeedback = useCallback(() => {
     setFeedbackNotice('New feedback arrived. Open Review to see the issue.');
@@ -137,7 +140,7 @@ export function ArtifactViewer({
   // versions. Derived before the early return so the hooks run unconditionally.
   const artifactKey = artifact?.artifactKey
     || pub.artifactKey
-    || (artifact?.stableId ? `artifact/${artifact.stableId}` : '');
+    || artifactCommentsKey(artifactIdentity(artifact));
   const commentsEnabled = !!artifactKey && (
     workspace.commentsReady
     || (!!pub.publishedUrl && pub.accessMode === 'restricted')

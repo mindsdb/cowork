@@ -67,6 +67,30 @@ describe('matchesIndex', () => {
     expect(matchesIndex(chatCard({ canonicalPath: '' }), index)).toBe(true);
   });
 
+  it('bridges a widened server id to a pre-widening chat card', () => {
+    // The widening kept the old eight characters as the new id's prefix. This
+    // is the case `id` exists for: the folder moved, so slug and path both
+    // changed and only the identity can match. Without the bridge, a desktop
+    // card (no projectId, so no projectSlug key) would read as deleted while
+    // its files sit on disk.
+    const index = buildArtifactIndex([serverCard({
+      id: '7db94eb8f0a54c7e9c1d2b3a4f5e6d70',
+      slug: 'renamed', projectId: '', folder: '/proj/.anton/artifacts/renamed',
+    })]);
+
+    expect(matchesIndex(chatCard({ projectId: '', canonicalPath: '' }), index)).toBe(true);
+  });
+
+  it('bridges in the other direction too', () => {
+    const index = buildArtifactIndex([chatCard({ projectId: '', canonicalPath: '' })]);
+    const widened = serverCard({
+      id: '7db94eb8f0a54c7e9c1d2b3a4f5e6d70',
+      slug: 'renamed', projectId: '', folder: '/elsewhere', path: '/elsewhere/index.html',
+    });
+
+    expect(matchesIndex(widened, index)).toBe(true);
+  });
+
   it('matches on projectId + slug when ids differ', () => {
     const index = buildArtifactIndex([serverCard({ id: 'different' })]);
     expect(matchesIndex(chatCard({ id: '', canonicalPath: '' }), index)).toBe(true);

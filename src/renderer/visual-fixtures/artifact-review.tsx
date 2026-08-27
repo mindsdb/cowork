@@ -66,11 +66,14 @@ function htmlPreviewUrl(content: string) {
 }
 
 const originalFetch = window.fetch.bind(window);
-const STABLE_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+// One identity: `metadata.json` and the workspace API spell it as bare hex, the
+// comments key as the canonical dashed UUID.
+const ARTIFACT_ID = 'aaaaaaaaaaaa4aaa8aaaaaaaaaaaaaaa';
+const ARTIFACT_KEY = 'artifact/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const REVISION = {
   id: 'rev-current',
   number: 4,
-  artifactId: STABLE_ID,
+  artifactId: ARTIFACT_ID,
   path: ARTIFACT_FILENAME,
   createdAt: '2026-08-25T12:30:00+00:00',
   actor: { kind: 'manual', id: 'fixture-user' },
@@ -101,7 +104,7 @@ const AGENT_CONTENT = IS_HTML_SLIDES
   );
 const COMMENT = {
   id: 'comment-reviewer-1',
-  artifact_id: `artifact/${STABLE_ID}`,
+  artifact_id: ARTIFACT_KEY,
   selector: null,
   status: commentStatus,
   version: 1,
@@ -127,22 +130,22 @@ window.fetch = async (input, init) => {
   if (url.includes('/api/v1/artifacts/preview?')) {
     return new Response('Cloud preview paths must not use the desktop-only endpoint', { status: 501 });
   }
-  if (url.includes(`/api/v1/artifacts/drafts/${PROJECT_REF}/${STABLE_ID}/`)) {
+  if (url.includes(`/api/v1/artifacts/drafts/${PROJECT_REF}/${ARTIFACT_ID}/`)) {
     return new Response(currentContent, {
       status: 200,
       headers: { 'Content-Type': IS_HTML_SLIDES ? 'text/html' : 'text/markdown' },
     });
   }
   if (url.includes('/api/v1/artifacts/status?')) {
-    return new Response(JSON.stringify({ publishedUrl: '', accessMode: 'private', artifactKey: `artifact/${STABLE_ID}` }), {
+    return new Response(JSON.stringify({ publishedUrl: '', accessMode: 'private', artifactKey: ARTIFACT_KEY }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });
   }
-  if (url.includes(`/api/v1/artifacts/workspace/${PROJECT_REF}/${STABLE_ID}/comments-access`)) {
+  if (url.includes(`/api/v1/artifacts/workspace/${PROJECT_REF}/${ARTIFACT_ID}/comments-access`)) {
     return new Response(JSON.stringify({
       enabled: true,
-      artifactKey: `artifact/${STABLE_ID}`,
+      artifactKey: ARTIFACT_KEY,
       capabilities: {
         role: IS_REVIEWER ? 'reviewer' : 'owner',
         canPreview: true,
@@ -160,14 +163,14 @@ window.fetch = async (input, init) => {
       headers: { 'Content-Type': 'application/json' },
     });
   }
-  if (url.includes(`/api/v1/artifacts/workspace/${PROJECT_REF}/${STABLE_ID}/revisions`)) {
+  if (url.includes(`/api/v1/artifacts/workspace/${PROJECT_REF}/${ARTIFACT_ID}/revisions`)) {
     return new Response(JSON.stringify({ revisions: [currentRevision, PREVIOUS] }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });
   }
   if (
-    url.includes(`/api/v1/artifacts/workspace/${PROJECT_REF}/${STABLE_ID}`)
+    url.includes(`/api/v1/artifacts/workspace/${PROJECT_REF}/${ARTIFACT_ID}`)
     && (init?.method || 'GET').toUpperCase() === 'PUT'
   ) {
     const body = JSON.parse(String(init?.body || '{}'));
@@ -179,13 +182,13 @@ window.fetch = async (input, init) => {
       summary: body.summary || 'Edited artifact',
     };
     return new Response(JSON.stringify({
-      artifactId: STABLE_ID,
+      artifactId: ARTIFACT_ID,
       path: ARTIFACT_FILENAME,
       content: currentContent,
       revision: currentRevision,
     }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   }
-  if (url.includes(`/api/v1/artifacts/workspace/${PROJECT_REF}/${STABLE_ID}/agent-repairs`)
+  if (url.includes(`/api/v1/artifacts/workspace/${PROJECT_REF}/${ARTIFACT_ID}/agent-repairs`)
     && (init?.method || 'GET').toUpperCase() === 'POST'
     && !url.includes('/decision')) {
     repairQueued = true;
@@ -222,9 +225,9 @@ window.fetch = async (input, init) => {
       },
     }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   }
-  if (url.includes(`/api/v1/artifacts/workspace/${PROJECT_REF}/${STABLE_ID}`)) {
+  if (url.includes(`/api/v1/artifacts/workspace/${PROJECT_REF}/${ARTIFACT_ID}`)) {
     return new Response(JSON.stringify({
-      artifactId: STABLE_ID,
+      artifactId: ARTIFACT_ID,
       path: ARTIFACT_FILENAME,
       content: currentContent,
       contentType: IS_HTML_SLIDES ? 'html' : 'md',
@@ -239,20 +242,20 @@ window.fetch = async (input, init) => {
       },
     }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   }
-  if (url.includes(`/api/v1/artifact-comments/artifact/${STABLE_ID}/threads/${COMMENT.id}/status`)) {
+  if (url.includes(`/api/v1/artifact-comments/${ARTIFACT_KEY}/threads/${COMMENT.id}/status`)) {
     commentStatus = JSON.parse(String(init?.body || '{}')).status || commentStatus;
     return new Response(JSON.stringify({ ...COMMENT, status: commentStatus, version: 2 }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });
   }
-  if (url.includes(`/api/v1/artifact-comments/artifact/${STABLE_ID}/read`)) {
+  if (url.includes(`/api/v1/artifact-comments/${ARTIFACT_KEY}/read`)) {
     return new Response(JSON.stringify({ ok: true, unreadCount: 0 }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });
   }
-  if (url.includes(`/api/v1/artifact-comments/artifact/${STABLE_ID}/threads`)
+  if (url.includes(`/api/v1/artifact-comments/${ARTIFACT_KEY}/threads`)
     && (init?.method || 'GET').toUpperCase() === 'GET') {
     return new Response(JSON.stringify({
       threads: [{ ...COMMENT, status: commentStatus }],
@@ -269,7 +272,7 @@ window.fetch = async (input, init) => {
       unreadCount: commentStatus === 'open' ? 1 : 0,
     }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   }
-  if (url.includes(`/api/v1/artifact-comments/artifact/${STABLE_ID}/stream`)) {
+  if (url.includes(`/api/v1/artifact-comments/${ARTIFACT_KEY}/stream`)) {
     return new Response('', { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
   }
   return originalFetch(input, init);
@@ -284,8 +287,7 @@ document.body.style.background = 'var(--bg)';
 
 function Fixture() {
   const [artifact, setArtifact] = useState<ArtifactViewerArtifact>({
-    id: 'a1b2c3d4',
-    stableId: STABLE_ID,
+    id: ARTIFACT_ID,
     slug: IS_HTML_SLIDES ? 'artifact-collaboration-slides' : 'q3-launch-readiness-a1b2c3d4',
     title: IS_HTML_SLIDES ? 'Artifact collaboration deck' : 'Q3 launch readiness',
     description: IS_HTML_SLIDES ? 'An HTML slide deck' : 'A working launch-readiness brief',
@@ -300,13 +302,13 @@ function Fixture() {
     modified: false,
     publishedUrl: '',
     accessMode: 'private',
-    artifactKey: `artifact/${STABLE_ID}`,
+    artifactKey: ARTIFACT_KEY,
     draftUrl: IS_HTML_SLIDES
       ? htmlPreviewUrl(HTML_SLIDES)
-      : `/api/v1/artifacts/drafts/${PROJECT_REF}/${STABLE_ID}/${ARTIFACT_FILENAME}`,
+      : `/api/v1/artifacts/drafts/${PROJECT_REF}/${ARTIFACT_ID}/${ARTIFACT_FILENAME}`,
     serveUrl: IS_HTML_SLIDES
       ? htmlPreviewUrl(HTML_SLIDES)
-      : `/api/v1/artifacts/drafts/${PROJECT_REF}/${STABLE_ID}/${ARTIFACT_FILENAME}`,
+      : `/api/v1/artifacts/drafts/${PROJECT_REF}/${ARTIFACT_ID}/${ARTIFACT_FILENAME}`,
   });
 
   return (

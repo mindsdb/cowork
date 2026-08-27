@@ -54,7 +54,7 @@ vi.mock('../../platform/host', () => ({
 // we only need to prove the inline card hands the complete artifact to it.
 vi.mock('../components/artifact', () => ({
   ArtifactViewer: ({ open, artifact }) => open
-    ? <div data-testid="artifact-viewer">{artifact?.stableId}</div>
+    ? <div data-testid="artifact-viewer">{artifact?.id}</div>
     : null,
 }));
 
@@ -75,7 +75,7 @@ import ChatView, { artifactStepToCard } from './ChatView';
 import { setOrgMode } from '../../lib/orgMode';
 
 const PUBLISHED_URL = 'https://view.staging.mindshub.ai/view/97901f016/845b3777';
-const STABLE_ID = '11111111-1111-4111-8111-111111111111';
+const ARTIFACT_ID = '11111111111141118111111111111111';
 
 // The shape the SSE adapter produces for `response.artifact_created`.
 const artifactStep = (overrides = {}) => ({
@@ -90,11 +90,10 @@ const artifactStep = (overrides = {}) => ({
     path: '/proj/.anton/artifacts/clock/index.html',
     ext: '.html',
     action: 'html-app',
-    id: '7db94eb8',
+    id: ARTIFACT_ID,
     slug: 'clock',
-    stableId: STABLE_ID,
-    artifactKey: `artifact/${STABLE_ID}`,
-    draftUrl: `/api/v1/artifacts/drafts/proj-1/${STABLE_ID}/index.html`,
+    artifactKey: 'artifact/11111111-1111-4111-8111-111111111111',
+    draftUrl: `/api/v1/artifacts/drafts/proj-1/${ARTIFACT_ID}/index.html`,
     capabilities: { role: 'owner', canEdit: true, canComment: true },
     publishedUrl: PUBLISHED_URL,
     projectId: 'proj-1',
@@ -106,8 +105,8 @@ const artifactStep = (overrides = {}) => ({
 describe('inline artifact workspace payload', () => {
   it('reaches the viewer card without dropping identity or permissions', () => {
     expect(artifactStepToCard(artifactStep(), '/proj')).toMatchObject({
-      stableId: STABLE_ID,
-      artifactKey: `artifact/${STABLE_ID}`,
+      id: ARTIFACT_ID,
+      artifactKey: 'artifact/11111111-1111-4111-8111-111111111111',
       draftUrl: expect.stringContaining('/artifacts/drafts/'),
       capabilities: { role: 'owner', canEdit: true, canComment: true },
     });
@@ -146,7 +145,7 @@ describe('inline artifact banner in org mode', () => {
 
     await user.click(screen.getByRole('button', { name: 'Open' }));
 
-    expect(screen.getByTestId('artifact-viewer')).toHaveTextContent(STABLE_ID);
+    expect(screen.getByTestId('artifact-viewer')).toHaveTextContent(ARTIFACT_ID);
     expect(openExternal).not.toHaveBeenCalled();
   });
 

@@ -433,7 +433,7 @@ export function artifactStepToCard(step, projectPath) {
   const ext = (path.match(/\.([a-z0-9]+)$/i)?.[1] || '').toLowerCase();
   const card = normalizeArtifactRecord({
     // Preserve the complete server card that the stream adapter stored. In
-    // particular, stableId + draftUrl + capabilities are what make the
+    // particular, id + draftUrl + capabilities are what make the
     // immediately opened viewer editable and reviewable. Keeping the payload
     // whole also prevents each new artifact field from requiring another
     // fragile pass-through list here.

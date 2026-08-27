@@ -47,7 +47,7 @@ const published = {
 
 const cloudDraft = {
   ...published,
-  stableId: '11111111-1111-1111-1111-111111111111',
+  id: '11111111111111111111111111111111',
   draftUrl: '/api/v1/artifacts/drafts/project/id/index.html',
   publishedUrl: '',
   capabilities: { role: 'owner', canEdit: true },

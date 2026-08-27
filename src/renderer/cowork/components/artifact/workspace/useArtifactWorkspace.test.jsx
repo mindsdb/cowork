@@ -11,7 +11,9 @@ const api = vi.hoisted(() => ({
 
 vi.mock('../../../../platform/host', () => ({ host: platform }));
 vi.mock('../../../lib/artifactWorkspaceApi', () => ({
-  canUseArtifactWorkspace: (artifact) => !!artifact?.stableId,
+  // Mirrors the real predicate: a full UUID, bare hex or dashed.
+  canUseArtifactWorkspace: (artifact) => /^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$/i
+    .test(artifact?.id || ''),
   enableDraftComments: (...args) => api.enableDraftComments(...args),
   loadArtifactSource: (...args) => api.loadArtifactSource(...args),
   loadArtifactRevisions: (...args) => api.loadArtifactRevisions(...args),
@@ -27,7 +29,7 @@ vi.mock('../../../lib/artifactWorkspaceApi', () => ({
 import { useArtifactWorkspace } from './useArtifactWorkspace';
 
 const artifact = {
-  stableId: '11111111-1111-4111-8111-111111111111',
+  id: '11111111111141118111111111111111',
   projectId: '00000000-0000-0000-0000-000000000001',
 };
 const source = {
@@ -54,8 +56,8 @@ beforeEach(() => {
 });
 
 describe('useArtifactWorkspace collaboration transport', () => {
-  it('does not report an endless load when a legacy card has no stable identity', async () => {
-    const { result } = renderHook(() => useArtifactWorkspace({ id: 'legacy-artifact' }, { open: true }));
+  it('does not report an endless load when a legacy card has a short id', async () => {
+    const { result } = renderHook(() => useArtifactWorkspace({ id: 'a1b2c3d4' }, { open: true }));
 
     await waitFor(() => expect(result.current.status).toBe('unsupported'));
     expect(result.current.supported).toBe(false);
@@ -150,13 +152,13 @@ describe('useArtifactWorkspace collaboration transport', () => {
 
   it('does not let a late response overwrite a newly opened artifact', async () => {
     const artifactB = {
-      stableId: '22222222-2222-4222-8222-222222222222',
+      id: '22222222222242228222222222222222',
       projectId: artifact.projectId,
     };
     const first = deferred();
     const second = deferred();
     api.loadArtifactSource.mockImplementation((item) => (
-      item.stableId === artifact.stableId ? first.promise : second.promise
+      item.id === artifact.id ? first.promise : second.promise
     ));
     const { result, rerender } = renderHook(
       ({ item }) => useArtifactWorkspace(item, { open: true }),
@@ -165,16 +167,16 @@ describe('useArtifactWorkspace collaboration transport', () => {
 
     rerender({ item: artifactB });
     await act(async () => {
-      second.resolve({ ...source, content: '<h1>Second</h1>', artifactId: artifactB.stableId });
+      second.resolve({ ...source, content: '<h1>Second</h1>', artifactId: artifactB.id });
     });
     await waitFor(() => expect(result.current.status).toBe('ready'));
 
     await act(async () => {
-      first.resolve({ ...source, content: '<h1>First</h1>', artifactId: artifact.stableId });
+      first.resolve({ ...source, content: '<h1>First</h1>', artifactId: artifact.id });
       await first.promise;
     });
 
-    expect(result.current.source.artifactId).toBe(artifactB.stableId);
+    expect(result.current.source.artifactId).toBe(artifactB.id);
     expect(result.current.source.content).toBe('<h1>Second</h1>');
   });
 });

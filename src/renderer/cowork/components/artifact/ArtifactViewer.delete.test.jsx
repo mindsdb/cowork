@@ -79,7 +79,7 @@ import { deleteArtifactAndSync } from '../../lib/artifactsStore';
 import { setOrgMode } from '../../../lib/orgMode';
 
 const artifact = {
-  stableId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  id: 'aaaaaaaaaaaa4aaa8aaaaaaaaaaaaaaa',
   title: 'Launch brief',
   type: 'document',
   ext: '.html',

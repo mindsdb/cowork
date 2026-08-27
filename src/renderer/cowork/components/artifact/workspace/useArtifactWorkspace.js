@@ -165,7 +165,7 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
     if (open && supported) {
       load();
     } else if (open) {
-      // A legacy/incomplete artifact record has no stable identity, so there
+      // A legacy/incomplete artifact record has no full identity, so there
       // is no workspace request to wait for. Keep this state distinct from a
       // real in-flight load; otherwise the mode tabs say "Loading…" forever
       // even though no request was started.
@@ -174,9 +174,9 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
       setStatus('idle');
     }
     return () => { workspaceGeneration.current += 1; };
-  // The stable identity, not a mutable object reference, names this workspace.
+  // The artifact identity, not a mutable object reference, names this workspace.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, artifact?.stableId, artifact?.projectId]);
+  }, [open, artifact?.id, artifact?.projectId]);
 
   const save = useCallback(async (summary = 'Edited artifact', contentOverride = null) => {
     const content = contentOverride ?? draft;

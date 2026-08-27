@@ -10,7 +10,13 @@ export interface ArtifactCapabilities {
 }
 
 export interface ArtifactViewerArtifact {
+  /** The artifact's one identity: a UUID in bare hex. */
   id?: string;
+  /**
+   * Retired. Cards replayed from a conversation recorded before ids were
+   * widened still carry it, and `artifactIdentity()` adopts it as the id the
+   * way the server does. Nothing should read it directly.
+   */
   stableId?: string;
   artifactKey?: string;
   slug?: string;

@@ -346,7 +346,7 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       completedAt: eventTs,
       data: {
         // Keep the server card intact. Artifact capabilities and addressing
-        // evolve together (stableId, draftUrl, artifactKey, access policy,
+        // evolve together (id, draftUrl, artifactKey, access policy,
         // and future fields); copying a hand-maintained subset here made a
         // just-created artifact lose edit/review support until the panel was
         // reloaded from the artifacts endpoint.
