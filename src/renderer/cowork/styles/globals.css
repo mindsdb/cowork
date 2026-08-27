@@ -741,17 +741,10 @@ a[href],
   padding: var(--composer-padding);
   min-height: 56px; max-height: 220px;
   user-select: text;
-  /* ENG-2029: the textarea and its highlight overlay MUST reserve the same
-     horizontal space, or they wrap long lines at different points and the
-     (native, textarea-drawn) caret drifts away from the visible overlay glyph
-     — most visibly after pasting multi-line/bulleted content that overflows
-     the max-height. On platforms with classic, space-consuming scrollbars
-     (Windows, most Linux) an `overflow: auto` textarea eats ~15-17px for its
-     vertical scrollbar once it overflows, while the overlay hides its own
-     (scrollbar-width: none, 0px) and keeps the full width. That width gap
-     shifts every wrap point and desyncs the caret. Hide the textarea's
-     scrollbar too so both boxes always reserve zero — identical wrapping on
-     every platform. Scrolling still works via wheel/keys and caret-follow. */
+  /* ENG-2029: hide the scrollbar to match the overlay. A classic
+     space-consuming scrollbar (Windows/Linux) would narrow the textarea once
+     it overflows, wrapping lines earlier than the full-width overlay and
+     drifting the caret off the visible text. Both must reserve zero. */
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
