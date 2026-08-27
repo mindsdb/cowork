@@ -78,7 +78,7 @@ import { noteArtifactsFromSteps } from './lib/artifactsStore';
 import { isArtifactTipDismissed, dismissArtifactTip, dismissIfUntouched } from './components/onboarding/onboardingStore';
 import { recommendedModelOptions, providerValueToType,
          mergeRecommendedModels } from './lib/settingsTransform';
-import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery, trackFirstResponse, classifyFirstResponse } from './lib/analytics';
+import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery, trackFirstResponse, classifyFirstResponse, trackTurnFailed } from './lib/analytics';
 import { MODEL_ROUTER_ID, MODEL_ROUTER, isModelLocked } from './lib/modelCatalog';
 import {
   CoworkProvider,
@@ -1124,12 +1124,31 @@ function AppCore() {
     ids.forEach((id) => markInFlightDone(id));
 
     const loaded = cid ? await loadSessionMessagesWithRetry(cid) : null;
+    // A stream that merely dropped mid-answer can still have finished on the
+    // server — the reload then carries no error message. Gating on the same
+    // check the UI uses means a turn the user actually saw succeed doesn't
+    // also count as a failure. Unlike fireFirstResponse (once per user), this
+    // fires on every failed turn — the failure rate had no measurement at
+    // all before this.
+    const hasError = loaded
+      ? loaded.messages.some((m) => m.role === 'error' || m.role === 'provider_required')
+      : true;
+    // `some()` over the whole history is right for the UI status below, but
+    // it's a permanent yes once any earlier turn in the conversation has
+    // ever failed — worthless as a failure-tracking gate, since it also
+    // counts turns that actually recovered. A server-declared
+    // response.failed (api.js's onError passes the raw SSE message through,
+    // so `type` survives) is authoritative on its own. Only the client-side
+    // transport codes (stream_error, reconnect_error, stalled) need the
+    // reload heuristic, and only against the *last* turn.
+    const lastMessage = loaded?.messages?.[loaded.messages.length - 1];
+    const lastTurnFailed = loaded
+      ? lastMessage?.role === 'error' || lastMessage?.role === 'provider_required'
+      : true;
+    if (event?.type === 'response.failed' || lastTurnFailed) trackTurnFailed(cid, event);
     setTasks((prev) => prev.map((t) => {
       if (!ids.includes(t.id)) return t;
       if (loaded) {
-        const hasError = loaded.messages.some(
-          (m) => m.role === 'error' || m.role === 'provider_required',
-        );
         return {
           ...t,
           status: hasError ? 'error' : 'idle',
