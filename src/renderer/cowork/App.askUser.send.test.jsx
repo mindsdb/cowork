@@ -702,6 +702,52 @@ describe('turn failure telemetry', () => {
 
     expect(trackTurnFailed).not.toHaveBeenCalled();
   });
+
+  it('does not count a recovered turn just because an earlier turn in the same conversation once failed', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+
+    // An older turn left a persisted error row, but the reload's last
+    // message is this turn's real answer — `some()` over the whole
+    // conversation would find the stale error and count it forever.
+    spies.fetchSession.mockImplementation(async () => ({
+      messages: [
+        { role: 'user', content: 'turn 1' },
+        { role: 'error', content: 'boom' },
+        { role: 'user', content: 'turn 2' },
+        { role: 'assistant', content: 'here is your answer' },
+      ],
+    }));
+
+    await send(user, composer, 'do something');
+    const handle = await waitForStream();
+
+    await act(async () => {
+      handle.opts.onError('connection lost', { code: 'stream_error' });
+      await Promise.resolve();
+    });
+
+    expect(trackTurnFailed).not.toHaveBeenCalled();
+  });
+
+  it('counts a server-declared response.failed on its own, without waiting on the reload', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+
+    // Default mock: reload comes back empty (not yet persisted, or racing
+    // the failure). A response.failed the server itself sent is
+    // authoritative and must count regardless.
+    await send(user, composer, 'do something');
+    const handle = await waitForStream();
+
+    const event = { type: 'response.failed', code: 'provider_error' };
+    await act(async () => {
+      handle.opts.onError('The agent failed', event);
+      await Promise.resolve();
+    });
+
+    expect(trackTurnFailed).toHaveBeenCalledWith('conv-a', event);
+  });
 });
 
 describe('new-session stream (send from home)', () => {

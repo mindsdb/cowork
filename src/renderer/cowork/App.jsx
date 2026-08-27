@@ -1132,7 +1132,19 @@ function AppCore() {
     const hasError = loaded
       ? loaded.messages.some((m) => m.role === 'error' || m.role === 'provider_required')
       : true;
-    if (hasError) trackTurnFailed(cid, event);
+    // `some()` over the whole history is right for the UI status below, but
+    // it's a permanent yes once any earlier turn in the conversation has
+    // ever failed — worthless as a failure-tracking gate, since it also
+    // counts turns that actually recovered. A server-declared
+    // response.failed (api.js's onError passes the raw SSE message through,
+    // so `type` survives) is authoritative on its own. Only the client-side
+    // transport codes (stream_error, reconnect_error, stalled) need the
+    // reload heuristic, and only against the *last* turn.
+    const lastMessage = loaded?.messages?.[loaded.messages.length - 1];
+    const lastTurnFailed = loaded
+      ? lastMessage?.role === 'error' || lastMessage?.role === 'provider_required'
+      : true;
+    if (event?.type === 'response.failed' || lastTurnFailed) trackTurnFailed(cid, event);
     setTasks((prev) => prev.map((t) => {
       if (!ids.includes(t.id)) return t;
       if (loaded) {
