@@ -831,27 +831,80 @@ let webPickerPopup: Window | null = null;
 // settled call's finish() already no-ops, so calling this is always safe.
 let webPickerCancelPrevious: (() => void) | null = null;
 
+// Opens the blank window the picker session will be navigated into.
+// Deliberately NOT window.open(..., 'noopener,noreferrer'): a browser that
+// honors `noopener` (`noreferrer` implies it) returns null from a
+// SUCCESSFUL open, which is indistinguishable from a blocked popup — and
+// with the window now opened on about:blank first, we must keep a usable
+// handle to navigate it once the session URL is known. Opener access is
+// severed by nulling `popup.opener` instead, which cuts the popup→opener
+// link just as `noopener` would while keeping our forward handle alive.
+function openBlankPickerWindow(): Window | null {
+  const popup = window.open('about:blank', '_blank');
+  if (popup) popup.opener = null;
+  return popup;
+}
+
+// Web-only. Call this SYNCHRONOUSLY inside the click handler, before any
+// awaited preparation (fetching connections, account choice, loading the
+// saved connection): the click's transient activation expires at the first
+// await, after which most browsers silently block window.open() — opening
+// inside pickDriveFiles is already too late for callers that await first
+// (useGoogleDrivePicker's composer and project-file flows do). Pass the
+// returned handle through to pickDriveFiles, which navigates it once the
+// picker session is minted. A caller that bails out before reaching
+// pickDriveFiles must close() the handle itself. Returns null on Electron
+// (its picker opens in the OS browser over IPC — nothing to pre-open) and
+// when the browser blocked the popup.
+export function preopenDrivePickerPopup(): Window | null {
+  if (!isWeb) return null;
+  if (webPickerPopup && !webPickerPopup.closed) webPickerPopup.close();
+  webPickerCancelPrevious?.();
+  const popup = openBlankPickerWindow();
+  webPickerPopup = popup;
+  return popup;
+}
+
 // Web equivalent of the Electron flow above. cowork-server serves the SPA
 // and its API from the same origin (getApiOrigin()), but web auth is a
 // per-request Bearer header (see fetchJson), never a cookie — a plain
 // window.open() navigation can't carry that header. So this mints a
 // short-lived, single-use picker session server-side over an authenticated
 // POST first (identical shape to launchConnectorAuth's authUrl handoff
-// elsewhere in this codebase), then opens the URL that POST returns. The
-// live Google access token itself is minted only when that URL is opened,
-// and is embedded server-side into the picker page's own inline script —
-// it never transits this POST, the URL, or postMessage.
-async function pickDriveFilesWeb(engine: string, name: string, accountEmail: string, fileIds?: string[], projectName?: string): Promise<DrivePickerResult> {
-  if (webPickerPopup && !webPickerPopup.closed) webPickerPopup.close();
-  webPickerCancelPrevious?.();
-  // Opened synchronously, before the session mint below is awaited: a
-  // window.open() called after an await is no longer inside the click's own
-  // call stack, and most browsers silently block it as an unsolicited popup.
-  // This blank window is itself opened in direct response to the click, so
-  // it's allowed — navigating an already-open window afterward is not.
-  const popup = window.open('about:blank', '_blank', 'noopener,noreferrer');
-  webPickerPopup = popup;
-  if (!popup) return { ok: false, reason: 'The browser blocked the file picker popup.' };
+// elsewhere in this codebase), then navigates the popup to the URL that
+// POST returns. The live Google access token itself is minted only when
+// that URL is opened, and is embedded server-side into the picker page's
+// own inline script — it never transits this POST, the URL, or postMessage.
+async function pickDriveFilesWeb(engine: string, name: string, accountEmail: string, fileIds?: string[], projectName?: string, preopenedPopup?: Window | null): Promise<DrivePickerResult> {
+  let popupHandle: Window | null;
+  if (preopenedPopup !== undefined) {
+    // Opened at the caller's click boundary via preopenDrivePickerPopup
+    // (which already closed/cancelled any previous picker attempt). null
+    // means the browser blocked it there; an already-closed handle means
+    // this attempt was superseded by a newer click or the user closed the
+    // blank window — reopening here, outside any click activation, would
+    // just be blocked again.
+    if (!preopenedPopup) return { ok: false, reason: 'The browser blocked the file picker popup.' };
+    if (preopenedPopup.closed) return { ok: false, reason: 'cancelled' };
+    popupHandle = preopenedPopup;
+  } else {
+    if (webPickerPopup && !webPickerPopup.closed) webPickerPopup.close();
+    webPickerCancelPrevious?.();
+    // Opened synchronously, before the session mint below is awaited: a
+    // window.open() called after an await is no longer inside the click's own
+    // call stack, and most browsers silently block it as an unsolicited popup.
+    // This blank window is itself opened in direct response to the click, so
+    // it's allowed — navigating an already-open window afterward is not.
+    // (Only correct for callers that reach here with no awaits of their own,
+    // e.g. connection-details' "Pick files" button — callers that prepare
+    // asynchronously first must preopenDrivePickerPopup() at the click.)
+    popupHandle = openBlankPickerWindow();
+    webPickerPopup = popupHandle;
+    if (!popupHandle) return { ok: false, reason: 'The browser blocked the file picker popup.' };
+  }
+  // Narrowed const so the closures below (close-poll, mint continuation)
+  // see a non-null Window without re-checking.
+  const popup = popupHandle;
 
   return new Promise<DrivePickerResult>((resolve) => {
     let settled = false;
@@ -902,12 +955,16 @@ async function pickDriveFilesWeb(engine: string, name: string, accountEmail: str
   });
 }
 
-export async function pickDriveFiles(engine: string, name: string, accountEmail: string, fileIds?: string[], projectName?: string): Promise<DrivePickerResult> {
+// `preopenedPopup` is the handle from preopenDrivePickerPopup(), for callers
+// whose click handlers await other work before getting here — see that
+// function. On Electron it is ignored (and preopenDrivePickerPopup returned
+// null anyway): the picker opens in the OS browser over IPC.
+export async function pickDriveFiles(engine: string, name: string, accountEmail: string, fileIds?: string[], projectName?: string, preopenedPopup?: Window | null): Promise<DrivePickerResult> {
   if (isElectron && typeof bridge.oauthPickDriveFiles === 'function') {
     return bridge.oauthPickDriveFiles({ engine, name, accountEmail, fileIds, projectName });
   }
   if (isWeb) {
-    return pickDriveFilesWeb(engine, name, accountEmail, fileIds, projectName);
+    return pickDriveFilesWeb(engine, name, accountEmail, fileIds, projectName, preopenedPopup);
   }
   return { ok: false, reason: 'Google Picker is Electron-only for now.' };
 }
@@ -1177,6 +1234,7 @@ export const host = {
   logout,
   keychainRevoke,
   onOAuthRefreshError,
+  preopenDrivePickerPopup,
   pickDriveFiles,
   cancelDrivePicker,
 };
