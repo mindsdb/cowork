@@ -302,13 +302,13 @@ export default function ConnectorPicker({ open, onPick, onClose }) {
         {orgMode && (
           <div className="px-4 pb-3 bg-surface shrink-0">
             <Alert variant="info">
-              The full range of connectors is coming soon to Cowork Cloud. In the meantime, you can use all Cowork connectors in the{' '}
+              The full range of connectors is coming soon to Cowork Cloud. In the meantime, you can use all Cowork connectors in the "{' '}
               <button
                 type="button"
                 onClick={() => host.openExternal('https://mindshub.ai/download')}
                 className="font-medium underline underline-offset-2 bg-transparent border-0 p-0 cursor-pointer text-inherit [font:inherit]"
               >
-                Cowork Desktop App
+                Cowork Desktop App.
               </button>
               .
             </Alert>
