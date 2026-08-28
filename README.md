@@ -282,6 +282,8 @@ All channels defined in `src/shared/ipc-channels.ts`:
 | `mindshub:refresh`                                  | invoke    | Refresh MindsHub token                    |
 | `mindshub:finalize`                                 | invoke    | Commit MindsHub credentials to env        |
 | `mindshub:get-cached-token`                         | invoke    | Read cached MindsHub token                |
+| `mindshub:list-orgs`                                | invoke    | Organizations this account belongs to     |
+| `mindshub:switch-org`                               | invoke    | Change organization and move the key      |
 | `app:ready`                                         | send      | App finished initializing                 |
 | `app:get-platform/ui-version/open-external`         | invoke    | Platform info, open URLs                  |
 | `shell:show-item-in-folder`                         | invoke    | OS shell operations                       |
@@ -423,6 +425,52 @@ sidecar's own token, so the Keycloak JWT cannot arrive under that name.
 **Picking a workspace changes what this app shows, not what a turn is billed to.**
 Attribution rides the credential a turn presents, and neither credential carries a
 workspace today.
+
+### Which organization a turn is billed to
+
+The credential the sidecar presents is the user's own token, and the
+active-organization claim on it is what the gateway reads to decide whose
+credits a turn spends. So the choice is made by switching the active
+organization and re-rolling the token. The rules live in
+[src/shared/minds-orgs.ts](src/shared/minds-orgs.ts) and the calls in
+[src/main/minds-auth.ts](src/main/minds-auth.ts).
+
+Three things decide it, in order:
+
+1. **A pick the person made** — stored in `state.json` under
+   `preferences.mindsOrganization`, keyed by the Keycloak subject so one
+   machine signed into a second account does not inherit the first's choice.
+2. **Company organizations rank ahead of the personal one**, which Keycloak
+   names `personal_<userId>`. Within each group the order Keycloak returned is
+   kept, so "the first company organization" means the same thing on every
+   sign-in.
+3. **The claim the token already carried**, which used to be the whole answer.
+   That is how turns ended up billed wherever a console tab happened to be
+   pointing.
+
+`ensureActiveOrg` switches only when the answer differs from the claim, so an
+account with one organization makes no extra round-trip.
+
+Changing it later is the account menu's Organization group
+(`components/UserMenu.jsx`, hook `hooks/useMindsOrgs.js`), which reads and
+writes through main over `mindshub:list-orgs` and `mindshub:switch-org`. It is
+in the account menu rather than the rail because an organization is who pays;
+the workspace selector is a container inside one and lives above the New task
+CTA.
+
+**A switch is switch, refresh, hand over, and the order is what makes a failure
+harmless.** Every step short of the hand-over is undone by switching back, and
+the pick is only remembered once the sidecar has taken the new token — so a
+failure anywhere leaves the app on the organization it started in rather than
+half-moved. There is no key to mint, retire, or roll back: the old token simply
+expires on its own ten-minute clock, and a turn already running finishes on the
+credential it started with.
+
+**Naming the organization needs the listing, not the token.** The realm issues
+the claim as `activate_organization` and it carries no display name, so a
+personal organization arrives as the raw `personal_<userId>` while Keycloak
+holds the label auth generated (`<email>'s organization`). The claim supplies
+the id and the listing supplies the name.
 
 ### A model the wallet can't pay for is not selectable
 

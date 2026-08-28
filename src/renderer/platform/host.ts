@@ -957,9 +957,11 @@ export async function mindshubRefresh(): Promise<{ ok: boolean; reason?: string;
   return { ok: false, reason: 'MindsHub refresh bridge is Electron-only.' };
 }
 
-export async function mindshubFinalize(): Promise<{ ok: boolean; reason?: string; upgradeRequired?: boolean; apiKey?: string }> {
+export async function mindshubFinalize(
+  organizationId?: string,
+): Promise<{ ok: boolean; reason?: string; upgradeRequired?: boolean; organization?: MindsOrg }> {
   if (isElectron && typeof bridge.mindshubFinalize === 'function') {
-    return bridge.mindshubFinalize();
+    return bridge.mindshubFinalize(organizationId);
   }
   return { ok: false, reason: 'MindsHub finalize bridge is Electron-only.' };
 }
@@ -980,6 +982,69 @@ export async function mindshubSetUserKey(
     return { ok: Boolean(result?.ok), supported: true, reason: result?.reason };
   }
   return { ok: false, supported: false };
+}
+
+// ---- MindsHub organizations ---------------------------------------------
+//
+// Which organization the credential this install presents names. Both calls are
+// Electron-only and both degrade to "no organizations" rather than throwing:
+// the renderer bundle updates over the air while `src/main/**` only arrives in
+// a new installer, so a newer UI regularly runs against a main process that has
+// never heard of these channels.
+
+export interface MindsOrg {
+  id: string;
+  name: string;
+  displayName: string;
+  isPersonal: boolean;
+}
+
+export interface MindsOrgList {
+  orgs: MindsOrg[];
+  activeOrgId: string | null;
+}
+
+export interface SwitchMindsOrgResult {
+  ok: boolean;
+  activeOrgId: string | null;
+  orgs: MindsOrg[];
+  error?: string;
+}
+
+const NO_ORGS: MindsOrgList = { orgs: [], activeOrgId: null };
+
+export async function mindshubListOrgs(): Promise<MindsOrgList> {
+  if (isElectron && typeof bridge.mindshubListOrgs === 'function') {
+    try {
+      const result = await bridge.mindshubListOrgs();
+      return {
+        orgs: Array.isArray(result?.orgs) ? result.orgs : [],
+        activeOrgId: result?.activeOrgId ?? null,
+      };
+    } catch (error) {
+      // The resting shape, not a throw. Every caller treats "no organizations"
+      // as the state before the read lands, and the one on the onboarding path
+      // has no error branch to fall into — a rejection there strands sign-in on
+      // the validating screen with nothing on it.
+      console.warn('[host] could not read the MindsHub organizations', error);
+      return NO_ORGS;
+    }
+  }
+  return NO_ORGS;
+}
+
+export async function mindshubSwitchOrg(organizationId: string): Promise<SwitchMindsOrgResult> {
+  if (isElectron && typeof bridge.mindshubSwitchOrg === 'function') {
+    try {
+      return await bridge.mindshubSwitchOrg(organizationId);
+    } catch (error) {
+      // A refusal is something the menu renders, so it has to arrive as a
+      // value. Throwing past the toast leaves the row looking untouched.
+      console.warn('[host] could not change the MindsHub organization', error);
+      return { ok: false, activeOrgId: null, orgs: [], error: 'We could not change organization. Please try again.' };
+    }
+  }
+  return { ok: false, activeOrgId: null, orgs: [], error: 'Changing organization needs the desktop app.' };
 }
 
 export async function mindshubGetCachedToken(): Promise<string | null> {
@@ -1101,6 +1166,8 @@ export const host = {
   mindshubRefresh,
   mindshubFinalize,
   mindshubSetUserKey,
+  mindshubListOrgs,
+  mindshubSwitchOrg,
   mindshubGetCachedToken,
   onMindsHubAuthChanged,
   getKeychainPref,

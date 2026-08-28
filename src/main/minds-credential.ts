@@ -25,7 +25,7 @@
 // The current token is read straight from the store, which minds-auth has
 // already written by the time it calls.
 
-import { getAccessToken } from './token-store';
+import { getAccessToken, getRefreshToken, isAccessTokenExpired } from './token-store';
 import { getServerPort, isServerRunning, isServerStarting } from './server-process';
 import { authHeader } from './server-auth';
 import { getMindsApiKey, setMindsApiKey, deleteMindsApiKey } from './keychain-service';
@@ -100,6 +100,35 @@ export async function syncMindsCredential(): Promise<boolean> {
   return pushMindsCredential(await resolveMindsCredential());
 }
 
+/**
+ * Get the sidecar onto a credential the gateway will accept, at boot.
+ *
+ * Boot routing is held across this: `serverConfigured()` reads `config_ready`
+ * the moment `bootServerSettled` resolves, and `resolveBootTarget` consults it
+ * before it ever reaches `awaitBootReady()`, so a launch that releases the gate
+ * first routes a signed-in user into onboarding while the push is in flight.
+ *
+ * `refresh` is injected rather than imported because it lives in minds-auth,
+ * which imports this module — see the note at the top of the file.
+ *
+ * Two things it deliberately does NOT gate on. Not the refresh token: someone
+ * running on a key they supplied by hand has one in the keychain and no
+ * Keycloak session, and gating on the session leaves those installs
+ * unconfigured after every restart. And not success: having nothing to hand
+ * over is a real state, and pushing a blank there would only clear what the
+ * sidecar already lacks.
+ */
+export async function establishMindsCredential(
+  refresh: () => Promise<unknown>,
+): Promise<boolean> {
+  // The in-memory access token is process-lifetime only and a laptop may have
+  // slept past its expiry, so refresh before handing anything over.
+  if (getRefreshToken() && isAccessTokenExpired()) await refresh();
+  const credential = await resolveMindsCredential();
+  if (!credential) return false;
+  return pushMindsCredential(credential);
+}
+
 /** Store a user-supplied MindsHub key and hand it to the sidecar immediately. */
 export async function setUserSuppliedMindsKey(key: string): Promise<boolean> {
   await setMindsApiKey(key);
@@ -110,11 +139,28 @@ export async function setUserSuppliedMindsKey(key: string): Promise<boolean> {
  * Forget a user-supplied key and fall back to the session credential.
  *
  * The push is not optional: without it the sidecar keeps running on the key the
- * user just removed until something else happens to push.
+ * user just removed until something else happens to push. So the delete cannot
+ * be allowed to skip it — see `forgetMindsCredential` for why that is possible.
  */
 export async function clearUserSuppliedMindsKey(): Promise<boolean> {
-  await deleteMindsApiKey();
+  await forgetStoredKey();
   return syncMindsCredential();
+}
+
+/**
+ * Drop the stored key, reporting failure rather than raising it.
+ *
+ * `keychain-service` swallows every keytar error and falls through to its
+ * encrypted file, but that file's WRITE is unguarded, so on a machine with no
+ * OS secure store a delete can still throw. Both callers below have a second
+ * step that matters more than this one, and neither may be skipped by it.
+ */
+async function forgetStoredKey(): Promise<void> {
+  try {
+    await deleteMindsApiKey();
+  } catch (error) {
+    console.warn('[minds-credential] could not delete the stored key', error);
+  }
 }
 
 /**
@@ -124,9 +170,10 @@ export async function clearUserSuppliedMindsKey(): Promise<boolean> {
  * keychain entry behind, and the next sidecar start would push it straight back
  * — a signed-out install quietly running on a credential again. Deleting the
  * keychain entry alone would leave the sidecar holding the value it already has
- * until something else pushed.
+ * until something else pushed. So a failing delete must not skip the push, which
+ * is what `forgetStoredKey` is for.
  */
 export async function forgetMindsCredential(): Promise<void> {
-  await deleteMindsApiKey();
+  await forgetStoredKey();
   await pushMindsCredential(null);
 }

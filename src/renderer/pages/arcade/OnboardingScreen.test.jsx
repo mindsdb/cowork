@@ -15,6 +15,10 @@ const hostMock = vi.hoisted(() => ({
   validateProvider: vi.fn(async () => ({ ok: true })),
   readSettings: vi.fn(async () => ({})),
   restartServer: vi.fn(async () => {}),
+  // Between signing in and minting, the screen asks which organization the key
+  // belongs to. One organization is the default answer here, so every existing
+  // test below goes straight to the mint as it always did.
+  mindshubListOrgs: vi.fn(async () => ({ orgs: [], activeOrgId: null })),
 }));
 // Mutable keycloak mock so a test can flip authenticated (standalone/localhost
 // auto-finalize path). Hosted cloud never authenticates here → stays false.
@@ -127,6 +131,7 @@ describe('OnboardingScreen — desktop sign-up returns to the app (ENG-917)', ()
     hostMock.openExternal = vi.fn();
     hostMock.oauthCancel = vi.fn(async () => {});
     hostMock.checkInstall = vi.fn(async () => ({ antonInstalled: true, serverDepsReady: true }));
+    hostMock.mindshubListOrgs = vi.fn(async () => ({ orgs: [], activeOrgId: null }));
     hostMock.mindshubLogin = vi.fn(async () => ({ ok: false, reason: 'unused in these tests' }));
     hostMock.mindshubFinalize = vi.fn(async () => ({ ok: true }));
     // Electron routes a pasted MindsHub key to main instead of writing it as an
@@ -261,6 +266,7 @@ describe('OnboardingScreen — a refused key routes to BYOK and is counted (ENG-
     hostMock.saveSettings = vi.fn(async () => true);
     hostMock.checkInstall = vi.fn(async () => ({ antonInstalled: true, serverDepsReady: true }));
     hostMock.mindshubSignup = vi.fn(async () => ({ ok: true, access_token: 'kc-t' }));
+    hostMock.mindshubListOrgs = vi.fn(async () => ({ orgs: [], activeOrgId: null }));
     keycloakMock.authenticated = false;
     analyticsMock.trackKeyProvisioningRefused.mockClear();
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({}) })));
@@ -384,5 +390,101 @@ describe('OnboardingScreen — the MindsHub path probes once, on the free model'
 
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
     expect(screen.getByText(/Invalid API key/)).toBeInTheDocument();
+  });
+});
+
+// ── Which organization the key is minted in ───────────────────────
+//
+// An API key belongs to whatever organization the token names when it is
+// minted, and nothing used to influence that in the user's favour: a Beta Labs
+// employee whose console tab happened to have Personal active got a key their
+// company could neither pay for nor revoke. Ranking fixes the common case in
+// the main process; this screen covers the one it cannot answer on its own,
+// which is an account belonging to two company organizations.
+describe('OnboardingScreen — choosing an organization at sign-in', () => {
+  const ACME = { id: 'org-acme', name: 'acme.example', displayName: 'acme.example', isPersonal: false };
+  const BETA = { id: 'org-beta', name: 'beta.example', displayName: 'Beta Labs', isPersonal: false };
+  const PERSONAL = {
+    id: 'org-personal',
+    name: 'personal_user-1',
+    displayName: "hazem@example.com's organization",
+    isPersonal: true,
+  };
+
+  beforeEach(() => {
+    hostMock.isWeb = false;
+    hostMock.isElectron = true;
+    hostMock.openExternal = vi.fn();
+    hostMock.saveSettings = vi.fn(async () => true);
+    hostMock.checkInstall = vi.fn(async () => ({ antonInstalled: true, serverDepsReady: true }));
+    hostMock.mindshubLogin = vi.fn(async () => ({ ok: true, access_token: 'kc-t' }));
+    hostMock.mindshubFinalize = vi.fn(async () => ({ ok: true, apiKey: 'mdb_t', organization: ACME }));
+    keycloakMock.authenticated = false;
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({}) })));
+  });
+
+  const signIn = async () => {
+    render(<OnboardingScreen coworker={coworker} onComplete={() => {}} />);
+    (await screen.findByRole('button', { name: 'Sign in' })).click();
+  };
+
+  it('asks nothing of a personal-only account, and mints straight away', async () => {
+    // The path every existing user is on. It has to look exactly as it did.
+    hostMock.mindshubListOrgs = vi.fn(async () => ({ orgs: [PERSONAL], activeOrgId: PERSONAL.id }));
+    await signIn();
+    await waitFor(() => expect(hostMock.mindshubFinalize).toHaveBeenCalledTimes(1));
+    expect(hostMock.mindshubFinalize).toHaveBeenCalledWith(undefined);
+    expect(screen.queryByText('Choose an organization')).toBeNull();
+  });
+
+  it('asks nothing when there is one company organization to rank ahead', async () => {
+    // Ranking already has the answer, and a picker with one real option is a
+    // question that reads as a decision the person has to make.
+    hostMock.mindshubListOrgs = vi.fn(async () => ({ orgs: [ACME, PERSONAL], activeOrgId: PERSONAL.id }));
+    await signIn();
+    await waitFor(() => expect(hostMock.mindshubFinalize).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText('Choose an organization')).toBeNull();
+  });
+
+  it('offers a pick for two company organizations, defaulting to the first', async () => {
+    hostMock.mindshubListOrgs = vi.fn(async () => ({ orgs: [ACME, BETA, PERSONAL], activeOrgId: PERSONAL.id }));
+    await signIn();
+    await screen.findByText('Choose an organization');
+    // Nothing is minted until the person answers.
+    expect(hostMock.mindshubFinalize).not.toHaveBeenCalled();
+    // The default is the first company organization, which is the answer the
+    // ranking would have reached on its own.
+    expect(screen.getByRole('radio', { name: /acme\.example/ })).toBeChecked();
+    // The personal organization is offered too: someone may deliberately want it.
+    expect(screen.getByRole('radio', { name: /hazem@example\.com's organization/ })).toBeInTheDocument();
+  });
+
+  it('mints in the organization that was picked', async () => {
+    hostMock.mindshubListOrgs = vi.fn(async () => ({ orgs: [ACME, BETA, PERSONAL], activeOrgId: PERSONAL.id }));
+    hostMock.mindshubFinalize = vi.fn(async () => ({ ok: true, apiKey: 'mdb_t', organization: BETA }));
+    await signIn();
+    await screen.findByText('Choose an organization');
+    fireEvent.click(screen.getByRole('radio', { name: /Beta Labs/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    await waitFor(() => expect(hostMock.mindshubFinalize).toHaveBeenCalledWith(BETA.id));
+  });
+
+  it('names the organization the key actually landed in', async () => {
+    // Not the one it asked for: the entitlement and personal-organization
+    // fallbacks in main can still move it, and saying the wrong name is how
+    // someone believes their usage is billed somewhere it is not.
+    hostMock.mindshubListOrgs = vi.fn(async () => ({ orgs: [ACME, PERSONAL], activeOrgId: PERSONAL.id }));
+    hostMock.mindshubFinalize = vi.fn(async () => ({ ok: true, apiKey: 'mdb_t', organization: PERSONAL }));
+    await signIn();
+    await waitFor(() => expect(screen.getByText(/Working in/)).toBeInTheDocument());
+    expect(screen.getByText("hazem@example.com's organization")).toBeInTheDocument();
+  });
+
+  it('says nothing about an organization when the mint did not report one', async () => {
+    hostMock.mindshubListOrgs = vi.fn(async () => ({ orgs: [], activeOrgId: null }));
+    hostMock.mindshubFinalize = vi.fn(async () => ({ ok: true, apiKey: 'mdb_t' }));
+    await signIn();
+    await waitFor(() => expect(hostMock.mindshubFinalize).toHaveBeenCalled());
+    expect(screen.queryByText(/Working in/)).toBeNull();
   });
 });

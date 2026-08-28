@@ -22,8 +22,8 @@ import { fetchAccountIdentity, buildRevokeRequest } from './oauth-identity';
 import { openDrivePickerFlow, cancelCurrentDrivePicker, isValidDriveFileIds } from './drive-picker-service';
 import { getPickedFiles, savePickedFiles, verifyPickedFiles, type PickedFile } from './picked-files';
 import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefreshTokenStore, isAccessTokenExpired } from './token-store';
-import { refreshTokensOnly, commitMindsSignIn, selectEntitledOrg, scheduleRefresh, cancelScheduledRefresh, revokeDeviceKeyAndEndSession, getRevokeToken, KEYCLOAK_AUTH_URL, KEYCLOAK_REGISTRATION_URL, KEYCLOAK_TOKEN_URL, SIGNUP_CALLBACK_TIMEOUT_MS } from './minds-auth';
-import { clearUserSuppliedMindsKey, forgetMindsCredential, setUserSuppliedMindsKey, syncMindsCredential } from './minds-credential';
+import { refreshTokensOnly, commitMindsSignIn, selectEntitledOrg, scheduleRefresh, cancelScheduledRefresh, revokeDeviceKeyAndEndSession, getRevokeToken, freshAccessToken, listMindsOrgs, switchMindsOrg, KEYCLOAK_AUTH_URL, KEYCLOAK_REGISTRATION_URL, KEYCLOAK_TOKEN_URL, SIGNUP_CALLBACK_TIMEOUT_MS } from './minds-auth';
+import { clearUserSuppliedMindsKey, establishMindsCredential, forgetMindsCredential, setUserSuppliedMindsKey, syncMindsCredential } from './minds-credential';
 import { scrubEnvCredentials } from './logout-env';
 import { MINDS_API_HOST } from './minds-urls';
 import {
@@ -493,98 +493,112 @@ function createWindow() {
   });
 }
 
+// How long boot routing waits for the sidecar to be handed its credential.
+// Routing is held across this (see the boot sequence), so it is sized to cover
+// a Keycloak refresh plus a loopback PUT and no more; overrunning it costs a
+// misrouted launch, not a broken one, and the refresh timer pushes again.
+const BOOT_CREDENTIAL_TIMEOUT_MS = 15_000;
+
 // IPC handlers
 // The full MindsHub sign-out, as a named function because two callers run
 // it: the AUTH_LOGOUT handler below, and the one-time migration off a
 // minted device key at boot. Extracted verbatim — the ordering inside it is
 // load-bearing and is explained step by step.
 async function performMindsSignOut() {
-// Full sign-out: clear every credential + LLM-config key so the
-// next launch's checkConfigured() returns false and the user is
-// routed straight to onboarding. We deliberately keep
-// ANTON_TERMS_CONSENT (the user already agreed) and non-credential
-// preferences (memory mode, theme, etc.).
-//
-// We must NOT await the chain below: when the dev Keycloak hangs
-// (which has happened), a synchronous await freezes the whole
-// logout, leaving the confirm modal stuck on "Signing out…"
-// because the renderer is waiting on this IPC.
-//
-// ENG-498: revoke THIS device's key while the session is still valid,
-// then end the Keycloak session — one detached chain (see
-// revokeDeviceKeyAndEndSession for the ordering rationale). Tokens are
-// snapshotted here because clearTokens() below wipes them; the token
-// fetch is bounded (~5s) so a dead IdP can't stall sign-out, in which
-// case the key simply falls to the server-side TTL.
-const revokeAccessToken = await getRevokeToken();
-// Read the refresh token only AFTER the exchange above settles: a
-// refresh inside getRevokeToken may ROTATE the persisted refresh token
-// (see its NOTE), and reading earlier would hand end-session a
-// superseded token.
-const logoutRefreshToken = getRefreshToken();
-void revokeDeviceKeyAndEndSession(revokeAccessToken, logoutRefreshToken);
-cancelScheduledRefresh();
-// Take every MindsHub credential away first and await it, unlike the
-// detached revoke above. This is the step that actually stops this
-// install's turns, and the renderer treats the IPC resolving as "signed
-// out" — so a fire-and-forget push could lose the race and leave the
-// sidecar running on a live token after the UI said otherwise.
-await forgetMindsCredential();
-// Tear down any sign-in still waiting on its browser tab. Without
-// this, the loopback server stays armed for up to 3 minutes and
-// completing that stale tab silently signs the user back in after
-// an explicit logout.
-cancelCurrentOAuth();
-clearTokens();
-
-// Clear credentials from the server's SQLite DB (the authoritative
-// source for config_ready). A single POST /settings/logout atomically
-// clears all credential keys and provider state in one transaction.
-// If the endpoint isn't available (404/405 — older server version),
-// fall back to individual DELETE requests for each credential key.
-let dbCleared = false;
-if (isServerRunning() || isServerStarting()) {
-  const port = getServerPort();
+  // Full sign-out: clear every credential + LLM-config key so the
+  // next launch's checkConfigured() returns false and the user is
+  // routed straight to onboarding. We deliberately keep
+  // ANTON_TERMS_CONSENT (the user already agreed) and non-credential
+  // preferences (memory mode, theme, etc.).
+  //
+  // We must NOT await the chain below: when the dev Keycloak hangs
+  // (which has happened), a synchronous await freezes the whole
+  // logout, leaving the confirm modal stuck on "Signing out…"
+  // because the renderer is waiting on this IPC.
+  //
+  // ENG-498: revoke THIS device's key while the session is still valid,
+  // then end the Keycloak session — one detached chain (see
+  // revokeDeviceKeyAndEndSession for the ordering rationale). Tokens are
+  // snapshotted here because clearTokens() below wipes them; the token
+  // fetch is bounded (~5s) so a dead IdP can't stall sign-out, in which
+  // case the key simply falls to the server-side TTL.
+  const revokeAccessToken = await getRevokeToken();
+  // Read the refresh token only AFTER the exchange above settles: a
+  // refresh inside getRevokeToken may ROTATE the persisted refresh token
+  // (see its NOTE), and reading earlier would hand end-session a
+  // superseded token.
+  const logoutRefreshToken = getRefreshToken();
+  void revokeDeviceKeyAndEndSession(revokeAccessToken, logoutRefreshToken);
+  cancelScheduledRefresh();
+  // Take every MindsHub credential away first and await it, unlike the
+  // detached revoke above. This is the step that actually stops this
+  // install's turns, and the renderer treats the IPC resolving as "signed
+  // out" — so a fire-and-forget push could lose the race and leave the
+  // sidecar running on a live token after the UI said otherwise.
+  // Best-effort like every other step below it. keychain-fallback's write is
+  // unguarded, so on a machine with no OS secure store this can throw — and an
+  // unguarded throw here would skip the token clear, the DB clear, the .env
+  // scrub and the renderer reload, wedging the confirm modal on "Signing out…".
   try {
-    const res = await Promise.race([
-      httpRequest(`http://127.0.0.1:${port}/api/v1/settings/logout`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      }),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('logout request timed out')), 5000),
-      ),
-    ]);
-    dbCleared = res.status >= 200 && res.status < 300;
-    if (!dbCleared) console.warn('[logout] POST /settings/logout returned', res.status);
+    await forgetMindsCredential();
   } catch (err) {
-    console.warn('[logout] POST /settings/logout failed:', err);
+    console.warn('[logout] could not clear the MindsHub credential:', err);
   }
+  // Tear down any sign-in still waiting on its browser tab. Without
+  // this, the loopback server stays armed for up to 3 minutes and
+  // completing that stale tab silently signs the user back in after
+  // an explicit logout.
+  cancelCurrentOAuth();
+  clearTokens();
 
-  // Fallback: if POST /settings/logout isn't available (404/405 on
-  // older server versions that don't have the endpoint yet), clear
-  // each credential key individually via DELETE. Without this, the
-  // DB retains credentials and config_ready stays true after logout.
-  if (!dbCleared) {
-    console.log('[logout] falling back to individual DELETE requests');
-    const DB_CREDENTIAL_KEYS = [
-      'minds_api_key', 'anthropic_api_key', 'openai_api_key',
-      'gemini_api_key', 'openai_compatible_api_key',
-      'minds_url', 'openai_base_url',
-      'providers_json', 'provider_status', 'provider_status_details',
-    ];
-    const deletes = DB_CREDENTIAL_KEYS.map((key) =>
-      httpRequest(`http://127.0.0.1:${port}/api/v1/settings/${key}`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-      }).catch(() => { /* best effort */ }),
-    );
-    await Promise.race([
-      Promise.allSettled(deletes),
-      new Promise<void>((resolve) => setTimeout(resolve, 5000)),
-    ]);
-    dbCleared = true;
-  }
+  // Clear credentials from the server's SQLite DB (the authoritative
+  // source for config_ready). A single POST /settings/logout atomically
+  // clears all credential keys and provider state in one transaction.
+  // If the endpoint isn't available (404/405 — older server version),
+  // fall back to individual DELETE requests for each credential key.
+  let dbCleared = false;
+  if (isServerRunning() || isServerStarting()) {
+    const port = getServerPort();
+    try {
+      const res = await Promise.race([
+        httpRequest(`http://127.0.0.1:${port}/api/v1/settings/logout`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('logout request timed out')), 5000),
+        ),
+      ]);
+      dbCleared = res.status >= 200 && res.status < 300;
+      if (!dbCleared) console.warn('[logout] POST /settings/logout returned', res.status);
+    } catch (err) {
+      console.warn('[logout] POST /settings/logout failed:', err);
+    }
+
+    // Fallback: if POST /settings/logout isn't available (404/405 on
+    // older server versions that don't have the endpoint yet), clear
+    // each credential key individually via DELETE. Without this, the
+    // DB retains credentials and config_ready stays true after logout.
+    if (!dbCleared) {
+      console.log('[logout] falling back to individual DELETE requests');
+      const DB_CREDENTIAL_KEYS = [
+        'minds_api_key', 'anthropic_api_key', 'openai_api_key',
+        'gemini_api_key', 'openai_compatible_api_key',
+        'minds_url', 'openai_base_url',
+        'providers_json', 'provider_status', 'provider_status_details',
+      ];
+      const deletes = DB_CREDENTIAL_KEYS.map((key) =>
+        httpRequest(`http://127.0.0.1:${port}/api/v1/settings/${key}`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+        }).catch(() => { /* best effort */ }),
+      );
+      await Promise.race([
+        Promise.allSettled(deletes),
+        new Promise<void>((resolve) => setTimeout(resolve, 5000)),
+      ]);
+      dbCleared = true;
+    }
 }
 
 // Scrub credential keys from the shared .env (see logout-env.ts). Since the
@@ -1048,13 +1062,13 @@ function setupIPC() {
   // Nothing is minted and nothing is written: the token goes to the sidecar's
   // runtime holder, and the refresh timer keeps handing over a fresh one.
   // Renderer only calls this on the paid-user / Minds-as-LLM path.
-  ipcMain.handle(IPC.MINDSHUB_FINALIZE, async () => {
+  ipcMain.handle(IPC.MINDSHUB_FINALIZE, async (_e, organizationId?: string) => {
     const token = getAccessToken();
     if (!token) {
       console.error('[mindshub:finalize] no cached access token — login may not have completed');
       return { ok: false, reason: 'No cached MindsHub access token.' };
     }
-    const selected = await selectEntitledOrg(token);
+    const selected = await selectEntitledOrg(token, { preferOrgId: organizationId });
     if (!selected.token) {
       console.error('[mindshub:finalize] could not select an organization:', selected.error);
       return { ok: false, reason: selected.error || 'Could not select a MindsHub organization.' };
@@ -1065,8 +1079,22 @@ function setupIPC() {
       console.error('[mindshub:finalize] commitMindsSignIn failed:', err);
       return { ok: false, reason: `Failed to save MindsHub settings: ${err?.message || err}` };
     }
-    return { ok: true };
+    // The organization the presented token names, which the ranking asks for
+    // and the entitlement hunt can still move. Onboarding names this one
+    // rather than the one it requested.
+    return { ok: true, organization: selected.organization };
   });
+
+  // The organizations this person belongs to, company ones first, and which
+  // one their token names. Read here rather than in the renderer because the
+  // renderer cannot reach Keycloak: auth's ingress names console origins in
+  // its CORS allowlist and no Cowork host is among them.
+  ipcMain.handle(IPC.MINDSHUB_LIST_ORGS, () => listMindsOrgs());
+
+  // Move this install to another organization: switch the session, mint and
+  // commit a key there, remember the pick, and retire the key left behind.
+  ipcMain.handle(IPC.MINDSHUB_SWITCH_ORG, (_e, organizationId: string) =>
+    switchMindsOrg(String(organizationId || '')));
 
   // Returns the in-memory access token if one is cached (e.g. boot-
   // time silent refresh already succeeded). Lets the Onboarding page
@@ -1081,10 +1109,15 @@ function setupIPC() {
   ipcMain.handle(IPC.MINDSHUB_SET_USER_KEY, async (_evt, rawKey: unknown) => {
     const key = typeof rawKey === 'string' ? rawKey.trim() : '';
     try {
-      if (key) {
-        await setUserSuppliedMindsKey(key);
-      } else {
-        await clearUserSuppliedMindsKey();
+      // Both helpers report whether the sidecar actually took the value. Say so
+      // rather than reporting a bare success: the renderer diverts the key out
+      // of the settings write on the strength of this answer, so a silent
+      // `ok: true` on a failed hand-over is how the key ends up stored nowhere.
+      const handedOver = key
+        ? await setUserSuppliedMindsKey(key)
+        : await clearUserSuppliedMindsKey();
+      if (!handedOver) {
+        return { ok: false, reason: 'Saved the key, but the local server did not take it. Try again in a moment.' };
       }
       return { ok: true };
     } catch (err: any) {
@@ -1099,13 +1132,7 @@ function setupIPC() {
   // a perfectly valid refresh token sits on disk. Refresh on miss so the
   // Settings account card reflects the real session instead of showing
   // an authenticated user as signed out (ENG-761).
-  ipcMain.handle(IPC.AUTH_GET_ACCESS_TOKEN, async () => {
-    const cached = getAccessToken();
-    if (cached && !isAccessTokenExpired()) return cached;
-    if (!getRefreshToken()) return cached;
-    const result = await refreshTokensOnly();
-    return result.status === 'ok' ? result.token : getAccessToken();
-  });
+  ipcMain.handle(IPC.AUTH_GET_ACCESS_TOKEN, () => freshAccessToken());
 
   ipcMain.handle(IPC.AUTH_LOGOUT, performMindsSignOut);
 
@@ -1601,7 +1628,6 @@ app.whenReady().then(async () => {
         result = await startServer();
       }
     }
-    resolveBootServer();  // readiness decided — unblock routing before the OTA checks below
     if (result.ok) {
       console.log(`[server] running on http://127.0.0.1:${result.port}`);
       // Resume refresh loops for Google OAuth connections already in the
@@ -1630,22 +1656,44 @@ app.whenReady().then(async () => {
       } catch (err) {
         console.warn('[minds-auth] migration sign-out failed; will retry next launch', err);
       }
+      // The marker is the `.env` line, and `performMindsSignOut` scrubs it
+      // best-effort — it logs a failed write and presses on. So confirm the
+      // line is actually gone rather than assuming the sign-out removed it: if
+      // it survived, this runs again on the next launch, and every launch after
+      // that, signing the user out each time with nothing saying why.
+      if (readEnvFile()['ANTON_MINDS_API_KEY']) {
+        console.error('[minds-auth] migration ran but ANTON_MINDS_API_KEY is still in .env — it will retry next launch');
+      }
     }
 
-    // Hand the sidecar its MindsHub credential. It holds that value in memory
-    // and nothing persists it, so every start needs this — a launch, an
-    // auto-update, a crash restart. Without it the sidecar comes up with no
-    // credential, `config_ready` reads false, and the launch routes a
-    // perfectly signed-in user into onboarding.
+    // Hand the sidecar its MindsHub credential BEFORE releasing boot routing.
     //
-    // The token in the store may be stale after a long sleep, so refresh
-    // first when it is; refreshTokensOnly pushes on its own success, and the
-    // sync here covers the case where it was still valid and no refresh ran.
-    // Skipped after a migration, which just cleared the session on purpose.
-    if (!migrating && getRefreshToken()) {
-      if (isAccessTokenExpired()) await refreshTokensOnly();
-      await syncMindsCredential();
+    // It holds that value in memory and nothing persists it, so every start
+    // needs this — a launch, an auto-update, a crash restart. Without it the
+    // sidecar comes up with no credential and `config_ready` reads false.
+    //
+    // The ordering is the load-bearing part. `serverConfigured()` awaits
+    // `bootServerSettled` and then reads `config_ready` straight away, and
+    // `resolveBootTarget` consults it BEFORE it ever reaches `awaitBootReady()`
+    // — so releasing the gate first means the renderer reads "unconfigured" and
+    // routes a perfectly signed-in user into onboarding while this push is
+    // still in flight.
+    //
+    // Gated on there being a credential to hand over, NOT on a refresh token: a
+    // user running on a key they supplied by hand has one in the keychain and no
+    // Keycloak session at all, and gating on the session left those installs
+    // unconfigured after every restart.
+    //
+    // Bounded, because routing now waits on it: a Keycloak that hangs must cost
+    // a few seconds of boot, not the app. `pushMindsCredential` carries its own
+    // 10s timeout, and both halves report failure rather than throwing.
+    if (!migrating) {
+      await Promise.race([
+        establishMindsCredential(refreshTokensOnly),
+        new Promise<void>((resolve) => setTimeout(resolve, BOOT_CREDENTIAL_TIMEOUT_MS)),
+      ]);
     }
+    resolveBootServer();  // readiness decided — unblock routing before the OTA checks below
     // A constrained OTA cache that booted bundled (fail-closed) is re-verified
     // and, if compatible, swapped in by the updater's boot check after the
     // server-update pass — see settleConstrainedCache in updater.ts.
