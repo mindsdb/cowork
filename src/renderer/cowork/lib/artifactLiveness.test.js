@@ -53,6 +53,18 @@ describe('artifactKeys', () => {
     expect(artifactKeys(chatCard({ slug: '' })).projectSlug).toBe('');
   });
 
+  // The prefix key exists for one thing: a hex id that grew from eight
+  // characters to 32. Handing it any other id shape turns it into a
+  // starts-alike matcher over unrelated artifacts.
+  it('takes an id prefix from hex ids only', () => {
+    expect(artifactKeys({ id: '7db94eb8f0a54c7e9c1d2b3a4f5e6d70' }).idPrefix).toBe('7db94eb8');
+    expect(artifactKeys({ id: '7DB94EB8' }).idPrefix).toBe('7db94eb8');
+    expect(artifactKeys({ id: 'q3-launch-readiness-7db94eb8' }).idPrefix).toBe('');
+    expect(artifactKeys({ id: 'artifact/7db94eb8-f0a5-4c7e-9c1d-2b3a4f5e6d70' }).idPrefix).toBe('');
+    expect(artifactKeys({ id: '7db94eb' }).idPrefix).toBe('');
+    expect(artifactKeys({ id: '' }).idPrefix).toBe('');
+  });
+
   it('prefers canonicalPath, then file_path, then path', () => {
     expect(artifactKeys({ canonicalPath: '/a', file_path: '/b', path: '/c' }).path).toBe('/a');
     expect(artifactKeys({ file_path: '/b', path: '/c' }).path).toBe('/b');
@@ -89,6 +101,22 @@ describe('matchesIndex', () => {
     });
 
     expect(matchesIndex(widened, index)).toBe(true);
+  });
+
+  // Fail-open is the rule, but the prefix bridge must not widen it into "any
+  // two cards whose ids start alike are the same artifact": that would keep a
+  // genuinely deleted card on screen forever.
+  it('does not bridge two non-hex ids that start alike', () => {
+    const index = buildArtifactIndex([serverCard({
+      id: 'q3-launch-readiness-aaaaaaaa',
+      slug: 'other', projectId: '', folder: '/elsewhere', path: '/elsewhere/index.html',
+    })]);
+    const card = chatCard({
+      id: 'q3-launch-readiness-bbbbbbbb',
+      slug: '', projectId: '', canonicalPath: '',
+    });
+
+    expect(matchesIndex(card, index)).toBe(false);
   });
 
   it('matches on projectId + slug when ids differ', () => {

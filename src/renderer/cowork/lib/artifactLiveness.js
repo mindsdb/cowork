@@ -60,6 +60,14 @@ export function emptyArtifactIndex() {
 // ARTIFACT_ID_SLUG_PREFIX_LEN.
 const ID_PREFIX_LEN = 8;
 
+// Ids are hex: 32 characters since the widening, eight before it. Only those
+// shapes get bridged by prefix. Any other `id` a card might carry — a slug, a
+// composite key — shares its first eight characters with every sibling spelled
+// alike (`q3-launch-…` vs `q3-launch-…`), and bridging those would silently
+// match unrelated artifacts, so a card whose artifact really is gone would
+// keep reading as "still there".
+const HEX_ID = /^[0-9a-f]+$/;
+
 /** Every way this card can be recognised. Absent keys are `''`, never null, so
  *  callers can test with a plain truthiness check. */
 export function artifactKeys(card) {
@@ -72,8 +80,9 @@ export function artifactKeys(card) {
     // Bridges the two id spellings: a widened server card and the pre-widening
     // chat card for the same artifact share these eight characters. Indexing
     // both can only ever produce a false "still there", never a false
-    // "deleted" — the direction this file is built to fail in.
-    idPrefix: id.slice(0, ID_PREFIX_LEN),
+    // "deleted" — the direction this file is built to fail in. Hex only, so
+    // the bridge cannot reach past the widening it exists for.
+    idPrefix: HEX_ID.test(id) && id.length >= ID_PREFIX_LEN ? id.slice(0, ID_PREFIX_LEN) : '',
     // Only a PAIR identifies an artifact: a slug is unique within a project's
     // conversation at best (see ENG-1678), never globally.
     projectSlug: projectId && slug ? `${projectId}/${slug}` : '',
