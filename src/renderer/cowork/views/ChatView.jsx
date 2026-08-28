@@ -31,7 +31,7 @@ import { FormErrorBoundary } from '../components/datavault/FormErrorBoundary';
 import { revealArtifact, exportArtifact, attachmentRawUrl, artifactServeUrl, fetchHealth } from '../api';
 import { AttachmentThumbnail, useBlobImageSrc } from '../components/AttachmentThumbnail';
 import { normalizeArtifactRecord } from '../lib/artifactPaths';
-import { isImageArtifact } from '../lib/artifactKinds';
+import { canPreviewLocally, canPreviewOrgDraft, isImageArtifact } from '../lib/artifactKinds';
 import { downloadArtifactFile } from '../lib/artifactDownload';
 import { latestSkillCardIndexByKey } from '../lib/skillCards';
 import { host, isWeb } from '../../platform/host';
@@ -582,17 +582,14 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
   const revalidateAfterFailure = () => { revalidateArtifacts().catch(() => {}); };
 
   // Match the Working folder card's behavior: HTML and text artifacts
-  // (.md/.txt/.csv) open the in-app viewer — HTML via sandboxed iframe,
-  // text via inline markdown / table / preformatted render. Anything
-  // else falls through to the OS handler via the Electron bridge.
-  const lcExt = (artifact.ext || '').toLowerCase();
-  const lcPath = (path || '').toLowerCase();
-  const isHtml = lcExt === '.html' || lcPath.endsWith('.html');
-  const _INLINE_TEXT_EXTS = ['.md', '.txt', '.csv'];
-  const isInlineText = _INLINE_TEXT_EXTS.includes(lcExt)
-    || _INLINE_TEXT_EXTS.some((e) => lcPath.endsWith(e));
+  // (.md/.txt/.csv) and images open the in-app viewer — HTML via sandboxed
+  // iframe, text via inline markdown / table / preformatted render, images
+  // from the serve URL. Anything else falls through to the OS handler via the
+  // Electron bridge. In org mode the same question is answered from the
+  // authenticated draft URL instead, which rules images and fullstack apps out.
   const isImage = isImageArtifact(artifact);
-  const canPreviewInline = isHtml || isInlineText || isImage;
+  const canPreviewInline = canPreviewLocally(artifact);
+  const canPreviewDraft = canPreviewOrgDraft(artifact);
   // Thumbnail bytes for the icon slot — same CSP workaround AttachmentThumbnail
   // uses (loopback <img src> is blocked; fetch + blob: URL is not). '' when not
   // an image, or before the artifact card carries a serveUrl (org mode, or the
@@ -603,8 +600,14 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
     orgMode,
     published,
     canPreviewInline,
+    canPreviewDraft,
     hasBridge: host.isElectron || !host.isWeb,
   });
+  // Org-mode destinations are addressed by the server card, through the draft
+  // URL or the shared URL, so a path this client could not canonicalize does
+  // not disable them. Desktop still needs the local path it hands to the OS.
+  const canActivate = orgMode ? !!openTarget : canAct;
+  const activateLabel = openTarget === 'published' ? 'Open shared artifact' : 'Open preview';
   // Export is hidden pending ENG-1988: PDF/DOCX conversion is broken for any
   // artifact beyond a plain markdown report (crashes, dumps raw JS into the
   // .docx), and HTML→HTML export can overwrite the source artifact in place.
@@ -636,34 +639,33 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
     }
   };
   const handleOpen = async () => {
-    // The org-mode published branch below returns before the `canAct` check, so
-    // it would survive a deletion. Its button is not rendered in that state, but
-    // relying on two conditions in different parts of the file agreeing is not
-    // worth the risk.
+    // The branches that need no local file return before the `canAct` check, so
+    // they would survive a deletion. Their buttons are not rendered in that
+    // state, but relying on two conditions in different parts of the file
+    // agreeing is not worth the risk.
     if (deleted) {
       showStatus('error', 'This artifact was deleted.');
       return;
     }
+    if (openTarget === 'preview' && onOpen) {
+      // The viewer reads the draft URL in org mode and the local bytes on
+      // desktop, so it opens on either without a canonical path of its own.
+      onOpen(artifact);
+      return;
+    }
     if (openTarget === 'published') {
-      // The published URL is the only route to this artifact's bytes a CLICK has
-      // on an org deployment, and it carries the access check. The private draft
-      // preview is reachable there too — from the artifacts gallery's '...' menu.
       try { host.openExternal(artifact.publishedUrl); }
       catch { window.open(artifact.publishedUrl, '_blank', 'noreferrer'); }
       return;
     }
     if (openTarget === null) {
       showStatus('error', orgMode
-        ? 'This artifact has no published link yet.'
+        ? 'This artifact cannot be previewed and has no shared link yet.'
         : (disabledReason || 'No artifact file path is available.'));
       return;
     }
     if (!canAct) {
       showStatus('error', disabledReason || 'No artifact file path is available.');
-      return;
-    }
-    if (openTarget === 'preview' && onOpen) {
-      onOpen(artifact);
       return;
     }
     try {
@@ -677,6 +679,12 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
       showStatus('error', e?.message || 'Could not open artifact.');
       revalidateAfterFailure();
     }
+  };
+  // The shared URL stays reachable beside the preview: it is the address a
+  // collaborator gets, and the chat turn is where the artifact was just made.
+  const handleOpenPublished = () => {
+    try { host.openExternal(artifact.publishedUrl); }
+    catch { window.open(artifact.publishedUrl, '_blank', 'noreferrer'); }
   };
   const handleReveal = async () => {
     if (!canAct) {
@@ -716,18 +724,19 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
     }
     showStatus('ok', 'Downloading…');
   };
-  // One primary action button instead of an Open/Show-in-Finder pair: org
-  // mode is unchanged (always the published URL, external — there is no
-  // local file to reveal or download there). Locally, what the button does
-  // follows what the artifact actually supports — Preview for anything the
+  // One primary action button instead of an Open/Show-in-Finder pair: what it
+  // does follows what the artifact actually supports — Preview for anything the
   // in-app modal can render, otherwise Download (web, streams the file) or
   // Show in Finder/Explorer (desktop, opens the containing FOLDER, not the
   // file) — never both, and never a generic "Open" that hides which of the
-  // two it's about to do.
+  // two it's about to do. Org mode reads the same rule off the draft URL, and
+  // an artifact it cannot render keeps the shared page as its one destination.
   const primaryAction = orgMode
-    ? (openTarget === 'published'
-      ? { label: 'Open', onClick: handleOpen, tooltip: 'Open the shared artifact' }
-      : null)
+    ? (openTarget === 'preview'
+      ? { label: 'Preview', onClick: handleOpen, tooltip: 'Preview this artifact in Cowork' }
+      : openTarget === 'published'
+        ? { label: 'Open', onClick: handleOpen, tooltip: 'Open the shared artifact' }
+        : null)
     : canPreviewInline
       ? { label: 'Preview', onClick: handleOpen, tooltip: canAct ? `Preview ${path}` : '' }
       : host.isWeb
@@ -737,6 +746,9 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
         // doesn't gate further on bridge availability the way the old
         // Open button didn't either.
         : { label: revealLabel, onClick: handleReveal, tooltip: canAct ? `${revealLabel}: ${path}` : '' };
+  // Only when the primary button is the preview: otherwise "Open" already is
+  // the shared page and a second button would point at the same place.
+  const showSharedLink = orgMode && published && openTarget === 'preview';
   const previewText = artifact.preview?.[0]?.heading || artifact.preview?.[0]?.text || displayPath;
   // Whole-card click → preview. The inner buttons (the primary action,
   // Title) all stopPropagation so their own handlers run instead of
@@ -746,12 +758,12 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
   return (
     <Card
       as="div"
-      interactive={canAct}
+      interactive={canActivate}
       padding="cozy"
-      onActivate={canAct ? handleOpen : undefined}
+      onActivate={canActivate ? handleOpen : undefined}
       aria-label={deleted
         ? `Deleted artifact: ${artifact.title}`
-        : (canAct ? `Open preview: ${artifact.title}` : disabledReason || 'No file path')}
+        : (canActivate ? `${activateLabel}: ${artifact.title}` : disabledReason || 'No file path')}
       className="grid grid-cols-[64px_1fr_auto] items-center gap-4"
     >
       <div
@@ -772,9 +784,9 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
             path to open. */}
         <button
           type="button"
-          onClick={(e) => { e.stopPropagation(); if (canAct) handleOpen(); }}
-          disabled={!canAct}
-          title={deleted ? 'This artifact was deleted' : (canAct ? `Open preview: ${artifact.title}` : disabledReason || 'No file path')}
+          onClick={(e) => { e.stopPropagation(); if (canActivate) handleOpen(); }}
+          disabled={!canActivate}
+          title={deleted ? 'This artifact was deleted' : (canActivate ? `${activateLabel}: ${artifact.title}` : disabledReason || 'No file path')}
           // kept inline: `all: unset` writes an inline declaration for every
           // longhand (incl. color/background), which always beats a Tailwind
           // utility class of equal-or-lower specificity — so every property
@@ -782,15 +794,15 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
           // recolor below has to keep mutating .style directly for the same reason.
           style={{
             all: 'unset',
-            cursor: canAct ? 'pointer' : 'not-allowed',
+            cursor: canActivate ? 'pointer' : 'not-allowed',
             fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 16, color: T.ink,
             letterSpacing: '0',
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             display: 'block', minWidth: 0,
             transition: 'color 120ms ease',
-            opacity: canAct ? 1 : 0.7,
+            opacity: canActivate ? 1 : 0.7,
           }}
-          onMouseOver={(e) => { if (canAct) { e.currentTarget.style.color = T.accent; e.currentTarget.style.textDecoration = 'underline'; e.currentTarget.style.textUnderlineOffset = '3px'; } }}
+          onMouseOver={(e) => { if (canActivate) { e.currentTarget.style.color = T.accent; e.currentTarget.style.textDecoration = 'underline'; e.currentTarget.style.textUnderlineOffset = '3px'; } }}
           onMouseOut={(e) => { e.currentTarget.style.color = T.ink; e.currentTarget.style.textDecoration = 'none'; }}
         >{artifact.title}</button>
         <span className="font-body text-sm text-ink-3 flex items-center gap-1.5">
@@ -855,6 +867,11 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
               </div>
             )}
           </div>
+        )}
+        {!deleted && showSharedLink && (
+          <Tooltip content="Open the shared artifact in a new tab">
+            <SmallBtn onClick={handleOpenPublished}>Shared link</SmallBtn>
+          </Tooltip>
         )}
         {!deleted && primaryAction && (
           <Tooltip content={primaryAction.tooltip}>

@@ -27,6 +27,7 @@ import { ConfirmModal } from '../ConfirmModal';
 import { host } from '../../../platform/host';
 import { useOrgMode } from '../../../lib/orgMode';
 import { artifactOpenTarget, needsClientUnpublishBeforeDelete } from '../../lib/artifactActions';
+import { canPreviewOrgDraft, isInlinePreviewable } from '../../lib/artifactKinds';
 import { deleteArtifactAndSync } from '../../lib/artifactsStore';
 
 // Map a file extension to a glyph from `Icons.jsx`. Buckets group
@@ -303,20 +304,15 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
   // viewer handles HTML via sandboxed iframe and .md/.txt/.csv via
   // the inline text path. Anything else falls through to the OS
   // handler so the user's default app picks it up.
-  const _INLINE_PREVIEW_EXTS = ['.html', '.md', '.txt', '.csv'];
   const onOpenArtifact = (artifact) => {
-    const ext = (artifact.ext || '').toLowerCase();
-    const path = (artifact.path || '').toLowerCase();
-    const canPreviewInline = _INLINE_PREVIEW_EXTS.includes(ext)
-      || _INLINE_PREVIEW_EXTS.some((e) => path.endsWith(e));
-    // In org mode the published URL is the only route to artifact content from
-    // here: the authenticated draft preview is offered from the artifacts
-    // gallery's '...' menu, not from this list. Local OS handoff remains a
-    // desktop-only capability.
+    // In org mode the viewer renders the authenticated draft instead of local
+    // bytes, and an artifact whose draft it cannot render keeps the published
+    // URL. Local OS handoff remains a desktop-only capability.
     const target = artifactOpenTarget({
       orgMode,
       published: !!artifact.publishedUrl,
-      canPreviewInline,
+      canPreviewInline: isInlinePreviewable(artifact),
+      canPreviewDraft: canPreviewOrgDraft(artifact),
       hasBridge: host.isElectron,
     });
     if (target === 'published') {

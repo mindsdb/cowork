@@ -138,12 +138,51 @@ beforeEach(() => {
 afterEach(() => setOrgMode(false));
 
 describe('inline artifact banner in org mode', () => {
-  it('opens the shared URL rather than the in-app viewer', async () => {
-    // Org preview lives in the artifacts gallery's '...' menu; the chat card
-    // stays a pointer at what collaborators see.
+  it('previews in the app instead of opening a browser tab', async () => {
+    // What was reported: the click opened the shared page, which for an HTML
+    // artifact that happens to read like an announcement looks like the app
+    // refusing to show the artifact. Every click added another tab.
     setOrgMode(true);
     const user = userEvent.setup();
     render(<ChatView task={taskWithArtifact(artifactStep())} />);
+
+    await user.click(screen.getByRole('button', { name: 'Preview' }));
+
+    expect(screen.getByTestId('artifact-viewer')).toHaveTextContent(ARTIFACT_ID);
+    expect(openExternal).not.toHaveBeenCalled();
+  });
+
+  it('keeps the shared page one click away beside the preview', async () => {
+    // The published URL is the address a collaborator gets, and the chat turn
+    // is where the artifact was just made.
+    setOrgMode(true);
+    const user = userEvent.setup();
+    render(<ChatView task={taskWithArtifact(artifactStep())} />);
+
+    await user.click(screen.getByRole('button', { name: 'Shared link' }));
+
+    expect(openExternal).toHaveBeenCalledWith(PUBLISHED_URL);
+  });
+
+  it('previews before the artifact is shared at all', async () => {
+    // The draft URL carries its own access check, so the preview does not wait
+    // on a publish. There is no shared page to offer yet.
+    setOrgMode(true);
+    const user = userEvent.setup();
+    render(<ChatView task={taskWithArtifact(artifactStep({ publishedUrl: '' }))} />);
+
+    await user.click(screen.getByRole('button', { name: 'Preview' }));
+
+    expect(screen.getByTestId('artifact-viewer')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Shared link' })).toBeNull();
+  });
+
+  it('opens the shared page for a draft it cannot render', async () => {
+    // A fullstack app needs the loopback proxy only Desktop runs, so the draft
+    // endpoint refuses it and the published page is the only destination left.
+    setOrgMode(true);
+    const user = userEvent.setup();
+    render(<ChatView task={taskWithArtifact(artifactStep({ type: 'fullstack-stateless-app' }))} />);
 
     await user.click(screen.getByRole('button', { name: 'Open' }));
 
@@ -151,13 +190,17 @@ describe('inline artifact banner in org mode', () => {
     expect(screen.queryByTestId('artifact-viewer')).toBeNull();
   });
 
-  it('offers no Open button before the artifact is shared', () => {
-    // A draft URL alone is not a click destination here: there is nothing this
-    // card can open, and a button that only reports an error is worse than none.
+  it('offers no button when it can neither preview nor share', () => {
+    // Nothing this card can open, and a button that only reports an error is
+    // worse than none.
     setOrgMode(true);
-    render(<ChatView task={taskWithArtifact(artifactStep({ publishedUrl: '' }))} />);
+    render(<ChatView task={taskWithArtifact(artifactStep({
+      type: 'fullstack-stateless-app', publishedUrl: '',
+    }))} />);
 
     expect(screen.queryByRole('button', { name: 'Open' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Preview' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Shared link' })).toBeNull();
   });
 });
 

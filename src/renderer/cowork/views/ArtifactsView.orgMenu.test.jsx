@@ -37,6 +37,7 @@ vi.mock('../components/artifact', () => ({
 
 import ArtifactsView from './ArtifactsView';
 import * as api from '../api';
+import { host } from '../../platform/host';
 import { setOrgMode } from '../../lib/orgMode';
 
 const published = {
@@ -90,6 +91,36 @@ describe.each([
   });
 });
 
+describe('list view kebab in org mode', () => {
+  // The row itself previews now, so the menu's first item is the page a
+  // collaborator opens, and its label has to say which of the two it is.
+  beforeEach(() => {
+    localStorage.setItem('anton:artifacts-view', 'list');
+    setOrgMode(true);
+    host.openExternal.mockClear();
+  });
+
+  it('names the shared page and opens it', () => {
+    render(<ArtifactsView artifacts={[{
+      ...cloudDraft,
+      publishedUrl: 'https://view.mindshub.ai/r/abc',
+    }]} />);
+    openKebab();
+
+    fireEvent.click(screen.getByText('Open shared link'));
+
+    expect(host.openExternal).toHaveBeenCalledWith('https://view.mindshub.ai/r/abc');
+    expect(screen.queryByTestId('artifact-viewer')).toBeNull();
+  });
+
+  it('drops the item entirely before anything is shared', () => {
+    render(<ArtifactsView artifacts={[cloudDraft]} />);
+    openKebab();
+    expect(screen.queryByText('Open shared link')).toBeNull();
+    expect(screen.queryByText('Open')).toBeNull();
+  });
+});
+
 describe('grid view kebab on desktop', () => {
   // The gate must not be a blanket removal: the same menu on a desktop
   // deployment keeps everything, which is what makes the org-mode assertion
@@ -110,14 +141,25 @@ describe.each([
   beforeEach(() => {
     localStorage.setItem('anton:artifacts-view', view);
     setOrgMode(true);
+    host.openExternal.mockClear();
   });
 
-  // The in-app preview is one menu item, not the meaning of every click: the
-  // card body keeps pointing at what collaborators see.
-  it('does not open the viewer when the card body is clicked', () => {
+  // A click means "show me this artifact" here too, and the draft URL carries
+  // its own access check, so it does not wait on a publish either.
+  it('opens the viewer when the card body is clicked', () => {
     render(<ArtifactsView artifacts={[cloudDraft]} />);
     fireEvent.click(screen.getByText('Weather Dashboard'));
+    expect(screen.getByTestId('artifact-viewer')).toHaveTextContent('Private preview');
+  });
+
+  it('opens the shared page instead for a draft the viewer cannot render', () => {
+    render(<ArtifactsView artifacts={[{
+      ...fullstackDraft,
+      publishedUrl: 'https://view.mindshub.ai/r/abc',
+    }]} />);
+    fireEvent.click(screen.getByText('Ops Console'));
     expect(screen.queryByTestId('artifact-viewer')).toBeNull();
+    expect(host.openExternal).toHaveBeenCalledWith('https://view.mindshub.ai/r/abc');
   });
 
   it('does not offer delete to a reviewer', () => {

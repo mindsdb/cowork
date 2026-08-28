@@ -1,8 +1,8 @@
 // Which artifact card actions exist, per deployment mode.
 //
-// In an org deployment the in-app preview/review of an authenticated draft is
-// offered from the artifact card's menu only; OS/file actions and owner-side
-// publish controls remain desktop-only.
+// In an org deployment the in-app preview/review reads the authenticated draft
+// URL, so it is offered wherever an artifact is rendered; OS/file actions and
+// owner-side publish controls remain desktop-only.
 //
 // Open and Copy link need a published URL to point at; without one only Delete is
 // left. An action that cannot work is not offered rather than offered disabled —
@@ -36,18 +36,25 @@ export function isArtifactActionAvailable(id, { orgMode, hasBridge, published } 
  * mutually exclusive destinations rather than a per-action yes/no, and every
  * surface that renders an artifact body has to make it: the inline chat card,
  * the rail's Working-folder list and the artifacts grid each had their own
- * copy, keyed only on the file extension. In org mode the shared URL is the
- * only destination a click can have: the authenticated draft preview exists
- * there, but deliberately only as an item in the card's '...' menu (see
- * ArtifactsView), so it stays one withdrawable entry point.
+ * copy, keyed only on the file extension.
  *
- * `canPreviewInline` stays the caller's to compute — the extension rules differ
- * slightly per surface and are not what this decides.
+ * A click means "show me this artifact" in both deployments, so org mode
+ * previews whatever the draft URL can render and keeps the shared URL as a
+ * named action beside it. Sending the click to the shared page instead put a
+ * browser tab between the user and their own artifact, and the artifacts whose
+ * draft cannot be rendered — a fullstack app, an image — still go there.
+ *
+ * `canPreviewInline` and `canPreviewDraft` stay the caller's to compute: the
+ * extension rules differ slightly per surface and are not what this decides.
+ * `canPreviewOrgDraft` in `artifactKinds.js` is the shared org-mode answer.
  */
 export function artifactOpenTarget({
-  orgMode, published, canPreviewInline, hasBridge,
+  orgMode, published, canPreviewInline, canPreviewDraft, hasBridge,
 } = {}) {
-  if (orgMode) return published ? 'published' : null;
+  if (orgMode) {
+    if (canPreviewDraft) return 'preview';
+    return published ? 'published' : null;
+  }
   if (canPreviewInline) return 'preview';
   return hasBridge ? 'os' : null;
 }
