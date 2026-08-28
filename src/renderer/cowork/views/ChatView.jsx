@@ -638,6 +638,12 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
       setExporting(false);
     }
   };
+  // The shared URL stays reachable beside the preview: it is the address a
+  // collaborator gets, and the chat turn is where the artifact was just made.
+  const handleOpenPublished = () => {
+    try { host.openExternal(artifact.publishedUrl); }
+    catch { window.open(artifact.publishedUrl, '_blank', 'noreferrer'); }
+  };
   const handleOpen = async () => {
     // The branches that need no local file return before the `canAct` check, so
     // they would survive a deletion. Their buttons are not rendered in that
@@ -654,8 +660,7 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
       return;
     }
     if (openTarget === 'published') {
-      try { host.openExternal(artifact.publishedUrl); }
-      catch { window.open(artifact.publishedUrl, '_blank', 'noreferrer'); }
+      handleOpenPublished();
       return;
     }
     if (openTarget === null) {
@@ -679,12 +684,6 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
       showStatus('error', e?.message || 'Could not open artifact.');
       revalidateAfterFailure();
     }
-  };
-  // The shared URL stays reachable beside the preview: it is the address a
-  // collaborator gets, and the chat turn is where the artifact was just made.
-  const handleOpenPublished = () => {
-    try { host.openExternal(artifact.publishedUrl); }
-    catch { window.open(artifact.publishedUrl, '_blank', 'noreferrer'); }
   };
   const handleReveal = async () => {
     if (!canAct) {
