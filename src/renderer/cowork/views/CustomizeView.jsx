@@ -536,9 +536,9 @@ export default function CustomizeView({
   }, [initialConnectors]);
 
   const handleConnectNew = () => {
-    // App.jsx opens a fresh chat with a synthesized greeting and
-    // routes the user there; Anton drives the rest via
-    // request_credentials.
+    // App.jsx's onConnectNew (handleStartConnectChat) opens the connector
+    // picker; picking one there opens a chat task with a synthesized
+    // greeting, and Anton drives the rest via request_credentials.
     onConnectNew?.();
   };
 
@@ -557,8 +557,10 @@ export default function CustomizeView({
     if (autoOpenedRef.current) return;
     const id = setTimeout(() => {
       if (autoOpenedRef.current) return;
-      // Only auto-open when nothing is configured yet.
-      if ((list || []).length === 0) {
+      // Only auto-open when nothing is configured yet and there's an
+      // actual handler to open — without onConnectNew, flipping the ref
+      // here would permanently skip auto-open on this mount for nothing.
+      if ((list || []).length === 0 && onConnectNew) {
         autoOpenedRef.current = true;
         handleConnectNew();
       }
