@@ -443,9 +443,9 @@ describe('post-start credential hook', () => {
   });
 
   it('awaits the hook, so a caller reading /health sees a configured install', async () => {
-    /* The renderer restarts the sidecar after onboarding and then immediately
-     * reads config_ready. A push still in flight at that point reads as
-     * unconfigured, which is the bug from the caller's side.
+    /* A caller that reads config_ready as soon as `startServer` resolves sees a
+     * push still in flight as unconfigured, which is the bug from the caller's
+     * side.
      *
      * The gate is what pins it. Asserting a flag the hook sets would pass
      * against a fire-and-forget call too, because the hook body runs to its

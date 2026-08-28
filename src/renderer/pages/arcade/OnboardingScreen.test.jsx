@@ -14,7 +14,6 @@ const hostMock = vi.hoisted(() => ({
   saveSettings: vi.fn(async () => true),
   validateProvider: vi.fn(async () => ({ ok: true })),
   readSettings: vi.fn(async () => ({})),
-  restartServer: vi.fn(async () => {}),
   // Between signing in and minting, the screen asks which organization the key
   // belongs to. One organization is the default answer here, so every existing
   // test below goes straight to the mint as it always did.

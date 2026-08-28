@@ -53,14 +53,13 @@ import {
   removeCodingTask,
 } from './coding-terminal';
 
-// Re-hand the MindsHub credential to every sidecar that comes up.
-//
-// The sidecar holds it in memory only, so a process that just started holds
-// nothing: an auto-update, the sidebar's stop/start, the installer's first
-// start, and the restart the renderer runs after onboarding all leave a
-// signed-in user with `config_ready: false` until something pushes again.
-// Registered at module scope so the hook is in place before the first start,
-// whichever path gets there first.
+/* Re-hand the MindsHub credential to every sidecar that comes up.
+ *
+ * The sidecar holds it in memory only, so a process that just started holds
+ * nothing: an auto-update, the sidebar's stop/start, and the installer's first
+ * start all leave a signed-in user with `config_ready: false` until something
+ * pushes again. Registered at module scope so the hook is in place before the
+ * first start, whichever path gets there first. */
 setServerStartedHook(syncMindsCredential);
 
 function getAntonEnvPath(): string {
@@ -1157,7 +1156,7 @@ function setupIPC() {
   });
 
   ipcMain.handle(IPC.SERVER_RESTART, async () => {
-    console.log('[server] restart requested (post-onboarding)');
+    console.log('[server] restart requested');
     await stopServer();
     // A restarted server may have generated a fresh COWORK_AUTH_TOKEN; drop
     // the cache so the webRequest hook re-reads it on the next request.

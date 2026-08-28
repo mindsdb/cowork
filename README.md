@@ -371,15 +371,15 @@ Three consequences worth knowing:
   `config_ready: false` until main pushes again. The renderer paints that answer
   as "Connect a provider to start chatting", so a signed-in user reads a wiring
   gap as a billing prompt. The sidecar goes down far more often than a launch: an
-  over-the-air update and its rollback, the sidebar's stop/start, the restart the
-  renderer runs after onboarding, and the installer's first start on a fresh
-  machine. Wiring the push into each of those is how one gets missed, so it hangs
-  off the single function they all call. `src/main/index.ts` registers
-  `syncMindsCredential` with `setServerStartedHook`, and `startServer` awaits it
-  after every successful start (`src/main/server-process.ts`). It is awaited
-  rather than fired off, because callers read `/health` as soon as `startServer`
-  resolves. Sign-in and the token-refresh tick push on top of that, since both
-  produce a new credential without restarting anything.
+  over-the-air update and its rollback, the sidebar's stop/start, and the
+  installer's first start on a fresh machine. Wiring the push into each of those
+  is how one gets missed, so it hangs off the single function they all call.
+  `src/main/index.ts` registers `syncMindsCredential` with
+  `setServerStartedHook`, and `startServer` awaits it after every successful
+  start (`src/main/server-process.ts`). It is awaited rather than fired off,
+  because callers read `/health` as soon as `startServer` resolves. Sign-in and
+  the token-refresh tick push on top of that, since both produce a new credential
+  without restarting anything.
 - **A key you supply yourself goes to the OS keychain**, not to `.env` and not to
   the sidecar's settings table. It wins over the session credential while it is
   set. `mindshub:set-user-key` is the IPC channel that carries it.
