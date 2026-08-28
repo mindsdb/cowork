@@ -1249,6 +1249,59 @@ export async function fetchRecommendedModels({ refresh = false } = {}) {
   return null;
 }
 
+// ── MindsHub workspaces ──────────────────────────────────────────────
+//
+// A MindsHub Workspace is an org-internal container that owns hub resources
+// (API keys, artifacts, model entitlements) and lives in the auth service. It is
+// unrelated to the working folder this app calls a workspace.
+//
+// The sidecar makes the call to auth, not us: auth's ingress allows the console
+// origins and no Cowork host, and a per-PR Cowork host cannot be added to a
+// static allow-list. So these two go to our own server and it forwards.
+//
+// The credential travels in its own header because it cannot travel in
+// Authorization. In Electron the main process overwrites that header on every
+// loopback request with the sidecar's own token, so the Keycloak JWT can never
+// arrive under that name; `authFetch` does not even attach it there. The server
+// reads `X-MindsHub-Authorization` first and falls back to Authorization, which
+// is what the web shell uses.
+
+const HUB_CREDENTIAL_HEADER = 'X-MindsHub-Authorization';
+
+async function hubHeaders() {
+  const token = await host.getAccessToken().catch(() => null);
+  return token ? { [HUB_CREDENTIAL_HEADER]: `Bearer ${token}` } : {};
+}
+
+/**
+ * The workspace selector's whole state: whether the surface is on, whether the
+ * hub could be reached, the rows, and which one is active.
+ *
+ * Never throws. A signed-out app, an unreachable sidecar, and an old sidecar
+ * with no such route all answer the same disabled shape, because each is a
+ * state where the menu should render exactly as it does today.
+ */
+export async function fetchHubWorkspaces() {
+  try {
+    const data = await req('/hub/workspaces/', { headers: await hubHeaders() });
+    if (data && typeof data === 'object') return data;
+  } catch { /* an old sidecar has no such route: stay dark */ }
+  return { enabled: false, reachable: false, workspaces: [], activeWorkspaceId: null };
+}
+
+/**
+ * Switch the active workspace. Rejects on failure so the caller owns the
+ * message; the server refuses a workspace the caller holds no grant on (403)
+ * and refuses rather than guessing when it cannot reach the hub (503).
+ */
+export async function setActiveHubWorkspace(workspaceId) {
+  return req('/hub/workspaces/active', {
+    method: 'PUT',
+    headers: await hubHeaders(),
+    body: JSON.stringify({ workspaceId }),
+  });
+}
+
 export async function fetchSettings() {
   const op = _settingsLock.then(async () => {
     try {
@@ -1380,14 +1433,6 @@ export async function revealSettingKey(name) {
     return res?.value || '';
   } catch {
     return '';
-  }
-}
-
-export async function fetchIntegrations() {
-  try {
-    return await req('/connectors/oauth/catalogue');
-  } catch (err) {
-    return { items: [], error: err?.message || 'Could not load integrations' };
   }
 }
 

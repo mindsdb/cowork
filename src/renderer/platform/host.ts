@@ -824,9 +824,70 @@ export interface DrivePickerResult {
 // newly-picked files as belonging to that project (see DrivePickerFile);
 // omit it for connection-details' "Pick files" button, which has no
 // project context.
+// Web: the popup this session opened, tracked so cancelDrivePicker() (and a
+// second pickDriveFiles call) can close a stale one rather than leaking it.
+let webPickerPopup: Window | null = null;
+// Cancels the in-flight call's message listener and close-poll interval — a
+// settled call's finish() already no-ops, so calling this is always safe.
+let webPickerCancelPrevious: (() => void) | null = null;
+
+// Web equivalent of the Electron flow above. cowork-server serves the SPA
+// and its API from the same origin (getApiOrigin()), but web auth is a
+// per-request Bearer header (see fetchJson), never a cookie — a plain
+// window.open() navigation can't carry that header. So this mints a
+// short-lived, single-use picker session server-side over an authenticated
+// POST first (identical shape to launchConnectorAuth's authUrl handoff
+// elsewhere in this codebase), then opens the URL that POST returns. The
+// live Google access token itself is minted only when that URL is opened,
+// and is embedded server-side into the picker page's own inline script —
+// it never transits this POST, the URL, or postMessage.
+async function pickDriveFilesWeb(engine: string, name: string, accountEmail: string, fileIds?: string[], projectName?: string): Promise<DrivePickerResult> {
+  let session: { url: string };
+  try {
+    session = await fetchJson(`/api/v1/connectors/oauth/${encodeURIComponent(engine)}/picker/session`, {
+      method: 'POST',
+      body: JSON.stringify({ name, account_email: accountEmail, file_ids: fileIds, project_name: projectName }),
+    });
+  } catch (err) {
+    return { ok: false, reason: (err as Error)?.message || 'Could not start the file picker.' };
+  }
+
+  if (webPickerPopup && !webPickerPopup.closed) webPickerPopup.close();
+  webPickerCancelPrevious?.();
+  const popup = window.open(session.url, '_blank', 'noopener,noreferrer');
+  webPickerPopup = popup;
+  if (!popup) return { ok: false, reason: 'The browser blocked the file picker popup.' };
+
+  return new Promise<DrivePickerResult>((resolve) => {
+    let settled = false;
+    const finish = (result: DrivePickerResult) => {
+      if (settled) return;
+      settled = true;
+      clearInterval(closeCheck);
+      window.removeEventListener('message', onMessage);
+      resolve(result);
+    };
+    webPickerCancelPrevious = () => finish({ ok: false, reason: 'cancelled' });
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      if (!event.data || event.data.type !== 'drive-picker-result') return;
+      finish(event.data.result as DrivePickerResult);
+    };
+    // Cancellation case: the user closed the popup without picking — same
+    // intent as the Electron flow's own cancel handling.
+    const closeCheck = window.setInterval(() => {
+      if (popup.closed) finish({ ok: false, reason: 'cancelled' });
+    }, 500);
+    window.addEventListener('message', onMessage);
+  });
+}
+
 export async function pickDriveFiles(engine: string, name: string, accountEmail: string, fileIds?: string[], projectName?: string): Promise<DrivePickerResult> {
   if (isElectron && typeof bridge.oauthPickDriveFiles === 'function') {
     return bridge.oauthPickDriveFiles({ engine, name, accountEmail, fileIds, projectName });
+  }
+  if (isWeb) {
+    return pickDriveFilesWeb(engine, name, accountEmail, fileIds, projectName);
   }
   return { ok: false, reason: 'Google Picker is Electron-only for now.' };
 }
@@ -834,6 +895,10 @@ export async function pickDriveFiles(engine: string, name: string, accountEmail:
 export async function cancelDrivePicker(): Promise<void> {
   if (isElectron && typeof bridge.oauthCancelPicker === 'function') {
     await bridge.oauthCancelPicker();
+  }
+  if (webPickerPopup && !webPickerPopup.closed) {
+    webPickerPopup.close();
+    webPickerPopup = null;
   }
 }
 

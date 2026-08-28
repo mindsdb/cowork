@@ -35,12 +35,18 @@ export default defineConfig({
         // guard still fires.
         'src/renderer/cowork/lib/artifactLiveness.js': { statements: 97, branches: 91 },
         'src/renderer/cowork/lib/artifactsStore.js': { statements: 85, branches: 74 },
-        // Which organization an API key is minted in. Pinned for the same
-        // reason as the entries above: these are fail-quiet decisions with no
-        // visible failure mode, so the branch table is the only thing proving
-        // a wrong answer here would be caught. A key in the wrong
-        // organization looks exactly like a key in the right one until the
-        // bill arrives somewhere nobody expected.
+        // The workspace selector's two pure modules. Both are entirely
+        // fail-closed logic: the hook decides whether a surface appears at all
+        // and drops a read that resolved for the previous account, and the tile
+        // decides a colour that must not move when a workspace is renamed.
+        // Neither has a visible failure mode, so the branch table is the only
+        // thing that proves the guards still fire.
+        'src/renderer/cowork/hooks/useHubWorkspaces.js': { statements: 100, branches: 100 },
+        'src/renderer/cowork/lib/letterTile.js': { statements: 100, branches: 100 },
+        'src/renderer/cowork/components/WorkspaceSelector.jsx': { statements: 100, branches: 90 },
+        // Which organization an API key is minted in. Same reasoning one level
+        // up: a key in the wrong organization looks exactly like a key in the
+        // right one until the bill arrives somewhere nobody expected.
         'src/shared/minds-orgs.ts': { statements: 100, branches: 100 },
         'src/renderer/cowork/hooks/useMindsOrgs.js': { statements: 100, branches: 100 },
       },

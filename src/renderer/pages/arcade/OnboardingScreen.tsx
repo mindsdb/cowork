@@ -269,18 +269,24 @@ export default function OnboardingScreen({
   // here. Empty until the fetch resolves; the picker degrades to a free-text
   // input in that window (and if the backend is unreachable).
   const [recModels, setRecModels] = useState<Record<string, string[]>>({});
+  // Catalog display labels by id. Without these the BYOK select derived every
+  // name from the id, so it could disagree with the Settings picker for the
+  // same model (ENG-1638).
+  const [recLabels, setRecLabels] = useState<Record<string, string>>({});
   useEffect(() => {
     let cancelled = false;
     fetchRecommendedModels().then((rec) => {
       const map = (rec?.recommendedModels as Record<string, string[]> | undefined);
       if (!cancelled && map) setRecModels(map);
+      const labels = (rec?.modelLabels as Record<string, string> | undefined);
+      if (!cancelled && labels) setRecLabels(labels);
     });
     return () => { cancelled = true; };
   }, []);
 
-  const ANTHROPIC_MODELS = useMemo(() => recommendedModelOptions(recModels, 'anthropic'), [recModels]);
-  const OPENAI_MODELS = useMemo(() => recommendedModelOptions(recModels, 'openai'), [recModels]);
-  const GEMINI_MODELS = useMemo(() => recommendedModelOptions(recModels, 'gemini'), [recModels]);
+  const ANTHROPIC_MODELS = useMemo(() => recommendedModelOptions(recModels, 'anthropic', recLabels), [recModels, recLabels]);
+  const OPENAI_MODELS = useMemo(() => recommendedModelOptions(recModels, 'openai', recLabels), [recModels, recLabels]);
+  const GEMINI_MODELS = useMemo(() => recommendedModelOptions(recModels, 'gemini', recLabels), [recModels, recLabels]);
 
   const models = byokProvider === 'anthropic'
     ? ANTHROPIC_MODELS
