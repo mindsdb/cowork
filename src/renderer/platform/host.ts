@@ -842,19 +842,14 @@ let webPickerCancelPrevious: (() => void) | null = null;
 // and is embedded server-side into the picker page's own inline script —
 // it never transits this POST, the URL, or postMessage.
 async function pickDriveFilesWeb(engine: string, name: string, accountEmail: string, fileIds?: string[], projectName?: string): Promise<DrivePickerResult> {
-  let session: { url: string };
-  try {
-    session = await fetchJson(`/api/v1/connectors/oauth/${encodeURIComponent(engine)}/picker/session`, {
-      method: 'POST',
-      body: JSON.stringify({ name, account_email: accountEmail, file_ids: fileIds, project_name: projectName }),
-    });
-  } catch (err) {
-    return { ok: false, reason: (err as Error)?.message || 'Could not start the file picker.' };
-  }
-
   if (webPickerPopup && !webPickerPopup.closed) webPickerPopup.close();
   webPickerCancelPrevious?.();
-  const popup = window.open(session.url, '_blank', 'noopener,noreferrer');
+  // Opened synchronously, before the session mint below is awaited: a
+  // window.open() called after an await is no longer inside the click's own
+  // call stack, and most browsers silently block it as an unsolicited popup.
+  // This blank window is itself opened in direct response to the click, so
+  // it's allowed — navigating an already-open window afterward is not.
+  const popup = window.open('about:blank', '_blank', 'noopener,noreferrer');
   webPickerPopup = popup;
   if (!popup) return { ok: false, reason: 'The browser blocked the file picker popup.' };
 
@@ -867,6 +862,12 @@ async function pickDriveFilesWeb(engine: string, name: string, accountEmail: str
       window.removeEventListener('message', onMessage);
       resolve(result);
     };
+    // Registered synchronously, in the same tick as window.open() above — a
+    // second pickDriveFiles call arriving before the session mint below
+    // resolves must still find a live handler to cancel (see the "cancels a
+    // still-pending previous call" test: this used to be set only after the
+    // mint resolved, which raced a fast second call and left two live
+    // message listeners fighting over one popup's result).
     webPickerCancelPrevious = () => finish({ ok: false, reason: 'cancelled' });
     const onMessage = (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return;
@@ -879,6 +880,25 @@ async function pickDriveFilesWeb(engine: string, name: string, accountEmail: str
       if (popup.closed) finish({ ok: false, reason: 'cancelled' });
     }, 500);
     window.addEventListener('message', onMessage);
+
+    // Mint the session, then navigate the already-open popup to it.
+    (async () => {
+      let session: { url: string };
+      try {
+        session = await fetchJson(`/api/v1/connectors/oauth/${encodeURIComponent(engine)}/picker/session`, {
+          method: 'POST',
+          body: JSON.stringify({ name, account_email: accountEmail, file_ids: fileIds, project_name: projectName }),
+        });
+      } catch (err) {
+        popup.close();
+        finish({ ok: false, reason: (err as Error)?.message || 'Could not start the file picker.' });
+        return;
+      }
+      // Already cancelled, closed, or resolved (via message) while the mint
+      // was in flight — navigating a settled call's popup would be wrong.
+      if (settled) return;
+      popup.location.href = session.url;
+    })();
   });
 }
 

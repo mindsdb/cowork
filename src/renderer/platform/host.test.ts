@@ -260,25 +260,47 @@ describe('electron mode (bridge present)', () => {
     await expect(host.cancelDrivePicker()).resolves.toBeUndefined();
   });
 
-  it('pickDriveFiles on web mints a session, opens the popup, and resolves on same-origin postMessage', async () => {
+  it('pickDriveFiles on web opens the popup synchronously, before the session mint resolves', async () => {
+    // A real fetch resolves after at least one microtask hop; if window.open()
+    // ran only after that await, this would never observe the call before
+    // manually resolving the fetch below — reproducing the browser's own
+    // "was this still inside the click's call stack?" check.
+    let resolveFetch!: (v: unknown) => void;
+    // Constructed up front (not lazily inside the mock) so resolving it never
+    // has to wait for fetch() to actually be called — fetchJson awaits
+    // getAccessToken() first, so fetch() itself may not run for a tick or two.
+    const fetchPromise = new Promise((resolve) => { resolveFetch = resolve; });
+    vi.stubGlobal('fetch', vi.fn(() => fetchPromise));
+    const fakePopup = { closed: false, close: vi.fn(), location: { href: '' } } as unknown as Window;
+    const open = vi.spyOn(window, 'open').mockReturnValue(fakePopup);
+    open.mockClear();
+    const host = await importHost();
+
+    host.pickDriveFiles('google_drive', 'c', 'e@x.com');
+    // Still zero microtask hops in — window.open() must already have run.
+    expect(open).toHaveBeenCalledWith('about:blank', '_blank', 'noopener,noreferrer');
+
+    resolveFetch({ ok: true, json: async () => ({ url: 'http://localhost:3000/picker?ticket=t1' }) });
+    await vi.waitFor(() => expect((fakePopup as unknown as { location: { href: string } }).location.href)
+      .toBe('http://localhost:3000/picker?ticket=t1'));
+  });
+
+  it('pickDriveFiles on web mints a session, navigates the popup, and resolves on same-origin postMessage', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({
       ok: true,
       json: async () => ({ url: 'http://localhost:3000/api/v1/connectors/oauth/google_drive/picker?ticket=t1' }),
     })));
-    const fakePopup = { closed: false, close: vi.fn() } as unknown as Window;
+    const fakePopup = { closed: false, close: vi.fn(), location: { href: '' } } as unknown as Window;
     const open = vi.spyOn(window, 'open').mockReturnValue(fakePopup);
     open.mockClear(); // the spy instance is shared across tests in this file
     const host = await importHost();
 
     const result = host.pickDriveFiles('google_drive', 'c', 'e@x.com');
+    expect(open).toHaveBeenCalledWith('about:blank', '_blank', 'noopener,noreferrer');
     // The session mint is a real (mocked) fetch + a dynamic keycloak import,
     // several microtask hops deep — poll rather than guess a tick count.
-    await vi.waitFor(() => expect(open).toHaveBeenCalled());
-    expect(open).toHaveBeenCalledWith(
-      'http://localhost:3000/api/v1/connectors/oauth/google_drive/picker?ticket=t1',
-      '_blank',
-      'noopener,noreferrer',
-    );
+    await vi.waitFor(() => expect((fakePopup as unknown as { location: { href: string } }).location.href)
+      .toBe('http://localhost:3000/api/v1/connectors/oauth/google_drive/picker?ticket=t1'));
     const pickResult = { ok: true, files: [{ id: 'f1', name: 'doc.pdf' }], newFiles: [{ id: 'f1', name: 'doc.pdf' }] };
     window.dispatchEvent(new MessageEvent('message', {
       origin: window.location.origin,
@@ -292,7 +314,7 @@ describe('electron mode (bridge present)', () => {
       ok: true,
       json: async () => ({ url: 'http://localhost:3000/picker' }),
     })));
-    const fakePopup = { closed: false, close: vi.fn() } as unknown as Window;
+    const fakePopup = { closed: false, close: vi.fn(), location: { href: '' } } as unknown as Window;
     const open = vi.spyOn(window, 'open').mockReturnValue(fakePopup);
     open.mockClear();
     const host = await importHost();
@@ -314,8 +336,8 @@ describe('electron mode (bridge present)', () => {
       .mockResolvedValueOnce({ ok: true, json: async () => ({ url: 'http://localhost:3000/picker?ticket=1' }) })
       .mockResolvedValueOnce({ ok: true, json: async () => ({ url: 'http://localhost:3000/picker?ticket=2' }) });
     vi.stubGlobal('fetch', fetchMock);
-    const popup1 = { closed: false, close: vi.fn() } as unknown as Window;
-    const popup2 = { closed: false, close: vi.fn() } as unknown as Window;
+    const popup1 = { closed: false, close: vi.fn(), location: { href: '' } } as unknown as Window;
+    const popup2 = { closed: false, close: vi.fn(), location: { href: '' } } as unknown as Window;
     const open = vi.spyOn(window, 'open')
       .mockReturnValueOnce(popup1)
       .mockReturnValueOnce(popup2);
