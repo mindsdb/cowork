@@ -79,7 +79,7 @@ import { isArtifactTipDismissed, dismissArtifactTip, dismissIfUntouched } from '
 import { recommendedModelOptions, providerValueToType,
          mergeRecommendedModels } from './lib/settingsTransform';
 import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery, trackFirstResponse, classifyFirstResponse, trackTurnFailed } from './lib/analytics';
-import { MODEL_ROUTER_ID, MODEL_ROUTER, isModelLocked } from './lib/modelCatalog';
+import { MODEL_ROUTER_ID, MODEL_ROUTER, MINDSHUB_AIR_MODEL_ID, isModelLocked } from './lib/modelCatalog';
 import {
   CoworkProvider,
   CoworkRouterProvider,
@@ -1671,17 +1671,16 @@ function AppCore() {
   // grant covers Air, so it's the one model an empty wallet can usually
   // still run. `modelEnabled` is the same availability map the Settings
   // picker tags rows with (absent id ⇒ available).
-  const AIR_MODEL_ID = 'mindshub_air';
   const airAvailableForSwitch =
-    (settings.recommendedModels?.['minds-cloud'] || []).includes(AIR_MODEL_ID)
-    && !isModelLocked(settings.modelEnabled, AIR_MODEL_ID);
+    (settings.recommendedModels?.['minds-cloud'] || []).includes(MINDSHUB_AIR_MODEL_ID)
+    && !isModelLocked(settings.modelEnabled, MINDSHUB_AIR_MODEL_ID);
   const handleSwitchToAirAndResend = (text) => {
     if (!currentTask || !text) return;
     // Persist the switch on the task so follow-up sends stay on Air, and
     // override the same send explicitly — the state write isn't visible to
     // handleSendInTask's closure within this tick.
-    setTasks((prev) => prev.map((t) => (t.id === currentTask.id ? { ...t, model: AIR_MODEL_ID } : t)));
-    handleSendInTask(text, null, { modelOverride: AIR_MODEL_ID });
+    setTasks((prev) => prev.map((t) => (t.id === currentTask.id ? { ...t, model: MINDSHUB_AIR_MODEL_ID } : t)));
+    handleSendInTask(text, null, { modelOverride: MINDSHUB_AIR_MODEL_ID });
   };
 
   useEffect(() => {
@@ -4375,6 +4374,7 @@ function AppCore() {
             configReady={health.config_ready ?? settings.configReady}
             configError={health.config_error ?? settings.configError}
             onOpenSettings={openSettings}
+            modelLabels={settings.modelLabels}
             codingModelDefault={settings.codingModel}
             harnessHermesEnabled={settings.harnessHermesEnabled ?? true}
             harnessClaudeCodeEnabled={settings.harnessClaudeCodeEnabled ?? true}
@@ -4398,6 +4398,7 @@ function AppCore() {
             onSend={handleSendInTask}
             onSwitchToAirAndResend={airAvailableForSwitch ? handleSwitchToAirAndResend : undefined}
             onOpenSettings={openSettings}
+            modelLabels={settings.modelLabels}
             codingModelDefault={settings.codingModel}
             harnessHermesEnabled={settings.harnessHermesEnabled ?? true}
             harnessClaudeCodeEnabled={settings.harnessClaudeCodeEnabled ?? true}
@@ -4567,6 +4568,7 @@ function AppCore() {
             }}
             agentLabel={agentLabel}
             onOpenSettings={openSettings}
+            modelLabels={settings.modelLabels}
             codingModelDefault={settings.codingModel}
             harnessHermesEnabled={settings.harnessHermesEnabled ?? true}
             harnessClaudeCodeEnabled={settings.harnessClaudeCodeEnabled ?? true}

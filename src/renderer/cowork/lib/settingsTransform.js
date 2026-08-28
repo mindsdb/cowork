@@ -182,6 +182,11 @@ const _cap = (t) => (t ? t.charAt(0).toUpperCase() + t.slice(1) : t);
  *   gpt-5.5-mini               → "GPT-5.5 Mini"
  *   gemini-3-flash-preview     → "Gemini 3 Flash Preview"
  *   o4-mini                    → "o4 Mini"
+ *
+ * This is the FALLBACK half of the naming rule, not the rule. Render paths must
+ * call `displayModelLabel` (catalog label first) — calling this directly is
+ * how the 402/403 card came to say "Mindshub air" under a picker that said
+ * "MindsHub Air" (ENG-1638). Exported for tests and for displayModelLabel.
  */
 export function modelLabel(id) {
   if (!id) return '';
