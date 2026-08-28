@@ -12,11 +12,21 @@ const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 const silentBody = (getSignal) => ({
   getReader: () => ({
     read: () => new Promise((_resolve, reject) => {
-      getSignal().addEventListener('abort', () => {
+      const signal = getSignal();
+      const abort = () => {
         const err = new Error('aborted');
         err.name = 'AbortError';
         reject(err);
-      });
+      };
+      // Check `aborted` before subscribing, the way a real reader does — this
+      // was a CI flake. `tailInFlight` arms the idle timer BEFORE awaiting the
+      // fetch, so on a loaded machine the (20ms, in these tests) window can
+      // elapse before the first read() ever runs. Subscribing after the only
+      // abort event left the read pending forever: the tail hung and the test
+      // died on vitest's 5s timeout instead of finishing in ~20ms. The
+      // keepalive test below already guarded for this.
+      if (signal.aborted) return abort();
+      signal.addEventListener('abort', abort, { once: true });
     }),
   }),
 });
