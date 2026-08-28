@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render as rtlRender, screen } from '@testing-library/react';
 
 // Mutable host mock so each test can flip isWeb. getAccessToken resolves the
 // token behind the footer user menu — null (signed out) unless a test sets
@@ -12,11 +12,25 @@ vi.mock('../../platform/host', () => ({
   getAccessToken: getAccessTokenMock,
   openExternal: vi.fn(async () => {}),
 }));
+// The footer user menu now reads the organization listing through the main
+// process. Stubbed rather than served, because nothing in this file is about
+// organizations; the menu and the hook each have their own test file.
+vi.mock('../hooks/useMindsOrgs', () => ({
+  useMindsOrgs: () => ({
+    orgs: [], activeOrg: null, activeOrgId: null, switching: false,
+    switchOrg: vi.fn(), refresh: vi.fn(),
+  }),
+}));
 
 import Sidebar from './Sidebar';
+import ToastProvider from './ui/Toast';
 import { deriveUpdateBanner } from '../../../shared/update-banner';
 
 const baseProps = { tasks: [], onNavigate: () => {} };
+
+// `useToastManager` in the footer user menu throws outside a provider, and the
+// real tree always has one (App wraps AppCore, and the sidebar is inside it).
+const render = (element) => rtlRender(<ToastProvider>{element}</ToastProvider>);
 
 // Minimal decodable JWT for the signed-in footer tests.
 const jwt = (payload) =>

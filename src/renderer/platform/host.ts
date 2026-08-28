@@ -892,11 +892,60 @@ export async function mindshubRefresh(): Promise<{ ok: boolean; reason?: string;
   return { ok: false, reason: 'MindsHub refresh bridge is Electron-only.' };
 }
 
-export async function mindshubFinalize(): Promise<{ ok: boolean; reason?: string; upgradeRequired?: boolean; apiKey?: string }> {
+export async function mindshubFinalize(
+  organizationId?: string,
+): Promise<{ ok: boolean; reason?: string; upgradeRequired?: boolean; apiKey?: string; organization?: MindsOrg }> {
   if (isElectron && typeof bridge.mindshubFinalize === 'function') {
-    return bridge.mindshubFinalize();
+    return bridge.mindshubFinalize(organizationId);
   }
   return { ok: false, reason: 'MindsHub finalize bridge is Electron-only.' };
+}
+
+// ---- MindsHub organizations ---------------------------------------------
+//
+// Which organization this install mints its API key in. Both calls are
+// Electron-only and both degrade to "no organizations" rather than throwing:
+// the renderer bundle updates over the air while `src/main/**` only arrives in
+// a new installer, so a newer UI regularly runs against a main process that has
+// never heard of these channels.
+
+export interface MindsOrg {
+  id: string;
+  name: string;
+  displayName: string;
+  isPersonal: boolean;
+}
+
+export interface MindsOrgList {
+  orgs: MindsOrg[];
+  activeOrgId: string | null;
+}
+
+export interface SwitchMindsOrgResult {
+  ok: boolean;
+  activeOrgId: string | null;
+  orgs: MindsOrg[];
+  error?: string;
+}
+
+const NO_ORGS: MindsOrgList = { orgs: [], activeOrgId: null };
+
+export async function mindshubListOrgs(): Promise<MindsOrgList> {
+  if (isElectron && typeof bridge.mindshubListOrgs === 'function') {
+    const result = await bridge.mindshubListOrgs();
+    return {
+      orgs: Array.isArray(result?.orgs) ? result.orgs : [],
+      activeOrgId: result?.activeOrgId ?? null,
+    };
+  }
+  return NO_ORGS;
+}
+
+export async function mindshubSwitchOrg(organizationId: string): Promise<SwitchMindsOrgResult> {
+  if (isElectron && typeof bridge.mindshubSwitchOrg === 'function') {
+    return bridge.mindshubSwitchOrg(organizationId);
+  }
+  return { ok: false, activeOrgId: null, orgs: [], error: 'Changing organization needs the desktop app.' };
 }
 
 export async function mindshubGetCachedToken(): Promise<string | null> {
@@ -1017,6 +1066,8 @@ export const host = {
   mindshubSignup,
   mindshubRefresh,
   mindshubFinalize,
+  mindshubListOrgs,
+  mindshubSwitchOrg,
   mindshubGetCachedToken,
   onMindsHubAuthChanged,
   getKeychainPref,
