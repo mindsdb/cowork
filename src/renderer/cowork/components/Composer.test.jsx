@@ -263,7 +263,7 @@ describe('Composer — reasoning effort sub-picker (ENG-1940)', () => {
       model: MODELS[1], // sonnet
       effort: 'high', // not sonnet's default ("medium") — the trigger suffix only shows then
     });
-    expect(screen.getByRole('combobox', { name: 'Choose model' })).toHaveTextContent('Claude Sonnet 5 High');
+    expect(screen.getByRole('combobox', { name: 'Choose model' })).toHaveTextContent('Claude Sonnet 5 · High');
   });
 
   it('shows an "Effort" footer row in the model popup for a model with effort options', async () => {

@@ -442,7 +442,7 @@ export function ModelSelect({
           <span className={cn('truncate', !selected && 'text-ink-4')}>
             {selected ? selected.label : placeholder}
             {selected && !isDefaultEffort && (
-              <span className="text-ink-3"> {capitalize(resolvedEffort)}</span>
+              <span className="text-ink-3"> · {capitalize(resolvedEffort)}</span>
             )}
           </span>
         </>

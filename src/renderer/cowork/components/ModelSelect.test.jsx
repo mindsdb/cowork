@@ -415,14 +415,14 @@ describe('ModelSelect — reasoning-effort footer (ENG-1940)', () => {
     const { rerender } = render(
       <Harness initial="sonnet" modelEfforts={MODEL_EFFORTS} effort="high" onEffortChange={vi.fn()} />,
     );
-    expect(screen.getByRole('combobox')).toHaveTextContent('Claude Sonnet 5 High');
+    expect(screen.getByRole('combobox')).toHaveTextContent('Claude Sonnet 5 · High');
 
     rerender(
       <Harness initial="sonnet" modelEfforts={MODEL_EFFORTS} effort="medium" onEffortChange={vi.fn()} />,
     );
     // "medium" is sonnet's own default — no suffix.
     expect(screen.getByRole('combobox')).toHaveTextContent('Claude Sonnet 5');
-    expect(screen.getByRole('combobox')).not.toHaveTextContent('Claude Sonnet 5 Medium');
+    expect(screen.getByRole('combobox')).not.toHaveTextContent('Claude Sonnet 5 · Medium');
   });
 
   it('shows just the model name when modelEfforts was not passed at all (regression)', () => {
