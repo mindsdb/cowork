@@ -109,6 +109,13 @@ const EFFORT_DESCRIPTION = 'Higher effort means more thorough responses, but tak
 // veto's own close path and the model list's own hover states taking over.
 const EFFORT_FLYOUT_CLOSE_GRACE_MS = 1500;
 
+// How long the popup lingers after picking a model with NO effort options
+// while the Effort footer is showing: the footer fades out (the 160ms
+// `fade-out` animation, with a small hold at 0), THEN the popup closes.
+// Watching the row leave teaches why it's gone — this model has no effort
+// levels — where an instant close would just look like the footer vanished.
+const FOOTER_EXIT_MS = 220;
+
 const CHEVRON_RIGHT = <ChevronRight size={11} strokeWidth={1.5} aria-hidden="true" />;
 const CHECK = <Check size={12} strokeWidth={1.5} aria-hidden="true" />;
 
@@ -378,6 +385,20 @@ export function ModelSelect({
   // (not state, which wouldn't update until the next render) is the only
   // way for this callback to know what was JUST picked.
   const pendingEffortModelRef = useRef(false);
+  // The footer-exit choreography (see FOOTER_EXIT_MS): picking a NO-effort
+  // model while the footer is showing vetoes the immediate close, renders
+  // the OLD model's footer one last time with a fade-out, then closes the
+  // popup on a timer. `pendingFooterExitRef` is the synchronous pick-time
+  // signal (same ref pattern as pendingEffortModelRef above);
+  // `exitFooterDataRef` snapshots the outgoing model's footer content, since
+  // by exit-render time `value` already points at the new, effort-less model
+  // and the live derivations have nothing to show; `footerExiting` is state
+  // because the exit render itself must happen.
+  const pendingFooterExitRef = useRef(false);
+  const exitFooterDataRef = useRef(null);
+  const footerExitTimerRef = useRef(null);
+  const [footerExiting, setFooterExiting] = useState(false);
+  useEffect(() => () => { if (footerExitTimerRef.current) clearTimeout(footerExitTimerRef.current); }, []);
   // The trigger's content, frozen for as long as the popup stays open. The
   // popup is ANCHORED to the trigger pill, and the pill is sized by its
   // text — so a pick that keeps the popup open (an effort-capable model,
@@ -435,6 +456,21 @@ export function ModelSelect({
         eventDetails.cancel();
         return;
       }
+      // The inverse pick — a NO-effort model chosen while the footer was
+      // showing. Also vetoed, but only long enough for the footer's
+      // fade-out to play; the timer then closes the popup for real.
+      if (!next && eventDetails?.reason === 'item-press' && pendingFooterExitRef.current) {
+        pendingFooterExitRef.current = false;
+        eventDetails.cancel();
+        setFooterExiting(true);
+        footerExitTimerRef.current = setTimeout(() => {
+          footerExitTimerRef.current = null;
+          setFooterExiting(false);
+          exitFooterDataRef.current = null;
+          closePopup();
+        }, FOOTER_EXIT_MS);
+        return;
+      }
       // Past every veto: this open-change is really happening. Freeze the
       // trigger's content on open, release it on close (the next render
       // shows the live label — the single, popup-less update).
@@ -451,7 +487,30 @@ export function ModelSelect({
   const comboboxOnValueChange = effortFeatureEnabled
     ? (nextValue) => {
       const nextEntry = modelEfforts ? (modelEfforts[nextValue] || null) : null;
-      pendingEffortModelRef.current = harnessSupportsEffort && !!nextEntry?.efforts?.length;
+      const nextHasEfforts = harnessSupportsEffort && !!nextEntry?.efforts?.length;
+      pendingEffortModelRef.current = nextHasEfforts;
+      // A pick landing mid-exit supersedes the choreography — clear the
+      // pending close so an effort-capable pick isn't yanked shut by the
+      // old timer.
+      if (footerExitTimerRef.current) {
+        clearTimeout(footerExitTimerRef.current);
+        footerExitTimerRef.current = null;
+        setFooterExiting(false);
+        exitFooterDataRef.current = null;
+      }
+      // Effort model → no-effort model, footer on screen: snapshot the
+      // OUTGOING model's footer for the exit render (the live derivations
+      // will describe the new model, which has nothing to show), and arm
+      // the item-press veto that gives the fade-out its moment.
+      if (!nextHasEfforts && showEffortFooter && comboboxOpen) {
+        pendingFooterExitRef.current = true;
+        exitFooterDataRef.current = {
+          valueLabel: capitalize(resolvedEffort),
+          effortOptions,
+          resolvedEffort,
+          defaultEffort: effortEntry?.default,
+        };
+      }
       onValueChange?.(nextValue);
     }
     : onValueChange;
@@ -496,7 +555,22 @@ export function ModelSelect({
           onPick={(lvl) => { onEffortChange?.(lvl); closePopup(); }}
           zIndex={(rest.zIndex ?? 95) + 1}
         />
-      ) : undefined}
+      ) : (footerExiting && exitFooterDataRef.current ? (
+        // The outgoing model's footer, played out one last time with a
+        // fade — inert (onPick no-ops; there's nothing to pick for the
+        // newly selected model), snapshotted content, unmounted when the
+        // exit timer closes the popup.
+        <div className="animate-fade-out">
+          <EffortFooter
+            valueLabel={exitFooterDataRef.current.valueLabel}
+            effortOptions={exitFooterDataRef.current.effortOptions}
+            resolvedEffort={exitFooterDataRef.current.resolvedEffort}
+            defaultEffort={exitFooterDataRef.current.defaultEffort}
+            onPick={() => {}}
+            zIndex={(rest.zIndex ?? 95) + 1}
+          />
+        </div>
+      ) : undefined)}
       {...rest}
       open={comboboxOpen}
       onOpenChange={comboboxOnOpenChange}

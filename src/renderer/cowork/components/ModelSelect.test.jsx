@@ -401,11 +401,34 @@ describe('ModelSelect — reasoning-effort footer (ENG-1940)', () => {
     expect(screen.queryByText(/Higher effort means more thorough responses/)).not.toBeInTheDocument();
   });
 
-  it('clicking a model row with no effort options still closes the popup normally', async () => {
+  it('picking a no-effort model with the footer up fades the footer out, then closes the popup', async () => {
+    // The exit choreography (FOOTER_EXIT_MS): watching the row leave teaches
+    // WHY it's gone — this model has no effort levels — where an instant
+    // close would just look like the footer vanished with the popup.
     const user = userEvent.setup();
     render(<StatefulHarness initial="sonnet" modelEfforts={MODEL_EFFORTS} effort="" onEffortChange={vi.fn()} />);
 
     await user.click(screen.getByRole('combobox'));
+    expect(screen.getByText('Effort')).toBeInTheDocument();
+    await user.click(screen.getByRole('option', { name: 'MindsHub Air' }));
+
+    // Immediately after the pick: still open, outgoing footer still visible
+    // (playing its fade-out).
+    expect(screen.getByRole('option', { name: 'MindsHub Air' })).toBeInTheDocument();
+    expect(screen.getByText('Effort')).toBeInTheDocument();
+
+    // Then the popup closes on its own.
+    await waitFor(() => expect(screen.queryByRole('option')).not.toBeInTheDocument());
+  });
+
+  it('picking a no-effort model with no footer showing closes the popup immediately', async () => {
+    const user = userEvent.setup();
+    // gpt-codex has no modelEfforts entry either — no footer at open, so no
+    // exit to play; the pick closes the popup as it always did.
+    render(<StatefulHarness initial="gpt-codex" modelEfforts={MODEL_EFFORTS} effort="" onEffortChange={vi.fn()} />);
+
+    await user.click(screen.getByRole('combobox'));
+    expect(screen.queryByText('Effort')).not.toBeInTheDocument();
     await user.click(screen.getByRole('option', { name: 'MindsHub Air' }));
 
     expect(screen.queryByRole('option')).not.toBeInTheDocument();
