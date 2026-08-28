@@ -1927,19 +1927,20 @@ export default function ChatView({
               // the toolbar on the user message. When streaming, nothing
               // needs isLast since the streaming turn has no actions yet.
               const lastTurnIdx = streamingMsg ? -1 : lastVisibleTurnIdx(visibleMessages);
-              return visibleMessages.map((m, i) => {
-              if (m.role === 'usage_notice') {
-                return (
-                  <UsageAlertCard
-                    key={i}
-                    time={formatMetaTime(m.createdAt)}
-                    agentLabel={agentLabel}
-                    kind={m.kind}
-                    resetsAt={m.resetsAt}
-                    isBillingOwner={isBillingOwner}
-                  />
-                );
-              }
+              // Usage alerts that happened during this task (ENG-1782) sit after
+              // the turns, so the reply stays next to its question and the
+              // card reads as "while this ran, this changed".
+              const usageAlertCards = (task.usageNotices || []).map((n, i) => (
+                <UsageAlertCard
+                  key={`usage-${i}`}
+                  time={formatMetaTime(n.createdAt)}
+                  agentLabel={agentLabel}
+                  kind={n.kind}
+                  resetsAt={n.resetsAt}
+                  isBillingOwner={isBillingOwner}
+                />
+              ));
+              const turns = visibleMessages.map((m, i) => {
               if (m.role === 'user') {
                 userInputIdx += 1;
                 const turnIdxForThisUser = userInputIdx;
@@ -2246,7 +2247,7 @@ export default function ChatView({
                           label: USAGE_ACTIONS.setUpAutoTopUp.label,
                           onClick: () => {
                             trackBillingOpened('included_allowance_exhausted');
-                            host.openExternal(MINDS_BILLING_URL);
+                            host.openExternal(usageActionUrl(USAGE_ACTIONS.setUpAutoTopUp, { isBillingOwner }));
                           },
                         }]),
                       ]}
@@ -2379,6 +2380,7 @@ export default function ChatView({
                 </AnswerTurn>
               );
               });
+              return [...turns, ...usageAlertCards];
             })()}
 
             {streamingMsg ? (

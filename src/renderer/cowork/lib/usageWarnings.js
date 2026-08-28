@@ -167,13 +167,13 @@ export function deriveComposerWarning(usage, { providerType = 'minds-cloud', mod
       kind: 'free_used',
       tone: 'info',
       title: 'Free monthly tokens used',
-      body: `MindsHub Air is on your balance${left} until they ${resetClause(free, 'reset')}.`,
+      body: `MindsHub Air is on your balance${left} until your free tokens ${resetClause(free, 'reset')}.`,
       actions: [USAGE_ACTIONS.viewUsage],
     };
   }
 
   if (freeInUse && f.low) {
-    let body = `After that, MindsHub Air uses your balance ${resetClause(free, 'until they reset')}.`;
+    let body = `After that, MindsHub Air uses your balance ${resetClause(free, 'until your free tokens reset')}.`;
     const actions = [USAGE_ACTIONS.viewUsage];
     if (balanceEmpty) {
       body += ' Your balance is empty.';

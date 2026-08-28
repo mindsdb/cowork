@@ -37,7 +37,10 @@ function ActionButton({ action, isBillingOwner, variant = 'default' }) {
 
 function FreeTokensCard({ free, isBillingOwner }) {
   if (!free) return null;
-  const unlimited = !(free.limit > 0);
+  // -1 is auth's "uncapped" sentinel. 0 or a missing limit is not a plan we
+  // can describe, so show nothing rather than a wrong number.
+  const unlimited = free.limit === -1;
+  if (!unlimited && !(free.limit > 0)) return null;
   const used = Math.max(0, free.used || 0);
   const remaining = Math.max(0, free.remaining || 0);
   const fraction = unlimited ? 0 : used / free.limit;
@@ -160,7 +163,12 @@ export default function UsageSection({ isSsoConnected = false, onOpenAccount }) 
         {onOpenAccount && <Button variant="primary" size="sm" onClick={onOpenAccount}>Go to Account</Button>}
       </div>
     );
-  } else if (!usage?.reachable) {
+  } else if (usage === null || usage === undefined) {
+    // First read still in flight. Not an error, and not a place for numbers.
+    body = (
+      <div className={`${CARD} text-[13px] text-ink-3`} role="status">Loading usage…</div>
+    );
+  } else if (!usage.reachable) {
     body = (
       <div className={`${CARD} flex flex-col items-start gap-3`}>
         <div className="text-base font-semibold text-ink">Couldn't load usage</div>

@@ -19,8 +19,10 @@ const TONE = {
   danger: 'bg-danger-bg border-danger-border text-danger-text',
 };
 
-export default function UsageBar({ warning, isBillingOwner = false, trigger = 'usage_notice' }) {
-  const [dismissed, dismiss] = useUsageBarDismiss(warning?.kind ?? null);
+// `usageKnown`: the poll has answered and usage is reachable. Only then does a
+// null warning mean "healthy", which is when closed bars are forgotten.
+export default function UsageBar({ warning, isBillingOwner = false, usageKnown = false, trigger = 'usage_notice' }) {
+  const [dismissed, dismiss] = useUsageBarDismiss(warning?.kind ?? null, { resetWhenClear: usageKnown });
   if (!warning || dismissed) return null;
   const tone = TONE[warning.tone] || TONE.warning;
   return (

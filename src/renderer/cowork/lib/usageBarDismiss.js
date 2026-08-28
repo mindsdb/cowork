@@ -27,18 +27,22 @@ function write(kinds) {
 
 /**
  * @param kind the current warning's kind, or null when there is nothing to show
+ * @param opts.resetWhenClear true only when usage is KNOWN and has nothing to
+ *        warn about. "Not loaded yet" and "unreachable" also yield a null kind,
+ *        and neither may wipe a dismissal (that was how a closed bar came back
+ *        on every launch).
  * @returns [dismissed, dismiss]
  */
-export function useUsageBarDismiss(kind) {
+export function useUsageBarDismiss(kind, { resetWhenClear = false } = {}) {
   const [dismissed, setDismissed] = useState(read);
 
   // Healthy again: forget every dismissal.
   useEffect(() => {
-    if (kind === null && dismissed.length) {
+    if (kind === null && resetWhenClear && dismissed.length) {
       setDismissed([]);
       write([]);
     }
-  }, [kind, dismissed.length]);
+  }, [kind, resetWhenClear, dismissed.length]);
 
   const dismiss = useCallback(() => {
     if (!kind) return;

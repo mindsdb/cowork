@@ -13,8 +13,13 @@ export const HUB_USAGE_POLL_MS = 30_000;
 
 const DARK = Object.freeze({ reachable: false });
 
+/**
+ * `usage` is null until the first read answers, then the view or DARK. The
+ * distinction matters: "not fetched yet" must not read as "failed" (no error
+ * card during boot) nor as "healthy" (no clearing of a closed bar).
+ */
 export function useHubUsage(accountUser, { pollMs = HUB_USAGE_POLL_MS } = {}) {
-  const [usage, setUsage] = useState(DARK);
+  const [usage, setUsage] = useState(null);
   const generation = useRef(0);
   const sub = accountUser?.sub ?? null;
 
@@ -26,9 +31,14 @@ export function useHubUsage(accountUser, { pollMs = HUB_USAGE_POLL_MS } = {}) {
     }
     const payload = await fetchHubUsage();
     if (generation.current !== mine) return;
-    // Keep the last good read through a blip, so a warning doesn't flicker
-    // off and on when one poll fails.
-    setUsage((prev) => (payload?.reachable ? payload : prev?.reachable ? prev : DARK));
+    setUsage((prev) => {
+      // Keep the last good read through a blip, so a warning doesn't flicker
+      // off and on when one poll fails.
+      const next = payload?.reachable ? payload : prev?.reachable ? prev : DARK;
+      // Same answer as last time: keep the same object so consumers (every
+      // Composer, the whole ChatView tree) don't re-render every 30s.
+      return prev && JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
+    });
   }, [sub]);
 
   useEffect(() => {
@@ -39,7 +49,9 @@ export function useHubUsage(accountUser, { pollMs = HUB_USAGE_POLL_MS } = {}) {
     // once, not on the next tick.
     const onFocus = () => { refresh(); };
     window.addEventListener('focus', onFocus);
-    const timer = pollMs ? setInterval(refresh, pollMs) : null;
+    // Nothing to warn about while nobody is looking; focus refreshes anyway.
+    const tick = () => { if (typeof document === 'undefined' || document.visibilityState !== 'hidden') refresh(); };
+    const timer = pollMs ? setInterval(tick, pollMs) : null;
     return () => {
       window.removeEventListener('focus', onFocus);
       if (timer) clearInterval(timer);

@@ -1010,7 +1010,11 @@ export default function Composer({
         {/* Usage bar (ENG-1782): free tokens / balance running low, shown
             here rather than in the conversation so it is in view when the
             next task starts and never becomes part of the task history. */}
-        <UsageBar warning={usageWarning} isBillingOwner={!!hubUsage?.usage?.isBillingOwner} />
+        <UsageBar
+          warning={usageWarning}
+          isBillingOwner={!!hubUsage?.usage?.isBillingOwner}
+          usageKnown={!!hubUsage?.usage?.reachable}
+        />
         <div className={`composer-wrap relative${focused ? ' focused' : ''}${inFence ? ' in-fence' : ''}`}>
 
           {/* "/" slash-command menu — anchored to composer-wrap so it appears

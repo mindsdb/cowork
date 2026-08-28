@@ -59,7 +59,7 @@ describe('deriveComposerWarning', () => {
     }));
     expect(w.kind).toBe('free_low');
     expect(w.title).toBe('620K free tokens left');
-    expect(w.body).toMatch(/^After that, MindsHub Air uses your balance until they reset on Sep 1[12]\.$/);
+    expect(w.body).toMatch(/^After that, MindsHub Air uses your balance until your free tokens reset on Sep 1[12]\.$/);
     expect(labels(w)).toEqual(['View usage']);
   });
 
@@ -80,7 +80,7 @@ describe('deriveComposerWarning', () => {
     expect(w.kind).toBe('free_used');
     expect(w.tone).toBe('info');
     expect(w.title).toBe('Free monthly tokens used');
-    expect(w.body).toMatch(/^MindsHub Air is on your balance \(\$42\.10 left\) until they reset on Sep 1[12]\.$/);
+    expect(w.body).toMatch(/^MindsHub Air is on your balance \(\$42\.10 left\) until your free tokens reset on Sep 1[12]\.$/);
     expect(labels(w)).toEqual(['View usage']);
   });
 

@@ -64,12 +64,27 @@ describe('UsageBar', () => {
     expect(screen.getByText('Balance running low.')).toBeInTheDocument();
   });
 
-  it('forgets dismissals once usage is healthy again', async () => {
+  it('forgets dismissals once usage is known to be healthy', async () => {
     const user = userEvent.setup();
-    const { rerender } = render(<UsageBar warning={freeLow} />);
+    const { rerender } = render(<UsageBar warning={freeLow} usageKnown />);
     await user.click(screen.getByRole('button', { name: 'Dismiss' }));
-    rerender(<UsageBar warning={null} />);
-    rerender(<UsageBar warning={freeLow} />);
+    rerender(<UsageBar warning={null} usageKnown />);
+    rerender(<UsageBar warning={freeLow} usageKnown />);
     expect(screen.getByText('620K free tokens left.')).toBeInTheDocument();
+  });
+
+  it('keeps a dismissal across a launch: nothing to show yet is not "healthy"', async () => {
+    const user = userEvent.setup();
+    const { rerender, unmount } = render(<UsageBar warning={freeLow} usageKnown />);
+    await user.click(screen.getByRole('button', { name: 'Dismiss' }));
+    unmount();
+    // Next launch: the bar mounts before the first poll answers.
+    const second = render(<UsageBar warning={null} usageKnown={false} />);
+    second.rerender(<UsageBar warning={freeLow} usageKnown />);
+    expect(screen.queryByText(/free tokens left/)).toBeNull();
+    // Unreachable sidecar is not "healthy" either.
+    second.rerender(<UsageBar warning={null} usageKnown={false} />);
+    second.rerender(<UsageBar warning={freeLow} usageKnown />);
+    expect(screen.queryByText(/free tokens left/)).toBeNull();
   });
 });

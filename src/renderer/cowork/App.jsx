@@ -2397,7 +2397,9 @@ function AppCore() {
   }, [inFlightSet.size, refreshHubUsage]);
   // A usage change DURING a task lands in that task's timeline: free tokens
   // ran out (the task went on, now on the balance) or an auto top up failed.
-  // Client-side only; it explains this session's behaviour and is not a turn.
+  // Kept on the task as `usageNotices`, not in `messages`: they are not turns,
+  // ChatView renders them after the transcript so the reply stays next to its
+  // question, and they are client-side only (gone on reload, by design).
   const prevHubUsage = useRef(hubUsage);
   useEffect(() => {
     const changes = usageTransitions(prevHubUsage.current, hubUsage);
@@ -2407,7 +2409,7 @@ function AppCore() {
     const createdAt = new Date().toISOString();
     setTasks((prev) => prev.map((t) => (
       t.id === streamingId
-        ? { ...t, messages: [...t.messages, ...changes.map((c) => ({ role: 'usage_notice', ...c, createdAt }))] }
+        ? { ...t, usageNotices: [...(t.usageNotices || []), ...changes.map((c) => ({ ...c, createdAt }))] }
         : t
     )));
   }, [hubUsage]);
