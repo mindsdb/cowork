@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import * as http from 'http';
-import * as net from 'net';
+// Renamed to avoid colliding with the `net` import from 'electron' below —
+// this one is the real loopback TCP socket used for the idle-connection
+// test; that one is the mocked Electron net.fetch used everywhere else.
+import * as nodeNet from 'net';
 
 vi.mock('electron', () => ({
   shell: { openExternal: vi.fn() },
@@ -85,7 +88,7 @@ describe('oauthConnect', () => {
   // pkceResult.ok, so the window-refocus step never ran either.
   it('uses a provider-specific localhost redirect host', async () => {
     const nextAuthUrl = captureAuthUrl();
-    globalThis.fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ access_token: 'at' }) })) as unknown as typeof fetch;
+    net.fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ access_token: 'at' }) })) as unknown as typeof net.fetch;
 
     const flow = oauthConnect({ ...OPTS, redirectPort: 47292, redirectHost: 'localhost' });
     const authUrl = await nextAuthUrl();
@@ -96,7 +99,7 @@ describe('oauthConnect', () => {
 
   it('uses 127.0.0.1 by default', async () => {
     const nextAuthUrl = captureAuthUrl();
-    globalThis.fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ access_token: 'at' }) })) as unknown as typeof fetch;
+    net.fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ access_token: 'at' }) })) as unknown as typeof net.fetch;
 
     const flow = oauthConnect({ ...OPTS, redirectPort: 47293 });
     const authUrl = await nextAuthUrl();
@@ -186,7 +189,7 @@ describe('oauthConnect', () => {
   // legitimate, still-in-flight authorization.
   it('answers a callback whose state does not match without failing the flow', async () => {
     const nextAuthUrl = captureAuthUrl();
-    globalThis.fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ access_token: 'at' }) })) as unknown as typeof fetch;
+    net.fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ access_token: 'at' }) })) as unknown as typeof net.fetch;
     const flow = oauthConnect(OPTS);
     const authUrl = await nextAuthUrl();
     const realState = authUrl.searchParams.get('state') as string;
@@ -207,7 +210,7 @@ describe('oauthConnect', () => {
     // length) is also tolerated, not just the differently-sized
     // 'forged-state' case above.
     const nextAuthUrl = captureAuthUrl();
-    globalThis.fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ access_token: 'at' }) })) as unknown as typeof fetch;
+    net.fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ access_token: 'at' }) })) as unknown as typeof net.fetch;
     const flow = oauthConnect(OPTS);
     const authUrl = await nextAuthUrl();
     const realState = authUrl.searchParams.get('state') as string;
@@ -226,7 +229,7 @@ describe('oauthConnect', () => {
   // not abort a legitimate, still-in-flight authorization ───
   it('tolerates a stray no-code hit at a reused fixed port and still completes on the real callback', async () => {
     const nextAuthUrl = captureAuthUrl();
-    globalThis.fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ access_token: 'at', refresh_token: 'rt' }) })) as unknown as typeof fetch;
+    net.fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ access_token: 'at', refresh_token: 'rt' }) })) as unknown as typeof net.fetch;
     const flow = oauthConnect({ ...OPTS, redirectPort: 47298, redirectHost: 'localhost' });
     const authUrl = await nextAuthUrl();
     const realState = authUrl.searchParams.get('state') as string;
@@ -259,7 +262,7 @@ describe('oauthConnect', () => {
     const agent = new http.Agent({ keepAlive: true });
     try {
       const nextAuthUrl = captureAuthUrl();
-      globalThis.fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ access_token: 'at-1' }) })) as unknown as typeof fetch;
+      net.fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ access_token: 'at-1' }) })) as unknown as typeof net.fetch;
       const flowA = oauthConnect({ ...OPTS, redirectPort: 47297 });
       const authUrlA = await nextAuthUrl();
       const stateA = authUrlA.searchParams.get('state') as string;
@@ -274,7 +277,7 @@ describe('oauthConnect', () => {
       // pooled keep-alive connection could otherwise get reused.
       await new Promise((r) => setTimeout(r, 400));
 
-      globalThis.fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ access_token: 'at-2' }) })) as unknown as typeof fetch;
+      net.fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ access_token: 'at-2' }) })) as unknown as typeof net.fetch;
       const flowB = oauthConnect({ ...OPTS, redirectPort: 47297 });
       const authUrlB = await nextAuthUrl();
       const stateB = authUrlB.searchParams.get('state') as string;
@@ -305,7 +308,7 @@ describe('oauthConnect', () => {
   // connection it's tracking on teardown, not just ones that responded.
   it('destroys an idle connection that never sent a request when the server tears down', async () => {
     const nextAuthUrl = captureAuthUrl();
-    globalThis.fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ access_token: 'at' }) })) as unknown as typeof fetch;
+    net.fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ access_token: 'at' }) })) as unknown as typeof net.fetch;
     const flow = oauthConnect({ ...OPTS, redirectPort: 47296 });
     const authUrl = await nextAuthUrl();
     const state = authUrl.searchParams.get('state') as string;
@@ -313,7 +316,7 @@ describe('oauthConnect', () => {
 
     // A connection that never sends a request — simulates a browser's
     // idle/speculative keep-alive socket to this origin.
-    const idleSocket = net.connect(port, '127.0.0.1');
+    const idleSocket = nodeNet.connect(port, '127.0.0.1');
     await new Promise<void>((resolve, reject) => {
       idleSocket.once('connect', () => resolve());
       idleSocket.once('error', reject);
