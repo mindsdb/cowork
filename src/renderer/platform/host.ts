@@ -849,21 +849,8 @@ let webPickerCancelPrevious: (() => void) | null = null;
 // ...)` — severing that link (as an earlier version of this function did)
 // silently breaks every successful pick: the result can never reach the
 // opener, and the promise only ever resolves via the close-poll timeout.
-// Explicit size features are what makes a browser render this as a real
-// popup window rather than a plain new tab — with no features string at
-// all (every prior version of this function), every browser opens a tab.
-// Centered on the current screen, sized for the Google Picker widget's own
-// file-grid UI plus our status header above it.
-function pickerPopupFeatures(): string {
-  const width = 640;
-  const height = 720;
-  const left = Math.max(0, Math.round((window.screen.width - width) / 2));
-  const top = Math.max(0, Math.round((window.screen.height - height) / 2));
-  return `width=${width},height=${height},left=${left},top=${top}`;
-}
-
 function openBlankPickerWindow(): Window | null {
-  return window.open('about:blank', '_blank', pickerPopupFeatures());
+  return window.open('about:blank', '_blank');
 }
 
 // Web-only. Call this SYNCHRONOUSLY inside the click handler, before any

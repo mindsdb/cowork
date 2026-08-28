@@ -260,25 +260,6 @@ describe('electron mode (bridge present)', () => {
     await expect(host.cancelDrivePicker()).resolves.toBeUndefined();
   });
 
-  it('the picker popup requests real window dimensions, not a plain new tab', async () => {
-    // With no size features at all (every version of this code before this
-    // test), every browser opens window.open() as a plain tab — width/
-    // height in the features string is what makes it a real popup window.
-    const fakePopup = { closed: false, close: vi.fn(), location: { href: '' } } as unknown as Window;
-    const open = vi.spyOn(window, 'open').mockReturnValue(fakePopup);
-    open.mockClear();
-    const host = await importHost();
-
-    host.preopenDrivePickerPopup();
-    const features = open.mock.calls[0]?.[2] as string;
-    const parsed = Object.fromEntries(features.split(',').map((kv) => kv.split('=')));
-    expect(Number(parsed.width)).toBeGreaterThan(0);
-    expect(Number(parsed.height)).toBeGreaterThan(0);
-    // Centered: left/top place the window's midpoint at the screen's.
-    expect(Number(parsed.left) + Number(parsed.width) / 2).toBeCloseTo(window.screen.width / 2, 0);
-    expect(Number(parsed.top) + Number(parsed.height) / 2).toBeCloseTo(window.screen.height / 2, 0);
-  });
-
   it('pickDriveFiles on web opens the popup synchronously, before the session mint resolves', async () => {
     // A real fetch resolves after at least one microtask hop; if window.open()
     // ran only after that await, this would never observe the call before
@@ -300,7 +281,7 @@ describe('electron mode (bridge present)', () => {
     // No 'noopener' in the features: a browser honoring it returns null
     // from a successful open, which would falsely read as "blocked" and
     // leave an inert blank tab.
-    expect(open).toHaveBeenCalledWith('about:blank', '_blank', expect.stringMatching(/^width=\d+,height=\d+,left=\d+,top=\d+$/));
+    expect(open).toHaveBeenCalledWith('about:blank', '_blank');
 
     resolveFetch({ ok: true, json: async () => ({ url: 'http://localhost:3000/picker?ticket=t1' }) });
     await vi.waitFor(() => expect((fakePopup as unknown as { location: { href: string } }).location.href)
@@ -320,7 +301,7 @@ describe('electron mode (bridge present)', () => {
     const host = await importHost();
 
     const preopened = host.preopenDrivePickerPopup();
-    expect(open).toHaveBeenCalledWith('about:blank', '_blank', expect.stringMatching(/^width=\d+,height=\d+,left=\d+,top=\d+$/));
+    expect(open).toHaveBeenCalledWith('about:blank', '_blank');
     expect(preopened).toBe(fakePopup);
     // Opener link left intact — the picker page's own completion protocol
     // is window.opener.postMessage(...) (picker_page.py's reportResult()),
@@ -376,7 +357,7 @@ describe('electron mode (bridge present)', () => {
     const host = await importHost();
 
     const result = host.pickDriveFiles('google_drive', 'c', 'e@x.com');
-    expect(open).toHaveBeenCalledWith('about:blank', '_blank', expect.stringMatching(/^width=\d+,height=\d+,left=\d+,top=\d+$/));
+    expect(open).toHaveBeenCalledWith('about:blank', '_blank');
     // The session mint is a real (mocked) fetch + a dynamic keycloak import,
     // several microtask hops deep — poll rather than guess a tick count.
     await vi.waitFor(() => expect((fakePopup as unknown as { location: { href: string } }).location.href)
