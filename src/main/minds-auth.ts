@@ -8,6 +8,16 @@ import { retryOnTransientLock } from './fs-retry';
 import { isMindsBaseUrl } from '../shared/minds-endpoint';
 import { describeFetchError } from './fetch-error';
 import {
+  type MindsOrg,
+  type MindsOrgList,
+  chooseMindsOrg,
+  personalOrgName,
+  rankMindsOrgs,
+  readOrgPreference,
+  toMindsOrg,
+  writeOrgPreference,
+} from '../shared/minds-orgs';
+import {
   MINDS_API_HOST,
   MINDS_KEYCLOAK_BASE,
   MINDS_AUTH_SERVICE_URL as AUTH_SERVICE_URL,
@@ -294,8 +304,23 @@ function hasActiveOrgClaim(payload: Record<string, unknown> | null): boolean {
   return Boolean(getActiveOrgFromPayload(payload));
 }
 
+// First source wins on identity, best source wins on the label.
+//
+// The token claim is pushed first and carries no display name — a personal
+// organization arrives as the raw `personal_<userId>` — while
+// `users/<id>/orgs` carries the one auth generated. Dropping the later
+// duplicate outright meant the organization a person is actually in was the
+// one entry guaranteed to show its slug. `name` equal to `slug` is how a
+// source says it had no display name to give.
 function pushUniqueOrg(target: OrgRef[], seen: Set<string>, org: OrgRef | null) {
-  if (!org || seen.has(org.id)) return;
+  if (!org) return;
+  if (seen.has(org.id)) {
+    const existing = target.find((entry) => entry.id === org.id);
+    if (existing && existing.name === existing.slug && org.name && org.name !== org.slug) {
+      existing.name = org.name;
+    }
+    return;
+  }
   seen.add(org.id);
   target.push(org);
 }
@@ -385,53 +410,145 @@ async function refreshAfterOrgSwitch(): Promise<string | null> {
   return result.status === 'ok' ? result.token : null;
 }
 
+// ── The organization pick, on disk ────────────────────────────────
+//
+// `state.json` in the Cowork home, beside the provider preferences. The
+// decisions about the shape live in minds-orgs.ts; this is the file half.
+// Both directions are best-effort: losing the pick costs a ranked default,
+// never a working install.
+
+function readCoworkState(): unknown {
+  try {
+    const statePath = coworkStatePath();
+    if (!fs.existsSync(statePath)) return null;
+    return JSON.parse(fs.readFileSync(statePath, 'utf-8'));
+  } catch {
+    return null;
+  }
+}
+
+function readStoredOrgPreference(userId: string): string | null {
+  return readOrgPreference(readCoworkState(), userId);
+}
+
+function storeOrgPreference(userId: string, orgId: string): void {
+  try {
+    fs.mkdirSync(coworkHome(), { recursive: true });
+    const next = writeOrgPreference(readCoworkState(), userId, orgId);
+    fs.writeFileSync(coworkStatePath(), JSON.stringify(next, null, 2) + '\n', 'utf-8');
+  } catch (error) {
+    console.warn('[minds-auth] failed to store the organization pick', error);
+  }
+}
+
+// The live access token, refreshed once if the cached one has expired. The
+// in-memory token is process-lifetime only, so right after a launch it can be
+// empty while a perfectly good refresh token sits on disk.
+export async function freshAccessToken(): Promise<string | null> {
+  const cached = getAccessToken();
+  if (cached && !isAccessTokenExpired()) return cached;
+  if (!getRefreshToken()) return cached;
+  const result = await refreshTokensOnly();
+  return result.status === 'ok' ? result.token : getAccessToken();
+}
+
 export interface EnsureActiveOrgResult {
   token: string | null;
   candidates?: OrgRef[];
+  /** Every organization this person belongs to, company ones first. */
+  orgs?: MindsOrg[];
+  /** The organization the returned token names. */
+  activeOrgId?: string | null;
 }
 
-// Ensures the in-memory access token carries an active organization
-// claim. Idempotent — tokens that already have the claim short-circuit.
-export async function ensureActiveOrg(accessToken: string): Promise<EnsureActiveOrgResult> {
+// Puts the access token on the organization this install should mint in, and
+// makes sure it carries an active-organization claim at all.
+//
+// The claim used to be the whole answer: a token that already had one was
+// returned untouched. That is how people ended up minting into
+// their personal organization — whatever they last had active in a console
+// tab decided where their laptop's key went, and nothing on either surface
+// said so. Now the claim is an input rather than the verdict: company
+// organizations rank ahead of personal ones, a pick the person made by hand
+// beats the ranking, and the switch only happens when the answer differs from
+// the claim.
+//
+// That last clause is what keeps this free for the common case. An account
+// with one organization chooses it, finds the claim already names it, and
+// makes no switch and no refresh — the same number of round-trips as before.
+export async function ensureActiveOrg(
+  accessToken: string,
+  options: { preferOrgId?: string; pinOrgId?: string } = {},
+): Promise<EnsureActiveOrgResult> {
   const payload = decodeJwtPayload(accessToken);
-  if (hasActiveOrgClaim(payload)) {
-    const userId = typeof payload?.sub === 'string' ? payload.sub : '';
-    const candidates = userId ? await listOrgCandidates(accessToken, userId, payload) : [];
-    return { token: accessToken, candidates };
-  }
-
+  const hasClaim = hasActiveOrgClaim(payload);
   const userId = typeof payload?.sub === 'string' ? payload.sub : null;
   if (!userId) {
-    return { token: null };
+    return { token: hasClaim ? accessToken : null };
   }
 
-  let orgs = await listOrgCandidates(accessToken, userId, payload);
+  let candidates = await listOrgCandidates(accessToken, userId, payload);
   // Brand-new accounts (ENG-917): the personal org is provisioned
   // asynchronously (Keycloak REGISTER webhook → auth-service job), so a
   // user who verifies their email within seconds can land here before it
   // exists. Retry briefly before declaring the account org-less.
   // Established accounts always have ≥1 org on the first pass, so this
-  // loop costs them nothing.
-  for (let i = 0; orgs.length === 0 && i < ORG_BOOTSTRAP_RETRIES; i++) {
+  // loop costs them nothing — and a token carrying a claim always contributes
+  // that organization, so it never waits here either.
+  for (let i = 0; candidates.length === 0 && i < ORG_BOOTSTRAP_RETRIES; i++) {
     await new Promise((r) => setTimeout(r, ORG_BOOTSTRAP_RETRY_DELAY_MS));
-    orgs = await listOrgCandidates(accessToken, userId, payload);
+    candidates = await listOrgCandidates(accessToken, userId, payload);
   }
-  if (orgs.length === 0) {
-    return { token: null };
+  if (candidates.length === 0) {
+    return { token: hasClaim ? accessToken : null };
   }
 
-  for (const target of orgs) {
+  const orgs = rankMindsOrgs(candidates.map((org) => toMindsOrg(org, userId)));
+  const activeOrgId = getActiveOrgFromPayload(payload)?.id ?? null;
+  // A caller can name the organization two ways, and they differ only in what
+  // they leave behind. `preferOrgId` is a person picking one during onboarding,
+  // so it outranks the stored pick and becomes the stored pick. `pinOrgId` is a
+  // switch already in progress: it decides this mint and nothing else, because
+  // a pick is only worth remembering once the new credential has been
+  // committed, and storing it here would survive a rollback and move the next
+  // launch somewhere nobody chose. Either way the id goes through
+  // `chooseMindsOrg` rather than straight to a switch, so it is matched against
+  // a real membership first.
+  const requested = options.pinOrgId ?? options.preferOrgId;
+  const chosen = chooseMindsOrg(orgs, requested ?? readStoredOrgPreference(userId));
+  if (options.preferOrgId && chosen?.id === options.preferOrgId) {
+    storeOrgPreference(userId, chosen.id);
+  }
+
+  if (chosen && hasClaim && chosen.id === activeOrgId) {
+    return { token: accessToken, candidates, orgs, activeOrgId };
+  }
+
+  // The chosen organization first, then the rest in ranked order. A Keycloak
+  // refusal on the preferred one must still leave the token with some claim,
+  // because everything downstream needs one and none of it cares which.
+  const targets = chosen ? [chosen, ...orgs.filter((org) => org.id !== chosen.id)] : orgs;
+  for (const target of targets) {
     const ok = await switchActiveOrg(accessToken, target.id);
     if (!ok) continue;
 
     const refreshed = await refreshAfterOrgSwitch();
     if (!refreshed) continue;
-    if (hasActiveOrgClaim(decodeJwtPayload(refreshed))) {
-      return { token: refreshed, candidates: orgs };
+    const refreshedPayload = decodeJwtPayload(refreshed);
+    if (hasActiveOrgClaim(refreshedPayload)) {
+      return {
+        token: refreshed,
+        candidates,
+        orgs,
+        activeOrgId: getActiveOrgFromPayload(refreshedPayload)?.id ?? target.id,
+      };
     }
   }
 
-  return { token: null, candidates: orgs };
+  // Nothing could be made active. A token that already carried a claim is
+  // still usable: ranking is an improvement on where the key lands, never a
+  // precondition for getting one.
+  return { token: hasClaim ? accessToken : null, candidates, orgs, activeOrgId };
 }
 
 // ── API key provisioning ──────────────────────────────────────────
@@ -470,6 +587,10 @@ export interface ProvisionResult {
   // Free-form error message for any other failure (network, auth
   // expired, etc.). Renderer paints it on the welcome screen.
   error?: string;
+  // Where the key actually landed. The ranking says where it should go, and
+  // the entitlement and personal-org fallbacks below can still move it, so
+  // onboarding names this rather than what it asked for.
+  organization?: MindsOrg;
 }
 
 // Lists every API key on the account, following DRF-style `next`
@@ -717,14 +838,21 @@ export interface ProvisionOptions {
   // valid — in-flight sessions may hold it, and the TTL reaps it anyway —
   // so it skips the delete. Sign-in keeps the default and stays tidy.
   deleteExistingKey?: boolean;
+  // The organization a person picked during onboarding. Ignored unless they
+  // belong to it; honoured, it also becomes the pick this install remembers.
+  organizationId?: string;
+  // The organization this mint must land in, for a caller that has already
+  // switched the session there. Same membership check, but it records nothing:
+  // the caller stores the pick once the credential is committed.
+  pinOrgId?: string;
 }
 
 export async function provisionAntonApiKey(
   initialToken: string,
   options: ProvisionOptions = {},
 ): Promise<ProvisionResult> {
-  const { deleteExistingKey = true } = options;
-  const orgResult = await ensureActiveOrg(initialToken);
+  const { deleteExistingKey = true, organizationId, pinOrgId } = options;
+  const orgResult = await ensureActiveOrg(initialToken, { preferOrgId: organizationId, pinOrgId });
   if (!orgResult.token) {
     return {
       error:
@@ -817,7 +945,7 @@ export async function provisionAntonApiKey(
     if (!canCreateApiKeys(provisionCtx.entitlements)) {
       const userId = typeof initialPayload?.sub === 'string' ? initialPayload.sub : '';
       const personal = userId
-        ? (orgResult.candidates || []).find((o) => o.slug === `personal_${userId}`)
+        ? (orgResult.candidates || []).find((o) => o.slug === personalOrgName(userId))
         : undefined;
       if (personal && personal.id !== getActiveOrgFromPayload(decodeJwtPayload(provisionToken))?.id) {
         const switched = await switchActiveOrg(provisionToken, personal.id);
@@ -888,7 +1016,15 @@ export async function provisionAntonApiKey(
     });
     if (res.ok) {
       const data = await res.json() as ApiKeyRecord;
-      if (data?.key) return { key: data.key, prefix: data.prefix };
+      if (data?.key) {
+        // Read the organization off the token the mint actually used, and
+        // name it from the membership listing rather than from the claim:
+        // the claim carries the raw `personal_<id>` with no display name,
+        // while `users/<id>/orgs` carries the one auth generated.
+        const mintedOrgId = getActiveOrgFromPayload(decodeJwtPayload(provisionToken))?.id ?? null;
+        const organization = (orgResult.orgs || []).find((org) => org.id === mintedOrgId);
+        return { key: data.key, prefix: data.prefix, organization };
+      }
       return { error: 'Auth-service did not return an API key value.' };
     }
     type ErrorBody = { code?: string; detail?: string; error?: string; message?: string };
@@ -1400,7 +1536,7 @@ async function doKeyLifecycleCheck(): Promise<void> {
 // settings cache invalidates on PUT; in-flight sessions keep the old key,
 // which stays valid until its own expiry), and no provider flips (a user
 // who switched to BYOK keeps their selection).
-async function commitRenewedKey(accessToken: string, apiKey: string, prefix: string | undefined): Promise<void> {
+async function commitRenewedKey(accessToken: string, apiKey: string, prefix: string | undefined): Promise<boolean> {
   // Roll back with the CURRENT store token, not the one captured at the
   // top of doKeyLifecycleCheck: provisionAntonApiKey may have minted under
   // an org-switched token (org-switch / personal-org fallback), and the
@@ -1418,7 +1554,7 @@ async function commitRenewedKey(accessToken: string, apiKey: string, prefix: str
   if (!isServerRunning() && !isServerStarting()) {
     console.warn('[minds-auth] server no longer available for renewal commit — rolling back minted key, will retry next tick');
     await rollbackMint();
-    return;
+    return false;
   }
   const port = getServerPort();
   try {
@@ -1434,12 +1570,12 @@ async function commitRenewedKey(accessToken: string, apiKey: string, prefix: str
     if (!res.ok) {
       console.warn('[minds-auth] renewal settings PUT returned', res.status, '— rolling back minted key, will retry next tick');
       await rollbackMint();
-      return;
+      return false;
     }
   } catch (error) {
     console.warn('[minds-auth] failed to write renewed key to server DB — rolling back minted key, will retry next tick', error);
     await rollbackMint();
-    return;
+    return false;
   }
 
   // DB is authoritative and already correct at this point — a failure
@@ -1457,4 +1593,278 @@ async function commitRenewedKey(accessToken: string, apiKey: string, prefix: str
   } catch (error) {
     console.warn('[minds-auth] renewed key committed to server DB but failed to write .env (CLI copy stale)', error);
   }
+  return true;
+}
+
+// ── Changing organization from inside the app ─────────────────────
+//
+// Switching costs more than a label because the credential the sidecar
+// presents is bound to one organization. Auth scopes every API-key read and
+// write to the caller's active organization, so the key in the organization
+// being left is unreachable the moment the token moves, and the key in the
+// one being joined does not exist yet.
+//
+// The order below is what makes a failure harmless. The new key is minted and
+// committed BEFORE the old one is touched, so every failure short of the last
+// step is undone by switching back — no re-mint, because the old key was
+// never revoked. That also keeps a running turn alive: the sidecar hands the
+// gateway whatever key it held when the turn started, so revoking early would
+// 401 the next tool call in a conversation the person is watching.
+
+/** This device's live key prefixes in whatever organization `token` names. */
+async function ownKeyPrefixes(token: string): Promise<string[]> {
+  const keyName = antonKeyName();
+  return (await listExistingKeys(token))
+    .filter((entry) => entry?.name === keyName && entry.prefix && entry.revoked !== true)
+    .map((entry) => entry.prefix as string);
+}
+
+// How long to let a turn finish before retiring the key it may be presenting,
+// and how often to ask. The sidecar answers this in microseconds, so the poll
+// is cheap; the ceiling is sized for a long agent turn rather than for a chat
+// reply.
+const TURN_DRAIN_POLL_MS = 2_000;
+const TURN_DRAIN_TIMEOUT_MS = 5 * 60 * 1000;
+
+// One switch at a time, and where the latest one left us.
+//
+// The retirement below is detached and drains for up to five minutes, so a
+// second switch can start while the first is still waiting. Two things follow.
+// The switch itself is single-flight, because two of them interleaving would
+// mint twice and race each other through the settings PUT. And the retirement
+// restores the session to whatever the LATEST switch chose rather than to the
+// target it was handed, because putting it back to a superseded one is how the
+// console ends up naming an organization nobody picked.
+let _orgSwitchInFlight = false;
+let _latestOrgTarget: string | null = null;
+
+/** Turns the sidecar currently has running, or null when it cannot be asked. */
+async function inFlightTurnCount(): Promise<number | null> {
+  if (!isServerRunning() && !isServerStarting()) return 0;
+  try {
+    const res = await timedFetch(
+      `http://127.0.0.1:${getServerPort()}/api/v1/responses/in-flight-list`,
+      { headers: { ...authHeader() } },
+    );
+    if (!res.ok) return null;
+    const body = await res.json() as unknown;
+    return Array.isArray(body) ? body.length : null;
+  } catch {
+    return null;
+  }
+}
+
+// A sidecar that cannot be reached is running no turns through us, so an
+// unanswerable poll counts as drained rather than blocking until the ceiling.
+async function waitForTurnsToDrain(deadlineMs: number): Promise<boolean> {
+  for (;;) {
+    const running = await inFlightTurnCount();
+    if (running === null || running === 0) return true;
+    if (Date.now() >= deadlineMs) return false;
+    await new Promise((resolve) => setTimeout(resolve, TURN_DRAIN_POLL_MS));
+  }
+}
+
+async function restoreActiveOrg(token: string, orgId: string | null): Promise<void> {
+  if (!orgId) return;
+  if (await switchActiveOrg(token, orgId)) {
+    await refreshAfterOrgSwitch();
+    return;
+  }
+  console.warn('[minds-auth] could not put the active organization back to %s', orgId);
+}
+
+// Retire this device's key in the organization the person just left.
+//
+// Detached from the switch on purpose: it waits for any running turn, and the
+// switch itself has already succeeded by the time this starts. Reaching the
+// old key means being in the old organization again, so this borrows the
+// active organization, deletes, and hands it back.
+async function retireKeysInPreviousOrg(
+  sourceOrgId: string,
+  prefixes: string[],
+): Promise<void> {
+  if (prefixes.length === 0) return;
+
+  if (!await waitForTurnsToDrain(Date.now() + TURN_DRAIN_TIMEOUT_MS)) {
+    // Killing a turn a person is watching is the worse of the two outcomes,
+    // and the key does not survive indefinitely: the next mint in that
+    // organization deletes this device's prior key by exact name.
+    console.warn(
+      '[minds-auth] a turn was still running after %ds — leaving %d device key(s) live in %s; the next mint there retires them',
+      TURN_DRAIN_TIMEOUT_MS / 1000, prefixes.length, sourceOrgId,
+    );
+    return;
+  }
+
+  const token = await freshAccessToken();
+  if (!token) return;
+  if (!await switchActiveOrg(token, sourceOrgId)) {
+    console.warn('[minds-auth] could not re-enter %s to retire its device key(s)', sourceOrgId);
+    return;
+  }
+  const inSource = await refreshAfterOrgSwitch();
+  if (!inSource) {
+    console.warn('[minds-auth] token refresh failed while retiring device key(s) in %s', sourceOrgId);
+    await restoreActiveOrg(token, _latestOrgTarget);
+    return;
+  }
+  for (const prefix of prefixes) await deleteKeyByPrefix(inSource, prefix);
+  console.log('[minds-auth] retired %d device key(s) in the previous organization', prefixes.length);
+  // Turns do not depend on this landing — the sidecar holds an `mdb_` key
+  // bound to the new organization and a bearer does not read the session's
+  // active organization — but the console does, so a failure here shows the
+  // person the organization they left until their next sign-in.
+  await restoreActiveOrg(inSource, _latestOrgTarget);
+}
+
+/** Every organization the signed-in person belongs to, company ones first. */
+export async function listMindsOrgs(): Promise<MindsOrgList> {
+  const token = await freshAccessToken();
+  if (!token) return { orgs: [], activeOrgId: null };
+  const payload = decodeJwtPayload(token);
+  const userId = typeof payload?.sub === 'string' ? payload.sub : null;
+  if (!userId) return { orgs: [], activeOrgId: null };
+  const candidates = await listOrgCandidates(token, userId, payload);
+  return {
+    orgs: rankMindsOrgs(candidates.map((org) => toMindsOrg(org, userId))),
+    activeOrgId: getActiveOrgFromPayload(payload)?.id ?? null,
+  };
+}
+
+export interface SwitchMindsOrgResult {
+  ok: boolean;
+  /** Where the app is now: the target on success, where it started on failure. */
+  activeOrgId: string | null;
+  orgs: MindsOrg[];
+  /** A sentence to show. Present only when `ok` is false. */
+  error?: string;
+}
+
+/**
+ * Make `targetOrgId` this install's organization: switch the session, move the
+ * credential, remember the pick, and retire the key left behind.
+ */
+export async function switchMindsOrg(targetOrgId: string): Promise<SwitchMindsOrgResult> {
+  if (_orgSwitchInFlight) {
+    return {
+      ok: false,
+      activeOrgId: null,
+      orgs: [],
+      error: 'A change of organization is already running. Try again in a moment.',
+    };
+  }
+  _orgSwitchInFlight = true;
+  try {
+    return await doSwitchMindsOrg(targetOrgId);
+  } finally {
+    _orgSwitchInFlight = false;
+  }
+}
+
+async function doSwitchMindsOrg(targetOrgId: string): Promise<SwitchMindsOrgResult> {
+  const token = await freshAccessToken();
+  if (!token) return { ok: false, activeOrgId: null, orgs: [], error: 'Sign in to change organization.' };
+
+  const payload = decodeJwtPayload(token);
+  const userId = typeof payload?.sub === 'string' ? payload.sub : null;
+  if (!userId) return { ok: false, activeOrgId: null, orgs: [], error: 'Could not read the signed-in account.' };
+
+  const sourceOrgId = getActiveOrgFromPayload(payload)?.id ?? null;
+  const candidates = await listOrgCandidates(token, userId, payload);
+  const orgs = rankMindsOrgs(candidates.map((org) => toMindsOrg(org, userId)));
+
+  // Membership is decided here against what Keycloak says this person belongs
+  // to, and the switch below goes through Keycloak's own switch-organization
+  // endpoint. Nothing takes an organization id from the caller and puts it on
+  // a key request.
+  const target = orgs.find((org) => org.id === targetOrgId);
+  if (!target) {
+    return { ok: false, activeOrgId: sourceOrgId, orgs, error: 'That organization is not one you belong to.' };
+  }
+  if (target.id === sourceOrgId) {
+    storeOrgPreference(userId, target.id);
+    return { ok: true, activeOrgId: sourceOrgId, orgs };
+  }
+
+  // Read the keys to retire before the switch: after it, they are in an
+  // organization this token no longer names and auth will not list them.
+  const sourcePrefixes = sourceOrgId ? await ownKeyPrefixes(token) : [];
+
+  if (!await switchActiveOrg(token, target.id)) {
+    return {
+      ok: false,
+      activeOrgId: sourceOrgId,
+      orgs,
+      error: `MindsHub would not switch to ${target.displayName}. Nothing changed.`,
+    };
+  }
+
+  const switched = await refreshAfterOrgSwitch();
+  if (!switched) {
+    // The switch landed on Keycloak even though this token did not follow it,
+    // so the session has genuinely moved and has to be moved back.
+    await restoreActiveOrg(token, sourceOrgId);
+    return {
+      ok: false,
+      activeOrgId: sourceOrgId,
+      orgs,
+      error: `Could not refresh the session for ${target.displayName}. Nothing changed.`,
+    };
+  }
+
+  const provision = await provisionAntonApiKey(switched, { pinOrgId: target.id });
+  if (!provision.key) {
+    await restoreActiveOrg(switched, sourceOrgId);
+    return {
+      ok: false,
+      activeOrgId: sourceOrgId,
+      orgs,
+      error: provision.upgradeRequired
+        ? `${target.displayName} cannot issue an API key for this account. Nothing changed.`
+        : provision.error || `Could not create an API key in ${target.displayName}. Nothing changed.`,
+    };
+  }
+
+  // Where the key actually went, rather than where the switch aimed. Pinning
+  // above stops the ranking and the stored pick pulling the mint back, but the
+  // entitlement fallback inside provisionAntonApiKey still moves one into the
+  // personal organization when the target cannot issue keys. Committing that
+  // key would leave the app naming an organization the credential does not
+  // belong to, which is the bug this whole change exists to fix.
+  if (provision.organization && provision.organization.id !== target.id) {
+    const minted = await freshAccessToken();
+    if (minted && provision.prefix) await deleteKeyByPrefix(minted, provision.prefix);
+    await restoreActiveOrg(minted || switched, sourceOrgId);
+    return {
+      ok: false,
+      activeOrgId: sourceOrgId,
+      orgs,
+      error: `${target.displayName} cannot issue an API key for this account. Nothing changed.`,
+    };
+  }
+
+  // The renewal commit path, not the sign-in one: it PUTs the credential and
+  // deliberately does not restart the sidecar, so a turn already running keeps
+  // the key it started with. It rolls the mint back itself when the PUT fails.
+  if (!await commitRenewedKey(switched, provision.key, provision.prefix)) {
+    await restoreActiveOrg(switched, sourceOrgId);
+    return {
+      ok: false,
+      activeOrgId: sourceOrgId,
+      orgs,
+      error: `Could not hand the new key to the local server. Nothing changed.`,
+    };
+  }
+
+  storeOrgPreference(userId, target.id);
+  _latestOrgTarget = target.id;
+  // Detached: it waits for any running turn, and the switch is already done.
+  // Every step inside it is best-effort, so a throw here is a bug rather than
+  // an outcome — but an unhandled rejection takes the main process down with
+  // it, and this one is unattended for up to five minutes.
+  void retireKeysInPreviousOrg(sourceOrgId ?? '', sourceOrgId ? sourcePrefixes : [])
+    .catch((error) => console.warn('[minds-auth] retiring the previous organization\'s key(s) failed', error));
+
+  return { ok: true, activeOrgId: target.id, orgs };
 }

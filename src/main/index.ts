@@ -22,7 +22,7 @@ import { fetchAccountIdentity, buildRevokeRequest } from './oauth-identity';
 import { openDrivePickerFlow, cancelCurrentDrivePicker, isValidDriveFileIds } from './drive-picker-service';
 import { getPickedFiles, savePickedFiles, verifyPickedFiles, type PickedFile } from './picked-files';
 import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefreshTokenStore, isAccessTokenExpired } from './token-store';
-import { refreshTokensOnly, writeMindsKeyToEnvAndRestart, provisionAntonApiKey, scheduleRefresh, cancelScheduledRefresh, startKeyLifecycleChecks, cancelKeyLifecycleChecks, revokeDeviceKeyAndEndSession, getRevokeToken, KEYCLOAK_AUTH_URL, KEYCLOAK_REGISTRATION_URL, KEYCLOAK_TOKEN_URL, SIGNUP_CALLBACK_TIMEOUT_MS } from './minds-auth';
+import { refreshTokensOnly, writeMindsKeyToEnvAndRestart, provisionAntonApiKey, scheduleRefresh, cancelScheduledRefresh, startKeyLifecycleChecks, cancelKeyLifecycleChecks, revokeDeviceKeyAndEndSession, getRevokeToken, freshAccessToken, listMindsOrgs, switchMindsOrg, KEYCLOAK_AUTH_URL, KEYCLOAK_REGISTRATION_URL, KEYCLOAK_TOKEN_URL, SIGNUP_CALLBACK_TIMEOUT_MS } from './minds-auth';
 import { scrubEnvCredentials } from './logout-env';
 import { MINDS_API_HOST } from './minds-urls';
 import {
@@ -874,14 +874,14 @@ function setupIPC() {
   // so it talks to the gateway with a credential the gateway will
   // actually accept (otherwise every chat call comes back 401).
   // Renderer only calls this on the paid-user / Minds-as-LLM path.
-  ipcMain.handle(IPC.MINDSHUB_FINALIZE, async () => {
+  ipcMain.handle(IPC.MINDSHUB_FINALIZE, async (_e, organizationId?: string) => {
     const token = getAccessToken();
     if (!token) {
       console.error('[mindshub:finalize] no cached access token — login may not have completed');
       return { ok: false, reason: 'No cached MindsHub access token.' };
     }
     console.log('[mindshub:finalize] provisioning API key…');
-    const result = await provisionAntonApiKey(token);
+    const result = await provisionAntonApiKey(token, { organizationId });
     console.log('[mindshub:finalize] provisionAntonApiKey result:', result.key ? 'key minted' : `error: ${result.error}`);
     if (result.upgradeRequired) {
       return { ok: false, upgradeRequired: true };
@@ -898,8 +898,22 @@ function setupIPC() {
     // ENG-498: (re)arm the key lifecycle watch for this fresh sign-in —
     // logout cancels it, and boot only starts it when already signed in.
     startKeyLifecycleChecks();
-    return { ok: true, apiKey: result.key };
+    // The organization is what the key actually landed in, which the ranking
+    // asks for and the entitlement fallback can still move. Onboarding names
+    // this one rather than the one it requested.
+    return { ok: true, apiKey: result.key, organization: result.organization };
   });
+
+  // The organizations this person belongs to, company ones first, and which
+  // one their token names. Read here rather than in the renderer because the
+  // renderer cannot reach Keycloak: auth's ingress names console origins in
+  // its CORS allowlist and no Cowork host is among them.
+  ipcMain.handle(IPC.MINDSHUB_LIST_ORGS, () => listMindsOrgs());
+
+  // Move this install to another organization: switch the session, mint and
+  // commit a key there, remember the pick, and retire the key left behind.
+  ipcMain.handle(IPC.MINDSHUB_SWITCH_ORG, (_e, organizationId: string) =>
+    switchMindsOrg(String(organizationId || '')));
 
   // Returns the in-memory access token if one is cached (e.g. boot-
   // time silent refresh already succeeded). Lets the Onboarding page
@@ -914,13 +928,7 @@ function setupIPC() {
   // a perfectly valid refresh token sits on disk. Refresh on miss so the
   // Settings account card reflects the real session instead of showing
   // an authenticated user as signed out (ENG-761).
-  ipcMain.handle(IPC.AUTH_GET_ACCESS_TOKEN, async () => {
-    const cached = getAccessToken();
-    if (cached && !isAccessTokenExpired()) return cached;
-    if (!getRefreshToken()) return cached;
-    const result = await refreshTokensOnly();
-    return result.status === 'ok' ? result.token : getAccessToken();
-  });
+  ipcMain.handle(IPC.AUTH_GET_ACCESS_TOKEN, () => freshAccessToken());
   ipcMain.handle(IPC.AUTH_LOGOUT, async () => {
     // Full sign-out: clear every credential + LLM-config key so the
     // next launch's checkConfigured() returns false and the user is

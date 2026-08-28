@@ -44,6 +44,11 @@ export default defineConfig({
         'src/renderer/cowork/hooks/useHubWorkspaces.js': { statements: 100, branches: 100 },
         'src/renderer/cowork/lib/letterTile.js': { statements: 100, branches: 100 },
         'src/renderer/cowork/components/WorkspaceSelector.jsx': { statements: 100, branches: 90 },
+        // Which organization an API key is minted in. Same reasoning one level
+        // up: a key in the wrong organization looks exactly like a key in the
+        // right one until the bill arrives somewhere nobody expected.
+        'src/shared/minds-orgs.ts': { statements: 100, branches: 100 },
+        'src/renderer/cowork/hooks/useMindsOrgs.js': { statements: 100, branches: 100 },
       },
     },
     projects: [

@@ -12,7 +12,7 @@ describe('accountUserFromToken', () => {
       email: 'hazem@example.com',
       preferred_username: 'hazem',
       sub: 'user-1',
-      active_organization: { displayName: 'MindsDB' },
+      activate_organization: { id: 'org-1', name: 'MindsDB' },
     }));
     expect(user).toEqual({
       name: 'Hazem Ahmed',
@@ -20,8 +20,49 @@ describe('accountUserFromToken', () => {
       username: 'hazem',
       sub: 'user-1',
       org: 'MindsDB',
+      orgId: 'org-1',
       picture: null,
     });
+  });
+
+  // The realm issues `activate_organization`. This read named
+  // `active_organization` for its whole life, so the org line in the account
+  // menu and the Organization row in Settings rendered nothing at all —
+  // silently, because both are conditional on the value being there.
+  it('reads the organization claim the realm actually issues', () => {
+    const user = accountUserFromToken(jwt({
+      sub: 'user-1',
+      activate_organization: { id: 'org-acme', name: 'acme.example' },
+    }));
+    expect(user.org).toBe('acme.example');
+    expect(user.orgId).toBe('org-acme');
+  });
+
+  // A personal organization's claim name is the raw `personal_<userId>` and
+  // the claim carries no display name for it. Printing that is worse than the
+  // blank it replaces, and rebuilding auth's `<email>'s organization` here
+  // would be a third copy of that rule — so the listing supplies the label
+  // and this leaves it null.
+  it('never offers the raw personal-organization name as a label', () => {
+    const user = accountUserFromToken(jwt({
+      sub: 'user-1',
+      activate_organization: { id: 'org-personal', name: 'personal_user-1' },
+    }));
+    expect(user.org).toBeNull();
+    expect(user.orgId).toBe('org-personal');
+  });
+
+  it('uses a display name on the claim when one is there', () => {
+    const user = accountUserFromToken(jwt({
+      sub: 'user-1',
+      activate_organization: { id: 'org-personal', name: 'personal_user-1', displayName: "hazem@example.com's organization" },
+    }));
+    expect(user.org).toBe("hazem@example.com's organization");
+  });
+
+  it('still reads the older claim spellings', () => {
+    expect(accountUserFromToken(jwt({ active_organization: { name: 'acme' } })).org).toBe('acme');
+    expect(accountUserFromToken(jwt({ organization: { name: 'acme' } })).org).toBe('acme');
   });
 
   it('carries the picture claim through for the avatar (ENG-1408)', () => {

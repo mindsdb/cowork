@@ -76,6 +76,13 @@ export const IPC = {
   MINDSHUB_REFRESH: 'mindshub:refresh',
   MINDSHUB_FINALIZE: 'mindshub:finalize',
   MINDSHUB_GET_CACHED_TOKEN: 'mindshub:get-cached-token',
+  // Which MindsHub organization this install mints its API key in. The read
+  // and the switch both live in main because the credential does: the token
+  // store, the Keycloak switch and the mint are all main-process, and the
+  // renderer has no way to reach Keycloak (auth's CORS allowlist names console
+  // origins only).
+  MINDSHUB_LIST_ORGS: 'mindshub:list-orgs',
+  MINDSHUB_SWITCH_ORG: 'mindshub:switch-org',
   // Pushed main → renderer whenever the MindsHub token store changes
   // (login, silent refresh, logout, definitive session death). The
   // renderer's signed-in indicator subscribes to this instead of
