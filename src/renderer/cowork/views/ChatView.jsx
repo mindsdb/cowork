@@ -426,28 +426,24 @@ function TextBlock({ text, id, complete = true, conversationId = null }) {
 // Convert an artifact step (from the SSE adapter, badge='Artifact')
 // into the shape ArtifactCard expects. Used to render inline cards
 // at the end of an assistant turn — like mdb-ai surfaces results.
-function artifactStepToCard(step, projectPath) {
+export function artifactStepToCard(step, projectPath) {
   const data = step.data || {};
   const path = data.file_path || data.path || '';
   // Lower-cased extension (no leading dot) for HTML detection downstream.
   const ext = (path.match(/\.([a-z0-9]+)$/i)?.[1] || '').toLowerCase();
   const card = normalizeArtifactRecord({
+    // Preserve the complete server card that the stream adapter stored. In
+    // particular, id + draftUrl + capabilities are what make the
+    // immediately opened viewer editable and reviewable. Keeping the payload
+    // whole also prevents each new artifact field from requiring another
+    // fragile pass-through list here.
+    ...data,
     title: data.title || step.label || 'Artifact',
     kind: data.action ? `${data.action}` : 'live artifact',
     icon: 'doc',
     path,
     file_path: path,
     ext: ext ? `.${ext}` : '',
-    // Second hand-written field list this card passes through (the adapter's
-    // step.data is the first). Both have to carry identity and publish state or
-    // the card cannot open, address or delete the artifact in org mode, where
-    // there is no path-based fallback to hide the omission.
-    id: data.id || '',
-    slug: data.slug || '',
-    publishedUrl: data.publishedUrl || '',
-    projectId: data.projectId || '',
-    projectName: data.projectName || '',
-    serveUrl: data.serveUrl || '',
     preview: [],
   }, projectPath);
   return {
@@ -604,7 +600,10 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
   const { src: thumbSrc } = useBlobImageSrc({ url: isImage ? (artifactServeUrl(artifact) || null) : null });
   const published = !!artifact.publishedUrl;
   const openTarget = artifactOpenTarget({
-    orgMode, published, canPreviewInline, hasBridge: host.isElectron || !host.isWeb,
+    orgMode,
+    published,
+    canPreviewInline,
+    hasBridge: host.isElectron || !host.isWeb,
   });
   // Export is hidden pending ENG-1988: PDF/DOCX conversion is broken for any
   // artifact beyond a plain markdown report (crashes, dumps raw JS into the
@@ -646,8 +645,9 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
       return;
     }
     if (openTarget === 'published') {
-      // The published URL is the ONLY route to this artifact's bytes on an org
-      // deployment, and it carries the access check.
+      // The published URL is the only route to this artifact's bytes a CLICK has
+      // on an org deployment, and it carries the access check. The private draft
+      // preview is reachable there too — from the artifacts gallery's '...' menu.
       try { host.openExternal(artifact.publishedUrl); }
       catch { window.open(artifact.publishedUrl, '_blank', 'noreferrer'); }
       return;
@@ -726,7 +726,7 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
   // two it's about to do.
   const primaryAction = orgMode
     ? (openTarget === 'published'
-      ? { label: 'Open', onClick: handleOpen, tooltip: 'Open the published artifact' }
+      ? { label: 'Open', onClick: handleOpen, tooltip: 'Open the shared artifact' }
       : null)
     : canPreviewInline
       ? { label: 'Preview', onClick: handleOpen, tooltip: canAct ? `Preview ${path}` : '' }
@@ -2523,6 +2523,8 @@ export default function ChatView({
         <WorkingFolderBox
           project={project}
           isStreaming={isStreaming}
+          conversationId={task?.id || null}
+          onAddressWithAgent={({ prompt }) => onSend?.(prompt)}
         />
         <ContextBox
           project={project}
@@ -2557,6 +2559,8 @@ export default function ChatView({
         artifact={previewArt}
         onClose={() => setPreviewArt(null)}
         onChange={(updated) => setPreviewArt(updated)}
+        conversationId={task?.id || null}
+        onAddressWithAgent={({ prompt }) => onSend?.(prompt)}
       />
 
       {/* Data-vault connection form — rendered as a centered modal
