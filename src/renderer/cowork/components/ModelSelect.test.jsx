@@ -411,6 +411,39 @@ describe('ModelSelect — reasoning-effort footer (ENG-1940)', () => {
     expect(screen.queryByRole('option')).not.toBeInTheDocument();
   });
 
+  it('freezes the trigger label while the popup stays open after an effort-model pick, applying it on close', async () => {
+    // The popup is anchored to the trigger pill, which is sized by its text —
+    // updating the label mid-open resizes the pill and drags the popup
+    // sideways (the reported jitter). The label must hold what it showed at
+    // open until the popup actually closes.
+    const user = userEvent.setup();
+    // ariaLabel disambiguates the trigger from the open popup's search input,
+    // which Base UI also exposes with role="combobox".
+    render(
+      <StatefulHarness
+        initial="mindshub_air"
+        modelEfforts={MODEL_EFFORTS}
+        effort=""
+        onEffortChange={vi.fn()}
+        ariaLabel="Choose model"
+      />,
+    );
+
+    await user.click(screen.getByRole('combobox', { name: 'Choose model' }));
+    await user.click(screen.getByRole('option', { name: 'Claude Sonnet 5' }));
+
+    // Popup vetoed open — the trigger still reads the OLD model.
+    expect(screen.getByRole('option', { name: 'Claude Sonnet 5' })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Choose model' })).toHaveTextContent('MindsHub Air');
+    expect(screen.getByRole('combobox', { name: 'Choose model' })).not.toHaveTextContent('Claude Sonnet 5');
+
+    await user.keyboard('{Escape}');
+
+    // Closed — the live label lands in one update.
+    expect(screen.queryByRole('option')).not.toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Choose model' })).toHaveTextContent('Claude Sonnet 5');
+  });
+
   it('appends the effort label to the trigger, muted, whenever one is explicitly picked — the model default included', () => {
     // Keying visibility on "differs from the default" instead read as broken
     // in practice: the live catalog's reasoning models all default to "high",

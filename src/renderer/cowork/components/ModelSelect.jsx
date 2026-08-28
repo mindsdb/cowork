@@ -378,6 +378,25 @@ export function ModelSelect({
   // (not state, which wouldn't update until the next render) is the only
   // way for this callback to know what was JUST picked.
   const pendingEffortModelRef = useRef(false);
+  // The trigger's content, frozen for as long as the popup stays open. The
+  // popup is ANCHORED to the trigger pill, and the pill is sized by its
+  // text — so a pick that keeps the popup open (an effort-capable model,
+  // vetoed below) would otherwise rewrite the pill's label mid-open, resize
+  // it, and drag the whole popup sideways to follow the anchor. Freeze what
+  // the pill shows at open, apply the real label only once the popup
+  // actually closes: one clean update, with nothing anchored to it left to
+  // move. Null whenever the popup is closed (live rendering, as always).
+  const frozenTriggerRef = useRef(null);
+  const freezeTrigger = () => {
+    frozenTriggerRef.current = {
+      // Same synthesized-entry fallback Combobox itself uses for a value
+      // with no matching option, so freezing can't blank the pill.
+      option: rest.value != null && rest.value !== ''
+        ? (options.find((o) => o?.value === rest.value) || { value: rest.value, label: String(rest.value) })
+        : null,
+      suffix: showEffortOnTrigger ? capitalize(resolvedEffort) : null,
+    };
+  };
   const comboboxOnOpenChange = effortFeatureEnabled
     ? (next, eventDetails, ...args) => {
       // Base UI's outside-press dismiss runs a capture-phase listener on
@@ -416,6 +435,11 @@ export function ModelSelect({
         eventDetails.cancel();
         return;
       }
+      // Past every veto: this open-change is really happening. Freeze the
+      // trigger's content on open, release it on close (the next render
+      // shows the live label — the single, popup-less update).
+      if (next) freezeTrigger();
+      else frozenTriggerRef.current = null;
       if (!isOpenControlledByCaller) setInternalOpen(next);
       onOpenChange?.(next, eventDetails, ...args);
     }
@@ -441,17 +465,28 @@ export function ModelSelect({
       // Match on the display label OR the raw id — "opus" finds Claude Opus
       // whether typed as alias or name. Pinned entries bypass the filter.
       filter={(item, query, contains) => !!item?.pin || contains(item?.label ?? '', query) || contains(item?.value ?? '', query)}
-      renderValue={(selected) => (
-        <>
-          {selected && <ProviderIcon maker={makerKeyFor(selected)} className="text-ink-2" />}
-          <span className={cn('truncate', !selected && 'text-ink-4')}>
-            {selected ? selected.label : placeholder}
-            {selected && showEffortOnTrigger && (
-              <span className="text-ink-3"> · {capitalize(resolvedEffort)}</span>
-            )}
-          </span>
-        </>
-      )}
+      renderValue={(selected) => {
+        // While the popup is open, render the content frozen at open time —
+        // see frozenTriggerRef above for why (the popup is anchored to this
+        // pill; a mid-open label change resizes it and drags the popup
+        // sideways). Closed popup (frozen ref null) renders live, as always.
+        const frozen = effortFeatureEnabled && comboboxOpen ? frozenTriggerRef.current : null;
+        const shown = frozen ? frozen.option : selected;
+        const suffix = frozen
+          ? frozen.suffix
+          : (selected && showEffortOnTrigger ? capitalize(resolvedEffort) : null);
+        return (
+          <>
+            {shown && <ProviderIcon maker={makerKeyFor(shown)} className="text-ink-2" />}
+            <span className={cn('truncate', !shown && 'text-ink-4')}>
+              {shown ? shown.label : placeholder}
+              {shown && suffix && (
+                <span className="text-ink-3"> · {suffix}</span>
+              )}
+            </span>
+          </>
+        );
+      }}
       footer={showEffortFooter ? (
         <EffortFooter
           valueLabel={capitalize(resolvedEffort)}
