@@ -227,6 +227,12 @@ function EffortFooter({
   const openNow = () => { cancelClose(); setFlyoutOpen(true); };
 
   const rowClassName = cn(
+    // Popover.Trigger renders a REAL <button>, and preflight is disabled in
+    // this app — without an explicit reset the UA's default button chrome
+    // (grey ButtonFace background, outset border, system font) shows
+    // through in both themes. Same reset the flyout's own level buttons
+    // carry below.
+    'appearance-none border-0 bg-transparent font-body',
     'flex items-center justify-between gap-[8px] w-[calc(100%-8px)] mx-[4px]',
     'px-[10px] py-[8px] rounded-[5px] text-[13px] text-ink-2 select-none outline-none box-border',
     'cursor-pointer data-[popup-open]:bg-surface-2 hover:bg-surface-2',
@@ -283,7 +289,7 @@ function EffortFooter({
                   key={lvl}
                   type="button"
                   onClick={() => { onPick(lvl); cancelClose(); setFlyoutOpen(false); }}
-                  className="grid grid-cols-[16px_1fr_auto] items-center gap-[6px] w-[calc(100%-8px)] mx-[4px] px-[10px] py-[7px] rounded-[5px] border-0 bg-transparent text-[13px] text-ink-2 cursor-pointer select-none outline-none box-border hover:bg-surface-2"
+                  className="grid grid-cols-[16px_1fr_auto] items-center gap-[6px] w-[calc(100%-8px)] mx-[4px] px-[10px] py-[7px] rounded-[5px] appearance-none border-0 bg-transparent font-body text-[13px] text-ink-2 cursor-pointer select-none outline-none box-border hover:bg-surface-2"
                 >
                   <span className="inline-flex justify-center text-accent">
                     {lvl === resolvedEffort && CHECK}
