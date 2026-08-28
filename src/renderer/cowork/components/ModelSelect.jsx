@@ -38,18 +38,21 @@
 //   />
 //
 // The footer reflects the CURRENTLY SELECTED model (this component's own
-// `value` prop), not whatever row the list is hovering — it renders whenever
-// a model is selected and the harness supports effort, reading "Default" for
-// a model with no effort options rather than disappearing (so the row is a
-// stable landmark, not something that pops in and out per model). Hovering
-// (or focusing) a row with options opens a side flyout — description,
-// then each level with a checkmark on the resolved value and a "Default"
-// tag on the model's own default — built on Base UI's Popover purely for
-// positioning (Portal + Positioner do the side-flyout placement/collision
-// work); the hover-intent open/close timing is hand-rolled here (a small
-// close-grace-period debounce) since Popover.Trigger's own `openOnHover`
+// `value` prop), not whatever row the list is hovering, and only exists at
+// all when that model actually has effort options — a model with none gets
+// no footer (not a disabled "Default" row); the row would have nothing to
+// drill into. Selecting a model that DOES have options auto-opens the flyout
+// once (on the change, not on mount), so choosing a capable model and
+// setting its effort is one motion rather than a separate hover. Hovering
+// the row (or the flyout itself) at any point keeps it open/reopens it;
+// leaving both starts a generous close-grace timer rather than closing
+// immediately, so browsing back up into the model list or a brief drift off
+// the edge doesn't snap it shut before the user meant to pick a level.
+// Positioning is Base UI's Popover purely for placement (Portal + Positioner
+// do the side-flyout collision-aware work); the hover-intent open/close
+// timing is hand-rolled here since Popover.Trigger's own `openOnHover`
 // drives off Floating UI's async rest-detection, which is awkward to drive
-// deterministically from tests and buys nothing over a plain timer for a
+// deterministically from tests and buys nothing over a plain timer for an
 // interaction this simple. Picking a level fires `onEffortChange` and closes
 // both the flyout and this whole popup — mirroring how picking a model item
 // already closes the popup via Base UI's own onValueChange-closes contract,
@@ -93,11 +96,15 @@ import { Tooltip } from './ui';
 // to a constant so the two can't drift.
 const EFFORT_DESCRIPTION = 'Higher effort means more thorough responses, but takes longer and uses your limits faster.';
 
-// How long a mouse-leave off the footer row (or the flyout panel itself)
-// waits before actually closing — long enough to cross the small gap
-// between the row and its side flyout without the panel flickering shut,
-// short enough that it doesn't feel sticky.
-const EFFORT_FLYOUT_CLOSE_GRACE_MS = 150;
+// How long the flyout stays open after the pointer leaves both the footer
+// row and the panel itself, with nothing else happening — long enough that
+// browsing back up into the model list, or just a brief drift off the edge,
+// doesn't snap it shut before the user meant to pick a level. Re-entering
+// either the row or the panel within this window cancels the close outright
+// (see `cancelClose`); a genuine move to interact with something else (a
+// model row, a click elsewhere) collapses it as normal via the outside-press
+// veto's own close path and the model list's own hover states taking over.
+const EFFORT_FLYOUT_CLOSE_GRACE_MS = 1500;
 
 const CHEVRON_RIGHT = <ChevronRight size={11} strokeWidth={1.5} aria-hidden="true" />;
 const CHECK = <Check size={12} strokeWidth={1.5} aria-hidden="true" />;
@@ -169,27 +176,36 @@ function makerKeyFor(option) {
 
 /*
  * The "Effort" row rendered as ModelSelect's `footer` (see ui/Combobox.jsx).
- * Always rendered when a model is selected and the harness supports effort
- * (the caller only mounts it at all when both hold — see `showEffortFooter`
- * below); `hasOptions` distinguishes "Default" read-only text (nothing to
- * pick — the current model just doesn't advertise effort levels) from the
- * interactive row that opens a side flyout on hover/focus.
+ * Only mounted at all when the selected model actually has effort options
+ * (see `showEffortFooter` below) — a model with none gets no footer, not a
+ * disabled "Default" row.
  *
  * Positioning is Base UI's Popover (Portal + Positioner) so the flyout gets
  * the same collision-aware side placement as every other popup in the app;
  * the open/close timing is a plain `useState` + grace-period timeout rather
  * than Popover.Trigger's own `openOnHover` — that option drives off Floating
  * UI's async "rest" hover detection, which doesn't respond deterministically
- * to synthetic mouse events in tests, and a fixed short grace period is all
- * this interaction needs (bridge the gap between the row and the flyout).
+ * to synthetic mouse events in tests.
+ *
+ * Hover intent, deliberately generous: entering the row OR the panel opens
+ * (or re-opens) it immediately and cancels any pending close; leaving either
+ * one starts a single `EFFORT_FLYOUT_CLOSE_GRACE_MS` timer, restarted (not
+ * stacked) on every leave, so idle time with the pointer off both is what
+ * actually closes it — a quick pass back over the row or the panel within
+ * that window cancels the close outright. `autoOpenKey` (the selected
+ * model's id) opens it once automatically the moment it changes to a model
+ * with effort options, so picking a capable model surfaces the effort choice
+ * without a separate hover — but only on a real change, not on mount, so
+ * reopening a task whose model already has effort options doesn't pop the
+ * flyout unprompted.
  */
 function EffortFooter({
   valueLabel,
-  hasOptions,
   effortOptions,
   resolvedEffort,
   defaultEffort,
   onPick,
+  autoOpen,
   zIndex,
 }) {
   const [flyoutOpen, setFlyoutOpen] = useState(false);
@@ -206,10 +222,34 @@ function EffortFooter({
   };
   const openNow = () => { cancelClose(); setFlyoutOpen(true); };
 
+  // `autoOpen` arrives already computed as "the selected model just changed
+  // to (or into mounting this row on) one with effort options" — see
+  // ModelSelect's `justSwitchedToEffortModel` doc comment for why that has
+  // to be tracked up there rather than inferred from a key seen at THIS
+  // component's own mount: this row unmounts entirely for a model with no
+  // options, so "did the model just change" and "did I just mount" are two
+  // different questions once a with-effort pick is what causes the mount.
+  // True for exactly the render(s) right after a qualifying change, so this
+  // effect firing on mount (autoOpen already true) is what makes the mount
+  // case work, and firing again on a later flip works the same way for an
+  // already-mounted row. Immediately arms the same close-grace timer a real
+  // mouse-leave would: the pointer is wherever the user just clicked in the
+  // model list, not on this row, so nothing else would ever start a close
+  // otherwise and the flyout would sit open forever until the user happened
+  // to hover (then leave) it. Moving onto the row or the panel within the
+  // grace window cancels this the same as any other hover-leave would;
+  // doing nothing lets it close on its own.
+  useEffect(() => {
+    if (!autoOpen) return;
+    openNow();
+    scheduleClose();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoOpen]);
+
   const rowClassName = cn(
     'flex items-center justify-between gap-[8px] w-[calc(100%-8px)] mx-[4px]',
     'px-[10px] py-[8px] rounded-[5px] text-[13px] text-ink-2 select-none outline-none box-border',
-    hasOptions && 'cursor-pointer data-[popup-open]:bg-surface-2 hover:bg-surface-2',
+    'cursor-pointer data-[popup-open]:bg-surface-2 hover:bg-surface-2',
   );
 
   const rowContent = (
@@ -222,20 +262,12 @@ function EffortFooter({
     </>
   );
 
-  if (!hasOptions) {
-    // Nothing to pick — a stable, non-interactive row rather than a control
-    // that opens onto an empty panel.
-    return <div className={rowClassName}>{rowContent}</div>;
-  }
-
   return (
     <Popover.Root open={flyoutOpen} onOpenChange={setFlyoutOpen}>
       <Popover.Trigger
         className={rowClassName}
         onMouseEnter={openNow}
         onMouseLeave={scheduleClose}
-        onFocus={openNow}
-        onBlur={scheduleClose}
       >
         {rowContent}
       </Popover.Trigger>
@@ -380,10 +412,35 @@ export function ModelSelect({
     || resolvedEffort === effortEntry?.default
     || effortOptions.length === 0
     || !harnessSupportsEffort;
-  // Suppressed entirely (not just showing "Default") with no model selected
-  // at all, or under a harness with no effort knob (Hermes) — everything
-  // else, including a model with zero effort options, still shows the row.
-  const showEffortFooter = effortFeatureEnabled && !!rest.value && harnessSupportsEffort;
+  // Only mounted when the selected model actually has effort options — no
+  // footer at all for a model with none, rather than a disabled "Default"
+  // row (also suppressed with no model selected, or under a harness with no
+  // effort knob).
+  const showEffortFooter = effortFeatureEnabled && !!rest.value && harnessSupportsEffort
+    && effortOptions.length > 0;
+
+  // Did `value` (the selected model) just change, as of THIS render, since
+  // ModelSelect itself mounted? Tracked here rather than inside EffortFooter
+  // because EffortFooter unmounts entirely whenever the model has no effort
+  // options (see `showEffortFooter` above) — switching FROM a no-effort
+  // model INTO one with options is therefore a fresh mount of EffortFooter,
+  // not a prop change on an already-alive instance, so "did I just mount"
+  // and "did the model just change" are different questions there. This
+  // component never unmounts across that transition, so it's the right
+  // place to answer the second question. `prevValueRef` still holds the
+  // PREVIOUS render's value while this render runs (the effect that
+  // advances it hasn't fired yet), so the comparison is naturally true for
+  // exactly one render right after a change and false again on the next —
+  // no explicit reset needed — and `hasMountedRef` keeps ModelSelect's own
+  // first-ever render (whatever model it starts on) from counting as one.
+  const prevValueRef = useRef(rest.value);
+  const hasMountedRef = useRef(false);
+  const valueJustChanged = hasMountedRef.current && prevValueRef.current !== rest.value;
+  useEffect(() => {
+    hasMountedRef.current = true;
+    prevValueRef.current = rest.value;
+  });
+  const justSwitchedToEffortModel = valueJustChanged && effortOptions.length > 0;
 
   return (
     <Combobox
@@ -407,12 +464,12 @@ export function ModelSelect({
       )}
       footer={showEffortFooter ? (
         <EffortFooter
-          valueLabel={effortOptions.length === 0 ? 'Default' : capitalize(resolvedEffort)}
-          hasOptions={effortOptions.length > 0}
+          valueLabel={capitalize(resolvedEffort)}
           effortOptions={effortOptions}
           resolvedEffort={resolvedEffort}
           defaultEffort={effortEntry?.default}
           onPick={(lvl) => { onEffortChange?.(lvl); closePopup(); }}
+          autoOpen={justSwitchedToEffortModel}
           zIndex={(rest.zIndex ?? 95) + 1}
         />
       ) : undefined}

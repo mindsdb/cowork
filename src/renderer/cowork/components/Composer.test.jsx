@@ -281,7 +281,7 @@ describe('Composer — reasoning effort sub-picker (ENG-1940)', () => {
     expect(within(footerRow).getByText('Medium')).toBeInTheDocument();
   });
 
-  it('reads "Default" in the footer for a model with no modelEfforts entry', async () => {
+  it('shows no Effort footer at all for a model with no modelEfforts entry', async () => {
     const user = userEvent.setup();
     renderComposer({
       models: MODELS,
@@ -292,8 +292,7 @@ describe('Composer — reasoning effort sub-picker (ENG-1940)', () => {
 
     await user.click(screen.getByRole('combobox', { name: 'Choose model' }));
 
-    const footerRow = screen.getByText('Effort').parentElement;
-    expect(within(footerRow).getByText('Default')).toBeInTheDocument();
+    expect(screen.queryByText('Effort')).toBeNull();
   });
 
   it('fires onEffortChange with the picked level, from the footer flyout', async () => {

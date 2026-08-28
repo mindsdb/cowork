@@ -276,14 +276,13 @@ describe('ModelSelect — reasoning-effort footer (ENG-1940)', () => {
     opus: { efforts: ['low', 'high'], default: 'high' },
   };
 
-  it('shows "Default" in the footer for a model with no modelEfforts entry', async () => {
+  it('renders no footer at all for a model with no modelEfforts entry', async () => {
     const user = userEvent.setup();
     render(<Harness initial="mindshub_air" modelEfforts={MODEL_EFFORTS} effort="" onEffortChange={vi.fn()} />);
 
     await user.click(screen.getByRole('combobox'));
 
-    expect(screen.getByText('Effort')).toBeInTheDocument();
-    expect(screen.getByText('Default')).toBeInTheDocument();
+    expect(screen.queryByText('Effort')).not.toBeInTheDocument();
   });
 
   it('shows the resolved effort label in the footer for a model with an entry', async () => {
@@ -363,6 +362,40 @@ describe('ModelSelect — reasoning-effort footer (ENG-1940)', () => {
     await user.click(screen.getByRole('combobox'));
 
     expect(screen.queryByText('Effort')).not.toBeInTheDocument();
+  });
+
+  it('does not auto-open the flyout on initial mount, even for a model that already has effort options', async () => {
+    const user = userEvent.setup();
+    render(<Harness initial="sonnet" modelEfforts={MODEL_EFFORTS} effort="" onEffortChange={vi.fn()} />);
+
+    await user.click(screen.getByRole('combobox'));
+
+    expect(screen.queryByText(/Higher effort means more thorough responses/)).not.toBeInTheDocument();
+  });
+
+  it('auto-opens the flyout when the selected model changes to one with effort options', async () => {
+    const user = userEvent.setup();
+    // mindshub_air has no modelEfforts entry, so the footer starts absent.
+    const { rerender } = render(
+      <Harness initial="mindshub_air" modelEfforts={MODEL_EFFORTS} effort="" onEffortChange={vi.fn()} />,
+    );
+    await user.click(screen.getByRole('combobox'));
+    expect(screen.queryByText('Effort')).not.toBeInTheDocument();
+
+    rerender(<Harness initial="sonnet" modelEfforts={MODEL_EFFORTS} effort="" onEffortChange={vi.fn()} />);
+
+    expect(screen.getByText(/Higher effort means more thorough responses/)).toBeInTheDocument();
+  });
+
+  it('does not re-open the flyout when the selected model id is set to the same value again', async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <Harness initial="sonnet" modelEfforts={MODEL_EFFORTS} effort="" onEffortChange={vi.fn()} />,
+    );
+    await user.click(screen.getByRole('combobox'));
+    rerender(<Harness initial="sonnet" modelEfforts={MODEL_EFFORTS} effort="" onEffortChange={vi.fn()} />);
+
+    expect(screen.queryByText(/Higher effort means more thorough responses/)).not.toBeInTheDocument();
   });
 
   it('appends the effort label to the trigger, muted, only when it differs from the default', () => {
