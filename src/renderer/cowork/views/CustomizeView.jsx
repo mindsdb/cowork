@@ -14,7 +14,6 @@ import { Alert, Button, EmptyState } from '../components/ui';
 import { CONNECTIONS_VAULT_KEEP, deleteDatasource, fetchConnector, fetchDatasources, fetchSavedConnection } from '../api';
 import { host } from '../../platform/host';
 import Spinner from '../components/ui/Spinner';
-import ConnectWorkflowView from './ConnectWorkflowView';
 import {
   PageHeader,
   FilterRow,
@@ -517,12 +516,6 @@ export default function CustomizeView({
   const searchRef = useRef(null);
   const onConnectionsSyncedRef = useRef(onConnectionsSynced);
   onConnectionsSyncedRef.current = onConnectionsSynced;
-  // Sub-view: when true, the connect-data workflow renders in place
-  // (the apps directory + per-app credential form). Hitting "Back"
-  // from inside the workflow returns to this listing. Local-only —
-  // the App-level route stays at 'customize' so the sidebar's active
-  // state is correct throughout.
-  const [showWorkflow, setShowWorkflow] = useState(false);
 
   // Fetch fresh on every mount so connections made outside this view
   // (e.g. browser OAuth flow from the chat panel) are always visible.
@@ -543,28 +536,10 @@ export default function CustomizeView({
   }, [initialConnectors]);
 
   const handleConnectNew = () => {
-    // Delegate to the parent when one is provided — that's the
-    // current path: App.jsx opens a fresh chat with a synthesized
-    // greeting and routes the user there. Anton drives the rest
-    // via request_credentials. Falls back to the in-page apps
-    // directory only when no handler is wired (older callers).
-    if (onConnectNew) {
-      onConnectNew();
-      return;
-    }
-    setShowWorkflow(true);
-  };
-
-  const handleWorkflowClose = async () => {
-    setShowWorkflow(false);
-    // Returning from the workflow likely added/removed connections —
-    // refetch so the listing reflects whatever changed.
-    try {
-      const fresh = await fetchDatasources();
-      const next = Array.isArray(fresh?.connections) ? fresh.connections : [];
-      setList(next);
-      onConnectionsSyncedRef.current?.(next);
-    } catch {}
+    // App.jsx opens a fresh chat with a synthesized greeting and
+    // routes the user there; Anton drives the rest via
+    // request_credentials.
+    onConnectNew?.();
   };
 
   // ⌘K focuses the search input.
@@ -582,9 +557,8 @@ export default function CustomizeView({
     if (autoOpenedRef.current) return;
     const id = setTimeout(() => {
       if (autoOpenedRef.current) return;
-      // Only auto-open when nothing is configured AND the workflow
-      // isn't already on screen for some other reason.
-      if ((list || []).length === 0 && !showWorkflow) {
+      // Only auto-open when nothing is configured yet.
+      if ((list || []).length === 0) {
         autoOpenedRef.current = true;
         handleConnectNew();
       }
@@ -654,13 +628,6 @@ export default function CustomizeView({
   }, [list, search, sort]);
 
   const total = list.length;
-
-  // While the workflow is open, hand the whole content area over to it.
-  // The workflow has its own header with a "Back" button that calls
-  // handleWorkflowClose, which refetches and pops back to the listing.
-  if (showWorkflow) {
-    return <ConnectWorkflowView onClose={handleWorkflowClose} />;
-  }
 
   return (
     // Background intentionally omitted so the gravity-field canvas

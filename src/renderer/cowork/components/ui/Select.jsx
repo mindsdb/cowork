@@ -3,8 +3,8 @@
 // Why a library here: the hand-rolled selects across the app were either
 // bare native `<select>` elements (inconsistent padding/chevron per call
 // site) or a "transparent `<select>` overlaid on a styled pill" trick
-// (ConnectorPicker's `SelectPill`, the ConnectWorkflowView filter/sort
-// controls) that fakes a custom look while keeping the OS popup — fine
+// (ConnectorPicker's `SelectPill`) that fakes a custom look while keeping
+// the OS popup — fine
 // until you want consistent styling, real keyboard support, or a divider
 // between options. Base UI's Select gives us a fully custom, accessible
 // popup (arrow keys, typeahead, focus management) while we own only the
