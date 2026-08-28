@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { useState } from 'react';
 import { render, screen, waitFor, within, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
@@ -364,38 +365,33 @@ describe('ModelSelect — reasoning-effort footer (ENG-1940)', () => {
     expect(screen.queryByText('Effort')).not.toBeInTheDocument();
   });
 
-  it('does not auto-open the flyout on initial mount, even for a model that already has effort options', async () => {
+  it('does not open the flyout without a hover — the footer renders closed', async () => {
     const user = userEvent.setup();
     render(<Harness initial="sonnet" modelEfforts={MODEL_EFFORTS} effort="" onEffortChange={vi.fn()} />);
 
     await user.click(screen.getByRole('combobox'));
 
+    expect(screen.getByText('Effort')).toBeInTheDocument();
     expect(screen.queryByText(/Higher effort means more thorough responses/)).not.toBeInTheDocument();
   });
 
-  it('auto-opens the flyout when the selected model changes to one with effort options', async () => {
+  // Picking a model still closes the whole popup (Base UI's own contract) —
+  // the footer must not change that. A real stateful parent is required so
+  // this exercises the actual pick-then-close flow, not just presentation
+  // with a value already in place.
+  function StatefulHarness({ initial, ...rest }) {
+    const [value, setValue] = useState(initial);
+    return <Harness initial={value} onValueChange={setValue} {...rest} />;
+  }
+
+  it('clicking any model row closes the popup normally, effort options or not', async () => {
     const user = userEvent.setup();
-    // mindshub_air has no modelEfforts entry, so the footer starts absent.
-    const { rerender } = render(
-      <Harness initial="mindshub_air" modelEfforts={MODEL_EFFORTS} effort="" onEffortChange={vi.fn()} />,
-    );
+    render(<StatefulHarness initial="mindshub_air" modelEfforts={MODEL_EFFORTS} effort="" onEffortChange={vi.fn()} />);
+
     await user.click(screen.getByRole('combobox'));
-    expect(screen.queryByText('Effort')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('option', { name: 'Claude Sonnet 5' }));
 
-    rerender(<Harness initial="sonnet" modelEfforts={MODEL_EFFORTS} effort="" onEffortChange={vi.fn()} />);
-
-    expect(screen.getByText(/Higher effort means more thorough responses/)).toBeInTheDocument();
-  });
-
-  it('does not re-open the flyout when the selected model id is set to the same value again', async () => {
-    const user = userEvent.setup();
-    const { rerender } = render(
-      <Harness initial="sonnet" modelEfforts={MODEL_EFFORTS} effort="" onEffortChange={vi.fn()} />,
-    );
-    await user.click(screen.getByRole('combobox'));
-    rerender(<Harness initial="sonnet" modelEfforts={MODEL_EFFORTS} effort="" onEffortChange={vi.fn()} />);
-
-    expect(screen.queryByText(/Higher effort means more thorough responses/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('option')).not.toBeInTheDocument();
   });
 
   it('appends the effort label to the trigger, muted, only when it differs from the default', () => {
