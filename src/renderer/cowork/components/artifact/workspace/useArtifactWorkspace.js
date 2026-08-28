@@ -8,6 +8,7 @@ import {
   loadAgentRepair,
   loadArtifactRevision,
   loadArtifactRevisions,
+  loadArtifactReview,
   loadArtifactSource,
   requestAgentRepair,
   restoreArtifactRevision,
@@ -23,6 +24,13 @@ const OWNER_CAPABILITIES = {
   canResolveComments: true,
 };
 
+// Why a workspace is unavailable, in the user's words. Both land in the same
+// `unsupported` status because the surfaces react identically — but "too old to
+// edit" and "not shared with you" are different facts and reading the wrong one
+// sends the user looking in the wrong place.
+const NO_WORKSPACE = 'This artifact was created before editing was available';
+const NO_DRAFT_ACCESS = 'The owner has not shared this draft for review';
+
 export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
   const supported = canUseArtifactWorkspace(artifact);
   const workspaceGeneration = useRef(0);
@@ -33,6 +41,7 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
   const [revisions, setRevisions] = useState([]);
   const [capabilities, setCapabilities] = useState(null);
   const [commentsReady, setCommentsReady] = useState(false);
+  const [unsupportedReason, setUnsupportedReason] = useState('');
   const [status, setStatus] = useState('idle');
   const [error, setError] = useState('');
   const [conflict, setConflict] = useState(null);
@@ -61,6 +70,7 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
     setStatus('loading');
     setError('');
     setConflict(null);
+    setUnsupportedReason('');
     let nextCapabilities = null;
     // Source authorization is enforced by the workspace endpoint itself, so
     // owners can load it in parallel with the separate comments-access check.
@@ -76,16 +86,53 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
     // comments API can authorize collaborators. Desktop uses its local journal;
     // published links keep their independently configured access policy.
     if (host.isWeb) {
+      // The read-only entry goes FIRST because the role is not known until the
+      // server answers, and provisioning is owner-only: a reviewer asking for
+      // it is refused, which used to read as an error banner with comments
+      // switched off — the exact state draft review exists to avoid.
+      let review = null;
       try {
-        const access = await enableDraftComments(artifact);
-        if (!isCurrent()) return;
-        nextCapabilities = access?.capabilities || null;
-        setCommentsReady(!!access?.enabled);
-        setReviewRevision(access?.currentRevision || null);
-      } catch (accessError) {
+        review = await loadArtifactReview(artifact);
+      } catch (reviewError) {
         if (!isCurrent()) return;
         setCommentsReady(false);
-        if (accessError?.status !== 503) setError(accessError.message);
+        if (reviewError?.status === 404) {
+          // A draft nobody granted us is indistinguishable from one that never
+          // existed, deliberately (ENG-1910). Nothing more to try: the source
+          // request in flight is answering 404 for the same reason.
+          setCapabilities(null);
+          setUnsupportedReason(NO_DRAFT_ACCESS);
+          setStatus('unsupported');
+        } else {
+          setError(reviewError.message || 'Could not open this artifact for review');
+          setStatus('error');
+        }
+        return;
+      }
+      if (!isCurrent()) return;
+      nextCapabilities = review?.capabilities || null;
+      setReviewRevision(review?.currentRevision || null);
+      // Absent capabilities mean an older server that only speaks the POST, so
+      // fall through to it: assuming reviewer there would silently drop the
+      // owner's own comments.
+      const canProvision = nextCapabilities ? nextCapabilities.canEdit !== false : true;
+      if (canProvision) {
+        try {
+          const access = await enableDraftComments(artifact);
+          if (!isCurrent()) return;
+          nextCapabilities = access?.capabilities || nextCapabilities;
+          setCommentsReady(!!access?.enabled);
+          if (access?.currentRevision) setReviewRevision(access.currentRevision);
+        } catch (accessError) {
+          if (!isCurrent()) return;
+          setCommentsReady(false);
+          if (accessError?.status !== 503) setError(accessError.message);
+        }
+      } else {
+        // The GET having succeeded IS the grant — the owner minted the auth
+        // rule when they turned draft review on, so the comments API already
+        // authorizes this reviewer and there is nothing to provision.
+        setCommentsReady(true);
       }
     } else {
       // Desktop uses the local atomic comment journal keyed by the same stable
@@ -138,6 +185,7 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
       } else if (loadError?.status === 404 || loadError?.status === 422) {
         // Unsupported artifacts can still preview, publish and review.
         setCapabilities(nextCapabilities);
+        setUnsupportedReason(NO_WORKSPACE);
         setStatus('unsupported');
       } else {
         setError(loadError.message || 'Could not load editable source');
@@ -158,6 +206,7 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
     setRevisions([]);
     setCapabilities(null);
     setCommentsReady(false);
+    setUnsupportedReason('');
     setError('');
     setConflict(null);
     setComparison(null);
@@ -169,6 +218,7 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
       // is no workspace request to wait for. Keep this state distinct from a
       // real in-flight load; otherwise the mode tabs say "Loading…" forever
       // even though no request was started.
+      setUnsupportedReason(NO_WORKSPACE);
       setStatus('unsupported');
     } else {
       setStatus('idle');
@@ -347,6 +397,7 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
     capabilities,
     commentsReady,
     status,
+    unsupportedReason,
     error,
     conflict,
     load,
@@ -365,7 +416,7 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
     addressWithAgent, cancelRepair, capabilities, changeMode, commentsReady, compareRevision, comparison,
     conflict, currentRevision, decideRepair, dirty, discard, draft, error, load,
     mode, refreshRepair, repair, restoreRevision, revisions, save, source, status,
-    supported,
+    supported, unsupportedReason,
   ]);
 }
 

@@ -90,6 +90,18 @@ export function restoreArtifactRevision(artifact, revisionId, expectedRevisionId
   });
 }
 
+// The read-only way in: capabilities plus the revision to anchor comments to,
+// and nothing that reveals the source. Safe for a reviewer to call, unlike the
+// provisioning POST below — 404 means this draft was never shared with us (a
+// private draft is deliberately indistinguishable from a missing one).
+export function loadArtifactReview(artifact) {
+  const ref = artifactRef(artifact);
+  if (!ref) return Promise.reject(new Error('Artifact has no full identity'));
+  return request(`${ref.base}/review`);
+}
+
+// Owner-only: this mints the auth rule that lets co-members comment on the
+// draft, so it is the owner's decision to make and answers 403 to anyone else.
 export function enableDraftComments(artifact) {
   const ref = artifactRef(artifact);
   if (!ref) return Promise.reject(new Error('Artifact has no full identity'));

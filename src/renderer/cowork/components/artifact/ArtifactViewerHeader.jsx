@@ -97,12 +97,15 @@ export function ArtifactViewerHeader({
       ? 'Loading editing tools…'
       : workspace.capabilities?.canEdit === false
         ? 'Only the artifact owner can edit'
-        : 'This artifact cannot be edited here';
+        // "Too old to edit" and "never shared with you" both land in the
+        // `unsupported` status; the hook names which one so the tooltip doesn't
+        // send the user looking in the wrong place.
+        : workspace.unsupportedReason || 'This artifact cannot be edited here';
   const reviewDisabledReason = !workspace.supported
     ? 'Refresh the artifact to load review tools'
     : workspaceLoading
       ? 'Loading review tools…'
-      : 'Review is not available for this artifact';
+      : workspace.unsupportedReason || 'Review is not available for this artifact';
   return (
     <div className="artifact-viewer-topbar" style={{
       flex: '0 0 auto',
