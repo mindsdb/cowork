@@ -411,7 +411,11 @@ describe('ModelSelect — reasoning-effort footer (ENG-1940)', () => {
     expect(screen.queryByRole('option')).not.toBeInTheDocument();
   });
 
-  it('appends the effort label to the trigger, muted, only when it differs from the default', () => {
+  it('appends the effort label to the trigger, muted, whenever one is explicitly picked — the model default included', () => {
+    // Keying visibility on "differs from the default" instead read as broken
+    // in practice: the live catalog's reasoning models all default to "high",
+    // so explicitly choosing High displayed nothing and the pick looked like
+    // it hadn't taken.
     const { rerender } = render(
       <Harness initial="sonnet" modelEfforts={MODEL_EFFORTS} effort="high" onEffortChange={vi.fn()} />,
     );
@@ -420,9 +424,25 @@ describe('ModelSelect — reasoning-effort footer (ENG-1940)', () => {
     rerender(
       <Harness initial="sonnet" modelEfforts={MODEL_EFFORTS} effort="medium" onEffortChange={vi.fn()} />,
     );
-    // "medium" is sonnet's own default — no suffix.
+    // "medium" IS sonnet's own default — an explicit pick still shows.
+    expect(screen.getByRole('combobox')).toHaveTextContent('Claude Sonnet 5 · Medium');
+  });
+
+  it('shows just the model name while no effort has been explicitly picked', () => {
+    // effort='' — resolution silently falls back to the model's default, but
+    // an untouched setting doesn't clutter the trigger.
+    render(<Harness initial="sonnet" modelEfforts={MODEL_EFFORTS} effort="" onEffortChange={vi.fn()} />);
     expect(screen.getByRole('combobox')).toHaveTextContent('Claude Sonnet 5');
-    expect(screen.getByRole('combobox')).not.toHaveTextContent('Claude Sonnet 5 · Medium');
+    expect(screen.getByRole('combobox')).not.toHaveTextContent('·');
+  });
+
+  it('drops the trigger suffix when the picked effort is not valid for the current model', () => {
+    // e.g. the pick was made on another model whose levels differ — resolution
+    // falls back to this model's default, and the suffix hides rather than
+    // naming a level that won't be sent.
+    render(<Harness initial="opus" modelEfforts={MODEL_EFFORTS} effort="medium" onEffortChange={vi.fn()} />);
+    expect(screen.getByRole('combobox')).toHaveTextContent('Claude Opus 5');
+    expect(screen.getByRole('combobox')).not.toHaveTextContent('·');
   });
 
   it('shows just the model name when modelEfforts was not passed at all (regression)', () => {

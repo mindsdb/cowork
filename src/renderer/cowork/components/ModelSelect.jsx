@@ -350,10 +350,15 @@ export function ModelSelect({
   const resolvedEffort = effortOptions.includes(effort)
     ? effort
     : (effortEntry?.default || effortOptions[0] || '');
-  const isDefaultEffort = !resolvedEffort
-    || resolvedEffort === effortEntry?.default
-    || effortOptions.length === 0
-    || !harnessSupportsEffort;
+  // The trigger's muted "· <Effort>" suffix shows whenever the user has
+  // EXPLICITLY picked a level valid for this model — including a pick that
+  // happens to equal the model's own default. Keying it on "differs from
+  // the default" instead read as broken in practice: the live catalog's
+  // reasoning models all default to "high", so explicitly choosing High
+  // displayed nothing and the pick looked like it hadn't taken. Only a
+  // never-touched effort ('' — resolution silently falls back to the
+  // model's default) leaves the trigger showing just the model name.
+  const showEffortOnTrigger = harnessSupportsEffort && effortOptions.includes(effort);
   // Only mounted when the selected model actually has effort options — no
   // footer at all for a model with none, rather than a disabled "Default"
   // row (also suppressed with no model selected, or under a harness with no
@@ -441,7 +446,7 @@ export function ModelSelect({
           {selected && <ProviderIcon maker={makerKeyFor(selected)} className="text-ink-2" />}
           <span className={cn('truncate', !selected && 'text-ink-4')}>
             {selected ? selected.label : placeholder}
-            {selected && !isDefaultEffort && (
+            {selected && showEffortOnTrigger && (
               <span className="text-ink-3"> · {capitalize(resolvedEffort)}</span>
             )}
           </span>
