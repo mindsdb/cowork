@@ -88,6 +88,13 @@ export function Combobox({
   className,
   style,
   zIndex = 95,
+  // Compute the popup's position once at open instead of live-tracking the
+  // anchor. For a popup whose own interactions rewrite the anchor's content
+  // (ModelSelect: picking a model relabels — and resizes — the trigger pill
+  // while the popup stays open), tracking would drag the whole popup
+  // sideways to follow the resize. The tradeoff (no repositioning on
+  // scroll/resize while open) is fine for a short-lived menu.
+  disableAnchorTracking = false,
   ...rest
 }) {
   const entries = useMemo(() => groups.flatMap((g) => g.items), [groups]);
@@ -148,6 +155,7 @@ export function Combobox({
           sideOffset={6}
           align="start"
           style={{ zIndex }}
+          disableAnchorTracking={disableAnchorTracking}
         >
           <BaseCombobox.Popup
             className={cn(

@@ -434,11 +434,14 @@ describe('ModelSelect — reasoning-effort footer (ENG-1940)', () => {
     expect(screen.queryByRole('option')).not.toBeInTheDocument();
   });
 
-  it('freezes the trigger label while the popup stays open after an effort-model pick, applying it on close', async () => {
-    // The popup is anchored to the trigger pill, which is sized by its text —
-    // updating the label mid-open resizes the pill and drags the popup
-    // sideways (the reported jitter). The label must hold what it showed at
-    // open until the popup actually closes.
+  it('relabels the trigger immediately on an effort-model pick, while the popup stays open', async () => {
+    // An earlier iteration froze the trigger until close (to keep the
+    // anchored popup from being dragged sideways by the pill resizing) —
+    // that read as the pick not registering: the list showed the new model
+    // checked while the pill still named the old one. The pill now updates
+    // live; the popup holds still via disableAnchorTracking instead, and
+    // the pill's own resize is animated (not assertable in jsdom, where
+    // offsetWidth is always 0 and the FLIP effect no-ops).
     const user = userEvent.setup();
     // ariaLabel disambiguates the trigger from the open popup's search input,
     // which Base UI also exposes with role="combobox".
@@ -455,16 +458,10 @@ describe('ModelSelect — reasoning-effort footer (ENG-1940)', () => {
     await user.click(screen.getByRole('combobox', { name: 'Choose model' }));
     await user.click(screen.getByRole('option', { name: 'Claude Sonnet 5' }));
 
-    // Popup vetoed open — the trigger still reads the OLD model.
+    // Popup vetoed open — and the trigger already reads the NEW model.
     expect(screen.getByRole('option', { name: 'Claude Sonnet 5' })).toBeInTheDocument();
-    expect(screen.getByRole('combobox', { name: 'Choose model' })).toHaveTextContent('MindsHub Air');
-    expect(screen.getByRole('combobox', { name: 'Choose model' })).not.toHaveTextContent('Claude Sonnet 5');
-
-    await user.keyboard('{Escape}');
-
-    // Closed — the live label lands in one update.
-    expect(screen.queryByRole('option')).not.toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: 'Choose model' })).toHaveTextContent('Claude Sonnet 5');
+    expect(screen.getByRole('combobox', { name: 'Choose model' })).not.toHaveTextContent('MindsHub Air');
   });
 
   it('appends the effort label to the trigger, muted, whenever one is explicitly picked — the model default included', () => {
