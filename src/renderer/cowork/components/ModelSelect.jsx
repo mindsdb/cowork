@@ -41,24 +41,29 @@
 // `value` prop), not whatever row the list is hovering, and only exists at
 // all when that model actually has effort options — a model with none gets
 // no footer (not a disabled "Default" row); the row would have nothing to
-// drill into. Hovering the row opens the side flyout (Base UI's Positioner
-// picks whichever side has room); hovering the flyout itself keeps it open,
-// and leaving both starts a generous close-grace timer rather than closing
-// immediately, so a brief drift off the edge doesn't snap it shut before
-// the user meant to pick a level. The main popup itself behaves exactly as
-// before — picking a model still closes it (Base UI's own contract),
-// nothing repositions or holds it open. The hover-intent open/close timing
-// is hand-rolled since Popover.Trigger's own `openOnHover` drives off
-// Floating UI's async rest-detection, which is awkward to drive
-// deterministically from tests and buys nothing over a plain timer for an
-// interaction this simple. Picking a level fires `onEffortChange` and closes
-// both the flyout and this whole popup — mirroring how picking a model item
-// already closes the popup via Base UI's own onValueChange-closes contract,
-// this component takes over the Combobox's open state (falling back to an
-// internal `useState` when the caller doesn't already control `open`) so it
-// has a `close()` to call for the same effect after a footer pick, which
-// Base UI wouldn't grant it for free since the footer is plain content, not
-// a selectable item (see ui/Combobox.jsx's `footer` slot docs).
+// drill into. Picking a model WITH effort options keeps the popup open
+// right where it is — the footer fades in below the list (Combobox holds
+// the popup's total height constant while it appears, so nothing jumps;
+// see its List/footer comments) and the user can set an effort level as
+// part of the same interaction, or just dismiss the popup as usual.
+// Picking a model with no options closes the popup normally, Base UI's own
+// contract, unchanged. Hovering the footer row opens the side flyout (Base
+// UI's Positioner picks whichever side has room); hovering the flyout
+// itself keeps it open, and leaving both starts a generous close-grace
+// timer rather than closing immediately, so a brief drift off the edge
+// doesn't snap it shut before the user meant to pick a level. The
+// hover-intent open/close timing is hand-rolled since Popover.Trigger's own
+// `openOnHover` drives off Floating UI's async rest-detection, which is
+// awkward to drive deterministically from tests and buys nothing over a
+// plain timer for an interaction this simple. Picking a level fires
+// `onEffortChange` and closes both the flyout and this whole popup —
+// mirroring how picking a model item closes the popup via Base UI's own
+// onValueChange-closes contract, this component takes over the Combobox's
+// open state (falling back to an internal `useState` when the caller
+// doesn't already control `open`) so it has a `close()` to call for the
+// same effect after a footer pick, which Base UI wouldn't grant it for free
+// since the footer is plain content, not a selectable item (see
+// ui/Combobox.jsx's `footer` slot docs).
 //
 // Option shape: { value, label, disabled?, locked?, title?, tag?, maker?, provider?, pin? }.
 //   - `provider`: MindsHub's serving-vendor field (the ENG-1111 backend
@@ -304,6 +309,7 @@ export function ModelSelect({
   harness,
   open,
   onOpenChange,
+  onValueChange,
   ...rest
 }) {
   const groups = useMemo(() => {
@@ -360,6 +366,13 @@ export function ModelSelect({
   const comboboxOpen = effortFeatureEnabled
     ? (isOpenControlledByCaller ? open : internalOpen)
     : open;
+  // Set synchronously by `comboboxOnValueChange` (below) the instant a pick
+  // lands, and read here immediately after — Base UI calls
+  // `setSelectedValue` then `setOpen(false, ...)` back to back in the same
+  // synchronous handler (see AriaCombobox's item-press branch), so a ref
+  // (not state, which wouldn't update until the next render) is the only
+  // way for this callback to know what was JUST picked.
+  const pendingEffortModelRef = useRef(false);
   const comboboxOnOpenChange = effortFeatureEnabled
     ? (next, eventDetails, ...args) => {
       // Base UI's outside-press dismiss runs a capture-phase listener on
@@ -381,11 +394,38 @@ export function ModelSelect({
         eventDetails.cancel();
         return;
       }
+      // Picking ANY model item closes the whole popup unconditionally —
+      // Base UI's own single-select behavior (AriaCombobox: `setSelectedValue`
+      // immediately followed by `setOpen(false, {reason: 'item-press'})`).
+      // When the just-picked model has effort options, veto that close so the
+      // menu stays where it is and the Effort footer fades in below the list
+      // (Combobox keeps the total popup height constant while it appears, so
+      // nothing repositions — see its List/footer comments) — giving the user
+      // the chance to set an effort level as part of the same interaction.
+      // A model with no options still closes normally, and the popup's every
+      // other close path (outside press elsewhere, Esc, trigger click) is
+      // untouched, so "do nothing" after the pick just leaves a normal open
+      // popup to dismiss as usual.
+      if (!next && eventDetails?.reason === 'item-press' && pendingEffortModelRef.current) {
+        pendingEffortModelRef.current = false;
+        eventDetails.cancel();
+        return;
+      }
       if (!isOpenControlledByCaller) setInternalOpen(next);
       onOpenChange?.(next, eventDetails, ...args);
     }
     : onOpenChange;
   const closePopup = () => comboboxOnOpenChange?.(false, { reason: 'none' });
+  // Wraps the caller's onValueChange purely to learn, synchronously and
+  // ahead of the close decision above, whether what was just picked has
+  // effort options — see `pendingEffortModelRef`'s doc comment.
+  const comboboxOnValueChange = effortFeatureEnabled
+    ? (nextValue) => {
+      const nextEntry = modelEfforts ? (modelEfforts[nextValue] || null) : null;
+      pendingEffortModelRef.current = harnessSupportsEffort && !!nextEntry?.efforts?.length;
+      onValueChange?.(nextValue);
+    }
+    : onValueChange;
 
   return (
     <Combobox
@@ -420,6 +460,7 @@ export function ModelSelect({
       {...rest}
       open={comboboxOpen}
       onOpenChange={comboboxOnOpenChange}
+      onValueChange={comboboxOnValueChange}
     />
   );
 }

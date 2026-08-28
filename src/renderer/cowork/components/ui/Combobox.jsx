@@ -184,7 +184,23 @@ export function Combobox({
             <BaseCombobox.Empty className="empty:p-0 px-[14px] py-[10px] text-[12.5px] text-ink-4">
               {emptyText}
             </BaseCombobox.Empty>
-            <BaseCombobox.List className="max-h-[min(320px,calc(var(--available-height,320px)-44px))] overflow-y-auto overscroll-contain py-[4px] outline-none empty:p-0">
+            <BaseCombobox.List
+              // With a footer present, the list's cap shrinks by the footer's
+              // ~40px so the POPUP's total height (list + footer) stays what
+              // it was without one. This matters when the footer appears
+              // while the popup is already open (ModelSelect: picking a model
+              // with effort options mounts the Effort row in place): the
+              // composer's popup sits ABOVE its trigger, bottom edge pinned
+              // to the anchor, so any growth extends the top edge upward —
+              // a visible jump. Constant total height = no jump; the list
+              // just scrolls in slightly less room.
+              className={cn(
+                footer
+                  ? 'max-h-[min(280px,calc(var(--available-height,320px)-84px))]'
+                  : 'max-h-[min(320px,calc(var(--available-height,320px)-44px))]',
+                'overflow-y-auto overscroll-contain py-[4px] outline-none empty:p-0',
+              )}
+            >
               {(group) => (
                 <BaseCombobox.Group key={group.key} items={group.items}>
                   {group.name && (
@@ -238,7 +254,10 @@ export function Combobox({
                 convention (same reasoning: `border-solid` is load-bearing
                 with preflight disabled). */}
             {footer && (
-              <div className="border-solid border-line border-t border-b-0 border-x-0">
+              // fade-in covers the mid-open appearance case (ModelSelect's
+              // Effort row mounting on a model pick) — opacity only, so it
+              // adds no motion on top of the list's height rebalancing above.
+              <div className="border-solid border-line border-t border-b-0 border-x-0 animate-fade-in">
                 {footer}
               </div>
             )}

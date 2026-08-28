@@ -151,11 +151,16 @@ export default {
         'scale-out': { from: { opacity: 1, transform: 'scale(1)' },    to: { opacity: 0, transform: 'scale(0.97)' } },
         // Task-mode chip entrance (ENG-1594) — softer scale, springier curve.
         'chip-in':   { from: { opacity: 0, transform: 'scale(0.95)' }, to: { opacity: 1, transform: 'scale(1)' } },
+        // Plain opacity fade for content appearing inside an already-open
+        // popup (e.g. the Combobox footer slot) — no scale, so the popup's
+        // own geometry doesn't appear to move twice.
+        'fade-in':   { from: { opacity: 0 }, to: { opacity: 1 } },
       },
       animation: {
         'scale-in':  'scale-in 130ms ease-out',
         'scale-out': 'scale-out 90ms ease-in',
         'chip-in':   'chip-in 180ms cubic-bezier(0.23, 1, 0.32, 1) both',
+        'fade-in':   'fade-in 160ms ease-out',
       },
     },
   },

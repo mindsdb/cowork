@@ -375,21 +375,38 @@ describe('ModelSelect — reasoning-effort footer (ENG-1940)', () => {
     expect(screen.queryByText(/Higher effort means more thorough responses/)).not.toBeInTheDocument();
   });
 
-  // Picking a model still closes the whole popup (Base UI's own contract) —
-  // the footer must not change that. A real stateful parent is required so
-  // this exercises the actual pick-then-close flow, not just presentation
-  // with a value already in place.
+  // Base UI's Combobox closes the whole popup unconditionally on picking an
+  // item (AriaCombobox: setSelectedValue then setOpen(false, {reason:
+  // 'item-press'})) — ModelSelect vetoes that close specifically when the
+  // picked model has effort options, so the menu stays put and the Effort
+  // footer appears in place. A real stateful parent is required so these
+  // exercise the actual pick-then-close flow, not just presentation with a
+  // value already in place.
   function StatefulHarness({ initial, ...rest }) {
     const [value, setValue] = useState(initial);
     return <Harness initial={value} onValueChange={setValue} {...rest} />;
   }
 
-  it('clicking any model row closes the popup normally, effort options or not', async () => {
+  it('clicking a model row with effort options keeps the popup open with the footer shown (flyout stays closed)', async () => {
     const user = userEvent.setup();
     render(<StatefulHarness initial="mindshub_air" modelEfforts={MODEL_EFFORTS} effort="" onEffortChange={vi.fn()} />);
 
     await user.click(screen.getByRole('combobox'));
     await user.click(screen.getByRole('option', { name: 'Claude Sonnet 5' }));
+
+    // Still open: the list is still there, and the footer has appeared —
+    // but its flyout has NOT opened by itself (hover does that).
+    expect(screen.getByRole('option', { name: 'Claude Sonnet 5' })).toBeInTheDocument();
+    expect(screen.getByText('Effort')).toBeInTheDocument();
+    expect(screen.queryByText(/Higher effort means more thorough responses/)).not.toBeInTheDocument();
+  });
+
+  it('clicking a model row with no effort options still closes the popup normally', async () => {
+    const user = userEvent.setup();
+    render(<StatefulHarness initial="sonnet" modelEfforts={MODEL_EFFORTS} effort="" onEffortChange={vi.fn()} />);
+
+    await user.click(screen.getByRole('combobox'));
+    await user.click(screen.getByRole('option', { name: 'MindsHub Air' }));
 
     expect(screen.queryByRole('option')).not.toBeInTheDocument();
   });
