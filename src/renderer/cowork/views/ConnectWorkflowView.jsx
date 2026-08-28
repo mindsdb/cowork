@@ -9,6 +9,8 @@ import {
 } from '../api';
 import { trackDataSourceConnected } from '../lib/analytics';
 import { Select } from '../components/ui';
+import { useOrgMode } from '../../lib/orgMode';
+import { host } from '../../platform/host';
 
 const PAGE_HOME = 'home';
 const PAGE_CONNECTORS = 'connectors';
@@ -17,6 +19,10 @@ const DIRECTORY_MODE_CONNECTORS = 'connectors';
 const DIRECTORY_MODE_PLUGINS = 'plugins';
 const DESKTOP_CONNECTOR_IDS = ['anton_chrome', 'control_chrome', 'filesystem'];
 const EXTERNAL_CONNECTOR_IDS = ['github', 'google_drive', 'miro', 'asana', 'cloudflare', 'figma', 'gmail', 'google_calendar', 'hubspot', 'linear', 'notion', 'posthog', 'slack', 'supabase', 'zoominfo'];
+// Loading-state fallback only, before the first /catalogue response lands —
+// the real org-mode allow-list is whatever auth's catalogue returns (see
+// orgAvailableIds below), not this hardcoded pair.
+const ORG_MODE_CONNECTOR_IDS = ['google_drive', 'gmail'];
 
 const CONNECTOR_LIBRARY = {
   github: {
@@ -509,6 +515,7 @@ function ConnectorsPage({
   busyAction,
   status,
   driveAuthPending,
+  orgMode,
 }) {
   // Present in the /catalogue response => this connector has a
   // browser_oauth_builtin method and can be connected from here, generic
@@ -598,6 +605,20 @@ function ConnectorsPage({
               })}
             </div>
           ))}
+
+          {orgMode && (
+            <p className="customize-org-mode-note">
+              More connectors are not available on Cloud just yet. In the meantime, you can{' '}
+              <button
+                type="button"
+                className="customize-inline-link"
+                onClick={() => host.openExternal('https://mindshub.ai/download')}
+              >
+                use other connectors in the desktop app
+              </button>
+              .
+            </p>
+          )}
         </div>
       </section>
 
@@ -648,7 +669,7 @@ function ConnectorsPage({
   );
 }
 
-function DirectoryModal({ mode, onChangeMode, onClose, onChooseConnector }) {
+function DirectoryModal({ mode, onChangeMode, onClose, onChooseConnector, orgMode, orgAvailableIds }) {
   const [query, setQuery] = useState('');
   // Filter (category) + sort selections live here. Both default to
   // the inclusive option ("All categories", "Popular") so a fresh
@@ -665,6 +686,9 @@ function DirectoryModal({ mode, onChangeMode, onClose, onChooseConnector }) {
   const connectorCards = useMemo(() => {
     const lower = query.trim().toLowerCase();
     let cards = DIRECTORY_CONNECTOR_CARDS.filter((card) => {
+      // Same allow-list as the main connector list — org mode can't
+      // "browse all" its way to a connector the catalogue hasn't authorized.
+      if (orgMode && !orgAvailableIds.includes(card.id)) return false;
       const connector = CONNECTOR_LIBRARY[card.id];
       const haystack = `${connector?.name || ''} ${card.desc}`.toLowerCase();
       const matchesQuery = !lower || haystack.includes(lower);
@@ -683,7 +707,7 @@ function DirectoryModal({ mode, onChangeMode, onClose, onChooseConnector }) {
     // sortBy === 'popular' → keep DIRECTORY_CONNECTOR_CARDS source
     // order (already ranked by hand).
     return cards;
-  }, [query, filterCategory, sortBy]);
+  }, [query, filterCategory, sortBy, orgMode, orgAvailableIds]);
 
   const pluginCards = useMemo(() => {
     const lower = query.trim().toLowerCase();
@@ -839,6 +863,7 @@ function DirectoryModal({ mode, onChangeMode, onClose, onChooseConnector }) {
 }
 
 export default function ConnectWorkflowView({ onClose }) {
+  const orgMode = useOrgMode();
   // Always start on the connectors view — the old "home" overview
   // tab isn't part of this workflow anymore (the Connect Apps and
   // Data page already serves that role with the connection cards).
@@ -899,17 +924,32 @@ export default function ConnectWorkflowView({ onClose }) {
     return lib;
   }, [catalog]);
 
+  // Org mode's available connector set follows auth's /catalogue response —
+  // whatever it returns is what's actually authorized for this org, so a
+  // connector going live or being pulled there shows up here with no
+  // frontend change. Falls back to ORG_MODE_CONNECTOR_IDS before the first
+  // catalogue response lands.
+  const orgAvailableIds = useMemo(() => {
+    if (!catalog) return ORG_MODE_CONNECTOR_IDS;
+    return (catalog.items || []).map((item) => item.id).filter((id) => CONNECTOR_LIBRARY[id]);
+  }, [catalog]);
+
   const connectorGroups = useMemo(() => {
-    const connectedExternalIds = EXTERNAL_CONNECTOR_IDS.filter((id) => connectorLibrary[id]?.status === 'connected');
-    const notConnectedIds = EXTERNAL_CONNECTOR_IDS.filter((id) => connectorLibrary[id]?.status !== 'connected');
+    // The Desktop group (anton_chrome/control_chrome/filesystem) is
+    // native-only — doesn't make sense to list here in org mode.
+    const availableIds = orgMode ? orgAvailableIds : EXTERNAL_CONNECTOR_IDS;
+    const connectedExternalIds = availableIds.filter((id) => connectorLibrary[id]?.status === 'connected');
+    const notConnectedIds = availableIds.filter((id) => connectorLibrary[id]?.status !== 'connected');
     const groups = [];
     if (connectedExternalIds.length) {
       groups.push({ label: 'Connected', ids: connectedExternalIds });
     }
-    groups.push({ label: 'Desktop', ids: DESKTOP_CONNECTOR_IDS });
+    if (!orgMode) {
+      groups.push({ label: 'Desktop', ids: DESKTOP_CONNECTOR_IDS });
+    }
     groups.push({ label: 'Not connected', ids: notConnectedIds });
     return groups;
-  }, [connectorLibrary]);
+  }, [connectorLibrary, orgMode, orgAvailableIds]);
 
   const selectedConnector = connectorLibrary[selectedConnectorId] || connectorLibrary.google_drive;
 
@@ -1056,6 +1096,7 @@ export default function ConnectWorkflowView({ onClose }) {
             busyAction={busyAction}
             status={driveStatus}
             driveAuthPending={driveAuthPending}
+            orgMode={orgMode}
           />
         )}
 
@@ -1067,6 +1108,8 @@ export default function ConnectWorkflowView({ onClose }) {
           onChangeMode={setDirectoryMode}
           onClose={closeDirectory}
           onChooseConnector={(id) => handleSelectConnector(id)}
+          orgMode={orgMode}
+          orgAvailableIds={orgAvailableIds}
         />
       )}
     </div>
