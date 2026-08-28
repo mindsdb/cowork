@@ -62,6 +62,7 @@ export function ArtifactViewer({
   onDelete,
   onAddressWithAgent,
   conversationId = null,
+  resolveRepairConversation = null,
 }) {
   const orgMode = useOrgMode();
   const actionPath = artifact?.canonicalPath || artifact?.file_path || artifact?.path || '';
@@ -120,6 +121,9 @@ export function ArtifactViewer({
   // <PublishMenu> popover and the link-pill's published-URL display.
   const pub = usePublish(artifact, { onChange, enabled: open });
   const workspace = useArtifactWorkspace(artifact, { open, onChange });
+  // Fallback target for a repair: a brand-new chat. Used when the viewer has no
+  // host chat (opened from the artifacts list) and the host either offers no
+  // resolver or can't reach the chat that created the artifact.
   const repairConversationId = useMemo(
     () => conversationId || (open && workspace.supported ? allocateConversationId() : ''),
     // `artifact?.id` stays in the deps because switching artifacts has to mint a
@@ -241,9 +245,18 @@ export function ArtifactViewer({
     setRepairBusy(true);
     setErr('');
     try {
+      // Settle the target chat BEFORE the repair record exists. cowork-server
+      // finishes a queued handoff only in a turn whose conversation matches the
+      // id stored on it, so a repair minted against one chat and run in another
+      // would stay queued forever. Inside a chat that's this chat; from the
+      // artifacts list the host resolves the chat that created the artifact and
+      // falls back to a fresh one.
+      const targetConversationId = conversationId
+        || (resolveRepairConversation ? await resolveRepairConversation(artifact) : '')
+        || repairConversationId;
       const requested = await workspace.addressWithAgent({
         thread,
-        conversationId: repairConversationId,
+        conversationId: targetConversationId,
       });
       if (requested) {
         let started;
@@ -252,7 +265,7 @@ export function ArtifactViewer({
             artifact,
             prompt: requested.prompt,
             repair: requested.repair,
-            conversationId: repairConversationId,
+            conversationId: targetConversationId,
           });
         } catch (startError) {
           try { await workspace.cancelRepair(requested.repair.id); } catch { /* keep original error */ }

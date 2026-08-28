@@ -610,6 +610,7 @@ export default function ArtifactsView({
   projects = [],
   onOpenProject,
   onAddressWithAgent,
+  resolveRepairConversation,
   agentLabel = 'the agent',
 }) {
   // For the grid's shared menu below. The list view's menu (ArtifactMenu) reads
@@ -970,6 +971,8 @@ export default function ArtifactsView({
         onDelete={removeOne}
         onPublish={handlePublish}
         onAddressWithAgent={onAddressWithAgent}
+        // No host chat here — the viewer asks which one a repair belongs to.
+        resolveRepairConversation={resolveRepairConversation}
       />
 
       {publishTarget && (

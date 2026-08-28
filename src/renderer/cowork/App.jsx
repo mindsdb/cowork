@@ -51,7 +51,7 @@ import { useThemeSkin } from './hooks/useThemeSkin';
 import { useAppUpdates } from './hooks/useAppUpdates';
 import { deriveUpdateBanner } from '../../shared/update-banner';
 import { useSchedules } from './hooks/useSchedules';
-import { fetchSessions, fetchSession, fetchConversationList, fetchProjects, fetchArtifacts, fetchSettings, fetchHealth,
+import { fetchSessions, fetchSession, fetchSessionResult, fetchConversationList, fetchProjects, fetchArtifacts, fetchSettings, fetchHealth,
          createProject, updateSettings, streamNewSession, streamMessage,
          streamDataVaultSubmission,
          allocateConversationId, uploadAttachments,
@@ -75,6 +75,7 @@ import {
   mergeConvTurns,
 } from './lib/conversationHistory';
 import { noteArtifactsFromSteps } from './lib/artifactsStore';
+import { resolveRepairConversation } from './lib/artifactRepairChat';
 import { isArtifactTipDismissed, dismissArtifactTip, dismissIfUntouched } from './components/onboarding/onboardingStore';
 import { recommendedModelOptions, providerValueToType,
          mergeRecommendedModels } from './lib/settingsTransform';
@@ -3347,6 +3348,57 @@ function AppCore() {
   // thus the current handleSendInTask). See the ref declaration above.
   drainNextQueuedMessageRef.current = drainNextQueuedMessage;
 
+  // ── Addressing an artifact comment with the agent ──────────────────────
+  // Two callbacks, one decision. The viewer asks which chat a repair belongs to
+  // BEFORE minting the repair record (cowork-server only finishes a handoff in
+  // the turn whose conversation matches the id on it), then hands the prompt
+  // back to be sent. The resolution is carried between the two here so the send
+  // can't pick a different chat than the repair is bound to.
+  const artifactRepairTargetRef = useRef(null);
+
+  const resolveArtifactRepairConversation = useCallback(async (artifact) => {
+    const target = await resolveRepairConversation({
+      artifact,
+      tasks: tasksRef.current,
+      fetchConversation: fetchSessionResult,
+    });
+    artifactRepairTargetRef.current = target.id ? target : null;
+    // Adopt the record now: an origin chat older than the capped recents fetch
+    // is unknown to `tasks`, and the send below appends the turn through it.
+    if (target.id) {
+      setTasks((prev) => (
+        prev.some((t) => String(t.id || '') === target.id) ? prev : [target.task, ...prev]
+      ));
+    }
+    return target.id;
+  }, []);
+
+  const addressArtifactWithAgent = async ({ artifact, prompt, conversationId }) => {
+    const project = projects.find((item) =>
+      String(item.id || '') === String(artifact?.projectId || ''))
+      || projects.find((item) => item.name === artifact?.projectName)
+      || null;
+    const target = artifactRepairTargetRef.current;
+    artifactRepairTargetRef.current = null;
+    // Only resume a chat the repair was actually minted against; anything else
+    // (no origin, unreachable chat, a stale resolution) starts a new one.
+    if (!target || !conversationId || target.id !== String(conversationId)) {
+      return handleSendFromHome(prompt, { project, conversationId });
+    }
+    // Preflight before touching the chat: returning false makes the viewer
+    // cancel the repair, which beats leaving a handoff queued against a turn
+    // that never starts.
+    if (!(await ensureProviderReady())) return false;
+    const targetTask = tasksRef.current.find((t) => String(t.id || '') === target.id) || target.task;
+    // The `/c/:id` loader must not re-hydrate over the transcript we adopted
+    // while the turn is in flight; the flag drops when the turn completes.
+    markOptimisticConversation(target.id);
+    selectTask(target.id);
+    // handleSendInTask queues the prompt itself if that chat is already busy.
+    await handleSendInTask(prompt, [], { targetTask });
+    return true;
+  };
+
   // Submit a data-vault form. Drives a fresh assistant turn from the
   // cowork agent endpoint instead of the LLM — same SSE stream shape,
   // same React state machine. The user sees a normal Anton bubble
@@ -4587,13 +4639,8 @@ function AppCore() {
             artifacts={artifacts}
             projects={projects}
             agentLabel={agentLabel}
-            onAddressWithAgent={({ artifact, prompt, conversationId }) => {
-              const project = projects.find((item) =>
-                String(item.id || '') === String(artifact?.projectId || ''))
-                || projects.find((item) => item.name === artifact?.projectName)
-                || null;
-              return handleSendFromHome(prompt, { project, conversationId });
-            }}
+            onAddressWithAgent={addressArtifactWithAgent}
+            resolveRepairConversation={resolveArtifactRepairConversation}
             onOpenProject={(p) => {
               // Pin the project so ProjectsView opens directly in detail
               // (its `selectedProject` effect mirrors that into local

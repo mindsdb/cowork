@@ -20,6 +20,12 @@ export interface ArtifactViewerArtifact {
   stableId?: string;
   artifactKey?: string;
   slug?: string;
+  /**
+   * The conversation that created the artifact (server-derived from metadata
+   * provenance). Empty for artifacts older than provenance. Addressing a
+   * comment with the agent resumes this chat when it is still reachable.
+   */
+  originConversationId?: string;
   projectId?: string;
   projectName?: string;
   title?: string;
@@ -87,7 +93,14 @@ export interface ArtifactViewerProps {
   onChange?: (artifact: ArtifactViewerArtifact) => void;
   onDelete?: (path: string) => void;
   onAddressWithAgent?: (request: ArtifactAgentRepairRequest) => Promise<boolean | void>;
+  /** The chat hosting the viewer, when there is one. */
   conversationId?: string | null;
+  /**
+   * Asked which chat a repair should run in when there is no host chat, before
+   * the repair record is minted. Returns an existing conversation id, or an
+   * empty string to let the viewer mint a new one.
+   */
+  resolveRepairConversation?: ((artifact: ArtifactViewerArtifact) => Promise<string>) | null;
 }
 
 export const ArtifactViewer: ComponentType<ArtifactViewerProps>;
