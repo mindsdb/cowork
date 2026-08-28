@@ -9,7 +9,7 @@ import * as https from 'https';
 import * as http from 'http';
 import { IPC } from '../shared/ipc-channels';
 import { checkInstallStatus, runInstaller } from './installer';
-import { startServer, stopServer, forceReapServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort, fetchServerVersions } from './server-process';
+import { startServer, stopServer, forceReapServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort, fetchServerVersions, setServerStartedHook } from './server-process';
 import { setUpdateNotifier, recreateVenvIfUnsupportedPython, repairServerInstall } from './server-updater';
 import { initUpdater, registerUpdateHandlers } from './updater';
 import { awaitBootSettled } from './boot-gate';
@@ -52,6 +52,16 @@ import {
   killAllCodingTerminals,
   removeCodingTask,
 } from './coding-terminal';
+
+// Re-hand the MindsHub credential to every sidecar that comes up.
+//
+// The sidecar holds it in memory only, so a process that just started holds
+// nothing: an auto-update, the sidebar's stop/start, the installer's first
+// start, and the restart the renderer runs after onboarding all leave a
+// signed-in user with `config_ready: false` until something pushes again.
+// Registered at module scope so the hook is in place before the first start,
+// whichever path gets there first.
+setServerStartedHook(syncMindsCredential);
 
 function getAntonEnvPath(): string {
   return coworkEnvPath();

@@ -280,7 +280,7 @@ All channels defined in `src/shared/ipc-channels.ts`:
 | `oauth:cancel`                                      | invoke    | Cancel an in-progress PKCE OAuth flow     |
 | `mindshub:login`                                    | invoke    | Start MindsHub OAuth login                |
 | `mindshub:refresh`                                  | invoke    | Refresh MindsHub token                    |
-| `mindshub:finalize`                                 | invoke    | Commit MindsHub credentials to env        |
+| `mindshub:finalize`                                 | invoke    | Pick the organization and hand the credential to the sidecar |
 | `mindshub:get-cached-token`                         | invoke    | Read cached MindsHub token                |
 | `mindshub:list-orgs`                                | invoke    | Organizations this account belongs to     |
 | `mindshub:switch-org`                               | invoke    | Change organization and move the key      |
@@ -367,9 +367,19 @@ overlays onto its settings. `src/main/minds-credential.ts` owns that hand-over.
 Three consequences worth knowing:
 
 - **Every sidecar start needs a fresh hand-over.** Nothing persists the value, so
-  a launch, an auto-update and a crash restart each re-push it. The boot path in
-  `src/main/index.ts` and the token-refresh path in `src/main/minds-auth.ts` are
-  the two callers.
+  a sidecar that has just come up holds nothing and `/health` answers
+  `config_ready: false` until main pushes again. The renderer paints that answer
+  as "Connect a provider to start chatting", so a signed-in user reads a wiring
+  gap as a billing prompt. The sidecar goes down far more often than a launch: an
+  over-the-air update and its rollback, the sidebar's stop/start, the restart the
+  renderer runs after onboarding, and the installer's first start on a fresh
+  machine. Wiring the push into each of those is how one gets missed, so it hangs
+  off the single function they all call. `src/main/index.ts` registers
+  `syncMindsCredential` with `setServerStartedHook`, and `startServer` awaits it
+  after every successful start (`src/main/server-process.ts`). It is awaited
+  rather than fired off, because callers read `/health` as soon as `startServer`
+  resolves. Sign-in and the token-refresh tick push on top of that, since both
+  produce a new credential without restarting anything.
 - **A key you supply yourself goes to the OS keychain**, not to `.env` and not to
   the sidecar's settings table. It wins over the session credential while it is
   set. `mindshub:set-user-key` is the IPC channel that carries it.

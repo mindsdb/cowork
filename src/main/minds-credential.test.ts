@@ -130,6 +130,20 @@ describe('pushMindsCredential', () => {
     globalThis.fetch = vi.fn(async () => { throw new Error('ECONNREFUSED'); }) as unknown as typeof fetch;
     expect(await pushMindsCredential('a-token')).toBe(false);
   });
+
+  it('names an older sidecar as the cause when the route is not there', async () => {
+    // The app updates in one step and the sidecar in another, so a build can
+    // talk to a sidecar that predates the hand-over route. Reported as a 404
+    // with no explanation, that surfaces to a signed-in user as a card telling
+    // them to connect a provider — a wiring failure dressed as a billing one.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    installFetch(404);
+
+    expect(await pushMindsCredential('a-token')).toBe(false);
+    expect(warn.mock.calls.flat().join(' ')).toContain('predates this build');
+
+    warn.mockRestore();
+  });
 });
 
 describe('syncMindsCredential', () => {
