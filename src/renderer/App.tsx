@@ -215,7 +215,13 @@ export default function App() {
   const handleAuthComplete = async (deferredModelLines?: string[]) => {
     deferredModelRef.current = deferredModelLines ?? null;
     rememberTermsConsent();
-    try { await host.restartServer(); } catch {}
+    /* The sidecar deliberately keeps running here. `persistOnboarding` has
+     * already written every setting to it over loopback and treats that DB
+     * write as authoritative, so a fresh process would only read back what
+     * this one already holds. Restarting would also drop the MindsHub
+     * credential, which lives in the sidecar's memory and nowhere else, and
+     * leave the first chat waiting on `syncMindsCredential` to hand it over
+     * to the replacement process. */
     try {
       const status = await host.checkInstall();
       if (!status.antonInstalled || !status.serverDepsReady) {
