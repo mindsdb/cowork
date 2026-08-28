@@ -124,6 +124,98 @@ describe('updateSettings', () => {
   });
 });
 
+// A MindsHub key the user typed must not be stored by the sidecar at all. The
+// Settings form writes it twice from one keystroke — the `minds_api_key` row
+// and the raw value inside the provider card — so both halves have to be
+// diverted. `providers_json` is a plain column nothing encrypts, which makes
+// the second half the one that actually leaves a readable key on disk.
+describe('updateSettings — a user-supplied MindsHub key never reaches the server', () => {
+  let calls;
+
+  const withElectronHost = (impl) => {
+    hostMock.isElectron = true;
+    hostMock.isWeb = false;
+    hostMock.mindshubSetUserKey = vi.fn(impl);
+  };
+
+  beforeEach(() => {
+    calls = [];
+    vi.stubGlobal('fetch', vi.fn(async (url, options = {}) => {
+      const method = options.method || 'GET';
+      calls.push({ url: String(url), method, body: options.body });
+      const u = String(url);
+      if (method === 'PUT' && u.endsWith('/settings/')) return jsonRes({ updated: [] });
+      if (method === 'GET' && u.endsWith('/settings/')) return jsonRes([]);
+      if (u.includes('/settings/validate')) return jsonRes({ configReady: true, configError: null });
+      return jsonRes({});
+    }));
+  });
+
+  afterEach(() => {
+    hostMock.isElectron = false;
+    hostMock.isWeb = true;
+    delete hostMock.mindshubSetUserKey;
+    vi.unstubAllGlobals();
+  });
+
+  const patch = {
+    mindsApiKey: 'mdb_typed_by_hand',
+    providers: [{ type: 'minds-cloud', apiKey: 'mdb_typed_by_hand', isDefault: true }],
+  };
+
+  it('hands the key to main and strips both copies from the write', async () => {
+    withElectronHost(async () => ({ ok: true, supported: true }));
+
+    await updateSettings(patch);
+
+    expect(hostMock.mindshubSetUserKey).toHaveBeenCalledWith('mdb_typed_by_hand');
+    const put = calls.find((c) => c.method === 'PUT' && c.url.endsWith('/settings/'));
+    const body = JSON.parse(put.body);
+    expect(body.values.minds_api_key).toBeUndefined();
+    // The card survives, masked — the same shape the server returns on read.
+    expect(JSON.parse(body.values.providers_json)[0].apiKey).toBe('***');
+    // The clinching assertion: the raw value is nowhere in what we sent.
+    expect(put.body).not.toContain('mdb_typed_by_hand');
+  });
+
+  it('leaves the other provider cards untouched', async () => {
+    withElectronHost(async () => ({ ok: true, supported: true }));
+
+    await updateSettings({
+      mindsApiKey: 'mdb_typed_by_hand',
+      providers: [
+        { type: 'minds-cloud', apiKey: 'mdb_typed_by_hand' },
+        { type: 'anthropic', apiKey: 'sk-ant-users-own' },
+      ],
+    });
+
+    const put = calls.find((c) => c.method === 'PUT' && c.url.endsWith('/settings/'));
+    const cards = JSON.parse(JSON.parse(put.body).values.providers_json);
+    expect(cards.find((c) => c.type === 'anthropic').apiKey).toBe('sk-ant-users-own');
+  });
+
+  it('fails the save rather than writing the key when main cannot store it', async () => {
+    // Falling through to the settings write here would put the key on disk,
+    // which is the exact outcome this path exists to prevent.
+    withElectronHost(async () => ({ ok: false, supported: true, reason: 'keychain locked' }));
+
+    await expect(updateSettings(patch)).rejects.toThrow(/keychain locked/);
+    expect(calls.some((c) => c.method === 'PUT')).toBe(false);
+  });
+
+  it('web keeps writing the key as a setting — there is no main process to route it to', async () => {
+    hostMock.isElectron = false;
+    hostMock.isWeb = true;
+    // What the real host returns with no bridge behind it.
+    hostMock.mindshubSetUserKey = vi.fn(async () => ({ ok: false, supported: false }));
+
+    await updateSettings(patch);
+
+    const put = calls.find((c) => c.method === 'PUT' && c.url.endsWith('/settings/'));
+    expect(JSON.parse(put.body).values.minds_api_key).toBe('mdb_typed_by_hand');
+  });
+});
+
 // ENG-1632 tombstones: a `null` in the patch clears the stored row (DELETE)
 // so the server's enabled-aware resolution governs the key again. The DELETEs
 // must run BEFORE the bulk PUT — the PUT repoints providers, and a repointed

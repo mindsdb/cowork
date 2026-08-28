@@ -899,6 +899,24 @@ export async function mindshubFinalize(): Promise<{ ok: boolean; reason?: string
   return { ok: false, reason: 'MindsHub finalize bridge is Electron-only.' };
 }
 
+/**
+ * Hand a user-supplied MindsHub key to the main process, or clear it with ''.
+ *
+ * Electron only, and the caller has to know that: main is where the OS keychain
+ * and the sidecar hand-over live, so there is nothing on web to route it to.
+ * `supported: false` is how a web caller learns to fall back to writing the key
+ * as an ordinary setting, which is still what the web deployment does.
+ */
+export async function mindshubSetUserKey(
+  key: string,
+): Promise<{ ok: boolean; supported: boolean; reason?: string }> {
+  if (isElectron && typeof bridge.mindshubSetUserKey === 'function') {
+    const result = await bridge.mindshubSetUserKey(key);
+    return { ok: Boolean(result?.ok), supported: true, reason: result?.reason };
+  }
+  return { ok: false, supported: false };
+}
+
 export async function mindshubGetCachedToken(): Promise<string | null> {
   if (isElectron && typeof bridge.mindshubGetCachedToken === 'function') {
     const result = await bridge.mindshubGetCachedToken();
@@ -1017,6 +1035,7 @@ export const host = {
   mindshubSignup,
   mindshubRefresh,
   mindshubFinalize,
+  mindshubSetUserKey,
   mindshubGetCachedToken,
   onMindsHubAuthChanged,
   getKeychainPref,

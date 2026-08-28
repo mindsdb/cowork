@@ -1285,9 +1285,48 @@ export async function fetchSettings() {
   return op;
 }
 
+/* A MindsHub key the user typed is diverted out of the settings write and
+ * handed to the main process, which stores it in the OS keychain and pushes it
+ * to the sidecar at runtime. Two copies have to be stopped, not one: the
+ * `minds_api_key` row, and the raw value the Settings form also puts inside the
+ * `providers_json` card (SettingsView's updateProviderField writes both from one
+ * keystroke). `providers_json` is a plain column nothing encrypts, so leaving
+ * that half behind would defeat the whole change.
+ *
+ * `***` is the value already used for a stored-but-unreadable key, so the card
+ * round-trips exactly as it does when the server masks it on read.
+ *
+ * Web keeps writing the key as a setting: there is no main process to route it
+ * to, and the runtime hand-over is a desktop mechanism. `supported: false` is
+ * how host.mindshubSetUserKey says so. */
+async function divertMindsKey(writes) {
+  if (!('minds_api_key' in writes)) return writes;
+  const key = writes.minds_api_key;
+  const stored = await host.mindshubSetUserKey(key);
+  if (!stored.supported) return writes;
+  if (!stored.ok) {
+    const err = new Error(`Failed to save settings: ${stored.reason || 'could not store the MindsHub key'}`);
+    err.failed = ['mindsApiKey'];
+    throw err;
+  }
+  const { minds_api_key: _diverted, ...rest } = writes;
+  if (typeof rest.providers_json === 'string') {
+    try {
+      const cards = JSON.parse(rest.providers_json);
+      if (Array.isArray(cards)) {
+        for (const card of cards) {
+          if (card && card.type === 'minds-cloud' && card.apiKey) card.apiKey = '***';
+        }
+        rest.providers_json = JSON.stringify(cards);
+      }
+    } catch { /* unparseable: leave it, the server masks on read and rejects nothing */ }
+  }
+  return rest;
+}
+
 export async function updateSettings(patch) {
   const op = _settingsLock.then(async () => {
-    const writes = diffSettingsForWrite(patch, _lastFetchedSettings);
+    const writes = await divertMindsKey(diffSettingsForWrite(patch, _lastFetchedSettings));
     const keys = Object.keys(writes);
     let updated = keys;
 

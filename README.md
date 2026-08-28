@@ -251,7 +251,7 @@ assets/
 
 - **FastAPI sidecar**: The Electron main process manages the [`cowork-server`](https://github.com/mindsdb/cowork-server) Python FastAPI backend on `127.0.0.1:26866`, installed from [PyPI](https://pypi.org/project/cowork-server/) via `uv tool install`. The renderer communicates exclusively through this HTTP API — there is no PTY or terminal emulator.
 
-- **Minds integration**: The GUI replicates the `/connect` flow — lists minds via REST API, handles datasource selection (normalizes string/object refs), writes env vars to `~/.anton/.env`, and auto-restarts the server to pick up new config.
+- **Minds integration**: The GUI replicates the `/connect` flow — lists minds via REST API, handles datasource selection (normalizes string/object refs), and writes non-credential config to `~/.cowork/.env`. The MindsHub credential itself is never written there; see [MindsHub credentials](#mindshub-credentials).
 
 - **OTA updates**: The React UI and the Python backend update over-the-air (coupled, auto-applied at boot) without a new installer; the Electron shell auto-updates on stable/prod via `electron-updater`, installing on relaunch. See [Over-the-Air Updates](#over-the-air-updates).
 
@@ -338,8 +338,7 @@ The GUI provides a visual `/connect` flow:
 2. Lists available minds via `GET /api/v1/minds/`
 3. Handles datasource selection (auto-selects if only one)
 4. Fetches engine type via `GET /api/v1/datasources`
-5. Writes to `~/.anton/.env`:
-   - `ANTON_MINDS_API_KEY`
+5. Writes to `~/.cowork/.env`:
    - `ANTON_MINDS_URL`
    - `ANTON_MINDS_MIND_NAME`
    - `ANTON_MINDS_DATASOURCE`
@@ -347,6 +346,38 @@ The GUI provides a visual `/connect` flow:
    - `ANTON_MINDS_SSL_VERIFY`
 6. Writes mind's system prompt to project cortex
 7. Auto-restarts the server to pick up new config
+
+`ANTON_MINDS_API_KEY` is deliberately absent from that list — see below.
+
+## MindsHub credentials
+
+**The app writes no MindsHub credential to disk.** Signing in gets you a Keycloak
+session (Authorization Code + PKCE, refresh token in OS secure storage, access
+token in memory), and that access token is what the sidecar presents to the
+gateway. Auth's `/v1/authenticate/` accepts a JWT and an `mdb_` key alike,
+picking the branch from the token's shape.
+
+The sidecar is a separate process, so the value has to cross that boundary. It
+crosses over loopback rather than through a file: main holds it and PUTs it to
+`/api/v1/runtime-credential/minds`, which the sidecar keeps in memory and
+overlays onto its settings. `src/main/minds-credential.ts` owns that hand-over.
+
+Three consequences worth knowing:
+
+- **Every sidecar start needs a fresh hand-over.** Nothing persists the value, so
+  a launch, an auto-update and a crash restart each re-push it. The boot path in
+  `src/main/index.ts` and the token-refresh path in `src/main/minds-auth.ts` are
+  the two callers.
+- **A key you supply yourself goes to the OS keychain**, not to `.env` and not to
+  the sidecar's settings table. It wins over the session credential while it is
+  set. `mindshub:set-user-key` is the IPC channel that carries it.
+- **Signing out takes the credential away**, and an install upgrading from a
+  build that minted a per-device key is signed out once so that key can be
+  revoked while the session still names the organization it belongs to.
+
+A sidecar you start by hand, outside the app, therefore has no MindsHub
+credential. Set `ANTON_MINDS_API_KEY` yourself with a key minted in the console
+if you need one for that.
 
 ### A model the wallet can't pay for is not selectable
 

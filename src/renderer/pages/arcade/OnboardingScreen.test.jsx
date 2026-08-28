@@ -128,7 +128,10 @@ describe('OnboardingScreen — desktop sign-up returns to the app (ENG-917)', ()
     hostMock.oauthCancel = vi.fn(async () => {});
     hostMock.checkInstall = vi.fn(async () => ({ antonInstalled: true, serverDepsReady: true }));
     hostMock.mindshubLogin = vi.fn(async () => ({ ok: false, reason: 'unused in these tests' }));
-    hostMock.mindshubFinalize = vi.fn(async () => ({ ok: true, apiKey: 'mdb_t' }));
+    hostMock.mindshubFinalize = vi.fn(async () => ({ ok: true }));
+    // Electron routes a pasted MindsHub key to main instead of writing it as an
+    // env line, so `supported: true` is what these Electron-shell tests exercise.
+    hostMock.mindshubSetUserKey = vi.fn(async () => ({ ok: true, supported: true }));
     keycloakMock.authenticated = false;
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({}) })));
   });
@@ -277,7 +280,7 @@ describe('OnboardingScreen — a refused key routes to BYOK and is counted (ENG-
   });
 
   it('records nothing when the key is provisioned normally', async () => {
-    hostMock.mindshubFinalize = vi.fn(async () => ({ ok: true, apiKey: 'mdb_t' }));
+    hostMock.mindshubFinalize = vi.fn(async () => ({ ok: true }));
     render(<OnboardingScreen coworker={coworker} onComplete={() => {}} />);
     (await screen.findByRole('button', { name: /Create a free account/ })).click();
 
@@ -339,9 +342,21 @@ describe('OnboardingScreen — the MindsHub path probes once, on the free model'
 
     await waitFor(() => expect(hostMock.saveSettings).toHaveBeenCalled());
     const written = hostMock.saveSettings.mock.calls.map(([c]) => c).join('\n');
-    expect(written).toContain('ANTON_MINDS_API_KEY=mdb_test_key');
     expect(written).toContain('ANTON_PLANNING_PROVIDER=minds-cloud');
     expect(written).toContain('ANTON_CODING_PROVIDER=minds-cloud');
+  });
+
+  it('hands a pasted MindsHub key to main and writes it nowhere', async () => {
+    // The key the user typed must reach the keychain by IPC and leave no env
+    // line behind — a line here is a long-lived bearer back on disk, which is
+    // the whole defect this path was changed to remove.
+    await connectWithMindsKey();
+
+    await waitFor(() => expect(hostMock.saveSettings).toHaveBeenCalled());
+    expect(hostMock.mindshubSetUserKey).toHaveBeenCalledWith('mdb_test_key');
+    const written = hostMock.saveSettings.mock.calls.map(([c]) => c).join('\n');
+    expect(written).not.toContain('ANTON_MINDS_API_KEY');
+    expect(written).not.toContain('mdb_test_key');
   });
 
   it('a wallet-denied paid model can no longer route onboarding to BYOK', async () => {

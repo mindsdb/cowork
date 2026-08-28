@@ -109,3 +109,27 @@ export async function getGenerationMarker(): Promise<string | null> {
 export async function setGenerationMarker(generation: string): Promise<void> {
   await setPassword(SERVICE_NAME, GENERATION_ACCOUNT_KEY, generation);
 }
+
+// A MindsHub API key the user supplied by hand, instead of running on their
+// session credential. It lives here rather than in `.env` or the sidecar's
+// settings table so that choosing BYOK does not put a long-lived bearer back on
+// disk — main reads it from here and pushes it to the sidecar at runtime, the
+// same hand-over the session credential uses (see minds-credential.ts).
+//
+// Reserved account-key shape, following GENERATION_ACCOUNT_KEY above: a static
+// credential's name is always uppercase env-var-style and a connector entry
+// always carries an `engine:accountEmail` colon, so this collides with neither.
+// deepcode ignore HardcodedNonCryptoSecret: this is a keychain account-key identifier (the entry's *name*), not a secret value — the key itself lives in the OS secure store. Same pattern and same rule as GENERATION_ACCOUNT_KEY above.
+const MINDS_API_KEY_ACCOUNT_KEY = '__minds_api_key__';
+
+export async function getMindsApiKey(): Promise<string | null> {
+  return getPassword(SERVICE_NAME, MINDS_API_KEY_ACCOUNT_KEY);
+}
+
+export async function setMindsApiKey(value: string): Promise<void> {
+  await setPassword(SERVICE_NAME, MINDS_API_KEY_ACCOUNT_KEY, value);
+}
+
+export async function deleteMindsApiKey(): Promise<void> {
+  await deletePassword(SERVICE_NAME, MINDS_API_KEY_ACCOUNT_KEY);
+}

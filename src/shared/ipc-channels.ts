@@ -76,6 +76,13 @@ export const IPC = {
   MINDSHUB_REFRESH: 'mindshub:refresh',
   MINDSHUB_FINALIZE: 'mindshub:finalize',
   MINDSHUB_GET_CACHED_TOKEN: 'mindshub:get-cached-token',
+  // A MindsHub API key the user pasted in, instead of running on their
+  // session credential. It goes to main rather than into the settings write
+  // the rest of the form makes, because main is what stores it in the OS
+  // keychain and hands it to the sidecar at runtime — keeping it out of
+  // `.env`, out of `minds_api_key` and out of `providers_json`. An empty
+  // value clears it and falls the app back to the session credential.
+  MINDSHUB_SET_USER_KEY: 'mindshub:set-user-key',
   // Pushed main → renderer whenever the MindsHub token store changes
   // (login, silent refresh, logout, definitive session death). The
   // renderer's signed-in indicator subscribes to this instead of

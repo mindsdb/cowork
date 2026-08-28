@@ -908,8 +908,9 @@ function StreamCursor() {
 // composed via ProgressBox / WorkingFolderBox / ContextBox.
 
 
-// Wait for the sidecar to come back after mindshubFinalize restarts it, so we
-// don't tell the user to resend into a cold server (any 200 from /health = up).
+// Wait for the sidecar to be answering before telling the user to resend, so
+// the resend doesn't hit a cold server (any 200 from /health = up). Signing in
+// used to restart it; it no longer does, but it still starts one that died.
 async function waitForServerReady(timeoutMs = 8000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
@@ -1090,9 +1091,9 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
         // No usable session to re-provision from → full sign-in.
         res = await host.mindshubLogin();
       }
-      if (res?.ok || res?.apiKey) {
-        // finalize restarts the sidecar — wait until it's back so the resend
-        // doesn't hit a cold server.
+      if (res?.ok) {
+        // finalize no longer restarts the sidecar, but it does start one that
+        // died, so wait for health before telling the user to resend.
         await waitForServerReady();
         setDone(true);
       } else {
