@@ -442,17 +442,37 @@ describe('post-start credential hook', () => {
     expect(hook).toHaveBeenCalledTimes(2);
   });
 
-  it('runs the hook before startServer resolves, so a caller reading /health sees a configured install', async () => {
-    // The renderer restarts the sidecar after onboarding and then immediately
-    // reads config_ready. A push still in flight at that point reads as
-    // unconfigured, which is the bug from the caller's side.
-    let settled = false;
-    setServerStartedHook(async () => { settled = true; });
+  it('awaits the hook, so a caller reading /health sees a configured install', async () => {
+    /* The renderer restarts the sidecar after onboarding and then immediately
+     * reads config_ready. A push still in flight at that point reads as
+     * unconfigured, which is the bug from the caller's side.
+     *
+     * The gate is what pins it. Asserting a flag the hook sets would pass
+     * against a fire-and-forget call too, because the hook body runs to its
+     * first await either way — so that version of this test would go green on
+     * the refactor that reintroduces the bug. Entering the hook proves the
+     * start itself is done, which leaves the gate as the only thing holding
+     * `startServer` open. */
+    let entered = false;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    setServerStartedHook(async () => { entered = true; await gate; });
 
     spawnHealthy();
-    await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+    const started = startServer({ port: PORT, readyTimeoutMs: 60_000 });
+    let resolved = false;
+    void started.then(() => { resolved = true; });
 
-    expect(settled).toBe(true);
+    try {
+      await vi.waitFor(() => expect(entered).toBe(true));
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(resolved).toBe(false);
+    } finally {
+      release();
+    }
+
+    await started;
+    expect(resolved).toBe(true);
   });
 
   it('does not hand a credential to a start that failed', async () => {

@@ -1646,18 +1646,20 @@ app.whenReady().then(async () => {
     } else {
       console.error(`[server] start failed: ${result.reason}`);
     }
-    // One-time migration off a minted device key.
-    //
-    // Every build that minted one wrote it to `~/.cowork/.env`, so that line is
-    // the marker for an install that has not made this transition. Signing out
-    // IS the migration: it revokes this device's minted keys while the session
-    // still names the organization they were minted in, clears every stored
-    // copy, and routes the user to sign in again on their session credential.
-    //
-    // It has to run BEFORE the hand-over below. Once a credential is handed
-    // over, the sidecar answers `minds_api_key` as set whether or not a row
-    // exists, so anything reading stored state after the push sees the live
-    // credential rather than the leftover it is trying to find.
+    /* One-time migration off a minted device key.
+     *
+     * Every build that minted one wrote it to `~/.cowork/.env`, so that line is
+     * the marker for an install that has not made this transition. Signing out
+     * IS the migration: it revokes this device's minted keys while the session
+     * still names the organization they were minted in, clears every stored
+     * copy, and routes the user to sign in again on their session credential.
+     *
+     * The marker has to be that `.env` line and not anything the sidecar
+     * reports. A credential has already been handed over by the time this runs:
+     * the post-start hook pushes after every successful start, including the
+     * `startServer()` above. Once it has, the sidecar answers `minds_api_key` as
+     * set whether or not a row exists, so a marker read from there would find
+     * the live credential rather than the leftover it is looking for. */
     const migrating = Boolean(readEnvFile()['ANTON_MINDS_API_KEY']);
     if (migrating) {
       console.log('[minds-auth] this install still holds a minted device key — signing out to migrate');
