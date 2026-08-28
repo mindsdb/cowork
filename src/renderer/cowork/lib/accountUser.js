@@ -1,3 +1,5 @@
+import { personalOrgName } from '../../../shared/minds-orgs';
+
 function decodeJwtPayload(token) {
   try {
     let payload = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
@@ -51,7 +53,7 @@ function activeOrgFromPayload(payload) {
   }
   if (!org || typeof org !== 'object') return { org: null, orgId: null };
   const name = org.name || null;
-  const isPersonal = Boolean(payload.sub) && name === `personal_${payload.sub}`;
+  const isPersonal = Boolean(payload.sub) && name === personalOrgName(payload.sub);
   return {
     org: org.displayName || (isPersonal ? null : name),
     orgId: org.id || name || null,

@@ -10,6 +10,7 @@ import {
   type MindsOrg,
   type MindsOrgList,
   chooseMindsOrg,
+  personalOrgName,
   rankMindsOrgs,
   readOrgPreference,
   toMindsOrg,
@@ -476,7 +477,7 @@ export interface EnsureActiveOrgResult {
 // makes no switch and no refresh — the same number of round-trips as before.
 export async function ensureActiveOrg(
   accessToken: string,
-  options: { preferOrgId?: string } = {},
+  options: { preferOrgId?: string; pinOrgId?: string } = {},
 ): Promise<EnsureActiveOrgResult> {
   const payload = decodeJwtPayload(accessToken);
   const hasClaim = hasActiveOrgClaim(payload);
@@ -503,11 +504,17 @@ export async function ensureActiveOrg(
 
   const orgs = rankMindsOrgs(candidates.map((org) => toMindsOrg(org, userId)));
   const activeOrgId = getActiveOrgFromPayload(payload)?.id ?? null;
-  // An organization named by the caller is a person picking one during
-  // onboarding, so it outranks the stored pick and becomes the stored pick —
-  // but only once it has been matched against a real membership above, which
-  // is why it goes through `chooseMindsOrg` rather than straight to a switch.
-  const chosen = chooseMindsOrg(orgs, options.preferOrgId ?? readStoredOrgPreference(userId));
+  // A caller can name the organization two ways, and they differ only in what
+  // they leave behind. `preferOrgId` is a person picking one during onboarding,
+  // so it outranks the stored pick and becomes the stored pick. `pinOrgId` is a
+  // switch already in progress: it decides this mint and nothing else, because
+  // a pick is only worth remembering once the new credential has been
+  // committed, and storing it here would survive a rollback and move the next
+  // launch somewhere nobody chose. Either way the id goes through
+  // `chooseMindsOrg` rather than straight to a switch, so it is matched against
+  // a real membership first.
+  const requested = options.pinOrgId ?? options.preferOrgId;
+  const chosen = chooseMindsOrg(orgs, requested ?? readStoredOrgPreference(userId));
   if (options.preferOrgId && chosen?.id === options.preferOrgId) {
     storeOrgPreference(userId, chosen.id);
   }
@@ -833,14 +840,18 @@ export interface ProvisionOptions {
   // The organization a person picked during onboarding. Ignored unless they
   // belong to it; honoured, it also becomes the pick this install remembers.
   organizationId?: string;
+  // The organization this mint must land in, for a caller that has already
+  // switched the session there. Same membership check, but it records nothing:
+  // the caller stores the pick once the credential is committed.
+  pinOrgId?: string;
 }
 
 export async function provisionAntonApiKey(
   initialToken: string,
   options: ProvisionOptions = {},
 ): Promise<ProvisionResult> {
-  const { deleteExistingKey = true, organizationId } = options;
-  const orgResult = await ensureActiveOrg(initialToken, { preferOrgId: organizationId });
+  const { deleteExistingKey = true, organizationId, pinOrgId } = options;
+  const orgResult = await ensureActiveOrg(initialToken, { preferOrgId: organizationId, pinOrgId });
   if (!orgResult.token) {
     return {
       error:
@@ -933,7 +944,7 @@ export async function provisionAntonApiKey(
     if (!canCreateApiKeys(provisionCtx.entitlements)) {
       const userId = typeof initialPayload?.sub === 'string' ? initialPayload.sub : '';
       const personal = userId
-        ? (orgResult.candidates || []).find((o) => o.slug === `personal_${userId}`)
+        ? (orgResult.candidates || []).find((o) => o.slug === personalOrgName(userId))
         : undefined;
       if (personal && personal.id !== getActiveOrgFromPayload(decodeJwtPayload(provisionToken))?.id) {
         const switched = await switchActiveOrg(provisionToken, personal.id);
@@ -1614,6 +1625,18 @@ async function ownKeyPrefixes(token: string): Promise<string[]> {
 const TURN_DRAIN_POLL_MS = 2_000;
 const TURN_DRAIN_TIMEOUT_MS = 5 * 60 * 1000;
 
+// One switch at a time, and where the latest one left us.
+//
+// The retirement below is detached and drains for up to five minutes, so a
+// second switch can start while the first is still waiting. Two things follow.
+// The switch itself is single-flight, because two of them interleaving would
+// mint twice and race each other through the settings PUT. And the retirement
+// restores the session to whatever the LATEST switch chose rather than to the
+// target it was handed, because putting it back to a superseded one is how the
+// console ends up naming an organization nobody picked.
+let _orgSwitchInFlight = false;
+let _latestOrgTarget: string | null = null;
+
 /** Turns the sidecar currently has running, or null when it cannot be asked. */
 async function inFlightTurnCount(): Promise<number | null> {
   if (!isServerRunning() && !isServerStarting()) return 0;
@@ -1658,7 +1681,6 @@ async function restoreActiveOrg(token: string, orgId: string | null): Promise<vo
 // active organization, deletes, and hands it back.
 async function retireKeysInPreviousOrg(
   sourceOrgId: string,
-  targetOrgId: string,
   prefixes: string[],
 ): Promise<void> {
   if (prefixes.length === 0) return;
@@ -1683,7 +1705,7 @@ async function retireKeysInPreviousOrg(
   const inSource = await refreshAfterOrgSwitch();
   if (!inSource) {
     console.warn('[minds-auth] token refresh failed while retiring device key(s) in %s', sourceOrgId);
-    await restoreActiveOrg(token, targetOrgId);
+    await restoreActiveOrg(token, _latestOrgTarget);
     return;
   }
   for (const prefix of prefixes) await deleteKeyByPrefix(inSource, prefix);
@@ -1692,7 +1714,7 @@ async function retireKeysInPreviousOrg(
   // bound to the new organization and a bearer does not read the session's
   // active organization — but the console does, so a failure here shows the
   // person the organization they left until their next sign-in.
-  await restoreActiveOrg(inSource, targetOrgId);
+  await restoreActiveOrg(inSource, _latestOrgTarget);
 }
 
 /** Every organization the signed-in person belongs to, company ones first. */
@@ -1723,6 +1745,23 @@ export interface SwitchMindsOrgResult {
  * credential, remember the pick, and retire the key left behind.
  */
 export async function switchMindsOrg(targetOrgId: string): Promise<SwitchMindsOrgResult> {
+  if (_orgSwitchInFlight) {
+    return {
+      ok: false,
+      activeOrgId: null,
+      orgs: [],
+      error: 'A change of organization is already running. Try again in a moment.',
+    };
+  }
+  _orgSwitchInFlight = true;
+  try {
+    return await doSwitchMindsOrg(targetOrgId);
+  } finally {
+    _orgSwitchInFlight = false;
+  }
+}
+
+async function doSwitchMindsOrg(targetOrgId: string): Promise<SwitchMindsOrgResult> {
   const token = await freshAccessToken();
   if (!token) return { ok: false, activeOrgId: null, orgs: [], error: 'Sign in to change organization.' };
 
@@ -1773,7 +1812,7 @@ export async function switchMindsOrg(targetOrgId: string): Promise<SwitchMindsOr
     };
   }
 
-  const provision = await provisionAntonApiKey(switched);
+  const provision = await provisionAntonApiKey(switched, { pinOrgId: target.id });
   if (!provision.key) {
     await restoreActiveOrg(switched, sourceOrgId);
     return {
@@ -1783,6 +1822,24 @@ export async function switchMindsOrg(targetOrgId: string): Promise<SwitchMindsOr
       error: provision.upgradeRequired
         ? `${target.displayName} cannot issue an API key for this account. Nothing changed.`
         : provision.error || `Could not create an API key in ${target.displayName}. Nothing changed.`,
+    };
+  }
+
+  // Where the key actually went, rather than where the switch aimed. Pinning
+  // above stops the ranking and the stored pick pulling the mint back, but the
+  // entitlement fallback inside provisionAntonApiKey still moves one into the
+  // personal organization when the target cannot issue keys. Committing that
+  // key would leave the app naming an organization the credential does not
+  // belong to, which is the bug this whole change exists to fix.
+  if (provision.organization && provision.organization.id !== target.id) {
+    const minted = await freshAccessToken();
+    if (minted && provision.prefix) await deleteKeyByPrefix(minted, provision.prefix);
+    await restoreActiveOrg(minted || switched, sourceOrgId);
+    return {
+      ok: false,
+      activeOrgId: sourceOrgId,
+      orgs,
+      error: `${target.displayName} cannot issue an API key for this account. Nothing changed.`,
     };
   }
 
@@ -1800,8 +1857,13 @@ export async function switchMindsOrg(targetOrgId: string): Promise<SwitchMindsOr
   }
 
   storeOrgPreference(userId, target.id);
+  _latestOrgTarget = target.id;
   // Detached: it waits for any running turn, and the switch is already done.
-  void retireKeysInPreviousOrg(sourceOrgId ?? '', target.id, sourceOrgId ? sourcePrefixes : []);
+  // Every step inside it is best-effort, so a throw here is a bug rather than
+  // an outcome — but an unhandled rejection takes the main process down with
+  // it, and this one is unattended for up to five minutes.
+  void retireKeysInPreviousOrg(sourceOrgId ?? '', sourceOrgId ? sourcePrefixes : [])
+    .catch((error) => console.warn('[minds-auth] retiring the previous organization\'s key(s) failed', error));
 
   return { ok: true, activeOrgId: target.id, orgs };
 }

@@ -65,6 +65,17 @@ const ENTITLED = {
   permissions: { agents: { use: true }, api_keys: { create: true } },
   allocations: { deploy_agents: 1 },
 };
+// Entitled to use agents, but not to mint a key — what a member of a shared
+// organization looks like, and what trips the personal-org fallback.
+const NO_KEY_CREATE = {
+  permissions: { agents: { use: true }, api_keys: { create: false } },
+  allocations: { deploy_agents: 1 },
+};
+
+/** The organization an `Authorization: Bearer <jwt>` header names. */
+const orgOfToken = (header: string) =>
+  JSON.parse(Buffer.from(header.replace('Bearer ', '').split('.')[1], 'base64url').toString())
+    .activate_organization.id;
 
 interface RoutedCall { method: string; url: string; body?: string; auth?: string }
 type Route = {
@@ -371,5 +382,85 @@ describe('switchMindsOrg', () => {
     // one still in use, and the previous organization's key is untouched.
     expect(calls.some((c) => c.method === 'DELETE' && c.url.includes('pfx-new'))).toBe(true);
     expect(fs.readFileSync(`${TEST_HOME}/.env`, 'utf-8')).toMatch(/mdb_old/);
+  });
+
+  it('mints in the organization that was picked, not in the stored one', async () => {
+    // The regression. `provisionAntonApiKey` re-derives the organization from
+    // the stored pick, so before the mint was pinned every switch AWAY from
+    // that pick was silently undone: the session moved back, the key was minted
+    // in the old organization, and the app still reported the new one. Only the
+    // personal-to-first-company direction happened to agree with the ranking,
+    // which is the one the tests above cover.
+    fs.writeFileSync(
+      `${TEST_HOME}/state.json`,
+      JSON.stringify({ preferences: { mindsOrganization: { sub: USER, orgId: ACME.id } } }),
+    );
+    (getAccessToken as Mock).mockReturnValue(tokenFor(ACME));
+    const landsIn = { current: ACME };
+    const calls = installRoutedFetch(routesFor(landsIn));
+
+    const result = await switchMindsOrg(PERSONAL.id);
+
+    expect(result.ok).toBe(true);
+    expect(result.activeOrgId).toBe(PERSONAL.id);
+    // One switch, to where the person asked. No second one putting it back.
+    const switches = calls.filter((c) => c.url.includes('switch-organization')).map((c) => JSON.parse(c.body!).id);
+    expect(switches).toEqual([PERSONAL.id]);
+    // And the key was minted under a token naming that organization.
+    const mint = calls.find((c) => c.method === 'POST' && c.url.includes('/api-keys/'))!;
+    expect(orgOfToken(mint.auth!)).toBe(PERSONAL.id);
+  });
+
+  it('changes nothing when the target cannot issue a key and the mint lands elsewhere', async () => {
+    // The entitlement fallback inside provisionAntonApiKey moves a mint into
+    // the personal organization when the active one cannot create keys. Pinning
+    // does not disable it, so the switch has to notice and undo rather than
+    // commit a credential belonging somewhere else.
+    (getAccessToken as Mock).mockReturnValue(tokenFor(PERSONAL));
+    const landsIn = { current: PERSONAL };
+    // Keyed by the token's organization: ACME refuses the mint, the personal
+    // one allows it, which is exactly the shape that makes the fallback move.
+    const calls = installRoutedFetch(
+      routesFor(landsIn).map((route) =>
+        route.match === '/authenticate/'
+          ? {
+            ...route,
+            reply: (call: RoutedCall) => ({
+              status: 200,
+              body: {
+                entitlements: orgOfToken(call.auth!) === ACME.id ? NO_KEY_CREATE : ENTITLED,
+              },
+            }),
+          }
+          : route),
+    );
+
+    const result = await switchMindsOrg(ACME.id);
+
+    expect(result.ok).toBe(false);
+    expect(result.activeOrgId).toBe(PERSONAL.id);
+    // The key that landed in the wrong organization is deleted rather than
+    // handed to the sidecar, and the old one is still in place.
+    expect(calls.some((c) => c.method === 'DELETE' && c.url.includes('pfx-new'))).toBe(true);
+    expect(calls.filter((c) => c.method === 'PUT' && c.url.includes('/settings/minds_api_key'))).toHaveLength(0);
+    expect(fs.readFileSync(`${TEST_HOME}/.env`, 'utf-8')).toMatch(/mdb_old/);
+  });
+
+  it('refuses a second switch while one is still running', async () => {
+    // The retirement runs detached for up to five minutes, so the menu can be
+    // clicked again well before the first switch is really finished. Two of
+    // them interleaving would mint twice and race through the settings PUT.
+    const landsIn = { current: PERSONAL };
+    installRoutedFetch(routesFor(landsIn));
+
+    const [first, second] = await Promise.all([
+      switchMindsOrg(ACME.id),
+      switchMindsOrg(ACME.id),
+    ]);
+
+    const [done, refused] = first.ok ? [first, second] : [second, first];
+    expect(done.ok).toBe(true);
+    expect(refused.ok).toBe(false);
+    expect(refused.error).toMatch(/already running/);
   });
 });

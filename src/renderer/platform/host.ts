@@ -932,18 +932,34 @@ const NO_ORGS: MindsOrgList = { orgs: [], activeOrgId: null };
 
 export async function mindshubListOrgs(): Promise<MindsOrgList> {
   if (isElectron && typeof bridge.mindshubListOrgs === 'function') {
-    const result = await bridge.mindshubListOrgs();
-    return {
-      orgs: Array.isArray(result?.orgs) ? result.orgs : [],
-      activeOrgId: result?.activeOrgId ?? null,
-    };
+    try {
+      const result = await bridge.mindshubListOrgs();
+      return {
+        orgs: Array.isArray(result?.orgs) ? result.orgs : [],
+        activeOrgId: result?.activeOrgId ?? null,
+      };
+    } catch (error) {
+      // The resting shape, not a throw. Every caller treats "no organizations"
+      // as the state before the read lands, and the one on the onboarding path
+      // has no error branch to fall into — a rejection there strands sign-in on
+      // the validating screen with nothing on it.
+      console.warn('[host] could not read the MindsHub organizations', error);
+      return NO_ORGS;
+    }
   }
   return NO_ORGS;
 }
 
 export async function mindshubSwitchOrg(organizationId: string): Promise<SwitchMindsOrgResult> {
   if (isElectron && typeof bridge.mindshubSwitchOrg === 'function') {
-    return bridge.mindshubSwitchOrg(organizationId);
+    try {
+      return await bridge.mindshubSwitchOrg(organizationId);
+    } catch (error) {
+      // A refusal is something the menu renders, so it has to arrive as a
+      // value. Throwing past the toast leaves the row looking untouched.
+      console.warn('[host] could not change the MindsHub organization', error);
+      return { ok: false, activeOrgId: null, orgs: [], error: 'We could not change organization. Please try again.' };
+    }
   }
   return { ok: false, activeOrgId: null, orgs: [], error: 'Changing organization needs the desktop app.' };
 }
