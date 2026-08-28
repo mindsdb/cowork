@@ -539,7 +539,15 @@ export default function CustomizeView({
     // App.jsx's onConnectNew (handleStartConnectChat) opens the connector
     // picker; picking one there opens a chat task with a synthesized
     // greeting, and Anton drives the rest via request_credentials.
-    onConnectNew?.();
+    // Required in practice now — there's no in-page fallback left, so a
+    // caller that omits it gets a loud console error instead of a CTA
+    // that silently does nothing.
+    if (!onConnectNew) {
+      // eslint-disable-next-line no-console
+      console.error('[connectors] CustomizeView rendered without onConnectNew — the Connect CTA has no effect.');
+      return;
+    }
+    onConnectNew();
   };
 
   // ⌘K focuses the search input.
