@@ -493,9 +493,8 @@ export function setServerStartedHook(hook: (() => Promise<unknown>) | null): voi
 
 export async function startServer(opts: { port?: number; readyTimeoutMs?: number } = {}): Promise<StartServerResult> {
   const result = await withServerLifecycle(() => startServerUnlocked(opts));
-  /* Awaited, not fired off. Callers read `/health` as soon as this resolves, and
-   * the renderer's post-onboarding restart does exactly that, so a push still in
-   * flight at that point reads as an unconfigured install.
+  /* Awaited, not fired off. Callers read `/health` as soon as this resolves, so
+   * a push still in flight at that point reads as an unconfigured install.
    *
    * It runs after the lifecycle scope is released rather than inside it, because
    * the hand-over waits on a loopback request for up to 10 seconds and holding

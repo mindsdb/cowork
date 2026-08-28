@@ -218,10 +218,11 @@ export default function App() {
     /* The sidecar deliberately keeps running here. `persistOnboarding` has
      * already written every setting to it over loopback and treats that DB
      * write as authoritative, so a fresh process would only read back what
-     * this one already holds. Restarting would also drop the MindsHub
-     * credential, which lives in the sidecar's memory and nowhere else, and
-     * leave the first chat waiting on `syncMindsCredential` to hand it over
-     * to the replacement process. */
+     * this one already holds. Restarting would also throw away the MindsHub
+     * credential, which lives in the sidecar's memory and nowhere else.
+     * `syncMindsCredential` hands it to the replacement before `startServer`
+     * resolves, so the restart buys a stop, a cold start and a re-push, and
+     * changes nothing the user can see. */
     try {
       const status = await host.checkInstall();
       if (!status.antonInstalled || !status.serverDepsReady) {
