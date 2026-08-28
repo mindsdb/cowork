@@ -16,9 +16,11 @@
 // **Nothing here survives the sidecar restarting**, which is the point and also
 // the trap. The sidecar restarts for an auto-update, a health failure, a crash
 // and every app launch, and a credential held only in its memory is gone each
-// time. Every one of those paths has to call `syncMindsCredential` again; the
-// callers are the sign-in finalize handler, the token-refresh path, and the
-// boot sequence in index.ts.
+// time. Every one of those paths has to call `syncMindsCredential` again, so it
+// is not wired per path: `index.ts` registers it with `setServerStartedHook`,
+// and `startServer` runs it after every successful start. Sign-in and the
+// token-refresh tick push on top of that, because both produce a new credential
+// without restarting anything.
 //
 // This module deliberately does not import from minds-auth: that module calls
 // into this one after every token refresh, and importing back would be a cycle.
@@ -75,8 +77,17 @@ export async function pushMindsCredential(value: string | null): Promise<boolean
       signal: AbortSignal.timeout(PUSH_TIMEOUT_MS),
     });
     if (!res.ok) {
-      // Never log the value, only the outcome.
-      console.warn('[minds-credential] hand-over returned', res.status);
+      // Never log the value, only the outcome. A 404 is worth naming: the route
+      // is registered unconditionally in the sidecar's router, so its absence
+      // means this sidecar predates the build talking to it — which the app
+      // otherwise surfaces to a signed-in user as a card telling them to go and
+      // connect a provider. The next start after the sidecar updates re-pushes,
+      // because `setServerStartedHook` in index.ts runs this on every start.
+      if (res.status === 404) {
+        console.warn('[minds-credential] the running sidecar has no hand-over route — it predates this build; retrying after it updates');
+      } else {
+        console.warn('[minds-credential] hand-over returned', res.status);
+      }
       return false;
     }
     return true;

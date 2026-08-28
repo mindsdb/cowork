@@ -9,7 +9,7 @@ import * as https from 'https';
 import * as http from 'http';
 import { IPC } from '../shared/ipc-channels';
 import { checkInstallStatus, runInstaller } from './installer';
-import { startServer, stopServer, forceReapServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort, fetchServerVersions } from './server-process';
+import { startServer, stopServer, forceReapServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort, fetchServerVersions, setServerStartedHook } from './server-process';
 import { setUpdateNotifier, recreateVenvIfUnsupportedPython, repairServerInstall } from './server-updater';
 import { initUpdater, registerUpdateHandlers } from './updater';
 import { awaitBootSettled } from './boot-gate';
@@ -52,6 +52,16 @@ import {
   killAllCodingTerminals,
   removeCodingTask,
 } from './coding-terminal';
+
+// Re-hand the MindsHub credential to every sidecar that comes up.
+//
+// The sidecar holds it in memory only, so a process that just started holds
+// nothing: an auto-update, the sidebar's stop/start, the installer's first
+// start, and the restart the renderer runs after onboarding all leave a
+// signed-in user with `config_ready: false` until something pushes again.
+// Registered at module scope so the hook is in place before the first start,
+// whichever path gets there first.
+setServerStartedHook(syncMindsCredential);
 
 function getAntonEnvPath(): string {
   return coworkEnvPath();
@@ -1636,18 +1646,20 @@ app.whenReady().then(async () => {
     } else {
       console.error(`[server] start failed: ${result.reason}`);
     }
-    // One-time migration off a minted device key.
-    //
-    // Every build that minted one wrote it to `~/.cowork/.env`, so that line is
-    // the marker for an install that has not made this transition. Signing out
-    // IS the migration: it revokes this device's minted keys while the session
-    // still names the organization they were minted in, clears every stored
-    // copy, and routes the user to sign in again on their session credential.
-    //
-    // It has to run BEFORE the hand-over below. Once a credential is handed
-    // over, the sidecar answers `minds_api_key` as set whether or not a row
-    // exists, so anything reading stored state after the push sees the live
-    // credential rather than the leftover it is trying to find.
+    /* One-time migration off a minted device key.
+     *
+     * Every build that minted one wrote it to `~/.cowork/.env`, so that line is
+     * the marker for an install that has not made this transition. Signing out
+     * IS the migration: it revokes this device's minted keys while the session
+     * still names the organization they were minted in, clears every stored
+     * copy, and routes the user to sign in again on their session credential.
+     *
+     * The marker has to be that `.env` line and not anything the sidecar
+     * reports. A credential has already been handed over by the time this runs:
+     * the post-start hook pushes after every successful start, including the
+     * `startServer()` above. Once it has, the sidecar answers `minds_api_key` as
+     * set whether or not a row exists, so a marker read from there would find
+     * the live credential rather than the leftover it is looking for. */
     const migrating = Boolean(readEnvFile()['ANTON_MINDS_API_KEY']);
     if (migrating) {
       console.log('[minds-auth] this install still holds a minted device key — signing out to migrate');

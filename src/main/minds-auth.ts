@@ -171,8 +171,9 @@ async function doRefreshTokens(): Promise<TokenRefreshResult> {
     scheduleRefresh(data.expires_in ?? 3600);
     // Hand the fresh token to the sidecar. Not awaited for its answer beyond
     // logging: a push that fails here is retried by the next refresh tick and
-    // by the sidecar-start path, and blocking the exchange on a loopback call
-    // would stall every caller that only wanted a token.
+    // by the next sidecar start (`setServerStartedHook` in index.ts), and
+    // blocking the exchange on a loopback call would stall every caller that
+    // only wanted a token.
     void syncMindsCredential();
     return { status: 'ok', token: data.access_token };
   } catch (e: any) {
@@ -1108,8 +1109,11 @@ export async function commitMindsSignIn(): Promise<void> {
     console.warn('[minds-auth] failed to set provider state', error);
   }
 
-  // On a fresh install the server isn't available yet — the setup wizard starts
-  // it after install completes, and handleInstallComplete syncs then.
+  // On a fresh install the server isn't available yet: the setup wizard runs
+  // after this and starts it, and that start hands the credential over on its
+  // own (`setServerStartedHook` in index.ts). The renderer's post-install
+  // handshake does NOT cover this — it replays `.env`, which no longer carries
+  // a MindsHub credential.
   const { antonInstalled } = await checkInstallStatus();
   if (!antonInstalled) {
     // Nothing else has stored this sign-in yet, so a failed write here leaves
