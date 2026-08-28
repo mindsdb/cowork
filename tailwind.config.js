@@ -164,7 +164,7 @@ export default {
         'fade-in':   'fade-in 160ms ease-out',
         // `forwards` holds opacity at 0 between the animation's end and the
         // moment the exiting element is actually unmounted.
-        'fade-out':  'fade-out 160ms ease-in forwards',
+        'fade-out':  'fade-out 320ms ease-in forwards',
       },
     },
   },
