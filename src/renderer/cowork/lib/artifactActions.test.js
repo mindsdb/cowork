@@ -1,23 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import { artifactOpenTarget, isArtifactActionAvailable, needsClientUnpublishBeforeDelete } from './artifactActions';
 
-const ALL = ['open', 'reveal', 'download', 'copy-url', 'update', 'publish', 'unpublish', 'delete'];
+const ALL = ['open', 'preview', 'reveal', 'download', 'copy-url', 'update', 'publish', 'unpublish', 'delete'];
 
 function available(opts) {
   return ALL.filter((id) => isArtifactActionAvailable(id, opts));
 }
 
 describe('org mode', () => {
-  it('offers only open, copy link and delete for a published artifact', () => {
+  it('offers private preview, open, copy link and delete for a published artifact', () => {
     expect(available({ orgMode: true, hasBridge: false, published: true }))
-      .toEqual(['open', 'copy-url', 'delete']);
+      .toEqual(['open', 'preview', 'copy-url', 'delete']);
   });
 
-  it('leaves only delete while the artifact has no URL yet', () => {
-    // Autopublish has not landed (or failed): there is nothing to open or copy,
-    // and no action on the card could change that.
+  it('keeps private preview before an artifact has a shared URL', () => {
     expect(available({ orgMode: true, hasBridge: false, published: false }))
-      .toEqual(['delete']);
+      .toEqual(['preview', 'delete']);
   });
 
   it('never offers publish control or local-content actions', () => {
@@ -62,12 +60,21 @@ describe('artifactOpenTarget', () => {
   // artifact body — the inline chat card, the rail's Working-folder list and the
   // artifacts grid — and each used to decide from the file extension alone, so
   // all three opened a local preview on a deployment that serves no content.
-  it('opens the published URL in org mode, whatever the extension says', () => {
+  it('routes an org click to the shared URL, never to the in-app viewer', () => {
+    // The authenticated draft preview is reachable in org mode, but only from
+    // the card's '...' menu (see ArtifactsView) — one entry point, easy to
+    // withdraw. A click on the body keeps meaning "show me what the people I
+    // shared this with see".
+    //
+    // `hasPrivateDraft` is deliberately still in this fixture: the key was
+    // removed from the signature, and a caller that kept passing it must not be
+    // able to bring the old destination back.
     expect(artifactOpenTarget({
-      orgMode: true, published: true, canPreviewInline: true, hasBridge: true,
-    })).toBe('published');
-    expect(artifactOpenTarget({
-      orgMode: true, published: true, canPreviewInline: false, hasBridge: true,
+      orgMode: true,
+      published: true,
+      canPreviewInline: true,
+      hasPrivateDraft: true,
+      hasBridge: true,
     })).toBe('published');
   });
 

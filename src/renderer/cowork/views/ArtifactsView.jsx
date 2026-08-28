@@ -26,7 +26,7 @@ import { isArtifactActionAvailable, needsClientUnpublishBeforeDelete } from '../
 import { deleteArtifactAndSync } from '../lib/artifactsStore';
 import { useOrgMode } from '../../lib/orgMode';
 import { downloadArtifactFile } from '../lib/artifactDownload';
-import { isHtmlArtifact, isPublishableArtifact, isBackendArtifact } from '../lib/artifactKinds';
+import { isHtmlArtifact, isPublishableArtifact, isBackendArtifact, isImageArtifact } from '../lib/artifactKinds';
 import { trackArtifactPublished } from '../lib/analytics';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
 import { ArtifactViewer } from '../components/artifact';
@@ -95,6 +95,23 @@ function isInlinePreviewable(a) {
   const p = (a.path || '').toLowerCase();
   for (const ext of _INLINE_TEXT_EXTS) if (p.endsWith(ext)) return true;
   return false;
+}
+
+// Everything the viewer has a renderer for locally. Images are counted
+// separately from isInlinePreviewable because they never went through its
+// text/iframe paths: the viewer fetches them from the artifact's serve URL
+// (ENG-1998), which exists on Desktop and not in org mode.
+function canPreviewLocally(a) {
+  return isInlinePreviewable(a) || isImageArtifact(a);
+}
+
+// What org mode can preview from the authenticated draft URL: what Desktop
+// renders from bytes, minus fullstack apps and images. A fullstack preview needs
+// the loopback proxy only Desktop has, and an image would be fetched from
+// /artifacts/serve, which org-mode tenancy refuses — offering either would open
+// a window that can only fail.
+function canPreviewOrgDraft(a) {
+  return !!a?.draftUrl && !isBackendArtifact(a) && isInlinePreviewable(a);
 }
 
 // "Updated" is pre-formatted by the server (e.g. "3h ago") from the same
@@ -202,9 +219,9 @@ const CardIconButton = forwardRef(function CardIconButton({ onClick, ariaLabel, 
 
 function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isMenuOpen, phase, onRetry, onOpenProject }) {
   const orgMode = useOrgMode();
-  // No in-app preview in org mode: the server serves no artifact content there, so
-  // the iframe would have nothing to load. The published URL is the only route to
-  // it, and it is the one that carries an access check.
+  // Only Desktop turns a click into a preview. Org mode has the authenticated
+  // draft too, but reaches it from the '...' menu (canPreviewOrgDraft), so a
+  // click on the card keeps meaning "open what collaborators see".
   const canPreview = !orgMode && isInlinePreviewable(artifact);
   const published = !!artifact.publishedUrl;
   // In the browser the artifact's address is its HTTP serve URL, not a local
@@ -254,7 +271,8 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
   // mode the last fallback is skipped — there is no local file the user can reach,
   // and `privateUrl` is empty there by construction.
   const openBest = () => {
-    if (published) onOpenPublished();
+    if (canPreview) onOpenViewer?.(artifact);
+    else if (published) onOpenPublished();
     else if (privateUrl) onOpenPrivate();
     else if (!orgMode) openArtifactFile(artifact);
   };
@@ -379,18 +397,25 @@ function ListHeaderRow() {
   );
 }
 
-function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onReveal, onDownload, onCopyUrl, onPublish, onUnpublish, onUpdate, onDelete, busy = false, isMacPlatform = false }) {
+function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onPreview, onReveal, onDownload, onCopyUrl, onPublish, onUnpublish, onUpdate, onDelete, busy = false, isMacPlatform = false }) {
   const isHtml = isHtmlArtifact(artifact);
   const orgMode = useOrgMode();
   const published = !!artifact.publishedUrl;
   const items = [
     {
       id: 'open',
-      // "Open viewer" would be a lie in org mode: no in-app viewer opens there,
-      // the published URL does.
+      // "Open viewer" would be a lie in org mode: the click goes to the shared
+      // URL there, and the in-app preview is the separate item below.
       label: isHtml && !orgMode ? 'Open viewer' : 'Open',
       icon: Ico.externalLink(13),
       onClick: onOpen,
+    },
+    // Org only: on Desktop the item above already opens the viewer.
+    orgMode && canPreviewOrgDraft(artifact) && {
+      id: 'preview',
+      label: 'Preview',
+      icon: (Ico.eye?.(13) || Ico.sparkle(13)),
+      onClick: onPreview,
     },
     onReveal && {
       id: 'reveal',
@@ -463,8 +488,8 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
   const { hovered, hoverProps } = useRevealOnHover(menuOpen);
 
   const orgMode = useOrgMode();
-  // See the ArtifactBubble note: no in-app preview and no private serve URL in org
-  // mode — the server serves no artifact content there.
+  // Same rule as ArtifactBubble above: a click previews on Desktop only, and org
+  // mode reaches its authenticated draft from the '...' menu instead.
   const canPreview = !orgMode && isInlinePreviewable(artifact);
   const published = !!artifact.publishedUrl;
   const publishable = isPublishableArtifact(artifact);   // HTML + Markdown — see ArtifactBubble note
@@ -589,13 +614,16 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
         artifact={artifact}
         onClose={() => setMenuOpen(false)}
         onOpen={onRowOpen}
+        onPreview={() => onOpenViewer?.(artifact)}
         onReveal={host.isWeb ? undefined : () => { try { revealArtifact(artifact.path); } catch { } }}
         onDownload={() => downloadArtifactFile(artifact)}
         onCopyUrl={onCopyUrl}
         onPublish={() => doPublish?.(artifact)}
         onUnpublish={() => doUnpublish?.(artifact)}
         onUpdate={() => doUpdate?.(artifact)}
-        onDelete={doDelete ? () => doDelete(artifact) : undefined}
+        onDelete={doDelete && artifact?.capabilities?.canEdit !== false
+          ? () => doDelete(artifact)
+          : undefined}
         // Derived from `phase` rather than threading a second prop: the row
         // already receives it, and 'deleting' is exactly the window to disable.
         busy={phase === 'deleting'}
@@ -607,7 +635,14 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
 
 // ─── Composed view ───────────────────────────────────────────────────────
 
-export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, projects = [], onOpenProject, agentLabel = 'the agent' }) {
+export default function ArtifactsView({
+  artifacts: initial = EMPTY_ARTIFACTS,
+  projects = [],
+  onOpenProject,
+  onAddressWithAgent,
+  resolveRepairConversation,
+  agentLabel = 'the agent',
+}) {
   // For the grid's shared menu below. The list view's menu (ArtifactMenu) reads
   // this for itself; the grid's is built here, so the gate has to be applied at
   // both sites or one view silently keeps the desktop-only actions.
@@ -807,6 +842,10 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
   };
 
   const handleTrash = async (artifact) => {
+    if (artifact?.capabilities?.canEdit === false) {
+      showToast({ kind: 'error', message: 'Only the artifact owner can delete it.' });
+      return;
+    }
     if (!artifact?.path || busyPaths.has(artifact.path)) return;
     setBusy(artifact.path, true);
     // Delete is the slowest action on the card — it unpublishes remotely before
@@ -961,6 +1000,9 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
         onChange={updateOne}
         onDelete={removeOne}
         onPublish={handlePublish}
+        onAddressWithAgent={onAddressWithAgent}
+        // No host chat here — the viewer asks which one a repair belongs to.
+        resolveRepairConversation={resolveRepairConversation}
       />
 
       {publishTarget && (
@@ -987,6 +1029,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
           const published = !!a.publishedUrl;
           const busyA = busyPaths.has(a.path);
           const items = [];
+          const canManage = a.capabilities?.canEdit !== false;
           if (published) {
             if (a.modified) {
               items.push({
@@ -1010,12 +1053,17 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
               onClick: () => handlePublish(a),
             });
           }
-          items.push({
-            id: 'preview',
-            label: 'Preview',
-            icon: (Ico.eye?.(13) || Ico.sparkle(13)),
-            onClick: () => setViewer(a),
-          });
+          // Desktop keeps images here — the viewer renders them, and this menu
+          // used to be the only way in (a click on an image card hands the file
+          // to the OS instead, which is what it did before this branch too).
+          if (orgMode ? canPreviewOrgDraft(a) : canPreviewLocally(a)) {
+            items.push({
+              id: 'preview',
+              label: 'Preview',
+              icon: (Ico.eye?.(13) || Ico.sparkle(13)),
+              onClick: () => setViewer(a),
+            });
+          }
           // Fullstack apps can't be opened from their static entry html
           // (it needs the backend), so only offer "Open in browser" for
           // them once published — then it opens the live public URL.
@@ -1045,19 +1093,21 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
               onClick: () => { try { revealArtifact(a.path); } catch { } },
             });
           }
-          items.push({ separator: true });
-          items.push({
-            id: 'delete',
-            // Delete unpublishes remotely first, so it is the slowest item here.
-            // Disabled while it runs: handleTrash already ignores a re-entrant
-            // call, but a menu item that still looks clickable reads as "nothing
-            // happened" and invites the second click.
-            label: busyA ? 'Deleting…' : 'Delete',
-            icon: Ico.trash(13),
-            danger: true,
-            disabled: busyA,
-            onClick: () => handleTrash(a),
-          });
+          if (canManage) {
+            items.push({ separator: true });
+            items.push({
+              id: 'delete',
+              // Delete unpublishes remotely first, so it is the slowest item here.
+              // Disabled while it runs: handleTrash already ignores a re-entrant
+              // call, but a menu item that still looks clickable reads as "nothing
+              // happened" and invites the second click.
+              label: busyA ? 'Deleting…' : 'Delete',
+              icon: Ico.trash(13),
+              danger: true,
+              disabled: busyA,
+              onClick: () => handleTrash(a),
+            });
+          }
           // Same mode gate the list view's menu applies — see lib/artifactActions.
           // Note this menu marks its rule with `separator`, not `divider` like
           // ArtifactMenu, so the pass-through key differs.

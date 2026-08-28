@@ -12,6 +12,7 @@ import { transformSettingsRows, diffSettingsForWrite, mergeRecommendedModels, CL
 import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 import { cacheSettings } from './lib/settingsCache';
 import { setAntonInstallId } from './lib/analytics';
+import { artifactIdentity } from './lib/artifactIdentity';
 import {
   buildMemoryDeletePayload,
   buildMemoryWritePayload,
@@ -863,8 +864,12 @@ export async function unpublishArtifact(path) {
 // don't each have to branch on the mode. A bare string is still accepted so any
 // stray caller keeps working on desktop.
 export async function deleteArtifact(artifact) {
-  const url = artifact?.projectId && artifact?.slug
-    ? `/artifacts/${encodeURIComponent(artifact.slug)}`
+  // A full identity only: a card replayed from a pre-widening conversation
+  // carries the short id, which the endpoint cannot resolve — it has to fall
+  // through to the slug the way it did before ids were widened.
+  const artifactRef = artifactIdentity(artifact) || artifact?.slug;
+  const url = artifact?.projectId && artifactRef
+    ? `/artifacts/${encodeURIComponent(artifactRef)}`
       + `?project_id=${encodeURIComponent(artifact.projectId)}`
     : `/artifacts/?path=${encodeURIComponent(
         typeof artifact === 'string' ? artifact : (artifact?.folder || artifact?.path || ''),
@@ -2314,10 +2319,12 @@ export function listCommentThreads(userDir, reportId, status = 'open') {
   return req(`${_commentsBase(userDir, reportId)}/threads?status=${encodeURIComponent(status)}`);
 }
 
-export function createCommentThread(userDir, reportId, { selector, text }) {
+export function createCommentThread(userDir, reportId, {
+  selector, text, revisionId = null, kind = 'review',
+}) {
   return req(`${_commentsBase(userDir, reportId)}/threads`, {
     method: 'POST',
-    body: JSON.stringify({ selector: selector ?? null, text }),
+    body: JSON.stringify({ selector: selector ?? null, text, revisionId, kind }),
   });
 }
 
@@ -2332,6 +2339,13 @@ export function setCommentThreadStatus(userDir, reportId, threadId, status) {
   return req(`${_commentsBase(userDir, reportId)}/threads/${encodeURIComponent(threadId)}/status`, {
     method: 'POST',
     body: JSON.stringify({ status }),
+  });
+}
+
+export function markCommentsRead(userDir, reportId) {
+  return req(`${_commentsBase(userDir, reportId)}/read`, {
+    method: 'POST',
+    body: '{}',
   });
 }
 

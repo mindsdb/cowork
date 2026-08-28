@@ -64,7 +64,7 @@ function iconForRow(row) {
 }
 
 
-export function WorkingFolderLive({ project, isStreaming }) {
+export function WorkingFolderLive({ project, isStreaming, conversationId = null, onAddressWithAgent }) {
   const orgMode = useOrgMode();
   const [resolvedProject, setResolvedProject] = useState(null);
   useEffect(() => {
@@ -271,7 +271,7 @@ export function WorkingFolderLive({ project, isStreaming }) {
   };
 
   const onDeleteArtifact = async (a) => {
-    if (!a?.path) return;
+    if (!a?.path || a?.capabilities?.canEdit === false) return;
     setBusyPath(a.path);
     setRowError('');
     // Optimistic remove — mirrors the Project Files / Task Uploads
@@ -309,9 +309,10 @@ export function WorkingFolderLive({ project, isStreaming }) {
     const path = (artifact.path || '').toLowerCase();
     const canPreviewInline = _INLINE_PREVIEW_EXTS.includes(ext)
       || _INLINE_PREVIEW_EXTS.some((e) => path.endsWith(e));
-    // Same gate the panel and the inline chat card apply: in org mode neither
-    // the local preview nor the OS handoff has anything behind it, and the
-    // published URL is the only route to the content.
+    // In org mode the published URL is the only route to artifact content from
+    // here: the authenticated draft preview is offered from the artifacts
+    // gallery's '...' menu, not from this list. Local OS handoff remains a
+    // desktop-only capability.
     const target = artifactOpenTarget({
       orgMode,
       published: !!artifact.publishedUrl,
@@ -443,6 +444,7 @@ export function WorkingFolderLive({ project, isStreaming }) {
           const a = rows.find((r) => r.path === openMenuPath);
           if (!a) return null;
           const openLabel = canOpenLocalFile ? 'Open in OS' : 'Open in new tab';
+          const canDelete = a.capabilities?.canEdit !== false;
           return (
             <div
               ref={menuRef}
@@ -472,24 +474,28 @@ export function WorkingFolderLive({ project, isStreaming }) {
                 </span>
                 <span>{openLabel}</span>
               </button>
-              <div className="h-px bg-[var(--border-0)] my-1" />
-              <button
-                type="button"
-                className="menu-item"
-                disabled={busyPath === a.path}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setOpenMenuPath(null);
-                  // Open the confirm modal rather than deleting
-                  // immediately — matches the project files / task
-                  // uploads / task / project delete flows.
-                  setPendingDeleteArtifact(a);
-                }}
-                style={{ color: 'var(--danger)' }}
-              >
-                <span className="inline-flex text-danger">{Ico.trash(13)}</span>
-                <span>Delete</span>
-              </button>
+              {canDelete && (
+                <>
+                  <div className="h-px bg-[var(--border-0)] my-1" />
+                  <button
+                    type="button"
+                    className="menu-item"
+                    disabled={busyPath === a.path}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setOpenMenuPath(null);
+                      // Open the confirm modal rather than deleting
+                      // immediately — matches the project files / task
+                      // uploads / task / project delete flows.
+                      setPendingDeleteArtifact(a);
+                    }}
+                    style={{ color: 'var(--danger)' }}
+                  >
+                    <span className="inline-flex text-danger">{Ico.trash(13)}</span>
+                    <span>Delete</span>
+                  </button>
+                </>
+              )}
             </div>
           );
         })(),
@@ -522,6 +528,8 @@ export function WorkingFolderLive({ project, isStreaming }) {
         onDelete={(path) => {
           setRows((prev) => prev.filter((a) => a.path !== path));
         }}
+        conversationId={conversationId}
+        onAddressWithAgent={onAddressWithAgent}
       />
     </div>
   );
