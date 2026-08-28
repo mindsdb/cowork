@@ -43,6 +43,17 @@ function mockFetch() {
   return fn;
 }
 
+// Fire-and-forget helpers (like trackDataSourceConnected) return nothing, so
+// wait for the POST rather than awaiting the call.
+const sentEvent = async (fetchMock, name) => {
+  await vi.waitFor(() =>
+    expect(
+      fetchMock.mock.calls.map((c) => JSON.parse(c[1].body)).some((b) => b.event === name)
+    ).toBe(true)
+  );
+  return fetchMock.mock.calls.map((c) => JSON.parse(c[1].body)).find((b) => b.event === name);
+};
+
 // Minimal unsigned JWT — decodeJwtPayload only base64url-decodes the middle
 // segment, so header/signature are irrelevant.
 function fakeJwt(payload) {
@@ -581,17 +592,6 @@ describe('is_internal on captured events (ENG-672)', () => {
 // values are the whole point of these two events, so they are pinned on the
 // wire, not just at the call site.
 describe('billing + provisioning events (ENG-1533)', () => {
-  // Fire-and-forget helpers (like trackDataSourceConnected) return nothing, so
-  // wait for the POST rather than awaiting the call.
-  const sentEvent = async (fetchMock, name) => {
-    await vi.waitFor(() =>
-      expect(
-        fetchMock.mock.calls.map((c) => JSON.parse(c[1].body)).some((b) => b.event === name)
-      ).toBe(true)
-    );
-    return fetchMock.mock.calls.map((c) => JSON.parse(c[1].body)).find((b) => b.event === name);
-  };
-
   it('billing_opened carries the trigger that sent the user', async () => {
     const fetchMock = mockFetch();
     const { trackBillingOpened } = await importAnalytics();
@@ -660,6 +660,81 @@ describe('billing + provisioning events (ENG-1533)', () => {
 
     const event = await sentEvent(fetchMock, 'token_cap_hit');
     expect(event.properties.reason).toBe('token_limit');
+  });
+});
+
+// Every failed turn, not just the first one a user ever sends — there was
+// previously no way to measure how often a turn dies, or correlate it with a
+// code/model/conversation.
+describe('chat_turn_failed', () => {
+  it('carries the wire code so failures are groupable by reason', async () => {
+    const fetchMock = mockFetch();
+    const { trackTurnFailed } = await importAnalytics();
+
+    trackTurnFailed('conv-1', { code: 'provider_auth' });
+
+    const event = await sentEvent(fetchMock, 'chat_turn_failed');
+    expect(event.properties.code).toBe('provider_auth');
+  });
+
+  it('carries the conversation id so one report can be pinned to its server logs', async () => {
+    const fetchMock = mockFetch();
+    const { trackTurnFailed } = await importAnalytics();
+
+    trackTurnFailed('conv-42', { code: 'anton_error' });
+
+    const event = await sentEvent(fetchMock, 'chat_turn_failed');
+    expect(event.properties.conversation_id).toBe('conv-42');
+  });
+
+  it('defaults code to unknown when the failure event carries none, rather than dropping the property', async () => {
+    const fetchMock = mockFetch();
+    const { trackTurnFailed } = await importAnalytics();
+
+    trackTurnFailed('conv-1', {});
+
+    const event = await sentEvent(fetchMock, 'chat_turn_failed');
+    expect(event.properties.code).toBe('unknown');
+  });
+
+  it('carries the rejected model when the failure event names one', async () => {
+    const fetchMock = mockFetch();
+    const { trackTurnFailed } = await importAnalytics();
+
+    trackTurnFailed('conv-1', { code: 'model_not_found', model: 'deepseek-v4-flash' });
+
+    const event = await sentEvent(fetchMock, 'chat_turn_failed');
+    expect(event.properties.model).toBe('deepseek-v4-flash');
+  });
+
+  it('carries the provider label when the failure event names one', async () => {
+    const fetchMock = mockFetch();
+    const { trackTurnFailed } = await importAnalytics();
+
+    trackTurnFailed('conv-1', { code: 'provider_auth', provider_label: 'Anthropic' });
+
+    const event = await sentEvent(fetchMock, 'chat_turn_failed');
+    expect(event.properties.provider_label).toBe('Anthropic');
+  });
+
+  it('carries the request id, so a PostHog row can be joined to a server log', async () => {
+    const fetchMock = mockFetch();
+    const { trackTurnFailed } = await importAnalytics();
+
+    trackTurnFailed('conv-1', { code: 'anton_error', request_id: 'corr-abc' });
+
+    const event = await sentEvent(fetchMock, 'chat_turn_failed');
+    expect(event.properties.request_id).toBe('corr-abc');
+  });
+
+  it('drops the conversation id rather than sending a pre-adoption placeholder', async () => {
+    const fetchMock = mockFetch();
+    const { trackTurnFailed } = await importAnalytics();
+
+    trackTurnFailed('tmp-1755999999999', { code: 'anton_error' });
+
+    const event = await sentEvent(fetchMock, 'chat_turn_failed');
+    expect(event.properties.conversation_id).toBeUndefined();
   });
 });
 

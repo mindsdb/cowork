@@ -524,7 +524,9 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
       }
       onDone?.(cid);
     } catch (err) {
-      if (err.name !== 'AbortError') onError?.(err.message);
+      // Distinct code from tailInFlight's reconnect_error: this is a dropped
+      // connection on the initial send, not a reconnect attempt.
+      if (err.name !== 'AbortError') onError?.(err.message, { code: 'stream_error' });
     }
   })();
   return ctrl;
@@ -684,9 +686,9 @@ export function tailInFlight(conversationId, {
         // message. cancelResponse is idempotent and swallows errors, so
         // fire-and-forget is safe.
         cancelResponse(conversationId);
-        onError?.('The response stalled and was ended. Please try sending again.');
+        onError?.('The response stalled and was ended. Please try sending again.', { code: 'stalled' });
       } else if (err.name !== 'AbortError') {
-        onError?.(err.message);
+        onError?.(err.message, { code: 'reconnect_error' });
       }
     } finally {
       if (idleTimer) clearTimeout(idleTimer);

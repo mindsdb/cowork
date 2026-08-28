@@ -377,6 +377,29 @@ describe('streamNewSession — harness pick', () => {
   });
 });
 
+// A dropped connection mid-stream must carry a code distinct from a stalled
+// tail or a reconnect failure, so chat_turn_failed can tell them apart
+// instead of bucketing every client-side drop as unknown.
+describe('streamNewSession — network failure reporting', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('reports a code when the reader fails mid-stream', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      body: { getReader: () => ({ read: async () => { throw new Error('network drop'); } }) },
+    })));
+
+    const result = await new Promise((resolve) => {
+      streamNewSession('hi', { onDone: () => resolve(null), onError: (message, event) => resolve(event) });
+    });
+
+    expect(result?.code).toBe('stream_error');
+  });
+});
+
 // The funnel seam for ENG-1689's join key. It is fed from fetchHealth rather
 // than from its five call sites precisely so a sixth added later cannot
 // silently stop reporting it — and that only holds while fetchHealth performs
