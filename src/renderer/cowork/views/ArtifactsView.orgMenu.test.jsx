@@ -106,16 +106,18 @@ describe('grid view kebab on desktop', () => {
 describe.each([
   ['grid', 'grid'],
   ['list', 'list'],
-])('%s view private preview in org mode', (_name, view) => {
+])('%s view card body in org mode', (_name, view) => {
   beforeEach(() => {
     localStorage.setItem('anton:artifacts-view', view);
     setOrgMode(true);
   });
 
-  it('opens the authenticated draft before publication', () => {
+  // The in-app preview is one menu item, not the meaning of every click: the
+  // card body keeps pointing at what collaborators see.
+  it('does not open the viewer when the card body is clicked', () => {
     render(<ArtifactsView artifacts={[cloudDraft]} />);
     fireEvent.click(screen.getByText('Weather Dashboard'));
-    expect(screen.getByTestId('artifact-viewer')).toHaveTextContent('Private preview');
+    expect(screen.queryByTestId('artifact-viewer')).toBeNull();
   });
 
   it('does not offer delete to a reviewer', () => {
@@ -125,6 +127,18 @@ describe.each([
     }]} />);
     openKebab();
     expect(screen.queryByText(/Delete/)).toBeNull();
+  });
+});
+
+describe('grid view card body on desktop', () => {
+  // The org narrowing must not leak: locally the body click is still the
+  // fastest way into the preview.
+  it('still opens the viewer for an inline-previewable artifact', () => {
+    localStorage.setItem('anton:artifacts-view', 'grid');
+    setOrgMode(false);
+    render(<ArtifactsView artifacts={[cloudDraft]} />);
+    fireEvent.click(screen.getByText('Weather Dashboard'));
+    expect(screen.getByTestId('artifact-viewer')).toBeInTheDocument();
   });
 });
 

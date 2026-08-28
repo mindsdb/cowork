@@ -97,6 +97,15 @@ function isInlinePreviewable(a) {
   return false;
 }
 
+// What org mode can preview from the authenticated draft URL: exactly what
+// Desktop renders from bytes, minus fullstack apps. Their preview needs the
+// loopback proxy only Desktop has, so offering it would open a window that can
+// only fail. Images fall out on their own — they are not inline-previewable,
+// and the viewer loads them from /artifacts/serve, which org tenancy refuses.
+function canPreviewOrgDraft(a) {
+  return !!a?.draftUrl && !isBackendArtifact(a) && isInlinePreviewable(a);
+}
+
 // "Updated" is pre-formatted by the server (e.g. "3h ago") from the same
 // content_mtime this sorts by (ENG-1123 Bug 2) — so the sort order and the
 // printed age can no longer disagree. a.mtime is always a plain number of
@@ -202,9 +211,10 @@ const CardIconButton = forwardRef(function CardIconButton({ onClick, ariaLabel, 
 
 function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isMenuOpen, phase, onRetry, onOpenProject }) {
   const orgMode = useOrgMode();
-  // SaaS cards carry an authenticated private-draft URL; Desktop can also use
-  // the historical inline/local preview paths.
-  const canPreview = !!artifact?.draftUrl || (!orgMode && isInlinePreviewable(artifact));
+  // Only Desktop turns a click into a preview. Org mode has the authenticated
+  // draft too, but reaches it from the '...' menu (canPreviewOrgDraft), so a
+  // click on the card keeps meaning "open what collaborators see".
+  const canPreview = !orgMode && isInlinePreviewable(artifact);
   const published = !!artifact.publishedUrl;
   // In the browser the artifact's address is its HTTP serve URL, not a local
   // OS path the user can't reach — open that "private" URL instead.
@@ -461,7 +471,9 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
   const { hovered, hoverProps } = useRevealOnHover(menuOpen);
 
   const orgMode = useOrgMode();
-  const canPreview = !!artifact?.draftUrl || (!orgMode && isInlinePreviewable(artifact));
+  // Same rule as ArtifactBubble above: a click previews on Desktop only, and org
+  // mode reaches its authenticated draft from the '...' menu instead.
+  const canPreview = !orgMode && isInlinePreviewable(artifact);
   const published = !!artifact.publishedUrl;
   const publishable = isPublishableArtifact(artifact);   // HTML + Markdown — see ArtifactBubble note
   const privateUrl = !orgMode && host.isWeb ? artifactServeUrl(artifact) : '';
