@@ -1475,14 +1475,6 @@ export async function revealSettingKey(name) {
   }
 }
 
-export async function fetchIntegrations() {
-  try {
-    return await req('/connectors/oauth/catalogue');
-  } catch (err) {
-    return { items: [], error: err?.message || 'Could not load integrations' };
-  }
-}
-
 export { labelCategory, countNonEmptyMemory, findMemoryEntry } from './lib/memoryTransform';
 
 // ─── Anton Utilities ────────────────────────────────────────────────────────

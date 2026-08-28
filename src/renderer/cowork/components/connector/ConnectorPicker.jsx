@@ -13,9 +13,11 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import Ico from '../Icons';
 import { fetchConnectors } from '../../api';
+import { host } from '../../../platform/host';
+import { useOrgMode } from '../../../lib/orgMode';
 import { Card } from '../ui/Card';
 import { Modal } from '../ui/Modal';
-import { Select, Tooltip } from '../ui';
+import { Alert, Select, Tooltip } from '../ui';
 
 // Category → fallback Ico name when a connector doesn't ship its own
 // flat icon. Keep this map small and obvious; "other" → generic puzzle.
@@ -149,6 +151,7 @@ const ConnectorTile = memo(function ConnectorTile({ connector, onPick }) {
 });
 
 export default function ConnectorPicker({ open, onPick, onClose }) {
+  const orgMode = useOrgMode();
   const [connectors, setConnectors] = useState([]);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
@@ -291,6 +294,26 @@ export default function ConnectorPicker({ open, onPick, onClose }) {
             ]}
           />
         </div>
+
+        {/* This deployment's server already scopes the /connectors/specs/
+            response to what auth's catalogue authorizes (currently Google
+            Drive + Gmail) — this note just explains the short list rather
+            than doing any filtering of its own. */}
+        {orgMode && (
+          <div className="px-4 pb-3 bg-surface shrink-0">
+            <Alert variant="info">
+              The full range of connectors is coming soon to Cowork Cloud. In the meantime, you can use all Cowork connectors in the{' '}
+              <button
+                type="button"
+                onClick={() => host.openExternal('https://mindshub.ai/download')}
+                className="font-medium underline underline-offset-2 bg-transparent border-0 p-0 cursor-pointer text-inherit [font:inherit]"
+              >
+                Cowork Desktop App
+              </button>
+              .
+            </Alert>
+          </div>
+        )}
 
         {/* Body — grid of connector tiles, scrollable.
             • surface-2 background so tiles (on var(--surface)) sit

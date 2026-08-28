@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import * as http from 'http';
+// Renamed to avoid colliding with the `net` import from 'electron' below —
+// this one is the real loopback TCP socket used for the idle-connection
+// test; that one is the mocked Electron net.fetch used everywhere else.
 import * as nodeNet from 'net';
 
 vi.mock('electron', () => ({
