@@ -836,6 +836,20 @@ function DirectoryModal({ mode, onChangeMode, onClose, onChooseConnector, orgMod
                   );
                 })}
               </div>
+
+              {orgMode && (
+                <p className="customize-org-mode-note">
+                  More connectors are not available on Cloud just yet. In the meantime, you can{' '}
+                  <button
+                    type="button"
+                    className="customize-inline-link"
+                    onClick={() => host.openExternal('https://mindshub.ai/download')}
+                  >
+                    use other connectors in the desktop app
+                  </button>
+                  .
+                </p>
+              )}
             </>
           ) : (
             <div className="customize-directory-grid">
