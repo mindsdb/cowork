@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Ico from './Icons';
 import { Tooltip } from './ui';
@@ -24,6 +24,9 @@ import { AttachmentThumbnail } from './AttachmentThumbnail';
 import { useSkills } from '../lib/skillsStore';
 import { useDraft } from '../hooks/useDraft';
 import { host } from '../../platform/host';
+import UsageBar from './UsageBar';
+import { HubUsageContext } from '../lib/hubUsageContext';
+import { deriveComposerWarning } from '../lib/usageWarnings';
 
 // Detect a "/" slash-command token immediately before the caret. Returns the
 // token's start index (the "/") and the lowercased query fragment, or null when
@@ -983,6 +986,15 @@ export default function Composer({
     if (rec) { try { rec.abort(); } catch {} }
   }, []);
 
+  // Which usage warning, if any, to tuck above the input. App provides the
+  // polled usage; the pick decides whether free Air tokens or the paid
+  // balance is what the next turn spends.
+  const hubUsage = useContext(HubUsageContext);
+  const usageWarning = useMemo(
+    () => (hubUsage ? deriveComposerWarning(hubUsage.usage, { providerType: hubUsage.providerType, model }) : null),
+    [hubUsage, model],
+  );
+
   return (
     <div ref={wrapRef} {...fileDropHandlers} className="relative w-full max-w-[var(--composer-max-width,_640px)]">
       <FileDropOverlay active={filesDragging} label="Drop files to attach" />
@@ -995,6 +1007,10 @@ export default function Composer({
       />
 
       <div className="w-full">
+        {/* Usage bar (ENG-1782): free tokens / balance running low, shown
+            here rather than in the conversation so it is in view when the
+            next task starts and never becomes part of the task history. */}
+        <UsageBar warning={usageWarning} isBillingOwner={!!hubUsage?.usage?.isBillingOwner} />
         <div className={`composer-wrap relative${focused ? ' focused' : ''}${inFence ? ' in-fence' : ''}`}>
 
           {/* "/" slash-command menu — anchored to composer-wrap so it appears

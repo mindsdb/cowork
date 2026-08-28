@@ -56,11 +56,11 @@ beforeEach(() => {
 });
 
 describe('billing_opened trigger per call site', () => {
-  it('token_limit: the out-of-credits card records the trigger and still opens billing', async () => {
+  it('token_limit: the stopped-task card records the trigger and still opens billing', async () => {
     const user = userEvent.setup();
     render(<ChatView task={taskWith(failedTurn('token_limit', "You've run out of credits."))} />);
 
-    await user.click(screen.getByRole('button', { name: 'Top up balance' }));
+    await user.click(screen.getByRole('button', { name: 'Add funds' }));
 
     expect(analyticsMock.trackBillingOpened).toHaveBeenCalledWith('token_limit');
     expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
@@ -74,7 +74,7 @@ describe('billing_opened trigger per call site', () => {
     // opened the page and counted nothing.
     render(<ChatView task={taskWith(failedTurn('included_allowance_exhausted', "You've used this month's free tokens.", { resetAt: '2099-01-01T00:00:00Z' }))} />);
 
-    await user.click(screen.getByRole('button', { name: 'Add credits' }));
+    await user.click(screen.getByRole('button', { name: 'Add funds' }));
 
     expect(analyticsMock.trackBillingOpened).toHaveBeenCalledWith('included_allowance_exhausted');
     expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);

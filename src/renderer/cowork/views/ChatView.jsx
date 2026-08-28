@@ -48,6 +48,8 @@ import { isSkippedFailedAssistant, isOrphanUser as isOrphanUserPure, lastVisible
 import { isThinkingActive } from '../lib/thinkingActive';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 import { trackBillingOpened, trackKeyProvisioningRefused } from '../lib/analytics';
+import { useHubUsageContext } from '../lib/hubUsageContext';
+import { USAGE_ACTIONS, usageActionUrl, formatResetDate } from '../lib/usageWarnings';
 
 // Token shorthand mapped to our globals.css custom properties so the same
 // inline-styled JSX picks up the active theme.
@@ -988,7 +990,42 @@ function formatAllowanceReset(resetAt) {
   const d = new Date(resetAt);
   if (Number.isNaN(d.getTime())) return 'next month';
   if (d.getTime() <= Date.now()) return 'next month';
-  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'long' });
+  return formatResetDate(resetAt) || 'next month';
+}
+
+// ── UsageAlertCard: a usage-state change that happened DURING this task ────
+// ENG-1782. Not an error: the turn kept going. Free tokens ran out and the
+// task moved onto the paid balance, or an auto top up failed. The composer
+// notice carries the same facts for the *next* task; this card explains why
+// *this* one's behaviour changed, in the timeline where it happened.
+function UsageAlertCard({ time, agentLabel, kind, resetsAt, isBillingOwner }) {
+  const open = (action) => () => {
+    trackBillingOpened('usage_alert');
+    host.openExternal(usageActionUrl(action, { isBillingOwner }));
+  };
+  if (kind === 'auto_top_up_failed') {
+    return (
+      <ActionCard
+        time={time}
+        agentLabel={agentLabel}
+        title="Auto top up failed"
+        body="We couldn't add funds to your balance. Add funds or update your payment method to keep tasks running."
+        buttons={[
+          { label: USAGE_ACTIONS.addFunds.label, onClick: open(USAGE_ACTIONS.addFunds), primary: true },
+          { label: USAGE_ACTIONS.updatePaymentMethod.label, onClick: open(USAGE_ACTIONS.updatePaymentMethod) },
+        ]}
+      />
+    );
+  }
+  return (
+    <ActionCard
+      time={time}
+      agentLabel={agentLabel}
+      title="Free monthly tokens used"
+      body={`This task is now using your balance. Your free tokens reset on ${formatAllowanceReset(resetsAt)}.`}
+      buttons={[{ label: USAGE_ACTIONS.viewUsage.label, onClick: open(USAGE_ACTIONS.viewUsage) }]}
+    />
+  );
 }
 
 // ── RateLimitedCard: a velocity limit, NOT an out-of-credits state ─────────
@@ -1479,6 +1516,10 @@ export default function ChatView({
 
   const isStreaming = task.messages.some((m) => m.role === '_streaming');
   const visibleMessages = task.messages.filter((m) => m.role !== '_streaming');
+  // Usage state (ENG-1782): decides where "Add funds" lands and whether the
+  // stopped-task cards offer auto top up. Null outside the provider (tests).
+  const hubUsage = useHubUsageContext();
+  const isBillingOwner = !!hubUsage?.usage?.isBillingOwner;
   // Bumps when a turn finishes (assistant message committed) — not only
   // when messages.length changes. Replacing `_streaming` with `assistant`
   // often leaves length unchanged, which previously skipped memory refresh.
@@ -1887,6 +1928,18 @@ export default function ChatView({
               // needs isLast since the streaming turn has no actions yet.
               const lastTurnIdx = streamingMsg ? -1 : lastVisibleTurnIdx(visibleMessages);
               return visibleMessages.map((m, i) => {
+              if (m.role === 'usage_notice') {
+                return (
+                  <UsageAlertCard
+                    key={i}
+                    time={formatMetaTime(m.createdAt)}
+                    agentLabel={agentLabel}
+                    kind={m.kind}
+                    resetsAt={m.resetsAt}
+                    isBillingOwner={isBillingOwner}
+                  />
+                );
+              }
               if (m.role === 'user') {
                 userInputIdx += 1;
                 const turnIdxForThisUser = userInputIdx;
@@ -1980,20 +2033,22 @@ export default function ChatView({
                       key={i}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
-                      title="You're out of credits"
+                      // A billing failure ends the turn; there is no resume,
+                      // so this is "stopped", never "paused" (ENG-1782).
+                      title="Task stopped"
                       // Fixed copy, not the server string (ENG-1304) — the
                       // gateway's wording predates pay as you go.
-                      body="You've used your available MindsHub tokens. Top up your balance to keep working."
+                      body="Your balance ran out before this task finished. Add funds before starting another task."
                       buttons={[
                         {
-                          label: 'Top up balance',
+                          label: 'Add funds',
                           // ENG-1533: the click, not an impression. token_cap_hit
                           // already counts the impression once per receipt in the
                           // stream adapter; an impression here would re-fire on
                           // every paint.
                           onClick: () => {
                             trackBillingOpened('token_limit');
-                            host.openExternal(MINDS_BILLING_URL);
+                            host.openExternal(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }));
                           },
                           primary: true,
                         },
@@ -2168,11 +2223,13 @@ export default function ChatView({
                       key={i}
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
-                      title="You've used this month's free tokens"
-                      body={`Your free allowance resets on ${formatAllowanceReset(m.resetAt)}. Add credits to keep working now and unlock Claude, GPT, Gemini, Kimi, DeepSeek and more.`}
+                      // The gate only issues this code when the org has no
+                      // balance to fall onto, so the turn ended (ENG-1782).
+                      title="Task stopped"
+                      body={`Your free monthly tokens are used up and your balance is empty. Add funds to keep working, or wait until ${formatAllowanceReset(m.resetAt)} when your free tokens reset.`}
                       buttons={[
                         {
-                          label: 'Add credits',
+                          label: 'Add funds',
                           // ENG-1533: the click, not an impression — same rule as
                           // the drained-wallet card above. token_cap_hit already
                           // counts this impression once per receipt in the stream
@@ -2180,10 +2237,18 @@ export default function ChatView({
                           // once and this one is not the exception.
                           onClick: () => {
                             trackBillingOpened('included_allowance_exhausted');
-                            host.openExternal(MINDS_BILLING_URL);
+                            host.openExternal(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }));
                           },
                           primary: true,
                         },
+                        // Only offer auto top up when it isn't already on.
+                        ...(hubUsage?.usage?.autoTopUp?.enabled ? [] : [{
+                          label: USAGE_ACTIONS.setUpAutoTopUp.label,
+                          onClick: () => {
+                            trackBillingOpened('included_allowance_exhausted');
+                            host.openExternal(MINDS_BILLING_URL);
+                          },
+                        }]),
                       ]}
                     />
                   );

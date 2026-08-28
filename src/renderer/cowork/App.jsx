@@ -47,6 +47,10 @@ import { useBootDecisions } from './hooks/useBootDecisions';
 import { useServerControl } from './hooks/useServerControl';
 import { useSidebarNav } from './hooks/useSidebarNav';
 import { useSso } from './hooks/useSso';
+import { useAccountUser } from './hooks/useAccountUser';
+import { useHubUsage } from './hooks/useHubUsage';
+import { HubUsageContext } from './lib/hubUsageContext';
+import { usageTransitions } from './lib/usageWarnings';
 import { useThemeSkin } from './hooks/useThemeSkin';
 import { useAppUpdates } from './hooks/useAppUpdates';
 import { deriveUpdateBanner } from '../../shared/update-banner';
@@ -2374,6 +2378,39 @@ function AppCore() {
     setSettingsOpen,
     refreshData,
   });
+
+  // Usage warnings (ENG-1782). One poll for the whole app; the composer notice
+  // and Settings → Usage read it through HubUsageContext. Re-read when a turn
+  // finishes too, so a task that just spent the last free tokens flips the
+  // notice without waiting for the next tick.
+  const accountUser = useAccountUser(ssoConnected);
+  const { usage: hubUsage, refresh: refreshHubUsage } = useHubUsage(accountUser);
+  const hubUsageCtx = useMemo(() => ({
+    usage: hubUsage,
+    providerType: providerValueToType(settings.planningProvider) || 'minds-cloud',
+    refresh: refreshHubUsage,
+  }), [hubUsage, settings.planningProvider, refreshHubUsage]);
+  const prevInFlightSize = useRef(inFlightSet.size);
+  useEffect(() => {
+    if (inFlightSet.size < prevInFlightSize.current) refreshHubUsage();
+    prevInFlightSize.current = inFlightSet.size;
+  }, [inFlightSet.size, refreshHubUsage]);
+  // A usage change DURING a task lands in that task's timeline: free tokens
+  // ran out (the task went on, now on the balance) or an auto top up failed.
+  // Client-side only; it explains this session's behaviour and is not a turn.
+  const prevHubUsage = useRef(hubUsage);
+  useEffect(() => {
+    const changes = usageTransitions(prevHubUsage.current, hubUsage);
+    prevHubUsage.current = hubUsage;
+    const streamingId = activeStreamingTaskIdRef.current;
+    if (!changes.length || !streamingId) return;
+    const createdAt = new Date().toISOString();
+    setTasks((prev) => prev.map((t) => (
+      t.id === streamingId
+        ? { ...t, messages: [...t.messages, ...changes.map((c) => ({ role: 'usage_notice', ...c, createdAt }))] }
+        : t
+    )));
+  }, [hubUsage]);
 
   // Open the Settings surface. A named section drills straight to it (desktop
   // and the mobile master-detail alike). A bare open leaves desktop on its
@@ -4975,8 +5012,10 @@ function AppCore() {
   };
 
   return (
-    <CoworkProvider value={coworkValue}>
-      <CoworkRouterProvider router={routerRef.current} />
-    </CoworkProvider>
+    <HubUsageContext.Provider value={hubUsageCtx}>
+      <CoworkProvider value={coworkValue}>
+        <CoworkRouterProvider router={routerRef.current} />
+      </CoworkProvider>
+    </HubUsageContext.Provider>
   );
 }

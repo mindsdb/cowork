@@ -21,6 +21,7 @@ import ChannelsView from '../ChannelsView';
 import UpdatesSection from './UpdatesSection';
 import BackendSection from './BackendSection';
 import AccountSection from './AccountSection';
+import UsageSection from './UsageSection';
 import { SettingsLayoutContext, Section, SettingsSectionPanel } from './settingsLayout';
 
 // Exported for tests. Narrows a `lastSavedJson` snapshot to reflect one
@@ -624,6 +625,7 @@ const NAV_ITEMS = [
   { id: 'channels', label: 'Channels', icon: 'chats' },
   { id: 'updates', label: 'Updates', icon: 'refresh' },
   { id: 'backend', label: 'Backend', icon: 'database' },
+  { id: 'usage', label: 'Usage', icon: 'chartColumn' },
   { id: 'account', label: 'Account', icon: 'people' },
 ];
 
@@ -2425,6 +2427,15 @@ export default function SettingsView({
     />
   );
 
+  // Usage (ENG-1782): free monthly tokens, balance, auto top up. Reads the
+  // usage App polls (HubUsageContext); every action deep-links to the console.
+  const renderUsageSection = () => (
+    <UsageSection
+      isSsoConnected={isSsoConnected}
+      onOpenAccount={onSectionChange ? () => onSectionChange('account') : undefined}
+    />
+  );
+
 
   // Mobile (ENG-990): master-detail. The surface is a list of the six
   // sections; tapping one drills into a focused full-screen page for just
@@ -2440,6 +2451,7 @@ export default function SettingsView({
       channels: renderChannelsSection,
       updates: renderUpdatesSection,
       backend: renderBackendSection,
+      usage: renderUsageSection,
       account: renderAccountSection,
     };
     const activeItem = navItemsForHost(host.isWeb, host.codingModeOptionsEnabled).find((i) => i.id === section) || null;
@@ -2524,6 +2536,7 @@ export default function SettingsView({
       {effectiveSection === 'channels' && renderChannelsSection()}
       {effectiveSection === 'updates' && renderUpdatesSection()}
       {effectiveSection === 'backend' && renderBackendSection()}
+      {effectiveSection === 'usage' && renderUsageSection()}
       {effectiveSection === 'account' && renderAccountSection()}
     </div>
   );

@@ -39,7 +39,7 @@ const ids = (items) => items.map((i) => i.id);
 describe('navItemsForHost — which Settings sections a host offers (ENG-932)', () => {
   it('gives Electron every section when Coding Mode options are enabled', () => {
     expect(ids(navItemsForHost(false, true))).toEqual([
-      'agent', 'codingMode', 'appearance', 'channels', 'updates', 'backend', 'account',
+      'agent', 'codingMode', 'appearance', 'channels', 'updates', 'backend', 'usage', 'account',
     ]);
   });
 
@@ -91,7 +91,7 @@ describe('navItemsForHost — which Settings sections a host offers (ENG-932)', 
     const b = navItemsForHost(false, true);
     b.pop();
     expect(ids(navItemsForHost(false, true))).toEqual([
-      'agent', 'codingMode', 'appearance', 'channels', 'updates', 'backend', 'account',
+      'agent', 'codingMode', 'appearance', 'channels', 'updates', 'backend', 'usage', 'account',
     ]);
   });
 });
@@ -99,7 +99,7 @@ describe('navItemsForHost — which Settings sections a host offers (ENG-932)', 
 describe('navItemsForHost — Coding Mode parked behind CODING_MODE_OPTIONS_ENABLED', () => {
   it('hides the Coding Mode section on desktop when the flag is off', () => {
     expect(ids(navItemsForHost(false, false))).toEqual([
-      'agent', 'appearance', 'channels', 'updates', 'backend', 'account',
+      'agent', 'appearance', 'channels', 'updates', 'backend', 'usage', 'account',
     ]);
   });
 
