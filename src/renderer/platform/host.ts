@@ -836,13 +836,21 @@ let webPickerCancelPrevious: (() => void) | null = null;
 // honors `noopener` (`noreferrer` implies it) returns null from a
 // SUCCESSFUL open, which is indistinguishable from a blocked popup — and
 // with the window now opened on about:blank first, we must keep a usable
-// handle to navigate it once the session URL is known. Opener access is
-// severed by nulling `popup.opener` instead, which cuts the popup→opener
-// link just as `noopener` would while keeping our forward handle alive.
+// handle to navigate it once the session URL is known.
+//
+// The opener link is deliberately left INTACT (no noopener, no manually
+// nulling popup.opener afterward): the picker page never leaves our own
+// origin — Google's picker widget renders as an in-page overlay via
+// apis.google.com's JS SDK, it is never a top-level navigation to a Google
+// domain (see cowork-server's picker_page.py) — so there is no untrusted
+// top-level content here for noopener's reverse-tabnabbing protection to
+// guard against. More importantly, the picker page's own completion
+// protocol (picker_page.py's reportResult()) IS `window.opener.postMessage(
+// ...)` — severing that link (as an earlier version of this function did)
+// silently breaks every successful pick: the result can never reach the
+// opener, and the promise only ever resolves via the close-poll timeout.
 function openBlankPickerWindow(): Window | null {
-  const popup = window.open('about:blank', '_blank');
-  if (popup) popup.opener = null;
-  return popup;
+  return window.open('about:blank', '_blank');
 }
 
 // Web-only. Call this SYNCHRONOUSLY inside the click handler, before any

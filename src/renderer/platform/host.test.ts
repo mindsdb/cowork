@@ -280,10 +280,8 @@ describe('electron mode (bridge present)', () => {
     // Still zero microtask hops in — window.open() must already have run.
     // No 'noopener' in the features: a browser honoring it returns null
     // from a successful open, which would falsely read as "blocked" and
-    // leave an inert blank tab. The opener link is severed on the handle
-    // instead, which the next assertion pins down.
+    // leave an inert blank tab.
     expect(open).toHaveBeenCalledWith('about:blank', '_blank');
-    expect((fakePopup as unknown as { opener: unknown }).opener).toBeNull();
 
     resolveFetch({ ok: true, json: async () => ({ url: 'http://localhost:3000/picker?ticket=t1' }) });
     await vi.waitFor(() => expect((fakePopup as unknown as { location: { href: string } }).location.href)
@@ -305,9 +303,12 @@ describe('electron mode (bridge present)', () => {
     const preopened = host.preopenDrivePickerPopup();
     expect(open).toHaveBeenCalledWith('about:blank', '_blank');
     expect(preopened).toBe(fakePopup);
-    // Opener severed on the handle (the noopener feature can't be used —
-    // it makes a successful open return null).
-    expect((fakePopup as unknown as { opener: unknown }).opener).toBeNull();
+    // Opener link left intact — the picker page's own completion protocol
+    // is window.opener.postMessage(...) (picker_page.py's reportResult()),
+    // and it never leaves our own origin, so there is nothing here for
+    // noopener-style opener-severing to protect against, only a completion
+    // path to break.
+    expect((fakePopup as unknown as { opener: unknown }).opener).toBe(window);
 
     const result = host.pickDriveFiles('google_drive', 'c', 'e@x.com', undefined, undefined, preopened);
     // The pre-opened window is reused, never reopened.
