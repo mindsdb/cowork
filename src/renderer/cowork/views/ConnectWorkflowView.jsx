@@ -440,6 +440,24 @@ function PluginLogo() {
   );
 }
 
+// Shared by the main connectors list and the directory modal so the two
+// org-mode call sites can't drift apart on copy or URL.
+function OrgModeDesktopNote() {
+  return (
+    <p className="customize-org-mode-note">
+      More connectors are not available on Cloud just yet. In the meantime, you can{' '}
+      <button
+        type="button"
+        className="customize-inline-link"
+        onClick={() => host.openExternal('https://mindshub.ai/download')}
+      >
+        use other connectors in the desktop app
+      </button>
+      .
+    </p>
+  );
+}
+
 function Subnav({ page, onPageChange, onOpenPlugins }) {
   return (
     <aside className="customize-subnav">
@@ -606,19 +624,7 @@ function ConnectorsPage({
             </div>
           ))}
 
-          {orgMode && (
-            <p className="customize-org-mode-note">
-              More connectors are not available on Cloud just yet. In the meantime, you can{' '}
-              <button
-                type="button"
-                className="customize-inline-link"
-                onClick={() => host.openExternal('https://mindshub.ai/download')}
-              >
-                use other connectors in the desktop app
-              </button>
-              .
-            </p>
-          )}
+          {orgMode && <OrgModeDesktopNote />}
         </div>
       </section>
 
@@ -837,19 +843,7 @@ function DirectoryModal({ mode, onChangeMode, onClose, onChooseConnector, orgMod
                 })}
               </div>
 
-              {orgMode && (
-                <p className="customize-org-mode-note">
-                  More connectors are not available on Cloud just yet. In the meantime, you can{' '}
-                  <button
-                    type="button"
-                    className="customize-inline-link"
-                    onClick={() => host.openExternal('https://mindshub.ai/download')}
-                  >
-                    use other connectors in the desktop app
-                  </button>
-                  .
-                </p>
-              )}
+              {orgMode && <OrgModeDesktopNote />}
             </>
           ) : (
             <div className="customize-directory-grid">
