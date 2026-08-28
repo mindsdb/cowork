@@ -35,12 +35,13 @@ function ActionButton({ action, isBillingOwner, variant = 'default' }) {
   );
 }
 
+// -1 is auth's "uncapped" sentinel. 0 or a missing limit is not a plan we
+// can describe, so show nothing rather than a wrong number.
+const describableGrant = (free) => !!free && (free.limit === -1 || free.limit > 0);
+
 function FreeTokensCard({ free, isBillingOwner }) {
-  if (!free) return null;
-  // -1 is auth's "uncapped" sentinel. 0 or a missing limit is not a plan we
-  // can describe, so show nothing rather than a wrong number.
+  if (!describableGrant(free)) return null;
   const unlimited = free.limit === -1;
-  if (!unlimited && !(free.limit > 0)) return null;
   const used = Math.max(0, free.used || 0);
   const remaining = Math.max(0, free.remaining || 0);
   const fraction = unlimited ? 0 : used / free.limit;
@@ -189,7 +190,7 @@ export default function UsageSection({ isSsoConnected = false, onOpenAccount }) 
       <>
         <FreeTokensCard free={usage.freeTokens} isBillingOwner={usage.isBillingOwner} />
         <BalanceCard balance={usage.balance} auto={usage.autoTopUp} spend={usage.creditSpend} isBillingOwner={usage.isBillingOwner} />
-        {!usage.freeTokens && !usage.balance && (
+        {!describableGrant(usage.freeTokens) && !usage.balance && (
           <div className={`${CARD} text-[13px] text-ink-3`}>No usage to show for this account yet.</div>
         )}
       </>

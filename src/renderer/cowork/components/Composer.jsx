@@ -994,6 +994,13 @@ export default function Composer({
     () => (hubUsage ? deriveComposerWarning(hubUsage.usage, { providerType: hubUsage.providerType, model }) : null),
     [hubUsage, model],
   );
+  // "Healthy" for forgetting closed bars means nothing to say for ANY pick,
+  // not merely that the current paid model hides the free-token warnings.
+  const usageHealthy = useMemo(
+    () => !!hubUsage?.usage?.reachable
+      && deriveComposerWarning(hubUsage.usage, { providerType: hubUsage.providerType, model: null }) === null,
+    [hubUsage],
+  );
 
   return (
     <div ref={wrapRef} {...fileDropHandlers} className="relative w-full max-w-[var(--composer-max-width,_640px)]">
@@ -1013,7 +1020,7 @@ export default function Composer({
         <UsageBar
           warning={usageWarning}
           isBillingOwner={!!hubUsage?.usage?.isBillingOwner}
-          usageKnown={!!hubUsage?.usage?.reachable}
+          usageKnown={usageHealthy}
         />
         <div className={`composer-wrap relative${focused ? ' focused' : ''}${inFence ? ' in-fence' : ''}`}>
 
