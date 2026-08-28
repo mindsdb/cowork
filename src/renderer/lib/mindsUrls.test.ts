@@ -85,7 +85,13 @@ describe('same-origin API base derivation (VITE_MINDS_API_URL unset)', () => {
     const { MINDS_API_BASE, MINDS_KEYCLOAK_URL, MINDS_CONSOLE_URL } = await importUrls();
     expect(MINDS_API_BASE).toBe('https://api-pr123.dev.mindshub.ai');
     expect(MINDS_KEYCLOAK_URL).toBe('https://auth-pr123.dev.mindshub.ai/auth');
-    expect(MINDS_CONSOLE_URL).toBe('https://console-pr123.dev.mindshub.ai');
+    // CORRECTED: this asserted `console-pr123.dev.mindshub.ai`, which is a host
+    // that does not resolve. A per-PR env serves the console with no service
+    // prefix. Measured against a live env on 2026-08-27:
+    // `console-pr-cowork-744.dev.mindshub.ai` answers 404 and
+    // `pr-cowork-744.dev.mindshub.ai` answers 200. The old expectation encoded
+    // the bug, so every console deep link 404d in a PR env.
+    expect(MINDS_CONSOLE_URL).toBe('https://pr123.dev.mindshub.ai');
   });
 
   it('falls back to prod on an unrecognised (non-cowork) remote host', async () => {
@@ -127,3 +133,46 @@ describe('same-origin API base derivation (VITE_MINDS_API_URL unset)', () => {
     expect(MINDS_API_BASE).toBe('https://api.dev.mindshub.ai');
   });
 });
+
+describe('console host derivation (the one role that differs by host shape)', () => {
+  // Regression: every console deep link 404d in a PR environment. A per-PR env
+  // serves the console with no service prefix, so swapping `api-` for
+  // `console-` produced a host that does not resolve. Measured against
+  // pr-cowork-744: `console-pr-cowork-744.dev.mindshub.ai` answered 404,
+  // `pr-cowork-744.dev.mindshub.ai` answered 200.
+  it('drops the service prefix entirely on a PR host', async () => {
+    vi.stubEnv('VITE_MINDS_API_URL', 'https://api-pr-cowork-744.dev.mindshub.ai');
+    const { MINDS_CONSOLE_URL, MINDS_WORKSPACES_URL } = await importUrls();
+
+    expect(MINDS_CONSOLE_URL).toBe('https://pr-cowork-744.dev.mindshub.ai');
+    expect(MINDS_WORKSPACES_URL).toBe(
+      'https://pr-cowork-744.dev.mindshub.ai/settings/workspaces',
+    );
+  });
+
+  it('keeps the console. label on a permanent env, where the host does carry one', async () => {
+    vi.stubEnv('VITE_MINDS_API_URL', 'https://api.staging.mindshub.ai');
+    const { MINDS_CONSOLE_URL } = await importUrls();
+
+    expect(MINDS_CONSOLE_URL).toBe('https://console.staging.mindshub.ai');
+  });
+
+  it('keeps the console. label on prod', async () => {
+    vi.stubEnv('VITE_MINDS_API_URL', 'https://api.mindshub.ai');
+    const { MINDS_CONSOLE_URL } = await importUrls();
+
+    expect(MINDS_CONSOLE_URL).toBe('https://console.mindshub.ai');
+  });
+
+  it('leaves auth alone on a PR host: auth DOES keep its prefix there', async () => {
+    // The asymmetry is the whole point. Auth is `auth-<env>.dev…`, the console
+    // is `<env>.dev…`, so one role can use the token swap and the other cannot.
+    vi.stubEnv('VITE_MINDS_API_URL', 'https://api-pr-cowork-744.dev.mindshub.ai');
+    const { MINDS_KEYCLOAK_URL } = await importUrls();
+
+    expect(MINDS_KEYCLOAK_URL).toBe(
+      'https://auth-pr-cowork-744.dev.mindshub.ai/auth',
+    );
+  });
+});
+
