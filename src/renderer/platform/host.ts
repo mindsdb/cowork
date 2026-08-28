@@ -824,9 +824,155 @@ export interface DrivePickerResult {
 // newly-picked files as belonging to that project (see DrivePickerFile);
 // omit it for connection-details' "Pick files" button, which has no
 // project context.
-export async function pickDriveFiles(engine: string, name: string, accountEmail: string, fileIds?: string[], projectName?: string): Promise<DrivePickerResult> {
+// Web: the popup this session opened, tracked so cancelDrivePicker() (and a
+// second pickDriveFiles call) can close a stale one rather than leaking it.
+let webPickerPopup: Window | null = null;
+// Cancels the in-flight call's message listener and close-poll interval — a
+// settled call's finish() already no-ops, so calling this is always safe.
+let webPickerCancelPrevious: (() => void) | null = null;
+
+// Opens the blank window the picker session will be navigated into.
+// Deliberately NOT window.open(..., 'noopener,noreferrer'): a browser that
+// honors `noopener` (`noreferrer` implies it) returns null from a
+// SUCCESSFUL open, which is indistinguishable from a blocked popup — and
+// with the window now opened on about:blank first, we must keep a usable
+// handle to navigate it once the session URL is known.
+//
+// The opener link is deliberately left INTACT (no noopener, no manually
+// nulling popup.opener afterward): the picker page never leaves our own
+// origin — Google's picker widget renders as an in-page overlay via
+// apis.google.com's JS SDK, it is never a top-level navigation to a Google
+// domain (see cowork-server's picker_page.py) — so there is no untrusted
+// top-level content here for noopener's reverse-tabnabbing protection to
+// guard against. More importantly, the picker page's own completion
+// protocol (picker_page.py's reportResult()) IS `window.opener.postMessage(
+// ...)` — severing that link (as an earlier version of this function did)
+// silently breaks every successful pick: the result can never reach the
+// opener, and the promise only ever resolves via the close-poll timeout.
+function openBlankPickerWindow(): Window | null {
+  return window.open('about:blank', '_blank');
+}
+
+// Web-only. Call this SYNCHRONOUSLY inside the click handler, before any
+// awaited preparation (fetching connections, account choice, loading the
+// saved connection): the click's transient activation expires at the first
+// await, after which most browsers silently block window.open() — opening
+// inside pickDriveFiles is already too late for callers that await first
+// (useGoogleDrivePicker's composer and project-file flows do). Pass the
+// returned handle through to pickDriveFiles, which navigates it once the
+// picker session is minted. A caller that bails out before reaching
+// pickDriveFiles must close() the handle itself. Returns null on Electron
+// (its picker opens in the OS browser over IPC — nothing to pre-open) and
+// when the browser blocked the popup.
+export function preopenDrivePickerPopup(): Window | null {
+  if (!isWeb) return null;
+  if (webPickerPopup && !webPickerPopup.closed) webPickerPopup.close();
+  webPickerCancelPrevious?.();
+  const popup = openBlankPickerWindow();
+  webPickerPopup = popup;
+  return popup;
+}
+
+// Web equivalent of the Electron flow above. cowork-server serves the SPA
+// and its API from the same origin (getApiOrigin()), but web auth is a
+// per-request Bearer header (see fetchJson), never a cookie — a plain
+// window.open() navigation can't carry that header. So this mints a
+// short-lived, single-use picker session server-side over an authenticated
+// POST first (identical shape to launchConnectorAuth's authUrl handoff
+// elsewhere in this codebase), then navigates the popup to the URL that
+// POST returns. The live Google access token itself is minted only when
+// that URL is opened, and is embedded server-side into the picker page's
+// own inline script — it never transits this POST, the URL, or postMessage.
+async function pickDriveFilesWeb(engine: string, name: string, accountEmail: string, fileIds?: string[], projectName?: string, preopenedPopup?: Window | null): Promise<DrivePickerResult> {
+  let popupHandle: Window | null;
+  if (preopenedPopup !== undefined) {
+    // Opened at the caller's click boundary via preopenDrivePickerPopup
+    // (which already closed/cancelled any previous picker attempt). null
+    // means the browser blocked it there; an already-closed handle means
+    // this attempt was superseded by a newer click or the user closed the
+    // blank window — reopening here, outside any click activation, would
+    // just be blocked again.
+    if (!preopenedPopup) return { ok: false, reason: 'The browser blocked the file picker popup.' };
+    if (preopenedPopup.closed) return { ok: false, reason: 'cancelled' };
+    popupHandle = preopenedPopup;
+  } else {
+    if (webPickerPopup && !webPickerPopup.closed) webPickerPopup.close();
+    webPickerCancelPrevious?.();
+    // Opened synchronously, before the session mint below is awaited: a
+    // window.open() called after an await is no longer inside the click's own
+    // call stack, and most browsers silently block it as an unsolicited popup.
+    // This blank window is itself opened in direct response to the click, so
+    // it's allowed — navigating an already-open window afterward is not.
+    // (Only correct for callers that reach here with no awaits of their own,
+    // e.g. connection-details' "Pick files" button — callers that prepare
+    // asynchronously first must preopenDrivePickerPopup() at the click.)
+    popupHandle = openBlankPickerWindow();
+    webPickerPopup = popupHandle;
+    if (!popupHandle) return { ok: false, reason: 'The browser blocked the file picker popup.' };
+  }
+  // Narrowed const so the closures below (close-poll, mint continuation)
+  // see a non-null Window without re-checking.
+  const popup = popupHandle;
+
+  return new Promise<DrivePickerResult>((resolve) => {
+    let settled = false;
+    const finish = (result: DrivePickerResult) => {
+      if (settled) return;
+      settled = true;
+      clearInterval(closeCheck);
+      window.removeEventListener('message', onMessage);
+      resolve(result);
+    };
+    // Registered synchronously, in the same tick as window.open() above — a
+    // second pickDriveFiles call arriving before the session mint below
+    // resolves must still find a live handler to cancel (see the "cancels a
+    // still-pending previous call" test: this used to be set only after the
+    // mint resolved, which raced a fast second call and left two live
+    // message listeners fighting over one popup's result).
+    webPickerCancelPrevious = () => finish({ ok: false, reason: 'cancelled' });
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      if (!event.data || event.data.type !== 'drive-picker-result') return;
+      finish(event.data.result as DrivePickerResult);
+    };
+    // Cancellation case: the user closed the popup without picking — same
+    // intent as the Electron flow's own cancel handling.
+    const closeCheck = window.setInterval(() => {
+      if (popup.closed) finish({ ok: false, reason: 'cancelled' });
+    }, 500);
+    window.addEventListener('message', onMessage);
+
+    // Mint the session, then navigate the already-open popup to it.
+    (async () => {
+      let session: { url: string };
+      try {
+        session = await fetchJson(`/api/v1/connectors/oauth/${encodeURIComponent(engine)}/picker/session`, {
+          method: 'POST',
+          body: JSON.stringify({ name, account_email: accountEmail, file_ids: fileIds, project_name: projectName }),
+        });
+      } catch (err) {
+        popup.close();
+        finish({ ok: false, reason: (err as Error)?.message || 'Could not start the file picker.' });
+        return;
+      }
+      // Already cancelled, closed, or resolved (via message) while the mint
+      // was in flight — navigating a settled call's popup would be wrong.
+      if (settled) return;
+      popup.location.href = session.url;
+    })();
+  });
+}
+
+// `preopenedPopup` is the handle from preopenDrivePickerPopup(), for callers
+// whose click handlers await other work before getting here — see that
+// function. On Electron it is ignored (and preopenDrivePickerPopup returned
+// null anyway): the picker opens in the OS browser over IPC.
+export async function pickDriveFiles(engine: string, name: string, accountEmail: string, fileIds?: string[], projectName?: string, preopenedPopup?: Window | null): Promise<DrivePickerResult> {
   if (isElectron && typeof bridge.oauthPickDriveFiles === 'function') {
     return bridge.oauthPickDriveFiles({ engine, name, accountEmail, fileIds, projectName });
+  }
+  if (isWeb) {
+    return pickDriveFilesWeb(engine, name, accountEmail, fileIds, projectName, preopenedPopup);
   }
   return { ok: false, reason: 'Google Picker is Electron-only for now.' };
 }
@@ -834,6 +980,10 @@ export async function pickDriveFiles(engine: string, name: string, accountEmail:
 export async function cancelDrivePicker(): Promise<void> {
   if (isElectron && typeof bridge.oauthCancelPicker === 'function') {
     await bridge.oauthCancelPicker();
+  }
+  if (webPickerPopup && !webPickerPopup.closed) {
+    webPickerPopup.close();
+    webPickerPopup = null;
   }
 }
 
@@ -892,11 +1042,94 @@ export async function mindshubRefresh(): Promise<{ ok: boolean; reason?: string;
   return { ok: false, reason: 'MindsHub refresh bridge is Electron-only.' };
 }
 
-export async function mindshubFinalize(): Promise<{ ok: boolean; reason?: string; upgradeRequired?: boolean; apiKey?: string }> {
+export async function mindshubFinalize(
+  organizationId?: string,
+): Promise<{ ok: boolean; reason?: string; upgradeRequired?: boolean; organization?: MindsOrg }> {
   if (isElectron && typeof bridge.mindshubFinalize === 'function') {
-    return bridge.mindshubFinalize();
+    return bridge.mindshubFinalize(organizationId);
   }
   return { ok: false, reason: 'MindsHub finalize bridge is Electron-only.' };
+}
+
+/**
+ * Hand a user-supplied MindsHub key to the main process, or clear it with ''.
+ *
+ * Electron only, and the caller has to know that: main is where the OS keychain
+ * and the sidecar hand-over live, so there is nothing on web to route it to.
+ * `supported: false` is how a web caller learns to fall back to writing the key
+ * as an ordinary setting, which is still what the web deployment does.
+ */
+export async function mindshubSetUserKey(
+  key: string,
+): Promise<{ ok: boolean; supported: boolean; reason?: string }> {
+  if (isElectron && typeof bridge.mindshubSetUserKey === 'function') {
+    const result = await bridge.mindshubSetUserKey(key);
+    return { ok: Boolean(result?.ok), supported: true, reason: result?.reason };
+  }
+  return { ok: false, supported: false };
+}
+
+// ---- MindsHub organizations ---------------------------------------------
+//
+// Which organization the credential this install presents names. Both calls are
+// Electron-only and both degrade to "no organizations" rather than throwing:
+// the renderer bundle updates over the air while `src/main/**` only arrives in
+// a new installer, so a newer UI regularly runs against a main process that has
+// never heard of these channels.
+
+export interface MindsOrg {
+  id: string;
+  name: string;
+  displayName: string;
+  isPersonal: boolean;
+}
+
+export interface MindsOrgList {
+  orgs: MindsOrg[];
+  activeOrgId: string | null;
+}
+
+export interface SwitchMindsOrgResult {
+  ok: boolean;
+  activeOrgId: string | null;
+  orgs: MindsOrg[];
+  error?: string;
+}
+
+const NO_ORGS: MindsOrgList = { orgs: [], activeOrgId: null };
+
+export async function mindshubListOrgs(): Promise<MindsOrgList> {
+  if (isElectron && typeof bridge.mindshubListOrgs === 'function') {
+    try {
+      const result = await bridge.mindshubListOrgs();
+      return {
+        orgs: Array.isArray(result?.orgs) ? result.orgs : [],
+        activeOrgId: result?.activeOrgId ?? null,
+      };
+    } catch (error) {
+      // The resting shape, not a throw. Every caller treats "no organizations"
+      // as the state before the read lands, and the one on the onboarding path
+      // has no error branch to fall into — a rejection there strands sign-in on
+      // the validating screen with nothing on it.
+      console.warn('[host] could not read the MindsHub organizations', error);
+      return NO_ORGS;
+    }
+  }
+  return NO_ORGS;
+}
+
+export async function mindshubSwitchOrg(organizationId: string): Promise<SwitchMindsOrgResult> {
+  if (isElectron && typeof bridge.mindshubSwitchOrg === 'function') {
+    try {
+      return await bridge.mindshubSwitchOrg(organizationId);
+    } catch (error) {
+      // A refusal is something the menu renders, so it has to arrive as a
+      // value. Throwing past the toast leaves the row looking untouched.
+      console.warn('[host] could not change the MindsHub organization', error);
+      return { ok: false, activeOrgId: null, orgs: [], error: 'We could not change organization. Please try again.' };
+    }
+  }
+  return { ok: false, activeOrgId: null, orgs: [], error: 'Changing organization needs the desktop app.' };
 }
 
 export async function mindshubGetCachedToken(): Promise<string | null> {
@@ -1017,6 +1250,9 @@ export const host = {
   mindshubSignup,
   mindshubRefresh,
   mindshubFinalize,
+  mindshubSetUserKey,
+  mindshubListOrgs,
+  mindshubSwitchOrg,
   mindshubGetCachedToken,
   onMindsHubAuthChanged,
   getKeychainPref,
@@ -1025,6 +1261,7 @@ export const host = {
   logout,
   keychainRevoke,
   onOAuthRefreshError,
+  preopenDrivePickerPopup,
   pickDriveFiles,
   cancelDrivePicker,
 };

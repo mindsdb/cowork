@@ -50,6 +50,14 @@ vi.mock('../../platform/host', () => ({
   isElectron: false,
 }));
 
+// The viewer's workspace/network behaviour is covered by its own tests. Here
+// we only need to prove the inline card hands the complete artifact to it.
+vi.mock('../components/artifact', () => ({
+  ArtifactViewer: ({ open, artifact }) => open
+    ? <div data-testid="artifact-viewer">{artifact?.id}</div>
+    : null,
+}));
+
 // Partial mock: '../api' has many more exports than these tests touch
 // (publishTargetPath etc., pulled in transitively by ArtifactViewer). Only
 // revealArtifact — the reveal fallback when there's no working bridge —
@@ -63,10 +71,11 @@ vi.mock('../lib/artifactDownload', () => ({
   downloadArtifactFile: (...a) => downloadArtifactFile(...a),
 }));
 
-import ChatView from './ChatView';
+import ChatView, { artifactStepToCard } from './ChatView';
 import { setOrgMode } from '../../lib/orgMode';
 
 const PUBLISHED_URL = 'https://view.staging.mindshub.ai/view/97901f016/845b3777';
+const ARTIFACT_ID = '11111111111141118111111111111111';
 
 // The shape the SSE adapter produces for `response.artifact_created`.
 const artifactStep = (overrides = {}) => ({
@@ -81,13 +90,27 @@ const artifactStep = (overrides = {}) => ({
     path: '/proj/.anton/artifacts/clock/index.html',
     ext: '.html',
     action: 'html-app',
-    id: '7db94eb8',
+    id: ARTIFACT_ID,
     slug: 'clock',
+    artifactKey: 'artifact/11111111-1111-4111-8111-111111111111',
+    draftUrl: `/api/v1/artifacts/drafts/proj-1/${ARTIFACT_ID}/index.html`,
+    capabilities: { role: 'owner', canEdit: true, canComment: true },
     publishedUrl: PUBLISHED_URL,
     projectId: 'proj-1',
     projectName: 'general',
     ...overrides,
   },
+});
+
+describe('inline artifact workspace payload', () => {
+  it('reaches the viewer card without dropping identity or permissions', () => {
+    expect(artifactStepToCard(artifactStep(), '/proj')).toMatchObject({
+      id: ARTIFACT_ID,
+      artifactKey: 'artifact/11111111-1111-4111-8111-111111111111',
+      draftUrl: expect.stringContaining('/artifacts/drafts/'),
+      capabilities: { role: 'owner', canEdit: true, canComment: true },
+    });
+  });
 });
 
 const taskWithArtifact = (step) => ({
@@ -115,7 +138,9 @@ beforeEach(() => {
 afterEach(() => setOrgMode(false));
 
 describe('inline artifact banner in org mode', () => {
-  it('opens the published URL', async () => {
+  it('opens the shared URL rather than the in-app viewer', async () => {
+    // Org preview lives in the artifacts gallery's '...' menu; the chat card
+    // stays a pointer at what collaborators see.
     setOrgMode(true);
     const user = userEvent.setup();
     render(<ChatView task={taskWithArtifact(artifactStep())} />);
@@ -123,11 +148,12 @@ describe('inline artifact banner in org mode', () => {
     await user.click(screen.getByRole('button', { name: 'Open' }));
 
     expect(openExternal).toHaveBeenCalledWith(PUBLISHED_URL);
+    expect(screen.queryByTestId('artifact-viewer')).toBeNull();
   });
 
-  it('offers no Open button while the artifact has no published URL', async () => {
-    // Autopublish is off, or the turn's publish failed. Better to offer nothing
-    // than a button that reports an error the user cannot act on.
+  it('offers no Open button before the artifact is shared', () => {
+    // A draft URL alone is not a click destination here: there is nothing this
+    // card can open, and a button that only reports an error is worse than none.
     setOrgMode(true);
     render(<ChatView task={taskWithArtifact(artifactStep({ publishedUrl: '' }))} />);
 

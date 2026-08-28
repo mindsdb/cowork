@@ -5,6 +5,7 @@ import { ConfirmModal } from '../../components/ConfirmModal';
 import { host } from '../../../platform/host';
 import { useAccountUser } from '../../hooks/useAccountUser';
 import { useLogout, LOGOUT_CONFIRM_COPY } from '../../hooks/useLogout';
+import { useMindsOrgs } from '../../hooks/useMindsOrgs';
 import { accountInitials } from '../../lib/accountUser';
 import { MINDS_CONSOLE_URL } from '../../../lib/mindsUrls';
 import { Section, SettingsSectionPanel } from './settingsLayout';
@@ -17,6 +18,11 @@ import { Section, SettingsSectionPanel } from './settingsLayout';
 export default function AccountSection({ isSsoConnected = false, ssoError = '', onSsoSignIn }) {
   // Decoded from the JWT, null until loaded.
   const accountUser = useAccountUser(isSsoConnected);
+  // Named from the organization listing rather than from the token, for the
+  // same two reasons as the account menu: the claim carries no display name for
+  // a personal organization, and this row has to follow a switch made in that
+  // menu without waiting for the next sign-in.
+  const { activeOrg } = useMindsOrgs(accountUser);
   const { loggingOut, logout } = useLogout();
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
 
@@ -26,6 +32,8 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
   const CARD_BASE =
     'border border-solid rounded-card backdrop-blur-[var(--surface-glass-blur)] mb-[14px] overflow-hidden';
   const CARD = `${CARD_BASE} border-line bg-surface-glass`;
+
+  const orgName = activeOrg?.displayName || accountUser?.org || null;
 
   // User info card — shown on both Electron and web if we have a token
   const userCard = accountUser && (
@@ -60,7 +68,7 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
         >MindsHub ↗</a>
       </div>
       {/* Extra rows for username / org if present */}
-      {(accountUser.username || accountUser.org) && (
+      {(accountUser.username || orgName) && (
         <div className="border-t border-x-0 border-b-0 border-solid border-line py-2.5 px-[18px] flex gap-5">
           {accountUser.username && (
             <div>
@@ -68,10 +76,10 @@ export default function AccountSection({ isSsoConnected = false, ssoError = '', 
               <div className="text-[13px] text-ink-2 font-[family-name:var(--font-mono)]">{accountUser.username}</div>
             </div>
           )}
-          {accountUser.org && (
+          {orgName && (
             <div>
               <div className="text-2xs font-semibold tracking-[0.07em] uppercase text-ink-4 mb-0.5">Organization</div>
-              <div className="text-[13px] text-ink-2">{accountUser.org}</div>
+              <div className="text-[13px] text-ink-2">{orgName}</div>
             </div>
           )}
         </div>

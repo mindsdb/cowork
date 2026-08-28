@@ -12,6 +12,11 @@ vi.mock('./token-store', () => ({
   getRefreshToken: vi.fn(),
   clearTokens: vi.fn(),
   getTokenStoreVersion: vi.fn(),
+  // A successful refresh hands the new token to the sidecar, which reads it
+  // back from here. Omitting it makes that call reject unhandled rather than
+  // fail a test, which reads as four mystery errors on an otherwise green run.
+  getAccessToken: vi.fn(),
+  isAccessTokenExpired: vi.fn(() => false),
 }));
 
 import {

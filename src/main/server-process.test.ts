@@ -41,7 +41,7 @@ vi.mock('child_process');
 vi.mock('http');
 
 import { app } from 'electron';
-import { startServer, getServerDiagnostics, isServerRunning, stopServer } from './server-process';
+import { startServer, getServerDiagnostics, isServerRunning, stopServer, setServerStartedHook } from './server-process';
 
 const PORT = 27903;
 
@@ -399,5 +399,107 @@ describe('dev-mode uv resolution', () => {
     expect(result.ok).toBe(false);
     expect(result.reason).toContain('uv not found');
     expect(cp.spawn).not.toHaveBeenCalled();
+  });
+});
+
+describe('post-start credential hook', () => {
+  // The sidecar holds the MindsHub credential in memory, so every start comes
+  // up holding nothing. Before this hook existed only the app-launch path
+  // re-pushed, which is how a signed-in user landed on the "Connect a provider
+  // to start chatting" card after onboarding restarted the sidecar, after the
+  // sidebar's stop/start, and after every over-the-air sidecar update.
+  afterEach(async () => {
+    setServerStartedHook(null);
+    // Unconditional, not a trailing call in each test: the module keeps
+    // `serverStarted` across tests, so one failed assertion would leave the
+    // next test's start short-circuiting on an already-running server.
+    if (isServerRunning()) await stopServer();
+  });
+
+  /** Spawn a child that comes up healthy, the way a real start does. */
+  function spawnHealthy(): void {
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => { healthOwner = 'owner-token'; child.exitCode = 0; child.emit('exit', 0); }, 0);
+      return child as never;
+    }) as never);
+  }
+
+  it('re-establishes the credential on the start half of a stop/start', async () => {
+    const hook = vi.fn().mockResolvedValue(true);
+    setServerStartedHook(hook);
+
+    spawnHealthy();
+    await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+    expect(hook).toHaveBeenCalledTimes(1);
+
+    await stopServer();
+    spawnHealthy();
+    await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+
+    // The second start is the one that matters: the sidecar that went down took
+    // the credential with it.
+    expect(hook).toHaveBeenCalledTimes(2);
+  });
+
+  it('awaits the hook, so a caller reading /health sees a configured install', async () => {
+    /* A caller that reads config_ready as soon as `startServer` resolves sees a
+     * push still in flight as unconfigured, which is the bug from the caller's
+     * side.
+     *
+     * The gate is what pins it. Asserting a flag the hook sets would pass
+     * against a fire-and-forget call too, because the hook body runs to its
+     * first await either way — so that version of this test would go green on
+     * the refactor that reintroduces the bug. Entering the hook proves the
+     * start itself is done, which leaves the gate as the only thing holding
+     * `startServer` open. */
+    let entered = false;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    setServerStartedHook(async () => { entered = true; await gate; });
+
+    spawnHealthy();
+    const started = startServer({ port: PORT, readyTimeoutMs: 60_000 });
+    let resolved = false;
+    void started.then(() => { resolved = true; });
+
+    try {
+      await vi.waitFor(() => expect(entered).toBe(true));
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(resolved).toBe(false);
+    } finally {
+      release();
+    }
+
+    await started;
+    expect(resolved).toBe(true);
+  });
+
+  it('does not hand a credential to a start that failed', async () => {
+    const hook = vi.fn();
+    setServerStartedHook(hook);
+
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => { child.exitCode = 1; child.emit('exit', 1); }, 0);
+      return child as never;
+    }) as never);
+
+    const result = await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+
+    expect(result.ok).toBe(false);
+    expect(hook).not.toHaveBeenCalled();
+  });
+
+  it('still reports a successful start when the hand-over throws', async () => {
+    // A sidecar that is up is up. The hook reports its own failures; losing the
+    // start result would turn a recoverable push failure into a dead backend.
+    setServerStartedHook(async () => { throw new Error('loopback refused'); });
+
+    spawnHealthy();
+    const result = await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+
+    expect(result.ok).toBe(true);
+    expect(isServerRunning()).toBe(true);
   });
 });

@@ -83,6 +83,11 @@ const EVENTS = {
   HARNESS_SWAPPED:          'harness_swapped',          // { from, to }
   APP_INSTALLED:            'app_installed',            // {}  desktop, once per install
   BOOT_SCREEN_RESOLVED:     'boot_screen_resolved',     // { target, anton_installed, server_deps_ready } desktop, per launch (ENG-921)
+  // Every failed turn, not just the first (first_response is once-per-user).
+  // `code` is the wire code (anton_error when nothing more specific was
+  // classified); `model`/`provider_label` only ride along when the failure
+  // event names one (the model-403/404 and provider-auth families).
+  CHAT_TURN_FAILED:         'chat_turn_failed',         // { conversation_id?, code, model?, provider_label?, request_id? }
 };
 
 const POSTHOG_HOST = 'https://us.i.posthog.com';
@@ -530,6 +535,31 @@ export function trackAgentSessionStarted() {
 // before relabelling any of them.
 export function trackTokenCapHit(reason) {
   capture(EVENTS.TOKEN_CAP_HIT, { reason: reason || 'token_limit' });
+}
+
+// Fired on every chat-stream turn that lands in an error state, so the rate is a
+// measurable series instead of an anecdote. `event` is the same failure-meta
+// object the error bubble renders from — pull whatever it carries rather than
+// widening call sites just for telemetry. `code` defaults to 'unknown' (never
+// dropped) so an event with no code is still countable; `model`/`provider_label`
+// only ride along when the failure named one.
+//
+// `conversationId` is dropped when it's still the client-side placeholder a
+// brand-new task starts under (`tmp-...` / `tmp-connect-...`, before the
+// server's canonical id has been adopted) — sending it would look like a real
+// id but can't be pinned to any server log, which is the whole point of
+// carrying it.
+export function trackTurnFailed(conversationId, event) {
+  const isPlaceholderId = typeof conversationId === 'string' && conversationId.startsWith('tmp-');
+  capture(EVENTS.CHAT_TURN_FAILED, {
+    conversation_id: (conversationId && !isPlaceholderId) ? conversationId : undefined,
+    code: event?.code || 'unknown',
+    model: event?.model || undefined,
+    provider_label: event?.provider_label || undefined,
+    // The remote turn's own correlation id (cowork-server) — joins this row
+    // to the server-side log line for the same turn.
+    request_id: event?.request_id || undefined,
+  });
 }
 
 // The desktop sent the user to the console billing page (ENG-1533). Fired at

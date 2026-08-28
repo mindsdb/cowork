@@ -42,7 +42,7 @@ import { harnessLabel } from '../lib/agentLabel';
 import { artifactOpenTarget } from '../lib/artifactActions';
 import { revalidate as revalidateArtifacts, setArtifactsScope, useArtifactLiveness } from '../lib/artifactsStore';
 import { useOrgMode } from '../../lib/orgMode';
-import { modelLabel } from '../lib/settingsTransform';
+import { displayModelLabel } from '../lib/settingsTransform';
 import { providerOverloadedButtons } from '../lib/turnErrorActions';
 import { isSkippedFailedAssistant, isOrphanUser as isOrphanUserPure, lastVisibleTurnIdx } from '../lib/turnVisibility';
 import { isThinkingActive } from '../lib/thinkingActive';
@@ -426,28 +426,24 @@ function TextBlock({ text, id, complete = true, conversationId = null }) {
 // Convert an artifact step (from the SSE adapter, badge='Artifact')
 // into the shape ArtifactCard expects. Used to render inline cards
 // at the end of an assistant turn — like mdb-ai surfaces results.
-function artifactStepToCard(step, projectPath) {
+export function artifactStepToCard(step, projectPath) {
   const data = step.data || {};
   const path = data.file_path || data.path || '';
   // Lower-cased extension (no leading dot) for HTML detection downstream.
   const ext = (path.match(/\.([a-z0-9]+)$/i)?.[1] || '').toLowerCase();
   const card = normalizeArtifactRecord({
+    // Preserve the complete server card that the stream adapter stored. In
+    // particular, id + draftUrl + capabilities are what make the
+    // immediately opened viewer editable and reviewable. Keeping the payload
+    // whole also prevents each new artifact field from requiring another
+    // fragile pass-through list here.
+    ...data,
     title: data.title || step.label || 'Artifact',
     kind: data.action ? `${data.action}` : 'live artifact',
     icon: 'doc',
     path,
     file_path: path,
     ext: ext ? `.${ext}` : '',
-    // Second hand-written field list this card passes through (the adapter's
-    // step.data is the first). Both have to carry identity and publish state or
-    // the card cannot open, address or delete the artifact in org mode, where
-    // there is no path-based fallback to hide the omission.
-    id: data.id || '',
-    slug: data.slug || '',
-    publishedUrl: data.publishedUrl || '',
-    projectId: data.projectId || '',
-    projectName: data.projectName || '',
-    serveUrl: data.serveUrl || '',
     preview: [],
   }, projectPath);
   return {
@@ -604,7 +600,10 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
   const { src: thumbSrc } = useBlobImageSrc({ url: isImage ? (artifactServeUrl(artifact) || null) : null });
   const published = !!artifact.publishedUrl;
   const openTarget = artifactOpenTarget({
-    orgMode, published, canPreviewInline, hasBridge: host.isElectron || !host.isWeb,
+    orgMode,
+    published,
+    canPreviewInline,
+    hasBridge: host.isElectron || !host.isWeb,
   });
   // Export is hidden pending ENG-1988: PDF/DOCX conversion is broken for any
   // artifact beyond a plain markdown report (crashes, dumps raw JS into the
@@ -646,8 +645,9 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
       return;
     }
     if (openTarget === 'published') {
-      // The published URL is the ONLY route to this artifact's bytes on an org
-      // deployment, and it carries the access check.
+      // The published URL is the only route to this artifact's bytes a CLICK has
+      // on an org deployment, and it carries the access check. The private draft
+      // preview is reachable there too — from the artifacts gallery's '...' menu.
       try { host.openExternal(artifact.publishedUrl); }
       catch { window.open(artifact.publishedUrl, '_blank', 'noreferrer'); }
       return;
@@ -726,7 +726,7 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
   // two it's about to do.
   const primaryAction = orgMode
     ? (openTarget === 'published'
-      ? { label: 'Open', onClick: handleOpen, tooltip: 'Open the published artifact' }
+      ? { label: 'Open', onClick: handleOpen, tooltip: 'Open the shared artifact' }
       : null)
     : canPreviewInline
       ? { label: 'Preview', onClick: handleOpen, tooltip: canAct ? `Preview ${path}` : '' }
@@ -908,8 +908,9 @@ function StreamCursor() {
 // composed via ProgressBox / WorkingFolderBox / ContextBox.
 
 
-// Wait for the sidecar to come back after mindshubFinalize restarts it, so we
-// don't tell the user to resend into a cold server (any 200 from /health = up).
+// Wait for the sidecar to be answering before telling the user to resend, so
+// the resend doesn't hit a cold server (any 200 from /health = up). Signing in
+// used to restart it; it no longer does, but it still starts one that died.
 async function waitForServerReady(timeoutMs = 8000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
@@ -1090,9 +1091,9 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
         // No usable session to re-provision from → full sign-in.
         res = await host.mindshubLogin();
       }
-      if (res?.ok || res?.apiKey) {
-        // finalize restarts the sidecar — wait until it's back so the resend
-        // doesn't hit a cold server.
+      if (res?.ok) {
+        // finalize no longer restarts the sidecar, but it does start one that
+        // died, so wait for health before telling the user to resend.
         await waitForServerReady();
         setDone(true);
       } else {
@@ -1166,13 +1167,19 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
  * wallet (ENG-1304). Top up balance is just a billing link (host.openExternal
  * window.opens on web); Open Settings routes there on both shells.
  */
-export function ModelUnavailableCard({ time, agentLabel, onOpenSettings, code, failedModel, onSwitchToAir }) {
-  // modelLabel finishes multi-part ids (Claude Sonnet, GPT-5.5 Mini) and
-  // deliberately lowercases some heads (o4 Mini) — never re-case those. Only a
-  // bare single-token alias ("sonnet") comes back lowercase, and it reads
-  // better capitalized in the title. So capitalize single-word labels only,
-  // leaving anything modelLabel already spaced/cased untouched.
-  const raw = modelLabel(failedModel) || failedModel || 'This model';
+export function ModelUnavailableCard({
+  time, agentLabel, onOpenSettings, code, failedModel, onSwitchToAir, modelLabels,
+}) {
+  // Same naming rule as the picker (ENG-1638): MindsHub's catalog label when we
+  // hold one, else the id-derived form. This card used to call the bare
+  // prettifier, so the row the user had just picked as "MindsHub Air" came back
+  // as "Mindshub air needs credits" — the same model named two ways on one
+  // screen. displayModelLabel finishes multi-part ids (Claude Sonnet, GPT-5.5
+  // Mini) and deliberately lowercases some heads (o4 Mini) — never re-case
+  // those. Only a bare single-token alias ("sonnet") comes back lowercase, and
+  // it reads better capitalized in the title. So capitalize single-word labels
+  // only, leaving anything already spaced/cased untouched.
+  const raw = displayModelLabel(failedModel, modelLabels) || failedModel || 'This model';
   const label = /\s/.test(raw) ? raw : raw.charAt(0).toUpperCase() + raw.slice(1);
   const denied = code === 'model_access_denied';
   // One handler for both button rows, so the recorded trigger always matches the
@@ -1290,12 +1297,20 @@ export default function ChatView({
   project,
   model,
   onModelChange,
+  // Reasoning-effort pick for the current model (ENG-1940) — sibling to
+  // model/onModelChange, same optionality: a caller that omits these just
+  // never sees the EffortSelect pill (Composer defaults `effort` to '').
+  effort,
+  onEffortChange,
   // Full catalog for the model picker (ENG-1656: task view can change its
   // model, not just display it). Falls back to a single-item list of just
   // the current model when omitted, so existing callers/tests that don't
   // pass these keep working exactly as before — a flat, unpickable menu.
   models,
   modelMeta,
+  // Catalog display labels by id (settings.modelLabels), so failure cards name
+  // a model exactly as the picker does (ENG-1638).
+  modelLabels,
   attachments,
   connectors,
   onAttachFiles,
@@ -2016,6 +2031,7 @@ export default function ChatView({
                       onOpenSettings={onOpenSettings}
                       code={m.code}
                       failedModel={m.failedModel}
+                      modelLabels={modelLabels}
                       onSwitchToAir={
                         onSwitchToAirAndResend && deniedPrevUserText
                           ? () => onSwitchToAirAndResend(deniedPrevUserText)
@@ -2409,6 +2425,8 @@ export default function ChatView({
             onProjectChange={() => {}}
             model={model}
             onModelChange={onModelChange || (() => {})}
+            effort={effort}
+            onEffortChange={onEffortChange || (() => {})}
             projects={[]}
             models={models || (model ? [model] : [])}
             modelMeta={modelMeta}
@@ -2505,6 +2523,8 @@ export default function ChatView({
         <WorkingFolderBox
           project={project}
           isStreaming={isStreaming}
+          conversationId={task?.id || null}
+          onAddressWithAgent={({ prompt }) => onSend?.(prompt)}
         />
         <ContextBox
           project={project}
@@ -2539,6 +2559,8 @@ export default function ChatView({
         artifact={previewArt}
         onClose={() => setPreviewArt(null)}
         onChange={(updated) => setPreviewArt(updated)}
+        conversationId={task?.id || null}
+        onAddressWithAgent={({ prompt }) => onSend?.(prompt)}
       />
 
       {/* Data-vault connection form — rendered as a centered modal
