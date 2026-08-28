@@ -134,6 +134,23 @@ describe('syncMindsCredential', () => {
     await syncMindsCredential();
     expect(JSON.parse(calls[0].body as string)).toEqual({ value: 'mdb_users_own' });
   });
+
+  it('never rejects, because two callers start it with void', async () => {
+    // The refresh path and the invalid-grant path both fire this without
+    // awaiting, so a rejection surfaces as an unhandled promise rejection in
+    // the main process rather than as a failed push.
+    (getMindsApiKey as Mock).mockRejectedValue(new Error('keychain exploded'));
+    installFetch();
+    await expect(syncMindsCredential()).resolves.toBe(true);
+  });
+
+  it('falls back to the session token when the keychain cannot be read', async () => {
+    // Both stores failing must not cost a signed-in user their credential too.
+    (getMindsApiKey as Mock).mockRejectedValue(new Error('no secret service'));
+    const calls = installFetch();
+    await syncMindsCredential();
+    expect(JSON.parse(calls[0].body as string)).toEqual({ value: 'session-token' });
+  });
 });
 
 describe('a user-supplied key', () => {

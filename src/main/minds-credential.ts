@@ -40,8 +40,16 @@ const PUSH_TIMEOUT_MS = 10_000;
  * run on it even while they are also signed in.
  */
 export async function resolveMindsCredential(): Promise<string | null> {
-  const supplied = await getMindsApiKey();
-  if (supplied) return supplied;
+  try {
+    const supplied = await getMindsApiKey();
+    if (supplied) return supplied;
+  } catch (error) {
+    // A keychain that cannot be read must not cost a signed-in user their
+    // session credential too. keychain-service already falls back to its
+    // encrypted file when keytar throws, so reaching here means both stores
+    // failed — fall through and present the token rather than nothing.
+    console.warn('[minds-credential] could not read the stored key', error);
+  }
   return getAccessToken();
 }
 
@@ -78,7 +86,16 @@ export async function pushMindsCredential(value: string | null): Promise<boolean
   }
 }
 
-/** Resolve the current credential and push it. The one call every trigger uses. */
+/**
+ * Resolve the current credential and push it. The one call every trigger uses.
+ *
+ * Never rejects, and there is no try/catch here doing it: both halves already
+ * swallow their own failures, so adding one would be a branch nothing can
+ * reach. That matters because two callers start this with `void` — the refresh
+ * path and the invalid-grant path, neither of which can usefully wait — so a
+ * rejection would surface as an unhandled rejection in the main process rather
+ * than as a failed push. `minds-credential.test.ts` pins the contract.
+ */
 export async function syncMindsCredential(): Promise<boolean> {
   return pushMindsCredential(await resolveMindsCredential());
 }
