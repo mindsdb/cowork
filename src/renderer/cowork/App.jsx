@@ -2939,12 +2939,20 @@ function AppCore() {
   };
 
   // Send inside an existing task
+  //
+  // Answers `true` when the text is on its way — a stream started, or it was
+  // queued behind the turn already running — and `false` when nothing was sent.
+  // Same contract as handleSendFromHome, and the artifact viewer depends on it:
+  // addressing a comment with the agent mints the repair record BEFORE sending
+  // and cancels it on `false`. Without that answer a repair whose prompt never
+  // left the composer sits `queued` forever, polling, showing "Agent is
+  // thinking…" for a turn that will never run.
   const handleSendInTask = async (text, queuedAttachments = null, opts = {}) => {
     // opts.targetTask lets the queue drain re-send to a specific task the
     // user may not currently be viewing (ENG-1378); a fresh composer send
     // defaults to the task on screen.
     const targetTask = opts.targetTask || currentTask;
-    if (!targetTask) return;
+    if (!targetTask) return false;
     const id = targetTask.id;
 
     // Preflight: same gate as handleSendFromHome. Append the user's
@@ -2967,7 +2975,7 @@ function AppCore() {
       // Only a fresh send owns the live composer's attachments; a drained
       // queued item must not clear the composer of whatever task is on screen.
       if (queuedAttachments == null) setComposerAttachments([]);
-      return;
+      return false;
     }
 
     // A pending question owns the composer: typed text is the answer, not a
@@ -3003,7 +3011,9 @@ function AppCore() {
             : `Your ${orphaned.length} files were not sent — the agent asked a question first. They are still attached.`,
         });
       }
-      return;
+      // The text became the answer to the agent's question, so it did not start
+      // a turn of its own — a caller waiting on this prompt gets `false`.
+      return false;
     }
     if (answerOutcome.action === 'fail' || answerOutcome.action === 'blocked') {
       // Two mechanisms, both already used in this file: a toast so the user
@@ -3060,7 +3070,9 @@ function AppCore() {
         opts.disabledConnections != null ? opts.disabledConnections : composerDisabledConnections,
       );
       if (queuedAttachments == null) setComposerAttachments([]);
-      return;
+      // Queued counts as sent: the drain runs it when the slot frees, so a
+      // repair waiting on this prompt will get its turn.
+      return true;
     }
     // Synchronous reservation so a second invocation that fires
     // before our awaits resolve sees us as "in flight."
@@ -3343,6 +3355,9 @@ function AppCore() {
         })();
       },
     });
+    // The stream is running; whatever happens to it now is reported through the
+    // callbacks above, not through this return value.
+    return true;
   };
 
   // Drain the next queued message once the single stream slot is free.

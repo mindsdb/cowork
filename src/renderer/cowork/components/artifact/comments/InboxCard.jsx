@@ -160,8 +160,15 @@ export function InboxCard({
       )}
 
       {/* Owner decisions stay visible: they are the point of this inbox, and
-          must remain reachable without hover on touch and keyboard. */}
-      {canResolve && <div
+          must remain reachable without hover on touch and keyboard.
+
+          Deleting your own comment is not an owner decision — the comments
+          service authorizes it by authorship (403 "not author") — so `mine`
+          keeps the cluster alive on its own. Gating the whole thing on
+          `canResolve` also took Delete away from the owner whenever the service
+          answers without `capabilities` at all (an inference deployment
+          predating #465), and the client has no business being stricter. */}
+      {(canResolve || mine) && <div
         className="artifact-comment-actions"
         onClick={(event) => event.stopPropagation()}
       >
@@ -174,16 +181,18 @@ export function InboxCard({
             {Ico.sparkle(13)} Address with agent
           </button>
         )}
-        <Tooltip content={resolved ? 'Reopen comment' : 'Resolve comment'}>
-          <button
-            type="button"
-            aria-label={resolved ? 'Reopen' : 'Mark as resolved'}
-            className="artifact-comment-secondary-action"
-            onClick={() => onStatus?.(thread.id, resolved ? 'open' : 'resolved')}
-          >
-            <CheckCircleIcon /> <span>{resolved ? 'Reopen' : 'Resolve'}</span>
-          </button>
-        </Tooltip>
+        {canResolve && (
+          <Tooltip content={resolved ? 'Reopen comment' : 'Resolve comment'}>
+            <button
+              type="button"
+              aria-label={resolved ? 'Reopen' : 'Mark as resolved'}
+              className="artifact-comment-secondary-action"
+              onClick={() => onStatus?.(thread.id, resolved ? 'open' : 'resolved')}
+            >
+              <CheckCircleIcon /> <span>{resolved ? 'Reopen' : 'Resolve'}</span>
+            </button>
+          </Tooltip>
+        )}
         {mine && (
           <OverflowMenu
             label="More"

@@ -253,8 +253,16 @@ export function useArtifactWorkspace(artifact, { open, onChange } = {}) {
       return next;
     } catch (saveError) {
       if (workspaceGeneration.current !== generation) return null;
-      if (saveError?.status === 409) {
-        setConflict(saveError.detail?.currentRevision || saveError.detail || true);
+      // Two different 409s land here. A stale revision carries the current one
+      // in `detail`, and the conflict banner's Discard / Reload is the answer to
+      // it. An artifact identity conflict — two folders on disk claiming the
+      // same id, e.g. a copied folder or a sync tool's "conflicted copy" —
+      // answers a bare string, and reloading cannot resolve that. Labelling it
+      // "this draft changed elsewhere" sends the user to reload forever, so it
+      // takes the error path and says what the server said.
+      const staleRevision = saveError?.detail?.currentRevision;
+      if (saveError?.status === 409 && staleRevision) {
+        setConflict(staleRevision);
         setStatus('conflict');
       } else {
         setError(saveError.message || 'Could not save changes');

@@ -209,6 +209,33 @@ describe.each([
   });
 });
 
+describe('grid view preview item on desktop', () => {
+  // The viewer renders images (ENG-1998) and this menu is the only way to reach
+  // that: a click on an image card hands the file to the OS. Gating the item on
+  // the text/iframe predicate alone dropped them.
+  it('keeps Preview for an image', () => {
+    localStorage.setItem('anton:artifacts-view', 'grid');
+    setOrgMode(false);
+    render(<ArtifactsView artifacts={[{ ...imageDraft, draftUrl: '' }]} />);
+    openKebab();
+    expect(screen.getByText('Preview')).toBeInTheDocument();
+  });
+
+  it('offers no Preview for a type the viewer cannot render', () => {
+    localStorage.setItem('anton:artifacts-view', 'grid');
+    setOrgMode(false);
+    render(<ArtifactsView artifacts={[{
+      ...published,
+      title: 'Scratch script',
+      ext: '.py',
+      path: '/proj/.anton/artifacts/scratch/main.py',
+      publishedUrl: '',
+    }]} />);
+    openKebab();
+    expect(screen.queryByText('Preview')).toBeNull();
+  });
+});
+
 describe('list view preview item on desktop', () => {
   // The first item is already the viewer entry there ("Open viewer"), so a
   // second one would be the same action twice.

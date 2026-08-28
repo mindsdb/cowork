@@ -18,6 +18,10 @@ import {
   unpublishArtifact,
   artifactServeUrl,
 } from '../../api';
+// Only the feedback notice near the bottom of this file still draws an icon
+// here; the rest of the chrome moved to ArtifactViewerHeader/Body and took the
+// import with it, which left that one call site referencing nothing.
+import Ico from '../Icons';
 import { deleteArtifactAndSync } from '../../lib/artifactsStore';
 import { needsClientUnpublishBeforeDelete } from '../../lib/artifactActions';
 import { downloadArtifactFile } from '../../lib/artifactDownload';

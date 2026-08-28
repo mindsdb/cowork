@@ -1,4 +1,5 @@
 import { authFetch, BASE } from '../api';
+import { host } from '../../platform/host';
 import { artifactIdentity } from './artifactIdentity';
 
 function artifactRef(artifact) {
@@ -39,8 +40,10 @@ export function canUseArtifactWorkspace(artifact) {
 
 export async function loadArtifactDraftText(draftUrl) {
   if (!draftUrl) throw new Error('Artifact has no private draft URL');
-  const apiOrigin = BASE.replace(/\/api\/v1\/?$/, '');
-  const url = /^https?:\/\//i.test(draftUrl) ? draftUrl : `${apiOrigin}${draftUrl}`;
+  // The same origin `BASE` is built from — asking the host beats stripping the
+  // path back off with a regex, and it is what ArtifactViewer already uses to
+  // absolutize this very URL for the preview iframe.
+  const url = /^https?:\/\//i.test(draftUrl) ? draftUrl : `${host.getApiOrigin()}${draftUrl}`;
   const response = await authFetch(url);
   if (!response.ok) {
     throw new Error(`Could not load private draft (${response.status})`);

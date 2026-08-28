@@ -26,7 +26,7 @@ import { isArtifactActionAvailable, needsClientUnpublishBeforeDelete } from '../
 import { deleteArtifactAndSync } from '../lib/artifactsStore';
 import { useOrgMode } from '../../lib/orgMode';
 import { downloadArtifactFile } from '../lib/artifactDownload';
-import { isHtmlArtifact, isPublishableArtifact, isBackendArtifact } from '../lib/artifactKinds';
+import { isHtmlArtifact, isPublishableArtifact, isBackendArtifact, isImageArtifact } from '../lib/artifactKinds';
 import { trackArtifactPublished } from '../lib/analytics';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
 import { ArtifactViewer } from '../components/artifact';
@@ -97,11 +97,19 @@ function isInlinePreviewable(a) {
   return false;
 }
 
-// What org mode can preview from the authenticated draft URL: exactly what
-// Desktop renders from bytes, minus fullstack apps. Their preview needs the
-// loopback proxy only Desktop has, so offering it would open a window that can
-// only fail. Images fall out on their own — they are not inline-previewable,
-// and the viewer loads them from /artifacts/serve, which org tenancy refuses.
+// Everything the viewer has a renderer for locally. Images are counted
+// separately from isInlinePreviewable because they never went through its
+// text/iframe paths: the viewer fetches them from the artifact's serve URL
+// (ENG-1998), which exists on Desktop and not in org mode.
+function canPreviewLocally(a) {
+  return isInlinePreviewable(a) || isImageArtifact(a);
+}
+
+// What org mode can preview from the authenticated draft URL: what Desktop
+// renders from bytes, minus fullstack apps and images. A fullstack preview needs
+// the loopback proxy only Desktop has, and an image would be fetched from
+// /artifacts/serve, which org-mode tenancy refuses — offering either would open
+// a window that can only fail.
 function canPreviewOrgDraft(a) {
   return !!a?.draftUrl && !isBackendArtifact(a) && isInlinePreviewable(a);
 }
@@ -1045,7 +1053,10 @@ export default function ArtifactsView({
               onClick: () => handlePublish(a),
             });
           }
-          if (orgMode ? canPreviewOrgDraft(a) : isInlinePreviewable(a)) {
+          // Desktop keeps images here — the viewer renders them, and this menu
+          // used to be the only way in (a click on an image card hands the file
+          // to the OS instead, which is what it did before this branch too).
+          if (orgMode ? canPreviewOrgDraft(a) : canPreviewLocally(a)) {
             items.push({
               id: 'preview',
               label: 'Preview',

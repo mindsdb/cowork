@@ -8,6 +8,7 @@ const api = vi.hoisted(() => ({
   loadArtifactRevision: vi.fn(),
   loadArtifactSource: vi.fn(),
   loadArtifactRevisions: vi.fn(),
+  saveArtifactSource: vi.fn(),
 }));
 
 vi.mock('../../../../platform/host', () => ({ host: platform }));
@@ -25,7 +26,7 @@ vi.mock('../../../lib/artifactWorkspaceApi', () => ({
   loadArtifactRevision: (...args) => api.loadArtifactRevision(...args),
   requestAgentRepair: vi.fn(),
   restoreArtifactRevision: vi.fn(),
-  saveArtifactSource: vi.fn(),
+  saveArtifactSource: (...args) => api.saveArtifactSource(...args),
 }));
 
 import { useArtifactWorkspace } from './useArtifactWorkspace';
@@ -77,6 +78,55 @@ beforeEach(() => {
   });
   api.loadArtifactSource.mockReset().mockResolvedValue(source);
   api.loadArtifactRevisions.mockReset().mockResolvedValue({ revisions: [] });
+  api.saveArtifactSource.mockReset();
+});
+
+// The server answers 409 for two unrelated situations, and only one of them is
+// something the user can resolve by reloading.
+describe('useArtifactWorkspace save conflicts', () => {
+  const editConflict = () => {
+    const error = new Error('Artifact changed since it was loaded');
+    error.status = 409;
+    error.detail = { message: 'stale', currentRevision: { id: 'rev-2' } };
+    return error;
+  };
+
+  const identityConflict = () => {
+    const error = new Error('Two artifacts share id 7db94eb8…: pick one and remove the other');
+    error.status = 409;
+    error.detail = 'Two artifacts share id 7db94eb8…: pick one and remove the other';
+    return error;
+  };
+
+  const openAndEdit = async () => {
+    const { result } = renderHook(() => useArtifactWorkspace(artifact, { open: true }));
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+    act(() => result.current.setDraft('<h1>Edited</h1>'));
+    return result;
+  };
+
+  it('offers the reload banner for a stale revision', async () => {
+    api.saveArtifactSource.mockRejectedValue(editConflict());
+    const result = await openAndEdit();
+
+    await act(() => result.current.save());
+
+    expect(result.current.status).toBe('conflict');
+    expect(result.current.conflict).toEqual({ id: 'rev-2' });
+  });
+
+  it('reports an identity conflict as an error instead', async () => {
+    // Reloading cannot resolve two folders claiming one id, so the banner must
+    // not tell the user to reload — it has to say what the server said.
+    api.saveArtifactSource.mockRejectedValue(identityConflict());
+    const result = await openAndEdit();
+
+    await act(() => result.current.save());
+
+    expect(result.current.status).toBe('error');
+    expect(result.current.conflict).toBeNull();
+    expect(result.current.error).toContain('share id');
+  });
 });
 
 describe('useArtifactWorkspace collaboration transport', () => {
