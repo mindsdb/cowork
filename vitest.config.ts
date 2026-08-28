@@ -35,6 +35,12 @@ export default defineConfig({
         // guard still fires.
         'src/renderer/cowork/lib/artifactLiveness.js': { statements: 97, branches: 91 },
         'src/renderer/cowork/lib/artifactsStore.js': { statements: 85, branches: 74 },
+        // The MindsHub credential hand-over. Nothing about it is visible at
+        // runtime — a push that silently stops happening looks exactly like a
+        // signed-out app — so the branch table is the only thing that proves
+        // the sidecar-down, refusal and network-failure paths still return
+        // false instead of throwing, and that sign-out clears both stores.
+        'src/main/minds-credential.ts': { statements: 100, branches: 100 },
         // The workspace selector's two pure modules. Both are entirely
         // fail-closed logic: the hook decides whether a surface appears at all
         // and drops a read that resolved for the previous account, and the tile

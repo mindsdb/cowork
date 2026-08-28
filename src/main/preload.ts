@@ -64,6 +64,7 @@ contextBridge.exposeInMainWorld('antontron', {
   mindshubRefresh: () => ipcRenderer.invoke(IPC.MINDSHUB_REFRESH),
   mindshubFinalize: (organizationId?: string) => ipcRenderer.invoke(IPC.MINDSHUB_FINALIZE, organizationId),
   mindshubGetCachedToken: () => ipcRenderer.invoke(IPC.MINDSHUB_GET_CACHED_TOKEN),
+  mindshubSetUserKey: (key: string) => ipcRenderer.invoke(IPC.MINDSHUB_SET_USER_KEY, key),
   mindshubListOrgs: () => ipcRenderer.invoke(IPC.MINDSHUB_LIST_ORGS),
   mindshubSwitchOrg: (organizationId: string) => ipcRenderer.invoke(IPC.MINDSHUB_SWITCH_ORG, organizationId),
   // Fires whenever the MindsHub session state changes in the main

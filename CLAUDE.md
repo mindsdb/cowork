@@ -194,7 +194,9 @@ Three independently-versioned pieces update through three mechanisms, orchestrat
 
 ### User config
 
-Settings live in `~/.anton/.env` (API keys, consent flags, provider choice). Server state: `~/.anton/cowork/state.json`.
+Settings live in `~/.cowork/.env` (provider API keys, consent flags, provider choice); `~/.anton/.env` is the legacy home, still read as a fallback and migrated once into `~/.cowork`. Server state: `~/.cowork/state.json`.
+
+**The MindsHub credential is not among them.** The app writes none to disk: the sidecar is handed the user's access token (or a key they supplied, which lives in the OS keychain) over loopback at runtime, and re-handed it on every sidecar start. See [MindsHub credentials](README.md#mindshub-credentials) and `src/main/minds-credential.ts`.
 
 ### Theming
 

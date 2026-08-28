@@ -404,10 +404,24 @@ export default function OnboardingScreen({
         return;
       }
 
+      // The key goes to the main process, which stores it in the OS keychain
+      // and hands it to the sidecar at runtime. Writing it as an env line here
+      // would put a long-lived bearer back in `~/.cowork/.env`, which is the
+      // thing this whole path exists to stop.
+      //
+      // The web shell has no main process to route it to, so it keeps writing
+      // the line: there the server holds the credential either way, and the
+      // runtime hand-over is a desktop mechanism.
+      const stored = await host.mindshubSetUserKey(apiKey.trim());
+      if (stored.supported && !stored.ok) {
+        setPhase('error');
+        setErrorMsg(stored.reason || 'Could not save the MindsHub key.');
+        return;
+      }
       const mindsLines = [
         'ANTON_TERMS_CONSENT=true',
         `ANTON_MINDS_ENABLED=true`,
-        `ANTON_MINDS_API_KEY=${apiKey.trim()}`,
+        ...(stored.supported ? [] : [`ANTON_MINDS_API_KEY=${apiKey.trim()}`]),
         `ANTON_MINDS_URL=${mindsBase}`,
       ];
 
@@ -578,7 +592,7 @@ export default function OnboardingScreen({
 
   const mintMindsKey = async (organizationId?: string) => {
     setPhase('validating');
-    let finalizeResult: { ok: boolean; reason?: string; upgradeRequired?: boolean; apiKey?: string; organization?: MindsOrg };
+    let finalizeResult: { ok: boolean; reason?: string; upgradeRequired?: boolean; organization?: MindsOrg };
     try {
       finalizeResult = await host.mindshubFinalize(organizationId);
     } catch (e: any) {
@@ -586,8 +600,15 @@ export default function OnboardingScreen({
       setErrorMsg(`MindsHub setup failed: ${e?.message || 'Unexpected error. Please try again.'}`);
       return;
     }
-    // No LLM credits — account authenticated but key wasn't provisioned.
-    // Save terms consent and redirect to BYOK so the user can pick a provider.
+    // No LLM credits — account authenticated but the app could not set MindsHub
+    // up. Save terms consent and redirect to BYOK so the user can pick a
+    // provider.
+    //
+    // Nothing produces this any more: the refusal it detected came from the
+    // key mint, and the app no longer mints. A user with no entitlement now
+    // signs in and meets the gateway's top-up card on their first message
+    // instead. Kept because the branch costs nothing and the shape is still
+    // declared across the bridge.
     if (finalizeResult.upgradeRequired) {
       // ENG-1533: on the commonest path — first run — a provisioning refusal
       // shows no paywall at all, it offers BYOK. That is why the refusal is its
@@ -605,7 +626,10 @@ export default function OnboardingScreen({
       setErrorMsg(finalizeResult.reason || 'Failed to set up MindsHub. Please try again.');
       return;
     }
-    // Provider only — the backend resolves the default model on load.
+    // Provider only — the backend resolves the default model on load, and
+    // finalize hands the credential straight to the sidecar rather than
+    // returning one for us to write. There is deliberately no
+    // ANTON_MINDS_API_KEY line here any more.
     const lines = [
       'ANTON_TERMS_CONSENT=true',
       'ANTON_MINDS_ENABLED=true',
@@ -614,13 +638,6 @@ export default function OnboardingScreen({
       'ANTON_CODING_PROVIDER=minds-cloud',
     ];
     setMintedOrg(finalizeResult.organization ?? null);
-    if (finalizeResult.apiKey) {
-      // ENG-436: write ONLY the dedicated minds slot. minds-cloud
-      // resolves from minds_api_key/minds_url everywhere (main agent +
-      // scratchpad), so we no longer copy the minds key into the OpenAI
-      // slot — that left a user's own OpenAI key clobbered.
-      lines.push(`ANTON_MINDS_API_KEY=${finalizeResult.apiKey}`);
-    }
     await saveFinal(lines);
   };
 

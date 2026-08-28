@@ -251,7 +251,7 @@ assets/
 
 - **FastAPI sidecar**: The Electron main process manages the [`cowork-server`](https://github.com/mindsdb/cowork-server) Python FastAPI backend on `127.0.0.1:26866`, installed from [PyPI](https://pypi.org/project/cowork-server/) via `uv tool install`. The renderer communicates exclusively through this HTTP API — there is no PTY or terminal emulator.
 
-- **Minds integration**: The GUI replicates the `/connect` flow — lists minds via REST API, handles datasource selection (normalizes string/object refs), writes env vars to `~/.anton/.env`, and auto-restarts the server to pick up new config.
+- **Minds integration**: The GUI replicates the `/connect` flow — lists minds via REST API, handles datasource selection (normalizes string/object refs), and writes non-credential config to `~/.cowork/.env`. The MindsHub credential itself is never written there; see [MindsHub credentials](#mindshub-credentials).
 
 - **OTA updates**: The React UI and the Python backend update over-the-air (coupled, auto-applied at boot) without a new installer; the Electron shell auto-updates on stable/prod via `electron-updater`, installing on relaunch. See [Over-the-Air Updates](#over-the-air-updates).
 
@@ -340,8 +340,7 @@ The GUI provides a visual `/connect` flow:
 2. Lists available minds via `GET /api/v1/minds/`
 3. Handles datasource selection (auto-selects if only one)
 4. Fetches engine type via `GET /api/v1/datasources`
-5. Writes to `~/.anton/.env`:
-   - `ANTON_MINDS_API_KEY`
+5. Writes to `~/.cowork/.env`:
    - `ANTON_MINDS_URL`
    - `ANTON_MINDS_MIND_NAME`
    - `ANTON_MINDS_DATASOURCE`
@@ -349,6 +348,38 @@ The GUI provides a visual `/connect` flow:
    - `ANTON_MINDS_SSL_VERIFY`
 6. Writes mind's system prompt to project cortex
 7. Auto-restarts the server to pick up new config
+
+`ANTON_MINDS_API_KEY` is deliberately absent from that list — see below.
+
+## MindsHub credentials
+
+**The app writes no MindsHub credential to disk.** Signing in gets you a Keycloak
+session (Authorization Code + PKCE, refresh token in OS secure storage, access
+token in memory), and that access token is what the sidecar presents to the
+gateway. Auth's `/v1/authenticate/` accepts a JWT and an `mdb_` key alike,
+picking the branch from the token's shape.
+
+The sidecar is a separate process, so the value has to cross that boundary. It
+crosses over loopback rather than through a file: main holds it and PUTs it to
+`/api/v1/runtime-credential/minds`, which the sidecar keeps in memory and
+overlays onto its settings. `src/main/minds-credential.ts` owns that hand-over.
+
+Three consequences worth knowing:
+
+- **Every sidecar start needs a fresh hand-over.** Nothing persists the value, so
+  a launch, an auto-update and a crash restart each re-push it. The boot path in
+  `src/main/index.ts` and the token-refresh path in `src/main/minds-auth.ts` are
+  the two callers.
+- **A key you supply yourself goes to the OS keychain**, not to `.env` and not to
+  the sidecar's settings table. It wins over the session credential while it is
+  set. `mindshub:set-user-key` is the IPC channel that carries it.
+- **Signing out takes the credential away**, and an install upgrading from a
+  build that minted a per-device key is signed out once so that key can be
+  revoked while the session still names the organization it belongs to.
+
+A sidecar you start by hand, outside the app, therefore has no MindsHub
+credential. Set `ANTON_MINDS_API_KEY` yourself with a key minted in the console
+if you need one for that.
 
 ### The workspace group in the account menu
 
@@ -395,13 +426,14 @@ sidecar's own token, so the Keycloak JWT cannot arrive under that name.
 Attribution rides the credential a turn presents, and neither credential carries a
 workspace today.
 
-### Which organization the API key belongs to
+### Which organization a turn is billed to
 
-An `mdb_*` key belongs to whatever organization the JWT names at the moment it
-is minted, and auth's create endpoint takes no organization parameter, so the
-choice has to be made before the mint by switching the active organization
-first. The rules live in [src/shared/minds-orgs.ts](src/shared/minds-orgs.ts)
-and the calls in [src/main/minds-auth.ts](src/main/minds-auth.ts).
+The credential the sidecar presents is the user's own token, and the
+active-organization claim on it is what the gateway reads to decide whose
+credits a turn spends. So the choice is made by switching the active
+organization and re-rolling the token. The rules live in
+[src/shared/minds-orgs.ts](src/shared/minds-orgs.ts) and the calls in
+[src/main/minds-auth.ts](src/main/minds-auth.ts).
 
 Three things decide it, in order:
 
@@ -413,7 +445,8 @@ Three things decide it, in order:
    kept, so "the first company organization" means the same thing on every
    sign-in.
 3. **The claim the token already carried**, which used to be the whole answer.
-   That is how a key ended up wherever a console tab happened to be pointing.
+   That is how turns ended up billed wherever a console tab happened to be
+   pointing.
 
 `ensureActiveOrg` switches only when the answer differs from the claim, so an
 account with one organization makes no extra round-trip.
@@ -425,14 +458,13 @@ in the account menu rather than the rail because an organization is who pays;
 the workspace selector is a container inside one and lives above the New task
 CTA.
 
-**A switch moves the credential, and the order is what makes a failure
-harmless.** It mints and commits the new key BEFORE touching the old one, so
-every failure short of the last step is undone by switching back with no
-re-mint. The commit is the settings PUT rather than an env write and restart,
-so a turn already running keeps the key it started with. The old organization's
-key is retired only once the sidecar reports no turns in flight
-(`/api/v1/responses/in-flight-list`), because revoking mid-turn 401s the next
-tool call in a conversation someone is watching.
+**A switch is switch, refresh, hand over, and the order is what makes a failure
+harmless.** Every step short of the hand-over is undone by switching back, and
+the pick is only remembered once the sidecar has taken the new token — so a
+failure anywhere leaves the app on the organization it started in rather than
+half-moved. There is no key to mint, retire, or roll back: the old token simply
+expires on its own ten-minute clock, and a turn already running finishes on the
+credential it started with.
 
 **Naming the organization needs the listing, not the token.** The realm issues
 the claim as `activate_organization` and it carries no display name, so a

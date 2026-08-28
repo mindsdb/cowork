@@ -4,6 +4,7 @@ import { checkInstallStatus } from './installer';
 import { coworkHome, coworkEnvPath, coworkStatePath } from './cowork-home';
 import { getInstallationId } from './installation-id';
 import { authHeader } from './server-auth';
+import { pushMindsCredential, syncMindsCredential } from './minds-credential';
 import { retryOnTransientLock } from './fs-retry';
 import { isMindsBaseUrl } from '../shared/minds-endpoint';
 import { describeFetchError } from './fetch-error';
@@ -73,40 +74,6 @@ function antonKeyName(): string {
   return `${ANTON_KEY_NAME}:${getInstallationId()}`;
 }
 
-// ── Per-device key renewal decision (ENG-498) ─────────────────────
-//
-// The auth-service may stamp an absolute expiry on device keys
-// (API_KEYS__DEVICE_KEY_TTL_DAYS, auth #145). Renew when under this
-// fraction of the key's own lifetime remains — deriving the window from
-// created/expiry_date keeps the client correct for whatever TTL ops
-// picks, with no config knob. An already-expired key also renews (heal):
-// the laptop may have slept past the deadline, or expiry may have been
-// backfilled server-side before this client updated.
-const KEY_RENEWAL_LIFETIME_FRACTION = 0.25;
-
-// When the lifetime can't be derived (missing/garbled `created`, or
-// created >= expiry), fall back to a fixed window rather than never
-// renewing — a wrong-but-safe early renewal beats a 401 at the deadline.
-const KEY_RENEWAL_FALLBACK_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
-
-export function shouldRenewKey(
-  created: string | null | undefined,
-  expiryDate: string | null | undefined,
-  nowMs: number,
-): boolean {
-  if (!expiryDate) return false;
-  const expiryMs = Date.parse(expiryDate);
-  if (Number.isNaN(expiryMs)) return false;
-  const remainingMs = expiryMs - nowMs;
-  if (remainingMs <= 0) return true;
-  const createdMs = created ? Date.parse(created) : NaN;
-  const lifetimeMs = expiryMs - createdMs;
-  const windowMs = Number.isNaN(createdMs) || lifetimeMs <= 0
-    ? KEY_RENEWAL_FALLBACK_WINDOW_MS
-    : lifetimeMs * KEY_RENEWAL_LIFETIME_FRACTION;
-  return remainingMs < windowMs;
-}
-
 // Every auth-service / Keycloak request gets a hard deadline. Node's
 // fetch has none by default, so a black-holed connection would hang
 // the onboarding "TESTING LINK…" phase forever with no error to show.
@@ -138,9 +105,12 @@ export type TokenRefreshResult =
 // Refresh tokens only — no env writes, no server restart. Used during
 // onboarding (e.g. after Stripe checkout, when we re-check roles), from
 // the boot path, and on demand when the renderer asks for the access
-// token. The LLM env credential is a long-lived API key minted by the
-// auth-service and isn't tied to the JWT lifetime, so refreshing the
-// JWT never needs to touch env.
+// token.
+//
+// The access token IS the sidecar's gateway credential now, so a successful
+// exchange hands the new one over before returning (see the saveTokens call
+// below). That push is what keeps a running app working past the 10-minute
+// lifetime without a restart.
 //
 // Single-flight: concurrent callers (boot refresh + settings-open check
 // + the scheduled timer) share one Keycloak round-trip. Keycloak may be
@@ -180,7 +150,10 @@ async function doRefreshTokens(): Promise<TokenRefreshResult> {
         console.warn('[minds-auth] refresh token rejected (invalid_grant) — clearing session');
         clearTokens();
         cancelScheduledRefresh();
-        cancelKeyLifecycleChecks();
+        // The session is definitively dead, so take the sidecar's credential
+        // with it. Leaving it in place would let turns keep running on an
+        // access token that outlives the session by up to its own lifetime.
+        void pushMindsCredential(null);
         return { status: 'invalid_grant' };
       }
       console.warn(`[minds-auth] token refresh failed transiently (HTTP ${res.status}${oauthError ? `, ${oauthError}` : ''}) — keeping tokens`);
@@ -196,6 +169,11 @@ async function doRefreshTokens(): Promise<TokenRefreshResult> {
     }
     saveTokens(data.access_token, data.expires_in ?? 3600, data.refresh_token ?? refreshToken);
     scheduleRefresh(data.expires_in ?? 3600);
+    // Hand the fresh token to the sidecar. Not awaited for its answer beyond
+    // logging: a push that fails here is retried by the next refresh tick and
+    // by the sidecar-start path, and blocking the exchange on a loopback call
+    // would stall every caller that only wanted a token.
+    void syncMindsCredential();
     return { status: 'ok', token: data.access_token };
   } catch (e: any) {
     if (getTokenStoreVersion() !== tokenStoreVersion) return { status: 'superseded' };
@@ -551,45 +529,25 @@ export async function ensureActiveOrg(
   return { token: hasClaim ? accessToken : null, candidates, orgs, activeOrgId };
 }
 
-// ── API key provisioning ──────────────────────────────────────────
+// ── Key listing and revocation ────────────────────────────────────
 //
-// Calls the auth-service `/v1/api-keys/` endpoint with the JWT as a
-// Bearer credential. ENG-440: the key is minted under a per-device name
-// (`hub:anton:<installation_id>`), and we remove only a prior key with
-// that exact per-device name before re-minting — so re-onboarding on this
-// machine doesn't pile up dead keys, while a login on a *different* device
-// never revokes this one. The returned `key` is the actual `mdb_*` string
-// the LLM gateway expects. Returns null on any error so callers can
-// surface a user-visible message instead of writing a bad credential to
-// env.
+// Nothing here mints any more. The desktop presents the user's own session
+// credential, so the only reason to touch `/v1/api-keys/` is to clean up the
+// per-device keys earlier builds left behind: on sign-out, and once on the
+// first launch of a build that no longer mints.
+//
+// The per-device name is still `hub:anton:<installation_id>`, and matching it
+// exactly is still what stops one machine revoking another's.
 
-interface ApiKeyRecord {
-  key?: string;
-  name?: string;
-  prefix?: string;
-}
-
-export interface ProvisionResult {
-  // `mdb_*` API key on success.
-  key?: string;
-  // The minted key's prefix (identifies it for rollback in the renewal
-  // path — see commitRenewedKey).
-  prefix?: string;
-  // True iff the auth-service refused to mint an LLM key (402, or a body
-  // with `code: 'upgrade_required'`). Surfaced to the renderer so it can
-  // route — BYOK on first run, billing on reconnect — instead of treating
-  // this as a generic failure. Not a tier: see the mint call for what the
-  // current auth-service actually returns (ENG-1533).
-  upgradeRequired?: boolean;
-  // True iff the mint hit the account's active-key cap (HTTP 409). The
-  // renewal path treats this as "retry once, deleting own prior key".
-  limitReached?: boolean;
-  // Free-form error message for any other failure (network, auth
-  // expired, etc.). Renderer paints it on the welcome screen.
+export interface SelectedOrgResult {
+  // The token to present, carrying an active-organization claim. Absent when
+  // no organization could be selected, in which case `error` says why.
+  token?: string;
+  // Free-form message for the renderer to paint on the welcome screen.
   error?: string;
-  // Where the key actually landed. The ranking says where it should go, and
-  // the entitlement and personal-org fallbacks below can still move it, so
-  // onboarding names this rather than what it asked for.
+  // The organization the returned token names. The ranking says where it
+  // should land and the entitlement hunt can still move it, so onboarding
+  // displays this rather than what it asked for.
   organization?: MindsOrg;
 }
 
@@ -799,10 +757,6 @@ async function fetchAuthContext(accessToken: string): Promise<{
   }
 }
 
-function canCreateApiKeys(entitlements: any): boolean {
-  return entitlements?.permissions?.api_keys?.create === true;
-}
-
 function normalizeHubEntitlements(entitlements: any) {
   const permissions = entitlements?.permissions || {};
   const allocations = entitlements?.allocations || {};
@@ -811,9 +765,6 @@ function normalizeHubEntitlements(entitlements: any) {
       agents: {
         use: permissions?.agents?.use === true,
       },
-      api_keys: {
-        create: permissions?.api_keys?.create === true,
-      },
     },
     allocations: {
       deploy_agents: Number(allocations?.deploy_agents || 0),
@@ -821,38 +772,37 @@ function normalizeHubEntitlements(entitlements: any) {
   };
 }
 
-function requiresHubUpgrade(entitlements: any): boolean {
+// Whether this organization can actually run turns for the user. Formerly this
+// also required `api_keys.create`, because the app had to mint a key here; it
+// presents the user's own credential now, so the ability to create a key says
+// nothing about whether the account can use the product.
+function entitledToUseAnton(entitlements: any): boolean {
   const normalized = normalizeHubEntitlements(entitlements);
   return (
-    normalized.allocations.deploy_agents <= 0 ||
-    normalized.permissions.agents.use !== true
+    normalized.allocations.deploy_agents > 0 &&
+    normalized.permissions.agents.use === true
   );
 }
 
-function canUseAntonWithMinds(entitlements: any): boolean {
-  return canCreateApiKeys(entitlements) && !requiresHubUpgrade(entitlements);
-}
-
-export interface ProvisionOptions {
-  // Renewal (ENG-498) mints the replacement while the old key is still
-  // valid — in-flight sessions may hold it, and the TTL reaps it anyway —
-  // so it skips the delete. Sign-in keeps the default and stays tidy.
-  deleteExistingKey?: boolean;
-  // The organization a person picked during onboarding. Ignored unless they
-  // belong to it; honoured, it also becomes the pick this install remembers.
-  organizationId?: string;
-  // The organization this mint must land in, for a caller that has already
-  // switched the session there. Same membership check, but it records nothing:
-  // the caller stores the pick once the credential is committed.
-  pinOrgId?: string;
-}
-
-export async function provisionAntonApiKey(
+// Pick the organization the presented token will name, and return that token.
+//
+// The active-organization claim is not a nicety: auth's `/v1/authenticate/`
+// answers 401 outright for a JWT that carries no active organization, so a token
+// without one is refused at the gateway on every turn. `ensureActiveOrg` is what
+// guarantees it, and it also decides WHICH organization: company ones ahead of
+// personal, a pick the person made by hand ahead of the ranking.
+//
+// Beyond that, the claim decides whose credits a turn spends, so when the active
+// organization cannot run turns at all we look for one that can rather than
+// leaving the user signed in and unable to send a message. Lacking the
+// entitlement is NOT a sign-in blocker: if no organization qualifies we keep the
+// active one and let the gateway say so at the point of use, which is where the
+// top-up card is raised.
+export async function selectEntitledOrg(
   initialToken: string,
-  options: ProvisionOptions = {},
-): Promise<ProvisionResult> {
-  const { deleteExistingKey = true, organizationId, pinOrgId } = options;
-  const orgResult = await ensureActiveOrg(initialToken, { preferOrgId: organizationId, pinOrgId });
+  options: { preferOrgId?: string } = {},
+): Promise<SelectedOrgResult> {
+  const orgResult = await ensureActiveOrg(initialToken, { preferOrgId: options.preferOrgId });
   if (!orgResult.token) {
     return {
       error:
@@ -861,199 +811,73 @@ export async function provisionAntonApiKey(
     };
   }
   const accessToken = orgResult.token;
-  const initialPayload = decodeJwtPayload(accessToken);
-  const currentOrg = getActiveOrgFromPayload(initialPayload);
+  const currentOrg = getActiveOrgFromPayload(decodeJwtPayload(accessToken));
+  // Which organization a token ends up naming, for the caller to display. The
+  // ranking in ensureActiveOrg and the entitlement hunt below can each move it,
+  // so it is read back off the token rather than from what was asked for.
+  const namedOrg = (token: string): MindsOrg | undefined => {
+    const id = getActiveOrgFromPayload(decodeJwtPayload(token))?.id;
+    return id ? (orgResult.orgs || []).find((org) => org.id === id) : undefined;
+  };
 
   const ctx = await fetchAuthContext(accessToken);
-  let provisionToken = accessToken;
-  let provisionCtx = ctx;
-
-  if (!ctx.ok || !canUseAntonWithMinds(ctx.entitlements)) {
-    const tried = new Set<string>();
-    if (currentOrg?.id) tried.add(currentOrg.id);
-
-    // Try other orgs to find one where the user is fully entitled, so the
-    // minted key is scoped to the best org. If none qualifies we keep the
-    // active org and proceed anyway — lacking the HUB subscription is NOT
-    // a sign-in blocker.
-    for (const candidate of orgResult.candidates || []) {
-      if (!candidate?.id || tried.has(candidate.id)) continue;
-      tried.add(candidate.id);
-      const switched = await switchActiveOrg(provisionToken, candidate.id);
-      if (!switched) continue;
-      const refreshed = await refreshAfterOrgSwitch();
-      if (!refreshed) continue;
-      const candidateCtx = await fetchAuthContext(refreshed);
-      if (!candidateCtx.ok) continue;
-      if (canUseAntonWithMinds(candidateCtx.entitlements)) {
-        provisionToken = refreshed;
-        provisionCtx = candidateCtx;
-        break;
-      }
-    }
-
-    // Genuine auth failure (bad/expired token, service error) — can't
-    // mint a key, so surface it. This is the ONLY hard stop here.
-    if (!provisionCtx.ok) {
-      const bodyExcerpt = JSON.stringify(provisionCtx.body || {}).slice(0, 280);
-      if (provisionCtx.status === 401 || provisionCtx.status === 403) {
-        return {
-          error:
-            `MindsHub rejected the access token at /authenticate/ (HTTP ${provisionCtx.status}). ` +
-            `Body: ${bodyExcerpt}.`,
-        };
-      }
-      // Server errors (5xx) or network failures (status 0) — the auth
-      // service is likely temporarily unavailable. Give the user an
-      // actionable message instead of a raw status code.
-      if (provisionCtx.status >= 500 || provisionCtx.status === 0) {
-        const detail = provisionCtx.status === 0
-          ? 'Could not reach the MindsHub authentication service.'
-          : `The MindsHub authentication service returned an error (HTTP ${provisionCtx.status}).`;
-        return {
-          error:
-            `${detail} ` +
-            'This is usually temporary — please try again in a moment. ' +
-            'If the problem persists, you can continue with your own API key instead.',
-        };
-      }
-      return {
-        error: `Auth-service /authenticate/ returned HTTP ${provisionCtx.status}.`,
-      };
-    }
-
-    // Authenticated but lacking the HUB entitlement (no subscription):
-    // proceed to mint and flow the user in. Quota/upgrade is enforced at
-    // the gateway (point of use) and surfaced post-auth in the app — we no
-    // longer gate sign-in on it.
-    if (!canUseAntonWithMinds(provisionCtx.entitlements)) {
-      const norm = normalizeHubEntitlements(provisionCtx.entitlements);
-      console.warn(
-        '[minds-auth] authenticated without HUB entitlement — minting anyway '
-        + '(quota enforced at the gateway): agents.use=%s api_keys.create=%s deploy_agents=%s',
-        norm.permissions.agents.use ? 'true' : 'false',
-        norm.permissions.api_keys.create ? 'true' : 'false',
-        norm.allocations.deploy_agents,
-      );
-    }
-
-    // Safeguard: if the active org can't mint a key (the user landed in a
-    // SHARED org where they're only a member), fall back to their PERSONAL
-    // org. The personal-org owner always has create+use (auth-side
-    // owner_roles), so this guarantees an authenticated user can get a key
-    // without weakening shared-org permissions or the paid instance gate.
-    if (!canCreateApiKeys(provisionCtx.entitlements)) {
-      const userId = typeof initialPayload?.sub === 'string' ? initialPayload.sub : '';
-      const personal = userId
-        ? (orgResult.candidates || []).find((o) => o.slug === personalOrgName(userId))
-        : undefined;
-      if (personal && personal.id !== getActiveOrgFromPayload(decodeJwtPayload(provisionToken))?.id) {
-        const switched = await switchActiveOrg(provisionToken, personal.id);
-        if (switched) {
-          const refreshed = await refreshAfterOrgSwitch();
-          if (refreshed) {
-            const personalCtx = await fetchAuthContext(refreshed);
-            if (personalCtx.ok && canCreateApiKeys(personalCtx.entitlements)) {
-              provisionToken = refreshed;
-              provisionCtx = personalCtx;
-              console.log('[minds-auth] minting in personal org (active org lacked api_keys.create)');
-            }
-          }
-        }
-      }
-    }
+  if (ctx.ok && entitledToUseAnton(ctx.entitlements)) {
+    return { token: accessToken, organization: namedOrg(accessToken) };
   }
 
-  // Step 1: drop only THIS device's prior key so re-onboarding on the same
-  // machine stays tidy. ENG-440: match the exact per-device name and never
-  // the legacy fixed `hub:anton` — deleting a key another (not-yet-upgraded)
-  // device still relies on is precisely the silent-revocation bug we're
-  // fixing. Best-effort — listing/deleting failures shouldn't block creation
-  // of the new key.
-  const keyName = antonKeyName();
-  if (deleteExistingKey) {
-    const existing = await listExistingKeys(provisionToken);
-    for (const entry of existing) {
-      // revoked !== true: auth's delete is a soft delete, so prior sign-ins'
-      // cleanup rows keep listing forever — re-deleting them is one wasted
-      // round-trip each per sign-in.
-      if (entry?.name === keyName && entry.prefix && entry.revoked !== true) {
-        await deleteKeyByPrefix(provisionToken, entry.prefix);
-      }
-    }
-  }
-
-  // Step 2: mint a new key. The auth-service returns the full secret
-  // exactly once in the create response — store it now. A 402 (or a
-  // body with `code: 'upgrade_required'`) is a provisioning refusal:
-  // MindsHub would not mint an LLM key. Surfaced distinctly so the
-  // renderer can route (BYOK on first run, billing on reconnect)
-  // instead of showing a generic error.
-  //
-  // ENG-1533: this branch is back-compat, not the live path. It is NOT
-  // "the user is on the free tier", as this comment used to say — there
-  // are no tiers under pay as you go. In the current auth-service the
-  // create handler (`auth/keys/views/api_keys.py`) answers 201, 409
-  // `api_key_limit_reached`, or 401/403/503 from its permission classes;
-  // it has no 402 path, and `upgrade_required_response()` has no callers.
-  // The only live 402 there is `wallet_empty`, on the separate
-  // inference-authorize endpoint. Kept because an older auth-service
-  // deployment can still answer this way, and because the renderer now
-  // counts the refusal (`key_provisioning_refused`) on its three handler
-  // paths. Note what a zero count does and does not prove: it covers only
-  // those three. `doKeyLifecycleCheck` also calls `provisionAntonApiKey` and
-  // consumes the same refusal without reaching a renderer handler, so the
-  // renewal path emits nothing either way. Zero means dead on the instrumented
-  // paths, not dead everywhere.
-  try {
-    const res = await timedFetch(`${AUTH_SERVICE_URL}/api-keys/`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${provisionToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ name: keyName }),
-    });
-    if (res.ok) {
-      const data = await res.json() as ApiKeyRecord;
-      if (data?.key) {
-        // Read the organization off the token the mint actually used, and
-        // name it from the membership listing rather than from the claim:
-        // the claim carries the raw `personal_<id>` with no display name,
-        // while `users/<id>/orgs` carries the one auth generated.
-        const mintedOrgId = getActiveOrgFromPayload(decodeJwtPayload(provisionToken))?.id ?? null;
-        const organization = (orgResult.orgs || []).find((org) => org.id === mintedOrgId);
-        return { key: data.key, prefix: data.prefix, organization };
-      }
-      return { error: 'Auth-service did not return an API key value.' };
-    }
-    type ErrorBody = { code?: string; detail?: string; error?: string; message?: string };
-    let body: ErrorBody | null = null;
-    try { body = await res.json() as ErrorBody; } catch { /* not JSON */ }
-    if (res.status === 402 || body?.code === 'upgrade_required') {
-      return { upgradeRequired: true };
-    }
-    // 409 on this endpoint is only ever the active-key cap
-    // (max_active_per_user_organization). Surfaced distinctly so the
-    // renewal path can retry with its own prior key deleted instead of
-    // failing identically every tick until the 401 deadline.
-    if (res.status === 409) {
-      return {
-        limitReached: true,
-        error: body?.detail || body?.error || body?.message || 'API key limit reached.',
-      };
-    }
-    if (res.status === 401 || res.status === 403) {
+  // A genuine auth failure is the only hard stop: the token is not accepted at
+  // all, so no organization choice can help.
+  if (!ctx.ok) {
+    const bodyExcerpt = JSON.stringify(ctx.body || {}).slice(0, 280);
+    if (ctx.status === 401 || ctx.status === 403) {
       return {
         error:
-          `MindsHub rejected the API-key request (HTTP ${res.status}). ` +
-          (body?.detail || body?.error || body?.message || 'No detail returned.'),
+          `MindsHub rejected the access token at /authenticate/ (HTTP ${ctx.status}). ` +
+          `Body: ${bodyExcerpt}.`,
       };
     }
-    return { error: body?.detail || body?.error || body?.message || `Auth-service returned HTTP ${res.status}` };
-  } catch (e: any) {
-    return { error: `Could not reach the auth-service: ${describeFetchError(e)}` };
+    if (ctx.status >= 500 || ctx.status === 0) {
+      const detail = ctx.status === 0
+        ? 'Could not reach the MindsHub authentication service.'
+        : `The MindsHub authentication service returned an error (HTTP ${ctx.status}).`;
+      return {
+        error:
+          `${detail} ` +
+          'This is usually temporary — please try again in a moment. ' +
+          'If the problem persists, you can continue with your own API key instead.',
+      };
+    }
+    return { error: `Auth-service /authenticate/ returned HTTP ${ctx.status}.` };
   }
+
+  const tried = new Set<string>();
+  if (currentOrg?.id) tried.add(currentOrg.id);
+  for (const candidate of orgResult.candidates || []) {
+    if (!candidate?.id || tried.has(candidate.id)) continue;
+    tried.add(candidate.id);
+    if (!(await switchActiveOrg(accessToken, candidate.id))) continue;
+    const refreshed = await refreshAfterOrgSwitch();
+    if (!refreshed) continue;
+    const candidateCtx = await fetchAuthContext(refreshed);
+    if (candidateCtx.ok && entitledToUseAnton(candidateCtx.entitlements)) {
+      return { token: refreshed, organization: namedOrg(refreshed) };
+    }
+  }
+
+  // Nothing qualified, which is not a sign-in blocker: the gateway enforces the
+  // quota at the point of use. Note the switch loop above may have left a
+  // DIFFERENT organization active than the one this started on, and whatever the
+  // store holds now is both what the turn will bill and what a later refresh
+  // re-rolls from — so the organization is read back rather than assumed.
+  const norm = normalizeHubEntitlements(ctx.entitlements);
+  console.warn(
+    '[minds-auth] signed in without a HUB entitlement in any organization '
+    + '(quota enforced at the gateway): agents.use=%s deploy_agents=%s',
+    norm.permissions.agents.use ? 'true' : 'false',
+    norm.allocations.deploy_agents,
+  );
+  const settled = getAccessToken() ?? accessToken;
+  return { token: settled, organization: namedOrg(settled) };
 }
 
 // ── Env commit ────────────────────────────────────────────────────
@@ -1109,24 +933,17 @@ export function runsOwnEndpoint(existingEnv: string, mindsHost: string): boolean
     && !isMindsBaseUrl(base, mindsHost);
 }
 
-// Writes the MindsHub LLM credentials to the Cowork config home's .env
-// (coworkEnvPath(); merge, not overwrite) and restarts the python server so it
-// picks them up.
-// `apiKey` MUST be the `mdb_*` value minted via `provisionAntonApiKey`
-// — passing a raw Keycloak JWT here is what caused the historic 401s
-// from the LLM gateway. The live MindsHub gateway expects the
-// `latest:*` alias namespace; the older deprecated sentinel aliases
-// 500 with "Mind not found".
-//
-// ENG-436: we write ONLY the dedicated minds_* slots — never
-// ANTON_OPENAI_API_KEY / ANTON_OPENAI_BASE_URL. cowork-server resolves
-// minds-cloud from minds_api_key/minds_url for both the main agent and
-// the scratchpad, and `check_configured` is satisfied by minds_api_key
-// alone, so the OpenAI slot is no longer needed — and leaving it
-// untouched lets a user's own OpenAI key survive login.
 // Pure: given the existing `.env` contents, produce the contents to write on
-// MindsHub sign-in. Strips every prior MINDS_KEYS line and re-adds the
-// credential + provider keys with fresh values.
+// MindsHub sign-in.
+//
+// **It writes no credential and never has one to write.** The gateway credential
+// is handed to the sidecar at runtime (minds-credential.ts), so the only reason
+// `ANTON_MINDS_API_KEY` still appears in MINDS_KEYS is to STRIP it: an install
+// upgrading from a build that wrote one has a live key sitting in this file, and
+// signing in is the moment it goes.
+//
+// What is still written is the non-credential half — the MindsHub URL and, when
+// the user is not on an endpoint of their own, the provider selection.
 //
 // Deliberately writes NO ANTON_PLANNING_MODEL / ANTON_CODING_MODEL, and (as of
 // ENG-739) no longer strips them either — MINDS_KEYS omits both model keys, so
@@ -1136,9 +953,8 @@ export function runsOwnEndpoint(existingEnv: string, mindsHost: string): boolean
 // sign-in an *explicit* model pick, so the server's enabled-aware default
 // (which only fills an unset model) could never steer a free-tier user to a
 // model their plan allows → first message 403s (ENG-597/ENG-739). Leaving the
-// model unset for a fresh user lets the server resolve the right model per tier
-// (paid → sonnet/haiku, free → first enabled).
-export function buildMindsEnvContent(existing: string, apiKey: string, host: string): string {
+// model unset for a fresh user lets the server resolve the right model per tier.
+export function buildMindsEnvContent(existing: string, host: string): string {
   const keepProvider = runsOwnEndpoint(existing, host);
   const strip = keepProvider ? MINDS_KEYS : [...MINDS_KEYS, ...PROVIDER_KEYS];
   const lines = existing.split('\n')
@@ -1146,7 +962,6 @@ export function buildMindsEnvContent(existing: string, apiKey: string, host: str
   lines.push(
     'ANTON_MINDS_ENABLED=true',
     `ANTON_MINDS_URL=${host}`,
-    `ANTON_MINDS_API_KEY=${apiKey}`,
   );
   if (!keepProvider) {
     lines.push('ANTON_PLANNING_PROVIDER=minds-cloud', 'ANTON_CODING_PROVIDER=minds-cloud');
@@ -1154,23 +969,11 @@ export function buildMindsEnvContent(existing: string, apiKey: string, host: str
   return lines.filter(Boolean).join('\n') + '\n';
 }
 
-// Renewal-only .env rewrite (ENG-498): swap the credential line and
-// nothing else. buildMindsEnvContent is deliberately NOT reused here —
-// it re-asserts ANTON_MINDS_ENABLED and the provider lines, which would
-// hijack the provider selection of a user who switched to BYOK after
-// signing in. Same filter+push shape as the sign-in writer.
-export function replaceMindsApiKeyLine(existing: string, apiKey: string): string {
-  const lines = existing.split('\n')
-    .filter((l) => !l.startsWith('ANTON_MINDS_API_KEY='));
-  lines.push(`ANTON_MINDS_API_KEY=${apiKey}`);
-  return lines.filter(Boolean).join('\n') + '\n';
-}
-
-// The DB setting keys a MindsHub sign-in must push, and ONLY these. The
-// server's one-time `.env`→DB migration is sentinel-guarded and won't re-run,
-// so a freshly-minted key / URL / provider selection has to be written
-// explicitly after login. Provider values are the DB enum form (`minds_cloud`,
-// underscore) — same as the picker writes via `PROVIDER_TO_SERVER`.
+// The DB setting keys a MindsHub sign-in must push, and ONLY these.
+//
+// `minds_api_key` is deliberately absent: it is pushed to the sidecar's runtime
+// holder instead of stored, which is the whole point of this change. Everything
+// here is non-secret configuration.
 //
 // Deliberately excludes planning_model / coding_model (ENG-739). The old sign-
 // in path POSTed the whole `.env` to `/settings/raw`, which re-reads the full
@@ -1179,19 +982,15 @@ export function replaceMindsApiKeyLine(existing: string, apiKey: string): string
 // just fixed via the picker, with no way to leave the model untouched. Writing
 // only these keys leaves the DB's model rows (and any picker fix) alone.
 export function mindsSignInSettingWrites(
-  apiKey: string,
   host: string,
   keepProvider = false,
 ): Array<{ key: string; value: string }> {
-  const credentials = [
-    { key: 'minds_api_key', value: apiKey },
-    { key: 'minds_url', value: host },
-  ];
-  // A user on their own endpoint gets the credential and nothing else --
-  // repointing here would undo the choice the .env write just preserved.
-  if (keepProvider) return credentials;
+  const target = [{ key: 'minds_url', value: host }];
+  // A user on their own endpoint gets the URL and nothing else -- repointing
+  // here would undo the choice the .env write just preserved.
+  if (keepProvider) return target;
   return [
-    ...credentials,
+    ...target,
     { key: 'planning_provider', value: 'minds_cloud' },
     { key: 'coding_provider', value: 'minds_cloud' },
     // router_provider too (ENG-1632): with no stored row the server serializes
@@ -1202,6 +1001,7 @@ export function mindsSignInSettingWrites(
     { key: 'router_provider', value: 'minds_cloud' },
   ];
 }
+
 
 // Durable `.env` write for Windows: at sign-in finalize this runs while the old
 // server still holds the file open, which EPERM'd onboarding (ENG-1209). The fix
@@ -1248,30 +1048,39 @@ export async function writeEnvFileAtomic(
   }
 }
 
-export async function writeMindsKeyToEnvAndRestart(apiKey: string): Promise<void> {
+/**
+ * Commit a MindsHub sign-in: the non-credential config to disk and the DB, and
+ * the credential itself to the sidecar's runtime holder.
+ *
+ * The credential never lands in either store. `buildMindsEnvContent` strips any
+ * `ANTON_MINDS_API_KEY` an older build left in `.env`, and
+ * `mindsSignInSettingWrites` no longer carries `minds_api_key`, so what this
+ * writes is the MindsHub URL and the provider selection.
+ *
+ * **No restart.** The sidecar used to be stopped and started here so it would
+ * re-read `.env`. Nothing needs re-reading now: settings go over loopback and
+ * the credential is handed over the same way, so a sign-in no longer kills a
+ * running turn.
+ */
+export async function commitMindsSignIn(): Promise<void> {
   const homeDir = coworkHome();
-  // ~/.cowork normally exists by the time SSO finalize runs (the server
-  // creates it on boot), but if the server failed to start the finalize
-  // write would ENOENT and the user's freshly-minted key is lost.
+  // ~/.cowork normally exists by the time SSO finalize runs (the server creates
+  // it on boot), but if the server failed to start the write would ENOENT.
   if (!fs.existsSync(homeDir)) {
     fs.mkdirSync(homeDir, { recursive: true });
   }
   const envPath = coworkEnvPath();
   const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
   // Decided from the .env as it was BEFORE this sign-in rewrote it, so the
-  // provider decision and the credential write agree.
+  // provider decision and the settings write agree.
   const keepProvider = runsOwnEndpoint(existing, MINDS_API_HOST);
   // Atomic + lock-tolerant write that wedged onboarding on Windows (ENG-1209).
-  // NOT fatal on the installed path: the DB sync below is the authoritative
-  // credential store, so an exhausted-retry .env failure must not abort there and
-  // strand the user with an already-revoked key — that abort WAS the wedge. But
-  // on the pre-install path there IS no DB sync (early-return below), so .env is
-  // the only store and a failed write must still surface — swallowing it there
-  // would report success with the credential saved nowhere.
   let envWriteError: unknown = null;
   try {
-    await writeEnvFileAtomic(envPath, buildMindsEnvContent(existing, apiKey, MINDS_API_HOST));
-    // Owner-only perms (plaintext API key); best-effort, a no-op on Windows.
+    await writeEnvFileAtomic(envPath, buildMindsEnvContent(existing, MINDS_API_HOST));
+    // The file no longer holds a MindsHub credential, but it still holds the
+    // user's other provider keys, so it stays owner-only. Best-effort, and a
+    // no-op on Windows.
     try { fs.chmodSync(envPath, 0o600); } catch { /* best-effort */ }
   } catch (err) {
     envWriteError = err;
@@ -1289,8 +1098,8 @@ export async function writeMindsKeyToEnvAndRestart(apiKey: string): Promise<void
     }
     if (!state.preferences) state.preferences = {};
     // Keep only minds-cloud; remove any other provider entries.
-    const existing: any[] = Array.isArray(state.preferences.providers) ? state.preferences.providers : [];
-    const mindsEntry = existing.find((p: any) => p?.type === 'minds-cloud') ?? { type: 'minds-cloud' };
+    const existingProviders: any[] = Array.isArray(state.preferences.providers) ? state.preferences.providers : [];
+    const mindsEntry = existingProviders.find((p: any) => p?.type === 'minds-cloud') ?? { type: 'minds-cloud' };
     mindsEntry.isDefault = true;
     state.preferences.providers = [mindsEntry];
     fs.mkdirSync(coworkHome(), { recursive: true });
@@ -1299,79 +1108,75 @@ export async function writeMindsKeyToEnvAndRestart(apiKey: string): Promise<void
     console.warn('[minds-auth] failed to set provider state', error);
   }
 
-  // Only restart the server if it's already installed. On a fresh install the
-  // server isn't available yet — the setup wizard will start it after install
-  // completes, at which point handleInstallComplete syncs the credentials.
+  // On a fresh install the server isn't available yet — the setup wizard starts
+  // it after install completes, and handleInstallComplete syncs then.
   const { antonInstalled } = await checkInstallStatus();
   if (!antonInstalled) {
-    // No DB to fall back to on this path — .env IS the store here, so a failed
-    // write is fatal and must surface rather than reporting a false success.
+    // Nothing else has stored this sign-in yet, so a failed write here leaves
+    // no record of it at all and must surface rather than reporting success.
     if (envWriteError) throw envWriteError;
-    console.log('[minds-auth] server not installed yet — skipping restart; setup will sync creds after install');
+    console.log('[minds-auth] server not installed yet — setup will sync after install');
     return;
   }
 
-  await stopServer();
-  await startServer();
+  // A sidecar that died is started rather than restarted: a stop/start would
+  // drop a credential a previous push had already established.
+  if (!isServerRunning() && !isServerStarting()) {
+    await startServer();
+  }
+  if (!isServerRunning() && !isServerStarting()) {
+    console.warn('[minds-auth] sidecar unavailable — sign-in will sync on its next start');
+    return;
+  }
 
-  // Push the freshly-minted credential + provider selection to the server's
-  // SQLite DB. The one-time .env → DB migration (migrate_env_to_db) is
-  // sentinel-guarded and won't re-run, so values written to .env after initial
-  // setup never reach the DB unless we explicitly push them.
-  //
-  // ENG-739: use individual `PUT /settings/{key}` writes for exactly the
-  // sign-in fields — NOT `POST /settings/raw`. That endpoint re-reads the full
-  // .env from disk and syncs EVERY recognised key, so a legacy/stale model
-  // line in .env would clobber a model the user just fixed via the picker.
-  // Writing only these keys leaves the DB's model rows untouched.
-  if (isServerRunning() || isServerStarting()) {
-    const port = getServerPort();
-    // Order matters (mindsSignInSettingWrites lists the credential first): if
-    // the minds_api_key write fails, ABORT before flipping the provider to
-    // minds-cloud. provisionAntonApiKey already revoked the old key, so a
-    // partial "provider=minds-cloud + no/stale key" state would leave
-    // config_ready true while every message 401s. Bailing keeps the prior
-    // config intact until the next sign-in retries the whole sequence.
-    for (const { key, value } of mindsSignInSettingWrites(apiKey, MINDS_API_HOST, keepProvider)) {
-      let ok = false;
-      try {
-        // authHeader(): main-process fetch — the webRequest injection hook
-        // only covers renderer requests, so this must carry the server
-        // bearer token itself when COWORK_REQUIRE_AUTH=true.
-        const res = await timedFetch(`http://127.0.0.1:${port}/api/v1/settings/${key}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json', ...authHeader() },
-          body: JSON.stringify({ value }),
-        });
-        ok = res.ok;
-        if (!res.ok) {
-          console.warn(`[minds-auth] settings PUT ${key} returned`, res.status);
-        }
-      } catch (error) {
-        console.warn(`[minds-auth] failed to write ${key} to server DB`, error);
-      }
-      if (!ok && key === 'minds_api_key') {
-        console.warn('[minds-auth] aborting settings sync — credential write failed; leaving prior config intact');
-        break;
-      }
-    }
+  // The credential goes FIRST, and a failure here ABORTS before the provider
+  // writes below. `config_ready` is false without it, and flipping
+  // planning/coding to minds_cloud anyway would repoint a user who had a
+  // working provider onto one with no credential behind it. Bailing leaves the
+  // prior configuration intact; the boot path re-pushes on the next start and
+  // the next sign-in retries the whole sequence.
+  if (!(await syncMindsCredential())) {
+    console.warn('[minds-auth] credential hand-over failed at sign-in — leaving the prior provider config intact');
+    return;
+  }
 
-    // Verify the server is actually configured after the writes.
-    // If the writes failed silently (DB not updated), config_ready will
-    // still be false and the user would appear unconfigured after login.
+  const port = getServerPort();
+  // Individual `PUT /settings/{key}` writes for exactly the sign-in fields —
+  // NOT `POST /settings/raw`. That endpoint re-reads the full .env from
+  // disk and syncs EVERY recognised key, so a legacy/stale model line in .env
+  // would clobber a model the user just fixed via the picker.
+  for (const { key, value } of mindsSignInSettingWrites(MINDS_API_HOST, keepProvider)) {
     try {
-      const healthRes = await timedFetch(`http://127.0.0.1:${port}/api/v1/health/`);
-      if (healthRes.ok) {
-        const health = await healthRes.json() as Record<string, unknown>;
-        if (!health.config_ready) {
-          console.warn('[minds-auth] config_ready is false after settings writes — restarting server');
-          await stopServer();
-          await startServer();
-        }
+      // authHeader(): main-process fetch — the webRequest injection hook only
+      // covers renderer requests, so this must carry the server bearer token
+      // itself when COWORK_REQUIRE_AUTH=true.
+      const res = await timedFetch(`http://127.0.0.1:${port}/api/v1/settings/${key}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...authHeader() },
+        body: JSON.stringify({ value }),
+      });
+      if (!res.ok) {
+        console.warn(`[minds-auth] settings PUT ${key} returned`, res.status);
       }
     } catch (error) {
-      console.warn('[minds-auth] health check after settings writes failed:', error);
+      console.warn(`[minds-auth] failed to write ${key} to server DB`, error);
     }
+  }
+
+  // Verify the server actually reads as configured. A restart is NOT the repair
+  // any more: the credential lives in the sidecar's memory, so restarting is
+  // what would lose it. Push again instead.
+  try {
+    const healthRes = await timedFetch(`http://127.0.0.1:${port}/api/v1/health/`);
+    if (healthRes.ok) {
+      const health = await healthRes.json() as Record<string, unknown>;
+      if (!health.config_ready) {
+        console.warn('[minds-auth] config_ready is false after sign-in — re-pushing the credential');
+        await syncMindsCredential();
+      }
+    }
+  } catch (error) {
+    console.warn('[minds-auth] health check after sign-in failed:', error);
   }
 }
 
@@ -1404,266 +1209,16 @@ function scheduleRefreshIn(delayMs: number): void {
   // ran silentRefresh once and never retried.
   _refreshTimer = setTimeout(() => { void refreshTokensOnly(); }, delayMs);
 }
-
-// ── Per-device key lifecycle (ENG-498) ────────────────────────────
+// ── Organization switching ────────────────────────────────────────
 //
-// Boot + daily watch over THIS device's key. While the auth-service TTL
-// is disabled every key has expiry_date null and this is a no-op listing
-// call; once ops enables the TTL, installs renew ahead of the deadline
-// instead of 401-ing at it (the ENG-440 bug, time-delayed). A key that
-// is MISSING (not expired — absent) is deliberately left alone: that is
-// plausibly a console revocation, and silently re-minting would undo it.
+// Nothing mints, so switching organization is switch the session, refresh the
+// token, hand the fresh one to the sidecar. The active-organization claim is
+// what the gateway reads to decide whose credits a turn spends, and the
+// refresh re-rolls it — there is no key to move, retire, or roll back.
 
-const KEY_LIFECYCLE_INTERVAL_MS = 24 * 60 * 60 * 1000;
-
-let _keyLifecycleTimer: NodeJS.Timeout | null = null;
-let _inflightKeyLifecycle: Promise<void> | null = null;
-
-export function startKeyLifecycleChecks(): void {
-  cancelKeyLifecycleChecks();
-  void runKeyLifecycleCheck();
-  _keyLifecycleTimer = setInterval(() => { void runKeyLifecycleCheck(); }, KEY_LIFECYCLE_INTERVAL_MS);
-}
-
-export function cancelKeyLifecycleChecks(): void {
-  if (_keyLifecycleTimer) clearInterval(_keyLifecycleTimer);
-  _keyLifecycleTimer = null;
-}
-
-// Single-flight like refreshTokensOnly: a boot check racing the first
-// interval tick must not double-mint.
-export function runKeyLifecycleCheck(): Promise<void> {
-  if (!_inflightKeyLifecycle) {
-    _inflightKeyLifecycle = doKeyLifecycleCheck()
-      .catch((e: any) => { console.warn('[minds-auth] key lifecycle check failed:', e?.message || e); })
-      .finally(() => { _inflightKeyLifecycle = null; });
-  }
-  return _inflightKeyLifecycle;
-}
-
-function tokenSubject(token: string | null): string | null {
-  if (!token) return null;
-  const payload = decodeJwtPayload(token);
-  return typeof payload?.sub === 'string' ? payload.sub : null;
-}
-
-async function doKeyLifecycleCheck(): Promise<void> {
-  // Signed-out sessions have nothing to renew. Don't force a refresh
-  // round-trip when there is no session at all.
-  if (!getAccessToken() && !getRefreshToken()) return;
-  // The settings PUT in commitRenewedKey is the ONLY durable commit path
-  // (DB rows outrank .env in the server's settings chain, and the
-  // env→DB migration is sentinel-guarded — it never re-runs). With no
-  // server to PUT to, minting now would strand the new key unwritten
-  // until some later tick; simpler and safer to skip the whole tick and
-  // let the next one retry once the server is up.
-  if (!isServerRunning() && !isServerStarting()) {
-    console.log('[minds-auth] server not running — no commit path — skipping this tick');
-    return;
-  }
-  let token = getAccessToken();
-  if (!token || isAccessTokenExpired()) {
-    const result = await refreshTokensOnly();
-    if (result.status !== 'ok') return;
-    token = result.token;
-  }
-  // Whose key we are renewing. Compared again before the commit: benign
-  // refreshes rotate the token string but keep `sub`, so this aborts
-  // exactly when a logout or different-user login landed mid-renewal.
-  // (getTokenStoreVersion is unsuitable here — provisioning's own
-  // org-switch refreshes bump it, which would abort every renewal that
-  // needs the personal-org fallback.)
-  const renewingFor = tokenSubject(token);
-  if (!renewingFor) return;
-
-  const keyName = antonKeyName();
-  // revoked !== true: auth's DELETE is a soft delete and the list keeps the
-  // row, so a console-revoked key still lists with its expiry_date. Filtering
-  // it out makes it genuinely look absent — renewing it would quietly undo an
-  // admin's deliberate revocation (and an expired revoked key would
-  // "self-heal" the moment its TTL lapsed).
-  const own = (await listExistingKeys(token)).filter((k) => k?.name === keyName && k.revoked !== true);
-  if (own.length === 0) return;
-  // Duplicates exist after a renewal (old key rides to expiry) — the
-  // newest one is the live credential and drives the decision.
-  const newest = own.reduce((a, b) =>
-    (Date.parse(b.created ?? '') || 0) > (Date.parse(a.created ?? '') || 0) ? b : a);
-  if (!shouldRenewKey(newest.created, newest.expiry_date, Date.now())) return;
-
-  console.log('[minds-auth] device key expired or near expiry — re-minting');
-  let result = await provisionAntonApiKey(token, { deleteExistingKey: false });
-  if (!result.key && result.limitReached) {
-    // At the active-key cap the no-delete renewal can never succeed and
-    // would fail identically every tick until the 401 deadline, so retry
-    // once with this device's own prior key deleted. The trade is not
-    // free: the delete runs BEFORE the mint, so if the retry's mint then
-    // fails (network, 5xx, token expiry mid-flight) the device holds no
-    // live key — and since revoked rows are filtered out above, the next
-    // tick takes the "missing ⇒ don't silently re-mint" branch, so the
-    // only in-product recovery is a re-sign-in until the local-vs-remote
-    // key-identity heal (ENG-498 enablement precondition) ships. Accepted:
-    // it needs the cap AND a second-mint failure, and this path can't
-    // fire at all until the TTL is enabled — which is gated on that heal.
-    console.warn('[minds-auth] key renewal hit the active-key cap — retrying once with own prior key deleted');
-    result = await provisionAntonApiKey(token, { deleteExistingKey: true });
-  }
-  if (!result.key) {
-    console.warn('[minds-auth] key renewal mint failed:',
-      result.error || (result.upgradeRequired ? 'upgrade required' : 'no key returned'));
-    return;
-  }
-  if (tokenSubject(getAccessToken()) !== renewingFor) {
-    // Deliberately no rollback here: a logout/different-user login is a
-    // separate concern from a failed commit, and the new session may
-    // already be relying on whatever it just did — the TTL reaps this
-    // key on its own if it truly goes unused.
-    console.warn('[minds-auth] session changed during key renewal — discarding minted key');
-    return;
-  }
-  await commitRenewedKey(token, result.key, result.prefix);
-}
-
-// Hot-swap the renewed credential. The settings PUT goes FIRST and is the
-// AUTHORITATIVE commit: in cowork-server, DB rows outrank .env in the
-// settings chain, and the one-time env→DB migration is sentinel-guarded
-// and never re-runs — so a key that only reaches .env never reaches the
-// app. .env is written only after the PUT lands; it's just the
-// standalone-CLI's copy. If the PUT is skipped or fails, roll the mint
-// back (delete the just-minted key) so the account's "newest key" reverts
-// to the old one and the next tick retries the whole renewal statelessly
-// — recovery that works even across an app restart.
-// Deliberately NOT writeMindsKeyToEnvAndRestart — no server restart (the
-// settings cache invalidates on PUT; in-flight sessions keep the old key,
-// which stays valid until its own expiry), and no provider flips (a user
-// who switched to BYOK keeps their selection).
-async function commitRenewedKey(accessToken: string, apiKey: string, prefix: string | undefined): Promise<boolean> {
-  // Roll back with the CURRENT store token, not the one captured at the
-  // top of doKeyLifecycleCheck: provisionAntonApiKey may have minted under
-  // an org-switched token (org-switch / personal-org fallback), and the
-  // auth-service's DELETE is org-scoped — deleting with the stale token
-  // 404s. refreshAfterOrgSwitch persists the switched token via
-  // saveTokens, so getAccessToken() carries the right org claim by now;
-  // fall back to the passed-in token only if the store emptied mid-flight.
-  const rollbackMint = async (): Promise<void> => {
-    if (prefix) await deleteKeyByPrefix(getAccessToken() ?? accessToken, prefix);
-  };
-
-  // Re-check here too: the boot-time gate in doKeyLifecycleCheck can go
-  // stale across the mint's network round-trip if the sidecar goes down
-  // mid-renewal.
-  if (!isServerRunning() && !isServerStarting()) {
-    console.warn('[minds-auth] server no longer available for renewal commit — rolling back minted key, will retry next tick');
-    await rollbackMint();
-    return false;
-  }
-  const port = getServerPort();
-  try {
-    // authHeader(): main-process fetches never pass through the renderer's
-    // webRequest injection hook, so with COWORK_REQUIRE_AUTH=true a bare PUT
-    // 401s — which here would mean mint → rollback → retry, silently, every
-    // tick forever.
-    const res = await timedFetch(`http://127.0.0.1:${port}/api/v1/settings/minds_api_key`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', ...authHeader() },
-      body: JSON.stringify({ value: apiKey }),
-    });
-    if (!res.ok) {
-      console.warn('[minds-auth] renewal settings PUT returned', res.status, '— rolling back minted key, will retry next tick');
-      await rollbackMint();
-      return false;
-    }
-  } catch (error) {
-    console.warn('[minds-auth] failed to write renewed key to server DB — rolling back minted key, will retry next tick', error);
-    await rollbackMint();
-    return false;
-  }
-
-  // DB is authoritative and already correct at this point — a failure
-  // here is not a renewal failure, only a stale standalone-CLI copy.
-  try {
-    const homeDir = coworkHome();
-    if (!fs.existsSync(homeDir)) {
-      fs.mkdirSync(homeDir, { recursive: true });
-    }
-    const envPath = coworkEnvPath();
-    const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
-    // Atomic writer (ENG-1209): the renewal runs while the live server holds
-    // .env open, which is exactly the Windows share-mode EPERM this fixes.
-    await writeEnvFileAtomic(envPath, replaceMindsApiKeyLine(existing, apiKey));
-  } catch (error) {
-    console.warn('[minds-auth] renewed key committed to server DB but failed to write .env (CLI copy stale)', error);
-  }
-  return true;
-}
-
-// ── Changing organization from inside the app ─────────────────────
-//
-// Switching costs more than a label because the credential the sidecar
-// presents is bound to one organization. Auth scopes every API-key read and
-// write to the caller's active organization, so the key in the organization
-// being left is unreachable the moment the token moves, and the key in the
-// one being joined does not exist yet.
-//
-// The order below is what makes a failure harmless. The new key is minted and
-// committed BEFORE the old one is touched, so every failure short of the last
-// step is undone by switching back — no re-mint, because the old key was
-// never revoked. That also keeps a running turn alive: the sidecar hands the
-// gateway whatever key it held when the turn started, so revoking early would
-// 401 the next tool call in a conversation the person is watching.
-
-/** This device's live key prefixes in whatever organization `token` names. */
-async function ownKeyPrefixes(token: string): Promise<string[]> {
-  const keyName = antonKeyName();
-  return (await listExistingKeys(token))
-    .filter((entry) => entry?.name === keyName && entry.prefix && entry.revoked !== true)
-    .map((entry) => entry.prefix as string);
-}
-
-// How long to let a turn finish before retiring the key it may be presenting,
-// and how often to ask. The sidecar answers this in microseconds, so the poll
-// is cheap; the ceiling is sized for a long agent turn rather than for a chat
-// reply.
-const TURN_DRAIN_POLL_MS = 2_000;
-const TURN_DRAIN_TIMEOUT_MS = 5 * 60 * 1000;
-
-// One switch at a time, and where the latest one left us.
-//
-// The retirement below is detached and drains for up to five minutes, so a
-// second switch can start while the first is still waiting. Two things follow.
-// The switch itself is single-flight, because two of them interleaving would
-// mint twice and race each other through the settings PUT. And the retirement
-// restores the session to whatever the LATEST switch chose rather than to the
-// target it was handed, because putting it back to a superseded one is how the
-// console ends up naming an organization nobody picked.
+// One switch at a time: two interleaving would race each other through the
+// token store and the hand-over.
 let _orgSwitchInFlight = false;
-let _latestOrgTarget: string | null = null;
-
-/** Turns the sidecar currently has running, or null when it cannot be asked. */
-async function inFlightTurnCount(): Promise<number | null> {
-  if (!isServerRunning() && !isServerStarting()) return 0;
-  try {
-    const res = await timedFetch(
-      `http://127.0.0.1:${getServerPort()}/api/v1/responses/in-flight-list`,
-      { headers: { ...authHeader() } },
-    );
-    if (!res.ok) return null;
-    const body = await res.json() as unknown;
-    return Array.isArray(body) ? body.length : null;
-  } catch {
-    return null;
-  }
-}
-
-// A sidecar that cannot be reached is running no turns through us, so an
-// unanswerable poll counts as drained rather than blocking until the ceiling.
-async function waitForTurnsToDrain(deadlineMs: number): Promise<boolean> {
-  for (;;) {
-    const running = await inFlightTurnCount();
-    if (running === null || running === 0) return true;
-    if (Date.now() >= deadlineMs) return false;
-    await new Promise((resolve) => setTimeout(resolve, TURN_DRAIN_POLL_MS));
-  }
-}
 
 async function restoreActiveOrg(token: string, orgId: string | null): Promise<void> {
   if (!orgId) return;
@@ -1672,50 +1227,6 @@ async function restoreActiveOrg(token: string, orgId: string | null): Promise<vo
     return;
   }
   console.warn('[minds-auth] could not put the active organization back to %s', orgId);
-}
-
-// Retire this device's key in the organization the person just left.
-//
-// Detached from the switch on purpose: it waits for any running turn, and the
-// switch itself has already succeeded by the time this starts. Reaching the
-// old key means being in the old organization again, so this borrows the
-// active organization, deletes, and hands it back.
-async function retireKeysInPreviousOrg(
-  sourceOrgId: string,
-  prefixes: string[],
-): Promise<void> {
-  if (prefixes.length === 0) return;
-
-  if (!await waitForTurnsToDrain(Date.now() + TURN_DRAIN_TIMEOUT_MS)) {
-    // Killing a turn a person is watching is the worse of the two outcomes,
-    // and the key does not survive indefinitely: the next mint in that
-    // organization deletes this device's prior key by exact name.
-    console.warn(
-      '[minds-auth] a turn was still running after %ds — leaving %d device key(s) live in %s; the next mint there retires them',
-      TURN_DRAIN_TIMEOUT_MS / 1000, prefixes.length, sourceOrgId,
-    );
-    return;
-  }
-
-  const token = await freshAccessToken();
-  if (!token) return;
-  if (!await switchActiveOrg(token, sourceOrgId)) {
-    console.warn('[minds-auth] could not re-enter %s to retire its device key(s)', sourceOrgId);
-    return;
-  }
-  const inSource = await refreshAfterOrgSwitch();
-  if (!inSource) {
-    console.warn('[minds-auth] token refresh failed while retiring device key(s) in %s', sourceOrgId);
-    await restoreActiveOrg(token, _latestOrgTarget);
-    return;
-  }
-  for (const prefix of prefixes) await deleteKeyByPrefix(inSource, prefix);
-  console.log('[minds-auth] retired %d device key(s) in the previous organization', prefixes.length);
-  // Turns do not depend on this landing — the sidecar holds an `mdb_` key
-  // bound to the new organization and a bearer does not read the session's
-  // active organization — but the console does, so a failure here shows the
-  // person the organization they left until their next sign-in.
-  await restoreActiveOrg(inSource, _latestOrgTarget);
 }
 
 /** Every organization the signed-in person belongs to, company ones first. */
@@ -1777,7 +1288,7 @@ async function doSwitchMindsOrg(targetOrgId: string): Promise<SwitchMindsOrgResu
   // Membership is decided here against what Keycloak says this person belongs
   // to, and the switch below goes through Keycloak's own switch-organization
   // endpoint. Nothing takes an organization id from the caller and puts it on
-  // a key request.
+  // a credential request.
   const target = orgs.find((org) => org.id === targetOrgId);
   if (!target) {
     return { ok: false, activeOrgId: sourceOrgId, orgs, error: 'That organization is not one you belong to.' };
@@ -1786,10 +1297,6 @@ async function doSwitchMindsOrg(targetOrgId: string): Promise<SwitchMindsOrgResu
     storeOrgPreference(userId, target.id);
     return { ok: true, activeOrgId: sourceOrgId, orgs };
   }
-
-  // Read the keys to retire before the switch: after it, they are in an
-  // organization this token no longer names and auth will not list them.
-  const sourcePrefixes = sourceOrgId ? await ownKeyPrefixes(token) : [];
 
   if (!await switchActiveOrg(token, target.id)) {
     return {
@@ -1813,58 +1320,20 @@ async function doSwitchMindsOrg(targetOrgId: string): Promise<SwitchMindsOrgResu
     };
   }
 
-  const provision = await provisionAntonApiKey(switched, { pinOrgId: target.id });
-  if (!provision.key) {
+  // Hand the re-rolled token over before reporting success. Skipping it would
+  // leave the sidecar presenting a token that still names the old organization
+  // until the next refresh tick, so turns would bill the organization the
+  // person just left while the menu said otherwise.
+  if (!await syncMindsCredential()) {
     await restoreActiveOrg(switched, sourceOrgId);
     return {
       ok: false,
       activeOrgId: sourceOrgId,
       orgs,
-      error: provision.upgradeRequired
-        ? `${target.displayName} cannot issue an API key for this account. Nothing changed.`
-        : provision.error || `Could not create an API key in ${target.displayName}. Nothing changed.`,
-    };
-  }
-
-  // Where the key actually went, rather than where the switch aimed. Pinning
-  // above stops the ranking and the stored pick pulling the mint back, but the
-  // entitlement fallback inside provisionAntonApiKey still moves one into the
-  // personal organization when the target cannot issue keys. Committing that
-  // key would leave the app naming an organization the credential does not
-  // belong to, which is the bug this whole change exists to fix.
-  if (provision.organization && provision.organization.id !== target.id) {
-    const minted = await freshAccessToken();
-    if (minted && provision.prefix) await deleteKeyByPrefix(minted, provision.prefix);
-    await restoreActiveOrg(minted || switched, sourceOrgId);
-    return {
-      ok: false,
-      activeOrgId: sourceOrgId,
-      orgs,
-      error: `${target.displayName} cannot issue an API key for this account. Nothing changed.`,
-    };
-  }
-
-  // The renewal commit path, not the sign-in one: it PUTs the credential and
-  // deliberately does not restart the sidecar, so a turn already running keeps
-  // the key it started with. It rolls the mint back itself when the PUT fails.
-  if (!await commitRenewedKey(switched, provision.key, provision.prefix)) {
-    await restoreActiveOrg(switched, sourceOrgId);
-    return {
-      ok: false,
-      activeOrgId: sourceOrgId,
-      orgs,
-      error: `Could not hand the new key to the local server. Nothing changed.`,
+      error: 'Could not hand the new credential to the local server. Nothing changed.',
     };
   }
 
   storeOrgPreference(userId, target.id);
-  _latestOrgTarget = target.id;
-  // Detached: it waits for any running turn, and the switch is already done.
-  // Every step inside it is best-effort, so a throw here is a bug rather than
-  // an outcome — but an unhandled rejection takes the main process down with
-  // it, and this one is unattended for up to five minutes.
-  void retireKeysInPreviousOrg(sourceOrgId ?? '', sourceOrgId ? sourcePrefixes : [])
-    .catch((error) => console.warn('[minds-auth] retiring the previous organization\'s key(s) failed', error));
-
   return { ok: true, activeOrgId: target.id, orgs };
 }
