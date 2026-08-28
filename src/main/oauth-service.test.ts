@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import * as http from 'http';
-import * as net from 'net';
+import * as nodeNet from 'net';
 
 vi.mock('electron', () => ({
   shell: { openExternal: vi.fn() },
@@ -313,7 +313,7 @@ describe('oauthConnect', () => {
 
     // A connection that never sends a request — simulates a browser's
     // idle/speculative keep-alive socket to this origin.
-    const idleSocket = net.connect(port, '127.0.0.1');
+    const idleSocket = nodeNet.connect(port, '127.0.0.1');
     await new Promise<void>((resolve, reject) => {
       idleSocket.once('connect', () => resolve());
       idleSocket.once('error', reject);
