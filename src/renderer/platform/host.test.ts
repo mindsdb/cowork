@@ -278,11 +278,71 @@ describe('electron mode (bridge present)', () => {
 
     host.pickDriveFiles('google_drive', 'c', 'e@x.com');
     // Still zero microtask hops in — window.open() must already have run.
-    expect(open).toHaveBeenCalledWith('about:blank', '_blank', 'noopener,noreferrer');
+    // No 'noopener' in the features: a browser honoring it returns null
+    // from a successful open, which would falsely read as "blocked" and
+    // leave an inert blank tab. The opener link is severed on the handle
+    // instead, which the next assertion pins down.
+    expect(open).toHaveBeenCalledWith('about:blank', '_blank');
+    expect((fakePopup as unknown as { opener: unknown }).opener).toBeNull();
 
     resolveFetch({ ok: true, json: async () => ({ url: 'http://localhost:3000/picker?ticket=t1' }) });
     await vi.waitFor(() => expect((fakePopup as unknown as { location: { href: string } }).location.href)
       .toBe('http://localhost:3000/picker?ticket=t1'));
+  });
+
+  it('preopenDrivePickerPopup opens the blank window at the click boundary and pickDriveFiles navigates that handle without a second open', async () => {
+    // The composer/project-file entry points await connection fetches BEFORE
+    // calling pickDriveFiles, so the popup must be creatable separately, at
+    // the click itself, and passed through the async preparation.
+    let resolveFetch!: (v: unknown) => void;
+    const fetchPromise = new Promise((resolve) => { resolveFetch = resolve; });
+    vi.stubGlobal('fetch', vi.fn(() => fetchPromise));
+    const fakePopup = { closed: false, close: vi.fn(), location: { href: '' }, opener: window } as unknown as Window;
+    const open = vi.spyOn(window, 'open').mockReturnValue(fakePopup);
+    open.mockClear();
+    const host = await importHost();
+
+    const preopened = host.preopenDrivePickerPopup();
+    expect(open).toHaveBeenCalledWith('about:blank', '_blank');
+    expect(preopened).toBe(fakePopup);
+    // Opener severed on the handle (the noopener feature can't be used —
+    // it makes a successful open return null).
+    expect((fakePopup as unknown as { opener: unknown }).opener).toBeNull();
+
+    const result = host.pickDriveFiles('google_drive', 'c', 'e@x.com', undefined, undefined, preopened);
+    // The pre-opened window is reused, never reopened.
+    expect(open).toHaveBeenCalledTimes(1);
+
+    resolveFetch({ ok: true, json: async () => ({ url: 'http://localhost:3000/picker?ticket=t1' }) });
+    await vi.waitFor(() => expect((fakePopup as unknown as { location: { href: string } }).location.href)
+      .toBe('http://localhost:3000/picker?ticket=t1'));
+
+    const pickResult = { ok: true, files: [{ id: 'f1' }], newFiles: [{ id: 'f1' }] };
+    window.dispatchEvent(new MessageEvent('message', {
+      origin: window.location.origin,
+      data: { type: 'drive-picker-result', result: pickResult },
+    }));
+    await expect(result).resolves.toEqual(pickResult);
+  });
+
+  it('pickDriveFiles treats a null pre-opened handle as blocked and a closed one as cancelled, without opening anything itself', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ url: 'http://localhost:3000/picker' }) })));
+    const open = vi.spyOn(window, 'open');
+    open.mockClear();
+    const host = await importHost();
+
+    // Blocked at the click boundary (preopenDrivePickerPopup returned null).
+    await expect(host.pickDriveFiles('google_drive', 'c', 'e@x.com', undefined, undefined, null))
+      .resolves.toEqual({ ok: false, reason: 'The browser blocked the file picker popup.' });
+
+    // Pre-opened but closed before the pick ran (superseded by a newer
+    // click, or the user closed the blank window) — reopening here would be
+    // outside any activation, so it must resolve as cancelled instead.
+    const closedPopup = { closed: true, close: vi.fn(), location: { href: '' } } as unknown as Window;
+    await expect(host.pickDriveFiles('google_drive', 'c', 'e@x.com', undefined, undefined, closedPopup))
+      .resolves.toEqual({ ok: false, reason: 'cancelled' });
+
+    expect(open).not.toHaveBeenCalled();
   });
 
   it('pickDriveFiles on web mints a session, navigates the popup, and resolves on same-origin postMessage', async () => {
@@ -296,7 +356,7 @@ describe('electron mode (bridge present)', () => {
     const host = await importHost();
 
     const result = host.pickDriveFiles('google_drive', 'c', 'e@x.com');
-    expect(open).toHaveBeenCalledWith('about:blank', '_blank', 'noopener,noreferrer');
+    expect(open).toHaveBeenCalledWith('about:blank', '_blank');
     // The session mint is a real (mocked) fetch + a dynamic keycloak import,
     // several microtask hops deep — poll rather than guess a tick count.
     await vi.waitFor(() => expect((fakePopup as unknown as { location: { href: string } }).location.href)
