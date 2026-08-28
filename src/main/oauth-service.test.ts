@@ -4,9 +4,10 @@ import * as net from 'net';
 
 vi.mock('electron', () => ({
   shell: { openExternal: vi.fn() },
+  net: { fetch: vi.fn() },
 }));
 
-import { shell } from 'electron';
+import { shell, net } from 'electron';
 import { oauthConnect, cancelCurrentOAuth } from './oauth-service';
 
 const OPTS = {
@@ -59,7 +60,7 @@ describe('oauthConnect', () => {
       status: 200,
       json: async () => ({ access_token: 'at', refresh_token: 'rt', expires_in: 300, token_type: 'Bearer' }),
     }));
-    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    net.fetch = fetchMock as unknown as typeof net.fetch;
 
     const flow = oauthConnect(OPTS);
     const authUrl = await nextAuthUrl();
@@ -111,7 +112,7 @@ describe('oauthConnect', () => {
       status: 200,
       json: async () => ({ access_token: 'at' }),
     }));
-    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    net.fetch = fetchMock as unknown as typeof net.fetch;
 
     const flow = oauthConnect(OPTS);
     const authUrl = await nextAuthUrl();
@@ -128,11 +129,11 @@ describe('oauthConnect', () => {
   // connection hung the sign-in forever with zero feedback.
   it('maps an exchange timeout to an actionable reason', async () => {
     const nextAuthUrl = captureAuthUrl();
-    globalThis.fetch = vi.fn(async () => {
+    net.fetch = vi.fn(async () => {
       const err = new Error('The operation was aborted due to timeout');
       err.name = 'TimeoutError';
       throw err;
-    }) as unknown as typeof fetch;
+    }) as unknown as typeof net.fetch;
 
     const flow = oauthConnect(OPTS);
     const authUrl = await nextAuthUrl();
@@ -146,7 +147,7 @@ describe('oauthConnect', () => {
   it('passes an abort deadline to the exchange request', async () => {
     const nextAuthUrl = captureAuthUrl();
     const fetchMock = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ access_token: 'at' }) }));
-    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    net.fetch = fetchMock as unknown as typeof net.fetch;
 
     const flow = oauthConnect(OPTS);
     const authUrl = await nextAuthUrl();
@@ -159,7 +160,7 @@ describe('oauthConnect', () => {
 
   it('rejects a successful exchange response without an access token', async () => {
     const nextAuthUrl = captureAuthUrl();
-    globalThis.fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ expires_in: 300 }) })) as unknown as typeof fetch;
+    net.fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ expires_in: 300 }) })) as unknown as typeof net.fetch;
 
     const flow = oauthConnect(OPTS);
     const authUrl = await nextAuthUrl();
@@ -374,7 +375,7 @@ describe('oauthConnect', () => {
 
   it('cancels a previous attempt while its token exchange is pending', async () => {
     const nextAuthUrl = captureAuthUrl();
-    globalThis.fetch = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => (
+    net.fetch = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => (
       new Promise((_resolve, reject) => {
         init?.signal?.addEventListener('abort', () => {
           const error = new Error('aborted');
@@ -382,7 +383,7 @@ describe('oauthConnect', () => {
           reject(error);
         });
       })
-    )) as unknown as typeof fetch;
+    )) as unknown as typeof net.fetch;
 
     const first = oauthConnect(OPTS);
     const firstUrl = await nextAuthUrl();

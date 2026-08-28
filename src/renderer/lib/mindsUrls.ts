@@ -42,8 +42,22 @@ export const MINDS_API_BASE =
 // another role, handling both host shapes: `://api.` (static) and `://api-`
 // (PR). Keeps auth/console in lockstep with whatever MINDS_API_BASE resolved to
 // (origin-derived OR an explicit VITE_MINDS_API_URL override).
-const mindsServiceHost = (role: 'auth' | 'console'): string =>
-  MINDS_API_BASE.replace(/:\/\/api([.-])/, `://${role}$1`);
+//
+// **The console is the one role the token swap gets wrong in a PR environment.**
+// A per-PR env serves the console with no service prefix at all — argocd-envs
+// derives that host as `<envName>.dev.mindshub.ai`, while auth keeps its prefix
+// (`auth-<envName>.dev…`). So swapping `api-` for `console-` yields
+// `console-pr-<n>.dev.mindshub.ai`, which does not resolve, and every console
+// deep link in this file 404s in a PR env. Measured: that host answers 404 and
+// `pr-cowork-744.dev.mindshub.ai` answers 200. Dropping the prefix is the
+// derivation the chart actually implies. Permanent envs are untouched, because
+// there the console does carry its own `console.` label.
+const mindsServiceHost = (role: 'auth' | 'console'): string => {
+  if (role === 'console' && MINDS_API_BASE.includes('://api-')) {
+    return MINDS_API_BASE.replace('://api-', '://');
+  }
+  return MINDS_API_BASE.replace(/:\/\/api([.-])/, `://${role}$1`);
+};
 
 // Keycloak host, derived from the SAME resolved base as everything else
 // (api.X → auth.X) so the login flow (keycloak.ts, which imports
@@ -88,6 +102,11 @@ export const MINDS_API_KEY_URL = `${MINDS_CONSOLE_URL}/apiKeys`;
 export const MINDS_PROFILE_URL = `${MINDS_CONSOLE_URL}/settings/personal/profile`;
 export const MINDS_GENERAL_URL = `${MINDS_CONSOLE_URL}/settings/organization/general`;
 export const MINDS_MEMBERS_URL = `${MINDS_CONSOLE_URL}/settings/organization/members`;
+// The console's workspace list. Creating and managing a workspace lives there,
+// not here, so the desktop selector deep-links out rather than growing a create
+// flow of its own. Plural `workspaces` is the new namespace; singular
+// `/settings/workspace/*` redirects to the organization pages.
+export const MINDS_WORKSPACES_URL = `${MINDS_CONSOLE_URL}/settings/workspaces`;
 
 // Environment-independent MindsHub destinations (docs site + support page).
 export const MINDS_DOCS_URL = 'https://docs.mindshub.ai';
