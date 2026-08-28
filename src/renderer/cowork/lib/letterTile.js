@@ -13,10 +13,20 @@
 // text, which is one palette for both themes and was never contrast-checked in
 // light mode. Mixing the hue into `--surface` for the fill and into `--ink` for
 // the glyph inherits the flip for free: in light mode that is a pale tint under
-// a dark hue, in dark mode a dark tint under a pale one, and the ratio holds in
-// both without a second table to maintain. It is the same idiom the account
-// avatar in the user menu already uses against `--accent`; the only thing this
-// generalises is which hue goes in.
+// a dark hue, in dark mode a dark tint under a pale one, so one definition
+// covers both without a second table to maintain. It is the same idiom the
+// account avatar in the user menu already uses against `--accent`; the only
+// thing this generalises is which hue goes in.
+//
+// **The mix ratios are what make it legible, and they were measured rather than
+// picked.** The glyph renders around 9.5px bold, which is normal text by WCAG,
+// so it needs 4.5:1 against its own fill. At a 70% glyph mix three of the seven
+// hues came in under that in LIGHT mode (`#D99A1C` 3.73:1, `#5FB87A` 3.72:1,
+// `#D97A5F` 4.33:1) while dark mode was fine, because a lower mix pulls the
+// glyph toward `--ink`, which is near-black in light and near-white in dark.
+// 60% clears 4.5:1 in both: the worst case is 4.64:1 light and 7.4:1 dark.
+// `letterTile.test.js` computes the ratio for every hue, so moving either
+// constant reds the suite rather than quietly dimming a letter.
 
 // Hues, not finished colours. Spread around the wheel and kept clear of the
 // accent teal so a workspace tile never reads as a selected state.
@@ -31,10 +41,10 @@ const HUES = [
 ];
 
 // Mix ratios. The fill stays low so a row of tiles does not fight the menu's
-// own surface; the glyph stays high so the letter carries the hue rather than
-// the text colour.
+// own surface; the glyph carries enough hue to read as coloured and enough
+// `--ink` to clear 4.5:1 against that fill in both themes.
 const FILL_MIX = '20%';
-const GLYPH_MIX = '70%';
+const GLYPH_MIX = '60%';
 
 /** Stable index for `key`, so the same thing keeps its colour across sessions. */
 function hueIndex(key) {

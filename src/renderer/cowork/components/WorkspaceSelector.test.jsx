@@ -165,6 +165,23 @@ describe('WorkspaceSelector — the menu', () => {
     expect(screen.queryByText(/403/)).toBeNull();
   });
 
+  it('tells assistive tech which row is current, not just that it is dimmed', () => {
+    // The tick is decorative and marked `aria-hidden`, so without this the only
+    // cue on the active row is `aria-disabled`, which announces as "dimmed" and
+    // reads as unavailable rather than as "you are here".
+    hookMock.useHubWorkspaces.mockReturnValue(three('ws-client-a'));
+    render(<WorkspaceSelector user={user} />);
+    openMenu();
+
+    const rows = menu().getAllByRole('menuitem');
+    const active = rows.find((r) => r.textContent.includes('Client A'));
+    const other = rows.find((r) => r.textContent.includes('Kiwibot'));
+
+    expect(active.getAttribute('title')).toBe('Client A (current workspace)');
+    expect(other.getAttribute('title')).toBe('Kiwibot');
+    expect(active.querySelector('svg[aria-hidden="true"]')).toBeTruthy();
+  });
+
   it('disables every row while a switch is in flight', () => {
     hookMock.useHubWorkspaces.mockReturnValue({ ...three('ws-default'), switching: true });
     render(<WorkspaceSelector user={user} />);
@@ -185,10 +202,22 @@ describe('WorkspaceSelector — when it must not render at all', () => {
     expect(container.querySelector('[data-workspace-selector]')).toBeNull();
   });
 
-  it('when the hub could not be reached', () => {
+  it('when the hub could not be reached, even if rows came back with it', () => {
     // No rail placeholder: reserving space for a control that may never appear
     // reads as a layout bug on every launch.
-    hookMock.useHubWorkspaces.mockReturnValue(state({ enabled: true, reachable: false }));
+    //
+    // The rows are here on purpose. With an empty list this passed whether or
+    // not the component read `reachable` at all, because the fallback to
+    // `workspaces[0]` had nothing to fall back to. Rows make `reachable` the
+    // only thing that can hide the control.
+    hookMock.useHubWorkspaces.mockReturnValue(
+      state({
+        enabled: true,
+        reachable: false,
+        workspaces: [DEFAULT_WS, CLIENT_A],
+        activeWorkspaceId: 'ws-default',
+      }),
+    );
     const { container } = render(<WorkspaceSelector user={user} />);
 
     expect(container.querySelector('[data-workspace-selector]')).toBeNull();

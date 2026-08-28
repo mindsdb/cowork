@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 
 // minds-urls resolves the API host at module load via buildKind(), which reads
 // the electron `app`. Stub it (unpackaged → dev) so the module loads; the pure
@@ -7,6 +7,57 @@ import { describe, it, expect, vi } from 'vitest';
 vi.mock('electron', () => ({ app: { isPackaged: false } }));
 
 import { MINDS_PROBE_MODEL, isMindsHost, resolveApiHost } from './minds-urls';
+
+/*
+ * The auth and console hosts are derived from the API host, and they derive
+ * DIFFERENTLY on a per-PR host. Auth keeps its prefix there; the console has
+ * none, because argocd-envs serves a per-PR console at `<envName>.dev…`. Both
+ * derivations are module-level constants, so each case re-imports the module
+ * with `MINDS_API_HOST` set.
+ *
+ * `src/renderer/lib/mindsUrls.ts` has the same pair for the renderer and the
+ * same cases in `mindsUrls.test.ts`. Two copies, so both get tested.
+ */
+describe('derived auth and console hosts', () => {
+  const load = async (apiHost: string) => {
+    vi.stubEnv('MINDS_API_HOST', apiHost);
+    vi.resetModules();
+    return import('./minds-urls');
+  };
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
+  it('drops the service prefix entirely for the console on a PR host', async () => {
+    const { MINDS_CONSOLE_HOST } = await load('https://api-pr-cowork-744.dev.mindshub.ai');
+
+    // `console-pr-cowork-744.dev.mindshub.ai` does not resolve; this one does.
+    expect(MINDS_CONSOLE_HOST).toBe('https://pr-cowork-744.dev.mindshub.ai');
+  });
+
+  it('keeps the console. label on a permanent env', async () => {
+    const { MINDS_CONSOLE_HOST } = await load('https://api.staging.mindshub.ai');
+
+    expect(MINDS_CONSOLE_HOST).toBe('https://console.staging.mindshub.ai');
+  });
+
+  it('leaves auth alone on a PR host: auth DOES keep its prefix there', async () => {
+    const { MINDS_AUTH_HOST, MINDS_KEYCLOAK_BASE } = await load(
+      'https://api-pr-cowork-744.dev.mindshub.ai',
+    );
+
+    expect(MINDS_AUTH_HOST).toBe('https://auth-pr-cowork-744.dev.mindshub.ai');
+    expect(MINDS_KEYCLOAK_BASE).toBe('https://auth-pr-cowork-744.dev.mindshub.ai/auth');
+  });
+
+  it('derives auth on a permanent env the same way it always did', async () => {
+    const { MINDS_AUTH_HOST } = await load('https://api.staging.mindshub.ai');
+
+    expect(MINDS_AUTH_HOST).toBe('https://auth.staging.mindshub.ai');
+  });
+});
 
 describe('resolveApiHost (main-process MindsHub host resolution)', () => {
   it('an explicit MINDS_API_HOST wins over everything', () => {

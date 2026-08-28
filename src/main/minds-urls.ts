@@ -46,8 +46,24 @@ export function resolveApiHost(envHost: string, bakedUrl: string, kind: BuildKin
 const API_HOST = resolveApiHost(process.env.MINDS_API_HOST ?? '', bakedApiUrl(), buildKind());
 
 export const MINDS_API_HOST = API_HOST;
-export const MINDS_AUTH_HOST = API_HOST.replace('://api.', '://auth.');
-export const MINDS_CONSOLE_HOST = API_HOST.replace('://api.', '://console.');
+
+/*
+ * Auth and console are derived from the API host, and the two roles do NOT
+ * derive the same way. Auth keeps a service prefix in every environment
+ * (`auth.staging.…`, `auth-pr-42.dev.…`); the console has one only in the
+ * permanent environments, because argocd-envs serves a per-PR console at
+ * `<envName>.dev.mindshub.ai` with no prefix at all. So a `console-pr-42.…`
+ * built by swapping the token is a host that does not resolve, and every
+ * console deep link from the main process 404s in a PR environment.
+ *
+ * `src/renderer/lib/mindsUrls.ts` derives the same two hosts for the renderer
+ * and has to agree with this. Two copies rather than one because main and
+ * renderer resolve their base from different inputs; keep them in step.
+ */
+export const MINDS_AUTH_HOST = API_HOST.replace(/:\/\/api([.-])/, '://auth$1');
+export const MINDS_CONSOLE_HOST = API_HOST.includes('://api-')
+  ? API_HOST.replace('://api-', '://')
+  : API_HOST.replace('://api.', '://console.');
 
 export const MINDS_KEYCLOAK_BASE = `${MINDS_AUTH_HOST}/auth`;
 export const MINDS_AUTH_SERVICE_URL = `${MINDS_AUTH_HOST}/v1`;

@@ -31,9 +31,10 @@ const hubWorkspacesMock = vi.hoisted(() => ({
 // group has its own test file.
 vi.mock('../hooks/useHubWorkspaces', () => hubWorkspacesMock);
 
-// UserMenu reports a failed workspace switch through the toast manager, which
-// Base UI requires a provider for. The real tree has one (App wraps AppCore),
-// so wrap here too rather than making the component tolerate its absence.
+// WorkspaceSelector calls `useToastManager()` unconditionally, before its own
+// early return, and Base UI requires a provider for it. The real tree has one
+// (App wraps AppCore, and the sidebar is inside it), so wrap here too rather
+// than making the component tolerate its absence.
 const render = (ui, options) => rtlRender(ui, { wrapper: ToastProvider, ...options });
 
 import Sidebar from './Sidebar';

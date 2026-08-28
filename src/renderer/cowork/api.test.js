@@ -18,7 +18,7 @@ vi.mock('../platform/host', async (importOriginal) => ({
 const setAntonInstallId = vi.hoisted(() => vi.fn());
 vi.mock('./lib/analytics', () => ({ setAntonInstallId }));
 
-import { fetchRecommendedModels, fetchSettings, updateSettings, revealSettingKey, streamNewSession, fetchHealth, fetchInFlightList, cancelResponse } from './api';
+import { fetchRecommendedModels, fetchSettings, updateSettings, revealSettingKey, streamNewSession, fetchHealth, fetchInFlightList, cancelResponse, fetchHubWorkspaces } from './api';
 import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 
 const jsonRes = (body, ok = true, status = 200) => ({
@@ -585,5 +585,55 @@ describe('cancelResponse', () => {
 
   it('never throws on a missing conversation id', async () => {
     expect(await cancelResponse('')).toEqual({ status: 'gone', conversation_id: '' });
+  });
+});
+
+/*
+ * Which failures `fetchHubWorkspaces` answers and which it re-throws is the
+ * whole retry contract, and it cannot be seen from the hook's tests: those mock
+ * this module, so a version that swallows everything again keeps them green.
+ * A definite answer is answered; a transient one is thrown for the caller to
+ * ask again.
+ */
+describe('fetchHubWorkspaces', () => {
+  const DARK = { enabled: false, reachable: false, workspaces: [], activeWorkspaceId: null };
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const respond = (res) => {
+    vi.stubGlobal('fetch', vi.fn(async () => res));
+  };
+
+  it('answers dark for a 404, because a sidecar without the route will not grow one', async () => {
+    respond(jsonRes({ detail: 'Not Found' }, false, 404));
+
+    await expect(fetchHubWorkspaces()).resolves.toEqual(DARK);
+  });
+
+  it('throws on a 5xx, so one blip at launch does not hide the control for the session', async () => {
+    respond(jsonRes({ detail: 'boom' }, false, 502));
+
+    await expect(fetchHubWorkspaces()).rejects.toThrow();
+  });
+
+  it('throws when the sidecar is not listening yet', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('Failed to fetch'); }));
+
+    await expect(fetchHubWorkspaces()).rejects.toThrow();
+  });
+
+  it('answers dark when the body is not an object', async () => {
+    respond(jsonRes('nope'));
+
+    await expect(fetchHubWorkspaces()).resolves.toEqual(DARK);
+  });
+
+  it('passes a 200 through as the server sent it', async () => {
+    const payload = { enabled: true, reachable: true, workspaces: [], activeWorkspaceId: null };
+    respond(jsonRes(payload));
+
+    await expect(fetchHubWorkspaces()).resolves.toEqual(payload);
   });
 });

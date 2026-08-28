@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
 
 const apiMock = vi.hoisted(() => ({
@@ -23,9 +23,14 @@ const PAYLOAD = {
 };
 
 beforeEach(() => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
   apiMock.fetchHubWorkspaces.mockReset();
   apiMock.setActiveHubWorkspace.mockReset();
   apiMock.fetchHubWorkspaces.mockResolvedValue(PAYLOAD);
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe('useHubWorkspaces', () => {
@@ -152,6 +157,123 @@ describe('useHubWorkspaces', () => {
     // A stuck `switching` would disable every row in the menu for the rest of
     // the session.
     expect(result.current.switching).toBe(false);
+  });
+
+  it('retries a failed read instead of staying dark for the session', async () => {
+    // The renderer can mount before the sidecar is listening, which is ordinary
+    // on a cold start. One read per session turned that blip into a control
+    // that never appeared until the app was relaunched.
+    apiMock.fetchHubWorkspaces
+      .mockRejectedValueOnce(new Error('API /hub/workspaces/ returned 502'))
+      .mockResolvedValue(PAYLOAD);
+
+    const { result } = renderHook(() => useHubWorkspaces(USER));
+    await waitFor(() => expect(apiMock.fetchHubWorkspaces).toHaveBeenCalledTimes(1));
+    expect(result.current.enabled).toBe(false);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000);
+    });
+
+    expect(result.current.enabled).toBe(true);
+  });
+
+  it('gives up after the retries rather than polling forever', async () => {
+    apiMock.fetchHubWorkspaces.mockRejectedValue(new Error('still down'));
+
+    renderHook(() => useHubWorkspaces(USER));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
+    });
+
+    // The first read plus the three backoff attempts, and nothing after.
+    expect(apiMock.fetchHubWorkspaces).toHaveBeenCalledTimes(4);
+  });
+
+  it('drops a failed read that lands after the identity moved on', async () => {
+    // The success path is guarded and so is the failure path: a read that fails
+    // late must not reset the new account's state to dark, and must not start a
+    // retry loop on an identity nobody is looking at any more.
+    let rejectFirst;
+    apiMock.fetchHubWorkspaces
+      .mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectFirst = reject; }))
+      .mockResolvedValue(PAYLOAD);
+
+    const { result, rerender } = renderHook(({ user }) => useHubWorkspaces(user), {
+      initialProps: { user: USER },
+    });
+    rerender({ user: OTHER_USER });
+    await waitFor(() => expect(result.current.enabled).toBe(true));
+
+    await act(async () => { rejectFirst(new Error('landed too late')); });
+
+    expect(result.current.enabled).toBe(true);
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(10 * 60_000); });
+
+    expect(apiMock.fetchHubWorkspaces).toHaveBeenCalledTimes(2);
+  });
+
+  it('stops retrying when the person changes mid-backoff', async () => {
+    apiMock.fetchHubWorkspaces.mockRejectedValue(new Error('down'));
+    const { rerender } = renderHook(({ user }) => useHubWorkspaces(user), {
+      initialProps: { user: USER },
+    });
+    await waitFor(() => expect(apiMock.fetchHubWorkspaces).toHaveBeenCalledTimes(1));
+
+    apiMock.fetchHubWorkspaces.mockResolvedValue(PAYLOAD);
+    rerender({ user: OTHER_USER });
+    await waitFor(() => expect(apiMock.fetchHubWorkspaces).toHaveBeenCalledTimes(2));
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
+    });
+
+    // The new identity's read succeeded, so the old identity's pending retry
+    // must not fire on top of it.
+    expect(apiMock.fetchHubWorkspaces).toHaveBeenCalledTimes(2);
+  });
+
+  it('drops a switch that resolves after the identity moved on', async () => {
+    // The read path was generation-guarded and the write path was not, so a PUT
+    // started under one account could write its result into the next one's menu.
+    let releaseSwitch;
+    apiMock.setActiveHubWorkspace.mockImplementation(
+      () => new Promise((resolve) => { releaseSwitch = resolve; }),
+    );
+    const { result, rerender } = renderHook(({ user }) => useHubWorkspaces(user), {
+      initialProps: { user: USER },
+    });
+    await waitFor(() => expect(result.current.enabled).toBe(true));
+
+    let pending;
+    act(() => { pending = result.current.switchWorkspace('ws-client-a').catch(() => {}); });
+    rerender({ user: OTHER_USER });
+    await waitFor(() => expect(result.current.activeWorkspaceId).toBe('ws-default'));
+
+    await act(async () => {
+      releaseSwitch({ ...PAYLOAD, activeWorkspaceId: 'ws-client-a' });
+      await pending;
+    });
+
+    expect(result.current.activeWorkspaceId).toBe('ws-default');
+    expect(result.current.switching).toBe(false);
+  });
+
+  it('clears switching when the person changes with a switch in flight', async () => {
+    apiMock.setActiveHubWorkspace.mockImplementation(() => new Promise(() => {}));
+    const { result, rerender } = renderHook(({ user }) => useHubWorkspaces(user), {
+      initialProps: { user: USER },
+    });
+    await waitFor(() => expect(result.current.enabled).toBe(true));
+
+    act(() => { result.current.switchWorkspace('ws-client-a').catch(() => {}); });
+    expect(result.current.switching).toBe(true);
+
+    rerender({ user: OTHER_USER });
+
+    // A stuck flag would hand the next account a menu with every row disabled.
+    await waitFor(() => expect(result.current.switching).toBe(false));
   });
 
   it('re-reads on refresh', async () => {

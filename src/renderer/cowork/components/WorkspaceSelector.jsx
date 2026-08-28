@@ -48,7 +48,7 @@ export function WorkspaceTile({ id, name, size = 18 }) {
 const workspaceName = (workspace) => workspace?.displayName || 'Workspace';
 
 export function WorkspaceSelector({ user }) {
-  const { enabled, workspaces, activeWorkspaceId, switching, switchWorkspace } =
+  const { enabled, reachable, workspaces, activeWorkspaceId, switching, switchWorkspace } =
     useHubWorkspaces(user);
   const toastManager = useToastManager();
 
@@ -74,7 +74,13 @@ export function WorkspaceSelector({ user }) {
   // Nothing to show until the gate is on and the hub answered. Rendering a
   // placeholder row would reserve space in the rail for a control that may
   // never appear, which reads as a layout bug on every launch.
-  if (!enabled || !active) return null;
+  //
+  // `reachable` is checked rather than inferred from an empty list. The server
+  // does send both, and today an unreachable read also carries no rows, so
+  // leaning on that would pass every test while resting on a coincidence: the
+  // moment a partial answer arrives, the control would name a workspace nobody
+  // confirmed.
+  if (!enabled || !reachable || !active) return null;
 
   const activeName = workspaceName(active);
 
@@ -94,13 +100,20 @@ export function WorkspaceSelector({ user }) {
         id: `workspace-${workspace.id}`,
         icon: <WorkspaceTile id={workspace.id} name={name} />,
         label: name,
-        // Long names truncate in the row, so hover carries the full one.
-        title: name,
+        // Long names truncate in the row, so hover carries the full one, and on
+        // the active row it carries why that row is dimmed. The tick below is
+        // marked decorative, so without this the only thing assistive tech had
+        // to go on was `aria-disabled`, which announces as "dimmed" and reads
+        // as unavailable rather than as "you are here".
+        title: isActive ? `${name} (current workspace)` : name,
         // The trigger already names the active workspace, but both reference
-        // consoles mark it in the list too, and without it the only signal is
-        // the row being disabled, which reads as "unavailable" rather than
-        // "you are here".
-        hint: isActive ? <Check size={13} strokeWidth={2} className="text-accent" /> : undefined,
+        // consoles mark it in the list too, and without it the only visible
+        // signal is the row being disabled. `aria-hidden` because it says
+        // nothing a screen reader can use, which is how every other icon in
+        // this file is marked.
+        hint: isActive ? (
+          <Check size={13} strokeWidth={2} aria-hidden="true" className="text-accent" />
+        ) : undefined,
         // The active row is not a destination, and a second click during an
         // in-flight switch would race the first.
         disabled: isActive || switching,
