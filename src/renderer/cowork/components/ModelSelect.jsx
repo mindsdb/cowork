@@ -185,6 +185,75 @@ function makerKeyFor(option) {
 }
 
 /*
+ * Inline text segment whose box WIDTH glides between natural sizes when
+ * `text` changes (a 160ms FLIP: pin the old width, transition to the new,
+ * hand sizing back to the content), so the trigger pill relabeling live on
+ * a pick reads as a slide rather than a snap.
+ *
+ * Segments animate INDEPENDENTLY — this is the fix for the suffix jitter:
+ * animating the whole pill's width moved its edge smoothly while the text
+ * inside re-laid-out instantly, so the "· Effort" part jumped to its new x
+ * at frame zero. Per-segment, an unchanged effort renders an unchanged box
+ * that just rides along as the model-name segment glides; only a segment
+ * whose own text changed animates (width glide, plus a fade of the new
+ * text when `fadeOnChange` — used by the effort suffix so a level change
+ * registers even when the old and new labels happen to be the same width,
+ * e.g. Low → Max).
+ *
+ * No-ops on first mount (nothing to glide from), under
+ * prefers-reduced-motion, and in jsdom (offsetWidth is always 0 there).
+ */
+function AnimatedWidthText({ text, fadeOnChange = false }) {
+  const ref = useRef(null);
+  const prevWidthRef = useRef(null);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const prev = prevWidthRef.current;
+    // offsetWidth AFTER this render committed = the new natural width.
+    const next = el.offsetWidth;
+    prevWidthRef.current = next;
+    if (prev == null || prev === next || next === 0) return;
+    if (typeof window.matchMedia === 'function'
+      && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    // border-box so the pinned px width means the same thing offsetWidth
+    // measured.
+    el.style.boxSizing = 'border-box';
+    el.style.width = `${prev}px`;
+    el.style.transition = 'width 160ms ease';
+    const finish = () => {
+      el.style.width = '';
+      el.style.transition = '';
+      el.style.boxSizing = '';
+      el.removeEventListener('transitionend', finish);
+    };
+    requestAnimationFrame(() => {
+      el.style.width = `${next}px`;
+      el.addEventListener('transitionend', finish);
+      // Safety: transitionend can be swallowed (tab hidden, interrupted
+      // animation) — never leave a stale pinned width behind.
+      setTimeout(finish, 260);
+    });
+  }, [text]);
+
+  return (
+    // align-bottom: an inline-block with overflow hidden baselines on its
+    // bottom margin edge, which would float the text above its neighbors;
+    // every segment shares the pill's font metrics, so bottom-aligning
+    // lines it back up exactly.
+    <span ref={ref} className="inline-block overflow-hidden whitespace-nowrap align-bottom">
+      {fadeOnChange
+        // Re-keying remounts the inner span per text value, replaying the
+        // fade for each change (and once on first appearance, which is
+        // also right — the suffix materializing after an effort pick).
+        ? <span key={text} className="inline-block animate-fade-in">{text}</span>
+        : text}
+    </span>
+  );
+}
+
+/*
  * The "Effort" row rendered as ModelSelect's `footer` (see ui/Combobox.jsx).
  * Only mounted at all when the selected model actually has effort options
  * (see `showEffortFooter` below) — a model with none gets no footer, not a
@@ -405,51 +474,6 @@ export function ModelSelect({
   const footerExitTimerRef = useRef(null);
   const [footerExiting, setFooterExiting] = useState(false);
   useEffect(() => () => { if (footerExitTimerRef.current) clearTimeout(footerExitTimerRef.current); }, []);
-  // The pill relabels LIVE on a pick (the earlier approach froze it until
-  // close, which read as the pick not registering — the list showed the new
-  // model checked while the pill still named the old one). Two things keep
-  // that from being disruptive:
-  //   - the popup's position is computed once at open and never re-tracked
-  //     (`disableAnchorTracking` on the Combobox below), so the pill
-  //     resizing under it can't drag the popup sideways;
-  //   - the pill's own width change is animated subtly (the FLIP effect
-  //     below) instead of snapping.
-  const triggerElRef = useRef(null);
-  const prevTriggerWidthRef = useRef(null);
-  const triggerLabelKey = `${rest.value ?? ''}|${showEffortOnTrigger ? resolvedEffort : ''}`;
-  useLayoutEffect(() => {
-    if (!effortFeatureEnabled) return;
-    const el = triggerElRef.current;
-    if (!el) return;
-    const prev = prevTriggerWidthRef.current;
-    // offsetWidth AFTER this render committed = the new natural width.
-    const next = el.offsetWidth;
-    prevTriggerWidthRef.current = next;
-    if (prev == null || prev === next || next === 0) return;
-    if (typeof window.matchMedia === 'function'
-      && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    // FLIP: pin the old width, then transition to the new one, then hand
-    // sizing back to the content. border-box so the pinned px width means
-    // the same thing offsetWidth measured.
-    el.style.boxSizing = 'border-box';
-    el.style.width = `${prev}px`;
-    el.style.transition = 'width 160ms ease';
-    const finish = () => {
-      el.style.width = '';
-      el.style.transition = '';
-      el.style.boxSizing = '';
-      el.removeEventListener('transitionend', finish);
-    };
-    requestAnimationFrame(() => {
-      el.style.width = `${next}px`;
-      el.addEventListener('transitionend', finish);
-      // Safety: transitionend can be swallowed (tab hidden, interrupted
-      // animation) — never leave a stale pinned width behind.
-      setTimeout(finish, 260);
-    });
-    // triggerLabelKey is the render-visible identity of the pill's text.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [triggerLabelKey, effortFeatureEnabled]);
   const comboboxOnOpenChange = effortFeatureEnabled
     ? (next, eventDetails, ...args) => {
       // Base UI's outside-press dismiss runs a capture-phase listener on
@@ -555,9 +579,15 @@ export function ModelSelect({
         <>
           {selected && <ProviderIcon maker={makerKeyFor(selected)} className="text-ink-2" />}
           <span className={cn('truncate', !selected && 'text-ink-4')}>
-            {selected ? selected.label : placeholder}
+            {/* Per-segment width glides (see AnimatedWidthText): a model
+                switch animates only the name segment — an unchanged effort
+                suffix rides along instead of jittering — and an effort
+                change animates (and fades) only the suffix. */}
+            {selected
+              ? <AnimatedWidthText text={selected.label} />
+              : placeholder}
             {selected && showEffortOnTrigger && (
-              <span className="text-ink-3"> · {capitalize(resolvedEffort)}</span>
+              <span className="text-ink-3"> · <AnimatedWidthText text={capitalize(resolvedEffort)} fadeOnChange /></span>
             )}
           </span>
         </>
@@ -591,11 +621,8 @@ export function ModelSelect({
       open={comboboxOpen}
       onOpenChange={comboboxOnOpenChange}
       onValueChange={comboboxOnValueChange}
-      // React 19 ref-as-prop: lands on BaseCombobox.Trigger via Combobox's
-      // {...rest} spread — the pill element the FLIP width effect measures.
-      {...(effortFeatureEnabled ? { ref: triggerElRef } : {})}
-      // Position once at open; see the FLIP effect's doc comment — the pill
-      // relabeling live must not drag the popup sideways.
+      // Position once at open — the pill relabeling live on a pick (and its
+      // segments gliding to new widths) must not drag the popup sideways.
       disableAnchorTracking={effortFeatureEnabled}
     />
   );
