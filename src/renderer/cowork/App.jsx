@@ -1221,7 +1221,8 @@ function AppCore() {
   // available — so this can never lock the picker.
   const refreshModelAvailability = useCallback(async () => {
     const data = await fetchRecommendedModels({ refresh: true });
-    const merged = mergeRecommendedModels(settings, data);
+    // keepOrder: the menu is already open on the list we hold when this lands.
+    const merged = mergeRecommendedModels(settings, data, { keepOrder: true });
     if (merged) setSettings((prev) => ({ ...prev, ...merged }));
   }, [settings]);
 

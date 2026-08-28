@@ -1753,7 +1753,9 @@ export default function SettingsView({
                                       // fetch itself failed, and assigning those straight through
                                       // would empty the dropdown the user just clicked (for every
                                       // role — the keys are shared) until the app restarts.
-                                      const merged = mergeRecommendedModels(settings, data);
+                                      // keepOrder: the dropdown is open on the list we hold
+                                      // when this lands; a reordered list jumps under the cursor.
+                                      const merged = mergeRecommendedModels(settings, data, { keepOrder: true });
                                       if (!merged) return;
                                       for (const [key, value] of Object.entries(merged)) setSetting(key, value);
                                       openState.refreshedAt = performance.now();
