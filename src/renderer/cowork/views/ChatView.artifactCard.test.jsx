@@ -138,30 +138,24 @@ beforeEach(() => {
 afterEach(() => setOrgMode(false));
 
 describe('inline artifact banner in org mode', () => {
-  it('opens the authenticated draft in the viewer', async () => {
+  it('opens the shared URL rather than the in-app viewer', async () => {
+    // Org preview lives in the artifacts gallery's '...' menu; the chat card
+    // stays a pointer at what collaborators see.
     setOrgMode(true);
     const user = userEvent.setup();
     render(<ChatView task={taskWithArtifact(artifactStep())} />);
 
     await user.click(screen.getByRole('button', { name: 'Open' }));
 
-    expect(screen.getByTestId('artifact-viewer')).toHaveTextContent(ARTIFACT_ID);
-    expect(openExternal).not.toHaveBeenCalled();
+    expect(openExternal).toHaveBeenCalledWith(PUBLISHED_URL);
+    expect(screen.queryByTestId('artifact-viewer')).toBeNull();
   });
 
-  it('keeps Open available for an unpublished authenticated draft', () => {
+  it('offers no Open button before the artifact is shared', () => {
+    // A draft URL alone is not a click destination here: there is nothing this
+    // card can open, and a button that only reports an error is worse than none.
     setOrgMode(true);
     render(<ChatView task={taskWithArtifact(artifactStep({ publishedUrl: '' }))} />);
-
-    expect(screen.getByRole('button', { name: 'Open' })).toBeInTheDocument();
-  });
-
-  it('offers no Open button when neither a draft nor published URL exists', () => {
-    setOrgMode(true);
-    render(<ChatView task={taskWithArtifact(artifactStep({
-      draftUrl: '',
-      publishedUrl: '',
-    }))} />);
 
     expect(screen.queryByRole('button', { name: 'Open' })).toBeNull();
   });

@@ -603,7 +603,6 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
     orgMode,
     published,
     canPreviewInline,
-    hasPrivateDraft: !!artifact.draftUrl,
     hasBridge: host.isElectron || !host.isWeb,
   });
   // Export is hidden pending ENG-1988: PDF/DOCX conversion is broken for any
@@ -646,14 +645,16 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
       return;
     }
     if (openTarget === 'published') {
-      // Legacy org cards without a draft capability still open the shared URL.
+      // The published URL is the only route to this artifact's bytes a CLICK has
+      // on an org deployment, and it carries the access check. The private draft
+      // preview is reachable there too — from the artifacts gallery's '...' menu.
       try { host.openExternal(artifact.publishedUrl); }
       catch { window.open(artifact.publishedUrl, '_blank', 'noreferrer'); }
       return;
     }
     if (openTarget === null) {
       showStatus('error', orgMode
-        ? 'This artifact has no private preview or shared link yet.'
+        ? 'This artifact has no published link yet.'
         : (disabledReason || 'No artifact file path is available.'));
       return;
     }
@@ -724,11 +725,9 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
   // file) — never both, and never a generic "Open" that hides which of the
   // two it's about to do.
   const primaryAction = orgMode
-    ? (openTarget === 'preview'
-      ? { label: 'Open', onClick: handleOpen, tooltip: 'Open private preview' }
-      : openTarget === 'published'
-        ? { label: 'Open', onClick: handleOpen, tooltip: 'Open the shared artifact' }
-        : null)
+    ? (openTarget === 'published'
+      ? { label: 'Open', onClick: handleOpen, tooltip: 'Open the shared artifact' }
+      : null)
     : canPreviewInline
       ? { label: 'Preview', onClick: handleOpen, tooltip: canAct ? `Preview ${path}` : '' }
       : host.isWeb

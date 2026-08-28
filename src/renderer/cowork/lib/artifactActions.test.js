@@ -60,19 +60,21 @@ describe('artifactOpenTarget', () => {
   // artifact body — the inline chat card, the rail's Working-folder list and the
   // artifacts grid — and each used to decide from the file extension alone, so
   // all three opened a local preview on a deployment that serves no content.
-  it('prefers an authenticated draft preview in org mode', () => {
+  it('routes an org click to the shared URL, never to the in-app viewer', () => {
+    // The authenticated draft preview is reachable in org mode, but only from
+    // the card's '...' menu (see ArtifactsView) — one entry point, easy to
+    // withdraw. A click on the body keeps meaning "show me what the people I
+    // shared this with see".
+    //
+    // `hasPrivateDraft` is deliberately still in this fixture: the key was
+    // removed from the signature, and a caller that kept passing it must not be
+    // able to bring the old destination back.
     expect(artifactOpenTarget({
       orgMode: true,
       published: true,
       canPreviewInline: true,
       hasPrivateDraft: true,
       hasBridge: true,
-    })).toBe('preview');
-  });
-
-  it('falls back to the published URL for a legacy org card without a draft', () => {
-    expect(artifactOpenTarget({
-      orgMode: true, published: true, canPreviewInline: false, hasBridge: true,
     })).toBe('published');
   });
 

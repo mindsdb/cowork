@@ -1,7 +1,8 @@
 // Which artifact card actions exist, per deployment mode.
 //
-// In an org deployment authenticated draft URLs support in-app preview/review,
-// while OS/file actions and owner-side publish controls remain desktop-only.
+// In an org deployment the in-app preview/review of an authenticated draft is
+// offered from the artifact card's menu only; OS/file actions and owner-side
+// publish controls remain desktop-only.
 //
 // Open and Copy link need a published URL to point at; without one only Delete is
 // left. An action that cannot work is not offered rather than offered disabled —
@@ -35,19 +36,18 @@ export function isArtifactActionAvailable(id, { orgMode, hasBridge, published } 
  * mutually exclusive destinations rather than a per-action yes/no, and every
  * surface that renders an artifact body has to make it: the inline chat card,
  * the rail's Working-folder list and the artifacts grid each had their own
- * copy, keyed only on the file extension. Authenticated cloud drafts now use
- * the same viewer; only filesystem and OS handoff remain desktop-only.
+ * copy, keyed only on the file extension. In org mode the shared URL is the
+ * only destination a click can have: the authenticated draft preview exists
+ * there, but deliberately only as an item in the card's '...' menu (see
+ * ArtifactsView), so it stays one withdrawable entry point.
  *
  * `canPreviewInline` stays the caller's to compute — the extension rules differ
  * slightly per surface and are not what this decides.
  */
 export function artifactOpenTarget({
-  orgMode, published, canPreviewInline, hasBridge, hasPrivateDraft,
+  orgMode, published, canPreviewInline, hasBridge,
 } = {}) {
-  if (orgMode) {
-    if (hasPrivateDraft) return 'preview';
-    return published ? 'published' : null;
-  }
+  if (orgMode) return published ? 'published' : null;
   if (canPreviewInline) return 'preview';
   return hasBridge ? 'os' : null;
 }

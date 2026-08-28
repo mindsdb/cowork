@@ -309,14 +309,14 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
     const path = (artifact.path || '').toLowerCase();
     const canPreviewInline = _INLINE_PREVIEW_EXTS.includes(ext)
       || _INLINE_PREVIEW_EXTS.some((e) => path.endsWith(e));
-    // In org mode, authenticated draft URLs open in the shared viewer. Without
-    // one, the published URL is the only route to artifact content; local OS
-    // handoff remains a desktop-only capability.
+    // In org mode the published URL is the only route to artifact content from
+    // here: the authenticated draft preview is offered from the artifacts
+    // gallery's '...' menu, not from this list. Local OS handoff remains a
+    // desktop-only capability.
     const target = artifactOpenTarget({
       orgMode,
       published: !!artifact.publishedUrl,
       canPreviewInline,
-      hasPrivateDraft: !!artifact.draftUrl,
       hasBridge: host.isElectron,
     });
     if (target === 'published') {
