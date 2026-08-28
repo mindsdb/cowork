@@ -19,7 +19,7 @@ vi.mock('../../../platform/host', () => ({
 
 import ConnectorPicker from './ConnectorPicker';
 
-const NOTE_TEXT = /More connectors are not available on Cloud just yet\./;
+const NOTE_TEXT = /The full range of connectors is coming soon to Cowork Cloud\./;
 
 describe('ConnectorPicker org-mode desktop note', () => {
   beforeEach(() => {
@@ -35,7 +35,7 @@ describe('ConnectorPicker org-mode desktop note', () => {
     render(<ConnectorPicker open onPick={vi.fn()} onClose={vi.fn()} />);
 
     expect(await screen.findByText(NOTE_TEXT)).toBeInTheDocument();
-    fireEvent.click(screen.getByText('use other connectors in the desktop app'));
+    fireEvent.click(screen.getByText('Cowork Desktop App'));
     expect(openExternal).toHaveBeenCalledWith('https://mindshub.ai/download');
   });
 
