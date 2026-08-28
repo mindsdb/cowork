@@ -2,6 +2,7 @@ import { forwardRef } from 'react';
 import Ico from '../Icons';
 import { Menu, Tooltip } from '../ui';
 import { host } from '../../../platform/host';
+import { useOrgMode } from '../../../lib/orgMode';
 import { PublishMenu } from './publish/PublishMenu';
 import { ArtifactModeTabs } from './workspace/ArtifactModeTabs';
 
@@ -62,6 +63,7 @@ export function ArtifactViewerHeader({
   actions,
   onClose,
 }) {
+  const orgMode = useOrgMode();
   const {
     enabled: commentsEnabled,
     open: commentsOpen,
@@ -162,61 +164,66 @@ export function ArtifactViewerHeader({
             )}
           </div>
         )}
-        {canManage && publishable && (
+        {/* Sharing is owner-side desktop chrome. In org mode this window is a
+            review surface for MVP: publishing and the actions below live on the
+            gallery card instead, which is also where Delete stays reachable. */}
+        {!orgMode && canManage && publishable && (
           <PublishMenu
             controller={pub}
             disabled={!hasActionPath}
             disabledReason={disabledReason}
           />
         )}
-        <Menu
-          ariaLabel="Artifact actions"
-          align="end"
-          width={190}
-          trigger={
-            <IconButton aria-label="More actions">
-              {Ico.moreVert(16)}
-            </IconButton>
-          }
-          items={[
-            {
-              label: 'Reload preview',
-              icon: Ico.reload(13),
-              disabled: !hasActionPath,
-              onClick: onReload,
-            },
-            ...(canOpenInBrowser ? [{
-              label: isPublished ? 'Open shared link' : 'Open in browser',
-              icon: Ico.arrowUpRight(13),
-              onClick: onOpenInBrowser,
-            }] : []),
-            ...(canOpenLocalFile ? [{
-              label: 'Open folder',
-              icon: Ico.openFolder(13),
-              onClick: onOpenFolder,
-            }] : []),
-            ...(host.isWeb ? [] : [{
-              label: 'Open in OS',
-              icon: Ico.externalLink(13),
-              disabled: !hasActionPath || (isBackendArtifact && !backendPort),
-              title: isBackendArtifact && !backendPort ? 'Waiting for backend port…' : undefined,
-              onClick: onOpenOS,
-            }]),
-            ...(artifact?.serveUrl ? [{
-              label: 'Download',
-              icon: Ico.download(13),
-              onClick: onDownload,
-            }] : []),
-            { divider: true },
-            {
-              label: 'Delete',
-              icon: Ico.trash(13),
-              danger: true,
-              disabled: deleteBusy || !hasActionPath || !canManage,
-              onClick: onTrash,
-            },
-          ].filter((item) => canManage || item.label !== 'Delete')}
-        />
+        {!orgMode && (
+          <Menu
+            ariaLabel="Artifact actions"
+            align="end"
+            width={190}
+            trigger={
+              <IconButton aria-label="More actions">
+                {Ico.moreVert(16)}
+              </IconButton>
+            }
+            items={[
+              {
+                label: 'Reload preview',
+                icon: Ico.reload(13),
+                disabled: !hasActionPath,
+                onClick: onReload,
+              },
+              ...(canOpenInBrowser ? [{
+                label: isPublished ? 'Open shared link' : 'Open in browser',
+                icon: Ico.arrowUpRight(13),
+                onClick: onOpenInBrowser,
+              }] : []),
+              ...(canOpenLocalFile ? [{
+                label: 'Open folder',
+                icon: Ico.openFolder(13),
+                onClick: onOpenFolder,
+              }] : []),
+              ...(host.isWeb ? [] : [{
+                label: 'Open in OS',
+                icon: Ico.externalLink(13),
+                disabled: !hasActionPath || (isBackendArtifact && !backendPort),
+                title: isBackendArtifact && !backendPort ? 'Waiting for backend port…' : undefined,
+                onClick: onOpenOS,
+              }]),
+              ...(artifact?.serveUrl ? [{
+                label: 'Download',
+                icon: Ico.download(13),
+                onClick: onDownload,
+              }] : []),
+              { divider: true },
+              {
+                label: 'Delete',
+                icon: Ico.trash(13),
+                danger: true,
+                disabled: deleteBusy || !hasActionPath || !canManage,
+                onClick: onTrash,
+              },
+            ].filter((item) => canManage || item.label !== 'Delete')}
+          />
+        )}
         <Tooltip content="Close">
           <IconButton onClick={onClose} aria-label="Close">{Ico.close(15)}</IconButton>
         </Tooltip>
