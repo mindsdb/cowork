@@ -3,7 +3,7 @@ import { useId } from 'react';
 import Ico from '../../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchRecommendedModels } from '../../api';
 import { isModelLocked } from '../../lib/modelCatalog';
-import { providerTypeToKeyField, providerValueToType, resolveRoleModel, resolveModelPickerValue, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore, toDisplayUnits, toNaturalUnits, formatCount } from '../../lib/settingsTransform';
+import { providerTypeToKeyField, providerValueToType, resolveRoleModel, resolveModelPickerValue, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore, toDisplayUnits, toNaturalUnits, formatCount, routerRoleSubtitle } from '../../lib/settingsTransform';
 import { MODEL_REFRESH_TTL_MS } from '../../lib/modelRefresh';
 import { trackHarnessSwapped, trackBillingOpened } from '../../lib/analytics';
 import { copyText as copyToClipboard } from '../../lib/clipboard';
@@ -1645,12 +1645,18 @@ export default function SettingsView({
                     </div>
                   ) : null;
 
+                  const subtitle = role === 'planning'
+                    ? 'Used for reasoning, orchestration, and responses.'
+                    : role === 'coding'
+                      ? 'Used for scratchpad code generation.'
+                      // The server says which model gates (ENG-1851); see routerRoleSubtitle.
+                      : routerRoleSubtitle(settings.gate, {
+                        rowProviderType: curType,
+                        providerTypeLabels: settings.providerTypeLabels || {},
+                      });
+
                   return (
-                    <Section title={label} subtitle={`Used for ${
-                      role === 'planning' ? 'reasoning, orchestration, and responses'
-                        : role === 'router' ? 'fast respond-or-delegate gating on each turn, and history summarization'
-                        : 'scratchpad code generation'
-                    }.`} notice={noCreditsNotice}>
+                    <Section title={label} subtitle={subtitle} notice={noCreditsNotice}>
                       <div className="grid gap-1.5">
                         {multipleProviders && (
                           <label className="grid gap-1">
