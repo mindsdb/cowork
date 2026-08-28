@@ -415,7 +415,7 @@ export function allocateConversationId() {
 // callback shape the rest of the app already speaks. `conversationId` is
 // optional — omit it to start a new conversation; the caller learns the
 // new id via the first onChunk/onProgress/onDone callback's second arg.
-function _streamResponse(text, { conversationId, projectName, projectId, projectPath, model, harness, attachmentIds = [], disabledConnections, onChunk, onProgress, onToolResult, onDone, onError, onEvent } = {}) {
+function _streamResponse(text, { conversationId, projectName, projectId, projectPath, model, harness, reasoningEffort, attachmentIds = [], disabledConnections, onChunk, onProgress, onToolResult, onDone, onError, onEvent } = {}) {
   const ctrl = new AbortController();
   (async () => {
     try {
@@ -435,6 +435,12 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
           // when the caller doesn't pass one, e.g. an in-task reply, where
           // the harness pill never shows.
           ...(harness ? { harness } : {}),
+          // Per-task reasoning-effort override (ENG-1940) — takes precedence
+          // over the account-wide per-role effort setting for this turn only.
+          // Same conditional-key pattern as `harness` just above: omitted
+          // entirely when the caller doesn't pass one, so older servers and
+          // effort-less models never see the field.
+          ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
           stream: true,
           conversation: conversationId || null,
           // Server's `project` field is a project NAME (folder under
@@ -519,7 +525,9 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
       }
       onDone?.(cid);
     } catch (err) {
-      if (err.name !== 'AbortError') onError?.(err.message);
+      // Distinct code from tailInFlight's reconnect_error: this is a dropped
+      // connection on the initial send, not a reconnect attempt.
+      if (err.name !== 'AbortError') onError?.(err.message, { code: 'stream_error' });
     }
   })();
   return ctrl;
@@ -679,9 +687,9 @@ export function tailInFlight(conversationId, {
         // message. cancelResponse is idempotent and swallows errors, so
         // fire-and-forget is safe.
         cancelResponse(conversationId);
-        onError?.('The response stalled and was ended. Please try sending again.');
+        onError?.('The response stalled and was ended. Please try sending again.', { code: 'stalled' });
       } else if (err.name !== 'AbortError') {
-        onError?.(err.message);
+        onError?.(err.message, { code: 'reconnect_error' });
       }
     } finally {
       if (idleTimer) clearTimeout(idleTimer);
@@ -1244,6 +1252,59 @@ export async function fetchRecommendedModels({ refresh = false } = {}) {
     if (data && typeof data === 'object') return data;
   } catch { /* fall back to static lists */ }
   return null;
+}
+
+// ── MindsHub workspaces ──────────────────────────────────────────────
+//
+// A MindsHub Workspace is an org-internal container that owns hub resources
+// (API keys, artifacts, model entitlements) and lives in the auth service. It is
+// unrelated to the working folder this app calls a workspace.
+//
+// The sidecar makes the call to auth, not us: auth's ingress allows the console
+// origins and no Cowork host, and a per-PR Cowork host cannot be added to a
+// static allow-list. So these two go to our own server and it forwards.
+//
+// The credential travels in its own header because it cannot travel in
+// Authorization. In Electron the main process overwrites that header on every
+// loopback request with the sidecar's own token, so the Keycloak JWT can never
+// arrive under that name; `authFetch` does not even attach it there. The server
+// reads `X-MindsHub-Authorization` first and falls back to Authorization, which
+// is what the web shell uses.
+
+const HUB_CREDENTIAL_HEADER = 'X-MindsHub-Authorization';
+
+async function hubHeaders() {
+  const token = await host.getAccessToken().catch(() => null);
+  return token ? { [HUB_CREDENTIAL_HEADER]: `Bearer ${token}` } : {};
+}
+
+/**
+ * The workspace selector's whole state: whether the surface is on, whether the
+ * hub could be reached, the rows, and which one is active.
+ *
+ * Never throws. A signed-out app, an unreachable sidecar, and an old sidecar
+ * with no such route all answer the same disabled shape, because each is a
+ * state where the menu should render exactly as it does today.
+ */
+export async function fetchHubWorkspaces() {
+  try {
+    const data = await req('/hub/workspaces/', { headers: await hubHeaders() });
+    if (data && typeof data === 'object') return data;
+  } catch { /* an old sidecar has no such route: stay dark */ }
+  return { enabled: false, reachable: false, workspaces: [], activeWorkspaceId: null };
+}
+
+/**
+ * Switch the active workspace. Rejects on failure so the caller owns the
+ * message; the server refuses a workspace the caller holds no grant on (403)
+ * and refuses rather than guessing when it cannot reach the hub (503).
+ */
+export async function setActiveHubWorkspace(workspaceId) {
+  return req('/hub/workspaces/active', {
+    method: 'PUT',
+    headers: await hubHeaders(),
+    body: JSON.stringify({ workspaceId }),
+  });
 }
 
 export async function fetchSettings() {

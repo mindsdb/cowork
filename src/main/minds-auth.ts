@@ -6,6 +6,7 @@ import { getInstallationId } from './installation-id';
 import { authHeader } from './server-auth';
 import { retryOnTransientLock } from './fs-retry';
 import { isMindsBaseUrl } from '../shared/minds-endpoint';
+import { describeFetchError } from './fetch-error';
 import {
   MINDS_API_HOST,
   MINDS_KEYCLOAK_BASE,
@@ -189,7 +190,7 @@ async function doRefreshTokens(): Promise<TokenRefreshResult> {
   } catch (e: any) {
     if (getTokenStoreVersion() !== tokenStoreVersion) return { status: 'superseded' };
     // Network failure / timeout — the token itself is fine. Retry later.
-    console.warn('[minds-auth] token refresh unreachable — keeping tokens, will retry:', e?.message || e);
+    console.warn('[minds-auth] token refresh unreachable — keeping tokens, will retry:', describeFetchError(e));
     scheduleRefreshRetry();
     return { status: 'transient' };
   }
@@ -915,7 +916,7 @@ export async function provisionAntonApiKey(
     }
     return { error: body?.detail || body?.error || body?.message || `Auth-service returned HTTP ${res.status}` };
   } catch (e: any) {
-    return { error: `Could not reach the auth-service: ${e?.message || e}` };
+    return { error: `Could not reach the auth-service: ${describeFetchError(e)}` };
   }
 }
 

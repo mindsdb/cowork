@@ -8,6 +8,7 @@ import { host } from '../../platform/host';
 import { relativeAge } from '../lib/formatTime';
 import { useAccountUser } from '../hooks/useAccountUser';
 import UserMenu from './UserMenu';
+import WorkspaceSelector from './WorkspaceSelector';
 import OnboardingChecklist from './onboarding/OnboardingChecklist';
 import FirstArtifactTip from './onboarding/FirstArtifactTip';
 
@@ -555,6 +556,12 @@ export default function Sidebar({
               `${collapsed ? '0ms' : '80ms'}`,
         }}
       >
+        {/* The MindsHub workspace this session is scoped to. Above the CTA
+            rather than inside the account menu: the current workspace has to be
+            readable without opening anything, and the account menu is where the
+            organization selector lands. Renders nothing until the gate is on. */}
+        {accountUser && <WorkspaceSelector user={accountUser} />}
+
         {/* New task CTA — the tinted (accent-wash) variant, full width. */}
         <div className="anton-sidebar__cta-wrap">
           <Button

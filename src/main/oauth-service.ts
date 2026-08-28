@@ -22,7 +22,8 @@
 import * as http from 'http';
 import * as net from 'net';
 import * as crypto from 'crypto';
-import { shell } from 'electron';
+import { shell, net as electronNet } from 'electron';
+import { describeFetchError } from './fetch-error';
 
 export interface OAuthConnectOpts {
   /** Provider's authorize endpoint, e.g. https://accounts.google.com/o/oauth2/v2/auth */
@@ -290,7 +291,16 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
   }
 
   try {
-    const res = await fetch(opts.tokenUrl, {
+    // electron.net.fetch, not the global Node fetch: this request needs to
+    // succeed everywhere the browser we just redirected from does. Node's
+    // fetch (undici) has its own TLS stack and ignores OS proxy config, so on
+    // a corporate Windows machine with TLS-inspecting AV or a proxy-only
+    // egress it can fail here even though the browser leg above just
+    // succeeded against the same host — surfacing as an opaque "fetch
+    // failed" with no way in. net.fetch runs on Chromium's network stack
+    // (same as shell.openExternal's browser), inheriting the OS proxy
+    // config and certificate trust store.
+    const res = await electronNet.fetch(opts.tokenUrl, {
       method: 'POST',
       headers: tokenHeaders,
       body: tokenBody.toString(),
@@ -323,7 +333,7 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
     if (e?.name === 'TimeoutError' || e?.name === 'AbortError') {
       return { ok: false, reason: 'Token exchange timed out — check your network connection and try signing in again.' };
     }
-    return { ok: false, reason: `Token exchange request failed: ${e?.message || e}` };
+    return { ok: false, reason: `Token exchange request failed: ${describeFetchError(e)}` };
   } finally {
     if (_activeAttempt === attempt) _activeAttempt = null;
   }

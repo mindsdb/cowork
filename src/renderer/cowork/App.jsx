@@ -79,8 +79,8 @@ import { resolveRepairConversation } from './lib/artifactRepairChat';
 import { isArtifactTipDismissed, dismissArtifactTip, dismissIfUntouched } from './components/onboarding/onboardingStore';
 import { recommendedModelOptions, providerValueToType,
          mergeRecommendedModels } from './lib/settingsTransform';
-import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery, trackFirstResponse, classifyFirstResponse } from './lib/analytics';
-import { MODEL_ROUTER_ID, MODEL_ROUTER, isModelLocked } from './lib/modelCatalog';
+import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery, trackFirstResponse, classifyFirstResponse, trackTurnFailed } from './lib/analytics';
+import { MODEL_ROUTER_ID, MODEL_ROUTER, MINDSHUB_AIR_MODEL_ID, isModelLocked } from './lib/modelCatalog';
 import {
   CoworkProvider,
   CoworkRouterProvider,
@@ -1125,12 +1125,31 @@ function AppCore() {
     ids.forEach((id) => markInFlightDone(id));
 
     const loaded = cid ? await loadSessionMessagesWithRetry(cid) : null;
+    // A stream that merely dropped mid-answer can still have finished on the
+    // server — the reload then carries no error message. Gating on the same
+    // check the UI uses means a turn the user actually saw succeed doesn't
+    // also count as a failure. Unlike fireFirstResponse (once per user), this
+    // fires on every failed turn — the failure rate had no measurement at
+    // all before this.
+    const hasError = loaded
+      ? loaded.messages.some((m) => m.role === 'error' || m.role === 'provider_required')
+      : true;
+    // `some()` over the whole history is right for the UI status below, but
+    // it's a permanent yes once any earlier turn in the conversation has
+    // ever failed — worthless as a failure-tracking gate, since it also
+    // counts turns that actually recovered. A server-declared
+    // response.failed (api.js's onError passes the raw SSE message through,
+    // so `type` survives) is authoritative on its own. Only the client-side
+    // transport codes (stream_error, reconnect_error, stalled) need the
+    // reload heuristic, and only against the *last* turn.
+    const lastMessage = loaded?.messages?.[loaded.messages.length - 1];
+    const lastTurnFailed = loaded
+      ? lastMessage?.role === 'error' || lastMessage?.role === 'provider_required'
+      : true;
+    if (event?.type === 'response.failed' || lastTurnFailed) trackTurnFailed(cid, event);
     setTasks((prev) => prev.map((t) => {
       if (!ids.includes(t.id)) return t;
       if (loaded) {
-        const hasError = loaded.messages.some(
-          (m) => m.role === 'error' || m.role === 'provider_required',
-        );
         return {
           ...t,
           status: hasError ? 'error' : 'idle',
@@ -1211,8 +1230,17 @@ function AppCore() {
     modelProviders: settings.modelProviders,
     modelFamilies: settings.modelFamilies,
     modelEnabled: settings.modelEnabled,
+    // Which models advertise reasoning-effort levels (ENG-1940) — same
+    // settings key SettingsView's per-role effort picker reads, so
+    // Composer's EffortSelect stays in lockstep with it.
+    modelEfforts: settings.modelEfforts,
+    // Account-wide harness toggle (web-only Settings → Agent Harness) —
+    // EffortSelect needs this outside coding mode, where Composer's own
+    // harness state is hardcoded 'anton' and can't say whether Hermes is
+    // actually configured account-wide.
+    harness: settings.harness,
     onRefresh: refreshModelAvailability,
-  }), [settings.modelProviders, settings.modelFamilies, settings.modelEnabled, refreshModelAvailability]);
+  }), [settings.modelProviders, settings.modelFamilies, settings.modelEnabled, settings.modelEfforts, settings.harness, refreshModelAvailability]);
   const { isMobile, isNarrow } = useBreakpoint();
 
   // iOS/Android auto-zoom workaround: toggle the viewport meta tag around
@@ -1382,6 +1410,11 @@ function AppCore() {
   // always tracks Settings live, server-side, without the renderer needing
   // to know the current planning/coding/router model.
   const [selectedModel, setSelectedModel] = useState(MODEL_ROUTER);
+  // Reasoning-effort pick for the home/new-task composer (ENG-1940) —
+  // sibling state to selectedModel. '' means "no explicit pick, use the
+  // model's (or account's) default effort" — never re-synced from
+  // settings, same rationale as selectedModel just above.
+  const [selectedEffort, setSelectedEffort] = useState('');
   // Local cowork-server lifecycle — online/busy state, start & stop, and the
   // first-paint seed-and-poll — lives in useServerControl. It re-fetches
   // through refreshDataRef after a manual start (refreshData writes
@@ -1630,23 +1663,25 @@ function AppCore() {
         ? MODEL_ROUTER
         : (models.find((m) => m.id === currentTask.model) || { id: currentTask.model, name: currentTask.model, desc: 'Configured planning model' }))
     : selectedModel;
+  // Sibling to currentTaskModel (ENG-1940): the task's own effort pick if
+  // it has one, else whatever the home composer currently shows.
+  const currentTaskEffort = currentTask?.reasoningEffort ?? selectedEffort;
 
   // "Switch to MindsHub Air" escape hatch on the model-denial card
   // (ENG-1304): offered only while Air itself is payable — the free monthly
   // grant covers Air, so it's the one model an empty wallet can usually
   // still run. `modelEnabled` is the same availability map the Settings
   // picker tags rows with (absent id ⇒ available).
-  const AIR_MODEL_ID = 'mindshub_air';
   const airAvailableForSwitch =
-    (settings.recommendedModels?.['minds-cloud'] || []).includes(AIR_MODEL_ID)
-    && !isModelLocked(settings.modelEnabled, AIR_MODEL_ID);
+    (settings.recommendedModels?.['minds-cloud'] || []).includes(MINDSHUB_AIR_MODEL_ID)
+    && !isModelLocked(settings.modelEnabled, MINDSHUB_AIR_MODEL_ID);
   const handleSwitchToAirAndResend = (text) => {
     if (!currentTask || !text) return;
     // Persist the switch on the task so follow-up sends stay on Air, and
     // override the same send explicitly — the state write isn't visible to
     // handleSendInTask's closure within this tick.
-    setTasks((prev) => prev.map((t) => (t.id === currentTask.id ? { ...t, model: AIR_MODEL_ID } : t)));
-    handleSendInTask(text, null, { modelOverride: AIR_MODEL_ID });
+    setTasks((prev) => prev.map((t) => (t.id === currentTask.id ? { ...t, model: MINDSHUB_AIR_MODEL_ID } : t)));
+    handleSendInTask(text, null, { modelOverride: MINDSHUB_AIR_MODEL_ID });
   };
 
   useEffect(() => {
@@ -1978,6 +2013,7 @@ function AppCore() {
       projectName: selectedProject?.name || 'general',
       projectPath: selectedProject?.path || null,
       model: selectedModel?.id || null,
+      reasoningEffort: selectedEffort || null,
       attachments: [],
     }, ...prev]);
     setActiveTaskId(tempId);
@@ -2254,6 +2290,7 @@ function AppCore() {
       projectName: selectedProject?.name || 'general',
       projectPath: selectedProject?.path || null,
       model: selectedModel?.id || null,
+      reasoningEffort: selectedEffort || null,
       attachments: [],
     }, ...prev]);
     setActiveTaskId(tempId);
@@ -2358,13 +2395,6 @@ function AppCore() {
 
   const navigate = (key) => {
     if (sidebarPopout) setNavPopoutOpen(false);
-    // Connectors aren't available on Cloud yet — intercept any entry point
-    // (sidebar, Settings, deep link) in org mode and show the "coming soon"
-    // popup instead of routing to a half-working surface.
-    if (orgMode && key === 'customize') {
-      setComingSoonFeature('Connect Apps and Data');
-      return;
-    }
     if (key === 'settings' || key.startsWith('settings:')) {
       // Targeted (settings:backend) opens that section; a bare `settings`
       // opens the mobile section list (null) / desktop's last section.
@@ -2383,17 +2413,6 @@ function AppCore() {
     // enterRoute() (re)fetches that view's data.
     setRoute(key);
   };
-
-  // Safety net: navigate() intercepts the sidebar/Settings entry points, but a
-  // direct setRoute (or org mode resolving after a route is already set) could
-  // still land on connectors. Bounce home and show the popup rather than
-  // render a surface that isn't available on Cloud.
-  useEffect(() => {
-    if (orgMode && route === 'customize') {
-      setComingSoonFeature('Connect Apps and Data');
-      setRoute('home');
-    }
-  }, [orgMode, route]);
 
   // Same safety net for Channels: the in-Settings nav calls onSectionChange
   // (= setSettingsSection) directly, bypassing openSettings entirely.
@@ -2640,6 +2659,7 @@ function AppCore() {
         projectName: effectiveProjectName,
         projectId: effectiveProjectId,
         model: selectedModel?.id ?? null,
+        reasoningEffort: selectedEffort ?? null,
         attachments: [],
         disabledConnections: [],
         updatedAt: new Date().toISOString(),
@@ -2704,6 +2724,7 @@ function AppCore() {
       projectName: effectiveProjectName,
       projectId: effectiveProjectId,
       model: selectedModel?.id ?? null,
+      reasoningEffort: selectedEffort ?? null,
       // The composer's harness pick (ENG-1656 follow-up) — Anton or
       // Hermes here; 'claude-code' never reaches this function (the top
       // of handleSendFromHome routes it to launchCodingModeTask instead).
@@ -2801,6 +2822,7 @@ function AppCore() {
       projectId: effectiveProjectId,
       projectPath: effectiveProjectPath,
       model: selectedModel?.id,
+      reasoningEffort: selectedEffort || null,
       harness: meta?.harness,
       attachmentIds,
       disabledConnections: disabledForSend,
@@ -3103,6 +3125,15 @@ function AppCore() {
       || targetTask.model
       || (opts.targetTask ? null : selectedModel?.id)
       || null;
+    // Sibling precedence chain to taskModel (ENG-1940): a same-tick
+    // override, else the task's own saved pick, else — only for a live
+    // send to the task on screen — the home composer's current pick.
+    // selectedEffort defaults to '', so the trailing `|| null` collapses
+    // that (and any other falsy pick) to null the same way taskModel's does.
+    const taskEffort = (opts.effortOverride
+      ?? targetTask.reasoningEffort
+      ?? (opts.targetTask ? null : selectedEffort))
+      || null;
 
     let sendingAttachments, attachmentIds, driveReference;
     try {
@@ -3231,6 +3262,7 @@ function AppCore() {
       projectId: taskProjectId,
       projectPath: taskProjectPath,
       model: taskModel,
+      reasoningEffort: taskEffort,
       attachmentIds,
       disabledConnections: disabledForSend,
       onEvent(ev) {
@@ -4364,6 +4396,8 @@ function AppCore() {
             onProjectChange={setSelectedProject}
             model={selectedModel}
             onModelChange={setSelectedModel}
+            effort={selectedEffort}
+            onEffortChange={setSelectedEffort}
             projects={projects}
             models={modelOptions}
             modelMeta={modelMeta}
@@ -4379,6 +4413,7 @@ function AppCore() {
             configReady={health.config_ready ?? settings.configReady}
             configError={health.config_error ?? settings.configError}
             onOpenSettings={openSettings}
+            modelLabels={settings.modelLabels}
             codingModelDefault={settings.codingModel}
             harnessHermesEnabled={settings.harnessHermesEnabled ?? true}
             harnessClaudeCodeEnabled={settings.harnessClaudeCodeEnabled ?? true}
@@ -4402,6 +4437,7 @@ function AppCore() {
             onSend={handleSendInTask}
             onSwitchToAirAndResend={airAvailableForSwitch ? handleSwitchToAirAndResend : undefined}
             onOpenSettings={openSettings}
+            modelLabels={settings.modelLabels}
             codingModelDefault={settings.codingModel}
             harnessHermesEnabled={settings.harnessHermesEnabled ?? true}
             harnessClaudeCodeEnabled={settings.harnessClaudeCodeEnabled ?? true}
@@ -4423,6 +4459,11 @@ function AppCore() {
               // send, with no changes needed there.
               if (!currentTask) return;
               setTasks((prev) => prev.map((t) => (t.id === currentTask.id ? { ...t, model: m.id } : t)));
+            }}
+            effort={currentTaskEffort}
+            onEffortChange={(e) => {
+              if (!currentTask) return;
+              setTasks((prev) => prev.map((t) => (t.id === currentTask.id ? { ...t, reasoningEffort: e } : t)));
             }}
             models={modelOptions}
             modelMeta={modelMeta}
@@ -4532,6 +4573,8 @@ function AppCore() {
             modelMeta={modelMeta}
             model={selectedModel}
             onModelChange={setSelectedModel}
+            effort={selectedEffort}
+            onEffortChange={setSelectedEffort}
             onSelectProject={(p) => setSelectedProject(p)}
             onCreateProject={handleCreateProject}
             onSendInProject={(text, meta) => {
@@ -4564,6 +4607,7 @@ function AppCore() {
             }}
             agentLabel={agentLabel}
             onOpenSettings={openSettings}
+            modelLabels={settings.modelLabels}
             codingModelDefault={settings.codingModel}
             harnessHermesEnabled={settings.harnessHermesEnabled ?? true}
             harnessClaudeCodeEnabled={settings.harnessClaudeCodeEnabled ?? true}

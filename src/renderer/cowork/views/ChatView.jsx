@@ -42,7 +42,7 @@ import { harnessLabel } from '../lib/agentLabel';
 import { artifactOpenTarget } from '../lib/artifactActions';
 import { revalidate as revalidateArtifacts, setArtifactsScope, useArtifactLiveness } from '../lib/artifactsStore';
 import { useOrgMode } from '../../lib/orgMode';
-import { modelLabel } from '../lib/settingsTransform';
+import { displayModelLabel } from '../lib/settingsTransform';
 import { providerOverloadedButtons } from '../lib/turnErrorActions';
 import { isSkippedFailedAssistant, isOrphanUser as isOrphanUserPure, lastVisibleTurnIdx } from '../lib/turnVisibility';
 import { isThinkingActive } from '../lib/thinkingActive';
@@ -1167,13 +1167,19 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
  * wallet (ENG-1304). Top up balance is just a billing link (host.openExternal
  * window.opens on web); Open Settings routes there on both shells.
  */
-export function ModelUnavailableCard({ time, agentLabel, onOpenSettings, code, failedModel, onSwitchToAir }) {
-  // modelLabel finishes multi-part ids (Claude Sonnet, GPT-5.5 Mini) and
-  // deliberately lowercases some heads (o4 Mini) — never re-case those. Only a
-  // bare single-token alias ("sonnet") comes back lowercase, and it reads
-  // better capitalized in the title. So capitalize single-word labels only,
-  // leaving anything modelLabel already spaced/cased untouched.
-  const raw = modelLabel(failedModel) || failedModel || 'This model';
+export function ModelUnavailableCard({
+  time, agentLabel, onOpenSettings, code, failedModel, onSwitchToAir, modelLabels,
+}) {
+  // Same naming rule as the picker (ENG-1638): MindsHub's catalog label when we
+  // hold one, else the id-derived form. This card used to call the bare
+  // prettifier, so the row the user had just picked as "MindsHub Air" came back
+  // as "Mindshub air needs credits" — the same model named two ways on one
+  // screen. displayModelLabel finishes multi-part ids (Claude Sonnet, GPT-5.5
+  // Mini) and deliberately lowercases some heads (o4 Mini) — never re-case
+  // those. Only a bare single-token alias ("sonnet") comes back lowercase, and
+  // it reads better capitalized in the title. So capitalize single-word labels
+  // only, leaving anything already spaced/cased untouched.
+  const raw = displayModelLabel(failedModel, modelLabels) || failedModel || 'This model';
   const label = /\s/.test(raw) ? raw : raw.charAt(0).toUpperCase() + raw.slice(1);
   const denied = code === 'model_access_denied';
   // One handler for both button rows, so the recorded trigger always matches the
@@ -1291,12 +1297,20 @@ export default function ChatView({
   project,
   model,
   onModelChange,
+  // Reasoning-effort pick for the current model (ENG-1940) — sibling to
+  // model/onModelChange, same optionality: a caller that omits these just
+  // never sees the EffortSelect pill (Composer defaults `effort` to '').
+  effort,
+  onEffortChange,
   // Full catalog for the model picker (ENG-1656: task view can change its
   // model, not just display it). Falls back to a single-item list of just
   // the current model when omitted, so existing callers/tests that don't
   // pass these keep working exactly as before — a flat, unpickable menu.
   models,
   modelMeta,
+  // Catalog display labels by id (settings.modelLabels), so failure cards name
+  // a model exactly as the picker does (ENG-1638).
+  modelLabels,
   attachments,
   connectors,
   onAttachFiles,
@@ -2017,6 +2031,7 @@ export default function ChatView({
                       onOpenSettings={onOpenSettings}
                       code={m.code}
                       failedModel={m.failedModel}
+                      modelLabels={modelLabels}
                       onSwitchToAir={
                         onSwitchToAirAndResend && deniedPrevUserText
                           ? () => onSwitchToAirAndResend(deniedPrevUserText)
@@ -2410,6 +2425,8 @@ export default function ChatView({
             onProjectChange={() => {}}
             model={model}
             onModelChange={onModelChange || (() => {})}
+            effort={effort}
+            onEffortChange={onEffortChange || (() => {})}
             projects={[]}
             models={models || (model ? [model] : [])}
             modelMeta={modelMeta}

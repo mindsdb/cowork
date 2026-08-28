@@ -348,6 +348,51 @@ The GUI provides a visual `/connect` flow:
 6. Writes mind's system prompt to project cortex
 7. Auto-restarts the server to pick up new config
 
+### The workspace group in the account menu
+
+The footer account menu lists the MindsHub workspaces the signed-in person can
+use, under the org name, with a check on the active one. A **MindsHub Workspace**
+is an org-internal container that owns hub resources (API keys, artifacts, model
+entitlements) and lives in the auth service. It is not the working folder this app
+calls a workspace, which is why the stored key and the code are named
+`hubWorkspace` throughout. There is no create entry: workspaces are created in
+the console.
+
+Four things decide whether the group appears, and all four fail towards the menu
+looking exactly as it does today:
+
+| State | Group |
+|-------|-------|
+| The gate is off | absent |
+| The read has not come back yet | absent |
+| The hub could not be reached | absent |
+| One workspace and nothing to switch to | absent |
+| Two or more, gate on | shown |
+
+**The switch is a server-side Statsig gate, not a build flag.** Auth declares
+`authorization_ui` in its own `configs/statsig_gates.json`, evaluates it with its
+server SDK, and reports the verdict; cowork-server reads it and passes it on. So
+one gate governs the console and this app, and turning the surface off does not
+need an installer. That matters here specifically: `src/main/**` reaches users
+only through a new installer, so a `CODING_MODE_OPTIONS_ENABLED`-style preload
+flag could not be switched off in an incident. `COWORK_HUB_WORKSPACES_FORCE_ON=true`
+on the sidecar is an ON-only development override for walking the surface where no
+rule targets you.
+
+**The renderer never calls auth.** It calls its own sidecar at
+`/api/v1/hub/workspaces/`, which forwards. Auth's ingress allows the console
+origins and no Cowork host, and a per-PR Cowork host cannot be added to a static
+allow-list, so a direct call would work in the packaged app (`webSecurity` is off
+there) and fail in the web SPA.
+
+**The credential goes in `X-MindsHub-Authorization`, not `Authorization`.** The
+main process overwrites `Authorization` on every loopback request with the
+sidecar's own token, so the Keycloak JWT cannot arrive under that name.
+
+**Picking a workspace changes what this app shows, not what a turn is billed to.**
+Attribution rides the credential a turn presents, and neither credential carries a
+workspace today.
+
 ### A model the wallet can't pay for is not selectable
 
 MindsHub's `/v1/models` marks each model with whether the org can pay for it

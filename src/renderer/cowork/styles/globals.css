@@ -741,7 +741,14 @@ a[href],
   padding: var(--composer-padding);
   min-height: 56px; max-height: 220px;
   user-select: text;
+  /* Hide the scrollbar to match the overlay. A classic space-consuming
+     scrollbar (Windows/Linux) would narrow the textarea once it overflows,
+     wrapping lines earlier than the full-width overlay and drifting the caret
+     off the visible text. Both must reserve zero. */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
+.composer-textarea::-webkit-scrollbar { display: none; }
 /* Placeholder must opt back IN to a visible fill (the rule above made all
    textarea glyphs transparent). */
 .composer-textarea::placeholder { color: var(--frost-500); -webkit-text-fill-color: var(--frost-500); }
@@ -1283,6 +1290,26 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
   font-size: var(--text-xs);
   color: var(--ink-3);
   font-weight: 500;
+}
+
+.customize-org-mode-note {
+  margin: 10px 8px 4px;
+  padding: 10px 12px;
+  border-radius: var(--card-radius-row);
+  background: var(--surface-2);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-3);
+}
+
+.customize-inline-link {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--accent, var(--ink));
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
 }
 
 .customize-detail-header {

@@ -245,6 +245,87 @@ describe('Composer — model picker (ENG-1656)', () => {
   });
 });
 
+// ─── Reasoning effort sub-picker (ENG-1940) ───────────────────────────
+//
+// ModelSelect's own footer/flyout/trigger-suffix behavior is covered
+// thoroughly, in isolation, by ModelSelect.test.jsx — these cases only
+// check the wiring: Composer threads `modelMeta.modelEfforts` and the
+// current `effort`/`onEffortChange` into the SAME "Choose model" picker
+// (there is no longer a separate sibling control), and it round-trips.
+
+const MODEL_EFFORTS = { sonnet: { efforts: ['low', 'medium', 'high'], default: 'medium' } };
+
+describe('Composer — reasoning effort sub-picker (ENG-1940)', () => {
+  it('shows the resolved effort, muted, on the model picker trigger for a model with effort options', () => {
+    renderComposer({
+      models: MODELS,
+      modelMeta: { ...MODEL_META, modelEfforts: MODEL_EFFORTS },
+      model: MODELS[1], // sonnet
+      effort: 'high', // not sonnet's default ("medium") — the trigger suffix only shows then
+    });
+    expect(screen.getByRole('combobox', { name: 'Choose model' })).toHaveTextContent('Claude Sonnet 5 · High');
+  });
+
+  it('shows an "Effort" footer row in the model popup for a model with effort options', async () => {
+    const user = userEvent.setup();
+    renderComposer({
+      models: MODELS,
+      modelMeta: { ...MODEL_META, modelEfforts: MODEL_EFFORTS },
+      model: MODELS[1], // sonnet
+      effort: 'medium',
+    });
+
+    await user.click(screen.getByRole('combobox', { name: 'Choose model' }));
+
+    const footerRow = screen.getByText('Effort').parentElement;
+    expect(within(footerRow).getByText('Medium')).toBeInTheDocument();
+  });
+
+  it('shows no Effort footer at all for a model with no modelEfforts entry', async () => {
+    const user = userEvent.setup();
+    renderComposer({
+      models: MODELS,
+      modelMeta: { ...MODEL_META, modelEfforts: MODEL_EFFORTS },
+      model: MODELS[0], // mindshub_air — not in MODEL_EFFORTS
+      effort: '',
+    });
+
+    await user.click(screen.getByRole('combobox', { name: 'Choose model' }));
+
+    expect(screen.queryByText('Effort')).toBeNull();
+  });
+
+  it('fires onEffortChange with the picked level, from the footer flyout', async () => {
+    const user = userEvent.setup();
+    const props = renderComposer({
+      models: MODELS,
+      modelMeta: { ...MODEL_META, modelEfforts: MODEL_EFFORTS },
+      model: MODELS[1], // sonnet
+      effort: 'medium',
+      onEffortChange: vi.fn(),
+    });
+
+    await user.click(screen.getByRole('combobox', { name: 'Choose model' }));
+    fireEvent.mouseEnter(screen.getByText('Effort').closest('button'));
+    const panel = screen.getByText(/Higher effort means more thorough responses/).parentElement;
+    await user.click(within(panel).getByText('High').closest('button'));
+
+    expect(props.onEffortChange).toHaveBeenCalledWith('high');
+  });
+
+  it('is suppressed under modelReadOnly, same as the model picker', () => {
+    renderComposer({
+      models: MODELS,
+      modelMeta: { ...MODEL_META, modelEfforts: MODEL_EFFORTS },
+      model: MODELS[1],
+      effort: 'medium',
+      modelReadOnly: true,
+    });
+    expect(screen.queryByRole('combobox', { name: 'Choose model' })).toBeNull();
+    expect(screen.queryByText('Effort')).toBeNull();
+  });
+});
+
 // ─── "Model Router" default option (ENG-1656 follow-up) ──────────────
 //
 // The picker's first entry defers to whichever model this account's
