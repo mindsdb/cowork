@@ -1229,8 +1229,17 @@ function AppCore() {
     modelProviders: settings.modelProviders,
     modelFamilies: settings.modelFamilies,
     modelEnabled: settings.modelEnabled,
+    // Which models advertise reasoning-effort levels (ENG-1940) — same
+    // settings key SettingsView's per-role effort picker reads, so
+    // Composer's EffortSelect stays in lockstep with it.
+    modelEfforts: settings.modelEfforts,
+    // Account-wide harness toggle (web-only Settings → Agent Harness) —
+    // EffortSelect needs this outside coding mode, where Composer's own
+    // harness state is hardcoded 'anton' and can't say whether Hermes is
+    // actually configured account-wide.
+    harness: settings.harness,
     onRefresh: refreshModelAvailability,
-  }), [settings.modelProviders, settings.modelFamilies, settings.modelEnabled, refreshModelAvailability]);
+  }), [settings.modelProviders, settings.modelFamilies, settings.modelEnabled, settings.modelEfforts, settings.harness, refreshModelAvailability]);
   const { isMobile, isNarrow } = useBreakpoint();
 
   // iOS/Android auto-zoom workaround: toggle the viewport meta tag around
@@ -1400,6 +1409,11 @@ function AppCore() {
   // always tracks Settings live, server-side, without the renderer needing
   // to know the current planning/coding/router model.
   const [selectedModel, setSelectedModel] = useState(MODEL_ROUTER);
+  // Reasoning-effort pick for the home/new-task composer (ENG-1940) —
+  // sibling state to selectedModel. '' means "no explicit pick, use the
+  // model's (or account's) default effort" — never re-synced from
+  // settings, same rationale as selectedModel just above.
+  const [selectedEffort, setSelectedEffort] = useState('');
   // Local cowork-server lifecycle — online/busy state, start & stop, and the
   // first-paint seed-and-poll — lives in useServerControl. It re-fetches
   // through refreshDataRef after a manual start (refreshData writes
@@ -1648,6 +1662,9 @@ function AppCore() {
         ? MODEL_ROUTER
         : (models.find((m) => m.id === currentTask.model) || { id: currentTask.model, name: currentTask.model, desc: 'Configured planning model' }))
     : selectedModel;
+  // Sibling to currentTaskModel (ENG-1940): the task's own effort pick if
+  // it has one, else whatever the home composer currently shows.
+  const currentTaskEffort = currentTask?.reasoningEffort ?? selectedEffort;
 
   // "Switch to MindsHub Air" escape hatch on the model-denial card
   // (ENG-1304): offered only while Air itself is payable — the free monthly
@@ -1996,6 +2013,7 @@ function AppCore() {
       projectName: selectedProject?.name || 'general',
       projectPath: selectedProject?.path || null,
       model: selectedModel?.id || null,
+      reasoningEffort: selectedEffort || null,
       attachments: [],
     }, ...prev]);
     setActiveTaskId(tempId);
@@ -2272,6 +2290,7 @@ function AppCore() {
       projectName: selectedProject?.name || 'general',
       projectPath: selectedProject?.path || null,
       model: selectedModel?.id || null,
+      reasoningEffort: selectedEffort || null,
       attachments: [],
     }, ...prev]);
     setActiveTaskId(tempId);
@@ -2657,6 +2676,7 @@ function AppCore() {
         projectName: effectiveProjectName,
         projectId: effectiveProjectId,
         model: selectedModel?.id ?? null,
+        reasoningEffort: selectedEffort ?? null,
         attachments: [],
         disabledConnections: [],
         updatedAt: new Date().toISOString(),
@@ -2718,6 +2738,7 @@ function AppCore() {
       projectName: effectiveProjectName,
       projectId: effectiveProjectId,
       model: selectedModel?.id ?? null,
+      reasoningEffort: selectedEffort ?? null,
       // The composer's harness pick (ENG-1656 follow-up) — Anton or
       // Hermes here; 'claude-code' never reaches this function (the top
       // of handleSendFromHome routes it to launchCodingModeTask instead).
@@ -2815,6 +2836,7 @@ function AppCore() {
       projectId: effectiveProjectId,
       projectPath: effectiveProjectPath,
       model: selectedModel?.id,
+      reasoningEffort: selectedEffort || null,
       harness: meta?.harness,
       attachmentIds,
       disabledConnections: disabledForSend,
@@ -3116,6 +3138,15 @@ function AppCore() {
       || targetTask.model
       || (opts.targetTask ? null : selectedModel?.id)
       || null;
+    // Sibling precedence chain to taskModel (ENG-1940): a same-tick
+    // override, else the task's own saved pick, else — only for a live
+    // send to the task on screen — the home composer's current pick.
+    // selectedEffort defaults to '', so the trailing `|| null` collapses
+    // that (and any other falsy pick) to null the same way taskModel's does.
+    const taskEffort = (opts.effortOverride
+      ?? targetTask.reasoningEffort
+      ?? (opts.targetTask ? null : selectedEffort))
+      || null;
 
     let sendingAttachments, attachmentIds, driveReference;
     try {
@@ -3244,6 +3275,7 @@ function AppCore() {
       projectId: taskProjectId,
       projectPath: taskProjectPath,
       model: taskModel,
+      reasoningEffort: taskEffort,
       attachmentIds,
       disabledConnections: disabledForSend,
       onEvent(ev) {
@@ -4326,6 +4358,8 @@ function AppCore() {
             onProjectChange={setSelectedProject}
             model={selectedModel}
             onModelChange={setSelectedModel}
+            effort={selectedEffort}
+            onEffortChange={setSelectedEffort}
             projects={projects}
             models={modelOptions}
             modelMeta={modelMeta}
@@ -4385,6 +4419,11 @@ function AppCore() {
               // send, with no changes needed there.
               if (!currentTask) return;
               setTasks((prev) => prev.map((t) => (t.id === currentTask.id ? { ...t, model: m.id } : t)));
+            }}
+            effort={currentTaskEffort}
+            onEffortChange={(e) => {
+              if (!currentTask) return;
+              setTasks((prev) => prev.map((t) => (t.id === currentTask.id ? { ...t, reasoningEffort: e } : t)));
             }}
             models={modelOptions}
             modelMeta={modelMeta}
@@ -4494,6 +4533,8 @@ function AppCore() {
             modelMeta={modelMeta}
             model={selectedModel}
             onModelChange={setSelectedModel}
+            effort={selectedEffort}
+            onEffortChange={setSelectedEffort}
             onSelectProject={(p) => setSelectedProject(p)}
             onCreateProject={handleCreateProject}
             onSendInProject={(text, meta) => {

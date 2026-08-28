@@ -1578,13 +1578,16 @@ export default function SettingsView({
                   const providerCheckingNotice = st.checking;
                   const providerWarnId = `agent-model-${role}-provider`;
 
-                  // Reasoning effort — a per-role setting shown beside the model
-                  // dropdown, only for models that advertise effort levels
-                  // (settings.modelEfforts, sourced from MindsHub /v1/models + the
-                  // static direct-provider catalog). Suppressed for the Hermes
-                  // harness, which has no effort knob.
+                  // Reasoning effort — folded into the Model picker itself now
+                  // (ENG-1940, ModelSelect's footer row), only for models that
+                  // advertise effort levels (settings.modelEfforts, sourced from
+                  // MindsHub /v1/models + the static direct-provider catalog).
+                  // Suppressed for the Hermes harness, which has no effort knob.
                   // Router has no reasoning-effort knob — it's a single cheap
-                  // gating call, not a reasoning role.
+                  // gating call, not a reasoning role. `effortEntry`/`effortOptions`/
+                  // `effortValue` still get derived here (ModelSelect needs
+                  // `effortValue` as its `effort` prop, and `writeOverride` below
+                  // still needs `effortKey` to drop a stale level on model change).
                   const effortKey = role === 'planning' ? 'planningReasoningEffort'
                     : role === 'coding' ? 'codingReasoningEffort'
                     : null;
@@ -1595,7 +1598,6 @@ export default function SettingsView({
                   const effortValue = effortOptions.includes(savedEffort)
                     ? savedEffort
                     : (effortEntry?.default || effortOptions[0] || '');
-                  const showEffort = !!effortKey && harnessSupportsEffort && effortOptions.length > 0;
 
                   const writeOverride = (next) => {
                     const providerType = providerValueToType(next.providerType || curType) || 'minds-cloud';
@@ -1756,6 +1758,18 @@ export default function SettingsView({
                                   loading={modelRefreshing[role]}
                                   title={`Pick the model used for ${role}. Choose Other… to type a custom model id.`}
                                   options={modelOptions}
+                                  // Reasoning-effort footer (ENG-1940) — folded into
+                                  // this same picker (see ModelSelect.jsx), replacing
+                                  // the separate "Reasoning effort" <Select> that used
+                                  // to sit below. Gated behind `effortKey` so Router
+                                  // (which has none) never opts into the feature at
+                                  // all — it never showed an effort control before
+                                  // either, and passing `onEffortChange` through to a
+                                  // null `effortKey` would be a `setSetting(null, …)`.
+                                  modelEfforts={effortKey ? settings.modelEfforts : undefined}
+                                  effort={effortValue}
+                                  onEffortChange={(v) => { setLlmDirty(true); setSetting(effortKey, v); }}
+                                  harness={settings.harness}
                                 />
                                 {inputMode && allowOther && (
                                   <TextInput
@@ -1798,17 +1812,6 @@ export default function SettingsView({
                               onChange={(v) => writeOverride({ providerType: curType, model: v })}
                               placeholder="model-id"
                               title="Model id sent verbatim to this provider."
-                            />
-                          </label>
-                        )}
-                        {showEffort && (
-                          <label className="grid gap-1">
-                            {fieldLabel('Reasoning effort')}
-                            <Select
-                              value={effortValue}
-                              onValueChange={(v) => { setLlmDirty(true); setSetting(effortKey, v); }}
-                              title={`Reasoning effort for the ${role} model. Higher effort trades latency/cost for deeper reasoning.`}
-                              options={effortOptions.map((lvl) => ({ value: lvl, label: lvl.charAt(0).toUpperCase() + lvl.slice(1) }))}
                             />
                           </label>
                         )}
