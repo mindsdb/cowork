@@ -143,6 +143,85 @@ describe('grid view card body on desktop', () => {
 });
 
 
+// Fixtures for the type gate. Both carry a draft URL — that alone must not be
+// enough, because the viewer cannot render either one in org mode.
+const fullstackDraft = {
+  ...cloudDraft,
+  id: '22222222222242228222222222222222',
+  title: 'Ops Console',
+  type: 'fullstack-stateless-app',
+};
+
+const imageDraft = {
+  ...cloudDraft,
+  id: '33333333333343338333333333333333',
+  title: 'Revenue Chart',
+  type: 'image',
+  ext: '.png',
+  path: '/proj/.anton/artifacts/revenue/chart.png',
+};
+
+describe.each([
+  ['grid', 'grid'],
+  ['list', 'list'],
+])('%s view preview item in org mode', (_name, view) => {
+  beforeEach(() => {
+    localStorage.setItem('anton:artifacts-view', view);
+    setOrgMode(true);
+  });
+
+  it('offers Preview for an artifact the viewer can render', () => {
+    render(<ArtifactsView artifacts={[cloudDraft]} />);
+    openKebab();
+    expect(screen.getByText('Preview')).toBeInTheDocument();
+  });
+
+  it('opens the authenticated draft from the menu item', () => {
+    render(<ArtifactsView artifacts={[cloudDraft]} />);
+    openKebab();
+    fireEvent.click(screen.getByText('Preview'));
+    expect(screen.getByTestId('artifact-viewer')).toHaveTextContent('Private preview');
+  });
+
+  it('offers no Preview for a fullstack app', () => {
+    // Its preview needs the loopback proxy, which only Desktop has.
+    render(<ArtifactsView artifacts={[fullstackDraft]} />);
+    openKebab();
+    expect(screen.queryByText('Preview')).toBeNull();
+  });
+
+  it('offers no Preview for an image', () => {
+    // Image bytes come from /artifacts/serve, which org tenancy refuses.
+    render(<ArtifactsView artifacts={[imageDraft]} />);
+    openKebab();
+    expect(screen.queryByText('Preview')).toBeNull();
+  });
+
+  it('keeps Preview next to the shared link once the artifact is published', () => {
+    // Publication state is not part of the gate: the private bytes and what
+    // collaborators see are two different things to look at.
+    render(<ArtifactsView artifacts={[{
+      ...cloudDraft,
+      publishedUrl: 'https://view.mindshub.ai/r/abc',
+    }]} />);
+    openKebab();
+    expect(screen.getByText('Preview')).toBeInTheDocument();
+  });
+});
+
+describe('list view preview item on desktop', () => {
+  // The first item is already the viewer entry there ("Open viewer"), so a
+  // second one would be the same action twice.
+  it('does not duplicate the viewer entry', () => {
+    localStorage.setItem('anton:artifacts-view', 'list');
+    setOrgMode(false);
+    render(<ArtifactsView artifacts={[cloudDraft]} />);
+    openKebab();
+    expect(screen.getByText('Open viewer')).toBeInTheDocument();
+    expect(screen.queryByText('Preview')).toBeNull();
+  });
+});
+
 describe('deleting a published artifact', () => {
   // The panel unpublishes before deleting so a delete never leaves an orphaned
   // public copy. In org mode that call hits DELETE /publish, which is

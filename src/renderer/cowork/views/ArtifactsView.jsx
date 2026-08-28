@@ -389,16 +389,25 @@ function ListHeaderRow() {
   );
 }
 
-function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onReveal, onDownload, onCopyUrl, onPublish, onUnpublish, onUpdate, onDelete, busy = false, isMacPlatform = false }) {
+function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onPreview, onReveal, onDownload, onCopyUrl, onPublish, onUnpublish, onUpdate, onDelete, busy = false, isMacPlatform = false }) {
   const isHtml = isHtmlArtifact(artifact);
   const orgMode = useOrgMode();
   const published = !!artifact.publishedUrl;
   const items = [
     {
-      id: artifact?.draftUrl ? 'preview' : 'open',
-      label: artifact?.draftUrl || (isHtml && !orgMode) ? 'Open preview' : 'Open',
+      id: 'open',
+      // "Open viewer" would be a lie in org mode: the click goes to the shared
+      // URL there, and the in-app preview is the separate item below.
+      label: isHtml && !orgMode ? 'Open viewer' : 'Open',
       icon: Ico.externalLink(13),
       onClick: onOpen,
+    },
+    // Org only: on Desktop the item above already opens the viewer.
+    orgMode && canPreviewOrgDraft(artifact) && {
+      id: 'preview',
+      label: 'Preview',
+      icon: (Ico.eye?.(13) || Ico.sparkle(13)),
+      onClick: onPreview,
     },
     onReveal && {
       id: 'reveal',
@@ -597,6 +606,7 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
         artifact={artifact}
         onClose={() => setMenuOpen(false)}
         onOpen={onRowOpen}
+        onPreview={() => onOpenViewer?.(artifact)}
         onReveal={host.isWeb ? undefined : () => { try { revealArtifact(artifact.path); } catch { } }}
         onDownload={() => downloadArtifactFile(artifact)}
         onCopyUrl={onCopyUrl}
@@ -1035,7 +1045,7 @@ export default function ArtifactsView({
               onClick: () => handlePublish(a),
             });
           }
-          if (a.draftUrl || (!orgMode && isInlinePreviewable(a))) {
+          if (orgMode ? canPreviewOrgDraft(a) : isInlinePreviewable(a)) {
             items.push({
               id: 'preview',
               label: 'Preview',
