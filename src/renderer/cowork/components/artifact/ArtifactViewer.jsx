@@ -25,7 +25,7 @@ import Ico from '../Icons';
 import { deleteArtifactAndSync } from '../../lib/artifactsStore';
 import { needsClientUnpublishBeforeDelete } from '../../lib/artifactActions';
 import { downloadArtifactFile } from '../../lib/artifactDownload';
-import { loadArtifactDraftText } from '../../lib/artifactWorkspaceApi';
+import { loadArtifactDraftText, loadArtifactDraftDocument } from '../../lib/artifactWorkspaceApi';
 import { artifactCommentsKey, artifactIdentity } from '../../lib/artifactIdentity';
 import { isPublishableArtifact, isImageArtifact, BACKEND_ARTIFACT_TYPES } from '../../lib/artifactKinds';
 import { useBlobImageSrc } from '../AttachmentThumbnail';
@@ -47,6 +47,7 @@ import {
   CSV_PREVIEW_ROW_LIMIT,
   isTextArtifact,
   isAbsoluteArtifactPreviewUrl,
+  injectDraftBaseHref,
   parseCsv,
   withArtifactCommentFlag,
   withArtifactVersion,
@@ -405,11 +406,46 @@ export function ArtifactViewer({
       const rawUrl = isAbsoluteArtifactPreviewUrl(draftPreviewUrl)
         ? draftPreviewUrl
         : `${host.getApiOrigin()}${draftPreviewUrl}`;
-      setPreviewKind('static');
-      setPreviewUrl(commentLayerRequested
+      const fetchUrl = commentLayerRequested
         ? withArtifactCommentFlag(withArtifactVersion(rawUrl, cacheVersion))
-        : withArtifactVersion(rawUrl, cacheVersion));
-      setLoading(false);
+        : withArtifactVersion(rawUrl, cacheVersion);
+      setPreviewKind('static');
+      // A plain iframe `src=` navigation cannot carry the Authorization
+      // header the forward-auth ingress in front of the drafts endpoint
+      // requires on staging (see
+      // docs/artifact-collaboration-workflow/task-org-draft-preview-401.md),
+      // so fetch through authFetch (like Edit's source load) and hand the
+      // result to the iframe via srcdoc instead of navigating it directly.
+      // previewUrl/previewDoc were both already reset to '' at the top of
+      // this effect, so setting only one of them here is enough to keep them
+      // mutually exclusive.
+      loadArtifactDraftDocument(fetchUrl)
+        .then((doc) => {
+          if (cancelled) return;
+          if (doc.isHtml) {
+            setPreviewDoc(injectDraftBaseHref(doc.content, fetchUrl));
+          } else {
+            // Non-HTML draft content type: org mode's draft preview only ever
+            // offers .html here (md/txt/csv already took the isText branch
+            // above), so this is expected only on Desktop. The fetch above
+            // already ran, so the iframe fetching fetchUrl again is a second
+            // round-trip — acceptable on Desktop's local loopback server; on
+            // web it degrades to the pre-fix behavior (the iframe navigation
+            // may hit the same 401 this task fixes for HTML), which is no
+            // worse than before this change.
+            setPreviewUrl(fetchUrl);
+          }
+        })
+        .catch((e) => {
+          if (cancelled) return;
+          const status = e?.status;
+          setErr(status === 401
+            ? 'Your session expired — reload the page and try again.'
+            : status === 403
+              ? 'You do not have access to this draft.'
+              : (e?.message || 'Could not load this draft'));
+        })
+        .finally(() => { if (!cancelled) setLoading(false); });
       return () => { cancelled = true; };
     }
     mountArtifactPreview(actionPath)
