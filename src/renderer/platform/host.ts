@@ -824,155 +824,280 @@ export interface DrivePickerResult {
 // newly-picked files as belonging to that project (see DrivePickerFile);
 // omit it for connection-details' "Pick files" button, which has no
 // project context.
-// Web: the popup this session opened, tracked so cancelDrivePicker() (and a
-// second pickDriveFiles call) can close a stale one rather than leaking it.
-let webPickerPopup: Window | null = null;
-// Cancels the in-flight call's message listener and close-poll interval — a
+// Web: cancels the in-flight pick (hides its widget and resolves it) — a
 // settled call's finish() already no-ops, so calling this is always safe.
 let webPickerCancelPrevious: (() => void) | null = null;
 
-// Opens the blank window the picker session will be navigated into.
-// Deliberately NOT window.open(..., 'noopener,noreferrer'): a browser that
-// honors `noopener` (`noreferrer` implies it) returns null from a
-// SUCCESSFUL open, which is indistinguishable from a blocked popup — and
-// with the window now opened on about:blank first, we must keep a usable
-// handle to navigate it once the session URL is known.
-//
-// The opener link is deliberately left INTACT (no noopener, no manually
-// nulling popup.opener afterward): the picker page never leaves our own
-// origin — Google's picker widget renders as an in-page overlay via
-// apis.google.com's JS SDK, it is never a top-level navigation to a Google
-// domain (see cowork-server's picker_page.py) — so there is no untrusted
-// top-level content here for noopener's reverse-tabnabbing protection to
-// guard against. More importantly, the picker page's own completion
-// protocol (picker_page.py's reportResult()) IS `window.opener.postMessage(
-// ...)` — severing that link (as an earlier version of this function did)
-// silently breaks every successful pick: the result can never reach the
-// opener, and the promise only ever resolves via the close-poll timeout.
-function openBlankPickerWindow(): Window | null {
-  return window.open('about:blank', '_blank');
+const GOOGLE_API_SRC = 'https://apis.google.com/js/api.js';
+
+// How long a picker may sit without reporting anything before it is treated
+// as stuck. Deliberately far above any real pick: it can only ever be a
+// backstop, never a deadline (see its use below).
+const PICKER_STUCK_TIMEOUT_MS = 5 * 60 * 1000;
+
+// Same shape check Electron runs before its own pick
+// (drive-picker-service.ts's DRIVE_FILE_ID_RE) — kept in step so one public
+// pickDriveFiles() does not validate on one shell and not the other.
+const DRIVE_FILE_ID_RE = /^[A-Za-z0-9_-]+$/;
+
+function validDriveFileIds(fileIds: string[] | undefined): boolean {
+  if (fileIds === undefined) return true;
+  return Array.isArray(fileIds) && fileIds.every((id) => typeof id === 'string' && DRIVE_FILE_ID_RE.test(id));
 }
 
-// Web-only. Call this SYNCHRONOUSLY inside the click handler, before any
-// awaited preparation (fetching connections, account choice, loading the
-// saved connection): the click's transient activation expires at the first
-// await, after which most browsers silently block window.open() — opening
-// inside pickDriveFiles is already too late for callers that await first
-// (useGoogleDrivePicker's composer and project-file flows do). Pass the
-// returned handle through to pickDriveFiles, which navigates it once the
-// picker session is minted. A caller that bails out before reaching
-// pickDriveFiles must close() the handle itself. Returns null on Electron
-// (its picker opens in the OS browser over IPC — nothing to pre-open) and
-// when the browser blocked the popup.
-export function preopenDrivePickerPopup(): Window | null {
-  if (!isWeb) return null;
-  if (webPickerPopup && !webPickerPopup.closed) webPickerPopup.close();
-  webPickerCancelPrevious?.();
-  const popup = openBlankPickerWindow();
-  webPickerPopup = popup;
-  return popup;
+// Narrow shapes for the parts of Google's Picker SDK this file touches. The
+// SDK ships no types of its own and is reached through `window`, so without
+// these every call below would be `any` — and this module's one sanctioned
+// `any` is the platform-bridge cast at the top of the file.
+interface GooglePickerDoc {
+  id: string;
+  name: string;
+  mimeType?: string;
+  iconUrl?: string;
+  url?: string;
+  resourceKey?: string | null;
+}
+interface GooglePickerCallbackData {
+  action: string;
+  docs?: GooglePickerDoc[];
+}
+interface GooglePickerDocsView {
+  setFileIds(ids: string[]): GooglePickerDocsView;
+  setOwnedByMe(owned: boolean): GooglePickerDocsView;
+  setEnableDrives(enabled: boolean): GooglePickerDocsView;
+}
+interface GooglePickerBuilder {
+  setOAuthToken(token: string): GooglePickerBuilder;
+  setDeveloperKey(key: string): GooglePickerBuilder;
+  setAppId(appId: string): GooglePickerBuilder;
+  setTitle(title: string): GooglePickerBuilder;
+  enableFeature(feature: unknown): GooglePickerBuilder;
+  addView(view: GooglePickerDocsView): GooglePickerBuilder;
+  setCallback(cb: (data: GooglePickerCallbackData) => void): GooglePickerBuilder;
+  build(): { setVisible(visible: boolean): void };
+}
+interface GooglePickerApi {
+  PickerBuilder: new () => GooglePickerBuilder;
+  DocsView: new (viewId: unknown) => GooglePickerDocsView;
+  ViewId: { DOCS: unknown };
+  Feature: { MULTISELECT_ENABLED: unknown; SUPPORT_DRIVES: unknown };
+  Action: { PICKED: string; CANCEL: string; ERROR: string };
+}
+interface GoogleApiWindow {
+  gapi?: { load(module: string, opts: { callback: () => void; onerror?: () => void }): void };
+  google?: { picker: GooglePickerApi };
 }
 
-// Web equivalent of the Electron flow above. cowork-server serves the SPA
-// and its API from the same origin (getApiOrigin()), but web auth is a
-// per-request Bearer header (see fetchJson), never a cookie — a plain
-// window.open() navigation can't carry that header. So this mints a
-// short-lived, single-use picker session server-side over an authenticated
-// POST first (identical shape to launchConnectorAuth's authUrl handoff
-// elsewhere in this codebase), then navigates the popup to the URL that
-// POST returns. The live Google access token itself is minted only when
-// that URL is opened, and is embedded server-side into the picker page's
-// own inline script — it never transits this POST, the URL, or postMessage.
-async function pickDriveFilesWeb(engine: string, name: string, accountEmail: string, fileIds?: string[], projectName?: string, preopenedPopup?: Window | null): Promise<DrivePickerResult> {
-  let popupHandle: Window | null;
-  if (preopenedPopup !== undefined) {
-    // Opened at the caller's click boundary via preopenDrivePickerPopup
-    // (which already closed/cancelled any previous picker attempt). null
-    // means the browser blocked it there; an already-closed handle means
-    // this attempt was superseded by a newer click or the user closed the
-    // blank window — reopening here, outside any click activation, would
-    // just be blocked again.
-    if (!preopenedPopup) return { ok: false, reason: 'The browser blocked the file picker popup.' };
-    if (preopenedPopup.closed) return { ok: false, reason: 'cancelled' };
-    popupHandle = preopenedPopup;
-  } else {
-    if (webPickerPopup && !webPickerPopup.closed) webPickerPopup.close();
-    webPickerCancelPrevious?.();
-    // Opened synchronously, before the session mint below is awaited: a
-    // window.open() called after an await is no longer inside the click's own
-    // call stack, and most browsers silently block it as an unsolicited popup.
-    // This blank window is itself opened in direct response to the click, so
-    // it's allowed — navigating an already-open window afterward is not.
-    // (Only correct for callers that reach here with no awaits of their own,
-    // e.g. connection-details' "Pick files" button — callers that prepare
-    // asynchronously first must preopenDrivePickerPopup() at the click.)
-    popupHandle = openBlankPickerWindow();
-    webPickerPopup = popupHandle;
-    if (!popupHandle) return { ok: false, reason: 'The browser blocked the file picker popup.' };
+function googleApiWindow(): GoogleApiWindow {
+  return window as unknown as GoogleApiWindow;
+}
+
+// Google's Picker SDK, loaded once into the SPA's own page. Cached per page
+// load; a REJECTED load is deliberately NOT cached, so a transient network
+// failure can be retried by picking again instead of poisoning the picker for
+// the rest of the session.
+let googlePickerSdk: Promise<void> | null = null;
+
+function loadGooglePickerSdk(): Promise<void> {
+  if (googlePickerSdk) return googlePickerSdk;
+  googlePickerSdk = new Promise<void>((resolve, reject) => {
+    const unreachable = () => reject(new Error('Could not reach Google to load the file picker.'));
+    const loadPickerModule = () => {
+      const gapi = googleApiWindow().gapi;
+      if (!gapi) { unreachable(); return; }
+      // api.js only bootstraps the loader — the picker module itself is a
+      // second, separate fetch that can fail on its own.
+      gapi.load('picker', {
+        callback: () => resolve(),
+        onerror: () => reject(new Error('Google Picker could not be loaded.')),
+      });
+    };
+    const existing = document.querySelector<HTMLScriptElement>(`script[src="${GOOGLE_API_SRC}"]`);
+    if (existing) {
+      if (googleApiWindow().gapi) loadPickerModule();
+      else {
+        existing.addEventListener('load', loadPickerModule, { once: true });
+        existing.addEventListener('error', unreachable, { once: true });
+      }
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = GOOGLE_API_SRC;
+    script.async = true;
+    script.addEventListener('load', loadPickerModule, { once: true });
+    script.addEventListener('error', unreachable, { once: true });
+    document.head.appendChild(script);
+  }).catch((err) => {
+    googlePickerSdk = null;
+    throw err;
+  });
+  return googlePickerSdk;
+}
+
+// Persist the grant. The drive.file scope only covers files this app created
+// itself, so a connection's `_picked_files` list is the record of what else
+// the user explicitly granted — and it is what the agent's own prompt is
+// built from (cowork-server's picked_files_by_project). Mirrors Electron's
+// savePickedFiles (main/picked-files.ts), including its rule: a failure here
+// means NOTHING was persisted, so the caller must not report the pick as
+// successful or the UI shows files as granted that the server never recorded.
+async function persistPickedFiles(
+  engine: string, name: string, files: DrivePickerFile[], projectName?: string,
+): Promise<DrivePickerFile[]> {
+  const body = files.map((f) => ({
+    id: f.id,
+    name: f.name,
+    mimeType: f.mimeType,
+    iconUrl: f.iconUrl,
+    url: f.url,
+    resourceKey: f.resourceKey ?? null,
+    projects: projectName ? [projectName] : [],
+  }));
+  const merged = await fetchJson(
+    `/api/v1/connectors/connections/${encodeURIComponent(engine)}/${encodeURIComponent(name)}/picked-files`,
+    { method: 'PATCH', body: JSON.stringify({ files: body }) },
+  );
+  return (merged?.files as DrivePickerFile[]) || files;
+}
+
+// Web equivalent of the Electron flow above. The Picker renders as an in-page
+// overlay in this same, already-authenticated document — it is never a
+// top-level navigation to a Google domain — so everything here is a normal
+// fetch() carrying the caller's own Bearer header. That removes every failure
+// mode the previous popup handoff had: a browser-blocked popup, a click
+// activation that expired during an await, and a header-less navigation whose
+// token had to be smuggled through an opaque server-side ticket.
+async function pickDriveFilesWeb(
+  engine: string, name: string, accountEmail: string, fileIds?: string[], projectName?: string,
+): Promise<DrivePickerResult> {
+  if (!validDriveFileIds(fileIds)) {
+    return { ok: false, reason: 'Invalid Google Drive file id.' };
   }
-  // Narrowed const so the closures below (close-poll, mint continuation)
-  // see a non-null Window without re-checking.
-  const popup = popupHandle;
+  let creds: { access_token: string; api_key: string; app_id: string; account_email?: string };
+  try {
+    creds = await fetchJson(`/api/v1/connectors/oauth/${encodeURIComponent(engine)}/picker/token`, {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    });
+  } catch (err) {
+    return { ok: false, reason: (err as Error)?.message || 'Could not start the file picker.' };
+  }
 
-  return new Promise<DrivePickerResult>((resolve) => {
+  try {
+    await loadGooglePickerSdk();
+  } catch (err) {
+    // Deliberately ok:false, where Electron and the replaced picker page both
+    // reported a load failure as ok:true with no files. That is not a change
+    // of intent — both of those rendered a visible "Could not load Google
+    // Picker" card of their own first, so the user still saw the failure and
+    // the ok:true only avoided reporting it twice. This flow has no page of
+    // its own to show anything on, so ok:true here would mean the user clicks
+    // "add files" and silently nothing happens. Returning the reason is what
+    // preserves the old behaviour the user actually experienced.
+    return { ok: false, reason: (err as Error)?.message || 'Could not load the file picker.' };
+  }
+
+  const picker = googleApiWindow().google!.picker;
+  const account = creds.account_email || accountEmail;
+  const picked = await new Promise<DrivePickerResult>((resolve) => {
     let settled = false;
     const finish = (result: DrivePickerResult) => {
       if (settled) return;
       settled = true;
-      clearInterval(closeCheck);
-      window.removeEventListener('message', onMessage);
+      clearTimeout(stuckTimer);
       resolve(result);
     };
-    // Registered synchronously, in the same tick as window.open() above — a
-    // second pickDriveFiles call arriving before the session mint below
-    // resolves must still find a live handler to cancel (see the "cancels a
-    // still-pending previous call" test: this used to be set only after the
-    // mint resolved, which raced a fast second call and left two live
-    // message listeners fighting over one popup's result).
-    webPickerCancelPrevious = () => finish({ ok: false, reason: 'cancelled' });
-    const onMessage = (event: MessageEvent) => {
-      if (event.origin !== window.location.origin) return;
-      if (!event.data || event.data.type !== 'drive-picker-result') return;
-      finish(event.data.result as DrivePickerResult);
-    };
-    // Cancellation case: the user closed the popup without picking — same
-    // intent as the Electron flow's own cancel handling.
-    const closeCheck = window.setInterval(() => {
-      if (popup.closed) finish({ ok: false, reason: 'cancelled' });
-    }, 500);
-    window.addEventListener('message', onMessage);
 
-    // Mint the session, then navigate the already-open popup to it.
-    (async () => {
-      let session: { url: string };
-      try {
-        session = await fetchJson(`/api/v1/connectors/oauth/${encodeURIComponent(engine)}/picker/session`, {
-          method: 'POST',
-          body: JSON.stringify({ name, account_email: accountEmail, file_ids: fileIds, project_name: projectName }),
-        });
-      } catch (err) {
-        popup.close();
-        finish({ ok: false, reason: (err as Error)?.message || 'Could not start the file picker.' });
-        return;
-      }
-      // Already cancelled, closed, or resolved (via message) while the mint
-      // was in flight — navigating a settled call's popup would be wrong.
-      if (settled) return;
-      popup.location.href = session.url;
-    })();
+    // Backstop for the one failure the callback below cannot see. When the
+    // widget's iframe renders a static Google 403 (usually an active-account
+    // mismatch) there is no picker JS inside it, so PICKED/CANCEL/ERROR never
+    // fire and this promise would otherwise never settle. The popup flow this
+    // replaces survived that only because the user could close the window;
+    // in-page there is nothing to close, so the wait has to be bounded here.
+    // There is no Action.LOADED, so a widget the user is simply still
+    // browsing is indistinguishable from a stuck one — hence a bound far
+    // longer than any real pick rather than a tight one.
+    const stuckTimer = setTimeout(() => {
+      try { widget?.setVisible(false); } catch { /* already disposed */ }
+      finish({
+        ok: false,
+        reason: `Google Picker did not respond — the browser’s active Google account may not match ${account}.`,
+      });
+    }, PICKER_STUCK_TIMEOUT_MS);
+    // A newer pick supersedes one still on screen — same intent the popup
+    // flow had, without the window bookkeeping.
+    webPickerCancelPrevious?.();
+    let widget: { setVisible(visible: boolean): void } | undefined;
+    webPickerCancelPrevious = () => {
+      try { widget?.setVisible(false); } catch { /* already disposed */ }
+      finish({ ok: false, reason: 'cancelled' });
+    };
+
+    const builder = new picker.PickerBuilder()
+      .setOAuthToken(creds.access_token)
+      .setDeveloperKey(creds.api_key)
+      .setAppId(creds.app_id)
+      .setTitle(`Choose files from ${account}`)
+      .enableFeature(picker.Feature.MULTISELECT_ENABLED)
+      .enableFeature(picker.Feature.SUPPORT_DRIVES)
+      .setCallback((data) => {
+        if (data.action === picker.Action.PICKED) {
+          const files: DrivePickerFile[] = (data.docs || []).map((doc) => ({
+            id: doc.id,
+            name: doc.name,
+            mimeType: doc.mimeType,
+            iconUrl: doc.iconUrl,
+            url: doc.url,
+            resourceKey: doc.resourceKey || null,
+          }));
+          finish({ ok: true, files, newFiles: files });
+        } else if (data.action === picker.Action.CANCEL) {
+          // Matches Electron's own /result handler: a Cancel click is a
+          // successful pick of nothing, never an error.
+          finish({ ok: true, files: [], newFiles: [] });
+        } else if (data.action === picker.Action.ERROR) {
+          // Without this branch an in-widget error settles nothing and the
+          // pick hangs forever. Overwhelmingly this is an active-account
+          // mismatch: the widget renders under whichever Google account is
+          // ambient in the browser, not the one this token is scoped to, and
+          // 403s. Same diagnosis the replaced picker page reported.
+          finish({
+            ok: false,
+            reason: `Google Picker could not open — the browser’s active Google account may not match ${account}.`,
+          });
+        }
+      });
+
+    // Pre-navigate to specific files when the caller already knows them (e.g.
+    // a pasted Drive link) — the caller's own value, no server round trip.
+    if (fileIds && fileIds.length > 0) {
+      builder.addView(new picker.DocsView(picker.ViewId.DOCS).setFileIds(fileIds));
+    }
+    builder.addView(new picker.DocsView(picker.ViewId.DOCS));
+    builder.addView(new picker.DocsView(picker.ViewId.DOCS).setOwnedByMe(false));
+    builder.addView(new picker.DocsView(picker.ViewId.DOCS).setEnableDrives(true));
+
+    widget = builder.build();
+    widget.setVisible(true);
   });
+
+  if (!picked.ok || !picked.newFiles?.length) return picked;
+
+  // Persisted BEFORE success is reported — see persistPickedFiles.
+  try {
+    const merged = await persistPickedFiles(engine, name, picked.newFiles, projectName);
+    return { ok: true, files: merged, newFiles: picked.newFiles };
+  } catch (err) {
+    return { ok: false, reason: (err as Error)?.message || 'Could not save the picked files.' };
+  }
 }
 
-// `preopenedPopup` is the handle from preopenDrivePickerPopup(), for callers
-// whose click handlers await other work before getting here — see that
-// function. On Electron it is ignored (and preopenDrivePickerPopup returned
-// null anyway): the picker opens in the OS browser over IPC.
-export async function pickDriveFiles(engine: string, name: string, accountEmail: string, fileIds?: string[], projectName?: string, preopenedPopup?: Window | null): Promise<DrivePickerResult> {
+export async function pickDriveFiles(engine: string, name: string, accountEmail: string, fileIds?: string[], projectName?: string): Promise<DrivePickerResult> {
   if (isElectron && typeof bridge.oauthPickDriveFiles === 'function') {
     return bridge.oauthPickDriveFiles({ engine, name, accountEmail, fileIds, projectName });
   }
   if (isWeb) {
-    return pickDriveFilesWeb(engine, name, accountEmail, fileIds, projectName, preopenedPopup);
+    return pickDriveFilesWeb(engine, name, accountEmail, fileIds, projectName);
   }
   return { ok: false, reason: 'Google Picker is Electron-only for now.' };
 }
@@ -981,10 +1106,7 @@ export async function cancelDrivePicker(): Promise<void> {
   if (isElectron && typeof bridge.oauthCancelPicker === 'function') {
     await bridge.oauthCancelPicker();
   }
-  if (webPickerPopup && !webPickerPopup.closed) {
-    webPickerPopup.close();
-    webPickerPopup = null;
-  }
+  webPickerCancelPrevious?.();
 }
 
 export function onOAuthRefreshError(
@@ -1261,7 +1383,6 @@ export const host = {
   logout,
   keychainRevoke,
   onOAuthRefreshError,
-  preopenDrivePickerPopup,
   pickDriveFiles,
   cancelDrivePicker,
 };
