@@ -178,6 +178,29 @@ describe('artifacts rail click in org mode', () => {
     expect(screen.queryByText('This artifact has no servable file yet.')).toBeNull();
   });
 
+  it('keeps the honest dead end for an unshared fullstack app rather than saving its shell', async () => {
+    /*
+     * Self-review finding on ENG-2044: a fullstack app's draft URL points at
+     * `static/index.html`, which is not the app. Offering "Download" there would
+     * hand the user a useless file with a confident label. Autopublish publishes
+     * these on the next turn; until then the existing message is the truth.
+     */
+    const row = await renderRail(draft({
+      title: 'Ops Console',
+      type: 'fullstack-stateless-app',
+      path: '/proj/.anton/artifacts/ops/static/index.html',
+      ext: '.html',
+      draftUrl: '/api/v1/artifacts/drafts/proj-1/11111111111111111111111111111111/static/index.html',
+      publishedUrl: '',
+    }));
+
+    fireEvent.click(row);
+
+    expect(downloadArtifactFile).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('artifact-viewer')).toBeNull();
+    expect(openExternal).not.toHaveBeenCalled();
+  });
+
   it('labels the menu action Download when a tab has nowhere to open', async () => {
     /*
      * "Open in new tab" with no serve URL and no shared page was the item that

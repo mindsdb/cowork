@@ -27,7 +27,7 @@ import { ConfirmModal } from '../ConfirmModal';
 import { host } from '../../../platform/host';
 import { useOrgMode } from '../../../lib/orgMode';
 import { artifactOpenTarget, needsClientUnpublishBeforeDelete } from '../../lib/artifactActions';
-import { canPreviewOrgDraft, isInlinePreviewable } from '../../lib/artifactKinds';
+import { canDownloadOrgDraft, canPreviewOrgDraft, isInlinePreviewable } from '../../lib/artifactKinds';
 import { downloadArtifactFile } from '../../lib/artifactDownload';
 import { deleteArtifactAndSync } from '../../lib/artifactsStore';
 
@@ -263,7 +263,9 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
       // design, no published page because autopublish skips binaries — but the
       // authenticated draft URL still streams the bytes, so save the file
       // rather than dead-end (ENG-2044).
-      if (downloadArtifactFile(a)) return;
+      // Not for a fullstack app: its primary is a shell index.html, not the
+      // app, so the honest answer there is still the message below.
+      if (canDownloadOrgDraft(a) && downloadArtifactFile(a)) return;
       setRowError('This artifact has no servable file yet.');
       return;
     }
@@ -322,7 +324,7 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
       canPreviewInline: isInlinePreviewable(artifact),
       canPreviewDraft: canPreviewOrgDraft(artifact),
       hasBridge: host.isElectron,
-      hasDraft: !!artifact.draftUrl,
+      hasDraft: canDownloadOrgDraft(artifact),
     });
     if (target === 'published') {
       /*
@@ -463,7 +465,7 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
           // A separate Download item is only worth a row when Open goes
           // somewhere else, so the two never say the same thing (ENG-2044).
           const canOpenRemote = !!(a.serveUrl || a.publishedUrl);
-          const canDownload = !canOpenLocalFile && !!(a.serveUrl || a.draftUrl);
+          const canDownload = !canOpenLocalFile && !!(a.serveUrl || canDownloadOrgDraft(a));
           const openLabel = canOpenLocalFile
             ? 'Open in OS'
             : (canOpenRemote ? 'Open in new tab' : 'Download');

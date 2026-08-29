@@ -27,8 +27,8 @@ import { deleteArtifactAndSync } from '../lib/artifactsStore';
 import { useOrgMode } from '../../lib/orgMode';
 import { downloadArtifactFile } from '../lib/artifactDownload';
 import {
-  canPreviewLocally, canPreviewOrgDraft, isHtmlArtifact, isPublishableArtifact,
-  isBackendArtifact, isInlinePreviewable,
+  canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, isHtmlArtifact,
+  isPublishableArtifact, isBackendArtifact, isInlinePreviewable,
 } from '../lib/artifactKinds';
 import { trackArtifactPublished } from '../lib/analytics';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
@@ -252,7 +252,7 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
     // Org mode, non-HTML, unshared: the draft URL still streams the bytes —
     // save them rather than do nothing (ENG-2044). Same rule as
     // artifactOpenTarget's 'download'.
-    else if (orgMode && artifact.draftUrl) downloadArtifactFile(artifact);
+    else if (orgMode && canDownloadOrgDraft(artifact)) downloadArtifactFile(artifact);
     else if (!orgMode) openArtifactFile(artifact);
   };
   // ↗
@@ -407,7 +407,7 @@ function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onOpenShared, on
     },
     // Presence of EITHER url, checked without building it: the org draft URL
     // is what makes a non-HTML artifact downloadable on web (ENG-2044).
-    onDownload && (artifact?.serveUrl || artifact?.draftUrl) && {
+    onDownload && (artifact?.serveUrl || canDownloadOrgDraft(artifact)) && {
       id: 'download',
       label: 'Download',
       icon: Ico.download(13),
@@ -451,7 +451,7 @@ function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onOpenShared, on
     .filter(Boolean)
     // Mode gate on top of each item's own condition — see lib/artifactActions.
     .filter((it) => it.divider || isArtifactActionAvailable(it.id, {
-      orgMode, hasBridge: host.isElectron, published, hasDraft: !!artifact?.draftUrl,
+      orgMode, hasBridge: host.isElectron, published, hasDraft: canDownloadOrgDraft(artifact),
     }));
 
   return (
@@ -1101,7 +1101,7 @@ export default function ArtifactsView({
            * the list view already offers Download from `serveUrl`, and this
            * fix leaves desktop behaviour untouched.
            */
-          if (orgMode && a.draftUrl) {
+          if (orgMode && canDownloadOrgDraft(a)) {
             items.push({
               id: 'download',
               label: 'Download',
@@ -1128,7 +1128,7 @@ export default function ArtifactsView({
           // Note this menu marks its rule with `separator`, not `divider` like
           // ArtifactMenu, so the pass-through key differs.
           return items.filter((it) => it.separator || isArtifactActionAvailable(it.id, {
-            orgMode, hasBridge: host.isElectron, published, hasDraft: !!a.draftUrl,
+            orgMode, hasBridge: host.isElectron, published, hasDraft: canDownloadOrgDraft(a),
           }));
         })()}
       />

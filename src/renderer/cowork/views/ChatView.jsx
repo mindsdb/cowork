@@ -31,7 +31,7 @@ import { FormErrorBoundary } from '../components/datavault/FormErrorBoundary';
 import { revealArtifact, exportArtifact, attachmentRawUrl, artifactServeUrl, fetchHealth } from '../api';
 import { AttachmentThumbnail, useBlobImageSrc } from '../components/AttachmentThumbnail';
 import { normalizeArtifactRecord } from '../lib/artifactPaths';
-import { canPreviewLocally, canPreviewOrgDraft, isImageArtifact } from '../lib/artifactKinds';
+import { canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, isImageArtifact } from '../lib/artifactKinds';
 import { downloadArtifactFile } from '../lib/artifactDownload';
 import { openAuthenticatedResource } from '../lib/authenticatedResource';
 import { latestSkillCardIndexByKey } from '../lib/skillCards';
@@ -607,7 +607,7 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
     canPreviewInline,
     canPreviewDraft,
     hasBridge: host.isElectron || !host.isWeb,
-    hasDraft: !!artifact.draftUrl,
+    hasDraft: canDownloadOrgDraft(artifact),
   });
   /*
    * Org-mode destinations are addressed by the server card, through the draft
@@ -938,7 +938,7 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
             its draft URL, previewable ones included — offered beside Preview /
             Open, and omitted only when Download already IS the primary
             action (ENG-2044). */}
-        {!deleted && orgMode && !!artifact.draftUrl && openTarget !== 'download' && (
+        {!deleted && orgMode && canDownloadOrgDraft(artifact) && openTarget !== 'download' && (
           <Tooltip content="Save this artifact's file">
             <SmallBtn onClick={handleDownload}>Download</SmallBtn>
           </Tooltip>

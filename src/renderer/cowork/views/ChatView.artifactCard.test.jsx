@@ -307,6 +307,22 @@ describe('inline artifact banner in org mode', () => {
     expect(screen.queryByRole('button', { name: 'Preview' })).toBeNull();
   });
 
+  it('does not offer Download for an unshared fullstack app — its draft is only a shell', () => {
+    // Self-review finding on ENG-2044. The card keeps the honest reason instead.
+    setOrgMode(true);
+    render(<ChatView task={taskWithArtifact(artifactStep({
+      action: 'fullstack-stateless-app',
+      type: 'fullstack-stateless-app',
+      file_path: '/proj/.anton/artifacts/ops/static/index.html',
+      path: '/proj/.anton/artifacts/ops/static/index.html',
+      draftUrl: `/api/v1/artifacts/drafts/proj-1/${ARTIFACT_ID}/static/index.html`,
+      publishedUrl: '',
+    }))} />);
+
+    expect(screen.queryByRole('button', { name: 'Download' })).toBeNull();
+    expect(screen.getByLabelText('This artifact cannot be previewed and has no shared link yet.')).toBeInTheDocument();
+  });
+
   it('offers Download beside Preview for a draft the viewer can render', () => {
     // Decision on ENG-2044: every org artifact with a primary file is saveable,
     // previewable ones included — the shared page and the preview are not
