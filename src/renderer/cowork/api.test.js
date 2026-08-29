@@ -23,7 +23,7 @@ vi.mock('./lib/analytics', () => ({ setAntonInstallId }));
 const transitionMock = vi.hoisted(() => ({ prepareForOrganizationReload: vi.fn() }));
 vi.mock('./lib/organizationTransition', () => transitionMock);
 
-import { authFetch, fetchRecommendedModels, fetchSettings, updateSettings, revealSettingKey, streamNewSession, fetchHealth, fetchInFlightList, cancelResponse, fetchHubWorkspaces } from './api';
+import { authFetch, fetchRecommendedModels, fetchSettings, updateSettings, revealSettingKey, streamNewSession, fetchHealth, fetchInFlightList, cancelResponse, fetchHubWorkspaces, listProjectFiles, fetchMemory } from './api';
 import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 import { __resetOrganizationRequestBoundaryForTests } from './lib/organizationRequestBoundary';
 
@@ -86,6 +86,84 @@ describe('authFetch organization boundary', () => {
 
     await expect(authFetch('/api/v1/projects'))
       .rejects.toThrow('The active organization changed; reload required');
+  });
+});
+
+describe('listProjectFiles mutation refresh', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('supersedes a coalesced pre-mutation request with a fresh generation', async () => {
+    let resolveStaleFetch;
+    let resolveFreshFetch;
+    const fetchMock = vi.fn()
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        resolveStaleFetch = resolve;
+      }))
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        resolveFreshFetch = resolve;
+      }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const stale = listProjectFiles('billing-force-fresh-test');
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    const fresh = listProjectFiles('billing-force-fresh-test', { forceFresh: true });
+    const joinedFresh = listProjectFiles('billing-force-fresh-test');
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    // Settling the superseded request must neither satisfy new callers nor
+    // remove the fresh generation from the single-flight map.
+    resolveStaleFetch(jsonRes({ files: [{ path: '.anton/anton.md', synthetic: false }] }));
+    await stale;
+    const joinedAfterStaleSettles = listProjectFiles('billing-force-fresh-test');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    const freshBody = { files: [{ path: '.anton/anton.md', synthetic: true }] };
+    resolveFreshFetch(jsonRes(freshBody));
+    await expect(Promise.all([fresh, joinedFresh, joinedAfterStaleSettles]))
+      .resolves.toEqual([freshBody, freshBody, freshBody]);
+  });
+
+  it('uses the same fresh generation boundary for memory reads', async () => {
+    let resolveStaleMemory;
+    let resolveFreshMemory;
+    let memoryCalls = 0;
+    const project = { id: 'memory-race-project', name: 'billing' };
+    const fetchMock = vi.fn((url) => {
+      const href = String(url);
+      if (href.includes('/memory/')) {
+        memoryCalls += 1;
+        return new Promise((resolve) => {
+          if (memoryCalls === 1) resolveStaleMemory = resolve;
+          else resolveFreshMemory = resolve;
+        });
+      }
+      if (href.includes('/projects/')) return Promise.resolve(jsonRes([project]));
+      throw new Error(`Unexpected request: ${href}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const stale = fetchMemory(project);
+    await vi.waitFor(() => expect(memoryCalls).toBe(1));
+    const fresh = fetchMemory(project, { forceFresh: true });
+    const joinedFresh = fetchMemory(project);
+    await vi.waitFor(() => expect(memoryCalls).toBe(2));
+
+    resolveStaleMemory(jsonRes([{
+      scope: 'project', project_id: project.id, category: 'rules', content: 'old',
+    }]));
+    await stale;
+    const joinedAfterStaleSettles = fetchMemory(project);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(memoryCalls).toBe(2);
+
+    resolveFreshMemory(jsonRes([{
+      scope: 'project', project_id: project.id, category: 'rules', content: 'new',
+    }]));
+    const results = await Promise.all([fresh, joinedFresh, joinedAfterStaleSettles]);
+    expect(results.map((result) => result.sections[0].files[0].content))
+      .toEqual(['new', 'new', 'new']);
   });
 });
 

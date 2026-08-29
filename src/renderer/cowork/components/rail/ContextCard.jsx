@@ -30,6 +30,7 @@ import { OverflowMenu } from '../OverflowMenu';
 import * as host from '../../../platform/host';
 import { useFileDrop, FileDropOverlay } from '../../lib/useFileDrop';
 import { openAuthenticatedResource } from '../../lib/authenticatedResource';
+import { canUseSharedResource } from '../../lib/sharedResourceAccess';
 
 function relativeAge(ts) {
   if (!ts) return '';
@@ -40,6 +41,37 @@ function relativeAge(ts) {
   if (secs < 3600) return `${Math.floor(secs / 60)}m`;
   if (secs < 86400) return `${Math.floor(secs / 3600)}h`;
   return `${Math.floor(secs / 86400)}d`;
+}
+
+function mergeFileResource(current, fresh) {
+  const merged = { ...current, ...fresh };
+  const currentModifiedAt = Date.parse(current?.attribution?.lastModifiedAt || '');
+  const freshModifiedAt = Date.parse(fresh?.attribution?.lastModifiedAt || '');
+  // A synthetic row is the server's explicit tombstone for deleted
+  // instructions. Its null attribution timestamp is intentional, not evidence
+  // that the response predates the current file, so it must replace every bit
+  // of the former resource metadata.
+  const freshIsSynthetic = fresh?.synthetic === true;
+  const freshMetadataIsOlder = !freshIsSynthetic && Number.isFinite(currentModifiedAt) && (
+    !Number.isFinite(freshModifiedAt) || freshModifiedAt < currentModifiedAt
+  );
+  if (freshMetadataIsOlder) {
+    // A project-file list request can already be in flight when a write
+    // succeeds. Do not let that older snapshot replace the PUT response's
+    // actor, timestamp, or permission decision when it eventually settles.
+    merged.attribution = current.attribution;
+    merged.capabilities = current.capabilities;
+    merged.modified = current.modified;
+    merged.size = current.size;
+  }
+  if (Object.prototype.hasOwnProperty.call(fresh, 'synthetic')) {
+    merged.synthetic = freshMetadataIsOlder ? current.synthetic : fresh.synthetic;
+  } else if (fresh.modified != null) {
+    // Read/write responses for a real file omit the listing-only synthetic
+    // flag. A modification timestamp proves the placeholder now exists.
+    merged.synthetic = false;
+  }
+  return merged;
 }
 
 function MemoryRow({ entry, onOpen }) {
@@ -146,13 +178,9 @@ function SessionAttachmentRow({
   );
 }
 
-function ContextFileRow({ file, onOpen, onRequestDelete }) {
+function ContextFileRow({ file, onOpen, onRequestDelete, deletable = true }) {
   const isAnton = file.path === ANTON_PROJECT_INSTRUCTIONS_PATH;
-  // The instructions file is foundational (Anton reads it on every
-  // turn). Surfacing a delete on hover would tempt a misclick; the
-  // ContextFileModal opened by clicking the row also hides the
-  // delete affordance for `.anton/anton.md` — same rule both places.
-  const canDelete = !isAnton && !!onRequestDelete;
+  const canDelete = deletable && !!onRequestDelete;
   // The row was a <button>, but nesting a <button> inside a
   // <button> is invalid HTML and breaks the trash icon's click in
   // some browsers. Switch the outer to a div with role="button" so
@@ -348,8 +376,8 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
     ));
   }, []);
 
-  const reloadMemory = useCallback(() => (
-    fetchMemory(project)
+  const reloadMemory = useCallback(({ forceFresh = false } = {}) => (
+    fetchMemory(project, { forceFresh })
       .then((data) => {
         applyMemorySections(data);
         return data;
@@ -396,10 +424,13 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
   // project's real state. Hidden dirs (`.anton/` body, `.git/`, etc.)
   // are filtered out, with the canonical `.anton/anton.md`
   // instructions row pinned to the top so it's always reachable.
-  const reloadFiles = useCallback(() => {
+  const reloadFiles = useCallback(({ forceFresh = false } = {}) => {
     if (!project?.name) { setProjectFiles([]); return; }
     const ticket = ++loadVersion.current;
-    listProjectFiles(project.name)
+    const request = forceFresh
+      ? listProjectFiles(project.name, { forceFresh: true })
+      : listProjectFiles(project.name);
+    request
       .then((data) => {
         if (ticket !== loadVersion.current) return;
         const all = Array.isArray(data?.files) ? data.files : [];
@@ -423,10 +454,34 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
           if (ai !== bi) return ai - bi;
           return (b.modified || 0) - (a.modified || 0);
         });
-        setProjectFiles(visible);
+        setProjectFiles((currentFiles) => visible.map((fresh) => {
+          const current = currentFiles.find((file) => file.path === fresh.path);
+          return current ? mergeFileResource(current, fresh) : fresh;
+        }));
+        // Keep an open modal on the same file while replacing its stale list
+        // metadata with the server's latest attribution and capabilities.
+        setOpenFile((current) => {
+          if (!current?.path) return current;
+          const fresh = visible.find((file) => file.path === current.path);
+          return fresh ? mergeFileResource(current, fresh) : current;
+        });
       })
       .catch(() => { if (ticket === loadVersion.current) setProjectFiles([]); });
   }, [project?.name]);
+
+  const refreshOpenFileResource = useCallback((resource) => {
+    if (!resource || typeof resource !== 'object') return;
+    setProjectFiles((currentFiles) => currentFiles.map((current) => (
+      current.path === resource.path
+        ? mergeFileResource(current, resource)
+        : current
+    )));
+    setOpenFile((current) => (
+      current
+        ? mergeFileResource(current, { ...resource, path: resource.path || current.path })
+        : current
+    ));
+  }, []);
 
   useEffect(() => {
     if (!project?.name) {
@@ -681,6 +736,12 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
                   file={f}
                   onOpen={() => setOpenFile(f)}
                   onRequestDelete={(file) => setPendingDeleteFile(file)}
+                  deletable={f.path !== ANTON_PROJECT_INSTRUCTIONS_PATH || (
+                    host.isWeb
+                    && !f.synthetic
+                    && canUseSharedResource(f, 'canDelete')
+                    && canUseSharedResource(project, 'canEditInstructions')
+                  )}
                 />
               ))}
               {driveFiles.map((f) => (
@@ -920,8 +981,11 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
         emptyMessage="(empty memory)"
         placeholder="Memory contents — what should the agent remember?"
         dense
+        editable={canUseSharedResource(openEntry, 'canEdit')}
+        deletable={canUseSharedResource(openEntry, 'canDelete')}
+        attributionResource={openEntry}
         onClose={() => setOpenEntry(null)}
-        onChanged={() => { reloadMemory(); }}
+        onChanged={() => { reloadMemory({ forceFresh: true }); }}
       />
       <ContextFileModal
         open={!!openFile}
@@ -929,8 +993,26 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
         projectPath={project?.path}
         filePath={openFile?.path}
         isAntonMd={openFile?.path === ANTON_PROJECT_INSTRUCTIONS_PATH}
+        remover={openFile?.path === ANTON_PROJECT_INSTRUCTIONS_PATH && (
+          openFile?.synthetic || !host.isWeb
+        )
+          ? null
+          : undefined}
+        editable={openFile?.path === ANTON_PROJECT_INSTRUCTIONS_PATH
+          ? canUseSharedResource(openFile, 'canEdit')
+            && canUseSharedResource(project, 'canEditInstructions')
+          : true}
+        deletable={openFile?.path === ANTON_PROJECT_INSTRUCTIONS_PATH
+          ? host.isWeb
+            && canUseSharedResource(openFile, 'canDelete')
+            && canUseSharedResource(project, 'canEditInstructions')
+          : true}
+        attributionResource={openFile?.path === ANTON_PROJECT_INSTRUCTIONS_PATH
+          ? openFile
+          : null}
+        onResourceLoaded={refreshOpenFileResource}
         onClose={() => setOpenFile(null)}
-        onChanged={() => reloadFiles()}
+        onChanged={() => reloadFiles({ forceFresh: true })}
       />
       {/* Task upload modal — same component, driven by the attachment's
           raw URL. No `projectName`/`projectPath` is passed, so the modal
@@ -985,21 +1067,21 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
           const target = pendingDeleteFile;
           setPendingDeleteFile(null);
           if (!target || !project?.name) return;
-          // Optimistic remove: pull the row from local state the
-          // instant the user confirms so the modal closing + row
-          // disappearing happen in the same frame. The DELETE +
-          // refetch happens in the background; on failure we
-          // reloadFiles() to restore the canonical list and surface
-          // the error.
-          setProjectFiles((prev) => prev.filter((f) => f.path !== target.path));
+          const isInstructions = target.path === ANTON_PROJECT_INSTRUCTIONS_PATH;
+          if (isInstructions && !(
+            canUseSharedResource(target, 'canDelete')
+            && canUseSharedResource(project, 'canEditInstructions')
+          )) return;
+          // Protected instructions stay visible until the server confirms the
+          // delete. Ordinary project files keep their historical optimistic UI.
+          if (!isInstructions) {
+            setProjectFiles((prev) => prev.filter((f) => f.path !== target.path));
+          }
           try {
             await deleteProjectFile(project.name, target.path);
-            // Quiet success — reloadFiles would also re-bring back
-            // the row if the server actually kept it. We skip the
-            // automatic reload here; the periodic listings on view
-            // remount will re-sync. (If you want belt + suspenders,
-            // uncomment reloadFiles() below.)
-            // reloadFiles();
+            // Instructions have a synthetic always-reachable row after delete,
+            // so refresh its cleared content, attribution, and capabilities.
+            if (isInstructions) reloadFiles({ forceFresh: true });
           } catch (err) {
             // eslint-disable-next-line no-console
             console.error('[context] delete file failed', err);

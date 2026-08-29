@@ -40,7 +40,12 @@ export function groupMemoryItems(items, projects) {
 
     const content = item.content || '';
     const projectName = projectId ? (projectNameById.get(String(projectId)) || null) : null;
+    // Keep server-owned attribution and capability metadata intact while
+    // adapting the list item into the renderer's grouped shape. Dropping
+    // these fields here would make the Memory page appear editable even when
+    // the API correctly returned `canEdit: false`.
     sectionMap.get(key).files.push({
+      ...item,
       category,
       projectId: projectId || null,
       content,

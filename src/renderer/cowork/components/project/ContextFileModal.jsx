@@ -12,7 +12,7 @@
 //      the modal handles read/write/delete via the project files
 //      API. `isAntonMd` (or the path matching
 //      ANTON_PROJECT_INSTRUCTIONS_PATH) flips on the special anton.md
-//      affordances (label, empty-state placeholder, undeletable).
+//      affordances (label and empty-state placeholder).
 //
 //   2. Generic mode: pass `title` + `loader` (or `initialContent`)
 //      + `saver` + optional `remover`. Used by the memory rail to
@@ -41,6 +41,7 @@ import {
   BASE,
 } from '../../api';
 import { MarkdownContent } from '../markdown/MarkdownContent';
+import SharedResourceAttribution from '../SharedResourceAttribution';
 import { host } from '../../../platform/host';
 import {
   downloadAuthenticatedResource,
@@ -191,11 +192,15 @@ export default function ContextFileModal({
   loader,          // optional async () => string. Falls back to readProjectFile.
   saver,           // optional async (content) => void. Falls back to writeProjectFile.
   remover,         // optional async () => void. `null` disables delete; otherwise
-                   //   falls back to deleteProjectFile (anton.md is always undeletable).
+                   //   falls back to deleteProjectFile.
   startInEditMode, // optional bool — overrides the "open in edit if empty" default.
   placeholder,     // optional textarea placeholder
   emptyMessage,    // optional message shown when content is empty + not editing
   dense,           // pass-through to MarkdownContent — smaller type for memory previews
+  editable = true, // server-derived shared-resource edit capability
+  deletable = true,// server-derived shared-resource delete capability
+  attributionResource,
+  onResourceLoaded,// receives fresh file attribution/capabilities from read/write responses
   onClose,
   onChanged,       // called after a successful save / delete so callers can refresh
 }) {
@@ -334,20 +339,21 @@ export default function ContextFileModal({
       // fetch / a draft). Skip the round trip.
       setContent(initialContent);
       setDraft(initialContent);
-      setEditing(startInEditMode ?? (isAnton && !initialContent.trim()));
+      setEditing(editable && (startInEditMode ?? (isAnton && !initialContent.trim())));
       return undefined;
     }
     setLoading(true);
     const read = typeof loader === 'function'
       ? loader()
-      : readProjectFile(projectName, filePath).then((res) => res?.content || '');
+      : readProjectFile(projectName, filePath);
     Promise.resolve(read)
       .then((body) => {
         if (cancelled) return;
         const text = typeof body === 'string' ? body : (body?.content || '');
+        if (body && typeof body === 'object') onResourceLoaded?.(body);
         setContent(text);
         setDraft(text);
-        setEditing(startInEditMode ?? (isAnton && !text.trim()));
+        setEditing(editable && (startInEditMode ?? (isAnton && !text.trim())));
       })
       .catch((e) => {
         if (cancelled) return;
@@ -365,7 +371,7 @@ export default function ContextFileModal({
       })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [open, filePath, projectName, initialContent, isAnton, loader, genericMode, startInEditMode, isImage, rawUrl]);
+  }, [open, filePath, projectName, initialContent, isAnton, loader, genericMode, startInEditMode, isImage, rawUrl, editable, onResourceLoaded]);
 
   // Esc + backdrop dismissal are handled by <Modal> (suppressed while busy).
 
@@ -377,13 +383,18 @@ export default function ContextFileModal({
   }, [editing]);
 
   const save = async () => {
+    if (!editable) return;
     setBusy(true);
     setError('');
     try {
+      let savedResource;
       if (typeof saver === 'function') {
-        await saver(draft);
+        savedResource = await saver(draft);
       } else {
-        await writeProjectFile(projectName, filePath, draft);
+        savedResource = await writeProjectFile(projectName, filePath, draft);
+      }
+      if (savedResource && typeof savedResource === 'object') {
+        onResourceLoaded?.(savedResource);
       }
       setContent(draft);
       setEditing(false);
@@ -395,12 +406,12 @@ export default function ContextFileModal({
     }
   };
 
-  // Delete is hidden when the caller passes `remover === null` OR
-  // when this is anton.md (always-present project instructions).
-  const canDelete = remover !== null && !isAnton;
+  // `null` explicitly disables delete. Project-file mode otherwise falls back
+  // to deleteProjectFile, including the capability-gated instructions file.
+  const deleteApplicable = remover !== null;
 
   const handleDelete = async () => {
-    if (!canDelete) return;
+    if (!deleteApplicable || !deletable) return;
     const confirmTarget = title || filePath || 'this file';
     if (!window.confirm(`Delete ${confirmTarget}? This can't be undone.`)) return;
     setBusy(true);
@@ -453,6 +464,8 @@ export default function ContextFileModal({
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             {mode === 'text' && !editing && !loading && (
               <Button
+                disabled={!editable}
+                title={!editable ? 'You do not have permission to edit this shared resource.' : undefined}
                 onClick={() => setEditing(true)}
               >Edit</Button>
             )}
@@ -501,6 +514,15 @@ export default function ContextFileModal({
           )}
           {error && (
             <Alert variant="danger" className="shrink-0">{error}</Alert>
+          )}
+          <SharedResourceAttribution
+            resource={attributionResource}
+            className="shrink-0"
+          />
+          {!editable && (
+            <div className="shrink-0 text-[12px] text-ink-3" role="note">
+              Read only. You do not have permission to edit this shared resource.
+            </div>
           )}
           {/* HTML branch — render inside a sandboxed iframe with the
               preview-mount URL so relative assets resolve. */}
@@ -618,11 +640,12 @@ export default function ContextFileModal({
           background: 'var(--surface)',
         }}>
           <div>
-            {canDelete && !editing && !loading && (
+            {deleteApplicable && !editing && !loading && (
               <Button
                 variant="danger"
                 onClick={handleDelete}
-                disabled={busy}
+                disabled={busy || !deletable}
+                title={!deletable ? 'You do not have permission to delete this shared resource.' : undefined}
               >{Ico.trash ? Ico.trash(13) : null}Delete</Button>
             )}
           </div>

@@ -107,6 +107,7 @@ async function rootReq(path, options = {}) {
 // Behaviour:
 //   - First caller for a given key starts the request.
 //   - Concurrent callers receive the SAME promise.
+//   - A force-fresh caller replaces that generation; later callers join it.
 //   - Once the promise settles (resolve or reject) the entry is
 //     deleted so the next call will re-fetch — i.e. NO long-lived
 //     cache, just request coalescing within the same tick / async
@@ -115,18 +116,24 @@ async function rootReq(path, options = {}) {
 // The keys are constructed by callers; convention is the URL path
 // plus any query params, so different projects never collide.
 const _inflight = new Map();
-function dedupe(key, factory) {
+function dedupe(key, factory, { forceFresh = false } = {}) {
   const existing = _inflight.get(key);
-  if (existing) return existing;
-  const p = (async () => {
-    try {
-      return await factory();
-    } finally {
-      _inflight.delete(key);
-    }
-  })();
-  _inflight.set(key, p);
-  return p;
+  if (existing && !forceFresh) return existing.promise;
+
+  // Store a generation alongside the promise. A post-mutation read replaces
+  // the current generation, so later callers join the newer request even if
+  // the pre-mutation request is still pending. The identity check in finally
+  // prevents that older promise from deleting its replacement when it settles.
+  const generation = Symbol(key);
+  const promise = Promise.resolve()
+    .then(factory)
+    .finally(() => {
+      if (_inflight.get(key)?.generation === generation) {
+        _inflight.delete(key);
+      }
+    });
+  _inflight.set(key, { generation, promise });
+  return promise;
 }
 
 async function responseError(res, fallback) {
@@ -967,16 +974,19 @@ export async function fetchProjectInstructions(projectName) {
   );
 }
 
-export async function listProjectFiles(projectName) {
+export async function listProjectFiles(projectName, { forceFresh = false } = {}) {
   if (!projectName) return { files: [] };
   // Coalesced — see `dedupe` notes above. WorkingFolderLive +
   // ContextCard mount in the same rail and both call this on open,
   // so without coalescing every project switch fires two identical
   // requests. The cache entry releases on settle, so subsequent
   // streaming polls hit the network normally.
-  return dedupe(`projects/${projectName}/files`, () =>
-    req(`/projects/${enc(projectName)}/files`),
-  );
+  const request = () => req(`/projects/${enc(projectName)}/files`);
+  // A mutation acknowledgement establishes a happens-before boundary that an
+  // older coalesced GET cannot satisfy. Callers refreshing after a successful
+  // write/delete bypass the single-flight request so the response necessarily
+  // comes from a GET started after that mutation completed.
+  return dedupe(`projects/${projectName}/files`, request, { forceFresh });
 }
 
 export async function readProjectFile(projectName, path) {
@@ -1507,7 +1517,7 @@ export async function revealSettingKey(name) {
 export { labelCategory, countNonEmptyMemory, findMemoryEntry } from './lib/memoryTransform';
 
 // ─── Anton Utilities ────────────────────────────────────────────────────────
-export async function fetchMemory(projectRef) {
+export async function fetchMemory(projectRef, { forceFresh = false } = {}) {
   const projectId = await resolveProjectId(projectRef, fetchProjects);
   const suffix = projectId ? `?project_id=${encodeURIComponent(projectId)}` : '';
   // Coalesced per project. ContextCard, ProjectCard, and the list
@@ -1520,7 +1530,7 @@ export async function fetchMemory(projectRef) {
     ]);
     const list = Array.isArray(items) ? items : [];
     return groupMemoryItems(list, projects);
-  });
+  }, { forceFresh });
 }
 
 export async function saveMemory(payload) {

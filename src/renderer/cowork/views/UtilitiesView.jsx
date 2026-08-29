@@ -18,6 +18,8 @@ import {
   validateDatasource,
 } from '../api';
 import { trackArtifactPublished } from '../lib/analytics';
+import SharedResourceAttribution from '../components/SharedResourceAttribution';
+import { canUseSharedResource } from '../lib/sharedResourceAccess';
 
 const TITLES = {
   memory:  ['Memories', 'Profile, rules, and lessons the agent can reuse across tasks.'],
@@ -127,8 +129,8 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
     scope: 'Global', category: '', content: '', projectName: null, projectId: null,
   });
 
-  const refresh = async () => {
-    const latest = await fetchMemory();
+  const refresh = async ({ forceFresh = false } = {}) => {
+    const latest = await fetchMemory(undefined, { forceFresh });
     setData(latest);
     if (selected?.path) {
       const updated = findMemoryEntry(latest?.sections, selected.path);
@@ -138,6 +140,7 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
   };
 
   const startEdit = (file) => {
+    if (!canUseSharedResource(file, 'canEdit')) return;
     setEditing('edit');
     setDraft({
       scope: file.scope || 'Global',
@@ -150,6 +153,10 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
   };
 
   const save = async () => {
+    if (!canUseSharedResource(displayed || selected, 'canEdit')) {
+      setStatus('You do not have permission to edit this shared memory.');
+      return;
+    }
     if (!draft.category) {
       setStatus('No memory category selected.');
       return;
@@ -167,13 +174,14 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
       });
       setStatus(`Saved ${labelCategory(draft.category)} memory.`);
       setEditing(null);
-      await refresh();
+      await refresh({ forceFresh: true });
     } catch (err) {
       setStatus(err.message || 'Could not save memory.');
     }
   };
 
   const remove = async (file) => {
+    if (!canUseSharedResource(file, 'canDelete')) return;
     const label = labelCategory(file.category);
     if (!window.confirm(`Delete "${label}" memory? This clears the saved content.`)) return;
     try {
@@ -185,7 +193,7 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
       setStatus(`Deleted ${label} memory.`);
       setEditing(null);
       onSelect(null);
-      await refresh();
+      await refresh({ forceFresh: true });
     } catch (err) {
       setStatus(err.message || 'Could not delete memory.');
     }
@@ -236,6 +244,7 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
                       ? `Project · ${selected.projectName}`
                       : selected.scope}
                   </div>
+                  <SharedResourceAttribution resource={displayed || selected} className="mt-1" />
                 </div>
                 <Button variant="subtle" onClick={() => setEditing(null)}>Cancel</Button>
                 <Button variant="primary" onClick={save}>Save</Button>
@@ -258,9 +267,25 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
                       ? `Project · ${displayed.projectName}`
                       : displayed.scope}
                   </div>
+                  <SharedResourceAttribution resource={displayed} className="mt-1" />
+                  {!canUseSharedResource(displayed, 'canEdit') && (
+                    <div className="mt-1 text-[12px] text-ink-3" role="note">
+                      Read only. Only the memory author or an organization admin can change it.
+                    </div>
+                  )}
                 </div>
-                <Button variant="subtle" onClick={() => startEdit(displayed)}>Edit</Button>
-                <Button variant="subtle" onClick={() => remove(displayed)}>Delete</Button>
+                <Button
+                  variant="subtle"
+                  disabled={!canUseSharedResource(displayed, 'canEdit')}
+                  title={!canUseSharedResource(displayed, 'canEdit') ? 'You do not have permission to edit this shared memory.' : undefined}
+                  onClick={() => startEdit(displayed)}
+                >Edit</Button>
+                <Button
+                  variant="subtle"
+                  disabled={!canUseSharedResource(displayed, 'canDelete')}
+                  title={!canUseSharedResource(displayed, 'canDelete') ? 'You do not have permission to delete this shared memory.' : undefined}
+                  onClick={() => remove(displayed)}
+                >Delete</Button>
               </div>
               <div className={memoryViewerClass}>
                 <MarkdownContent

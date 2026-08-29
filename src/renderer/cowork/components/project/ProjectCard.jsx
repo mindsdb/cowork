@@ -11,6 +11,8 @@ import { fetchMemory, fetchArtifacts, countNonEmptyMemory } from '../../api';
 import { useRevealOnHover } from '../../hooks/useRevealOnHover';
 import { relativeAge } from '../../lib/formatTime';
 import { belongsToProject } from '../../lib/artifactProject';
+import SharedResourceAttribution from '../SharedResourceAttribution';
+import { isReservedProjectName } from '../../lib/sharedResourceAccess';
 
 const FONT_BODY    = 'var(--font-body)';
 const FONT_DISPLAY = 'var(--font-display)';
@@ -120,17 +122,19 @@ export function ProjectCard({
   isMenuOpen = false,
   onRenameSubmit,
   onRenameCancel,
+  alwaysShowActions = false,
 }) {
   const stats = useProjectStats(project, { tasks, scheduled });
   const cardStats = visibleStats(stats);
   const summary = activitySummary(project, tasks);
   const active = isProjectActive(project, tasks);
   const { revealed, hoverProps } = useRevealOnHover(isMenuOpen);
+  const [actionsFocused, setActionsFocused] = useState(false);
   const triggerRef = useRef(null);
   const renameInputRef = useRef(null);
 
-  const showHoverActions = revealed || pinned;
-  const isReserved = project.name === 'general' || project.name === 'default';
+  const showHoverActions = alwaysShowActions || revealed || pinned || actionsFocused;
+  const isReserved = isReservedProjectName(project.name);
 
   // When entering edit mode, focus + select the entire name on the
   // next paint so the user can type immediately to replace it (or
@@ -227,8 +231,12 @@ export function ProjectCard({
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); onTogglePin?.(project, !pinned); }}
+            onKeyDown={(e) => e.stopPropagation()}
+            onFocus={() => setActionsFocused(true)}
+            onBlur={() => setActionsFocused(false)}
             aria-label={pinned ? 'Unpin project' : 'Pin project'}
             aria-pressed={pinned}
+            className="project-action-trigger"
             style={{
               width: 26, height: 26, borderRadius: 6,
               background: 'transparent', border: 0,
@@ -256,7 +264,11 @@ export function ProjectCard({
               const rect = triggerRef.current?.getBoundingClientRect();
               onMenuOpen?.(project, rect);
             }}
+            onKeyDown={(e) => e.stopPropagation()}
+            onFocus={() => setActionsFocused(true)}
+            onBlur={() => setActionsFocused(false)}
             aria-label="Project menu"
+            className="project-action-trigger"
             style={{
               width: 26, height: 26, borderRadius: 6,
               background: 'transparent', border: 0,
@@ -318,6 +330,8 @@ export function ProjectCard({
           <span>{summary?.time || '—'}</span>
         </span>
       </div>
+
+      <SharedResourceAttribution resource={project} />
 
       {/* Stats row — full-word pluralized labels, hairline divider
           above. Zero/undefined stats are omitted; when nothing is

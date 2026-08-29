@@ -18,10 +18,12 @@ import { useSyncExternalStore } from 'react';
 import { fetchSkills, saveSkill, deleteSkill } from '../api';
 
 // `null` = never loaded yet (consumers can show a loading state); an array
-// once a fetch has resolved (success → the skills, failure → kept as-is / []).
+// once a fetch has settled. `_catalogueStatus` distinguishes a verified empty
+// catalogue from the compatibility `[]` used after an initial fetch failure.
 let _skills = null;
 let _skillNames = new Set(); // derived; rebuilt once per reload, not per-consumer
 let _inFlight = null; // de-dupe concurrent reloads
+let _catalogueStatus = 'idle'; // idle | loading | loaded | error
 const _subscribers = new Set();
 
 function _emit() {
@@ -34,19 +36,39 @@ function _getSnapshot() {
   return _skills;
 }
 
+function _getCatalogueStatusSnapshot() {
+  return _catalogueStatus;
+}
+
 /** Re-fetch the canonical skills list and notify every subscriber. Concurrent
  *  calls share one in-flight request. Throws are swallowed (the list is left
  *  as-is) so a transient fetch failure can't blank the UI — callers that need
  *  to surface mutation errors await the *AndSync wrappers, which do throw. */
-export async function reloadSkills() {
-  if (_inFlight) return _inFlight;
+export async function reloadSkills({ afterCurrent = false } = {}) {
+  if (_inFlight) {
+    if (!afterCurrent) return _inFlight;
+    // Mutation-critical callers cannot accept a request which began before
+    // their write. Let that request settle, then start (or join) the next one,
+    // whose request boundary is necessarily after the mutation.
+    await _inFlight;
+    return reloadSkills();
+  }
   _inFlight = (async () => {
+    _catalogueStatus = 'loading';
+    _emit();
     try {
       const data = await fetchSkills();
-      _skills = Array.isArray(data?.skills) ? data.skills : [];
+      if (!Array.isArray(data?.skills)) {
+        throw new Error('The skills catalogue response was invalid.');
+      }
+      _skills = data.skills;
       _skillNames = new Set(_skills.map((s) => s.label).filter(Boolean));
-    } catch {
+      _catalogueStatus = 'loaded';
+      return { ok: true, skills: _skills };
+    } catch (error) {
       if (_skills === null) _skills = []; // first load failed → empty, not stuck loading
+      _catalogueStatus = 'error';
+      return { ok: false, skills: _skills, error };
     } finally {
       _inFlight = null;
       _emit();
@@ -67,12 +89,18 @@ function _subscribe(notify) {
 
 /**
  * React hook: the shared skills list + a reload trigger.
- * @returns {{ skills: Array|null, reload: () => Promise<void> }}
- *          `skills` is `null` until the first fetch resolves, then an array.
+ * @returns {{ skills: Array|null, catalogueStatus: string, reload: () => Promise<object> }}
+ *          `catalogueStatus === 'loaded'` means the current absence/presence
+ *          decision came from a valid server response.
  */
 export function useSkills() {
   const skills = useSyncExternalStore(_subscribe, _getSnapshot, _getSnapshot);
-  return { skills, reload: reloadSkills };
+  const catalogueStatus = useSyncExternalStore(
+    _subscribe,
+    _getCatalogueStatusSnapshot,
+    _getCatalogueStatusSnapshot,
+  );
+  return { skills, catalogueStatus, reload: reloadSkills };
 }
 
 /**
@@ -91,13 +119,13 @@ export function useSkillNames() {
  *  caller can surface a toast / handle a 409 collision. */
 export async function saveSkillAndSync(payload, isEdit = false) {
   const saved = await saveSkill(payload, isEdit);
-  await reloadSkills();
+  await reloadSkills({ afterCurrent: true });
   return saved;
 }
 
 /** Delete a skill, then refresh the shared list. Re-throws on failure. */
 export async function deleteSkillAndSync(label) {
   const res = await deleteSkill(label);
-  await reloadSkills();
+  await reloadSkills({ afterCurrent: true });
   return res;
 }
