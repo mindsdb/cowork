@@ -8,18 +8,20 @@ on:
         required: true
         type: string
       server_ref:
-        description: "cowork-server and anton git branch/tag (empty = main)"
+        description: "cowork-server git branch/tag; non-empty selects git installs"
+        required: false
+        type: string
+        default: ""
+      anton_ref:
+        description: "Optional anton git branch/tag; empty defers to cowork-server's dependency pin"
         required: false
         type: string
         default: ""
       server_channel:
         description: >-
-          Optional override of the cowork-server install channel. Empty (the
-          default) derives from build_kind: every packaged kind
-          (prod/preview/stable) installs from PyPI, mirroring the runtime
-          default in server-source.ts. Pass 'git' (lowercase) to force a
-          git-branch install for a build (rare). 'pypi' installs the published
-          wheel floored at the latest release.
+          Optional override of the cowork-server install channel. Empty uses git
+          when server_ref is set; otherwise packaged builds use PyPI. Pass pypi
+          explicitly only to ignore a supplied source ref intentionally.
         required: false
         type: string
         default: ""
@@ -202,21 +204,23 @@ jobs:
       - name: Write build config (controls which cowork data home the app uses)
         run: echo '{"buildKind":"${{ inputs.build_kind }}"}' > build-config.json
 
-      # cowork-server install channel: an explicit server_channel input wins;
-      # otherwise every packaged build kind installs from PyPI (prod = stable
-      # stream, preview/stable = rc stream). Mirrors server-source.ts
-      # (_channelForBuildKind) so the floor step and the baked channel agree
-      # with what the app resolves at runtime.
+      # An explicit channel wins. Otherwise a feature server_ref selects git;
+      # only an unpinned packaged build follows the normal PyPI stream. This
+      # keeps feature UI and backend routes on the same revision line.
       - name: Resolve install channel
         id: channel
         run: |
           set -euo pipefail
           CH="${{ inputs.server_channel }}"
           if [ -z "$CH" ]; then
-            case "${{ inputs.build_kind }}" in
-              prod|preview|stable) CH=pypi ;;
-              *) CH='' ;;
-            esac
+            if [ -n "${{ inputs.server_ref }}" ]; then
+              CH=git
+            else
+              case "${{ inputs.build_kind }}" in
+                prod|preview|stable) CH=pypi ;;
+                *) CH='' ;;
+              esac
+            fi
           fi
           echo "channel=$CH" >> "$GITHUB_OUTPUT"
           echo "Install channel: ${CH:-git} (build_kind=${{ inputs.build_kind }})"
@@ -256,12 +260,8 @@ jobs:
           GH_APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           INSTALLER_IDENTITY: ${{ secrets.APPLE_INSTALLER_IDENTITY }}
           VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN: ${{ secrets.VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN }}
-          # Both refs come from the same input so a staging build pins staging
-          # cowork-server AND staging anton. server-source.ts overrides anton's
-          # source at install time via --no-sources-package + --with, so this
-          # does not require any per-branch pin in cowork-server's pyproject.
           COWORK_SERVER_REF: ${{ inputs.server_ref }}
-          ANTON_REF: ${{ inputs.server_ref }}
+          ANTON_REF: ${{ inputs.anton_ref }}
           COWORK_SERVER_CHANNEL: ${{ steps.channel.outputs.channel }}
           COWORK_SERVER_MIN_VERSION: ${{ steps.server_floor.outputs.version }}
           VITE_MINDS_API_URL: ${{ inputs.minds_api_url }}
