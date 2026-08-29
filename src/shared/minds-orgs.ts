@@ -39,6 +39,14 @@ export function personalOrgName(userId: string): string {
 }
 
 /**
+ * What to call a personal organization when Keycloak's own label is not to
+ * hand. Auth generates `<email>'s organization` and only the membership listing
+ * carries it, so both readers that run before or without that listing fall back
+ * here rather than to `personal_<uuid>` or to nothing.
+ */
+export const PERSONAL_ORG_LABEL = 'Personal organization';
+
+/**
  * Turn what Keycloak returned into the shape the UI reads.
  *
  * `displayName` deliberately falls back to the raw name rather than to a

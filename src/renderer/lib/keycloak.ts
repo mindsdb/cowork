@@ -1,6 +1,7 @@
 import Keycloak from 'keycloak-js';
 import {
   type MindsOrg,
+  PERSONAL_ORG_LABEL,
   personalOrgName,
   rankMindsOrgs,
   toMindsOrg,
@@ -249,7 +250,7 @@ function normalizeOrganizations(payload: unknown, subject: string): MindsOrg[] |
      */
     const displayName = suppliedDisplayName
       ?? (rawName === personalOrgName(subject)
-        ? (sourceSlug && sourceName !== sourceSlug ? sourceName : null) ?? 'Personal organization'
+        ? (sourceSlug && sourceName !== sourceSlug ? sourceName : null) ?? PERSONAL_ORG_LABEL
         : sourceName ?? rawName);
     organizations.push(toMindsOrg({ id, name: displayName, slug: rawName }, subject));
   }
