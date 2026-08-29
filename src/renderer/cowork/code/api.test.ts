@@ -119,6 +119,18 @@ describe('coding API boundary', () => {
     await expect(codingApi.apply('task-1')).rejects.toThrow('Handoff stopped before changing the source');
   });
 
+  it('explains the generic 404 produced by an incompatible backend', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: false,
+      status: 404,
+      json: async () => ({ detail: 'Not Found' }),
+    })));
+
+    await expect(codingApi.projects()).rejects.toThrow(
+      'connected to an older backend that does not support Code Mode',
+    );
+  });
+
   it('rejects malformed event frames at the renderer boundary', () => {
     const valid = {
       schema_version: 1,
