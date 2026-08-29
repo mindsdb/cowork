@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render as rtlRender, screen } from '@testing-library/react';
+import { ToastProvider } from './ui/Toast';
 
 // Mutable host mock so each test can flip isWeb. getAccessToken resolves the
 // token behind the footer user menu — null (signed out) unless a test sets
@@ -12,6 +13,38 @@ vi.mock('../../platform/host', () => ({
   getAccessToken: getAccessTokenMock,
   openExternal: vi.fn(async () => {}),
 }));
+// The footer user menu now reads the organization listing through the main
+// process. Stubbed rather than served, because nothing in this file is about
+// organizations; the menu and the hook each have their own test file.
+vi.mock('../hooks/useMindsOrgs', () => ({
+  useMindsOrgs: () => ({
+    orgs: [], activeOrg: null, activeOrgId: null, switching: false,
+    switchOrg: vi.fn(), refresh: vi.fn(),
+  }),
+}));
+
+const hubWorkspacesMock = vi.hoisted(() => ({
+  useHubWorkspaces: vi.fn(() => ({
+    enabled: false,
+    reachable: false,
+    workspaces: [],
+    activeWorkspaceId: null,
+    switching: false,
+    switchWorkspace: vi.fn(),
+    refresh: vi.fn(),
+  })),
+}));
+// Stubbed rather than exercised here: these tests are about the account
+// destinations, and the real hook pulls in api.js, which reads host.getApiOrigin
+// at module load and this file's host mock does not provide one. The workspace
+// group has its own test file.
+vi.mock('../hooks/useHubWorkspaces', () => hubWorkspacesMock);
+
+// WorkspaceSelector calls `useToastManager()` unconditionally, before its own
+// early return, and Base UI requires a provider for it. The real tree has one
+// (App wraps AppCore, and the sidebar is inside it), so wrap here too rather
+// than making the component tolerate its absence.
+const render = (ui, options) => rtlRender(ui, { wrapper: ToastProvider, ...options });
 
 import Sidebar from './Sidebar';
 import { deriveUpdateBanner } from '../../../shared/update-banner';

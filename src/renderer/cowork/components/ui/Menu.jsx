@@ -31,8 +31,14 @@
 //        <Menu open={open} anchor={rect} onClose={close} items={…} />
 //
 // Item shape — matches the legacy hand-rolled menus so call sites port
-// 1:1: { icon?, label, onClick?, danger?, disabled?, hint?, title?,
+// 1:1: { icon?, label, onClick?, danger?, disabled?, hint?, title?, aria?,
 //        divider?|separator?, submenu?: Item[], heading?, id?|key? }.
+// `aria` is an object spread onto the rendered item, for state a screen reader
+// has to hear. `title` cannot carry it: the row's accessible NAME comes from its
+// label, so a title is demoted to the accessible description, which VoiceOver
+// speaks only as a delayed hint and NVDA users can switch off entirely. Anything
+// that changes what the row IS (`aria-current` on the row you are already on)
+// belongs here instead.
 // An item with a `submenu` array renders a nested fly-out (replaces
 // TaskMenu's hand-rolled "Move to project" corridor).
 // An item with a `heading` node renders as a non-interactive group label
@@ -138,6 +144,7 @@ function renderItems(items, z, onActivate) {
         className={itemVariants({ danger: it.danger })}
         disabled={it.disabled}
         title={it.title}
+        {...it.aria}
         closeOnClick={!it.keepOpen}
         onClick={() => {
           it.onClick?.();

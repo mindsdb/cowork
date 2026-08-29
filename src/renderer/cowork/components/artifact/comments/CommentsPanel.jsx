@@ -1,7 +1,7 @@
 // Comments inbox panel — 1:1 with the published-viewer inbox (Figma 515-2287):
-// a fixed 342px light card floating on the right with 12px insets, holding
-// the header, the Open/Resolved/All segmented tabs (with counts), the
-// card list, and a pinned composer for general (unanchored) comments.
+// a docked 342px review surface on desktop (full-width on compact screens),
+// holding the header, the Open/Resolved/All segmented tabs (with counts),
+// card list, and a pinned composer for whole-artifact comments.
 // Anchored comments are created on the artifact via comment mode; the full
 // thread opens in the on-artifact popover when a card is clicked.
 //
@@ -21,12 +21,6 @@ import { InboxCard } from './InboxCard';
 import { UnanchoredComposer } from './UnanchoredComposer';
 import { XIcon } from './icons';
 import { Tooltip } from '../../ui';
-
-// Reference "NewShadow/modal-sm" — the panel's card shadow.
-const SHADOW_SM =
-  '0 0 0 0.5px rgba(39,39,42,0.1),0 1px 1px -0.5px rgba(0,0,0,0.04),'
-  + '0 3px 3px -1.5px rgba(0,0,0,0.04),0 6px 6px -3px rgba(0,0,0,0.04),'
-  + '0 12px 12px -6px rgba(0,0,0,0.04)';
 
 // Slide-in entrance (mirrors the reference #act-panel: translateX(16px)→0 +
 // fade, same easing as the toolbar) — the `cw-comments-panel-in` keyframe
@@ -55,7 +49,9 @@ export function CommentsPanel({
   error = '',
   expired = false,
   viewer = null,
+  capabilities = null,
   onStatus,
+  onAddressWithAgent,
   onDeleteThread,
   onCreate,
   onClose,
@@ -94,25 +90,23 @@ export function CommentsPanel({
 
   return (
     <div
-      className="absolute top-[12px] right-[12px] bottom-[12px] w-[342px] z-30
-        flex flex-col gap-[10px] rounded-[8px] bg-[#FCFCFC] px-[12px] py-[8px]
+      className="artifact-comments-panel flex flex-col gap-[10px] bg-surface px-[12px] py-[8px]
         motion-reduce:!animate-none"
       style={{
-        boxShadow: SHADOW_SM,
         fontFamily: 'var(--font-body)',
         animation: 'cw-comments-panel-in .3s cubic-bezier(.16,1,.3,1)',
       }}
     >
       {/* Header */}
       <div className="flex items-center justify-between shrink-0">
-        <span className="text-[18px] font-semibold leading-[28px] text-[#202021]">Comments</span>
-        <Tooltip content="Close">
+        <span className="text-[18px] font-semibold leading-[28px] text-ink">Comments</span>
+        <Tooltip content="Close comments panel">
           <button
             type="button"
-            aria-label="Close"
+            aria-label="Close comments panel"
             className="w-[24px] h-[24px] flex items-center justify-center bg-transparent border-0
-              rounded-[6px] p-0 cursor-pointer text-[#69696B] transition-colors
-              hover:text-[#202021] hover:bg-[rgba(39,39,42,0.06)]"
+              rounded-[6px] p-0 cursor-pointer text-ink-3 transition-colors
+              hover:text-ink hover:bg-surface-2"
             onClick={onClose}
           >
             <XIcon />
@@ -143,7 +137,7 @@ export function CommentsPanel({
           if (pick) setTab(pick);
         }}
         aria-label="Filter comments"
-        className="flex gap-[2px] bg-[#EFEFF0] rounded-[8px] p-[2px] shrink-0"
+        className="flex gap-[2px] bg-surface-2 rounded-[8px] p-[2px] shrink-0"
       >
         {TABS.map(([value, label]) => {
           const n = groups[value].length;
@@ -154,8 +148,8 @@ export function CommentsPanel({
               aria-label={label}
               className="flex-1 h-[24px] rounded-[6px] border-0 cursor-pointer
                 text-[12px] font-medium leading-[16px] transition-[background,color]
-                bg-transparent text-[#69696B] hover:text-[#202021]
-                data-[pressed]:bg-white data-[pressed]:text-[#202021]"
+                bg-transparent text-ink-3 hover:text-ink
+                data-[pressed]:bg-surface data-[pressed]:text-ink"
               style={{
                 fontFamily: 'inherit',
                 boxShadow: tab === value
@@ -164,7 +158,7 @@ export function CommentsPanel({
               }}
             >
               {label}
-              {n > 0 && <b className="font-normal text-[#828285] ml-[4px]">{n}</b>}
+              {n > 0 && <b className="font-normal text-ink-4 ml-[4px]">{n}</b>}
             </BaseToggle>
           );
         })}
@@ -175,7 +169,7 @@ export function CommentsPanel({
         className="flex-1 overflow-y-auto flex flex-col gap-[10px] -mr-[10px] pr-[4px]"
         style={{ overscrollBehavior: 'contain' }}>
         {visible.length === 0 && (
-          <div className="text-center text-[12px] leading-[16px] text-[#828285] py-[24px]">
+          <div className="text-center text-[12px] leading-[16px] text-ink-4 py-[24px]">
             {EMPTY_COPY[tab]}
           </div>
         )}
@@ -185,7 +179,10 @@ export function CommentsPanel({
             thread={t}
             state={anchorStates[t.id]}
             viewer={viewer}
+            canResolve={capabilities?.canResolve === true}
+            canAddressWithAgent={capabilities?.canAddressWithAgent === true}
             onStatus={onStatus}
+            onAddressWithAgent={onAddressWithAgent}
             onRequestDelete={setPendingDelete}
             onHover={onHoverThread}
             onLeave={onLeaveThread}
@@ -198,6 +195,8 @@ export function CommentsPanel({
           New threads are open and sort newest-first, so scroll to top. */}
       <UnanchoredComposer
         onCreate={onCreate}
+        kind={viewer?.role === 'reviewer' ? 'issue' : 'review'}
+        placeholder={viewer?.role === 'reviewer' ? 'Report an issue…' : 'Add a comment…'}
         onPosted={() => listRef.current?.scrollTo({ top: 0 })}
       />
 

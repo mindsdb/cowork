@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { useState } from 'react';
+import { render, screen, waitFor, within, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 const hostSpies = vi.hoisted(() => ({ openExternal: vi.fn() }));
@@ -275,5 +276,240 @@ describe('ModelSelect — the route to credits on a locked row', () => {
     const row = screen.getByRole('option', { name: /Claude Opus 5/ });
     expect(within(row).getByRole('button', { name: 'Router Settings' })).toBeInTheDocument();
     expect(within(row).queryByRole('button', { name: 'Add credits' })).toBeNull();
+  });
+});
+
+// The reasoning-effort footer (ENG-1940) — a row inside this same popup,
+// below the model list, replacing the old sibling EffortSelect pill.
+describe('ModelSelect — reasoning-effort footer (ENG-1940)', () => {
+  const MODEL_EFFORTS = {
+    sonnet: { efforts: ['low', 'medium', 'high'], default: 'medium' },
+    opus: { efforts: ['low', 'high'], default: 'high' },
+  };
+
+  it('renders no footer at all for a model with no modelEfforts entry', async () => {
+    const user = userEvent.setup();
+    render(<Harness initial="mindshub_air" modelEfforts={MODEL_EFFORTS} effort="" onEffortChange={vi.fn()} />);
+
+    await user.click(screen.getByRole('combobox'));
+
+    expect(screen.queryByText('Effort')).not.toBeInTheDocument();
+  });
+
+  it('shows the resolved effort label in the footer for a model with an entry', async () => {
+    const user = userEvent.setup();
+    render(<Harness initial="sonnet" modelEfforts={MODEL_EFFORTS} effort="high" onEffortChange={vi.fn()} />);
+
+    await user.click(screen.getByRole('combobox'));
+
+    const footerRow = screen.getByText('Effort').parentElement;
+    expect(within(footerRow).getByText('High')).toBeInTheDocument();
+  });
+
+  it('falls back to the entry default when the current value is not one of the model\'s options', async () => {
+    const user = userEvent.setup();
+    render(<Harness initial="sonnet" modelEfforts={MODEL_EFFORTS} effort="ultra" onEffortChange={vi.fn()} />);
+
+    await user.click(screen.getByRole('combobox'));
+
+    const footerRow = screen.getByText('Effort').parentElement;
+    expect(within(footerRow).getByText('Medium')).toBeInTheDocument();
+  });
+
+  it('opens a flyout on hover showing every level with a checkmark on the current value and a Default tag on the model default', async () => {
+    const user = userEvent.setup();
+    // Current effort ("high") deliberately differs from sonnet's own
+    // default ("medium") so the checkmark and the "Default" tag land on
+    // two different rows, pinning that they're independent signals.
+    render(<Harness initial="sonnet" modelEfforts={MODEL_EFFORTS} effort="high" onEffortChange={vi.fn()} />);
+
+    await user.click(screen.getByRole('combobox'));
+    fireEvent.mouseEnter(screen.getByText('Effort').closest('button'));
+
+    const panel = screen.getByText(/Higher effort means more thorough responses/).parentElement;
+    const lowRow = within(panel).getByText('Low').closest('button');
+    const mediumRow = within(panel).getByText('Medium').closest('button');
+    const highRow = within(panel).getByText('High').closest('button');
+
+    expect(within(mediumRow).getByText('Default')).toBeInTheDocument();
+    expect(within(highRow).queryByText('Default')).toBeNull();
+    expect(within(lowRow).queryByText('Default')).toBeNull();
+    // The checkmark (a bare svg, no text) lands only on the current value.
+    expect(highRow.querySelector('svg')).toBeTruthy();
+    expect(mediumRow.querySelector('svg')).toBeFalsy();
+    expect(lowRow.querySelector('svg')).toBeFalsy();
+  });
+
+  it('clicking a level fires onEffortChange and closes the flyout and the model popup', async () => {
+    const user = userEvent.setup();
+    const onEffortChange = vi.fn();
+    render(<Harness initial="sonnet" modelEfforts={MODEL_EFFORTS} effort="medium" onEffortChange={onEffortChange} />);
+
+    await user.click(screen.getByRole('combobox'));
+    fireEvent.mouseEnter(screen.getByText('Effort').closest('button'));
+    const panel = screen.getByText(/Higher effort means more thorough responses/).parentElement;
+    const highRow = within(panel).getByText('High').closest('button');
+    await user.click(highRow);
+
+    expect(onEffortChange).toHaveBeenCalledWith('high');
+    // Both the flyout and the parent model popup are gone.
+    expect(screen.queryByText(/Higher effort means more thorough responses/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('option')).not.toBeInTheDocument();
+  });
+
+  it('does not render the footer for harness="hermes", even for a model with effort options', async () => {
+    const user = userEvent.setup();
+    render(<Harness initial="sonnet" modelEfforts={MODEL_EFFORTS} effort="" onEffortChange={vi.fn()} harness="hermes" />);
+
+    await user.click(screen.getByRole('combobox'));
+
+    expect(screen.queryByText('Effort')).not.toBeInTheDocument();
+  });
+
+  it('does not render the footer at all when no model is selected', async () => {
+    const user = userEvent.setup();
+    render(<Harness initial="" modelEfforts={MODEL_EFFORTS} effort="" onEffortChange={vi.fn()} />);
+
+    await user.click(screen.getByRole('combobox'));
+
+    expect(screen.queryByText('Effort')).not.toBeInTheDocument();
+  });
+
+  it('does not open the flyout without a hover — the footer renders closed', async () => {
+    const user = userEvent.setup();
+    render(<Harness initial="sonnet" modelEfforts={MODEL_EFFORTS} effort="" onEffortChange={vi.fn()} />);
+
+    await user.click(screen.getByRole('combobox'));
+
+    expect(screen.getByText('Effort')).toBeInTheDocument();
+    expect(screen.queryByText(/Higher effort means more thorough responses/)).not.toBeInTheDocument();
+  });
+
+  // Base UI's Combobox closes the whole popup unconditionally on picking an
+  // item (AriaCombobox: setSelectedValue then setOpen(false, {reason:
+  // 'item-press'})) — ModelSelect vetoes that close specifically when the
+  // picked model has effort options, so the menu stays put and the Effort
+  // footer appears in place. A real stateful parent is required so these
+  // exercise the actual pick-then-close flow, not just presentation with a
+  // value already in place.
+  function StatefulHarness({ initial, ...rest }) {
+    const [value, setValue] = useState(initial);
+    return <Harness initial={value} onValueChange={setValue} {...rest} />;
+  }
+
+  it('clicking a model row with effort options keeps the popup open with the footer shown (flyout stays closed)', async () => {
+    const user = userEvent.setup();
+    render(<StatefulHarness initial="mindshub_air" modelEfforts={MODEL_EFFORTS} effort="" onEffortChange={vi.fn()} />);
+
+    await user.click(screen.getByRole('combobox'));
+    await user.click(screen.getByRole('option', { name: 'Claude Sonnet 5' }));
+
+    // Still open: the list is still there, and the footer has appeared —
+    // but its flyout has NOT opened by itself (hover does that).
+    expect(screen.getByRole('option', { name: 'Claude Sonnet 5' })).toBeInTheDocument();
+    expect(screen.getByText('Effort')).toBeInTheDocument();
+    expect(screen.queryByText(/Higher effort means more thorough responses/)).not.toBeInTheDocument();
+  });
+
+  it('picking a no-effort model with the footer up fades the footer out, then closes the popup', async () => {
+    // The exit choreography (FOOTER_EXIT_MS): watching the row leave teaches
+    // WHY it's gone — this model has no effort levels — where an instant
+    // close would just look like the footer vanished with the popup.
+    const user = userEvent.setup();
+    render(<StatefulHarness initial="sonnet" modelEfforts={MODEL_EFFORTS} effort="" onEffortChange={vi.fn()} />);
+
+    await user.click(screen.getByRole('combobox'));
+    expect(screen.getByText('Effort')).toBeInTheDocument();
+    await user.click(screen.getByRole('option', { name: 'MindsHub Air' }));
+
+    // Immediately after the pick: still open, outgoing footer still visible
+    // (playing its fade-out).
+    expect(screen.getByRole('option', { name: 'MindsHub Air' })).toBeInTheDocument();
+    expect(screen.getByText('Effort')).toBeInTheDocument();
+
+    // Then the popup closes on its own.
+    await waitFor(() => expect(screen.queryByRole('option')).not.toBeInTheDocument());
+  });
+
+  it('picking a no-effort model with no footer showing closes the popup immediately', async () => {
+    const user = userEvent.setup();
+    // gpt-codex has no modelEfforts entry either — no footer at open, so no
+    // exit to play; the pick closes the popup as it always did.
+    render(<StatefulHarness initial="gpt-codex" modelEfforts={MODEL_EFFORTS} effort="" onEffortChange={vi.fn()} />);
+
+    await user.click(screen.getByRole('combobox'));
+    expect(screen.queryByText('Effort')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('option', { name: 'MindsHub Air' }));
+
+    expect(screen.queryByRole('option')).not.toBeInTheDocument();
+  });
+
+  it('relabels the trigger immediately on an effort-model pick, while the popup stays open', async () => {
+    // An earlier iteration froze the trigger until close (to keep the
+    // anchored popup from being dragged sideways by the pill resizing) —
+    // that read as the pick not registering: the list showed the new model
+    // checked while the pill still named the old one. The pill now updates
+    // live; the popup holds still via disableAnchorTracking instead, and
+    // the pill's own resize is animated (not assertable in jsdom, where
+    // offsetWidth is always 0 and the FLIP effect no-ops).
+    const user = userEvent.setup();
+    // ariaLabel disambiguates the trigger from the open popup's search input,
+    // which Base UI also exposes with role="combobox".
+    render(
+      <StatefulHarness
+        initial="mindshub_air"
+        modelEfforts={MODEL_EFFORTS}
+        effort=""
+        onEffortChange={vi.fn()}
+        ariaLabel="Choose model"
+      />,
+    );
+
+    await user.click(screen.getByRole('combobox', { name: 'Choose model' }));
+    await user.click(screen.getByRole('option', { name: 'Claude Sonnet 5' }));
+
+    // Popup vetoed open — and the trigger already reads the NEW model.
+    expect(screen.getByRole('option', { name: 'Claude Sonnet 5' })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Choose model' })).toHaveTextContent('Claude Sonnet 5');
+    expect(screen.getByRole('combobox', { name: 'Choose model' })).not.toHaveTextContent('MindsHub Air');
+  });
+
+  it('appends the effort label to the trigger, muted, whenever one is explicitly picked — the model default included', () => {
+    // Keying visibility on "differs from the default" instead read as broken
+    // in practice: the live catalog's reasoning models all default to "high",
+    // so explicitly choosing High displayed nothing and the pick looked like
+    // it hadn't taken.
+    const { rerender } = render(
+      <Harness initial="sonnet" modelEfforts={MODEL_EFFORTS} effort="high" onEffortChange={vi.fn()} />,
+    );
+    expect(screen.getByRole('combobox')).toHaveTextContent('Claude Sonnet 5 · High');
+
+    rerender(
+      <Harness initial="sonnet" modelEfforts={MODEL_EFFORTS} effort="medium" onEffortChange={vi.fn()} />,
+    );
+    // "medium" IS sonnet's own default — an explicit pick still shows.
+    expect(screen.getByRole('combobox')).toHaveTextContent('Claude Sonnet 5 · Medium');
+  });
+
+  it('shows just the model name while no effort has been explicitly picked', () => {
+    // effort='' — resolution silently falls back to the model's default, but
+    // an untouched setting doesn't clutter the trigger.
+    render(<Harness initial="sonnet" modelEfforts={MODEL_EFFORTS} effort="" onEffortChange={vi.fn()} />);
+    expect(screen.getByRole('combobox')).toHaveTextContent('Claude Sonnet 5');
+    expect(screen.getByRole('combobox')).not.toHaveTextContent('·');
+  });
+
+  it('drops the trigger suffix when the picked effort is not valid for the current model', () => {
+    // e.g. the pick was made on another model whose levels differ — resolution
+    // falls back to this model's default, and the suffix hides rather than
+    // naming a level that won't be sent.
+    render(<Harness initial="opus" modelEfforts={MODEL_EFFORTS} effort="medium" onEffortChange={vi.fn()} />);
+    expect(screen.getByRole('combobox')).toHaveTextContent('Claude Opus 5');
+    expect(screen.getByRole('combobox')).not.toHaveTextContent('·');
+  });
+
+  it('shows just the model name when modelEfforts was not passed at all (regression)', () => {
+    render(<Harness initial="sonnet" effort="high" />);
+    expect(screen.getByRole('combobox')).toHaveTextContent('Claude Sonnet 5');
   });
 });

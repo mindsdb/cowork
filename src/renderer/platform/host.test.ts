@@ -259,16 +259,179 @@ describe('electron mode (bridge present)', () => {
 
   it('pickDriveFiles and cancelDrivePicker fall back to unsupported/no-op on web or a partial bridge', async () => {
     let host = await importHost(); // no bridge at all → web mode
-    await expect(host.pickDriveFiles('google_drive', 'c', 'e@x.com')).resolves.toEqual({
-      ok: false,
-      reason: 'Google Picker is Electron-only for now.',
-    });
+    // Web mode mints a picker session over an authenticated POST first (see
+    // pickDriveFilesWeb) — with no fetch mock, that call is denied by the
+    // test environment's network guard, which the function surfaces as a
+    // failure result rather than throwing.
+    await expect(host.pickDriveFiles('google_drive', 'c', 'e@x.com')).resolves.toMatchObject({ ok: false });
     await expect(host.cancelDrivePicker()).resolves.toBeUndefined();
 
     (window as unknown as Record<string, unknown>).antontron = {}; // bridge present, method missing
     host = await importHost();
     await expect(host.pickDriveFiles('google_drive', 'c', 'e@x.com')).resolves.toMatchObject({ ok: false });
     await expect(host.cancelDrivePicker()).resolves.toBeUndefined();
+  });
+
+  it('pickDriveFiles on web opens the popup synchronously, before the session mint resolves', async () => {
+    // A real fetch resolves after at least one microtask hop; if window.open()
+    // ran only after that await, this would never observe the call before
+    // manually resolving the fetch below — reproducing the browser's own
+    // "was this still inside the click's call stack?" check.
+    let resolveFetch!: (v: unknown) => void;
+    // Constructed up front (not lazily inside the mock) so resolving it never
+    // has to wait for fetch() to actually be called — fetchJson awaits
+    // getAccessToken() first, so fetch() itself may not run for a tick or two.
+    const fetchPromise = new Promise((resolve) => { resolveFetch = resolve; });
+    vi.stubGlobal('fetch', vi.fn(() => fetchPromise));
+    const fakePopup = { closed: false, close: vi.fn(), location: { href: '' } } as unknown as Window;
+    const open = vi.spyOn(window, 'open').mockReturnValue(fakePopup);
+    open.mockClear();
+    const host = await importHost();
+
+    host.pickDriveFiles('google_drive', 'c', 'e@x.com');
+    // Still zero microtask hops in — window.open() must already have run.
+    // No 'noopener' in the features: a browser honoring it returns null
+    // from a successful open, which would falsely read as "blocked" and
+    // leave an inert blank tab.
+    expect(open).toHaveBeenCalledWith('about:blank', '_blank');
+
+    resolveFetch({ ok: true, json: async () => ({ url: 'http://localhost:3000/picker?ticket=t1' }) });
+    await vi.waitFor(() => expect((fakePopup as unknown as { location: { href: string } }).location.href)
+      .toBe('http://localhost:3000/picker?ticket=t1'));
+  });
+
+  it('preopenDrivePickerPopup opens the blank window at the click boundary and pickDriveFiles navigates that handle without a second open', async () => {
+    // The composer/project-file entry points await connection fetches BEFORE
+    // calling pickDriveFiles, so the popup must be creatable separately, at
+    // the click itself, and passed through the async preparation.
+    let resolveFetch!: (v: unknown) => void;
+    const fetchPromise = new Promise((resolve) => { resolveFetch = resolve; });
+    vi.stubGlobal('fetch', vi.fn(() => fetchPromise));
+    const fakePopup = { closed: false, close: vi.fn(), location: { href: '' }, opener: window } as unknown as Window;
+    const open = vi.spyOn(window, 'open').mockReturnValue(fakePopup);
+    open.mockClear();
+    const host = await importHost();
+
+    const preopened = host.preopenDrivePickerPopup();
+    expect(open).toHaveBeenCalledWith('about:blank', '_blank');
+    expect(preopened).toBe(fakePopup);
+    // Opener link left intact — the picker page's own completion protocol
+    // is window.opener.postMessage(...) (picker_page.py's reportResult()),
+    // and it never leaves our own origin, so there is nothing here for
+    // noopener-style opener-severing to protect against, only a completion
+    // path to break.
+    expect((fakePopup as unknown as { opener: unknown }).opener).toBe(window);
+
+    const result = host.pickDriveFiles('google_drive', 'c', 'e@x.com', undefined, undefined, preopened);
+    // The pre-opened window is reused, never reopened.
+    expect(open).toHaveBeenCalledTimes(1);
+
+    resolveFetch({ ok: true, json: async () => ({ url: 'http://localhost:3000/picker?ticket=t1' }) });
+    await vi.waitFor(() => expect((fakePopup as unknown as { location: { href: string } }).location.href)
+      .toBe('http://localhost:3000/picker?ticket=t1'));
+
+    const pickResult = { ok: true, files: [{ id: 'f1' }], newFiles: [{ id: 'f1' }] };
+    window.dispatchEvent(new MessageEvent('message', {
+      origin: window.location.origin,
+      data: { type: 'drive-picker-result', result: pickResult },
+    }));
+    await expect(result).resolves.toEqual(pickResult);
+  });
+
+  it('pickDriveFiles treats a null pre-opened handle as blocked and a closed one as cancelled, without opening anything itself', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ url: 'http://localhost:3000/picker' }) })));
+    const open = vi.spyOn(window, 'open');
+    open.mockClear();
+    const host = await importHost();
+
+    // Blocked at the click boundary (preopenDrivePickerPopup returned null).
+    await expect(host.pickDriveFiles('google_drive', 'c', 'e@x.com', undefined, undefined, null))
+      .resolves.toEqual({ ok: false, reason: 'The browser blocked the file picker popup.' });
+
+    // Pre-opened but closed before the pick ran (superseded by a newer
+    // click, or the user closed the blank window) — reopening here would be
+    // outside any activation, so it must resolve as cancelled instead.
+    const closedPopup = { closed: true, close: vi.fn(), location: { href: '' } } as unknown as Window;
+    await expect(host.pickDriveFiles('google_drive', 'c', 'e@x.com', undefined, undefined, closedPopup))
+      .resolves.toEqual({ ok: false, reason: 'cancelled' });
+
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  it('pickDriveFiles on web mints a session, navigates the popup, and resolves on same-origin postMessage', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ url: 'http://localhost:3000/api/v1/connectors/oauth/google_drive/picker?ticket=t1' }),
+    })));
+    const fakePopup = { closed: false, close: vi.fn(), location: { href: '' } } as unknown as Window;
+    const open = vi.spyOn(window, 'open').mockReturnValue(fakePopup);
+    open.mockClear(); // the spy instance is shared across tests in this file
+    const host = await importHost();
+
+    const result = host.pickDriveFiles('google_drive', 'c', 'e@x.com');
+    expect(open).toHaveBeenCalledWith('about:blank', '_blank');
+    // The session mint is a real (mocked) fetch + a dynamic keycloak import,
+    // several microtask hops deep — poll rather than guess a tick count.
+    await vi.waitFor(() => expect((fakePopup as unknown as { location: { href: string } }).location.href)
+      .toBe('http://localhost:3000/api/v1/connectors/oauth/google_drive/picker?ticket=t1'));
+    const pickResult = { ok: true, files: [{ id: 'f1', name: 'doc.pdf' }], newFiles: [{ id: 'f1', name: 'doc.pdf' }] };
+    window.dispatchEvent(new MessageEvent('message', {
+      origin: window.location.origin,
+      data: { type: 'drive-picker-result', result: pickResult },
+    }));
+    await expect(result).resolves.toEqual(pickResult);
+  });
+
+  it('pickDriveFiles on web ignores a cross-origin postMessage and still resolves on cancel (popup closed)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ url: 'http://localhost:3000/picker' }),
+    })));
+    const fakePopup = { closed: false, close: vi.fn(), location: { href: '' } } as unknown as Window;
+    const open = vi.spyOn(window, 'open').mockReturnValue(fakePopup);
+    open.mockClear();
+    const host = await importHost();
+
+    const result = host.pickDriveFiles('google_drive', 'c', 'e@x.com');
+    await vi.waitFor(() => expect(open).toHaveBeenCalled());
+
+    window.dispatchEvent(new MessageEvent('message', {
+      origin: 'https://evil.example.com',
+      data: { type: 'drive-picker-result', result: { ok: true, files: [] } },
+    }));
+
+    (fakePopup as unknown as { closed: boolean }).closed = true;
+    await expect(result).resolves.toEqual({ ok: false, reason: 'cancelled' });
+  });
+
+  it('pickDriveFiles on web cancels a still-pending previous call when triggered again, so a later message only resolves the latest call', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ url: 'http://localhost:3000/picker?ticket=1' }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ url: 'http://localhost:3000/picker?ticket=2' }) });
+    vi.stubGlobal('fetch', fetchMock);
+    const popup1 = { closed: false, close: vi.fn(), location: { href: '' } } as unknown as Window;
+    const popup2 = { closed: false, close: vi.fn(), location: { href: '' } } as unknown as Window;
+    const open = vi.spyOn(window, 'open')
+      .mockReturnValueOnce(popup1)
+      .mockReturnValueOnce(popup2);
+    open.mockClear();
+    const host = await importHost();
+
+    const firstCall = host.pickDriveFiles('google_drive', 'c', 'e@x.com');
+    await vi.waitFor(() => expect(open).toHaveBeenCalledTimes(1));
+
+    const secondCall = host.pickDriveFiles('google_drive', 'c', 'e@x.com');
+    await vi.waitFor(() => expect(open).toHaveBeenCalledTimes(2));
+
+    // Before the fix, the first call's listener was never torn down, so this
+    // single message would have resolved both calls with the same result.
+    window.dispatchEvent(new MessageEvent('message', {
+      origin: window.location.origin,
+      data: { type: 'drive-picker-result', result: { ok: true, files: [{ id: 'f2' }] } },
+    }));
+
+    await expect(firstCall).resolves.toEqual({ ok: false, reason: 'cancelled' });
+    await expect(secondCall).resolves.toEqual({ ok: true, files: [{ id: 'f2' }] });
   });
 
   it('cancelDrivePicker calls the bridge when present', async () => {

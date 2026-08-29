@@ -12,6 +12,7 @@ import { transformSettingsRows, diffSettingsForWrite, mergeRecommendedModels, CL
 import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 import { cacheSettings } from './lib/settingsCache';
 import { setAntonInstallId } from './lib/analytics';
+import { artifactIdentity } from './lib/artifactIdentity';
 import {
   buildMemoryDeletePayload,
   buildMemoryWritePayload,
@@ -186,6 +187,9 @@ function _failedEventMeta(events) {
     // it as local time — the gate would last hours west of UTC and no-op east
     // of it, invisible to a TZ=UTC suite (ENG-1537 review).
     retryAt: typeof ev.retry_at === 'string' ? ev.retry_at : null,
+    // The remote turn's own correlation id (cowork-server) — the one thing a
+    // generic anton_error bubble can still offer for a support lookup.
+    requestId: typeof ev.request_id === 'string' ? ev.request_id : null,
   };
 }
 
@@ -235,6 +239,7 @@ function _hydrateAssistantEvents(messages) {
           resetAt: failed?.resetAt ?? null,
           retryAt: failed?.retryAt ?? null,
           failedModel: failed?.failedModel ?? null,
+          requestId: failed?.requestId ?? null,
         });
       }
     }
@@ -410,7 +415,7 @@ export function allocateConversationId() {
 // callback shape the rest of the app already speaks. `conversationId` is
 // optional — omit it to start a new conversation; the caller learns the
 // new id via the first onChunk/onProgress/onDone callback's second arg.
-function _streamResponse(text, { conversationId, projectName, projectId, projectPath, model, harness, attachmentIds = [], disabledConnections, onChunk, onProgress, onToolResult, onDone, onError, onEvent } = {}) {
+function _streamResponse(text, { conversationId, projectName, projectId, projectPath, model, harness, reasoningEffort, attachmentIds = [], disabledConnections, onChunk, onProgress, onToolResult, onDone, onError, onEvent } = {}) {
   const ctrl = new AbortController();
   (async () => {
     try {
@@ -430,6 +435,12 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
           // when the caller doesn't pass one, e.g. an in-task reply, where
           // the harness pill never shows.
           ...(harness ? { harness } : {}),
+          // Per-task reasoning-effort override (ENG-1940) — takes precedence
+          // over the account-wide per-role effort setting for this turn only.
+          // Same conditional-key pattern as `harness` just above: omitted
+          // entirely when the caller doesn't pass one, so older servers and
+          // effort-less models never see the field.
+          ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
           stream: true,
           conversation: conversationId || null,
           // Server's `project` field is a project NAME (folder under
@@ -514,7 +525,9 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
       }
       onDone?.(cid);
     } catch (err) {
-      if (err.name !== 'AbortError') onError?.(err.message);
+      // Distinct code from tailInFlight's reconnect_error: this is a dropped
+      // connection on the initial send, not a reconnect attempt.
+      if (err.name !== 'AbortError') onError?.(err.message, { code: 'stream_error' });
     }
   })();
   return ctrl;
@@ -674,9 +687,9 @@ export function tailInFlight(conversationId, {
         // message. cancelResponse is idempotent and swallows errors, so
         // fire-and-forget is safe.
         cancelResponse(conversationId);
-        onError?.('The response stalled and was ended. Please try sending again.');
+        onError?.('The response stalled and was ended. Please try sending again.', { code: 'stalled' });
       } else if (err.name !== 'AbortError') {
-        onError?.(err.message);
+        onError?.(err.message, { code: 'reconnect_error' });
       }
     } finally {
       if (idleTimer) clearTimeout(idleTimer);
@@ -851,8 +864,12 @@ export async function unpublishArtifact(path) {
 // don't each have to branch on the mode. A bare string is still accepted so any
 // stray caller keeps working on desktop.
 export async function deleteArtifact(artifact) {
-  const url = artifact?.projectId && artifact?.slug
-    ? `/artifacts/${encodeURIComponent(artifact.slug)}`
+  // A full identity only: a card replayed from a pre-widening conversation
+  // carries the short id, which the endpoint cannot resolve — it has to fall
+  // through to the slug the way it did before ids were widened.
+  const artifactRef = artifactIdentity(artifact) || artifact?.slug;
+  const url = artifact?.projectId && artifactRef
+    ? `/artifacts/${encodeURIComponent(artifactRef)}`
       + `?project_id=${encodeURIComponent(artifact.projectId)}`
     : `/artifacts/?path=${encodeURIComponent(
         typeof artifact === 'string' ? artifact : (artifact?.folder || artifact?.path || ''),
@@ -1237,6 +1254,68 @@ export async function fetchRecommendedModels({ refresh = false } = {}) {
   return null;
 }
 
+// ── MindsHub workspaces ──────────────────────────────────────────────
+//
+// A MindsHub Workspace is an org-internal container that owns hub resources
+// (API keys, artifacts, model entitlements) and lives in the auth service. It is
+// unrelated to the working folder this app calls a workspace.
+//
+// The sidecar makes the call to auth, not us: auth's ingress allows the console
+// origins and no Cowork host, and a per-PR Cowork host cannot be added to a
+// static allow-list. So these two go to our own server and it forwards.
+//
+// The credential travels in its own header because it cannot travel in
+// Authorization. In Electron the main process overwrites that header on every
+// loopback request with the sidecar's own token, so the Keycloak JWT can never
+// arrive under that name; `authFetch` does not even attach it there. The server
+// reads `X-MindsHub-Authorization` first and falls back to Authorization, which
+// is what the web shell uses.
+
+const HUB_CREDENTIAL_HEADER = 'X-MindsHub-Authorization';
+
+async function hubHeaders() {
+  const token = await host.getAccessToken().catch(() => null);
+  return token ? { [HUB_CREDENTIAL_HEADER]: `Bearer ${token}` } : {};
+}
+
+/**
+ * The workspace selector's whole state: whether the surface is on, whether the
+ * hub could be reached, the rows, and which one is active.
+ *
+ * Answers the disabled shape for the two DEFINITE answers, and throws for
+ * everything else. A 404 is definite: this sidecar has no such route, so it
+ * never will and there is nothing to retry. A body that is not an object is the
+ * same. A 5xx, a dropped connection, or a sidecar that has not finished
+ * starting are all transient, and collapsing those into the disabled shape too
+ * is how one blip at launch hid the control for the rest of the session. The
+ * caller decides how many times to ask again.
+ */
+export async function fetchHubWorkspaces() {
+  try {
+    const data = await req('/hub/workspaces/', { headers: await hubHeaders() });
+    if (data && typeof data === 'object') return data;
+  } catch (err) {
+    if (err?.status !== 404) throw err;
+  }
+  return { enabled: false, reachable: false, workspaces: [], activeWorkspaceId: null };
+}
+
+/**
+ * Switch the active workspace. Rejects on failure so the caller owns the
+ * message; the server refuses a workspace the caller holds no grant on (403),
+ * refuses an archived one with its own status so the UI can say retrying will
+ * not help (409), and refuses rather than guessing when it cannot reach the hub
+ * (503). `err.status` carries the code, which is what lets the caller tell the
+ * three apart.
+ */
+export async function setActiveHubWorkspace(workspaceId) {
+  return req('/hub/workspaces/active', {
+    method: 'PUT',
+    headers: await hubHeaders(),
+    body: JSON.stringify({ workspaceId }),
+  });
+}
+
 export async function fetchSettings() {
   const op = _settingsLock.then(async () => {
     try {
@@ -1273,9 +1352,48 @@ export async function fetchSettings() {
   return op;
 }
 
+/* A MindsHub key the user typed is diverted out of the settings write and
+ * handed to the main process, which stores it in the OS keychain and pushes it
+ * to the sidecar at runtime. Two copies have to be stopped, not one: the
+ * `minds_api_key` row, and the raw value the Settings form also puts inside the
+ * `providers_json` card (SettingsView's updateProviderField writes both from one
+ * keystroke). `providers_json` is a plain column nothing encrypts, so leaving
+ * that half behind would defeat the whole change.
+ *
+ * `***` is the value already used for a stored-but-unreadable key, so the card
+ * round-trips exactly as it does when the server masks it on read.
+ *
+ * Web keeps writing the key as a setting: there is no main process to route it
+ * to, and the runtime hand-over is a desktop mechanism. `supported: false` is
+ * how host.mindshubSetUserKey says so. */
+async function divertMindsKey(writes) {
+  if (!('minds_api_key' in writes)) return writes;
+  const key = writes.minds_api_key;
+  const stored = await host.mindshubSetUserKey(key);
+  if (!stored.supported) return writes;
+  if (!stored.ok) {
+    const err = new Error(`Failed to save settings: ${stored.reason || 'could not store the MindsHub key'}`);
+    err.failed = ['mindsApiKey'];
+    throw err;
+  }
+  const { minds_api_key: _diverted, ...rest } = writes;
+  if (typeof rest.providers_json === 'string') {
+    try {
+      const cards = JSON.parse(rest.providers_json);
+      if (Array.isArray(cards)) {
+        for (const card of cards) {
+          if (card && card.type === 'minds-cloud' && card.apiKey) card.apiKey = '***';
+        }
+        rest.providers_json = JSON.stringify(cards);
+      }
+    } catch { /* unparseable: leave it, the server masks on read and rejects nothing */ }
+  }
+  return rest;
+}
+
 export async function updateSettings(patch) {
   const op = _settingsLock.then(async () => {
-    const writes = diffSettingsForWrite(patch, _lastFetchedSettings);
+    const writes = await divertMindsKey(diffSettingsForWrite(patch, _lastFetchedSettings));
     const keys = Object.keys(writes);
     let updated = keys;
 
@@ -1368,14 +1486,6 @@ export async function revealSettingKey(name) {
     return res?.value || '';
   } catch {
     return '';
-  }
-}
-
-export async function fetchIntegrations() {
-  try {
-    return await req('/connectors/oauth/catalogue');
-  } catch (err) {
-    return { items: [], error: err?.message || 'Could not load integrations' };
   }
 }
 
@@ -2226,10 +2336,12 @@ export function listCommentThreads(userDir, reportId, status = 'open') {
   return req(`${_commentsBase(userDir, reportId)}/threads?status=${encodeURIComponent(status)}`);
 }
 
-export function createCommentThread(userDir, reportId, { selector, text }) {
+export function createCommentThread(userDir, reportId, {
+  selector, text, revisionId = null, kind = 'review',
+}) {
   return req(`${_commentsBase(userDir, reportId)}/threads`, {
     method: 'POST',
-    body: JSON.stringify({ selector: selector ?? null, text }),
+    body: JSON.stringify({ selector: selector ?? null, text, revisionId, kind }),
   });
 }
 
@@ -2244,6 +2356,13 @@ export function setCommentThreadStatus(userDir, reportId, threadId, status) {
   return req(`${_commentsBase(userDir, reportId)}/threads/${encodeURIComponent(threadId)}/status`, {
     method: 'POST',
     body: JSON.stringify({ status }),
+  });
+}
+
+export function markCommentsRead(userDir, reportId) {
+  return req(`${_commentsBase(userDir, reportId)}/read`, {
+    method: 'POST',
+    body: '{}',
   });
 }
 

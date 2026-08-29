@@ -30,6 +30,18 @@
 //     label + value. `contains` is Base UI's locale-aware substring test.
 //   - `renderValue(selected)`: replaces the default trigger content
 //     (truncated label, or placeholder styling when nothing is selected).
+//   - `footer`: a plain React node (not a render function — a domain picker
+//     that needs live values, e.g. ModelSelect's effort row, closes over
+//     them itself before passing the node down) rendered inside the popup
+//     AFTER the scrollable list, below a top divider. It sits outside Base
+//     UI's item/filter/keyboard-nav machinery entirely — it is not a
+//     `BaseCombobox.Item`/`BaseCombobox.Collection` child, so it never
+//     participates in search filtering or arrow-key highlighting, and a
+//     click inside it never fires `onValueChange` or closes the popup
+//     (that's on the footer's own content to do, e.g. by driving the same
+//     `open`/`onOpenChange` the caller passed in). Used for a fixed,
+//     always-present row below the model list (ModelSelect's "Effort"
+//     footer) rather than another filterable option.
 
 import { useMemo } from 'react';
 import { Combobox as BaseCombobox } from '@base-ui/react/combobox';
@@ -58,6 +70,7 @@ export function Combobox({
   groups = [],
   filter,
   renderValue,
+  footer,
   placeholder = 'Select',
   searchPlaceholder = 'Search',
   searchAriaLabel = 'Search',
@@ -76,6 +89,13 @@ export function Combobox({
   className,
   style,
   zIndex = 95,
+  // Compute the popup's position once at open instead of live-tracking the
+  // anchor. For a popup whose own interactions rewrite the anchor's content
+  // (ModelSelect: picking a model relabels — and resizes — the trigger pill
+  // while the popup stays open), tracking would drag the whole popup
+  // sideways to follow the resize. The tradeoff (no repositioning on
+  // scroll/resize while open) is fine for a short-lived menu.
+  disableAnchorTracking = false,
   ...rest
 }) {
   const entries = useMemo(() => groups.flatMap((g) => g.items), [groups]);
@@ -136,6 +156,7 @@ export function Combobox({
           sideOffset={6}
           align="start"
           style={{ zIndex }}
+          disableAnchorTracking={disableAnchorTracking}
         >
           <BaseCombobox.Popup
             className={cn(
@@ -173,7 +194,23 @@ export function Combobox({
             <BaseCombobox.Empty className="empty:p-0 px-[14px] py-[10px] text-[12.5px] text-ink-4">
               {emptyText}
             </BaseCombobox.Empty>
-            <BaseCombobox.List className="max-h-[min(320px,calc(var(--available-height,320px)-44px))] overflow-y-auto overscroll-contain py-[4px] outline-none empty:p-0">
+            <BaseCombobox.List
+              // With a footer present, the list's cap shrinks by the footer's
+              // ~40px so the POPUP's total height (list + footer) stays what
+              // it was without one. This matters when the footer appears
+              // while the popup is already open (ModelSelect: picking a model
+              // with effort options mounts the Effort row in place): the
+              // composer's popup sits ABOVE its trigger, bottom edge pinned
+              // to the anchor, so any growth extends the top edge upward —
+              // a visible jump. Constant total height = no jump; the list
+              // just scrolls in slightly less room.
+              className={cn(
+                footer
+                  ? 'max-h-[min(280px,calc(var(--available-height,320px)-84px))]'
+                  : 'max-h-[min(320px,calc(var(--available-height,320px)-44px))]',
+                'overflow-y-auto overscroll-contain py-[4px] outline-none empty:p-0',
+              )}
+            >
               {(group) => (
                 <BaseCombobox.Group key={group.key} items={group.items} className={group.className}>
                   {group.name && (
@@ -226,6 +263,19 @@ export function Combobox({
                 </BaseCombobox.Group>
               )}
             </BaseCombobox.List>
+            {/* Trailing footer slot — plain content, NOT a BaseCombobox.Item,
+                so it never enters the list's filter/highlight/keyboard-nav
+                machinery. Top border mirrors the search row's `border-b`
+                convention (same reasoning: `border-solid` is load-bearing
+                with preflight disabled). */}
+            {footer && (
+              // fade-in covers the mid-open appearance case (ModelSelect's
+              // Effort row mounting on a model pick) — opacity only, so it
+              // adds no motion on top of the list's height rebalancing above.
+              <div className="border-solid border-line border-t border-b-0 border-x-0 animate-fade-in">
+                {footer}
+              </div>
+            )}
           </BaseCombobox.Popup>
         </BaseCombobox.Positioner>
       </BaseCombobox.Portal>

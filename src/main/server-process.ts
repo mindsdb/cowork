@@ -482,8 +482,50 @@ export interface StartServerResult {
   port?: number;
 }
 
+/**
+ * Run after every successful start, before `startServer` resolves.
+ *
+ * The sidecar holds the MindsHub credential in memory and nothing persists it,
+ * so a process that comes up holds nothing until something hands it over again.
+ * Wiring that to the individual start call sites does not hold: there are the
+ * two IPC handlers, the installer, three update paths and their rollbacks, and
+ * every one added later. `startServer` is the single funnel all of them go
+ * through, so the re-push belongs here.
+ *
+ * Registered from `index.ts` rather than imported, because `minds-credential`
+ * imports this module to find the port and importing it back would be a cycle.
+ */
+let _startedHook: (() => Promise<unknown>) | null = null;
+
+export function setServerStartedHook(hook: (() => Promise<unknown>) | null): void {
+  _startedHook = hook;
+}
+
 export async function startServer(opts: { port?: number; readyTimeoutMs?: number } = {}): Promise<StartServerResult> {
-  return withServerLifecycle(() => startServerUnlocked(opts));
+  const result = await withServerLifecycle(() => startServerUnlocked(opts));
+  /* Awaited, not fired off. Callers read `/health` as soon as this resolves, so
+   * a push still in flight at that point reads as an unconfigured install.
+   *
+   * It runs after the lifecycle scope is released rather than inside it, because
+   * the hand-over waits on a loopback request for up to 10 seconds and holding
+   * the lifecycle lock for that long would block a concurrent stop or an app
+   * quit. That reasoning covers a top-level start only. `withServerLifecycle` is
+   * re-entrant, so a start nested inside a `withServerMaintenance` transaction
+   * (the update paths and the installer) runs this while the outer scope still
+   * holds the lock. It costs little there, because that transaction already
+   * holds the lock for far longer than the push takes.
+   *
+   * A stop that interleaves costs nothing: `pushMindsCredential` checks that the
+   * sidecar is up before it sends, and the next start pushes again. */
+  if (result.ok && _startedHook) {
+    try {
+      await _startedHook();
+    } catch (error) {
+      // A start that worked is still a start. The hook reports its own failures.
+      console.warn('[server] post-start hook failed', error);
+    }
+  }
+  return result;
 }
 
 async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: number }): Promise<StartServerResult> {

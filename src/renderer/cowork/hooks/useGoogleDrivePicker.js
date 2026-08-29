@@ -90,23 +90,40 @@ export function useGoogleDrivePicker({
   // host.pickDriveFiles directly and correctly omits it).
   // `preFetchedConnections`, when passed, skips resolveGoogleDriveConnection's
   // own fetchDatasources() call — see fetchGoogleDriveConnections above.
-  const openGoogleDrivePicker = useCallback(async (projectName, preFetchedConnections) => {
+  // `preopenedPopup` is the blank window handle the entry-point handler
+  // opened synchronously at the click boundary (see
+  // host.preopenDrivePickerPopup) — every await between the click and
+  // host.pickDriveFiles expires the click's activation, after which browsers
+  // block window.open(); the pre-opened window is what pickDriveFiles
+  // navigates instead. Any early return below abandons the pick, so it must
+  // close the blank window rather than leave it stranded.
+  const openGoogleDrivePicker = useCallback(async (projectName, preFetchedConnections, preopenedPopup) => {
+    const closePreopened = () => {
+      try { if (preopenedPopup && !preopenedPopup.closed) preopenedPopup.close(); } catch { /* already gone */ }
+    };
     const conn = await resolveGoogleDriveConnection(preFetchedConnections);
     // Callers only reach here once fetchGoogleDriveConnections() has
     // already confirmed a connection exists, so a null result here means
     // the user dismissed the account-choice modal — not a real failure.
     // `cancelled` lets handleAddGoogleDriveFiles/ProjectFiles treat this as
     // a silent no-op instead of surfacing an error.
-    if (!conn) return { ok: false, cancelled: true };
+    if (!conn) {
+      closePreopened();
+      return { ok: false, cancelled: true };
+    }
     let accountEmail = '';
     try {
       const detail = await fetchSavedConnection('google_drive', conn.name);
       accountEmail = detail?.fields?.account_email || '';
     } catch {
+      closePreopened();
       return { ok: false, reason: 'Could not load the Google Drive connection.' };
     }
-    if (!accountEmail) return { ok: false, reason: 'Google Drive connection is missing an account email.' };
-    const result = await host.pickDriveFiles('google_drive', conn.name, accountEmail, undefined, projectName);
+    if (!accountEmail) {
+      closePreopened();
+      return { ok: false, reason: 'Google Drive connection is missing an account email.' };
+    }
+    const result = await host.pickDriveFiles('google_drive', conn.name, accountEmail, undefined, projectName, preopenedPopup);
     if (!result?.ok) return { ok: false, reason: result?.reason || 'Google Drive picker failed.' };
     // `files` is the connection's full accumulated grant (every file ever
     // picked, for callers like Project files that want to show the whole
@@ -116,8 +133,8 @@ export function useGoogleDrivePicker({
     return { ok: true, files: result.files || [], newFiles: result.newFiles || [] };
   }, [resolveGoogleDriveConnection]);
 
-  const addGoogleDriveFiles = useCallback(async (projectName, preFetchedConnections) => {
-    const picked = await openGoogleDrivePicker(projectName, preFetchedConnections);
+  const addGoogleDriveFiles = useCallback(async (projectName, preFetchedConnections, preopenedPopup) => {
+    const picked = await openGoogleDrivePicker(projectName, preFetchedConnections, preopenedPopup);
     if (!picked.ok) return picked;
     const files = picked.newFiles;
     if (files.length === 0) return { ok: true, files: [] };
@@ -145,8 +162,8 @@ export function useGoogleDrivePicker({
   // visible as a reference row (see ContextCard). `projectName` is required
   // here — this is what scopes the file to the project it was actually
   // added from.
-  const addGoogleDriveFileReferences = useCallback(async (projectName, preFetchedConnections) => {
-    const picked = await openGoogleDrivePicker(projectName, preFetchedConnections);
+  const addGoogleDriveFileReferences = useCallback(async (projectName, preFetchedConnections, preopenedPopup) => {
+    const picked = await openGoogleDrivePicker(projectName, preFetchedConnections, preopenedPopup);
     if (!picked.ok) return picked;
     return { ok: true, files: picked.files };
   }, [openGoogleDrivePicker]);
@@ -227,30 +244,47 @@ export function useGoogleDrivePicker({
   // `selectedProject`/'general' the same way handleSendFromHome does, since
   // Home's `project` can be null before the user has explicitly picked one.
   const handleAddGoogleDriveFiles = useCallback(async (projectName) => {
+    // Synchronously, before ANY await in this flow: the click's transient
+    // activation expires at the first await, after which browsers silently
+    // block window.open() — so the picker window must be pre-opened here at
+    // the click boundary and threaded through to host.pickDriveFiles, which
+    // navigates it once the session is minted. Null on Electron (nothing to
+    // pre-open) and when the browser blocked it.
+    const preopenedPopup = host.preopenDrivePickerPopup?.() ?? null;
     const effectiveProjectName = projectName || selectedProject?.name || 'general';
     const matches = await fetchGoogleDriveConnections();
     if (matches.length > 0) {
-      const res = await addGoogleDriveFiles(effectiveProjectName, matches);
+      const res = await addGoogleDriveFiles(effectiveProjectName, matches, preopenedPopup);
       // Dismissing the account-choice modal is not an error — don't
       // surface it as one.
       if (res.cancelled) return;
       if (!res.ok) throw new Error(res.reason || 'Could not add Google Drive files.');
       return;
     }
+    // Not connected: the connect flow detours through a confirm modal and an
+    // external OAuth round-trip — no click activation survives that, and a
+    // blank window sitting under the modal is just confusing. Close it; the
+    // post-connect pick opens its own popup (and may still be blocked — a
+    // known limitation of the OAuth detour, not of this pre-open fix).
+    try { if (preopenedPopup && !preopenedPopup.closed) preopenedPopup.close(); } catch { /* already gone */ }
     await connectGoogleDriveThenRun(() => addGoogleDriveFiles(effectiveProjectName));
   }, [fetchGoogleDriveConnections, addGoogleDriveFiles, connectGoogleDriveThenRun, selectedProject]);
 
   // Project files "+" menu entry point (right-rail Context card).
   const handleAddGoogleDriveProjectFiles = useCallback(async (projectName) => {
+    // Same click-boundary pre-open as handleAddGoogleDriveFiles above.
+    const preopenedPopup = host.preopenDrivePickerPopup?.() ?? null;
     const matches = await fetchGoogleDriveConnections();
     if (matches.length > 0) {
-      const res = await addGoogleDriveFileReferences(projectName, matches);
+      const res = await addGoogleDriveFileReferences(projectName, matches, preopenedPopup);
       // Dismissing the account-choice modal is not an error — don't
       // surface it as one.
       if (res.cancelled) return res;
       if (!res.ok) throw new Error(res.reason || 'Could not add Google Drive files.');
       return res;
     }
+    // Not connected — see handleAddGoogleDriveFiles above.
+    try { if (preopenedPopup && !preopenedPopup.closed) preopenedPopup.close(); } catch { /* already gone */ }
     // Connecting no longer navigates away (see connectGoogleDriveThenRun) —
     // this just re-affirms the current task's route once files are added,
     // in case something else changed it during the OAuth wait.

@@ -7,10 +7,25 @@
 // support page open in the OS browser — each carries an ↗ hint so the jump out
 // of the app is telegraphed before the click. Settings and logout act inside the
 // app. Theme + 8-bit live as quick toggles in the sidebar footer, not here.
+//
+// **The organization picker lives here rather than in the rail**, which is the
+// opposite of where the workspace selector ended up, and the two decisions are
+// the same decision. An organization is who is paying; a workspace is a
+// container inside it. The account menu is about identity, so the organization
+// belongs in it and the workspace does not, which is why the workspace picker
+// moved out to its own control above the New task CTA. The console puts its
+// organization selector in exactly this menu too.
+//
+// Switching costs more than a label: the API key the sidecar presents belongs
+// to one organization, so main re-mints and hands over a new one. That is why
+// the rows disable while a switch is in flight and why a refusal gets a
+// sentence rather than a silently dead row.
 
 import { useRef, useState } from 'react';
 import {
   ArrowUpRight,
+  Building2,
+  Check,
   CircleHelp,
   CreditCard,
   EllipsisVertical,
@@ -19,13 +34,16 @@ import {
   UsersRound,
 } from 'lucide-react';
 import Menu from './ui/Menu';
+import { useToastManager } from './ui/Toast';
 import { ConfirmModal } from './ConfirmModal';
 import { useLogout, LOGOUT_CONFIRM_COPY } from '../hooks/useLogout';
+import { useMindsOrgs } from '../hooks/useMindsOrgs';
 import { accountInitials } from '../lib/accountUser';
 import { trackBillingOpened } from '../lib/analytics';
 import { openExternal } from '../../platform/host';
 import {
   MINDS_BILLING_URL,
+  MINDS_GENERAL_URL,
   MINDS_MEMBERS_URL,
   MINDS_SUPPORT_URL,
 } from '../../lib/mindsUrls';
@@ -82,20 +100,73 @@ export function UserMenu({ user, onOpenSettings }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const triggerRef = useRef(null);
   const { loggingOut, logout } = useLogout();
+  const { orgs, activeOrg, switching, switchOrg } = useMindsOrgs(user);
+  const toastManager = useToastManager();
 
   const displayName = user.name || user.username || user.email;
+  // The listing wins over the token claim, because the claim carries no display
+  // name: a personal organization's claim name is the raw `personal_<userId>`,
+  // while Keycloak holds the label auth generated for it. `user.org` is the
+  // fallback for the moments the listing has not arrived, and it is already
+  // null rather than the raw slug.
+  const activeOrgName = activeOrg?.displayName || user.org || null;
+
+  const pick = async (organizationId) => {
+    const result = await switchOrg(organizationId);
+    if (result?.ok) return;
+    // A written sentence, not the error's own text. Main answers a refusal
+    // with something a person can act on and every branch of it already ends
+    // in "Nothing changed", which is the part that matters here.
+    toastManager.add({
+      title: result?.error || 'We could not change organization. Please try again.',
+      type: 'danger',
+    });
+  };
+
+  const orgRows = orgs.length > 1 ? [
+    {
+      id: 'organization-group',
+      heading: (
+        <div className="text-[10px] font-semibold uppercase tracking-[0.06em] text-ink-4">
+          Organization
+        </div>
+      ),
+    },
+    ...orgs.map((org) => {
+      const isActive = org.id === activeOrg?.id;
+      return {
+        id: `organization-${org.id}`,
+        label: org.displayName,
+        // Long names truncate in the row, so hover carries the whole one.
+        title: org.displayName,
+        // The trigger already names the active organization, and the console
+        // marks it in the list too. Without the check the only signal is the
+        // row being disabled, which reads as "unavailable" rather than "you
+        // are here".
+        hint: isActive ? <Check size={13} strokeWidth={2} className="text-accent" /> : undefined,
+        // The active row is not a destination, and a second click during an
+        // in-flight switch would race the first through the mint.
+        disabled: isActive || switching,
+        onClick: isActive ? undefined : () => pick(org.id),
+      };
+    }),
+    { divider: true },
+  ] : [];
 
   const items = [
     // Identity header — just the org name (accounts without an active
     // organization skip the header entirely). The email is intentionally not
     // shown here; the account row already carries the identity.
-    user.org && {
+    activeOrgName && {
       heading: (
         <div className="min-w-0">
-          <div className="text-[12.5px] font-semibold text-ink truncate">{user.org}</div>
+          <div className="text-[12.5px] font-semibold text-ink truncate">{activeOrgName}</div>
         </div>
       ),
     },
+    // Only when there is somewhere to switch to. One organization is not a
+    // choice, and the header above already names it.
+    ...orgRows,
     { icon: icon(Settings), label: 'Settings', onClick: onOpenSettings },
     // `nav`, not a paywall trigger (ENG-1533): nothing blocked this user, they
     // went looking. It has to be recorded — it is a real route to the billing
@@ -104,6 +175,10 @@ export function UserMenu({ user, onOpenSettings }) {
     externalItem(CreditCard, 'Billing & Usage', MINDS_BILLING_URL, () => trackBillingOpened('nav')),
     externalItem(UsersRound, 'Members', MINDS_MEMBERS_URL),
     externalItem(CircleHelp, 'Help & Feedback', MINDS_SUPPORT_URL),
+    // Creating or leaving an organization is a full console flow, so the menu
+    // deep-links out rather than growing a second one that would open a
+    // browser anyway. Shown whenever there is an organization to manage.
+    ...(activeOrgName ? [externalItem(Building2, 'Manage organization', MINDS_GENERAL_URL)] : []),
     // Logout on both shells: Electron clears the refresh token + stored keys via
     // the bridge; web ends the Keycloak browser session (host.logout()). Both
     // funnel through useLogout() and the ConfirmModal below.
@@ -130,10 +205,10 @@ export function UserMenu({ user, onOpenSettings }) {
       <Avatar key={user.picture || 'initials'} user={user} />
       <span className="min-w-0 flex-1 flex items-baseline gap-1.5 whitespace-nowrap">
         <span className="min-w-0 truncate text-[13px] font-medium text-ink">{displayName}</span>
-        {user.org && (
+        {activeOrgName && (
           <>
             <span aria-hidden="true" className="text-ink-4">·</span>
-            <span className="min-w-0 truncate text-[13px] text-ink-3">{user.org}</span>
+            <span className="min-w-0 truncate text-[13px] text-ink-3">{activeOrgName}</span>
           </>
         )}
       </span>

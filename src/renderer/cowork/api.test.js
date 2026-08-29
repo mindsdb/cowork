@@ -18,7 +18,7 @@ vi.mock('../platform/host', async (importOriginal) => ({
 const setAntonInstallId = vi.hoisted(() => vi.fn());
 vi.mock('./lib/analytics', () => ({ setAntonInstallId }));
 
-import { fetchRecommendedModels, fetchSettings, updateSettings, revealSettingKey, streamNewSession, fetchHealth, fetchInFlightList, cancelResponse } from './api';
+import { fetchRecommendedModels, fetchSettings, updateSettings, revealSettingKey, streamNewSession, fetchHealth, fetchInFlightList, cancelResponse, fetchHubWorkspaces } from './api';
 import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 
 const jsonRes = (body, ok = true, status = 200) => ({
@@ -121,6 +121,98 @@ describe('updateSettings', () => {
       return jsonRes({});
     }));
     await expect(updateSettings({ greeting: 'x' })).rejects.toThrow(/Failed to save settings/);
+  });
+});
+
+// A MindsHub key the user typed must not be stored by the sidecar at all. The
+// Settings form writes it twice from one keystroke — the `minds_api_key` row
+// and the raw value inside the provider card — so both halves have to be
+// diverted. `providers_json` is a plain column nothing encrypts, which makes
+// the second half the one that actually leaves a readable key on disk.
+describe('updateSettings — a user-supplied MindsHub key never reaches the server', () => {
+  let calls;
+
+  const withElectronHost = (impl) => {
+    hostMock.isElectron = true;
+    hostMock.isWeb = false;
+    hostMock.mindshubSetUserKey = vi.fn(impl);
+  };
+
+  beforeEach(() => {
+    calls = [];
+    vi.stubGlobal('fetch', vi.fn(async (url, options = {}) => {
+      const method = options.method || 'GET';
+      calls.push({ url: String(url), method, body: options.body });
+      const u = String(url);
+      if (method === 'PUT' && u.endsWith('/settings/')) return jsonRes({ updated: [] });
+      if (method === 'GET' && u.endsWith('/settings/')) return jsonRes([]);
+      if (u.includes('/settings/validate')) return jsonRes({ configReady: true, configError: null });
+      return jsonRes({});
+    }));
+  });
+
+  afterEach(() => {
+    hostMock.isElectron = false;
+    hostMock.isWeb = true;
+    delete hostMock.mindshubSetUserKey;
+    vi.unstubAllGlobals();
+  });
+
+  const patch = {
+    mindsApiKey: 'mdb_typed_by_hand',
+    providers: [{ type: 'minds-cloud', apiKey: 'mdb_typed_by_hand', isDefault: true }],
+  };
+
+  it('hands the key to main and strips both copies from the write', async () => {
+    withElectronHost(async () => ({ ok: true, supported: true }));
+
+    await updateSettings(patch);
+
+    expect(hostMock.mindshubSetUserKey).toHaveBeenCalledWith('mdb_typed_by_hand');
+    const put = calls.find((c) => c.method === 'PUT' && c.url.endsWith('/settings/'));
+    const body = JSON.parse(put.body);
+    expect(body.values.minds_api_key).toBeUndefined();
+    // The card survives, masked — the same shape the server returns on read.
+    expect(JSON.parse(body.values.providers_json)[0].apiKey).toBe('***');
+    // The clinching assertion: the raw value is nowhere in what we sent.
+    expect(put.body).not.toContain('mdb_typed_by_hand');
+  });
+
+  it('leaves the other provider cards untouched', async () => {
+    withElectronHost(async () => ({ ok: true, supported: true }));
+
+    await updateSettings({
+      mindsApiKey: 'mdb_typed_by_hand',
+      providers: [
+        { type: 'minds-cloud', apiKey: 'mdb_typed_by_hand' },
+        { type: 'anthropic', apiKey: 'sk-ant-users-own' },
+      ],
+    });
+
+    const put = calls.find((c) => c.method === 'PUT' && c.url.endsWith('/settings/'));
+    const cards = JSON.parse(JSON.parse(put.body).values.providers_json);
+    expect(cards.find((c) => c.type === 'anthropic').apiKey).toBe('sk-ant-users-own');
+  });
+
+  it('fails the save rather than writing the key when main cannot store it', async () => {
+    // Falling through to the settings write here would put the key on disk,
+    // which is the exact outcome this path exists to prevent.
+    withElectronHost(async () => ({ ok: false, supported: true, reason: 'keychain locked' }));
+
+    await expect(updateSettings(patch)).rejects.toThrow(/keychain locked/);
+    expect(calls.some((c) => c.method === 'PUT')).toBe(false);
+  });
+
+  it('web keeps writing the key as a setting — there is no main process to route it to', async () => {
+    hostMock.isElectron = false;
+    hostMock.isWeb = true;
+    // What the real host returns with no bridge behind it.
+    hostMock.mindshubSetUserKey = vi.fn(async () => ({ ok: false, supported: false }));
+
+    await updateSettings(patch);
+
+    const put = calls.find((c) => c.method === 'PUT' && c.url.endsWith('/settings/'));
+    expect(JSON.parse(put.body).values.minds_api_key).toBe('mdb_typed_by_hand');
   });
 });
 
@@ -282,6 +374,20 @@ describe('fetchSession error hydration (ENG-1304)', () => {
     expect(err.code).toBe('token_limit');
     expect(task.messages.map((m) => m.role)).not.toContain('provider_required');
   });
+
+  it('carries the request id onto a generic error row', async () => {
+    stubEndpoints([
+      { role: 'user', content: 'hi' },
+      { role: 'assistant', content: '', events: [
+        { type: 'response.created' },
+        { type: 'response.failed', code: 'anton_error', error: 'An unexpected error occurred.', request_id: 'corr-abc' },
+      ] },
+    ]);
+    const { fetchSession } = await import('./api');
+    const task = await fetchSession('c1');
+    const err = task.messages.find((m) => m.role === 'error');
+    expect(err.requestId).toBe('corr-abc');
+  });
 });
 
 // ─── ENG-1656 follow-up: "Model Router" pick never reaches the server ──
@@ -360,6 +466,29 @@ describe('streamNewSession — harness pick', () => {
 
     const body = JSON.parse(fetchMock.mock.calls[0][1].body);
     expect(body).not.toHaveProperty('harness');
+  });
+});
+
+// A dropped connection mid-stream must carry a code distinct from a stalled
+// tail or a reconnect failure, so chat_turn_failed can tell them apart
+// instead of bucketing every client-side drop as unknown.
+describe('streamNewSession — network failure reporting', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('reports a code when the reader fails mid-stream', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      body: { getReader: () => ({ read: async () => { throw new Error('network drop'); } }) },
+    })));
+
+    const result = await new Promise((resolve) => {
+      streamNewSession('hi', { onDone: () => resolve(null), onError: (message, event) => resolve(event) });
+    });
+
+    expect(result?.code).toBe('stream_error');
   });
 });
 
@@ -571,5 +700,78 @@ describe('cancelResponse', () => {
 
   it('never throws on a missing conversation id', async () => {
     expect(await cancelResponse('')).toEqual({ status: 'gone', conversation_id: '' });
+  });
+});
+
+/*
+ * Which failures `fetchHubWorkspaces` answers and which it re-throws is the
+ * whole retry contract, and it cannot be seen from the hook's tests: those mock
+ * this module, so a version that swallows everything again keeps them green.
+ * A definite answer is answered; a transient one is thrown for the caller to
+ * ask again.
+ */
+describe('fetchHubWorkspaces', () => {
+  const DARK = { enabled: false, reachable: false, workspaces: [], activeWorkspaceId: null };
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  // Captures the call, because the resolved value alone left the route and the
+  // credential header unpinned: renaming the path or dropping `hubHeaders()`
+  // kept all five cases green, and the header is the only reason the sidecar
+  // forwards anything to auth.
+  let calls;
+  const respond = (res) => {
+    calls = [];
+    vi.stubGlobal('fetch', vi.fn(async (url, options) => {
+      calls.push({ url: String(url), options });
+      return res;
+    }));
+  };
+
+  it('answers dark for a 404, because a sidecar without the route will not grow one', async () => {
+    respond(jsonRes({ detail: 'Not Found' }, false, 404));
+
+    await expect(fetchHubWorkspaces()).resolves.toEqual(DARK);
+  });
+
+  it('throws on a 5xx, so one blip at launch does not hide the control for the session', async () => {
+    respond(jsonRes({ detail: 'boom' }, false, 502));
+
+    await expect(fetchHubWorkspaces()).rejects.toThrow();
+  });
+
+  it('throws when the sidecar is not listening yet', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('Failed to fetch'); }));
+
+    await expect(fetchHubWorkspaces()).rejects.toThrow();
+  });
+
+  it('answers dark when the body is not an object', async () => {
+    respond(jsonRes('nope'));
+
+    await expect(fetchHubWorkspaces()).resolves.toEqual(DARK);
+  });
+
+  it('passes a 200 through as the server sent it', async () => {
+    const payload = { enabled: true, reachable: true, workspaces: [], activeWorkspaceId: null };
+    respond(jsonRes(payload));
+
+    await expect(fetchHubWorkspaces()).resolves.toEqual(payload);
+  });
+
+  it('asks the workspaces route and carries the credential in its own header', async () => {
+    // `Authorization` is taken by the loopback token in the desktop shell, so
+    // the caller's JWT has to travel under X-MindsHub-Authorization or the
+    // sidecar has nothing to forward.
+    hostMock.getAccessToken.mockResolvedValueOnce('jwt-abc');
+    respond(jsonRes({ enabled: false, reachable: false, workspaces: [], activeWorkspaceId: null }));
+
+    await fetchHubWorkspaces();
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toMatch(/\/api\/v1\/hub\/workspaces\/$/);
+    expect(calls[0].options.headers['X-MindsHub-Authorization']).toBe('Bearer jwt-abc');
   });
 });

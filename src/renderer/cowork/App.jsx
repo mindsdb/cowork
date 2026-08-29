@@ -32,6 +32,7 @@ import { useCodeWorkspace } from './code/useCodeWorkspace';
 import SearchModal from './components/SearchModal';
 import ConnectorPicker from './components/connector/ConnectorPicker';
 import ServerOfflineHelpModal from './components/ServerOfflineHelpModal';
+import ComingSoonModal from './components/ComingSoonModal';
 import { setForm as setDataVaultForm, getForm as getDataVaultForm, clearForm as clearDataVaultForm, patchForm as patchDataVaultForm, getFormState as getDataVaultFormState, setFormState as setDataVaultFormState, getSelectedMethod as getDataVaultSelectedMethod, setSelectedMethod as setDataVaultSelectedMethod, subscribe as subscribeDataVaultForm } from './components/datavault/formStore';
 import { extractFormSpec } from './components/datavault/parseFormSpec';
 import { host } from '../platform/host';
@@ -54,7 +55,7 @@ import { useThemeSkin } from './hooks/useThemeSkin';
 import { useAppUpdates } from './hooks/useAppUpdates';
 import { deriveUpdateBanner } from '../../shared/update-banner';
 import { useSchedules } from './hooks/useSchedules';
-import { fetchSessions, fetchSession, fetchConversationList, fetchProjects, fetchArtifacts, fetchSettings, fetchHealth,
+import { fetchSessions, fetchSession, fetchSessionResult, fetchConversationList, fetchProjects, fetchArtifacts, fetchSettings, fetchHealth,
          createProject, updateSettings, streamNewSession, streamMessage,
          streamDataVaultSubmission,
          allocateConversationId, uploadAttachments,
@@ -78,11 +79,12 @@ import {
   mergeConvTurns,
 } from './lib/conversationHistory';
 import { noteArtifactsFromSteps } from './lib/artifactsStore';
+import { resolveRepairConversation } from './lib/artifactRepairChat';
 import { isArtifactTipDismissed, dismissArtifactTip, dismissIfUntouched } from './components/onboarding/onboardingStore';
 import { recommendedModelOptions, providerValueToType,
          mergeRecommendedModels } from './lib/settingsTransform';
-import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery, trackFirstResponse, classifyFirstResponse } from './lib/analytics';
-import { MODEL_ROUTER_ID, MODEL_ROUTER, isModelLocked } from './lib/modelCatalog';
+import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery, trackFirstResponse, classifyFirstResponse, trackTurnFailed } from './lib/analytics';
+import { MODEL_ROUTER_ID, MODEL_ROUTER, MINDSHUB_AIR_MODEL_ID, isModelLocked } from './lib/modelCatalog';
 import {
   CoworkProvider,
   CoworkRouterProvider,
@@ -1127,12 +1129,31 @@ function AppCore() {
     ids.forEach((id) => markInFlightDone(id));
 
     const loaded = cid ? await loadSessionMessagesWithRetry(cid) : null;
+    // A stream that merely dropped mid-answer can still have finished on the
+    // server — the reload then carries no error message. Gating on the same
+    // check the UI uses means a turn the user actually saw succeed doesn't
+    // also count as a failure. Unlike fireFirstResponse (once per user), this
+    // fires on every failed turn — the failure rate had no measurement at
+    // all before this.
+    const hasError = loaded
+      ? loaded.messages.some((m) => m.role === 'error' || m.role === 'provider_required')
+      : true;
+    // `some()` over the whole history is right for the UI status below, but
+    // it's a permanent yes once any earlier turn in the conversation has
+    // ever failed — worthless as a failure-tracking gate, since it also
+    // counts turns that actually recovered. A server-declared
+    // response.failed (api.js's onError passes the raw SSE message through,
+    // so `type` survives) is authoritative on its own. Only the client-side
+    // transport codes (stream_error, reconnect_error, stalled) need the
+    // reload heuristic, and only against the *last* turn.
+    const lastMessage = loaded?.messages?.[loaded.messages.length - 1];
+    const lastTurnFailed = loaded
+      ? lastMessage?.role === 'error' || lastMessage?.role === 'provider_required'
+      : true;
+    if (event?.type === 'response.failed' || lastTurnFailed) trackTurnFailed(cid, event);
     setTasks((prev) => prev.map((t) => {
       if (!ids.includes(t.id)) return t;
       if (loaded) {
-        const hasError = loaded.messages.some(
-          (m) => m.role === 'error' || m.role === 'provider_required',
-        );
         return {
           ...t,
           status: hasError ? 'error' : 'idle',
@@ -1162,6 +1183,7 @@ function AppCore() {
             retryAfter: typeof event?.retry_after === 'number' ? event.retry_after : null,
             retryAt: typeof event?.retry_at === 'string' ? event.retry_at : null,
             resetAt: typeof event?.reset_at === 'string' ? event.reset_at : null,
+            requestId: typeof event?.request_id === 'string' ? event.request_id : null,
           };
       return {
         ...t,
@@ -1217,8 +1239,17 @@ function AppCore() {
     modelProviders: settings.modelProviders,
     modelFamilies: settings.modelFamilies,
     modelEnabled: settings.modelEnabled,
+    // Which models advertise reasoning-effort levels (ENG-1940) — same
+    // settings key SettingsView's per-role effort picker reads, so
+    // Composer's EffortSelect stays in lockstep with it.
+    modelEfforts: settings.modelEfforts,
+    // Account-wide harness toggle (web-only Settings → Agent Harness) —
+    // EffortSelect needs this outside coding mode, where Composer's own
+    // harness state is hardcoded 'anton' and can't say whether Hermes is
+    // actually configured account-wide.
+    harness: settings.harness,
     onRefresh: refreshModelAvailability,
-  }), [settings.modelProviders, settings.modelFamilies, settings.modelEnabled, refreshModelAvailability]);
+  }), [settings.modelProviders, settings.modelFamilies, settings.modelEnabled, settings.modelEfforts, settings.harness, refreshModelAvailability]);
   const { isMobile, isNarrow } = useBreakpoint();
 
   // iOS/Android auto-zoom workaround: toggle the viewport meta tag around
@@ -1435,6 +1466,11 @@ function AppCore() {
   // always tracks Settings live, server-side, without the renderer needing
   // to know the current planning/coding/router model.
   const [selectedModel, setSelectedModel] = useState(MODEL_ROUTER);
+  // Reasoning-effort pick for the home/new-task composer (ENG-1940) —
+  // sibling state to selectedModel. '' means "no explicit pick, use the
+  // model's (or account's) default effort" — never re-synced from
+  // settings, same rationale as selectedModel just above.
+  const [selectedEffort, setSelectedEffort] = useState('');
   // Local cowork-server lifecycle — online/busy state, start & stop, and the
   // first-paint seed-and-poll — lives in useServerControl. It re-fetches
   // through refreshDataRef after a manual start (refreshData writes
@@ -1690,23 +1726,25 @@ function AppCore() {
         ? MODEL_ROUTER
         : (models.find((m) => m.id === currentTask.model) || { id: currentTask.model, name: currentTask.model, desc: 'Configured planning model' }))
     : selectedModel;
+  // Sibling to currentTaskModel (ENG-1940): the task's own effort pick if
+  // it has one, else whatever the home composer currently shows.
+  const currentTaskEffort = currentTask?.reasoningEffort ?? selectedEffort;
 
   // "Switch to MindsHub Air" escape hatch on the model-denial card
   // (ENG-1304): offered only while Air itself is payable — the free monthly
   // grant covers Air, so it's the one model an empty wallet can usually
   // still run. `modelEnabled` is the same availability map the Settings
   // picker tags rows with (absent id ⇒ available).
-  const AIR_MODEL_ID = 'mindshub_air';
   const airAvailableForSwitch =
-    (settings.recommendedModels?.['minds-cloud'] || []).includes(AIR_MODEL_ID)
-    && !isModelLocked(settings.modelEnabled, AIR_MODEL_ID);
+    (settings.recommendedModels?.['minds-cloud'] || []).includes(MINDSHUB_AIR_MODEL_ID)
+    && !isModelLocked(settings.modelEnabled, MINDSHUB_AIR_MODEL_ID);
   const handleSwitchToAirAndResend = (text) => {
     if (!currentTask || !text) return;
     // Persist the switch on the task so follow-up sends stay on Air, and
     // override the same send explicitly — the state write isn't visible to
     // handleSendInTask's closure within this tick.
-    setTasks((prev) => prev.map((t) => (t.id === currentTask.id ? { ...t, model: AIR_MODEL_ID } : t)));
-    handleSendInTask(text, null, { modelOverride: AIR_MODEL_ID });
+    setTasks((prev) => prev.map((t) => (t.id === currentTask.id ? { ...t, model: MINDSHUB_AIR_MODEL_ID } : t)));
+    handleSendInTask(text, null, { modelOverride: MINDSHUB_AIR_MODEL_ID });
   };
 
   useEffect(() => {
@@ -2041,6 +2079,7 @@ function AppCore() {
       projectName: selectedProject?.name || 'general',
       projectPath: selectedProject?.path || null,
       model: selectedModel?.id || null,
+      reasoningEffort: selectedEffort || null,
       attachments: [],
     }, ...prev]);
     setActiveTaskId(tempId);
@@ -2317,6 +2356,7 @@ function AppCore() {
       projectName: selectedProject?.name || 'general',
       projectPath: selectedProject?.path || null,
       model: selectedModel?.id || null,
+      reasoningEffort: selectedEffort || null,
       attachments: [],
     }, ...prev]);
     setActiveTaskId(tempId);
@@ -2459,17 +2499,6 @@ function AppCore() {
     // enterRoute() (re)fetches that view's data.
     setRoute(key);
   };
-
-  // Safety net: navigate() intercepts the sidebar/Settings entry points, but a
-  // direct setRoute (or org mode resolving after a route is already set) could
-  // still land on connectors. Bounce home and show the popup rather than
-  // render a surface that isn't available on Cloud.
-  useEffect(() => {
-    if (orgMode && route === 'customize') {
-      setComingSoonFeature('Connect Apps and Data');
-      setRoute('home');
-    }
-  }, [orgMode, route]);
 
   // Same safety net for Channels: the in-Settings nav calls onSectionChange
   // (= setSettingsSection) directly, bypassing openSettings entirely.
@@ -2697,9 +2726,10 @@ function AppCore() {
     if (!(await ensureProviderReady())) {
       const taskId = `tmp-${Date.now()}`;
       const generalFallback = projects.find((p) => p.name === 'general');
-      const effectiveProjectName = selectedProject?.name || 'general';
-      const effectiveProjectId = (selectedProject ? selectedProject.id : generalFallback?.id) || null;
-      const effectiveProjectPath = selectedProject?.path
+      const requestedProject = meta?.project || selectedProject;
+      const effectiveProjectName = requestedProject?.name || 'general';
+      const effectiveProjectId = (requestedProject ? requestedProject.id : generalFallback?.id) || null;
+      const effectiveProjectPath = requestedProject?.path
         || generalFallback?.path
         || null;
       setTasks((prev) => [{
@@ -2715,6 +2745,7 @@ function AppCore() {
         projectName: effectiveProjectName,
         projectId: effectiveProjectId,
         model: selectedModel?.id ?? null,
+        reasoningEffort: selectedEffort ?? null,
         attachments: [],
         disabledConnections: [],
         updatedAt: new Date().toISOString(),
@@ -2722,7 +2753,7 @@ function AppCore() {
       setActiveTaskId(taskId);
       setRoute('task');
       setComposerAttachments([]);
-      return;
+      return false;
     }
 
     // Orphan fallback: if the user hasn't picked a project, route the
@@ -2730,18 +2761,21 @@ function AppCore() {
     // any reason it isn't in the projects list yet (e.g. an upgrade
     // from a build that didn't auto-create it), bootstrap it now.
     let generalProject = projects.find((p) => p.name === 'general');
-    if (!selectedProject && !generalProject) {
+    const requestedProject = meta?.project || selectedProject;
+    if (!requestedProject && !generalProject) {
       generalProject = await ensureGeneralProject();
     }
-    const effectiveProjectName = selectedProject?.name || 'general';
-    const effectiveProjectId = (selectedProject ? selectedProject.id : generalProject?.id) || null;
-    const effectiveProjectPath = selectedProject?.path || generalProject?.path || null;
+    const effectiveProjectName = requestedProject?.name || 'general';
+    const effectiveProjectId = (requestedProject ? requestedProject.id : generalProject?.id) || null;
+    const effectiveProjectPath = requestedProject?.path || generalProject?.path || null;
 
     const disabledForSend = normalizeComposerDisabledConnections(composerDisabledConnections);
 
     const rawComposer = composerAttachments;
     const hasPendingFiles = rawComposer.some(isPendingFileAttachment);
-    const taskId = hasPendingFiles ? allocateConversationId() : `tmp-${Date.now()}`;
+    const suppliedConversationId = meta?.conversationId || null;
+    const taskId = suppliedConversationId
+      || (hasPendingFiles ? allocateConversationId() : `tmp-${Date.now()}`);
     // Flag the not-yet-persisted id so the route loader renders from local
     // state instead of 404ing home.
     markOptimisticConversation(taskId);
@@ -2776,6 +2810,7 @@ function AppCore() {
       projectName: effectiveProjectName,
       projectId: effectiveProjectId,
       model: selectedModel?.id ?? null,
+      reasoningEffort: selectedEffort ?? null,
       // The composer's harness pick (ENG-1656 follow-up) — Anton or
       // Hermes here; 'claude-code' never reaches this function (the top
       // of handleSendFromHome routes it to launchCodingModeTask instead).
@@ -2868,11 +2903,12 @@ function AppCore() {
     trackFirstQuery();
     const streamGen = activeStreamGenerationRef.current;
     const streamNewSessionFn = () => streamNewSession(sendText, {
-      conversationId: hasPendingFiles ? taskId : undefined,
+      conversationId: suppliedConversationId || (hasPendingFiles ? taskId : undefined),
       projectName: effectiveProjectName,
       projectId: effectiveProjectId,
       projectPath: effectiveProjectPath,
       model: selectedModel?.id,
+      reasoningEffort: selectedEffort || null,
       harness: meta?.harness,
       attachmentIds,
       disabledConnections: disabledForSend,
@@ -2985,15 +3021,24 @@ function AppCore() {
     // we add the user message + thinking placeholder and start the
     // SSE stream — same shape as handleSendInTask from that point on.
     requestAnimationFrame(() => requestAnimationFrame(startConversation));
+    return true;
   };
 
   // Send inside an existing task
+  //
+  // Answers `true` when the text is on its way — a stream started, or it was
+  // queued behind the turn already running — and `false` when nothing was sent.
+  // Same contract as handleSendFromHome, and the artifact viewer depends on it:
+  // addressing a comment with the agent mints the repair record BEFORE sending
+  // and cancels it on `false`. Without that answer a repair whose prompt never
+  // left the composer sits `queued` forever, polling, showing "Agent is
+  // thinking…" for a turn that will never run.
   const handleSendInTask = async (text, queuedAttachments = null, opts = {}) => {
     // opts.targetTask lets the queue drain re-send to a specific task the
     // user may not currently be viewing (ENG-1378); a fresh composer send
     // defaults to the task on screen.
     const targetTask = opts.targetTask || currentTask;
-    if (!targetTask) return;
+    if (!targetTask) return false;
     const id = targetTask.id;
 
     // Preflight: same gate as handleSendFromHome. Append the user's
@@ -3016,7 +3061,7 @@ function AppCore() {
       // Only a fresh send owns the live composer's attachments; a drained
       // queued item must not clear the composer of whatever task is on screen.
       if (queuedAttachments == null) setComposerAttachments([]);
-      return;
+      return false;
     }
 
     // A pending question owns the composer: typed text is the answer, not a
@@ -3052,7 +3097,9 @@ function AppCore() {
             : `Your ${orphaned.length} files were not sent — the agent asked a question first. They are still attached.`,
         });
       }
-      return;
+      // The text became the answer to the agent's question, so it did not start
+      // a turn of its own — a caller waiting on this prompt gets `false`.
+      return false;
     }
     if (answerOutcome.action === 'fail' || answerOutcome.action === 'blocked') {
       // Two mechanisms, both already used in this file: a toast so the user
@@ -3109,7 +3156,9 @@ function AppCore() {
         opts.disabledConnections != null ? opts.disabledConnections : composerDisabledConnections,
       );
       if (queuedAttachments == null) setComposerAttachments([]);
-      return;
+      // Queued counts as sent: the drain runs it when the slot frees, so a
+      // repair waiting on this prompt will get its turn.
+      return true;
     }
     // Synchronous reservation so a second invocation that fires
     // before our awaits resolve sees us as "in flight."
@@ -3173,6 +3222,15 @@ function AppCore() {
     const taskModel = opts.modelOverride
       || targetTask.model
       || (opts.targetTask ? null : selectedModel?.id)
+      || null;
+    // Sibling precedence chain to taskModel (ENG-1940): a same-tick
+    // override, else the task's own saved pick, else — only for a live
+    // send to the task on screen — the home composer's current pick.
+    // selectedEffort defaults to '', so the trailing `|| null` collapses
+    // that (and any other falsy pick) to null the same way taskModel's does.
+    const taskEffort = (opts.effortOverride
+      ?? targetTask.reasoningEffort
+      ?? (opts.targetTask ? null : selectedEffort))
       || null;
 
     let sendingAttachments, attachmentIds, driveReference;
@@ -3302,6 +3360,7 @@ function AppCore() {
       projectId: taskProjectId,
       projectPath: taskProjectPath,
       model: taskModel,
+      reasoningEffort: taskEffort,
       attachmentIds,
       disabledConnections: disabledForSend,
       onEvent(ev) {
@@ -3382,6 +3441,9 @@ function AppCore() {
         })();
       },
     });
+    // The stream is running; whatever happens to it now is reported through the
+    // callbacks above, not through this return value.
+    return true;
   };
 
   // Drain the next queued message once the single stream slot is free.
@@ -3418,6 +3480,57 @@ function AppCore() {
   // Keep the mount-frozen reconnect closure pointed at the current drain (and
   // thus the current handleSendInTask). See the ref declaration above.
   drainNextQueuedMessageRef.current = drainNextQueuedMessage;
+
+  // ── Addressing an artifact comment with the agent ──────────────────────
+  // Two callbacks, one decision. The viewer asks which chat a repair belongs to
+  // BEFORE minting the repair record (cowork-server only finishes a handoff in
+  // the turn whose conversation matches the id on it), then hands the prompt
+  // back to be sent. The resolution is carried between the two here so the send
+  // can't pick a different chat than the repair is bound to.
+  const artifactRepairTargetRef = useRef(null);
+
+  const resolveArtifactRepairConversation = useCallback(async (artifact) => {
+    const target = await resolveRepairConversation({
+      artifact,
+      tasks: tasksRef.current,
+      fetchConversation: fetchSessionResult,
+    });
+    artifactRepairTargetRef.current = target.id ? target : null;
+    // Adopt the record now: an origin chat older than the capped recents fetch
+    // is unknown to `tasks`, and the send below appends the turn through it.
+    if (target.id) {
+      setTasks((prev) => (
+        prev.some((t) => String(t.id || '') === target.id) ? prev : [target.task, ...prev]
+      ));
+    }
+    return target.id;
+  }, []);
+
+  const addressArtifactWithAgent = async ({ artifact, prompt, conversationId }) => {
+    const project = projects.find((item) =>
+      String(item.id || '') === String(artifact?.projectId || ''))
+      || projects.find((item) => item.name === artifact?.projectName)
+      || null;
+    const target = artifactRepairTargetRef.current;
+    artifactRepairTargetRef.current = null;
+    // Only resume a chat the repair was actually minted against; anything else
+    // (no origin, unreachable chat, a stale resolution) starts a new one.
+    if (!target || !conversationId || target.id !== String(conversationId)) {
+      return handleSendFromHome(prompt, { project, conversationId });
+    }
+    // Preflight before touching the chat: returning false makes the viewer
+    // cancel the repair, which beats leaving a handoff queued against a turn
+    // that never starts.
+    if (!(await ensureProviderReady())) return false;
+    const targetTask = tasksRef.current.find((t) => String(t.id || '') === target.id) || target.task;
+    // The `/c/:id` loader must not re-hydrate over the transcript we adopted
+    // while the turn is in flight; the flag drops when the turn completes.
+    markOptimisticConversation(target.id);
+    selectTask(target.id);
+    // handleSendInTask queues the prompt itself if that chat is already busy.
+    await handleSendInTask(prompt, [], { targetTask });
+    return true;
+  };
 
   // Submit a data-vault form. Drives a fresh assistant turn from the
   // cowork agent endpoint instead of the LLM — same SSE stream shape,
@@ -4405,6 +4518,8 @@ function AppCore() {
             onProjectChange={setSelectedProject}
             model={selectedModel}
             onModelChange={setSelectedModel}
+            effort={selectedEffort}
+            onEffortChange={setSelectedEffort}
             projects={projects}
             models={modelOptions}
             modelMeta={modelMeta}
@@ -4420,6 +4535,7 @@ function AppCore() {
             configReady={health.config_ready ?? settings.configReady}
             configError={health.config_error ?? settings.configError}
             onOpenSettings={openSettings}
+            modelLabels={settings.modelLabels}
             codingModelDefault={settings.codingModel}
             harnessHermesEnabled={settings.harnessHermesEnabled ?? true}
             harnessClaudeCodeEnabled={settings.harnessClaudeCodeEnabled ?? true}
@@ -4443,6 +4559,7 @@ function AppCore() {
             onSend={handleSendInTask}
             onSwitchToAirAndResend={airAvailableForSwitch ? handleSwitchToAirAndResend : undefined}
             onOpenSettings={openSettings}
+            modelLabels={settings.modelLabels}
             codingModelDefault={settings.codingModel}
             harnessHermesEnabled={settings.harnessHermesEnabled ?? true}
             harnessClaudeCodeEnabled={settings.harnessClaudeCodeEnabled ?? true}
@@ -4464,6 +4581,11 @@ function AppCore() {
               // send, with no changes needed there.
               if (!currentTask) return;
               setTasks((prev) => prev.map((t) => (t.id === currentTask.id ? { ...t, model: m.id } : t)));
+            }}
+            effort={currentTaskEffort}
+            onEffortChange={(e) => {
+              if (!currentTask) return;
+              setTasks((prev) => prev.map((t) => (t.id === currentTask.id ? { ...t, reasoningEffort: e } : t)));
             }}
             models={modelOptions}
             modelMeta={modelMeta}
@@ -4573,6 +4695,8 @@ function AppCore() {
             modelMeta={modelMeta}
             model={selectedModel}
             onModelChange={setSelectedModel}
+            effort={selectedEffort}
+            onEffortChange={setSelectedEffort}
             onSelectProject={(p) => setSelectedProject(p)}
             onCreateProject={handleCreateProject}
             onSendInProject={(text, meta) => {
@@ -4605,6 +4729,7 @@ function AppCore() {
             }}
             agentLabel={agentLabel}
             onOpenSettings={openSettings}
+            modelLabels={settings.modelLabels}
             codingModelDefault={settings.codingModel}
             harnessHermesEnabled={settings.harnessHermesEnabled ?? true}
             harnessClaudeCodeEnabled={settings.harnessClaudeCodeEnabled ?? true}
@@ -4680,6 +4805,8 @@ function AppCore() {
             artifacts={artifacts}
             projects={projects}
             agentLabel={agentLabel}
+            onAddressWithAgent={addressArtifactWithAgent}
+            resolveRepairConversation={resolveArtifactRepairConversation}
             onOpenProject={(p) => {
               // Pin the project so ProjectsView opens directly in detail
               // (its `selectedProject` effect mirrors that into local
@@ -4885,39 +5012,10 @@ function AppCore() {
         onSkinChange={setSkin}
       />
 
-      <Modal
-        open={comingSoonFeature != null}
+      <ComingSoonModal
+        feature={comingSoonFeature}
         onClose={() => setComingSoonFeature(null)}
-        size="sm"
-        labelledBy="coming-soon-title"
-      >
-        <ModalHeader
-          id="coming-soon-title"
-          title="Coming soon to Cloud"
-          onClose={() => setComingSoonFeature(null)}
-        />
-        <ModalBody>
-          <p className="s-body">
-            {comingSoonFeature ? `${comingSoonFeature} isn’t` : 'This feature isn’t'}{' '}
-            available on Cloud just yet. In the meantime, you can use it in the
-            desktop app.
-          </p>
-        </ModalBody>
-        <ModalFooter>
-          <Button variant="subtle" onClick={() => setComingSoonFeature(null)}>
-            Not now
-          </Button>
-          <Button
-            variant="primary"
-            onClick={() => {
-              host.openExternal('https://mindshub.ai/download');
-              setComingSoonFeature(null);
-            }}
-          >
-            Download the app
-          </Button>
-        </ModalFooter>
-      </Modal>
+      />
 
       {!host.isWeb && (
       <ServerOfflineHelpModal

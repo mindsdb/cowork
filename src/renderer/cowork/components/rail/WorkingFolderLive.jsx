@@ -27,6 +27,7 @@ import { ConfirmModal } from '../ConfirmModal';
 import { host } from '../../../platform/host';
 import { useOrgMode } from '../../../lib/orgMode';
 import { artifactOpenTarget, needsClientUnpublishBeforeDelete } from '../../lib/artifactActions';
+import { canPreviewOrgDraft, isInlinePreviewable } from '../../lib/artifactKinds';
 import { deleteArtifactAndSync } from '../../lib/artifactsStore';
 
 // Map a file extension to a glyph from `Icons.jsx`. Buckets group
@@ -64,7 +65,7 @@ function iconForRow(row) {
 }
 
 
-export function WorkingFolderLive({ project, isStreaming }) {
+export function WorkingFolderLive({ project, isStreaming, conversationId = null, onAddressWithAgent }) {
   const orgMode = useOrgMode();
   const [resolvedProject, setResolvedProject] = useState(null);
   useEffect(() => {
@@ -271,7 +272,7 @@ export function WorkingFolderLive({ project, isStreaming }) {
   };
 
   const onDeleteArtifact = async (a) => {
-    if (!a?.path) return;
+    if (!a?.path || a?.capabilities?.canEdit === false) return;
     setBusyPath(a.path);
     setRowError('');
     // Optimistic remove — mirrors the Project Files / Task Uploads
@@ -303,24 +304,27 @@ export function WorkingFolderLive({ project, isStreaming }) {
   // viewer handles HTML via sandboxed iframe and .md/.txt/.csv via
   // the inline text path. Anything else falls through to the OS
   // handler so the user's default app picks it up.
-  const _INLINE_PREVIEW_EXTS = ['.html', '.md', '.txt', '.csv'];
-  const onOpenArtifact = (artifact) => {
-    const ext = (artifact.ext || '').toLowerCase();
-    const path = (artifact.path || '').toLowerCase();
-    const canPreviewInline = _INLINE_PREVIEW_EXTS.includes(ext)
-      || _INLINE_PREVIEW_EXTS.some((e) => path.endsWith(e));
-    // Same gate the panel and the inline chat card apply: in org mode neither
-    // the local preview nor the OS handoff has anything behind it, and the
-    // published URL is the only route to the content.
+  const onOpenArtifact = async (artifact) => {
+    /*
+     * In org mode the viewer renders the authenticated draft instead of local
+     * bytes, and an artifact whose draft it cannot render keeps the published
+     * URL. Local OS handoff remains a desktop-only capability.
+     */
     const target = artifactOpenTarget({
       orgMode,
       published: !!artifact.publishedUrl,
-      canPreviewInline,
+      canPreviewInline: isInlinePreviewable(artifact),
+      canPreviewDraft: canPreviewOrgDraft(artifact),
       hasBridge: host.isElectron,
     });
     if (target === 'published') {
-      try { host.openExternal(artifact.publishedUrl); }
-      catch { window.open(artifact.publishedUrl, '_blank', 'noreferrer'); }
+      /*
+       * Awaited so the catch can see a rejected bridge call — the same reason
+       * `openArtifactExternal` above awaits it. A synchronous try around an
+       * async call leaves the fallback unreachable and the rejection loose.
+       */
+      try { await host.openExternal(artifact.publishedUrl); }
+      catch { window.open(artifact.publishedUrl, '_blank', 'noopener,noreferrer'); }
     } else if (target === 'preview') {
       setPreviewArt(artifact);
     } else if (target === 'os') {
@@ -443,6 +447,7 @@ export function WorkingFolderLive({ project, isStreaming }) {
           const a = rows.find((r) => r.path === openMenuPath);
           if (!a) return null;
           const openLabel = canOpenLocalFile ? 'Open in OS' : 'Open in new tab';
+          const canDelete = a.capabilities?.canEdit !== false;
           return (
             <div
               ref={menuRef}
@@ -472,24 +477,28 @@ export function WorkingFolderLive({ project, isStreaming }) {
                 </span>
                 <span>{openLabel}</span>
               </button>
-              <div className="h-px bg-[var(--border-0)] my-1" />
-              <button
-                type="button"
-                className="menu-item"
-                disabled={busyPath === a.path}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setOpenMenuPath(null);
-                  // Open the confirm modal rather than deleting
-                  // immediately — matches the project files / task
-                  // uploads / task / project delete flows.
-                  setPendingDeleteArtifact(a);
-                }}
-                style={{ color: 'var(--danger)' }}
-              >
-                <span className="inline-flex text-danger">{Ico.trash(13)}</span>
-                <span>Delete</span>
-              </button>
+              {canDelete && (
+                <>
+                  <div className="h-px bg-[var(--border-0)] my-1" />
+                  <button
+                    type="button"
+                    className="menu-item"
+                    disabled={busyPath === a.path}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setOpenMenuPath(null);
+                      // Open the confirm modal rather than deleting
+                      // immediately — matches the project files / task
+                      // uploads / task / project delete flows.
+                      setPendingDeleteArtifact(a);
+                    }}
+                    style={{ color: 'var(--danger)' }}
+                  >
+                    <span className="inline-flex text-danger">{Ico.trash(13)}</span>
+                    <span>Delete</span>
+                  </button>
+                </>
+              )}
             </div>
           );
         })(),
@@ -522,6 +531,8 @@ export function WorkingFolderLive({ project, isStreaming }) {
         onDelete={(path) => {
           setRows((prev) => prev.filter((a) => a.path !== path));
         }}
+        conversationId={conversationId}
+        onAddressWithAgent={onAddressWithAgent}
       />
     </div>
   );
