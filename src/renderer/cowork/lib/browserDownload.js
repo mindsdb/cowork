@@ -11,6 +11,18 @@
 /** Long enough for every browser to have started reading the object URL. */
 const REVOKE_AFTER_MS = 1_000;
 
+/**
+ * A save-as names a file, not a path.
+ *
+ * Browsers sanitize separators in the `download` attribute rather than honoring
+ * them, so handing over `.anton/anton.md` saves under a mangled name of the
+ * browser's choosing. Split on both kinds: a Windows-hosted server hands back
+ * back-slashed paths.
+ */
+export function downloadFilename(path, fallback = 'download') {
+  return String(path ?? '').split(/[\\/]/).filter(Boolean).pop() || fallback;
+}
+
 /** Save the bytes behind a URL the browser can fetch on its own. */
 export function downloadUrl(url, filename) {
   if (!url) return false;

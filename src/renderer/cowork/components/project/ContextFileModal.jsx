@@ -46,6 +46,7 @@ import {
   downloadAuthenticatedResource,
   fetchAuthenticatedBlob,
 } from '../../lib/authenticatedResource';
+import { downloadFilename } from '../../lib/browserDownload';
 
 const FONT_BODY    = "var(--font-body, 'Inter', system-ui, sans-serif)";
 const FONT_DISPLAY = "var(--font-display, 'Inter', system-ui, sans-serif)";
@@ -84,7 +85,7 @@ function FileAccessButton({ projectPath, projectName, filePath, rawUrl }) {
       <button
         type="button"
         onClick={() => {
-          downloadAuthenticatedResource(webUrl, filePath || 'download').catch(() => {});
+          downloadAuthenticatedResource(webUrl, downloadFilename(filePath)).catch(() => {});
         }}
         style={{
           textDecoration: 'none',

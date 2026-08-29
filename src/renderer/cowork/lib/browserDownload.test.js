@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { downloadBlob, downloadUrl } from './browserDownload';
+import { downloadBlob, downloadFilename, downloadUrl } from './browserDownload';
 
 let createObjectURL;
 let revokeObjectURL;
@@ -21,6 +21,27 @@ afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+});
+
+describe('downloadFilename', () => {
+  /*
+   * A blob carries no Content-Disposition, so once bytes are fetched rather
+   * than navigated to, this value is the only thing naming the saved file.
+   */
+  it.each([
+    ['.anton/anton.md', 'anton.md'],
+    ['reports/2026/q1.csv', 'q1.csv'],
+    ['docs\\windows\\notes.txt', 'notes.txt'],
+    ['report.csv', 'report.csv'],
+    ['trailing/slash/', 'slash'],
+  ])('takes the basename of %s', (path, expected) => {
+    expect(downloadFilename(path)).toBe(expected);
+  });
+
+  it.each([[''], [null], [undefined], ['/'], ['\\']])('falls back for %s', (path) => {
+    expect(downloadFilename(path)).toBe('download');
+    expect(downloadFilename(path, 'artifact')).toBe('artifact');
+  });
 });
 
 describe('downloadUrl', () => {
