@@ -43,8 +43,12 @@ export function personalOrgName(userId: string): string {
  * hand. Auth generates `<email>'s organization` and only the membership listing
  * carries it, so both readers that run before or without that listing fall back
  * here rather than to `personal_<uuid>` or to nothing.
+ *
+ * One word on purpose. This sits beside the account name in a sidebar footer
+ * that truncates, and "Personal organization" is long enough there to ellipsize
+ * both halves into `System A… · Personal organi…`.
  */
-export const PERSONAL_ORG_LABEL = 'Personal organization';
+export const PERSONAL_ORG_LABEL = 'Personal';
 
 /**
  * Turn what Keycloak returned into the shape the UI reads.

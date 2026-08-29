@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { PERSONAL_ORG_LABEL } from '../../shared/minds-orgs';
+
 // Mock the keycloak-js constructor so importing this module never spins up a
 // real client. The returned singleton IS the module's exported `keycloak`, so
 // tests toggle `authenticated` on it to drive the two logout branches.
@@ -343,7 +345,7 @@ describe('listWebOrganizations()', () => {
       orgs: [{
         id: 'org-personal',
         name: 'personal_user-1',
-        displayName: 'Personal organization',
+        displayName: PERSONAL_ORG_LABEL,
         isPersonal: true,
       }],
       activeOrgId: 'org-personal',
