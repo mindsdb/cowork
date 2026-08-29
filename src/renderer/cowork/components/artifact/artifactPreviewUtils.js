@@ -35,6 +35,47 @@ export function withArtifactCommentFlag(url) {
   return appendPreviewParam(url, '__antonComments', '1');
 }
 
+const HAS_BASE_TAG_RE = /<base[\s/>]/i;
+const HEAD_OPEN_RE = /<head([^>]*)>/i;
+
+function escapeHtmlAttribute(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;');
+}
+
+// The draft's directory URL — `fetchUrl` minus its filename, query string and
+// fragment — so relative asset/link references inside HTML fetched via
+// `authFetch` resolve the same way they would if the iframe had navigated to
+// `fetchUrl` directly through `src`.
+function draftDirectoryUrl(fetchUrl) {
+  try {
+    const parsed = new URL(fetchUrl);
+    parsed.search = '';
+    parsed.hash = '';
+    parsed.pathname = parsed.pathname.replace(/[^/]*$/, '');
+    return parsed.toString();
+  } catch {
+    return '';
+  }
+}
+
+// `srcdoc` gives the iframe no base URL of its own, so relative
+// `<script src>` / `<link href>` / anchors in fetched draft HTML would
+// otherwise resolve against the parent app's origin instead of the draft's
+// own directory. No-op if the document already declares a `<base>` — a
+// second one would be inert (the first `<base>` in document order wins) and
+// misleading to read.
+export function injectDraftBaseHref(html, fetchUrl) {
+  const baseHref = draftDirectoryUrl(fetchUrl);
+  if (!baseHref || HAS_BASE_TAG_RE.test(html)) return html;
+  const markup = `<base href="${escapeHtmlAttribute(baseHref)}">`;
+  return HEAD_OPEN_RE.test(html)
+    ? html.replace(HEAD_OPEN_RE, `<head$1>${markup}`)
+    : `${markup}${html}`;
+}
+
 export function artifactExtension(p) {
   if (!p || typeof p !== 'string') return '';
   const m = p.toLowerCase().match(/\.[a-z0-9]+$/);

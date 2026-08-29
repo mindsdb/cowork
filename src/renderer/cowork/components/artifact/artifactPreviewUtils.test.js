@@ -5,6 +5,7 @@ import {
   TEXT_PREVIEW_EXTS,
   withArtifactCommentFlag,
   withArtifactVersion,
+  injectDraftBaseHref,
 } from './artifactPreviewUtils';
 import { TEXT_PREVIEW_EXTS as SHARED_TEXT_PREVIEW_EXTS } from '../../lib/artifactKinds';
 
@@ -44,5 +45,75 @@ describe('artifact preview URLs', () => {
 describe('TEXT_PREVIEW_EXTS', () => {
   it('is the same set the artifact click gates read', () => {
     expect(TEXT_PREVIEW_EXTS).toBe(SHARED_TEXT_PREVIEW_EXTS);
+  });
+});
+
+/*
+ * srcdoc gives an iframe no base URL of its own. Fetched draft HTML that used
+ * to navigate the iframe's `src` directly relied on the browser deriving the
+ * base from that URL; srcdoc needs the same base stated explicitly or every
+ * relative <script src>/<link href>/anchor in the document breaks.
+ */
+describe('injectDraftBaseHref', () => {
+  it('inserts a base tag pointing at the draft directory, inside <head>', () => {
+    const html = '<html><head><title>Deck</title></head><body>Hi</body></html>';
+
+    const result = injectDraftBaseHref(
+      html,
+      'https://cowork.example/api/v1/artifacts/drafts/p1/a1/index.html?v=5',
+    );
+
+    expect(result).toBe(
+      '<html><head><base href="https://cowork.example/api/v1/artifacts/drafts/p1/a1/">'
+      + '<title>Deck</title></head><body>Hi</body></html>',
+    );
+  });
+
+  it('prepends the base tag when the document has no <head>', () => {
+    const result = injectDraftBaseHref(
+      '<body>Hi</body>',
+      'https://cowork.example/api/v1/artifacts/drafts/p1/a1/index.html',
+    );
+
+    expect(result).toBe(
+      '<base href="https://cowork.example/api/v1/artifacts/drafts/p1/a1/"><body>Hi</body>',
+    );
+  });
+
+  it('does not add a second base tag when the document already has one', () => {
+    const html = '<html><head><base href="https://custom.example/"></head><body>Hi</body></html>';
+
+    const result = injectDraftBaseHref(
+      html,
+      'https://cowork.example/api/v1/artifacts/drafts/p1/a1/index.html',
+    );
+
+    expect(result).toBe(html);
+  });
+
+  it('strips the query string and filename, keeping only the directory', () => {
+    const result = injectDraftBaseHref(
+      '<head></head>',
+      'https://cowork.example/api/v1/artifacts/drafts/p1/a1/report.html?v=3&__antonComments=1',
+    );
+
+    expect(result).toBe(
+      '<head><base href="https://cowork.example/api/v1/artifacts/drafts/p1/a1/"></head>',
+    );
+  });
+
+  it('escapes characters that are unsafe inside an HTML attribute', () => {
+    // `&` is a valid, unencoded path character per the URL spec (only query
+    // strings require escaping it) but is unsafe left bare inside an HTML
+    // attribute value — this is the one realistic way a draft directory path
+    // could carry a character `escapeHtmlAttribute` has to neutralize.
+    const result = injectDraftBaseHref(
+      '<head></head>',
+      'https://cowork.example/api/v1/artifacts/drafts/p1/a&b/index.html',
+    );
+
+    expect(result).toBe(
+      '<head><base href="https://cowork.example/api/v1/artifacts/drafts/p1/a&amp;b/"></head>',
+    );
   });
 });
