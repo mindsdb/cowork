@@ -89,6 +89,20 @@ describe('getChannel', () => {
       });
     });
 
+    it('a feature server ref selects git unless a channel was explicitly chosen', () => {
+      vi.mocked(buildKind).mockReturnValue('preview');
+      withEnv({ COWORK_SERVER_REF: 'codex/team-skills-library' }, () => {
+        expect(getChannel()).toBe('git');
+      });
+    });
+
+    it('an explicit pypi channel still wins over a feature ref', () => {
+      vi.mocked(buildKind).mockReturnValue('preview');
+      withEnv({ COWORK_SERVER_CHANNEL: 'pypi', COWORK_SERVER_REF: 'ignored-by-choice' }, () => {
+        expect(getChannel()).toBe('pypi');
+      });
+    });
+
     it('a buildKind failure resolves to the git default', () => {
       vi.mocked(buildKind).mockImplementation(() => {
         throw new Error('no electron app');

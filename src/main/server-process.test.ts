@@ -74,6 +74,9 @@ function makeLogStream(): EventEmitter & { write: () => boolean; end: () => void
 
 /** Owner token /health answers with, or null to make every probe fail. */
 let healthOwner: string | null = null;
+/** Capabilities advertised by /health. Code Mode must not adopt a sidecar
+ *  merely because it is healthy when the coding routes are absent. */
+let healthCapabilities: string[] = ['coding'];
 
 /** Records every execFile call and lets a test decide what each one returns. */
 let execCalls: Array<{ cmd: string; args: string[] }> = [];
@@ -126,6 +129,7 @@ beforeEach(() => {
   // Health probes fail by default: most of these tests are about failed
   // starts. A test opts into a healthy backend by flipping `healthOwner`.
   healthOwner = null;
+  healthCapabilities = ['coding'];
   vi.mocked(http.get).mockImplementation(((_opts: unknown, cb: unknown) => {
     const owner = healthOwner;
     if (owner !== null && typeof cb === 'function') {
@@ -134,7 +138,7 @@ beforeEach(() => {
       res.resume = () => {};
       setTimeout(() => {
         (cb as (r: unknown) => void)(res);
-        res.emit('data', JSON.stringify({ owner }));
+        res.emit('data', JSON.stringify({ owner, capabilities: healthCapabilities }));
         res.emit('end');
       }, 0);
     }
@@ -265,6 +269,28 @@ describe('startServer failure diagnostics', () => {
     expect(recovered.ok).toBe(true);
     expect(vi.mocked(cp.spawn).mock.calls).toHaveLength(spawnCount + 1);
     await stopServer(); // leave the module's state clean for the next test
+  });
+
+  it('replaces an owned but incompatible sidecar instead of adopting its healthy port', async () => {
+    healthOwner = 'owner-token';
+    healthCapabilities = [];
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => { healthCapabilities = ['coding']; }, 0);
+      return child as never;
+    }) as never);
+
+    const result = await startServer({ port: PORT, readyTimeoutMs: 5_000 });
+
+    expect(result.ok).toBe(true);
+    expect(vi.mocked(cp.spawn)).toHaveBeenCalledTimes(1);
+    vi.mocked(process.kill).mockImplementation(((pid: number, signal?: string) => {
+      signals.push([pid, String(signal)]);
+      child.exitCode = 0;
+      setTimeout(() => child.emit('exit', 0), 0);
+      return true;
+    }) as never);
+    await stopServer();
   });
 
   it('checkpoints active coding tasks before terminating the sidecar tree', async () => {

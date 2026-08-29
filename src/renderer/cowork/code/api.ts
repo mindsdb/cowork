@@ -585,6 +585,9 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       // Preserve the status-based message when an intermediary returns HTML.
     }
+    if (response.status === 404 && detail === 'Not Found') {
+      detail = 'This desktop build is connected to an older backend that does not support Code Mode. Restart the app with the matching cowork-server build.';
+    }
     throw new Error(detail);
   }
   if (response.status === 204) return undefined as T;

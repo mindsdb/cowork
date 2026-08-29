@@ -370,8 +370,11 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// Single-shot /health probe that also reads the `owner` token, so the
-// adoption decision can check the running server is ours (ENG-439).
+// Single-shot /health probe that also reads the `owner` token and runtime
+// capabilities. HTTP health alone is not compatibility: an older published
+// sidecar can answer this endpoint while returning 404 for every Code Mode
+// route. Requiring the capability here prevents both adopting that process and
+// declaring an incompatible freshly-spawned binary ready.
 function probeHealthOnce(port: number, timeoutMs: number): Promise<{ ok: boolean; owner: string | null }> {
   return new Promise((resolve) => {
     const req = http.get(
@@ -382,8 +385,13 @@ function probeHealthOnce(port: number, timeoutMs: number): Promise<{ ok: boolean
         res.on('data', (c) => { body += c; });
         res.on('end', () => {
           let owner: string | null = null;
-          try { owner = (JSON.parse(body) as { owner?: string } | null)?.owner ?? null; } catch { /* non-JSON */ }
-          resolve({ ok: true, owner });
+          let supportsCoding = false;
+          try {
+            const payload = JSON.parse(body) as { owner?: string; capabilities?: unknown } | null;
+            owner = payload?.owner ?? null;
+            supportsCoding = Array.isArray(payload?.capabilities) && payload.capabilities.includes('coding');
+          } catch { /* non-JSON */ }
+          resolve({ ok: supportsCoding, owner });
         });
       },
     );
