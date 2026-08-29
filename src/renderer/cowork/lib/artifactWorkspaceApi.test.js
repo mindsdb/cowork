@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../api', () => ({ authFetch: vi.fn(), BASE: '/api/v1' }));
 
-import { artifactRef, canUseArtifactWorkspace } from './artifactWorkspaceApi';
+import { artifactRef, canUseArtifactWorkspace, loadArtifactDraftText } from './artifactWorkspaceApi';
+import { authFetch } from '../api';
 
 // The workspace API addresses an artifact by its one identity. A card built
 // before ids were widened cannot address it at all, so the viewer has to fall
@@ -36,5 +37,39 @@ describe('artifact workspace addressing', () => {
     expect(canUseArtifactWorkspace({ id: '7db94eb8' })).toBe(false);
     expect(canUseArtifactWorkspace({})).toBe(false);
     expect(canUseArtifactWorkspace(null)).toBe(false);
+  });
+});
+
+/*
+ * The org-mode text preview reads the draft endpoint, which streams the whole
+ * file. Every click on every surface opens it now, so the ceiling and the
+ * "there is more" flag both have to live here — the desktop endpoint applies
+ * its own 200k cut server-side and this path had neither.
+ */
+describe('loadArtifactDraftText', () => {
+  const respond = (body) => {
+    authFetch.mockResolvedValueOnce({
+      ok: true,
+      text: () => Promise.resolve(body),
+      headers: { get: () => 'text/plain' },
+    });
+  };
+
+  it('caps the body at the same 200k the desktop preview uses', async () => {
+    respond('x'.repeat(200_001));
+
+    const preview = await loadArtifactDraftText('/api/v1/artifacts/drafts/p/1/log.txt');
+
+    expect(preview.content).toHaveLength(200_000);
+    expect(preview.truncated).toBe(true);
+  });
+
+  it('reports a body under the cap as whole', async () => {
+    respond('# Report\n');
+
+    const preview = await loadArtifactDraftText('/api/v1/artifacts/drafts/p/1/report.md');
+
+    expect(preview.content).toBe('# Report\n');
+    expect(preview.truncated).toBe(false);
   });
 });

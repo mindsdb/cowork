@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 
 import {
   isAbsoluteArtifactPreviewUrl,
+  TEXT_PREVIEW_EXTS,
   withArtifactCommentFlag,
   withArtifactVersion,
 } from './artifactPreviewUtils';
+import { TEXT_PREVIEW_EXTS as SHARED_TEXT_PREVIEW_EXTS } from '../../lib/artifactKinds';
 
 describe('artifact preview URLs', () => {
   it('recognizes network and embedded absolute URLs', () => {
@@ -30,5 +32,17 @@ describe('artifact preview URLs', () => {
     expect(withArtifactCommentFlag(dataUrl)).toBe(dataUrl);
     expect(withArtifactVersion(blobUrl, 'rev-5')).toBe(blobUrl);
     expect(withArtifactCommentFlag(blobUrl)).toBe(blobUrl);
+  });
+});
+
+/*
+ * The viewer's text renderer and the click gates that promise it have to read
+ * one set. They used to hold a copy each, so adding a format meant editing
+ * both: miss the gate and no click reaches a file the viewer renders; miss the
+ * viewer and a card offers a preview that falls through to the iframe.
+ */
+describe('TEXT_PREVIEW_EXTS', () => {
+  it('is the same set the artifact click gates read', () => {
+    expect(TEXT_PREVIEW_EXTS).toBe(SHARED_TEXT_PREVIEW_EXTS);
   });
 });

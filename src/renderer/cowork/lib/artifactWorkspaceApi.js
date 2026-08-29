@@ -38,19 +38,33 @@ export function canUseArtifactWorkspace(artifact) {
   return !!artifactRef(artifact);
 }
 
+/*
+ * Same ceiling the desktop preview endpoint applies (cowork-server
+ * `preview_artifact`). The draft endpoint streams whatever the file is, so the
+ * cut has to happen on this side, and it has to be reported: the viewer's
+ * "Preview is truncated" strip reads `truncated`, and a hardcoded `false` sent
+ * a multi-MB log or dataset whole into one text render with nothing on screen
+ * to say the rest existed. That mattered once a click, on every surface, was
+ * what opened this.
+ */
+const DRAFT_TEXT_MAX = 200_000;
+
 export async function loadArtifactDraftText(draftUrl) {
   if (!draftUrl) throw new Error('Artifact has no private draft URL');
-  // The same origin `BASE` is built from — asking the host beats stripping the
-  // path back off with a regex, and it is what ArtifactViewer already uses to
-  // absolutize this very URL for the preview iframe.
+  /*
+   * The same origin `BASE` is built from — asking the host beats stripping the
+   * path back off with a regex, and it is what ArtifactViewer already uses to
+   * absolutize this very URL for the preview iframe.
+   */
   const url = /^https?:\/\//i.test(draftUrl) ? draftUrl : `${host.getApiOrigin()}${draftUrl}`;
   const response = await authFetch(url);
   if (!response.ok) {
     throw new Error(`Could not load private draft (${response.status})`);
   }
+  const body = await response.text();
   return {
-    content: await response.text(),
-    truncated: false,
+    content: body.slice(0, DRAFT_TEXT_MAX),
+    truncated: body.length > DRAFT_TEXT_MAX,
     mime: response.headers.get('Content-Type') || '',
   };
 }

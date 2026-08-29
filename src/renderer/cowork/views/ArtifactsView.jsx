@@ -26,7 +26,10 @@ import { isArtifactActionAvailable, needsClientUnpublishBeforeDelete } from '../
 import { deleteArtifactAndSync } from '../lib/artifactsStore';
 import { useOrgMode } from '../../lib/orgMode';
 import { downloadArtifactFile } from '../lib/artifactDownload';
-import { isHtmlArtifact, isPublishableArtifact, isBackendArtifact, isImageArtifact } from '../lib/artifactKinds';
+import {
+  canPreviewLocally, canPreviewOrgDraft, isHtmlArtifact, isPublishableArtifact,
+  isBackendArtifact, isInlinePreviewable,
+} from '../lib/artifactKinds';
 import { trackArtifactPublished } from '../lib/analytics';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
 import { ArtifactViewer } from '../components/artifact';
@@ -81,37 +84,6 @@ function projectOf(artifact, projects = []) {
     const pre = proj.path.replace(/\/+$/, '') + '/';
     return p.startsWith(pre);
   }) || null;
-}
-
-// Extensions we can preview inline in the in-app ArtifactViewer (text
-// branch). Keep in sync with the viewer's own TEXT_PREVIEW_EXTS so the
-// click handlers and the body renderer agree on what's previewable.
-const _INLINE_TEXT_EXTS = new Set(['.md', '.txt', '.csv']);
-function isInlinePreviewable(a) {
-  if (!a) return false;
-  if (isHtmlArtifact(a)) return true;
-  const declared = (a.ext || '').toLowerCase();
-  if (_INLINE_TEXT_EXTS.has(declared)) return true;
-  const p = (a.path || '').toLowerCase();
-  for (const ext of _INLINE_TEXT_EXTS) if (p.endsWith(ext)) return true;
-  return false;
-}
-
-// Everything the viewer has a renderer for locally. Images are counted
-// separately from isInlinePreviewable because they never went through its
-// text/iframe paths: the viewer fetches them from the artifact's serve URL
-// (ENG-1998), which exists on Desktop and not in org mode.
-function canPreviewLocally(a) {
-  return isInlinePreviewable(a) || isImageArtifact(a);
-}
-
-// What org mode can preview from the authenticated draft URL: what Desktop
-// renders from bytes, minus fullstack apps and images. A fullstack preview needs
-// the loopback proxy only Desktop has, and an image would be fetched from
-// /artifacts/serve, which org-mode tenancy refuses — offering either would open
-// a window that can only fail.
-function canPreviewOrgDraft(a) {
-  return !!a?.draftUrl && !isBackendArtifact(a) && isInlinePreviewable(a);
 }
 
 // "Updated" is pre-formatted by the server (e.g. "3h ago") from the same
@@ -219,10 +191,13 @@ const CardIconButton = forwardRef(function CardIconButton({ onClick, ariaLabel, 
 
 function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isMenuOpen, phase, onRetry, onOpenProject }) {
   const orgMode = useOrgMode();
-  // Only Desktop turns a click into a preview. Org mode has the authenticated
-  // draft too, but reaches it from the '...' menu (canPreviewOrgDraft), so a
-  // click on the card keeps meaning "open what collaborators see".
-  const canPreview = !orgMode && isInlinePreviewable(artifact);
+  /*
+   * A click means "show me this artifact" in both deployments: Desktop renders
+   * the local bytes, org mode renders the authenticated draft. What org mode
+   * cannot render — a fullstack app, an image — falls through to openBest and
+   * opens what collaborators see.
+   */
+  const canPreview = orgMode ? canPreviewOrgDraft(artifact) : isInlinePreviewable(artifact);
   const published = !!artifact.publishedUrl;
   // In the browser the artifact's address is its HTTP serve URL, not a local
   // OS path the user can't reach — open that "private" URL instead.
@@ -397,18 +372,21 @@ function ListHeaderRow() {
   );
 }
 
-function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onPreview, onReveal, onDownload, onCopyUrl, onPublish, onUnpublish, onUpdate, onDelete, busy = false, isMacPlatform = false }) {
+function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onOpenShared, onPreview, onReveal, onDownload, onCopyUrl, onPublish, onUnpublish, onUpdate, onDelete, busy = false, isMacPlatform = false }) {
   const isHtml = isHtmlArtifact(artifact);
   const orgMode = useOrgMode();
   const published = !!artifact.publishedUrl;
   const items = [
     {
       id: 'open',
-      // "Open viewer" would be a lie in org mode: the click goes to the shared
-      // URL there, and the in-app preview is the separate item below.
-      label: isHtml && !orgMode ? 'Open viewer' : 'Open',
+      /*
+       * "Open viewer" would be a lie in org mode: the row itself previews the
+       * authenticated draft there, and this item is the page a collaborator
+       * opens. The filter below drops it when nothing is shared yet.
+       */
+      label: orgMode ? 'Open shared link' : (isHtml ? 'Open viewer' : 'Open'),
       icon: Ico.externalLink(13),
-      onClick: onOpen,
+      onClick: orgMode ? onOpenShared : onOpen,
     },
     // Org only: on Desktop the item above already opens the viewer.
     orgMode && canPreviewOrgDraft(artifact) && {
@@ -488,9 +466,11 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
   const { hovered, hoverProps } = useRevealOnHover(menuOpen);
 
   const orgMode = useOrgMode();
-  // Same rule as ArtifactBubble above: a click previews on Desktop only, and org
-  // mode reaches its authenticated draft from the '...' menu instead.
-  const canPreview = !orgMode && isInlinePreviewable(artifact);
+  /*
+   * Same rule as ArtifactBubble above: a click previews whatever the deployment
+   * can render, from local bytes on Desktop and from the draft URL in org mode.
+   */
+  const canPreview = orgMode ? canPreviewOrgDraft(artifact) : isInlinePreviewable(artifact);
   const published = !!artifact.publishedUrl;
   const publishable = isPublishableArtifact(artifact);   // HTML + Markdown — see ArtifactBubble note
   const privateUrl = !orgMode && host.isWeb ? artifactServeUrl(artifact) : '';
@@ -614,6 +594,7 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
         artifact={artifact}
         onClose={() => setMenuOpen(false)}
         onOpen={onRowOpen}
+        onOpenShared={() => openUrl(artifact.publishedUrl)}
         onPreview={() => onOpenViewer?.(artifact)}
         onReveal={host.isWeb ? undefined : () => { try { revealArtifact(artifact.path); } catch { } }}
         onDownload={() => downloadArtifactFile(artifact)}
@@ -1064,19 +1045,34 @@ export default function ArtifactsView({
               onClick: () => setViewer(a),
             });
           }
-          // Fullstack apps can't be opened from their static entry html
-          // (it needs the backend), so only offer "Open in browser" for
-          // them once published — then it opens the live public URL.
-          // Unpublished fullstack gets no open/reveal item.
-          if (isHtml && (!isBackend || published)) {
+          /*
+           * Fullstack apps can't be opened from their static entry html
+           * (it needs the backend), so only offer "Open in browser" for
+           * them once published — then it opens the live public URL.
+           * Unpublished fullstack gets no open/reveal item.
+           *
+           * Org mode asks a different question. The card body previews the
+           * draft there, so this item is the page a collaborator opens, and
+           * every published artifact needs it — a shared .md would otherwise
+           * have no route to its URL from this card at all, because the HTML
+           * test below is the only one it ever fails. Grid is the default
+           * view and the only view on mobile, so there is no list row to
+           * fall back to.
+           */
+          if (orgMode ? published : (isHtml && (!isBackend || published))) {
             items.push({
               id: 'open',
-              label: 'Open in browser',
+              label: orgMode ? 'Open shared link' : 'Open in browser',
               icon: (Ico.link?.(13) || Ico.globe?.(13) || Ico.doc(13)),
-              onClick: () => {
+              /*
+               * Awaited like the card's own onOpenPublished above: a
+               * synchronous try around an async bridge call cannot reach the
+               * fallback, and the rejection escapes unhandled.
+               */
+              onClick: async () => {
                 if (a.publishedUrl) {
-                  try { host.openExternal(a.publishedUrl); }
-                  catch { window.open(a.publishedUrl, '_blank', 'noreferrer'); }
+                  try { await host.openExternal(a.publishedUrl); }
+                  catch { window.open(a.publishedUrl, '_blank', 'noopener,noreferrer'); }
                 } else {
                   openArtifactFile(a);
                 }
