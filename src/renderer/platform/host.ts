@@ -830,6 +830,21 @@ let webPickerCancelPrevious: (() => void) | null = null;
 
 const GOOGLE_API_SRC = 'https://apis.google.com/js/api.js';
 
+// How long a picker may sit without reporting anything before it is treated
+// as stuck. Deliberately far above any real pick: it can only ever be a
+// backstop, never a deadline (see its use below).
+const PICKER_STUCK_TIMEOUT_MS = 5 * 60 * 1000;
+
+// Same shape check Electron runs before its own pick
+// (drive-picker-service.ts's DRIVE_FILE_ID_RE) — kept in step so one public
+// pickDriveFiles() does not validate on one shell and not the other.
+const DRIVE_FILE_ID_RE = /^[A-Za-z0-9_-]+$/;
+
+function validDriveFileIds(fileIds: string[] | undefined): boolean {
+  if (fileIds === undefined) return true;
+  return Array.isArray(fileIds) && fileIds.every((id) => typeof id === 'string' && DRIVE_FILE_ID_RE.test(id));
+}
+
 // Narrow shapes for the parts of Google's Picker SDK this file touches. The
 // SDK ships no types of its own and is reached through `window`, so without
 // these every call below would be `any` — and this module's one sanctioned
@@ -955,11 +970,14 @@ async function persistPickedFiles(
 async function pickDriveFilesWeb(
   engine: string, name: string, accountEmail: string, fileIds?: string[], projectName?: string,
 ): Promise<DrivePickerResult> {
+  if (!validDriveFileIds(fileIds)) {
+    return { ok: false, reason: 'Invalid Google Drive file id.' };
+  }
   let creds: { access_token: string; api_key: string; app_id: string; account_email?: string };
   try {
     creds = await fetchJson(`/api/v1/connectors/oauth/${encodeURIComponent(engine)}/picker/token`, {
       method: 'POST',
-      body: JSON.stringify({ name, account_email: accountEmail }),
+      body: JSON.stringify({ name }),
     });
   } catch (err) {
     return { ok: false, reason: (err as Error)?.message || 'Could not start the file picker.' };
@@ -986,8 +1004,26 @@ async function pickDriveFilesWeb(
     const finish = (result: DrivePickerResult) => {
       if (settled) return;
       settled = true;
+      clearTimeout(stuckTimer);
       resolve(result);
     };
+
+    // Backstop for the one failure the callback below cannot see. When the
+    // widget's iframe renders a static Google 403 (usually an active-account
+    // mismatch) there is no picker JS inside it, so PICKED/CANCEL/ERROR never
+    // fire and this promise would otherwise never settle. The popup flow this
+    // replaces survived that only because the user could close the window;
+    // in-page there is nothing to close, so the wait has to be bounded here.
+    // There is no Action.LOADED, so a widget the user is simply still
+    // browsing is indistinguishable from a stuck one — hence a bound far
+    // longer than any real pick rather than a tight one.
+    const stuckTimer = setTimeout(() => {
+      try { widget?.setVisible(false); } catch { /* already disposed */ }
+      finish({
+        ok: false,
+        reason: `Google Picker did not respond — the browser’s active Google account may not match ${account}.`,
+      });
+    }, PICKER_STUCK_TIMEOUT_MS);
     // A newer pick supersedes one still on screen — same intent the popup
     // flow had, without the window bookkeeping.
     webPickerCancelPrevious?.();

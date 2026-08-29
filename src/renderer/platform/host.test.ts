@@ -415,6 +415,45 @@ describe('electron mode (bridge present)', () => {
     cleanup();
   });
 
+  it('a picker that never reports anything is settled by the stuck backstop, not left hanging', async () => {
+    // The failure the callback cannot see: a static Google 403 inside the
+    // widget's iframe runs no picker JS, so PICKED/CANCEL/ERROR never fire.
+    // The popup flow this replaced survived it because the user could close
+    // the window; in-page there is nothing to close.
+    vi.useFakeTimers();
+    try {
+      const { built, cleanup } = installFakeGooglePicker();
+      stubPickerFetch();
+      const host = await importHost();
+
+      const result = host.pickDriveFiles('google_drive', 'conn', 'me@example.com');
+      await vi.waitFor(() => expect(built.callback).toBeTypeOf('function'));
+      // Nothing is ever reported by the widget.
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000 + 1);
+
+      await expect(result).resolves.toMatchObject({ ok: false });
+      expect((await result).reason).toMatch(/active Google account/);
+      // The stuck widget is dismissed rather than left on screen.
+      expect(built.visible).toEqual([true, false]);
+      cleanup();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('rejects malformed drive file ids before minting a token, matching Electron', async () => {
+    const { cleanup } = installFakeGooglePicker();
+    const calls = stubPickerFetch();
+    const host = await importHost();
+
+    await expect(
+      host.pickDriveFiles('google_drive', 'conn', 'me@example.com', ['../etc/passwd']),
+    ).resolves.toMatchObject({ ok: false });
+    // Rejected before any network call — same gate drive-picker-service.ts runs.
+    expect(calls).toHaveLength(0);
+    cleanup();
+  });
+
   it('a failed token mint reports the failure and never loads the picker', async () => {
     const { built, cleanup } = installFakeGooglePicker();
     vi.stubGlobal('fetch', vi.fn(async () => ({
