@@ -72,6 +72,11 @@ function stubFetchWithCapability(
   return fetchMock;
 }
 
+/* The expected-organization header is a UUID on the wire, so pinned ids are too. */
+const ORG_A = '6ba7b810-9dad-11d1-80b4-00c04fd430c8';
+const ORG_B = '4e27728a-a002-48b5-8961-0e1ca339d13f';
+const ORG_PERSONAL = 'a3f1c0d2-58b7-4a9e-9c31-2d8e6f0b7a45';
+
 function accessToken(organizationId: string): string {
   const payload = btoa(JSON.stringify({
     sub: 'user-1',
@@ -136,10 +141,10 @@ describe('keycloak logout()', () => {
 
 describe('getAccessToken()', () => {
   it('reloads when another origin changes the refreshed session organization', async () => {
-    signedIn({ token: accessToken('org-a'), activeOrganization: { id: 'org-a' } });
+    signedIn({ token: accessToken(ORG_A), activeOrganization: { id: ORG_A } });
     instance.updateToken.mockImplementationOnce(async () => {
-      keycloak.token = accessToken('org-b');
-      keycloak.tokenParsed = { sub: 'user-1', activate_organization: { id: 'org-b' } };
+      keycloak.token = accessToken(ORG_B);
+      keycloak.tokenParsed = { sub: 'user-1', activate_organization: { id: ORG_B } };
       return true;
     });
 
@@ -149,10 +154,10 @@ describe('getAccessToken()', () => {
   });
 
   it('checks an already-refreshed token before starting another refresh', async () => {
-    signedIn({ token: accessToken('org-a'), activeOrganization: { id: 'org-a' } });
+    signedIn({ token: accessToken(ORG_A), activeOrganization: { id: ORG_A } });
     await expect(getAccessToken()).resolves.toBe(keycloak.token);
     instance.updateToken.mockClear();
-    keycloak.token = accessToken('org-b');
+    keycloak.token = accessToken(ORG_B);
 
     await expect(getAccessToken())
       .rejects.toThrow('The active organization changed; reload required');
@@ -179,15 +184,15 @@ describe('getAccessToken()', () => {
 describe('listWebOrganizations()', () => {
   it('lists the authenticated subject, normalizes labels, and ranks personal last', async () => {
     const subject = 'user/one ?';
-    const token = accessToken('org-personal');
+    const token = accessToken(ORG_PERSONAL);
     signedIn({
       subject,
       token,
-      activeOrganization: { id: 'org-personal', name: `personal_${subject}` },
+      activeOrganization: { id: ORG_PERSONAL, name: `personal_${subject}` },
     });
     const fetchMock = vi.fn(async () => jsonResponse(200, [
       {
-        id: 'org-personal',
+        id: ORG_PERSONAL,
         name: `personal_${subject}`,
         displayName: "dana@example.com's organization",
       },
@@ -200,13 +205,13 @@ describe('listWebOrganizations()', () => {
       orgs: [
         { id: 'org-acme', name: 'acme.example', displayName: 'Acme', isPersonal: false },
         {
-          id: 'org-personal',
+          id: ORG_PERSONAL,
           name: `personal_${subject}`,
           displayName: "dana@example.com's organization",
           isPersonal: true,
         },
       ],
-      activeOrgId: 'org-personal',
+      activeOrgId: ORG_PERSONAL,
     });
     expect(fetchMock).toHaveBeenCalledWith(
       `${realmUrl}/users/${encodeURIComponent(subject)}/orgs?search=&first=0&max=100`,
@@ -226,7 +231,7 @@ describe('listWebOrganizations()', () => {
       headers: {
         Accept: 'application/json',
         Authorization: `Bearer ${token}`,
-        'X-Cowork-Expected-Organization-Id': 'org-personal',
+        'X-Cowork-Expected-Organization-Id': ORG_PERSONAL,
       },
     });
     expect(instance.updateToken).not.toHaveBeenCalled();

@@ -19,6 +19,17 @@ const LOCK_NAME = 'anton.organizationTransition.lock';
 const PENDING_MAX_MS = 25_000;
 const LOCK_ACQUIRE_TIMEOUT_MS = 10_000;
 
+/**
+ * A reload budget, because `reloadStarted` below only stops a second reload
+ * inside one document and every reload starts a fresh one. A document that
+ * reloads again within the window did no useful work in between, which is a
+ * loop rather than a person changing organization. Held in sessionStorage so
+ * it belongs to this tab and dies with it.
+ */
+const RELOAD_BUDGET_KEY = 'anton.organizationReloadBudget';
+const RELOAD_BUDGET_WINDOW_MS = 10_000;
+const RELOAD_BUDGET_MAX = 3;
+
 let storageUnavailable = false;
 let transition = DOCUMENT_ORGANIZATION_TRANSITION;
 let ownedPendingId = null;
@@ -149,7 +160,43 @@ async function acquireTransitionLock() {
   });
 }
 
-/** Clear this document's tenant state and replace it. Safe to call repeatedly. */
+/**
+ * Spend one reload from this tab's budget. Returns false once a run of
+ * back-to-back reloads has used it up. A storage failure returns true: a
+ * browser that denies sessionStorage must not lose the tenant-safety reload.
+ */
+function consumeReloadBudget() {
+  const now = Date.now();
+  let spent = 0;
+  try {
+    const raw = globalThis.sessionStorage?.getItem(RELOAD_BUDGET_KEY);
+    const previous = raw ? JSON.parse(raw) : null;
+    if (
+      previous
+      && typeof previous.at === 'number'
+      && typeof previous.count === 'number'
+      && now - previous.at < RELOAD_BUDGET_WINDOW_MS
+    ) spent = previous.count;
+    if (spent >= RELOAD_BUDGET_MAX) return false;
+    globalThis.sessionStorage?.setItem(
+      RELOAD_BUDGET_KEY,
+      JSON.stringify({ count: spent + 1, at: now }),
+    );
+  } catch {
+    return true;
+  }
+  return true;
+}
+
+/**
+ * Clear this document's tenant state and replace it. Safe to call repeatedly.
+ *
+ * Tenant state is cleared before the budget is checked. An exhausted budget
+ * leaves a document that cannot reload, and `reloadStarted` keeps
+ * `assertOrganizationTransitionClear` throwing, so it stops making
+ * authenticated requests rather than reloading forever or continuing under an
+ * organization it did not start in.
+ */
 export function prepareForOrganizationReload({
   transitionId = null,
   clearTenantState = true,
@@ -160,6 +207,10 @@ export function prepareForOrganizationReload({
   if (clearTenantState) {
     clearCachedSettings();
     clearDraftsForOrganizationSwitch();
+  }
+  if (!consumeReloadBudget()) {
+    console.warn('[organization] too many reloads in a row; staying put and refusing tokens');
+    return;
   }
   globalThis.location?.reload();
 }
@@ -334,4 +385,5 @@ export function __resetOrganizationTransitionForTests() {
   appliedReloadId = organizationEpochForTransition(transition);
   storageUnavailable = false;
   try { globalThis.localStorage?.removeItem(STORAGE_KEY); } catch { /* test cleanup */ }
+  try { globalThis.sessionStorage?.removeItem(RELOAD_BUDGET_KEY); } catch { /* test cleanup */ }
 }

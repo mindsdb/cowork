@@ -16,6 +16,15 @@ import {
 } from './organizationTransition';
 
 const STORAGE_KEY = 'anton.organizationTransition';
+const RELOAD_BUDGET_KEY = 'anton.organizationReloadBudget';
+
+/* A real navigation gives the module a fresh lifetime but keeps sessionStorage. */
+function becomeANewDocument() {
+  const budget = sessionStorage.getItem(RELOAD_BUDGET_KEY);
+  __resetOrganizationTransitionForTests();
+  if (budget !== null) sessionStorage.setItem(RELOAD_BUDGET_KEY, budget);
+}
+
 let reloadSpy;
 let lockHeld;
 const locks = {
@@ -91,6 +100,40 @@ describe('organizationTransition', () => {
       .toBeLessThan(draftMock.clearDraftsForOrganizationSwitch.mock.invocationCallOrder[0]);
     expect(draftMock.clearDraftsForOrganizationSwitch.mock.invocationCallOrder[0])
       .toBeLessThan(reloadSpy.mock.invocationCallOrder[0]);
+  });
+
+  /*
+   * `reloadStarted` only stops a second reload inside one document, and every
+   * reload starts a fresh one. Simulate that by resetting module state between
+   * reloads the way a real navigation would, leaving sessionStorage alone.
+   */
+  it('stops reloading after a run of back-to-back reloads', () => {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      prepareForOrganizationReload({ clearTenantState: false });
+      becomeANewDocument();
+    }
+    expect(reloadSpy).toHaveBeenCalledTimes(3);
+
+    prepareForOrganizationReload({ clearTenantState: false });
+
+    expect(reloadSpy).toHaveBeenCalledTimes(3);
+    expect(() => assertOrganizationTransitionClear())
+      .toThrow('Organization change requires reload');
+  });
+
+  it('starts a fresh budget once a document survives the window', () => {
+    vi.useFakeTimers();
+    prepareForOrganizationReload({ clearTenantState: false });
+    becomeANewDocument();
+    prepareForOrganizationReload({ clearTenantState: false });
+    becomeANewDocument();
+    prepareForOrganizationReload({ clearTenantState: false });
+    becomeANewDocument();
+
+    vi.advanceTimersByTime(10_001);
+    prepareForOrganizationReload({ clearTenantState: false });
+
+    expect(reloadSpy).toHaveBeenCalledTimes(4);
   });
 
   it('can heal the token adapter without deleting current-tenant state', () => {

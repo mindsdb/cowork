@@ -1,5 +1,6 @@
 import { host } from '../../platform/host';
 import { authFetch } from '../api';
+import { downloadBlob } from './browserDownload';
 
 const REVOKE_OPENED_BLOB_AFTER_MS = 60_000;
 
@@ -8,19 +9,8 @@ function fileRequestError(response) {
   return new Error(status ? `Could not load file (${status})` : 'Could not load file');
 }
 
-function revokeLater(objectUrl, delay = 0) {
+function revokeLater(objectUrl, delay) {
   window.setTimeout(() => URL.revokeObjectURL(objectUrl), delay);
-}
-
-function downloadBlob(blob, filename) {
-  const objectUrl = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = objectUrl;
-  link.download = filename || 'download';
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  revokeLater(objectUrl);
 }
 
 function canOpenBlobInline(blob) {

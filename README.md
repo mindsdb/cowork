@@ -525,6 +525,12 @@ reload. Each document remembers the epoch in which its JavaScript heap started
 and rechecks it after bfcache restore. A browser without exclusive Web Locks or
 writable same-origin storage refuses before sending the `PUT`.
 
+Mandatory reloads are budgeted. A tab that reloads three times inside ten
+seconds did no work in between, which is a loop rather than a person changing
+organization, so the fourth reload does not happen. That tab has already
+cleared its tenant caches and it goes on refusing access tokens, so it fails
+closed and visibly instead of reloading forever.
+
 Every authenticated browser API request also carries
 `X-Cowork-Expected-Organization-Id`, pinned to the organization in which that
 document started. Once the server boundary is enforced, a missing header from a

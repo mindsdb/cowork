@@ -12,6 +12,7 @@
 // `serveUrl` — caller should surface a friendly message.
 
 import { host } from '../../platform/host';
+import { downloadUrl } from './browserDownload';
 
 export function downloadArtifactFile(artifact, { actionPath } = {}) {
   const rel = artifact?.serveUrl || '';
@@ -27,11 +28,5 @@ export function downloadArtifactFile(artifact, { actionPath } = {}) {
     rawPath.split(/[\\/]/).filter(Boolean).pop()
     || artifact?.title
     || 'artifact';
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  return true;
+  return downloadUrl(url, filename);
 }
