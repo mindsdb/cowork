@@ -13,6 +13,7 @@
 // operations (openPath) return { ok: false, reason: 'unsupported' }
 // so call sites can branch / hide affordances.
 
+import type { MindsOrg } from '../../shared/minds-orgs';
 import type { ServerStartErrorKind } from '../../shared/server-status';
 import type { UpdateCheckSummary } from '../../shared/update-types';
 import { parseCalVer, compareCalVer } from '../../shared/version';
@@ -358,12 +359,22 @@ async function fetchJson(path: string, init?: RequestInit): Promise<any> {
   // injects the loopback token in main, so nothing is added there.
   if (isWeb) {
     const token = await getAccessToken();
-    if (token) headers.Authorization = `Bearer ${token}`;
+    if (token) {
+      const { expectedOrganizationHeaders } = await import('../cowork/lib/organizationRequestBoundary');
+      headers.Authorization = `Bearer ${token}`;
+      Object.assign(headers, expectedOrganizationHeaders(token));
+    }
   }
   const res = await fetch(`${getApiOrigin()}${path}`, {
     ...init,
     headers,
   });
+  if (isWeb) {
+    const { handleOrganizationBoundaryResponse } = await import('../cowork/lib/organizationRequestBoundary');
+    if (handleOrganizationBoundaryResponse(res)) {
+      throw new Error('The active organization changed; reload required');
+    }
+  }
   if (!res.ok) {
     let detail = `HTTP ${res.status}`;
     try { detail = (await res.json()).detail || detail; } catch {}
@@ -1193,65 +1204,124 @@ export async function mindshubSetUserKey(
 
 // ---- MindsHub organizations ---------------------------------------------
 //
-// Which organization the credential this install presents names. Both calls are
-// Electron-only and both degrade to "no organizations" rather than throwing:
-// the renderer bundle updates over the air while `src/main/**` only arrives in
-// a new installer, so a newer UI regularly runs against a main process that has
-// never heard of these channels.
+/**
+ * Which MindsHub organization this session presents. Electron delegates to the
+ * installed main process; web uses the existing Keycloak browser session. An
+ * Electron renderer must never fall through to the web implementation because
+ * renderer bundles update over the air while `src/main/**` only arrives in a
+ * new installer.
+ */
 
-export interface MindsOrg {
-  id: string;
-  name: string;
-  displayName: string;
-  isPersonal: boolean;
-}
+export type { MindsOrg } from '../../shared/minds-orgs';
 
 export interface MindsOrgList {
   orgs: MindsOrg[];
   activeOrgId: string | null;
+  /** False only when a web network read did not settle and is worth retrying. */
+  reachable?: boolean;
 }
 
-export interface SwitchMindsOrgResult {
-  ok: boolean;
+type SettledMindsOrgSwitch = {
   activeOrgId: string | null;
   orgs: MindsOrg[];
-  error?: string;
-}
+  reloadRequired?: false;
+  clearTenantState?: false;
+};
+
+type ReloadingMindsOrgSwitch = {
+  activeOrgId: string | null;
+  orgs: MindsOrg[];
+  /** The tenant may have changed, so the old renderer must not remain usable. */
+  reloadRequired: true;
+  /** False only for a pre-dispatch adapter-healing reload. */
+  clearTenantState: boolean;
+};
+
+export type SwitchMindsOrgResult =
+  | (SettledMindsOrgSwitch & { ok: true })
+  | (SettledMindsOrgSwitch & { ok: false; error: string })
+  | (ReloadingMindsOrgSwitch & { ok: true })
+  | (ReloadingMindsOrgSwitch & { ok: false; error: string });
 
 const NO_ORGS: MindsOrgList = { orgs: [], activeOrgId: null };
 
 export async function mindshubListOrgs(): Promise<MindsOrgList> {
-  if (isElectron && typeof bridge.mindshubListOrgs === 'function') {
-    try {
-      const result = await bridge.mindshubListOrgs();
-      return {
-        orgs: Array.isArray(result?.orgs) ? result.orgs : [],
-        activeOrgId: result?.activeOrgId ?? null,
-      };
-    } catch (error) {
-      // The resting shape, not a throw. Every caller treats "no organizations"
-      // as the state before the read lands, and the one on the onboarding path
-      // has no error branch to fall into — a rejection there strands sign-in on
-      // the validating screen with nothing on it.
-      console.warn('[host] could not read the MindsHub organizations', error);
-      return NO_ORGS;
+  if (isElectron) {
+    if (typeof bridge.mindshubListOrgs === 'function') {
+      try {
+        const result = await bridge.mindshubListOrgs();
+        return {
+          orgs: Array.isArray(result?.orgs) ? result.orgs : [],
+          activeOrgId: result?.activeOrgId ?? null,
+        };
+      } catch (error) {
+        /**
+         * The resting shape, not a throw. Every caller treats "no organizations"
+         * as the state before the read lands, and the one on the onboarding path
+         * has no error branch to fall into — a rejection there strands sign-in on
+         * the validating screen with nothing on it.
+         */
+        console.warn('[host] could not read the MindsHub organizations', error);
+      }
     }
+    return NO_ORGS;
   }
-  return NO_ORGS;
+
+  const { listWebOrganizations } = await import('../lib/keycloak');
+  const result = await listWebOrganizations();
+  if (!result.ok) {
+    console.warn('[host] could not read the MindsHub organizations', result.reason);
+    return { ...NO_ORGS, reachable: false };
+  }
+  return { orgs: result.orgs, activeOrgId: result.activeOrgId, reachable: true };
 }
 
 export async function mindshubSwitchOrg(organizationId: string): Promise<SwitchMindsOrgResult> {
-  if (isElectron && typeof bridge.mindshubSwitchOrg === 'function') {
-    try {
-      return await bridge.mindshubSwitchOrg(organizationId);
-    } catch (error) {
-      // A refusal is something the menu renders, so it has to arrive as a
-      // value. Throwing past the toast leaves the row looking untouched.
-      console.warn('[host] could not change the MindsHub organization', error);
-      return { ok: false, activeOrgId: null, orgs: [], error: 'We could not change organization. Please try again.' };
+  if (isElectron) {
+    if (typeof bridge.mindshubSwitchOrg === 'function') {
+      try {
+        return await bridge.mindshubSwitchOrg(organizationId);
+      } catch (error) {
+        /**
+         * A refusal is something the menu renders, so it has to arrive as a
+         * value. Throwing past the toast leaves the row looking untouched.
+         */
+        console.warn('[host] could not change the MindsHub organization', error);
+        return { ok: false, activeOrgId: null, orgs: [], error: 'We could not change organization. Please try again.' };
+      }
     }
+    return { ok: false, activeOrgId: null, orgs: [], error: 'Changing organization needs a newer desktop app.' };
   }
-  return { ok: false, activeOrgId: null, orgs: [], error: 'Changing organization needs the desktop app.' };
+
+  const { switchWebOrganization } = await import('../lib/keycloak');
+  const result = await switchWebOrganization(organizationId);
+  if (result.ok) {
+    return {
+      ok: true,
+      activeOrgId: result.activeOrgId,
+      orgs: [],
+      reloadRequired: result.reloadRequired,
+      clearTenantState: result.clearTenantState,
+    };
+  }
+  if (result.reloadRequired) {
+    return {
+      ok: false,
+      activeOrgId: null,
+      orgs: [],
+      error: result.reason,
+      reloadRequired: true,
+      clearTenantState: result.clearTenantState,
+    };
+  }
+  return {
+    ok: false,
+    activeOrgId: null,
+    orgs: [],
+    error: result.reason,
+    reloadRequired: false,
+    clearTenantState: false,
+  };
 }
 
 export async function mindshubGetCachedToken(): Promise<string | null> {

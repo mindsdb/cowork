@@ -29,6 +29,7 @@ import { ConfirmModal } from '../ConfirmModal';
 import { OverflowMenu } from '../OverflowMenu';
 import * as host from '../../../platform/host';
 import { useFileDrop, FileDropOverlay } from '../../lib/useFileDrop';
+import { openAuthenticatedResource } from '../../lib/authenticatedResource';
 
 function relativeAge(ts) {
   if (!ts) return '';
@@ -785,7 +786,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, showMemor
                   icon: Ico.upload(13),
                   onClick: () => {
                     closeAttachmentMenu();
-                    host.openExternal(rawUrl);
+                    openAuthenticatedResource(rawUrl, { filename: item.name }).catch(() => {});
                   },
                 },
                 {

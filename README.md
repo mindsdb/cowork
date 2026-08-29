@@ -283,7 +283,7 @@ All channels defined in `src/shared/ipc-channels.ts`:
 | `mindshub:finalize`                                 | invoke    | Pick the organization and hand the credential to the sidecar |
 | `mindshub:get-cached-token`                         | invoke    | Read cached MindsHub token                |
 | `mindshub:list-orgs`                                | invoke    | Organizations this account belongs to     |
-| `mindshub:switch-org`                               | invoke    | Change organization and move the key      |
+| `mindshub:switch-org`                               | invoke    | Change organization and refresh the session credential |
 | `app:ready`                                         | send      | App finished initializing                 |
 | `app:get-platform/ui-version/open-external`         | invoke    | Platform info, open URLs                  |
 | `shell:show-item-in-folder`                         | invoke    | OS shell operations                       |
@@ -441,11 +441,11 @@ flag could not be switched off in an incident. `COWORK_HUB_WORKSPACES_FORCE_ON=t
 on the sidecar is an ON-only development override for walking the surface where no
 rule targets you.
 
-**The renderer never calls auth.** It calls its own sidecar at
-`/api/v1/hub/workspaces/`, which forwards. Auth's ingress allows the console
-origins and no Cowork host, and a per-PR Cowork host cannot be added to a static
-allow-list, so a direct call would work in the packaged app (`webSecurity` is off
-there) and fail in the web SPA.
+**The workspace selector never calls Django auth directly.** It calls its own
+sidecar at `/api/v1/hub/workspaces/`, which forwards. Django auth's ingress
+allows the console origins and no Cowork host, and a per-PR Cowork host cannot
+be added to a static allow-list. A direct call would therefore work in the
+packaged app (`webSecurity` is off there) and fail in the web SPA.
 
 **The credential goes in `X-MindsHub-Authorization`, not `Authorization`.** The
 main process overwrites `Authorization` on every loopback request with the
@@ -455,14 +455,19 @@ sidecar's own token, so the Keycloak JWT cannot arrive under that name.
 Attribution rides the credential a turn presents, and neither credential carries a
 workspace today.
 
-### Which organization a turn is billed to
+### Which organization the session uses
 
-The credential the sidecar presents is the user's own token, and the
-active-organization claim on it is what the gateway reads to decide whose
-credits a turn spends. So the choice is made by switching the active
-organization and re-rolling the token. The rules live in
-[src/shared/minds-orgs.ts](src/shared/minds-orgs.ts) and the calls in
-[src/main/minds-auth.ts](src/main/minds-auth.ts).
+The access token's `activate_organization` claim decides whose credits a turn
+spends. On web it also partitions tasks, settings, and storage; desktop's local
+database is not organization-filtered. The current server auth path resolves
+that identity for each request. A turn already in flight keeps the scope it
+started with; later requests use the refreshed credential's organization.
+
+Packaged desktop sign-in still runs through the Electron bridge and main
+process. Main owns the Keycloak session and hands its access token to the
+sidecar at `/api/v1/runtime-credential/minds`. Its selection rules live in
+[src/shared/minds-orgs.ts](src/shared/minds-orgs.ts), and the Keycloak calls live
+in [src/main/minds-auth.ts](src/main/minds-auth.ts).
 
 Three things decide it, in order:
 
@@ -480,26 +485,75 @@ Three things decide it, in order:
 `ensureActiveOrg` switches only when the answer differs from the claim, so an
 account with one organization makes no extra round-trip.
 
-Changing it later is the account menu's Organization group
-(`components/UserMenu.jsx`, hook `hooks/useMindsOrgs.js`), which reads and
-writes through main over `mindshub:list-orgs` and `mindshub:switch-org`. It is
-in the account menu rather than the rail because an organization is who pays;
-the workspace selector is a container inside one and lives above the New task
-CTA.
+Changing it later happens in the account menu's Organization group
+(`components/UserMenu.jsx`, hook `hooks/useMindsOrgs.js`). It lives there
+because an organization is who pays; the workspace selector is a container
+inside one and lives above the New task CTA.
 
-**A switch is switch, refresh, hand over, and the order is what makes a failure
-harmless.** Every step short of the hand-over is undone by switching back, and
-the pick is only remembered once the sidecar has taken the new token — so a
-failure anywhere leaves the app on the organization it started in rather than
-half-moved. There is no key to mint, retire, or roll back: the old token simply
-expires on its own ten-minute clock, and a turn already running finishes on the
-credential it started with.
+Desktop lists and switches through `mindshub:list-orgs` and
+`mindshub:switch-org`. Main switches the Keycloak session, refreshes its token,
+and hands that token to the sidecar before it reports success. A later failure
+switches back, and main stores the preference only after the hand-over succeeds.
 
-**Naming the organization needs the listing, not the token.** The realm issues
-the claim as `activate_organization` and it carries no display name, so a
-personal organization arrives as the raw `personal_<userId>` while Keycloak
-holds the label auth generated (`<email>'s organization`). The claim supplies
-the id and the listing supplies the name.
+Web lists and switches directly against Keycloak through `public-client`;
+cowork-server has no organization-switch write proxy. The selector has no
+product or authorization feature flag, but it stays hidden until the
+same-origin server reports organization-boundary protocol v1 as both enforced
+and enabled. That compatibility handshake lets the transition-aware client
+deploy before old browser bundles are rejected and the picker is exposed. The
+menu shows switch rows only when the listing contains multiple organizations.
+Names also come from the listing, including the generated label for a personal
+organization; the token claim supplies only its id. An unsuccessful read times
+out after ten seconds, keeps the rows hidden, and retries after 2, 8, and 30
+seconds.
+
+After Keycloak accepts the web switch `PUT`, Cowork forces
+`keycloak.updateToken(-1)`. A confirmed switch, or any result where the `PUT`
+may have committed, clears the settings and composer-draft caches and hard
+reloads every open same-origin Cowork document. On canonical web, settings and
+drafts are namespaced by the initial token's subject and organization as well
+as the durable transition epoch. That keeps a close, external Keycloak switch,
+and reopen from hydrating the former organization's data; the epoch also means
+a late old-document write cannot overwrite or delete the current value. A
+switch request that does not settle within ten seconds is treated as possibly
+committed. Known refusal statuses 400, 401, 403, and 404 leave the current page
+and organization in place.
+
+Web Locks serializes switch attempts across tabs, and a local-storage marker
+blocks ordinary token reads from the moment the `PUT` starts until refusal or
+reload. Each document remembers the epoch in which its JavaScript heap started
+and rechecks it after bfcache restore. A browser without exclusive Web Locks or
+writable same-origin storage refuses before sending the `PUT`.
+
+Mandatory reloads are budgeted. A tab that reloads three times inside ten
+seconds did no work in between, which is a loop rather than a person changing
+organization, so the fourth reload does not happen. That tab has already
+cleared its tenant caches and it goes on refusing access tokens, so it fails
+closed and visibly instead of reloading forever.
+
+Every authenticated browser API request also carries
+`X-Cowork-Expected-Organization-Id`, pinned to the organization in which that
+document started. Once the server boundary is enforced, a missing header from a
+pre-protocol bundle receives an upgrade response, while a header that differs
+from the gateway-resolved organization receives a mandatory-reload response.
+This closes the gap between the token check and actual request dispatch, and it
+also catches a Keycloak session change made from another origin. The client
+clears tenant state and reloads before consuming such a response.
+
+Canonical-web attachment and project-file bytes use that same authenticated
+fetch path, then render, open, or download from a checked Blob URL; a native
+resource navigation cannot attach the expected-organization header. Project
+HTML preview URLs are the exception: the server mints a short-lived preview
+token bound to the requesting tenant scope, so a token requested in one
+organization returns no content after the principal changes. Private artifact
+`serveUrl` routes are unavailable in org tenancy and therefore are not part of
+the organization-switch protocol.
+
+Rollout is ordered: deploy the protocol-capable client with the picker hidden;
+deploy cowork-server in audit mode; enforce the expected-organization boundary
+while the capability remains disabled; then enable the capability only after
+every server replica enforces it. Do not combine enforcement and enablement in
+one rollout.
 
 ### A model the wallet can't pay for is not selectable
 
