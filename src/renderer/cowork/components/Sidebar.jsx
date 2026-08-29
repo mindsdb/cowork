@@ -429,6 +429,8 @@ export default function Sidebar({
   return (
     <aside
       className={`app-sidebar${collapsed ? ' collapsed' : ''} shrink-0 h-full bg-[var(--sidebar-bg,var(--surface))] border border-solid border-line rounded-[14px] shadow-sh-2 origin-left flex flex-col overflow-hidden will-change-[width,opacity,transform,filter] [transition:width_380ms_cubic-bezier(0.22,1,0.36,1),opacity_260ms_cubic-bezier(0.32,0.72,0,1),transform_420ms_cubic-bezier(0.22,1,0.36,1),filter_240ms_cubic-bezier(0.32,0.72,0,1)]`}
+      aria-hidden={collapsed || undefined}
+      inert={collapsed ? true : undefined}
       style={{
         // Dynamic-only: everything else about this transition lives in the
         // className above. These four properties are collapsed-state-driven
