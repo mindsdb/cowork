@@ -18,7 +18,7 @@ vi.mock('../platform/host', async (importOriginal) => ({
 const setAntonInstallId = vi.hoisted(() => vi.fn());
 vi.mock('./lib/analytics', () => ({ setAntonInstallId }));
 
-import { fetchRecommendedModels, fetchSettings, updateSettings, revealSettingKey, streamNewSession, fetchHealth, fetchInFlightList, cancelResponse } from './api';
+import { fetchRecommendedModels, fetchSettings, updateSettings, revealSettingKey, streamNewSession, fetchHealth, fetchInFlightList, cancelResponse, fetchHubWorkspaces } from './api';
 import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 
 const jsonRes = (body, ok = true, status = 200) => ({
@@ -700,5 +700,78 @@ describe('cancelResponse', () => {
 
   it('never throws on a missing conversation id', async () => {
     expect(await cancelResponse('')).toEqual({ status: 'gone', conversation_id: '' });
+  });
+});
+
+/*
+ * Which failures `fetchHubWorkspaces` answers and which it re-throws is the
+ * whole retry contract, and it cannot be seen from the hook's tests: those mock
+ * this module, so a version that swallows everything again keeps them green.
+ * A definite answer is answered; a transient one is thrown for the caller to
+ * ask again.
+ */
+describe('fetchHubWorkspaces', () => {
+  const DARK = { enabled: false, reachable: false, workspaces: [], activeWorkspaceId: null };
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  // Captures the call, because the resolved value alone left the route and the
+  // credential header unpinned: renaming the path or dropping `hubHeaders()`
+  // kept all five cases green, and the header is the only reason the sidecar
+  // forwards anything to auth.
+  let calls;
+  const respond = (res) => {
+    calls = [];
+    vi.stubGlobal('fetch', vi.fn(async (url, options) => {
+      calls.push({ url: String(url), options });
+      return res;
+    }));
+  };
+
+  it('answers dark for a 404, because a sidecar without the route will not grow one', async () => {
+    respond(jsonRes({ detail: 'Not Found' }, false, 404));
+
+    await expect(fetchHubWorkspaces()).resolves.toEqual(DARK);
+  });
+
+  it('throws on a 5xx, so one blip at launch does not hide the control for the session', async () => {
+    respond(jsonRes({ detail: 'boom' }, false, 502));
+
+    await expect(fetchHubWorkspaces()).rejects.toThrow();
+  });
+
+  it('throws when the sidecar is not listening yet', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('Failed to fetch'); }));
+
+    await expect(fetchHubWorkspaces()).rejects.toThrow();
+  });
+
+  it('answers dark when the body is not an object', async () => {
+    respond(jsonRes('nope'));
+
+    await expect(fetchHubWorkspaces()).resolves.toEqual(DARK);
+  });
+
+  it('passes a 200 through as the server sent it', async () => {
+    const payload = { enabled: true, reachable: true, workspaces: [], activeWorkspaceId: null };
+    respond(jsonRes(payload));
+
+    await expect(fetchHubWorkspaces()).resolves.toEqual(payload);
+  });
+
+  it('asks the workspaces route and carries the credential in its own header', async () => {
+    // `Authorization` is taken by the loopback token in the desktop shell, so
+    // the caller's JWT has to travel under X-MindsHub-Authorization or the
+    // sidecar has nothing to forward.
+    hostMock.getAccessToken.mockResolvedValueOnce('jwt-abc');
+    respond(jsonRes({ enabled: false, reachable: false, workspaces: [], activeWorkspaceId: null }));
+
+    await fetchHubWorkspaces();
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toMatch(/\/api\/v1\/hub\/workspaces\/$/);
+    expect(calls[0].options.headers['X-MindsHub-Authorization']).toBe('Bearer jwt-abc');
   });
 });

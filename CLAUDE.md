@@ -214,9 +214,9 @@ Dark/light via `body[data-theme="dark"]` selector. Colors defined as CSS variabl
 - Debug Electron with DevTools open from start: `npm run dev:debug`.
 - Renderer build-time globals: `__APP_VERSION__`, `__GIT_HASH__`, `__BUILD_TIME__` (baked by Vite).
 - Build target toggle: `BUILD_TARGET=web vite build src/renderer` for web SPA.
-- The account menu's workspace group is gated server-side, not by a build flag: auth's
+- The sidebar's workspace selector is gated server-side, not by a build flag: auth's
   `authorization_ui` Statsig gate, read by cowork-server and passed to the renderer in
   `/api/v1/hub/workspaces/`. To develop against it, set `COWORK_HUB_WORKSPACES_FORCE_ON=true`
   on the sidecar (ON only; it cannot switch the surface off). Details in the README under
-  "The workspace group in the account menu".
+  "The workspace selector at the top of the sidebar".
 - Coding Mode is parked behind `CODING_MODE_OPTIONS_ENABLED=true` while unfinished — unset or anything else defaults to off, hiding its Settings section, the toggle, the floating corner button, and the harness picker entirely (`main/preload.ts` reads it once into `codingModeOptionsEnabled` on the bridge; `platform/host.ts` mirrors it, defaulting false on web too). Set it in the shell before `npm run dev`/`make dev` to develop against it.

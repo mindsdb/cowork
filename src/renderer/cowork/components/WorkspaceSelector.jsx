@@ -48,21 +48,29 @@ export function WorkspaceTile({ id, name, size = 18 }) {
 const workspaceName = (workspace) => workspace?.displayName || 'Workspace';
 
 export function WorkspaceSelector({ user }) {
-  const { enabled, workspaces, activeWorkspaceId, switching, switchWorkspace } =
+  const { enabled, reachable, workspaces, activeWorkspaceId, switching, switchWorkspace } =
     useHubWorkspaces(user);
   const toastManager = useToastManager();
 
   const pick = async (workspaceId) => {
     try {
       await switchWorkspace(workspaceId);
-    } catch {
+    } catch (err) {
       // A written sentence rather than the error's own message: a refusal
       // arrives as "API /hub/workspaces/active returned 403", which tells the
       // reader nothing and reads like a crash. Nothing is applied
       // optimistically, so without this a refused switch looks like a dead
       // menu item.
+      //
+      // 409 gets its own sentence because it is the one refusal retrying cannot
+      // fix. The server distinguishes "archived" from every other failure on
+      // purpose, so collapsing it into "try again" would send someone round a
+      // loop that has no exit.
       toastManager.add({
-        title: 'We could not switch workspace. Please try again.',
+        title:
+          err?.status === 409
+            ? 'That workspace has been archived. Pick another one.'
+            : 'We could not switch workspace. Please try again.',
         type: 'danger',
       });
     }
@@ -74,7 +82,13 @@ export function WorkspaceSelector({ user }) {
   // Nothing to show until the gate is on and the hub answered. Rendering a
   // placeholder row would reserve space in the rail for a control that may
   // never appear, which reads as a layout bug on every launch.
-  if (!enabled || !active) return null;
+  //
+  // `reachable` is checked rather than inferred from an empty list. The server
+  // does send both, and today an unreachable read also carries no rows, so
+  // leaning on that would pass every test while resting on a coincidence: the
+  // moment a partial answer arrives, the control would name a workspace nobody
+  // confirmed.
+  if (!enabled || !reachable || !active) return null;
 
   const activeName = workspaceName(active);
 
@@ -94,12 +108,21 @@ export function WorkspaceSelector({ user }) {
         id: `workspace-${workspace.id}`,
         icon: <WorkspaceTile id={workspace.id} name={name} />,
         label: name,
-        // Long names truncate in the row, so hover carries the full one.
+        // Long names truncate in the row, so hover carries the full one. Only
+        // that: a title is the accessible DESCRIPTION, not the state, so it
+        // cannot be what tells assistive tech which row you are on.
         title: name,
+        // That job is `aria-current`. Without it the only cue on the active row
+        // is `aria-disabled`, which announces as "dimmed" and reads as
+        // unavailable rather than as "you are here". The tick is decorative and
+        // the label is the accessible name, so this is the one place the state
+        // can live where a screen reader will reach it.
+        aria: isActive ? { 'aria-current': 'true' } : undefined,
         // The trigger already names the active workspace, but both reference
-        // consoles mark it in the list too, and without it the only signal is
-        // the row being disabled, which reads as "unavailable" rather than
-        // "you are here".
+        // consoles mark it in the list too, and without it the only visible
+        // signal is the row being disabled. lucide marks its own icons
+        // `aria-hidden` when no other a11y prop is passed, so there is nothing
+        // to add here.
         hint: isActive ? <Check size={13} strokeWidth={2} className="text-accent" /> : undefined,
         // The active row is not a destination, and a second click during an
         // in-flight switch would race the first.

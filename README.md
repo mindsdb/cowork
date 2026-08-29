@@ -391,26 +391,45 @@ A sidecar you start by hand, outside the app, therefore has no MindsHub
 credential. Set `ANTON_MINDS_API_KEY` yourself with a key minted in the console
 if you need one for that.
 
-### The workspace group in the account menu
+### The workspace selector at the top of the sidebar
 
-The footer account menu lists the MindsHub workspaces the signed-in person can
-use, under the org name, with a check on the active one. A **MindsHub Workspace**
-is an org-internal container that owns hub resources (API keys, artifacts, model
-entitlements) and lives in the auth service. It is not the working folder this app
-calls a workspace, which is why the stored key and the code are named
-`hubWorkspace` throughout. There is no create entry: workspaces are created in
-the console.
+A bordered control between the wordmark and the New task CTA names the MindsHub
+workspace you are working in, and opens a menu listing every workspace you can
+use with a check on the active one. A **MindsHub Workspace** is an org-internal
+container that owns hub resources (API keys, artifacts, model entitlements) and
+lives in the auth service. It is not the working folder this app calls a
+workspace, which is why the stored key and the code are named `hubWorkspace`
+throughout. There is no create entry: workspaces are created in the console, and
+the last row deep-links there.
 
-Four things decide whether the group appears, and all four fail towards the menu
-looking exactly as it does today:
+It sits in the sidebar rather than inside the account menu, which is where it
+shipped first. Two things were wrong with that: the current workspace was
+invisible until you opened the menu, which is the opposite of what a scope
+indicator is for, and the account menu is where the organization selector lands,
+so two levels of one hierarchy would have nested inside a menu about identity.
 
-| State | Group |
-|-------|-------|
+Four states hide the control, and each of them leaves the sidebar exactly as it
+looks today. A single workspace does NOT: "which workspace am I in" is the
+question this exists to answer, and hiding it below two workspaces reproduces
+the invisibility it fixes.
+
+| State | Control |
+|-------|---------|
 | The gate is off | absent |
 | The read has not come back yet | absent |
 | The hub could not be reached | absent |
-| One workspace and nothing to switch to | absent |
+| Gate on and reachable, but the org has no workspace | absent |
+| One workspace and nothing to switch to | shown, and it opens |
 | Two or more, gate on | shown |
+
+A read that has not settled is retried three times over about forty seconds and
+then left alone. The renderer can mount before the sidecar is listening, so one
+attempt per session made an ordinary cold-start blip hide the control until the
+app was relaunched. Two shapes count as unsettled: a thrown transport error or
+5xx, and a 200 that says the gate is on but the hub could not be reached, which
+is how the sidecar reports a failed hop to auth in band. A 404 is not retried,
+because a sidecar without the route will not grow one, and neither is a
+gate-off answer, because it is definite.
 
 **The switch is a server-side Statsig gate, not a build flag.** Auth declares
 `authorization_ui` in its own `configs/statsig_gates.json`, evaluates it with its

@@ -1282,22 +1282,31 @@ async function hubHeaders() {
  * The workspace selector's whole state: whether the surface is on, whether the
  * hub could be reached, the rows, and which one is active.
  *
- * Never throws. A signed-out app, an unreachable sidecar, and an old sidecar
- * with no such route all answer the same disabled shape, because each is a
- * state where the menu should render exactly as it does today.
+ * Answers the disabled shape for the two DEFINITE answers, and throws for
+ * everything else. A 404 is definite: this sidecar has no such route, so it
+ * never will and there is nothing to retry. A body that is not an object is the
+ * same. A 5xx, a dropped connection, or a sidecar that has not finished
+ * starting are all transient, and collapsing those into the disabled shape too
+ * is how one blip at launch hid the control for the rest of the session. The
+ * caller decides how many times to ask again.
  */
 export async function fetchHubWorkspaces() {
   try {
     const data = await req('/hub/workspaces/', { headers: await hubHeaders() });
     if (data && typeof data === 'object') return data;
-  } catch { /* an old sidecar has no such route: stay dark */ }
+  } catch (err) {
+    if (err?.status !== 404) throw err;
+  }
   return { enabled: false, reachable: false, workspaces: [], activeWorkspaceId: null };
 }
 
 /**
  * Switch the active workspace. Rejects on failure so the caller owns the
- * message; the server refuses a workspace the caller holds no grant on (403)
- * and refuses rather than guessing when it cannot reach the hub (503).
+ * message; the server refuses a workspace the caller holds no grant on (403),
+ * refuses an archived one with its own status so the UI can say retrying will
+ * not help (409), and refuses rather than guessing when it cannot reach the hub
+ * (503). `err.status` carries the code, which is what lets the caller tell the
+ * three apart.
  */
 export async function setActiveHubWorkspace(workspaceId) {
   return req('/hub/workspaces/active', {
