@@ -523,6 +523,13 @@ export interface EngineCommand {
 }
 
 export type TerminalStatus = 'stopped' | 'running' | 'exited' | 'failed';
+export type TerminalShellPreference = 'auto' | 'bash' | 'zsh' | 'fish' | 'system' | 'pwsh' | 'powershell' | 'cmd';
+
+export interface TerminalShellInventory {
+  platform: string;
+  resolved: TerminalShellPreference;
+  items: Array<{ id: TerminalShellPreference; label: string }>;
+}
 
 export interface TerminalChunk {
   seq: number;
@@ -540,6 +547,22 @@ export interface TerminalPage {
   next_seq: number;
   exit_code?: number | null;
   error?: string | null;
+}
+
+export interface TerminalTab {
+  id: string;
+  label: string;
+  created_at: string;
+}
+
+export interface TerminalTabState extends TerminalTab {
+  status: TerminalStatus;
+  exit_code?: number | null;
+  error?: string | null;
+}
+
+export interface TerminalTabPage {
+  items: TerminalTabState[];
 }
 
 const EVENT_TYPES = new Set<CodingEvent['type']>([
@@ -715,17 +738,38 @@ const liveCodingApi = {
   completeSource: (id: string, body: { provider: 'github' | 'linear'; action: 'complete'; target_url: string; connection_name?: string | null; confirmed: boolean }) => requestJson<DeliveryRecord>(`/sessions/${encodeURIComponent(id)}/source-action`, {
     method: 'POST', body: JSON.stringify(body),
   }),
-  terminal: (id: string, after = 0) => requestJson<TerminalPage>(`/sessions/${encodeURIComponent(id)}/terminal?after=${after}`),
-  startTerminal: (id: string, cols: number, rows: number) => requestJson<TerminalPage>(`/sessions/${encodeURIComponent(id)}/terminal/start`, {
-    method: 'POST', body: JSON.stringify({ cols, rows }),
+  terminals: (id: string) => requestJson<TerminalTabPage>(`/sessions/${encodeURIComponent(id)}/terminals`),
+  terminalShells: () => requestJson<TerminalShellInventory>('/terminal-shells'),
+  createTerminal: (id: string, label?: string) => requestJson<TerminalTabState>(`/sessions/${encodeURIComponent(id)}/terminals`, {
+    method: 'POST', body: JSON.stringify({ label: label || null }),
   }),
-  terminalInput: (id: string, dataBase64: string) => requestJson<TerminalPage>(`/sessions/${encodeURIComponent(id)}/terminal/input`, {
-    method: 'POST', body: JSON.stringify({ data_base64: dataBase64 }),
-  }),
-  resizeTerminal: (id: string, cols: number, rows: number) => requestJson<TerminalPage>(`/sessions/${encodeURIComponent(id)}/terminal/resize`, {
-    method: 'POST', body: JSON.stringify({ cols, rows }),
-  }),
-  stopTerminal: (id: string) => requestJson<TerminalPage>(`/sessions/${encodeURIComponent(id)}/terminal/stop`, { method: 'POST' }),
+  renameTerminal: (id: string, terminalId: string, label: string) => requestJson<TerminalTabState>(
+    `/sessions/${encodeURIComponent(id)}/terminals/${encodeURIComponent(terminalId)}`,
+    { method: 'PATCH', body: JSON.stringify({ label }) },
+  ),
+  deleteTerminal: (id: string, terminalId: string) => requestJson<void>(
+    `/sessions/${encodeURIComponent(id)}/terminals/${encodeURIComponent(terminalId)}`,
+    { method: 'DELETE' },
+  ),
+  terminal: (id: string, terminalId: string, after = 0) => requestJson<TerminalPage>(
+    `/sessions/${encodeURIComponent(id)}/terminals/${encodeURIComponent(terminalId)}?after=${after}`,
+  ),
+  startTerminal: (id: string, terminalId: string, cols: number, rows: number, shell: TerminalShellPreference = 'auto') => requestJson<TerminalPage>(
+    `/sessions/${encodeURIComponent(id)}/terminals/${encodeURIComponent(terminalId)}/start`,
+    { method: 'POST', body: JSON.stringify({ cols, rows, shell }) },
+  ),
+  terminalInput: (id: string, terminalId: string, dataBase64: string) => requestJson<TerminalPage>(
+    `/sessions/${encodeURIComponent(id)}/terminals/${encodeURIComponent(terminalId)}/input`,
+    { method: 'POST', body: JSON.stringify({ data_base64: dataBase64 }) },
+  ),
+  resizeTerminal: (id: string, terminalId: string, cols: number, rows: number) => requestJson<TerminalPage>(
+    `/sessions/${encodeURIComponent(id)}/terminals/${encodeURIComponent(terminalId)}/resize`,
+    { method: 'POST', body: JSON.stringify({ cols, rows }) },
+  ),
+  stopTerminal: (id: string, terminalId: string) => requestJson<TerminalPage>(
+    `/sessions/${encodeURIComponent(id)}/terminals/${encodeURIComponent(terminalId)}/stop`,
+    { method: 'POST' },
+  ),
 };
 
 const fixtureCodingApi = getCodeFixtureApi();
@@ -755,13 +799,14 @@ export function openCodingEventStream(
 
 export function openCodingTerminalStream(
   sessionId: string,
+  terminalId: string,
   after: number,
   onOutput: (chunk: TerminalChunk) => void,
   onState: (state: TerminalPage) => void,
   onError: () => void,
 ): () => void {
   if (fixtureCodingApi) return () => {};
-  const url = `${getApiOrigin()}/api/v1/coding/sessions/${encodeURIComponent(sessionId)}/terminal/stream?after=${after}`;
+  const url = `${getApiOrigin()}/api/v1/coding/sessions/${encodeURIComponent(sessionId)}/terminals/${encodeURIComponent(terminalId)}/stream?after=${after}`;
   const source = new EventSource(url);
   source.addEventListener('terminal-output', (raw) => {
     try {

@@ -1,207 +1,215 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
-import {
-  codingApi,
-  openCodingTerminalStream,
-  type TerminalChunk,
-  type TerminalPage,
-} from './api';
+import { codingApi, type TerminalPage, type TerminalTabState } from './api';
+import { TerminalScreen } from './TerminalScreen';
+import { getTerminalShellPreference } from './terminalPreferences';
 
 
-function terminalTheme() {
-  const style = getComputedStyle(document.body);
-  const token = (name: string, fallback: string) => style.getPropertyValue(name).trim() || fallback;
-  const ink = token('--ink', '#e6e6e6');
-  return {
-    background: token('--surface-0', '#0b1220'),
-    foreground: ink,
-    cursor: ink,
-    cursorAccent: token('--surface-0', '#0b1220'),
-    selectionBackground: token('--line-2', '#334155'),
-  };
+const MAX_TERMINALS = 12;
+const initializationRequests = new Map<string, Promise<TerminalTabState[]>>();
+
+
+function savedTerminalId(sessionId: string): string | null {
+  try { return window.localStorage.getItem(`mindshub-code-terminal:${sessionId}`); } catch { return null; }
 }
 
 
-function decodeBase64(value: string): Uint8Array {
-  const binary = window.atob(value);
-  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+function saveTerminalId(sessionId: string, terminalId: string | null) {
+  try {
+    const key = `mindshub-code-terminal:${sessionId}`;
+    if (terminalId) window.localStorage.setItem(key, terminalId);
+    else window.localStorage.removeItem(key);
+  } catch { /* Storage can be unavailable in locked-down desktop environments. */ }
 }
 
 
-function encodeBase64(value: string): string {
-  const bytes = new TextEncoder().encode(value);
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return window.btoa(binary);
+function ensureTerminalTabs(sessionId: string): Promise<TerminalTabState[]> {
+  const pending = initializationRequests.get(sessionId);
+  if (pending) return pending;
+  const request = codingApi.terminals(sessionId)
+    .then(async ({ items }) => items.length ? items : [await codingApi.createTerminal(sessionId)])
+    .finally(() => initializationRequests.delete(sessionId));
+  initializationRequests.set(sessionId, request);
+  return request;
 }
 
 
-function writeChunk(terminal: { write: (data: Uint8Array) => void }, chunk: TerminalChunk) {
-  try { terminal.write(decodeBase64(chunk.data_base64)); } catch { /* Ignore an invalid transport chunk. */ }
+function statusLabel(state: Pick<TerminalTabState, 'status' | 'exit_code'>): string {
+  if (state.status === 'running') return 'Running';
+  if (state.status === 'failed') return 'Disconnected';
+  if (state.status === 'stopped') return 'Ready';
+  return `Exited${state.exit_code == null ? '' : ` with code ${state.exit_code}`}`;
 }
 
 
 export function TaskTerminal({ sessionId, onClose }: { sessionId: string; onClose: () => void }) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const restartRequested = useRef(false);
-  const stopRequested = useRef(false);
-  const statusRef = useRef<TerminalPage['status']>('stopped');
   const dragCleanupRef = useRef<(() => void) | null>(null);
+  const expectedDisconnectsRef = useRef(new Set<string>());
+  const loadedSessionRef = useRef<string | null>(null);
+  const renameSavingRef = useRef(false);
+  const renameCancelledRef = useRef(false);
   const [height, setHeight] = useState(250);
-  const [generation, setGeneration] = useState(0);
-  const [state, setState] = useState<TerminalPage | null>(null);
+  const [tabs, setTabs] = useState<TerminalTabState[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [screenGeneration, setScreenGeneration] = useState(0);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let disposed = false;
-    let closeStream = () => {};
-    let terminal: import('@xterm/xterm').Terminal | null = null;
-    let fitAddon: import('@xterm/addon-fit').FitAddon | null = null;
-    let resizeObserver: ResizeObserver | null = null;
-    let themeObserver: MutationObserver | null = null;
-    let resizeTimer: number | undefined;
-    let lastSize = '';
+    loadedSessionRef.current = null;
+    setLoading(true);
+    setError('');
+    void ensureTerminalTabs(sessionId).then((items) => {
+      if (disposed) return;
+      const preferred = savedTerminalId(sessionId);
+      const nextSelected = items.some((item) => item.id === preferred) ? preferred! : items[0]?.id || null;
+      setTabs(items);
+      setSelectedId(nextSelected);
+      loadedSessionRef.current = sessionId;
+      setLoading(false);
+    }).catch((reason) => {
+      if (disposed) return;
+      setError(reason instanceof Error ? reason.message : 'Could not open the terminal.');
+      setLoading(false);
+    });
+    return () => { disposed = true; };
+  }, [sessionId]);
 
-    const connect = async () => {
-      try {
-        const [{ Terminal }, { FitAddon }] = await Promise.all([
-          import('@xterm/xterm'),
-          import('@xterm/addon-fit'),
-          import('@xterm/xterm/css/xterm.css'),
-        ]);
-        if (disposed || !containerRef.current) return;
-        terminal = new Terminal({
-          allowProposedApi: true,
-          cursorBlink: true,
-          fontFamily: 'var(--font-mono, ui-monospace, monospace)',
-          fontSize: 12.5,
-          scrollback: 100_000,
-          theme: terminalTheme(),
-        });
-        fitAddon = new FitAddon();
-        terminal.loadAddon(fitAddon);
-        terminal.open(containerRef.current);
-        fitAddon.fit();
-        terminal.focus();
-        terminal.attachCustomKeyEventHandler((event) => {
-          if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'c' && terminal?.hasSelection()) {
-            void navigator.clipboard.writeText(terminal.getSelection());
-            return false;
-          }
-          return true;
-        });
-        terminal.onData((data) => {
-          codingApi.terminalInput(sessionId, encodeBase64(data)).catch((reason) => {
-            if (!disposed) setError(reason instanceof Error ? reason.message : 'Could not write to terminal.');
-          });
-        });
-
-        let page = await codingApi.terminal(sessionId);
-        if (disposed) return;
-        page.items.forEach((chunk) => writeChunk(terminal!, chunk));
-        if (page.status === 'stopped' || restartRequested.current) {
-          restartRequested.current = false;
-          page = await codingApi.startTerminal(sessionId, terminal.cols, terminal.rows);
-          if (disposed) return;
-          page.items.forEach((chunk) => writeChunk(terminal!, chunk));
-        }
-        stopRequested.current = false;
-        statusRef.current = page.status;
-        setState(page);
-        closeStream = openCodingTerminalStream(
-          sessionId,
-          page.next_seq,
-          (chunk) => {
-            if (!disposed && terminal) writeChunk(terminal, chunk);
-          },
-          (nextState) => {
-            statusRef.current = nextState.status;
-            if (!disposed) setState(nextState);
-          },
-          () => {
-            if (!disposed && !stopRequested.current && statusRef.current === 'running') {
-              setError('Terminal connection interrupted. Reopen it to reconnect.');
-            }
-          },
-        );
-
-        themeObserver = new MutationObserver(() => {
-          if (terminal) terminal.options.theme = terminalTheme();
-        });
-        themeObserver.observe(document.body, { attributes: true, attributeFilter: ['data-theme', 'data-skin'] });
-        resizeObserver = new ResizeObserver(() => {
-          if (!terminal || !fitAddon) return;
-          fitAddon.fit();
-          const size = `${terminal.cols}x${terminal.rows}`;
-          if (size === lastSize) return;
-          lastSize = size;
-          window.clearTimeout(resizeTimer);
-          resizeTimer = window.setTimeout(() => {
-            codingApi.resizeTerminal(sessionId, terminal!.cols, terminal!.rows).catch(() => {});
-          }, 80);
-        });
-        resizeObserver.observe(containerRef.current);
-      } catch (reason) {
-        if (!disposed) setError(reason instanceof Error ? reason.message : 'Terminal is unavailable.');
-      }
-    };
-    void connect();
-    return () => {
-      disposed = true;
-      closeStream();
-      window.clearTimeout(resizeTimer);
-      resizeObserver?.disconnect();
-      themeObserver?.disconnect();
-      terminal?.dispose();
-    };
-  }, [generation, sessionId]);
+  useEffect(() => {
+    if (loadedSessionRef.current === sessionId) saveTerminalId(sessionId, selectedId);
+  }, [selectedId, sessionId]);
 
   useEffect(() => () => dragCleanupRef.current?.(), []);
 
-  const restart = async () => {
+  const selected = tabs.find((tab) => tab.id === selectedId) || null;
+
+  const updateState = useCallback((terminalId: string, state: TerminalPage) => {
+    setTabs((current) => current.map((tab) => tab.id === terminalId ? {
+      ...tab,
+      status: state.status,
+      exit_code: state.exit_code,
+      error: state.error,
+    } : tab));
+  }, []);
+
+  const handleSelectedState = useCallback((state: TerminalPage) => {
+    if (selectedId) updateState(selectedId, state);
+  }, [selectedId, updateState]);
+
+  const isDisconnectExpected = useCallback(
+    (terminalId: string) => expectedDisconnectsRef.current.has(terminalId),
+    [],
+  );
+
+  const addTerminal = async () => {
+    if (busy || tabs.length >= MAX_TERMINALS) return;
     setBusy(true);
     setError('');
     try {
-      setState(null);
-      restartRequested.current = true;
-      stopRequested.current = false;
-      setGeneration((value) => value + 1);
+      const tab = await codingApi.createTerminal(sessionId);
+      setTabs((current) => [...current, tab]);
+      setSelectedId(tab.id);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Could not create a terminal.');
     } finally {
       setBusy(false);
+    }
+  };
+
+  const beginRename = (tab: TerminalTabState) => {
+    renameCancelledRef.current = false;
+    setRenamingId(tab.id);
+    setRenameValue(tab.label);
+  };
+
+  const commitRename = async () => {
+    const terminalId = renamingId;
+    const label = renameValue.trim();
+    if (!terminalId || renameSavingRef.current) return;
+    renameSavingRef.current = true;
+    setRenamingId(null);
+    if (!label) {
+      renameSavingRef.current = false;
+      return;
+    }
+    setError('');
+    try {
+      const updated = await codingApi.renameTerminal(sessionId, terminalId, label);
+      setTabs((current) => current.map((tab) => tab.id === terminalId ? updated : tab));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Could not rename the terminal.');
+    } finally {
+      renameSavingRef.current = false;
+    }
+  };
+
+  const deleteTerminal = async (terminalId: string) => {
+    if (busy) return;
+    setBusy(true);
+    setError('');
+    expectedDisconnectsRef.current.add(terminalId);
+    try {
+      await codingApi.deleteTerminal(sessionId, terminalId);
+      setTabs((current) => {
+        const index = current.findIndex((tab) => tab.id === terminalId);
+        const remaining = current.filter((tab) => tab.id !== terminalId);
+        if (selectedId === terminalId) {
+          setSelectedId(remaining[Math.min(index, remaining.length - 1)]?.id || null);
+        }
+        return remaining;
+      });
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Could not close the terminal.');
+    } finally {
+      setBusy(false);
+      window.setTimeout(() => expectedDisconnectsRef.current.delete(terminalId), 1_000);
     }
   };
 
   const stop = async () => {
+    if (!selected || busy) return;
     setBusy(true);
     setError('');
-    // The server closes the stream before the stop response can reach the
-    // renderer. Mark the intentional shutdown first so that close is not
-    // misreported as a dropped connection.
-    stopRequested.current = true;
-    statusRef.current = 'stopped';
+    expectedDisconnectsRef.current.add(selected.id);
     try {
-      const nextState = await codingApi.stopTerminal(sessionId);
-      statusRef.current = nextState.status;
-      setState(nextState);
+      const nextState = await codingApi.stopTerminal(sessionId, selected.id);
+      updateState(selected.id, nextState);
     } catch (reason) {
-      stopRequested.current = false;
-      statusRef.current = 'running';
       setError(reason instanceof Error ? reason.message : 'Could not stop the terminal.');
+    } finally {
+      setBusy(false);
+      window.setTimeout(() => expectedDisconnectsRef.current.delete(selected.id), 1_000);
+    }
+  };
+
+  const restart = async () => {
+    if (!selected || busy) return;
+    setBusy(true);
+    setError('');
+    try {
+      const nextState = await codingApi.startTerminal(
+        sessionId,
+        selected.id,
+        100,
+        30,
+        getTerminalShellPreference(),
+      );
+      updateState(selected.id, nextState);
+      setScreenGeneration((value) => value + 1);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Could not restart the terminal.');
     } finally {
       setBusy(false);
     }
   };
 
-  const statusLabel = !state ? 'Connecting' : state.status === 'running'
-    ? 'Running'
-    : state.status === 'failed'
-      ? 'Disconnected'
-      : `Exited${state.exit_code == null ? '' : ` · ${state.exit_code}`}`;
-
   return (
-    <section className="code-terminal" style={{ height }} aria-label="Task terminal">
+    <section className="code-terminal" style={{ height }} aria-label="Task terminals">
       <div
         className="code-terminal__resize"
         role="separator"
@@ -230,23 +238,72 @@ export function TaskTerminal({ sessionId, onClose }: { sessionId: string; onClos
         }}
       />
       <header className="code-terminal__header">
-        <div className="code-terminal__title">
-          <span>{Ico.code(13)}</span>
-          <strong>Terminal</strong>
-          <span className={`code-status-dot is-${state?.status === 'running' ? 'success' : 'neutral'}`} aria-hidden="true" />
-          <small>{statusLabel}</small>
+        <div className="code-terminal__tabs" role="tablist" aria-label="Terminal tabs">
+          <span className="code-terminal__mark" aria-hidden="true">{Ico.code(13)}</span>
+          {tabs.map((tab) => (
+            <div key={tab.id} className={`code-terminal__tab${tab.id === selectedId ? ' is-active' : ''}`}>
+              {renamingId === tab.id ? (
+                <input
+                  autoFocus
+                  aria-label={`Rename ${tab.label}`}
+                  value={renameValue}
+                  maxLength={48}
+                  onChange={(event) => setRenameValue(event.target.value)}
+                  onFocus={(event) => event.currentTarget.select()}
+                  onBlur={() => {
+                    if (renameCancelledRef.current) renameCancelledRef.current = false;
+                    else void commitRename();
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') void commitRename();
+                    if (event.key === 'Escape') {
+                      renameCancelledRef.current = true;
+                      setRenamingId(null);
+                    }
+                  }}
+                />
+              ) : (
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={tab.id === selectedId}
+                  aria-label={`${tab.label}, ${statusLabel(tab)}`}
+                  title="Double-click to rename"
+                  onClick={() => setSelectedId(tab.id)}
+                  onDoubleClick={() => beginRename(tab)}
+                  onContextMenu={(event) => { event.preventDefault(); beginRename(tab); }}
+                  onKeyDown={(event) => { if (event.key === 'F2') beginRename(tab); }}
+                >
+                  <span className={`code-status-dot is-${tab.status === 'running' ? 'success' : tab.status === 'failed' ? 'danger' : 'neutral'}`} aria-hidden="true" />
+                  <span>{tab.label}</span>
+                </button>
+              )}
+              <button
+                type="button"
+                className="code-terminal__tab-close"
+                aria-label={`Close ${tab.label}`}
+                disabled={busy}
+                onClick={() => void deleteTerminal(tab.id)}
+              >
+                {Ico.close(10)}
+              </button>
+            </div>
+          ))}
+          <button
+            type="button"
+            className="code-terminal__new"
+            aria-label="New terminal"
+            title={tabs.length >= MAX_TERMINALS ? `Up to ${MAX_TERMINALS} terminals per task` : 'New terminal'}
+            disabled={busy || tabs.length >= MAX_TERMINALS}
+            onClick={() => void addTerminal()}
+          >
+            {Ico.plus(12)}
+          </button>
         </div>
         <div className="code-terminal__actions">
-          {state?.status === 'running' ? (
-            <Button
-              size="sm"
-              variant="subtle"
-              disabled={busy}
-              onClick={() => void stop()}
-            >
-              Stop
-            </Button>
-          ) : state && (
+          {selected?.status === 'running' ? (
+            <Button size="sm" variant="subtle" disabled={busy} onClick={() => void stop()}>Stop</Button>
+          ) : selected && selected.status !== 'stopped' && (
             <Button size="sm" variant="subtle" disabled={busy} onClick={() => void restart()}>
               {Ico.refresh(12)} Restart
             </Button>
@@ -257,7 +314,21 @@ export function TaskTerminal({ sessionId, onClose }: { sessionId: string; onClos
         </div>
       </header>
       {error && <div className="code-terminal__error" role="alert">{error}</div>}
-      <div ref={containerRef} className="code-terminal__screen" />
+      {selectedId ? (
+        <TerminalScreen
+          key={`${selectedId}:${screenGeneration}`}
+          sessionId={sessionId}
+          terminalId={selectedId}
+          onState={handleSelectedState}
+          onError={setError}
+          isDisconnectExpected={isDisconnectExpected}
+        />
+      ) : (
+        <div className="code-terminal__empty">
+          <span>{loading ? 'Opening terminal…' : 'No terminals open'}</span>
+          {!loading && <Button size="sm" variant="subtle" onClick={() => void addTerminal()}>{Ico.plus(12)} New terminal</Button>}
+        </div>
+      )}
     </section>
   );
 }
