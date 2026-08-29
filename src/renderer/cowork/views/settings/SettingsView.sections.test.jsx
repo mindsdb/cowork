@@ -50,6 +50,12 @@ vi.mock('../ChannelsView', () => ({ default: () => <div data-testid="channels-st
 vi.mock('../../code/api', () => ({
   codingApi: {
     engines: vi.fn(async () => [{ id: 'codex', label: 'Codex', adapter_version: '1', available: true }]),
+    terminalShells: vi.fn(async () => ({
+      platform: 'darwin', resolved: 'bash', items: [
+        { id: 'auto', label: 'Automatic — Bash' },
+        { id: 'bash', label: 'Bash' },
+      ],
+    })),
     models: vi.fn(async () => ({ items: ['fable'] })),
   },
 }));
