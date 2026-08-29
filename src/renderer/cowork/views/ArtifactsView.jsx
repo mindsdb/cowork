@@ -249,6 +249,10 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
     if (canPreview) onOpenViewer?.(artifact);
     else if (published) onOpenPublished();
     else if (privateUrl) onOpenPrivate();
+    // Org mode, non-HTML, unshared: the draft URL still streams the bytes —
+    // save them rather than do nothing (ENG-2044). Same rule as
+    // artifactOpenTarget's 'download'.
+    else if (orgMode && artifact.draftUrl) downloadArtifactFile(artifact);
     else if (!orgMode) openArtifactFile(artifact);
   };
   // ↗
@@ -401,7 +405,9 @@ function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onOpenShared, on
       icon: Ico.folder(13),
       onClick: onReveal,
     },
-    onDownload && artifact?.serveUrl && {
+    // Presence of EITHER url, checked without building it: the org draft URL
+    // is what makes a non-HTML artifact downloadable on web (ENG-2044).
+    onDownload && (artifact?.serveUrl || artifact?.draftUrl) && {
       id: 'download',
       label: 'Download',
       icon: Ico.download(13),
@@ -445,7 +451,7 @@ function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onOpenShared, on
     .filter(Boolean)
     // Mode gate on top of each item's own condition — see lib/artifactActions.
     .filter((it) => it.divider || isArtifactActionAvailable(it.id, {
-      orgMode, hasBridge: host.isElectron, published,
+      orgMode, hasBridge: host.isElectron, published, hasDraft: !!artifact?.draftUrl,
     }));
 
   return (
@@ -1089,6 +1095,20 @@ export default function ArtifactsView({
               onClick: () => { try { revealArtifact(a.path); } catch { } },
             });
           }
+          /*
+           * Org mode only: the draft URL is the one route to a non-HTML file's
+           * bytes there (ENG-2044). Desktop's grid keeps its existing menu —
+           * the list view already offers Download from `serveUrl`, and this
+           * fix leaves desktop behaviour untouched.
+           */
+          if (orgMode && a.draftUrl) {
+            items.push({
+              id: 'download',
+              label: 'Download',
+              icon: Ico.download(13),
+              onClick: () => downloadArtifactFile(a),
+            });
+          }
           if (canManage) {
             items.push({ separator: true });
             items.push({
@@ -1108,7 +1128,7 @@ export default function ArtifactsView({
           // Note this menu marks its rule with `separator`, not `divider` like
           // ArtifactMenu, so the pass-through key differs.
           return items.filter((it) => it.separator || isArtifactActionAvailable(it.id, {
-            orgMode, hasBridge: host.isElectron, published,
+            orgMode, hasBridge: host.isElectron, published, hasDraft: !!a.draftUrl,
           }));
         })()}
       />

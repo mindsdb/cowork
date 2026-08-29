@@ -5,20 +5,27 @@
  * URL, so it is offered wherever an artifact is rendered; OS/file actions and
  * owner-side publish controls remain desktop-only.
  *
- * Open and Copy link need a published URL to point at; without one only Delete is
- * left. An action that cannot work is not offered rather than offered disabled —
- * there is nothing the user could do to enable it from the card.
+ * Open and Copy link need a published URL to point at. Download needs the
+ * authenticated draft URL: on an org deployment it is the only route to the
+ * bytes, and it is set for every artifact with a primary file — so a .xlsx or
+ * .docx the viewer cannot render is downloadable rather than a dead end
+ * (ENG-2044). An action that cannot work is not offered rather than offered
+ * disabled — there is nothing the user could do to enable it from the card.
  */
 
 const ORG_MODE_ALWAYS = new Set(['preview', 'delete']);
 const ORG_MODE_NEEDS_URL = new Set(['open', 'copy-url']);
-// These reach the local filesystem through the Electron bridge.
+const ORG_MODE_NEEDS_DRAFT = new Set(['download']);
+// These reach the local filesystem through the Electron bridge. `download` is
+// here for DESKTOP: there it streams the local serve URL, which the web build
+// against a local server also has — org mode answers it from the draft above.
 const NEEDS_BRIDGE = new Set(['reveal', 'download']);
 
-export function isArtifactActionAvailable(id, { orgMode, hasBridge, published } = {}) {
+export function isArtifactActionAvailable(id, { orgMode, hasBridge, published, hasDraft } = {}) {
   if (orgMode) {
     if (ORG_MODE_ALWAYS.has(id)) return true;
     if (ORG_MODE_NEEDS_URL.has(id)) return Boolean(published);
+    if (ORG_MODE_NEEDS_DRAFT.has(id)) return Boolean(hasDraft);
     return false;
   }
   // Second, independent gate: if /health was unreachable at boot then orgMode is a
@@ -31,8 +38,8 @@ export function isArtifactActionAvailable(id, { orgMode, hasBridge, published } 
  * What a click on the artifact's own body should do.
  *
  * `'preview'` opens the in-app viewer, `'os'` hands the path to the desktop
- * shell, `'published'` opens the public URL, `null` means the body is not
- * clickable at all.
+ * shell, `'published'` opens the public URL, `'download'` saves the file, and
+ * `null` means the body is not clickable at all.
  *
  * Separate from `isArtifactActionAvailable` because this is a choice between
  * mutually exclusive destinations rather than a per-action yes/no, and every
@@ -46,16 +53,22 @@ export function isArtifactActionAvailable(id, { orgMode, hasBridge, published } 
  * browser tab between the user and their own artifact, and the artifacts whose
  * draft cannot be rendered — a fullstack app, an image — still go there.
  *
+ * An org artifact the draft cannot render and nobody has shared still has its
+ * bytes behind the draft URL, so the click saves the file instead of dying
+ * with "no shared link yet" (ENG-2044). Only when there is no primary file at
+ * all is there genuinely nowhere to go.
+ *
  * `canPreviewInline` and `canPreviewDraft` stay the caller's to compute: the
  * extension rules differ slightly per surface and are not what this decides.
  * `canPreviewOrgDraft` in `artifactKinds.js` is the shared org-mode answer.
  */
 export function artifactOpenTarget({
-  orgMode, published, canPreviewInline, canPreviewDraft, hasBridge,
+  orgMode, published, canPreviewInline, canPreviewDraft, hasBridge, hasDraft,
 } = {}) {
   if (orgMode) {
     if (canPreviewDraft) return 'preview';
-    return published ? 'published' : null;
+    if (published) return 'published';
+    return hasDraft ? 'download' : null;
   }
   if (canPreviewInline) return 'preview';
   return hasBridge ? 'os' : null;

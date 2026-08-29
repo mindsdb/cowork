@@ -89,6 +89,24 @@ describe.each([
     openKebab();
     expect(screen.getByText(/Delete/)).toBeInTheDocument();
   });
+
+  it('offers Download for an artifact with a draft URL, shared or not (ENG-2044)', () => {
+    /*
+     * The draft URL is the one route to a non-HTML file's bytes on an org
+     * deployment. Both menu sites must offer it: the grid is the default view
+     * and the only one on mobile, so a list-only item leaves phones stuck.
+     */
+    render(<ArtifactsView artifacts={[cloudDraft]} />);
+    openKebab();
+    expect(screen.getByText('Download')).toBeInTheDocument();
+  });
+
+  it('does not offer Download without a draft URL', () => {
+    // Nothing to save yet: the artifact has no primary file the server can stream.
+    render(<ArtifactsView artifacts={[published]} />);
+    openKebab();
+    expect(screen.queryByText('Download')).toBeNull();
+  });
 });
 
 describe('list view kebab in org mode', () => {

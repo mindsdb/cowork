@@ -18,11 +18,29 @@ describe('org mode', () => {
       .toEqual(['preview', 'delete']);
   });
 
-  it('never offers publish control or local-content actions', () => {
+  it('never offers publish control or local-filesystem actions', () => {
     const ids = available({ orgMode: true, hasBridge: true, published: true });
-    for (const hidden of ['reveal', 'download', 'update', 'publish', 'unpublish']) {
+    for (const hidden of ['reveal', 'update', 'publish', 'unpublish']) {
       expect(ids).not.toContain(hidden);
     }
+  });
+
+  it('offers download for any artifact whose draft URL exists, shared or not', () => {
+    /*
+     * ENG-2044: on an org deployment the draft URL is the only route to the
+     * bytes, and it is set for every artifact with a primary file — so a
+     * .xlsx the viewer cannot render is saveable instead of a dead end.
+     */
+    expect(available({ orgMode: true, hasBridge: false, published: false, hasDraft: true }))
+      .toEqual(['preview', 'download', 'delete']);
+    expect(available({ orgMode: true, hasBridge: false, published: true, hasDraft: true }))
+      .toEqual(['open', 'preview', 'download', 'copy-url', 'delete']);
+  });
+
+  it('does not offer download without a draft URL, bridge or not', () => {
+    // A bridge is a desktop fact; it must not be what decides an org action.
+    expect(available({ orgMode: true, hasBridge: true, published: true, hasDraft: false }))
+      .not.toContain('download');
   });
 });
 
@@ -104,10 +122,29 @@ describe('artifactOpenTarget', () => {
     })).toBe('published');
   });
 
-  it('is not clickable in org mode without a preview or a published URL', () => {
+  it('saves the file for an org draft the viewer cannot render and nobody shared', () => {
     /*
-     * Nothing to open: the draft cannot be rendered, and the OS handoff needs
-     * bytes this deployment does not serve.
+     * ENG-2044: a .xlsx / .docx / .zip on web. No preview, no shared page — but
+     * the draft URL streams the bytes, so the click downloads rather than dies.
+     * `canPreviewInline` is the desktop answer and must not leak in here.
+     */
+    expect(artifactOpenTarget({
+      orgMode: true, published: false, canPreviewInline: true, canPreviewDraft: false,
+      hasBridge: true, hasDraft: true,
+    })).toBe('download');
+  });
+
+  it('prefers the shared page over a download when both exist', () => {
+    // A collaborator's view of the artifact is the thing the user asked to "open".
+    expect(artifactOpenTarget({
+      orgMode: true, published: true, canPreviewDraft: false, hasDraft: true,
+    })).toBe('published');
+  });
+
+  it('is not clickable in org mode with no preview, no published URL and no draft', () => {
+    /*
+     * Genuinely nothing to open: no primary file exists yet, so there is no
+     * draft URL either. This is the only case that keeps the dead-end reason.
      */
     expect(artifactOpenTarget({
       orgMode: true, published: false, canPreviewInline: true, hasBridge: true,

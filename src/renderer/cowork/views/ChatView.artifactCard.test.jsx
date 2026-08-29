@@ -234,12 +234,36 @@ describe('inline artifact banner in org mode', () => {
     }
   });
 
-  it('says why it has nowhere to go, instead of blaming the file path', () => {
+  it('offers Download for an image the draft cannot render but does hold (ENG-2044)', async () => {
     /*
-     * An unpublished image is this state permanently: only .html and .md are
-     * publishable, and the draft preview excludes images. The card has a fine
-     * server path and prints it, so "No file path" was both the wrong reason
-     * and the only one the user could see.
+     * The draft preview excludes images, and a .png is not publishable, so
+     * before ENG-2044 this card had nowhere to go — while the server card
+     * carried a perfectly good draft URL for the file. The bytes were one
+     * authenticated request away the whole time; now the click saves them.
+     */
+    setOrgMode(true);
+    const user = userEvent.setup();
+    render(<ChatView task={taskWithArtifact(artifactStep({
+      ext: '.png',
+      action: 'image',
+      file_path: '/proj/.anton/artifacts/chart/chart.png',
+      path: '/proj/.anton/artifacts/chart/chart.png',
+      publishedUrl: '',
+      draftUrl: `/api/v1/artifacts/drafts/proj-1/${ARTIFACT_ID}/chart.png`,
+    }))} />);
+
+    expect(screen.getByLabelText('Download: Current time')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Download' }));
+    expect(downloadArtifactFile).toHaveBeenCalledTimes(1);
+    expect(openExternal).not.toHaveBeenCalled();
+  });
+
+  it('says why it has nowhere to go when there is no primary file at all', () => {
+    /*
+     * The only remaining dead end: no preview, nothing shared, and no draft URL
+     * because the artifact has no primary file yet. "No file path" was both the
+     * wrong reason and the only one the user could see; the card has a fine
+     * server path and prints it.
      */
     setOrgMode(true);
     render(<ChatView task={taskWithArtifact(artifactStep({
@@ -248,11 +272,50 @@ describe('inline artifact banner in org mode', () => {
       file_path: '/proj/.anton/artifacts/chart/chart.png',
       path: '/proj/.anton/artifacts/chart/chart.png',
       publishedUrl: '',
+      draftUrl: '',
     }))} />);
 
     const reason = 'This artifact cannot be previewed and has no shared link yet.';
     expect(screen.getByLabelText(reason)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Current time' })).toHaveAttribute('title', reason);
+    expect(screen.queryByRole('button', { name: 'Download' })).toBeNull();
+  });
+
+  it('saves a spreadsheet nobody shared, the case ENG-2044 was filed on', async () => {
+    /*
+     * The shipped defect, end to end: an .xlsx on web. Not previewable, not
+     * publishable (autopublish is HTML/MD-only), no serve URL (org mode serves
+     * no content). Six users hit "no servable file yet" on finished work in a
+     * single week.
+     */
+    setOrgMode(true);
+    const user = userEvent.setup();
+    render(<ChatView task={taskWithArtifact(artifactStep({
+      ext: '.xlsx',
+      action: 'file',
+      file_path: '/proj/.anton/artifacts/model/model.xlsx',
+      path: '/proj/.anton/artifacts/model/model.xlsx',
+      publishedUrl: '',
+      draftUrl: `/api/v1/artifacts/drafts/proj-1/${ARTIFACT_ID}/model.xlsx`,
+    }))} />);
+
+    await user.click(screen.getByRole('button', { name: 'Download' }));
+    expect(downloadArtifactFile).toHaveBeenCalledWith(
+      expect.objectContaining({ draftUrl: expect.stringContaining('model.xlsx') }),
+      { actionPath: '/proj/.anton/artifacts/model/model.xlsx' },
+    );
+    expect(screen.queryByRole('button', { name: 'Preview' })).toBeNull();
+  });
+
+  it('offers Download beside Preview for a draft the viewer can render', () => {
+    // Decision on ENG-2044: every org artifact with a primary file is saveable,
+    // previewable ones included — the shared page and the preview are not
+    // the file.
+    setOrgMode(true);
+    render(<ChatView task={taskWithArtifact(artifactStep({ publishedUrl: '' }))} />);
+
+    expect(screen.getByRole('button', { name: 'Preview' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Download' })).toBeInTheDocument();
   });
 
   it('previews a markdown artifact, not only HTML', () => {

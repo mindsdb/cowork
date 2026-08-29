@@ -14,6 +14,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 
 const openExternal = vi.fn();
 const openPath = vi.fn();
+const downloadArtifactFile = vi.fn(() => true);
 
 vi.mock('../../api', () => ({
   fetchActiveProject: vi.fn(() => Promise.resolve(null)),
@@ -37,6 +38,9 @@ vi.mock('../artifact', () => ({
     : null),
 }));
 vi.mock('../../lib/artifactsStore', () => ({ deleteArtifactAndSync: vi.fn() }));
+vi.mock('../../lib/artifactDownload', () => ({
+  downloadArtifactFile: (...a) => downloadArtifactFile(...a),
+}));
 
 import { WorkingFolderLive } from './WorkingFolderLive';
 import { fetchArtifacts } from '../../api';
@@ -68,6 +72,7 @@ const renderRail = async (artifact) => {
 beforeEach(() => {
   openExternal.mockClear();
   openPath.mockClear();
+  downloadArtifactFile.mockClear();
 });
 afterEach(() => setOrgMode(false));
 
@@ -148,6 +153,48 @@ describe('artifacts rail click in org mode', () => {
 
     expect(openPath).not.toHaveBeenCalled();
     expect(screen.queryByTestId('artifact-viewer')).toBeNull();
+    // No draft URL either: genuinely nothing to save (ENG-2044 keeps this dead end).
+    expect(downloadArtifactFile).not.toHaveBeenCalled();
+  });
+
+  it('saves a draft the viewer cannot render instead of dying (ENG-2044)', async () => {
+    /*
+     * The .docx / .xlsx case that shipped broken: no preview, nothing shared,
+     * no serve URL — but the draft URL streams the bytes. The rail used to
+     * print "This artifact has no servable file yet." for a file on disk.
+     */
+    const row = await renderRail(draft({
+      ext: '.docx',
+      path: '/proj/.anton/artifacts/weekly/report.docx',
+      draftUrl: '/api/v1/artifacts/drafts/proj-1/11111111111111111111111111111111/report.docx',
+    }));
+
+    fireEvent.click(row);
+
+    expect(downloadArtifactFile).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId('artifact-viewer')).toBeNull();
+    expect(openExternal).not.toHaveBeenCalled();
+    expect(openPath).not.toHaveBeenCalled();
+    expect(screen.queryByText('This artifact has no servable file yet.')).toBeNull();
+  });
+
+  it('labels the menu action Download when a tab has nowhere to open', async () => {
+    /*
+     * "Open in new tab" with no serve URL and no shared page was the item that
+     * produced the dead-end message. With only a draft URL the same item now
+     * says what it will do, and does it.
+     */
+    await renderRail(draft({
+      ext: '.docx',
+      path: '/proj/.anton/artifacts/weekly/report.docx',
+      draftUrl: '/api/v1/artifacts/drafts/proj-1/11111111111111111111111111111111/report.docx',
+    }));
+
+    fireEvent.click(screen.getByLabelText('More actions'));
+    fireEvent.click(screen.getByText('Download'));
+
+    expect(downloadArtifactFile).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('Open in new tab')).toBeNull();
   });
 });
 
