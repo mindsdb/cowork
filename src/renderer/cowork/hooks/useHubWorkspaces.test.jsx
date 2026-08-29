@@ -178,6 +178,54 @@ describe('useHubWorkspaces', () => {
     expect(result.current.enabled).toBe(true);
   });
 
+  it('retries a 200 that says the hub could not be reached', async () => {
+    // The sidecar reports a failed hop to auth in band, as a 200 carrying
+    // `reachable: false`, not as a thrown status. Keying "settled" off whether
+    // the call threw retried the localhost hop and gave up on the remote one,
+    // which is the half that actually blips.
+    apiMock.fetchHubWorkspaces
+      .mockResolvedValueOnce({ enabled: true, reachable: false, workspaces: [], activeWorkspaceId: null })
+      .mockResolvedValue(PAYLOAD);
+
+    const { result } = renderHook(() => useHubWorkspaces(USER));
+    await waitFor(() => expect(apiMock.fetchHubWorkspaces).toHaveBeenCalledTimes(1));
+    expect(result.current.reachable).toBe(false);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000);
+    });
+
+    expect(result.current.reachable).toBe(true);
+  });
+
+  it('treats a gate-off answer as settled, so it is never retried', async () => {
+    // `enabled: false` is definite: the gate is off, or the sidecar has no such
+    // route. Asking again cannot change either.
+    apiMock.fetchHubWorkspaces.mockResolvedValue({
+      enabled: false, reachable: false, workspaces: [], activeWorkspaceId: null,
+    });
+
+    renderHook(() => useHubWorkspaces(USER));
+    await act(async () => { await vi.advanceTimersByTimeAsync(10 * 60_000); });
+
+    expect(apiMock.fetchHubWorkspaces).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops retrying once unmounted', async () => {
+    // Unmount is the one exit from the effect that changes no identity, so the
+    // generation guard only catches it if the cleanup bumps it too. Otherwise a
+    // read still in flight arms a timer the cleanup has already run past.
+    apiMock.fetchHubWorkspaces.mockRejectedValue(new Error('down'));
+
+    const { unmount } = renderHook(() => useHubWorkspaces(USER));
+    await waitFor(() => expect(apiMock.fetchHubWorkspaces).toHaveBeenCalledTimes(1));
+    unmount();
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(10 * 60_000); });
+
+    expect(apiMock.fetchHubWorkspaces).toHaveBeenCalledTimes(1);
+  });
+
   it('gives up after the retries rather than polling forever', async () => {
     apiMock.fetchHubWorkspaces.mockRejectedValue(new Error('still down'));
 

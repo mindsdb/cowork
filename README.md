@@ -349,6 +349,48 @@ The GUI provides a visual `/connect` flow:
 6. Writes mind's system prompt to project cortex
 7. Auto-restarts the server to pick up new config
 
+`ANTON_MINDS_API_KEY` is deliberately absent from that list — see below.
+
+## MindsHub credentials
+
+**The app writes no MindsHub credential to disk.** Signing in gets you a Keycloak
+session (Authorization Code + PKCE, refresh token in OS secure storage, access
+token in memory), and that access token is what the sidecar presents to the
+gateway. Auth's `/v1/authenticate/` accepts a JWT and an `mdb_` key alike,
+picking the branch from the token's shape.
+
+The sidecar is a separate process, so the value has to cross that boundary. It
+crosses over loopback rather than through a file: main holds it and PUTs it to
+`/api/v1/runtime-credential/minds`, which the sidecar keeps in memory and
+overlays onto its settings. `src/main/minds-credential.ts` owns that hand-over.
+
+Three consequences worth knowing:
+
+- **Every sidecar start needs a fresh hand-over.** Nothing persists the value, so
+  a sidecar that has just come up holds nothing and `/health` answers
+  `config_ready: false` until main pushes again. The renderer paints that answer
+  as "Connect a provider to start chatting", so a signed-in user reads a wiring
+  gap as a billing prompt. The sidecar goes down far more often than a launch: an
+  over-the-air update and its rollback, the sidebar's stop/start, and the
+  installer's first start on a fresh machine. Wiring the push into each of those
+  is how one gets missed, so it hangs off the single function they all call.
+  `src/main/index.ts` registers `syncMindsCredential` with
+  `setServerStartedHook`, and `startServer` awaits it after every successful
+  start (`src/main/server-process.ts`). It is awaited rather than fired off,
+  because callers read `/health` as soon as `startServer` resolves. Sign-in and
+  the token-refresh tick push on top of that, since both produce a new credential
+  without restarting anything.
+- **A key you supply yourself goes to the OS keychain**, not to `.env` and not to
+  the sidecar's settings table. It wins over the session credential while it is
+  set. `mindshub:set-user-key` is the IPC channel that carries it.
+- **Signing out takes the credential away**, and an install upgrading from a
+  build that minted a per-device key is signed out once so that key can be
+  revoked while the session still names the organization it belongs to.
+
+A sidecar you start by hand, outside the app, therefore has no MindsHub
+credential. Set `ANTON_MINDS_API_KEY` yourself with a key minted in the console
+if you need one for that.
+
 ### The workspace selector at the top of the sidebar
 
 A bordered control between the wordmark and the New task CTA names the MindsHub
@@ -366,7 +408,7 @@ invisible until you opened the menu, which is the opposite of what a scope
 indicator is for, and the account menu is where the organization selector lands,
 so two levels of one hierarchy would have nested inside a menu about identity.
 
-Three states hide the control, and each of them leaves the sidebar exactly as it
+Four states hide the control, and each of them leaves the sidebar exactly as it
 looks today. A single workspace does NOT: "which workspace am I in" is the
 question this exists to answer, and hiding it below two workspaces reproduces
 the invisibility it fixes.
@@ -376,13 +418,18 @@ the invisibility it fixes.
 | The gate is off | absent |
 | The read has not come back yet | absent |
 | The hub could not be reached | absent |
+| Gate on and reachable, but the org has no workspace | absent |
 | One workspace and nothing to switch to | shown, and it opens |
 | Two or more, gate on | shown |
 
-A read that fails is retried three times over about forty seconds and then left
-alone. The renderer can mount before the sidecar is listening, so one attempt
-per session made an ordinary cold-start blip hide the control until the app was
-relaunched. A 404 is not retried: a sidecar without the route will not grow one.
+A read that has not settled is retried three times over about forty seconds and
+then left alone. The renderer can mount before the sidecar is listening, so one
+attempt per session made an ordinary cold-start blip hide the control until the
+app was relaunched. Two shapes count as unsettled: a thrown transport error or
+5xx, and a 200 that says the gate is on but the hub could not be reached, which
+is how the sidecar reports a failed hop to auth in band. A 404 is not retried,
+because a sidecar without the route will not grow one, and neither is a
+gate-off answer, because it is definite.
 
 **The switch is a server-side Statsig gate, not a build flag.** Auth declares
 `authorization_ui` in its own `configs/statsig_gates.json`, evaluates it with its
@@ -453,6 +500,7 @@ the claim as `activate_organization` and it carries no display name, so a
 personal organization arrives as the raw `personal_<userId>` while Keycloak
 holds the label auth generated (`<email>'s organization`). The claim supplies
 the id and the listing supplies the name.
+
 ### A model the wallet can't pay for is not selectable
 
 MindsHub's `/v1/models` marks each model with whether the org can pay for it

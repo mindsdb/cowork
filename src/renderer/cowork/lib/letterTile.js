@@ -24,13 +24,20 @@
 // hues came in under that in LIGHT mode (`#D99A1C` 3.73:1, `#5FB87A` 3.72:1,
 // `#D97A5F` 4.33:1) while dark mode was fine, because a lower mix pulls the
 // glyph toward `--ink`, which is near-black in light and near-white in dark.
-// 60% clears 4.5:1 in both: the worst case is 4.64:1 light and 7.4:1 dark.
+// 60% clears 4.5:1 in both: the worst case is 4.64:1 light (`#5FB87A`) and
+// 6.15:1 dark (`#C9563F`). Each number names its hue, because the first version
+// of this comment quoted the dark MAXIMUM as the minimum and nothing caught it.
 // `letterTile.test.js` computes the ratio for every hue, so moving either
 // constant reds the suite rather than quietly dimming a letter.
 
 // Hues, not finished colours. Spread around the wheel and kept clear of the
 // accent teal so a workspace tile never reads as a selected state.
-const HUES = [
+//
+// Exported so `letterTile.test.js` can contrast-check every entry rather than
+// the seven it happened to know about. A hardcoded count meant an eighth hue
+// would never be measured and the suite would stay green, which is the drift
+// that test exists to catch.
+export const HUES = [
   '#D99A1C',
   '#5F8AD9',
   '#C46FB0',

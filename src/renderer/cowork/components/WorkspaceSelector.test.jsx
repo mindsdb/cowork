@@ -166,9 +166,10 @@ describe('WorkspaceSelector — the menu', () => {
   });
 
   it('tells assistive tech which row is current, not just that it is dimmed', () => {
-    // The tick is decorative and marked `aria-hidden`, so without this the only
-    // cue on the active row is `aria-disabled`, which announces as "dimmed" and
-    // reads as unavailable rather than as "you are here".
+    // `aria-current`, not `title`. A title is the accessible DESCRIPTION, so it
+    // is spoken as a delayed hint at best and switched off at worst, leaving
+    // `aria-disabled` as the only cue: "dimmed", which reads as unavailable
+    // rather than as "you are here".
     hookMock.useHubWorkspaces.mockReturnValue(three('ws-client-a'));
     render(<WorkspaceSelector user={user} />);
     openMenu();
@@ -177,9 +178,30 @@ describe('WorkspaceSelector — the menu', () => {
     const active = rows.find((r) => r.textContent.includes('Client A'));
     const other = rows.find((r) => r.textContent.includes('Kiwibot'));
 
-    expect(active.getAttribute('title')).toBe('Client A (current workspace)');
+    expect(active.getAttribute('aria-current')).toBe('true');
+    expect(other.getAttribute('aria-current')).toBeNull();
+    // Titles carry the untruncated name and nothing else.
+    expect(active.getAttribute('title')).toBe('Client A');
     expect(other.getAttribute('title')).toBe('Kiwibot');
-    expect(active.querySelector('svg[aria-hidden="true"]')).toBeTruthy();
+    // The tick must not reach the accessible name. Asserting the name rather
+    // than `aria-hidden` on the svg: lucide sets that itself, so the attribute
+    // assertion passed whether or not this file asked for it.
+    expect(active).toHaveAccessibleName('Client A');
+  });
+
+  it('says archived rather than try-again when the server answers 409', async () => {
+    // The server gives archived its own status precisely so the UI can stop
+    // telling someone to retry something that cannot succeed.
+    const archived = Object.assign(new Error('API returned 409'), { status: 409 });
+    const switchWorkspace = vi.fn().mockRejectedValue(archived);
+    hookMock.useHubWorkspaces.mockReturnValue({ ...three('ws-default'), switchWorkspace });
+    render(<WorkspaceSelector user={user} />);
+    openMenu();
+
+    fireEvent.click(menu().getByText('Client A'));
+
+    expect(await screen.findByText(/archived/i)).toBeTruthy();
+    expect(screen.queryByText(/try again/i)).toBeNull();
   });
 
   it('disables every row while a switch is in flight', () => {
@@ -196,6 +218,19 @@ describe('WorkspaceSelector — when it must not render at all', () => {
   it('with the gate off, even if workspaces came back', () => {
     hookMock.useHubWorkspaces.mockReturnValue(
       state({ enabled: false, reachable: true, workspaces: [DEFAULT_WS, CLIENT_A], activeWorkspaceId: 'ws-default' }),
+    );
+    const { container } = render(<WorkspaceSelector user={user} />);
+
+    expect(container.querySelector('[data-workspace-selector]')).toBeNull();
+  });
+
+  it('when the gate is on and the hub answered, but the org has no workspace', () => {
+    // The third operand of the render guard. Before the unreachable case below
+    // grew rows, that case was what exercised `!active`; with rows it
+    // short-circuits on `!reachable` instead and this was the only branch in
+    // the guard no test reached as true.
+    hookMock.useHubWorkspaces.mockReturnValue(
+      state({ enabled: true, reachable: true, workspaces: [], activeWorkspaceId: null }),
     );
     const { container } = render(<WorkspaceSelector user={user} />);
 

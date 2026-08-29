@@ -40,28 +40,6 @@ const hubWorkspacesMock = vi.hoisted(() => ({
 // group has its own test file.
 vi.mock('../hooks/useHubWorkspaces', () => hubWorkspacesMock);
 
-// UserMenu reports a failed workspace switch through the toast manager, which
-// Base UI requires a provider for. The real tree has one (App wraps AppCore),
-// so wrap here too rather than making the component tolerate its absence.
-const render = (ui, options) => rtlRender(ui, { wrapper: ToastProvider, ...options });
-
-const hubWorkspacesMock = vi.hoisted(() => ({
-  useHubWorkspaces: vi.fn(() => ({
-    enabled: false,
-    reachable: false,
-    workspaces: [],
-    activeWorkspaceId: null,
-    switching: false,
-    switchWorkspace: vi.fn(),
-    refresh: vi.fn(),
-  })),
-}));
-// Stubbed rather than exercised here: these tests are about the account
-// destinations, and the real hook pulls in api.js, which reads host.getApiOrigin
-// at module load and this file's host mock does not provide one. The workspace
-// group has its own test file.
-vi.mock('../hooks/useHubWorkspaces', () => hubWorkspacesMock);
-
 // WorkspaceSelector calls `useToastManager()` unconditionally, before its own
 // early return, and Base UI requires a provider for it. The real tree has one
 // (App wraps AppCore, and the sidebar is inside it), so wrap here too rather

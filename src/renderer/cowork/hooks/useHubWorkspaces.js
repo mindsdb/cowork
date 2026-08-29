@@ -16,12 +16,16 @@ import { fetchHubWorkspaces, setActiveHubWorkspace } from '../api';
 // appeared, flickered, and vanished would be worse than one that appears a beat
 // late.
 //
-// **A transient failure is retried, because one read per session made a blip
-// permanent.** The renderer can mount before the sidecar is listening, which is
-// ordinary on a cold start, and nothing else in the tree calls `refresh`. So a
-// dropped connection or a 5xx used to hide the control until the app was
-// relaunched. A definite answer — a 404 from a sidecar with no such route — is
-// not retried, because asking again cannot change it.
+// **A read that has not settled is retried, because one read per session made a
+// blip permanent.** The renderer can mount before the sidecar is listening,
+// which is ordinary on a cold start, and nothing else in the tree calls
+// `refresh`. So a dropped connection or a 5xx used to hide the control until the
+// app was relaunched. Two shapes count as unsettled, and the second is easy to
+// miss: a thrown transport error, and a 200 saying the gate is on while the hub
+// could not be reached, which is how the sidecar reports a failed hop to auth in
+// band rather than as a status. A definite answer is not retried, because asking
+// again cannot change it: a 404 from a sidecar with no such route, and a
+// gate-off verdict, both arrive with `enabled` false.
 
 const DARK = Object.freeze({
   enabled: false,
@@ -58,9 +62,19 @@ export function useHubWorkspaces(accountUser) {
   // re-fetch on any re-render that re-decoded the same token.
   const sub = accountUser?.sub ?? null;
 
-  // Resolves true when the read settled on an answer, false when it failed and
+  // Resolves true when the read settled on an answer, false when it did not and
   // is worth asking again. The effect below owns the retrying; this owns one
   // attempt, so `refresh` stays a plain one-shot re-read.
+  //
+  // Settling is decided on the answer, not on whether the call threw. A failed
+  // hop to the hub arrives as a 200 that says `enabled` with `reachable` false,
+  // because that is how the sidecar reports it, so keying off "did it throw"
+  // would retry the localhost hop (which comes up in a second) and give up on
+  // the remote one (which is the flaky half). Everything else is definite: a
+  // gate-off or 404 answer carries `enabled` false and will not change by
+  // asking again.
+  const settled = (next) => !(next.enabled && !next.reachable);
+
   const load = useCallback(async () => {
     const mine = generation.current;
     if (!sub) {
@@ -68,9 +82,9 @@ export function useHubWorkspaces(accountUser) {
       return true;
     }
     try {
-      const payload = await fetchHubWorkspaces();
-      if (generation.current === mine) setState(normalize(payload));
-      return true;
+      const next = normalize(await fetchHubWorkspaces());
+      if (generation.current === mine) setState(next);
+      return settled(next);
     } catch {
       if (generation.current === mine) setState(DARK);
       return false;
@@ -93,7 +107,15 @@ export function useHubWorkspaces(accountUser) {
       timer = setTimeout(() => attempt(n + 1), delay);
     };
     attempt(0);
-    return () => clearTimeout(timer);
+    return () => {
+      // Bumped here as well as on entry, because unmount is the one way out of
+      // this effect that changes no identity. Without it a `load()` still in
+      // flight when the cleanup runs passes the generation check, arms a timer
+      // the cleanup has already run past, and keeps asking for another forty
+      // seconds after the control is gone.
+      generation.current += 1;
+      clearTimeout(timer);
+    };
   }, [load]);
 
   // Rejects on failure; the caller owns the message. Nothing is applied

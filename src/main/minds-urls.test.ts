@@ -52,6 +52,27 @@ describe('derived auth and console hosts', () => {
     expect(MINDS_KEYCLOAK_BASE).toBe('https://auth-pr-cowork-744.dev.mindshub.ai/auth');
   });
 
+  it('reads the env slug out of a PR host, where the env is the label after the service', async () => {
+    // Matching only `api.` left this at '' on a per-PR host, so `startServer`
+    // stamped no ENV and the sidecar it spawned resolved PROD MindsHub defaults
+    // while the client authenticated against the PR environment.
+    const { MINDS_ENV_SLUG } = await load('https://api-pr-cowork-763.dev.mindshub.ai');
+
+    expect(MINDS_ENV_SLUG).toBe('dev');
+  });
+
+  it('reads the env slug out of a permanent host', async () => {
+    const { MINDS_ENV_SLUG } = await load('https://api.staging.mindshub.ai');
+
+    expect(MINDS_ENV_SLUG).toBe('staging');
+  });
+
+  it('has no env slug on prod, so nothing is stamped', async () => {
+    const { MINDS_ENV_SLUG } = await load('https://api.mindshub.ai');
+
+    expect(MINDS_ENV_SLUG).toBe('');
+  });
+
   it('derives auth on a permanent env the same way it always did', async () => {
     const { MINDS_AUTH_HOST } = await load('https://api.staging.mindshub.ai');
 

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, it, expect } from 'vitest';
-import { tileHue, tileLetter, tileStyle } from './letterTile';
+import { HUES, tileHue, tileLetter, tileStyle } from './letterTile';
 
 describe('letterTile — the hue', () => {
   it('is stable for the same key', () => {
@@ -147,10 +147,13 @@ describe('letterTile — the glyph stays legible in both themes', () => {
     return (hi + 0.05) / (lo + 0.05);
   };
 
-  /* Enough keys to reach every hue, whatever the hash does with them. */
+  /* Enough keys to reach every hue, whatever the hash does with them. Bounded on
+     HUES.length rather than a literal: a hardcoded 7 stopped collecting the
+     moment it had seven, so an eighth hue was never measured and this block
+     stayed green while an unchecked colour shipped. */
   const everyHue = () => {
     const seen = new Map();
-    for (let i = 0; seen.size < 7 && i < 500; i += 1) {
+    for (let i = 0; seen.size < HUES.length && i < 500; i += 1) {
       seen.set(tileHue(`ws-${i}`), `ws-${i}`);
     }
     return [...seen.values()];
@@ -161,7 +164,7 @@ describe('letterTile — the glyph stays legible in both themes', () => {
     ['dark', () => DARK],
   ])('clears 4.5:1 for every hue in %s mode', (_theme, tokens) => {
     const keys = everyHue();
-    expect(keys).toHaveLength(7);
+    expect(keys).toHaveLength(HUES.length);
 
     for (const key of keys) {
       const style = tileStyle(key);

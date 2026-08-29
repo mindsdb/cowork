@@ -124,5 +124,12 @@ export function isMindsHost(url: string | null | undefined): boolean {
 // prod. Used to stamp ENV on the cowork-server subprocess we spawn so the
 // server's own env-aware defaults (cowork-server app_settings._env_slug)
 // resolve to the same environment as the desktop client.
-const slugMatch = API_HOST.match(/^https?:\/\/api\.([a-z0-9-]+)\.mindshub\.ai/i);
+//
+// Both host shapes, for the same reason the two derivations above take both: on
+// a per-PR host the service label carries the env name (`api-pr-cowork-763`) and
+// the environment is the label after it. Matching only `api.` left a PR-env
+// desktop build with no slug, so `startServer` stamped no ENV at all and the
+// sidecar it spawned resolved prod MindsHub defaults while the client
+// authenticated against the PR environment.
+const slugMatch = API_HOST.match(/^https?:\/\/api[.-][a-z0-9-]*?\.?([a-z0-9-]+)\.mindshub\.ai/i);
 export const MINDS_ENV_SLUG = slugMatch ? slugMatch[1] : '';

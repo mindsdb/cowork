@@ -1302,8 +1302,11 @@ export async function fetchHubWorkspaces() {
 
 /**
  * Switch the active workspace. Rejects on failure so the caller owns the
- * message; the server refuses a workspace the caller holds no grant on (403)
- * and refuses rather than guessing when it cannot reach the hub (503).
+ * message; the server refuses a workspace the caller holds no grant on (403),
+ * refuses an archived one with its own status so the UI can say retrying will
+ * not help (409), and refuses rather than guessing when it cannot reach the hub
+ * (503). `err.status` carries the code, which is what lets the caller tell the
+ * three apart.
  */
 export async function setActiveHubWorkspace(workspaceId) {
   return req('/hub/workspaces/active', {

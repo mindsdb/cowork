@@ -717,8 +717,17 @@ describe('fetchHubWorkspaces', () => {
     vi.unstubAllGlobals();
   });
 
+  // Captures the call, because the resolved value alone left the route and the
+  // credential header unpinned: renaming the path or dropping `hubHeaders()`
+  // kept all five cases green, and the header is the only reason the sidecar
+  // forwards anything to auth.
+  let calls;
   const respond = (res) => {
-    vi.stubGlobal('fetch', vi.fn(async () => res));
+    calls = [];
+    vi.stubGlobal('fetch', vi.fn(async (url, options) => {
+      calls.push({ url: String(url), options });
+      return res;
+    }));
   };
 
   it('answers dark for a 404, because a sidecar without the route will not grow one', async () => {
@@ -750,5 +759,19 @@ describe('fetchHubWorkspaces', () => {
     respond(jsonRes(payload));
 
     await expect(fetchHubWorkspaces()).resolves.toEqual(payload);
+  });
+
+  it('asks the workspaces route and carries the credential in its own header', async () => {
+    // `Authorization` is taken by the loopback token in the desktop shell, so
+    // the caller's JWT has to travel under X-MindsHub-Authorization or the
+    // sidecar has nothing to forward.
+    hostMock.getAccessToken.mockResolvedValueOnce('jwt-abc');
+    respond(jsonRes({ enabled: false, reachable: false, workspaces: [], activeWorkspaceId: null }));
+
+    await fetchHubWorkspaces();
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toMatch(/\/api\/v1\/hub\/workspaces\/$/);
+    expect(calls[0].options.headers['X-MindsHub-Authorization']).toBe('Bearer jwt-abc');
   });
 });
