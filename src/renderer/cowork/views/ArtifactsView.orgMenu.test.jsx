@@ -257,6 +257,34 @@ describe.each([
   });
 });
 
+describe('grid view shared link when the bridge rejects', () => {
+  /*
+   * Grid-only: this is the page-level HoverMenu's own item. host.openExternal
+   * is async, so the item has to await it for its catch to fire — unawaited,
+   * this fallback was dead code. The list row routes through `openUrl`, which
+   * already awaits.
+   */
+  it('falls back to window.open', async () => {
+    localStorage.setItem('anton:artifacts-view', 'grid');
+    setOrgMode(true);
+    host.openExternal.mockClear();
+    host.openExternal.mockRejectedValueOnce(new Error('bridge gone'));
+    const opened = vi.spyOn(window, 'open').mockImplementation(() => null);
+    try {
+      render(<ArtifactsView artifacts={[publishedMarkdown]} />);
+      openKebab();
+
+      fireEvent.click(screen.getByText('Open shared link'));
+
+      await vi.waitFor(() => expect(opened).toHaveBeenCalledWith(
+        'https://view.mindshub.ai/r/md1', '_blank', 'noopener,noreferrer',
+      ));
+    } finally {
+      opened.mockRestore();
+    }
+  });
+});
+
 describe('grid view shared link on desktop', () => {
   /*
    * The widening is org-only: on desktop a .md still gets the reveal item, not

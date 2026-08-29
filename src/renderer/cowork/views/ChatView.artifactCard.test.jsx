@@ -213,6 +213,27 @@ describe('inline artifact banner in org mode', () => {
     expect(screen.queryByRole('button', { name: 'Shared link' })).toBeNull();
   });
 
+  it('falls back to window.open when the bridge rejects', async () => {
+    /*
+     * `host.openExternal` is async. A synchronous try around it returns before
+     * the promise settles, so the fallback never ran on the one failure it was
+     * written for and the rejection escaped unhandled.
+     */
+    setOrgMode(true);
+    const user = userEvent.setup();
+    openExternal.mockRejectedValueOnce(new Error('bridge gone'));
+    const opened = vi.spyOn(window, 'open').mockImplementation(() => null);
+    try {
+      render(<ChatView task={taskWithArtifact(artifactStep())} />);
+
+      await user.click(screen.getByRole('button', { name: 'Shared link' }));
+
+      expect(opened).toHaveBeenCalledWith(PUBLISHED_URL, '_blank', 'noopener,noreferrer');
+    } finally {
+      opened.mockRestore();
+    }
+  });
+
   it('says why it has nowhere to go, instead of blaming the file path', () => {
     /*
      * An unpublished image is this state permanently: only .html and .md are

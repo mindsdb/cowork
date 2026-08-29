@@ -1064,10 +1064,15 @@ export default function ArtifactsView({
               id: 'open',
               label: orgMode ? 'Open shared link' : 'Open in browser',
               icon: (Ico.link?.(13) || Ico.globe?.(13) || Ico.doc(13)),
-              onClick: () => {
+              /*
+               * Awaited like the card's own onOpenPublished above: a
+               * synchronous try around an async bridge call cannot reach the
+               * fallback, and the rejection escapes unhandled.
+               */
+              onClick: async () => {
                 if (a.publishedUrl) {
-                  try { host.openExternal(a.publishedUrl); }
-                  catch { window.open(a.publishedUrl, '_blank', 'noreferrer'); }
+                  try { await host.openExternal(a.publishedUrl); }
+                  catch { window.open(a.publishedUrl, '_blank', 'noopener,noreferrer'); }
                 } else {
                   openArtifactFile(a);
                 }

@@ -660,10 +660,15 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
   /*
    * The shared URL stays reachable beside the preview: it is the address a
    * collaborator gets, and the chat turn is where the artifact was just made.
+   *
+   * `host.openExternal` is async, so the await is what makes the catch reach a
+   * rejected bridge call. Without it the try block returns before the promise
+   * settles: the fallback below never runs on the one failure it exists for,
+   * and the rejection escapes as an unhandled one.
    */
-  const handleOpenPublished = () => {
-    try { host.openExternal(artifact.publishedUrl); }
-    catch { window.open(artifact.publishedUrl, '_blank', 'noreferrer'); }
+  const handleOpenPublished = async () => {
+    try { await host.openExternal(artifact.publishedUrl); }
+    catch { window.open(artifact.publishedUrl, '_blank', 'noopener,noreferrer'); }
   };
   const handleOpen = async () => {
     /*
@@ -685,7 +690,7 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
       return;
     }
     if (openTarget === 'published') {
-      handleOpenPublished();
+      await handleOpenPublished();
       return;
     }
     if (openTarget === null) {

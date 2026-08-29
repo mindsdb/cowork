@@ -304,7 +304,7 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
   // viewer handles HTML via sandboxed iframe and .md/.txt/.csv via
   // the inline text path. Anything else falls through to the OS
   // handler so the user's default app picks it up.
-  const onOpenArtifact = (artifact) => {
+  const onOpenArtifact = async (artifact) => {
     /*
      * In org mode the viewer renders the authenticated draft instead of local
      * bytes, and an artifact whose draft it cannot render keeps the published
@@ -318,8 +318,13 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
       hasBridge: host.isElectron,
     });
     if (target === 'published') {
-      try { host.openExternal(artifact.publishedUrl); }
-      catch { window.open(artifact.publishedUrl, '_blank', 'noreferrer'); }
+      /*
+       * Awaited so the catch can see a rejected bridge call — the same reason
+       * `openArtifactExternal` above awaits it. A synchronous try around an
+       * async call leaves the fallback unreachable and the rejection loose.
+       */
+      try { await host.openExternal(artifact.publishedUrl); }
+      catch { window.open(artifact.publishedUrl, '_blank', 'noopener,noreferrer'); }
     } else if (target === 'preview') {
       setPreviewArt(artifact);
     } else if (target === 'os') {

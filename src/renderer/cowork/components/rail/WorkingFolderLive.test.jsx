@@ -111,6 +111,32 @@ describe('artifacts rail click in org mode', () => {
     expect(openExternal).toHaveBeenCalledWith(SHARED_URL);
   });
 
+  it('falls back to window.open when the bridge rejects', async () => {
+    /*
+     * host.openExternal is async, so only an awaited call lets the catch see a
+     * rejection. Unawaited, the fallback is unreachable and the rejection is
+     * never handled.
+     */
+    openExternal.mockRejectedValueOnce(new Error('bridge gone'));
+    const opened = vi.spyOn(window, 'open').mockImplementation(() => null);
+    try {
+      const row = await renderRail(draft({
+        title: 'Ops Console',
+        type: 'fullstack-stateless-app',
+        path: '/proj/.anton/artifacts/ops/static/index.html',
+        ext: '.html',
+        publishedUrl: SHARED_URL,
+      }));
+
+      fireEvent.click(row);
+      await vi.waitFor(() => expect(opened).toHaveBeenCalledWith(
+        SHARED_URL, '_blank', 'noopener,noreferrer',
+      ));
+    } finally {
+      opened.mockRestore();
+    }
+  });
+
   it('never hands the path to the OS, which org mode cannot reach', async () => {
     const row = await renderRail(draft({
       ext: '.docx',
