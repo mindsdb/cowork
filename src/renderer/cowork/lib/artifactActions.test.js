@@ -56,15 +56,19 @@ describe('defaults', () => {
 });
 
 describe('artifactOpenTarget', () => {
-  // The click destination, not a yes/no per action. Three surfaces render an
-  // artifact body — the inline chat card, the rail's Working-folder list and the
-  // artifacts grid — and each used to decide from the file extension alone, so
-  // all three opened a local preview on a deployment that serves no content.
-  // Org mode now answers from the authenticated draft URL instead, which the
-  // callers compute with `canPreviewOrgDraft`.
+  /*
+   * The click destination, not a yes/no per action. Three surfaces render an
+   * artifact body — the inline chat card, the rail's Working-folder list and the
+   * artifacts grid — and each used to decide from the file extension alone, so
+   * all three opened a local preview on a deployment that serves no content.
+   * Org mode now answers from the authenticated draft URL instead, which the
+   * callers compute with `canPreviewOrgDraft`.
+   */
   it('previews an org click in the app, even once the artifact is shared', () => {
-    // The click means "show me this artifact". Sending it to the shared page
-    // instead put a browser tab between the user and their own work.
+    /*
+     * The click means "show me this artifact". Sending it to the shared page
+     * instead put a browser tab between the user and their own work.
+     */
     expect(artifactOpenTarget({
       orgMode: true,
       published: true,
@@ -75,17 +79,22 @@ describe('artifactOpenTarget', () => {
   });
 
   it('previews an org click before the artifact is shared at all', () => {
-    // The draft URL carries its own access check, so the preview does not wait
-    // on a publish the user may never do.
+    /*
+     * The draft URL carries its own access check, so the preview does not wait
+     * on a publish the user may never do.
+     */
     expect(artifactOpenTarget({
       orgMode: true, published: false, canPreviewDraft: true, hasBridge: false,
     })).toBe('preview');
   });
 
   it('falls back to the shared page for a draft org mode cannot render', () => {
-    // Fullstack apps and images: the draft endpoint refuses both, so the
-    // published page is the only destination left. `canPreviewInline` is the
-    // desktop answer and must not leak into this branch.
+    /*
+     * Fullstack apps and images: neither has bytes the viewer can render here
+     * (no loopback proxy, no serve URL), so the published page is the only
+     * destination left. `canPreviewInline` is the desktop answer and must not
+     * leak into this branch.
+     */
     expect(artifactOpenTarget({
       orgMode: true,
       published: true,
@@ -96,8 +105,10 @@ describe('artifactOpenTarget', () => {
   });
 
   it('is not clickable in org mode without a preview or a published URL', () => {
-    // Nothing to open: the draft cannot be rendered, and the OS handoff needs
-    // bytes this deployment does not serve.
+    /*
+     * Nothing to open: the draft cannot be rendered, and the OS handoff needs
+     * bytes this deployment does not serve.
+     */
     expect(artifactOpenTarget({
       orgMode: true, published: false, canPreviewInline: true, hasBridge: true,
     })).toBeNull();

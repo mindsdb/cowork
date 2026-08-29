@@ -1,10 +1,18 @@
-// Shared artifact file-type predicates.
-//
-// Kept in one place so every surface that renders an artifact — the artifact
-// list (ArtifactsView), the inline chat card, the Working folder rail and the
-// viewer itself — agrees on what's previewable vs publishable. They used to
-// drift, which let the viewer offer Publish for files the list (and the
-// backend) reject, and left each click handler with its own extension list.
+/*
+ * Shared artifact file-type predicates.
+ *
+ * Kept in one place so every surface that renders an artifact — the artifact
+ * list (ArtifactsView), the inline chat card, the Working folder rail and the
+ * viewer itself — agrees on what's previewable vs publishable. They used to
+ * drift, which let the viewer offer Publish for files the list (and the
+ * backend) reject, and left each click handler with its own extension list.
+ *
+ * The viewer reads TEXT_PREVIEW_EXTS from here through artifactPreviewUtils,
+ * so a format added to that set reaches the click gates and the renderer in
+ * one edit. It still resolves the extension its own way (declared `ext` wins,
+ * then the canonical path), because it addresses the file it is about to
+ * fetch rather than the card the click came from.
+ */
 
 function _ext(a) {
   return (a?.ext || '').toLowerCase();
@@ -64,8 +72,12 @@ export function isPublishableArtifact(a) {
  * Text formats the in-app viewer renders without an iframe: markdown inline,
  * CSV as a table, anything else preformatted. Matched against the declared
  * `ext` and the path, same convention as isHtmlArtifact.
+ *
+ * Exported because the viewer's own isTextArtifact reads the same set — a
+ * format only one of them knew about would be a card that offers a preview
+ * the viewer cannot render, or a viewer that renders what no click reaches.
  */
-const TEXT_PREVIEW_EXTS = new Set(['.md', '.txt', '.csv']);
+export const TEXT_PREVIEW_EXTS = new Set(['.md', '.txt', '.csv']);
 
 /** Text artifact the viewer renders inline rather than in an iframe. */
 export function isTextPreviewArtifact(a) {

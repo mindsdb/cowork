@@ -92,8 +92,10 @@ describe.each([
 });
 
 describe('list view kebab in org mode', () => {
-  // The row itself previews now, so the menu's first item is the page a
-  // collaborator opens, and its label has to say which of the two it is.
+  /*
+   * The row itself previews now, so the menu's first item is the page a
+   * collaborator opens, and its label has to say which of the two it is.
+   */
   beforeEach(() => {
     localStorage.setItem('anton:artifacts-view', 'list');
     setOrgMode(true);
@@ -144,8 +146,10 @@ describe.each([
     host.openExternal.mockClear();
   });
 
-  // A click means "show me this artifact" here too, and the draft URL carries
-  // its own access check, so it does not wait on a publish either.
+  /*
+   * A click means "show me this artifact" here too, and the draft URL carries
+   * its own access check, so it does not wait on a publish either.
+   */
   it('opens the viewer when the card body is clicked', () => {
     render(<ArtifactsView artifacts={[cloudDraft]} />);
     fireEvent.click(screen.getByText('Weather Dashboard'));
@@ -202,6 +206,72 @@ const imageDraft = {
   ext: '.png',
   path: '/proj/.anton/artifacts/revenue/chart.png',
 };
+
+/*
+ * Markdown is publishable (cowork-server PUBLISHABLE_STATIC_SUFFIXES is
+ * .html + .md) and org mode auto-publishes, so a shared .md is the ordinary
+ * case rather than an edge one.
+ */
+const publishedMarkdown = {
+  ...cloudDraft,
+  id: '44444444444444448444444444444444',
+  title: 'Weekly Report',
+  type: 'report',
+  ext: '.md',
+  path: '/proj/.anton/artifacts/weekly/report.md',
+  publishedUrl: 'https://view.mindshub.ai/r/md1',
+};
+
+describe.each([
+  ['grid', 'grid'],
+  ['list', 'list'],
+])('%s view shared link in org mode', (_name, view) => {
+  /*
+   * The card body previews the draft now, so the menu owns the route to the
+   * page a collaborator opens. The grid menu used to gate that item on the
+   * artifact being HTML, which is the one test a .md fails, so a shared
+   * report had no route to its URL from the grid at all — and grid is the
+   * default view and the only view on a phone.
+   */
+  beforeEach(() => {
+    localStorage.setItem('anton:artifacts-view', view);
+    setOrgMode(true);
+    host.openExternal.mockClear();
+  });
+
+  it('offers the shared page for a published markdown artifact', () => {
+    render(<ArtifactsView artifacts={[publishedMarkdown]} />);
+    openKebab();
+
+    fireEvent.click(screen.getByText('Open shared link'));
+
+    expect(host.openExternal).toHaveBeenCalledWith('https://view.mindshub.ai/r/md1');
+  });
+
+  it('drops it again when nothing is shared', () => {
+    render(<ArtifactsView artifacts={[{ ...publishedMarkdown, publishedUrl: '' }]} />);
+    openKebab();
+
+    expect(screen.queryByText('Open shared link')).toBeNull();
+    expect(screen.queryByText('Open in browser')).toBeNull();
+  });
+});
+
+describe('grid view shared link on desktop', () => {
+  /*
+   * The widening is org-only: on desktop a .md still gets the reveal item, not
+   * an "Open in browser" pointing at a page that may not exist.
+   */
+  it('keeps the HTML-only rule', () => {
+    localStorage.setItem('anton:artifacts-view', 'grid');
+    setOrgMode(false);
+    render(<ArtifactsView artifacts={[publishedMarkdown]} />);
+    openKebab();
+
+    expect(screen.queryByText('Open in browser')).toBeNull();
+    expect(screen.queryByText('Open shared link')).toBeNull();
+  });
+});
 
 describe.each([
   ['grid', 'grid'],

@@ -191,10 +191,12 @@ const CardIconButton = forwardRef(function CardIconButton({ onClick, ariaLabel, 
 
 function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isMenuOpen, phase, onRetry, onOpenProject }) {
   const orgMode = useOrgMode();
-  // A click means "show me this artifact" in both deployments: Desktop renders
-  // the local bytes, org mode renders the authenticated draft. What org mode
-  // cannot render — a fullstack app, an image — falls through to openBest and
-  // opens what collaborators see.
+  /*
+   * A click means "show me this artifact" in both deployments: Desktop renders
+   * the local bytes, org mode renders the authenticated draft. What org mode
+   * cannot render — a fullstack app, an image — falls through to openBest and
+   * opens what collaborators see.
+   */
   const canPreview = orgMode ? canPreviewOrgDraft(artifact) : isInlinePreviewable(artifact);
   const published = !!artifact.publishedUrl;
   // In the browser the artifact's address is its HTTP serve URL, not a local
@@ -377,9 +379,11 @@ function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onOpenShared, on
   const items = [
     {
       id: 'open',
-      // "Open viewer" would be a lie in org mode: the row itself previews the
-      // authenticated draft there, and this item is the page a collaborator
-      // opens. The filter below drops it when nothing is shared yet.
+      /*
+       * "Open viewer" would be a lie in org mode: the row itself previews the
+       * authenticated draft there, and this item is the page a collaborator
+       * opens. The filter below drops it when nothing is shared yet.
+       */
       label: orgMode ? 'Open shared link' : (isHtml ? 'Open viewer' : 'Open'),
       icon: Ico.externalLink(13),
       onClick: orgMode ? onOpenShared : onOpen,
@@ -462,8 +466,10 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
   const { hovered, hoverProps } = useRevealOnHover(menuOpen);
 
   const orgMode = useOrgMode();
-  // Same rule as ArtifactBubble above: a click previews whatever the deployment
-  // can render, from local bytes on Desktop and from the draft URL in org mode.
+  /*
+   * Same rule as ArtifactBubble above: a click previews whatever the deployment
+   * can render, from local bytes on Desktop and from the draft URL in org mode.
+   */
   const canPreview = orgMode ? canPreviewOrgDraft(artifact) : isInlinePreviewable(artifact);
   const published = !!artifact.publishedUrl;
   const publishable = isPublishableArtifact(artifact);   // HTML + Markdown — see ArtifactBubble note
@@ -1039,14 +1045,24 @@ export default function ArtifactsView({
               onClick: () => setViewer(a),
             });
           }
-          // Fullstack apps can't be opened from their static entry html
-          // (it needs the backend), so only offer "Open in browser" for
-          // them once published — then it opens the live public URL.
-          // Unpublished fullstack gets no open/reveal item.
-          if (isHtml && (!isBackend || published)) {
+          /*
+           * Fullstack apps can't be opened from their static entry html
+           * (it needs the backend), so only offer "Open in browser" for
+           * them once published — then it opens the live public URL.
+           * Unpublished fullstack gets no open/reveal item.
+           *
+           * Org mode asks a different question. The card body previews the
+           * draft there, so this item is the page a collaborator opens, and
+           * every published artifact needs it — a shared .md would otherwise
+           * have no route to its URL from this card at all, because the HTML
+           * test below is the only one it ever fails. Grid is the default
+           * view and the only view on mobile, so there is no list row to
+           * fall back to.
+           */
+          if (orgMode ? published : (isHtml && (!isBackend || published))) {
             items.push({
               id: 'open',
-              label: 'Open in browser',
+              label: orgMode ? 'Open shared link' : 'Open in browser',
               icon: (Ico.link?.(13) || Ico.globe?.(13) || Ico.doc(13)),
               onClick: () => {
                 if (a.publishedUrl) {

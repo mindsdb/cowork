@@ -28,10 +28,12 @@ describe('isImageArtifact', () => {
   });
 });
 
-// The three surfaces that render an artifact body — the inline chat card, the
-// Working folder rail and the artifacts grid — each carried their own extension
-// list and drifted: the chat card counted images as previewable and the rail did
-// not. These are the one answer all three now ask.
+/*
+ * The three surfaces that render an artifact body — the inline chat card, the
+ * Working folder rail and the artifacts grid — each carried their own extension
+ * list and drifted: the chat card counted images as previewable and the rail did
+ * not. These are the one answer all three now ask.
+ */
 describe('isInlinePreviewable', () => {
   it('covers what the viewer renders from markup or text', () => {
     expect(isInlinePreviewable({ ext: '.html', path: '/a/index.html' })).toBe(true);
@@ -40,8 +42,10 @@ describe('isInlinePreviewable', () => {
   });
 
   it('leaves images to canPreviewLocally', () => {
-    // They load from the serve URL rather than the text or iframe path, and
-    // org mode has no serve URL to load them from.
+    /*
+     * They load from the serve URL rather than the text or iframe path, and
+     * org mode has no serve URL to load them from.
+     */
     expect(isInlinePreviewable({ ext: '.png', path: '/a/logo.png' })).toBe(false);
     expect(canPreviewLocally({ ext: '.png', path: '/a/logo.png' })).toBe(true);
   });

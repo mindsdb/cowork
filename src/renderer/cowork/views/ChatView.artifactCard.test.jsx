@@ -139,9 +139,11 @@ afterEach(() => setOrgMode(false));
 
 describe('inline artifact banner in org mode', () => {
   it('previews in the app instead of opening a browser tab', async () => {
-    // What was reported: the click opened the shared page, which for an HTML
-    // artifact that happens to read like an announcement looks like the app
-    // refusing to show the artifact. Every click added another tab.
+    /*
+     * What was reported: the click opened the shared page, which for an HTML
+     * artifact that happens to read like an announcement looks like the app
+     * refusing to show the artifact. Every click added another tab.
+     */
     setOrgMode(true);
     const user = userEvent.setup();
     render(<ChatView task={taskWithArtifact(artifactStep())} />);
@@ -153,8 +155,10 @@ describe('inline artifact banner in org mode', () => {
   });
 
   it('keeps the shared page one click away beside the preview', async () => {
-    // The published URL is the address a collaborator gets, and the chat turn
-    // is where the artifact was just made.
+    /*
+     * The published URL is the address a collaborator gets, and the chat turn
+     * is where the artifact was just made.
+     */
     setOrgMode(true);
     const user = userEvent.setup();
     render(<ChatView task={taskWithArtifact(artifactStep())} />);
@@ -165,8 +169,10 @@ describe('inline artifact banner in org mode', () => {
   });
 
   it('previews before the artifact is shared at all', async () => {
-    // The draft URL carries its own access check, so the preview does not wait
-    // on a publish. There is no shared page to offer yet.
+    /*
+     * The draft URL carries its own access check, so the preview does not wait
+     * on a publish. There is no shared page to offer yet.
+     */
     setOrgMode(true);
     const user = userEvent.setup();
     render(<ChatView task={taskWithArtifact(artifactStep({ publishedUrl: '' }))} />);
@@ -178,8 +184,10 @@ describe('inline artifact banner in org mode', () => {
   });
 
   it('opens the shared page for a draft it cannot render', async () => {
-    // A fullstack app needs the loopback proxy only Desktop runs, so the draft
-    // endpoint refuses it and the published page is the only destination left.
+    /*
+     * A fullstack app needs the loopback proxy only Desktop runs, so nothing
+     * here can render it and the published page is the only destination left.
+     */
     setOrgMode(true);
     const user = userEvent.setup();
     render(<ChatView task={taskWithArtifact(artifactStep({ type: 'fullstack-stateless-app' }))} />);
@@ -191,8 +199,10 @@ describe('inline artifact banner in org mode', () => {
   });
 
   it('offers no button when it can neither preview nor share', () => {
-    // Nothing this card can open, and a button that only reports an error is
-    // worse than none.
+    /*
+     * Nothing this card can open, and a button that only reports an error is
+     * worse than none.
+     */
     setOrgMode(true);
     render(<ChatView task={taskWithArtifact(artifactStep({
       type: 'fullstack-stateless-app', publishedUrl: '',
@@ -201,6 +211,95 @@ describe('inline artifact banner in org mode', () => {
     expect(screen.queryByRole('button', { name: 'Open' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Preview' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Shared link' })).toBeNull();
+  });
+
+  it('says why it has nowhere to go, instead of blaming the file path', () => {
+    /*
+     * An unpublished image is this state permanently: only .html and .md are
+     * publishable, and the draft preview excludes images. The card has a fine
+     * server path and prints it, so "No file path" was both the wrong reason
+     * and the only one the user could see.
+     */
+    setOrgMode(true);
+    render(<ChatView task={taskWithArtifact(artifactStep({
+      ext: '.png',
+      action: 'image',
+      file_path: '/proj/.anton/artifacts/chart/chart.png',
+      path: '/proj/.anton/artifacts/chart/chart.png',
+      publishedUrl: '',
+    }))} />);
+
+    const reason = 'This artifact cannot be previewed and has no shared link yet.';
+    expect(screen.getByLabelText(reason)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Current time' })).toHaveAttribute('title', reason);
+  });
+
+  it('previews a markdown artifact, not only HTML', () => {
+    /*
+     * Every other org case here is HTML, so nothing covered the text branch of
+     * the shared predicate through a real card — artifactKinds.test.js feeds it
+     * hand-built objects instead. This is also the surface where the shared
+     * link has to sit beside the preview rather than replace it, and only a
+     * publishable type (.html or .md) ever has both at once.
+     */
+    setOrgMode(true);
+    render(<ChatView task={taskWithArtifact(artifactStep({
+      ext: '',
+      action: 'report',
+      file_path: '/proj/.anton/artifacts/weekly/report.md',
+      path: '/proj/.anton/artifacts/weekly/report.md',
+      draftUrl: `/api/v1/artifacts/drafts/proj-1/${ARTIFACT_ID}/report.md`,
+    }))} />);
+
+    expect(screen.getByRole('button', { name: 'Preview' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Shared link' })).toBeInTheDocument();
+  });
+
+  it('stays clickable when the client could not canonicalize the path', async () => {
+    /*
+     * Org-mode destinations are addressed by the server card, so a relative
+     * path with no project folder to resolve it against must not disable the
+     * preview. This is the whole reason the card asks `canActivate` rather
+     * than `canAct`, and every other fixture here has an absolute path.
+     */
+    setOrgMode(true);
+    const user = userEvent.setup();
+    render(<ChatView task={{
+      id: 'conv-a',
+      title: 'Alpha task',
+      status: 'active',
+      messages: [
+        { role: 'user', content: 'build me a clock' },
+        {
+          role: 'assistant',
+          content: 'Done.',
+          steps: [artifactStep({
+            file_path: '.anton/artifacts/clock/index.html',
+            path: '.anton/artifacts/clock/index.html',
+          })],
+        },
+      ],
+    }} />);
+
+    expect(screen.getByRole('button', { name: 'Current time' })).toBeEnabled();
+
+    await user.click(screen.getByRole('button', { name: 'Preview' }));
+
+    expect(screen.getByTestId('artifact-viewer')).toBeInTheDocument();
+  });
+
+  it('does not offer a deleted artifact as openable', () => {
+    /*
+     * ENG-1673 again, on the deployment its test never covered. The draft URL
+     * outlives the artifact, because the card is rendered from the turn's
+     * persisted stream events, so the destination alone cannot answer this.
+     */
+    setOrgMode(true);
+    deleted.mockReturnValue(true);
+    render(<ChatView task={taskWithArtifact(artifactStep())} />);
+
+    expect(screen.getByRole('button', { name: 'Current time' })).toBeDisabled();
+    expect(screen.getByText('Deleted')).toBeInTheDocument();
   });
 });
 
@@ -226,6 +325,28 @@ describe('inline artifact banner on desktop', () => {
 // the card never offered an in-app preview the way it already did for
 // HTML/md/txt/csv. Now that images are previewable, the ENG-1988 single-
 // button model reads "Preview" for them too, same as HTML.
+describe('inline artifact banner label on desktop', () => {
+  /*
+   * The card's accessible name follows the destination, and the third
+   * destination is the OS handoff. Calling that one "Open preview" told a
+   * screen reader the app was about to render the file when it was about to
+   * hand it to Excel.
+   */
+  it('does not call the OS handoff a preview', () => {
+    setOrgMode(false);
+    render(<ChatView task={taskWithArtifact(artifactStep({
+      ext: '.xlsx',
+      action: 'spreadsheet',
+      file_path: '/proj/.anton/artifacts/sales/sales.xlsx',
+      path: '/proj/.anton/artifacts/sales/sales.xlsx',
+      publishedUrl: '',
+    }))} />);
+
+    expect(screen.getByRole('button', { name: 'Current time' }))
+      .toHaveAttribute('title', 'Open: Current time');
+  });
+});
+
 describe('inline artifact banner for an image artifact', () => {
   const imageStep = () => artifactStep({
     ext: '.png',

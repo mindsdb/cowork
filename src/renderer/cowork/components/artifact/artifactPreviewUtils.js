@@ -1,4 +1,6 @@
-export const TEXT_PREVIEW_EXTS = new Set(['.md', '.txt', '.csv']);
+import { TEXT_PREVIEW_EXTS } from '../../lib/artifactKinds';
+
+export { TEXT_PREVIEW_EXTS };
 
 const EMBEDDED_URL_RE = /^(?:blob|data):/i;
 const ABSOLUTE_PREVIEW_URL_RE = /^(?:https?:|blob:|data:|\/\/)/i;

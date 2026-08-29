@@ -1,12 +1,14 @@
-// Which artifact card actions exist, per deployment mode.
-//
-// In an org deployment the in-app preview/review reads the authenticated draft
-// URL, so it is offered wherever an artifact is rendered; OS/file actions and
-// owner-side publish controls remain desktop-only.
-//
-// Open and Copy link need a published URL to point at; without one only Delete is
-// left. An action that cannot work is not offered rather than offered disabled —
-// there is nothing the user could do to enable it from the card.
+/*
+ * Which artifact card actions exist, per deployment mode.
+ *
+ * In an org deployment the in-app preview/review reads the authenticated draft
+ * URL, so it is offered wherever an artifact is rendered; OS/file actions and
+ * owner-side publish controls remain desktop-only.
+ *
+ * Open and Copy link need a published URL to point at; without one only Delete is
+ * left. An action that cannot work is not offered rather than offered disabled —
+ * there is nothing the user could do to enable it from the card.
+ */
 
 const ORG_MODE_ALWAYS = new Set(['preview', 'delete']);
 const ORG_MODE_NEEDS_URL = new Set(['open', 'copy-url']);

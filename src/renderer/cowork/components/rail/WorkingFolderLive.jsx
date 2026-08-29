@@ -305,9 +305,11 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
   // the inline text path. Anything else falls through to the OS
   // handler so the user's default app picks it up.
   const onOpenArtifact = (artifact) => {
-    // In org mode the viewer renders the authenticated draft instead of local
-    // bytes, and an artifact whose draft it cannot render keeps the published
-    // URL. Local OS handoff remains a desktop-only capability.
+    /*
+     * In org mode the viewer renders the authenticated draft instead of local
+     * bytes, and an artifact whose draft it cannot render keeps the published
+     * URL. Local OS handoff remains a desktop-only capability.
+     */
     const target = artifactOpenTarget({
       orgMode,
       published: !!artifact.publishedUrl,

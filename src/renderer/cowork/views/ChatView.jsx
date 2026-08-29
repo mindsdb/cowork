@@ -581,12 +581,14 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
   // just leaves the card as it was.
   const revalidateAfterFailure = () => { revalidateArtifacts().catch(() => {}); };
 
-  // Match the Working folder card's behavior: HTML and text artifacts
-  // (.md/.txt/.csv) and images open the in-app viewer — HTML via sandboxed
-  // iframe, text via inline markdown / table / preformatted render, images
-  // from the serve URL. Anything else falls through to the OS handler via the
-  // Electron bridge. In org mode the same question is answered from the
-  // authenticated draft URL instead, which rules images and fullstack apps out.
+  /*
+   * Match the Working folder card's behavior: HTML and text artifacts
+   * (.md/.txt/.csv) and images open the in-app viewer — HTML via sandboxed
+   * iframe, text via inline markdown / table / preformatted render, images
+   * from the serve URL. Anything else falls through to the OS handler via the
+   * Electron bridge. In org mode the same question is answered from the
+   * authenticated draft URL instead, which rules images and fullstack apps out.
+   */
   const isImage = isImageArtifact(artifact);
   const canPreviewInline = canPreviewLocally(artifact);
   const canPreviewDraft = canPreviewOrgDraft(artifact);
@@ -603,11 +605,28 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
     canPreviewDraft,
     hasBridge: host.isElectron || !host.isWeb,
   });
-  // Org-mode destinations are addressed by the server card, through the draft
-  // URL or the shared URL, so a path this client could not canonicalize does
-  // not disable them. Desktop still needs the local path it hands to the OS.
-  const canActivate = orgMode ? !!openTarget : canAct;
-  const activateLabel = openTarget === 'published' ? 'Open shared artifact' : 'Open preview';
+  /*
+   * Org-mode destinations are addressed by the server card, through the draft
+   * URL or the shared URL, so a path this client could not canonicalize does
+   * not disable them. Desktop still needs the local path it hands to the OS.
+   *
+   * `deleted` stays in both branches. It is the one term of `canAct` that says
+   * nothing about addressing: a deleted artifact has a perfectly good draft URL
+   * and still cannot be opened, so dropping it here would leave a tombstoned
+   * card looking live and hand the whole guard to handleOpen alone.
+   */
+  const canActivate = orgMode ? (!!openTarget && !deleted) : canAct;
+  const activateLabel = openTarget === 'published'
+    ? 'Open shared artifact'
+    : openTarget === 'os' ? 'Open' : 'Open preview';
+  /*
+   * What the card says when it has nowhere to go. Org mode has no local file to
+   * blame, and blaming one is actively wrong there: the card prints its own
+   * server path two lines down. Desktop keeps the path reason it can act on.
+   */
+  const noDestinationReason = orgMode && !openTarget
+    ? 'This artifact cannot be previewed and has no shared link yet.'
+    : (disabledReason || 'No file path');
   // Export is hidden pending ENG-1988: PDF/DOCX conversion is broken for any
   // artifact beyond a plain markdown report (crashes, dumps raw JS into the
   // .docx), and HTML→HTML export can overwrite the source artifact in place.
@@ -638,24 +657,30 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
       setExporting(false);
     }
   };
-  // The shared URL stays reachable beside the preview: it is the address a
-  // collaborator gets, and the chat turn is where the artifact was just made.
+  /*
+   * The shared URL stays reachable beside the preview: it is the address a
+   * collaborator gets, and the chat turn is where the artifact was just made.
+   */
   const handleOpenPublished = () => {
     try { host.openExternal(artifact.publishedUrl); }
     catch { window.open(artifact.publishedUrl, '_blank', 'noreferrer'); }
   };
   const handleOpen = async () => {
-    // The branches that need no local file return before the `canAct` check, so
-    // they would survive a deletion. Their buttons are not rendered in that
-    // state, but relying on two conditions in different parts of the file
-    // agreeing is not worth the risk.
+    /*
+     * The branches that need no local file return before the `canAct` check, so
+     * they would survive a deletion. Their buttons are not rendered in that
+     * state, but relying on two conditions in different parts of the file
+     * agreeing is not worth the risk.
+     */
     if (deleted) {
       showStatus('error', 'This artifact was deleted.');
       return;
     }
     if (openTarget === 'preview' && onOpen) {
-      // The viewer reads the draft URL in org mode and the local bytes on
-      // desktop, so it opens on either without a canonical path of its own.
+      /*
+       * The viewer reads the draft URL in org mode and the local bytes on
+       * desktop, so it opens on either without a canonical path of its own.
+       */
       onOpen(artifact);
       return;
     }
@@ -665,7 +690,7 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
     }
     if (openTarget === null) {
       showStatus('error', orgMode
-        ? 'This artifact cannot be previewed and has no shared link yet.'
+        ? noDestinationReason
         : (disabledReason || 'No artifact file path is available.'));
       return;
     }
@@ -723,13 +748,15 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
     }
     showStatus('ok', 'Downloading…');
   };
-  // One primary action button instead of an Open/Show-in-Finder pair: what it
-  // does follows what the artifact actually supports — Preview for anything the
-  // in-app modal can render, otherwise Download (web, streams the file) or
-  // Show in Finder/Explorer (desktop, opens the containing FOLDER, not the
-  // file) — never both, and never a generic "Open" that hides which of the
-  // two it's about to do. Org mode reads the same rule off the draft URL, and
-  // an artifact it cannot render keeps the shared page as its one destination.
+  /*
+   * One primary action button instead of an Open/Show-in-Finder pair: what it
+   * does follows what the artifact actually supports — Preview for anything the
+   * in-app modal can render, otherwise Download (web, streams the file) or
+   * Show in Finder/Explorer (desktop, opens the containing FOLDER, not the
+   * file) — never both, and never a generic "Open" that hides which of the
+   * two it's about to do. Org mode reads the same rule off the draft URL, and
+   * an artifact it cannot render keeps the shared page as its one destination.
+   */
   const primaryAction = orgMode
     ? (openTarget === 'preview'
       ? { label: 'Preview', onClick: handleOpen, tooltip: 'Preview this artifact in Cowork' }
@@ -745,15 +772,19 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
         // doesn't gate further on bridge availability the way the old
         // Open button didn't either.
         : { label: revealLabel, onClick: handleReveal, tooltip: canAct ? `${revealLabel}: ${path}` : '' };
-  // Only when the primary button is the preview: otherwise "Open" already is
-  // the shared page and a second button would point at the same place.
+  /*
+   * Only when the primary button is the preview: otherwise "Open" already is
+   * the shared page and a second button would point at the same place.
+   */
   const showSharedLink = orgMode && published && openTarget === 'preview';
   const previewText = artifact.preview?.[0]?.heading || artifact.preview?.[0]?.text || displayPath;
-  // Whole-card click → preview. The inner buttons (the primary action,
-  // Title) all stopPropagation so their own handlers run instead of
-  // bubbling up to this. Disabled paths fall through to a status toast
-  // instead of opening, mirroring the prior button behaviour. Cursor +
-  // hover lift mark the entire surface as interactive at a glance.
+  /*
+   * Whole-card click → preview. The inner buttons (the primary action,
+   * Title) all stopPropagation so their own handlers run instead of
+   * bubbling up to this. Disabled paths fall through to a status toast
+   * instead of opening, mirroring the prior button behaviour. Cursor +
+   * hover lift mark the entire surface as interactive at a glance.
+   */
   return (
     <Card
       as="div"
@@ -762,7 +793,7 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
       onActivate={canActivate ? handleOpen : undefined}
       aria-label={deleted
         ? `Deleted artifact: ${artifact.title}`
-        : (canActivate ? `${activateLabel}: ${artifact.title}` : disabledReason || 'No file path')}
+        : (canActivate ? `${activateLabel}: ${artifact.title}` : noDestinationReason)}
       className="grid grid-cols-[64px_1fr_auto] items-center gap-4"
     >
       <div
@@ -785,12 +816,14 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
           type="button"
           onClick={(e) => { e.stopPropagation(); if (canActivate) handleOpen(); }}
           disabled={!canActivate}
-          title={deleted ? 'This artifact was deleted' : (canActivate ? `${activateLabel}: ${artifact.title}` : disabledReason || 'No file path')}
-          // kept inline: `all: unset` writes an inline declaration for every
-          // longhand (incl. color/background), which always beats a Tailwind
-          // utility class of equal-or-lower specificity — so every property
-          // touched by the reset has to stay co-located here, and the hover
-          // recolor below has to keep mutating .style directly for the same reason.
+          title={deleted ? 'This artifact was deleted' : (canActivate ? `${activateLabel}: ${artifact.title}` : noDestinationReason)}
+          /*
+           * kept inline: `all: unset` writes an inline declaration for every
+           * longhand (incl. color/background), which always beats a Tailwind
+           * utility class of equal-or-lower specificity — so every property
+           * touched by the reset has to stay co-located here, and the hover
+           * recolor below has to keep mutating .style directly for the same reason.
+           */
           style={{
             all: 'unset',
             cursor: canActivate ? 'pointer' : 'not-allowed',
