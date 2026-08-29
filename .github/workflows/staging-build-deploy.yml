@@ -8,9 +8,6 @@ on:
   push:
     branches:
       - staging
-      # TEMPORARY: manual staging smoke-test for PR mindsdb/cowork#765
-      # (org draft-preview 401 fix). Revert this line before merging that PR.
-      - artifact-collaboration-workflow-2
 
 permissions:
   contents: read
@@ -41,10 +38,6 @@ jobs:
 
   build-installers:
     needs: [run-unit-tests]
-    # TEMPORARY: skip installers on the smoke-test branch above — this run only
-    # needs the web SPA image deployed, not signed desktop builds. Revert
-    # alongside the `on.push.branches` entry before merging PR #765.
-    if: github.ref_name != 'artifact-collaboration-workflow-2'
     uses: ./.github/workflows/build-installers.yml
     with:
       # stable -> the PyPI rc stream, following cowork-server's publish-staging
@@ -69,10 +62,7 @@ jobs:
     # It cannot cover a run that never started (`startup_failure`, zero jobs) —
     # there is no job to put it in. pipeline-watchdog.yml covers that from outside.
     needs: [run-unit-tests, build-deploy, build-installers]
-    # TEMPORARY: no eng-channel alerts for the smoke-test branch above — revert
-    # this condition alongside the other two TEMPORARY markers before merging
-    # PR #765.
-    if: github.ref_name != 'artifact-collaboration-workflow-2' && !cancelled() && !contains(needs.*.result, 'cancelled')
+    if: ${{ !cancelled() && !contains(needs.*.result, 'cancelled') }}
     permissions:
       contents: read
       actions: read # the prior-run lookup behind the recovery message
