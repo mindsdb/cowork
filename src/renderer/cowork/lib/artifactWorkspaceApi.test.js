@@ -2,7 +2,12 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../api', () => ({ authFetch: vi.fn(), BASE: '/api/v1' }));
 
-import { artifactRef, canUseArtifactWorkspace, loadArtifactDraftText } from './artifactWorkspaceApi';
+import {
+  artifactRef,
+  canUseArtifactWorkspace,
+  loadArtifactDraftText,
+  loadArtifactDraftDocument,
+} from './artifactWorkspaceApi';
 import { authFetch } from '../api';
 
 // The workspace API addresses an artifact by its one identity. A card built
@@ -71,5 +76,55 @@ describe('loadArtifactDraftText', () => {
 
     expect(preview.content).toBe('# Report\n');
     expect(preview.truncated).toBe(false);
+  });
+});
+
+/*
+ * The draft-HTML preview branch in ArtifactViewer feeds this straight into an
+ * iframe's `srcdoc`. loadArtifactDraftText's 200k cap (added for the text
+ * preview, ENG-2066) would silently truncate any HTML document over 200KB
+ * before it reached the DOM — this helper exists specifically to not do that.
+ */
+describe('loadArtifactDraftDocument', () => {
+  const respond = (body, contentType = 'text/html; charset=utf-8') => {
+    authFetch.mockResolvedValueOnce({
+      ok: true,
+      text: () => Promise.resolve(body),
+      headers: { get: () => contentType },
+    });
+  };
+
+  it('does not cap the body the way loadArtifactDraftText does', async () => {
+    const big = `<html>${'x'.repeat(250_000)}</html>`;
+    respond(big);
+
+    const doc = await loadArtifactDraftDocument('/api/v1/artifacts/drafts/p/1/index.html');
+
+    expect(doc.content).toBe(big);
+    expect(doc.content.length).toBeGreaterThan(200_000);
+  });
+
+  it('reports HTML content by prefix, ignoring the charset suffix', async () => {
+    respond('<html></html>', 'text/html; charset=utf-8');
+
+    const doc = await loadArtifactDraftDocument('/api/v1/artifacts/drafts/p/1/index.html');
+
+    expect(doc.isHtml).toBe(true);
+    expect(doc.contentType).toBe('text/html; charset=utf-8');
+  });
+
+  it('reports non-HTML content as such', async () => {
+    respond('plain text', 'text/plain; charset=utf-8');
+
+    const doc = await loadArtifactDraftDocument('/api/v1/artifacts/drafts/p/1/notes.txt');
+
+    expect(doc.isHtml).toBe(false);
+  });
+
+  it('throws a readable error carrying the status on a non-ok response', async () => {
+    authFetch.mockResolvedValueOnce({ ok: false, status: 401 });
+
+    await expect(loadArtifactDraftDocument('/api/v1/artifacts/drafts/p/1/index.html'))
+      .rejects.toMatchObject({ message: 'Could not load private draft (401)', status: 401 });
   });
 });

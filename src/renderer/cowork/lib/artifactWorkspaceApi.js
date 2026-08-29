@@ -69,6 +69,32 @@ export async function loadArtifactDraftText(draftUrl) {
   };
 }
 
+/*
+ * Same fetch as loadArtifactDraftText, uncapped: this one feeds an iframe's
+ * `srcdoc` (ArtifactViewer's draft-HTML preview branch), and DRAFT_TEXT_MAX
+ * above would silently truncate any HTML document over 200KB before it ever
+ * reached the DOM. `isHtml` lets the caller fall back to the old direct-`src`
+ * behavior for a non-HTML draft content type — org mode's draft preview only
+ * ever offers .html here (md/txt/csv take the text-preview branch), so that
+ * fallback is Desktop-only and effectively theoretical.
+ */
+export async function loadArtifactDraftDocument(draftUrl) {
+  if (!draftUrl) throw new Error('Artifact has no private draft URL');
+  const url = /^https?:\/\//i.test(draftUrl) ? draftUrl : `${host.getApiOrigin()}${draftUrl}`;
+  const response = await authFetch(url);
+  if (!response.ok) {
+    const error = new Error(`Could not load private draft (${response.status})`);
+    error.status = response.status;
+    throw error;
+  }
+  const contentType = response.headers.get('Content-Type') || '';
+  return {
+    content: await response.text(),
+    contentType,
+    isHtml: contentType.toLowerCase().startsWith('text/html'),
+  };
+}
+
 export function loadArtifactSource(artifact, path = null) {
   const ref = artifactRef(artifact);
   if (!ref) return Promise.reject(new Error('Artifact has no full identity'));
