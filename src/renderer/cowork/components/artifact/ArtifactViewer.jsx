@@ -87,6 +87,14 @@ export function ArtifactViewer({
   // `<script>` / `<link>` refs in the HTML resolve against a real URL.
   // (srcdoc has no base URL → relative refs 404.)
   const [previewUrl, setPreviewUrl] = useState('');
+  // Fetched draft HTML rendered via the iframe's `srcdoc` instead of `src=`
+  // — set only by the draft-preview branch below (see
+  // docs/artifact-collaboration-workflow/task-org-draft-preview-401.md).
+  // Kept separate from `previewUrl` (always exactly one of the two is
+  // non-empty) rather than merged into one variant type: every existing
+  // `src=`-based preview path — proxy, locally-mounted static — is untouched
+  // by that fix and keeps reading `previewUrl` exactly as before.
+  const [previewDoc, setPreviewDoc] = useState('');
   // 'static' (HTML asset bundle) | 'proxy' (fullstack) — the comment marker
   // layer is server-injected only on the static serve path, so the pin/mode
   // affordance and the activation flag are gated on this.
@@ -325,9 +333,9 @@ export function ArtifactViewer({
     : '';
   const { src: imageSrc, failed: imageFailed } = useBlobImageSrc({ url: imageUrl || null });
 
-  // Reset the painted flag whenever the mounted URL changes so the
+  // Reset the painted flag whenever the mounted preview changes so the
   // placeholder reappears for the new content.
-  useEffect(() => { setIframeReady(false); }, [previewUrl]);
+  useEffect(() => { setIframeReady(false); }, [previewUrl, previewDoc]);
 
   // Esc-to-close + portal + body-scroll lock all live in <Modal>.
 
@@ -352,6 +360,7 @@ export function ArtifactViewer({
     setLoading(true);
     setErr('');
     setPreviewUrl('');
+    setPreviewDoc('');
     setPreviewKind('');
     setBackendPort(null);
     setTextPreview(null);
@@ -646,6 +655,7 @@ export function ArtifactViewer({
     onDownload,
     onOpenOS,
     url: previewUrl,
+    doc: previewDoc,
     kind: previewKind,
     iframeRef,
     title,
