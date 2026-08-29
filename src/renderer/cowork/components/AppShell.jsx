@@ -47,9 +47,9 @@ export default function AppShell({
 
   return (
     <>
-      {/* Floating hamburger — reopens a collapsed sidebar (chat route,
-          desktop only). Absolute over the window frame; DOM order doesn't
-          matter since it's positioned. */}
+      {/* Floating hamburger — reopens a collapsed desktop sidebar (Cowork
+          task or any Code surface). Absolute over the window frame; DOM
+          order doesn't matter since it's positioned. */}
       <Tooltip content="Open sidebar">
         <button
           onClick={onOpenSidebar}
