@@ -11,8 +11,15 @@
          port) loads — without these, Chrome blocks the iframe with
          "Refused to frame ... violates Content Security Policy
          directive: frame-src 'self'".
+         The apis.google.com / docs.google.com / gstatic entries are the
+         Google Drive Picker, which the web build renders as an in-page
+         overlay (see host.ts's pickDriveFiles): its SDK is a script from
+         apis.google.com, its file browser is an iframe from
+         docs.google.com, and the file-type icons it draws come from
+         gstatic/googleusercontent. Web only — Electron's picker runs in
+         the OS browser instead, so index.html needs none of them.
          Tighten per-deployment via reverse-proxy headers if needed. -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self' ws: wss: http: https:; frame-src 'self' http://127.0.0.1:* http://localhost:*; child-src 'self' http://127.0.0.1:* http://localhost:*" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://apis.google.com; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob: https://*.googleusercontent.com https://ssl.gstatic.com https://www.gstatic.com; connect-src 'self' ws: wss: http: https:; frame-src 'self' http://127.0.0.1:* http://localhost:* https://docs.google.com https://drive.google.com; child-src 'self' http://127.0.0.1:* http://localhost:* https://docs.google.com https://drive.google.com" />
     <title>MindsHub Cowork</title>
     <!-- Brand favicon: the same MindsHub "minds" mark as the desktop app icon,
          so the web tab matches the dock/taskbar glyph. SVG for crisp tabs on
