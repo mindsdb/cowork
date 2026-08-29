@@ -109,6 +109,9 @@ export function UserMenu({ user, onOpenSettings }) {
   // fallback for the moments the listing has not arrived, and it is already
   // null rather than the raw slug.
   const activeOrgName = activeOrg?.displayName || user.org || null;
+  // The console heads its menu with the email; fall back to whatever else names
+  // the account so the header is never empty.
+  const identity = user.email || user.username || user.name || null;
 
   const pick = async (organizationId) => {
     const result = await switchOrg(organizationId);
@@ -123,52 +126,73 @@ export function UserMenu({ user, onOpenSettings }) {
     });
   };
 
-  const orgRows = orgs.length > 1 ? [
-    {
-      id: 'organization-group',
-      heading: (
-        <div className="text-[10px] font-semibold uppercase tracking-[0.06em] text-ink-4">
-          Organization
-        </div>
-      ),
-    },
-    ...orgs.map((org) => {
-      const isActive = org.id === activeOrg?.id;
-      return {
-        id: `organization-${org.id}`,
-        label: org.displayName,
-        // Long names truncate in the row, so hover carries the whole one.
-        title: org.displayName,
-        // The trigger already names the active organization, and the console
-        // marks it in the list too. Without the check the only signal is the
-        // row being disabled, which reads as "unavailable" rather than "you
-        // are here".
-        hint: isActive ? <Check size={13} strokeWidth={2} className="text-accent" /> : undefined,
-        /**
-         * The active row is not a destination, and a second click during an
-         * in-flight switch would race the first tenant transition.
-         */
-        disabled: isActive || switching,
-        onClick: isActive ? undefined : () => pick(org.id),
-      };
-    }),
+  const sectionHeading = (text) => (
+    <div className="text-[10px] font-semibold uppercase tracking-[0.06em] text-ink-4">{text}</div>
+  );
+
+  const activeRowHint = <Check size={13} strokeWidth={2} className="text-accent" />;
+
+  /**
+   * One row per organization, the active one checked. Shown for a single
+   * organization too, the way the console shows it: a checked row answers
+   * "which organization am I in" outright, where an absent section leaves the
+   * reader to infer it. The row is not a destination, and a second click during
+   * an in-flight switch would race the first tenant transition.
+   */
+  const listedOrgRows = orgs.map((org) => {
+    const isActive = org.id === activeOrg?.id;
+    return {
+      id: `organization-${org.id}`,
+      label: org.displayName,
+      // Long names truncate in the row, so hover carries the whole one.
+      title: org.displayName,
+      hint: isActive ? activeRowHint : undefined,
+      disabled: isActive || switching,
+      onClick: isActive ? undefined : () => pick(org.id),
+    };
+  });
+
+  /**
+   * The listing is asynchronous and can fail, and on desktop it is answered by
+   * a main process that may predate these channels. Name the organization the
+   * token claim already knows about rather than dropping the section, so the
+   * menu reads the same in every state and only the switch targets are missing.
+   */
+  const claimOnlyOrgRow = activeOrgName ? [{
+    id: 'organization-active',
+    label: activeOrgName,
+    title: activeOrgName,
+    hint: activeRowHint,
+    disabled: true,
+  }] : [];
+
+  const organizationRows = listedOrgRows.length ? listedOrgRows : claimOnlyOrgRow;
+  const orgRows = organizationRows.length ? [
+    { id: 'organization-group', heading: sectionHeading('Organization') },
+    ...organizationRows,
     { divider: true },
   ] : [];
 
   const items = [
-    // Identity header — just the org name (accounts without an active
-    // organization skip the header entirely). The email is intentionally not
-    // shown here; the account row already carries the identity.
-    activeOrgName && {
+    /**
+     * Identity header — who you are signed in as, matching the console. The
+     * organization is a separate fact with its own section below; letting it
+     * stand in for the account here meant a menu that never named the person
+     * and, when the organization could not be resolved, named nothing at all.
+     */
+    identity && {
+      id: 'identity',
       heading: (
         <div className="min-w-0">
-          <div className="text-[12.5px] font-semibold text-ink truncate">{activeOrgName}</div>
+          <div className="text-[12.5px] font-semibold text-ink truncate" title={identity}>
+            {identity}
+          </div>
         </div>
       ),
     },
-    // Only when there is somewhere to switch to. One organization is not a
-    // choice, and the header above already names it.
+    identity && { divider: true },
     ...orgRows,
+    { id: 'account-group', heading: sectionHeading('Account') },
     { icon: icon(Settings), label: 'Settings', onClick: onOpenSettings },
     // `nav`, not a paywall trigger (ENG-1533): nothing blocked this user, they
     // went looking. It has to be recorded — it is a real route to the billing

@@ -104,12 +104,14 @@ describe('UserMenu — footer row (ENG-1408)', () => {
 });
 
 describe('UserMenu — dropdown (ENG-1545 curated items)', () => {
-  it('shows the org header (not the email) and the five curated destinations', () => {
+  it('heads the menu with the account and names the organization in its own section', () => {
     renderMenu(<UserMenu user={user} />);
     openMenu();
-    // The org name heads the menu; the email is intentionally not shown here.
+    // Same shape as the console: who you are on top, which organization below.
+    expect(screen.getByText('hazem@example.com')).toBeInTheDocument();
+    expect(screen.getByText('Organization')).toBeInTheDocument();
+    expect(screen.getByText('Account')).toBeInTheDocument();
     expect(screen.getAllByText('MindsDB').length).toBeGreaterThan(0);
-    expect(screen.queryByText('hazem@example.com')).toBeNull();
     for (const label of ['Settings', 'Billing & Usage', 'Members', 'Help & Feedback', 'Logout']) {
       expect(screen.getByRole('menuitem', { name: new RegExp(label) })).toBeInTheDocument();
     }
@@ -238,28 +240,44 @@ describe('UserMenu — organization picker', () => {
     expect(orgsMock.switchOrg).toHaveBeenCalledWith('org-personal');
   });
 
-  it('offers no picker when there is nowhere to switch to', () => {
-    // One organization is a label, not a choice, and the header already
-    // carries it. This is what keeps a personal-only account's menu identical
-    // to the one it had before any of this existed.
+  it('still names the only organization, and leaves nothing to switch to', () => {
+    /*
+     * The console shows the section for one organization too. A checked row
+     * answers "which organization am I in" outright, where an absent section
+     * leaves the reader to infer it from nothing. There is still no switch
+     * target, so the row is disabled.
+     */
     withOrgs([PERSONAL], PERSONAL);
     renderMenu(<UserMenu user={user} />);
     openMenu();
-    expect(screen.queryByText('Organization')).toBeNull();
-    expect(screen.queryByRole('menuitem', { name: /hazem@example\.com's organization/ })).toBeNull();
+    expect(screen.getByText('Organization')).toBeInTheDocument();
+    const only = screen.getByRole('menuitem', { name: /hazem@example\.com's organization/ });
+    expect(only).toHaveAttribute('data-disabled');
   });
 
-  it('renders the menu it always did when the listing never arrives', () => {
-    // Signed out, an older main process with no such channel, or a read still
-    // in flight all land here, and all three must read as today's menu.
+  it('falls back to the claim organization when the listing never arrives', () => {
+    /*
+     * Signed out, an older main process with no such channel, or a read still
+     * in flight all land here. The section still names the organization the
+     * token knows about, so only the switch targets are missing rather than
+     * the whole answer.
+     */
     withOrgs([], null);
     renderMenu(<UserMenu user={user} />);
     openMenu();
-    expect(screen.queryByText('Organization')).toBeNull();
-    expect(screen.getAllByText('MindsDB').length).toBeGreaterThan(0);
+    expect(screen.getByText('Organization')).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /MindsDB/ })).toHaveAttribute('data-disabled');
     for (const label of ['Settings', 'Billing & Usage', 'Members', 'Help & Feedback', 'Logout']) {
       expect(screen.getByRole('menuitem', { name: new RegExp(label) })).toBeInTheDocument();
     }
+  });
+
+  it('drops the organization section only when nothing can name one', () => {
+    withOrgs([], null);
+    renderMenu(<UserMenu user={{ ...user, org: null }} />);
+    openMenu();
+    expect(screen.queryByText('Organization')).toBeNull();
+    expect(screen.getByText('Account')).toBeInTheDocument();
   });
 
   it('says so when the switch is refused, and leaves the check where it was', async () => {
