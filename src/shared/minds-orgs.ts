@@ -1,15 +1,9 @@
-// Which MindsHub organization this install mints its key in, and how a person
-// changes it.
-//
-// An API key belongs to whatever organization the JWT names at the moment it is
-// minted, and auth takes no organization parameter on the create call. So the
-// choice has to be made here, before the mint, by switching the active
-// organization first.
-//
-// Everything in this file is a decision rather than a call: the ranking, the
-// personal-organization rule, and the stored pick. `minds-auth.ts` owns every
-// fetch and hands values through here, which is what lets the ordering be
-// asserted without standing up Keycloak.
+/**
+ * Canonical organization shapes and selection decisions shared by the desktop
+ * login flow and the web account menu. Network calls stay in their platform
+ * owners; this file keeps ranking, personal-organization detection, and stored
+ * desktop preference behavior testable without standing up Keycloak.
+ */
 
 /** One organization a person belongs to, as the desktop shows it. */
 export interface MindsOrg {
@@ -79,7 +73,7 @@ export function rankMindsOrgs(orgs: MindsOrg[]): MindsOrg[] {
 }
 
 /**
- * The organization to mint in.
+ * The organization to make active for this desktop session.
  *
  * A pick the person made themselves always wins, and it wins for as long as
  * they are still a member — that is the whole reason it is stored. Without
@@ -105,10 +99,12 @@ export function needsOrgPick(orgs: MindsOrg[]): boolean {
 
 // ── The stored pick ───────────────────────────────────────────────
 //
-// Kept in the Cowork home's `state.json` beside the provider preferences, and
-// keyed by the Keycloak subject: one machine can be signed into a different
-// account tomorrow, and inheriting the last person's organization would move
-// where their keys are minted with nothing on screen saying so.
+/**
+ * Kept in the Cowork home's `state.json` beside the provider preferences, and
+ * keyed by the Keycloak subject: one machine can be signed into a different
+ * account tomorrow, and inheriting the last person's organization would move
+ * their session with nothing on screen saying so.
+ */
 
 const ORG_PREFERENCE_KEY = 'mindsOrganization';
 

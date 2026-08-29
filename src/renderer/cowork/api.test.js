@@ -18,8 +18,9 @@ vi.mock('../platform/host', async (importOriginal) => ({
 const setAntonInstallId = vi.hoisted(() => vi.fn());
 vi.mock('./lib/analytics', () => ({ setAntonInstallId }));
 
-import { fetchRecommendedModels, fetchSettings, updateSettings, revealSettingKey, streamNewSession, fetchHealth, fetchInFlightList, cancelResponse, fetchHubWorkspaces } from './api';
+import { authFetch, fetchRecommendedModels, fetchSettings, updateSettings, revealSettingKey, streamNewSession, fetchHealth, fetchInFlightList, cancelResponse, fetchHubWorkspaces } from './api';
 import { MODEL_ROUTER_ID } from './lib/modelCatalog';
+import { __resetOrganizationRequestBoundaryForTests } from './lib/organizationRequestBoundary';
 
 const jsonRes = (body, ok = true, status = 200) => ({
   ok,
@@ -27,6 +28,41 @@ const jsonRes = (body, ok = true, status = 200) => ({
   headers: { get: () => 'application/json' },
   json: async () => body,
   text: async () => JSON.stringify(body),
+});
+
+function accessToken(organizationId) {
+  const payload = btoa(JSON.stringify({
+    sub: 'user-1',
+    activate_organization: { id: organizationId },
+  })).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return `header.${payload}.signature`;
+}
+
+describe('authFetch organization boundary', () => {
+  beforeEach(() => {
+    __resetOrganizationRequestBoundaryForTests();
+    hostMock.isWeb = true;
+    hostMock.getAccessToken.mockReset();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('sends the document organization beside the browser bearer', async () => {
+    hostMock.getAccessToken.mockResolvedValue(accessToken('organization-a'));
+    const fetch = vi.fn(async () => jsonRes({ ok: true }));
+    vi.stubGlobal('fetch', fetch);
+
+    await authFetch('/api/v1/projects');
+
+    expect(fetch).toHaveBeenCalledWith('/api/v1/projects', {
+      headers: {
+        Authorization: expect.stringMatching(/^Bearer /),
+        'X-Cowork-Expected-Organization-Id': 'organization-a',
+      },
+    });
+  });
 });
 
 // The `refresh` flag is the whole mechanism behind "a top-up unlocks paid

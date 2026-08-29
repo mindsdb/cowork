@@ -15,6 +15,8 @@ async function importHost() {
 const keycloakMock = vi.hoisted(() => ({
   logout: vi.fn(async () => {}),
   getAccessToken: vi.fn(async () => null),
+  listWebOrganizations: vi.fn(),
+  switchWebOrganization: vi.fn(),
 }));
 vi.mock('../lib/keycloak', () => keycloakMock);
 
@@ -24,6 +26,13 @@ function setUrl(url: string) {
 
 beforeEach(() => {
   delete (window as unknown as Record<string, unknown>).antontron;
+  keycloakMock.listWebOrganizations.mockReset();
+  keycloakMock.switchWebOrganization.mockReset();
+  keycloakMock.listWebOrganizations.mockResolvedValue({
+    ok: true,
+    orgs: [],
+    activeOrgId: null,
+  });
 });
 
 afterEach(() => {
@@ -47,6 +56,125 @@ describe('logout()', () => {
     await host.logout();
     expect(bridgeLogout).toHaveBeenCalledTimes(1);
     expect(keycloakMock.logout).not.toHaveBeenCalled();
+  });
+});
+
+describe('MindsHub organizations', () => {
+  const ORGS = [
+    { id: 'org-acme', name: 'acme', displayName: 'Acme', isPersonal: false },
+    { id: 'org-personal', name: 'personal_user-1', displayName: "user@example.com's organization", isPersonal: true },
+  ];
+
+  it('lists organizations through the browser Keycloak session on web', async () => {
+    keycloakMock.listWebOrganizations.mockResolvedValue({
+      ok: true,
+      orgs: ORGS,
+      activeOrgId: 'org-acme',
+    });
+    const host = await importHost();
+
+    await expect(host.mindshubListOrgs()).resolves.toEqual({
+      orgs: ORGS,
+      activeOrgId: 'org-acme',
+      reachable: true,
+    });
+    expect(keycloakMock.listWebOrganizations).toHaveBeenCalledOnce();
+  });
+
+  it('marks an unsettled web listing as unreachable so the hook can retry it', async () => {
+    keycloakMock.listWebOrganizations.mockResolvedValue({ ok: false, reason: 'network down' });
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const host = await importHost();
+
+    await expect(host.mindshubListOrgs()).resolves.toEqual({
+      orgs: [],
+      activeOrgId: null,
+      reachable: false,
+    });
+  });
+
+  it('switches on web and requires a reload after the tenant commits', async () => {
+    keycloakMock.switchWebOrganization.mockResolvedValue({
+      ok: true,
+      activeOrgId: 'org-personal',
+      reloadRequired: true,
+      clearTenantState: true,
+    });
+    const host = await importHost();
+
+    await expect(host.mindshubSwitchOrg('org-personal')).resolves.toEqual({
+      ok: true,
+      activeOrgId: 'org-personal',
+      orgs: [],
+      reloadRequired: true,
+      clearTenantState: true,
+    });
+    expect(keycloakMock.switchWebOrganization).toHaveBeenCalledWith('org-personal');
+  });
+
+  it('keeps a definitive web refusal in place but reloads an indeterminate result', async () => {
+    keycloakMock.switchWebOrganization
+      .mockResolvedValueOnce({
+        ok: false,
+        reason: 'Not a member.',
+        reloadRequired: false,
+        clearTenantState: false,
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        reason: 'Refresh failed.',
+        reloadRequired: true,
+        clearTenantState: true,
+      });
+    const host = await importHost();
+
+    await expect(host.mindshubSwitchOrg('org-nope')).resolves.toMatchObject({
+      ok: false,
+      error: 'Not a member.',
+      reloadRequired: false,
+      clearTenantState: false,
+    });
+    await expect(host.mindshubSwitchOrg('org-personal')).resolves.toMatchObject({
+      ok: false,
+      error: 'Refresh failed.',
+      reloadRequired: true,
+      clearTenantState: true,
+    });
+  });
+
+  it('uses the Electron bridge and never imports the web behavior', async () => {
+    const mindshubListOrgs = vi.fn(async () => ({ orgs: ORGS, activeOrgId: 'org-acme' }));
+    const mindshubSwitchOrg = vi.fn(async () => ({
+      ok: true,
+      orgs: ORGS,
+      activeOrgId: 'org-personal',
+    }));
+    (window as unknown as Record<string, unknown>).antontron = {
+      mindshubListOrgs,
+      mindshubSwitchOrg,
+    };
+    const host = await importHost();
+
+    await expect(host.mindshubListOrgs()).resolves.toEqual({ orgs: ORGS, activeOrgId: 'org-acme' });
+    await expect(host.mindshubSwitchOrg('org-personal')).resolves.toMatchObject({
+      ok: true,
+      activeOrgId: 'org-personal',
+    });
+    expect(keycloakMock.listWebOrganizations).not.toHaveBeenCalled();
+    expect(keycloakMock.switchWebOrganization).not.toHaveBeenCalled();
+  });
+
+  it('fails closed on an older Electron bridge instead of falling through to web', async () => {
+    (window as unknown as Record<string, unknown>).antontron = {};
+    const host = await importHost();
+
+    await expect(host.mindshubListOrgs()).resolves.toEqual({ orgs: [], activeOrgId: null });
+    await expect(host.mindshubSwitchOrg('org-personal')).resolves.toMatchObject({
+      ok: false,
+      error: 'Changing organization needs a newer desktop app.',
+    });
+    expect(keycloakMock.listWebOrganizations).not.toHaveBeenCalled();
+    expect(keycloakMock.switchWebOrganization).not.toHaveBeenCalled();
   });
 });
 

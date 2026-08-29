@@ -1,25 +1,26 @@
-// `<UserMenu>` — the signed-in sidebar footer row: avatar (or initials
-// placeholder), display name, and org, opening a dropdown with the account
-// destinations. Parity with the web console's user menu (ENG-1408).
-//
-// Curated to five destinations (ENG-1545): Settings, Billing & Usage, Members,
-// Help & Feedback, Logout. The console pages (Billing & Usage / Members) and the
-// support page open in the OS browser — each carries an ↗ hint so the jump out
-// of the app is telegraphed before the click. Settings and logout act inside the
-// app. Theme + 8-bit live as quick toggles in the sidebar footer, not here.
-//
-// **The organization picker lives here rather than in the rail**, which is the
-// opposite of where the workspace selector ended up, and the two decisions are
-// the same decision. An organization is who is paying; a workspace is a
-// container inside it. The account menu is about identity, so the organization
-// belongs in it and the workspace does not, which is why the workspace picker
-// moved out to its own control above the New task CTA. The console puts its
-// organization selector in exactly this menu too.
-//
-// Switching costs more than a label: the API key the sidecar presents belongs
-// to one organization, so main re-mints and hands over a new one. That is why
-// the rows disable while a switch is in flight and why a refusal gets a
-// sentence rather than a silently dead row.
+/**
+ * `<UserMenu>` — the signed-in sidebar footer row: avatar (or initials
+ * placeholder), display name, and org, opening a dropdown with the account
+ * destinations. Parity with the web console's user menu (ENG-1408).
+ *
+ * The primary actions are Settings, Billing & Usage, Members, Help & Feedback,
+ * and Logout. Manage organization appears when the active organization has a
+ * readable label. External destinations carry an ↗ hint so the jump out of the
+ * app is telegraphed before the click.
+ *
+ * **The organization picker lives here rather than in the rail**, which is the
+ * opposite of where the workspace selector ended up, and the two decisions are
+ * the same decision. An organization is who is paying; a workspace is a
+ * container inside it. The account menu is about identity, so the organization
+ * belongs in it and the workspace does not, which is why the workspace picker
+ * moved out to its own control above the New task CTA. The console puts its
+ * organization selector in exactly this menu too.
+ *
+ * Switching costs more than a label: the active organization controls the
+ * tenant that subsequent requests address. Desktop refreshes its session in
+ * main; web refreshes Keycloak and reloads the renderer. That is why rows
+ * disable while a switch is in flight and a refusal gets a written response.
+ */
 
 import { useState } from 'react';
 import {
@@ -111,10 +112,11 @@ export function UserMenu({ user, onOpenSettings }) {
 
   const pick = async (organizationId) => {
     const result = await switchOrg(organizationId);
-    if (result?.ok) return;
-    // A written sentence, not the error's own text. Main answers a refusal
-    // with something a person can act on and every branch of it already ends
-    // in "Nothing changed", which is the part that matters here.
+    /**
+     * A possibly committed web switch reloads immediately. Do not paint an
+     * error into the old tenant while navigation is tearing that UI down.
+     */
+    if (result?.ok || result?.reloadRequired) return;
     toastManager.add({
       title: result?.error || 'We could not change organization. Please try again.',
       type: 'danger',
@@ -142,8 +144,10 @@ export function UserMenu({ user, onOpenSettings }) {
         // row being disabled, which reads as "unavailable" rather than "you
         // are here".
         hint: isActive ? <Check size={13} strokeWidth={2} className="text-accent" /> : undefined,
-        // The active row is not a destination, and a second click during an
-        // in-flight switch would race the first through the mint.
+        /**
+         * The active row is not a destination, and a second click during an
+         * in-flight switch would race the first tenant transition.
+         */
         disabled: isActive || switching,
         onClick: isActive ? undefined : () => pick(org.id),
       };

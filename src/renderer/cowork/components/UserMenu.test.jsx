@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 const hostMock = vi.hoisted(() => ({
   host: {
@@ -17,9 +17,11 @@ const analyticsMock = vi.hoisted(() => ({
 }));
 vi.mock('../lib/analytics', () => analyticsMock);
 
-// The menu now reads the organization listing, which reaches Keycloak through
-// the main process. Stubbing the hook rather than the bridge keeps every test
-// below about the menu; the hook has its own file.
+/**
+ * The menu reads a platform-neutral organization hook. Stubbing the hook keeps
+ * every test below about the menu; Electron and web routing have their own
+ * focused coverage.
+ */
 const orgsMock = vi.hoisted(() => ({
   state: { orgs: [], activeOrg: null, activeOrgId: null, switching: false },
   switchOrg: vi.fn(async () => ({ ok: true })),
@@ -191,12 +193,14 @@ describe('UserMenu — billing route is measured as navigation (ENG-1533)', () =
   );
 });
 
-// ── Which organization this install works in ──────────────────────
-//
-// The picker is here rather than in the rail because an organization is who
-// is paying, and the account menu is the identity surface. Switching also
-// moves the API key the sidecar presents, which is why a refusal has to say
-// something rather than leaving a row that quietly did nothing.
+/**
+ * ── Which organization this install works in ──────────────────────
+ *
+ * The picker is here rather than in the rail because an organization is who
+ * is paying, and the account menu is the identity surface. Switching also
+ * changes the tenant subsequent requests address, which is why a refusal has
+ * to say something rather than leaving a row that quietly did nothing.
+ */
 describe('UserMenu — organization picker', () => {
   const withOrgs = (orgs, active) => {
     orgsMock.state = {
@@ -268,6 +272,21 @@ describe('UserMenu — organization picker', () => {
     // Nothing is applied optimistically, so the trigger still names the one
     // the app is actually working in.
     expect(screen.getByRole('button', { name: /Hazem Ahmed/ }).textContent).toContain('acme.example');
+  });
+
+  it('does not render a refusal while an indeterminate web switch reloads', async () => {
+    orgsMock.switchOrg.mockResolvedValue({
+      ok: false,
+      reloadRequired: true,
+      error: 'The tenant may already have changed.',
+    });
+    withOrgs([ACME, PERSONAL], ACME);
+    renderMenu(<UserMenu user={user} />);
+    openMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: /hazem@example\.com's organization/ }));
+
+    await waitFor(() => expect(orgsMock.switchOrg).toHaveBeenCalledWith('org-personal'));
+    expect(screen.queryByText('The tenant may already have changed.')).toBeNull();
   });
 
   it('offers Manage organization only once there is an organization to manage', () => {

@@ -38,6 +38,11 @@ import './cowork/styles/skin-8bit.css';
 import './styles.css';
 import './cowork/styles/tailwind.css';
 import App from './App';
+import {
+  pinWebOrganizationCacheIdentity,
+  requireWebOrganizationCacheIdentity,
+} from './cowork/lib/organizationCacheIdentity';
+import { prepareForOrganizationReload } from './cowork/lib/organizationTransition';
 import { keycloak } from './lib/keycloak';
 import { isLegacyTenantHost } from './lib/legacyHost';
 import { loadSkin } from './lib/skins';
@@ -60,6 +65,13 @@ const initOptions = { onLoad: 'login-required' as const, pkceMethod: 'S256', che
 // Legacy per-user host (cw-<id>): canonical `cowork.*` and localhost dev are
 // unaffected — see the TRANSITION EXCEPTION note above and lib/legacyHost.ts.
 const legacyTenant = isLegacyTenantHost(window.location.hostname);
+if (!legacyTenant) requireWebOrganizationCacheIdentity();
+
+function bindOrganizationCacheTokens(tokens: { token?: string }) {
+  if (pinWebOrganizationCacheIdentity(tokens.token) === 'changed') {
+    prepareForOrganizationReload();
+  }
+}
 
 const root = document.getElementById('root')!;
 
@@ -78,6 +90,7 @@ createRoot(root).render(
         authClient={keycloak}
         initOptions={initOptions}
         LoadingComponent={<div style={{ width: '100vw', height: '100vh' }} />}
+        onTokens={bindOrganizationCacheTokens}
       >
         <App />
       </ReactKeycloakProvider>
