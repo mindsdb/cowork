@@ -44,9 +44,18 @@ const github: ConnectorConnection = {
 };
 
 const project: CodeProject = {
-  schema_version: 1,
+  schema_version: 2,
   id: 'mindshub',
   name: 'MindsHub',
+  resources: [{
+    kind: 'repository',
+    id: 'cowork',
+    name: 'cowork',
+    local_path: '/work/cowork',
+    computer_id: 'local',
+    checkout_strategy: 'worktree',
+    commands: [],
+  }],
   folders: [{ id: 'cowork', name: 'cowork', path: '/work/cowork', commands: [] }],
   connections: [{ provider: 'github', name: github.name, label: 'Ian GitHub' }],
   environment: { variables: {}, port_names: ['PORT'] },

@@ -4,7 +4,7 @@ import Menu from '../components/ui/Menu';
 import { host } from '../../platform/host';
 import type { CodingSession, DiffFile, GitState } from './api';
 import { sourceContextLabel, sourceProviderLabel } from './developerTools';
-import { CODE_STATUS, compactPath, diffStats, repositoryLabel } from './presentation';
+import { codingSessionStatus, compactPath, diffStats, repositoryLabel } from './presentation';
 
 
 export function TaskBar({
@@ -23,6 +23,7 @@ export function TaskBar({
   onFork,
   onCompact,
   onStatus,
+  onRecover,
   onArchive,
   onDelete,
 }: {
@@ -41,10 +42,11 @@ export function TaskBar({
   onFork: () => void;
   onCompact: () => void;
   onStatus: () => void;
+  onRecover: () => void;
   onArchive: () => void;
   onDelete: () => void;
 }) {
-  const status = CODE_STATUS[session.status];
+  const status = codingSessionStatus(session);
   const { additions, deletions } = diffStats(files);
   const taskIdle = session.status !== 'running' && session.status !== 'awaiting_approval';
   const worktreeLabel = compactPath(session.workspace_path);
@@ -57,6 +59,7 @@ export function TaskBar({
         ? 'direct folder'
         : (git?.branch || 'isolated worktree');
   const origin = session.source_contexts?.[0] || null;
+  const recoverable = ['interrupted', 'failed', 'recovering'].includes(session.run_status || '');
 
   return (
     <header className="code-taskbar">
@@ -74,6 +77,10 @@ export function TaskBar({
               <span aria-hidden="true">·</span>
             </>}
             <span>{workspaceModeLabel}</span>
+            {session.computer_name && <>
+              <span aria-hidden="true">·</span>
+              <span>{session.computer_name}</span>
+            </>}
             <span className="code-taskbar__model" aria-hidden="true">·</span>
             <span className="code-taskbar__model">
               {session.engine_id === 'codex' ? 'Codex' : session.engine_id} · {modelLabel || session.model}
@@ -86,6 +93,9 @@ export function TaskBar({
           <span className="code-status-dot" aria-hidden="true" />
           {status.label}
         </span>
+        {recoverable && (
+          <Button size="sm" variant="tinted" onClick={onRecover}>Restore</Button>
+        )}
         <Button
           size="sm"
           variant={terminalOpen ? 'tinted' : 'subtle'}
@@ -113,12 +123,12 @@ export function TaskBar({
         <Menu
           trigger={<Button icon size="sm" variant="subtle" aria-label="Coding task actions">{Ico.moreVert(14)}</Button>}
           items={[
-            {
+            ...(session.computer_is_local !== false ? [{
               label: 'Open task workspace',
               icon: Ico.openFolder(13),
               onClick: () => void host.openPath(session.workspace_path),
               title: worktreeLabel,
-            },
+            }] : []),
             {
               label: 'Rename task',
               icon: Ico.edit(13),

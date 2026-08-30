@@ -82,7 +82,8 @@ export function ReviewPanel({
     workspace,
     files: files.filter((file) => (file.folder_id || 'folder') === workspace.folder_id),
   })).filter((group) => group.files.length > 0);
-  const supportsHandoff = session.workspace_kind !== 'direct_folder' || !!session.workspaces?.length;
+  const supportsHandoff = session.computer_is_local !== false
+    && (session.workspace_kind !== 'direct_folder' || !!session.workspaces?.length);
   const gitWorkspaces = workspaceEntries.filter((workspace) => workspace.workspace_kind === 'git_worktree');
   const sourceChanged = workspaceEntries.some((workspace) => workspace.source_dirty);
   const changeKey = files.map((file) => `${file.folder_id || 'folder'}:${file.status}:${file.path}:${file.patch}`).join('\n');
@@ -207,8 +208,8 @@ export function ReviewPanel({
               ))}
             </section>
             <div className="code-git-open-actions">
-              <Button size="sm" variant="subtle" onClick={() => void host.openPath(session.workspace_path)}>{Ico.openFolder(13)} Open task workspace</Button>
-              {session.source_path !== session.workspace_path && <Button size="sm" variant="subtle" onClick={() => void host.openPath(session.source_path)}>Open source</Button>}
+              {session.computer_is_local !== false && <Button size="sm" variant="subtle" onClick={() => void host.openPath(session.workspace_path)}>{Ico.openFolder(13)} Open task workspace</Button>}
+              {session.computer_is_local !== false && session.source_path !== session.workspace_path && <Button size="sm" variant="subtle" onClick={() => void host.openPath(session.source_path)}>Open source</Button>}
             </div>
             {sourceChanged && <Alert variant="warning" title="Source had local changes when this task began">Those changes stayed in the source folder. Cowork checks for conflicts before applying.</Alert>}
             {handoffConflict && (

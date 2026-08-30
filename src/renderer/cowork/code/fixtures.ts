@@ -1,11 +1,14 @@
 import type {
   CodingEvent,
   CodingSession,
+  CodeComputer,
   CodeProject,
   DiffFile,
   EngineCapability,
   GitState,
   SessionCreateBody,
+  ProjectFolder,
+  ProjectResource,
   SkillLibraryItem,
   WorkspaceInspection,
 } from './api';
@@ -312,9 +315,14 @@ export function getCodeFixtureApi() {
     supports_terminal: true,
   }];
   let projects: CodeProject[] = [{
-    schema_version: 1,
+    schema_version: 2,
     id: 'project-atlas',
     name: 'Atlas',
+    resources: [{
+      kind: 'repository', id: 'atlas-web', name: 'atlas-web',
+      source_url: 'https://github.com/mindsdb/atlas-web.git', local_path: ROOT,
+      computer_id: null, default_branch: 'staging', checkout_strategy: 'worktree', commands: [],
+    }],
     folders: [{ id: 'atlas-web', name: 'atlas-web', path: ROOT, base_branch: 'staging', commands: [] }],
     skill_sources: [],
     connections: name.startsWith('delivery-') || name === 'work-search' ? [
@@ -328,6 +336,19 @@ export function getCodeFixtureApi() {
     created_at: NOW,
     updated_at: NOW,
   }];
+  const fixtureComputer: CodeComputer = {
+    schema_version: 1,
+    id: 'fixture-computer',
+    name: 'This computer',
+    status: 'online',
+    active_run_count: 0,
+    last_seen_at: NOW,
+    capabilities: {
+      platform: 'darwin', architecture: 'arm64', runtime_version: '2.0.7',
+      protocol_versions: ['1.0'], agent_engines: ['codex'], shells: ['bash', 'zsh'],
+      has_git: true, has_terminal: true, supports_local_folders: true, max_concurrent_runs: 4,
+    },
+  };
   const skillItems: SkillLibraryItem[] = [
     { id: 'source-engineering:review/SKILL.md', kind: 'skill', name: 'Code review', description: 'Review changes against team engineering standards.', origin: 'team', source_id: 'source-engineering', source_name: 'Engineering standards', path: 'review/SKILL.md', version: 'a1b2c3d4e5f6', enabled: true, enabled_project_ids: ['project-atlas'] },
     { id: 'source-engineering:AGENTS.md', kind: 'instructions', name: 'AGENTS.md', description: '', origin: 'team', source_id: 'source-engineering', source_name: 'Engineering standards', path: 'AGENTS.md', version: 'a1b2c3d4e5f6', enabled: true, enabled_project_ids: ['project-atlas'] },
@@ -388,9 +409,36 @@ export function getCodeFixtureApi() {
         base_branch_available: true,
       })),
     }),
-    createProject: async (body: Pick<CodeProject, 'name' | 'folders' | 'skill_sources' | 'connections' | 'environment' | 'default_engine_id' | 'default_model' | 'permission_mode'>) => {
+    projectResources: async (id: string) => ({
+      items: (projects.find((item) => item.id === id)?.resources || []).map((resource) => ({
+        resource: copy(resource),
+        availability: {
+          resource_id: resource.id,
+          status: 'available' as const,
+          eligible_computer_ids: [fixtureComputer.id],
+          required_computer_id: resource.kind === 'local_folder' ? fixtureComputer.id : null,
+          detail: '',
+        },
+      })),
+    }),
+    projectComputers: async () => ({ items: [copy(fixtureComputer)] }),
+    computers: async () => ({ items: [copy(fixtureComputer)] }),
+    resolveLocalResource: async (folder: ProjectFolder): Promise<ProjectResource> => ({
+      kind: 'repository', id: folder.id, name: folder.name,
+      source_url: `https://github.com/mindsdb/${folder.name}.git`, local_path: folder.path,
+      computer_id: null, default_branch: folder.base_branch, checkout_strategy: 'worktree',
+      commands: folder.commands,
+    }),
+    createProject: async (body: Pick<CodeProject, 'name' | 'resources' | 'skill_sources' | 'connections' | 'environment' | 'default_engine_id' | 'default_model' | 'permission_mode'>) => {
       const created: CodeProject = {
-        schema_version: 1, id: `project-${Date.now()}`, ...body, created_at: NOW, updated_at: NOW,
+        schema_version: 2, id: `project-${Date.now()}`, ...body,
+        folders: body.resources.map((resource) => ({
+          id: resource.id, name: resource.name,
+          path: resource.kind === 'repository' ? resource.local_path || resource.source_url || resource.name : resource.path,
+          base_branch: resource.kind === 'repository' ? resource.default_branch : null,
+          commands: resource.commands,
+        })),
+        created_at: NOW, updated_at: NOW,
       };
       projects = [created, ...projects];
       return copy(created);
@@ -529,6 +577,12 @@ export function getCodeFixtureApi() {
     },
     runQueued: async (id: string) => copy(selected(id)),
     cancel: async (id: string) => copy(update(id, { status: 'cancelled', active_turn_id: null })),
+    recover: async (id: string) => copy(update(id, {
+      status: 'ready',
+      run_status: 'recovering',
+      computer_status: 'online',
+      last_error: null,
+    })),
     approve: async (id: string, _approvalId: string, decision: string) => copy(update(id, {
       status: decision === 'deny' ? 'cancelled' : 'running', pending_approval: null,
     })),

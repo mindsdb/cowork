@@ -52,12 +52,12 @@ export function useCodeProjects(sessionProjectId?: string | null) {
     [projects, selectedId],
   );
 
-  const save = useCallback(async (project: CodeProject | null, values: Partial<CodeProject> & Pick<CodeProject, 'name' | 'folders'>) => {
+  const save = useCallback(async (project: CodeProject | null, values: Partial<CodeProject> & Pick<CodeProject, 'name' | 'resources'>) => {
     const saved = project
       ? await codingApi.updateProject(project.id, values)
       : await codingApi.createProject({
           name: values.name,
-          folders: values.folders,
+          resources: values.resources,
           connections: values.connections || [],
           environment: values.environment || { variables: {}, port_names: ['PORT'] },
           skill_sources: values.skill_sources || [],

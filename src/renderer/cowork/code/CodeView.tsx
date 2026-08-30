@@ -186,6 +186,7 @@ export default function CodeView({
               : codingApi.turn(taskBarSession.id, '/status'),
             true,
           )}
+          onRecover={() => void runAction(() => codingApi.recover(taskBarSession.id), true)}
           onArchive={() => void toggleArchive()}
           onDelete={() => setDeleteOpen(true)}
         />

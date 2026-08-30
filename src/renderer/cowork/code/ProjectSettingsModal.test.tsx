@@ -31,6 +31,12 @@ vi.mock('./api', () => ({
     models,
     playbook: vi.fn(),
     skillLibrary,
+    computers: vi.fn(async () => ({ items: [] })),
+    projectResources: vi.fn(async () => ({ items: [] })),
+    resolveLocalResource: vi.fn(async (folder) => ({
+      kind: 'local_folder', id: folder.id, name: folder.name, path: folder.path,
+      computer_id: 'local', commands: folder.commands,
+    })),
   },
 }));
 
@@ -38,10 +44,11 @@ import type { CodeProject } from './api';
 import { ProjectSettingsModal } from './ProjectSettingsModal';
 
 const project: CodeProject = {
-  schema_version: 1,
+  schema_version: 2,
   id: 'project-1',
   name: 'MindsHub',
   folders: [{ id: 'cowork', name: 'cowork', path: '/work/cowork', base_branch: 'staging', commands: [] }],
+  resources: [{ kind: 'repository', id: 'cowork', name: 'cowork', source_url: 'https://github.com/mindsdb/cowork.git', local_path: '/work/cowork', computer_id: null, default_branch: 'staging', checkout_strategy: 'worktree', commands: [] }],
   connections: [],
   environment: { variables: {}, port_names: ['PORT'] },
   default_engine_id: 'codex',
@@ -112,7 +119,7 @@ describe('ProjectSettingsModal', () => {
       />,
     );
 
-    await user.click(screen.getByRole('button', { name: 'Add the first folder' }));
+    await user.click(screen.getByRole('button', { name: 'Add code from this computer' }));
     await user.click(await screen.findByText('Choose skills'));
     await user.click(screen.getByRole('checkbox', { name: /Thermo-Nuclear Code Quality Review/ }));
     await user.click(screen.getByRole('button', { name: 'Save project' }));

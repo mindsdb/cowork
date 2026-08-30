@@ -16,6 +16,7 @@ import { PromptReferenceChips } from './PromptReferences';
 import { SkillDetailModal } from './SkillDetailModal';
 import { parseDeveloperSourceUrl } from './developerTools';
 import { TaskSourceLinks } from './TaskSourceLinks';
+import { TaskExecutionControls } from './TaskExecutionControls';
 import { useNewTaskDraft } from './useNewTaskDraft';
 import type { CodingCatalog } from './useCodingCatalog';
 
@@ -66,6 +67,8 @@ export function NewTaskPanel({
     availableEngines, attachFiles, selectedProject, sourceContexts, setSourceContexts, taskReady,
     startUnavailable, readinessMessage, readinessKind, handleStart, engineCommands, engineLabel,
     standaloneFolderPath, standaloneFolderName, chooseStandaloneFolder,
+    projectResources, resourceIds, setResourceIds, resourceStates,
+    computers, computerId, setComputerId, executionLoading,
   } = draft;
   const commandQuery = /^\/([^\s]*)$/.exec(prompt)?.[1] ?? null;
   const [paletteIndex, setPaletteIndex] = useState(0);
@@ -152,6 +155,18 @@ export function NewTaskPanel({
                 <span className="code-standalone-folder-picker__icon" aria-hidden="true">{Ico.folder(13)}</span>
                 <span className="code-standalone-folder-picker__label">{standaloneFolderName || 'Choose folder'}</span>
               </Button>
+            )}
+            {selectedProject && (
+              <TaskExecutionControls
+                resources={projectResources}
+                selectedResourceIds={resourceIds}
+                resourceStates={resourceStates}
+                computers={computers}
+                computerId={computerId}
+                disabled={busy || executionLoading}
+                onResourceIdsChange={setResourceIds}
+                onComputerChange={setComputerId}
+              />
             )}
           </div>
           {commandQuery != null && (

@@ -20,6 +20,7 @@ import {
 import { preferredCodingModel } from './defaults';
 import { mergeReferences, referencesFromFiles } from './PromptReferences';
 import { useCodingCatalog, type CodingCatalog } from './useCodingCatalog';
+import { useTaskExecutionTarget } from './useTaskExecutionTarget';
 
 
 interface NewTaskDraftOptions {
@@ -87,6 +88,17 @@ export function useNewTaskDraft({
   const modelRefreshedAt = useRef(-Infinity);
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const selectedProject = projects.find((project) => project.id === selectedProjectId) || null;
+  const {
+    projectResources,
+    resourceIds,
+    setResourceIds,
+    resourceStates,
+    computers,
+    computerId,
+    setComputerId,
+    executionLoading,
+    executionIssue,
+  } = useTaskExecutionTarget(selectedProject, engineId);
 
   const engines = codingCatalog.engines;
   const engineLoading = codingCatalog.enginesLoading;
@@ -191,16 +203,18 @@ export function useNewTaskDraft({
   useEffect(() => {
     setSourceContexts([]);
   }, [selectedProjectId]);
+
   const selectedModelValid = modelOptions.some((option) => option.value === model);
   const selectedEngine = engines.find((engine) => engine.id === engineId);
   const selectedEngineAvailable = selectedEngine?.available === true;
   const workspaceLoading = selectedProject ? foldersLoading : standaloneFolderLoading;
   const workspaceIssue = selectedProject ? folderIssue : standaloneFolderIssue;
   const workspaceSelected = !!selectedProject || !!standaloneFolderPath;
-  const loading = engineLoading || modelsLoading || workspaceLoading;
+  const loading = engineLoading || modelsLoading || workspaceLoading || executionLoading;
   const taskReady = !!prompt.trim()
     && workspaceSelected
     && !workspaceIssue
+    && (!selectedProject || (!!computerId && !executionIssue))
     && selectedEngineAvailable
     && selectedModelValid
     && modelOptions.length > 0
@@ -211,6 +225,7 @@ export function useNewTaskDraft({
     || !prompt.trim()
     || !workspaceSelected
     || !!workspaceIssue
+    || (!!selectedProject && (!computerId || !!executionIssue))
     || !selectedEngineAvailable
     || !selectedModelValid
     || modelOptions.length === 0;
@@ -218,8 +233,10 @@ export function useNewTaskDraft({
   const readinessMessage = (() => {
     if (busy) return 'Starting task…';
     if (engineLoading || modelsLoading) return 'Loading coding agent…';
-    if (workspaceLoading) return selectedProject ? 'Checking project folders…' : 'Checking folder…';
+    if (workspaceLoading) return selectedProject ? 'Checking project resources…' : 'Checking folder…';
+    if (executionLoading) return 'Finding an available computer…';
     if (workspaceIssue) return workspaceIssue;
+    if (executionIssue) return executionIssue;
     if (!selectedEngineAvailable) return selectedEngine?.reason || (catalogError ? '' : 'No coding agent is available.');
     if (!selectedModelValid || modelOptions.length === 0) return '';
     if (!prompt.trim()) return '';
@@ -229,7 +246,7 @@ export function useNewTaskDraft({
 
   const readinessKind = loading || busy
     ? 'loading'
-    : !workspaceSelected || !!workspaceIssue
+    : !workspaceSelected || !!workspaceIssue || !!executionIssue
       ? 'folder'
       : 'locked';
 
@@ -255,6 +272,8 @@ export function useNewTaskDraft({
       permissionMode,
       attachments,
       sourceContexts: selectedProject ? sourceContexts : [],
+      resourceIds: selectedProject && resourceIds.length < projectResources.length ? resourceIds : undefined,
+      computerId: selectedProject ? computerId : undefined,
     };
     await onCreate(selectedProject
       ? { ...task, projectId: selectedProject.id }
@@ -289,6 +308,14 @@ export function useNewTaskDraft({
     standaloneFolderPath,
     standaloneFolderName: folderName(standaloneFolderPath),
     chooseStandaloneFolder,
+    projectResources,
+    resourceIds,
+    setResourceIds,
+    resourceStates,
+    computers,
+    computerId,
+    setComputerId,
+    executionLoading,
     selectedProject,
     selectedProjectId,
     onProjectChange,
