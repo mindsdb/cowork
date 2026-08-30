@@ -82,6 +82,27 @@ describe('ProjectSettingsModal', () => {
     expect(screen.queryByRole('button', { name: 'Open Connectors' })).not.toBeInTheDocument();
   });
 
+  it('turns an empty project skill picker into a path to the Skills library', async () => {
+    const user = userEvent.setup();
+    const onOpenSkills = vi.fn();
+    skillLibrary.mockResolvedValueOnce({ sources: [], items: [] });
+    render(
+      <ProjectSettingsModal
+        open
+        project={project}
+        connections={[]}
+        busy={false}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+        onOpenSkills={onOpenSkills}
+      />,
+    );
+
+    await user.click(await screen.findByText('Choose skills'));
+    await user.click(screen.getByRole('button', { name: 'Open Skills' }));
+    expect(onOpenSkills).toHaveBeenCalledOnce();
+  });
+
   it('summarises and exposes an existing project skill selection', async () => {
     const user = userEvent.setup();
     render(
@@ -119,7 +140,7 @@ describe('ProjectSettingsModal', () => {
       />,
     );
 
-    await user.click(screen.getByRole('button', { name: 'Add code from this computer' }));
+    await user.click(screen.getByRole('button', { name: 'Add a local folder' }));
     await user.click(await screen.findByText('Choose skills'));
     await user.click(screen.getByRole('checkbox', { name: /Thermo-Nuclear Code Quality Review/ }));
     await user.click(screen.getByRole('button', { name: 'Save project' }));
@@ -177,7 +198,7 @@ describe('ProjectSettingsModal', () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
-  it('uses the first-class developer tools section and routes account management to Connectors', async () => {
+  it('uses the first-class Connectors section and routes account management to Connectors', async () => {
     const user = userEvent.setup();
     const onOpenConnectors = vi.fn();
     render(
@@ -195,7 +216,7 @@ describe('ProjectSettingsModal', () => {
       />,
     );
 
-    expect(screen.getByText('Developer tools')).toBeInTheDocument();
+    expect(screen.getByText('Connectors')).toBeInTheDocument();
     expect(screen.getByText('MindsDB GitHub')).toBeInTheDocument();
     expect(screen.queryByText('Slack')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Manage' }));

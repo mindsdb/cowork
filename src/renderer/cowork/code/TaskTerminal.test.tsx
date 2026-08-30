@@ -78,7 +78,7 @@ it('starts a task-owned shell, reports state, and stops only the active terminal
     stream.onError?.();
     return { process_id: 'p1', status: 'exited', items: [], first_seq: 0, next_seq: 0, exit_code: 0 };
   });
-  await user.click(screen.getByRole('button', { name: 'Stop' }));
+  await user.click(screen.getByRole('button', { name: 'Stop terminal' }));
   expect(api.stopTerminal).toHaveBeenCalledWith('task-1', 'terminal-1');
   expect(await screen.findByRole('tab', { name: 'Terminal 1, Exited with code 0' })).toBeInTheDocument();
 });

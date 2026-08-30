@@ -156,6 +156,7 @@ describe('electron mode (bridge present)', () => {
     setUrl('file:///Applications/app/index.html');
     let host = await importHost();
     expect(host.getApiOrigin()).toBe('http://127.0.0.1:12345');
+    expect(host.getCodeControlPlaneOrigin()).toBe('http://127.0.0.1:12345');
 
     (window as unknown as Record<string, unknown>).antontron = {}; // bridge without serverPort
     host = await importHost();

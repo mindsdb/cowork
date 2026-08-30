@@ -85,7 +85,7 @@ describe('ReviewPanel', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Handoff' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Deliver' }));
     fireEvent.click(screen.getByRole('button', { name: 'Run checks' }));
 
     await waitFor(() => expect(screen.getByText(/No project checks are configured/)).toBeInTheDocument());
@@ -117,7 +117,7 @@ describe('ReviewPanel', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Handoff' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Deliver' }));
     fireEvent.click(screen.getByRole('button', { name: 'Apply locally' }));
     fireEvent.click(screen.getByRole('button', { name: 'Apply changes' }));
 
@@ -144,7 +144,7 @@ describe('ReviewPanel', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Handoff' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Deliver' }));
     fireEvent.click(screen.getByRole('button', { name: 'Resolve with agent' }));
 
     expect(onResolveConflicts).toHaveBeenCalledOnce();
@@ -180,7 +180,7 @@ describe('ReviewPanel', () => {
       />,
     );
 
-    await user.click(screen.getByRole('tab', { name: 'Handoff' }));
+    await user.click(screen.getByRole('tab', { name: 'Deliver' }));
     await user.click(screen.getByRole('button', { name: 'Post update' }));
     await user.type(screen.getByPlaceholderText('Write an update for mindsdb/cowork#42…'), 'Tests are running.');
     await user.click(screen.getByRole('combobox', { name: 'Update type' }));
@@ -222,7 +222,7 @@ describe('ReviewPanel', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Handoff' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Deliver' }));
     expect(screen.getByText('Posted')).toBeInTheDocument();
     expect(screen.getByText(/Published with Linear work/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Post another' })).toBeInTheDocument();
@@ -259,7 +259,7 @@ describe('ReviewPanel', () => {
       />,
     );
 
-    await user.click(screen.getByRole('tab', { name: 'Handoff' }));
+    await user.click(screen.getByRole('tab', { name: 'Deliver' }));
     await user.click(screen.getByRole('button', { name: 'Complete issue' }));
     await user.click(screen.getAllByRole('button', { name: 'Complete issue' }).at(-1)!);
 

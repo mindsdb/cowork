@@ -45,7 +45,12 @@ vi.mock('./api', () => ({
       { resource: { kind: 'repository', id: 'server', name: 'cowork-server', source_url: 'https://github.com/mindsdb/cowork-server.git', checkout_strategy: 'worktree', commands: [] }, availability: { resource_id: 'server', status: 'available', eligible_computer_ids: ['local'], detail: '' } },
     ] })),
     projectComputers: vi.fn(async () => ({ items: [{
-      schema_version: 1, id: 'local', name: 'This computer', status: 'online', active_run_count: 0,
+      schema_version: 1, id: 'local', name: 'This computer', is_local: true, status: 'online', active_run_count: 0,
+      last_seen_at: '2026-08-23T09:00:00Z',
+      capabilities: { platform: 'windows', architecture: 'x64', runtime_version: '1', protocol_versions: ['1.0'], agent_engines: ['codex'], shells: ['powershell'], has_git: true, has_terminal: true, supports_local_folders: true, max_concurrent_runs: 4 },
+    }] })),
+    computers: vi.fn(async () => ({ items: [{
+      schema_version: 1, id: 'local', name: 'This computer', is_local: true, status: 'online', active_run_count: 0,
       last_seen_at: '2026-08-23T09:00:00Z',
       capabilities: { platform: 'windows', architecture: 'x64', runtime_version: '1', protocol_versions: ['1.0'], agent_engines: ['codex'], shells: ['powershell'], has_git: true, has_terminal: true, supports_local_folders: true, max_concurrent_runs: 4 },
     }] })),

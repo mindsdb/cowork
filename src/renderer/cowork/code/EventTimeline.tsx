@@ -1,9 +1,10 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import Ico from '../components/Icons';
+import Button from '../components/ui/Button';
 import Spinner from '../components/ui/Spinner';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import type { CodingEvent, CodingSession } from './api';
-import { CODE_STATUS, isActiveStatus } from './presentation';
+import { CODE_STATUS, codingSessionStatus, isActiveStatus } from './presentation';
 
 
 const ACTIVITY_TYPES = new Set<CodingEvent['type']>(['reasoning', 'tool', 'command', 'file_change', 'diff', 'usage']);
@@ -242,33 +243,76 @@ function TimelineEvent({ event }: { event: CodingEvent }) {
 }
 
 
-function TaskOutcome({ session, events }: { session: CodingSession; events: CodingEvent[] }) {
-  if (isActiveStatus(session.status) || session.status === 'ready') return null;
-  const status = CODE_STATUS[session.status];
+function TaskOutcome({
+  session,
+  events,
+  recovering,
+  onRecover,
+}: {
+  session: CodingSession;
+  events: CodingEvent[];
+  recovering: boolean;
+  onRecover: () => Promise<void>;
+}) {
+  const recoverable = ['interrupted', 'failed', 'recovering'].includes(session.run_status || '');
+  const remoteRunActive = ['queued', 'preparing', 'ready', 'running', 'awaiting_approval'].includes(session.run_status || '');
+  if (remoteRunActive) return null;
+  if (isActiveStatus(session.status) || (session.status === 'ready' && !recoverable)) return null;
+  const status = recoverable ? codingSessionStatus(session) : CODE_STATUS[session.status];
   const latestError = [...events].reverse().find((event) => event.type === 'error');
+  const errorDetail = session.last_error || latestError?.text || '';
+  const recoveryInProgress = recovering || session.run_status === 'recovering';
   const detail = session.status === 'completed'
     ? 'The agent finished this turn. Review the changes or send a follow-up.'
-    : session.status === 'failed'
-      ? session.last_error || latestError?.text || 'The turn did not complete. Send a follow-up to retry in the same workspace.'
-      : session.status === 'interrupted'
-        ? 'The app stopped during this turn. Send a follow-up to resume the same session and workspace.'
-        : 'The active turn was stopped. You can continue in the same session.';
+    : recoverable
+      ? session.computer_status === 'offline'
+        ? 'The task computer disconnected. Your conversation, workspace, and changes are preserved.'
+        : 'The turn stopped before it completed. Your conversation, workspace, and changes are preserved.'
+      : 'The active turn was stopped. You can continue in the same task.';
   return (
-    <section className={`code-task-outcome is-${status.tone}`}>
-      <span className="code-task-outcome__icon">{session.status === 'completed' ? Ico.check(13) : session.status === 'failed' ? Ico.close(13) : Ico.stop(11)}</span>
-      <div><strong>{status.label}</strong><p>{detail}</p></div>
+    <section className={`code-task-outcome is-${status.tone}${recoverable ? ' is-recovery' : ''}`}>
+      <span className="code-task-outcome__icon">{session.status === 'completed' ? Ico.check(13) : recoverable ? Ico.refresh(12) : Ico.stop(11)}</span>
+      <div className="code-task-outcome__copy">
+        <strong>{recoverable ? (recoveryInProgress ? 'Resuming task' : 'Task paused') : status.label}</strong>
+        <p>{recoveryInProgress ? 'Reconnecting to the task workspace…' : detail}</p>
+        {errorDetail && !recoveryInProgress && (recoverable || session.status === 'failed') && (
+          <details className="code-task-outcome__details">
+            <summary>Failure details</summary>
+            <p>{errorDetail}</p>
+          </details>
+        )}
+      </div>
+      {recoverable && (
+        <Button size="sm" variant="tinted" disabled={recoveryInProgress} onClick={() => void onRecover()}>
+          {recoveryInProgress ? 'Resuming…' : 'Resume task'}
+        </Button>
+      )}
     </section>
   );
 }
 
 
-export const EventTimeline = memo(function EventTimeline({ events, session }: { events: CodingEvent[]; session: CodingSession }) {
+export const EventTimeline = memo(function EventTimeline({
+  events,
+  session,
+  recovering = false,
+  onRecover = async () => {},
+}: {
+  events: CodingEvent[];
+  session: CodingSession;
+  recovering?: boolean;
+  onRecover?: () => Promise<void>;
+}) {
   const items = useTimelineItems(events, session.id);
   const [visibleCount, setVisibleCount] = useState(TIMELINE_WINDOW_SIZE);
   useEffect(() => { setVisibleCount(TIMELINE_WINDOW_SIZE); }, [session.id]);
   const hiddenCount = Math.max(0, items.length - visibleCount);
   const visibleItems = hiddenCount ? items.slice(-visibleCount) : items;
   const latestEventSeq = events.at(-1)?.seq || 0;
+  const hasRecoveryCard = ['interrupted', 'failed', 'recovering'].includes(session.run_status || '');
+  const terminalErrorSeq = hasRecoveryCard
+    ? [...events].reverse().find((event) => event.type === 'error')?.seq
+    : undefined;
   const active = isActiveStatus(session.status);
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
@@ -303,18 +347,26 @@ export const EventTimeline = memo(function EventTimeline({ events, session }: { 
         {visibleItems.map((item) => {
           const key = item.kind === 'event' ? `${item.event.seq}-${item.event.type}` : `${item.kind}-${item.events[0]?.seq}`;
           if (item.kind === 'activity') return <ActivityGroup key={key} events={item.events} active={active} />;
-          if (item.kind === 'errors') return <ErrorGroup key={key} events={item.events} />;
+          if (item.kind === 'errors') {
+            const retryEvents = terminalErrorSeq == null
+              ? item.events
+              : item.events.filter((event) => event.seq !== terminalErrorSeq);
+            return retryEvents.length ? <ErrorGroup key={key} events={retryEvents} /> : null;
+          }
           return <TimelineEvent key={key} event={item.event} />;
         })}
         {session.status === 'running' && (
           <div className="code-running-indicator"><Spinner className="text-sm" /><span>The coding agent is working…</span></div>
         )}
-        <TaskOutcome session={session} events={events} />
+        <TaskOutcome session={session} events={events} recovering={recovering} onRecover={onRecover} />
       </div>
     </div>
   );
 }, (left, right) => (
   left.events === right.events
   && left.session.status === right.session.status
+  && left.session.run_status === right.session.run_status
+  && left.session.computer_status === right.session.computer_status
   && left.session.last_error === right.session.last_error
+  && left.recovering === right.recovering
 ));

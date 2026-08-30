@@ -121,7 +121,7 @@ function flattenForLabels(options) {
       out.push(...flattenForLabels(opt.options));
       continue;
     }
-    out.push({ value: opt.value, label: opt.label });
+    out.push({ value: opt.value, label: opt.triggerLabel ?? opt.label });
   }
   return out;
 }
@@ -160,7 +160,17 @@ function renderOptions(options) {
         {opt.icon && (
           <span className="inline-flex shrink-0 text-ink-3">{opt.icon}</span>
         )}
-        <BaseSelect.ItemText className="flex-1 min-w-0 truncate">{opt.label}</BaseSelect.ItemText>
+        <BaseSelect.ItemText className="flex-1 min-w-0">
+          <span className="block truncate">{opt.label}</span>
+          {opt.description && (
+            <span className="block mt-[2px] truncate text-[11px] leading-[14px] font-normal text-ink-4">
+              {opt.description}
+            </span>
+          )}
+        </BaseSelect.ItemText>
+        {opt.meta && (
+          <span className="inline-flex shrink-0 text-[10.5px] text-ink-4">{opt.meta}</span>
+        )}
         <span className="inline-flex shrink-0 text-accent invisible group-data-[selected]:visible">
           <BaseSelect.ItemIndicator>{CHECK}</BaseSelect.ItemIndicator>
         </span>

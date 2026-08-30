@@ -11,6 +11,7 @@ import type { ModelPickerMeta, ModelPickerSource } from '../lib/modelPickerOptio
 import type { CodeProject, CreateCodeTaskInput, SkillLibraryItem } from './api';
 import { CodeCommandPalette, useCodePaletteItems, type CodePaletteItem } from './CodeCommandPalette';
 import { CodeProjectPicker } from './CodeProjectPicker';
+import { ExecutionTargetSelect } from './ExecutionTargetSelect';
 import { PermissionSelect } from './PermissionSelect';
 import { PromptReferenceChips } from './PromptReferences';
 import { SkillDetailModal } from './SkillDetailModal';
@@ -68,7 +69,7 @@ export function NewTaskPanel({
     startUnavailable, readinessMessage, readinessKind, handleStart, engineCommands, engineLabel,
     standaloneFolderPath, standaloneFolderName, chooseStandaloneFolder,
     projectResources, resourceIds, setResourceIds, resourceStates,
-    computers, computerId, setComputerId, executionLoading,
+    computers, allComputers, computerId, setComputerId, executionLoading, refreshComputers,
   } = draft;
   const commandQuery = /^\/([^\s]*)$/.exec(prompt)?.[1] ?? null;
   const [paletteIndex, setPaletteIndex] = useState(0);
@@ -162,11 +163,26 @@ export function NewTaskPanel({
                 selectedResourceIds={resourceIds}
                 resourceStates={resourceStates}
                 computers={computers}
+                allComputers={allComputers}
                 computerId={computerId}
                 disabled={busy || executionLoading}
                 onResourceIdsChange={setResourceIds}
                 onComputerChange={setComputerId}
+                onComputerMenuOpen={refreshComputers}
               />
+            )}
+            {!selectedProject && (
+              <div className="code-task-execution-controls">
+                <ExecutionTargetSelect
+                  computers={allComputers}
+                  computerId={computerId}
+                  onComputerChange={setComputerId}
+                  disabled={busy}
+                  loading={executionLoading}
+                  localOnly
+                  onOpen={refreshComputers}
+                />
+              </div>
             )}
           </div>
           {commandQuery != null && (

@@ -3,6 +3,9 @@ import type { ComponentType, CSSProperties, ReactNode } from 'react';
 export interface SelectOption {
   value?: string;
   label?: ReactNode;
+  triggerLabel?: ReactNode;
+  description?: ReactNode;
+  meta?: ReactNode;
   disabled?: boolean;
   title?: string;
   icon?: ReactNode;

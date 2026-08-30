@@ -88,6 +88,11 @@ export interface RuntimeControls {
   additional_dirs: string[];
 }
 
+export interface RuntimeRegistrationToken {
+  registration_token: string;
+  expires_in_seconds: number;
+}
+
 export type SessionUpdateBody = Partial<RuntimeControls>;
 
 export interface PendingApproval {
@@ -161,6 +166,7 @@ export interface CodingSession {
   active_turn_id?: string | null;
   pending_approval?: PendingApproval | null;
   queued_instructions?: QueuedInstruction[];
+  pinned?: boolean;
   archived?: boolean;
   last_error?: string | null;
   event_count: number;
@@ -665,6 +671,15 @@ const liveCodingApi = {
     return requestJson<{ items: CodeComputer[] }>(`/projects/${encodeURIComponent(id)}/computers${suffix}`);
   },
   computers: () => requestJson<{ items: CodeComputer[] }>('/computers'),
+  computerRegistrationToken: () => requestJson<RuntimeRegistrationToken>('/runtime/registration-token', {
+    method: 'POST',
+  }),
+  renameComputer: (id: string, name: string) => requestJson<CodeComputer>(`/computers/${encodeURIComponent(id)}`, {
+    method: 'PATCH', body: JSON.stringify({ name }),
+  }),
+  revokeComputer: (id: string) => requestJson<void>(`/computers/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  }),
   resolveLocalResource: (body: ProjectFolder) => requestJson<ProjectResource>('/project-resources/inspect', {
     method: 'POST', body: JSON.stringify(body),
   }),
@@ -726,6 +741,7 @@ const liveCodingApi = {
   renameSession: (id: string, title: string) => requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/rename`, {
     method: 'POST', body: JSON.stringify({ title }),
   }),
+  setPinned: (id: string, pinned: boolean) => requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/${pinned ? 'pin' : 'unpin'}`, { method: 'POST' }),
   setArchived: (id: string, archived: boolean) => requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/${archived ? 'archive' : 'unarchive'}`, { method: 'POST' }),
   forkSession: (id: string) => requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/fork`, { method: 'POST' }),
   events: (id: string, after = 0) => requestJson<{ items: CodingEvent[]; next_seq: number }>(`/sessions/${encodeURIComponent(id)}/events?after=${after}`),

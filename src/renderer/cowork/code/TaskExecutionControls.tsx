@@ -1,7 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../components/Icons';
-import Select from '../components/ui/Select';
 import type { CodeComputer, ProjectResource, ProjectResourceState } from './api';
+import { ExecutionTargetSelect } from './ExecutionTargetSelect';
+
+
+function resourceAvailabilityLabel(
+  resource: ProjectResource,
+  state: ProjectResourceState['availability'] | undefined,
+  requiredComputer: CodeComputer | undefined,
+): string {
+  if (state?.status === 'offline') return `${requiredComputer?.name || 'Required computer'} is offline`;
+  if (state?.required_computer_id) return `Only on ${requiredComputer?.name || 'its linked computer'}`;
+  if (resource.kind === 'repository' && resource.source_url) return 'Available on any online computer';
+  return state?.detail || 'Available for this task';
+}
 
 
 export function TaskExecutionControls({
@@ -9,22 +21,27 @@ export function TaskExecutionControls({
   selectedResourceIds,
   resourceStates,
   computers,
+  allComputers,
   computerId,
   disabled,
   onResourceIdsChange,
   onComputerChange,
+  onComputerMenuOpen,
 }: {
   resources: ProjectResource[];
   selectedResourceIds: string[];
   resourceStates: ProjectResourceState[];
   computers: CodeComputer[];
+  allComputers: CodeComputer[];
   computerId: string;
   disabled?: boolean;
   onResourceIdsChange: (ids: string[]) => void;
   onComputerChange: (id: string) => void;
+  onComputerMenuOpen?: () => void;
 }) {
   const allSelected = selectedResourceIds.length === resources.length;
   const availability = new Map(resourceStates.map((item) => [item.resource.id, item.availability]));
+  const computersById = new Map(allComputers.map((computer) => [computer.id, computer]));
   const resourceMenuRef = useRef<HTMLDetailsElement>(null);
   const [resourceMenuOpen, setResourceMenuOpen] = useState(false);
 
@@ -65,8 +82,12 @@ export function TaskExecutionControls({
             {resources.map((resource) => {
               const checked = selectedResourceIds.includes(resource.id);
               const state = availability.get(resource.id);
+              const requiredComputer = state?.required_computer_id
+                ? computersById.get(state.required_computer_id)
+                : undefined;
+              const availabilityLabel = resourceAvailabilityLabel(resource, state, requiredComputer);
               return (
-                <label key={resource.id} className={state?.status === 'offline' ? 'is-offline' : ''}>
+                <label key={resource.id} className={state?.status === 'offline' || state?.status === 'unavailable' ? 'is-offline' : ''}>
                   <input
                     type="checkbox"
                     checked={checked}
@@ -78,7 +99,7 @@ export function TaskExecutionControls({
                   <span aria-hidden="true">{resource.kind === 'repository' ? Ico.code(13) : Ico.folder(13)}</span>
                   <span>
                     <strong>{resource.name}</strong>
-                    <small>{resource.kind === 'repository' ? 'Repository' : state?.status === 'offline' ? 'Computer offline' : 'Folder'}</small>
+                    <small>{availabilityLabel}</small>
                   </span>
                 </label>
               );
@@ -90,24 +111,15 @@ export function TaskExecutionControls({
         </details>
       )}
 
-      {computers.length > 1 && (
-        <Select
-          value={computerId}
-          onValueChange={onComputerChange}
-          options={computers.map((computer) => ({
-            value: computer.id,
-            label: computer.name,
-            title: `${computer.capabilities.platform} · ${computer.active_run_count} active`,
-            icon: Ico.computer(13),
-          }))}
-          variant="unstyled"
-          size="sm"
-          ariaLabel="Run task on computer"
-          menuLabel="Computer"
-          disabled={disabled}
-          className="meta-pill code-composer-picker code-computer-picker"
-        />
-      )}
+      <ExecutionTargetSelect
+        computers={allComputers}
+        computerId={computerId}
+        onComputerChange={onComputerChange}
+        disabled={disabled}
+        availableComputerIds={computers.map((computer) => computer.id)}
+        unavailableReason="Local resources"
+        onOpen={onComputerMenuOpen}
+      />
     </div>
   );
 }

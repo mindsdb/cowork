@@ -1399,6 +1399,7 @@ function AppCore() {
     openSkills: openCodingSkills,
     selectSession: selectCodingSession,
     changeSelection: changeCodingSelection,
+    setSessionPinned: setCodingSessionPinned,
   } = useCodeWorkspace(openCode);
   // Seed nav state from the address bar so a web deep-link / refresh paints the
   // right view instead of flashing Home. Electron's memory router starts at `/`.
@@ -4400,6 +4401,7 @@ function AppCore() {
           onSelectTask={selectTask}
           onNewTask={newTask}
           onSelectCodingSession={selectCodingSession}
+          onSetCodingSessionPinned={setCodingSessionPinned}
           onNewCodingTask={openNewCodingTask}
           onOpenCodingProjects={openCodingProjects}
           onOpenCodingConnectors={openCodingConnectors}

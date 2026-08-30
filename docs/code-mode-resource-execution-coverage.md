@@ -35,8 +35,10 @@ Rejected direction: a persistent runtime or fleet-management surface. It would p
   - user narrows to a valid subset;
   - user restores all resources.
 - Execution availability:
-  - one eligible computer: selected automatically and hidden;
-  - multiple eligible computers: compact computer picker appears;
+  - the selected execution target is always visible as a compact picker;
+  - **This computer** is selected automatically when it is eligible;
+  - connected Mac, Windows, and Linux computers appear with live availability;
+  - MindsHub Cloud is visible but disabled as **Coming soon**;
   - no eligible computer because a required local folder is offline;
   - no eligible computer because all runtimes are offline;
   - loading and retryable error states.
@@ -64,6 +66,7 @@ Rejected direction: a persistent runtime or fleet-management surface. It would p
 - Exercise all-resource and subset-resource task creation.
 - Exercise automatic selection, explicit selection, and no-eligible-computer states.
 - Verify a remote repository-only run and an owner-bound local-folder run.
+- Verify connecting, renaming, monitoring, and revoking a Computer from Settings → Code → Computers.
 - Verify no-project local execution remains intact.
 - Confirm labels say repository, folder, computer, and task; avoid control-plane, lease, fencing, or execution-plane jargon.
 
