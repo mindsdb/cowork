@@ -76,6 +76,40 @@ function draftDirectoryUrl(fetchUrl) {
   }
 }
 
+/*
+ * A srcdoc document's `document.URL` stays `about:srcdoc` no matter what
+ * `<base>` says — the base only changes how relative references *resolve*,
+ * not the document's own recorded address. A fragment-only link
+ * (href="#slide-2") resolves against the base into an absolute URL that no
+ * longer matches `document.URL`, so the browser treats it as a real
+ * navigation instead of an in-page scroll (confirmed against a live browser
+ * during review of PR #765 — the resulting request has no Authorization
+ * header, reproducing the exact 401 this file exists to fix, just triggered
+ * by clicking an anchor instead of loading the preview). This intercepts
+ * fragment-only clicks — event delegation on `document`, so anchors added
+ * after initial render are covered too — and scrolls manually instead of
+ * letting the click navigate. Exported so a future fix to the Edit-mode
+ * visual editor (`htmlVisualEditorDocument.js`, which injects its own
+ * `<base>` and has the same pre-existing bug) can reuse it.
+ *
+ * Known limitation: `location.hash` and CSS `:target` do not update. Scroll
+ * position is what matters for a preview; accepted.
+ */
+export const DRAFT_FRAGMENT_GUARD_SCRIPT = `(function () {
+  document.addEventListener('click', function (event) {
+    var anchor = event.target && event.target.closest ? event.target.closest('a') : null;
+    if (!anchor) return;
+    var href = anchor.getAttribute('href');
+    if (!href || href.charAt(0) !== '#') return;
+    event.preventDefault();
+    if (href.length === 1) { window.scrollTo(0, 0); return; }
+    var name = href.slice(1);
+    try { name = decodeURIComponent(name); } catch (e) { /* malformed percent-encoding, use raw */ }
+    var target = document.getElementById(name) || document.getElementsByName(name)[0];
+    if (target && target.scrollIntoView) target.scrollIntoView();
+  });
+})();`;
+
 // `srcdoc` gives the iframe no base URL of its own, so relative
 // `<script src>` / `<link href>` / anchors in fetched draft HTML would
 // otherwise resolve against the parent app's origin instead of the draft's
@@ -85,7 +119,13 @@ function draftDirectoryUrl(fetchUrl) {
 export function injectDraftBaseHref(html, fetchUrl) {
   const baseHref = draftDirectoryUrl(fetchUrl);
   if (!baseHref || HAS_BASE_TAG_RE.test(html)) return html;
-  const markup = `<base href="${escapeHtmlAttribute(baseHref)}">`;
+  // Precedent: cowork-server's comments_layer.py escapes `</script>` in its
+  // own injected script for the same reason — a literal occurrence would
+  // close the tag early. DRAFT_FRAGMENT_GUARD_SCRIPT is a fixed, hand-authored
+  // string with no such sequence today; this guards against a future edit
+  // introducing one silently breaking the injected markup.
+  const guardScript = DRAFT_FRAGMENT_GUARD_SCRIPT.replace(/<\/script>/gi, '<\\/script>');
+  const markup = `<base href="${escapeHtmlAttribute(baseHref)}"><script>${guardScript}</script>`;
   return HEAD_OPEN_RE.test(html)
     ? html.replace(HEAD_OPEN_RE, `<head$1>${markup}`)
     : `${markup}${html}`;

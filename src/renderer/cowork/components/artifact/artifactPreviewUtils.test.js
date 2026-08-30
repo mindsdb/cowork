@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   isAbsoluteArtifactPreviewUrl,
@@ -7,6 +7,7 @@ import {
   withArtifactVersion,
   injectDraftBaseHref,
   canFetchDraftWithCredentials,
+  DRAFT_FRAGMENT_GUARD_SCRIPT,
 } from './artifactPreviewUtils';
 import { TEXT_PREVIEW_EXTS as SHARED_TEXT_PREVIEW_EXTS } from '../../lib/artifactKinds';
 
@@ -98,10 +99,9 @@ describe('injectDraftBaseHref', () => {
       'https://cowork.example/api/v1/artifacts/drafts/p1/a1/index.html?v=5',
     );
 
-    expect(result).toBe(
-      '<html><head><base href="https://cowork.example/api/v1/artifacts/drafts/p1/a1/">'
-      + '<title>Deck</title></head><body>Hi</body></html>',
-    );
+    expect(result).toContain('<base href="https://cowork.example/api/v1/artifacts/drafts/p1/a1/">');
+    expect(result.indexOf('<head')).toBeLessThan(result.indexOf('<base'));
+    expect(result.indexOf('<base')).toBeLessThan(result.indexOf('<title>Deck</title>'));
   });
 
   it('prepends the base tag when the document has no <head>', () => {
@@ -110,12 +110,11 @@ describe('injectDraftBaseHref', () => {
       'https://cowork.example/api/v1/artifacts/drafts/p1/a1/index.html',
     );
 
-    expect(result).toBe(
-      '<base href="https://cowork.example/api/v1/artifacts/drafts/p1/a1/"><body>Hi</body>',
-    );
+    expect(result).toContain('<base href="https://cowork.example/api/v1/artifacts/drafts/p1/a1/">');
+    expect(result.endsWith('<body>Hi</body>')).toBe(true);
   });
 
-  it('does not add a second base tag when the document already has one', () => {
+  it('does not add a second base tag (or the guard script) when the document already has one', () => {
     const html = '<html><head><base href="https://custom.example/"></head><body>Hi</body></html>';
 
     const result = injectDraftBaseHref(
@@ -132,9 +131,7 @@ describe('injectDraftBaseHref', () => {
       'https://cowork.example/api/v1/artifacts/drafts/p1/a1/report.html?v=3&__antonComments=1',
     );
 
-    expect(result).toBe(
-      '<head><base href="https://cowork.example/api/v1/artifacts/drafts/p1/a1/"></head>',
-    );
+    expect(result).toContain('<base href="https://cowork.example/api/v1/artifacts/drafts/p1/a1/">');
   });
 
   it('escapes characters that are unsafe inside an HTML attribute', () => {
@@ -147,8 +144,134 @@ describe('injectDraftBaseHref', () => {
       'https://cowork.example/api/v1/artifacts/drafts/p1/a&b/index.html',
     );
 
-    expect(result).toBe(
-      '<head><base href="https://cowork.example/api/v1/artifacts/drafts/p1/a&amp;b/"></head>',
+    expect(result).toContain('<base href="https://cowork.example/api/v1/artifacts/drafts/p1/a&amp;b/">');
+  });
+
+  /*
+   * srcdoc's document.URL stays `about:srcdoc` no matter what <base> says, so
+   * a fragment-only link (href="#x") resolves against the base and no longer
+   * matches the document's own URL — the browser treats it as a real
+   * navigation instead of an in-page scroll (confirmed against a live
+   * browser during review of PR #765). That navigation has no Authorization
+   * header, so it reproduces the very 401 this file exists to fix. The guard
+   * script intercepts it.
+   */
+  it('injects the fragment-navigation guard script alongside the base tag', () => {
+    const result = injectDraftBaseHref('<head></head>', 'https://cowork.example/drafts/p1/a1/index.html');
+
+    expect(result).toContain(DRAFT_FRAGMENT_GUARD_SCRIPT);
+    expect(result.indexOf('<base')).toBeLessThan(result.indexOf('<script>'));
+  });
+});
+
+/*
+ * Runs the guard's source inside a fresh iframe's own realm (its own
+ * `document`/`window`/`Function`), mirroring how it actually executes —
+ * inside the srcdoc document, not the parent page. A plain `new Function()`
+ * against the top-level test document would register a `click` listener that
+ * outlives and accumulates across tests instead.
+ */
+function mountGuardedDocument(bodyHtml) {
+  const iframe = document.createElement('iframe');
+  document.body.appendChild(iframe);
+  iframe.contentDocument.open();
+  iframe.contentDocument.write(`<!doctype html><html><body>${bodyHtml}</body></html>`);
+  iframe.contentDocument.close();
+  // eslint-disable-next-line no-new-func
+  new iframe.contentWindow.Function(DRAFT_FRAGMENT_GUARD_SCRIPT)();
+  return iframe;
+}
+
+describe('DRAFT_FRAGMENT_GUARD_SCRIPT', () => {
+  it('prevents default and scrolls to the target for a fragment-only link', () => {
+    const iframe = mountGuardedDocument('<a id="link" href="#target">Go</a><div id="target"></div>');
+    const doc = iframe.contentDocument;
+    const win = iframe.contentWindow;
+    const target = doc.getElementById('target');
+    const scrollSpy = vi.spyOn(target, 'scrollIntoView').mockImplementation(() => {});
+    const fetchSpy = vi.spyOn(win, 'fetch').mockImplementation(() => Promise.reject(new Error('must not fetch')));
+
+    const event = new win.MouseEvent('click', { bubbles: true, cancelable: true });
+    doc.getElementById('link').dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(scrollSpy).toHaveBeenCalledTimes(1);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('finds the target by id even when the fragment is percent-encoded', () => {
+    const iframe = mountGuardedDocument(
+      '<a id="link" href="#Section%20One">Go</a><div id="Section One"></div>',
     );
+    const doc = iframe.contentDocument;
+    const win = iframe.contentWindow;
+    const target = doc.getElementById('Section One');
+    const scrollSpy = vi.spyOn(target, 'scrollIntoView').mockImplementation(() => {});
+
+    const event = new win.MouseEvent('click', { bubbles: true, cancelable: true });
+    doc.getElementById('link').dispatchEvent(event);
+
+    expect(scrollSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not intercept an ordinary (non-fragment) link', () => {
+    const iframe = mountGuardedDocument('<a id="link" href="page2.html">Next</a>');
+    const doc = iframe.contentDocument;
+    const win = iframe.contentWindow;
+
+    const event = new win.MouseEvent('click', { bubbles: true, cancelable: true });
+    doc.getElementById('link').dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(false);
+  });
+
+  it('scrolls to top for a bare "#" link', () => {
+    const iframe = mountGuardedDocument('<a id="link" href="#">Top</a>');
+    const doc = iframe.contentDocument;
+    const win = iframe.contentWindow;
+    const scrollToSpy = vi.spyOn(win, 'scrollTo').mockImplementation(() => {});
+
+    const event = new win.MouseEvent('click', { bubbles: true, cancelable: true });
+    doc.getElementById('link').dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(scrollToSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('prevents default without throwing when the fragment is malformed percent-encoding', () => {
+    const iframe = mountGuardedDocument('<a id="link" href="#100%25%">Broken</a>');
+    const doc = iframe.contentDocument;
+    const win = iframe.contentWindow;
+
+    const event = new win.MouseEvent('click', { bubbles: true, cancelable: true });
+    expect(() => doc.getElementById('link').dispatchEvent(event)).not.toThrow();
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it('preventDefaults even when no element matches the fragment', () => {
+    const iframe = mountGuardedDocument('<a id="link" href="#nowhere">Go</a>');
+    const doc = iframe.contentDocument;
+    const win = iframe.contentWindow;
+
+    const event = new win.MouseEvent('click', { bubbles: true, cancelable: true });
+    doc.getElementById('link').dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it('delegates from a click on a descendant of the anchor', () => {
+    const iframe = mountGuardedDocument(
+      '<a id="link" href="#target"><span id="icon">></span></a><div id="target"></div>',
+    );
+    const doc = iframe.contentDocument;
+    const win = iframe.contentWindow;
+    const target = doc.getElementById('target');
+    const scrollSpy = vi.spyOn(target, 'scrollIntoView').mockImplementation(() => {});
+
+    const event = new win.MouseEvent('click', { bubbles: true, cancelable: true });
+    doc.getElementById('icon').dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(scrollSpy).toHaveBeenCalledTimes(1);
   });
 });
