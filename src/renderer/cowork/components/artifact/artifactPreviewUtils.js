@@ -10,6 +10,21 @@ export function isAbsoluteArtifactPreviewUrl(url) {
   return ABSOLUTE_PREVIEW_URL_RE.test(String(url || ''));
 }
 
+// The old `src=` iframe navigation never attached credentials, no matter what
+// origin it pointed at. `authFetch` attaches the web Keycloak bearer to
+// whatever URL it is given, so routing a draft through it (instead of the
+// direct navigation) is only safe when that URL is our own API: a data:/blob:
+// URL makes no network request at all (nothing for the origin check to
+// protect), and a genuinely different origin must never receive our token.
+export function canFetchDraftWithCredentials(url, apiOrigin) {
+  if (EMBEDDED_URL_RE.test(url)) return false;
+  try {
+    return new URL(url, apiOrigin).origin === new URL(apiOrigin).origin;
+  } catch {
+    return false;
+  }
+}
+
 function appendPreviewParam(url, key, value) {
   if (!url || value == null || value === '') return url;
   // blob: and data: URLs are already content-addressed. Adding a query suffix

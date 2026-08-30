@@ -49,14 +49,38 @@ export function canUseArtifactWorkspace(artifact) {
  */
 const DRAFT_TEXT_MAX = 200_000;
 
-export async function loadArtifactDraftText(draftUrl) {
+/*
+ * Both draft loaders below attach the web Keycloak bearer via `authFetch`,
+ * which sends it to whatever URL it is given regardless of origin. The viewer
+ * already gates on this before calling either function (`canFetchDraftWithCredentials`
+ * in artifactPreviewUtils.js — data:/blob: and cross-origin draft URLs never
+ * reach here), but the credential attachment happens in this file, so the
+ * invariant has to be enforced here too, not just at the one call site that
+ * currently respects it.
+ */
+function resolveSameOriginDraftUrl(draftUrl) {
   if (!draftUrl) throw new Error('Artifact has no private draft URL');
   /*
    * The same origin `BASE` is built from — asking the host beats stripping the
    * path back off with a regex, and it is what ArtifactViewer already uses to
    * absolutize this very URL for the preview iframe.
    */
-  const url = /^https?:\/\//i.test(draftUrl) ? draftUrl : `${host.getApiOrigin()}${draftUrl}`;
+  const apiOrigin = host.getApiOrigin();
+  const url = /^https?:\/\//i.test(draftUrl) ? draftUrl : `${apiOrigin}${draftUrl}`;
+  let origin;
+  try {
+    origin = new URL(url).origin;
+  } catch {
+    throw new Error('Artifact draft URL is invalid');
+  }
+  if (origin !== new URL(apiOrigin).origin) {
+    throw new Error('Refusing to send credentials to a cross-origin draft URL');
+  }
+  return url;
+}
+
+export async function loadArtifactDraftText(draftUrl) {
+  const url = resolveSameOriginDraftUrl(draftUrl);
   const response = await authFetch(url);
   if (!response.ok) {
     throw new Error(`Could not load private draft (${response.status})`);
@@ -79,8 +103,7 @@ export async function loadArtifactDraftText(draftUrl) {
  * fallback is Desktop-only and effectively theoretical.
  */
 export async function loadArtifactDraftDocument(draftUrl) {
-  if (!draftUrl) throw new Error('Artifact has no private draft URL');
-  const url = /^https?:\/\//i.test(draftUrl) ? draftUrl : `${host.getApiOrigin()}${draftUrl}`;
+  const url = resolveSameOriginDraftUrl(draftUrl);
   const response = await authFetch(url);
   if (!response.ok) {
     const error = new Error(`Could not load private draft (${response.status})`);

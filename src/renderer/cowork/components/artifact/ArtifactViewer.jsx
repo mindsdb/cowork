@@ -47,6 +47,7 @@ import {
   CSV_PREVIEW_ROW_LIMIT,
   isTextArtifact,
   isAbsoluteArtifactPreviewUrl,
+  canFetchDraftWithCredentials,
   injectDraftBaseHref,
   parseCsv,
   withArtifactCommentFlag,
@@ -410,6 +411,18 @@ export function ArtifactViewer({
         ? withArtifactCommentFlag(withArtifactVersion(rawUrl, cacheVersion))
         : withArtifactVersion(rawUrl, cacheVersion);
       setPreviewKind('static');
+      if (!canFetchDraftWithCredentials(rawUrl, host.getApiOrigin())) {
+        // Embedded (data:/blob:) content makes no network request at all —
+        // there's nothing for a credential to protect. A genuinely
+        // cross-origin absolute URL must never receive the web Keycloak
+        // bearer `authFetch` would attach (the old `src=` navigation never
+        // sent it either). Both keep the pre-fix direct navigation; only a
+        // same-origin API URL is safe to route through the fetch+srcdoc path
+        // below.
+        setPreviewUrl(fetchUrl);
+        setLoading(false);
+        return () => { cancelled = true; };
+      }
       // A plain iframe `src=` navigation cannot carry the Authorization
       // header the forward-auth ingress in front of the drafts endpoint
       // requires on staging (see

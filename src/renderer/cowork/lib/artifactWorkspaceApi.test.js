@@ -77,6 +77,12 @@ describe('loadArtifactDraftText', () => {
     expect(preview.content).toBe('# Report\n');
     expect(preview.truncated).toBe(false);
   });
+
+  it('refuses to attach credentials to a cross-origin draft URL', async () => {
+    authFetch.mockClear();
+    await expect(loadArtifactDraftText('https://evil.example/report.md')).rejects.toThrow();
+    expect(authFetch).not.toHaveBeenCalled();
+  });
 });
 
 /*
@@ -126,5 +132,18 @@ describe('loadArtifactDraftDocument', () => {
 
     await expect(loadArtifactDraftDocument('/api/v1/artifacts/drafts/p/1/index.html'))
       .rejects.toMatchObject({ message: 'Could not load private draft (401)', status: 401 });
+  });
+
+  /*
+   * The viewer already routes data:/blob: and cross-origin draft URLs around
+   * this function entirely (canFetchDraftWithCredentials in
+   * artifactPreviewUtils.js) — this is the defense-in-depth backstop for the
+   * one function that actually attaches the bearer token, so the invariant
+   * holds even if some future caller forgets to gate first.
+   */
+  it('refuses to attach credentials to a cross-origin draft URL', async () => {
+    authFetch.mockClear();
+    await expect(loadArtifactDraftDocument('https://evil.example/index.html')).rejects.toThrow();
+    expect(authFetch).not.toHaveBeenCalled();
   });
 });

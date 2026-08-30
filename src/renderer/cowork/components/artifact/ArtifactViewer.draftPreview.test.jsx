@@ -197,4 +197,40 @@ describe('ArtifactViewer draft HTML preview (org-mode 401 fix)', () => {
     const frame = await screen.findByTitle('Launch brief');
     expect(frame.getAttribute('sandbox')).not.toContain('allow-same-origin');
   });
+
+  /*
+   * data: and cross-origin draft URLs never reach loadArtifactDraftDocument —
+   * a data: URL makes no network request at all (nothing for a credential to
+   * protect), and a genuinely different origin must never receive the web
+   * Keycloak bearer that authFetch would attach. Both keep using the old
+   * direct src= navigation exactly as before this PR.
+   */
+  it('renders an embedded data: draft URL via src, without fetching', async () => {
+    const dataArtifact = {
+      ...artifact,
+      draftUrl: 'data:text/html;charset=utf-8,%3Ch1%3EHi%3C%2Fh1%3E',
+    };
+
+    render(<ArtifactViewer open artifact={dataArtifact} onClose={vi.fn()} />);
+
+    const frame = await screen.findByTitle('Launch brief');
+    expect(frame).toHaveAttribute('src', dataArtifact.draftUrl);
+    expect(frame).not.toHaveAttribute('srcdoc');
+    expect(loadArtifactDraftDocument).not.toHaveBeenCalled();
+  });
+
+  it('renders a cross-origin absolute draft URL via src, without fetching (no credential leak)', async () => {
+    const crossOriginArtifact = {
+      ...artifact,
+      draftUrl: 'https://evil.example/index.html',
+    };
+
+    render(<ArtifactViewer open artifact={crossOriginArtifact} onClose={vi.fn()} />);
+
+    const frame = await screen.findByTitle('Launch brief');
+    expect(frame).toHaveAttribute('src');
+    expect(frame.getAttribute('src')).toContain('https://evil.example/index.html');
+    expect(frame).not.toHaveAttribute('srcdoc');
+    expect(loadArtifactDraftDocument).not.toHaveBeenCalled();
+  });
 });

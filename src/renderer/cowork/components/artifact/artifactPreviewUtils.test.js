@@ -6,6 +6,7 @@ import {
   withArtifactCommentFlag,
   withArtifactVersion,
   injectDraftBaseHref,
+  canFetchDraftWithCredentials,
 } from './artifactPreviewUtils';
 import { TEXT_PREVIEW_EXTS as SHARED_TEXT_PREVIEW_EXTS } from '../../lib/artifactKinds';
 
@@ -45,6 +46,40 @@ describe('artifact preview URLs', () => {
 describe('TEXT_PREVIEW_EXTS', () => {
   it('is the same set the artifact click gates read', () => {
     expect(TEXT_PREVIEW_EXTS).toBe(SHARED_TEXT_PREVIEW_EXTS);
+  });
+});
+
+/*
+ * The old `src=` iframe navigation never attached credentials, regardless of
+ * what origin it pointed at. `authFetch` attaches the web Keycloak bearer to
+ * whatever URL it is given, so routing a draft through it is only safe when
+ * that URL is our own API — anything else (a data:/blob: URL with no network
+ * request at all, or a genuinely different origin) must keep using the old
+ * unauthenticated `src=` path instead.
+ */
+describe('canFetchDraftWithCredentials', () => {
+  const API_ORIGIN = 'https://cowork.example';
+
+  it('allows a same-origin absolute draft URL', () => {
+    expect(canFetchDraftWithCredentials(`${API_ORIGIN}/api/v1/artifacts/drafts/p/1/index.html`, API_ORIGIN))
+      .toBe(true);
+  });
+
+  it('rejects an embedded data: URL', () => {
+    expect(canFetchDraftWithCredentials('data:text/html,%3Ch1%3EHi%3C%2Fh1%3E', API_ORIGIN)).toBe(false);
+  });
+
+  it('rejects an embedded blob: URL', () => {
+    expect(canFetchDraftWithCredentials('blob:http://localhost/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', API_ORIGIN))
+      .toBe(false);
+  });
+
+  it('rejects a genuinely cross-origin absolute URL', () => {
+    expect(canFetchDraftWithCredentials('https://evil.example/index.html', API_ORIGIN)).toBe(false);
+  });
+
+  it('rejects rather than throwing when the API origin itself is unparseable', () => {
+    expect(canFetchDraftWithCredentials('https://cowork.example/index.html', '')).toBe(false);
   });
 });
 
