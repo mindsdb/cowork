@@ -57,6 +57,7 @@ describe('TaskBar', () => {
         onFork={vi.fn()}
         onCompact={vi.fn()}
         onStatus={vi.fn()}
+        onRecover={vi.fn()}
         onArchive={vi.fn()}
         onDelete={vi.fn()}
       />,
@@ -64,5 +65,64 @@ describe('TaskBar', () => {
 
     expect(screen.getByText('direct folder')).toBeInTheDocument();
     expect(screen.queryByText('detached worktree')).not.toBeInTheDocument();
+  });
+
+  it('shows durable run recovery state and its owning computer', () => {
+    render(
+      <TaskBar
+        session={{
+          ...session,
+          status: 'interrupted',
+          run_status: 'interrupted',
+          computer_name: 'Build computer',
+          computer_status: 'offline',
+        }}
+        git={null}
+        files={[]}
+        reviewOpen={false}
+        terminalOpen={false}
+        onToggleReview={vi.fn()}
+        onToggleTerminal={vi.fn()}
+        onOpenControls={vi.fn()}
+        onOpenExtensions={vi.fn()}
+        onRename={vi.fn()}
+        onFork={vi.fn()}
+        onCompact={vi.fn()}
+        onStatus={vi.fn()}
+        onRecover={vi.fn()}
+        onArchive={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Computer offline')).toBeInTheDocument();
+    expect(screen.getByText('Build computer')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Restore' })).toBeInTheDocument();
+  });
+
+  it('keeps Restore available while a fenced run is waiting to be reclaimed', () => {
+    render(
+      <TaskBar
+        session={{ ...session, status: 'interrupted', run_status: 'recovering' }}
+        git={null}
+        files={[]}
+        reviewOpen={false}
+        terminalOpen={false}
+        onToggleReview={vi.fn()}
+        onToggleTerminal={vi.fn()}
+        onOpenControls={vi.fn()}
+        onOpenExtensions={vi.fn()}
+        onRename={vi.fn()}
+        onFork={vi.fn()}
+        onCompact={vi.fn()}
+        onStatus={vi.fn()}
+        onRecover={vi.fn()}
+        onArchive={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Ready to resume')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Restore' })).toBeInTheDocument();
   });
 });

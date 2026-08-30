@@ -51,7 +51,7 @@ describe('coding API boundary', () => {
 
     await codingApi.createProject({
       name: 'Project One',
-      folders: [],
+      resources: [],
       connections: [],
       environment: { variables: {}, port_names: [] },
       skill_sources: [],
@@ -82,7 +82,7 @@ describe('coding API boundary', () => {
 
     await expect(codingApi.createProject({
       name: 'Project One',
-      folders: [],
+      resources: [],
       connections: [],
       environment: { variables: {}, port_names: [] },
       skill_sources: [],

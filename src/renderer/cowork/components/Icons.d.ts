@@ -9,6 +9,7 @@ declare const Ico: {
   chevDown: IconRenderer;
   close: IconRenderer;
   code: IconRenderer;
+  computer: IconRenderer;
   cube: IconRenderer;
   edit: IconRenderer;
   externalLink: IconRenderer;

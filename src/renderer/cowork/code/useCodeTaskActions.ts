@@ -106,6 +106,8 @@ export function useCodeTaskActions({
         : { path: input.path, allow_direct_folder: true };
       const created = await codingApi.create({
         ...workspace,
+        resource_ids: input.resourceIds,
+        computer_id: input.computerId,
         prompt: input.prompt,
         engine_id: input.engineId,
         model: input.model,

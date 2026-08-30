@@ -47,9 +47,18 @@ import { CodeSkillsView } from './CodeSkillsView';
 
 const projects: CodeProject[] = [
   {
-    schema_version: 1,
+    schema_version: 2,
     id: 'project-one',
     name: 'Product',
+    resources: [{
+      kind: 'repository',
+      id: 'product',
+      name: 'Product',
+      local_path: '/work/product',
+      computer_id: 'local',
+      checkout_strategy: 'worktree',
+      commands: [],
+    }],
     folders: [{ id: 'product', name: 'Product', path: '/work/product', commands: [] }],
     skill_sources: [{ source_id: 'engineering', enabled_paths: ['skills/review/SKILL.md'] }],
     connections: [],
@@ -61,9 +70,18 @@ const projects: CodeProject[] = [
     updated_at: '2026-08-24T10:00:00Z',
   },
   {
-    schema_version: 1,
+    schema_version: 2,
     id: 'project-two',
     name: 'Inference',
+    resources: [{
+      kind: 'repository',
+      id: 'inference',
+      name: 'Inference',
+      local_path: '/work/inference',
+      computer_id: 'local',
+      checkout_strategy: 'worktree',
+      commands: [],
+    }],
     folders: [{ id: 'inference', name: 'Inference', path: '/work/inference', commands: [] }],
     skill_sources: [],
     connections: [],

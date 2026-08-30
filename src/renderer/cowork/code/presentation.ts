@@ -1,4 +1,4 @@
-import type { CodingEvent, CodingSession, CodingStatus, DiffFile } from './api';
+import type { CodingEvent, CodingSession, CodingStatus, DiffFile, TaskRunStatus } from './api';
 
 
 export const CODE_STATUS: Record<CodingStatus, { label: string; tone: 'neutral' | 'accent' | 'warning' | 'success' | 'danger' }> = {
@@ -10,6 +10,26 @@ export const CODE_STATUS: Record<CodingStatus, { label: string; tone: 'neutral' 
   interrupted: { label: 'Interrupted', tone: 'warning' },
   failed: { label: 'Failed', tone: 'danger' },
 };
+
+const RUN_STATUS: Record<TaskRunStatus, { label: string; tone: 'neutral' | 'accent' | 'warning' | 'success' | 'danger' }> = {
+  queued: { label: 'Preparing', tone: 'neutral' },
+  preparing: { label: 'Preparing', tone: 'accent' },
+  ready: { label: 'Ready', tone: 'neutral' },
+  running: { label: 'Working', tone: 'accent' },
+  awaiting_approval: { label: 'Needs attention', tone: 'warning' },
+  completed: { label: 'Completed', tone: 'success' },
+  cancelled: { label: 'Stopped', tone: 'neutral' },
+  interrupted: { label: 'Restore needed', tone: 'warning' },
+  failed: { label: 'Failed', tone: 'danger' },
+  recovering: { label: 'Ready to resume', tone: 'accent' },
+};
+
+export function codingSessionStatus(session: Pick<CodingSession, 'status' | 'run_status' | 'computer_status'>) {
+  if (session.computer_status === 'offline' && session.run_status && !['completed', 'cancelled', 'failed'].includes(session.run_status)) {
+    return { label: 'Computer offline', tone: 'warning' as const };
+  }
+  return session.run_status ? RUN_STATUS[session.run_status] : CODE_STATUS[session.status];
+}
 
 
 export function repositoryLabel(session: Pick<CodingSession, 'repository_root' | 'source_path' | 'project_name'>): string {

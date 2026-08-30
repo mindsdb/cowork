@@ -1,5 +1,29 @@
 import { getApiOrigin, isElectron, serverStart } from '../../platform/host';
 import { getCodeFixtureApi } from './fixtures';
+import type {
+  CodeComputer,
+  ComputerStatus,
+  ProjectCommand,
+  ProjectFolder,
+  ProjectResource,
+  ProjectResourceState,
+  ResourceAvailability,
+  TaskRunStatus,
+} from './resourceModels';
+
+export { projectResources } from './resourceModels';
+export type {
+  CodeComputer,
+  ComputerStatus,
+  LocalFolderResource,
+  ProjectCommand,
+  ProjectFolder,
+  ProjectResource,
+  ProjectResourceState,
+  RepositoryResource,
+  ResourceAvailability,
+  TaskRunStatus,
+} from './resourceModels';
 
 export type CodingStatus =
   | 'ready'
@@ -16,6 +40,8 @@ export type ApprovalDecision = 'approve_once' | 'approve_session' | 'deny';
 export interface SessionCreateBody {
   path?: string;
   project_id?: string;
+  resource_ids?: string[];
+  computer_id?: string;
   prompt: string;
   allow_direct_folder?: boolean;
   engine_id?: string;
@@ -38,6 +64,8 @@ interface CreateCodeTaskBase {
   permissionMode: PermissionMode;
   attachments: InputReference[];
   sourceContexts: SourceContext[];
+  resourceIds?: string[];
+  computerId?: string;
 }
 
 export type CreateCodeTaskInput = CreateCodeTaskBase & (
@@ -103,6 +131,16 @@ export interface CodingSession {
   status: CodingStatus;
   project_id?: string | null;
   project_name?: string | null;
+  task_id?: string | null;
+  run_id?: string | null;
+  computer_id?: string | null;
+  run_status?: TaskRunStatus | null;
+  computer_name?: string | null;
+  computer_status?: ComputerStatus | null;
+  computer_is_local?: boolean;
+  resource_ids?: string[];
+  scope_all_project_resources?: boolean;
+  runtime_epoch?: number;
   source_path: string;
   workspace_path: string;
   workspace_kind: 'git_worktree' | 'local_copy' | 'direct_folder';
@@ -228,13 +266,6 @@ export interface GitState {
   source_path: string;
 }
 
-export interface ProjectCommand {
-  id: string;
-  label: string;
-  argv: string[];
-  phase: 'setup' | 'validate';
-}
-
 export interface ProjectCommandResult {
   command_id: string;
   label: string;
@@ -242,14 +273,6 @@ export interface ProjectCommandResult {
   phase: 'setup' | 'validate';
   return_code: number;
   output: string;
-}
-
-export interface ProjectFolder {
-  id: string;
-  name: string;
-  path: string;
-  base_branch?: string | null;
-  commands: ProjectCommand[];
 }
 
 export interface ProjectFolderInspection {
@@ -282,6 +305,7 @@ export interface CodeProject {
   schema_version: number;
   id: string;
   name: string;
+  resources: ProjectResource[];
   folders: ProjectFolder[];
   playbook?: PlaybookReference | null;
   skill_sources?: ProjectSkillSource[];
@@ -638,7 +662,19 @@ const liveCodingApi = {
   projects: () => requestJson<{ items: CodeProject[] }>('/projects'),
   project: (id: string) => requestJson<CodeProject>(`/projects/${encodeURIComponent(id)}`),
   projectFolders: (id: string) => requestJson<{ items: ProjectFolderInspection[] }>(`/projects/${encodeURIComponent(id)}/folders`),
-  createProject: (body: Pick<CodeProject, 'name' | 'folders' | 'connections' | 'environment' | 'skill_sources' | 'default_engine_id' | 'default_model' | 'permission_mode'>) =>
+  projectResources: (id: string) => requestJson<{ items: ProjectResourceState[] }>(`/projects/${encodeURIComponent(id)}/resources`),
+  projectComputers: (id: string, resourceIds: string[] | undefined, engineId?: string) => {
+    const query = new URLSearchParams();
+    resourceIds?.forEach((resourceId) => query.append('resourceId', resourceId));
+    if (engineId) query.set('engineId', engineId);
+    const suffix = query.size ? `?${query.toString()}` : '';
+    return requestJson<{ items: CodeComputer[] }>(`/projects/${encodeURIComponent(id)}/computers${suffix}`);
+  },
+  computers: () => requestJson<{ items: CodeComputer[] }>('/computers'),
+  resolveLocalResource: (body: ProjectFolder) => requestJson<ProjectResource>('/project-resources/inspect', {
+    method: 'POST', body: JSON.stringify(body),
+  }),
+  createProject: (body: Pick<CodeProject, 'name' | 'resources' | 'connections' | 'environment' | 'skill_sources' | 'default_engine_id' | 'default_model' | 'permission_mode'>) =>
     requestJson<CodeProject>('/projects', { method: 'POST', body: JSON.stringify(body) }),
   updateProject: (id: string, body: Partial<CodeProject>) => requestJson<CodeProject>(`/projects/${encodeURIComponent(id)}`, {
     method: 'PATCH', body: JSON.stringify(body),
@@ -714,6 +750,9 @@ const liveCodingApi = {
   runQueued: (id: string) =>
     requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/queue/run`, { method: 'POST' }),
   cancel: (id: string) => requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/cancel`, { method: 'POST' }),
+  recover: (id: string, computerId?: string) => requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/recover`, {
+    method: 'POST', body: JSON.stringify({ computer_id: computerId || null }),
+  }),
   approve: (id: string, approvalId: string, decision: ApprovalDecision) =>
     requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/approvals/${encodeURIComponent(approvalId)}`, {
       method: 'POST',
