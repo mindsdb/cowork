@@ -555,6 +555,25 @@ while the capability remains disabled; then enable the capability only after
 every server replica enforces it. Do not combine enforcement and enablement in
 one rollout.
 
+### Shared-resource permissions come from the server
+
+Hosted Cowork never derives project, skill, project-memory, or instruction
+permissions from a role in the renderer. Each resource response carries its
+allowed actions, and a missing capability fails closed: the corresponding
+rename, edit, disable, or delete control stays unavailable until a fresh server
+response explicitly allows it. Packaged skills and the General project therefore
+remain immutable according to the same response contract. Packaged desktop mode
+keeps its local-owner fallback because its files have no organization principal
+or server-owned capability record.
+
+Attribution is display metadata, not authority. The UI may name the immutable
+creator and current last editor, but only the capability fields decide whether a
+control is enabled. Protected deletes wait for the server before removing
+anything from local state; a refusal keeps the resource, selection, tasks,
+drafts, and route in place. Successful protected mutations force a fresh read
+generation, superseding any coalesced pre-mutation request so stale attribution
+or capabilities cannot overwrite the response that just succeeded.
+
 ### A model the wallet can't pay for is not selectable
 
 MindsHub's `/v1/models` marks each model with whether the org can pay for it
