@@ -67,6 +67,7 @@ export function ProjectSettingsModal({
   onSave,
   onDelete,
   onOpenConnectors = () => {},
+  onOpenSkills = () => {},
   defaultEngineId = 'codex',
   defaultModel = DEFAULT_CODING_AGENT_MODEL,
   models = [],
@@ -82,6 +83,7 @@ export function ProjectSettingsModal({
   onSave: (values: Partial<CodeProject> & Pick<CodeProject, 'name' | 'resources'>) => Promise<CodeProject>;
   onDelete?: () => Promise<void>;
   onOpenConnectors?: () => void;
+  onOpenSkills?: () => void;
   defaultEngineId?: string;
   defaultModel?: string;
   models?: ModelPickerSource[];
@@ -300,7 +302,7 @@ export function ProjectSettingsModal({
       <ModalHeader
         id="code-project-settings-title"
         title={project ? 'Project settings' : 'New Code Project'}
-        subtitle="Repositories, folders, team guidance, tools, and defaults shared by this project."
+        subtitle="Code, connectors, skills, and defaults shared by every task in this project."
         onClose={onClose}
       />
       <ModalBody padding="0">
@@ -340,6 +342,7 @@ export function ProjectSettingsModal({
               loading={skillsLoading}
               error={skillsError}
               onChange={setSelectedSkillSources}
+              onOpenSkills={onOpenSkills}
             />
 
             {project?.playbook && (

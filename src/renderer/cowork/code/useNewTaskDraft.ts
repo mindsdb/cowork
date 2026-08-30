@@ -94,10 +94,12 @@ export function useNewTaskDraft({
     setResourceIds,
     resourceStates,
     computers,
+    allComputers,
     computerId,
     setComputerId,
     executionLoading,
     executionIssue,
+    refreshComputers,
   } = useTaskExecutionTarget(selectedProject, engineId);
 
   const engines = codingCatalog.engines;
@@ -316,9 +318,11 @@ export function useNewTaskDraft({
     setResourceIds,
     resourceStates,
     computers,
+    allComputers,
     computerId,
     setComputerId,
     executionLoading,
+    refreshComputers,
     selectedProject,
     selectedProjectId,
     onProjectChange,

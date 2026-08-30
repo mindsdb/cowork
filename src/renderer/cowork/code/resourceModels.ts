@@ -58,9 +58,11 @@ export interface CodeComputer {
   schema_version: number;
   id: string;
   name: string;
+  is_local?: boolean;
   status: ComputerStatus;
   active_run_count: number;
   last_seen_at: string;
+  revoked_at?: string | null;
   capabilities: {
     platform: 'darwin' | 'windows' | 'linux';
     architecture: string;

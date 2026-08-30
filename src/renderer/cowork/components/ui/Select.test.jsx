@@ -166,6 +166,28 @@ describe('Select', () => {
     expect(icon.closest('[role="option"]')).toHaveTextContent('All projects');
   });
 
+  it('supports a concise trigger with richer detail in the open menu', async () => {
+    const user = userEvent.setup();
+    render(
+      <Harness
+        initial="remote"
+        options={[{
+          value: 'remote',
+          label: 'Build computer',
+          triggerLabel: 'Build computer',
+          description: 'Linux · Ready',
+          meta: 'Remote',
+        }]}
+      />,
+    );
+
+    expect(screen.getByRole('combobox')).toHaveTextContent('Build computer');
+    expect(screen.queryByText('Linux · Ready')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('combobox'));
+    expect(screen.getByRole('option', { name: /Build computer/ })).toHaveTextContent('Linux · Ready');
+    expect(screen.getByText('Remote')).toBeInTheDocument();
+  });
+
   it('prefixes the pill variant with its label', () => {
     render(<Harness variant="pill" label="Sort by" initial="date" />);
     expect(screen.getByRole('combobox')).toHaveTextContent('Sort by:Date');

@@ -83,6 +83,7 @@ export default function CodeView({
   const [connectorReturnToSettings, setConnectorReturnToSettings] = useState(false);
   const [automationErrors, setAutomationErrors] = useState<Record<string, string>>({});
   const [resolvingApprovalId, setResolvingApprovalId] = useState<string | null>(null);
+  const [recoveringTaskId, setRecoveringTaskId] = useState<string | null>(null);
   const catalog = useCodingCatalog();
   const detail = useCodingSession(newTask || projectsOpen || connectorsOpen || skillsOpen ? null : selectedId);
   const cachedSession = sessions.find((item) => item.id === selectedId) || null;
@@ -132,6 +133,7 @@ export default function CodeView({
     setExtensionsOpen(false);
     setRenameOpen(false);
     setResolvingApprovalId(null);
+    setRecoveringTaskId(null);
   }, [newTask, projectsOpen, connectorsOpen, skillsOpen, selectedId]);
 
   useEffect(() => {
@@ -154,6 +156,14 @@ export default function CodeView({
   const suggestedUpdate = [...detail.events].reverse().find(
     (event) => event.type === 'agent_message' && event.text.trim(),
   )?.text.trim() || '';
+  const recoverTask = async (sessionId: string) => {
+    setRecoveringTaskId(sessionId);
+    try {
+      await runAction(() => codingApi.recover(sessionId), true, true);
+    } finally {
+      setRecoveringTaskId((current) => current === sessionId ? null : current);
+    }
+  };
   return (
     <div className="code-page">
       <DeliveryAutomationMonitor
@@ -189,7 +199,6 @@ export default function CodeView({
               : codingApi.turn(taskBarSession.id, '/status'),
             true,
           )}
-          onRecover={() => void runAction(() => codingApi.recover(taskBarSession.id), true)}
           onArchive={() => void toggleArchive()}
           onDelete={() => setDeleteOpen(true)}
         />
@@ -282,7 +291,13 @@ export default function CodeView({
                 {workspaceWarning && workspaceWarning !== conversationError && <Alert variant="warning">{workspaceWarning}</Alert>}
               </div>
             )}
-            <EventTimeline key={`timeline-${session.id}`} events={detail.events} session={session} />
+            <EventTimeline
+              key={`timeline-${session.id}`}
+              events={detail.events}
+              session={session}
+              recovering={recoveringTaskId === session.id}
+              onRecover={() => recoverTask(session.id)}
+            />
             {approval && (
               <ApprovalCard
                 approval={approval}
@@ -483,6 +498,10 @@ export default function CodeView({
           setConnectorReturnToSettings(true);
           setConnectorReturnProjectId(projectEditor?.id || null);
           onOpenConnectors();
+        }}
+        onOpenSkills={() => {
+          setProjectEditor(null);
+          onOpenSkills();
         }}
         onDelete={projectEditor?.id ? async () => {
           setProjectBusy(true);

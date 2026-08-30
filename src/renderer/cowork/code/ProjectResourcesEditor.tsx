@@ -134,10 +134,10 @@ export function ProjectResourcesEditor({
         </div>
         <div className="code-resource-add-actions">
           <Button size="sm" variant="subtle" disabled={disabled || adding} onClick={() => void addFromComputer()}>
-            {Ico.folder(13)} {adding ? 'Adding…' : 'Add from computer'}
+            {Ico.folder(13)} {adding ? 'Adding…' : 'Local folder'}
           </Button>
           <Button size="sm" variant="subtle" disabled={disabled} onClick={() => setRepositoryOpen((value) => !value)}>
-            {Ico.plus(13)} Repository URL
+            {Ico.plus(13)} Git repository
           </Button>
         </div>
       </div>
@@ -148,7 +148,7 @@ export function ProjectResourcesEditor({
             value={repositoryUrl}
             onChange={setRepositoryUrl}
             placeholder="https://github.com/org/repository.git"
-            aria-label="Repository URL"
+            aria-label="Git repository URL"
             autoFocus
             onKeyDown={(event: React.KeyboardEvent<HTMLInputElement>) => {
               if (event.key === 'Enter') { event.preventDefault(); addRepository(); }
@@ -168,8 +168,8 @@ export function ProjectResourcesEditor({
           const status = state?.status === 'offline'
             ? `${owner?.name || 'Computer'} offline`
             : portable
-              ? 'Available on any online computer'
-              : `Only on ${owner?.name || 'this computer'}`;
+              ? 'Any online computer'
+              : `Only ${owner?.name || 'this computer'}`;
           return (
             <details className="code-project-folder code-project-resource" key={resource.id}>
               <summary>
@@ -178,7 +178,6 @@ export function ProjectResourcesEditor({
                 </span>
                 <span className="code-project-folder__identity">
                   <strong>{resource.name}<em>{resource.kind === 'repository' ? 'Repository' : 'Folder'}</em></strong>
-                  <code title={location}>{location}</code>
                 </span>
                 <span className={`code-project-resource__availability${state?.status === 'offline' ? ' is-offline' : ''}`}>
                   {status}
@@ -190,6 +189,10 @@ export function ProjectResourcesEditor({
                 <span className="code-project-folder__chevron">{Ico.chevDown(11)}</span>
               </summary>
               <div className="code-project-folder__details">
+                <div className="code-project-resource__location">
+                  <span>{resource.kind === 'repository' ? 'Source' : 'Location'}</span>
+                  <code title={location}>{location}</code>
+                </div>
                 {resource.kind === 'repository' && (
                   <label>
                     <span>Base branch</span>
@@ -210,7 +213,7 @@ export function ProjectResourcesEditor({
         })}
         {!resources.length && (
           <button type="button" className="code-project-empty-row" disabled={disabled || adding} onClick={() => void addFromComputer()}>
-            {Ico.folder(15)} Add code from this computer
+            {Ico.folder(15)} Add a local folder
           </button>
         )}
       </div>

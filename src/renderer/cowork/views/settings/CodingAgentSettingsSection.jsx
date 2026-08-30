@@ -116,7 +116,7 @@ export default function CodingAgentSettingsSection({ settings, setSetting, foote
       <SettingsGroup title="Terminal">
         <Section
           title="Default shell"
-          subtitle="Saved immediately on this device and used for new terminal tabs. Running terminals are unchanged."
+          subtitle="Used for new terminal tabs on this device. Running terminals are unchanged."
         >
           <Select
             value={shellPreference}

@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { CodingSession } from './api';
 import { TaskBar } from './TaskBar';
@@ -31,7 +32,8 @@ const session: CodingSession = {
 
 
 describe('TaskBar', () => {
-  it('labels a non-Git workspace as a direct folder', () => {
+  it('keeps detailed workspace metadata behind a compact disclosure', async () => {
+    const user = userEvent.setup();
     render(
       <TaskBar
         session={session}
@@ -57,12 +59,13 @@ describe('TaskBar', () => {
         onFork={vi.fn()}
         onCompact={vi.fn()}
         onStatus={vi.fn()}
-        onRecover={vi.fn()}
         onArchive={vi.fn()}
         onDelete={vi.fn()}
       />,
     );
 
+    expect(screen.queryByText('direct folder')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Show task details' }));
     expect(screen.getByText('direct folder')).toBeInTheDocument();
     expect(screen.queryByText('detached worktree')).not.toBeInTheDocument();
   });
@@ -89,7 +92,6 @@ describe('TaskBar', () => {
         onFork={vi.fn()}
         onCompact={vi.fn()}
         onStatus={vi.fn()}
-        onRecover={vi.fn()}
         onArchive={vi.fn()}
         onDelete={vi.fn()}
       />,
@@ -97,10 +99,10 @@ describe('TaskBar', () => {
 
     expect(screen.getByText('Computer offline')).toBeInTheDocument();
     expect(screen.getByText('Build computer')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Restore' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Restore' })).not.toBeInTheDocument();
   });
 
-  it('keeps Restore available while a fenced run is waiting to be reclaimed', () => {
+  it('shows a recovering run without duplicating its recovery action in the header', () => {
     render(
       <TaskBar
         session={{ ...session, status: 'interrupted', run_status: 'recovering' }}
@@ -116,13 +118,12 @@ describe('TaskBar', () => {
         onFork={vi.fn()}
         onCompact={vi.fn()}
         onStatus={vi.fn()}
-        onRecover={vi.fn()}
         onArchive={vi.fn()}
         onDelete={vi.fn()}
       />,
     );
 
-    expect(screen.getByText('Ready to resume')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Restore' })).toBeInTheDocument();
+    expect(screen.getByText('Resuming')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Restore' })).not.toBeInTheDocument();
   });
 });

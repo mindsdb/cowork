@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 
 import Ico from '../components/Icons';
+import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import type { ProjectSkillSource, SkillLibraryItem } from './api';
 
@@ -34,12 +35,14 @@ export function ProjectSkillSelector({
   loading,
   error,
   onChange,
+  onOpenSkills,
 }: {
   items: SkillLibraryItem[];
   selected: ProjectSkillSource[];
   loading: boolean;
   error: string;
   onChange: (sources: ProjectSkillSource[]) => void;
+  onOpenSkills: () => void;
 }) {
   const [query, setQuery] = useState('');
   const teamItems = useMemo(
@@ -128,8 +131,9 @@ export function ProjectSkillSelector({
             ))}
           </div>
         ) : (
-          <div className="code-project-skill-picker__message">
-            {query.trim() ? 'No skills match your search.' : 'No shared engineering skills yet.'}
+          <div className="code-project-skill-picker__message code-project-skill-picker__empty">
+            <span>{query.trim() ? 'No skills match your search.' : 'No Code skills are available to this organisation yet.'}</span>
+            {!query.trim() && <Button size="sm" variant="subtle" onClick={onOpenSkills}>Open Skills</Button>}
           </div>
         )}
 

@@ -157,7 +157,7 @@ export function ReviewPanel({
           <button type="button" role="tab" aria-selected={tab === 'changes'} className={tab === 'changes' ? 'is-active' : ''} onClick={() => setTab('changes')}>
             Changes <span>{files.length}</span>
           </button>
-          <button type="button" role="tab" aria-selected={tab === 'git'} className={tab === 'git' ? 'is-active' : ''} onClick={() => setTab('git')}>Handoff</button>
+          <button type="button" role="tab" aria-selected={tab === 'git'} className={tab === 'git' ? 'is-active' : ''} onClick={() => setTab('git')}>Deliver</button>
         </div>
         {error && <div className="code-review__error"><Alert variant="danger">{error}</Alert></div>}
 
@@ -198,6 +198,10 @@ export function ReviewPanel({
           </div>
         ) : (
           <div className="code-review__body code-git-panel scroll-clean">
+            <div className="code-delivery-heading">
+              <strong>Deliver this task</strong>
+              <span>Run checks, then open a pull request or apply the reviewed changes locally.</span>
+            </div>
             <section className="code-handoff-summary">
               {session.project_name && <div className="code-handoff-summary__row"><span>Project</span><strong>{session.project_name}</strong></div>}
               {workspaceEntries.map((workspace) => (
@@ -268,7 +272,7 @@ export function ReviewPanel({
                 </section>
                 {applied && <Alert variant="success">These reviewed changes were applied to the source folders.</Alert>}
                 {!session.project_id && gitWorkspaces.length > 0 && <details className="code-git-advanced">
-                  <summary>More Git actions <span>{Ico.chevDown(11)}</span></summary>
+                  <summary>Git options <span>{Ico.chevDown(11)}</span></summary>
                   <div className="code-git-advanced__body">
                     <div className="code-git-action">
                       <div className="code-field-label">Create a branch in the task worktree</div>

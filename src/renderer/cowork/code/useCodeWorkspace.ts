@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 
-import type { CodingSession } from './api';
+import { codingApi, type CodingSession } from './api';
 
 type CodeManagementRoute = 'projects' | 'connectors' | 'skills' | null;
 
@@ -47,6 +47,13 @@ export function useCodeWorkspace(openCode: () => void) {
     setManagementRoute(null);
   }, []);
 
+  const setSessionPinned = useCallback(async (sessionId: string, pinned: boolean) => {
+    const updated = await codingApi.setPinned(sessionId, pinned);
+    setSessions((current) => current.map((session) => (
+      session.id === updated.id ? { ...session, pinned: updated.pinned } : session
+    )));
+  }, []);
+
   return {
     sessions,
     selectedId,
@@ -61,5 +68,6 @@ export function useCodeWorkspace(openCode: () => void) {
     openSkills,
     selectSession,
     changeSelection,
+    setSessionPinned,
   };
 }

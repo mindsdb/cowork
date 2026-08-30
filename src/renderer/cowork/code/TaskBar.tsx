@@ -23,7 +23,6 @@ export function TaskBar({
   onFork,
   onCompact,
   onStatus,
-  onRecover,
   onArchive,
   onDelete,
 }: {
@@ -42,7 +41,6 @@ export function TaskBar({
   onFork: () => void;
   onCompact: () => void;
   onStatus: () => void;
-  onRecover: () => void;
   onArchive: () => void;
   onDelete: () => void;
 }) {
@@ -59,7 +57,7 @@ export function TaskBar({
         ? 'direct folder'
         : (git?.branch || 'isolated worktree');
   const origin = session.source_contexts?.[0] || null;
-  const recoverable = ['interrupted', 'failed', 'recovering'].includes(session.run_status || '');
+  const engineLabel = session.engine_id === 'codex' ? 'Codex' : session.engine_id;
 
   return (
     <header className="code-taskbar">
@@ -69,22 +67,39 @@ export function TaskBar({
           <div className="code-taskbar__title" title={session.title}>{session.title}</div>
           <div className="code-taskbar__meta">
             <span>{repositoryLabel(session)}</span>
-            <span aria-hidden="true">·</span>
             {origin && <>
+              <span aria-hidden="true">·</span>
               <button type="button" className="code-taskbar__origin" onClick={() => void host.openExternal(origin.url)}>
                 {sourceProviderLabel(origin.provider)} {sourceContextLabel(origin)}
               </button>
-              <span aria-hidden="true">·</span>
             </>}
-            <span>{workspaceModeLabel}</span>
             {session.computer_name && <>
               <span aria-hidden="true">·</span>
               <span>{session.computer_name}</span>
             </>}
-            <span className="code-taskbar__model" aria-hidden="true">·</span>
-            <span className="code-taskbar__model">
-              {session.engine_id === 'codex' ? 'Codex' : session.engine_id} · {modelLabel || session.model}
-            </span>
+            <span aria-hidden="true">·</span>
+            <Menu
+              side="bottom"
+              align="start"
+              width={280}
+              ariaLabel="Task details"
+              trigger={(
+                <button type="button" className="code-taskbar__detail-trigger" aria-label="Show task details">
+                  <span>Task details</span>{Ico.chevDown(10)}
+                </button>
+              )}
+              items={[{
+                key: 'task-details',
+                heading: (
+                  <div className="code-taskbar-details">
+                    <div><span>Workspace</span><strong>{workspaceModeLabel}</strong></div>
+                    <div><span>Agent</span><strong>{engineLabel}</strong></div>
+                    <div><span>Model</span><strong>{modelLabel || session.model}</strong></div>
+                    <div><span>Location</span><code title={session.workspace_path}>{worktreeLabel}</code></div>
+                  </div>
+                ),
+              }]}
+            />
           </div>
         </div>
       </div>
@@ -93,9 +108,6 @@ export function TaskBar({
           <span className="code-status-dot" aria-hidden="true" />
           {status.label}
         </span>
-        {recoverable && (
-          <Button size="sm" variant="tinted" onClick={onRecover}>Restore</Button>
-        )}
         <Button
           size="sm"
           variant={terminalOpen ? 'tinted' : 'subtle'}

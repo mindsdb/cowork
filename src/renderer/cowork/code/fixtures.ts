@@ -340,6 +340,7 @@ export function getCodeFixtureApi() {
     schema_version: 1,
     id: 'fixture-computer',
     name: 'This computer',
+    is_local: true,
     status: 'online',
     active_run_count: 0,
     last_seen_at: NOW,
@@ -423,6 +424,9 @@ export function getCodeFixtureApi() {
     }),
     projectComputers: async () => ({ items: [copy(fixtureComputer)] }),
     computers: async () => ({ items: [copy(fixtureComputer)] }),
+    computerRegistrationToken: async () => ({ registration_token: 'fixture-registration-token', expires_in_seconds: 600 }),
+    renameComputer: async (_id: string, name: string) => copy({ ...fixtureComputer, name }),
+    revokeComputer: async () => undefined,
     resolveLocalResource: async (folder: ProjectFolder): Promise<ProjectResource> => ({
       kind: 'repository', id: folder.id, name: folder.name,
       source_url: `https://github.com/mindsdb/${folder.name}.git`, local_path: folder.path,
@@ -514,10 +518,15 @@ export function getCodeFixtureApi() {
     setupWindowsSandbox: async () => ({ platform: 'win32', windows_sandbox: 'ready', setup_started: true }),
     updateSession: async (id: string, body: Partial<CodingSession>) => copy(update(id, body)),
     renameSession: async (id: string, title: string) => copy(update(id, { title })),
+    setPinned: async (id: string, pinned: boolean) => {
+      const item = selected(id);
+      item.pinned = pinned;
+      return copy(item);
+    },
     setArchived: async (id: string, archived: boolean) => copy(update(id, { archived })),
     forkSession: async (id: string) => {
       const parent = selected(id);
-      const forked = session({ ...parent, id: `${parent.id}-fork`, title: `${parent.title} (fork)`, archived: false });
+      const forked = session({ ...parent, id: `${parent.id}-fork`, title: `${parent.title} (fork)`, pinned: false, archived: false });
       sessions = [forked, ...sessions];
       eventMap.set(forked.id, copy(eventMap.get(parent.id) || []));
       fileMap.set(forked.id, copy(fileMap.get(parent.id) || []));
