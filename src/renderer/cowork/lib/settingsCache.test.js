@@ -1,10 +1,16 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { loadCachedSettings, cacheSettings } from './settingsCache';
+import {
+  __resetSettingsCacheForTests,
+  loadCachedSettings,
+  cacheSettings,
+  clearCachedSettings,
+} from './settingsCache';
 
 const KEY = 'anton.settingsCache';
 
 describe('settingsCache', () => {
   beforeEach(() => {
+    __resetSettingsCacheForTests();
     localStorage.clear();
     vi.restoreAllMocks();
   });
@@ -49,5 +55,31 @@ describe('settingsCache', () => {
       throw new Error('QuotaExceeded');
     });
     expect(() => cacheSettings({ showDots: true })).not.toThrow();
+  });
+
+  it('removes settings cached for the previous organization', () => {
+    cacheSettings({ greeting: 'old organization' });
+
+    clearCachedSettings();
+
+    expect(localStorage.getItem(KEY)).toBeNull();
+    expect(loadCachedSettings()).toEqual({});
+  });
+
+  it('rejects a late cache write after an organization switch starts', () => {
+    cacheSettings({ greeting: 'old organization' });
+
+    clearCachedSettings();
+    cacheSettings({ greeting: 'late old-organization response' });
+
+    expect(localStorage.getItem(KEY)).toBeNull();
+  });
+
+  it('does not throw when removing cached settings fails', () => {
+    vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
+      throw new Error('Storage unavailable');
+    });
+
+    expect(() => clearCachedSettings()).not.toThrow();
   });
 });

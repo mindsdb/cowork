@@ -18,7 +18,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, resolve } from 'node:path';
 
-const KEY_PATTERN = /^mindshub-cowork\/(mac|windows)\/(?:snapshots\/)?([^/]+)$/;
+const KEY_PATTERN = /^mindshub-cowork\/(mac|windows|linux-amd64|linux-arm64)\/(?:snapshots\/)?([^/]+)$/;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 const ALIAS_NAMES = ['latest', 'staging'];
 
@@ -26,10 +26,14 @@ const ALIAS_NAMES = ['latest', 'staging'];
  * Released builds are `mindshub-cowork-<version>.<ext>`; stable-ring builds
  * carry the channel and the commit in the same position. Preview builds are
  * per-pull-request and get no manifest, so nothing should ever advertise one.
+ *
+ * A deb also carries its arch (Debian names packages `pkg_version_arch.deb`),
+ * which is file naming rather than version: it is matched and discarded, so
+ * the two arches of one release advertise the same version.
  */
 const CHANNEL_FILE_NAMES = {
-  prod: /^mindshub-cowork-((?!.*-(?:preview|stable)-).+)\.(?:pkg|exe)$/,
-  stable: /^mindshub-cowork-(.+-stable-[0-9a-f]+)\.(?:pkg|exe)$/,
+  prod: /^mindshub-cowork-((?!.*-(?:preview|stable)-).+?)(?:-(?:amd64|arm64))?\.(?:pkg|exe|deb)$/,
+  stable: /^mindshub-cowork-(.+?-stable-[0-9a-f]+)(?:-(?:amd64|arm64))?\.(?:pkg|exe|deb)$/,
 };
 
 /**

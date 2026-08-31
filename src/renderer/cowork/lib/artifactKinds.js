@@ -1,9 +1,18 @@
-// Shared artifact file-type predicates.
-//
-// Kept in one place so the artifact list (ArtifactsView) and the artifact
-// viewer (ArtifactViewer) agree on what's previewable vs publishable —
-// they used to drift, which let the viewer offer Publish for files the
-// list (and the backend) reject.
+/*
+ * Shared artifact file-type predicates.
+ *
+ * Kept in one place so every surface that renders an artifact — the artifact
+ * list (ArtifactsView), the inline chat card, the Working folder rail and the
+ * viewer itself — agrees on what's previewable vs publishable. They used to
+ * drift, which let the viewer offer Publish for files the list (and the
+ * backend) reject, and left each click handler with its own extension list.
+ *
+ * The viewer reads TEXT_PREVIEW_EXTS from here through artifactPreviewUtils,
+ * so a format added to that set reaches the click gates and the renderer in
+ * one edit. It still resolves the extension its own way (declared `ext` wins,
+ * then the canonical path), because it addresses the file it is about to
+ * fetch rather than the card the click came from.
+ */
 
 function _ext(a) {
   return (a?.ext || '').toLowerCase();
@@ -16,6 +25,17 @@ function _path(a) {
 export function isHtmlArtifact(a) {
   if (!a) return false;
   return _ext(a) === '.html' || _path(a).endsWith('.html');
+}
+
+// Raster/vector image extensions a `create_artifact(type="image")` output
+// can carry (anton/core/tools/tool_defs.py). Matched against both the
+// declared `ext` and the path, same convention as isHtmlArtifact.
+const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg']);
+
+/** Image artifact — gates the inline thumbnail / <img> preview (ENG-1998). */
+export function isImageArtifact(a) {
+  if (!a) return false;
+  return IMAGE_EXTS.has(_ext(a)) || [...IMAGE_EXTS].some((e) => _path(a).endsWith(e));
 }
 
 /**
@@ -48,22 +68,47 @@ export function isPublishableArtifact(a) {
     || ext === '.md' || path.endsWith('.md');
 }
 
-// Artifact *types* we deliberately refuse to publish even though their entry
-// file would otherwise pass isPublishableArtifact(). A fullstack stateful app
-// keeps server-side state the static publish pipeline can't carry, so a
-// published copy would be broken or misleading. Keyed on the artifact's
-// declared `type` (the metadata source of truth), NOT its file extension.
-const PUBLISH_BLOCKED_TYPES = new Set(['fullstack-stateful-app']);
+/*
+ * Text formats the in-app viewer renders without an iframe: markdown inline,
+ * CSV as a table, anything else preformatted. Matched against the declared
+ * `ext` and the path, same convention as isHtmlArtifact.
+ *
+ * Exported because the viewer's own isTextArtifact reads the same set — a
+ * format only one of them knew about would be a card that offers a preview
+ * the viewer cannot render, or a viewer that renders what no click reaches.
+ */
+export const TEXT_PREVIEW_EXTS = new Set(['.md', '.txt', '.csv']);
+
+/** Text artifact the viewer renders inline rather than in an iframe. */
+export function isTextPreviewArtifact(a) {
+  if (!a) return false;
+  return TEXT_PREVIEW_EXTS.has(_ext(a)) || [...TEXT_PREVIEW_EXTS].some((e) => _path(a).endsWith(e));
+}
 
 /**
- * Human-readable reason this artifact's type is forbidden from publishing, or
- * '' when publishing is allowed. Layered on top of isPublishableArtifact():
- * a non-empty reason means render the Publish control disabled with this string
- * as its tooltip, rather than hiding it.
+ * Everything the viewer renders from the artifact's own markup or text —
+ * HTML through the sandboxed iframe, .md/.txt/.csv through the text path.
+ * Images are deliberately absent: they load from the serve URL instead, so
+ * the two callers that can reach one ask for it separately.
  */
-export function publishBlockedReason(a) {
-  if (a && PUBLISH_BLOCKED_TYPES.has(a.type)) {
-    return "Fullstack stateful apps can't be shared.";
-  }
-  return '';
+export function isInlinePreviewable(a) {
+  return isHtmlArtifact(a) || isTextPreviewArtifact(a);
+}
+
+/** Everything the viewer can render from local bytes, images included. */
+export function canPreviewLocally(a) {
+  return isInlinePreviewable(a) || isImageArtifact(a);
+}
+
+/**
+ * What the viewer can render in an org deployment, where the only source of
+ * bytes is the authenticated draft URL (`GET /artifacts/drafts/...`).
+ *
+ * Narrower than canPreviewLocally in two ways. A fullstack app needs the
+ * loopback proxy only Desktop runs, and an image would be fetched from
+ * `/artifacts/serve`, which org-mode tenancy refuses. Offering either would
+ * open a window that can only fail.
+ */
+export function canPreviewOrgDraft(a) {
+  return !!a?.draftUrl && !isBackendArtifact(a) && isInlinePreviewable(a);
 }

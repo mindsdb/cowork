@@ -42,6 +42,11 @@ import {
 } from '../../api';
 import { MarkdownContent } from '../markdown/MarkdownContent';
 import { host } from '../../../platform/host';
+import {
+  downloadAuthenticatedResource,
+  fetchAuthenticatedBlob,
+} from '../../lib/authenticatedResource';
+import { downloadFilename } from '../../lib/browserDownload';
 
 const FONT_BODY    = "var(--font-body, 'Inter', system-ui, sans-serif)";
 const FONT_DISPLAY = "var(--font-display, 'Inter', system-ui, sans-serif)";
@@ -77,9 +82,11 @@ function FileAccessButton({ projectPath, projectName, filePath, rawUrl }) {
     const webUrl = dlUrl || rawUrl;
     if (!webUrl) return null;
     return (
-      <a
-        href={webUrl}
-        download
+      <button
+        type="button"
+        onClick={() => {
+          downloadAuthenticatedResource(webUrl, downloadFilename(filePath)).catch(() => {});
+        }}
         style={{
           textDecoration: 'none',
           cursor: 'pointer',
@@ -89,7 +96,7 @@ function FileAccessButton({ projectPath, projectName, filePath, rawUrl }) {
           fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 500,
           display: 'inline-flex', alignItems: 'center', gap: 6,
         }}
-      >{Ico.downloadCloud ? Ico.downloadCloud(13) : '↓'} Download</a>
+      >{Ico.downloadCloud ? Ico.downloadCloud(13) : '↓'} Download</button>
     );
   }
 
@@ -270,8 +277,7 @@ export default function ContextFileModal({
         // 'self' data: blob:), but connect-src allows the loopback origin —
         // so fetch the bytes and render them as a blob: URL.
         let objectUrl = '';
-        fetch(url)
-          .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.blob(); })
+        fetchAuthenticatedBlob(url)
           .then((blob) => {
             if (cancelled) return;
             objectUrl = URL.createObjectURL(blob);

@@ -37,3 +37,50 @@ describe.each(SURFACES)('%s', (_name, rel) => {
     ).toBe(true);
   });
 });
+
+// Deleting must also TELL someone. Every surface used to call the api helper
+// directly and then patch its own local list, so the conversation's inline
+// cards never learned the artifact was gone (ENG-1673). The wrapper is what
+// records the tombstone, and a surface that skips it silently reintroduces the
+// bug — the same "a caller that never asks" failure this file already guards
+// against for the deployment gate.
+const DELETE_SURFACES = [
+  ['artifacts panel', 'cowork/views/ArtifactsView.jsx'],
+  ['rail working-folder list', 'cowork/components/rail/WorkingFolderLive.jsx'],
+  ['artifact viewer', 'cowork/components/artifact/ArtifactViewer.jsx'],
+];
+
+describe.each(DELETE_SURFACES)('%s deletion', (_name, rel) => {
+  const src = readFileSync(resolve(ROOT, rel), 'utf-8');
+
+  it('deletes through the store wrapper', () => {
+    expect(src).toContain('deleteArtifactAndSync');
+  });
+
+  it('does not reach for the bare api helper', () => {
+    // `\b` cannot match between `deleteArtifact` and `AndSync` — both sides are
+    // word characters — so the wrapper's own name is excluded for free.
+    expect(src).not.toMatch(/\bdeleteArtifact\b/);
+  });
+});
+
+// An artifact the agent creates mid-session is absent from an index loaded
+// before it existed, and would be reported as deleted. The live stream is the
+// only place that knows it was just born, and App owns every live stream — a
+// signal hung on ChatView would miss a turn that finishes while the user is
+// looking at another chat or another route.
+describe('live stream', () => {
+  const src = readFileSync(resolve(ROOT, 'cowork/App.jsx'), 'utf-8');
+
+  it('registers artifacts of the live turn with the liveness store', () => {
+    expect(src).toContain('noteArtifactsFromSteps');
+  });
+
+  it('registers them from the shared live-steps collector', () => {
+    // Not from one of the four onEvent bodies: a fifth stream loop added later
+    // would silently skip it.
+    const collector = src.slice(src.indexOf('const updateLiveStepsAndDrainQueue'));
+    const body = collector.slice(0, collector.indexOf('\n  };'));
+    expect(body).toContain('noteArtifactsFromSteps');
+  });
+});

@@ -3,8 +3,8 @@
 // Why a library here: the hand-rolled selects across the app were either
 // bare native `<select>` elements (inconsistent padding/chevron per call
 // site) or a "transparent `<select>` overlaid on a styled pill" trick
-// (ConnectorPicker's `SelectPill`, the ConnectWorkflowView filter/sort
-// controls) that fakes a custom look while keeping the OS popup — fine
+// (ConnectorPicker's `SelectPill`) that fakes a custom look while keeping
+// the OS popup — fine
 // until you want consistent styling, real keyboard support, or a divider
 // between options. Base UI's Select gives us a fully custom, accessible
 // popup (arrow keys, typeahead, focus management) while we own only the
@@ -160,6 +160,11 @@ function renderOptions(options) {
 export function Select({
   value,
   onValueChange,
+  // Optional controlled open state — omit for the usual uncontrolled popup
+  // (Base UI manages it internally). Lets a caller force the popup open,
+  // e.g. EffortSelect (ENG-1940) auto-opening itself the moment a model
+  // with effort levels is picked.
+  open,
   // Fires on open and on close. For a caller that wants to refresh `options`
   // when the popup opens; the popup opens straight away either way, so the
   // new options land in place rather than gating the open on a fetch.
@@ -200,13 +205,19 @@ export function Select({
       value={value}
       items={itemsForLabels}
       onValueChange={(next) => onValueChange?.(next)}
+      open={open}
       onOpenChange={onOpenChange}
       disabled={disabled}
       id={id}
       name={name}
     >
       <BaseSelect.Trigger
-        className={cn(triggerVariants({ variant, size }), className)}
+        // "unstyled" (mirrors Combobox.jsx, which shares this cva) skips the
+        // field/pill trigger classes entirely so a caller's own className is
+        // the sole visual definition — e.g. EffortSelect's `meta-pill`
+        // (ENG-1940), which needs to look identical to ModelSelect's pill
+        // next to it and would otherwise fight the pill-variant classes.
+        className={cn(variant === 'unstyled' ? null : triggerVariants({ variant, size }), className)}
         aria-label={ariaLabel || label}
         aria-invalid={invalid || undefined}
         // The spinner that replaces the chevron is aria-hidden, so without

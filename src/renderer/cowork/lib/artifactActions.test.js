@@ -1,23 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import { artifactOpenTarget, isArtifactActionAvailable, needsClientUnpublishBeforeDelete } from './artifactActions';
 
-const ALL = ['open', 'reveal', 'download', 'copy-url', 'update', 'publish', 'unpublish', 'delete'];
+const ALL = ['open', 'preview', 'reveal', 'download', 'copy-url', 'update', 'publish', 'unpublish', 'delete'];
 
 function available(opts) {
   return ALL.filter((id) => isArtifactActionAvailable(id, opts));
 }
 
 describe('org mode', () => {
-  it('offers only open, copy link and delete for a published artifact', () => {
+  it('offers private preview, open, copy link and delete for a published artifact', () => {
     expect(available({ orgMode: true, hasBridge: false, published: true }))
-      .toEqual(['open', 'copy-url', 'delete']);
+      .toEqual(['open', 'preview', 'copy-url', 'delete']);
   });
 
-  it('leaves only delete while the artifact has no URL yet', () => {
-    // Autopublish has not landed (or failed): there is nothing to open or copy,
-    // and no action on the card could change that.
+  it('keeps private preview before an artifact has a shared URL', () => {
     expect(available({ orgMode: true, hasBridge: false, published: false }))
-      .toEqual(['delete']);
+      .toEqual(['preview', 'delete']);
   });
 
   it('never offers publish control or local-content actions', () => {
@@ -58,22 +56,59 @@ describe('defaults', () => {
 });
 
 describe('artifactOpenTarget', () => {
-  // The click destination, not a yes/no per action. Three surfaces render an
-  // artifact body — the inline chat card, the rail's Working-folder list and the
-  // artifacts grid — and each used to decide from the file extension alone, so
-  // all three opened a local preview on a deployment that serves no content.
-  it('opens the published URL in org mode, whatever the extension says', () => {
+  /*
+   * The click destination, not a yes/no per action. Three surfaces render an
+   * artifact body — the inline chat card, the rail's Working-folder list and the
+   * artifacts grid — and each used to decide from the file extension alone, so
+   * all three opened a local preview on a deployment that serves no content.
+   * Org mode now answers from the authenticated draft URL instead, which the
+   * callers compute with `canPreviewOrgDraft`.
+   */
+  it('previews an org click in the app, even once the artifact is shared', () => {
+    /*
+     * The click means "show me this artifact". Sending it to the shared page
+     * instead put a browser tab between the user and their own work.
+     */
     expect(artifactOpenTarget({
-      orgMode: true, published: true, canPreviewInline: true, hasBridge: true,
-    })).toBe('published');
+      orgMode: true,
+      published: true,
+      canPreviewInline: true,
+      canPreviewDraft: true,
+      hasBridge: true,
+    })).toBe('preview');
+  });
+
+  it('previews an org click before the artifact is shared at all', () => {
+    /*
+     * The draft URL carries its own access check, so the preview does not wait
+     * on a publish the user may never do.
+     */
     expect(artifactOpenTarget({
-      orgMode: true, published: true, canPreviewInline: false, hasBridge: true,
+      orgMode: true, published: false, canPreviewDraft: true, hasBridge: false,
+    })).toBe('preview');
+  });
+
+  it('falls back to the shared page for a draft org mode cannot render', () => {
+    /*
+     * Fullstack apps and images: neither has bytes the viewer can render here
+     * (no loopback proxy, no serve URL), so the published page is the only
+     * destination left. `canPreviewInline` is the desktop answer and must not
+     * leak into this branch.
+     */
+    expect(artifactOpenTarget({
+      orgMode: true,
+      published: true,
+      canPreviewInline: true,
+      canPreviewDraft: false,
+      hasBridge: true,
     })).toBe('published');
   });
 
-  it('is not clickable in org mode without a published URL', () => {
-    // Nothing to open: the local preview and the OS handoff both need bytes
-    // this deployment does not serve.
+  it('is not clickable in org mode without a preview or a published URL', () => {
+    /*
+     * Nothing to open: the draft cannot be rendered, and the OS handoff needs
+     * bytes this deployment does not serve.
+     */
     expect(artifactOpenTarget({
       orgMode: true, published: false, canPreviewInline: true, hasBridge: true,
     })).toBeNull();

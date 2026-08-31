@@ -90,6 +90,9 @@ export function useGoogleDrivePicker({
   // host.pickDriveFiles directly and correctly omits it).
   // `preFetchedConnections`, when passed, skips resolveGoogleDriveConnection's
   // own fetchDatasources() call — see fetchGoogleDriveConnections above.
+  // No window/popup bookkeeping on web any more: the Picker renders as an
+  // in-page overlay (see host.pickDriveFiles), so there is no click-activation
+  // deadline to beat and nothing to clean up on an early return here.
   const openGoogleDrivePicker = useCallback(async (projectName, preFetchedConnections) => {
     const conn = await resolveGoogleDriveConnection(preFetchedConnections);
     // Callers only reach here once fetchGoogleDriveConnections() has
@@ -105,7 +108,9 @@ export function useGoogleDrivePicker({
     } catch {
       return { ok: false, reason: 'Could not load the Google Drive connection.' };
     }
-    if (!accountEmail) return { ok: false, reason: 'Google Drive connection is missing an account email.' };
+    if (!accountEmail) {
+      return { ok: false, reason: 'Google Drive connection is missing an account email.' };
+    }
     const result = await host.pickDriveFiles('google_drive', conn.name, accountEmail, undefined, projectName);
     if (!result?.ok) return { ok: false, reason: result?.reason || 'Google Drive picker failed.' };
     // `files` is the connection's full accumulated grant (every file ever

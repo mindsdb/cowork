@@ -8,15 +8,29 @@ import { host } from '../../platform/host';
 import { relativeAge } from '../lib/formatTime';
 import { useAccountUser } from '../hooks/useAccountUser';
 import UserMenu from './UserMenu';
+import WorkspaceSelector from './WorkspaceSelector';
 import OnboardingChecklist from './onboarding/OnboardingChecklist';
 import FirstArtifactTip from './onboarding/FirstArtifactTip';
 
-// Shell auto-update (ENG-850) phases whose own banner is showing. The ENG-849
-// manual reinstall notice is the fallback for every OTHER phase, so the two are
-// mutually exclusive by construction — no double banner, and no gap where an
-// available update surfaces on neither (the reason `phase === 'disabled'` alone
-// was too narrow once prod settles at idle/complete — ENG-1739).
-const SHELL_AUTO_UPDATE_BANNER_PHASES = ['available', 'downloading', 'ready-to-install', 'installing', 'failed'];
+// Tone → banner palette (the only place tone becomes pixels). `ready`/`progress`
+// share sage (progress is the same banner mid-download); `error` goes amber.
+const UPDATE_TONE_CLASS = {
+  ready: {
+    box: 'bg-[color-mix(in_srgb,var(--sage-500)_12%,transparent)] border-[color-mix(in_srgb,var(--sage-500)_30%,transparent)] hover:bg-[color-mix(in_srgb,var(--sage-500)_22%,transparent)]',
+    dot: 'bg-[var(--sage-500,#5D9287)]',
+    action: 'text-[var(--sage-500,#5D9287)]',
+  },
+  progress: {
+    box: 'bg-[color-mix(in_srgb,var(--sage-500)_12%,transparent)] border-[color-mix(in_srgb,var(--sage-500)_30%,transparent)]',
+    dot: 'bg-[var(--sage-500,#5D9287)]',
+    action: 'text-[var(--sage-500,#5D9287)]',
+  },
+  error: {
+    box: 'bg-[rgba(196,127,0,0.12)] border-[rgba(196,127,0,0.30)] hover:bg-[rgba(196,127,0,0.22)]',
+    dot: 'bg-[var(--warning,#c47f00)]',
+    action: 'text-[var(--warning,#c47f00)]',
+  },
+};
 
 // Platform-aware modifier symbol for keyboard hints. Mac uses ⌘ glyph,
 // Windows/Linux use Ctrl+ literal.
@@ -227,17 +241,10 @@ export default function Sidebar({
   onOpenSchedule,
   onToggleServer,
   onShowServerHelp,
-  updateAvailable = null, // { version: string } or null
-  // Set when an apply attempt failed (phase 'error'); surfaces a retry so the
-  // sidebar doesn't go silent on failure the way it used to (ENG-849 QA find).
-  updateError = null, // { version?: string } or null
-  onApplyUpdate,
-  // Download-only shell update notice.
-  shellUpdate = null,
-  shellAutoUpdate = null,
-  onShellAutoUpdateAction,
-  onDownloadShellUpdate,
-  onDismissShellUpdate,
+  // The single derived update banner (deriveUpdateBanner), or null.
+  updateBanner = null,
+  onUpdateAction, // (action: 'apply-ota' | 'shell-auto' | 'download-installer') => void
+  onDismissUpdate, // dismisses the (dismissible) manual installer notice
   agentLabel,
   settingsActive = false,
   // Signed-in state, pushed from App — the user-menu hook re-reads the
@@ -549,6 +556,12 @@ export default function Sidebar({
               `${collapsed ? '0ms' : '80ms'}`,
         }}
       >
+        {/* The MindsHub workspace this session is scoped to. Above the CTA
+            rather than inside the account menu: the current workspace has to be
+            readable without opening anything, and the account menu is where the
+            organization selector lands. Renders nothing until the gate is on. */}
+        {accountUser && <WorkspaceSelector user={accountUser} />}
+
         {/* New task CTA — the tinted (accent-wash) variant, full width. */}
         <div className="anton-sidebar__cta-wrap">
           <Button
@@ -722,109 +735,62 @@ export default function Sidebar({
             Hides itself once dismissed (post-completion). */}
         {onStartChat && <OnboardingChecklist onStartChat={onStartChat} />}
 
-        {/* A shell reinstall supersedes the OTA banner until dismissed. */}
-        {updateAvailable && !shellUpdate && (
-          <button
-            type="button"
-            className="mt-0 mx-2.5 mb-1.5 py-2 px-3 bg-[color-mix(in_srgb,var(--sage-500)_12%,transparent)] border border-solid border-[color-mix(in_srgb,var(--sage-500)_30%,transparent)] rounded-lg flex items-center gap-2 cursor-pointer w-[calc(100%-20px)] text-left font-[inherit] [-webkit-app-region:no-drag] hover:bg-[color-mix(in_srgb,var(--sage-500)_22%,transparent)] [transition:background_120ms_ease]"
-            onClick={onApplyUpdate}
-          >
-            <span className="w-1.5 h-1.5 rounded-full bg-[var(--sage-500,#5D9287)] shrink-0" />
-            <span className="flex-1 text-[11.5px] text-ink font-[family-name:var(--font-sans)]">
-              Update ready{updateAvailable.version ? ` (${updateAvailable.version})` : ''}
-            </span>
-            <span className="text-2xs text-[var(--sage-500,#5D9287)] font-[family-name:var(--font-mono)] tracking-[0.03em] uppercase font-semibold">
-              Restart
-            </span>
-          </button>
-        )}
-
-        {/* A failed apply keeps the banner (as a retry) instead of silently
-            vanishing until the next poll — mirrors Settings → Software updates. */}
-        {updateError && !shellUpdate && (
-          <button
-            type="button"
-            className="mt-0 mx-2.5 mb-1.5 py-2 px-3 bg-[rgba(196,127,0,0.12)] border border-solid border-[rgba(196,127,0,0.30)] rounded-lg flex items-center gap-2 cursor-pointer w-[calc(100%-20px)] text-left font-[inherit] [-webkit-app-region:no-drag] hover:bg-[rgba(196,127,0,0.22)] [transition:background_120ms_ease]"
-            onClick={onApplyUpdate}
-          >
-            <span className="w-1.5 h-1.5 rounded-full bg-[var(--warning,#c47f00)] shrink-0" />
-            <span className="flex-1 text-[11.5px] text-ink font-[family-name:var(--font-sans)]">
-              Update failed{updateError.version ? ` (${updateError.version})` : ''}
-            </span>
-            <span className="text-2xs text-[var(--warning,#c47f00)] font-[family-name:var(--font-mono)] tracking-[0.03em] uppercase font-semibold">
-              Try again
-            </span>
-          </button>
-        )}
-
-        {/* Shell auto-update (electron-updater): background download, install on
-            relaunch. Rendered for the active phases; the action is phase-driven
-            (download / restart / retry) and disabled while work is in flight. */}
-        {shellAutoUpdate && SHELL_AUTO_UPDATE_BANNER_PHASES.includes(shellAutoUpdate.phase) && (
-          <button
-            type="button"
-            onClick={onShellAutoUpdateAction}
-            disabled={shellAutoUpdate.phase === 'downloading' || shellAutoUpdate.phase === 'installing'}
-            className="mt-0 mx-2.5 mb-1.5 py-2 px-3 bg-[color-mix(in_srgb,var(--sage-500)_12%,transparent)] border border-solid border-[color-mix(in_srgb,var(--sage-500)_30%,transparent)] rounded-lg flex items-center gap-2 w-[calc(100%-20px)] [-webkit-app-region:no-drag] font-[inherit] cursor-pointer disabled:cursor-default"
-          >
-            <span className="w-1.5 h-1.5 rounded-full bg-[var(--sage-500,#5D9287)] shrink-0" />
+        {/* One banner for all three update mechanisms, chosen by
+            deriveUpdateBanner (shell-first). Exactly one banner or none. */}
+        {updateBanner && (() => {
+          const tone = UPDATE_TONE_CLASS[updateBanner.tone] || UPDATE_TONE_CLASS.ready;
+          const box = `mt-0 mx-2.5 mb-1.5 py-2 px-3 border border-solid rounded-lg flex items-center gap-2 w-[calc(100%-20px)] [-webkit-app-region:no-drag] ${tone.box}`;
+          const dot = <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${tone.dot}`} />;
+          const label = (
             <span className="flex-1 text-[11.5px] text-left text-ink font-[family-name:var(--font-sans)]">
-              {shellAutoUpdate.phase === 'downloading'
-                ? `Downloading update${shellAutoUpdate.progress?.percent != null ? ` (${Math.round(shellAutoUpdate.progress.percent)}%)` : '…'}`
-                : shellAutoUpdate.phase === 'ready-to-install'
-                  ? 'App update ready'
-                  : shellAutoUpdate.phase === 'installing'
-                    ? 'Installing update…'
-                    : shellAutoUpdate.phase === 'failed'
-                      ? 'App update failed'
-                      : 'New app version available'}
+              {updateBanner.title}
             </span>
-            <span className="text-2xs text-[var(--sage-500,#5D9287)] font-[family-name:var(--font-mono)] tracking-[0.03em] uppercase font-semibold">
-              {shellAutoUpdate.phase === 'ready-to-install'
-                ? 'Restart'
-                : shellAutoUpdate.phase === 'failed'
-                  ? (shellAutoUpdate.recoverable ? 'Retry' : 'Download')
-                  : shellAutoUpdate.phase === 'available'
-                    ? 'Download'
-                    : ''}
+          );
+          const action = updateBanner.actionLabel ? (
+            <span className={`text-2xs font-[family-name:var(--font-mono)] tracking-[0.03em] uppercase font-semibold ${tone.action}`}>
+              {updateBanner.actionLabel}
             </span>
-          </button>
-        )}
+          ) : null;
 
-        {/* Shell (installer) update notice — the app itself is newer than what's
-            installed; the shell can't hot-update, so this links to the download
-            and is dismissible per-version (ENG-849). Shown whenever the shell
-            auto-updater isn't presenting its own banner (disabled/idle/complete),
-            so an available update never falls between the two. */}
-        {shellUpdate && (!shellAutoUpdate || !SHELL_AUTO_UPDATE_BANNER_PHASES.includes(shellAutoUpdate.phase)) && (
-          <div className="mt-0 mx-2.5 mb-1.5 py-2 px-3 bg-[color-mix(in_srgb,var(--sage-500)_12%,transparent)] border border-solid border-[color-mix(in_srgb,var(--sage-500)_30%,transparent)] rounded-lg flex items-center gap-2 w-[calc(100%-20px)] [-webkit-app-region:no-drag]">
-            <Tooltip content={`A new version of MindsHub Cowork is available${shellUpdate.version ? ` (${shellUpdate.version})` : ''} — download the installer, then quit the app and open it to update`}>
+          // The manual installer notice is the only dismissible banner.
+          if (updateBanner.dismissible) {
+            return (
+              <div className={box}>
+                <Tooltip content={`A new version of MindsHub Cowork is available${updateBanner.version ? ` (${updateBanner.version})` : ''} — download the installer, then quit the app and open it to update`}>
+                  <button
+                    type="button"
+                    onClick={() => onUpdateAction?.(updateBanner.action)}
+                    className="flex-1 flex items-center gap-2 bg-transparent border-0 p-0 m-0 cursor-pointer text-left font-[inherit]"
+                  >
+                    {dot}{label}{action}
+                  </button>
+                </Tooltip>
+                <Tooltip content="Dismiss">
+                  <button
+                    type="button"
+                    onClick={onDismissUpdate}
+                    aria-label="Dismiss update notice"
+                    className="bg-transparent border-0 py-0 px-0.5 m-0 cursor-pointer text-ink-3 text-base leading-none shrink-0"
+                  >
+                    ×
+                  </button>
+                </Tooltip>
+              </div>
+            );
+          }
+
+          // One clickable pill; an in-flight download/install renders it disabled.
+          return (
             <button
               type="button"
-              onClick={onDownloadShellUpdate}
-              className="flex-1 flex items-center gap-2 bg-transparent border-0 p-0 m-0 cursor-pointer text-left font-[inherit]"
+              onClick={updateBanner.action ? () => onUpdateAction?.(updateBanner.action) : undefined}
+              disabled={updateBanner.disabled}
+              className={`${box} font-[inherit] cursor-pointer disabled:cursor-default [transition:background_120ms_ease]`}
             >
-              <span className="w-1.5 h-1.5 rounded-full bg-[var(--sage-500,#5D9287)] shrink-0" />
-              <span className="flex-1 text-[11.5px] text-ink font-[family-name:var(--font-sans)]">
-                New version available{shellUpdate.version ? ` (${shellUpdate.version})` : ''}
-              </span>
-              <span className="text-2xs text-[var(--sage-500,#5D9287)] font-[family-name:var(--font-mono)] tracking-[0.03em] uppercase font-semibold">
-                Download
-              </span>
+              {dot}{label}{action}
             </button>
-            </Tooltip>
-            <Tooltip content="Dismiss">
-              <button
-                type="button"
-                onClick={onDismissShellUpdate}
-                aria-label="Dismiss update notice"
-                className="bg-transparent border-0 py-0 px-0.5 m-0 cursor-pointer text-ink-3 text-base leading-none shrink-0"
-              >
-                ×
-              </button>
-            </Tooltip>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Footer — the settings / backend-status controls stay
             Electron-only: the FastAPI process IS the host on web, so

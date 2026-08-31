@@ -16,20 +16,26 @@ import {
   editCommentReply,
   editCommentThread,
   listCommentThreads,
+  markCommentsRead,
   openCommentsStream,
   setCommentThreadStatus,
 } from '../../../api';
 import { maxUpdatedAt, upsertThread } from '../../../lib/commentsReducer';
 
-export function useArtifactComments(userDir, reportId, { enabled = true } = {}) {
+export function useArtifactComments(userDir, reportId, { enabled = true, onUnread } = {}) {
   const [threads, setThreads] = useState([]);
   const [error, setError] = useState('');
   const [expired, setExpired] = useState(false);
   // Server-echoed identity of the current viewer (X-User-Id for cowork). Used by
   // the UI to gate edit/delete controls; the server still re-checks authorship.
   const [viewer, setViewer] = useState(null);
-  const threadsRef = useRef([]);
-  threadsRef.current = threads;
+  const [capabilities, setCapabilities] = useState(null);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const viewerRef = useRef(null);
+  viewerRef.current = viewer;
+  const onUnreadRef = useRef(onUnread);
+  onUnreadRef.current = onUnread;
+  const unreadRequestRef = useRef(0);
 
   const apply = useCallback((event) => {
     setThreads((prev) => upsertThread(prev, event));
@@ -48,6 +54,9 @@ export function useArtifactComments(userDir, reportId, { enabled = true } = {}) 
     setError('');
     setExpired(false);
     setViewer(null);
+    setCapabilities(null);
+    setUnreadCount(0);
+    unreadRequestRef.current += 1;
     if (!enabled || !userDir || !reportId) return undefined;
     let cancelled = false;
     let ctrl = null;
@@ -57,7 +66,28 @@ export function useArtifactComments(userDir, reportId, { enabled = true } = {}) 
     const subscribe = (since) => {
       if (cancelled) return;
       ctrl = openCommentsStream(userDir, reportId, since, {
-        onEvent: (ev) => { attempts = 0; apply(ev); },
+        onEvent: (ev) => {
+          attempts = 0;
+          apply(ev);
+          const actorId = ev?.actor_user_id || ev?.payload?.author?.user_id;
+          if ((ev?.type === 'thread.created' || ev?.type === 'thread.updated')
+            && actorId
+            && String(actorId) !== String(viewerRef.current?.user_id || '')) {
+            // Unread is a count of threads, not events. A busy discussion can
+            // emit several updates for one still-unread thread, so re-read the
+            // server's receipt-based count instead of incrementing locally.
+            const requestId = unreadRequestRef.current + 1;
+            unreadRequestRef.current = requestId;
+            listCommentThreads(userDir, reportId, 'all')
+              .then((data) => {
+                if (!cancelled && unreadRequestRef.current === requestId) {
+                  setUnreadCount(Number(data?.unreadCount || 0));
+                }
+              })
+              .catch(() => { /* the SSE reconnect path will reconcile */ });
+            onUnreadRef.current?.(ev);
+          }
+        },
         onExpired: () => setExpired(true), // terminal — no reconnect
         onError: () => {
           if (cancelled) return;
@@ -77,6 +107,8 @@ export function useArtifactComments(userDir, reportId, { enabled = true } = {}) 
           const loaded = (data && data.threads) || [];
           setThreads(loaded);
           if (data && data.viewer) setViewer(data.viewer);
+          if (data && data.capabilities) setCapabilities(data.capabilities);
+          setUnreadCount(Number(data?.unreadCount || 0));
           subscribe(maxUpdatedAt(loaded));
         })
         .catch((e) => {
@@ -101,10 +133,14 @@ export function useArtifactComments(userDir, reportId, { enabled = true } = {}) 
     };
   }, [enabled, userDir, reportId, apply]);
 
-  const create = useCallback(async ({ selector = null, text }) => {
+  const create = useCallback(async ({
+    selector = null, text, revisionId = null, kind = 'review',
+  }) => {
     if (!text || !text.trim()) return false;
     try {
-      const created = await createCommentThread(userDir, reportId, { selector, text: text.trim() });
+      const created = await createCommentThread(userDir, reportId, {
+        selector, text: text.trim(), revisionId, kind,
+      });
       apply({ ...created, type: created.type || 'thread.created' });
       return true;
     } catch (e) {
@@ -127,8 +163,10 @@ export function useArtifactComments(userDir, reportId, { enabled = true } = {}) 
     try {
       const updated = await setCommentThreadStatus(userDir, reportId, id, status);
       apply({ ...updated, type: 'thread.updated' });
+      return true;
     } catch (e) {
       setError(e.message || 'Failed to update');
+      return false;
     }
   }, [userDir, reportId, apply]);
 
@@ -170,8 +208,18 @@ export function useArtifactComments(userDir, reportId, { enabled = true } = {}) 
     }
   }, [userDir, reportId, apply]);
 
+  const markRead = useCallback(async () => {
+    try {
+      await markCommentsRead(userDir, reportId);
+      unreadRequestRef.current += 1;
+      setUnreadCount(0);
+    } catch (e) {
+      setError(e.message || 'Failed to mark feedback as read');
+    }
+  }, [userDir, reportId]);
+
   return {
-    threads, error, expired, viewer,
+    threads, error, expired, viewer, capabilities, unreadCount, markRead,
     create, reply, setStatus,
     editThread, deleteThread, editReply, deleteReply,
   };

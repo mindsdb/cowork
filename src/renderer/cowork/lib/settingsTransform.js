@@ -36,10 +36,10 @@ export const SETTINGS_KEY_MAP = {
   coding_provider: 'codingProvider',
   coding_model: 'codingModel',
   coding_reasoning_effort: 'codingReasoningEffort',
-  // Router (anton's "thalamus" role) — the cheap front-model that gates each
-  // turn respond-vs-delegate AND runs history summarization. Selectable so
-  // users can point routing+summarization at a cheap model (defaults per
-  // provider: MindsHub→kimi, else smallest).
+  // Router role — history summarization, on the user's pick. The
+  // respond-or-delegate gate ahead of each turn resolves its own model
+  // server-side (ENG-1851; `settings.gate`, see routerRoleSubtitle) and only
+  // runs on this pick for openai-compatible, which has no default to fall to.
   router_provider: 'routerProvider',
   router_model: 'routerModel',
   openai_base_url: 'openaiBaseUrl',
@@ -182,6 +182,11 @@ const _cap = (t) => (t ? t.charAt(0).toUpperCase() + t.slice(1) : t);
  *   gpt-5.5-mini               → "GPT-5.5 Mini"
  *   gemini-3-flash-preview     → "Gemini 3 Flash Preview"
  *   o4-mini                    → "o4 Mini"
+ *
+ * This is the FALLBACK half of the naming rule, not the rule. Render paths must
+ * call `displayModelLabel` (catalog label first) — calling this directly is
+ * how the 402/403 card came to say "Mindshub air" under a picker that said
+ * "MindsHub Air" (ENG-1638). Exported for tests and for displayModelLabel.
  */
 export function modelLabel(id) {
   if (!id) return '';
@@ -275,7 +280,48 @@ export function mergeRecommendedModels(prev, rec) {
     // tags rather than breaking it.
     modelProviders: overlayMap(base.modelProviders, rec.modelProviders),
     modelFamilies: overlayMap(base.modelFamilies, rec.modelFamilies),
+    // Which model the server's per-turn route gate runs on (ENG-1851). Sent by
+    // servers that resolve it apart from the router pick; an older server sends
+    // nothing and the row falls back to describing what that server does.
+    gate: (rec.gate && typeof rec.gate === 'object') ? rec.gate : (base.gate ?? null),
   };
+}
+
+// ─── Role row copy ──────────────────────────────────────────────────
+
+/**
+ * Subtitle for the router role's Settings row (ENG-1851).
+ *
+ * The router pick has two consumers: history summarization, and the
+ * respond-or-delegate gate that runs ahead of each chat turn on a strict
+ * latency budget. The server resolves the gate's model apart from the pick and
+ * reports it as `gate` — `{ provider, model, followsRouterPick }` — and the row
+ * shows that rather than restating the rule, so the copy stays true across the
+ * UI/server OTA skew and whichever provider the server resolved the role to.
+ * A server that sends no `gate` is one whose gate does run on this pick, and
+ * the legacy copy describes it.
+ *
+ * Pure so the copy decision is unit-tested directly; RoleRow inlines the JSX.
+ */
+export function routerRoleSubtitle(gate, { rowProviderType = '', providerTypeLabels = {} } = {}) {
+  if (!gate || typeof gate !== 'object') {
+    return 'Used for fast respond-or-delegate gating on each turn, and history summarization.';
+  }
+  if (!gate.model) {
+    return gate.followsRouterPick
+      ? 'Used for history summarization. The respond-or-delegate gate ahead of each chat turn is off until a model is picked here.'
+      : 'Used for history summarization. The respond-or-delegate gate ahead of each chat turn is off: no model is available for it.';
+  }
+  if (gate.followsRouterPick) {
+    return 'Used for history summarization and for the respond-or-delegate gate ahead of each chat turn, '
+      + 'which has a strict latency budget: pick your fastest model here, not your smartest.';
+  }
+  // Name the provider only when it is not the one this row shows — the server
+  // may have resolved the role elsewhere (a stored provider with no key).
+  const where = gate.provider && gate.provider !== rowProviderType
+    ? ` (${providerTypeLabels[gate.provider] || gate.provider})`
+    : '';
+  return `Used for history summarization. The respond-or-delegate gate ahead of each chat turn runs on ${gate.model}${where}, not on this pick.`;
 }
 
 // ─── Model picker select-value resolution ───────────────────────────

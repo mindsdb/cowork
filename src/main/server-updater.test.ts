@@ -380,9 +380,12 @@ describe('repairServerInstall (orchestration)', () => {
       cb: (err: Error | null, stdout: string, stderr: string) => void,
     ) => {
       execCalls.push([cmd, ...args]);
-      if (cmd === 'which' || cmd === 'where') {
-        if (args[0] === 'uv') cb(null, `${PATH_UV}\n`, '');
-        else cb(new Error(`${args[0]} not found`), '', '');
+      // POSIX findOnPath shells to `/bin/sh -c 'command -v "$1"' -- <cmd>`
+      // rather than a separate `which` binary; win32 still uses `where <cmd>`.
+      if (cmd === 'where' || cmd === '/bin/sh') {
+        const target = cmd === 'where' ? args[0] : args[args.length - 1];
+        if (target === 'uv') cb(null, `${PATH_UV}\n`, '');
+        else cb(new Error(`${target} not found`), '', '');
       } else if (args[0] === 'tool' && args[1] === 'dir') {
         cb(null, '/fake/uv/tools\n', '');
       } else if (args[0] === 'tool' && args[1] === 'list') {

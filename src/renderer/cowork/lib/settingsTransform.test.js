@@ -16,6 +16,7 @@ import {
   toDisplayUnits,
   toNaturalUnits,
   formatCount,
+  routerRoleSubtitle,
 } from './settingsTransform';
 
 // The minds-cloud recommended list holds bare aliases — never `latest:`-prefixed.
@@ -884,5 +885,53 @@ describe('diffSettingsForWrite — null tombstones (ENG-1632)', () => {
       { codingModel: 'haiku', routerModel: 'kimi', actFirst: 'false' },
     );
     expect(writes).toEqual({ act_first: 'true' });
+  });
+});
+
+
+describe('mergeRecommendedModels — the gate binding (ENG-1851)', () => {
+  it('takes the gate the server reports', () => {
+    const merged = mergeRecommendedModels({}, {
+      gate: { provider: 'minds-cloud', model: 'mindshub_air', followsRouterPick: false },
+    });
+    expect(merged.gate).toEqual({ provider: 'minds-cloud', model: 'mindshub_air', followsRouterPick: false });
+  });
+
+  it('keeps what it holds when the server sends none, and null when it never has', () => {
+    const held = { gate: { provider: 'minds-cloud', model: 'mindshub_air', followsRouterPick: false } };
+    expect(mergeRecommendedModels(held, { recommendedModels: {} }).gate).toEqual(held.gate);
+    expect(mergeRecommendedModels({}, { recommendedModels: {} }).gate).toBeNull();
+  });
+});
+
+describe('routerRoleSubtitle (ENG-1851)', () => {
+  const labels = { 'minds-cloud': 'MindsHub', anthropic: 'Anthropic' };
+
+  it('describes the legacy server when no gate is reported — there the gate runs on the pick', () => {
+    expect(routerRoleSubtitle(null)).toMatch(/respond-or-delegate gating on each turn, and history summarization/);
+    expect(routerRoleSubtitle(undefined)).toBe(routerRoleSubtitle(null));
+  });
+
+  it('names the model the server resolved, and only names the provider when it is not the row\'s', () => {
+    const gate = { provider: 'minds-cloud', model: 'mindshub_air', followsRouterPick: false };
+    expect(routerRoleSubtitle(gate, { rowProviderType: 'minds-cloud', providerTypeLabels: labels }))
+      .toBe('Used for history summarization. The respond-or-delegate gate ahead of each chat turn runs on mindshub_air, not on this pick.');
+    // The server resolved the role to a provider other than the one the row shows.
+    expect(routerRoleSubtitle({ ...gate, provider: 'anthropic', model: 'claude-haiku-4-5-20251001' },
+      { rowProviderType: 'minds-cloud', providerTypeLabels: labels }))
+      .toContain('runs on claude-haiku-4-5-20251001 (Anthropic), not on this pick.');
+  });
+
+  it('tells an openai-compatible user to pick for speed, since the gate runs on the pick there', () => {
+    const text = routerRoleSubtitle({ provider: 'openai-compatible', model: 'my-fast-model', followsRouterPick: true });
+    expect(text).toMatch(/pick your fastest model here, not your smartest/);
+    expect(text).not.toMatch(/\d/); // no budget figure to go stale against the server constant
+  });
+
+  it('says the gate is off when the server has no model for it', () => {
+    expect(routerRoleSubtitle({ provider: 'openai-compatible', model: null, followsRouterPick: true }))
+      .toMatch(/off until a model is picked here/);
+    expect(routerRoleSubtitle({ provider: 'minds-cloud', model: null, followsRouterPick: false }))
+      .toMatch(/off: no model is available/);
   });
 });

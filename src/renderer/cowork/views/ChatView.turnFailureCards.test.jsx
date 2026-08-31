@@ -22,6 +22,7 @@ vi.mock('../../platform/host', () => ({
 }));
 
 import ChatView from './ChatView';
+import { hydrateMessagesFromServerEvents } from '../lib/conversationHistory';
 
 const taskWith = (messages) => ({
   id: 'conv-a',
@@ -254,6 +255,38 @@ describe('image_format failure card', () => {
   });
 });
 
+describe('content_recovery failure card', () => {
+  it('says it already fixed the issue, not that the user should re-upload', async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    render(
+      <ChatView
+        task={taskWith(failedTurn(
+          'content_recovery',
+          "An image earlier in this conversation couldn't be sent to the model due to an internal formatting issue. I've fixed it automatically — you can keep going.",
+        ))}
+        onSend={onSend}
+      />,
+    );
+    expect(screen.getByText(/removed automatically/i)).toBeInTheDocument();
+    // Distinct from image_format's "convert to PNG or JPEG" — that advice is
+    // wrong here, the failure isn't anything wrong with the image itself.
+    expect(screen.queryByText(/PNG or JPEG/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(onSend).toHaveBeenCalledWith('draw me a chart');
+  });
+
+  it('hides Try again when there is no user message to resend', () => {
+    render(
+      <ChatView
+        task={taskWith([{ role: 'error', content: 'issue fixed', code: 'content_recovery' }])}
+        onSend={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
+  });
+});
+
 describe('policy_unavailable failure card', () => {
   it('names the outage and retries the failed message', async () => {
     const user = userEvent.setup();
@@ -288,6 +321,42 @@ describe('anton_error / unmapped failure fallback', () => {
     const alert = screen.getByRole('alert');
     expect(alert).toHaveTextContent('An unexpected error occurred.');
   });
+
+  it('surfaces the request id when the failure carries one, so a report is traceable', () => {
+    render(
+      <ChatView task={taskWith(failedTurn(
+        'anton_error', 'An unexpected error occurred.', { requestId: 'corr-abc' },
+      ))} />,
+    );
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent('corr-abc');
+  });
+
+  it('omits the reference line when the failure carries no request id', () => {
+    render(
+      <ChatView task={taskWith(failedTurn('anton_error', 'An unexpected error occurred.'))} />,
+    );
+    const alert = screen.getByRole('alert');
+    expect(alert).not.toHaveTextContent('Reference:');
+  });
+
+  it('survives a reload: a persisted response.failed carrying request_id still renders the Reference', () => {
+    // The case that matters most: the user refreshes, THEN goes to copy the
+    // id for support. Spans the real hydrate function, not a hand-built
+    // message shape, so a drift between what conversationHistory.js extracts
+    // and what ChatView reads would be caught here.
+    const messages = hydrateMessagesFromServerEvents([
+      {
+        role: 'assistant', content: '', events: [{
+          type: 'response.failed', code: 'anton_error',
+          error: 'An unexpected error occurred.', request_id: 'corr-reload',
+        }],
+      },
+    ]);
+    render(<ChatView task={taskWith(messages)} />);
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent('corr-reload');
+  });
 });
 
 // ── The D2 enforcement half (ENG-1282 step 3) ──────────────────────────────
@@ -309,6 +378,8 @@ const WIRE_CODES = [
   'rate_limited',
   // ENG-1537 — the spent free allowance, split off the credits card.
   'included_allowance_exhausted',
+  // ENG-1992 — a content-shaped rejection the server already repaired.
+  'content_recovery',
   'anton_error',
 ];
 

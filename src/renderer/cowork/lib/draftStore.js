@@ -14,7 +14,19 @@
 // reload. A quota/private-mode failure therefore degrades to "works until you
 // restart" rather than breaking navigation.
 // deepcode ignore HardcodedNonCryptoSecret: 'anton.composerDrafts' is a localStorage key name (see localStorage.getItem/setItem below), not a secret value.
-const KEY = 'anton.composerDrafts';
+import {
+  currentOrganizationEpoch,
+  DOCUMENT_ORGANIZATION_EPOCH,
+} from './organizationTransitionState';
+import { storageKeyForOrganizationIdentity } from './organizationCacheIdentity';
+
+const BASE_KEY = 'anton.composerDrafts';
+const CACHE_VERSION = 1;
+const organizationEpoch = DOCUMENT_ORGANIZATION_EPOCH;
+
+function storageKey() {
+  return storageKeyForOrganizationIdentity(BASE_KEY, organizationEpoch);
+}
 
 // Cap the number of retained drafts. Iteration order is recency (setDraft
 // re-inserts), so dropping from the front drops the least recently typed.
@@ -23,20 +35,43 @@ const MAX_KEYS = 40;
 // A Map rather than a plain object: keys come from server data (conversation
 // ids, project names), and Map.set can't reach Object.prototype. Insertion
 // order gives the eviction order for free.
-function read() {
+function read(key) {
   try {
-    const raw = window.localStorage.getItem(KEY);
+    if (key === null) return new Map();
+    const raw = window.localStorage.getItem(key);
     const parsed = raw ? JSON.parse(raw) : null;
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return new Map();
+    let values = parsed;
+    if (parsed.version === CACHE_VERSION && Object.hasOwn(parsed, 'drafts')) {
+      if (parsed.organizationEpoch !== organizationEpoch) return new Map();
+      values = parsed.drafts;
+    } else if (organizationEpoch !== null) {
+      /**
+       * Legacy values have no tenant epoch and cannot be trusted after the
+       * browser has completed an organization transition.
+       */
+      return new Map();
+    }
+    if (!values || typeof values !== 'object' || Array.isArray(values)) return new Map();
     // Drop empty and non-string values a corrupted key could hold — callers
     // treat the result as text and would otherwise render `[object Object]`.
-    return new Map(Object.entries(parsed).filter(([, v]) => typeof v === 'string' && v));
+    return new Map(Object.entries(values).filter(([, v]) => typeof v === 'string' && v));
   } catch {
     return new Map();
   }
 }
 
-const drafts = read();
+let drafts = null;
+let hydratedStorageKey;
+
+function currentDrafts() {
+  const key = storageKey();
+  if (drafts === null || hydratedStorageKey !== key) {
+    drafts = read(key);
+    hydratedStorageKey = key;
+  }
+  return drafts;
+}
 
 // Writes are coalesced: typing hits this on every keystroke, and
 // localStorage.setItem is synchronous + JSON-serialising. One timer per burst
@@ -45,8 +80,21 @@ let flushTimer = null;
 
 function flush() {
   if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+  /**
+   * A document from the previous organization can finish a debounce after the
+   * new epoch is durable. Usually reject it here; if the epoch advances after
+   * this check, the write still targets only this document's epoch-qualified
+   * key and cannot overwrite the current organization's drafts.
+   */
+  if (currentOrganizationEpoch() !== organizationEpoch) return;
   try {
-    window.localStorage.setItem(KEY, JSON.stringify(Object.fromEntries(drafts)));
+    const key = storageKey();
+    if (key === null) return;
+    window.localStorage.setItem(key, JSON.stringify({
+      version: CACHE_VERSION,
+      organizationEpoch,
+      drafts: Object.fromEntries(currentDrafts()),
+    }));
   } catch {
     // Quota / private mode — in-memory drafts still work for this session.
   }
@@ -62,16 +110,17 @@ if (typeof window !== 'undefined') {
 }
 
 export function getDraft(key) {
-  return (key && drafts.get(key)) || '';
+  return (key && currentDrafts().get(key)) || '';
 }
 
 export function setDraft(key, text) {
   if (!key || typeof text !== 'string') return;
   if (!text) { clearDraft(key); return; }
-  if (drafts.get(key) === text) return;
-  drafts.delete(key); // re-insert so iteration order stays recency-ordered
-  drafts.set(key, text);
-  while (drafts.size > MAX_KEYS) drafts.delete(drafts.keys().next().value);
+  const values = currentDrafts();
+  if (values.get(key) === text) return;
+  values.delete(key); // re-insert so iteration order stays recency-ordered
+  values.set(key, text);
+  while (values.size > MAX_KEYS) values.delete(values.keys().next().value);
   scheduleFlush();
 }
 
@@ -87,27 +136,41 @@ export function moveDraft(fromKey, toKey) {
   clearDraft(fromKey); // flushes both halves of the move in one write
 }
 
-// Test-only: drop every draft, in memory and on disk. The store is
-// module-level, so without this each test in a file inherits the previous
-// one's typing — which is exactly how ENG-1407's red suite came about.
-//
-// Cancelling `flushTimer` is the load-bearing part: a burst typed before the
-// reset leaves a 400 ms timer armed over the (now stale) `drafts` snapshot, and
-// letting it run would write those keys back AFTER the clear. Cancelling rather
-// than flushing because the point is to forget them, and `drafts.clear()` below
-// already makes a flush a no-op write.
-export function __resetDraftsForTests() {
+/**
+ * Drop every draft, in memory and on disk. Cancelling `flushTimer` is the
+ * load-bearing part: a burst typed before the clear leaves a 400 ms timer armed,
+ * and pagehide would otherwise flush the old organization's text back to disk.
+ */
+function clearAllDrafts() {
   if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
-  drafts.clear();
+  currentDrafts().clear();
   try {
-    window.localStorage.removeItem(KEY);
+    /**
+     * The key is fixed to this document's identity and epoch. Clearing it
+     * cannot delete newer drafts even if an old tab resumes late.
+     */
+    const key = storageKey();
+    if (key !== null) window.localStorage.removeItem(key);
   } catch {
-    // Quota / private mode — the in-memory clear above is what tests rely on.
+    /* Quota / private mode — the in-memory clear still prevents reuse here. */
   }
 }
 
+/** Forget unsent text before changing organizations. */
+export function clearDraftsForOrganizationSwitch() {
+  clearAllDrafts();
+}
+
+/**
+ * Test-only: the store is module-level, so each test needs the same complete
+ * cleanup as an organization switch (ENG-1407).
+ */
+export function __resetDraftsForTests() {
+  clearAllDrafts();
+}
+
 export function clearDraft(key) {
-  if (!key || !drafts.delete(key)) return;
+  if (!key || !currentDrafts().delete(key)) return;
   // Flushed now, not debounced: this runs once per send or delete, so there's
   // nothing to coalesce, and deferring leaves a window where quitting brings
   // just-sent text back as a draft.

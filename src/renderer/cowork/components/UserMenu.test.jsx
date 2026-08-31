@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 const hostMock = vi.hoisted(() => ({
   host: {
@@ -17,13 +17,41 @@ const analyticsMock = vi.hoisted(() => ({
 }));
 vi.mock('../lib/analytics', () => analyticsMock);
 
+/**
+ * The menu reads a platform-neutral organization hook. Stubbing the hook keeps
+ * every test below about the menu; Electron and web routing have their own
+ * focused coverage.
+ */
+const orgsMock = vi.hoisted(() => ({
+  state: { orgs: [], activeOrg: null, activeOrgId: null, switching: false },
+  switchOrg: vi.fn(async () => ({ ok: true })),
+}));
+vi.mock('../hooks/useMindsOrgs', () => ({
+  useMindsOrgs: () => ({ ...orgsMock.state, switchOrg: orgsMock.switchOrg, refresh: vi.fn() }),
+}));
+
 import UserMenu from './UserMenu';
+import ToastProvider from './ui/Toast';
 import { LOGOUT_CONFIRM_COPY } from '../hooks/useLogout';
 import {
   MINDS_BILLING_URL,
+  MINDS_GENERAL_URL,
   MINDS_MEMBERS_URL,
   MINDS_SUPPORT_URL,
 } from '../../lib/mindsUrls';
+
+// `useToastManager` throws outside a provider, and the real tree always has
+// one (App wraps AppCore, and the sidebar is inside it). Wrapping here is the
+// honest fix; making the component tolerate a missing provider would not be.
+const renderMenu = (element) => render(<ToastProvider>{element}</ToastProvider>);
+
+const ACME = { id: 'org-acme', name: 'acme.example', displayName: 'acme.example', isPersonal: false };
+const PERSONAL = {
+  id: 'org-personal',
+  name: 'personal_user-1',
+  displayName: "hazem@example.com's organization",
+  isPersonal: true,
+};
 
 const user = {
   name: 'Hazem Ahmed',
@@ -44,11 +72,14 @@ beforeEach(() => {
   analyticsMock.trackBillingOpened.mockClear();
   hostMock.host.isElectron = true;
   hostMock.host.isWeb = false;
+  orgsMock.state = { orgs: [], activeOrg: null, activeOrgId: null, switching: false };
+  orgsMock.switchOrg.mockClear();
+  orgsMock.switchOrg.mockResolvedValue({ ok: true });
 });
 
 describe('UserMenu — footer row (ENG-1408)', () => {
   it('renders name · org with an initials placeholder when there is no picture', () => {
-    render(<UserMenu user={user} theme="light" />);
+    renderMenu(<UserMenu user={user} theme="light" />);
     const row = screen.getByRole('button', { name: /Hazem Ahmed/ });
     expect(row.textContent).toContain('Hazem Ahmed');
     expect(row.textContent).toContain('·');
@@ -57,14 +88,14 @@ describe('UserMenu — footer row (ENG-1408)', () => {
   });
 
   it('keeps just the name when the account has no organization', () => {
-    render(<UserMenu user={{ ...user, org: null }} theme="light" />);
+    renderMenu(<UserMenu user={{ ...user, org: null }} theme="light" />);
     const row = screen.getByRole('button', { name: /Hazem Ahmed/ });
     expect(row.textContent).not.toContain('·');
     expect(row.textContent).not.toContain('MindsDB');
   });
 
   it('renders the picture as the avatar when the account carries one', () => {
-    const { container } = render(
+    const { container } = renderMenu(
       <UserMenu user={{ ...user, picture: 'https://cdn.example.com/a.png' }} theme="light" />
     );
     const img = container.querySelector('img');
@@ -73,19 +104,21 @@ describe('UserMenu — footer row (ENG-1408)', () => {
 });
 
 describe('UserMenu — dropdown (ENG-1545 curated items)', () => {
-  it('shows the org header (not the email) and the five curated destinations', () => {
-    render(<UserMenu user={user} />);
+  it('heads the menu with the account and names the organization in its own section', () => {
+    renderMenu(<UserMenu user={user} />);
     openMenu();
-    // The org name heads the menu; the email is intentionally not shown here.
+    // Same shape as the console: who you are on top, which organization below.
+    expect(screen.getByText('hazem@example.com')).toBeInTheDocument();
+    expect(screen.getByText('Organization')).toBeInTheDocument();
+    expect(screen.getByText('Account')).toBeInTheDocument();
     expect(screen.getAllByText('MindsDB').length).toBeGreaterThan(0);
-    expect(screen.queryByText('hazem@example.com')).toBeNull();
     for (const label of ['Settings', 'Billing & Usage', 'Members', 'Help & Feedback', 'Logout']) {
       expect(screen.getByRole('menuitem', { name: new RegExp(label) })).toBeInTheDocument();
     }
   });
 
   it('drops the items curated away (Profile / General / Documentation / theme toggle)', () => {
-    render(<UserMenu user={user} />);
+    renderMenu(<UserMenu user={user} />);
     openMenu();
     for (const label of [/^Profile$/, /^General$/, /Documentation/, /Dark mode/, /Light mode/]) {
       expect(screen.queryByRole('menuitem', { name: label })).toBeNull();
@@ -94,7 +127,7 @@ describe('UserMenu — dropdown (ENG-1545 curated items)', () => {
 
   it('opens Settings in-app', () => {
     const onOpenSettings = vi.fn();
-    render(<UserMenu user={user} onOpenSettings={onOpenSettings} />);
+    renderMenu(<UserMenu user={user} onOpenSettings={onOpenSettings} />);
     openMenu();
     fireEvent.click(screen.getByRole('menuitem', { name: /Settings/ }));
     expect(onOpenSettings).toHaveBeenCalled();
@@ -106,7 +139,7 @@ describe('UserMenu — dropdown (ENG-1545 curated items)', () => {
     ['Members', MINDS_MEMBERS_URL],
     ['Help & Feedback', MINDS_SUPPORT_URL],
   ])('opens %s in the OS browser', (label, url) => {
-    render(<UserMenu user={user} />);
+    renderMenu(<UserMenu user={user} />);
     openMenu();
     fireEvent.click(screen.getByRole('menuitem', { name: new RegExp(label) }));
     expect(hostMock.openExternal).toHaveBeenCalledWith(url);
@@ -117,7 +150,7 @@ describe('UserMenu — dropdown (ENG-1545 curated items)', () => {
   it('shows Logout on the web shell and runs the logout flow', () => {
     hostMock.host.isElectron = false;
     hostMock.host.isWeb = true;
-    render(<UserMenu user={user} />);
+    renderMenu(<UserMenu user={user} />);
     openMenu();
     expect(screen.getByRole('menuitem', { name: /Settings/ })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('menuitem', { name: /Logout/ }));
@@ -127,7 +160,7 @@ describe('UserMenu — dropdown (ENG-1545 curated items)', () => {
   });
 
   it('asks for confirmation before logging out, then runs the logout flow', async () => {
-    render(<UserMenu user={user} />);
+    renderMenu(<UserMenu user={user} />);
     openMenu();
     fireEvent.click(screen.getByRole('menuitem', { name: /Logout/ }));
     // Confirm modal — nothing signed out yet.
@@ -144,7 +177,7 @@ describe('UserMenu — dropdown (ENG-1545 curated items)', () => {
 // people who were only checking their usage.
 describe('UserMenu — billing route is measured as navigation (ENG-1533)', () => {
   it('records trigger=nav on Billing & Usage', () => {
-    render(<UserMenu user={user} />);
+    renderMenu(<UserMenu user={user} />);
     openMenu();
     fireEvent.click(screen.getByRole('menuitem', { name: /Billing & Usage/ }));
     expect(analyticsMock.trackBillingOpened).toHaveBeenCalledWith('nav');
@@ -154,10 +187,137 @@ describe('UserMenu — billing route is measured as navigation (ENG-1533)', () =
   it.each([['Members'], ['Help & Feedback'], ['Settings']])(
     'records nothing for %s — it is not a billing route',
     (label) => {
-      render(<UserMenu user={user} onOpenSettings={vi.fn()} />);
+      renderMenu(<UserMenu user={user} onOpenSettings={vi.fn()} />);
       openMenu();
       fireEvent.click(screen.getByRole('menuitem', { name: new RegExp(label) }));
       expect(analyticsMock.trackBillingOpened).not.toHaveBeenCalled();
     },
   );
+});
+
+/**
+ * ── Which organization this install works in ──────────────────────
+ *
+ * The picker is here rather than in the rail because an organization is who
+ * is paying, and the account menu is the identity surface. Switching also
+ * changes the tenant subsequent requests address, which is why a refusal has
+ * to say something rather than leaving a row that quietly did nothing.
+ */
+describe('UserMenu — organization picker', () => {
+  const withOrgs = (orgs, active) => {
+    orgsMock.state = {
+      orgs,
+      activeOrg: active,
+      activeOrgId: active?.id ?? null,
+      switching: false,
+    };
+  };
+
+  it('names the active organization from the listing, not from the token claim', () => {
+    // The claim carries no display name — a personal organization arrives as
+    // the raw `personal_<userId>` — so the listing is what can name it at all.
+    withOrgs([ACME, PERSONAL], PERSONAL);
+    renderMenu(<UserMenu user={{ ...user, org: null }} />);
+    expect(screen.getByRole('button', { name: /Hazem Ahmed/ }).textContent)
+      .toContain("hazem@example.com's organization");
+  });
+
+  it('lists every organization with a check on the active one', () => {
+    withOrgs([ACME, PERSONAL], ACME);
+    renderMenu(<UserMenu user={user} />);
+    openMenu();
+    const active = screen.getByRole('menuitem', { name: /acme\.example/ });
+    const other = screen.getByRole('menuitem', { name: /hazem@example\.com's organization/ });
+    expect(active).toHaveAttribute('data-disabled');
+    expect(other).not.toHaveAttribute('data-disabled');
+  });
+
+  it('switches to the organization that was clicked', () => {
+    withOrgs([ACME, PERSONAL], ACME);
+    renderMenu(<UserMenu user={user} />);
+    openMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: /hazem@example\.com's organization/ }));
+    expect(orgsMock.switchOrg).toHaveBeenCalledWith('org-personal');
+  });
+
+  it('still names the only organization, and leaves nothing to switch to', () => {
+    /*
+     * The console shows the section for one organization too. A checked row
+     * answers "which organization am I in" outright, where an absent section
+     * leaves the reader to infer it from nothing. There is still no switch
+     * target, so the row is disabled.
+     */
+    withOrgs([PERSONAL], PERSONAL);
+    renderMenu(<UserMenu user={user} />);
+    openMenu();
+    expect(screen.getByText('Organization')).toBeInTheDocument();
+    const only = screen.getByRole('menuitem', { name: /hazem@example\.com's organization/ });
+    expect(only).toHaveAttribute('data-disabled');
+  });
+
+  it('falls back to the claim organization when the listing never arrives', () => {
+    /*
+     * Signed out, an older main process with no such channel, or a read still
+     * in flight all land here. The section still names the organization the
+     * token knows about, so only the switch targets are missing rather than
+     * the whole answer.
+     */
+    withOrgs([], null);
+    renderMenu(<UserMenu user={user} />);
+    openMenu();
+    expect(screen.getByText('Organization')).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /MindsDB/ })).toHaveAttribute('data-disabled');
+    for (const label of ['Settings', 'Billing & Usage', 'Members', 'Help & Feedback', 'Logout']) {
+      expect(screen.getByRole('menuitem', { name: new RegExp(label) })).toBeInTheDocument();
+    }
+  });
+
+  it('drops the organization section only when nothing can name one', () => {
+    withOrgs([], null);
+    renderMenu(<UserMenu user={{ ...user, org: null }} />);
+    openMenu();
+    expect(screen.queryByText('Organization')).toBeNull();
+    expect(screen.getByText('Account')).toBeInTheDocument();
+  });
+
+  it('says so when the switch is refused, and leaves the check where it was', async () => {
+    orgsMock.switchOrg.mockResolvedValue({ ok: false, error: 'MindsHub would not switch. Nothing changed.' });
+    withOrgs([ACME, PERSONAL], ACME);
+    renderMenu(<UserMenu user={user} />);
+    openMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: /hazem@example\.com's organization/ }));
+    expect(await screen.findByText('MindsHub would not switch. Nothing changed.')).toBeInTheDocument();
+    // Nothing is applied optimistically, so the trigger still names the one
+    // the app is actually working in.
+    expect(screen.getByRole('button', { name: /Hazem Ahmed/ }).textContent).toContain('acme.example');
+  });
+
+  it('does not render a refusal while an indeterminate web switch reloads', async () => {
+    orgsMock.switchOrg.mockResolvedValue({
+      ok: false,
+      reloadRequired: true,
+      error: 'The tenant may already have changed.',
+    });
+    withOrgs([ACME, PERSONAL], ACME);
+    renderMenu(<UserMenu user={user} />);
+    openMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: /hazem@example\.com's organization/ }));
+
+    await waitFor(() => expect(orgsMock.switchOrg).toHaveBeenCalledWith('org-personal'));
+    expect(screen.queryByText('The tenant may already have changed.')).toBeNull();
+  });
+
+  it('offers Manage organization only once there is an organization to manage', () => {
+    withOrgs([], null);
+    const { unmount } = renderMenu(<UserMenu user={{ ...user, org: null }} />);
+    openMenu();
+    expect(screen.queryByRole('menuitem', { name: /Manage organization/ })).toBeNull();
+    unmount();
+
+    withOrgs([ACME, PERSONAL], ACME);
+    renderMenu(<UserMenu user={user} />);
+    openMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: /Manage organization/ }));
+    expect(hostMock.openExternal).toHaveBeenCalledWith(MINDS_GENERAL_URL);
+  });
 });

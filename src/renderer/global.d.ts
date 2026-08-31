@@ -21,6 +21,7 @@ interface AntonTronAPI {
   checkForUpdate: () => Promise<import('../shared/update-types').UpdateCheckSummary>;
   applyUpdate: () => Promise<boolean>;
   onUpdateStatus: (cb: (status: { phase: string; version?: string; currentVersion?: string; downloadUrl?: string }) => void) => () => void;
+  awaitBootReady: () => Promise<{ ready: boolean }>;
   getShellUpdate: () => Promise<{ available: boolean; currentVersion?: string; latestVersion?: string; downloadUrl?: string | null }>;
   getShellAutoUpdate: () => Promise<ShellAutoUpdateSnapshot>;
   checkShellAutoUpdate: () => Promise<ShellAutoUpdateSnapshot>;
@@ -88,7 +89,8 @@ interface AntonTronAPI {
     expires_in?: number;
   }>;
   mindshubRefresh: () => Promise<{ ok: boolean; reason?: string; access_token?: string }>;
-  mindshubFinalize: () => Promise<{ ok: boolean; reason?: string; upgradeRequired?: boolean; apiKey?: string }>;
+  mindshubFinalize: () => Promise<{ ok: boolean; reason?: string; upgradeRequired?: boolean }>;
+  mindshubSetUserKey: (key: string) => Promise<{ ok: boolean; reason?: string }>;
   mindshubGetCachedToken: () => Promise<{ access_token: string | null }>;
   onMindsHubAuthChanged: (cb: (payload: { authenticated: boolean }) => void) => () => void;
   getAccessToken: () => Promise<string | null>;

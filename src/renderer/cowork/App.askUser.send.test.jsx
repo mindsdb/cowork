@@ -8,6 +8,14 @@ const spies = vi.hoisted(() => ({
   streamMessage: vi.fn(),
   cancelResponse: vi.fn(async () => ({})),
   fetchInFlightStatus: vi.fn(async () => ({ in_flight: false })),
+  // Default matches the real fn under this file's denied-network env (an
+  // unavailable result, which the render ignores for locally-present tasks);
+  // the deep-link test overrides it to control loader resolution.
+  fetchSessionResult: vi.fn(async () => ({ status: 'unavailable', code: 0 })),
+  // Backs loadSessionMessagesWithRetry's reload after a stream error — empty
+  // by default (a turn that recovered), so a test that wants trackTurnFailed
+  // to fire on a real failure overrides it with an error-role message.
+  fetchSession: vi.fn(async () => ({ messages: [] })),
 }));
 
 // The live stream handles are captured per streamMessage call so the test can
@@ -22,7 +30,8 @@ vi.mock('./api', async (importOriginal) => ({
     { id: 'conv-a', title: 'Alpha task', messages: [], status: 'idle', projectName: 'general' },
     { id: 'conv-b', title: 'Beta task', messages: [], status: 'idle', projectName: 'general' },
   ]),
-  fetchSession: vi.fn(async () => ({ messages: [] })),
+  fetchSession: (...args) => spies.fetchSession(...args),
+  fetchSessionResult: (...args) => spies.fetchSessionResult(...args),
   fetchConversationList: vi.fn(async () => []),
   fetchProjects: vi.fn(async () => [{ name: 'general', path: '/tmp/general' }]),
   fetchArtifacts: vi.fn(async () => []),
@@ -124,9 +133,12 @@ vi.mock('./lib/analytics', () => ({
   trackFirstQuery: vi.fn(),
   classifyFirstResponse: vi.fn(() => ({})),
   fireFirstResponse: vi.fn(),
+  trackTurnFailed: vi.fn(),
 }));
 
 import App from './App';
+import { trackTurnFailed } from './lib/analytics';
+import { markOptimisticConversation, clearOptimisticConversation } from './CoworkRouter';
 import {
   fetchSessions,
   fetchProjects,
@@ -206,6 +218,10 @@ async function attach(user, name = 'notes.txt') {
 }
 
 beforeEach(() => {
+  // App uses createBrowserRouter under jsdom, which writes the shared window
+  // history that happy-dom keeps across tests — so a URL one test pushes leaks
+  // into the next. Reset to '/' so each test starts on Home.
+  window.history.replaceState(null, '', '/');
   // Composer text lives in a module-level, per-surface store (lib/draftStore),
   // so unsent text from the previous test would otherwise still be in the box.
   __resetDraftsForTests();
@@ -213,8 +229,13 @@ beforeEach(() => {
   spies.submitAnswer.mockClear();
   spies.streamMessage.mockClear();
   spies.cancelResponse.mockClear();
+  trackTurnFailed.mockClear();
   spies.submitAnswer.mockImplementation(async () => ({ accepted: true }));
   spies.fetchInFlightStatus.mockImplementation(async () => ({ in_flight: false }));
+  spies.fetchSessionResult.mockReset();
+  spies.fetchSessionResult.mockImplementation(async () => ({ status: 'unavailable', code: 0 }));
+  spies.fetchSession.mockReset();
+  spies.fetchSession.mockImplementation(async () => ({ messages: [] }));
 });
 
 describe('composer send while a question is pending', () => {
@@ -632,6 +653,103 @@ describe('a superseded stream\'s late abort', () => {
   });
 });
 
+describe('turn failure telemetry', () => {
+  it('tracks a real turn failure, but not a cancelled one', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+
+    // The reload after the error must show the failure persisted server-side
+    // for trackTurnFailed to count it — see the recovered-turn test below.
+    spies.fetchSession.mockImplementation(async () => ({
+      messages: [{ role: 'error', content: 'boom' }],
+    }));
+
+    await send(user, composer, 'do something');
+    const handle = await waitForStream();
+
+    await act(async () => {
+      handle.opts.onError('boom', { code: 'anton_error' });
+      await Promise.resolve();
+    });
+
+    expect(trackTurnFailed).toHaveBeenCalledWith('conv-a', { code: 'anton_error' });
+
+    trackTurnFailed.mockClear();
+    await send(user, composer, 'try again');
+    const secondHandle = await waitForStream(handle);
+    await act(async () => {
+      secondHandle.opts.onError('aborted', { code: 'cancelled' });
+      await Promise.resolve();
+    });
+
+    expect(trackTurnFailed).not.toHaveBeenCalled();
+  });
+
+  it('does not count a turn as failed when the reload shows it actually finished', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+
+    // Default mock: the reload comes back with no error message — the
+    // stream dropped mid-answer, but the server had already finished the
+    // turn, so the user sees a normal answer and this must not count.
+    await send(user, composer, 'do something');
+    const handle = await waitForStream();
+
+    await act(async () => {
+      handle.opts.onError('boom', { code: 'anton_error' });
+      await Promise.resolve();
+    });
+
+    expect(trackTurnFailed).not.toHaveBeenCalled();
+  });
+
+  it('does not count a recovered turn just because an earlier turn in the same conversation once failed', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+
+    // An older turn left a persisted error row, but the reload's last
+    // message is this turn's real answer — `some()` over the whole
+    // conversation would find the stale error and count it forever.
+    spies.fetchSession.mockImplementation(async () => ({
+      messages: [
+        { role: 'user', content: 'turn 1' },
+        { role: 'error', content: 'boom' },
+        { role: 'user', content: 'turn 2' },
+        { role: 'assistant', content: 'here is your answer' },
+      ],
+    }));
+
+    await send(user, composer, 'do something');
+    const handle = await waitForStream();
+
+    await act(async () => {
+      handle.opts.onError('connection lost', { code: 'stream_error' });
+      await Promise.resolve();
+    });
+
+    expect(trackTurnFailed).not.toHaveBeenCalled();
+  });
+
+  it('counts a server-declared response.failed on its own, without waiting on the reload', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+
+    // Default mock: reload comes back empty (not yet persisted, or racing
+    // the failure). A response.failed the server itself sent is
+    // authoritative and must count regardless.
+    await send(user, composer, 'do something');
+    const handle = await waitForStream();
+
+    const event = { type: 'response.failed', code: 'provider_error' };
+    await act(async () => {
+      handle.opts.onError('The agent failed', event);
+      await Promise.resolve();
+    });
+
+    expect(trackTurnFailed).toHaveBeenCalledWith('conv-a', event);
+  });
+});
+
 describe('new-session stream (send from home)', () => {
   it('releases a pending question when the new turn is aborted', async () => {
     const user = userEvent.setup();
@@ -1045,5 +1163,25 @@ describe('attachment send that would strand at "Queued"', () => {
     expect(await screen.findByText(/pick a project/i)).toBeInTheDocument();
     expect(spies.streamMessage).not.toHaveBeenCalled();
     expect(screen.getByText('shot.png')).toBeInTheDocument();
+  });
+});
+
+describe('a requested conversation id not present locally (ENG-1233 Major 4)', () => {
+  it('renders a loading state, never the tasks[0] recent-conversation fallback', async () => {
+    // The render condition the fix targets: route === 'task' with a requested
+    // activeTaskId that isn't in `tasks` and hasn't errored. We reach it stably
+    // via the optimistic deep link (the loader returns { optimistic } and
+    // openConversation deliberately doesn't merge it into `tasks`) — the same
+    // "requested id, unresolved" state a deep link / scheduled-run open passes
+    // through transiently. The old `tasks[0]` fallback would have rendered
+    // "Alpha task" (conv-a) here; the fix shows the loading state.
+    markOptimisticConversation('conv-ghost');
+    window.history.replaceState(null, '', '/c/conv-ghost');
+    render(<App />);
+
+    // Loading shows — which means currentTask did NOT fall back to a recent.
+    await waitFor(() => expect(screen.getByTestId('conversation-loading')).toBeInTheDocument());
+
+    clearOptimisticConversation('conv-ghost');
   });
 });

@@ -62,6 +62,26 @@ describe('scrubEnvCredentials (ENG-1206)', () => {
     for (const k of KEYS) expect(process.env[k]).toBeUndefined();
   });
 
+  // The one-time migration off a minted device key reads
+  // `ANTON_MINDS_API_KEY` out of this file to decide whether it has already
+  // run, and signing out is what clears it. If the scrub misses the line the
+  // migration fires again on the next launch, and on every launch after that,
+  // signing the user out each time.
+  it('strips the line the boot migration uses as its marker, so it runs once', async () => {
+    fs.writeFileSync(envPath, [
+      'ANTON_MINDS_API_KEY=mdb_minted_by_an_older_build',
+      'ANTON_TERMS_CONSENT=true',
+    ].join('\n'));
+
+    await scrubEnvCredentials(envPath);
+
+    const written = writeEnvFileAtomic.mock.calls[0][1] as string;
+    expect(written).not.toContain('ANTON_MINDS_API_KEY');
+    // The consent line is what keeps the re-signed-in user out of the terms
+    // step, so the migration must not take it with the credential.
+    expect(written).toContain('ANTON_TERMS_CONSENT=true');
+  });
+
   it('defaults to the canonical LOGOUT_ENV_KEYS list', () => {
     expect(LOGOUT_ENV_KEYS).toContain('ANTON_ANTHROPIC_API_KEY');
     expect(LOGOUT_ENV_KEYS).toContain('ANTON_MINDS_API_KEY');

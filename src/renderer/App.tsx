@@ -89,6 +89,9 @@ export default function App() {
   // Guards the setupError Retry button so a double-click can't fan out redundant
   // concurrent handshakes.
   const [retrying, setRetrying] = useState(false);
+  // ENG-749: progress line under the welcome orb while the loading screen is held
+  // open through a boot-time update, so a download isn't a silent stall.
+  const [bootStatus, setBootStatus] = useState<string | null>(null);
   // No setter needed here — the onboarding corner no longer offers a skin
   // toggle (light/dark only), but a page already in the 8bit skin (set via
   // the in-app Settings on a prior visit) still reads it to render in that
@@ -120,6 +123,17 @@ export default function App() {
     if (gf && typeof gf.setTheme === 'function') gf.setTheme(theme);
     applyArcadePreset(skin);
   }, [theme, skin]);
+
+  // Reflect boot-time update progress on the loading screen (ENG-749). Mounted
+  // for the app's lifetime so the message is live while init() holds on the gate.
+  useEffect(() => {
+    return host.onUpdateStatus((status) => {
+      const phase = status?.phase;
+      if (phase === 'downloading') setBootStatus('Downloading the latest update…');
+      else if (phase === 'reloading') setBootStatus('Almost ready…');
+      else setBootStatus(null);
+    });
+  }, []);
 
   useEffect(() => {
     async function init() {
@@ -201,7 +215,14 @@ export default function App() {
   const handleAuthComplete = async (deferredModelLines?: string[]) => {
     deferredModelRef.current = deferredModelLines ?? null;
     rememberTermsConsent();
-    try { await host.restartServer(); } catch {}
+    /* The sidecar deliberately keeps running here. `persistOnboarding` has
+     * already written every setting to it over loopback and treats that DB
+     * write as authoritative, so a fresh process would only read back what
+     * this one already holds. Restarting would also throw away the MindsHub
+     * credential, which lives in the sidecar's memory and nowhere else.
+     * `syncMindsCredential` hands it to the replacement before `startServer`
+     * resolves, so the restart buys a stop, a cold start and a re-push, and
+     * changes nothing the user can see. */
     try {
       const status = await host.checkInstall();
       if (!status.antonInstalled || !status.serverDepsReady) {
@@ -237,6 +258,11 @@ export default function App() {
           <div className="arc-welcome-title">
             Welcome to MindsHub Cowork
           </div>
+          {bootStatus && (
+            <div style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--arc-muted)' }}>
+              {bootStatus}
+            </div>
+          )}
         </div>
       )}
 

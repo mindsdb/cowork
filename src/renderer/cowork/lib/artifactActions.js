@@ -1,17 +1,16 @@
-// Which artifact card actions exist, per deployment mode.
-//
-// In an org deployment the server serves no artifact content at all: `serveUrl` is
-// empty and the preview/serve endpoints answer 501. So the only route to an
-// artifact's content is its published URL, which carries an access check — and the
-// actions that assume local content (Show in Finder, Download, the iframe preview)
-// or owner-side publish control (Share, Update, Stop sharing) have nothing to act
-// on there.
-//
-// Open and Copy link need a published URL to point at; without one only Delete is
-// left. An action that cannot work is not offered rather than offered disabled —
-// there is nothing the user could do to enable it from the card.
+/*
+ * Which artifact card actions exist, per deployment mode.
+ *
+ * In an org deployment the in-app preview/review reads the authenticated draft
+ * URL, so it is offered wherever an artifact is rendered; OS/file actions and
+ * owner-side publish controls remain desktop-only.
+ *
+ * Open and Copy link need a published URL to point at; without one only Delete is
+ * left. An action that cannot work is not offered rather than offered disabled —
+ * there is nothing the user could do to enable it from the card.
+ */
 
-const ORG_MODE_ALWAYS = new Set(['delete']);
+const ORG_MODE_ALWAYS = new Set(['preview', 'delete']);
 const ORG_MODE_NEEDS_URL = new Set(['open', 'copy-url']);
 // These reach the local filesystem through the Electron bridge.
 const NEEDS_BRIDGE = new Set(['reveal', 'download']);
@@ -39,14 +38,25 @@ export function isArtifactActionAvailable(id, { orgMode, hasBridge, published } 
  * mutually exclusive destinations rather than a per-action yes/no, and every
  * surface that renders an artifact body has to make it: the inline chat card,
  * the rail's Working-folder list and the artifacts grid each had their own
- * copy, keyed only on the file extension. In org mode all three then opened a
- * local preview of content that deployment does not serve.
+ * copy, keyed only on the file extension.
  *
- * `canPreviewInline` stays the caller's to compute — the extension rules differ
- * slightly per surface and are not what this decides.
+ * A click means "show me this artifact" in both deployments, so org mode
+ * previews whatever the draft URL can render and keeps the shared URL as a
+ * named action beside it. Sending the click to the shared page instead put a
+ * browser tab between the user and their own artifact, and the artifacts whose
+ * draft cannot be rendered — a fullstack app, an image — still go there.
+ *
+ * `canPreviewInline` and `canPreviewDraft` stay the caller's to compute: the
+ * extension rules differ slightly per surface and are not what this decides.
+ * `canPreviewOrgDraft` in `artifactKinds.js` is the shared org-mode answer.
  */
-export function artifactOpenTarget({ orgMode, published, canPreviewInline, hasBridge } = {}) {
-  if (orgMode) return published ? 'published' : null;
+export function artifactOpenTarget({
+  orgMode, published, canPreviewInline, canPreviewDraft, hasBridge,
+} = {}) {
+  if (orgMode) {
+    if (canPreviewDraft) return 'preview';
+    return published ? 'published' : null;
+  }
   if (canPreviewInline) return 'preview';
   return hasBridge ? 'os' : null;
 }

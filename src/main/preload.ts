@@ -62,8 +62,11 @@ contextBridge.exposeInMainWorld('antontron', {
   mindshubLogin: () => ipcRenderer.invoke(IPC.MINDSHUB_LOGIN),
   mindshubSignup: () => ipcRenderer.invoke(IPC.MINDSHUB_SIGNUP),
   mindshubRefresh: () => ipcRenderer.invoke(IPC.MINDSHUB_REFRESH),
-  mindshubFinalize: () => ipcRenderer.invoke(IPC.MINDSHUB_FINALIZE),
+  mindshubFinalize: (organizationId?: string) => ipcRenderer.invoke(IPC.MINDSHUB_FINALIZE, organizationId),
   mindshubGetCachedToken: () => ipcRenderer.invoke(IPC.MINDSHUB_GET_CACHED_TOKEN),
+  mindshubSetUserKey: (key: string) => ipcRenderer.invoke(IPC.MINDSHUB_SET_USER_KEY, key),
+  mindshubListOrgs: () => ipcRenderer.invoke(IPC.MINDSHUB_LIST_ORGS),
+  mindshubSwitchOrg: (organizationId: string) => ipcRenderer.invoke(IPC.MINDSHUB_SWITCH_ORG, organizationId),
   // Fires whenever the MindsHub session state changes in the main
   // process (login, silent refresh, logout, session death). Returns an
   // unsubscribe function.
@@ -167,6 +170,10 @@ contextBridge.exposeInMainWorld('antontron', {
     ipcRenderer.on(IPC.UI_UPDATE_STATUS, listener);
     return () => ipcRenderer.removeListener(IPC.UI_UPDATE_STATUS, listener);
   },
+
+  // Resolves once the boot sequence settles; the renderer awaits this before
+  // leaving the loading screen so a boot update can't flash the UI (ENG-749).
+  awaitBootReady: () => ipcRenderer.invoke(IPC.BOOT_AWAIT_READY),
 
   // App
   getPlatform: () => process.platform,

@@ -102,9 +102,12 @@ function setupMachine(opts: MachineOpts) {
     _opts: unknown,
     cb: (err: Error | null, stdout: string, stderr: string) => void,
   ) => {
-    if (cmd === 'where' || cmd === 'which') {
-      if (args[0] === 'uv' && opts.uvOnPath) cb(null, `${opts.uvOnPath}\n`, '');
-      else cb(new Error(`${args[0]} not found`), '', '');
+    // POSIX findOnPath shells to `/bin/sh -c 'command -v "$1"' -- <cmd>`
+    // rather than a separate `which` binary; win32 still uses `where <cmd>`.
+    if (cmd === 'where' || cmd === '/bin/sh') {
+      const target = cmd === 'where' ? args[0] : args[args.length - 1];
+      if (target === 'uv' && opts.uvOnPath) cb(null, `${opts.uvOnPath}\n`, '');
+      else cb(new Error(`${target} not found`), '', '');
     } else if (isUvCmd(cmd) && args[0] === 'tool' && args[1] === 'list') {
       if (state.serverInstalled && opts.toolListVersion) {
         cb(null, `cowork-server v${opts.toolListVersion}\n- cowork-server\n`, '');

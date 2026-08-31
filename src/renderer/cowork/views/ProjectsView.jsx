@@ -542,6 +542,7 @@ function ProjectDetail({
   project, projects, tasks, scheduled, scheduleRunsIndex = {}, models, modelMeta, onSend, onSelectTask,
   onDeleteTask, onMoveTaskToProject, onShowAll,
   model, onModelChange,
+  effort, onEffortChange,
   codingModeEnabled = false,
   attachments = [],
   connectors = [],
@@ -709,6 +710,8 @@ function ProjectDetail({
               onProjectChange={() => {}}
               model={model}
               onModelChange={onModelChange}
+              effort={effort}
+              onEffortChange={onEffortChange}
               projects={projects || []}
               models={models || []}
               modelMeta={modelMeta}
@@ -790,6 +793,8 @@ export default function ProjectsView({
   modelMeta,
   model,
   onModelChange,
+  effort,
+  onEffortChange,
   loading = false,
   onSelectProject,
   onCreateProject,
@@ -955,6 +960,8 @@ export default function ProjectsView({
         modelMeta={modelMeta}
         model={model}
         onModelChange={onModelChange}
+        effort={effort}
+        onEffortChange={onEffortChange}
         onSend={onSendInProject}
         onSelectTask={onSelectTask}
         onDeleteTask={onDeleteTask}

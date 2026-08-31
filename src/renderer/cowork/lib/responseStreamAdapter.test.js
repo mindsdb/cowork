@@ -496,15 +496,19 @@ describe('tool_call.progress / tool_call.end (ENG-763 stage 2 — generic tool p
 const ARTIFACT_EVENT = {
   type: 'response.artifact_created',
   artifact: {
-    id: '7db94eb8',
+    id: '7db94eb8f0a54c7e9c1d2b3a4f5e6d70',
     slug: 'clock-7db94eb8',
     title: 'Current time',
     type: 'html-app',
     ext: '.html',
     path: '/proj/.anton/artifacts/clock-7db94eb8/index.html',
+    artifactKey: 'artifact/7db94eb8-f0a5-4c7e-9c1d-2b3a4f5e6d70',
+    draftUrl: '/api/v1/artifacts/drafts/proj-1/7db94eb8f0a54c7e9c1d2b3a4f5e6d70/index.html',
+    capabilities: { role: 'owner', canEdit: true, canComment: true },
     projectId: 'proj-1',
     projectName: 'general',
     publishedUrl: 'https://view.staging.mindshub.ai/view/97901f016/845b3777',
+    serveUrl: '/api/v1/artifacts/serve/general/clock-7db94eb8/index.html',
   },
 };
 
@@ -522,11 +526,32 @@ describe('artifact_created → step.data', () => {
   it('carries the org addressing triple through', () => {
     const { data } = stepOf(ARTIFACT_EVENT);
     // projectId + slug is how an artifact is addressed once paths stop being
-    // usable; id is the stable identifier behind it.
+    // usable; id is the one identity behind it, and the slug carries its
+    // first eight characters.
     expect(data.projectId).toBe('proj-1');
     expect(data.slug).toBe('clock-7db94eb8');
-    expect(data.id).toBe('7db94eb8');
+    expect(data.id).toBe('7db94eb8f0a54c7e9c1d2b3a4f5e6d70');
     expect(data.projectName).toBe('general');
+  });
+
+  it('keeps workspace identity and permissions for immediate edit and review', () => {
+    const { data } = stepOf(ARTIFACT_EVENT);
+    expect(data).toMatchObject({
+      id: '7db94eb8f0a54c7e9c1d2b3a4f5e6d70',
+      artifactKey: 'artifact/7db94eb8-f0a5-4c7e-9c1d-2b3a4f5e6d70',
+      draftUrl: expect.stringContaining('/artifacts/drafts/'),
+      capabilities: { role: 'owner', canEdit: true, canComment: true },
+    });
+  });
+
+  // ENG-1998: the server's card_for_folder() puts `serveUrl` on every
+  // artifact (services/artifacts.py), including images — but this adapter
+  // dropped it on the floor, so the live-turn card had no URL to fetch an
+  // image thumbnail/preview from until the artifact was reopened from the
+  // persisted list (whose fetch path builds the card differently).
+  it('carries the serve URL through', () => {
+    expect(stepOf(ARTIFACT_EVENT).data.serveUrl)
+      .toBe('/api/v1/artifacts/serve/general/clock-7db94eb8/index.html');
   });
 
   it('defaults the new fields to empty rather than undefined', () => {
@@ -539,5 +564,6 @@ describe('artifact_created → step.data', () => {
     expect(data.publishedUrl).toBe('');
     expect(data.projectId).toBe('');
     expect(data.slug).toBe('');
+    expect(data.serveUrl).toBe('');
   });
 });

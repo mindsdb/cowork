@@ -1,0 +1,267 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { fireEvent, render as rtlRender, screen, waitFor, within } from '@testing-library/react';
+import { ToastProvider } from './ui/Toast';
+
+const hostMock = vi.hoisted(() => ({
+  host: { isWeb: false, isElectron: true, isMac: () => false },
+  openExternal: vi.fn(async () => {}),
+}));
+vi.mock('../../platform/host', () => hostMock);
+
+// The hook is stubbed so each case is one fixed server answer. What the hook
+// itself does with a real response is useHubWorkspaces.test.jsx.
+const hookMock = vi.hoisted(() => ({ useHubWorkspaces: vi.fn() }));
+vi.mock('../hooks/useHubWorkspaces', () => hookMock);
+
+// The selector reports a refused switch through the toast manager, which Base UI
+// requires a provider for. The real tree has one (App wraps AppCore).
+const render = (ui, options) => rtlRender(ui, { wrapper: ToastProvider, ...options });
+
+import WorkspaceSelector from './WorkspaceSelector';
+import { MINDS_WORKSPACES_URL } from '../../lib/mindsUrls';
+
+const user = { sub: 'user-1', name: 'Hazem Ahmed', org: 'MindsDB' };
+
+const DEFAULT_WS = { id: 'ws-default', displayName: 'Default', isDefault: true, archivedAt: null, role: 'member' };
+const CLIENT_A = { id: 'ws-client-a', displayName: 'Client A', isDefault: false, archivedAt: null, role: 'manager' };
+const KIWIBOT = { id: 'ws-kiwibot', displayName: 'Kiwibot', isDefault: false, archivedAt: null, role: 'manager' };
+
+const switchWorkspace = vi.fn(async () => {});
+
+function state(overrides = {}) {
+  return {
+    enabled: false,
+    reachable: false,
+    workspaces: [],
+    activeWorkspaceId: null,
+    switching: false,
+    switchWorkspace,
+    refresh: vi.fn(),
+    ...overrides,
+  };
+}
+
+const three = (activeId = 'ws-default') =>
+  state({ enabled: true, reachable: true, workspaces: [DEFAULT_WS, CLIENT_A, KIWIBOT], activeWorkspaceId: activeId });
+
+const trigger = () => screen.getByRole('button', { name: /^Workspace:/ });
+const openMenu = () => fireEvent.click(trigger());
+// By role, not by label: Base UI labels the popup AND the group with the same
+// "Workspace" text, so getByLabelText matches twice.
+const menu = () => within(screen.getByRole('menu'));
+
+beforeEach(() => {
+  switchWorkspace.mockClear();
+  switchWorkspace.mockImplementation(async () => {});
+  hostMock.openExternal.mockClear();
+  hookMock.useHubWorkspaces.mockReturnValue(state());
+});
+
+describe('WorkspaceSelector — the trigger', () => {
+  it('names the active workspace without anything being opened', () => {
+    // The whole reason this moved out of the account menu: the current
+    // workspace has to be readable at rest.
+    hookMock.useHubWorkspaces.mockReturnValue(three('ws-client-a'));
+    render(<WorkspaceSelector user={user} />);
+
+    expect(trigger()).toBeTruthy();
+    expect(trigger().textContent).toContain('Client A');
+  });
+
+  it('carries the workspace name in its accessible name, not just visually', () => {
+    hookMock.useHubWorkspaces.mockReturnValue(three('ws-kiwibot'));
+    render(<WorkspaceSelector user={user} />);
+
+    expect(screen.getByRole('button', { name: 'Workspace: Kiwibot' })).toBeTruthy();
+  });
+
+  it('shows a letter tile for the active workspace', () => {
+    hookMock.useHubWorkspaces.mockReturnValue(three('ws-kiwibot'));
+    const { container } = render(<WorkspaceSelector user={user} />);
+
+    // K on the trigger. The menu is closed, so this is the only one rendered.
+    expect(container.textContent).toContain('K');
+  });
+
+  it('renders for a single workspace, where there is nothing to switch to', () => {
+    // Deliberate: "which workspace am I in" is worth answering on its own. An
+    // earlier revision hid the control below two workspaces and that is exactly
+    // the invisibility this component exists to fix.
+    hookMock.useHubWorkspaces.mockReturnValue(
+      state({ enabled: true, reachable: true, workspaces: [DEFAULT_WS], activeWorkspaceId: 'ws-default' }),
+    );
+    render(<WorkspaceSelector user={user} />);
+
+    expect(screen.getByRole('button', { name: 'Workspace: Default' })).toBeTruthy();
+  });
+
+  it('falls back to the first workspace when the stored active one is not in the list', () => {
+    hookMock.useHubWorkspaces.mockReturnValue(three('ws-gone'));
+    render(<WorkspaceSelector user={user} />);
+
+    expect(trigger().textContent).toContain('Default');
+  });
+});
+
+describe('WorkspaceSelector — the menu', () => {
+  it('lists every workspace with a check on the active one', () => {
+    hookMock.useHubWorkspaces.mockReturnValue(three('ws-client-a'));
+    render(<WorkspaceSelector user={user} />);
+    openMenu();
+
+    expect(menu().getByText('Workspace')).toBeTruthy();
+    for (const name of ['Default', 'Client A', 'Kiwibot']) {
+      expect(menu().getByText(name)).toBeTruthy();
+    }
+    const rows = menu().getAllByRole('menuitem');
+    const active = rows.find((r) => r.textContent.includes('Client A'));
+    const other = rows.find((r) => r.textContent.includes('Kiwibot'));
+    expect(active.getAttribute('data-disabled')).not.toBeNull();
+    expect(other.getAttribute('data-disabled')).toBeNull();
+  });
+
+  it('offers Manage workspaces and no create entry', () => {
+    // Workspaces are created in the console. A "+ Create" here would have to
+    // open a browser, which is a different promise from the one it makes.
+    hookMock.useHubWorkspaces.mockReturnValue(three());
+    render(<WorkspaceSelector user={user} />);
+    openMenu();
+
+    expect(menu().getByText('Manage workspaces')).toBeTruthy();
+    expect(menu().queryByText(/Create workspace/i)).toBeNull();
+  });
+
+  it('opens Manage workspaces in the OS browser, at the console workspace list', () => {
+    hookMock.useHubWorkspaces.mockReturnValue(three());
+    render(<WorkspaceSelector user={user} />);
+    openMenu();
+
+    fireEvent.click(menu().getByText('Manage workspaces'));
+
+    expect(hostMock.openExternal).toHaveBeenCalledWith(MINDS_WORKSPACES_URL);
+    expect(MINDS_WORKSPACES_URL).toContain('/settings/workspaces');
+  });
+
+  it('switches on a click, through the server', async () => {
+    hookMock.useHubWorkspaces.mockReturnValue(three('ws-default'));
+    render(<WorkspaceSelector user={user} />);
+    openMenu();
+
+    fireEvent.click(menu().getByText('Kiwibot'));
+
+    await waitFor(() => expect(switchWorkspace).toHaveBeenCalledWith('ws-kiwibot'));
+  });
+
+  it('says so when the switch is refused, instead of looking like nothing happened', async () => {
+    switchWorkspace.mockRejectedValue(new Error('API /hub/workspaces/active returned 403'));
+    hookMock.useHubWorkspaces.mockReturnValue(three('ws-default'));
+    render(<WorkspaceSelector user={user} />);
+    openMenu();
+
+    fireEvent.click(menu().getByText('Kiwibot'));
+
+    await waitFor(() => expect(screen.getByText(/could not switch workspace/i)).toBeTruthy());
+    // Not the raw error, which names an internal route and reads like a crash.
+    expect(screen.queryByText(/403/)).toBeNull();
+  });
+
+  it('tells assistive tech which row is current, not just that it is dimmed', () => {
+    // `aria-current`, not `title`. A title is the accessible DESCRIPTION, so it
+    // is spoken as a delayed hint at best and switched off at worst, leaving
+    // `aria-disabled` as the only cue: "dimmed", which reads as unavailable
+    // rather than as "you are here".
+    hookMock.useHubWorkspaces.mockReturnValue(three('ws-client-a'));
+    render(<WorkspaceSelector user={user} />);
+    openMenu();
+
+    const rows = menu().getAllByRole('menuitem');
+    const active = rows.find((r) => r.textContent.includes('Client A'));
+    const other = rows.find((r) => r.textContent.includes('Kiwibot'));
+
+    expect(active.getAttribute('aria-current')).toBe('true');
+    expect(other.getAttribute('aria-current')).toBeNull();
+    // Titles carry the untruncated name and nothing else.
+    expect(active.getAttribute('title')).toBe('Client A');
+    expect(other.getAttribute('title')).toBe('Kiwibot');
+    // The tick must not reach the accessible name. Asserting the name rather
+    // than `aria-hidden` on the svg: lucide sets that itself, so the attribute
+    // assertion passed whether or not this file asked for it.
+    expect(active).toHaveAccessibleName('Client A');
+  });
+
+  it('says archived rather than try-again when the server answers 409', async () => {
+    // The server gives archived its own status precisely so the UI can stop
+    // telling someone to retry something that cannot succeed.
+    const archived = Object.assign(new Error('API returned 409'), { status: 409 });
+    const switchWorkspace = vi.fn().mockRejectedValue(archived);
+    hookMock.useHubWorkspaces.mockReturnValue({ ...three('ws-default'), switchWorkspace });
+    render(<WorkspaceSelector user={user} />);
+    openMenu();
+
+    fireEvent.click(menu().getByText('Client A'));
+
+    expect(await screen.findByText(/archived/i)).toBeTruthy();
+    expect(screen.queryByText(/try again/i)).toBeNull();
+  });
+
+  it('disables every row while a switch is in flight', () => {
+    hookMock.useHubWorkspaces.mockReturnValue({ ...three('ws-default'), switching: true });
+    render(<WorkspaceSelector user={user} />);
+    openMenu();
+
+    const row = menu().getAllByRole('menuitem').find((r) => r.textContent.includes('Kiwibot'));
+    expect(row.getAttribute('data-disabled')).not.toBeNull();
+  });
+});
+
+describe('WorkspaceSelector — when it must not render at all', () => {
+  it('with the gate off, even if workspaces came back', () => {
+    hookMock.useHubWorkspaces.mockReturnValue(
+      state({ enabled: false, reachable: true, workspaces: [DEFAULT_WS, CLIENT_A], activeWorkspaceId: 'ws-default' }),
+    );
+    const { container } = render(<WorkspaceSelector user={user} />);
+
+    expect(container.querySelector('[data-workspace-selector]')).toBeNull();
+  });
+
+  it('when the gate is on and the hub answered, but the org has no workspace', () => {
+    // The third operand of the render guard. Before the unreachable case below
+    // grew rows, that case was what exercised `!active`; with rows it
+    // short-circuits on `!reachable` instead and this was the only branch in
+    // the guard no test reached as true.
+    hookMock.useHubWorkspaces.mockReturnValue(
+      state({ enabled: true, reachable: true, workspaces: [], activeWorkspaceId: null }),
+    );
+    const { container } = render(<WorkspaceSelector user={user} />);
+
+    expect(container.querySelector('[data-workspace-selector]')).toBeNull();
+  });
+
+  it('when the hub could not be reached, even if rows came back with it', () => {
+    // No rail placeholder: reserving space for a control that may never appear
+    // reads as a layout bug on every launch.
+    //
+    // The rows are here on purpose. With an empty list this passed whether or
+    // not the component read `reachable` at all, because the fallback to
+    // `workspaces[0]` had nothing to fall back to. Rows make `reachable` the
+    // only thing that can hide the control.
+    hookMock.useHubWorkspaces.mockReturnValue(
+      state({
+        enabled: true,
+        reachable: false,
+        workspaces: [DEFAULT_WS, CLIENT_A],
+        activeWorkspaceId: 'ws-default',
+      }),
+    );
+    const { container } = render(<WorkspaceSelector user={user} />);
+
+    expect(container.querySelector('[data-workspace-selector]')).toBeNull();
+  });
+
+  it('while the read is still in flight', () => {
+    hookMock.useHubWorkspaces.mockReturnValue(state());
+    const { container } = render(<WorkspaceSelector user={user} />);
+
+    expect(container.querySelector('[data-workspace-selector]')).toBeNull();
+  });
+});

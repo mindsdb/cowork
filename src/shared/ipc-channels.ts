@@ -38,6 +38,10 @@ export const IPC = {
   SERVER_RESTART: 'server:restart',
   SERVER_UPDATE_STATUS: 'server:update-status',
 
+  // Renderer awaits this before leaving the loading screen, so a boot-time
+  // update (which restarts the sidecar) can't flash the chat UI first (ENG-749).
+  BOOT_AWAIT_READY: 'boot:await-ready',
+
   // Auth
   AUTH_GET_ACCESS_TOKEN: 'auth:get-access-token',
   AUTH_LOGOUT: 'auth:logout',
@@ -72,6 +76,21 @@ export const IPC = {
   MINDSHUB_REFRESH: 'mindshub:refresh',
   MINDSHUB_FINALIZE: 'mindshub:finalize',
   MINDSHUB_GET_CACHED_TOKEN: 'mindshub:get-cached-token',
+  // A MindsHub API key the user pasted in, instead of running on their
+  // session credential. It goes to main rather than into the settings write
+  // the rest of the form makes, because main is what stores it in the OS
+  // keychain and hands it to the sidecar at runtime — keeping it out of
+  // `.env`, out of `minds_api_key` and out of `providers_json`. An empty
+  // value clears it and falls the app back to the session credential.
+  MINDSHUB_SET_USER_KEY: 'mindshub:set-user-key',
+  // Which MindsHub organization the credential this install presents names.
+  // The read and the switch both live in main because the credential does:
+  // the token store and the Keycloak switch are main-process, and the
+  // renderer has no way to reach Keycloak (auth's CORS allowlist names
+  // console origins only). Switching re-rolls the active-organization claim,
+  // which is what the gateway reads to decide whose credits a turn spends.
+  MINDSHUB_LIST_ORGS: 'mindshub:list-orgs',
+  MINDSHUB_SWITCH_ORG: 'mindshub:switch-org',
   // Pushed main → renderer whenever the MindsHub token store changes
   // (login, silent refresh, logout, definitive session death). The
   // renderer's signed-in indicator subscribes to this instead of
