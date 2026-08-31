@@ -181,6 +181,31 @@ describe('NewTaskPanel', () => {
     expect(screen.queryByText('Choose an available agent and model.')).not.toBeInTheDocument();
   });
 
+  it('explains why a project default model cannot start a task', async () => {
+    const user = userEvent.setup();
+    const lockedProject = { ...project, default_model: 'fable' };
+    render(
+      <NewTaskPanel
+        busy={false}
+        error=""
+        defaultEngineId="codex"
+        defaultModel="gpt-5.6-sol"
+        models={models}
+        modelMeta={modelMeta}
+        projects={[lockedProject]}
+        selectedProjectId={lockedProject.id}
+        onProjectChange={vi.fn()}
+        onOpenProjectSettings={vi.fn()}
+        onCreate={vi.fn(async () => {})}
+      />,
+    );
+
+    await user.type(screen.getByRole('textbox', { name: 'Coding task' }), 'Build it');
+
+    expect(await screen.findByText('Add credits or choose an available model.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /start task/i })).toBeDisabled();
+  });
+
   it('opens searchable skill and command discovery from slash on a new task', async () => {
     render(
       <NewTaskPanel
@@ -211,7 +236,7 @@ describe('NewTaskPanel', () => {
         defaultEngineId="codex"
         defaultModel="sonnet"
         models={models}
-        modelMeta={modelMeta}
+        modelMeta={{ ...modelMeta, modelEnabled: { ...modelMeta.modelEnabled, fable: true } }}
         projects={[configuredProject]}
         selectedProjectId={configuredProject.id}
         onProjectChange={vi.fn()}
@@ -676,7 +701,7 @@ describe('NewTaskPanel', () => {
         defaultEngineId="codex"
         defaultModel="fable"
         models={models}
-        modelMeta={modelMeta}
+        modelMeta={{ ...modelMeta, modelEnabled: { ...modelMeta.modelEnabled, fable: true } }}
         projects={[project]}
         selectedProjectId={null}
         onProjectChange={vi.fn()}

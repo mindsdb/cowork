@@ -190,7 +190,12 @@ function fixtureState(name: string) {
     primary = session({ status: 'cancelled' });
     events = BASE_EVENTS.slice(0, 8);
   } else if (name === 'interrupted') {
-    primary = session({ status: 'interrupted' });
+    primary = session({
+      status: 'interrupted',
+      run_status: 'interrupted',
+      computer_id: 'fixture-computer',
+      computer_status: 'online',
+    });
     events = BASE_EVENTS.slice(0, 8);
   } else if (name === 'direct') {
     primary = session({
@@ -348,6 +353,20 @@ export function getCodeFixtureApi() {
       platform: 'darwin', architecture: 'arm64', runtime_version: '2.0.7',
       protocol_versions: ['1.0'], agent_engines: ['codex'], shells: ['bash', 'zsh'],
       has_git: true, has_terminal: true, supports_local_folders: true, max_concurrent_runs: 4,
+    },
+  };
+  const recoveryComputer: CodeComputer = {
+    schema_version: 1,
+    id: 'fixture-linux-computer',
+    name: 'Linux build computer',
+    is_local: false,
+    status: 'online',
+    active_run_count: 1,
+    last_seen_at: NOW,
+    capabilities: {
+      platform: 'linux', architecture: 'x64', runtime_version: '2.0.7',
+      protocol_versions: ['1.0'], agent_engines: ['codex'], shells: ['bash'],
+      has_git: true, has_terminal: true, supports_local_folders: false, max_concurrent_runs: 4,
     },
   };
   const skillItems: SkillLibraryItem[] = [
@@ -586,6 +605,29 @@ export function getCodeFixtureApi() {
     },
     runQueued: async (id: string) => copy(selected(id)),
     cancel: async (id: string) => copy(update(id, { status: 'cancelled', active_turn_id: null })),
+    recoveryOptions: async (id: string) => ({
+      run_id: selected(id).run_id || 'run-fixture',
+      options: [
+        {
+          computer: copy(fixtureComputer),
+          mode: 'restore' as const,
+          preserves_workspace_changes: true,
+          recommended: true,
+          detail: 'Resume the preserved workspace and its current changes.',
+        },
+        ...(
+          name === 'interrupted'
+            ? [{
+              computer: copy(recoveryComputer),
+              mode: 'recreate' as const,
+              preserves_workspace_changes: false,
+              recommended: false,
+              detail: 'Create a fresh isolated workspace from the task’s saved repository definitions.',
+            }]
+            : []
+        ),
+      ],
+    }),
     recover: async (id: string) => copy(update(id, {
       status: 'ready',
       run_status: 'recovering',

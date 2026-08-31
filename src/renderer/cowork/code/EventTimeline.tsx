@@ -266,7 +266,7 @@ function TaskOutcome({
     ? 'The agent finished this turn. Review the changes or send a follow-up.'
     : recoverable
       ? session.computer_status === 'offline'
-        ? 'The task computer disconnected. Your conversation, workspace, and changes are preserved.'
+        ? 'The task computer disconnected. Your conversation is safe; resume there or choose another compatible computer.'
         : 'The turn stopped before it completed. Your conversation, workspace, and changes are preserved.'
       : 'The active turn was stopped. You can continue in the same task.';
   return (

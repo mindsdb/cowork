@@ -375,12 +375,14 @@ function sleep(ms: number): Promise<void> {
 // sidecar can answer this endpoint while returning 404 for every Code Mode
 // route. Requiring the capability here prevents both adopting that process and
 // declaring an incompatible freshly-spawned binary ready.
-function probeHealthOnce(port: number, timeoutMs: number): Promise<{ ok: boolean; owner: string | null }> {
+type HealthProbe = { state: 'unreachable' | 'compatible' | 'incompatible'; owner: string | null };
+
+function probeHealthOnce(port: number, timeoutMs: number): Promise<HealthProbe> {
   return new Promise((resolve) => {
     const req = http.get(
       { hostname: SERVER_HOST, port, path: '/api/v1/health/', timeout: timeoutMs },
       (res) => {
-        if (res.statusCode !== 200) { res.resume(); resolve({ ok: false, owner: null }); return; }
+        if (res.statusCode !== 200) { res.resume(); resolve({ state: 'unreachable', owner: null }); return; }
         let body = '';
         res.on('data', (c) => { body += c; });
         res.on('end', () => {
@@ -391,12 +393,12 @@ function probeHealthOnce(port: number, timeoutMs: number): Promise<{ ok: boolean
             owner = payload?.owner ?? null;
             supportsCoding = Array.isArray(payload?.capabilities) && payload.capabilities.includes('coding');
           } catch { /* non-JSON */ }
-          resolve({ ok: supportsCoding, owner });
+          resolve({ state: supportsCoding ? 'compatible' : 'incompatible', owner });
         });
       },
     );
-    req.on('error', () => resolve({ ok: false, owner: null }));
-    req.on('timeout', () => { req.destroy(); resolve({ ok: false, owner: null }); });
+    req.on('error', () => resolve({ state: 'unreachable', owner: null }));
+    req.on('timeout', () => { req.destroy(); resolve({ state: 'unreachable', owner: null }); });
   });
 }
 
@@ -454,9 +456,9 @@ export async function resolveServerPort(): Promise<number> {
     serverPort = preferred;
 
     const probe = await probeHealthOnce(preferred, 700);
-    if (probe.ok && probe.owner && probe.owner === serverOwnerToken()) {
+    if (probe.state === 'compatible' && probe.owner && probe.owner === serverOwnerToken()) {
       _adoptPlanned = true; // our own orphan — startServer will re-verify + adopt
-    } else if (probe.ok && probe.owner) {
+    } else if (probe.state === 'compatible' && probe.owner) {
       // Healthy AND owned by a DIFFERENT install (another OS user) — never adopt
       // or touch it. Move to a free port we can own.
       const free = await findFreePort();
@@ -536,7 +538,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     // recovery attempt as a no-op.
     if (!_adoptedExternal) return { ok: true, port: serverPort };
     const probe = await probeHealthOnce(serverPort, 700);
-    if (probe.ok && probe.owner === serverOwnerToken()) {
+    if (probe.state === 'compatible' && probe.owner === serverOwnerToken()) {
       return { ok: true, port: serverPort };
     }
     console.warn(`[server] adopted instance on port ${serverPort} is no longer healthy; starting a replacement`);
@@ -562,7 +564,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
   // adopting (a foreign server was already routed around in resolveServerPort).
   if (_adoptPlanned || opts.port) {
     const probe = await probeHealthOnce(serverPort, 700);
-    if (probe.ok && probe.owner && probe.owner === serverOwnerToken()) {
+    if (probe.state === 'compatible' && probe.owner && probe.owner === serverOwnerToken()) {
       serverStarted = true;
       _adoptedExternal = true;
       lastStartError = null;
@@ -776,7 +778,8 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       await sleep(HEALTH_POLL_INTERVAL_MS);
       const probe = await probeHealthOnce(serverPort, HEALTH_PROBE_TIMEOUT_MS);
       step = decideStartWait({
-        healthy: probe.ok,
+        healthy: probe.state === 'compatible',
+        incompatible: probe.state === 'incompatible',
         spawnError,
         exited: childExited,
         elapsedMs: Date.now() - waitStartedAt,

@@ -844,6 +844,11 @@ describe('decideStartWait', () => {
     expect(decideStartWait({ ...base, healthy: true, exited: true })).toEqual({ action: 'ready' });
   });
 
+  it('fails immediately when a healthy backend lacks the required capability', () => {
+    expect(decideStartWait({ ...base, incompatible: true, elapsedMs: 250 }))
+      .toEqual({ action: 'fail', kind: 'incompatible' });
+  });
+
   it('fails immediately on a spawn error, without waiting out the cap', () => {
     expect(decideStartWait({ ...base, spawnError: 'spawn EPERM', elapsedMs: 10 }))
       .toEqual({ action: 'fail', kind: 'spawn-error' });
@@ -889,6 +894,11 @@ describe('startFailureMessage', () => {
   it('distinguishes "still starting" from "never started"', () => {
     expect(startFailureMessage({ kind: 'timeout', exitCode: null, spawnError: null, elapsedMs: 90_000 }))
       .toBe('The backend was still starting after 90s and never answered /health.');
+  });
+
+  it('names an incompatible backend without blaming startup time', () => {
+    expect(startFailureMessage({ kind: 'incompatible', exitCode: null, spawnError: null, elapsedMs: 250 }))
+      .toBe('The backend is running, but it is too old for this version of MindsHub Cowork.');
   });
 });
 

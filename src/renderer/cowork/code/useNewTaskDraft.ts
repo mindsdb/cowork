@@ -206,7 +206,8 @@ export function useNewTaskDraft({
     setSourceContexts([]);
   }, [selectedProjectId]);
 
-  const selectedModelValid = modelOptions.some((option) => option.value === model);
+  const selectedModelOption = modelOptions.find((option) => option.value === model);
+  const selectedModelValid = !!selectedModelOption && !selectedModelOption.disabled;
   const selectedEngine = engines.find((engine) => engine.id === engineId);
   const selectedEngineAvailable = selectedEngine?.available === true;
   const workspaceLoading = selectedProject ? foldersLoading : standaloneFolderLoading;
@@ -240,6 +241,7 @@ export function useNewTaskDraft({
     if (workspaceIssue) return workspaceIssue;
     if (executionIssue) return executionIssue;
     if (!selectedEngineAvailable) return selectedEngine?.reason || (catalogError ? '' : 'No coding agent is available.');
+    if (selectedModelOption?.locked) return 'Add credits or choose an available model.';
     if (!selectedModelValid || modelOptions.length === 0) return '';
     if (!prompt.trim()) return '';
     if (!workspaceSelected) return 'Choose a folder to continue.';

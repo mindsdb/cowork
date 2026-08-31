@@ -24,6 +24,7 @@ import AccountSection from './AccountSection';
 import { SettingsGroup, SettingsLayoutContext, Section, SettingsSectionPanel } from './settingsLayout';
 import CodingAgentSettingsSection from './CodingAgentSettingsSection';
 import ComputersSettingsSection from './ComputersSettingsSection';
+import { navItemsForHost } from './settingsNavigation';
 
 // Exported for tests. Narrows a `lastSavedJson` snapshot to reflect one
 // freshly auto-saved key, without touching any other field — critical so an
@@ -569,46 +570,6 @@ function CredentialRow({ title, subtitle, status, hasValue, children }) {
 }
 
 // ───────────────────────── Nav sidebar ─────────────────────────
-
-const NAV_ITEMS = [
-  { id: 'agent', label: 'Agent', icon: 'robot', group: 'General' },
-  { id: 'codingAgent', label: 'Coding agent', icon: 'code', group: 'Code' },
-  { id: 'codingMode', label: 'Coding Mode', icon: 'code', group: 'Code' },
-  { id: 'computers', label: 'Computers', icon: 'computer', group: 'Code' },
-  { id: 'appearance', label: 'Appearance', icon: 'palette', group: 'App' },
-  { id: 'channels', label: 'Channels', icon: 'chats', group: 'App' },
-  { id: 'updates', label: 'Updates', icon: 'refresh', group: 'System' },
-  { id: 'backend', label: 'Backend', icon: 'database', group: 'System' },
-  { id: 'account', label: 'Account', icon: 'people', group: 'System' },
-];
-
-// Sections that make sense in the hosted web shell (ENG-932). Absent, not
-// disabled — a nav row that opens a dead end is worse than no row:
-//   backend  — start/stop/diagnostics of a server the user doesn't control.
-//   updates  — App-shell version and OTA source are meaningless on hosted;
-//              the server updates itself.
-//   account  — renders an SSO sign-in card, but a hosted user already
-//              authenticated through the console; a second sign-in is
-//              confusing at best.
-//   codingMode — launching an external CLI in a terminal is an Electron
-//              main-process capability with no web equivalent; web keeps
-//              its simple Anton/Hermes toggle inside Agent instead.
-// Agent stays because it carries the model picker and reasoning effort — the
-// point of the ticket. Appearance is purely cosmetic. Channels moved back here
-// from its standalone sidebar entry, which only existed while Settings was
-// hidden on web.
-const WEB_NAV_IDS = new Set(['agent', 'appearance', 'channels']);
-
-export function navItemsForHost(isWeb, codingModeOptionsEnabled) {
-  // Fresh array on both branches — filter() already copies for web, and the
-  // desktop spread keeps a caller's mutation from reaching the shared module
-  // constant.
-  const items = isWeb ? NAV_ITEMS.filter((i) => WEB_NAV_IDS.has(i.id)) : [...NAV_ITEMS];
-  // Coding Mode is parked behind CODING_MODE_OPTIONS_ENABLED while the
-  // feature is unfinished — hide its whole nav section (and, transitively,
-  // any way to reach the toggle or harness picker) until it's flipped on.
-  return codingModeOptionsEnabled ? items : items.filter((i) => i.id !== 'codingMode');
-}
 
 function SettingsNav({ section, onSectionChange, serverOnline = true }) {
   return (

@@ -112,6 +112,8 @@ export function ProjectSettingsModal({
   const [playbookBusy, setPlaybookBusy] = useState(false);
   const [playbookStatus, setPlaybookStatus] = useState<PlaybookStatus | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
   const initializedProjectId = useRef<string | null | undefined>(undefined);
   const resumeWithoutReset = useRef(false);
   const availableConnections = useMemo(() => {
@@ -179,6 +181,8 @@ export function ProjectSettingsModal({
     setProjectPermission(project?.permission_mode || 'supervised');
     setError('');
     setDeleteOpen(false);
+    setDeleteBusy(false);
+    setDeleteError('');
     setPlaybookStatus(null);
     if (project?.playbook) {
       codingApi.playbook(project.id).then(setPlaybookStatus).catch((reason) => {
@@ -444,7 +448,7 @@ export function ProjectSettingsModal({
         </div>
       </ModalBody>
       <ModalFooter align={project && onDelete ? 'space-between' : 'flex-end'}>
-        {project && onDelete && <Button variant="subtle" disabled={busy} onClick={() => setDeleteOpen(true)}>Delete project</Button>}
+        {project && onDelete && <Button variant="subtle" disabled={busy} onClick={() => { setDeleteError(''); setDeleteOpen(true); }}>Delete project</Button>}
         <div className="code-project-footer-actions">
           <Button variant="subtle" onClick={onClose} disabled={busy || skillsSaving}>Cancel</Button>
           <Button variant="primary" onClick={() => void save()} disabled={busy || skillsSaving || playbookBusy || !name.trim() || !resources.length}>{busy || skillsSaving || playbookBusy ? 'Saving…' : 'Save project'}</Button>
@@ -457,9 +461,22 @@ export function ProjectSettingsModal({
       message="This removes the project setup. Source folders are untouched. Projects with coding tasks cannot be deleted."
       confirmLabel="Delete project"
       destructive
-      busy={busy}
-      onClose={() => setDeleteOpen(false)}
-      onConfirm={async () => { await onDelete?.(); setDeleteOpen(false); }}
+      busy={busy || deleteBusy}
+      busyLabel="Deleting…"
+      error={deleteError}
+      onClose={() => { setDeleteOpen(false); setDeleteError(''); }}
+      onConfirm={async () => {
+        setDeleteBusy(true);
+        setDeleteError('');
+        try {
+          await onDelete?.();
+          setDeleteOpen(false);
+        } catch (reason) {
+          setDeleteError(reason instanceof Error ? reason.message : 'Could not delete this Code Project.');
+        } finally {
+          setDeleteBusy(false);
+        }
+      }}
     />
     </>
   );

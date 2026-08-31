@@ -2,7 +2,21 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { codingApi, type CodingSession } from './api';
 
 
+function sidebarProjectionChanged(previous: CodingSession, next: CodingSession): boolean {
+  return previous.title !== next.title
+    || previous.status !== next.status
+    || previous.run_status !== next.run_status
+    || previous.computer_status !== next.computer_status
+    || previous.project_name !== next.project_name
+    || previous.repository_root !== next.repository_root
+    || previous.source_path !== next.source_path
+    || previous.pinned !== next.pinned
+    || previous.archived !== next.archived;
+}
+
+
 export function useCodeTaskList({
+  active = true,
   sessions,
   selectedId,
   newTask,
@@ -10,6 +24,7 @@ export function useCodeTaskList({
   onSessionsChange,
   onSelectionChange,
 }: {
+  active?: boolean;
   sessions: CodingSession[];
   selectedId: string | null;
   newTask: boolean;
@@ -47,6 +62,7 @@ export function useCodeTaskList({
   }, []);
 
   useEffect(() => {
+    if (!active) return undefined;
     load()
       .catch((reason) => setError(reason instanceof Error ? reason.message : 'Could not load coding tasks.'))
       .finally(() => setLoading(false));
@@ -57,10 +73,16 @@ export function useCodeTaskList({
       });
     }, 5_000);
     return () => window.clearInterval(interval);
-  }, [load]);
+  }, [active, load]);
 
   useEffect(() => {
     if (!currentSession) return;
+    const previous = sessionsRef.current.find((item) => item.id === currentSession.id);
+    // The task list already refreshes every five seconds. Do not rebuild the
+    // whole sidebar for event_count/checkpoint/updated_at changes arriving at
+    // stream cadence; only session fields which change its visible state need
+    // an immediate projection.
+    if (previous && !sidebarProjectionChanged(previous, currentSession)) return;
     onSessionsChangeRef.current(
       sessionsRef.current.map((item) => item.id === currentSession.id ? currentSession : item),
     );

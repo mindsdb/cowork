@@ -4858,6 +4858,7 @@ function AppCore() {
             aria-hidden={workspaceMode !== 'code'}
           >
             <CodeView
+              active={workspaceMode === 'code'}
               sessions={codingSessions}
               selectedId={activeCodingSessionId}
               newTask={codeNewTask}

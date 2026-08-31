@@ -293,6 +293,23 @@ describe('startServer failure diagnostics', () => {
     await stopServer();
   });
 
+  it('reports a freshly spawned incompatible backend immediately', async () => {
+    healthOwner = 'owner-token';
+    healthCapabilities = [];
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => child as never) as never);
+
+    const startedAt = Date.now();
+    const result = await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+
+    expect(result.ok).toBe(false);
+    // Includes the bounded child reaping window, but never the 60 s startup
+    // cap that an incompatible health response used to consume.
+    expect(Date.now() - startedAt).toBeLessThan(5_000);
+    expect(getServerDiagnostics().lastErrorKind).toBe('incompatible');
+    expect(getServerDiagnostics().lastError).toContain('too old');
+  });
+
   it('checkpoints active coding tasks before terminating the sidecar tree', async () => {
     const child = makeChild();
     healthOwner = 'owner-token';

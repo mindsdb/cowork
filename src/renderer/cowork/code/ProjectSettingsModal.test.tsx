@@ -198,6 +198,29 @@ describe('ProjectSettingsModal', () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
+  it('keeps a failed project deletion actionable and visible', async () => {
+    const user = userEvent.setup();
+    const onDelete = vi.fn(async () => { throw new Error('Delete the project tasks first.'); });
+    render(
+      <ProjectSettingsModal
+        open
+        project={project}
+        connections={[]}
+        busy={false}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+        onDelete={onDelete}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Delete project' }));
+    await user.click(screen.getByRole('button', { name: 'Delete project' }));
+
+    expect(await screen.findByText('Delete the project tasks first.')).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Delete this Code Project?' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Delete project' })).toBeEnabled();
+  });
+
   it('uses the first-class Connectors section and routes account management to Connectors', async () => {
     const user = userEvent.setup();
     const onOpenConnectors = vi.fn();
