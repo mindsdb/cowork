@@ -49,14 +49,38 @@ export function canUseArtifactWorkspace(artifact) {
  */
 const DRAFT_TEXT_MAX = 200_000;
 
-export async function loadArtifactDraftText(draftUrl) {
+/*
+ * Both draft loaders below attach the web Keycloak bearer via `authFetch`,
+ * which sends it to whatever URL it is given regardless of origin. The viewer
+ * already gates on this before calling either function (`canFetchDraftWithCredentials`
+ * in artifactPreviewUtils.js — data:/blob: and cross-origin draft URLs never
+ * reach here), but the credential attachment happens in this file, so the
+ * invariant has to be enforced here too, not just at the one call site that
+ * currently respects it.
+ */
+function resolveSameOriginDraftUrl(draftUrl) {
   if (!draftUrl) throw new Error('Artifact has no private draft URL');
   /*
    * The same origin `BASE` is built from — asking the host beats stripping the
    * path back off with a regex, and it is what ArtifactViewer already uses to
    * absolutize this very URL for the preview iframe.
    */
-  const url = /^https?:\/\//i.test(draftUrl) ? draftUrl : `${host.getApiOrigin()}${draftUrl}`;
+  const apiOrigin = host.getApiOrigin();
+  const url = /^https?:\/\//i.test(draftUrl) ? draftUrl : `${apiOrigin}${draftUrl}`;
+  let origin;
+  try {
+    origin = new URL(url).origin;
+  } catch {
+    throw new Error('Artifact draft URL is invalid');
+  }
+  if (origin !== new URL(apiOrigin).origin) {
+    throw new Error('Refusing to send credentials to a cross-origin draft URL');
+  }
+  return url;
+}
+
+export async function loadArtifactDraftText(draftUrl) {
+  const url = resolveSameOriginDraftUrl(draftUrl);
   const response = await authFetch(url);
   if (!response.ok) {
     throw new Error(`Could not load private draft (${response.status})`);
@@ -66,6 +90,31 @@ export async function loadArtifactDraftText(draftUrl) {
     content: body.slice(0, DRAFT_TEXT_MAX),
     truncated: body.length > DRAFT_TEXT_MAX,
     mime: response.headers.get('Content-Type') || '',
+  };
+}
+
+/*
+ * Same fetch as loadArtifactDraftText, uncapped: this one feeds an iframe's
+ * `srcdoc` (ArtifactViewer's draft-HTML preview branch), and DRAFT_TEXT_MAX
+ * above would silently truncate any HTML document over 200KB before it ever
+ * reached the DOM. `isHtml` lets the caller fall back to the old direct-`src`
+ * behavior for a non-HTML draft content type — org mode's draft preview only
+ * ever offers .html here (md/txt/csv take the text-preview branch), so that
+ * fallback is Desktop-only and effectively theoretical.
+ */
+export async function loadArtifactDraftDocument(draftUrl) {
+  const url = resolveSameOriginDraftUrl(draftUrl);
+  const response = await authFetch(url);
+  if (!response.ok) {
+    const error = new Error(`Could not load private draft (${response.status})`);
+    error.status = response.status;
+    throw error;
+  }
+  const contentType = response.headers.get('Content-Type') || '';
+  return {
+    content: await response.text(),
+    contentType,
+    isHtml: contentType.toLowerCase().startsWith('text/html'),
   };
 }
 

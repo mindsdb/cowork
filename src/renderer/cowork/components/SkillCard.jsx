@@ -21,6 +21,7 @@ import { Modal, ModalHeader, ModalBody } from './ui/Modal';
 import { Tooltip } from './ui';
 import { MarkdownContent } from './markdown/MarkdownContent';
 import { saveSkillAndSync, useSkills } from '../lib/skillsStore';
+import { downloadBlob } from '../lib/browserDownload';
 import { deleteSkillDraft } from '../api';
 
 // Trigger a browser save-as for a text file, fully client-side (no server).
@@ -29,15 +30,7 @@ import { deleteSkillDraft } from '../api';
 // keep their siblings via Save (which installs the whole bundle); a client zip
 // would mean a new dependency for a rare case.
 function downloadText(filename, text, mime = 'text/markdown;charset=utf-8') {
-  const blob = new Blob([text ?? ''], { type: mime });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  downloadBlob(new Blob([text ?? ''], { type: mime }), filename);
 }
 
 function SkillModal({ skill, open, onClose }) {

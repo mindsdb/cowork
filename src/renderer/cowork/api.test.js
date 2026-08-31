@@ -18,8 +18,15 @@ vi.mock('../platform/host', async (importOriginal) => ({
 const setAntonInstallId = vi.hoisted(() => vi.fn());
 vi.mock('./lib/analytics', () => ({ setAntonInstallId }));
 
-import { fetchRecommendedModels, fetchSettings, updateSettings, revealSettingKey, streamNewSession, fetchHealth, fetchInFlightList, cancelResponse, fetchHubWorkspaces } from './api';
+// The boundary reloads the document for real; this suite is about what authFetch
+// hands back to its caller, not about the navigation that follows.
+const transitionMock = vi.hoisted(() => ({ prepareForOrganizationReload: vi.fn() }));
+vi.mock('./lib/organizationTransition', () => transitionMock);
+
+import { authFetch, fetchRecommendedModels, fetchSettings, updateSettings, revealSettingKey, streamNewSession, fetchHealth, fetchInFlightList, cancelResponse, fetchHubWorkspaces, fetchArtifactStatus } from './api';
 import { MODEL_ROUTER_ID } from './lib/modelCatalog';
+import { setOrgMode } from '../lib/orgMode';
+import { __resetOrganizationRequestBoundaryForTests } from './lib/organizationRequestBoundary';
 
 const jsonRes = (body, ok = true, status = 200) => ({
   ok,
@@ -27,6 +34,60 @@ const jsonRes = (body, ok = true, status = 200) => ({
   headers: { get: () => 'application/json' },
   json: async () => body,
   text: async () => JSON.stringify(body),
+});
+
+const ORGANIZATION_A = '6ba7b810-9dad-11d1-80b4-00c04fd430c8';
+
+function accessToken(organizationId) {
+  const payload = btoa(JSON.stringify({
+    sub: 'user-1',
+    activate_organization: { id: organizationId },
+  })).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return `header.${payload}.signature`;
+}
+
+describe('authFetch organization boundary', () => {
+  beforeEach(() => {
+    __resetOrganizationRequestBoundaryForTests();
+    hostMock.isWeb = true;
+    hostMock.getAccessToken.mockReset();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('sends the document organization beside the browser bearer', async () => {
+    hostMock.getAccessToken.mockResolvedValue(accessToken(ORGANIZATION_A));
+    const fetch = vi.fn(async () => jsonRes({ ok: true }));
+    vi.stubGlobal('fetch', fetch);
+
+    await authFetch('/api/v1/projects');
+
+    expect(fetch).toHaveBeenCalledWith('/api/v1/projects', {
+      headers: {
+        Authorization: expect.stringMatching(/^Bearer /),
+        'X-Cowork-Expected-Organization-Id': ORGANIZATION_A,
+      },
+    });
+  });
+
+  /*
+   * The throw is what stops a caller reading a body scoped to an organization
+   * this document did not start in. Returning the response would let every
+   * existing `!res.ok` branch render the rejection as ordinary data.
+   */
+  it('refuses to return a response the server marked for reload', async () => {
+    hostMock.getAccessToken.mockResolvedValue(accessToken(ORGANIZATION_A));
+    const rejected = {
+      ...jsonRes({ code: 'organization_reload_required' }, false, 409),
+      headers: new Headers({ 'X-Cowork-Organization-Reload': 'required' }),
+    };
+    vi.stubGlobal('fetch', vi.fn(async () => rejected));
+
+    await expect(authFetch('/api/v1/projects'))
+      .rejects.toThrow('The active organization changed; reload required');
+  });
 });
 
 // The `refresh` flag is the whole mechanism behind "a top-up unlocks paid
@@ -773,5 +834,34 @@ describe('fetchHubWorkspaces', () => {
     expect(calls).toHaveLength(1);
     expect(calls[0].url).toMatch(/\/api\/v1\/hub\/workspaces\/$/);
     expect(calls[0].options.headers['X-MindsHub-Authorization']).toBe('Bearer jwt-abc');
+  });
+});
+
+// /artifacts/status is desktop-only (require_local_tenancy on the server), and
+// usePublish asks for it on every viewer open and every window focus. In org
+// mode each of those logged a 403 — harmless, because the helper already
+// swallows failures, but noise the user reported next to the real comments 401.
+describe('fetchArtifactStatus', () => {
+  afterEach(() => { setOrgMode(false); });
+
+  it('does not call the desktop-only route in org mode', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    setOrgMode(true);
+
+    expect(await fetchArtifactStatus('/p/a.html')).toBe(null);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('still calls the route on desktop', async () => {
+    const fetchMock = vi.fn(async () => jsonRes({ publishedUrl: 'https://x/a', modified: false }));
+    vi.stubGlobal('fetch', fetchMock);
+    setOrgMode(false);
+
+    const out = await fetchArtifactStatus('/p/a.html');
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toContain('/artifacts/status?path=');
+    expect(out.publishedUrl).toBe('https://x/a');
   });
 });

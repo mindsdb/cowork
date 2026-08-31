@@ -17,6 +17,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Ico from './Icons';
 import { Tooltip } from './ui';
+import { fetchAuthenticatedBlob } from '../lib/authenticatedResource';
 
 // Shared by AttachmentThumbnail and ArtifactViewer's image preview — both
 // need the same blob-fetch workaround for the loopback-<img> CSP block (see
@@ -48,8 +49,7 @@ export function useBlobImageSrc({ file = null, url = null } = {}) {
     if (file) {
       try { adopt(file); } catch { setFailed(true); }
     } else if (url) {
-      fetch(url)
-        .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.blob(); })
+      fetchAuthenticatedBlob(url)
         .then(adopt)
         .catch(() => { if (!cancelled) setFailed(true); });
     } else {
