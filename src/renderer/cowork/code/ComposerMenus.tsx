@@ -101,7 +101,7 @@ export function MentionMenu({
 }) {
   if (items.length === 0) return null;
   return (
-    <div className="code-slash-menu code-mention-menu" role="listbox" aria-label="Workspace files">
+    <div className="code-slash-menu code-mention-menu" role="listbox" aria-label="Task files">
       <div className="code-slash-menu__label">Files and folders in this task</div>
       {items.slice(0, 8).map((reference, index) => (
         <button

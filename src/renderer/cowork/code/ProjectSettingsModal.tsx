@@ -37,8 +37,11 @@ import { useCodingCatalog, type CodingCatalog } from './useCodingCatalog';
 
 const supportedProviders = new Set(['github', 'linear']);
 
-function command(id: string, phase: 'setup' | 'validate'): ProjectCommand {
-  return { id, label: phase === 'setup' ? 'Set up' : 'Validate', argv: [], phase };
+type CommandPhase = ProjectCommand['phase'];
+
+function command(id: string, phase: CommandPhase): ProjectCommand {
+  const labels: Record<CommandPhase, string> = { setup: 'Set up', validate: 'Validate', run: 'Run' };
+  return { id, label: labels[phase], argv: [], phase };
 }
 
 function openPlaybookRepository(repository: string): void {
@@ -168,6 +171,7 @@ export function ProjectSettingsModal({
     setCommandDrafts(Object.fromEntries(nextResources.flatMap((resource) => [
       [`${resource.id}:setup`, formatCommandLine(resource.commands.find((item) => item.phase === 'setup')?.argv || [])],
       [`${resource.id}:validate`, formatCommandLine(resource.commands.find((item) => item.phase === 'validate')?.argv || [])],
+      [`${resource.id}:run`, formatCommandLine(resource.commands.find((item) => item.phase === 'run')?.argv || [])],
     ])));
     setSelectedConnections((project?.connections || []).map((item) => `${item.provider}:${item.name}`));
     setSelectedSkillSources((project?.skill_sources || []).map((source) => ({
@@ -253,7 +257,7 @@ export function ProjectSettingsModal({
 
   const availableEngines = engines.filter((engine) => engine.available);
 
-  const updateCommand = (folderId: string, phase: 'setup' | 'validate', value: string) => {
+  const updateCommand = (folderId: string, phase: CommandPhase, value: string) => {
     setCommandDrafts((current) => ({ ...current, [`${folderId}:${phase}`]: value }));
     setError('');
   };
@@ -264,7 +268,7 @@ export function ProjectSettingsModal({
     setSkillsSaving(true);
     try {
       const normalizedResources = resources.map((resource) => {
-        const commands = (['setup', 'validate'] as const).flatMap((phase) => {
+        const commands = (['setup', 'validate', 'run'] as const).flatMap((phase) => {
           const value = commandDrafts[`${resource.id}:${phase}`]?.trim() || '';
           if (!value) return [];
           const existing = resource.commands.find((item) => item.phase === phase) || command(`${resource.id}-${phase}`, phase);

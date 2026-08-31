@@ -150,6 +150,73 @@ describe('ReviewPanel', () => {
     expect(onResolveConflicts).toHaveBeenCalledOnce();
   });
 
+  it('stages an individual file without applying unrelated changes', async () => {
+    const onFileAction = vi.fn(async () => {});
+    render(
+      <ReviewPanel
+        open
+        session={projectSession}
+        git={null}
+        files={[{
+          folder_id: 'frontend', folder_name: 'frontend', path: 'src/cart.ts', status: ' M',
+          additions: 1, deletions: 1, patch: '@@ -10,1 +10,1 @@\n-old\n+new', binary: false,
+          staged: false, unstaged: true,
+        }]}
+        busy={false}
+        error=""
+        onClose={vi.fn()}
+        onBranch={vi.fn(async () => {})}
+        onCommit={vi.fn(async () => {})}
+        onApply={vi.fn(async () => {})}
+        onFileAction={onFileAction}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Stage' }));
+
+    await waitFor(() => expect(onFileAction).toHaveBeenCalledWith(
+      expect.objectContaining({ path: 'src/cart.ts' }),
+      'stage',
+    ));
+  });
+
+  it('sends an exact selected line range to Codex', async () => {
+    const user = userEvent.setup();
+    const onAgentAction = vi.fn(async () => {});
+    render(
+      <ReviewPanel
+        open
+        session={projectSession}
+        git={null}
+        files={[{
+          folder_id: 'frontend', folder_name: 'frontend', path: 'src/cart.ts', status: 'M',
+          additions: 2, deletions: 0,
+          patch: '@@ -10,1 +10,2 @@\n context\n+const first = true;\n+const second = true;',
+          binary: false, staged: false, unstaged: true,
+        }]}
+        busy={false}
+        error=""
+        onClose={vi.fn()}
+        onBranch={vi.fn(async () => {})}
+        onCommit={vi.fn(async () => {})}
+        onApply={vi.fn(async () => {})}
+        onAgentAction={onAgentAction}
+      />,
+    );
+
+    const lineEleven = screen.getByRole('button', { name: 'Select 11' });
+    const lineTwelve = screen.getByRole('button', { name: 'Select 12' });
+    await user.click(lineEleven);
+    fireEvent.click(lineTwelve, { shiftKey: true });
+    await user.click(screen.getByRole('button', { name: 'Ask Codex' }));
+    await user.type(screen.getByRole('textbox', { name: 'Review note for src/cart.ts' }), 'Keep this branch-free.');
+    await user.click(screen.getByRole('button', { name: 'Send to Codex' }));
+
+    await waitFor(() => expect(onAgentAction).toHaveBeenCalledWith(expect.stringMatching(
+      /frontend\/src\/cart\.ts at lines 11–12[\s\S]*Keep this branch-free/,
+    )));
+  });
+
   it('publishes an explicitly selected progress update to linked work', async () => {
     const user = userEvent.setup();
     const onPublish = vi.fn(async () => {});

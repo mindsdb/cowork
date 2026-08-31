@@ -43,7 +43,7 @@ function statusLabel(state: Pick<TerminalTabState, 'status' | 'exit_code'>): str
 }
 
 
-export function TaskTerminal({ sessionId, onClose }: { sessionId: string; onClose: () => void }) {
+export function TaskTerminal({ sessionId, focusTerminalId = null, onClose }: { sessionId: string; focusTerminalId?: string | null; onClose: () => void }) {
   const dragCleanupRef = useRef<(() => void) | null>(null);
   const expectedDisconnectsRef = useRef(new Set<string>());
   const loadedSessionRef = useRef<string | null>(null);
@@ -83,6 +83,12 @@ export function TaskTerminal({ sessionId, onClose }: { sessionId: string; onClos
   useEffect(() => {
     if (loadedSessionRef.current === sessionId) saveTerminalId(sessionId, selectedId);
   }, [selectedId, sessionId]);
+
+  useEffect(() => {
+    if (focusTerminalId && tabs.some((tab) => tab.id === focusTerminalId)) {
+      setSelectedId(focusTerminalId);
+    }
+  }, [focusTerminalId, tabs]);
 
   useEffect(() => () => dragCleanupRef.current?.(), []);
 

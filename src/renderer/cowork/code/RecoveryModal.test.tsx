@@ -39,21 +39,21 @@ const plan: RecoveryPlan = {
       mode: 'restore',
       preserves_workspace_changes: true,
       recommended: true,
-      detail: 'Resume the preserved workspace and its current changes.',
+      detail: 'Resume the saved working copy and its current changes.',
     },
     {
       computer: computer('remote', 'Linux build computer', 'linux'),
       mode: 'recreate',
       preserves_workspace_changes: false,
       recommended: false,
-      detail: 'Create a fresh isolated workspace from the task’s saved repository definitions.',
+      detail: 'Create a fresh isolated working copy from the task’s saved repository definitions.',
     },
   ],
 };
 
 
 describe('RecoveryModal', () => {
-  it('makes cross-computer workspace loss explicit before continuing', async () => {
+  it('makes cross-computer working-copy loss explicit before continuing', async () => {
     const user = userEvent.setup();
     const onSelect = vi.fn();
     const onConfirm = vi.fn();
@@ -69,7 +69,7 @@ describe('RecoveryModal', () => {
       />,
     );
 
-    expect(screen.getByText(/Resume workspace/)).toBeInTheDocument();
+    expect(screen.getByText(/Saved working copy/)).toBeInTheDocument();
     await user.click(screen.getByRole('radio', { name: /Linux build computer/ }));
     expect(onSelect).toHaveBeenCalledWith('remote');
 
@@ -85,7 +85,7 @@ describe('RecoveryModal', () => {
       />,
     );
     expect(screen.getByText(/Unpushed changes on the previous computer cannot move/)).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Start fresh workspace' }));
+    await user.click(screen.getByRole('button', { name: 'Start fresh copy' }));
     expect(onConfirm).toHaveBeenCalledWith(plan.options[1]);
   });
 });

@@ -12,6 +12,16 @@ import { beforeEach } from 'vitest';
 
 process.env.TZ = 'UTC';
 
+// The real Electron document is standards mode. happy-dom starts in quirks
+// mode unless told otherwise, which changes layout behavior and makes KaTeX
+// disable its renderer while the test modules are loading.
+if (typeof document !== 'undefined' && document.compatMode !== 'CSS1Compat') {
+  Object.defineProperty(document, 'compatMode', {
+    configurable: true,
+    value: 'CSS1Compat',
+  });
+}
+
 // Prefixes and exact names that must never leak into a test.
 const SCRUB_PREFIXES = ['COWORK_SERVER_', 'ANTON_'];
 const SCRUB_EXACT = ['DEV_MODE', 'COWORK_ALLOWED_ORIGINS'];

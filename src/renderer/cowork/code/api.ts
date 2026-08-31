@@ -132,6 +132,19 @@ export interface ResolvedSkill {
   content_hash: string;
 }
 
+export interface TaskCapabilities {
+  files: boolean;
+  review: boolean;
+  terminal: boolean;
+  project_actions: boolean;
+  slash_commands: boolean;
+  task_controls: boolean;
+  extensions: boolean;
+  platform_settings: boolean;
+  fork: boolean;
+  open_workspace: boolean;
+}
+
 export interface CodingSession {
   schema_version: number;
   id: string;
@@ -156,6 +169,7 @@ export interface CodingSession {
   computer_name?: string | null;
   computer_status?: ComputerStatus | null;
   computer_is_local?: boolean;
+  task_capabilities?: TaskCapabilities;
   resource_ids?: string[];
   scope_all_project_resources?: boolean;
   runtime_epoch?: number;
@@ -207,6 +221,11 @@ export interface InputReference {
   name: string;
   path: string;
   kind: 'mention' | 'local_image';
+  resource_id?: string;
+  relative_path?: string;
+  line_start?: number;
+  line_end?: number;
+  content_hash?: string;
 }
 
 export interface ExtensionEntry {
@@ -238,7 +257,7 @@ export interface CodingEvent {
   schema_version: number;
   seq: number;
   timestamp: string;
-  type: 'session' | 'user_message' | 'agent_message' | 'reasoning' | 'plan' | 'tool' | 'command' | 'file_change' | 'diff' | 'approval' | 'usage' | 'error';
+  type: 'session' | 'user_message' | 'agent_message' | 'reasoning' | 'plan' | 'tool' | 'command' | 'file_change' | 'diff' | 'child_work' | 'approval' | 'usage' | 'error';
   title: string;
   text: string;
   phase?: 'started' | 'progress' | 'completed' | 'failed' | 'pending' | null;
@@ -292,6 +311,24 @@ export interface ProjectCommandResult {
   phase: 'setup' | 'validate';
   return_code: number;
   output: string;
+}
+
+export interface ProjectActionRunResponse {
+  terminal_id: string;
+  label: string;
+  preview_url?: string | null;
+}
+
+export interface ProjectActionSummary {
+  id: string;
+  resource_id: string;
+  label: string;
+  resource_name: string;
+}
+
+export interface ProjectActionPage {
+  items: ProjectActionSummary[];
+  preview_url?: string | null;
 }
 
 export interface ProjectFolderInspection {
@@ -539,9 +576,12 @@ export interface DiffFile {
   deletions: number;
   patch: string;
   binary: boolean;
+  staged?: boolean;
+  unstaged?: boolean;
 }
 
 export interface EngineCapability {
+  manifest_version?: number;
   id: string;
   label: string;
   adapter_version: string;
@@ -553,6 +593,7 @@ export interface EngineCapability {
   supports_diff_events?: boolean;
   supports_models?: boolean;
   supports_terminal?: boolean;
+  features?: Record<string, 'supported' | 'unsupported'>;
   commands?: EngineCommand[];
 }
 
@@ -610,7 +651,7 @@ export interface TerminalTabPage {
 
 const EVENT_TYPES = new Set<CodingEvent['type']>([
   'session', 'user_message', 'agent_message', 'reasoning', 'plan', 'tool',
-  'command', 'file_change', 'diff', 'approval', 'usage', 'error',
+  'command', 'file_change', 'diff', 'child_work', 'approval', 'usage', 'error',
 ]);
 const EVENT_PHASES = new Set<NonNullable<CodingEvent['phase']>>([
   'started', 'progress', 'completed', 'failed', 'pending',
@@ -620,7 +661,7 @@ interface RequestPolicy {
   ensureService?: boolean;
 }
 
-async function requestJson<T>(path: string, init?: RequestInit, policy: RequestPolicy = {}): Promise<T> {
+export async function requestJson<T>(path: string, init?: RequestInit, policy: RequestPolicy = {}): Promise<T> {
   const url = `${getApiOrigin()}/api/v1/coding${path}`;
   const method = (init?.method || 'GET').toUpperCase();
   // Every write gets a sidecar preflight. Retrying after fetch fails would be
@@ -792,10 +833,19 @@ const liveCodingApi = {
     }),
   git: (id: string) => requestJson<GitState>(`/sessions/${encodeURIComponent(id)}/git`),
   diff: (id: string) => requestJson<{ files: DiffFile[] }>(`/sessions/${encodeURIComponent(id)}/diff`),
+  reviewFile: (id: string, body: { folder_id?: string | null; path: string; action: 'stage' | 'unstage' | 'discard' }) =>
+    requestJson<{ files: DiffFile[] }>(`/sessions/${encodeURIComponent(id)}/review/file`, {
+      method: 'POST', body: JSON.stringify(body),
+    }),
   branch: (id: string, name: string) => requestJson<GitState>(`/sessions/${encodeURIComponent(id)}/branch`, { method: 'POST', body: JSON.stringify({ name }) }),
   commit: (id: string, message: string) => requestJson<GitState>(`/sessions/${encodeURIComponent(id)}/commit`, { method: 'POST', body: JSON.stringify({ message }) }),
   apply: (id: string) => requestJson<{ status: string; snapshot?: string | null }>(`/sessions/${encodeURIComponent(id)}/apply`, { method: 'POST' }),
   validate: (id: string) => requestJson<{ items: ProjectCommandResult[] }>(`/sessions/${encodeURIComponent(id)}/validate`, { method: 'POST' }),
+  runProjectAction: (id: string, body: { resource_id: string; command_id: string; shell?: TerminalShellPreference; cols?: number; rows?: number }) =>
+    requestJson<ProjectActionRunResponse>(`/sessions/${encodeURIComponent(id)}/project-actions/run`, {
+      method: 'POST', body: JSON.stringify(body),
+    }),
+  projectActions: (id: string) => requestJson<ProjectActionPage>(`/sessions/${encodeURIComponent(id)}/project-actions`),
   deliveryPlan: (id: string) => requestJson<DeliveryPlan>(`/sessions/${encodeURIComponent(id)}/delivery`),
   updateDeliveryPolicy: (id: string, body: DeliveryAutomationPolicy) => requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/delivery-policy`, {
     method: 'PUT', body: JSON.stringify(body),
@@ -854,7 +904,9 @@ const liveCodingApi = {
 };
 
 const fixtureCodingApi = getCodeFixtureApi();
-export const codingApi = fixtureCodingApi || liveCodingApi;
+export const codingApi: typeof liveCodingApi = fixtureCodingApi
+  ? { ...liveCodingApi, ...fixtureCodingApi }
+  : liveCodingApi;
 
 export function openCodingEventStream(
   sessionId: string,

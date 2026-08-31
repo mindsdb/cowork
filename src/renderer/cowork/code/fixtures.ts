@@ -536,6 +536,8 @@ export function getCodeFixtureApi() {
     platformStatus: async () => ({ platform: 'darwin', windows_sandbox: null }),
     setupWindowsSandbox: async () => ({ platform: 'win32', windows_sandbox: 'ready', setup_started: true }),
     updateSession: async (id: string, body: Partial<CodingSession>) => copy(update(id, body)),
+    projectActions: async () => ({ items: [], preview_url: null }),
+    runProjectAction: async () => ({ terminal_id: 'terminal-run', label: 'Run', preview_url: 'http://127.0.0.1:4173' }),
     renameSession: async (id: string, title: string) => copy(update(id, { title })),
     setPinned: async (id: string, pinned: boolean) => {
       const item = selected(id);
@@ -613,7 +615,7 @@ export function getCodeFixtureApi() {
           mode: 'restore' as const,
           preserves_workspace_changes: true,
           recommended: true,
-          detail: 'Resume the preserved workspace and its current changes.',
+          detail: 'Resume the saved working copy and its current changes.',
         },
         ...(
           name === 'interrupted'
@@ -622,7 +624,7 @@ export function getCodeFixtureApi() {
               mode: 'recreate' as const,
               preserves_workspace_changes: false,
               recommended: false,
-              detail: 'Create a fresh isolated workspace from the task’s saved repository definitions.',
+              detail: 'Create a fresh isolated working copy from the task’s saved repository definitions.',
             }]
             : []
         ),
@@ -639,6 +641,7 @@ export function getCodeFixtureApi() {
     })),
     git: async (id: string) => copy(git(id)),
     diff: async (id: string) => ({ files: copy(fileMap.get(id) || []) }),
+    reviewFile: async (id: string) => ({ files: copy(fileMap.get(id) || []) }),
     branch: async (id: string, branch: string) => ({ ...copy(git(id)), branch, detached: false }),
     commit: async (id: string, _message: string) => copy(git(id)),
     apply: async (_id: string) => ({ status: 'applied', snapshot: '/tmp/cowork-recovery.patch' }),
