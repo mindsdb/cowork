@@ -2216,6 +2216,29 @@ export default function ChatView({
                     />
                   );
                 }
+                /* The turn never reached the agent (`worker_unresponsive`):
+                 * the worker stopped answering before anything ran. Kept apart
+                 * from anton_error, which means the agent DID run and raised
+                 * something we don't recognise. The difference is what the user
+                 * should do: retry works here, and reporting an agent bug does
+                 * not. Copy lives in the renderer rather than echoing m.content
+                 * so it can be improved OTA, same as the other retryable cards
+                 * (ENG-2126). */
+                if (m.code === 'worker_unresponsive') {
+                  const retryText = lastUserTextBefore(visibleMessages, i);
+                  return (
+                    <ActionCard
+                      key={i}
+                      time={formatMetaTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      title="The agent didn't start"
+                      body="This turn never reached the agent, so nothing ran. That's a fault on our side, not a problem with your request. Try again in a moment."
+                      buttons={retryText
+                        ? [{ label: 'Try again', onClick: () => onSend?.(retryText), primary: true }]
+                        : []}
+                    />
+                  );
+                }
                 // Spent FREE monthly allowance (gateway 429
                 // `included_allowance_exhausted`): not a drained wallet, so it
                 // names the reset date as a free alternative and says what
