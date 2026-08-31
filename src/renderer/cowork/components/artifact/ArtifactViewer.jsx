@@ -619,8 +619,8 @@ export function ArtifactViewer({
   // Universal "save to disk" — type-agnostic stream with
   // Content-Disposition: attachment, through the serve URL on desktop or the
   // authenticated draft URL on an org deployment (ENG-2044).
-  const onDownload = () => {
-    if (!downloadArtifactFile(artifact, { actionPath })) {
+  const onDownload = async () => {
+    if (!(await downloadArtifactFile(artifact, { actionPath }))) {
       setErr(disabledReason || 'This artifact has no downloadable file yet.');
     }
   };

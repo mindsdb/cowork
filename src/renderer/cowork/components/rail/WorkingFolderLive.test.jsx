@@ -22,11 +22,14 @@ vi.mock('../../api', () => ({
   fetchProjects: vi.fn(() => Promise.resolve([])),
   unpublishArtifact: vi.fn(),
 }));
+// Mutable so individual tests can flip the desktop half of the gates —
+// with a hard-coded literal, `!canOpenLocalFile` was unverifiable here.
+const hostState = vi.hoisted(() => ({ isWeb: true, isElectron: false, localApi: false }));
 vi.mock('../../../platform/host', () => ({
   host: {
-    isWeb: true,
-    isElectron: false,
-    isLocalApiOrigin: () => false,
+    get isWeb() { return hostState.isWeb; },
+    get isElectron() { return hostState.isElectron; },
+    isLocalApiOrigin: () => hostState.localApi,
     getApiOrigin: () => 'https://cowork.example',
     openExternal: (...a) => openExternal(...a),
     openPath: (...a) => openPath(...a),
@@ -73,6 +76,8 @@ beforeEach(() => {
   openExternal.mockClear();
   openPath.mockClear();
   downloadArtifactFile.mockClear();
+  downloadArtifactFile.mockImplementation(() => true);
+  hostState.isWeb = true; hostState.isElectron = false; hostState.localApi = false;
 });
 afterEach(() => setOrgMode(false));
 
@@ -199,6 +204,48 @@ describe('artifacts rail click in org mode', () => {
     expect(downloadArtifactFile).not.toHaveBeenCalled();
     expect(screen.queryByTestId('artifact-viewer')).toBeNull();
     expect(openExternal).not.toHaveBeenCalled();
+  });
+
+  it('keeps the kebab honest for a PUBLISHED fullstack app: open, never Download', async () => {
+    /*
+     * Review finding on #764: `canDownload` had no test — forcing it true left
+     * the whole suite green. This is the state that catches it: publishedUrl
+     * makes canOpenRemote true, and the backend type makes canDownloadOrgDraft
+     * false, so a regression to !!draftUrl renders a Download row that would
+     * save the app's shell index.html.
+     */
+    await renderRail(draft({
+      title: 'Ops Console',
+      type: 'fullstack-stateless-app',
+      path: '/proj/.anton/artifacts/ops/static/index.html',
+      ext: '.html',
+      draftUrl: '/api/v1/artifacts/drafts/proj-1/11111111111111111111111111111111/static/index.html',
+      publishedUrl: SHARED_URL,
+    }));
+
+    fireEvent.click(screen.getByLabelText('More actions'));
+
+    expect(screen.getByText('Open in new tab')).toBeInTheDocument();
+    expect(screen.queryByText('Download')).toBeNull();
+  });
+
+  it('does not label the dead end Download for an unshared fullstack app', async () => {
+    // Same review pass: openLabel keyed off canOpenRemote alone, so the two
+    // states where nothing can be saved read "Download" and then printed the
+    // dead-end message. The label must not promise what the click cannot do.
+    await renderRail(draft({
+      title: 'Ops Console',
+      type: 'fullstack-stateless-app',
+      path: '/proj/.anton/artifacts/ops/static/index.html',
+      ext: '.html',
+      draftUrl: '/api/v1/artifacts/drafts/proj-1/11111111111111111111111111111111/static/index.html',
+      publishedUrl: '',
+    }));
+
+    fireEvent.click(screen.getByLabelText('More actions'));
+
+    expect(screen.queryByText('Download')).toBeNull();
+    expect(screen.getByText('Open in new tab')).toBeInTheDocument();
   });
 
   it('labels the menu action Download when a tab has nowhere to open', async () => {

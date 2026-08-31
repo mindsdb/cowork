@@ -261,11 +261,12 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
       }
       // Org mode, non-HTML artifact: nothing above exists — no serve URL by
       // design, no published page because autopublish skips binaries — but the
-      // authenticated draft URL still streams the bytes, so save the file
-      // rather than dead-end (ENG-2044).
-      // Not for a fullstack app: its primary is a shell index.html, not the
-      // app, so the honest answer there is still the message below.
-      if (canDownloadOrgDraft(a) && downloadArtifactFile(a)) return;
+      // authenticated draft URL still carries the bytes, so save the file
+      // rather than dead-end (ENG-2044). Awaited: the download now runs an
+      // authFetch (a navigation cannot attach the Authorization header), so
+      // the result is a promise. Not for a fullstack app: its primary is a
+      // shell index.html, not the app — the message below is the honest answer.
+      if (canDownloadOrgDraft(a) && await downloadArtifactFile(a)) return;
       setRowError('This artifact has no servable file yet.');
       return;
     }
@@ -339,7 +340,7 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
     } else if (target === 'download') {
       // The draft the viewer cannot render, nobody shared: its bytes are still
       // one authenticated request away (ENG-2044).
-      if (!downloadArtifactFile(artifact)) setRowError('This artifact has no servable file yet.');
+      if (!(await downloadArtifactFile(artifact))) setRowError('This artifact has no servable file yet.');
     } else if (target === 'os') {
       onOpen(artifact.path);
     }
@@ -468,7 +469,11 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
           const canDownload = !canOpenLocalFile && !!(a.serveUrl || canDownloadOrgDraft(a));
           const openLabel = canOpenLocalFile
             ? 'Open in OS'
-            : (canOpenRemote ? 'Open in new tab' : 'Download');
+            // 'Download' only when the click can actually deliver one: an
+            // unshared fullstack app or a card with no primary file falls
+            // through to the dead-end message, and labelling THAT 'Download'
+            // promises a save that cannot happen (review finding on #764).
+            : (canOpenRemote || !canDownload ? 'Open in new tab' : 'Download');
           const canDelete = a.capabilities?.canEdit !== false;
           return (
             <div
@@ -504,10 +509,10 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
                   type="button"
                   className="menu-item"
                   disabled={busyPath === a.path}
-                  onClick={(e) => {
+                  onClick={async (e) => {
                     e.stopPropagation();
                     setOpenMenuPath(null);
-                    if (!downloadArtifactFile(a)) setRowError('This artifact has no servable file yet.');
+                    if (!(await downloadArtifactFile(a))) setRowError('This artifact has no servable file yet.');
                   }}
                 >
                   <span className="inline-flex text-[var(--frost-700)]">{Ico.download(13)}</span>

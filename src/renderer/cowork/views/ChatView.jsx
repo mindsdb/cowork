@@ -757,7 +757,7 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
       revalidateAfterFailure();
     }
   };
-  const handleDownload = () => {
+  const handleDownload = async () => {
     /*
      * `canAct` is a desktop notion — a canonical local path. Org mode addresses
      * the file by its draft URL and never has such a path, so gating on it
@@ -769,7 +769,7 @@ function ArtifactCard({ artifact, onOpen, live = false }) {
         : (disabledReason || 'No artifact file path is available.'));
       return;
     }
-    if (!downloadArtifactFile(artifact, { actionPath: path })) {
+    if (!(await downloadArtifactFile(artifact, { actionPath: path }))) {
       showStatus('error', 'This artifact has no downloadable file yet.');
       return;
     }
