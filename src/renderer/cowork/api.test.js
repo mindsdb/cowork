@@ -18,9 +18,15 @@ vi.mock('../platform/host', async (importOriginal) => ({
 const setAntonInstallId = vi.hoisted(() => vi.fn());
 vi.mock('./lib/analytics', () => ({ setAntonInstallId }));
 
-import { fetchRecommendedModels, fetchSettings, updateSettings, revealSettingKey, streamNewSession, fetchHealth, fetchInFlightList, cancelResponse, fetchHubWorkspaces, fetchArtifactStatus } from './api';
+// The boundary reloads the document for real; this suite is about what authFetch
+// hands back to its caller, not about the navigation that follows.
+const transitionMock = vi.hoisted(() => ({ prepareForOrganizationReload: vi.fn() }));
+vi.mock('./lib/organizationTransition', () => transitionMock);
+
+import { authFetch, fetchRecommendedModels, fetchSettings, updateSettings, revealSettingKey, streamNewSession, fetchHealth, fetchInFlightList, cancelResponse, fetchHubWorkspaces, fetchArtifactStatus } from './api';
 import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 import { setOrgMode } from '../lib/orgMode';
+import { __resetOrganizationRequestBoundaryForTests } from './lib/organizationRequestBoundary';
 
 const jsonRes = (body, ok = true, status = 200) => ({
   ok,
@@ -28,6 +34,60 @@ const jsonRes = (body, ok = true, status = 200) => ({
   headers: { get: () => 'application/json' },
   json: async () => body,
   text: async () => JSON.stringify(body),
+});
+
+const ORGANIZATION_A = '6ba7b810-9dad-11d1-80b4-00c04fd430c8';
+
+function accessToken(organizationId) {
+  const payload = btoa(JSON.stringify({
+    sub: 'user-1',
+    activate_organization: { id: organizationId },
+  })).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return `header.${payload}.signature`;
+}
+
+describe('authFetch organization boundary', () => {
+  beforeEach(() => {
+    __resetOrganizationRequestBoundaryForTests();
+    hostMock.isWeb = true;
+    hostMock.getAccessToken.mockReset();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('sends the document organization beside the browser bearer', async () => {
+    hostMock.getAccessToken.mockResolvedValue(accessToken(ORGANIZATION_A));
+    const fetch = vi.fn(async () => jsonRes({ ok: true }));
+    vi.stubGlobal('fetch', fetch);
+
+    await authFetch('/api/v1/projects');
+
+    expect(fetch).toHaveBeenCalledWith('/api/v1/projects', {
+      headers: {
+        Authorization: expect.stringMatching(/^Bearer /),
+        'X-Cowork-Expected-Organization-Id': ORGANIZATION_A,
+      },
+    });
+  });
+
+  /*
+   * The throw is what stops a caller reading a body scoped to an organization
+   * this document did not start in. Returning the response would let every
+   * existing `!res.ok` branch render the rejection as ordinary data.
+   */
+  it('refuses to return a response the server marked for reload', async () => {
+    hostMock.getAccessToken.mockResolvedValue(accessToken(ORGANIZATION_A));
+    const rejected = {
+      ...jsonRes({ code: 'organization_reload_required' }, false, 409),
+      headers: new Headers({ 'X-Cowork-Organization-Reload': 'required' }),
+    };
+    vi.stubGlobal('fetch', vi.fn(async () => rejected));
+
+    await expect(authFetch('/api/v1/projects'))
+      .rejects.toThrow('The active organization changed; reload required');
+  });
 });
 
 // The `refresh` flag is the whole mechanism behind "a top-up unlocks paid

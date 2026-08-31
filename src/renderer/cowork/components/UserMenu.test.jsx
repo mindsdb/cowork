@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 const hostMock = vi.hoisted(() => ({
   host: {
@@ -17,9 +17,11 @@ const analyticsMock = vi.hoisted(() => ({
 }));
 vi.mock('../lib/analytics', () => analyticsMock);
 
-// The menu now reads the organization listing, which reaches Keycloak through
-// the main process. Stubbing the hook rather than the bridge keeps every test
-// below about the menu; the hook has its own file.
+/**
+ * The menu reads a platform-neutral organization hook. Stubbing the hook keeps
+ * every test below about the menu; Electron and web routing have their own
+ * focused coverage.
+ */
 const orgsMock = vi.hoisted(() => ({
   state: { orgs: [], activeOrg: null, activeOrgId: null, switching: false },
   switchOrg: vi.fn(async () => ({ ok: true })),
@@ -102,12 +104,14 @@ describe('UserMenu — footer row (ENG-1408)', () => {
 });
 
 describe('UserMenu — dropdown (ENG-1545 curated items)', () => {
-  it('shows the org header (not the email) and the five curated destinations', () => {
+  it('heads the menu with the account and names the organization in its own section', () => {
     renderMenu(<UserMenu user={user} />);
     openMenu();
-    // The org name heads the menu; the email is intentionally not shown here.
+    // Same shape as the console: who you are on top, which organization below.
+    expect(screen.getByText('hazem@example.com')).toBeInTheDocument();
+    expect(screen.getByText('Organization')).toBeInTheDocument();
+    expect(screen.getByText('Account')).toBeInTheDocument();
     expect(screen.getAllByText('MindsDB').length).toBeGreaterThan(0);
-    expect(screen.queryByText('hazem@example.com')).toBeNull();
     for (const label of ['Settings', 'Billing & Usage', 'Members', 'Help & Feedback', 'Logout']) {
       expect(screen.getByRole('menuitem', { name: new RegExp(label) })).toBeInTheDocument();
     }
@@ -191,12 +195,14 @@ describe('UserMenu — billing route is measured as navigation (ENG-1533)', () =
   );
 });
 
-// ── Which organization this install works in ──────────────────────
-//
-// The picker is here rather than in the rail because an organization is who
-// is paying, and the account menu is the identity surface. Switching also
-// moves the API key the sidecar presents, which is why a refusal has to say
-// something rather than leaving a row that quietly did nothing.
+/**
+ * ── Which organization this install works in ──────────────────────
+ *
+ * The picker is here rather than in the rail because an organization is who
+ * is paying, and the account menu is the identity surface. Switching also
+ * changes the tenant subsequent requests address, which is why a refusal has
+ * to say something rather than leaving a row that quietly did nothing.
+ */
 describe('UserMenu — organization picker', () => {
   const withOrgs = (orgs, active) => {
     orgsMock.state = {
@@ -234,28 +240,44 @@ describe('UserMenu — organization picker', () => {
     expect(orgsMock.switchOrg).toHaveBeenCalledWith('org-personal');
   });
 
-  it('offers no picker when there is nowhere to switch to', () => {
-    // One organization is a label, not a choice, and the header already
-    // carries it. This is what keeps a personal-only account's menu identical
-    // to the one it had before any of this existed.
+  it('still names the only organization, and leaves nothing to switch to', () => {
+    /*
+     * The console shows the section for one organization too. A checked row
+     * answers "which organization am I in" outright, where an absent section
+     * leaves the reader to infer it from nothing. There is still no switch
+     * target, so the row is disabled.
+     */
     withOrgs([PERSONAL], PERSONAL);
     renderMenu(<UserMenu user={user} />);
     openMenu();
-    expect(screen.queryByText('Organization')).toBeNull();
-    expect(screen.queryByRole('menuitem', { name: /hazem@example\.com's organization/ })).toBeNull();
+    expect(screen.getByText('Organization')).toBeInTheDocument();
+    const only = screen.getByRole('menuitem', { name: /hazem@example\.com's organization/ });
+    expect(only).toHaveAttribute('data-disabled');
   });
 
-  it('renders the menu it always did when the listing never arrives', () => {
-    // Signed out, an older main process with no such channel, or a read still
-    // in flight all land here, and all three must read as today's menu.
+  it('falls back to the claim organization when the listing never arrives', () => {
+    /*
+     * Signed out, an older main process with no such channel, or a read still
+     * in flight all land here. The section still names the organization the
+     * token knows about, so only the switch targets are missing rather than
+     * the whole answer.
+     */
     withOrgs([], null);
     renderMenu(<UserMenu user={user} />);
     openMenu();
-    expect(screen.queryByText('Organization')).toBeNull();
-    expect(screen.getAllByText('MindsDB').length).toBeGreaterThan(0);
+    expect(screen.getByText('Organization')).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /MindsDB/ })).toHaveAttribute('data-disabled');
     for (const label of ['Settings', 'Billing & Usage', 'Members', 'Help & Feedback', 'Logout']) {
       expect(screen.getByRole('menuitem', { name: new RegExp(label) })).toBeInTheDocument();
     }
+  });
+
+  it('drops the organization section only when nothing can name one', () => {
+    withOrgs([], null);
+    renderMenu(<UserMenu user={{ ...user, org: null }} />);
+    openMenu();
+    expect(screen.queryByText('Organization')).toBeNull();
+    expect(screen.getByText('Account')).toBeInTheDocument();
   });
 
   it('says so when the switch is refused, and leaves the check where it was', async () => {
@@ -268,6 +290,21 @@ describe('UserMenu — organization picker', () => {
     // Nothing is applied optimistically, so the trigger still names the one
     // the app is actually working in.
     expect(screen.getByRole('button', { name: /Hazem Ahmed/ }).textContent).toContain('acme.example');
+  });
+
+  it('does not render a refusal while an indeterminate web switch reloads', async () => {
+    orgsMock.switchOrg.mockResolvedValue({
+      ok: false,
+      reloadRequired: true,
+      error: 'The tenant may already have changed.',
+    });
+    withOrgs([ACME, PERSONAL], ACME);
+    renderMenu(<UserMenu user={user} />);
+    openMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: /hazem@example\.com's organization/ }));
+
+    await waitFor(() => expect(orgsMock.switchOrg).toHaveBeenCalledWith('org-personal'));
+    expect(screen.queryByText('The tenant may already have changed.')).toBeNull();
   });
 
   it('offers Manage organization only once there is an organization to manage', () => {

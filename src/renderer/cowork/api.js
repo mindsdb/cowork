@@ -15,6 +15,10 @@ import { setAntonInstallId } from './lib/analytics';
 import { artifactIdentity } from './lib/artifactIdentity';
 import { getOrgMode } from '../lib/orgMode';
 import {
+  expectedOrganizationHeaders,
+  handleOrganizationBoundaryResponse,
+} from './lib/organizationRequestBoundary';
+import {
   buildMemoryDeletePayload,
   buildMemoryWritePayload,
   groupMemoryItems,
@@ -41,10 +45,21 @@ export async function authFetch(url, options = {}) {
   if (host.isWeb) {
     const token = await host.getAccessToken();
     if (token) {
-      options = { ...options, headers: { ...(options.headers || {}), Authorization: `Bearer ${token}` } };
+      options = {
+        ...options,
+        headers: {
+          ...(options.headers || {}),
+          Authorization: `Bearer ${token}`,
+          ...expectedOrganizationHeaders(token),
+        },
+      };
     }
   }
-  return fetch(url, options);
+  const response = await fetch(url, options);
+  if (host.isWeb && handleOrganizationBoundaryResponse(response)) {
+    throw new Error('The active organization changed; reload required');
+  }
+  return response;
 }
 
 async function req(path, options = {}) {

@@ -1,4 +1,4 @@
-import { personalOrgName } from '../../../shared/minds-orgs';
+import { PERSONAL_ORG_LABEL, personalOrgName } from '../../../shared/minds-orgs';
 
 function decodeJwtPayload(token) {
   try {
@@ -42,10 +42,15 @@ export function accountUserFromToken(token) {
 // They come apart because the claim carries no display name: a personal
 // organization's claim name is the raw `personal_<userId>`, and auth's real
 // label for it is `<email>'s organization`. Printing the raw name would be
-// worse than the blank this replaces, and rebuilding the label here would put
-// a third copy of a rule that already lives in auth and in Keycloak. So a
-// personal organization's label is left null and `useMindsOrgs` supplies the
-// name Keycloak actually holds.
+// worse than the generic label below, and rebuilding auth's string here would
+// put a third copy of a rule that already lives in auth and in Keycloak.
+//
+// So a personal organization gets a readable placeholder rather than nothing.
+// The listing is an async, failable source, and it is the only thing that can
+// produce auth's real label. The menu still has to name the organization on
+// first paint and when that read never lands. `useMindsOrgs` upgrades this
+// to the Keycloak-held name as soon as it arrives, because `UserMenu` prefers
+// the listing's `displayName` over this value.
 function activeOrgFromPayload(payload) {
   let org = payload.activate_organization ?? payload.active_organization ?? payload.organization;
   if (typeof org === 'string') {
@@ -55,7 +60,7 @@ function activeOrgFromPayload(payload) {
   const name = org.name || null;
   const isPersonal = Boolean(payload.sub) && name === personalOrgName(payload.sub);
   return {
-    org: org.displayName || (isPersonal ? null : name),
+    org: org.displayName || (isPersonal ? PERSONAL_ORG_LABEL : name),
     orgId: org.id || name || null,
   };
 }

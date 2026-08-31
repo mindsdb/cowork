@@ -1,25 +1,26 @@
-// `<UserMenu>` — the signed-in sidebar footer row: avatar (or initials
-// placeholder), display name, and org, opening a dropdown with the account
-// destinations. Parity with the web console's user menu (ENG-1408).
-//
-// Curated to five destinations (ENG-1545): Settings, Billing & Usage, Members,
-// Help & Feedback, Logout. The console pages (Billing & Usage / Members) and the
-// support page open in the OS browser — each carries an ↗ hint so the jump out
-// of the app is telegraphed before the click. Settings and logout act inside the
-// app. Theme + 8-bit live as quick toggles in the sidebar footer, not here.
-//
-// **The organization picker lives here rather than in the rail**, which is the
-// opposite of where the workspace selector ended up, and the two decisions are
-// the same decision. An organization is who is paying; a workspace is a
-// container inside it. The account menu is about identity, so the organization
-// belongs in it and the workspace does not, which is why the workspace picker
-// moved out to its own control above the New task CTA. The console puts its
-// organization selector in exactly this menu too.
-//
-// Switching costs more than a label: the API key the sidecar presents belongs
-// to one organization, so main re-mints and hands over a new one. That is why
-// the rows disable while a switch is in flight and why a refusal gets a
-// sentence rather than a silently dead row.
+/**
+ * `<UserMenu>` — the signed-in sidebar footer row: avatar (or initials
+ * placeholder), display name, and org, opening a dropdown with the account
+ * destinations. Parity with the web console's user menu (ENG-1408).
+ *
+ * The primary actions are Settings, Billing & Usage, Members, Help & Feedback,
+ * and Logout. Manage organization appears when the active organization has a
+ * readable label. External destinations carry an ↗ hint so the jump out of the
+ * app is telegraphed before the click.
+ *
+ * **The organization picker lives here rather than in the rail**, which is the
+ * opposite of where the workspace selector ended up, and the two decisions are
+ * the same decision. An organization is who is paying; a workspace is a
+ * container inside it. The account menu is about identity, so the organization
+ * belongs in it and the workspace does not, which is why the workspace picker
+ * moved out to its own control above the New task CTA. The console puts its
+ * organization selector in exactly this menu too.
+ *
+ * Switching costs more than a label: the active organization controls the
+ * tenant that subsequent requests address. Desktop refreshes its session in
+ * main; web refreshes Keycloak and reloads the renderer. That is why rows
+ * disable while a switch is in flight and a refusal gets a written response.
+ */
 
 import { useState } from 'react';
 import {
@@ -108,63 +109,90 @@ export function UserMenu({ user, onOpenSettings }) {
   // fallback for the moments the listing has not arrived, and it is already
   // null rather than the raw slug.
   const activeOrgName = activeOrg?.displayName || user.org || null;
+  // The console heads its menu with the email; fall back to whatever else names
+  // the account so the header is never empty.
+  const identity = user.email || user.username || user.name || null;
 
   const pick = async (organizationId) => {
     const result = await switchOrg(organizationId);
-    if (result?.ok) return;
-    // A written sentence, not the error's own text. Main answers a refusal
-    // with something a person can act on and every branch of it already ends
-    // in "Nothing changed", which is the part that matters here.
+    /**
+     * A possibly committed web switch reloads immediately. Do not paint an
+     * error into the old tenant while navigation is tearing that UI down.
+     */
+    if (result?.ok || result?.reloadRequired) return;
     toastManager.add({
       title: result?.error || 'We could not change organization. Please try again.',
       type: 'danger',
     });
   };
 
-  const orgRows = orgs.length > 1 ? [
-    {
-      id: 'organization-group',
-      heading: (
-        <div className="text-[10px] font-semibold uppercase tracking-[0.06em] text-ink-4">
-          Organization
-        </div>
-      ),
-    },
-    ...orgs.map((org) => {
-      const isActive = org.id === activeOrg?.id;
-      return {
-        id: `organization-${org.id}`,
-        label: org.displayName,
-        // Long names truncate in the row, so hover carries the whole one.
-        title: org.displayName,
-        // The trigger already names the active organization, and the console
-        // marks it in the list too. Without the check the only signal is the
-        // row being disabled, which reads as "unavailable" rather than "you
-        // are here".
-        hint: isActive ? <Check size={13} strokeWidth={2} className="text-accent" /> : undefined,
-        // The active row is not a destination, and a second click during an
-        // in-flight switch would race the first through the mint.
-        disabled: isActive || switching,
-        onClick: isActive ? undefined : () => pick(org.id),
-      };
-    }),
+  const sectionHeading = (text) => (
+    <div className="text-[10px] font-semibold uppercase tracking-[0.06em] text-ink-4">{text}</div>
+  );
+
+  const activeRowHint = <Check size={13} strokeWidth={2} className="text-accent" />;
+
+  /**
+   * One row per organization, the active one checked. Shown for a single
+   * organization too, the way the console shows it: a checked row answers
+   * "which organization am I in" outright, where an absent section leaves the
+   * reader to infer it. The row is not a destination, and a second click during
+   * an in-flight switch would race the first tenant transition.
+   */
+  const listedOrgRows = orgs.map((org) => {
+    const isActive = org.id === activeOrg?.id;
+    return {
+      id: `organization-${org.id}`,
+      label: org.displayName,
+      // Long names truncate in the row, so hover carries the whole one.
+      title: org.displayName,
+      hint: isActive ? activeRowHint : undefined,
+      disabled: isActive || switching,
+      onClick: isActive ? undefined : () => pick(org.id),
+    };
+  });
+
+  /**
+   * The listing is asynchronous and can fail, and on desktop it is answered by
+   * a main process that may predate these channels. Name the organization the
+   * token claim already knows about rather than dropping the section, so the
+   * menu reads the same in every state and only the switch targets are missing.
+   */
+  const claimOnlyOrgRow = activeOrgName ? [{
+    id: 'organization-active',
+    label: activeOrgName,
+    title: activeOrgName,
+    hint: activeRowHint,
+    disabled: true,
+  }] : [];
+
+  const organizationRows = listedOrgRows.length ? listedOrgRows : claimOnlyOrgRow;
+  const orgRows = organizationRows.length ? [
+    { id: 'organization-group', heading: sectionHeading('Organization') },
+    ...organizationRows,
     { divider: true },
   ] : [];
 
   const items = [
-    // Identity header — just the org name (accounts without an active
-    // organization skip the header entirely). The email is intentionally not
-    // shown here; the account row already carries the identity.
-    activeOrgName && {
+    /**
+     * Identity header — who you are signed in as, matching the console. The
+     * organization is a separate fact with its own section below; letting it
+     * stand in for the account here meant a menu that never named the person
+     * and, when the organization could not be resolved, named nothing at all.
+     */
+    identity && {
+      id: 'identity',
       heading: (
         <div className="min-w-0">
-          <div className="text-[12.5px] font-semibold text-ink truncate">{activeOrgName}</div>
+          <div className="text-[12.5px] font-semibold text-ink truncate" title={identity}>
+            {identity}
+          </div>
         </div>
       ),
     },
-    // Only when there is somewhere to switch to. One organization is not a
-    // choice, and the header above already names it.
+    identity && { divider: true },
     ...orgRows,
+    { id: 'account-group', heading: sectionHeading('Account') },
     { icon: icon(Settings), label: 'Settings', onClick: onOpenSettings },
     // `nav`, not a paywall trigger (ENG-1533): nothing blocked this user, they
     // went looking. It has to be recorded — it is a real route to the billing

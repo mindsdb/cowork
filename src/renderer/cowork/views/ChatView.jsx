@@ -33,6 +33,7 @@ import { AttachmentThumbnail, useBlobImageSrc } from '../components/AttachmentTh
 import { normalizeArtifactRecord } from '../lib/artifactPaths';
 import { canPreviewLocally, canPreviewOrgDraft, isImageArtifact } from '../lib/artifactKinds';
 import { downloadArtifactFile } from '../lib/artifactDownload';
+import { openAuthenticatedResource } from '../lib/authenticatedResource';
 import { latestSkillCardIndexByKey } from '../lib/skillCards';
 import { host, isWeb } from '../../platform/host';
 import { Crumb as CrumbButton, CrumbSep } from '../components/ui/Crumb';
@@ -358,7 +359,9 @@ function UserTurn({ content, attachments, time, onDelete, onEdit, isLast, projec
                 key={a.id}
                 url={rawUrl}
                 alt={a.name || 'Image'}
-                onOpen={() => host.openExternal(rawUrl)}
+                onOpen={() => {
+                  openAuthenticatedResource(rawUrl, { filename: a.name }).catch(() => {});
+                }}
               />
             );
           }
