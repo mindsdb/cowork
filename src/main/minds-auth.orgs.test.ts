@@ -156,12 +156,13 @@ describe('choosing the organization the presented token names', () => {
     // The reported case: signing in with Personal active put the key where the
     // company could neither pay for it nor revoke it.
     let landed = PERSONAL;
-    const calls = installRoutedFetch(
-      keycloakRoutes([PERSONAL, ACME], () => landed).map((route) =>
+    const calls = installRoutedFetch([
+      ...sidecarRoutes(),
+      ...keycloakRoutes([PERSONAL, ACME], () => landed).map((route) =>
         route.method === 'PUT'
           ? { ...route, reply: (call: RoutedCall) => { landed = JSON.parse(call.body!).id === ACME.id ? ACME : PERSONAL; return { status: 204, body: {} }; } }
           : route),
-    );
+    ]);
 
     const result = await ensureActiveOrg(tokenFor(PERSONAL));
 
@@ -210,12 +211,13 @@ describe('choosing the organization the presented token names', () => {
 
   it('records an organization named by onboarding as this install\'s pick', async () => {
     let landed = PERSONAL;
-    installRoutedFetch(
-      keycloakRoutes([PERSONAL, ACME, BETA], () => landed).map((route) =>
+    installRoutedFetch([
+      ...sidecarRoutes(),
+      ...keycloakRoutes([PERSONAL, ACME, BETA], () => landed).map((route) =>
         route.method === 'PUT'
           ? { ...route, reply: (call: RoutedCall) => { const id = JSON.parse(call.body!).id; landed = [PERSONAL, ACME, BETA].find((o) => o.id === id)!; return { status: 204, body: {} }; } }
           : route),
-    );
+    ]);
 
     await ensureActiveOrg(tokenFor(PERSONAL), { preferOrgId: BETA.id });
 
