@@ -3,7 +3,7 @@ import type { ConnectorConnection } from '../api';
 import Alert from '../components/ui/Alert';
 import Spinner from '../components/ui/Spinner';
 import { ConfirmModal } from '../components/ConfirmModal';
-import { codingApi, type CodingSession } from './api';
+import { codingApi, type CodingSession, type RecoveryOption, type RecoveryPlan } from './api';
 import { ApprovalCard } from './ApprovalCard';
 import { CodeComposer } from './CodeComposer';
 import { CodeConnectorsView } from './CodeConnectorsView';
@@ -17,6 +17,7 @@ import { ReviewPanel } from './ReviewPanel';
 import { RuntimeControlsModal } from './RuntimeControlsModal';
 import { RenameTaskModal } from './RenameTaskModal';
 import { ProjectSettingsModal } from './ProjectSettingsModal';
+import { RecoveryModal } from './RecoveryModal';
 import { TaskBar } from './TaskBar';
 import { TaskTerminal } from './TaskTerminal';
 import { useCodingSession } from './useCodingSession';
@@ -48,6 +49,7 @@ export default function CodeView({
   onOpenConnectors = () => {},
   onOpenSkills = () => {},
   onOpenNewTask = () => {},
+  active = true,
   onSessionsChange,
   onSelectionChange,
 }: {
@@ -67,6 +69,7 @@ export default function CodeView({
   onOpenConnectors?: () => void;
   onOpenSkills?: () => void;
   onOpenNewTask?: () => void;
+  active?: boolean;
   onSessionsChange: (sessions: CodingSession[]) => void;
   onSelectionChange: (sessionId: string | null, newTask?: boolean) => void;
 }) {
@@ -84,8 +87,11 @@ export default function CodeView({
   const [automationErrors, setAutomationErrors] = useState<Record<string, string>>({});
   const [resolvingApprovalId, setResolvingApprovalId] = useState<string | null>(null);
   const [recoveringTaskId, setRecoveringTaskId] = useState<string | null>(null);
+  const [recoveryPlan, setRecoveryPlan] = useState<RecoveryPlan | null>(null);
+  const [recoveryComputerId, setRecoveryComputerId] = useState('');
+  const [recoveryError, setRecoveryError] = useState('');
   const catalog = useCodingCatalog();
-  const detail = useCodingSession(newTask || projectsOpen || connectorsOpen || skillsOpen ? null : selectedId);
+  const detail = useCodingSession(newTask || projectsOpen || connectorsOpen || skillsOpen ? null : selectedId, active);
   const cachedSession = sessions.find((item) => item.id === selectedId) || null;
   // The session list already contains enough information to render the task
   // shell. Keep it interactive while detailed history and review data load in
@@ -93,6 +99,7 @@ export default function CodeView({
   const session = detail.session?.id === selectedId ? detail.session : cachedSession;
   const projects = useCodeProjects(newTask ? null : session?.project_id);
   const taskList = useCodeTaskList({
+    active,
     sessions,
     selectedId,
     newTask: newTask || projectsOpen || connectorsOpen || skillsOpen,
@@ -134,6 +141,9 @@ export default function CodeView({
     setRenameOpen(false);
     setResolvingApprovalId(null);
     setRecoveringTaskId(null);
+    setRecoveryPlan(null);
+    setRecoveryComputerId('');
+    setRecoveryError('');
   }, [newTask, projectsOpen, connectorsOpen, skillsOpen, selectedId]);
 
   useEffect(() => {
@@ -156,10 +166,36 @@ export default function CodeView({
   const suggestedUpdate = [...detail.events].reverse().find(
     (event) => event.type === 'agent_message' && event.text.trim(),
   )?.text.trim() || '';
+  const performRecovery = async (sessionId: string, option: RecoveryOption) => {
+    setRecoveringTaskId(sessionId);
+    setRecoveryError('');
+    try {
+      await runAction(
+        () => codingApi.recover(sessionId, option.computer.id, option.mode === 'recreate'),
+        true,
+        true,
+      );
+      setRecoveryPlan(null);
+    } catch (reason) {
+      setRecoveryError(reason instanceof Error ? reason.message : 'The task could not be resumed.');
+    } finally {
+      setRecoveringTaskId((current) => current === sessionId ? null : current);
+    }
+  };
   const recoverTask = async (sessionId: string) => {
     setRecoveringTaskId(sessionId);
+    setRecoveryError('');
     try {
-      await runAction(() => codingApi.recover(sessionId), true, true);
+      const plan = await codingApi.recoveryOptions(sessionId);
+      const recommended = plan.options.find((option) => option.recommended) || plan.options[0];
+      if (plan.options.length === 1 && recommended?.mode === 'restore') {
+        await performRecovery(sessionId, recommended);
+        return;
+      }
+      setRecoveryPlan(plan);
+      setRecoveryComputerId(recommended?.computer.id || '');
+    } catch (reason) {
+      setActionError(reason instanceof Error ? reason.message : 'Recovery options could not be loaded.');
     } finally {
       setRecoveringTaskId((current) => current === sessionId ? null : current);
     }
@@ -176,6 +212,15 @@ export default function CodeView({
           else delete next[sessionId];
           return next;
         })}
+      />
+      <RecoveryModal
+        plan={recoveryPlan}
+        selectedComputerId={recoveryComputerId}
+        busy={!!recoveringTaskId}
+        error={recoveryError}
+        onSelect={setRecoveryComputerId}
+        onClose={() => { if (!recoveringTaskId) setRecoveryPlan(null); }}
+        onConfirm={(option) => { if (selectedId) void performRecovery(selectedId, option); }}
       />
       {!newTask && !projectsOpen && !connectorsOpen && !skillsOpen && selectedId && taskBarSession && (
         <TaskBar

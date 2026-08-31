@@ -118,6 +118,30 @@ describe('useCodingSession', () => {
     expect(result.current.loading).toBe(false);
   });
 
+  it('closes live updates and reconciliation while the Code workspace is hidden', async () => {
+    vi.useFakeTimers();
+    try {
+      const close = vi.fn();
+      api.openStream.mockReturnValueOnce(close);
+      api.session.mockResolvedValue(session('a'));
+      const view = renderHook(
+        ({ active }: { active: boolean }) => useCodingSession('a', active),
+        { initialProps: { active: true } },
+      );
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      expect(api.openStream).toHaveBeenCalledOnce();
+      const callsBeforeHiding = api.session.mock.calls.length;
+
+      view.rerender({ active: false });
+      expect(close).toHaveBeenCalledOnce();
+      await act(async () => { vi.advanceTimersByTime(10_000); });
+
+      expect(api.session).toHaveBeenCalledTimes(callsBeforeHiding);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('restores the conversation without waiting for slow Git review data', async () => {
     const slowGit = deferred<never>();
     const slowDiff = deferred<never>();

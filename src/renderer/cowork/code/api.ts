@@ -93,6 +93,19 @@ export interface RuntimeRegistrationToken {
   expires_in_seconds: number;
 }
 
+export interface RecoveryOption {
+  computer: CodeComputer;
+  mode: 'restore' | 'recreate';
+  preserves_workspace_changes: boolean;
+  recommended: boolean;
+  detail: string;
+}
+
+export interface RecoveryPlan {
+  run_id: string;
+  options: RecoveryOption[];
+}
+
 export type SessionUpdateBody = Partial<RuntimeControls>;
 
 export interface PendingApproval {
@@ -766,8 +779,11 @@ const liveCodingApi = {
   runQueued: (id: string) =>
     requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/queue/run`, { method: 'POST' }),
   cancel: (id: string) => requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/cancel`, { method: 'POST' }),
-  recover: (id: string, computerId?: string) => requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/recover`, {
-    method: 'POST', body: JSON.stringify({ computer_id: computerId || null }),
+  recoveryOptions: (id: string) => requestJson<RecoveryPlan>(
+    `/sessions/${encodeURIComponent(id)}/recovery-options`,
+  ),
+  recover: (id: string, computerId?: string, allowRecreate = false) => requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/recover`, {
+    method: 'POST', body: JSON.stringify({ computer_id: computerId || null, allow_recreate: allowRecreate }),
   }),
   approve: (id: string, approvalId: string, decision: ApprovalDecision) =>
     requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/approvals/${encodeURIComponent(approvalId)}`, {

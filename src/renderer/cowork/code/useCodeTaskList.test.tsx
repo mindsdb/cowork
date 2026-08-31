@@ -38,6 +38,28 @@ function renderTaskList(newTask: boolean) {
 }
 
 
+function codingSession(overrides: Partial<CodingSession> = {}): CodingSession {
+  return {
+    schema_version: 1,
+    id: 'task-1',
+    title: 'Task',
+    engine_id: 'codex',
+    engine_adapter_version: '1',
+    model: 'gpt',
+    permission_mode: 'supervised',
+    status: 'running',
+    source_path: '/tmp/repo',
+    workspace_path: '/tmp/workspace',
+    workspace_kind: 'local_copy',
+    source_dirty: false,
+    event_count: 1,
+    created_at: '2026-08-31T09:00:00Z',
+    updated_at: '2026-08-31T09:00:00Z',
+    ...overrides,
+  };
+}
+
+
 describe('useCodeTaskList', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -62,5 +84,56 @@ describe('useCodeTaskList', () => {
     await act(async () => { await Promise.resolve(); await Promise.resolve(); });
 
     expect(view.onSelectionChange).toHaveBeenCalledWith(null, true);
+  });
+
+  it('does not poll while the Code workspace is hidden', async () => {
+    vi.useFakeTimers();
+    try {
+      const view = renderHook(
+        ({ active }: { active: boolean }) => useCodeTaskList({
+          active,
+          sessions: [],
+          selectedId: null,
+          newTask: true,
+          currentSession: null,
+          onSessionsChange: vi.fn(),
+          onSelectionChange: vi.fn(),
+        }),
+        { initialProps: { active: false } },
+      );
+
+      await act(async () => { vi.advanceTimersByTime(15_000); });
+      expect(sessions).not.toHaveBeenCalled();
+
+      view.rerender({ active: true });
+      await act(async () => { await Promise.resolve(); });
+      expect(sessions).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not rebuild the sidebar for stream-only session changes', async () => {
+    const previous = codingSession();
+    const onSessionsChange = vi.fn();
+    const view = renderHook(
+      ({ currentSession }: { currentSession: CodingSession }) => useCodeTaskList({
+        active: false,
+        sessions: [previous],
+        selectedId: previous.id,
+        newTask: false,
+        currentSession,
+        onSessionsChange,
+        onSelectionChange: vi.fn(),
+      }),
+      { initialProps: { currentSession: previous } },
+    );
+
+    onSessionsChange.mockClear();
+    view.rerender({ currentSession: codingSession({ event_count: 42, updated_at: '2026-08-31T09:00:01Z' }) });
+    expect(onSessionsChange).not.toHaveBeenCalled();
+
+    view.rerender({ currentSession: codingSession({ status: 'completed', event_count: 43 }) });
+    expect(onSessionsChange).toHaveBeenCalledOnce();
   });
 });

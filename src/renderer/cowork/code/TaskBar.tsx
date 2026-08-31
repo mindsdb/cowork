@@ -58,6 +58,12 @@ export function TaskBar({
         : (git?.branch || 'isolated worktree');
   const origin = session.source_contexts?.[0] || null;
   const engineLabel = session.engine_id === 'codex' ? 'Codex' : session.engine_id;
+  const scopedWorkspaceNames = (session.workspaces || []).map((workspace) => workspace.folder_name);
+  const scopeLabel = session.scope_all_project_resources
+    ? `All project resources (${folderCount})`
+    : scopedWorkspaceNames.length
+      ? scopedWorkspaceNames.join(', ')
+      : `${session.resource_ids?.length || folderCount} selected resources`;
 
   return (
     <header className="code-taskbar">
@@ -93,6 +99,7 @@ export function TaskBar({
                 heading: (
                   <div className="code-taskbar-details">
                     <div><span>Workspace</span><strong>{workspaceModeLabel}</strong></div>
+                    <div><span>Task scope</span><strong title={scopeLabel}>{scopeLabel}</strong></div>
                     <div><span>Agent</span><strong>{engineLabel}</strong></div>
                     <div><span>Model</span><strong>{modelLabel || session.model}</strong></div>
                     <div><span>Location</span><code title={session.workspace_path}>{worktreeLabel}</code></div>

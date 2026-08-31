@@ -75,7 +75,7 @@ describe('EventTimeline', () => {
     );
 
     expect(screen.getByText('Task paused')).toBeInTheDocument();
-    expect(screen.getByText(/conversation, workspace, and changes are preserved/)).toBeInTheDocument();
+    expect(screen.getByText(/conversation is safe; resume there or choose another compatible computer/)).toBeInTheDocument();
     expect(screen.getAllByText('Computer disconnected')).toHaveLength(1);
     fireEvent.click(screen.getByRole('button', { name: 'Resume task' }));
     expect(onRecover).toHaveBeenCalledOnce();

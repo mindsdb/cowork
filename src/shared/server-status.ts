@@ -17,9 +17,11 @@
  *                     and whatever it printed are the evidence.
  *  - `timeout`      — the process was still alive, and still silent, when the
  *                     hard cap expired. Usually a very slow first import.
+ *  - `incompatible` — a healthy backend answered, but it does not expose the
+ *                     Code capability required by this desktop build.
  *  - `not-installed`— the backend (or uv) isn't on disk at all.
  */
-export type ServerStartErrorKind = 'spawn-error' | 'exited' | 'timeout' | 'not-installed';
+export type ServerStartErrorKind = 'spawn-error' | 'exited' | 'timeout' | 'incompatible' | 'not-installed';
 
 /** Hard cap on a start, in ms. One number for every build and every platform.
  *
@@ -63,6 +65,7 @@ export function exitCodeLabel(input: {
   switch (input.kind) {
     case 'exited': return 'unknown';
     case 'spawn-error':
+    case 'incompatible':
     case 'not-installed': return 'never started';
     default: return 'never started';
   }
@@ -115,6 +118,13 @@ export function backendFailureCopy(input: {
       headline = "The backend isn't installed yet.";
       hints.push('Re-run the installer to set it up.');
       break;
+    case 'incompatible':
+      headline = 'The backend needs to be updated for this version of MindsHub Cowork.';
+      hints.push(
+        'Quit MindsHub Cowork completely and reopen it so the matching backend can be installed and started.',
+        'If the update does not complete, re-run the latest installer.',
+      );
+      break;
     default:
       headline = 'The backend is not running.';
       hints.push('Start it below.');
@@ -147,6 +157,8 @@ function noLogHint(kind: ServerStartErrorKind | null): string {
       return 'The program never ran, so the launch error above is the only evidence there is; there is no log to send.';
     case 'not-installed':
       return 'Nothing has run yet, so there is no log to send.';
+    case 'incompatible':
+      return 'The backend responded normally, but it is an older incompatible version; there may be no error log.';
     default:
       return 'No log has been captured yet, so there is nothing to send.';
   }
