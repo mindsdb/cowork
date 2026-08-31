@@ -15,8 +15,22 @@ describe('buildModelPickerOptions', () => {
       modelEnabled: { mindshub_air: true, sonnet: false, 'sonnet-4-5': false },
     })).toEqual([
       { value: 'mindshub_air', label: 'MindsHub Air', tag: 'Latest', provider: 'openai' },
-      { value: 'sonnet', label: 'Claude Sonnet 5', tag: 'Latest · Needs credits', provider: 'anthropic' },
-      { value: 'sonnet-4-5', label: 'Claude Sonnet 4.5', tag: 'Older version · Needs credits', provider: 'anthropic' },
+      {
+        value: 'sonnet',
+        label: 'Claude Sonnet 5',
+        disabled: true,
+        locked: true,
+        tag: 'Latest · Needs credits',
+        provider: 'anthropic',
+      },
+      {
+        value: 'sonnet-4-5',
+        label: 'Claude Sonnet 4.5',
+        disabled: true,
+        locked: true,
+        tag: 'Older version · Needs credits',
+        provider: 'anthropic',
+      },
     ]);
   });
 

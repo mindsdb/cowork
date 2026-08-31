@@ -15,6 +15,8 @@ export interface ModelPickerOption {
   label: string;
   tag?: string;
   provider?: string;
+  disabled?: boolean;
+  locked?: boolean;
 }
 
 export function buildModelPickerOptions(
