@@ -204,7 +204,8 @@ jobs:
       - name: Write build config (controls which cowork data home the app uses)
         env:
           BUILD_KIND: ${{ inputs.build_kind }}
-        run: node -e 'require("fs").writeFileSync("build-config.json", JSON.stringify({ buildKind: process.env.BUILD_KIND }))'
+        run: >-
+          node -e 'require("fs").writeFileSync("build-config.json", JSON.stringify({ buildKind: process.env.BUILD_KIND }))'
 
       # An explicit channel wins. Otherwise a feature server_ref selects git;
       # only an unpinned packaged build follows the normal PyPI stream. This
