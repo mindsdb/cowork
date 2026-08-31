@@ -27,7 +27,7 @@ import { ConfirmModal } from '../ConfirmModal';
 import { host } from '../../../platform/host';
 import { useOrgMode } from '../../../lib/orgMode';
 import { artifactOpenTarget, needsClientUnpublishBeforeDelete } from '../../lib/artifactActions';
-import { canDownloadOrgDraft, canPreviewOrgDraft, isInlinePreviewable } from '../../lib/artifactKinds';
+import { canDownloadOrgDraft, canPreviewOrgDraft, isBackendArtifact, isInlinePreviewable } from '../../lib/artifactKinds';
 import { downloadArtifactFile } from '../../lib/artifactDownload';
 import { deleteArtifactAndSync } from '../../lib/artifactsStore';
 
@@ -466,7 +466,12 @@ export function WorkingFolderLive({ project, isStreaming, conversationId = null,
           // A separate Download item is only worth a row when Open goes
           // somewhere else, so the two never say the same thing (ENG-2044).
           const canOpenRemote = !!(a.serveUrl || a.publishedUrl);
-          const canDownload = !canOpenLocalFile && !!(a.serveUrl || canDownloadOrgDraft(a));
+          // The fullstack-app exclusion applies to BOTH routes:
+          // canDownloadOrgDraft checks it, but on a non-org web deployment a
+          // fullstack app has a serveUrl too, and the `a.serveUrl ||`
+          // short-circuit was saving its shell index.html (review pass 2).
+          const canDownload = !canOpenLocalFile && !isBackendArtifact(a)
+            && !!(a.serveUrl || canDownloadOrgDraft(a));
           const openLabel = canOpenLocalFile
             ? 'Open in OS'
             // 'Download' only when the click can actually deliver one: an

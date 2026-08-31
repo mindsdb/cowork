@@ -14,7 +14,11 @@ import { render, screen, fireEvent } from '@testing-library/react';
 
 const openExternal = vi.fn();
 const openPath = vi.fn();
-const downloadArtifactFile = vi.fn(() => true);
+// Async on purpose: the component AWAITS this. A sync `() => true` makes
+// `await x` and `x` indistinguishable, so stripping the await stayed green
+// (review pass 2). With a promise, a dropped await turns `!(Promise)` into
+// false and the failure-path test below catches it.
+const downloadArtifactFile = vi.fn(async () => true);
 
 vi.mock('../../api', () => ({
   fetchActiveProject: vi.fn(() => Promise.resolve(null)),
@@ -76,7 +80,7 @@ beforeEach(() => {
   openExternal.mockClear();
   openPath.mockClear();
   downloadArtifactFile.mockClear();
-  downloadArtifactFile.mockImplementation(() => true);
+  downloadArtifactFile.mockImplementation(async () => true);
   hostState.isWeb = true; hostState.isElectron = false; hostState.localApi = false;
 });
 afterEach(() => setOrgMode(false));
@@ -248,6 +252,22 @@ describe('artifacts rail click in org mode', () => {
     expect(screen.getByText('Open in new tab')).toBeInTheDocument();
   });
 
+  it('shows the dead-end message when the download itself fails', async () => {
+    // Review pass 2: the transport can reject — expired bearer, offline, a
+    // file deleted server-side. `downloadArtifactFile` resolves false then,
+    // and the row must say so rather than end the click in silence.
+    downloadArtifactFile.mockImplementationOnce(async () => false);
+    const row = await renderRail(draft({
+      ext: '.docx',
+      path: '/proj/.anton/artifacts/weekly/report.docx',
+      draftUrl: '/api/v1/artifacts/drafts/proj-1/11111111111111111111111111111111/report.docx',
+    }));
+
+    fireEvent.click(row);
+
+    expect(await screen.findByText('This artifact has no servable file yet.')).toBeInTheDocument();
+  });
+
   it('labels the menu action Download when a tab has nowhere to open', async () => {
     /*
      * "Open in new tab" with no serve URL and no shared page was the item that
@@ -265,6 +285,68 @@ describe('artifacts rail click in org mode', () => {
 
     expect(downloadArtifactFile).toHaveBeenCalledTimes(1);
     expect(screen.queryByText('Open in new tab')).toBeNull();
+  });
+
+  it('shows the dead-end message when the menu Download itself fails', async () => {
+    /*
+     * openArtifactExternal is a DIFFERENT call site from the row click —
+     * mutation testing on pass 2 showed stripping ITS await left the suite
+     * green while the row-click guard passed. One failure case per site.
+     */
+    downloadArtifactFile.mockImplementationOnce(async () => false);
+    await renderRail(draft({
+      ext: '.docx',
+      path: '/proj/.anton/artifacts/weekly/report.docx',
+      draftUrl: '/api/v1/artifacts/drafts/proj-1/11111111111111111111111111111111/report.docx',
+    }));
+
+    fireEvent.click(screen.getByLabelText('More actions'));
+    fireEvent.click(screen.getByText('Download'));
+
+    expect(await screen.findByText('This artifact has no servable file yet.')).toBeInTheDocument();
+  });
+
+  it('the standalone Download item reports a failed download too', async () => {
+    // Third call site: the separate Download row that renders when Open goes
+    // to a tab (shared page) but the file itself is still worth saving.
+    downloadArtifactFile.mockImplementationOnce(async () => false);
+    await renderRail(draft({
+      ext: '.docx',
+      path: '/proj/.anton/artifacts/weekly/report.docx',
+      draftUrl: '/api/v1/artifacts/drafts/proj-1/11111111111111111111111111111111/report.docx',
+      publishedUrl: SHARED_URL,
+    }));
+
+    fireEvent.click(screen.getByLabelText('More actions'));
+    fireEvent.click(screen.getByText('Download'));
+
+    expect(await screen.findByText('This artifact has no servable file yet.')).toBeInTheDocument();
+  });
+});
+
+describe('artifacts rail kebab on a non-org web deployment', () => {
+  it('does not offer Download for a fullstack app that has a serve URL', async () => {
+    /*
+     * Review pass 2: `a.serveUrl ||` short-circuited ahead of
+     * canDownloadOrgDraft, so the fullstack-shell exclusion leaked on exactly
+     * this deployment (dev:web, self-hosted, the enterprise container):
+     * serve_url_for is only blanked in org mode, and the app's primary is its
+     * shell static/index.html — saving it reads as the app and is not.
+     */
+    await renderRail(draft({
+      title: 'Ops Console',
+      type: 'fullstack-stateless-app',
+      path: '/proj/.anton/artifacts/ops/static/index.html',
+      ext: '.html',
+      serveUrl: '/v1/artifacts/serve/ops/static/index.html',
+      draftUrl: '',
+      publishedUrl: '',
+    }));
+
+    fireEvent.click(screen.getByLabelText('More actions'));
+
+    expect(screen.queryByText('Download')).toBeNull();
+    expect(screen.getByText('Open in new tab')).toBeInTheDocument();
   });
 });
 

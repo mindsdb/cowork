@@ -189,8 +189,22 @@ const CardIconButton = forwardRef(function CardIconButton({ onClick, ariaLabel, 
   );
 });
 
+/*
+ * Download with feedback. `downloadArtifactFile` is async and fallible — an
+ * expired bearer, a file deleted server-side, or a network drop resolves it
+ * false — and a discarded promise leaves the click doing nothing at all
+ * (review pass 2 on #764). Every download this page offers routes through
+ * here so the failure reaches a toast.
+ */
+async function downloadWithFeedback(artifact, toastManager) {
+  if (!(await downloadArtifactFile(artifact))) {
+    toastManager.add({ title: 'Could not download this artifact.', type: 'danger' });
+  }
+}
+
 function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isMenuOpen, phase, onRetry, onOpenProject }) {
   const orgMode = useOrgMode();
+  const toastManager = useToastManager();
   /*
    * A click means "show me this artifact" in both deployments: Desktop renders
    * the local bytes, org mode renders the authenticated draft. What org mode
@@ -252,7 +266,7 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
     // Org mode, non-HTML, unshared: the draft URL still streams the bytes —
     // save them rather than do nothing (ENG-2044). Same rule as
     // artifactOpenTarget's 'download'.
-    else if (orgMode && canDownloadOrgDraft(artifact)) downloadArtifactFile(artifact);
+    else if (orgMode && canDownloadOrgDraft(artifact)) downloadWithFeedback(artifact, toastManager);
     else if (!orgMode) openArtifactFile(artifact);
   };
   // ↗
@@ -472,6 +486,7 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
   const { hovered, hoverProps } = useRevealOnHover(menuOpen);
 
   const orgMode = useOrgMode();
+  const toastManager = useToastManager();
   /*
    * Same rule as ArtifactBubble above: a click previews whatever the deployment
    * can render, from local bytes on Desktop and from the draft URL in org mode.
@@ -496,13 +511,20 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
     if (canPreview) onOpenViewer?.(artifact);
     else if (published) openUrl(artifact.publishedUrl);
     else if (privateUrl) openUrl(privateUrl);
+    // Org mode, non-HTML, unshared: same fallback the grid card has — the
+    // draft URL still streams the bytes, so save them (ENG-2044). Without
+    // this branch the row and its Open button silently did nothing in List
+    // view while the identical artifact downloaded in Grid (review pass 2).
+    else if (orgMode && canDownloadOrgDraft(artifact)) downloadWithFeedback(artifact, toastManager);
     else if (!orgMode) openArtifactFile(artifact);
   };
   const onOpenExternal = async (e) => {
     e.stopPropagation();
     const url = published ? artifact.publishedUrl : privateUrl;
-    // Org mode has no local file to fall back to, and no serve URL either.
+    // Org mode has no local file or serve URL to fall back to — but the
+    // authenticated draft URL still delivers the bytes as a download.
     if (url) await openUrl(url);
+    else if (orgMode && canDownloadOrgDraft(artifact)) await downloadWithFeedback(artifact, toastManager);
     else if (!orgMode) openArtifactFile(artifact);
   };
   const openMenu = (e) => {
@@ -603,7 +625,7 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
         onOpenShared={() => openUrl(artifact.publishedUrl)}
         onPreview={() => onOpenViewer?.(artifact)}
         onReveal={host.isWeb ? undefined : () => { try { revealArtifact(artifact.path); } catch { } }}
-        onDownload={() => downloadArtifactFile(artifact)}
+        onDownload={() => downloadWithFeedback(artifact, toastManager)}
         onCopyUrl={onCopyUrl}
         onPublish={() => doPublish?.(artifact)}
         onUnpublish={() => doUnpublish?.(artifact)}
@@ -1106,7 +1128,7 @@ export default function ArtifactsView({
               id: 'download',
               label: 'Download',
               icon: Ico.download(13),
-              onClick: () => downloadArtifactFile(a),
+              onClick: () => downloadWithFeedback(a, toastManager),
             });
           }
           if (canManage) {

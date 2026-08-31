@@ -14,9 +14,15 @@
 //     organization boundary as JSON APIs and saves the Blob. The tradeoff is
 //     buffering: a very large .zip/.xlsm is held in memory before the save.
 //
-// Both accept `?download=1` (Content-Disposition: attachment). Resolves false
-// — with no side effects beyond a failed fetch — when the artifact has neither
-// URL or the authenticated fetch fails; caller surfaces a friendly message.
+// `?download=1` is appended to both, but only the drafts route honours it
+// (Content-Disposition: attachment) — and only a direct HTTP client such as
+// `curl -OJ` ever reads that header: this module's Blob transport names the
+// file from `downloadFilename` client-side, and `response.blob()` discards
+// headers. The serve route ignores the param entirely; desktop's anchor save
+// works regardless because the Electron shell disables webSecurity, which
+// lets the cross-origin `download` attribute apply. Resolves false — with no
+// side effects beyond a failed fetch — when the artifact has neither URL or
+// the authenticated fetch fails; caller surfaces a friendly message.
 
 import { host } from '../../platform/host';
 import { downloadFilename, downloadUrl } from './browserDownload';

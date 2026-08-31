@@ -18,7 +18,8 @@ const openExternal = vi.fn();
 const openPath = vi.fn();
 const showItemInFolder = vi.fn();
 const revealArtifact = vi.fn(() => Promise.resolve());
-const downloadArtifactFile = vi.fn(() => true);
+// Async on purpose — handleDownload awaits it; see the failure-path test.
+const downloadArtifactFile = vi.fn(async () => true);
 // A getter (not a plain property) so tests can flip web-vs-desktop per case
 // without needing a whole new mock module.
 let hostIsWeb = false;
@@ -305,6 +306,29 @@ describe('inline artifact banner in org mode', () => {
       { actionPath: '/proj/.anton/artifacts/model/model.xlsx' },
     );
     expect(screen.queryByRole('button', { name: 'Preview' })).toBeNull();
+  });
+
+  it('reports the failure when the authenticated download fails', async () => {
+    /*
+     * Review pass 2: `downloadArtifactFile` resolves false on an expired
+     * bearer / 403 / network drop. The async mock is load-bearing here —
+     * with a sync mock, a dropped `await` leaves `!(Promise)` false and
+     * this card would swallow the failure without a word.
+     */
+    setOrgMode(true);
+    downloadArtifactFile.mockImplementationOnce(async () => false);
+    const user = userEvent.setup();
+    render(<ChatView task={taskWithArtifact(artifactStep({
+      ext: '.xlsx',
+      action: 'file',
+      file_path: '/proj/.anton/artifacts/model/model.xlsx',
+      path: '/proj/.anton/artifacts/model/model.xlsx',
+      publishedUrl: '',
+      draftUrl: `/api/v1/artifacts/drafts/proj-1/${ARTIFACT_ID}/model.xlsx`,
+    }))} />);
+
+    await user.click(screen.getByRole('button', { name: 'Download' }));
+    expect(await screen.findByText('This artifact has no downloadable file yet.')).toBeInTheDocument();
   });
 
   it('does not offer Download for an unshared fullstack app — its draft is only a shell', () => {
