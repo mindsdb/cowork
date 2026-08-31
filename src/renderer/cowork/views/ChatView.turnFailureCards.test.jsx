@@ -313,6 +313,46 @@ describe('policy_unavailable failure card', () => {
   });
 });
 
+describe('worker_unresponsive failure card', () => {
+  it('says the turn never ran and retries the failed message', async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    render(
+      <ChatView
+        task={taskWith(failedTurn(
+          'worker_unresponsive',
+          "The agent didn't start, so this turn never ran.",
+        ))}
+        onSend={onSend}
+      />,
+    );
+    expect(screen.getByText(/never reached the agent/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(onSend).toHaveBeenCalledWith('draw me a chart');
+  });
+
+  it('blames the infrastructure, not the request', () => {
+    // The whole reason this code exists: during the 2026-08-31 outage every
+    // turn read as an agent failure, so users retried their WORDING instead of
+    // retrying the request. The copy has to point away from their input.
+    render(
+      <ChatView task={taskWith(failedTurn('worker_unresponsive', 'nothing ran'))} />,
+    );
+    expect(screen.getByText(/fault on our side/)).toBeInTheDocument();
+    expect(screen.queryByText('An unexpected error occurred.')).not.toBeInTheDocument();
+  });
+
+  it('hides Try again when there is no user message to resend', () => {
+    render(
+      <ChatView
+        task={taskWith([{ role: 'error', content: 'nothing ran', code: 'worker_unresponsive' }])}
+        onSend={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
+  });
+});
+
 describe('anton_error / unmapped failure fallback', () => {
   it('renders as a danger alert, not answer prose', () => {
     render(
@@ -380,6 +420,8 @@ const WIRE_CODES = [
   'included_allowance_exhausted',
   // ENG-1992 — a content-shaped rejection the server already repaired.
   'content_recovery',
+  // ENG-2126 — the worker never answered, so the turn never ran.
+  'worker_unresponsive',
   'anton_error',
 ];
 
