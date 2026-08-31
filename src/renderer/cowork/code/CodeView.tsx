@@ -227,10 +227,13 @@ export default function CodeView({
   const startProjectAction = async (action: ProjectActionSummary) => {
     if (!session || project.busy) return;
     setActionError('');
+    // Open the terminal surface before awaiting the process creation request.
+    // This gives immediate feedback and prevents a concurrent session refresh
+    // from leaving a successfully started process hidden behind the timeline.
+    setTerminalOpen(true);
     try {
       const result = await project.run(action);
       setTerminalFocusId(result.terminal_id);
-      setTerminalOpen(true);
     } catch (reason) {
       setActionError(reason instanceof Error ? reason.message : 'The project action could not be started.');
     }
