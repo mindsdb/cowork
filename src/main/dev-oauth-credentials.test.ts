@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -30,20 +31,24 @@ describe('loadDevOAuthCredentials', () => {
   });
 
   it('loads only the GitHub and Linear OAuth client fields', () => {
+    const githubSecret = randomUUID();
+    const linearSecret = randomUUID();
+    const excludedMindsKey = randomUUID();
+    const excludedGithubToken = randomUUID();
     const envFile = oauthEnv([
       'GITHUB_CLIENT_ID=github-id',
-      'GITHUB_CLIENT_SECRET="github-secret"',
+      `GITHUB_CLIENT_SECRET="${githubSecret}"`,
       "export LINEAR_CLIENT_ID='linear-id'",
-      'LINEAR_CLIENT_SECRET=linear-secret',
-      'ANTON_MINDS_API_KEY=must-not-leak',
-      'GITHUB_ACCESS_TOKEN=must-not-leak',
+      `LINEAR_CLIENT_SECRET=${linearSecret}`,
+      `ANTON_MINDS_API_KEY=${excludedMindsKey}`,
+      `GITHUB_ACCESS_TOKEN=${excludedGithubToken}`,
     ].join('\n'));
 
     expect(loadDevOAuthCredentials({ isPackaged: false, env: {}, envFile })).toEqual({
       GITHUB_CLIENT_ID: 'github-id',
-      GITHUB_CLIENT_SECRET: 'github-secret',
+      GITHUB_CLIENT_SECRET: githubSecret,
       LINEAR_CLIENT_ID: 'linear-id',
-      LINEAR_CLIENT_SECRET: 'linear-secret',
+      LINEAR_CLIENT_SECRET: linearSecret,
     });
   });
 
