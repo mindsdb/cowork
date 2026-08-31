@@ -16,7 +16,6 @@ afterEach(() => {
   vi.unstubAllEnvs();
   setUrl('http://localhost:3000/');
 });
-
 describe('MINDS_KEYCLOAK_URL / MINDS_REGISTER_URL', () => {
   // Regression: the packaged desktop app loads the renderer over file://, so a
   // protocol-based "isWeb" fallback misfired and pointed the sign-up link at
@@ -175,4 +174,3 @@ describe('console host derivation (the one role that differs by host shape)', ()
     );
   });
 });
-

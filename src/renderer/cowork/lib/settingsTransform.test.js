@@ -16,9 +16,9 @@ import {
   toDisplayUnits,
   toNaturalUnits,
   formatCount,
-  routerRoleSubtitle,
   modelLabel,
   transformSettingsRows,
+  routerRoleSubtitle,
 } from './settingsTransform';
 
 describe('modelLabel', () => {

@@ -1360,14 +1360,6 @@ function AppCore() {
     window.gravityField?.setActive?.(visible);
   }, [settings.showDots]);
 
-  // Seed nav state from the address bar so a web deep-link / refresh paints the
-  // right view instead of flashing Home. Electron's memory router starts at `/`.
-  const initialNav = useRef(initialNavState()).current;
-  // The router is created once (memory router on Electron, browser router on
-  // web). It's stateless w.r.t. AppCore — nav state flows through context.
-  const routerRef = useRef(null);
-  if (!routerRef.current) routerRef.current = createCoworkRouter();
-
   // Cowork and Code are peer workspaces, not routes within one another.
   // Keeping this separate from the Cowork route means each surface remains
   // mounted while the other is visible: drafts, scroll position, selected
@@ -1383,8 +1375,6 @@ function AppCore() {
   // composer during an ordinary Cowork session. Mount it on first use, then
   // keep it alive so later Cowork/Code switches preserve in-progress state.
   const [codeWorkspaceMounted, setCodeWorkspaceMounted] = useState(() => workspaceMode === 'code');
-  const [route, setRoute] = useState(initialNav.route);
-  // home | task | projects | scheduled | schedule-detail | artifacts | customize
   const changeWorkspace = useCallback((next) => {
     if (next !== 'cowork' && next !== 'code') return;
     if (next === 'code' && host.isWeb && !codeFixtureActive) return;
@@ -1411,6 +1401,14 @@ function AppCore() {
     changeSelection: changeCodingSelection,
     setSessionPinned: setCodingSessionPinned,
   } = useCodeWorkspace(openCode);
+  // Seed nav state from the address bar so a web deep-link / refresh paints the
+  // right view instead of flashing Home. Electron's memory router starts at `/`.
+  const initialNav = useRef(initialNavState()).current;
+  // The router is created once (memory router on Electron, browser router on
+  // web). It's stateless w.r.t. AppCore — nav state flows through context.
+  const routerRef = useRef(null);
+  if (!routerRef.current) routerRef.current = createCoworkRouter();
+  const [route, setRoute] = useState(initialNav.route); // home | task | projects | scheduled | schedule-detail | artifacts | channels | customize
   // Keep a ref of the live route so the keydown listener (bound
   // once on mount) can read it without a re-bind on every nav.
   routeRef.current = workspaceMode === 'code' ? 'code' : route;
@@ -1573,7 +1571,7 @@ function AppCore() {
         setSettings((prev) => ({ ...prev, ...data }));
       }
     });
-  }, []);
+  }, [refreshSchedules]);
 
   useEffect(() => {
     refreshData();
@@ -2482,9 +2480,9 @@ function AppCore() {
       // unaffected.
       setSelectedProject(null);
     }
+    setWorkspaceMode('cowork');
     // Flip route state; the URL bridge mirrors it and the route element's
     // enterRoute() (re)fetches that view's data.
-    setWorkspaceMode('cowork');
     setRoute(key);
   };
 
@@ -4483,9 +4481,8 @@ function AppCore() {
         onOpenSidebar={sidebarPopout ? () => setNavPopoutOpen(true) : () => setSidebarCollapsed(false)}
         mobileShellProps={mobileShellProps}
       >
-        {/* Mounts the matched child route element, which syncs `route` /
-            `activeTaskId` to the URL. It renders no visible output — the
-            active view is still chosen by the `route`-keyed switch below. */}
+        {/* Sync the active Cowork route to the address bar even while its
+            workspace panel is temporarily hidden behind Code Mode. */}
         <Outlet />
         <div
           className="workspace-mode-panel"

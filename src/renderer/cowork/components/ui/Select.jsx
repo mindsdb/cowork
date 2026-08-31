@@ -236,14 +236,14 @@ export function Select({
       disabled={disabled}
       id={id}
       name={name}
-      >
-        <BaseSelect.Trigger
-          // "unstyled" (mirrors Combobox.jsx, which shares this cva) skips the
-          // field/pill trigger classes entirely so a caller's own className is
-          // the sole visual definition — e.g. EffortSelect's `meta-pill`
-          // (ENG-1940), which needs to look identical to ModelSelect's pill
-          // next to it and would otherwise fight the pill-variant classes.
-          className={cn(variant === 'unstyled' ? null : triggerVariants({ variant, size }), className)}
+    >
+      <BaseSelect.Trigger
+        // "unstyled" (mirrors Combobox.jsx, which shares this cva) skips the
+        // field/pill trigger classes entirely so a caller's own className is
+        // the sole visual definition — e.g. EffortSelect's `meta-pill`
+        // (ENG-1940), which needs to look identical to ModelSelect's pill
+        // next to it and would otherwise fight the pill-variant classes.
+        className={cn(variant === 'unstyled' ? null : triggerVariants({ variant, size }), className)}
         aria-label={ariaLabel || label}
         aria-description={(typeof selectedLabel === 'string' || typeof selectedLabel === 'number')
           ? `Selected: ${selectedLabel}`

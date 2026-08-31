@@ -572,18 +572,18 @@ export default function Sidebar({
               `${collapsed ? '0ms' : '80ms'}`,
         }}
       >
-        {/* The MindsHub workspace this session is scoped to. Above the CTA
-            rather than inside the account menu: the current workspace has to be
-            readable without opening anything, and the account menu is where the
-            organization selector lands. Renders nothing until the gate is on. */}
-        {accountUser && <WorkspaceSelector user={accountUser} />}
-
         {!host.isWeb && (
           <WorkspaceModeSwitch
             value={activeWorkspace}
             onChange={onWorkspaceChange}
           />
         )}
+
+        {/* The MindsHub workspace this session is scoped to. Above the CTA
+            rather than inside the account menu: the current workspace has to be
+            readable without opening anything, and the account menu is where the
+             organization selector lands. Renders nothing until the gate is on. */}
+        {accountUser && <WorkspaceSelector user={accountUser} />}
 
         {/* The primary action follows the active workspace. Code tasks stay
             distinct from Cowork conversations, but use the same shell grammar. */}
