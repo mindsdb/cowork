@@ -18,7 +18,7 @@ const api = vi.hoisted(() => ({
     id: terminalId, label, created_at: '2026-08-29T12:01:00Z', status: 'running',
   })),
   deleteTerminal: vi.fn(async () => undefined),
-  terminal: vi.fn(async () => ({ status: 'stopped', items: [], first_seq: 0, next_seq: 0 })),
+  terminal: vi.fn(async (_id: string, _terminalId: string) => ({ status: 'stopped', items: [], first_seq: 0, next_seq: 0 })),
   startTerminal: vi.fn(async (_id, terminalId) => ({ process_id: `p-${terminalId}`, status: 'running', items: [], first_seq: 0, next_seq: 0 })),
   terminalInput: vi.fn(async () => ({ process_id: 'p1', status: 'running', items: [], first_seq: 0, next_seq: 0 })),
   resizeTerminal: vi.fn(async () => ({ process_id: 'p1', status: 'running', items: [], first_seq: 0, next_seq: 0 })),
@@ -118,4 +118,24 @@ it('restores the last selected terminal for each task', async () => {
   ));
   expect(screen.getByRole('tab', { name: 'Dev server, Running' })).toHaveAttribute('aria-selected', 'true');
   expect(window.localStorage.getItem('mindshub-code-terminal:task-remembered')).toBe('terminal-2');
+});
+
+
+it('refreshes and focuses a terminal created by a project action', async () => {
+  const { rerender } = render(<TaskTerminal sessionId="task-1" onClose={vi.fn()} />);
+  await screen.findByRole('tab', { name: 'Terminal 1, Running' });
+  api.terminals.mockResolvedValueOnce({ items: [{
+    id: 'terminal-1', label: 'Terminal 1', created_at: '2026-08-29T12:00:00Z', status: 'running',
+  }, {
+    id: 'project-action', label: 'Start preview', created_at: '2026-08-29T12:01:00Z', status: 'running',
+  }] });
+  api.terminal.mockImplementation(async (_sessionId: string, terminalId: string) => terminalId === 'project-action'
+    ? { process_id: 'p-project-action', status: 'running', items: [], first_seq: 0, next_seq: 0 }
+    : { status: 'stopped', items: [], first_seq: 0, next_seq: 0 });
+
+  rerender(<TaskTerminal sessionId="task-1" focusTerminalId="project-action" onClose={vi.fn()} />);
+
+  expect(await screen.findByRole('tab', { name: 'Start preview, Running' })).toHaveAttribute('aria-selected', 'true');
+  expect(api.terminals).toHaveBeenCalledTimes(2);
+  expect(api.startTerminal).not.toHaveBeenCalledWith('task-1', 'project-action', 80, 24, 'auto');
 });
