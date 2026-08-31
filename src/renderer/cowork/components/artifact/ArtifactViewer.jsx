@@ -25,7 +25,7 @@ import Ico from '../Icons';
 import { deleteArtifactAndSync } from '../../lib/artifactsStore';
 import { needsClientUnpublishBeforeDelete } from '../../lib/artifactActions';
 import { downloadArtifactFile } from '../../lib/artifactDownload';
-import { loadArtifactDraftText } from '../../lib/artifactWorkspaceApi';
+import { loadArtifactDraftText, loadArtifactDraftDocument } from '../../lib/artifactWorkspaceApi';
 import { artifactCommentsKey, artifactIdentity } from '../../lib/artifactIdentity';
 import { isPublishableArtifact, isImageArtifact, BACKEND_ARTIFACT_TYPES } from '../../lib/artifactKinds';
 import { useBlobImageSrc } from '../AttachmentThumbnail';
@@ -47,6 +47,8 @@ import {
   CSV_PREVIEW_ROW_LIMIT,
   isTextArtifact,
   isAbsoluteArtifactPreviewUrl,
+  canFetchDraftWithCredentials,
+  injectDraftBaseHref,
   parseCsv,
   withArtifactCommentFlag,
   withArtifactVersion,
@@ -87,6 +89,14 @@ export function ArtifactViewer({
   // `<script>` / `<link>` refs in the HTML resolve against a real URL.
   // (srcdoc has no base URL → relative refs 404.)
   const [previewUrl, setPreviewUrl] = useState('');
+  // Fetched draft HTML rendered via the iframe's `srcdoc` instead of `src=`
+  // — set only by the draft-preview branch below (see
+  // docs/artifact-collaboration-workflow/task-org-draft-preview-401.md).
+  // Kept separate from `previewUrl` (always exactly one of the two is
+  // non-empty) rather than merged into one variant type: every existing
+  // `src=`-based preview path — proxy, locally-mounted static — is untouched
+  // by that fix and keeps reading `previewUrl` exactly as before.
+  const [previewDoc, setPreviewDoc] = useState('');
   // 'static' (HTML asset bundle) | 'proxy' (fullstack) — the comment marker
   // layer is server-injected only on the static serve path, so the pin/mode
   // affordance and the activation flag are gated on this.
@@ -325,9 +335,9 @@ export function ArtifactViewer({
     : '';
   const { src: imageSrc, failed: imageFailed } = useBlobImageSrc({ url: imageUrl || null });
 
-  // Reset the painted flag whenever the mounted URL changes so the
+  // Reset the painted flag whenever the mounted preview changes so the
   // placeholder reappears for the new content.
-  useEffect(() => { setIframeReady(false); }, [previewUrl]);
+  useEffect(() => { setIframeReady(false); }, [previewUrl, previewDoc]);
 
   // Esc-to-close + portal + body-scroll lock all live in <Modal>.
 
@@ -352,6 +362,7 @@ export function ArtifactViewer({
     setLoading(true);
     setErr('');
     setPreviewUrl('');
+    setPreviewDoc('');
     setPreviewKind('');
     setBackendPort(null);
     setTextPreview(null);
@@ -396,11 +407,58 @@ export function ArtifactViewer({
       const rawUrl = isAbsoluteArtifactPreviewUrl(draftPreviewUrl)
         ? draftPreviewUrl
         : `${host.getApiOrigin()}${draftPreviewUrl}`;
-      setPreviewKind('static');
-      setPreviewUrl(commentLayerRequested
+      const fetchUrl = commentLayerRequested
         ? withArtifactCommentFlag(withArtifactVersion(rawUrl, cacheVersion))
-        : withArtifactVersion(rawUrl, cacheVersion));
-      setLoading(false);
+        : withArtifactVersion(rawUrl, cacheVersion);
+      setPreviewKind('static');
+      if (!canFetchDraftWithCredentials(rawUrl, host.getApiOrigin())) {
+        // Embedded (data:/blob:) content makes no network request at all —
+        // there's nothing for a credential to protect. A genuinely
+        // cross-origin absolute URL must never receive the web Keycloak
+        // bearer `authFetch` would attach (the old `src=` navigation never
+        // sent it either). Both keep the pre-fix direct navigation; only a
+        // same-origin API URL is safe to route through the fetch+srcdoc path
+        // below.
+        setPreviewUrl(fetchUrl);
+        setLoading(false);
+        return () => { cancelled = true; };
+      }
+      // A plain iframe `src=` navigation cannot carry the Authorization
+      // header the forward-auth ingress in front of the drafts endpoint
+      // requires on staging (see
+      // docs/artifact-collaboration-workflow/task-org-draft-preview-401.md),
+      // so fetch through authFetch (like Edit's source load) and hand the
+      // result to the iframe via srcdoc instead of navigating it directly.
+      // previewUrl/previewDoc were both already reset to '' at the top of
+      // this effect, so setting only one of them here is enough to keep them
+      // mutually exclusive.
+      loadArtifactDraftDocument(fetchUrl)
+        .then((doc) => {
+          if (cancelled) return;
+          if (doc.isHtml) {
+            setPreviewDoc(injectDraftBaseHref(doc.content, fetchUrl));
+          } else {
+            // Non-HTML draft content type: org mode's draft preview only ever
+            // offers .html here (md/txt/csv already took the isText branch
+            // above), so this is expected only on Desktop. The fetch above
+            // already ran, so the iframe fetching fetchUrl again is a second
+            // round-trip — acceptable on Desktop's local loopback server; on
+            // web it degrades to the pre-fix behavior (the iframe navigation
+            // may hit the same 401 this task fixes for HTML), which is no
+            // worse than before this change.
+            setPreviewUrl(fetchUrl);
+          }
+        })
+        .catch((e) => {
+          if (cancelled) return;
+          const status = e?.status;
+          setErr(status === 401
+            ? 'Your session expired — reload the page and try again.'
+            : status === 403
+              ? 'You do not have access to this draft.'
+              : (e?.message || 'Could not load this draft'));
+        })
+        .finally(() => { if (!cancelled) setLoading(false); });
       return () => { cancelled = true; };
     }
     mountArtifactPreview(actionPath)
@@ -646,6 +704,7 @@ export function ArtifactViewer({
     onDownload,
     onOpenOS,
     url: previewUrl,
+    doc: previewDoc,
     kind: previewKind,
     iframeRef,
     title,

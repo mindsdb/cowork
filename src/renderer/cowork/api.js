@@ -13,6 +13,7 @@ import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 import { cacheSettings } from './lib/settingsCache';
 import { setAntonInstallId } from './lib/analytics';
 import { artifactIdentity } from './lib/artifactIdentity';
+import { getOrgMode } from '../lib/orgMode';
 import {
   expectedOrganizationHeaders,
   handleOrganizationBoundaryResponse,
@@ -1140,6 +1141,11 @@ export async function previewArtifact(path) {
 // to the prior reopen-to-refresh behaviour rather than throwing.
 export async function fetchArtifactStatus(path) {
   if (!path) return null;
+  // Desktop-only route (require_local_tenancy): an org deployment answers 403 by
+  // design, and usePublish asks on every viewer open and every window focus. The
+  // null is the same answer the catch below already promises callers, so no
+  // caller has to learn about tenancy.
+  if (getOrgMode()) return null;
   try {
     return await req(`/artifacts/status?path=${encodeURIComponent(path)}`);
   } catch {
