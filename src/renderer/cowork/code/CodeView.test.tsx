@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('./api', () => ({
   codingApi: {
     engines: vi.fn(async () => []),
+    projectActions: vi.fn(async () => ({ items: [], preview_url: null })),
     sessions: mocks.sessions,
     deleteSession: mocks.deleteSession,
     steer: mocks.steer,

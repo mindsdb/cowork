@@ -22,6 +22,7 @@ type CodeComposerProps = {
   onSteerQueued: (instructionId: string) => Promise<void>;
   onRemoveQueued: (instructionId: string) => Promise<void>;
   history?: string[];
+  referenceRequest?: { id: number; item: InputReference } | null;
 };
 
 function sameStrings(left: string[] = [], right: string[] = []): boolean {
@@ -33,6 +34,11 @@ function sameReferences(left: InputReference[] = [], right: InputReference[] = [
     item.name === right[index]?.name
     && item.path === right[index]?.path
     && item.kind === right[index]?.kind
+    && item.resource_id === right[index]?.resource_id
+    && item.relative_path === right[index]?.relative_path
+    && item.line_start === right[index]?.line_start
+    && item.line_end === right[index]?.line_end
+    && item.content_hash === right[index]?.content_hash
   ));
 }
 
@@ -62,6 +68,7 @@ function sameComposerProps(left: CodeComposerProps, right: CodeComposerProps): b
     && left.session.project_id === right.session.project_id
     && left.session.permission_mode === right.session.permission_mode
     && sameQueuedInstructions(left.session, right.session)
+    && left.referenceRequest?.id === right.referenceRequest?.id
     && sameStrings(left.history, right.history);
 }
 
@@ -76,6 +83,7 @@ export const CodeComposer = memo(function CodeComposer({
   onSteerQueued,
   onRemoveQueued,
   history = [],
+  referenceRequest = null,
 }: CodeComposerProps) {
   const [prompt, setPrompt] = useState('');
   const [commandIndex, setCommandIndex] = useState(0);
@@ -95,6 +103,10 @@ export const CodeComposer = memo(function CodeComposer({
   const mentionMatch = /(?:^|\s)@([^\s@]*)$/.exec(prompt);
   const mentionQuery = mentionMatch?.[1] ?? null;
   const paletteItems = useCodePaletteItems({ commands, query: commandQuery, projectId: session.project_id });
+  useEffect(() => {
+    if (!referenceRequest) return;
+    setAttachments((current) => mergeReferences(current, [referenceRequest.item]));
+  }, [referenceRequest]);
   useEffect(() => setCommandIndex(0), [commandQuery]);
   useEffect(() => {
     setMentionIndex(0);

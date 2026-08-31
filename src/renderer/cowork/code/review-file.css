@@ -1,0 +1,22 @@
+.code-diff-file__empty { padding: 14px 10px; border-top: 1px solid var(--line); background: var(--bg); color: var(--ink-4); font: 9.5px var(--font-mono); }
+.code-diff-patch { max-height: 520px; overflow: auto; border-top: 1px solid var(--line); background: var(--bg); user-select: text; }
+.code-diff-line { min-width: max-content; display: grid; grid-template-columns: 62px minmax(320px, 1fr); color: var(--ink-3); font: 9.5px/1.55 var(--font-mono); }
+.code-diff-line.is-header { color: var(--accent); background: var(--accent-bg); }
+.code-diff-line.is-addition { background: color-mix(in srgb, var(--ok) 8%, transparent); }
+.code-diff-line.is-deletion { background: color-mix(in srgb, var(--danger) 8%, transparent); }
+.code-diff-line.is-selected { box-shadow: inset 3px 0 var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--bg)); }
+.code-diff-line__spacer { min-height: 22px; }
+.code-diff-line__number { min-height: 22px; padding: 0 5px; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; border: 0; border-right: 1px solid var(--line); background: transparent; color: var(--ink-4); cursor: pointer; font: inherit; user-select: none; }
+.code-diff-line__number:hover { color: var(--ink-2); background: var(--surface-2); }
+.code-diff-line code { padding: 3px 9px; white-space: pre; color: inherit; font: inherit; }
+
+.code-file-review { border-top: 1px solid var(--line); background: var(--surface); }
+.code-file-review__toolbar { min-height: 38px; padding: 5px 7px 5px 10px; display: flex; align-items: center; gap: 8px; }
+.code-file-review__state { color: var(--ink-4); font-size: 9.5px; }
+.code-file-review__state.is-staged { color: var(--ok); }
+.code-file-review__actions { margin-left: auto; display: flex; align-items: center; gap: 2px; }
+.code-file-review__comment { padding: 7px 8px 8px; display: grid; gap: 6px; border-top: 1px solid var(--line); background: var(--bg); }
+.code-file-review__comment textarea { width: 100%; min-height: 62px; resize: vertical; padding: 8px 9px; border: 1px solid var(--line-2); border-radius: var(--r); outline: none; background: var(--surface); color: var(--ink); font: 10.5px/1.45 var(--font-sans); }
+.code-file-review__comment textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-bg); }
+.code-file-review__comment > div { display: flex; align-items: center; justify-content: flex-end; gap: 3px; }
+.code-file-review__comment > div > span { margin-right: auto; color: var(--ink-4); font-size: 9px; }

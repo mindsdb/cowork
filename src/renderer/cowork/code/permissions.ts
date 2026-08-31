@@ -19,7 +19,7 @@ export const PERMISSION_OPTIONS: Array<{
   {
     value: 'workspace',
     label: 'Workspace auto',
-    title: 'Work autonomously inside the isolated task workspace.',
+    title: 'Work autonomously inside this task’s isolated copy.',
   },
   {
     value: 'full_access',

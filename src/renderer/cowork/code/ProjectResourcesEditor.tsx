@@ -33,7 +33,9 @@ function repositoryName(url: string): string {
 }
 
 
-function commandValue(commands: ProjectCommand[], phase: 'setup' | 'validate'): string[] {
+type CommandPhase = ProjectCommand['phase'];
+
+function commandValue(commands: ProjectCommand[], phase: CommandPhase): string[] {
   return commands.find((item) => item.phase === phase)?.argv || [];
 }
 
@@ -55,7 +57,7 @@ export function ProjectResourcesEditor({
   commandDrafts: Record<string, string>;
   disabled?: boolean;
   onChange: (resources: ProjectResource[]) => void;
-  onCommandChange: (resourceId: string, phase: 'setup' | 'validate', value: string) => void;
+  onCommandChange: (resourceId: string, phase: CommandPhase, value: string) => void;
   onFirstResource: (name: string) => void;
   onError: (message: string) => void;
 }) {
@@ -206,6 +208,10 @@ export function ProjectResourcesEditor({
                 <label>
                   <span>Validation command</span>
                   <Input size="sm" variant="mono" value={commandDrafts[`${resource.id}:validate`] ?? commandValue(resource.commands, 'validate').join(' ')} onChange={(value) => onCommandChange(resource.id, 'validate', value)} placeholder="npm test" />
+                </label>
+                <label>
+                  <span>Run command</span>
+                  <Input size="sm" variant="mono" value={commandDrafts[`${resource.id}:run`] ?? commandValue(resource.commands, 'run').join(' ')} onChange={(value) => onCommandChange(resource.id, 'run', value)} placeholder="npm run dev" />
                 </label>
               </div>
             </details>

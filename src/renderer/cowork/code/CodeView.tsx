@@ -3,7 +3,7 @@ import type { ConnectorConnection } from '../api';
 import Alert from '../components/ui/Alert';
 import Spinner from '../components/ui/Spinner';
 import { ConfirmModal } from '../components/ConfirmModal';
-import { codingApi, type CodingSession, type RecoveryOption, type RecoveryPlan } from './api';
+import { codingApi, type CodingSession, type InputReference, type ProjectActionSummary, type RecoveryOption, type RecoveryPlan } from './api';
 import { ApprovalCard } from './ApprovalCard';
 import { CodeComposer } from './CodeComposer';
 import { CodeConnectorsView } from './CodeConnectorsView';
@@ -12,7 +12,9 @@ import { CodeSkillsView } from './CodeSkillsView';
 import { DeliveryAutomationMonitor } from './DeliveryAutomationMonitor';
 import { EventTimeline } from './EventTimeline';
 import { ExtensionsModal, type ExtensionTab } from './ExtensionsModal';
+import { FilesPanel } from './FilesPanel';
 import { NewTaskPanel } from './NewTaskPanel';
+import { PreviewPanel } from './PreviewPanel';
 import { ReviewPanel } from './ReviewPanel';
 import { RuntimeControlsModal } from './RuntimeControlsModal';
 import { RenameTaskModal } from './RenameTaskModal';
@@ -21,11 +23,13 @@ import { RecoveryModal } from './RecoveryModal';
 import { TaskBar } from './TaskBar';
 import { TaskTerminal } from './TaskTerminal';
 import { useCodingSession } from './useCodingSession';
+import { supportsTaskCapability } from './taskCapabilities';
 import { useCodeTaskActions } from './useCodeTaskActions';
 import { useCodeTaskList } from './useCodeTaskList';
 import { useQueuedInstructionResume } from './useQueuedInstructionResume';
 import { useCodeProjects } from './useCodeProjects';
 import { useCodingCatalog } from './useCodingCatalog';
+import { useProjectActions } from './useProjectActions';
 import { codeFixtureReviewOpen } from './fixtures';
 import { isActiveStatus, promptHistory } from './presentation';
 import type { ModelPickerMeta, ModelPickerSource } from '../lib/modelPickerOptions';
@@ -74,8 +78,11 @@ export default function CodeView({
   onSelectionChange: (sessionId: string | null, newTask?: boolean) => void;
 }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [filesOpen, setFilesOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(codeFixtureReviewOpen);
   const [terminalOpen, setTerminalOpen] = useState(false);
+  const [terminalFocusId, setTerminalFocusId] = useState<string | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [controlsOpen, setControlsOpen] = useState(false);
   const [extensionsOpen, setExtensionsOpen] = useState(false);
   const [extensionTab, setExtensionTab] = useState<ExtensionTab>('skills');
@@ -90,6 +97,7 @@ export default function CodeView({
   const [recoveryPlan, setRecoveryPlan] = useState<RecoveryPlan | null>(null);
   const [recoveryComputerId, setRecoveryComputerId] = useState('');
   const [recoveryError, setRecoveryError] = useState('');
+  const [referenceRequest, setReferenceRequest] = useState<{ id: number; item: InputReference } | null>(null);
   const catalog = useCodingCatalog();
   const detail = useCodingSession(newTask || projectsOpen || connectorsOpen || skillsOpen ? null : selectedId, active);
   const cachedSession = sessions.find((item) => item.id === selectedId) || null;
@@ -127,13 +135,28 @@ export default function CodeView({
     remove: deleteTask,
   } = actions;
   useQueuedInstructionResume(session, detail.refresh, setActionError);
-  const commands = useMemo(
-    () => catalog.engines.find((engine) => engine.id === session?.engine_id)?.commands || [],
-    [catalog.engines, session?.engine_id],
+  const can = (capability: keyof NonNullable<CodingSession['task_capabilities']>) => (
+    session ? supportsTaskCapability(session, capability) : false
   );
+  const commands = useMemo(() => {
+    const available = catalog.engines.find((engine) => engine.id === session?.engine_id)?.commands || [];
+    if (!session) return available;
+    return available.filter((command) => {
+      if (command.action !== 'client') return supportsTaskCapability(session, 'slash_commands');
+      if (command.client_action === 'fork') return supportsTaskCapability(session, 'fork');
+      if (command.client_action === 'controls') return supportsTaskCapability(session, 'task_controls');
+      if (command.client_action === 'terminal') return supportsTaskCapability(session, 'terminal');
+      if (command.client_action === 'skills' || command.client_action === 'mcp') return supportsTaskCapability(session, 'extensions');
+      return false;
+    });
+  }, [catalog.engines, session]);
+  const project = useProjectActions(session?.id);
 
   useEffect(() => {
     setReviewOpen(codeFixtureReviewOpen());
+    setFilesOpen(false);
+    setPreviewOpen(false);
+    setTerminalFocusId(null);
     setDeleteOpen(false);
     setActionError('');
     setControlsOpen(false);
@@ -145,6 +168,7 @@ export default function CodeView({
     setRecoveryPlan(null);
     setRecoveryComputerId('');
     setRecoveryError('');
+    setReferenceRequest(null);
   }, [newTask, projectsOpen, connectorsOpen, skillsOpen, selectedId]);
 
   const restoring = !!selectedId && !session;
@@ -197,6 +221,17 @@ export default function CodeView({
       setRecoveringTaskId((current) => current === sessionId ? null : current);
     }
   };
+  const startProjectAction = async (action: ProjectActionSummary) => {
+    if (!session || project.busy) return;
+    setActionError('');
+    try {
+      const result = await project.run(action);
+      setTerminalFocusId(result.terminal_id);
+      setTerminalOpen(true);
+    } catch (reason) {
+      setActionError(reason instanceof Error ? reason.message : 'The project action could not be started.');
+    }
+  };
   return (
     <div className="code-page">
       <DeliveryAutomationMonitor
@@ -225,10 +260,30 @@ export default function CodeView({
           git={detail.git}
           files={detail.diff}
           modelLabel={models.find((model) => model.id === taskBarSession.model)?.name}
+          filesOpen={filesOpen}
           reviewOpen={reviewOpen}
           terminalOpen={terminalOpen}
-          onToggleReview={() => setReviewOpen((current) => !current)}
+          previewOpen={previewOpen}
+          previewAvailable={!!project.previewUrl}
+          projectActions={project.actions}
+          projectActionBusy={project.busy}
+          onToggleFiles={() => {
+            setFilesOpen((current) => !current);
+            setReviewOpen(false);
+            setPreviewOpen(false);
+          }}
+          onToggleReview={() => {
+            setReviewOpen((current) => !current);
+            setFilesOpen(false);
+            setPreviewOpen(false);
+          }}
           onToggleTerminal={() => setTerminalOpen((current) => !current)}
+          onTogglePreview={() => {
+            setPreviewOpen((current) => !current);
+            setFilesOpen(false);
+            setReviewOpen(false);
+          }}
+          onRunProjectAction={(action) => void startProjectAction(action)}
           onOpenControls={() => setControlsOpen(true)}
           onOpenExtensions={() => { setExtensionTab('skills'); setExtensionsOpen(true); }}
           onOpenProject={() => setProjectEditor({ id: taskBarSession.project_id || null })}
@@ -383,6 +438,7 @@ export default function CodeView({
                 true,
               )}
               history={promptHistory(detail.events)}
+              referenceRequest={referenceRequest}
               onRemoveQueued={(instructionId) => runAction(
                 () => codingApi.removeQueued(session.id, instructionId),
                 true,
@@ -409,9 +465,9 @@ export default function CodeView({
                 setActionError(`/${command.name} controls are not available in this build yet.`);
               }}
             />
-            {terminalOpen && <TaskTerminal sessionId={session.id} onClose={() => setTerminalOpen(false)} />}
+            {can('terminal') && terminalOpen && <TaskTerminal sessionId={session.id} focusTerminalId={terminalFocusId} onClose={() => setTerminalOpen(false)} />}
           </section>
-          <ReviewPanel
+          {can('review') && <ReviewPanel
             open={reviewOpen}
             session={session}
             git={detail.git}
@@ -462,11 +518,27 @@ export default function CodeView({
             }), true, true)}
             onDeliveryPolicyChange={(policy) => runAction(() => codingApi.updateDeliveryPolicy(session.id, policy), true, true)}
             onArchive={toggleArchive}
+            onFileAction={(file, action) => runAction(() => codingApi.reviewFile(session.id, {
+              folder_id: file.folder_id,
+              path: file.path,
+              action,
+            }), false, true)}
             suggestedUpdate={suggestedUpdate}
             onResolveConflicts={() => runAction(() => codingApi.turn(
               session.id,
               'Resolve the source handoff conflict inside the isolated task workspace. Inspect the current source folders read-only, preserve both the user’s source changes and the intended task changes, update only the task workspace, run the relevant checks, and report when it is ready for review. Do not modify the source folders directly.',
             ), true, true)}
+          />}
+          {can('files') && <FilesPanel
+            open={filesOpen}
+            sessionId={session.id}
+            onClose={() => setFilesOpen(false)}
+            onReference={(item) => setReferenceRequest((current) => ({ id: (current?.id || 0) + 1, item }))}
+          />}
+          <PreviewPanel
+            open={previewOpen}
+            url={project.previewUrl}
+            onClose={() => setPreviewOpen(false)}
           />
         </div>
       ) : (
@@ -475,7 +547,7 @@ export default function CodeView({
       <ConfirmModal
         open={deleteOpen}
         title="Delete this coding task?"
-        message="This removes the task history and its managed workspace. Your source folder is left alone."
+        message="This removes the task history and any isolated working copy. Your original files are left alone."
         confirmLabel="Delete task"
         destructive
         busy={busy}
@@ -484,7 +556,7 @@ export default function CodeView({
           if (await deleteTask()) setDeleteOpen(false);
         }}
       />
-      {session && (
+      {session && can('task_controls') && (
         <RuntimeControlsModal
           open={controlsOpen}
           sessionId={session.id}
@@ -555,7 +627,7 @@ export default function CodeView({
           }
         } : undefined}
       />
-      {session && (
+      {session && can('extensions') && (
         <ExtensionsModal
           open={extensionsOpen}
           sessionId={session.id}

@@ -224,6 +224,7 @@ export function Select({
   ...rest
 }) {
   const itemsForLabels = useMemo(() => flattenForLabels(options), [options]);
+  const selectedLabel = itemsForLabels.find((item) => item.value === value)?.label;
 
   return (
     <BaseSelect.Root
@@ -244,6 +245,9 @@ export function Select({
         // next to it and would otherwise fight the pill-variant classes.
         className={cn(variant === 'unstyled' ? null : triggerVariants({ variant, size }), className)}
         aria-label={ariaLabel || label}
+        aria-description={(typeof selectedLabel === 'string' || typeof selectedLabel === 'number')
+          ? `Selected: ${selectedLabel}`
+          : undefined}
         aria-invalid={invalid || undefined}
         // The spinner that replaces the chevron is aria-hidden, so without
         // this a screen-reader user gets no signal that a click is being
