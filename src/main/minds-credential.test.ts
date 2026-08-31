@@ -29,10 +29,18 @@ import { getAccessToken, getRefreshToken, isAccessTokenExpired } from './token-s
 import { getServerPort, isServerRunning, isServerStarting } from './server-process';
 import { getMindsApiKey, setMindsApiKey, deleteMindsApiKey } from './keychain-service';
 import {
+  beginMindsResumeCredentialGate,
+  isMindsResumeCredentialGateActive,
+  settleMindsResumeCredentialGate,
+  waitForMindsResumeCredential,
+} from './minds-resume-gate';
+import {
   establishMindsCredential,
   resolveMindsCredential,
   pushMindsCredential,
   syncMindsCredential,
+  syncMindsCredentialSelection,
+  syncUsableMindsCredential,
   setUserSuppliedMindsKey,
   clearUserSuppliedMindsKey,
   forgetMindsCredential,
@@ -55,6 +63,7 @@ function installFetch(status = 200): Call[] {
 }
 
 beforeEach(() => {
+  settleMindsResumeCredentialGate(true);
   vi.clearAllMocks();
   (getAccessToken as Mock).mockReturnValue('session-token');
   (getMindsApiKey as Mock).mockResolvedValue(null);
@@ -95,6 +104,75 @@ describe('pushMindsCredential', () => {
     expect(calls[0].url).toBe('http://127.0.0.1:8765/api/v1/runtime-credential/minds');
     expect(calls[0].auth).toBe('Bearer owner-token');
     expect(JSON.parse(calls[0].body as string)).toEqual({ value: 'a-token' });
+  });
+
+  it('does not release a resume gate merely because a generic stale-token push landed', async () => {
+    beginMindsResumeCredentialGate();
+    installFetch();
+
+    expect(await pushMindsCredential('expired-session-token')).toBe(true);
+    expect(isMindsResumeCredentialGateActive()).toBe(true);
+
+    let released = false;
+    const waiting = waitForMindsResumeCredential().then((ready) => {
+      released = true;
+      return ready;
+    });
+    await Promise.resolve();
+    expect(released).toBe(false);
+
+    settleMindsResumeCredentialGate(true);
+    await expect(waiting).resolves.toBe(true);
+  });
+
+  it('serializes handovers so an older PUT cannot finish after a newer value', async () => {
+    const calls: string[] = [];
+    const releases: Array<() => void> = [];
+    globalThis.fetch = vi.fn(async (_input: unknown, init?: RequestInit) => {
+      calls.push(JSON.parse(String(init?.body)).value);
+      await new Promise<void>((resolve) => { releases.push(resolve); });
+      return { ok: true, status: 204 };
+    }) as unknown as typeof fetch;
+
+    const oldPush = pushMindsCredential('expired-session-token');
+    await Promise.resolve();
+    expect(calls).toEqual(['expired-session-token']);
+
+    const freshPush = pushMindsCredential('fresh-session-token');
+    await Promise.resolve();
+    expect(calls).toEqual(['expired-session-token']);
+
+    releases[0]();
+    await expect(oldPush).resolves.toBe(true);
+    await Promise.resolve();
+    expect(calls).toEqual(['expired-session-token', 'fresh-session-token']);
+
+    releases[1]();
+    await expect(freshPush).resolves.toBe(true);
+  });
+
+  it('queues selection before an async keychain read can invert sync order', async () => {
+    let releaseOldSelection!: (value: string | null) => void;
+    (getMindsApiKey as Mock)
+      .mockReturnValueOnce(new Promise<string | null>((resolve) => {
+        releaseOldSelection = resolve;
+      }))
+      .mockResolvedValueOnce(null);
+    const calls = installFetch();
+
+    const oldSync = syncMindsCredentialSelection();
+    await Promise.resolve();
+    const freshSync = syncMindsCredentialSelection();
+    (getAccessToken as Mock).mockReturnValue('fresh-session-token');
+
+    releaseOldSelection('mdb_old_selection');
+    await expect(oldSync).resolves.toEqual({ landed: true, usable: true });
+    await expect(freshSync).resolves.toEqual({ landed: true, usable: true });
+
+    expect(calls.map((call) => JSON.parse(call.body as string).value)).toEqual([
+      'mdb_old_selection',
+      'fresh-session-token',
+    ]);
   });
 
   it('sends a blank value to clear, never the literal null', async () => {
@@ -172,12 +250,37 @@ describe('syncMindsCredential', () => {
   });
 });
 
+describe('syncUsableMindsCredential', () => {
+  it('reports a user-supplied key as usable after handing it over', async () => {
+    (getMindsApiKey as Mock).mockResolvedValue('mdb_users_own');
+    installFetch();
+    await expect(syncUsableMindsCredential()).resolves.toBe(true);
+  });
+
+  it('clears the sidecar but reports false when no credential is selected', async () => {
+    (getAccessToken as Mock).mockReturnValue(null);
+    const calls = installFetch();
+
+    await expect(syncUsableMindsCredential()).resolves.toBe(false);
+    expect(JSON.parse(calls[0].body as string)).toEqual({ value: '' });
+  });
+
+  it('does not call an expired session JWT usable merely because it landed', async () => {
+    (isAccessTokenExpired as Mock).mockReturnValue(true);
+    installFetch();
+
+    await expect(syncUsableMindsCredential()).resolves.toBe(false);
+  });
+});
+
 describe('a user-supplied key', () => {
   it('is stored in the keychain and handed over immediately', async () => {
+    beginMindsResumeCredentialGate();
     const calls = installFetch();
     expect(await setUserSuppliedMindsKey('mdb_pasted')).toBe(true);
     expect(setMindsApiKey).toHaveBeenCalledWith('mdb_pasted');
     expect(JSON.parse(calls[0].body as string)).toEqual({ value: 'mdb_pasted' });
+    expect(isMindsResumeCredentialGateActive()).toBe(false);
   });
 
   it('falls back to the session credential when removed', async () => {
