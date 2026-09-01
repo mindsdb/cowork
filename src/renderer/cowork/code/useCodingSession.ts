@@ -194,7 +194,29 @@ export function useCodingSession(sessionId: string | null, active = true) {
     if (!sessionId) return undefined;
 
     let alive = true;
+    let historyLoaded = false;
     let closeStream = () => {};
+    const openStream = () => {
+      closeStream();
+      closeStream = () => {};
+      if (!historyLoaded || document.visibilityState !== 'visible') return;
+      closeStream = openCodingEventStream(
+        sessionId,
+        cursor.current,
+        (event) => {
+          if (!alive) return;
+          setError('');
+          ingestEvents(sessionId, [event]);
+          if (event.type === 'session' || event.type === 'approval' || event.type === 'error' || event.type === 'command_result') {
+            codingApi.session(sessionId).then((value) => { if (alive) applySession(value); }).catch(() => {});
+          }
+          if (event.type === 'file_change' || event.type === 'diff' || event.type === 'session') {
+            scheduleReview(sessionId);
+          }
+        },
+        () => { if (alive) setError('Live updates disconnected. Reconnecting…'); },
+      );
+    };
     setLoading(true);
     codingApi.session(sessionId).then((value) => {
       if (!alive) return;
@@ -213,22 +235,8 @@ export function useCodingSession(sessionId: string | null, active = true) {
       if (alive) setError('Task history is reconnecting…');
     }).finally(() => {
       if (!alive) return;
-      closeStream = openCodingEventStream(
-        sessionId,
-        cursor.current,
-        (event) => {
-          if (!alive) return;
-          setError('');
-          ingestEvents(sessionId, [event]);
-          if (event.type === 'session' || event.type === 'approval' || event.type === 'error' || event.type === 'command_result') {
-            codingApi.session(sessionId).then((value) => { if (alive) applySession(value); }).catch(() => {});
-          }
-          if (event.type === 'file_change' || event.type === 'diff' || event.type === 'session') {
-            scheduleReview(sessionId);
-          }
-        },
-        () => { if (alive) setError('Live updates disconnected. Reconnecting…'); },
-      );
+      historyLoaded = true;
+      openStream();
     });
     // Review data is useful as soon as it is available, but it is never a
     // prerequisite for restoring the conversation or accepting input.
@@ -252,12 +260,16 @@ export function useCodingSession(sessionId: string | null, active = true) {
         if (sessionResult.status === 'fulfilled' || eventResult.status === 'fulfilled') setError('');
       });
     };
+    const onVisibilityChange = () => {
+      openStream();
+      reconcile();
+    };
     const reconcileTimer = window.setInterval(reconcile, 2_500);
-    document.addEventListener('visibilitychange', reconcile);
+    document.addEventListener('visibilitychange', onVisibilityChange);
     return () => {
       alive = false;
       window.clearInterval(reconcileTimer);
-      document.removeEventListener('visibilitychange', reconcile);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
       if (liveFlushTimer.current != null) {
         window.clearTimeout(liveFlushTimer.current);
         liveFlushTimer.current = null;

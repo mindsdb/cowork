@@ -125,13 +125,28 @@ describe('coding API boundary', () => {
     );
   });
 
-  it('surfaces server detail without exposing an HTML error body', async () => {
+  it('names the head instruction when resuming a persisted queue', async () => {
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ id: 'task-1' }) }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await codingApi.runQueued('task-1', 'queue-1');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://127.0.0.1:26866/api/v1/coding/sessions/task-1/queue/run',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ instruction_id: 'queue-1' }) }),
+    );
+  });
+
+  it('surfaces server detail and status without exposing an HTML error body', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({
       ok: false,
       status: 409,
       json: async () => ({ detail: 'Handoff stopped before changing the source' }),
     })));
-    await expect(codingApi.apply('task-1')).rejects.toThrow('Handoff stopped before changing the source');
+    await expect(codingApi.apply('task-1')).rejects.toMatchObject({
+      message: 'Handoff stopped before changing the source',
+      status: 409,
+    });
   });
 
   it('explains the generic 404 produced by an incompatible backend', async () => {

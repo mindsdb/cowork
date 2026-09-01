@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { CodingSession } from './api';
+import type { CodingEvent, CodingSession } from './api';
 
 
 const mocks = vi.hoisted(() => ({
@@ -458,6 +458,41 @@ describe('CodeView session-list reconciliation', () => {
     view.rerender(<CodeView {...view.props} />);
 
     expect(mocks.composerRender.mock.calls.length).toBe(rendersBeforePoll);
+  });
+
+  it('does not rescan the transcript for prompt history on a re-render that adds no events', async () => {
+    const streaming = { ...session('streaming'), status: 'running' as const };
+    mocks.sessions.mockResolvedValue({ items: [streaming] });
+    const events: CodingEvent[] = Array.from({ length: 6_000 }, (_, index) => ({
+      schema_version: 1,
+      seq: index + 1,
+      timestamp: '2026-08-21T09:00:00Z',
+      type: 'user_message',
+      title: '',
+      text: `Prompt ${index + 1}`,
+      phase: 'completed',
+      data: {},
+    }));
+    let indexReads = 0;
+    const counted = new Proxy(events, {
+      get(target, property, receiver) {
+        if (typeof property === 'string' && /^\d+$/.test(property)) indexReads += 1;
+        return Reflect.get(target, property, receiver);
+      },
+    });
+    const detail = {
+      session: streaming, events: counted, latestEvents: {}, git: null, diff: [], loading: false, error: '',
+      refresh: vi.fn(async () => {}), refreshReview: vi.fn(async () => {}),
+    };
+    mocks.useCodingSession.mockReturnValue(detail);
+    const view = renderCode({ sessions: [streaming], selectedId: streaming.id });
+    await act(async () => { for (let index = 0; index < 5; index += 1) await Promise.resolve(); });
+
+    indexReads = 0;
+    mocks.useCodingSession.mockReturnValue({ ...detail, session: { ...streaming, updated_at: '2026-08-21T09:06:00Z' } });
+    view.rerender(<CodeView {...view.props} />);
+
+    expect(indexReads).toBeLessThan(10);
   });
 
   it('routes task status through steering while an agent turn is active', async () => {
