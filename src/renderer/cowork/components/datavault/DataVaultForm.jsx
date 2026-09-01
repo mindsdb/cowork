@@ -60,7 +60,7 @@ function FormLogo({ logo, logoUrl, color, connectorId }) {
   const src = logoUrl || (connectorId ? `logos/${connectorId}.svg` : null);
   if (src && src !== failedSrc) {
     return (
-      <span className="inline-grid place-items-center w-[36px] h-[36px] rounded-[8px] bg-surface-2">
+      <span className="inline-grid place-items-center w-[36px] h-[36px] rounded-card-row bg-surface-2">
         <img
           src={src}
           alt=""
@@ -73,7 +73,7 @@ function FormLogo({ logo, logoUrl, color, connectorId }) {
   const fn = (logo && Ico[logo]) || Ico.database;
   return (
     <span
-      className="inline-grid place-items-center w-[36px] h-[36px] rounded-[8px] bg-surface-2"
+      className="inline-grid place-items-center w-[36px] h-[36px] rounded-card-row bg-surface-2"
       style={{ color: color || 'var(--ink-3)' }}
     >
       {fn(20)}
@@ -149,7 +149,7 @@ function FieldInput({ field, value, onChange, disabled, inputRef }) {
   if (field.type === 'boolean') {
     return (
       <label
-        className="inline-flex items-center gap-[8px] font-[family-name:var(--font-body)] text-[13px] text-ink-2"
+        className="inline-flex items-center gap-2 font-[family-name:var(--font-body)] text-[13px] text-ink-2"
         style={{ cursor: disabled ? 'not-allowed' : 'pointer' }}
       >
         <Checkbox
@@ -334,9 +334,9 @@ export function DataVaultForm({
   if (spec._is_success) {
     return (
       <div className="flex flex-col gap-[14px] font-[family-name:var(--font-body)] py-[14px] px-0">
-        <div className="flex items-start gap-[12px]">
+        <div className="flex items-start gap-3">
           <span
-            className="inline-grid place-items-center w-[36px] h-[36px] rounded-[8px]"
+            className="inline-grid place-items-center w-[36px] h-[36px] rounded-card-row"
             style={{
               background: 'color-mix(in srgb, var(--success) 18%, var(--surface))',
               color: 'var(--success)',
@@ -347,7 +347,7 @@ export function DataVaultForm({
           <div className="min-w-0 flex-1 flex flex-col gap-[2px]">
             <div className="s-h3">{spec.title || 'Connected'}</div>
             {spec.subtitle && (
-              <div className="text-[12.5px] text-ink-3 leading-[1.5]">
+              <div className="text-sm text-ink-3 leading-[1.5]">
                 {spec.subtitle}
               </div>
             )}
@@ -358,7 +358,7 @@ export function DataVaultForm({
             This connection can access files it created, plus any you pick yourself — use "Add files from Google Drive" in a chat's + menu, or "Select files from Google Drive" in this connection's settings.
           </Alert>
         )}
-        <div className="flex justify-end gap-[8px]">
+        <div className="flex justify-end gap-2">
           {/* On success we always offer two routes:
                  • secondary "Close" — just dismiss the panel
                  • primary "View connectors" — jump to the Connect
@@ -494,7 +494,7 @@ export function DataVaultForm({
           picker for multi-method forms (the picker has its own
           "Pick how you want to connect:" caption). */}
       {!hideHeader && !(isMultiMethod && !activeMethod) && (
-        <div className="flex items-center gap-[12px]">
+        <div className="flex items-center gap-3">
           <FormLogo logo={spec.logo} logoUrl={spec.logo_url} color={spec.logo_color} connectorId={spec._connector_id || spec.engine} />
           <div className="min-w-0 flex-1">
             <div className="s-h3">{spec.title || 'Connect'}</div>
@@ -508,7 +508,7 @@ export function DataVaultForm({
           (host passes `userLabel={undefined}` in that case) and while the
           user is still on the method picker (nothing to label yet). */}
       {userLabel !== undefined && !(isMultiMethod && !activeMethod) && (
-        <div className="flex flex-col gap-[4px]">
+        <div className="flex flex-col gap-1">
           <label htmlFor="connection-user-label" className="text-[12px] text-ink-3 font-medium">
             Label
           </label>
@@ -586,10 +586,10 @@ export function DataVaultForm({
               key={f.name}
               ref={(node) => { fieldContainerRefs.current[f.name] = node; }}
               tabIndex={-1}
-              className="flex flex-col gap-[4px] outline-none"
+              className="flex flex-col gap-1 outline-none"
               style={{ opacity: isSkipped ? 0.55 : 1 }}
             >
-              <div className="flex items-baseline justify-between gap-[8px]">
+              <div className="flex items-baseline justify-between gap-2">
                 <label className="text-[12px] text-ink-3 font-medium">
                   {f.label || f.name}
                   {f.required && !isSkipped && (
@@ -625,7 +625,7 @@ export function DataVaultForm({
                 />
               )}
               {isSkipped && (
-                <div className="px-[10px] py-[8px] rounded-[7px] bg-surface-2 border border-dashed border-line-2 text-ink-4 text-[12px] font-[family-name:var(--font-body)] italic">Skipped — the agent will figure this one out.</div>
+                <div className="px-[10px] py-2 rounded-[7px] bg-surface-2 border border-dashed border-line-2 text-ink-4 text-[12px] font-[family-name:var(--font-body)] italic">Skipped — the agent will figure this one out.</div>
               )}
               {(requiredErrors[f.name] || f.error) && !isSkipped && (
                 <div className="text-[11.5px] text-danger">{requiredErrors[f.name] || f.error}</div>
@@ -668,7 +668,7 @@ export function DataVaultForm({
           form's top-level actions, then a generic Submit button.
           Layout: How-to link on the left (when the active method
           ships docs), action buttons on the right. */}
-      <div className="flex items-center justify-between gap-[8px] flex-wrap pt-[4px]">
+      <div className="flex items-center justify-between gap-2 flex-wrap pt-1">
         {(() => {
           const m = activeMethod || spec || {};
           const hasHowTo = typeof m.how_to === 'string' && m.how_to.trim().length > 0;
@@ -684,7 +684,7 @@ export function DataVaultForm({
               catch { window.open(m.help_url, '_blank', 'noreferrer'); }
             }
           };
-          const sharedClass = 'py-[4px] px-0 text-[12px] font-medium text-accent bg-transparent border-0 cursor-pointer font-[inherit] no-underline hover:underline';
+          const sharedClass = 'py-1 px-0 text-[12px] font-medium text-accent bg-transparent border-0 cursor-pointer font-[inherit] no-underline hover:underline';
           return hasHowTo ? (
             <button
               type="button"
@@ -701,7 +701,7 @@ export function DataVaultForm({
             >How to?</a>
           );
         })()}
-        <div className="flex gap-[8px] flex-wrap">
+        <div className="flex gap-2 flex-wrap">
         {(activeMethod?.actions || spec.actions || [{ id: 'submit', label: 'Submit', kind: 'primary' }]).map((a) => {
           // Modify mode swaps the primary action's label to make
           // the destination explicit — "Save changes" reads as an
@@ -810,7 +810,7 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
           type="button"
           disabled={busy}
           onClick={onHeroClick}
-          className="flex items-center gap-[12px] w-full text-left px-[14px] py-[12px] rounded-[10px] text-ink font-[family-name:var(--font-body)] min-w-0 outline-none"
+          className="flex items-center gap-3 w-full text-left px-[14px] py-3 rounded-[10px] text-ink font-[family-name:var(--font-body)] min-w-0 outline-none"
           style={{
             background: 'color-mix(in srgb, var(--accent) 12%, var(--surface))',
             border: '1px solid color-mix(in srgb, var(--accent) 45%, transparent)',
@@ -901,7 +901,7 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
             // can't push the card past the panel's edge. Suspenders:
             // `[overflow-wrap:anywhere]` on the description handles the
             // line-breaking.
-            className="flex flex-col items-stretch text-left gap-[6px] px-[14px] py-[12px] rounded-[9px] text-ink font-[family-name:var(--font-body)] outline-none min-w-0"
+            className="flex flex-col items-stretch text-left gap-[6px] px-[14px] py-3 rounded-[9px] text-ink font-[family-name:var(--font-body)] outline-none min-w-0"
             style={{
               background: m.recommended
                 ? 'color-mix(in srgb, var(--accent) 8%, var(--surface))'
@@ -940,7 +940,7 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
               // blows out the card's width. `[overflow-wrap:anywhere]`
               // lets the browser break mid-token where needed; `min-w-0`
               // on the parent card unlocks shrink below intrinsic width.
-              <div className="text-[12.5px] text-ink-3 leading-[1.45] [overflow-wrap:anywhere] [word-break:break-word] min-w-0">{m.description}</div>
+              <div className="text-sm text-ink-3 leading-[1.45] [overflow-wrap:anywhere] [word-break:break-word] min-w-0">{m.description}</div>
             )}
             {hasHelp && (
               hasHowTo ? (
@@ -978,7 +978,7 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
   };
 
   return (
-    <div className="flex flex-col gap-[8px]">
+    <div className="flex flex-col gap-2">
       {hero ? (
         // Lead with the recommended method as a prominent button; the
         // rest fold away under a quiet disclosure (ENG-1534).
@@ -990,7 +990,7 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
               triggerClassName="justify-center"
               panelClassName="pt-2"
               title={(
-                <span className="inline-flex items-center justify-center gap-[4px] w-full text-[11.5px] text-ink-3">
+                <span className="inline-flex items-center justify-center gap-1 w-full text-[11.5px] text-ink-3">
                   See other options to connect {providerName}
                   <span
                     className="inline-flex transition-transform duration-200 group-data-[panel-open]:rotate-180"
@@ -1001,7 +1001,7 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
                 </span>
               )}
             >
-              <div className="flex flex-col gap-[8px]">
+              <div className="flex flex-col gap-2">
                 {rest.map(renderCard)}
               </div>
             </Collapsible>
@@ -1010,7 +1010,7 @@ function MethodPicker({ spec, methods, onPick, onAuthorize, busy }) {
       ) : (
         // No recommended method — fall back to today's flat card list.
         <>
-          <div className="text-[12.5px] text-ink-3 mb-[2px]">
+          <div className="text-sm text-ink-3 mb-[2px]">
             Pick how you want to connect:
           </div>
           {orderedMethods.map(renderCard)}

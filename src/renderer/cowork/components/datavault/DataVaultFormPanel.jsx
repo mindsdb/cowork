@@ -702,7 +702,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
       // `overflow-y-auto` never sees anything to scroll. Pinning shrink
       // to 0 makes the panel claim its full content height so the rail's
       // scroll engages naturally.
-      className="relative bg-surface border border-solid border-line rounded-[12px] overflow-hidden shrink-0"
+      className="relative bg-surface border border-solid border-line rounded-card overflow-hidden shrink-0"
       style={{
         // Highlight ring driven from outside (e.g. the chat's
         // connect-intro bubble on hover) — accent border + soft
@@ -728,7 +728,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
             type="button"
             onClick={onBackToOptions}
             disabled={busy}
-            className="flex-1 min-w-0 flex items-center gap-[8px] px-[14px] py-0 bg-transparent border-0 text-left font-[family-name:var(--font-body)]"
+            className="flex-1 min-w-0 flex items-center gap-2 px-[14px] py-0 bg-transparent border-0 text-left font-[family-name:var(--font-body)]"
             style={{
               cursor: busy ? 'not-allowed' : 'pointer',
               opacity: busy ? 0.6 : 1,
@@ -737,11 +737,11 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
             onMouseOver={(e) => { if (!busy) e.currentTarget.style.background = 'var(--surface-2)'; }}
             onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; }}
           >
-            <span className="text-accent text-[13px] font-semibold inline-flex items-center gap-[4px] shrink-0">
+            <span className="text-accent text-[13px] font-semibold inline-flex items-center gap-1 shrink-0">
               <span aria-hidden>{'←'}</span>
               Back to options
             </span>
-            <span className="text-ink-4 text-[12.5px] overflow-hidden text-ellipsis whitespace-nowrap min-w-0 flex-1">
+            <span className="text-ink-4 text-sm overflow-hidden text-ellipsis whitespace-nowrap min-w-0 flex-1">
               · {activeMethodSpec.label || activeMethodSpec.id}
             </span>
           </button>
@@ -769,7 +769,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
         {spec._is_probing ? (
           /* Probe running — replace the form with a spinner so the
              popup shows clear progress instead of appearing frozen. */
-          <div className="flex flex-col items-center justify-center pt-[32px] px-[20px] pb-[36px] gap-[12px]">
+          <div className="flex flex-col items-center justify-center pt-8 px-5 pb-[36px] gap-3">
             <span
               aria-hidden
               className="block w-[22px] h-[22px] rounded-full"
@@ -785,13 +785,13 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
           </div>
         ) : spec.form_error && !spec._is_error ? (
           /* Probe returned failure — show error card + Try again. */
-          <div className="flex flex-col gap-[12px] pt-[4px] px-0 pb-[2px]">
+          <div className="flex flex-col gap-3 pt-1 px-0 pb-[2px]">
             <Alert variant="danger" title="Connection failed">
-              <div className="text-[12.5px] text-ink-2 leading-[1.55]">
+              <div className="text-sm text-ink-2 leading-[1.55]">
                 {spec.form_error}
               </div>
               {spec.subtitle && (
-                <div className="text-[12.5px] text-ink-3 leading-[1.4] mt-[6px]">
+                <div className="text-sm text-ink-3 leading-[1.4] mt-[6px]">
                   {spec.subtitle}
                 </div>
               )}
@@ -838,7 +838,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
             {showStatusToast && (
               <div
                 key={spec.status_text}
-                className="flex items-center gap-[10px] mb-[12px] pt-[8px] pr-[10px] pb-[8px] pl-[12px] rounded-[8px] text-ink-2 text-[12.5px]"
+                className="flex items-center gap-[10px] mb-3 pt-2 pr-[10px] pb-2 pl-3 rounded-card-row text-ink-2 text-sm"
                 style={{
                   background: 'color-mix(in srgb, var(--accent) 10%, var(--surface))',
                   border: '1px solid color-mix(in srgb, var(--accent) 30%, transparent)',
@@ -867,7 +867,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
                     onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
                     onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-4)'; e.currentTarget.style.background = 'transparent'; }}
                   >
-                    {Ico.close ? Ico.close(11) : <span className="text-[14px] leading-none">×</span>}
+                    {Ico.close ? Ico.close(11) : <span className="text-base leading-none">×</span>}
                   </button>
                 </Tooltip>
               </div>
