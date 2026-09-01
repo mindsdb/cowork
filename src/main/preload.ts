@@ -17,10 +17,11 @@ contextBridge.exposeInMainWorld('antontron', {
   // Optional reachable control-plane origin for connecting another physical
   // computer. The renderer validates this before placing it in setup commands.
   codeControlPlaneOrigin: process.env.COWORK_CODE_CONTROL_PLANE_URL?.trim() || null,
-  // Coding Mode kill switch: the feature (its Settings section, the toggle,
-  // the floating corner button) is parked behind this while unfinished.
-  // Unset/anything other than 'true' defaults to off.
-  codingModeOptionsEnabled: process.env.CODING_MODE_OPTIONS_ENABLED === 'true',
+  // Deployment capability, deliberately separate from the user's local
+  // opt-in. Desktop builds expose Code unless an emergency rollout kill
+  // switch explicitly disables it; hosted web receives no Electron bridge
+  // and therefore cannot expose the feature.
+  codeModeAvailable: process.env.COWORK_CODE_MODE_AVAILABLE !== 'false',
   // Installer
   checkInstall: () => ipcRenderer.invoke(IPC.INSTALL_CHECK),
   startInstall: () => ipcRenderer.invoke(IPC.INSTALL_START),

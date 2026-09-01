@@ -3,7 +3,7 @@
 interface AntonTronAPI {
   serverPort?: number | null;
   codeControlPlaneOrigin?: string | null;
-  codingModeOptionsEnabled?: boolean;
+  codeModeAvailable?: boolean;
   checkInstall: () => Promise<{ antonInstalled: boolean; serverDepsReady: boolean }>;
   startInstall: () => Promise<boolean>;
   cancelInstall: () => Promise<boolean>;

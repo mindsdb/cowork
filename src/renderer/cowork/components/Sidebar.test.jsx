@@ -49,13 +49,20 @@ const render = (ui, options) => rtlRender(ui, { wrapper: ToastProvider, ...optio
 import Sidebar from './Sidebar';
 import { deriveUpdateBanner } from '../../../shared/update-banner';
 
-const baseProps = { tasks: [], onNavigate: () => {} };
+const baseProps = { tasks: [], onNavigate: () => {}, showWorkspaceSwitch: true };
 
 // Minimal decodable JWT for the signed-in footer tests.
 const jwt = (payload) =>
   `header.${btoa(JSON.stringify(payload)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')}.sig`;
 
 describe('Sidebar — persistent Cowork / Code workspace switch', () => {
+  it('hides the entire workspace switch until Code Mode is enabled', () => {
+    hostMock.isWeb = false;
+    render(<Sidebar {...baseProps} showWorkspaceSwitch={false} />);
+    expect(screen.queryByRole('button', { name: 'Cowork' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Code' })).toBeNull();
+  });
+
   it('switches to Code from the dedicated Electron workspace control', () => {
     hostMock.isWeb = false;
     const onWorkspaceChange = vi.fn();

@@ -27,8 +27,10 @@ import SettingsView from './views/settings/SettingsView';
 import UtilitiesView from './views/UtilitiesView';
 import SkillsView from './views/SkillsView';
 import CodeView from './code/CodeView';
+import { useCodeModeAccess } from './code/codeModeAccess';
 import { DEFAULT_CODING_AGENT_ENGINE, DEFAULT_CODING_AGENT_MODEL } from './code/defaults';
 import { useCodeWorkspace } from './code/useCodeWorkspace';
+import { useCodeModeLifecycle } from './code/useCodeModeLifecycle';
 import SearchModal from './components/SearchModal';
 import ConnectorPicker from './components/connector/ConnectorPicker';
 import ServerOfflineHelpModal from './components/ServerOfflineHelpModal';
@@ -1256,15 +1258,13 @@ function AppCore() {
   // text-input focus so mobile browsers don't leave the app magnified.
   useViewportZoomLock(isMobile);
 
-  // Coding Mode is parked behind CODING_MODE_OPTIONS_ENABLED (main/preload —
-  // defaults false when unset) while it's unfinished: this forces every
-  // consumer of the user's own codingModeEnabled preference to read as off
-  // when the build-level flag is off, even if a stale `true` is already
-  // sitting in someone's local settings from earlier testing — there'd be no
-  // UI left to turn it back off otherwise, since the toggle and its Settings
-  // section are hidden the same way (see navItemsForHost / the floating
-  // corner toggle below).
-  const codingModeActive = host.codingModeOptionsEnabled && !!settings.codingModeEnabled;
+  // Code availability (release policy) and the user's opt-in (device-local)
+  // are deliberately independent. A development fixture may override the UI
+  // gate, but production web never can: it has no desktop capability bridge.
+  const codeModeAccess = useCodeModeAccess();
+  const codeFixtureActive = import.meta.env.DEV
+    && new URLSearchParams(window.location.search).has('codeFixture');
+  const codeModeEnabled = codeFixtureActive || codeModeAccess.enabled;
   // Nav-shell layout state (collapsed rail, off-canvas popout, collapsible
   // routes, and the derived popout flag) lives in useSidebarNav.
   const {
@@ -1365,23 +1365,27 @@ function AppCore() {
   // mounted while the other is visible: drafts, scroll position, selected
   // tasks, and live streams survive an instant workspace switch.
   const [workspaceMode, setWorkspaceMode] = useState(() => (
-    import.meta.env.DEV && new URLSearchParams(window.location.search).has('codeFixture')
+    codeFixtureActive
       ? 'code'
       : 'cowork'
   ));
-  const codeFixtureActive = import.meta.env.DEV
-    && new URLSearchParams(window.location.search).has('codeFixture');
+  // Rendering and keyboard routing use the effective mode, so turning the
+  // preference off cannot leave a single-frame Code remnant while React runs
+  // the transition effect below.
+  const effectiveWorkspaceMode = codeModeEnabled && workspaceMode === 'code'
+    ? 'code'
+    : 'cowork';
   // Do not boot the coding workspace, its data requests, and its hidden
   // composer during an ordinary Cowork session. Mount it on first use, then
   // keep it alive so later Cowork/Code switches preserve in-progress state.
-  const [codeWorkspaceMounted, setCodeWorkspaceMounted] = useState(() => workspaceMode === 'code');
+  const [codeWorkspaceMounted, setCodeWorkspaceMounted] = useState(() => codeFixtureActive);
   const changeWorkspace = useCallback((next) => {
     if (next !== 'cowork' && next !== 'code') return;
-    if (next === 'code' && host.isWeb && !codeFixtureActive) return;
+    if (next === 'code' && !codeModeEnabled) return;
     if (sidebarPopout) setNavPopoutOpen(false);
     if (next === 'code') setCodeWorkspaceMounted(true);
     setWorkspaceMode(next);
-  }, [codeFixtureActive, sidebarPopout]);
+  }, [codeModeEnabled, sidebarPopout]);
   const openCode = useCallback(() => changeWorkspace('code'), [changeWorkspace]);
   // Code owns a separate task history, but its route-specific navigation is
   // rendered by the canonical Cowork sidebar instead of a second nested rail.
@@ -1401,6 +1405,29 @@ function AppCore() {
     changeSelection: changeCodingSelection,
     setSessionPinned: setCodingSessionPinned,
   } = useCodeWorkspace(openCode);
+  const disableCodeWorkspace = useCallback(() => {
+    setWorkspaceMode('cowork');
+    setCodeWorkspaceMounted(false);
+  }, []);
+  const reportCodeStopIssue = useCallback(({ discoveryFailed, cancelFailures }) => {
+    const title = discoveryFailed
+      ? 'Code Mode is hidden, but running tasks could not be fully checked.'
+      : cancelFailures === 1
+        ? 'Code Mode is hidden, but one task could not be stopped.'
+        : `Code Mode is hidden, but ${cancelFailures} tasks could not be stopped.`;
+    toastManagerRef.current?.add({
+      type: 'warning',
+      title,
+    });
+  }, []);
+  useCodeModeLifecycle({
+    enabled: codeModeEnabled,
+    fixtureActive: codeFixtureActive,
+    sessions: codingSessions,
+    onDisable: disableCodeWorkspace,
+    onSessionsChange: setCodingSessions,
+    onStopIssue: reportCodeStopIssue,
+  });
   // Seed nav state from the address bar so a web deep-link / refresh paints the
   // right view instead of flashing Home. Electron's memory router starts at `/`.
   const initialNav = useRef(initialNavState()).current;
@@ -1411,25 +1438,25 @@ function AppCore() {
   const [route, setRoute] = useState(initialNav.route); // home | task | projects | scheduled | schedule-detail | artifacts | channels | customize
   // Keep a ref of the live route so the keydown listener (bound
   // once on mount) can read it without a re-bind on every nav.
-  routeRef.current = workspaceMode === 'code' ? 'code' : route;
+  routeRef.current = effectiveWorkspaceMode === 'code' ? 'code' : route;
   // Route-aware gravity-field intensity: dense work surfaces quiet the
   // light-mode field (gf-quiet + gravity-field.css) so it never competes
   // with content; the home stage keeps the full ambient motion.
   useEffect(() => {
     if (typeof document === 'undefined') return;
-    const denseWorkspace = workspaceMode === 'code' || route !== 'home';
+    const denseWorkspace = effectiveWorkspaceMode === 'code' || route !== 'home';
     document.body.classList.toggle('gf-quiet', denseWorkspace);
     // The field is decorative, so dense work surfaces update it at a much
     // lower frequency. Its slow drift remains visible without competing with
     // typing, streaming output, or approval interactions on busy machines.
     window.gravityField?.setFrameRate?.(denseWorkspace ? 1 : 4);
     return () => document.body.classList.remove('gf-quiet');
-  }, [route, workspaceMode]);
+  }, [effectiveWorkspaceMode, route]);
   // Cowork preserves Main's focused task-only collapse behavior. Code's
   // project, connector, skill, new-task, and task surfaces all share one
   // stable desktop navigation pane, so collapse is available throughout the
   // workspace. Narrow/tablet layouts continue to use the overlay drawer.
-  const activeSidebarRoute = workspaceMode === 'code' ? 'code' : route;
+  const activeSidebarRoute = effectiveWorkspaceMode === 'code' ? 'code' : route;
   const sidebarCanCollapse = !sidebarPopout && sidebarCollapsibleRoutes.has(activeSidebarRoute);
   const sidebarCollapsedEffective = sidebarCanCollapse && sidebarCollapsed;
   const [activeTaskId, setActiveTaskId] = useState(initialNav.activeTaskId);
@@ -2414,8 +2441,8 @@ function AppCore() {
   // Cmd/Ctrl+N follows the workspace on screen while preserving the latest
   // Cowork new-task closure (which captures fresh setRoute/setTasks).
   useEffect(() => {
-    newTaskRef.current = workspaceMode === 'code' ? openNewCodingTask : newTask;
-  }, [newTask, openNewCodingTask, workspaceMode]);
+    newTaskRef.current = effectiveWorkspaceMode === 'code' ? openNewCodingTask : newTask;
+  }, [effectiveWorkspaceMode, newTask, openNewCodingTask]);
 
   const clearActive = useCallback(() => {
     setTasks((prev) => prev.map((t) => t.status === 'active' ? { ...t, status: 'idle' } : t));
@@ -4276,79 +4303,28 @@ function AppCore() {
         />
       )}
 
-      {/* Floating corner row — back to its original bottom-right placement,
-          matching the onboarding pages (App.tsx's .arcade-theme-toggle,
-          which never moved). Same corner on every route, task view
-          included — one consistent location, not a bespoke per-view
-          control.
-            - Display Settings: opens ThemeModal (Light/Dark + Normal/8-Bit
-              picker) — the sidebar's old "Display settings" button (now
-              removed) folded into this.
-            - Coding Mode (desktop only): a bare "</>" glyph beside it,
-              deliberately un-boxed so it reads as a status indicator, not
-              a second button of the same weight — lit accent when on,
-              greyed out when off. Toggles the setting directly on click;
-              no modal, since there's nothing else to configure here.
-            - Hidden entirely on mobile — MobileShell renders its own theme
-              toggle in the top bar (opposite the hamburger) instead, and
-              the coding-mode toggle is dropped there rather than given a
-              second spot.
-            - Narrow/tablet band (popout sidebar, not yet phone-width): the
-              bottom-right corner overlaps task rows and the composer's
-              send button there, so the row moves to the top-right instead
-              — just left of the per-view expand/collapse-right-panel
-              button (see .floating-toggle-row--top-right). This is keyed
-              on the true viewport band (`isNarrow`), not `sidebarPopout` —
-              Coding Mode's popout sidebar is desktop-width, so this row
-              stays put in its usual bottom-right corner there. */}
-      {!isMobile && (() => {
-        const showCodingToggle = !host.isWeb && host.codingModeOptionsEnabled && settings.showCodingModeToggle !== false;
-        const codingModeOn = showCodingToggle && codingModeActive;
-        const showThemeToggle = settings.showThemeToggle !== false || settings.show8bitToggle !== false;
-        if (!showCodingToggle && !showThemeToggle) return null;
-        return (
-          <div className={`floating-toggle-row [-webkit-app-region:no-drag]${isNarrow ? ' floating-toggle-row--top-right' : ''}`}>
-            {showCodingToggle && (
-              <Tooltip content={codingModeOn ? 'Turn off coding mode' : 'Turn on coding mode'}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const next = !settings.codingModeEnabled;
-                    setSetting('codingModeEnabled', next);
-                    saveSettings({ codingModeEnabled: next }).catch(() => {});
-                  }}
-                  aria-label={codingModeOn ? 'Turn off coding mode' : 'Turn on coding mode'}
-                  aria-pressed={codingModeOn}
-                  className={'coding-mode-toggle' + (codingModeOn ? ' is-on' : '')}
-                >
-                  {Ico.code(15)}
-                </button>
-              </Tooltip>
-            )}
-            {showThemeToggle && (
-              // With the 8-bit skin toggle hidden there's nothing else to
-              // pick in the modal — just flip dark/light directly. The
-              // modal only earns the extra click when it actually offers
-              // something beyond that.
-              <Tooltip content={settings.show8bitToggle === false ? 'Toggle dark/light mode' : 'Display settings'}>
-                <button
-                  onClick={() => {
-                    if (settings.show8bitToggle === false) {
-                      setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
-                    } else {
-                      setThemeModalOpen(true);
-                    }
-                  }}
-                  aria-label={settings.show8bitToggle === false ? 'Toggle dark/light mode' : 'Open display settings'}
-                  className="floating-toggle"
-                >
-                  {theme === 'dark' ? Ico.sun(15) : Ico.moon(15)}
-                </button>
-              </Tooltip>
-            )}
-          </div>
-        );
-      })()}
+      {/* Code has one deliberate entry point while it is opt-in: Settings.
+          Keeping this corner control exclusively about appearance prevents a
+          hidden product from leaking into ordinary Cowork. */}
+      {!isMobile && (settings.showThemeToggle !== false || settings.show8bitToggle !== false) && (
+        <div className={`floating-toggle-row [-webkit-app-region:no-drag]${isNarrow ? ' floating-toggle-row--top-right' : ''}`}>
+          <Tooltip content={settings.show8bitToggle === false ? 'Toggle dark/light mode' : 'Display settings'}>
+            <button
+              onClick={() => {
+                if (settings.show8bitToggle === false) {
+                  setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
+                } else {
+                  setThemeModalOpen(true);
+                }
+              }}
+              aria-label={settings.show8bitToggle === false ? 'Toggle dark/light mode' : 'Open display settings'}
+              className="floating-toggle"
+            >
+              {theme === 'dark' ? Ico.sun(15) : Ico.moon(15)}
+            </button>
+          </Tooltip>
+        </div>
+      )}
 
       {!isMobile && (
       <div
@@ -4370,20 +4346,21 @@ function AppCore() {
           projectsCount={projects.length}
           artifactsCount={artifacts.length}
           connectorsCount={connectors.length}
-          activeRoute={workspaceMode === 'code'
+          activeRoute={effectiveWorkspaceMode === 'code'
             ? null
             : (route === 'task' ? null : (route === 'schedule-detail' ? 'scheduled' : route))}
-          activeWorkspace={workspaceMode}
-          activeCodeRoute={workspaceMode === 'code'
+          activeWorkspace={effectiveWorkspaceMode}
+          showWorkspaceSwitch={codeModeEnabled}
+          activeCodeRoute={effectiveWorkspaceMode === 'code'
             ? (codeProjectsOpen ? 'projects' : (codeConnectorsOpen ? 'connectors' : (codeSkillsOpen ? 'skills' : null)))
             : null}
           settingsActive={settingsOpen}
           // Only mark a recent as "selected" while actually viewing a task —
           // activeTaskId persists across navigation, so passing it unconditionally
           // left the last-opened task highlighted on Projects/Settings/etc.
-          activeTaskId={workspaceMode === 'cowork' && route === 'task' ? activeTaskId : null}
+          activeTaskId={effectiveWorkspaceMode === 'cowork' && route === 'task' ? activeTaskId : null}
           codingSessions={codingSessions}
-          activeCodingSessionId={workspaceMode === 'code' && !codeNewTask && !codeProjectsOpen && !codeConnectorsOpen && !codeSkillsOpen
+          activeCodingSessionId={effectiveWorkspaceMode === 'code' && !codeNewTask && !codeProjectsOpen && !codeConnectorsOpen && !codeSkillsOpen
             ? activeCodingSessionId
             : null}
           serverOnline={serverOnline}
@@ -4486,8 +4463,8 @@ function AppCore() {
         <Outlet />
         <div
           className="workspace-mode-panel"
-          hidden={workspaceMode !== 'cowork'}
-          aria-hidden={workspaceMode !== 'cowork'}
+          hidden={effectiveWorkspaceMode !== 'cowork'}
+          aria-hidden={effectiveWorkspaceMode !== 'cowork'}
         >
         {route === 'home' && (
           <HomeView
@@ -4528,7 +4505,7 @@ function AppCore() {
             skipIntro={bootIntroDone}
             prefill={composerPrefill}
             onPrefill={(text, select) => setComposerPrefill({ text, bump: Date.now(), select })}
-            codingModeEnabled={codingModeActive}
+            codingModeEnabled={false}
           />
         )}
 
@@ -4688,7 +4665,7 @@ function AppCore() {
               // the new task lands in the right workspace.
               handleSendFromHome(text, meta);
             }}
-            codingModeEnabled={codingModeActive}
+            codingModeEnabled={false}
             onSelectTask={selectTask}
             onDeleteTask={handleDeleteTask}
             onMoveTaskToProject={handleOpenMoveModal}
@@ -4844,14 +4821,14 @@ function AppCore() {
         )}
         </div>
 
-        {(!host.isWeb || codeFixtureActive) && codeWorkspaceMounted && (
+        {codeModeEnabled && codeWorkspaceMounted && (
           <div
             className="workspace-mode-panel"
-            hidden={workspaceMode !== 'code'}
-            aria-hidden={workspaceMode !== 'code'}
+            hidden={effectiveWorkspaceMode !== 'code'}
+            aria-hidden={effectiveWorkspaceMode !== 'code'}
           >
             <CodeView
-              active={workspaceMode === 'code'}
+              active={effectiveWorkspaceMode === 'code'}
               sessions={codingSessions}
               selectedId={activeCodingSessionId}
               newTask={codeNewTask}

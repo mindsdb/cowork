@@ -33,13 +33,12 @@ const bridge: any =
 export const isElectron: boolean = typeof bridge === 'object' && bridge !== null;
 export const isWeb: boolean = !isElectron;
 
-// Coding Mode kill switch (CODING_MODE_OPTIONS_ENABLED, main/preload —
-// unset/anything else defaults false) while the feature is parked. A plain
-// module-level const, not a function — it's a static per-process value read
-// once from the environment, same as isElectron/isWeb above. Web has no
-// bridge at all, so it's always false there too.
-export const codingModeOptionsEnabled: boolean =
-  isElectron && bridge.codingModeOptionsEnabled === true;
+// Static deployment capability. The user's opt-in is intentionally owned by
+// the renderer and stored per device; this flag only answers whether this
+// shell is allowed to offer Code at all. Web has no bridge, so hosted Cowork
+// remains unavailable until a future cloud capability is deliberately added.
+export const codeModeAvailable: boolean =
+  isElectron && bridge.codeModeAvailable === true;
 
 // ---- Platform identity --------------------------------------------------
 
@@ -1439,7 +1438,7 @@ export async function logout(): Promise<void> {
 export const host = {
   isWeb,
   isElectron,
-  codingModeOptionsEnabled,
+  codeModeAvailable,
   getPlatform,
   isMac,
   getApiOrigin,
