@@ -13,7 +13,7 @@ export function useQueuedInstructionResume(
   refresh: () => Promise<void>,
   onError: (message: string) => void,
 ) {
-  const attempts = useRef(new Map<string, { failures: number; retryDue: boolean }>());
+  const attempts = useRef(new Map<string, { failures: number; retryDue: boolean; settled: boolean }>());
   const currentKey = useRef('');
   const [retryTick, setRetryTick] = useState(0);
   const queuedInstructionId = session?.queued_instructions?.[0]?.id;
@@ -21,23 +21,37 @@ export function useQueuedInstructionResume(
 
   useEffect(() => {
     const key = currentKey.current;
+    for (const [known, entry] of attempts.current) {
+      if (entry.settled && (!session || !known.startsWith(`${session.id}:`))) attempts.current.delete(known);
+    }
     if (!session || !key || isActiveStatus(session.status)) return;
     const attempt = attempts.current.get(key);
     if (attempt && !attempt.retryDue) return;
-    attempts.current.set(key, { failures: attempt?.failures || 0, retryDue: false });
+    const entry = { failures: attempt?.failures || 0, retryDue: false, settled: false };
+    attempts.current.set(key, entry);
 
-    codingApi.runQueued(session.id).then(
-      () => { if (currentKey.current === key) void refresh(); },
+    const settle = () => {
+      entry.settled = true;
+      if (currentKey.current === key) void refresh();
+    };
+    codingApi.runQueued(session.id, queuedInstructionId).then(
+      settle,
       (reason) => {
-        const failures = (attempts.current.get(key)?.failures || 0) + 1;
-        attempts.current.set(key, { failures, retryDue: false });
+        if (attempts.current.get(key) !== entry) return;
+        if ((reason as { status?: number }).status === 409) {
+          settle();
+          return;
+        }
+        entry.failures += 1;
         if (currentKey.current === key) {
           onError(reason instanceof Error ? reason.message : 'Could not resume the queued instruction.');
         }
         window.setTimeout(() => {
-          attempts.current.set(key, { failures, retryDue: true });
+          if (attempts.current.get(key) !== entry) return;
+          entry.retryDue = true;
+          entry.settled = true;
           if (currentKey.current === key) setRetryTick((value) => value + 1);
-        }, Math.min(30_000, 1_000 * (2 ** (failures - 1))));
+        }, Math.min(30_000, 1_000 * (2 ** (entry.failures - 1))));
       },
     );
   }, [onError, queuedInstructionId, refresh, retryTick, session?.id, session?.status]);

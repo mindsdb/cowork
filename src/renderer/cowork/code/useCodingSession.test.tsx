@@ -163,6 +163,36 @@ describe('useCodingSession', () => {
     }
   });
 
+  it('closes the live stream while the document is hidden and reopens it from the cursor once visible', async () => {
+    vi.useFakeTimers();
+    try {
+      const close = vi.fn();
+      const closeReopened = vi.fn();
+      api.openStream.mockReturnValueOnce(close).mockReturnValueOnce(closeReopened);
+      api.session.mockResolvedValue(session('a'));
+      api.events.mockResolvedValueOnce({ items: [event(1, 'agent_message', 'Hello'), event(2, 'agent_message', 'World')], next_seq: 2 });
+      const { unmount } = renderHook(() => useCodingSession('a'));
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      expect(api.openStream).toHaveBeenCalledWith('a', 2, expect.any(Function), expect.any(Function));
+
+      act(() => setDocumentVisibility('hidden'));
+      expect(close).toHaveBeenCalledOnce();
+      expect(api.openStream).toHaveBeenCalledOnce();
+
+      act(() => setDocumentVisibility('visible'));
+      expect(api.openStream).toHaveBeenCalledTimes(2);
+      expect(api.openStream).toHaveBeenLastCalledWith('a', 2, expect.any(Function), expect.any(Function));
+      expect(closeReopened).not.toHaveBeenCalled();
+
+      unmount();
+      expect(closeReopened).toHaveBeenCalledOnce();
+      expect(close).toHaveBeenCalledOnce();
+    } finally {
+      resetDocumentVisibility();
+      vi.useRealTimers();
+    }
+  });
+
   it('restores the conversation without waiting for slow Git review data', async () => {
     const slowGit = deferred<never>();
     const slowDiff = deferred<never>();
@@ -232,18 +262,23 @@ describe('useCodingSession', () => {
     }
   });
 
-  it('keeps the session object identity across a reconcile poll that returns identical data', async () => {
+  it('keeps the session and events identity across a reconcile poll that returns identical data', async () => {
     vi.useFakeTimers();
     try {
       api.session.mockImplementation(async () => session('a'));
+      api.events.mockResolvedValueOnce({ items: [event(1, 'agent_message', 'Hello')], next_seq: 1 });
       const { result } = renderHook(() => useCodingSession('a'));
       await act(async () => { await Promise.resolve(); await Promise.resolve(); });
       const loaded = result.current.session;
+      const loadedEvents = result.current.events;
       expect(loaded?.id).toBe('a');
+      expect(loadedEvents).toHaveLength(1);
 
       await act(async () => { vi.advanceTimersByTime(2_500); await Promise.resolve(); await Promise.resolve(); });
       expect(api.session.mock.calls.length).toBeGreaterThanOrEqual(2);
+      expect(api.events.mock.calls.length).toBeGreaterThanOrEqual(2);
       expect(result.current.session).toBe(loaded);
+      expect(result.current.events).toBe(loadedEvents);
 
       api.session.mockImplementation(async () => session('a', 'renamed'));
       await act(async () => { vi.advanceTimersByTime(2_500); await Promise.resolve(); await Promise.resolve(); });

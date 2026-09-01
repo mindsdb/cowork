@@ -157,11 +157,53 @@ describe('scripts/resolve-server-channel.mjs mirrors getChannel', () => {
     expect(run({ COWORK_BUILD_KIND: 'dev' })).toBe('git');
   });
 
+  // Hand-parsed like the other workflow guards: js-yaml is only a transitive
+  // dependency. Returns the `id:` and dedented `run:` body of every step with
+  // this name.
+  function steps(text: string, stepName: string): Array<{ id: string; run: string }> {
+    const lines = text.split('\n');
+    const found: Array<{ id: string; run: string }> = [];
+    for (let index = 0; index < lines.length; index += 1) {
+      const start = /^(\s*)- name: (.*)$/.exec(lines[index]);
+      if (!start || start[2].trim() !== stepName) continue;
+      const stepIndent = start[1].length;
+      let id = '';
+      let run = '';
+      for (let cursor = index + 1; cursor < lines.length; cursor += 1) {
+        const line = lines[cursor];
+        const indent = line.search(/\S/);
+        if (indent !== -1 && indent <= stepIndent) break;
+        const idKey = /^\s*id: (\S+)\s*$/.exec(line);
+        if (idKey) id = idKey[1];
+        const key = /^(\s*)run: \|\s*$/.exec(line);
+        if (!key) continue;
+        const body: string[] = [];
+        for (let bodyLine = cursor + 1; bodyLine < lines.length; bodyLine += 1) {
+          const bodyIndent = lines[bodyLine].search(/\S/);
+          if (bodyIndent !== -1 && bodyIndent <= key[1].length) break;
+          body.push(lines[bodyLine].trim());
+        }
+        run = body.join('\n').trim();
+        break;
+      }
+      found.push({ id, run });
+    }
+    return found;
+  }
+
   it('is the only channel logic in the release workflows', () => {
     for (const workflow of ['build-macos-pkg.yml', 'build-windows-installer.yml', 'build-linux-deb.yml']) {
       const text = readFileSync(path.join(REPO, '.github/workflows', workflow), 'utf8');
-      expect(text, workflow).toContain('CH=$(node scripts/resolve-server-channel.mjs)');
-      expect(text, workflow).not.toMatch(/CH=(git|pypi)\b/);
+      expect(text.match(/\bCH=.*/g), workflow).toEqual(['CH=$(node scripts/resolve-server-channel.mjs)']);
+      expect(steps(text, 'Resolve install channel'), workflow).toEqual([{
+        id: 'channel',
+        run: [
+          'set -euo pipefail',
+          'CH=$(node scripts/resolve-server-channel.mjs)',
+          'echo "channel=$CH" >> "$GITHUB_OUTPUT"',
+          'echo "Install channel: $CH (build_kind=$COWORK_BUILD_KIND)"',
+        ].join('\n'),
+      }]);
     }
   });
 });

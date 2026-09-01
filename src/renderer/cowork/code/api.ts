@@ -703,7 +703,9 @@ export async function requestJson<T>(path: string, init?: RequestInit, policy: R
     if (response.status === 404 && detail === 'Not Found') {
       detail = 'This desktop build is connected to an older backend that does not support Code Mode. Restart the app with the matching cowork-server build.';
     }
-    throw new Error(detail);
+    const error = new Error(detail) as Error & { status?: number };
+    error.status = response.status;
+    throw error;
   }
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
@@ -819,8 +821,8 @@ const liveCodingApi = {
     requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/queue/${encodeURIComponent(instructionId)}`, { method: 'DELETE' }),
   steerQueued: (id: string, instructionId: string) =>
     requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/queue/${encodeURIComponent(instructionId)}/steer`, { method: 'POST' }),
-  runQueued: (id: string) =>
-    requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/queue/run`, { method: 'POST' }),
+  runQueued: (id: string, instructionId?: string) =>
+    requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/queue/run`, { method: 'POST', body: JSON.stringify({ instruction_id: instructionId || null }) }),
   cancel: (id: string) => requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/cancel`, { method: 'POST' }),
   recoveryOptions: (id: string) => requestJson<RecoveryPlan>(
     `/sessions/${encodeURIComponent(id)}/recovery-options`,

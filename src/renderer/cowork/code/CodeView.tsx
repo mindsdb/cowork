@@ -194,6 +194,7 @@ export default function CodeView({
     ? null
     : session?.pending_approval;
   const suggestedUpdate = detail.latestEvents.agent_message?.latestWithText?.text.trim() || '';
+  const history = useMemo(() => promptHistory(detail.events), [detail.events]);
   const performRecovery = async (sessionId: string, option: RecoveryOption) => {
     setRecoveringTaskId(sessionId);
     setRecoveryError('');
@@ -244,421 +245,421 @@ export default function CodeView({
   };
   return (
     <SkillScopeContext.Provider value={skillScopeKey}>
-    <div className="code-page">
-      <DeliveryAutomationMonitor
-        sessions={sessions}
-        onSessionsChange={onSessionsChange}
-        onError={(sessionId, message) => setAutomationErrors((current) => {
-          if ((current[sessionId] || '') === message) return current;
-          const next = { ...current };
-          if (message) next[sessionId] = message;
-          else delete next[sessionId];
-          return next;
-        })}
-      />
-      <RecoveryModal
-        plan={recoveryPlan}
-        selectedComputerId={recoveryComputerId}
-        busy={!!recoveringTaskId}
-        error={recoveryError}
-        onSelect={setRecoveryComputerId}
-        onClose={() => { if (!recoveringTaskId) setRecoveryPlan(null); }}
-        onConfirm={(option) => { if (selectedId) void performRecovery(selectedId, option); }}
-      />
-      {!newTask && !projectsOpen && !connectorsOpen && !skillsOpen && selectedId && taskBarSession && (
-        <TaskBar
-          session={taskBarSession}
-          git={detail.git}
-          files={detail.diff}
-          modelLabel={models.find((model) => model.id === taskBarSession.model)?.name}
-          filesOpen={filesOpen}
-          reviewOpen={reviewOpen}
-          terminalOpen={terminalOpen}
-          previewOpen={previewOpen}
-          previewAvailable={!!project.previewUrl}
-          projectActions={project.actions}
-          projectActionBusy={project.busy}
-          onToggleFiles={() => {
-            setFilesOpen((current) => !current);
-            setReviewOpen(false);
-            setPreviewOpen(false);
-          }}
-          onToggleReview={() => {
-            setReviewOpen((current) => !current);
-            setFilesOpen(false);
-            setPreviewOpen(false);
-          }}
-          onToggleTerminal={() => setTerminalOpen((current) => !current)}
-          onTogglePreview={() => {
-            setPreviewOpen((current) => !current);
-            setFilesOpen(false);
-            setReviewOpen(false);
-          }}
-          onRunProjectAction={(action) => void startProjectAction(action)}
-          onOpenControls={() => setControlsOpen(true)}
-          onOpenExtensions={() => { setExtensionTab('skills'); setExtensionsOpen(true); }}
-          onOpenProject={() => setProjectEditor({ id: taskBarSession.project_id || null })}
-          onRename={() => setRenameOpen(true)}
-          onFork={() => void forkTask()}
-          onCompact={() => void runAction(() => codingApi.turn(taskBarSession.id, '/compact'), true)}
-          onStatus={() => void runAction(
-            () => isActiveStatus(taskBarSession.status)
-              ? codingApi.steer(taskBarSession.id, '/status')
-              : codingApi.turn(taskBarSession.id, '/status'),
-            true,
-          )}
-          onArchive={() => void toggleArchive()}
-          onDelete={() => setDeleteOpen(true)}
+      <div className="code-page">
+        <DeliveryAutomationMonitor
+          sessions={sessions}
+          onSessionsChange={onSessionsChange}
+          onError={(sessionId, message) => setAutomationErrors((current) => {
+            if ((current[sessionId] || '') === message) return current;
+            const next = { ...current };
+            if (message) next[sessionId] = message;
+            else delete next[sessionId];
+            return next;
+          })}
         />
-      )}
+        <RecoveryModal
+          plan={recoveryPlan}
+          selectedComputerId={recoveryComputerId}
+          busy={!!recoveringTaskId}
+          error={recoveryError}
+          onSelect={setRecoveryComputerId}
+          onClose={() => { if (!recoveringTaskId) setRecoveryPlan(null); }}
+          onConfirm={(option) => { if (selectedId) void performRecovery(selectedId, option); }}
+        />
+        {!newTask && !projectsOpen && !connectorsOpen && !skillsOpen && selectedId && taskBarSession && (
+          <TaskBar
+            session={taskBarSession}
+            git={detail.git}
+            files={detail.diff}
+            modelLabel={models.find((model) => model.id === taskBarSession.model)?.name}
+            filesOpen={filesOpen}
+            reviewOpen={reviewOpen}
+            terminalOpen={terminalOpen}
+            previewOpen={previewOpen}
+            previewAvailable={!!project.previewUrl}
+            projectActions={project.actions}
+            projectActionBusy={project.busy}
+            onToggleFiles={() => {
+              setFilesOpen((current) => !current);
+              setReviewOpen(false);
+              setPreviewOpen(false);
+            }}
+            onToggleReview={() => {
+              setReviewOpen((current) => !current);
+              setFilesOpen(false);
+              setPreviewOpen(false);
+            }}
+            onToggleTerminal={() => setTerminalOpen((current) => !current)}
+            onTogglePreview={() => {
+              setPreviewOpen((current) => !current);
+              setFilesOpen(false);
+              setReviewOpen(false);
+            }}
+            onRunProjectAction={(action) => void startProjectAction(action)}
+            onOpenControls={() => setControlsOpen(true)}
+            onOpenExtensions={() => { setExtensionTab('skills'); setExtensionsOpen(true); }}
+            onOpenProject={() => setProjectEditor({ id: taskBarSession.project_id || null })}
+            onRename={() => setRenameOpen(true)}
+            onFork={() => void forkTask()}
+            onCompact={() => void runAction(() => codingApi.turn(taskBarSession.id, '/compact'), true)}
+            onStatus={() => void runAction(
+              () => isActiveStatus(taskBarSession.status)
+                ? codingApi.steer(taskBarSession.id, '/status')
+                : codingApi.turn(taskBarSession.id, '/status'),
+              true,
+            )}
+            onArchive={() => void toggleArchive()}
+            onDelete={() => setDeleteOpen(true)}
+          />
+        )}
 
-      {skillsOpen ? (
-        <CodeSkillsView key={skillScopeKey} projects={projects.projects} />
-      ) : connectorsOpen ? (
-        <CodeConnectorsView
-          connections={connections}
-          projects={projects.projects}
-          onConnectionsChange={onConnectionsChange}
-          returnProjectName={projects.projects.find((project) => project.id === connectorReturnProjectId)?.name || ''}
-          backLabel={connectorReturnToSettings ? 'Back to project' : 'Back to task'}
-          onBack={connectorReturnProjectId ? () => {
-            projects.setSelectedId(connectorReturnProjectId);
-            setConnectorReturnProjectId(null);
-            setConnectorReturnToSettings(false);
-            onOpenNewTask();
-          } : undefined}
-          onConnected={connectorReturnProjectId ? async (provider, connection) => {
-            const project = projects.projects.find((item) => item.id === connectorReturnProjectId);
-            if (!project) return;
-            if (!connectorReturnToSettings) {
-              const key = `${provider}:${connection.name}`;
-              const current = new Set(project.connections.map((item) => `${item.provider}:${item.name}`));
-              if (!current.has(key)) {
-                await codingApi.updateProject(project.id, {
-                  connections: [...project.connections, {
-                    provider,
-                    name: connection.name,
-                    label: connection.display_name || connection.user_label || connection.label || connection.name,
-                  }],
-                });
-                await projects.load();
+        {skillsOpen ? (
+          <CodeSkillsView key={skillScopeKey} projects={projects.projects} />
+        ) : connectorsOpen ? (
+          <CodeConnectorsView
+            connections={connections}
+            projects={projects.projects}
+            onConnectionsChange={onConnectionsChange}
+            returnProjectName={projects.projects.find((project) => project.id === connectorReturnProjectId)?.name || ''}
+            backLabel={connectorReturnToSettings ? 'Back to project' : 'Back to task'}
+            onBack={connectorReturnProjectId ? () => {
+              projects.setSelectedId(connectorReturnProjectId);
+              setConnectorReturnProjectId(null);
+              setConnectorReturnToSettings(false);
+              onOpenNewTask();
+            } : undefined}
+            onConnected={connectorReturnProjectId ? async (provider, connection) => {
+              const project = projects.projects.find((item) => item.id === connectorReturnProjectId);
+              if (!project) return;
+              if (!connectorReturnToSettings) {
+                const key = `${provider}:${connection.name}`;
+                const current = new Set(project.connections.map((item) => `${item.provider}:${item.name}`));
+                if (!current.has(key)) {
+                  await codingApi.updateProject(project.id, {
+                    connections: [...project.connections, {
+                      provider,
+                      name: connection.name,
+                      label: connection.display_name || connection.user_label || connection.label || connection.name,
+                    }],
+                  });
+                  await projects.load();
+                }
               }
-            }
-            projects.setSelectedId(project.id);
-            setConnectorReturnProjectId(null);
-            setConnectorReturnToSettings(false);
-            onOpenNewTask();
-          } : undefined}
-        />
-      ) : projectsOpen ? (
-        <CodeProjectsView
-          projects={projects.projects}
-          selectedId={projects.selectedId}
-          loading={projects.loading}
-          error={projects.error}
-          onOpen={(id) => {
-            projects.setSelectedId(id);
-            onSelectionChange(null, true);
-          }}
-          onCreate={() => setProjectEditor({ id: null })}
-          onEdit={(id) => setProjectEditor({ id })}
-        />
-      ) : taskList.loading && !sessions.length ? (
-        <div className="code-loading"><Spinner className="text-lg" /> Loading coding tasks…</div>
-      ) : newTask || !selectedId ? (
-        <NewTaskPanel
+              projects.setSelectedId(project.id);
+              setConnectorReturnProjectId(null);
+              setConnectorReturnToSettings(false);
+              onOpenNewTask();
+            } : undefined}
+          />
+        ) : projectsOpen ? (
+          <CodeProjectsView
+            projects={projects.projects}
+            selectedId={projects.selectedId}
+            loading={projects.loading}
+            error={projects.error}
+            onOpen={(id) => {
+              projects.setSelectedId(id);
+              onSelectionChange(null, true);
+            }}
+            onCreate={() => setProjectEditor({ id: null })}
+            onEdit={(id) => setProjectEditor({ id })}
+          />
+        ) : taskList.loading && !sessions.length ? (
+          <div className="code-loading"><Spinner className="text-lg" /> Loading coding tasks…</div>
+        ) : newTask || !selectedId ? (
+          <NewTaskPanel
+            busy={busy}
+            error={actionError || taskList.error}
+            defaultEngineId={defaultEngineId}
+            defaultModel={defaultModel}
+            models={models}
+            modelMeta={modelMeta}
+            catalog={catalog}
+            onCreate={createTask}
+            projects={projects.projects}
+            selectedProjectId={projects.selectedId}
+            connections={connections}
+            onProjectChange={projects.setSelectedId}
+            onProjectConnectionsChange={projects.load}
+            onOpenProjectSettings={() => setProjectEditor({ id: projects.selectedId })}
+            onOpenConnectors={() => {
+              setConnectorReturnToSettings(false);
+              setConnectorReturnProjectId(projects.selectedId);
+              onOpenConnectors();
+            }}
+            onCreateProject={() => setProjectEditor({ id: null })}
+          />
+        ) : restoring && !session ? (
+          <div className="code-loading"><Spinner className="text-lg" /> Restoring task…</div>
+        ) : session ? (
+          <div className="code-workspace">
+            <section className="code-conversation">
+              {(conversationError || workspaceWarning) && (
+                <div className="code-notices">
+                  {conversationError && <Alert variant="danger">{conversationError}</Alert>}
+                  {workspaceWarning && workspaceWarning !== conversationError && <Alert variant="warning">{workspaceWarning}</Alert>}
+                </div>
+              )}
+              <EventTimeline
+                key={`timeline-${session.id}`}
+                events={detail.events}
+                latestEvents={detail.latestEvents}
+                session={session}
+                recovering={recoveringTaskId === session.id}
+                onRecover={() => recoverTask(session.id)}
+              />
+              {approval && (
+                <ApprovalCard
+                  approval={approval}
+                  busy={busy}
+                  onDecision={(decision) => {
+                    // The user's decision is final from the UI's perspective.
+                    // Remove the card synchronously, then reconcile with the
+                    // server; a failed request restores it with the error shown.
+                    setResolvingApprovalId(approval.id);
+                    void runAction(
+                      () => codingApi.approve(session.id, approval.id, decision),
+                      true,
+                      true,
+                    ).catch(() => {}).finally(() => setResolvingApprovalId(null));
+                  }}
+                />
+              )}
+              <CodeComposer
+                key={`composer-${session.id}`}
+                session={session}
+                busy={busy}
+                onSend={(prompt, delivery, attachments) => runAction(
+                  () => delivery === 'steer'
+                    ? codingApi.steer(session.id, prompt, attachments)
+                    : delivery === 'queue'
+                      ? codingApi.queue(session.id, prompt, attachments)
+                      : codingApi.turn(session.id, prompt, attachments),
+                  true,
+                  true,
+                )}
+                onStop={() => runAction(() => codingApi.cancel(session.id), true)}
+                commands={commands}
+                onPermissionChange={(permissionMode) => runAction(
+                  () => codingApi.updateSession(session.id, { permission_mode: permissionMode }),
+                  true,
+                )}
+                onSteerQueued={(instructionId) => runAction(
+                  () => codingApi.steerQueued(session.id, instructionId),
+                  true,
+                )}
+                history={history}
+                // The effect that clears this runs after the next task's composer
+                // has already mounted and merged it.
+                referenceRequest={referenceRequest?.sessionId === session.id ? referenceRequest : null}
+                onRemoveQueued={(instructionId) => runAction(
+                  () => codingApi.removeQueued(session.id, instructionId),
+                  true,
+                )}
+                onClientCommand={(command) => {
+                  if (command.client_action === 'terminal') {
+                    setTerminalOpen(true);
+                    return;
+                  }
+                  if (command.client_action === 'controls') {
+                    setControlsOpen(true);
+                    return;
+                  }
+                  if (command.client_action === 'skills' || command.client_action === 'mcp') {
+                    setExtensionTab(command.client_action === 'mcp' ? 'mcp_servers' : 'skills');
+                    setExtensionsOpen(true);
+                    return;
+                  }
+                  if (command.client_action === 'fork') {
+                    void forkTask();
+                    return;
+                  }
+                  setActionError(`/${command.name} controls are not available in this build yet.`);
+                }}
+              />
+              {can('terminal') && terminalOpen && <TaskTerminal sessionId={session.id} focusTerminalId={terminalFocusId} onClose={() => setTerminalOpen(false)} />}
+            </section>
+            {can('review') && <ReviewPanel
+              open={reviewOpen}
+              session={session}
+              git={detail.git}
+              files={detail.diff}
+              busy={busy}
+              error={actionError || automationError}
+              onClose={() => setReviewOpen(false)}
+              onBranch={(name) => runAction(() => codingApi.branch(session.id, name), false, true)}
+              onCommit={(message) => runAction(() => codingApi.commit(session.id, message), false, true)}
+              onApply={() => runAction(() => codingApi.apply(session.id), false, true)}
+              onValidate={async () => (await runResult(
+                () => codingApi.validate(session.id),
+                false,
+                true,
+              ))?.items || []}
+              connections={projects.selected?.connections || []}
+              onDraftPullRequests={async (title, body, connectionName, drafts) => (await runResult(async () => {
+                const result = await codingApi.draftPullRequests(session.id, { title, body, drafts, connection_name: connectionName, confirmed: true });
+                return result.items;
+              }, true, true)) || []}
+              onPublish={(context, text, action) => runAction(() => codingApi.publish(session.id, {
+                provider: context.provider,
+                action,
+                target_url: context.url,
+                text,
+                connection_name: context.connection_name,
+                confirmed: true,
+              }), true, true)}
+              onCompleteSource={(context) => {
+                if (context.provider !== 'github' && context.provider !== 'linear') return Promise.resolve();
+                const provider = context.provider;
+                return runAction(() => codingApi.completeSource(session.id, {
+                  provider,
+                  action: 'complete',
+                  target_url: context.url,
+                  connection_name: context.connection_name,
+                  confirmed: true,
+                }), true, true);
+              }}
+              onOpenProjectSettings={() => setProjectEditor({ id: session.project_id || null })}
+              onAgentAction={(prompt) => runAction(() => codingApi.turn(session.id, prompt), true, true)}
+              onPullRequestAction={(item, action, threadId) => runAction(() => codingApi.pullRequestAction(session.id, {
+                action,
+                target_url: item.external_url || '',
+                connection_name: item.connection_name,
+                thread_id: threadId,
+                confirmed: true,
+              }), true, true)}
+              onDeliveryPolicyChange={(policy) => runAction(() => codingApi.updateDeliveryPolicy(session.id, policy), true, true)}
+              onArchive={toggleArchive}
+              onFileAction={(file, action) => runAction(() => codingApi.reviewFile(session.id, {
+                folder_id: file.folder_id,
+                path: file.path,
+                action,
+              }), false, true)}
+              suggestedUpdate={suggestedUpdate}
+              onResolveConflicts={() => runAction(() => codingApi.turn(
+                session.id,
+                'Resolve the source handoff conflict inside the isolated task workspace. Inspect the current source folders read-only, preserve both the user’s source changes and the intended task changes, update only the task workspace, run the relevant checks, and report when it is ready for review. Do not modify the source folders directly.',
+              ), true, true)}
+            />}
+            {can('files') && <FilesPanel
+              open={filesOpen}
+              sessionId={session.id}
+              onClose={() => setFilesOpen(false)}
+              onReference={(item) => setReferenceRequest((current) => ({ id: (current?.id || 0) + 1, sessionId: session.id, item }))}
+            />}
+            <PreviewPanel
+              open={previewOpen}
+              url={project.previewUrl}
+              onClose={() => setPreviewOpen(false)}
+            />
+          </div>
+        ) : (
+          <div className="code-loading"><Alert variant="danger">{detail.error || 'This coding task could not be restored.'}</Alert></div>
+        )}
+        <ConfirmModal
+          open={deleteOpen}
+          title="Delete this coding task?"
+          message="This removes the task history and any isolated working copy. Your original files are left alone."
+          confirmLabel="Delete task"
+          destructive
           busy={busy}
-          error={actionError || taskList.error}
+          onClose={() => { if (!busy) setDeleteOpen(false); }}
+          onConfirm={async () => {
+            if (await deleteTask()) setDeleteOpen(false);
+          }}
+        />
+        {session && can('task_controls') && (
+          <RuntimeControlsModal
+            open={controlsOpen}
+            sessionId={session.id}
+            value={{
+              model: session.model,
+              permission_mode: session.permission_mode,
+              reasoning_effort: session.reasoning_effort || 'high',
+              service_tier: session.service_tier || 'standard',
+              personality: session.personality || 'pragmatic',
+              network_access: !!session.network_access,
+              web_search: !!session.web_search,
+              additional_dirs: session.additional_dirs || [],
+            }}
+            models={models}
+            modelMeta={modelMeta}
+            busy={busy}
+            onClose={() => setControlsOpen(false)}
+            onApply={async (value) => {
+              await runAction(() => codingApi.updateSession(session.id, value), true, true);
+              setControlsOpen(false);
+            }}
+          />
+        )}
+        <ProjectSettingsModal
+          open={projectEditor !== null && !connectorsOpen && !skillsOpen}
+          suspended={projectEditor !== null && (connectorsOpen || skillsOpen)}
+          project={projectEditor?.id ? projects.projects.find((project) => project.id === projectEditor.id) || null : null}
+          connections={connections}
+          busy={projectBusy}
           defaultEngineId={defaultEngineId}
           defaultModel={defaultModel}
           models={models}
           modelMeta={modelMeta}
           catalog={catalog}
-          onCreate={createTask}
-          projects={projects.projects}
-          selectedProjectId={projects.selectedId}
-          connections={connections}
-          onProjectChange={projects.setSelectedId}
-          onProjectConnectionsChange={projects.load}
-          onOpenProjectSettings={() => setProjectEditor({ id: projects.selectedId })}
+          onClose={() => setProjectEditor(null)}
+          onSave={async (values) => {
+            setProjectBusy(true);
+            try {
+              const editingProject = projectEditor?.id
+                ? projects.projects.find((project) => project.id === projectEditor.id) || null
+                : null;
+              const saved = await projects.save(editingProject, values);
+              // A new project can be persisted before its optional Team Setup clone
+              // finishes. Switch the editor to that saved identity immediately so a
+              // recoverable clone error can be retried without creating a duplicate.
+              setProjectEditor({ id: saved.id });
+              return saved;
+            } finally {
+              setProjectBusy(false);
+            }
+          }}
           onOpenConnectors={() => {
-            setConnectorReturnToSettings(false);
-            setConnectorReturnProjectId(projects.selectedId);
+            setConnectorReturnToSettings(true);
+            setConnectorReturnProjectId(projectEditor?.id || null);
             onOpenConnectors();
           }}
-          onCreateProject={() => setProjectEditor({ id: null })}
-        />
-      ) : restoring && !session ? (
-        <div className="code-loading"><Spinner className="text-lg" /> Restoring task…</div>
-      ) : session ? (
-        <div className="code-workspace">
-          <section className="code-conversation">
-            {(conversationError || workspaceWarning) && (
-              <div className="code-notices">
-                {conversationError && <Alert variant="danger">{conversationError}</Alert>}
-                {workspaceWarning && workspaceWarning !== conversationError && <Alert variant="warning">{workspaceWarning}</Alert>}
-              </div>
-            )}
-            <EventTimeline
-              key={`timeline-${session.id}`}
-              events={detail.events}
-              latestEvents={detail.latestEvents}
-              session={session}
-              recovering={recoveringTaskId === session.id}
-              onRecover={() => recoverTask(session.id)}
-            />
-            {approval && (
-              <ApprovalCard
-                approval={approval}
-                busy={busy}
-                onDecision={(decision) => {
-                  // The user's decision is final from the UI's perspective.
-                  // Remove the card synchronously, then reconcile with the
-                  // server; a failed request restores it with the error shown.
-                  setResolvingApprovalId(approval.id);
-                  void runAction(
-                    () => codingApi.approve(session.id, approval.id, decision),
-                    true,
-                    true,
-                  ).catch(() => {}).finally(() => setResolvingApprovalId(null));
-                }}
-              />
-            )}
-            <CodeComposer
-              key={`composer-${session.id}`}
-              session={session}
-              busy={busy}
-              onSend={(prompt, delivery, attachments) => runAction(
-                () => delivery === 'steer'
-                  ? codingApi.steer(session.id, prompt, attachments)
-                  : delivery === 'queue'
-                    ? codingApi.queue(session.id, prompt, attachments)
-                    : codingApi.turn(session.id, prompt, attachments),
-                true,
-                true,
-              )}
-              onStop={() => runAction(() => codingApi.cancel(session.id), true)}
-              commands={commands}
-              onPermissionChange={(permissionMode) => runAction(
-                () => codingApi.updateSession(session.id, { permission_mode: permissionMode }),
-                true,
-              )}
-              onSteerQueued={(instructionId) => runAction(
-                () => codingApi.steerQueued(session.id, instructionId),
-                true,
-              )}
-              history={promptHistory(detail.events)}
-              // The effect that clears this runs after the next task's composer
-              // has already mounted and merged it.
-              referenceRequest={referenceRequest?.sessionId === session.id ? referenceRequest : null}
-              onRemoveQueued={(instructionId) => runAction(
-                () => codingApi.removeQueued(session.id, instructionId),
-                true,
-              )}
-              onClientCommand={(command) => {
-                if (command.client_action === 'terminal') {
-                  setTerminalOpen(true);
-                  return;
-                }
-                if (command.client_action === 'controls') {
-                  setControlsOpen(true);
-                  return;
-                }
-                if (command.client_action === 'skills' || command.client_action === 'mcp') {
-                  setExtensionTab(command.client_action === 'mcp' ? 'mcp_servers' : 'skills');
-                  setExtensionsOpen(true);
-                  return;
-                }
-                if (command.client_action === 'fork') {
-                  void forkTask();
-                  return;
-                }
-                setActionError(`/${command.name} controls are not available in this build yet.`);
-              }}
-            />
-            {can('terminal') && terminalOpen && <TaskTerminal sessionId={session.id} focusTerminalId={terminalFocusId} onClose={() => setTerminalOpen(false)} />}
-          </section>
-          {can('review') && <ReviewPanel
-            open={reviewOpen}
-            session={session}
-            git={detail.git}
-            files={detail.diff}
-            busy={busy}
-            error={actionError || automationError}
-            onClose={() => setReviewOpen(false)}
-            onBranch={(name) => runAction(() => codingApi.branch(session.id, name), false, true)}
-            onCommit={(message) => runAction(() => codingApi.commit(session.id, message), false, true)}
-            onApply={() => runAction(() => codingApi.apply(session.id), false, true)}
-            onValidate={async () => (await runResult(
-              () => codingApi.validate(session.id),
-              false,
-              true,
-            ))?.items || []}
-            connections={projects.selected?.connections || []}
-            onDraftPullRequests={async (title, body, connectionName, drafts) => (await runResult(async () => {
-              const result = await codingApi.draftPullRequests(session.id, { title, body, drafts, connection_name: connectionName, confirmed: true });
-              return result.items;
-            }, true, true)) || []}
-            onPublish={(context, text, action) => runAction(() => codingApi.publish(session.id, {
-              provider: context.provider,
-              action,
-              target_url: context.url,
-              text,
-              connection_name: context.connection_name,
-              confirmed: true,
-            }), true, true)}
-            onCompleteSource={(context) => {
-              if (context.provider !== 'github' && context.provider !== 'linear') return Promise.resolve();
-              const provider = context.provider;
-              return runAction(() => codingApi.completeSource(session.id, {
-                provider,
-                action: 'complete',
-                target_url: context.url,
-                connection_name: context.connection_name,
-                confirmed: true,
-              }), true, true);
-            }}
-            onOpenProjectSettings={() => setProjectEditor({ id: session.project_id || null })}
-            onAgentAction={(prompt) => runAction(() => codingApi.turn(session.id, prompt), true, true)}
-            onPullRequestAction={(item, action, threadId) => runAction(() => codingApi.pullRequestAction(session.id, {
-              action,
-              target_url: item.external_url || '',
-              connection_name: item.connection_name,
-              thread_id: threadId,
-              confirmed: true,
-            }), true, true)}
-            onDeliveryPolicyChange={(policy) => runAction(() => codingApi.updateDeliveryPolicy(session.id, policy), true, true)}
-            onArchive={toggleArchive}
-            onFileAction={(file, action) => runAction(() => codingApi.reviewFile(session.id, {
-              folder_id: file.folder_id,
-              path: file.path,
-              action,
-            }), false, true)}
-            suggestedUpdate={suggestedUpdate}
-            onResolveConflicts={() => runAction(() => codingApi.turn(
-              session.id,
-              'Resolve the source handoff conflict inside the isolated task workspace. Inspect the current source folders read-only, preserve both the user’s source changes and the intended task changes, update only the task workspace, run the relevant checks, and report when it is ready for review. Do not modify the source folders directly.',
-            ), true, true)}
-          />}
-          {can('files') && <FilesPanel
-            open={filesOpen}
-            sessionId={session.id}
-            onClose={() => setFilesOpen(false)}
-            onReference={(item) => setReferenceRequest((current) => ({ id: (current?.id || 0) + 1, sessionId: session.id, item }))}
-          />}
-          <PreviewPanel
-            open={previewOpen}
-            url={project.previewUrl}
-            onClose={() => setPreviewOpen(false)}
-          />
-        </div>
-      ) : (
-        <div className="code-loading"><Alert variant="danger">{detail.error || 'This coding task could not be restored.'}</Alert></div>
-      )}
-      <ConfirmModal
-        open={deleteOpen}
-        title="Delete this coding task?"
-        message="This removes the task history and any isolated working copy. Your original files are left alone."
-        confirmLabel="Delete task"
-        destructive
-        busy={busy}
-        onClose={() => { if (!busy) setDeleteOpen(false); }}
-        onConfirm={async () => {
-          if (await deleteTask()) setDeleteOpen(false);
-        }}
-      />
-      {session && can('task_controls') && (
-        <RuntimeControlsModal
-          open={controlsOpen}
-          sessionId={session.id}
-          value={{
-            model: session.model,
-            permission_mode: session.permission_mode,
-            reasoning_effort: session.reasoning_effort || 'high',
-            service_tier: session.service_tier || 'standard',
-            personality: session.personality || 'pragmatic',
-            network_access: !!session.network_access,
-            web_search: !!session.web_search,
-            additional_dirs: session.additional_dirs || [],
-          }}
-          models={models}
-          modelMeta={modelMeta}
-          busy={busy}
-          onClose={() => setControlsOpen(false)}
-          onApply={async (value) => {
-            await runAction(() => codingApi.updateSession(session.id, value), true, true);
-            setControlsOpen(false);
-          }}
-        />
-      )}
-      <ProjectSettingsModal
-        open={projectEditor !== null && !connectorsOpen && !skillsOpen}
-        suspended={projectEditor !== null && (connectorsOpen || skillsOpen)}
-        project={projectEditor?.id ? projects.projects.find((project) => project.id === projectEditor.id) || null : null}
-        connections={connections}
-        busy={projectBusy}
-        defaultEngineId={defaultEngineId}
-        defaultModel={defaultModel}
-        models={models}
-        modelMeta={modelMeta}
-        catalog={catalog}
-        onClose={() => setProjectEditor(null)}
-        onSave={async (values) => {
-          setProjectBusy(true);
-          try {
-            const editingProject = projectEditor?.id
-              ? projects.projects.find((project) => project.id === projectEditor.id) || null
-              : null;
-            const saved = await projects.save(editingProject, values);
-            // A new project can be persisted before its optional Team Setup clone
-            // finishes. Switch the editor to that saved identity immediately so a
-            // recoverable clone error can be retried without creating a duplicate.
-            setProjectEditor({ id: saved.id });
-            return saved;
-          } finally {
-            setProjectBusy(false);
-          }
-        }}
-        onOpenConnectors={() => {
-          setConnectorReturnToSettings(true);
-          setConnectorReturnProjectId(projectEditor?.id || null);
-          onOpenConnectors();
-        }}
-        onOpenSkills={() => {
-          setProjectEditor(null);
-          onOpenSkills();
-        }}
-        onDelete={projectEditor?.id ? async () => {
-          setProjectBusy(true);
-          try {
-            await projects.remove(projectEditor.id!);
+          onOpenSkills={() => {
             setProjectEditor(null);
-          } finally {
-            setProjectBusy(false);
-          }
-        } : undefined}
-      />
-      {session && can('extensions') && (
-        <ExtensionsModal
-          open={extensionsOpen}
-          sessionId={session.id}
-          initialTab={extensionTab}
-          onClose={() => setExtensionsOpen(false)}
-        />
-      )}
-      {session && (
-        <RenameTaskModal
-          open={renameOpen}
-          title={session.title}
-          busy={busy}
-          onClose={() => setRenameOpen(false)}
-          onRename={async (title) => {
-            await runAction(() => codingApi.renameSession(session.id, title), true, true);
-            setRenameOpen(false);
+            onOpenSkills();
           }}
+          onDelete={projectEditor?.id ? async () => {
+            setProjectBusy(true);
+            try {
+              await projects.remove(projectEditor.id!);
+              setProjectEditor(null);
+            } finally {
+              setProjectBusy(false);
+            }
+          } : undefined}
         />
-      )}
-    </div>
+        {session && can('extensions') && (
+          <ExtensionsModal
+            open={extensionsOpen}
+            sessionId={session.id}
+            initialTab={extensionTab}
+            onClose={() => setExtensionsOpen(false)}
+          />
+        )}
+        {session && (
+          <RenameTaskModal
+            open={renameOpen}
+            title={session.title}
+            busy={busy}
+            onClose={() => setRenameOpen(false)}
+            onRename={async (title) => {
+              await runAction(() => codingApi.renameSession(session.id, title), true, true);
+              setRenameOpen(false);
+            }}
+          />
+        )}
+      </div>
     </SkillScopeContext.Provider>
   );
 }
