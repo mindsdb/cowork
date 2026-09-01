@@ -9,6 +9,7 @@
 // Design source: docs/design-handoff/Anton Projects (D1).
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { projectLabel } from '../lib/projectLabel';
 import Ico from '../components/Icons';
 import Composer from '../components/Composer';
 import { WorkingFolderBox, ContextBox, ScheduledBox } from '../components/rail';
@@ -460,7 +461,7 @@ function ListRow({
   }, [editing]);
 
   const submitRename = () => {
-    const next = inputRef.current?.value ?? project.name;
+    const next = inputRef.current?.value ?? projectLabel(project);
     onRenameSubmit?.(next);
   };
 
@@ -484,7 +485,7 @@ function ListRow({
           {editing ? (
             <input
               ref={inputRef}
-              defaultValue={project.name}
+              defaultValue={projectLabel(project)}
               onClick={(e) => e.stopPropagation()}
               onKeyDown={(e) => {
                 e.stopPropagation();
@@ -498,7 +499,7 @@ function ListRow({
               className="flex-[1_1_0] min-w-0 font-display text-[14.5px] font-semibold text-ink bg-surface-2 border border-solid border-accent rounded-[5px] py-0.5 px-1.5 outline-none"
             />
           ) : (
-            <span className="font-display text-[14.5px] font-semibold text-ink min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{project.name}</span>
+            <span className="font-display text-[14.5px] font-semibold text-ink min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{projectLabel(project)}</span>
           )}
           {pinned && !editing && (
             <span className="inline-flex text-accent shrink-0">
@@ -645,7 +646,7 @@ function ProjectDetail({
   }, [editing]);
 
   const submitRename = () => {
-    const next = renameInputRef.current?.value ?? project.name;
+    const next = renameInputRef.current?.value ?? projectLabel(project);
     onRenameSubmit?.(next);
   };
 
@@ -689,7 +690,7 @@ function ProjectDetail({
                 <input
                   ref={renameInputRef}
                   type="text"
-                  defaultValue={project.name}
+                  defaultValue={projectLabel(project)}
                   onMouseDown={(e) => e.stopPropagation()}
                   onClick={(e) => e.stopPropagation()}
                   onKeyDown={(e) => {
@@ -710,7 +711,7 @@ function ProjectDetail({
                 />
               ) : (
                 <CrumbCurrent
-                  label={project.name}
+                  label={projectLabel(project)}
                   className="flex-[0_1_auto]"
                 />
               )}
@@ -788,7 +789,7 @@ function ProjectDetail({
                 harnessHermesEnabled={harnessHermesEnabled}
                 harnessClaudeCodeEnabled={harnessClaudeCodeEnabled}
                 sendsMeta
-                placeholder={`Start a new task in ${project.name}…`}
+                placeholder={`Start a new task in ${projectLabel(project)}…`}
                 // Keyed on the id, not the name: renaming a project must not
                 // orphan the draft the user is in the middle of typing.
                 draftKey={`project:${project.id || project.name}`}
