@@ -6,6 +6,7 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   test: {
+    sequence: { setupFiles: 'list' },
     // Floors are measured values — raise them as coverage grows, never lower.
     // `include` = whole src tree, so new untested modules count against them.
     coverage: {

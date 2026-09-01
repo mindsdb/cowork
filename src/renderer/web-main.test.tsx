@@ -142,5 +142,6 @@ describe('web-main auth wrapper selection', () => {
     const r = await renderOnHost('localhost', '?codeFixture=completed');
     expect(r.app).toBe(true);
     expect(r.provider).toBe(false);
+    expect(r.identityRequired).toBe(false);
   });
 });

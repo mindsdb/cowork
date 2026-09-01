@@ -172,6 +172,30 @@ describe('EventTimeline', () => {
     expect(screen.getByText('very large command output')).toBeInTheDocument();
   });
 
+  it('shows parallel Codex work as one compact, live status card', () => {
+    const childWork = [
+      {
+        ...event(1, 'child_work', 'Inspecting the renderer'),
+        item_id: 'child-1',
+        title: 'Audit the UI',
+        phase: 'started' as const,
+      },
+      {
+        ...event(2, 'child_work', 'Found two layout issues'),
+        item_id: 'child-1',
+        title: 'Audit the UI',
+        phase: 'completed' as const,
+      },
+    ];
+
+    render(<EventTimeline events={childWork} session={session('running')} />);
+
+    expect(screen.getByText('Parallel work')).toBeInTheDocument();
+    expect(screen.getByText('Audit the UI')).toBeInTheDocument();
+    expect(screen.getByText('Done')).toBeInTheDocument();
+    expect(screen.queryByText('Inspecting the renderer')).toBeNull();
+  });
+
   it('windows long transcripts while keeping earlier updates available', () => {
     const events = Array.from({ length: 325 }, (_, index) => event(index + 1, 'user_message', `Message ${index + 1}`));
     render(<EventTimeline events={events} session={session('completed')} />);

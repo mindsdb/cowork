@@ -11,25 +11,38 @@ const mocks = vi.hoisted(() => ({
   turn: vi.fn(),
   runQueued: vi.fn(),
   approve: vi.fn(),
+  runProjectAction: vi.fn(),
   useCodingSession: vi.fn(),
 }));
 
 vi.mock('./api', () => ({
   codingApi: {
     engines: vi.fn(async () => []),
+    projectActions: vi.fn(async () => ({ items: [], preview_url: null })),
     sessions: mocks.sessions,
     deleteSession: mocks.deleteSession,
     steer: mocks.steer,
     turn: mocks.turn,
     runQueued: mocks.runQueued,
     approve: mocks.approve,
+    runProjectAction: mocks.runProjectAction,
   },
 }));
 vi.mock('./useCodingSession', () => ({ useCodingSession: mocks.useCodingSession }));
 vi.mock('./fixtures', () => ({ codeFixtureReviewOpen: () => false }));
 vi.mock('./TaskBar', () => ({
-  TaskBar: ({ onDelete, onStatus }: { onDelete: () => void; onStatus: () => void }) => (
-    <><button type="button" onClick={onDelete}>Delete menu action</button><button type="button" onClick={onStatus}>Status menu action</button></>
+  TaskBar: ({ onDelete, onStatus, onRunProjectAction }: {
+    onDelete: () => void;
+    onStatus: () => void;
+    onRunProjectAction: (action: { id: string; label: string; resource_id: string; resource_name: string; command: string; preview: boolean }) => void;
+  }) => (
+    <>
+      <button type="button" onClick={onDelete}>Delete menu action</button>
+      <button type="button" onClick={onStatus}>Status menu action</button>
+      <button type="button" onClick={() => onRunProjectAction({
+        id: 'preview', label: 'Start preview', resource_id: 'resource-1', resource_name: 'App', command: 'npm run dev', preview: true,
+      })}>Run project action</button>
+    </>
   ),
 }));
 vi.mock('./NewTaskPanel', () => ({ NewTaskPanel: () => <div>New task panel</div> }));
@@ -41,6 +54,9 @@ vi.mock('./ApprovalCard', () => ({
   ),
 }));
 vi.mock('./ReviewPanel', () => ({ ReviewPanel: () => null }));
+vi.mock('./TaskTerminal', () => ({
+  TaskTerminal: ({ focusTerminalId }: { focusTerminalId?: string | null }) => <div>Terminal {focusTerminalId || 'loading'}</div>,
+}));
 vi.mock('../components/ui/Alert', () => ({ default: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));
 vi.mock('../components/ui/Spinner', () => ({ default: () => <span>Loading</span> }));
 vi.mock('../components/ConfirmModal', () => ({
@@ -106,6 +122,11 @@ describe('CodeView session-list reconciliation', () => {
     mocks.turn.mockResolvedValue(session('idle'));
     mocks.runQueued.mockResolvedValue(session('queued'));
     mocks.approve.mockResolvedValue(session('approved'));
+    mocks.runProjectAction.mockResolvedValue({
+      terminal_id: 'terminal-preview',
+      label: 'Start preview',
+      preview_url: 'http://127.0.0.1:41004',
+    });
     mocks.useCodingSession.mockImplementation((id: string | null) => ({
       session: id ? session(id) : null,
       events: [],
@@ -245,6 +266,24 @@ describe('CodeView session-list reconciliation', () => {
     renderCode({ sessions: [gitSession], selectedId: gitSession.id });
 
     expect(await screen.findByText('The source repository has local changes.')).toBeInTheDocument();
+  });
+
+  it('opens the terminal immediately and focuses a completed project action', async () => {
+    const pending = deferred<{ terminal_id: string; label: string; preview_url: string }>();
+    const active = session('project-action');
+    mocks.runProjectAction.mockReturnValueOnce(pending.promise);
+    mocks.sessions.mockResolvedValue({ items: [active] });
+
+    renderCode({ sessions: [active], selectedId: active.id });
+    fireEvent.click(screen.getByRole('button', { name: 'Run project action' }));
+
+    expect(screen.getByText('Terminal loading')).toBeInTheDocument();
+    pending.resolve({
+      terminal_id: 'terminal-preview',
+      label: 'Start preview',
+      preview_url: 'http://127.0.0.1:41004',
+    });
+    expect(await screen.findByText('Terminal terminal-preview')).toBeInTheDocument();
   });
 
   it('routes task status through steering while an agent turn is active', async () => {

@@ -10,6 +10,8 @@ import type { CodingSession, DeliveryAutomationPolicy, DeliveryPlanItem, Deliver
 import { compactPath, diffStats, isActiveStatus } from './presentation';
 import { DraftPullRequestSection, type DraftPullRequestInput } from './DraftPullRequestSection';
 import { SourceUpdateSection } from './SourceUpdateSection';
+import type { ReviewFileAction } from './FileReviewControls';
+import { ReviewFileCard } from './ReviewFileCard';
 
 
 type ReviewStyle = CSSProperties & { '--code-review-width': string };
@@ -38,6 +40,7 @@ export function ReviewPanel({
   onPullRequestAction = async () => {},
   onDeliveryPolicyChange = async () => {},
   onArchive = async () => {},
+  onFileAction = async () => {},
   suggestedUpdate = '',
 }: {
   open: boolean;
@@ -61,6 +64,7 @@ export function ReviewPanel({
   onPullRequestAction?: (item: DeliveryPlanItem, action: 'ready' | 'merge' | 'resolve_thread', threadId?: string) => Promise<void>;
   onDeliveryPolicyChange?: (policy: DeliveryAutomationPolicy) => Promise<void>;
   onArchive?: () => Promise<void>;
+  onFileAction?: (file: DiffFile, action: ReviewFileAction) => Promise<void>;
   suggestedUpdate?: string;
 }) {
   const [tab, setTab] = useState<'changes' | 'git'>('changes');
@@ -181,18 +185,15 @@ export function ReviewPanel({
             {groupedFiles.map((group, groupIndex) => (
               <section className="code-diff-group" key={group.workspace.folder_id}>
                 {workspaceEntries.length > 1 && <div className="code-diff-group__title">{Ico.folder(12)} {group.workspace.folder_name}<span>{group.files.length}</span></div>}
-                {group.files.map((file, index) => (
-                  <details className="code-diff-file" key={`${group.workspace.folder_id}:${file.path}`} open={groupIndex === 0 && index === 0}>
-                    <summary>
-                      <span className="code-diff-file__status">{file.status.trim() || 'M'}</span>
-                      <span className="code-diff-file__path">{file.path}</span>
-                      <span className="code-diff-add">+{file.additions}</span>
-                      <span className="code-diff-del">−{file.deletions}</span>
-                      <span className="code-diff-file__chevron">{Ico.chevDown(11)}</span>
-                    </summary>
-                    <pre>{file.patch || (file.binary ? 'Binary file changed' : 'No textual diff')}</pre>
-                  </details>
-                ))}
+                {group.files.map((file, index) => <ReviewFileCard
+                  key={`${group.workspace.folder_id}:${file.path}`}
+                  file={file}
+                  workspaceName={group.workspace.folder_name}
+                  open={groupIndex === 0 && index === 0}
+                  busy={busy || active}
+                  onAction={(action) => onFileAction(file, action)}
+                  onAgentAction={onAgentAction}
+                />)}
               </section>
             ))}
           </div>
@@ -212,13 +213,13 @@ export function ReviewPanel({
               ))}
             </section>
             <div className="code-git-open-actions">
-              {session.computer_is_local !== false && <Button size="sm" variant="subtle" onClick={() => void host.openPath(session.workspace_path)}>{Ico.openFolder(13)} Open task workspace</Button>}
-              {session.computer_is_local !== false && session.source_path !== session.workspace_path && <Button size="sm" variant="subtle" onClick={() => void host.openPath(session.source_path)}>Open source</Button>}
+              {session.computer_is_local !== false && <Button size="sm" variant="subtle" onClick={() => void host.openPath(session.workspace_path)}>{Ico.openFolder(13)} {session.workspace_kind === 'direct_folder' ? 'Open original folder' : 'Open isolated copy'}</Button>}
+              {session.computer_is_local !== false && session.source_path !== session.workspace_path && <Button size="sm" variant="subtle" onClick={() => void host.openPath(session.source_path)}>Open original</Button>}
             </div>
             {sourceChanged && <Alert variant="warning" title="Source had local changes when this task began">Those changes stayed in the source folder. Cowork checks for conflicts before applying.</Alert>}
             {handoffConflict && (
               <section className="code-handoff-primary">
-                <div><div className="code-field-label">Reconcile the source changes</div><p>Have the agent preserve both versions in the isolated task workspace, then review again.</p></div>
+                <div><div className="code-field-label">Reconcile the original changes</div><p>Have the agent preserve both versions in the isolated copy, then review again.</p></div>
                 <Button size="sm" variant="subtle" disabled={active || busy} onClick={() => void onResolveConflicts()}>Resolve with agent</Button>
               </section>
             )}

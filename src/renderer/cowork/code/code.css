@@ -109,10 +109,11 @@
   gap: 16px;
   background: transparent;
 }
-.code-taskbar__identity { display: flex; min-width: 0; align-items: center; gap: 10px; }
+.code-taskbar__identity { display: flex; flex: 1 1 auto; min-width: 0; align-items: center; gap: 10px; }
 .code-taskbar__glyph { display: inline-flex; flex: none; color: var(--accent); }
-.code-taskbar__copy { min-width: 0; }
-.code-taskbar__title { max-width: min(48vw, 680px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13.5px; font-weight: 620; letter-spacing: -.005em; }
+.code-taskbar__copy { flex: 1 1 auto; min-width: 0; }
+.code-taskbar__title-row { display: flex; min-width: 0; align-items: center; gap: 10px; }
+.code-taskbar__title { max-width: min(42vw, 680px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13.5px; font-weight: 620; letter-spacing: -.005em; }
 .code-taskbar__meta { margin-top: 3px; display: flex; min-width: 0; align-items: center; gap: 5px; overflow: hidden; color: var(--ink-4); font-size: 10.5px; white-space: nowrap; }
 .code-taskbar__meta span { overflow: hidden; text-overflow: ellipsis; }
 .code-taskbar__origin { min-width: 0; max-width: 210px; padding: 0; overflow: hidden; border: 0; background: transparent; color: var(--accent); cursor: pointer; text-overflow: ellipsis; white-space: nowrap; font: inherit; }
@@ -121,14 +122,19 @@
 .code-taskbar__detail-trigger:hover { color: var(--ink); }
 .code-taskbar__detail-trigger:focus-visible { border-radius: 3px; outline: none; box-shadow: var(--ring); }
 .code-taskbar__detail-trigger span { overflow: hidden; text-overflow: ellipsis; }
-.code-taskbar-details { width: 252px; padding: 3px 0 5px; display: grid; gap: 9px; }
-.code-taskbar-details > div { min-width: 0; display: grid; grid-template-columns: 58px minmax(0, 1fr); align-items: baseline; gap: 10px; }
+.code-taskbar-details { width: 252px; padding: 2px 0 5px; display: grid; gap: 9px; }
+.code-taskbar-details > div:not(.code-taskbar-details__intro) { min-width: 0; display: grid; grid-template-columns: 62px minmax(0, 1fr); align-items: baseline; gap: 10px; }
+.code-taskbar-details__intro { margin-bottom: 2px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+.code-taskbar-details__intro strong { display: block; color: var(--ink); font-size: 11.5px; font-weight: 620; }
+.code-taskbar-details__intro p { margin: 3px 0 0; color: var(--ink-4); font-size: 10px; line-height: 1.35; }
 .code-taskbar-details span { color: var(--ink-4); font-size: 9.5px; font-weight: 500; }
 .code-taskbar-details strong,
 .code-taskbar-details code { min-width: 0; overflow: hidden; color: var(--ink-2); text-overflow: ellipsis; white-space: nowrap; font-size: 10.5px; font-weight: 560; }
 .code-taskbar-details code { font-family: var(--font-mono); font-weight: 400; }
-.code-taskbar__actions { display: flex; flex: none; align-items: center; gap: 6px; }
-.code-task-status { display: inline-flex; align-items: center; gap: 7px; padding-right: 5px; color: var(--ink-3); font-size: 11px; font-weight: 550; white-space: nowrap; }
+.code-taskbar__actions,
+.code-taskbar__action-group { display: flex; flex: none; align-items: center; gap: 4px; }
+.code-taskbar__divider { width: 1px; height: 18px; margin: 0 2px; background: var(--line); }
+.code-task-status { display: inline-flex; flex: none; align-items: center; gap: 6px; color: var(--ink-3); font-size: 10.5px; font-weight: 560; white-space: nowrap; }
 .code-task-status.is-warning { color: var(--warning); }
 .code-task-status.is-danger { color: var(--danger); }
 .code-task-status.is-success { color: var(--ok); }
@@ -753,7 +759,6 @@ body:has(.code-review) .floating-toggle-row { opacity: 0; pointer-events: none; 
 .code-diff-file__path { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 10.5px var(--font-mono); }
 .code-diff-file__chevron { display: inline-flex; color: var(--ink-4); transition: transform .15s ease; }
 .code-diff-file[open] .code-diff-file__chevron { transform: rotate(180deg); }
-.code-diff-file pre { max-height: 520px; margin: 0; padding: 10px; overflow: auto; border-top: 1px solid var(--line); background: var(--bg); color: var(--ink-3); font: 9.5px/1.5 var(--font-mono); }
 .code-git-panel { display: flex; flex-direction: column; gap: 12px; }
 .code-delivery-heading { padding-bottom: 11px; display: grid; gap: 3px; border-bottom: 1px solid var(--line); }
 .code-delivery-heading strong { color: var(--ink-2); font-size: 12px; }
@@ -915,15 +920,17 @@ body:has(.code-review) .floating-toggle-row { opacity: 0; pointer-events: none; 
 
 @media (max-width: 1050px) {
   .code-taskbar__model { display: none; }
-  .code-taskbar__title { max-width: 38vw; }
-  .code-task-status { padding-right: 2px; font-size: 0; }
+  .code-taskbar__title { max-width: 34vw; }
+  .code-task-status__label { display: none; }
   .code-taskbar__actions { gap: 3px; }
+  .code-taskbar__action-group { gap: 2px; }
+  .code-taskbar__action-group .btn > span:not(.code-taskbar__diff) { display: none; }
 }
 
 @media (max-width: 760px) {
   .code-taskbar__model { display: none; }
   .code-taskbar__title { max-width: 48vw; }
-  .code-task-status { font-size: 0; padding-right: 2px; }
+  .code-task-status__label { display: none; }
   .code-new-task { padding: 26px 18px 30px; }
   .code-start-composer__spacer { display: none; }
   .code-context-control { flex: 1 1 180px; max-width: none; }
@@ -951,7 +958,7 @@ body:has(.code-review) .floating-toggle-row { opacity: 0; pointer-events: none; 
   .code-taskbar { gap: 8px; padding-right: 9px; padding-left: 12px; }
   .code-taskbar__glyph { display: none; }
   .code-taskbar__title { max-width: 42vw; }
-  .code-taskbar__actions .btn > span:not(.code-taskbar__diff) { display: none; }
+  .code-taskbar__divider { display: none; }
   .code-new-task__intro p { font-size: 12px; }
   .code-new-task__intro p { margin-left: 0; }
   .code-new-task__mark { width: 34px; height: 34px; flex-basis: 34px; }

@@ -5,6 +5,7 @@ import Spinner from '../components/ui/Spinner';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import type { CodingEvent, CodingSession } from './api';
 import { CODE_STATUS, codingSessionStatus, isActiveStatus } from './presentation';
+import './event-timeline.css';
 
 
 const ACTIVITY_TYPES = new Set<CodingEvent['type']>(['reasoning', 'tool', 'command', 'file_change', 'diff', 'usage']);
@@ -37,7 +38,7 @@ function appendTimelineEvent(items: TimelineItem[], event: CodingEvent): void {
     && previousEvent?.type === event.type
     && previousEvent.item_id === event.item_id
     && previousEvent.turn_id === event.turn_id
-    && ['agent_message', 'reasoning', 'command', 'file_change'].includes(event.type);
+    && ['agent_message', 'reasoning', 'command', 'file_change', 'child_work'].includes(event.type);
   if (canMerge && previousEvent && previousItem) {
     const merged = {
       ...previousEvent,
@@ -221,6 +222,27 @@ function PlanEvent({ event }: { event: CodingEvent }) {
 }
 
 
+function ChildWorkEvent({ event }: { event: CodingEvent }) {
+  const status = typeof event.data.status === 'string' ? event.data.status : event.phase || '';
+  const running = event.phase === 'started' || event.phase === 'progress' || /running|progress/i.test(status);
+  const failed = event.phase === 'failed' || /failed|error/i.test(status);
+  const detail = ['description', 'prompt', 'message']
+    .map((key) => event.data[key])
+    .find((value) => typeof value === 'string' && value !== event.title);
+  return (
+    <section className={`code-child-work${running ? ' is-running' : ''}${failed ? ' is-failed' : ''}`} aria-label="Parallel Codex work">
+      <span className="code-child-work__icon">{running ? <Spinner className="text-xs" /> : failed ? Ico.close(11) : Ico.check(11)}</span>
+      <div>
+        <small>Parallel work</small>
+        <strong>{event.title || 'Codex worker'}</strong>
+        {typeof detail === 'string' && <p>{detail}</p>}
+      </div>
+      <span className="code-child-work__status">{running ? 'Working' : failed ? 'Stopped' : 'Done'}</span>
+    </section>
+  );
+}
+
+
 function TimelineEvent({ event }: { event: CodingEvent }) {
   if (event.type === 'user_message') {
     return <div className="code-user-message" aria-label="Your message">{event.text}</div>;
@@ -238,6 +260,7 @@ function TimelineEvent({ event }: { event: CodingEvent }) {
     );
   }
   if (event.type === 'plan') return <PlanEvent event={event} />;
+  if (event.type === 'child_work') return <ChildWorkEvent event={event} />;
   if (event.type === 'approval') return <div className="code-decision-record"><span>{Ico.check(12)}</span><div><strong>{event.title || 'Approval resolved'}</strong>{event.text && <p>{event.text}</p>}</div></div>;
   return null;
 }
@@ -267,14 +290,14 @@ function TaskOutcome({
     : recoverable
       ? session.computer_status === 'offline'
         ? 'The task computer disconnected. Your conversation is safe; resume there or choose another compatible computer.'
-        : 'The turn stopped before it completed. Your conversation, workspace, and changes are preserved.'
+        : 'The turn stopped before it completed. Your conversation, working copy, and changes are preserved.'
       : 'The active turn was stopped. You can continue in the same task.';
   return (
     <section className={`code-task-outcome is-${status.tone}${recoverable ? ' is-recovery' : ''}`}>
       <span className="code-task-outcome__icon">{session.status === 'completed' ? Ico.check(13) : recoverable ? Ico.refresh(12) : Ico.stop(11)}</span>
       <div className="code-task-outcome__copy">
         <strong>{recoverable ? (recoveryInProgress ? 'Resuming task' : 'Task paused') : status.label}</strong>
-        <p>{recoveryInProgress ? 'Reconnecting to the task workspace…' : detail}</p>
+        <p>{recoveryInProgress ? 'Reconnecting to the task files…' : detail}</p>
         {errorDetail && !recoveryInProgress && (recoverable || session.status === 'failed') && (
           <details className="code-task-outcome__details">
             <summary>Failure details</summary>

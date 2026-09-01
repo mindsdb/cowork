@@ -108,7 +108,6 @@ export function Combobox({
     if (value == null || value === '') return null;
     return entries.find((o) => o.value === value) || { value, label: String(value) };
   }, [entries, value]);
-
   const { contains } = BaseCombobox.useFilter();
 
   return (
@@ -132,6 +131,7 @@ export function Combobox({
       <BaseCombobox.Trigger
         className={cn(variant === 'unstyled' ? null : triggerVariants({ variant, size }), className)}
         aria-label={ariaLabel}
+        aria-description={selected?.label ? `Selected: ${selected.label}` : undefined}
         aria-invalid={invalid || undefined}
         aria-busy={loading || undefined}
         title={title}

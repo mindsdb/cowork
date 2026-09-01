@@ -70,7 +70,7 @@ export function RecoveryModal({
                   <span className="code-recovery-option__meta">
                     {platformName(option.computer.capabilities.platform)}
                     <span aria-hidden="true">·</span>
-                    {option.mode === 'restore' ? 'Resume workspace' : 'Fresh workspace'}
+                    {option.mode === 'restore' ? 'Saved working copy' : 'Fresh working copy'}
                   </span>
                   <span className="code-recovery-option__detail">{option.detail}</span>
                 </span>
@@ -95,7 +95,7 @@ export function RecoveryModal({
       <ModalFooter>
         <Button variant="subtle" onClick={onClose} disabled={busy}>Cancel</Button>
         <Button variant="primary" onClick={() => selected && onConfirm(selected)} disabled={!selected || busy}>
-          {busy ? 'Resuming…' : selected?.mode === 'recreate' ? 'Start fresh workspace' : 'Resume task'}
+          {busy ? 'Resuming…' : selected?.mode === 'recreate' ? 'Start fresh copy' : 'Resume task'}
         </Button>
       </ModalFooter>
     </Modal>

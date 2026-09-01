@@ -43,9 +43,10 @@ function statusLabel(state: Pick<TerminalTabState, 'status' | 'exit_code'>): str
 }
 
 
-export function TaskTerminal({ sessionId, onClose }: { sessionId: string; onClose: () => void }) {
+export function TaskTerminal({ sessionId, focusTerminalId = null, onClose }: { sessionId: string; focusTerminalId?: string | null; onClose: () => void }) {
   const dragCleanupRef = useRef<(() => void) | null>(null);
   const expectedDisconnectsRef = useRef(new Set<string>());
+  const focusRefreshRef = useRef('');
   const loadedSessionRef = useRef<string | null>(null);
   const renameSavingRef = useRef(false);
   const renameCancelledRef = useRef(false);
@@ -62,6 +63,7 @@ export function TaskTerminal({ sessionId, onClose }: { sessionId: string; onClos
   useEffect(() => {
     let disposed = false;
     loadedSessionRef.current = null;
+    focusRefreshRef.current = '';
     setLoading(true);
     setError('');
     void ensureTerminalTabs(sessionId).then((items) => {
@@ -83,6 +85,33 @@ export function TaskTerminal({ sessionId, onClose }: { sessionId: string; onClos
   useEffect(() => {
     if (loadedSessionRef.current === sessionId) saveTerminalId(sessionId, selectedId);
   }, [selectedId, sessionId]);
+
+  useEffect(() => {
+    if (!focusTerminalId) return;
+    if (tabs.some((tab) => tab.id === focusTerminalId)) {
+      setSelectedId(focusTerminalId);
+      return;
+    }
+    if (loading || loadedSessionRef.current !== sessionId) return;
+
+    const requestKey = `${sessionId}:${focusTerminalId}`;
+    if (focusRefreshRef.current === requestKey) return;
+    focusRefreshRef.current = requestKey;
+    let disposed = false;
+    void codingApi.terminals(sessionId).then(({ items }) => {
+      if (disposed) return;
+      if (!items.some((tab) => tab.id === focusTerminalId)) {
+        setError('The project action started, but its terminal could not be opened.');
+        return;
+      }
+      setTabs(items);
+      setSelectedId(focusTerminalId);
+    }).catch((reason) => {
+      if (disposed) return;
+      setError(reason instanceof Error ? reason.message : 'Could not refresh the terminal list.');
+    });
+    return () => { disposed = true; };
+  }, [focusTerminalId, loading, sessionId, tabs]);
 
   useEffect(() => () => dragCleanupRef.current?.(), []);
 

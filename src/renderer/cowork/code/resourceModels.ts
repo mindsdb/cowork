@@ -2,7 +2,7 @@ export interface ProjectCommand {
   id: string;
   label: string;
   argv: string[];
-  phase: 'setup' | 'validate';
+  phase: 'setup' | 'validate' | 'run';
 }
 
 export interface ProjectFolder {

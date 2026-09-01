@@ -2,8 +2,8 @@
 
 | | |
 |---|---|
-| **Status** | Execution-ready v1 |
-| **Last updated** | 2026-08-30 |
+| **Status** | In delivery v2 |
+| **Last updated** | 2026-08-31 |
 | **Applies to** | `cowork` and `cowork-server` |
 | **Scope** | Local desktop coding on macOS and Windows; no cloud execution, hosted delegation, mobile control, or cloud workspace management |
 
@@ -21,9 +21,18 @@ The plan builds on Code Mode's existing strengths:
 - Cross-repository delivery, review, CI handling, and source handoff.
 - Shared, versioned team skills and engineering workflows.
 - A capable multi-turn task composer, approval flow, and multi-terminal experience.
-- Agent-neutral contracts, with Codex as the first implemented engine.
+- Agent-neutral contracts, with Codex as the only supported engine in this programme.
 
 The central gap is not another project-management layer or an IDE. It is the local workstation loop around the agent: seeing and supplying code context, running and visually verifying the application, precisely reviewing changes, and understanding parallel agent work.
+
+### Delivery progress in this branch
+
+- **M0 foundation:** versioned Codex capabilities, canonical resource identity, bounded event rendering, optimistic approvals, and cross-layer compatibility are in place.
+- **M1 Files:** project-wide browsing/search, bounded file reads, exact line selection, and immutable prompt references are implemented.
+- **M2 Run and Preview:** versioned project run actions start in managed named terminals and feed a secure, responsive preview surface.
+- **M3 Review:** multi-repository diffs now expose staged state, selectable diff lines, file-level stage/unstage/discard, and precise Codex review notes. Hunk-level Git mutation remains a later precision slice.
+- **M4 Parallel work:** Codex collaboration items normalize into visible child-work cards; task-level parallelism and attention grouping remain available in the sidebar.
+- **M7–M9 foundations:** project setup/validation/environment configuration, multi-terminal restore, extension inventory, advanced runtime controls, pinning, archiving, task organization, and recovery predate this pass and are retained. The remaining acceptance work is recorded explicitly rather than being hidden by this status summary.
 
 ## 2. North star
 
@@ -55,9 +64,9 @@ Success is not feature-count parity. Success is a coherent experience in which e
 
 ### 3.2 Architecture
 
-1. **Agent-neutral product contracts.** The renderer consumes normalized capabilities and events rather than Codex-specific wire formats.
+1. **Agent-neutral product contracts.** The renderer consumes normalized capabilities and events rather than Codex-specific wire formats. Codex remains the only selectable coding agent in this programme.
 2. **Capability negotiation, not fake parity.** Hide or adapt unsupported controls; never show a control that an engine cannot honour.
-3. **Harness and inference are separate choices.** Codex, Claude Code, or OpenCode provides the coding harness; MindsHub Inference provides the model catalogue, routing, entitlement, and usage path by default. An adapter may not silently bypass MindsHub Inference because its native provider setup is easier.
+3. **Harness and inference are separate choices.** Codex is the only supported coding harness in this programme; MindsHub Inference provides its model catalogue, routing, entitlement, and usage path by default. The boundary remains explicit so a separately approved future adapter can reuse the same inference path without changing product surfaces or silently bypassing MindsHub Inference.
 4. **Backward-compatible cross-repository delivery.** Land server contracts before renderer dependencies and preserve compatibility with an older/newer counterpart during rollout.
 5. **Local-first and loopback-only.** Preview servers, terminals, file access, and diagnostics remain local unless a later explicitly scoped project changes that.
 6. **No renderer filesystem shortcuts.** Electron host access continues through the established platform abstraction. The server or main process owns privileged filesystem and process operations.
@@ -79,7 +88,7 @@ Success is not feature-count parity. Success is a coherent experience in which e
 - Local terminals, processes, project actions, previews, and visual verification.
 - Git review and local source handoff.
 - GitHub and Linear context already connected to Code Mode.
-- Codex, Claude Code, and OpenCode as interchangeable local coding engines.
+- Codex as the supported coding engine, behind contracts that do not prevent a later adapter.
 - Skills, MCP servers, plugins, hooks, and engine-native extension inventory/configuration where locally available.
 - Local/OS notifications and a Code Mode activity centre.
 
@@ -92,13 +101,14 @@ Success is not feature-count parity. Success is a coherent experience in which e
 - Slack integration in this programme.
 - A general-purpose source-code IDE, debugger, LSP implementation, package manager, or Git hosting product.
 - Replacing GitHub, Linear, users' editors, or local developer tools.
+- Claude Code, OpenCode, or any other additional coding-agent adapter in this programme.
 
 ## 5. Target experience
 
 A developer can:
 
 1. Start from a Code Project, a local folder, a GitHub issue/PR, or a Linear issue.
-2. Choose the coding engine, model, permission mode, and optional skill/workflow.
+2. Use Codex with a chosen MindsHub model, permission mode, and optional skill/workflow.
 3. Let the task run in an isolated local workspace while starting other tasks in parallel.
 4. Open a referenced file, search across all project repositories, and add a file, folder, symbol, or selected lines to the task without leaving Code Mode.
 5. See project actions and detected development servers, run the application, and inspect it in a secure embedded preview.
@@ -116,19 +126,18 @@ A developer can:
 | **M2** | Project Actions and Live Preview | Claude-level local run-and-see loop | Highest | XL | M0, M1 path identity |
 | **M3** | Precision Review and Git Control | Codex-level review scopes and hunk control | Highest | XL | M0, M1 file surface |
 | **M4** | Visible Parallel Work | Claude-level subagent/task visibility with MindsHub parallel projects | Highest | L | M0 |
-| **M5** | Claude Code engine adapter | Prove agent interchangeability end to end | High | XL | Begin after M0; integrate through M1–M4 |
-| **M6** | OpenCode engine adapter and conformance | Provider/custom-agent breadth | High | XL | M5 conformance suite |
-| **M7** | Reproducible Local Environments | Codex-level setup/actions/restore and Windows parity | Medium-high | L | M2, M5–M6 capabilities |
-| **M8** | Unified Extensions and Advanced Permissions | Claude usability plus OpenCode depth | Medium-high | XL | M5–M7 |
+| **M5** | Additional engine adapters | Deferred outside this programme | Deferred | — | User feedback and a separate product decision |
+| **M6** | Multi-engine conformance | Deferred outside this programme | Deferred | — | M5 in a future programme |
+| **M7** | Reproducible Local Environments | Codex-level setup/actions/restore and Windows parity | Medium-high | L | M2 |
+| **M8** | Unified Extensions and Advanced Permissions | Best-in-class local usability and policy depth | Medium-high | XL | M7 |
 | **M9** | Activity, Notifications, and Best-in-Class Polish | Codex attention management and cohesive final UX | Medium-high | L | M1–M8 |
 
 - **Best-in-class core release:** M0–M4.
-- **Credible multi-engine release:** M0–M6.
-- **Mature local platform release:** M0–M9.
+- **Mature Codex-powered local platform release:** M0–M4 and M7–M9.
 
 Milestones are sequential where contracts depend on one another, but reviewable slices inside a milestone should be stacked rather than accumulated into a single large branch or PR.
 
-M5 should start as a thin adapter track immediately after M0 rather than waiting for M1–M4 to finish. Its core lifecycle provides an early test of the abstraction; its Files, Preview, Review, and Work integrations complete as those product contracts land. This prevents the workstation surfaces from becoming Codex-shaped while keeping the core user-experience milestones on the critical path.
+M5 and M6 are retained below only as future architectural notes. They must not be executed as part of this delivery. Agent-neutral seams remain a quality requirement, but product validation is intentionally focused on one excellent Codex experience.
 
 ## 7. Common milestone delivery contract
 
@@ -204,11 +213,11 @@ Measure locally in a representative long task rather than relying only on synthe
 
 ### Outcome
 
-Create the contracts and safeguards that allow Files, Preview, Review, subagents, and additional engines to be built once at the product layer without encoding Codex behavior into the renderer.
+Create the contracts and safeguards that allow Files, Preview, Review, and child work to be built once at the product layer without hard-coding Codex wire behavior into the renderer.
 
 ### User value
 
-Most of M0 is intentionally invisible, but it prevents later features from changing shape or breaking when the user switches from Codex to Claude Code or OpenCode. It also addresses existing sensitivity to slow restoration, delayed approvals, and large task histories before new surfaces add load.
+Most of M0 is intentionally invisible, but it prevents later features from changing shape if a separately approved coding agent is introduced. It does not expose or implement another agent. It also addresses existing sensitivity to slow restoration, delayed approvals, and large task histories before new surfaces add load.
 
 ### UX contract
 
@@ -546,98 +555,11 @@ Run two project tasks concurrently; in one, delegate separate frontend and backe
 
 > Execute M4 from `docs/code-mode-best-in-class-delivery-plan.md` after M0. Build an agent-neutral Work surface for child agents, background work, attention propagation, lifecycle controls, and read-only side investigations. Preserve a quiet main timeline, enforce parent permission ceilings, restore state reliably, and complete all stress, UX, cross-platform, and A-quality gates.
 
-## M5 — Claude Code engine adapter
+## Deferred product decision — additional coding agents
 
-### Outcome
+M5 and M6 are intentionally unplanned. Code Mode supports Codex only while the team gathers user feedback. Do not add, expose, advertise, or test Claude Code, OpenCode, or another coding agent as part of this programme.
 
-Prove that Code Mode is genuinely harness-interchangeable by supporting Claude Code as a first-class local engine through the same product experience.
-
-### Product rule
-
-Do not fork Code Mode into a Claude-shaped UI. Differences belong in capability negotiation, adapter translation, and small engine-specific detail views only where the native concept cannot be normalized honestly.
-
-Begin the preflight and core lifecycle slices after M0. Continue the adapter alongside M1–M4 and complete each new capability integration as its normalized product contract stabilizes. The milestone is complete only after all M1–M4 integrations pass, but the architecture must be tested against a real second engine before those surfaces are considered final.
-
-### Engineering scope
-
-- Detect and validate the local Claude Code installation and authentication state without handling Claude credentials directly.
-- Implement session start/restore, turns, streaming text, tool/file/command events, plans, questions, approvals, stop, usage, errors, models, permission modes, child work, and supported preview/browser capabilities.
-- Route model inference through MindsHub Inference using task-scoped Claude-compatible configuration. Harness installation/authentication and model inference authentication remain separate concerns; no adapter-owned provider credential store is introduced.
-- Translate Code Projects, structured references, skills, environment, model routing, and permissions into Claude-native configuration without modifying unrelated user-global configuration.
-- Define recovery for missing CLI, unsupported version, expired authentication, process crash, protocol drift, and partially restorable sessions.
-- Keep Codex behavior unchanged and use the same conformance fixtures.
-- Integrate a user-installed Claude Code binary rather than redistributing proprietary harness code; record supported versions and applicable licensing/installation boundaries.
-
-### Reviewable delivery slices
-
-1. Installation/version/auth preflight and diagnostics.
-2. Adapter process/protocol foundation behind a development capability flag.
-3. Turns, streaming, restoration, stop, and failure recovery.
-4. Tools/files/commands/plans/questions/approvals and permission translation.
-5. Models, skills, structured references, environment, and child work.
-6. Files/Preview/Review/Work capability integration.
-7. Cross-engine conformance, long-running tasks, upgrade/version matrix, and visible UX polish.
-
-### Acceptance criteria
-
-- Agent selection offers Claude Code only when the local installation is usable and explains a failed preflight clearly.
-- The same representative project task completes with Codex and Claude Code without renderer conditionals based on engine name.
-- The selected MindsHub model is used through MindsHub Inference, and usage/entitlement behavior remains consistent with Codex tasks.
-- Restore, queue, steer/interrupt where supported, approvals, stop, files, review, terminals, and child work conform to declared capabilities.
-- The adapter does not write secrets or silently alter global Claude configuration.
-- Engine upgrade/protocol drift fails safely with actionable diagnostics.
-- An engine switch applies to a new task; existing task history continues to render from normalized durable events.
-
-### Milestone demo
-
-Create equivalent tasks with Codex and Claude Code in the same Code Project, show capability-appropriate controls, complete a real change with each, restart the app, and restore both task histories and workspaces.
-
-### `/goal` execution seed
-
-> Execute M5 from `docs/code-mode-best-in-class-delivery-plan.md` after M0–M4 contracts are complete. Add Claude Code as a first-class local engine without creating a second UI or weakening Codex. Implement the full adapter lifecycle, capability translation, restoration, diagnostics, and conformance suite. Verify equivalent real development tasks and meet every security, versioning, UX, and A-quality gate.
-
-## M6 — OpenCode engine adapter and conformance
-
-### Outcome
-
-Add OpenCode as the third local engine and harden the adapter architecture against a provider-flexible, custom-agent harness.
-
-### Engineering scope
-
-- Detect local OpenCode/server availability and supported protocol/version.
-- Implement the normalized task lifecycle and event contracts.
-- Make MindsHub Inference the default model provider for OpenCode tasks and map its available model catalogue into the existing Model selector. Other locally configured OpenCode providers may be shown only under an explicit future product policy; they are not a reason to bypass MindsHub routing in this programme.
-- Map OpenCode custom agents into the existing Agent selector without leaking provider configuration into every task.
-- Translate granular native permissions into Code Mode's four understandable modes, with advanced overrides deferred to M8.
-- Map OpenCode skills, references, plugins, child sessions, and session mechanics where capabilities exist.
-- Expand the conformance suite so no adapter can pass by omitting declared behavior.
-
-### Reviewable delivery slices
-
-1. Preflight, protocol/version negotiation, and diagnostics.
-2. Core lifecycle and streaming adapter.
-3. Tools/files/commands/approvals/permissions and restoration.
-4. Providers/models/custom agents and settings integration.
-5. Skills/references/child sessions and workspace surfaces.
-6. Three-engine conformance and adversarial protocol/version testing.
-
-### Acceptance criteria
-
-- OpenCode appears only when usable and exposes configured providers/models/agents through existing selectors.
-- The normal Code Mode journey uses the selected MindsHub Inference model and reports usage/entitlement consistently with the other engines.
-- Provider credentials remain owned by OpenCode and are never copied into Code Mode task state.
-- The three-engine conformance suite verifies declared features and expected unsupported behavior.
-- A representative multi-repository task works end to end under OpenCode.
-- Engine-specific details do not leak into shared renderer domain components.
-- Codex and Claude Code regression journeys remain green.
-
-### Milestone demo
-
-Run the same project task through Codex, Claude Code, and an OpenCode custom agent/provider; show consistent task UX, honest capability differences, and a common review/delivery result.
-
-### `/goal` execution seed
-
-> Execute M6 from `docs/code-mode-best-in-class-delivery-plan.md` after M5. Add OpenCode as a third first-class local engine, including providers, custom agents, lifecycle, permissions, references, child sessions, restoration, and rigorous three-engine conformance. Keep credentials engine-owned and shared UI engine-neutral. Complete real multi-repository verification and all A-quality gates.
+Shared product contracts should remain capability-based and free of unnecessary Codex-specific assumptions, but that is an architecture constraint—not a second-agent deliverable. A future agent may be considered only through a separate product decision and delivery plan.
 
 ## M7 — Reproducible Local Environments
 
@@ -696,7 +618,7 @@ Create two isolated tasks from one project, prepare and run both with allocated 
 
 ### Outcome
 
-Give teams one coherent place to understand and control the local capabilities available to every coding engine, while retaining the current simple permission experience.
+Give teams one coherent place to understand and control the local capabilities available to Codex, while retaining the current simple permission experience and a product contract that can accommodate another engine later.
 
 ### UX contract
 
@@ -710,7 +632,7 @@ Give teams one coherent place to understand and control the local capabilities a
 ### Engineering scope
 
 - Normalized extension inventory, scope, lifecycle, health, source, version, and capability contracts.
-- Adapter translators for Codex, Claude Code, and OpenCode configuration with safe backup/rollback.
+- A Codex configuration translator with safe backup/rollback behind an agent-neutral extension contract.
 - Transactional enable/disable/update where configuration files are changed.
 - Normalized policy model with capability-aware compilation into each engine.
 - Product-layer enforcement for operations controlled by MindsHub itself, regardless of engine.
@@ -718,12 +640,12 @@ Give teams one coherent place to understand and control the local capabilities a
 
 ### Reviewable delivery slices
 
-1. Read-only normalized inventory across three engines and existing team skills.
+1. Read-only normalized inventory across Codex and existing team skills.
 2. Extension detail/health/source UX and scope model.
 3. Safe enable/disable/update for one extension class at a time, starting with MCP and skills.
 4. Primary permission presets expressed as normalized policy.
 5. Advanced policy editor and effective-policy explanation.
-6. Adapter policy compilation, unsupported-rule handling, and rollback.
+6. Codex policy compilation, unsupported-rule handling, and rollback.
 7. Security review, configuration-corruption recovery, and UX refinement.
 
 ### Acceptance criteria
@@ -733,15 +655,15 @@ Give teams one coherent place to understand and control the local capabilities a
 - The same primary permission picker remains compact and understandable.
 - Advanced rules are testable before saving and display their effective engine support.
 - A denied path/host/command cannot be reached through a child agent, preview interaction, terminal helper, or alternate engine path.
-- Switching engines cannot silently weaken an explicitly saved policy; unsupported rules block or require an explicit compatible adjustment.
+- A future engine cannot silently weaken an explicitly saved policy; unsupported rules must block or require an explicit compatible adjustment before that engine is exposed.
 
 ### Milestone demo
 
-Inspect a team skill and an engine-native extension, enable a project-scoped MCP server, set a command/path/network policy, run equivalent tasks on multiple engines, and show consistent enforcement and useful denial explanations.
+Inspect a team skill and a Codex-native extension, enable a project-scoped MCP server, set a command/path/network policy, and show consistent enforcement and useful denial explanations.
 
 ### `/goal` execution seed
 
-> Execute M8 from `docs/code-mode-best-in-class-delivery-plan.md` after all three engines are supported. Build a unified, safe Extensions experience and advanced capability-aware permission policies while preserving the compact four-mode picker. Implement transactional configuration, honest enforcement, rollback, child-agent coverage, and all security, UX, and A-quality gates.
+> Execute M8 from `docs/code-mode-best-in-class-delivery-plan.md` for the current Codex-only product. Build a unified, safe Extensions experience and advanced capability-aware permission policies while preserving the compact four-mode picker and agent-neutral contracts. Implement transactional configuration, honest enforcement, rollback, child-work coverage, and all security, UX, and A-quality gates. Do not add another selectable coding agent.
 
 ## M9 — Activity, Notifications, and Best-in-Class Polish
 
@@ -819,7 +741,7 @@ This is a navigation aid, not permission to extend the nearest large file. Each 
 | Current area | Starting point | Expected direction |
 |---|---|---|
 | Engine contracts and sessions | `cowork/coding/contracts.py` | Versioned product capabilities/events; no engine SDK types in public APIs |
-| Engine registration | `cowork/coding/engines/registry.py` and engine modules | Independent adapters verified by one conformance suite |
+| Engine registration | `cowork/coding/engines/registry.py` and engine modules | Codex-only delivery behind a versioned, future-compatible contract |
 | Projects | `cowork/coding/project_models.py` and project API/service modules | Additive resource/action/environment configuration with migration coverage |
 | Isolated workspaces/handoff | `cowork/coding/project_workspaces.py`, `project_tasks.py` | Extend existing multi-repository truth rather than creating a second worktree lifecycle |
 | PR/CI delivery | `cowork/coding/delivery_automation.py` and integration modules | Consume normalized review/repository state and preserve existing automation behavior |
@@ -846,7 +768,7 @@ The exact names may change after inspecting the current code, but the ownership 
 | Permissions | Product policy and enforcement ceiling | Compile native policy and report support | Simple picker plus advanced editor |
 | Activity | Derived attention and unread truth | Emit normalized actionable events | Sidebar, Activity, notifications |
 
-No renderer component should switch on `engine === "codex"`, `"claude"`, or `"opencode"` to decide product behavior. Engine-specific branding and explicitly native diagnostics are valid exceptions; capability and state differences are not.
+No renderer component should switch on `engine === "codex"` to decide product behavior. Codex branding and explicitly native diagnostics are valid exceptions; capability and state differences are not.
 
 ## 11. Data migration and compatibility strategy
 
@@ -860,7 +782,7 @@ No renderer component should switch on `engine === "codex"`, `"claude"`, or `"op
   4. Renderer mutation controls.
   5. Removal of old behavior only after the supported upgrade window and explicit verification.
 - Event migrations should preserve the original durable record and derive new views where possible rather than rewriting task history destructively.
-- Existing tasks with Codex-specific historical details must continue to render after additional engines are introduced.
+- Existing tasks with Codex-specific historical details must continue to render as contracts evolve.
 - Migrations are tested from the schema currently on `staging`, not only from fresh databases.
 
 ## 12. Security and trust checklist
@@ -892,7 +814,7 @@ Each milestone evidence file should record pass/fail/not-applicable for the foll
 | Concurrency | Two tasks minimum; stress case with six tasks; child/background load where relevant |
 | Scale | Long history; large repository; large diff; noisy process; binary/large file states |
 | Permissions | Read only; Ask first; Workspace auto; Full access; advanced rules after M8 |
-| Engine | Codex; Claude Code after M5; OpenCode after M6; declared unsupported paths |
+| Engine | Codex; declared unsupported capability paths; no additional agents in this programme |
 | Inference | Selected MindsHub model reaches each supported harness; availability, credit, usage, and error behavior remain coherent |
 | UX | Keyboard; pointer; selectable text; focus restoration; dark/light; reduced motion |
 | Failure | Missing binary; auth expired; sidecar restart; engine crash; network loss; stale local state |
@@ -945,10 +867,10 @@ limitations, and a concise demo of the completed user journey.
 
 The programme is complete when:
 
-- M0–M9 acceptance criteria and evidence exist.
-- Codex, Claude Code, and OpenCode can each complete representative real development work through the same Code Mode product model.
+- M0–M4 and M7–M9 acceptance criteria and evidence exist; deferred M5/M6 are not required.
+- Codex can complete representative real development work through the Code Mode product model while the contracts remain suitable for future adapters.
 - A multi-repository task can move from issue context to isolated implementation, preview, review, CI/PR handling, and source handoff without requiring an IDE for the agent workflow.
-- Every unsupported engine difference is handled through explicit capability negotiation.
+- Every unsupported Codex capability is handled through explicit capability negotiation.
 - macOS and Windows release journeys have been verified from fresh installs and restored existing state.
 - Performance budgets hold under long histories and concurrent tasks.
 - Cowork mode remains stable and coherent with the shared application shell.
