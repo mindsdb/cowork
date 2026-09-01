@@ -6,7 +6,7 @@ import { ConfirmModal } from '../components/ConfirmModal';
 import Button from '../components/ui/Button';
 import Select from '../components/ui/Select';
 import type { DeliveryRecord, SourceContext } from './api';
-import { sourceContextLabel, sourceProviderLabel } from './developerTools';
+import { safeCodeExternalUrl, sourceContextLabel, sourceProviderLabel } from './developerTools';
 
 type UpdateAction = 'progress' | 'result';
 
@@ -63,6 +63,11 @@ export function SourceUpdateSection({
     setAction('result');
   };
 
+  const openExternal = (value: string | null | undefined) => {
+    const url = safeCodeExternalUrl(value);
+    if (url) void host.openExternal(url);
+  };
+
   return (
     <section className="code-source-updates" aria-label="Linked work updates">
       <header><strong>Linked work</strong><span>Post only when you choose</span></header>
@@ -76,7 +81,7 @@ export function SourceUpdateSection({
           return (
             <article className="code-source-update" key={`${context.provider}:${context.url}`}>
               <div className="code-source-update__summary">
-                <button type="button" className="code-source-update__link" onClick={() => void host.openExternal(context.url)}>
+                <button type="button" className="code-source-update__link" onClick={() => openExternal(context.url)}>
                   <span>{sourceProviderLabel(context.provider)}</span>
                   <strong>{sourceContextLabel(context)} · {context.title}</strong>
                   {Ico.externalLink(11)}
@@ -92,7 +97,7 @@ export function SourceUpdateSection({
                 <button
                   type="button"
                   className={`code-source-update__receipt is-${delivery.status}`}
-                  onClick={() => { if (delivery.external_url) void host.openExternal(delivery.external_url); }}
+                  onClick={() => openExternal(delivery.external_url)}
                   disabled={!delivery.external_url}
                 >
                   <span><i aria-hidden="true" /> {delivery.status !== 'published' ? 'Needs attention' : delivery.action === 'complete_source' ? 'Completed' : 'Posted'}</span>

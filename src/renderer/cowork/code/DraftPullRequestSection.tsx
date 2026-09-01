@@ -8,6 +8,7 @@ import Menu from '../components/ui/Menu';
 import Select from '../components/ui/Select';
 import { host } from '../../platform/host';
 import { deliveryFixCheckPrompt } from './deliveryAutomation';
+import { safeCodeExternalUrl } from './developerTools';
 import {
   codingApi,
   type DeliveryPlan,
@@ -84,10 +85,14 @@ function PullRequestDetails({
   if (!item.external_url) return null;
   const failingChecks = status?.checks?.filter((check) => check.state === 'failing') || [];
   const activeFeedback = status?.feedback?.filter((feedback) => !feedback.resolved) || [];
+  const openExternal = (value: string | null | undefined) => {
+    const url = safeCodeExternalUrl(value);
+    if (url) void host.openExternal(url);
+  };
   return (
     <article className="code-pr-card">
       <header>
-        <button type="button" onClick={() => void host.openExternal(item.external_url!)}>
+        <button type="button" onClick={() => openExternal(item.external_url)}>
           {item.folder_name}{status?.number ? ` #${status.number}` : ''}
         </button>
         <span data-state={status?.state || 'draft'}>{status ? statusLabel(status) : 'Draft created'}</span>
@@ -104,7 +109,7 @@ function PullRequestDetails({
           <div>{status.checks.map((check) => (
             <article className="code-pr-detail-item" key={`${check.id || check.name}:${check.url}`} data-state={check.state}>
               <div>
-                <button type="button" disabled={!check.url} onClick={() => { if (check.url) void host.openExternal(check.url); }}>{check.name}</button>
+                <button type="button" disabled={!safeCodeExternalUrl(check.url)} onClick={() => openExternal(check.url)}>{check.name}</button>
                 <small>{check.state}</small>
               </div>
               {check.detail && <p>{check.detail}</p>}
@@ -127,7 +132,7 @@ function PullRequestDetails({
           <div>{activeFeedback.map((feedback) => (
             <article className="code-pr-detail-item" key={`${feedback.thread_id || feedback.id}:${feedback.url}`}>
               <div>
-                <button type="button" disabled={!feedback.url} onClick={() => { if (feedback.url) void host.openExternal(feedback.url); }}>{feedback.author || 'Reviewer'}</button>
+                <button type="button" disabled={!safeCodeExternalUrl(feedback.url)} onClick={() => openExternal(feedback.url)}>{feedback.author || 'Reviewer'}</button>
                 <small>{feedback.path}{feedback.line ? `:${feedback.line}` : ''}</small>
               </div>
               <p>{feedback.body || feedback.state}</p>

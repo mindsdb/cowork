@@ -15,6 +15,7 @@ import {
   type SkillLibrarySource,
 } from './api';
 import { SkillDetailModal } from './SkillDetailModal';
+import { safeCodeExternalUrl } from './developerTools';
 import './code-skills.css';
 
 type OriginFilter = 'all' | SkillLibraryItem['origin'];
@@ -37,16 +38,21 @@ function shortRevision(value: string | null | undefined): string {
 }
 
 async function openSkillRepository(repository: string): Promise<void> {
-  if (/^https?:\/\//i.test(repository)) {
-    await host.openExternal(repository);
+  const browserUrl = safeCodeExternalUrl(repository);
+  if (browserUrl) {
+    await host.openExternal(browserUrl);
     return;
   }
   const scpRemote = repository.match(/^git@([^:]+):(.+)$/i);
   if (scpRemote) {
-    await host.openExternal(`https://${scpRemote[1]}/${scpRemote[2].replace(/\.git$/i, '')}`);
+    const remoteUrl = safeCodeExternalUrl(`https://${scpRemote[1]}/${scpRemote[2].replace(/\.git$/i, '')}`);
+    if (!remoteUrl) throw new Error('That repository address is not safe to open.');
+    await host.openExternal(remoteUrl);
     return;
   }
-  const result = await host.openPath(repository);
+  // Reveal local team sources in the file manager. `openPath` would ask the OS
+  // to execute an arbitrary user-entered path with its default application.
+  const result = await host.showItemInFolder(repository);
   if (!result.ok) throw new Error(result.reason || 'Could not open that repository.');
 }
 
