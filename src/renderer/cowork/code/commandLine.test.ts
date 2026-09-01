@@ -11,6 +11,7 @@ describe('structured project commands', () => {
       ['C:\\Program Files\\nodejs\\node.exe', 'script with spaces.js'],
       ['C:\\work\\repo\\tool.exe', '--output', 'C:\\temp\\result.txt'],
       ['C:\\Program Files\\tooling\\', 'value with "quotes" and \'apostrophes\''],
+      ['tool', '', 'output', ''],
     ];
     for (const argv of cases) expect(parseCommandLine(formatCommandLine(argv))).toEqual(argv);
   });

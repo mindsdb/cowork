@@ -61,7 +61,9 @@ export function parseDeveloperSourceUrl(value: string): DeveloperSourceTarget | 
     return null;
   }
   if (host === 'linear.app' || host.endsWith('.linear.app')) {
-    const identifier = parsed.pathname.split('/').filter(Boolean).at(-1) || '';
+    const parts = parsed.pathname.split('/').filter(Boolean);
+    const issueIndex = parts.findIndex((part) => part.toLowerCase() === 'issue');
+    const identifier = issueIndex >= 0 ? parts[issueIndex + 1] || '' : parts.at(-1) || '';
     if (/^[A-Za-z][A-Za-z0-9]*-\d+$/.test(identifier)) {
       return { provider: 'linear', kind: 'issue', url: parsed.href };
     }

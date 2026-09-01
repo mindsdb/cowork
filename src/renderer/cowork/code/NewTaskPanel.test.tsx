@@ -543,7 +543,7 @@ describe('NewTaskPanel', () => {
       path: 'C:\\Users\\Ian & Team\\plain folder',
       prompt: 'Build a small app',
       engineId: 'codex',
-      model: 'fable',
+      model: 'mindshub_air',
       permissionMode: 'supervised',
       attachments: [],
       sourceContexts: [],

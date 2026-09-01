@@ -127,8 +127,11 @@ export default function CodeView({
     setControlsOpen(false);
     setExtensionsOpen(false);
     setRenameOpen(false);
-    setProjectEditor(null);
   }, [newTask, projectsOpen, connectorsOpen, selectedId]);
+
+  useEffect(() => {
+    setProjectEditor(null);
+  }, [newTask, projectsOpen, selectedId]);
 
   const restoring = detail.loading || (!!selectedId && detail.session?.id !== selectedId);
   const taskBarSession = session || sessions.find((item) => item.id === selectedId) || null;
