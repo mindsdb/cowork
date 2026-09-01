@@ -22,7 +22,7 @@ const FONT_MONO = "var(--font-mono)";
 
 // Shared class strings for the bare-input shell (a bordered row wrapping an
 // unstyled <input>), so the password field and any future inputs stay in sync.
-const INPUT_SHELL = 'flex items-center gap-[6px] bg-surface-2 border border-solid border-line rounded-[8px] pt-0 pr-[8px] pb-0 pl-[10px]';
+const INPUT_SHELL = 'flex items-center gap-[6px] bg-surface-2 border border-solid border-line rounded-card-row pt-0 pr-2 pb-0 pl-[10px]';
 const BARE_INPUT = 'flex-1 min-w-0 bg-transparent border-0 [outline:none] text-ink font-[family-name:var(--font-mono)] text-[13px] py-[9px] px-0';
 
 // ── Access-draft helpers (the contract between UI and the publish API) ──
@@ -120,7 +120,7 @@ function OptionCard({ value, active, icon, title, desc }) {
       }}
     >
       <span
-        className="inline-grid place-items-center shrink-0 w-[30px] h-[30px] rounded-[8px] bg-surface border border-solid border-line"
+        className="inline-grid place-items-center shrink-0 w-[30px] h-[30px] rounded-card-row bg-surface border border-solid border-line"
         style={{ color: active ? 'var(--accent)' : 'var(--ink-3)' }}
       >{icon}</span>
       <span className="min-w-0 flex-1">
@@ -159,7 +159,7 @@ export function AccessChooser({
       <RadioGroup
         value={draft.mode}
         onValueChange={(m) => set({ mode: m })}
-        className="flex flex-col gap-[8px]"
+        className="flex flex-col gap-2"
         aria-label="Who can access your app"
       >
         {modes.includes('public') && (
@@ -177,7 +177,7 @@ export function AccessChooser({
       </RadioGroup>
 
       {draft.mode === 'password' && (
-        <div className="mt-[8px]">
+        <div className="mt-2">
           <div className={INPUT_SHELL}>
             <input
               type={draft._reveal ? 'text' : 'password'}
@@ -191,7 +191,7 @@ export function AccessChooser({
             <Tooltip content={draft._reveal ? 'Hide' : 'Show'}>
               <button type="button" onClick={() => set({ _reveal: !draft._reveal })}
                 aria-label={draft._reveal ? 'Hide password' : 'Show password'}
-                className="bg-transparent border-0 cursor-pointer text-ink-4 inline-flex p-[4px]">
+                className="bg-transparent border-0 cursor-pointer text-ink-4 inline-flex p-1">
                 {draft._reveal ? Ico.eyeOff(15) : Ico.eye(15)}
               </button>
             </Tooltip>
@@ -200,7 +200,7 @@ export function AccessChooser({
       )}
 
       {draft.mode === 'restricted' && (
-        <div className="mt-[8px]">
+        <div className="mt-2">
           <Textarea
             value={draft.emailsText}
             onChange={(v) => set({ emailsText: v })}
@@ -213,7 +213,7 @@ export function AccessChooser({
               color: 'var(--ink)', fontFamily: FONT_MONO, fontSize: 13, padding: '9px 10px', outline: 'none',
             }}
           />
-          <div className="font-body text-[11px] text-ink-4 mt-[6px]">
+          <div className="font-body text-xs text-ink-4 mt-[6px]">
             {invalidEmails.length
               ? `${invalidEmails.length} invalid — fix to publish: ${invalidEmails.join(', ')}`
               : (parsedEmails.length === 0 && !draft.orgAllowed
@@ -221,7 +221,7 @@ export function AccessChooser({
                 : `${parsedEmails.length} recipient${parsedEmails.length === 1 ? '' : 's'}`)}
             {' '}· comma- or newline-separated.
           </div>
-          <label className="flex items-center gap-[8px] mt-[8px] cursor-pointer font-body text-[12.5px] text-ink">
+          <label className="flex items-center gap-2 mt-2 cursor-pointer font-body text-sm text-ink">
             <Checkbox checked={draft.orgAllowed}
               onCheckedChange={(v) => set({ orgAllowed: v })}
               aria-label="Everyone in my organization" />

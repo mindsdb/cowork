@@ -62,14 +62,14 @@ function PanelHeader({ title }) {
   // those move safely to utilities. Directional border zeroes its off-axis
   // sides (preflight-off box-paint footgun).
   return (
-    <div className="s-h3 py-[12px] px-[16px] border-b border-t-0 border-x-0 border-solid border-line">{title}</div>
+    <div className="s-h3 py-3 px-4 border-b border-t-0 border-x-0 border-solid border-line">{title}</div>
   );
 }
 
 function SectionLabel({ children, action }) {
   return (
-    <div className="flex items-baseline justify-between gap-[8px] mb-[8px]">
-      <span className="font-body font-semibold text-[12.5px] text-ink">{children}</span>
+    <div className="flex items-baseline justify-between gap-2 mb-2">
+      <span className="font-body font-semibold text-sm text-ink">{children}</span>
       {action}
     </div>
   );
@@ -78,7 +78,7 @@ function SectionLabel({ children, action }) {
 // Teal text link used for Change / Dismiss / Change password.
 function LinkButton({ onClick, children }) {
   return (
-    <button type="button" onClick={onClick} className="bg-transparent border-0 cursor-pointer p-0 font-body text-[12.5px] font-medium text-accent">{children}</button>
+    <button type="button" onClick={onClick} className="bg-transparent border-0 cursor-pointer p-0 font-body text-sm font-medium text-accent">{children}</button>
   );
 }
 
@@ -101,7 +101,7 @@ function FooterButton({ onClick, disabled, primary, busy, busyLabel, title, chil
 // (ENG-500).
 function UpToDateTag() {
   return (
-    <span className="inline-flex items-center gap-[6px] py-[7px] px-[4px] font-body font-semibold text-[12.5px] text-ink-3">
+    <span className="inline-flex items-center gap-[6px] py-[7px] px-1 font-body font-semibold text-sm text-ink-3">
       {/* var(--ok) has no config utility (distinct from the --success hex) — keep inline. */}
       <span className="inline-flex" style={{ color: 'var(--ok)' }}>{Ico.check(15)}</span>
       Up to date
@@ -116,8 +116,8 @@ function UrlField({ url }) {
     if (await copyText(url)) { setCopied(true); setTimeout(() => setCopied(false), 1400); }
   };
   return (
-    <div className="flex items-center gap-[6px] bg-surface-2 border border-solid border-line rounded-[8px] pt-0 pr-[6px] pb-0 pl-[10px]">
-      <span title={url} className="flex-1 min-w-0 font-[family-name:var(--font-mono)] text-[12px] text-ink-2 overflow-hidden text-ellipsis whitespace-nowrap py-[8px] px-0">{display}</span>
+    <div className="flex items-center gap-[6px] bg-surface-2 border border-solid border-line rounded-card-row pt-0 pr-[6px] pb-0 pl-[10px]">
+      <span title={url} className="flex-1 min-w-0 font-[family-name:var(--font-mono)] text-[12px] text-ink-2 overflow-hidden text-ellipsis whitespace-nowrap py-2 px-0">{display}</span>
       <Tooltip content={copied ? 'Copied' : 'Copy URL'}>
         <button
           type="button" onClick={onCopy} aria-label="Copy URL"
@@ -137,8 +137,8 @@ function AccessSummaryCard({ mode, ownerOnly }) {
     ? ACCESS_LABELS.ownerOnly
     : (ACCESS_LABELS[mode] || ACCESS_LABELS.public);
   return (
-    <div className="flex items-center gap-[10px] py-[10px] px-[12px] rounded-card bg-surface-2 border border-solid border-line">
-      <span className="inline-grid place-items-center shrink-0 w-[30px] h-[30px] rounded-[8px] bg-surface border border-solid border-line text-ink-3">{m.icon(16)}</span>
+    <div className="flex items-center gap-[10px] py-[10px] px-3 rounded-card bg-surface-2 border border-solid border-line">
+      <span className="inline-grid place-items-center shrink-0 w-[30px] h-[30px] rounded-card-row bg-surface border border-solid border-line text-ink-3">{m.icon(16)}</span>
       <span className="min-w-0 flex-1">
         <span className="block font-body font-semibold text-[13px] text-ink">{m.title}</span>
         <span className="block font-body text-[11.5px] text-ink-3 mt-px">{m.desc}</span>
@@ -176,17 +176,17 @@ function VersionList({ versions, activatingMd5, busy, onActivate }) {
         return (
           <div
             key={v.md5 || i}
-            className="flex items-center gap-[10px] py-[8px] px-[10px] rounded-card-row"
+            className="flex items-center gap-[10px] py-2 px-[10px] rounded-card-row"
             style={{
               background: live ? 'var(--accent-bg)' : 'var(--surface-2)',
               border: `1px solid ${live ? 'var(--accent)' : 'var(--line)'}`,
             }}
           >
             <span className="min-w-0 flex-1">
-              <span className="block font-body font-semibold text-[12.5px] text-ink overflow-hidden text-ellipsis whitespace-nowrap">
+              <span className="block font-body font-semibold text-sm text-ink overflow-hidden text-ellipsis whitespace-nowrap">
                 {versionLabel(v, i, versions.length)}
               </span>
-              <span className="block font-body text-[11px] text-ink-3 mt-px">
+              <span className="block font-body text-xs text-ink-3 mt-px">
                 {formatWhen(v.publishedAt) || '—'}
               </span>
             </span>
@@ -333,12 +333,12 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
               {!isPublished && (
                 <>
                   <PanelHeader title="Share to the Web" />
-                  <div className="py-[12px] px-[16px]">
+                  <div className="py-3 px-4">
                     <SectionLabel>Who can access your app</SectionLabel>
                     <AccessChooser value={draft} onChange={setDraft} onSubmit={doPublish} />
                   </div>
                   <ErrorRow message={pub.error} />
-                  <div className="flex justify-end py-[12px] px-[16px] border-t border-b-0 border-x-0 border-solid border-line">
+                  <div className="flex justify-end py-3 px-4 border-t border-b-0 border-x-0 border-solid border-line">
                     <FooterButton primary onClick={doPublish}
                       disabled={pub.busy || !isAccessDraftValid(draft)}
                       busy={pub.phase === 'publishing'} busyLabel="Sharing">
@@ -353,12 +353,12 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                 <>
                   <PanelHeader title="Shared" />
   
-                  <div className="py-[12px] px-[16px] border-b border-t-0 border-x-0 border-solid border-line">
+                  <div className="py-3 px-4 border-b border-t-0 border-x-0 border-solid border-line">
                     <SectionLabel>Website URL</SectionLabel>
                     <UrlField url={pub.publishedUrl} />
                   </div>
   
-                  <div className="py-[12px] px-[16px]">
+                  <div className="py-3 px-4">
                     {view === 'summary' && (
                       <>
                         <SectionLabel action={<LinkButton onClick={() => { setDraft(draftFromController(pub)); setDraftDirty(false); setView('access'); }}>Change</LinkButton>}>
@@ -366,12 +366,12 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                         </SectionLabel>
                         <AccessSummaryCard mode={pub.accessMode} ownerOnly={pub.ownerOnly} />
                         {pub.accessMode === 'password' && (
-                          <div className="mt-[8px] flex justify-end">
+                          <div className="mt-2 flex justify-end">
                             <LinkButton onClick={() => { setPwd({ value: '', reveal: false }); setView('password'); }}>Change password</LinkButton>
                           </div>
                         )}
                         {pub.versions.length > 1 && (
-                          <div className="mt-[12px]">
+                          <div className="mt-3">
                             <LinkButton onClick={() => setView('versions')}>{`Version history (${pub.versions.length})`}</LinkButton>
                           </div>
                         )}
@@ -392,7 +392,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                         <SectionLabel action={<LinkButton onClick={() => setView('summary')}>Dismiss</LinkButton>}>
                           Change password
                         </SectionLabel>
-                        <div className="flex items-center gap-[6px] bg-surface-2 border border-solid border-line rounded-[8px] pt-0 pr-[8px] pb-0 pl-[10px]">
+                        <div className="flex items-center gap-[6px] bg-surface-2 border border-solid border-line rounded-card-row pt-0 pr-2 pb-0 pl-[10px]">
                           <input
                             type={pwd.reveal ? 'text' : 'password'} value={pwd.value}
                             onChange={(e) => setPwd((p) => ({ ...p, value: e.target.value }))}
@@ -403,7 +403,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                           <Tooltip content={pwd.reveal ? 'Hide' : 'Show'}>
                             <button type="button" onClick={() => setPwd((p) => ({ ...p, reveal: !p.reveal }))}
                               aria-label={pwd.reveal ? 'Hide password' : 'Show password'}
-                              className="bg-transparent border-0 cursor-pointer text-ink-4 inline-flex p-[4px]">
+                              className="bg-transparent border-0 cursor-pointer text-ink-4 inline-flex p-1">
                               {pwd.reveal ? Ico.eyeOff(15) : Ico.eye(15)}
                             </button>
                           </Tooltip>
@@ -422,7 +422,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                           busy={pub.busy}
                           onActivate={doActivate}
                         />
-                        <p className="mt-[10px] mx-[2px] mb-0 font-body text-[11px] text-ink-3 leading-[1.4]">
+                        <p className="mt-[10px] mx-[2px] mb-0 font-body text-xs text-ink-3 leading-[1.4]">
                           Making a version live changes what visitors see at your URL. Your workspace files stay as they are.
                         </p>
                       </>
@@ -431,7 +431,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
   
                   <ErrorRow message={pub.error} />
   
-                  <div className="flex items-center justify-between gap-[8px] py-[12px] px-[16px] border-t border-b-0 border-x-0 border-solid border-line">
+                  <div className="flex items-center justify-between gap-2 py-3 px-4 border-t border-b-0 border-x-0 border-solid border-line">
                     <FooterButton onClick={doUnpublish} disabled={pub.busy}
                       busy={pub.phase === 'unpublishing'} busyLabel="Stopping…">
                       Stop sharing
