@@ -64,9 +64,8 @@ describe('refreshTokensOnly outcome mapping', () => {
     (hasUserSuppliedMindsCredential as Mock).mockReset().mockResolvedValue(false);
     (saveTokens as Mock).mockClear();
     (clearTokens as Mock).mockClear();
-    (syncMindsCredential as Mock).mockReset().mockResolvedValue(true);
-    (syncMindsCredentialSelection as Mock).mockReset().mockResolvedValue({ landed: true, usable: true });
     (syncUsableMindsCredential as Mock).mockReset().mockResolvedValue(true);
+    (syncMindsCredentialSelection as Mock).mockReset().mockResolvedValue({ landed: true, usable: true });
     settleMindsResumeCredentialGate(true);
   });
 
@@ -88,7 +87,7 @@ describe('refreshTokensOnly outcome mapping', () => {
 
   it('does not report success until the fresh credential has reached the sidecar', async () => {
     let releaseHandoff!: (landed: boolean) => void;
-    (syncMindsCredential as Mock).mockReturnValueOnce(new Promise<boolean>((resolve) => {
+    (syncUsableMindsCredential as Mock).mockReturnValueOnce(new Promise<boolean>((resolve) => {
       releaseHandoff = resolve;
     }));
     mockFetchOnce(async () => jsonResponse(200, { access_token: 'at-new', expires_in: 300, refresh_token: 'rt-2' }));
@@ -104,7 +103,7 @@ describe('refreshTokensOnly outcome mapping', () => {
     await vi.advanceTimersByTimeAsync(0);
 
     expect(saveTokens).toHaveBeenCalledWith('at-new', 300, 'rt-2');
-    expect(syncMindsCredential).toHaveBeenCalledTimes(1);
+    expect(syncUsableMindsCredential).toHaveBeenCalledTimes(1);
     expect(settled).toBe(false);
 
     releaseHandoff(true);
@@ -121,18 +120,18 @@ describe('refreshTokensOnly outcome mapping', () => {
       expires_in: 300,
       refresh_token: 'rt-2',
     }));
-    (syncMindsCredential as Mock)
+    (syncUsableMindsCredential as Mock)
       .mockResolvedValueOnce(false);
 
     await expect(refreshTokensOnly()).resolves.toEqual({ status: 'handoff_pending', token: 'at-new' });
     expect(fetch).toHaveBeenCalledTimes(1);
-    expect(syncMindsCredential).toHaveBeenCalledTimes(1);
+    expect(syncUsableMindsCredential).toHaveBeenCalledTimes(1);
 
     await vi.advanceTimersByTimeAsync(9_999);
-    expect(syncMindsCredential).toHaveBeenCalledTimes(1);
+    expect(syncUsableMindsCredential).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(1);
 
-    expect(syncMindsCredential).toHaveBeenCalledTimes(1);
+    expect(syncUsableMindsCredential).toHaveBeenCalledTimes(1);
     expect(syncMindsCredentialSelection).toHaveBeenCalledTimes(1);
     expect(fetch).toHaveBeenCalledTimes(1);
   });
@@ -140,7 +139,7 @@ describe('refreshTokensOnly outcome mapping', () => {
   it('keeps a refreshed token available before the sidecar is installed', async () => {
     (getAccessToken as Mock).mockReturnValue('expired-token');
     (isAccessTokenExpired as Mock).mockReturnValue(true);
-    (syncMindsCredential as Mock).mockResolvedValueOnce(false);
+    (syncUsableMindsCredential as Mock).mockResolvedValueOnce(false);
     mockFetchOnce(async () => jsonResponse(200, {
       access_token: 'fresh-preinstall-token',
       expires_in: 300,
@@ -250,7 +249,7 @@ describe('refreshTokensOnly outcome mapping', () => {
   it('holds an immediate post-resume turn until refresh and handoff finish', async () => {
     (isAccessTokenExpired as Mock).mockReturnValue(true);
     let releaseHandoff!: (landed: boolean) => void;
-    (syncMindsCredential as Mock).mockReturnValueOnce(new Promise<boolean>((resolve) => {
+    (syncUsableMindsCredential as Mock).mockReturnValueOnce(new Promise<boolean>((resolve) => {
       releaseHandoff = resolve;
     }));
     mockFetchOnce(async () => jsonResponse(200, { access_token: 'at-after-wake', expires_in: 300 }));
@@ -266,7 +265,7 @@ describe('refreshTokensOnly outcome mapping', () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(syncMindsCredential).toHaveBeenCalledTimes(1);
+    expect(syncUsableMindsCredential).toHaveBeenCalledTimes(1);
     expect(turnReleased).toBe(false);
 
     releaseHandoff(true);
@@ -283,7 +282,7 @@ describe('refreshTokensOnly outcome mapping', () => {
 
   it('releases a resumed turn after the handoff-only retry succeeds', async () => {
     (isAccessTokenExpired as Mock).mockReturnValue(true);
-    (syncMindsCredential as Mock).mockResolvedValueOnce(false);
+    (syncUsableMindsCredential as Mock).mockResolvedValueOnce(false);
     (syncMindsCredentialSelection as Mock).mockResolvedValueOnce({ landed: true, usable: true });
     mockFetchOnce(async () => jsonResponse(200, { access_token: 'at-after-wake', expires_in: 300 }));
 
@@ -305,7 +304,7 @@ describe('refreshTokensOnly outcome mapping', () => {
 
   it('schedules the next refresh from token issuance, not delayed handoff completion', async () => {
     let releaseHandoff!: (landed: boolean) => void;
-    (syncMindsCredential as Mock).mockReturnValueOnce(new Promise<boolean>((resolve) => {
+    (syncUsableMindsCredential as Mock).mockReturnValueOnce(new Promise<boolean>((resolve) => {
       releaseHandoff = resolve;
     }));
     const fetch = mockFetchOnce(async () => jsonResponse(200, {
@@ -450,7 +449,7 @@ describe('refreshTokensOnly outcome mapping', () => {
     let tokenStoreVersion = 0;
     (getTokenStoreVersion as Mock).mockImplementation(() => tokenStoreVersion);
     let releaseHandoff!: (landed: boolean) => void;
-    (syncMindsCredential as Mock).mockReturnValueOnce(new Promise<boolean>((resolve) => {
+    (syncUsableMindsCredential as Mock).mockReturnValueOnce(new Promise<boolean>((resolve) => {
       releaseHandoff = resolve;
     }));
     (syncUsableMindsCredential as Mock).mockResolvedValueOnce(false);
@@ -469,13 +468,16 @@ describe('refreshTokensOnly outcome mapping', () => {
 
     await expect(refresh).resolves.toEqual({ status: 'superseded' });
     await expect(turnGate).resolves.toBe(false);
-    expect(syncUsableMindsCredential).toHaveBeenCalledTimes(1);
+    // Twice: the refresh's own hand-over, then the repair that re-resolves what
+    // the newer login left behind. The repair's `false` is what keeps the gate
+    // shut, so a superseded refresh cannot release a turn onto a stale value.
+    expect(syncUsableMindsCredential).toHaveBeenCalledTimes(2);
   });
 
   it('does not let a cancelled refresh handoff reopen the resume gate', async () => {
     (isAccessTokenExpired as Mock).mockReturnValue(true);
     let releaseHandoff!: (landed: boolean) => void;
-    (syncMindsCredential as Mock).mockReturnValueOnce(new Promise<boolean>((resolve) => {
+    (syncUsableMindsCredential as Mock).mockReturnValueOnce(new Promise<boolean>((resolve) => {
       releaseHandoff = resolve;
     }));
     mockFetchOnce(async () => jsonResponse(200, {
@@ -488,7 +490,7 @@ describe('refreshTokensOnly outcome mapping', () => {
     await Promise.resolve();
     await Promise.resolve();
     await vi.advanceTimersByTimeAsync(0);
-    expect(syncMindsCredential).toHaveBeenCalledTimes(1);
+    expect(syncUsableMindsCredential).toHaveBeenCalledTimes(1);
 
     cancelScheduledRefresh();
     settleMindsResumeCredentialGate(false);
@@ -501,7 +503,7 @@ describe('refreshTokensOnly outcome mapping', () => {
 
   it('does not let a cancelled handoff-only retry reopen the resume gate', async () => {
     (isAccessTokenExpired as Mock).mockReturnValue(true);
-    (syncMindsCredential as Mock).mockResolvedValueOnce(false);
+    (syncUsableMindsCredential as Mock).mockResolvedValueOnce(false);
     let releaseRetry!: (result: { landed: boolean; usable: boolean }) => void;
     (syncMindsCredentialSelection as Mock).mockReturnValueOnce(
       new Promise<{ landed: boolean; usable: boolean }>((resolve) => {
@@ -542,7 +544,7 @@ describe('refreshTokensOnly outcome mapping', () => {
       }))
       .mockImplementationOnce(async () => secondResponse);
     globalThis.fetch = fetch as unknown as typeof globalThis.fetch;
-    (syncMindsCredential as Mock)
+    (syncUsableMindsCredential as Mock)
       .mockResolvedValueOnce(false)
       .mockResolvedValueOnce(true);
 
@@ -595,7 +597,7 @@ describe('refreshTokensOnly outcome mapping', () => {
 
   it('does not reopen a handoff retry after logout leaves no selected credential', async () => {
     (isAccessTokenExpired as Mock).mockReturnValue(true);
-    (syncMindsCredential as Mock).mockResolvedValueOnce(false);
+    (syncUsableMindsCredential as Mock).mockResolvedValueOnce(false);
     (syncMindsCredentialSelection as Mock).mockResolvedValueOnce({ landed: true, usable: false });
     mockFetchOnce(async () => jsonResponse(200, { access_token: 'at-before-logout', expires_in: 300 }));
 

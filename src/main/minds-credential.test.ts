@@ -294,6 +294,20 @@ describe('syncUsableMindsCredential', () => {
 
     await expect(syncUsableMindsCredential()).resolves.toBe(false);
   });
+
+  // The usable/landed quadrant the other three cases miss: they all hold
+  // landed = true and vary only usable, so nothing discriminated the `landed`
+  // half of the conjunct. A refused hand-over is precisely the ENG-2116
+  // failure, and this is the single boolean deciding whether a held turn may
+  // go out. The sibling `clearUserSuppliedMindsKey` already pins the same idea.
+  it('does not call a usable credential ready when the sidecar refuses it', async () => {
+    (getAccessToken as Mock).mockReturnValue('fresh-session-token');
+    (isAccessTokenExpired as Mock).mockReturnValue(false);
+    (getMindsApiKey as Mock).mockResolvedValue(null);
+    installFetch(500);
+
+    await expect(syncUsableMindsCredential()).resolves.toBe(false);
+  });
 });
 
 describe('a user-supplied key', () => {
