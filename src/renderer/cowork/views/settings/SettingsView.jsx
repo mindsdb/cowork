@@ -16,6 +16,7 @@ import ModelSelect from '../../components/ModelSelect.jsx';
 import { host } from '../../../platform/host';
 import { SKINS, normalizeSkin } from '../../../lib/skins';
 import { MINDS_API_BASE, MINDS_API_KEY_URL, MINDS_REGISTER_URL, MINDS_BILLING_URL } from '../../../lib/mindsUrls';
+import { useOrgMode } from '../../../lib/orgMode';
 import { isElectron } from '../../../platform/host';
 import ChannelsView from '../ChannelsView';
 import UpdatesSection from './UpdatesSection';
@@ -730,6 +731,7 @@ export default function SettingsView({
   onInstallShellAutoUpdate,
   onRetryShellAutoUpdate,
 }) {
+  const orgMode = useOrgMode();
   const [saved, setSaved] = useState(false);
   const [validation, setValidation] = useState(null);
   const [testing, setTesting] = useState(false);
@@ -1237,7 +1239,8 @@ export default function SettingsView({
     return (
       <SettingsSectionPanel footer={renderSaveFooter()}>
         <div className="flex flex-col">
-          <div className={anyProviderConfigured ? 'order-2' : 'order-none'}>
+          {/* SaaS orgs use their managed provider; standalone web and desktop keep BYOK. */}
+          {!orgMode && <div className={anyProviderConfigured ? 'order-2' : 'order-none'}>
             <SettingsGroup title="LLM Providers">
               {providers.map((p) => {
                 const configured = providerConfigured(p);
@@ -1497,7 +1500,7 @@ export default function SettingsView({
                 </div>
               </div>
             </SettingsGroup>
-          </div>
+          </div>}
           <div className={anyProviderConfigured ? 'order-1' : 'order-none'}>
             <SettingsGroup title="Model Router">
               {(() => {
