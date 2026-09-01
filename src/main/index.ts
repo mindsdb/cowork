@@ -1081,9 +1081,13 @@ function setupIPC() {
     // not say who decided. Today only the onboarding picker sends one, but a
     // caller that later passes a remembered id must not inherit "a person just
     // answered this" along with it (ENG-2199).
+    // Compared strictly rather than coerced: this flag's whole job is to
+    // suppress a fallback, so anything but a real `true` off the wire must not
+    // arm it. Today's renderer sends a boolean or nothing, so this is the
+    // contract written down rather than a hole being closed.
     const selected = await selectEntitledOrg(token, {
       preferOrgId: organizationId,
-      chosenByUser: Boolean(chosenByUser),
+      chosenByUser: chosenByUser === true,
     });
     if (!selected.token) {
       console.error('[mindshub:finalize] could not select an organization:', selected.error);

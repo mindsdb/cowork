@@ -92,7 +92,14 @@ interface AntonTronAPI {
   mindshubFinalize: (
     organizationId?: string,
     chosenByUser?: boolean,
-  ) => Promise<{ ok: boolean; reason?: string; upgradeRequired?: boolean }>;
+  ) => Promise<{
+    ok: boolean;
+    reason?: string;
+    upgradeRequired?: boolean;
+    // Referenced through `import(...)` so this stays an ambient global
+    // declaration; a top-level import would turn the file into a module.
+    organization?: import('../shared/minds-orgs').MindsOrg;
+  }>;
   mindshubSetUserKey: (key: string) => Promise<{ ok: boolean; reason?: string }>;
   mindshubGetCachedToken: () => Promise<{ access_token: string | null }>;
   onMindsHubAuthChanged: (cb: (payload: { authenticated: boolean }) => void) => () => void;

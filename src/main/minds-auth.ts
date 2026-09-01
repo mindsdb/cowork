@@ -857,7 +857,22 @@ export async function selectEntitledOrg(
   // user actually is and recording where we merely tried to put them back.
   const settleOn = (token: string, chosenByUser: boolean): SelectedOrgResult => {
     const id = getActiveOrgFromPayload(decodeJwtPayload(token))?.id;
-    if (userId && id) storeOrgPreference(userId, id, chosenByUser);
+    // An automatic outcome never overwrites a person's standing choice. Where
+    // this call ran is not evidence about what they want: `listUserOrgs` folds
+    // a failed read, a timeout and a genuinely empty membership into the same
+    // `[]`, so a Keycloak blip is enough to land somewhere else — and a write
+    // here would delete the only record of their pick, permanently, on a
+    // session that merely reconnected.
+    //
+    // Leaving the record alone lets it disagree with the live session for the
+    // length of the outage, which is the honest state and a self-healing one:
+    // `chooseMindsOrg` switches back to the stored organization on the next
+    // read that can see it. It is also why a stale record is inert rather than
+    // dangerous — that function ignores a pick the person is no longer a member
+    // of, so a revoked organization stops being honoured without anything here
+    // having to decide whether the membership read could be trusted.
+    const wouldReplaceAChoice = !chosenByUser && stored?.chosenByUser === true;
+    if (userId && id && !wouldReplaceAChoice) storeOrgPreference(userId, id, chosenByUser);
     return { token, organization: namedOrg(token) };
   };
 

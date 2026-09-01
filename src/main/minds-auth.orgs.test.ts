@@ -455,11 +455,18 @@ describe('selectEntitledOrg — who decides which organization pays', () => {
     memberships: Array<{ id: string; name: string; displayName?: string }>,
     startIn: { id: string; name: string },
     entitled: string[],
-    opts: { refuse?: string[] } = {},
+    opts: { refuse?: string[]; orgsStatus?: number } = {},
   ) {
     let active = startIn;
     const calls = installRoutedFetch([
-      { method: 'GET', match: '/orgs', reply: () => ({ status: 200, body: memberships }) },
+      // `orgsStatus` is Keycloak failing the membership read. It matters
+      // because `listUserOrgs` returns `[]` for a failed read AND for a
+      // genuinely empty membership, so nothing downstream can tell them apart.
+      {
+        method: 'GET',
+        match: '/orgs',
+        reply: () => ({ status: opts.orgsStatus ?? 200, body: (opts.orgsStatus ?? 200) === 200 ? memberships : {} }),
+      },
       {
         method: 'PUT',
         match: 'users/switch-organization',
@@ -601,6 +608,65 @@ describe('selectEntitledOrg — who decides which organization pays', () => {
     // and finds the organization that can actually pay.
     expect(result.organization?.id).toBe(PERSONAL.id);
     expect(storedPick()).toEqual({ sub: USER, orgId: PERSONAL.id, chosenByUser: false });
+  });
+
+  it('does not erase a standing choice when the membership read fails', async () => {
+    // Reconnect (`ChatView.jsx:1166`) calls finalize with no id and no flag. If
+    // Keycloak's /orgs read blips, `listUserOrgs` answers `[]`, the stored
+    // organization cannot be matched, and the session settles somewhere else —
+    // and a write there would delete the only record of the person's pick,
+    // permanently, on a session that merely reconnected.
+    fs.writeFileSync(
+      `${TEST_HOME}/state.json`,
+      JSON.stringify({ preferences: { mindsOrganization: { sub: USER, orgId: BETA.id, chosenByUser: true } } }),
+    );
+    entitlementRoutes([PERSONAL, ACME, BETA], ACME, [ACME.id], { orgsStatus: 503 });
+
+    const result = await selectEntitledOrg(tokenFor(ACME));
+
+    // Where this call ran is not evidence about what the person wants.
+    expect(storedPick()).toEqual({ sub: USER, orgId: BETA.id, chosenByUser: true });
+    // The live session honestly reports where it is, which is not their choice.
+    expect(result.organization?.id).toBe(ACME.id);
+  });
+
+  it('recovers the choice on the next read that can see it', async () => {
+    // The other half of leaving the record alone: the disagreement lasts only
+    // as long as the outage. Without this, "do not overwrite" would just be a
+    // quieter way to strand somebody.
+    fs.writeFileSync(
+      `${TEST_HOME}/state.json`,
+      JSON.stringify({ preferences: { mindsOrganization: { sub: USER, orgId: BETA.id, chosenByUser: true } } }),
+    );
+    entitlementRoutes([PERSONAL, ACME, BETA], ACME, [ACME.id], { orgsStatus: 503 });
+    await selectEntitledOrg(tokenFor(ACME));
+
+    entitlementRoutes([PERSONAL, ACME, BETA], ACME, [ACME.id]);
+    const healthy = await selectEntitledOrg(tokenFor(ACME));
+
+    expect(healthy.organization?.id).toBe(BETA.id);
+    expect(storedPick()).toEqual({ sub: USER, orgId: BETA.id, chosenByUser: true });
+  });
+
+  it('stops honouring a choice once the membership is really gone', async () => {
+    // Guards the opposite failure: "never overwrite a pick" must not become
+    // "a pick is forever". The stored row may go stale, but it is inert —
+    // `chooseMindsOrg` ignores a pick the person is no longer a member of, so
+    // the ranking places them and the fallback still runs.
+    //
+    // Also the only cover for the stored branch's identity guard
+    // (`stored.orgId === startedInOrgId`), the twin of `landedOnRequest`:
+    // without it a stored pick the session never reached would protect
+    // whatever the ranking happened to land on — Acme here, which cannot pay.
+    fs.writeFileSync(
+      `${TEST_HOME}/state.json`,
+      JSON.stringify({ preferences: { mindsOrganization: { sub: USER, orgId: BETA.id, chosenByUser: true } } }),
+    );
+    entitlementRoutes([PERSONAL, ACME], PERSONAL, [PERSONAL.id]);
+
+    const result = await selectEntitledOrg(tokenFor(PERSONAL));
+
+    expect(result.organization?.id).toBe(PERSONAL.id);
   });
 
   it('never records an organization the person does not belong to', async () => {
