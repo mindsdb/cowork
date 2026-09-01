@@ -37,6 +37,7 @@ import {
 import {
   establishMindsCredential,
   resolveMindsCredential,
+  hasUserSuppliedMindsCredential,
   pushMindsCredential,
   syncMindsCredential,
   syncMindsCredentialSelection,
@@ -89,6 +90,15 @@ describe('resolveMindsCredential', () => {
   it('has nothing to present when signed out with no key stored', async () => {
     (getAccessToken as Mock).mockReturnValue(null);
     expect(await resolveMindsCredential()).toBeNull();
+  });
+
+  it('identifies a user-supplied key as independent of the Keycloak session', async () => {
+    (getMindsApiKey as Mock).mockResolvedValue('mdb_users_own');
+    await expect(hasUserSuppliedMindsCredential()).resolves.toBe(true);
+  });
+
+  it('does not call the session JWT user-supplied', async () => {
+    await expect(hasUserSuppliedMindsCredential()).resolves.toBe(false);
   });
 });
 
@@ -173,6 +183,19 @@ describe('pushMindsCredential', () => {
       'mdb_old_selection',
       'fresh-session-token',
     ]);
+  });
+
+  it('keeps the handoff queue usable after an unexpected selection rejection', async () => {
+    (getAccessToken as Mock)
+      .mockImplementationOnce(() => { throw new Error('token store unavailable'); })
+      .mockReturnValue('session-token');
+    const calls = installFetch();
+
+    await expect(syncMindsCredentialSelection()).rejects.toThrow('token store unavailable');
+    await expect(syncMindsCredentialSelection()).resolves.toEqual({ landed: true, usable: true });
+
+    expect(calls).toHaveLength(1);
+    expect(JSON.parse(calls[0].body as string)).toEqual({ value: 'session-token' });
   });
 
   it('sends a blank value to clear, never the literal null', async () => {
@@ -283,6 +306,14 @@ describe('a user-supplied key', () => {
     expect(isMindsResumeCredentialGateActive()).toBe(false);
   });
 
+  it('does not release the resume gate when the sidecar refuses the new key', async () => {
+    beginMindsResumeCredentialGate();
+    installFetch(500);
+
+    await expect(setUserSuppliedMindsKey('mdb_pasted')).resolves.toBe(false);
+    expect(isMindsResumeCredentialGateActive()).toBe(true);
+  });
+
   it('falls back to the session credential when removed', async () => {
     // Without the push, the sidecar would keep running on the key the user just
     // removed until something else happened to push.
@@ -290,6 +321,23 @@ describe('a user-supplied key', () => {
     await clearUserSuppliedMindsKey();
     expect(deleteMindsApiKey).toHaveBeenCalled();
     expect(JSON.parse(calls[0].body as string)).toEqual({ value: 'session-token' });
+  });
+
+  it('does not release the resume gate onto an expired fallback session', async () => {
+    beginMindsResumeCredentialGate();
+    (isAccessTokenExpired as Mock).mockReturnValue(true);
+    installFetch();
+
+    await expect(clearUserSuppliedMindsKey()).resolves.toBe(true);
+    expect(isMindsResumeCredentialGateActive()).toBe(true);
+  });
+
+  it('does not release the resume gate when the fallback handoff is refused', async () => {
+    beginMindsResumeCredentialGate();
+    installFetch(500);
+
+    await expect(clearUserSuppliedMindsKey()).resolves.toBe(false);
+    expect(isMindsResumeCredentialGateActive()).toBe(true);
   });
 });
 
