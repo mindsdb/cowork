@@ -27,6 +27,12 @@ export function recordOf(value) {
  * encoding a JSON object. Every caller treats null as "unreadable" and falls
  * back to a signed-out or unknown state, so a malformed token must not
  * propagate an exception through a render.
+ *
+ * Note what this does NOT do: `TextDecoder` defaults to `fatal: false`, so
+ * malformed UTF-8 becomes U+FFFD and the decode still SUCCEEDS — a bad byte
+ * shows a replacement character in the name, it does not return null. That is
+ * deliberate: `{ fatal: true }` would turn one bad byte into a sign-in card,
+ * which is worse for the user than a visibly-wrong character.
  */
 function decodeBase64UrlJson(value) {
   try {

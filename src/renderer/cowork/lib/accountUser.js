@@ -72,6 +72,6 @@ export function accountInitials(user) {
     // in the decode.
     return user.name.split(' ').map((w) => [...w][0]).slice(0, 2).join('').toUpperCase();
   }
-  if (user?.email) return user.email[0].toUpperCase();
+  if (user?.email) return [...user.email][0].toUpperCase();
   return '?';
 }
