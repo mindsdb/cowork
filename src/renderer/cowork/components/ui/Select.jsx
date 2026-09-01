@@ -41,15 +41,17 @@
 // it. `{ separator: true }` renders a divider. `{ group, options }` renders a
 // labeled group (only used if a call site needs it — none currently do).
 //
-// Two visual variants:
+// Three visual variants:
 //   - `variant="field"` (default) — full-width bordered control, matches
 //     the form fields it replaces (settings-select, channels-input, etc).
 //   - `variant="pill"` — compact "Label: value ⌄" control, replaces the
 //     SelectPill / customize-select overlay trick used for sort/filter.
+//   - `variant="unstyled"` — wiring only, for domain controls that use an
+//     established trigger treatment such as Composer's `meta-pill`.
 
 import { useMemo } from 'react';
 import { Select as BaseSelect } from '@base-ui/react/select';
-import { ChevronDown, Check } from 'lucide-react';
+import { ChevronDown, ChevronsUpDown, Check } from 'lucide-react';
 import { cva } from 'class-variance-authority';
 import { cn } from '../../lib/cn';
 import Spinner from './Spinner.jsx';
@@ -93,7 +95,17 @@ export const triggerVariants = cva(
   },
 );
 
+export function PickerMenuHeading({ children }) {
+  if (!children) return null;
+  return (
+    <div className="px-[14px] pt-[9px] pb-[5px] text-[10.5px] font-semibold leading-[16px] text-ink-4 select-none">
+      {children}
+    </div>
+  );
+}
+
 const CHEVRON_DOWN = <ChevronDown size={11} strokeWidth={1.5} aria-hidden="true" />;
+const CARET_UP_DOWN = <ChevronsUpDown size={11} strokeWidth={1.5} aria-hidden="true" />;
 
 const CHECK = <Check size={12} strokeWidth={1.5} aria-hidden="true" />;
 
@@ -185,6 +197,9 @@ export function Select({
   // Pill-variant prefix, e.g. "Sort by". Falls back to `ariaLabel` when
   // omitted so a pill always has an accessible name.
   label,
+  // Optional identity shown only inside the open popup. Composer controls
+  // use this to stay terse when closed without making a menu ambiguous.
+  menuLabel,
   ariaLabel,
   title,
   id,
@@ -210,14 +225,14 @@ export function Select({
       disabled={disabled}
       id={id}
       name={name}
-    >
-      <BaseSelect.Trigger
-        // "unstyled" (mirrors Combobox.jsx, which shares this cva) skips the
-        // field/pill trigger classes entirely so a caller's own className is
-        // the sole visual definition — e.g. EffortSelect's `meta-pill`
-        // (ENG-1940), which needs to look identical to ModelSelect's pill
-        // next to it and would otherwise fight the pill-variant classes.
-        className={cn(variant === 'unstyled' ? null : triggerVariants({ variant, size }), className)}
+      >
+        <BaseSelect.Trigger
+          // "unstyled" (mirrors Combobox.jsx, which shares this cva) skips the
+          // field/pill trigger classes entirely so a caller's own className is
+          // the sole visual definition — e.g. EffortSelect's `meta-pill`
+          // (ENG-1940), which needs to look identical to ModelSelect's pill
+          // next to it and would otherwise fight the pill-variant classes.
+          className={cn(variant === 'unstyled' ? null : triggerVariants({ variant, size }), className)}
         aria-label={ariaLabel || label}
         aria-invalid={invalid || undefined}
         // The spinner that replaces the chevron is aria-hidden, so without
@@ -238,7 +253,9 @@ export function Select({
             looked identical to a real selection. */}
         <BaseSelect.Value placeholder={placeholder} className="truncate data-[placeholder]:text-ink-4" />
         <BaseSelect.Icon className="inline-flex shrink-0 text-ink-3">
-          {loading ? <Spinner style={{ color: 'currentColor' }} /> : CHEVRON_DOWN}
+          {loading
+            ? <Spinner style={{ color: 'currentColor' }} />
+            : variant === 'unstyled' ? CARET_UP_DOWN : CHEVRON_DOWN}
         </BaseSelect.Icon>
       </BaseSelect.Trigger>
       <BaseSelect.Portal>
@@ -268,6 +285,7 @@ export function Select({
               'data-[open]:animate-scale-in data-[closed]:animate-scale-out',
             )}
           >
+            <PickerMenuHeading>{menuLabel}</PickerMenuHeading>
             <BaseSelect.List>
               {renderOptions(options)}
             </BaseSelect.List>

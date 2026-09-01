@@ -1,6 +1,7 @@
 import type {
   CodingEvent,
   CodingSession,
+  CodeProject,
   DiffFile,
   EngineCapability,
   GitState,
@@ -201,6 +202,49 @@ function fixtureState(name: string) {
       additions: 8 + index,
       deletions: index % 5,
     }));
+  } else if (name.startsWith('delivery-')) {
+    const workspaces = [
+      {
+        folder_id: 'app', folder_name: 'Atlas web', source_path: ROOT, workspace_path: WORKTREE,
+        workspace_kind: 'git_worktree' as const, repository_root: ROOT,
+        base_revision: '91ef52ea6f3ab14d', base_branch: 'staging', task_branch: 'cowork/atlas/task-73c4', source_dirty: false,
+      },
+      {
+        folder_id: 'server', folder_name: 'Atlas API', source_path: '/Users/developer/Projects/atlas-api',
+        workspace_path: '/Users/developer/.cowork/coding/worktrees/atlas-api/task-73c4',
+        workspace_kind: 'git_worktree' as const, repository_root: '/Users/developer/Projects/atlas-api',
+        base_revision: '38ad71b4ef201c0a', base_branch: 'staging', task_branch: 'cowork/atlas/task-73c4-server', source_dirty: false,
+      },
+    ];
+    primary = session({
+      project_id: 'project-atlas',
+      project_name: 'Atlas',
+      workspaces,
+      source_contexts: [{
+        provider: 'linear', kind: 'issue', url: 'https://linear.app/mindsdb/issue/ENG-421',
+        title: 'Preserve checkout details after a failed request', external_id: 'ENG-421',
+        connection_name: 'linear-work', body: 'Improve checkout recovery.', state: 'In Review',
+        author: 'Ian', comments: [{
+          id: 'comment-1', author: 'Reviewer', body: 'Please cover the recovery path.',
+          url: 'https://linear.app/mindsdb/issue/ENG-421#comment-1', created_at: NOW,
+        }], attachments: [],
+      }],
+      deliveries: name === 'delivery-review' ? [{
+        provider: 'github', action: 'draft_pull_request', target_url: 'https://github.com/mindsdb/atlas-web.git',
+        status: 'published', external_url: 'https://github.com/mindsdb/atlas-web/pull/142',
+        detail: 'Draft pull request created', folder_id: 'app', folder_name: 'Atlas web',
+        base_branch: 'staging', task_branch: 'cowork/atlas/task-73c4', connection_name: 'github-work', created_at: NOW,
+      }, {
+        provider: 'linear', action: 'progress', target_url: 'https://linear.app/mindsdb/issue/ENG-421',
+        status: 'published', external_url: 'https://linear.app/mindsdb/issue/ENG-421#comment-finish',
+        detail: 'Published with Linear work', connection_name: 'linear-work', created_at: NOW,
+      }] : [],
+    });
+    files = FILES.map((file, index) => ({
+      ...file,
+      folder_id: index === FILES.length - 1 ? 'server' : 'app',
+      folder_name: index === FILES.length - 1 ? 'Atlas API' : 'Atlas web',
+    }));
   }
 
   const sessions = [primary, ...sideSessions(name === 'sidebar' ? 12 : 6)];
@@ -210,6 +254,13 @@ function fixtureState(name: string) {
 
 function copy<T>(value: T): T {
   return structuredClone(value);
+}
+
+
+function taskTitle(prompt: string): string {
+  const compact = prompt.trim().replace(/\s+/g, ' ');
+  if (!compact) return 'Coding task';
+  return compact.length <= 72 ? compact : `${compact.slice(0, 71).trimEnd()}…`;
 }
 
 
@@ -250,6 +301,22 @@ export function getCodeFixtureApi() {
     supports_diff_events: true, supports_models: true,
     supports_terminal: true,
   }];
+  let projects: CodeProject[] = [{
+    schema_version: 1,
+    id: 'project-atlas',
+    name: 'Atlas',
+    folders: [{ id: 'atlas-web', name: 'atlas-web', path: ROOT, base_branch: 'staging', commands: [] }],
+    connections: name.startsWith('delivery-') ? [
+      { provider: 'github', name: 'github-work', label: 'MindsDB GitHub' },
+      { provider: 'linear', name: 'linear-work', label: 'MindsDB Linear' },
+    ] : [],
+    environment: { variables: {}, port_names: ['PORT'] },
+    default_engine_id: 'codex',
+    default_model: DEFAULT_CODING_AGENT_MODEL,
+    permission_mode: 'supervised',
+    created_at: NOW,
+    updated_at: NOW,
+  }];
 
   return {
     engines: async () => copy(engines),
@@ -257,6 +324,42 @@ export function getCodeFixtureApi() {
     inspect: async (path: string): Promise<WorkspaceInspection> => ({
       path, exists: true, is_directory: true, is_git: true, repository_root: path,
       branch: 'staging', revision: '91ef52ea6f3ab14d', dirty: false,
+    }),
+    projects: async () => ({ items: copy(projects) }),
+    project: async (id: string) => copy(projects.find((item) => item.id === id) || projects[0]),
+    projectFolders: async (id: string) => ({
+      items: (projects.find((item) => item.id === id)?.folders || []).map((folder) => ({
+        folder: copy(folder),
+        inspection: {
+          path: folder.path, exists: true, is_directory: true, is_git: true,
+          repository_root: folder.path, branch: folder.base_branch || 'staging',
+          revision: '91ef52ea6f3ab14d', dirty: false,
+        },
+        base_branch_available: true,
+      })),
+    }),
+    createProject: async (body: Pick<CodeProject, 'name' | 'folders' | 'default_engine_id' | 'default_model' | 'permission_mode'>) => {
+      const created: CodeProject = {
+        schema_version: 1, id: `project-${Date.now()}`, ...body, connections: [],
+        environment: { variables: {}, port_names: ['PORT'] }, created_at: NOW, updated_at: NOW,
+      };
+      projects = [created, ...projects];
+      return copy(created);
+    },
+    updateProject: async (id: string, body: Partial<CodeProject>) => {
+      projects = projects.map((item) => item.id === id ? { ...item, ...body, updated_at: NOW } : item);
+      return copy(projects.find((item) => item.id === id) || projects[0]);
+    },
+    deleteProject: async (id: string) => { projects = projects.filter((item) => item.id !== id); },
+    configurePlaybook: async () => ({ configured: true, update_available: false, items: [], diff: '' }),
+    playbook: async () => ({ configured: false, update_available: false, items: [], diff: '' }),
+    removePlaybook: async () => undefined,
+    refreshPlaybook: async () => ({ configured: true, update_available: false, items: [], diff: '' }),
+    applyPlaybook: async () => ({ configured: true, update_available: false, items: [], diff: '' }),
+    setPlaybookItems: async () => ({ configured: true, update_available: false, items: [], diff: '' }),
+    integrations: async () => ({ items: [] }),
+    readSourceContext: async (_id: string, body: { provider: 'github' | 'linear' | 'slack'; kind: 'issue' | 'pull_request' | 'conversation'; url: string }) => ({
+      ...body, title: 'Linked work', external_id: 'fixture-1', body: 'Fixture source context',
     }),
     sessions: async (includeArchived = false) => {
       if (name === 'error') throw new Error('Could not reach the local coding service.');
@@ -288,9 +391,13 @@ export function getCodeFixtureApi() {
       return { items: copy(items), next_seq: items.at(-1)?.seq || after };
     },
     create: async (body: SessionCreateBody) => {
+      const project = projects.find((item) => item.id === body.project_id)
+        || (body.path ? undefined : projects[0]);
+      const sourcePath = body.path || project?.folders[0]?.path || ROOT;
       const created = session({
-        id: 'task-created', title: body.prompt.slice(0, 72), source_path: body.path,
-        workspace_path: `${body.path}/.cowork-task`, repository_root: body.path,
+        id: 'task-created', title: taskTitle(body.prompt), source_path: sourcePath,
+        workspace_path: `${sourcePath}/.cowork-task`, repository_root: sourcePath,
+        project_id: project?.id, project_name: project?.name,
         engine_id: body.engine_id || 'codex', model: body.model || DEFAULT_CODING_AGENT_MODEL,
         permission_mode: body.permission_mode || 'supervised', status: 'running',
       });
@@ -320,6 +427,16 @@ export function getCodeFixtureApi() {
     removeQueued: async (id: string, instructionId: string) => copy(update(id, {
       queued_instructions: (selected(id).queued_instructions || []).filter((item) => item.id !== instructionId),
     })),
+    steerQueued: async (id: string, instructionId: string) => {
+      const instruction = (selected(id).queued_instructions || []).find((item) => item.id === instructionId);
+      if (!instruction) throw new Error('Queued instruction not found');
+      const events = eventMap.get(id) || [];
+      events.push(event(events.length + 1, 'user_message', { title: 'Guidance', text: instruction.prompt }));
+      eventMap.set(id, events);
+      return copy(update(id, {
+        queued_instructions: (selected(id).queued_instructions || []).filter((item) => item.id !== instructionId),
+      }));
+    },
     runQueued: async (id: string) => copy(selected(id)),
     cancel: async (id: string) => copy(update(id, { status: 'cancelled', active_turn_id: null })),
     approve: async (id: string, _approvalId: string, decision: string) => copy(update(id, {
@@ -330,6 +447,76 @@ export function getCodeFixtureApi() {
     branch: async (id: string, branch: string) => ({ ...copy(git(id)), branch, detached: false }),
     commit: async (id: string, _message: string) => copy(git(id)),
     apply: async (_id: string) => ({ status: 'applied', snapshot: '/tmp/cowork-recovery.patch' }),
+    validate: async () => ({ items: [] }),
+    deliveryPlan: async () => {
+      const connected = [{
+        provider: 'github' as const, connection_name: 'github-work', label: 'MindsDB GitHub',
+        status: name === 'delivery-blocked' ? 'reconnect' as const : 'connected' as const,
+        detail: name === 'delivery-blocked' ? 'Reconnect to continue using this tool' : '',
+      }];
+      const baseItems = [
+        {
+          folder_id: 'app', folder_name: 'Atlas web', workspace_path: WORKTREE,
+          remote_url: 'https://github.com/mindsdb/atlas-web.git', base_branch: 'staging',
+          task_branch: 'cowork/atlas/task-73c4', status: 'ready' as const, detail: '',
+        },
+        {
+          folder_id: 'server', folder_name: 'Atlas API', workspace_path: '/Users/developer/.cowork/coding/worktrees/atlas-api/task-73c4',
+          remote_url: 'https://github.com/mindsdb/atlas-api.git', base_branch: 'staging',
+          task_branch: 'cowork/atlas/task-73c4-server', status: 'ready' as const, detail: '',
+        },
+      ];
+      if (name === 'delivery-blocked') {
+        return { integrations: connected, items: [
+          { ...baseItems[0], status: 'needs_commit' as const, detail: 'Commit this folder before creating its draft pull request' },
+          { ...baseItems[1], status: 'unavailable' as const, detail: 'Add an origin remote before creating a draft pull request' },
+        ] };
+      }
+      if (name === 'delivery-review') {
+        return { integrations: connected, items: [{
+          ...baseItems[0], status: 'published' as const,
+          external_url: 'https://github.com/mindsdb/atlas-web/pull/142', connection_name: 'github-work',
+          pull_request_status: {
+            state: 'open' as const, review_state: 'changes_requested' as const, ci_state: 'failing' as const,
+            number: 142, title: 'Refine checkout validation and recovery states',
+            url: 'https://github.com/mindsdb/atlas-web/pull/142', updated_at: NOW,
+            checks: [
+              { name: 'Frontend tests', state: 'failing' as const, url: 'https://github.com/mindsdb/atlas-web/actions/runs/1' },
+              { name: 'Lint', state: 'passing' as const, url: 'https://github.com/mindsdb/atlas-web/actions/runs/2' },
+            ],
+            feedback: [{
+              id: 'review-1', author: 'reviewer', state: 'changes_requested',
+              body: 'Please retain the draft if validation itself fails.',
+              url: 'https://github.com/mindsdb/atlas-web/pull/142#discussion_r1',
+              path: 'src/checkout/CheckoutForm.tsx', created_at: NOW,
+            }], detail: '',
+          },
+        }, baseItems[1]] };
+      }
+      return { items: baseItems, integrations: connected };
+    },
+    draftPullRequests: async (_id: string, body: { title: string }) => ({ items: [{
+      provider: 'github' as const, action: 'draft_pull_request' as const,
+      target_url: 'https://github.com/mindsdb/atlas-web.git', status: 'published' as const,
+      external_url: 'https://github.com/mindsdb/atlas-web/pull/101', detail: body.title,
+      folder_id: 'app', folder_name: 'Atlas web', base_branch: 'staging',
+      task_branch: 'cowork/atlas/task-73c4', created_at: NOW,
+    }] }),
+    pullRequestAction: async (_id: string, body: { action: 'ready' | 'merge'; target_url: string }) => ({
+      state: body.action === 'merge' ? 'merged' as const : 'open' as const,
+      review_state: 'approved' as const,
+      ci_state: 'passing' as const,
+      number: 101,
+      title: 'Improve checkout recovery',
+      url: body.target_url,
+      updated_at: NOW,
+      checks: [],
+      feedback: [],
+      detail: body.action === 'merge' ? 'Merged' : 'Ready for review',
+    }),
+    publish: async (_id: string, body: { provider: 'github' | 'linear' | 'slack'; action: 'progress' | 'result'; target_url: string }) => ({
+      ...body, status: 'published' as const, detail: 'Published', created_at: NOW, external_url: body.target_url,
+    }),
     terminal: async () => ({ status: 'stopped' as const, items: [], first_seq: 0, next_seq: 0 }),
     startTerminal: async () => ({ status: 'running' as const, process_id: 'fixture-terminal', items: [], first_seq: 0, next_seq: 0 }),
     terminalInput: async () => ({ status: 'running' as const, process_id: 'fixture-terminal', items: [], first_seq: 0, next_seq: 0 }),

@@ -3,6 +3,7 @@ import Button from '../components/ui/Button';
 import Menu from '../components/ui/Menu';
 import { host } from '../../platform/host';
 import type { CodingSession, DiffFile, GitState } from './api';
+import { sourceContextLabel, sourceProviderLabel } from './developerTools';
 import { CODE_STATUS, compactPath, diffStats, repositoryLabel } from './presentation';
 
 
@@ -17,6 +18,7 @@ export function TaskBar({
   onToggleTerminal,
   onOpenControls,
   onOpenExtensions,
+  onOpenProject = () => {},
   onRename,
   onFork,
   onCompact,
@@ -34,6 +36,7 @@ export function TaskBar({
   onToggleTerminal: () => void;
   onOpenControls: () => void;
   onOpenExtensions: () => void;
+  onOpenProject?: () => void;
   onRename: () => void;
   onFork: () => void;
   onCompact: () => void;
@@ -45,9 +48,15 @@ export function TaskBar({
   const { additions, deletions } = diffStats(files);
   const taskIdle = session.status !== 'running' && session.status !== 'awaiting_approval';
   const worktreeLabel = compactPath(session.workspace_path);
-  const workspaceModeLabel = session.workspace_kind === 'direct_folder'
-    ? 'direct folder'
-    : (git?.branch || 'detached worktree');
+  const folderCount = session.workspaces?.length || 1;
+  const workspaceModeLabel = folderCount > 1
+    ? `${folderCount}-folder workspace`
+    : session.workspace_kind === 'local_copy'
+      ? 'isolated folder'
+      : session.workspace_kind === 'direct_folder'
+        ? 'direct folder'
+        : (git?.branch || 'isolated worktree');
+  const origin = session.source_contexts?.[0] || null;
 
   return (
     <header className="code-taskbar">
@@ -58,6 +67,12 @@ export function TaskBar({
           <div className="code-taskbar__meta">
             <span>{repositoryLabel(session)}</span>
             <span aria-hidden="true">·</span>
+            {origin && <>
+              <button type="button" className="code-taskbar__origin" onClick={() => void host.openExternal(origin.url)}>
+                {sourceProviderLabel(origin.provider)} {sourceContextLabel(origin)}
+              </button>
+              <span aria-hidden="true">·</span>
+            </>}
             <span>{workspaceModeLabel}</span>
             <span className="code-taskbar__model" aria-hidden="true">·</span>
             <span className="code-taskbar__model">
@@ -121,6 +136,11 @@ export function TaskBar({
               icon: Ico.settings(13),
               onClick: onOpenControls,
             },
+            ...(session.project_id ? [{
+              label: 'Project settings',
+              icon: Ico.folder(13),
+              onClick: onOpenProject,
+            }] : []),
             {
               label: 'Skills and extensions',
               icon: Ico.settings(13),

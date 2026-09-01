@@ -17,8 +17,16 @@ import {
   toNaturalUnits,
   formatCount,
   routerRoleSubtitle,
+  modelLabel,
   transformSettingsRows,
 } from './settingsTransform';
+
+describe('modelLabel', () => {
+  it('formats named GPT coding models without a version hyphen', () => {
+    expect(modelLabel('gpt-codex')).toBe('GPT Codex');
+    expect(modelLabel('gpt-5.6-sol')).toBe('GPT-5.6 Sol');
+  });
+});
 
 describe('coding-agent settings translation', () => {
   it('round-trips the independent engine and model settings', () => {

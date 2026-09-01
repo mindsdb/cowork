@@ -6,11 +6,14 @@ import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { host } from '../../platform/host';
-import type { CodingSession, DiffFile, GitState } from './api';
+import type { CodingSession, DeliveryPlanItem, DeliveryRecord, DiffFile, GitState, ProjectCommandResult, ProjectConnection, TaskWorkspace } from './api';
 import { compactPath, diffStats, isActiveStatus } from './presentation';
+import { DraftPullRequestSection, type DraftPullRequestInput } from './DraftPullRequestSection';
+import { SourceUpdateSection } from './SourceUpdateSection';
 
 
 type ReviewStyle = CSSProperties & { '--code-review-width': string };
+const NO_CONNECTIONS: ProjectConnection[] = [];
 
 
 export function ReviewPanel({
@@ -24,6 +27,16 @@ export function ReviewPanel({
   onBranch,
   onCommit,
   onApply,
+  onValidate = async () => [],
+  onPublish = async () => {},
+  onDraftPullRequests = async () => [],
+  connections = NO_CONNECTIONS,
+  onResolveConflicts = async () => {},
+  onOpenProjectSettings = () => {},
+  onAgentAction = async () => {},
+  onPullRequestAction = async () => {},
+  onArchive = async () => {},
+  suggestedUpdate = '',
 }: {
   open: boolean;
   session: CodingSession;
@@ -35,21 +48,50 @@ export function ReviewPanel({
   onBranch: (name: string) => Promise<void>;
   onCommit: (message: string) => Promise<void>;
   onApply: () => Promise<void>;
+  onValidate?: () => Promise<ProjectCommandResult[]>;
+  onPublish?: (target: NonNullable<CodingSession['source_contexts']>[number], text: string, action: 'progress' | 'result') => Promise<void>;
+  onDraftPullRequests?: (title: string, body: string, connectionName: string | null, drafts: DraftPullRequestInput[]) => Promise<DeliveryRecord[]>;
+  onResolveConflicts?: () => Promise<void>;
+  connections?: ProjectConnection[];
+  onOpenProjectSettings?: () => void;
+  onAgentAction?: (prompt: string) => Promise<void>;
+  onPullRequestAction?: (item: DeliveryPlanItem, action: 'ready' | 'merge') => Promise<void>;
+  onArchive?: () => Promise<void>;
+  suggestedUpdate?: string;
 }) {
   const [tab, setTab] = useState<'changes' | 'git'>('changes');
   const [branch, setBranch] = useState('');
   const [message, setMessage] = useState('');
   const [applyOpen, setApplyOpen] = useState(false);
+  const [validationNotice, setValidationNotice] = useState<{ variant: 'info' | 'success' | 'danger'; text: string } | null>(null);
+  const [appliedChangeKey, setAppliedChangeKey] = useState('');
   const [width, setWidth] = useState(460);
   const { additions, deletions } = diffStats(files);
   const active = isActiveStatus(session.status);
   const directFolderWithoutDiff = session.workspace_kind === 'direct_folder' && files.length === 0;
+  const workspaceEntries: TaskWorkspace[] = session.workspaces?.length ? session.workspaces : [{
+    folder_id: 'folder', folder_name: compactPath(session.source_path), source_path: session.source_path,
+    workspace_path: session.workspace_path, workspace_kind: session.workspace_kind, source_dirty: session.source_dirty,
+    repository_root: session.repository_root, base_revision: session.base_revision, base_branch: null, task_branch: null,
+  }];
+  const groupedFiles = workspaceEntries.map((workspace) => ({
+    workspace,
+    files: files.filter((file) => (file.folder_id || 'folder') === workspace.folder_id),
+  })).filter((group) => group.files.length > 0);
+  const supportsHandoff = session.workspace_kind !== 'direct_folder' || !!session.workspaces?.length;
+  const gitWorkspaces = workspaceEntries.filter((workspace) => workspace.workspace_kind === 'git_worktree');
+  const sourceChanged = workspaceEntries.some((workspace) => workspace.source_dirty);
+  const changeKey = files.map((file) => `${file.folder_id || 'folder'}:${file.status}:${file.path}:${file.patch}`).join('\n');
+  const applied = !!changeKey && appliedChangeKey === changeKey;
+  const handoffConflict = /handoff stopped|conflict/i.test(error);
 
   useEffect(() => {
     setTab('changes');
     setBranch('');
     setMessage('');
     setApplyOpen(false);
+    setValidationNotice(null);
+    setAppliedChangeKey('');
   }, [session.id]);
 
   useEffect(() => {
@@ -131,54 +173,94 @@ export function ReviewPanel({
                   : 'File changes will collect here while the agent works.'}</p>
               </div>
             )}
-            {files.map((file, index) => (
-              <details className="code-diff-file" key={file.path} open={index === 0}>
-                <summary>
-                  <span className="code-diff-file__status">{file.status.trim() || 'M'}</span>
-                  <span className="code-diff-file__path">{file.path}</span>
-                  <span className="code-diff-add">+{file.additions}</span>
-                  <span className="code-diff-del">−{file.deletions}</span>
-                  <span className="code-diff-file__chevron">{Ico.chevDown(11)}</span>
-                </summary>
-                <pre>{file.patch || (file.binary ? 'Binary file changed' : 'No textual diff')}</pre>
-              </details>
+            {groupedFiles.map((group, groupIndex) => (
+              <section className="code-diff-group" key={group.workspace.folder_id}>
+                {workspaceEntries.length > 1 && <div className="code-diff-group__title">{Ico.folder(12)} {group.workspace.folder_name}<span>{group.files.length}</span></div>}
+                {group.files.map((file, index) => (
+                  <details className="code-diff-file" key={`${group.workspace.folder_id}:${file.path}`} open={groupIndex === 0 && index === 0}>
+                    <summary>
+                      <span className="code-diff-file__status">{file.status.trim() || 'M'}</span>
+                      <span className="code-diff-file__path">{file.path}</span>
+                      <span className="code-diff-add">+{file.additions}</span>
+                      <span className="code-diff-del">−{file.deletions}</span>
+                      <span className="code-diff-file__chevron">{Ico.chevDown(11)}</span>
+                    </summary>
+                    <pre>{file.patch || (file.binary ? 'Binary file changed' : 'No textual diff')}</pre>
+                  </details>
+                ))}
+              </section>
             ))}
           </div>
         ) : (
           <div className="code-review__body code-git-panel scroll-clean">
             <section className="code-handoff-summary">
-              <div className="code-handoff-summary__row">
-                <span>Task workspace</span>
-                <code title={session.workspace_path}>{compactPath(session.workspace_path)}</code>
-              </div>
-              <div className="code-handoff-summary__row">
-                <span>Source</span>
-                <code title={session.source_path}>{compactPath(session.source_path)}</code>
-              </div>
-              {session.base_revision && (
-                <div className="code-handoff-summary__row">
-                  <span>Branch</span>
-                  <Badge size="xs" variant={git?.detached ? 'muted' : 'accent'}>{git?.branch || 'Detached HEAD'}</Badge>
+              {session.project_name && <div className="code-handoff-summary__row"><span>Project</span><strong>{session.project_name}</strong></div>}
+              {workspaceEntries.map((workspace) => (
+                <div className="code-handoff-summary__folder" key={workspace.folder_id}>
+                  <div className="code-handoff-summary__row"><span>{workspace.folder_name}</span><code title={workspace.workspace_path}>{compactPath(workspace.workspace_path)}</code></div>
+                  {workspace.task_branch && <div className="code-handoff-summary__row"><span>Branch</span><Badge size="xs" variant="accent">{workspace.task_branch}</Badge></div>}
                 </div>
-              )}
+              ))}
             </section>
             <div className="code-git-open-actions">
               <Button size="sm" variant="subtle" onClick={() => void host.openPath(session.workspace_path)}>{Ico.openFolder(13)} Open task workspace</Button>
               {session.source_path !== session.workspace_path && <Button size="sm" variant="subtle" onClick={() => void host.openPath(session.source_path)}>Open source</Button>}
             </div>
-            {session.source_dirty && <Alert variant="warning" title="Source changed since this task began">Cowork will check for conflicts before applying.</Alert>}
-            {session.base_revision ? (
+            {sourceChanged && <Alert variant="warning" title="Source had local changes when this task began">Those changes stayed in the source folder. Cowork checks for conflicts before applying.</Alert>}
+            {handoffConflict && (
+              <section className="code-handoff-primary">
+                <div><div className="code-field-label">Reconcile the source changes</div><p>Have the agent preserve both versions in the isolated task workspace, then review again.</p></div>
+                <Button size="sm" variant="subtle" disabled={active || busy} onClick={() => void onResolveConflicts()}>Resolve with agent</Button>
+              </section>
+            )}
+            {supportsHandoff ? (
               <>
-                <section className="code-handoff-primary">
+                {session.project_id && (
+                  <section className="code-handoff-secondary">
+                    <div><div className="code-field-label">Project checks</div><p>Run the project's validation commands before delivery.</p></div>
+                    <Button size="sm" variant="subtle" disabled={active || busy} onClick={async () => {
+                      let results: ProjectCommandResult[];
+                      try {
+                        results = await onValidate();
+                      } catch {
+                        return;
+                      }
+                      const failed = results.filter((item) => item.return_code !== 0).length;
+                      setValidationNotice(failed
+                        ? { variant: 'danger', text: `${failed} of ${results.length} project checks failed. Open the task activity for output.` }
+                        : results.length
+                          ? { variant: 'success', text: `${results.length} project ${results.length === 1 ? 'check passed' : 'checks passed'}.` }
+                          : { variant: 'info', text: 'No project checks are configured. Add validation commands in Project settings.' });
+                    }}>Run checks</Button>
+                  </section>
+                )}
+                {validationNotice && <Alert variant={validationNotice.variant}>{validationNotice.text}</Alert>}
+                {session.project_id && gitWorkspaces.length > 0 && (
+                  <DraftPullRequestSection
+                    sessionId={session.id}
+                    taskTitle={session.title}
+                    busy={busy || active}
+                    refreshKey={`${git?.revision || ''}:${git?.dirty ? 'dirty' : 'clean'}:${session.deliveries?.length || 0}`}
+                    onCreate={onDraftPullRequests}
+                    onCommit={onCommit}
+                    onOpenProjectSettings={onOpenProjectSettings}
+                    onAgentAction={onAgentAction}
+                    onPullRequestAction={onPullRequestAction}
+                    onArchive={onArchive}
+                    connections={connections}
+                  />
+                )}
+                <section className="code-handoff-primary code-handoff-local">
                   <div>
-                    <div className="code-field-label">Bring this work back</div>
-                    <p>Apply the reviewed changes to the source folder.</p>
+                    <div className="code-field-label">Apply locally</div>
+                    <p>Copy the reviewed changes back to the original folders.</p>
                   </div>
-                  <Button variant="primary" size="sm" disabled={active || busy || files.length === 0} onClick={() => setApplyOpen(true)}>
-                    Apply to source
+                  <Button variant="subtle" size="sm" disabled={active || busy || files.length === 0 || applied} onClick={() => setApplyOpen(true)}>
+                    {applied ? 'Applied' : 'Apply locally'}
                   </Button>
                 </section>
-                <details className="code-git-advanced">
+                {applied && <Alert variant="success">These reviewed changes were applied to the source folders.</Alert>}
+                {!session.project_id && gitWorkspaces.length > 0 && <details className="code-git-advanced">
                   <summary>More Git actions <span>{Ico.chevDown(11)}</span></summary>
                   <div className="code-git-advanced__body">
                     <div className="code-git-action">
@@ -190,19 +272,32 @@ export function ReviewPanel({
                       <div className="code-inline-form"><Input value={message} onChange={setMessage} placeholder="Describe the change" disabled={active || busy} /><Button size="sm" disabled={!message.trim() || active || busy} onClick={async () => { try { await onCommit(message.trim()); setMessage(''); } catch { /* Parent renders the failure. */ } }}>Commit</Button></div>
                     </div>
                   </div>
-                </details>
+                </details>}
               </>
             ) : <p className="code-empty-copy">This task already works in the selected folder, so there is nothing to apply.</p>}
+            <SourceUpdateSection
+              contexts={session.source_contexts || []}
+              deliveries={session.deliveries || []}
+              suggestedUpdate={suggestedUpdate}
+              busy={busy}
+              onPublish={onPublish}
+            />
           </div>
         )}
         <ConfirmModal
           open={applyOpen}
           title="Apply changes to the source folder?"
-          message={`Update ${session.source_path} with the reviewed task changes? Cowork will stop if it finds a conflict.`}
+          message={`Update ${session.project_name || session.source_path} with the reviewed task changes? Cowork will stop before changing any folder if it finds a conflict.`}
           confirmLabel="Apply changes"
           busy={busy}
           onClose={() => { if (!busy) setApplyOpen(false); }}
-          onConfirm={async () => { try { await onApply(); setApplyOpen(false); } catch { /* Keep open when preflight fails. */ } }}
+          onConfirm={async () => {
+            try {
+              await onApply();
+              setAppliedChangeKey(changeKey);
+              setApplyOpen(false);
+            } catch { /* Keep open when preflight fails. */ }
+          }}
         />
       </aside>
     </>

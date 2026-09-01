@@ -112,7 +112,7 @@ describe('SettingsView — every section mounts (behavior lock)', () => {
 
   it('renders the independent Coding agent section', async () => {
     render(<Harness section="codingAgent" />);
-    expect(await screen.findByText('The local coding harness Cowork supervises. Codex is available now; this boundary also supports future engines without changing the Code workspace.')).toBeInTheDocument();
+    expect(await screen.findByText('The default coding agent for new projects and tasks. You can change it when starting a task.')).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: 'Coding agent engine' })).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: 'Coding agent model' })).toBeInTheDocument();
   });

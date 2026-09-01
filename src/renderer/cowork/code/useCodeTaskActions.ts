@@ -51,25 +51,31 @@ export function useCodeTaskActions({
     }
   };
 
-  const run = async (
-    action: () => Promise<unknown>,
+  const execute = async <Result,>(
+    action: () => Promise<Result>,
     refreshList = false,
     rethrow = false,
-  ): Promise<void> => {
+  ): Promise<Result | undefined> => {
     const actionSessionId = selectedId;
     setBusy(true);
     setError('');
     try {
+      let result: Result;
       try {
-        await action();
+        result = await action();
       } catch (reason) {
         if (selectedIdRef.current === actionSessionId) {
           setError(errorMessage(reason, 'Coding operation failed.'));
         }
         if (rethrow) throw reason;
-        return;
+        return undefined;
       }
-      await refresh();
+
+      await reconcile(
+        refresh,
+        'The operation completed',
+        () => selectedIdRef.current === actionSessionId,
+      );
       if (refreshList) {
         await reconcile(
           () => loadSessions(selectedIdRef.current === actionSessionId ? actionSessionId || undefined : undefined),
@@ -77,23 +83,35 @@ export function useCodeTaskActions({
           () => selectedIdRef.current === actionSessionId,
         );
       }
+      return result;
     } finally {
       setBusy(false);
     }
+  };
+
+  const run = async (
+    action: () => Promise<unknown>,
+    refreshList = false,
+    rethrow = false,
+  ): Promise<void> => {
+    await execute(action, refreshList, rethrow);
   };
 
   const create = async (input: CreateCodeTaskInput) => {
     setBusy(true);
     setError('');
     try {
+      const workspace = input.projectId
+        ? { project_id: input.projectId }
+        : { path: input.path, allow_direct_folder: true };
       const created = await codingApi.create({
-        path: input.path,
+        ...workspace,
         prompt: input.prompt,
-        allow_direct_folder: input.allowDirect,
         engine_id: input.engineId,
         model: input.model,
         permission_mode: input.permissionMode,
         attachments: input.attachments,
+        source_contexts: input.sourceContexts,
       });
       onSelectionChangeRef.current(created.id, false);
       await reconcile(() => loadSessions(created.id), 'The task started');
@@ -161,5 +179,5 @@ export function useCodeTaskActions({
     }
   };
 
-  return { busy, error, setError, run, create, fork, toggleArchive, remove };
+  return { busy, error, setError, run, runResult: execute, create, fork, toggleArchive, remove };
 }

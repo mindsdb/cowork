@@ -1673,6 +1673,14 @@ export async function saveConnector(connectorId, payload) {
   return req('/connectors/connections/save', { method: 'POST', body });
 }
 
+// Personal-token setup for Code's developer connectors. Unlike the OAuth-only
+// save route above, the server verifies the credential with the provider before
+// creating a vault record, so an invalid token can never appear connected.
+export async function validateAndSaveConnector(connectorId, payload) {
+  const body = JSON.stringify({ connector_id: connectorId, ...(payload || {}) });
+  return req('/connectors/connections/validate-and-save', { method: 'POST', body });
+}
+
 // ─── Web (redirect-based) connector OAuth ──────────────────────────────────
 // The desktop app authenticates connectors through an Electron loopback
 // PKCE flow (host.oauthConnect). The web SPA can't open a loopback server,

@@ -764,7 +764,11 @@ function setupIPC() {
       const engine: string = o.engine;
       const labelName: string = o.name || '';
       if (!OAUTH_CREDENTIALS[engine]) {
-        return { ok: false, reason: `No OAuth credentials configured for "${engine}".` };
+        return {
+          ok: false,
+          code: 'oauth_credentials_missing',
+          reason: `No OAuth credentials configured for "${engine}".`,
+        };
       }
       let clientId: string;
       let clientSecret: string;
@@ -775,7 +779,11 @@ function setupIPC() {
         );
         if (!credsRes.ok) {
           const err = await credsRes.json().catch(() => ({})) as { detail?: string };
-          return { ok: false, reason: err.detail || `OAuth credentials not configured for "${engine}".` };
+          return {
+            ok: false,
+            code: credsRes.status === 422 ? 'oauth_credentials_missing' : undefined,
+            reason: err.detail || `OAuth credentials not configured for "${engine}".`,
+          };
         }
         const credsData = await credsRes.json() as { client_id: string; client_secret: string };
         clientId = credsData.client_id;
@@ -852,6 +860,7 @@ function setupIPC() {
             connector_id: engine,
             method: 'browser_oauth_builtin',
             name: labelName,
+            replace_existing: Boolean(labelName),
             values: {
               access_token: pkceResult.access_token,
               expires_at: expiresAt,

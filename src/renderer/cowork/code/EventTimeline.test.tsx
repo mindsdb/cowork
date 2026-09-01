@@ -70,6 +70,19 @@ describe('EventTimeline', () => {
     expect(screen.getAllByText('Completed')).toHaveLength(1);
   });
 
+  it('leaves pending queued instructions in the actionable composer queue', () => {
+    const queued = {
+      ...event(1, 'user_message', 'Run Windows tests next'),
+      title: 'Queued next',
+      phase: 'pending' as const,
+      data: { queueId: 'queued-1' },
+    };
+
+    render(<EventTimeline events={[queued]} session={session('running')} />);
+
+    expect(screen.queryByText('Run Windows tests next')).not.toBeInTheDocument();
+  });
+
   it('uses the terminal phase when streamed activity fragments are merged', () => {
     const command = [
       { ...event(1, 'command', ''), item_id: 'command-1', phase: 'started' as const, title: 'Run tests' },
