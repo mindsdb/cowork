@@ -304,6 +304,18 @@ describe('electron mode (bridge present)', () => {
     expect(oauthConnect).toHaveBeenCalledWith({ authUrl: 'a' });
   });
 
+  it('pickCodeFolder delegates to the desktop bridge and partial shells fail closed', async () => {
+    const pickCodeFolder = vi.fn(async () => ({ ok: true, path: 'C:\\work\\repo' }));
+    (window as unknown as Record<string, unknown>).antontron = { pickCodeFolder };
+    let host = await importHost();
+    await expect(host.pickCodeFolder()).resolves.toEqual({ ok: true, path: 'C:\\work\\repo' });
+    expect(pickCodeFolder).toHaveBeenCalledOnce();
+
+    (window as unknown as Record<string, unknown>).antontron = {};
+    host = await importHost();
+    await expect(host.pickCodeFolder()).resolves.toMatchObject({ ok: false });
+  });
+
   it('a partial bridge (method missing) falls back to the web stub, never throws', async () => {
     // OTA-updated renderers can be newer than the installed main process —
     // a bridge method added in a new UI must degrade, not crash.

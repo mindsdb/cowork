@@ -1,0 +1,415 @@
+import { getApiOrigin } from '../../platform/host';
+import { getCodeFixtureApi } from './fixtures';
+
+export type CodingStatus =
+  | 'ready'
+  | 'running'
+  | 'awaiting_approval'
+  | 'completed'
+  | 'cancelled'
+  | 'interrupted'
+  | 'failed';
+
+export type PermissionMode = 'read_only' | 'supervised' | 'workspace' | 'full_access';
+export type ApprovalDecision = 'approve_once' | 'approve_session' | 'deny';
+
+export interface SessionCreateBody {
+  path: string;
+  prompt: string;
+  allow_direct_folder?: boolean;
+  engine_id?: string;
+  model?: string;
+  permission_mode?: PermissionMode;
+  reasoning_effort?: ReasoningEffort | null;
+  service_tier?: ServiceTier;
+  personality?: Personality;
+  network_access?: boolean;
+  web_search?: boolean;
+  additional_dirs?: string[];
+  attachments?: InputReference[];
+}
+
+export interface CreateCodeTaskInput {
+  path: string;
+  prompt: string;
+  allowDirect: boolean;
+  engineId: string;
+  model: string;
+  permissionMode: PermissionMode;
+  attachments: InputReference[];
+}
+
+export type ReasoningEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+export type ServiceTier = 'standard' | 'priority';
+export type Personality = 'none' | 'friendly' | 'pragmatic';
+
+export interface RuntimeControls {
+  model: string;
+  permission_mode: PermissionMode;
+  reasoning_effort: ReasoningEffort | null;
+  service_tier: ServiceTier;
+  personality: Personality;
+  network_access: boolean;
+  web_search: boolean;
+  additional_dirs: string[];
+}
+
+export type SessionUpdateBody = Partial<RuntimeControls>;
+
+export interface PendingApproval {
+  id: string;
+  kind: string;
+  title: string;
+  detail: string;
+  cwd?: string | null;
+  risk: string;
+  scope: string;
+  allow_session: boolean;
+}
+
+export interface CodingSession {
+  schema_version: number;
+  id: string;
+  title: string;
+  engine_id: string;
+  engine_adapter_version: string;
+  model: string;
+  permission_mode: PermissionMode;
+  reasoning_effort?: ReasoningEffort | null;
+  service_tier?: ServiceTier;
+  personality?: Personality;
+  network_access?: boolean;
+  web_search?: boolean;
+  additional_dirs?: string[];
+  status: CodingStatus;
+  source_path: string;
+  workspace_path: string;
+  workspace_kind: 'git_worktree' | 'direct_folder';
+  repository_root?: string | null;
+  base_revision?: string | null;
+  source_dirty: boolean;
+  workspace_warning?: string | null;
+  engine_session_id?: string | null;
+  active_turn_id?: string | null;
+  pending_approval?: PendingApproval | null;
+  queued_instructions?: QueuedInstruction[];
+  archived?: boolean;
+  last_error?: string | null;
+  event_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface QueuedInstruction {
+  id: string;
+  prompt: string;
+  created_at: string;
+  attachments?: InputReference[];
+}
+
+export interface InputReference {
+  name: string;
+  path: string;
+  kind: 'mention' | 'local_image';
+}
+
+export interface ExtensionEntry {
+  id: string;
+  label: string;
+  description: string;
+  status: string;
+  detail: string;
+  path?: string | null;
+}
+
+export interface ExtensionInventory {
+  skills: ExtensionEntry[];
+  mcp_servers: ExtensionEntry[];
+  hooks: ExtensionEntry[];
+  apps: ExtensionEntry[];
+  plugins: ExtensionEntry[];
+  errors: string[];
+  config_path?: string | null;
+}
+
+export interface RuntimePlatformStatus {
+  platform: string;
+  windows_sandbox?: string | null;
+  setup_started?: boolean;
+}
+
+export interface CodingEvent {
+  schema_version: number;
+  seq: number;
+  timestamp: string;
+  type: 'session' | 'user_message' | 'agent_message' | 'reasoning' | 'plan' | 'tool' | 'command' | 'file_change' | 'diff' | 'approval' | 'usage' | 'error';
+  title: string;
+  text: string;
+  phase?: 'started' | 'progress' | 'completed' | 'failed' | 'pending' | null;
+  item_id?: string | null;
+  turn_id?: string | null;
+  data: Record<string, unknown>;
+}
+
+export interface WorkspaceInspection {
+  path: string;
+  exists: boolean;
+  is_directory: boolean;
+  is_git: boolean;
+  repository_root?: string | null;
+  branch?: string | null;
+  revision?: string | null;
+  dirty: boolean;
+  warning?: string | null;
+}
+
+export interface GitState {
+  is_git: boolean;
+  branch?: string | null;
+  revision?: string | null;
+  detached: boolean;
+  dirty: boolean;
+  status_lines: string[];
+  worktree_path: string;
+  source_path: string;
+}
+
+export interface DiffFile {
+  path: string;
+  status: string;
+  additions: number;
+  deletions: number;
+  patch: string;
+  binary: boolean;
+}
+
+export interface EngineCapability {
+  id: string;
+  label: string;
+  adapter_version: string;
+  available: boolean;
+  reason?: string | null;
+  supports_steering?: boolean;
+  supports_approvals?: boolean;
+  supports_reasoning?: boolean;
+  supports_diff_events?: boolean;
+  supports_models?: boolean;
+  supports_terminal?: boolean;
+  commands?: EngineCommand[];
+}
+
+export interface EngineCommand {
+  name: string;
+  label: string;
+  description: string;
+  argument_hint?: string | null;
+  action: 'turn' | 'goal' | 'compact' | 'status' | 'client';
+  client_action?: 'controls' | 'skills' | 'mcp' | 'fork' | 'terminal' | null;
+}
+
+export type TerminalStatus = 'stopped' | 'running' | 'exited' | 'failed';
+
+export interface TerminalChunk {
+  seq: number;
+  data_base64: string;
+  stream: 'stdout' | 'stderr';
+  cap_reached: boolean;
+  timestamp: string;
+}
+
+export interface TerminalPage {
+  process_id?: string | null;
+  status: TerminalStatus;
+  items: TerminalChunk[];
+  first_seq: number;
+  next_seq: number;
+  exit_code?: number | null;
+  error?: string | null;
+}
+
+const EVENT_TYPES = new Set<CodingEvent['type']>([
+  'session', 'user_message', 'agent_message', 'reasoning', 'plan', 'tool',
+  'command', 'file_change', 'diff', 'approval', 'usage', 'error',
+]);
+const EVENT_PHASES = new Set<NonNullable<CodingEvent['phase']>>([
+  'started', 'progress', 'completed', 'failed', 'pending',
+]);
+
+async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${getApiOrigin()}/api/v1/coding${path}`, {
+    ...init,
+    headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
+  });
+  if (!response.ok) {
+    let detail = `Coding request failed (${response.status})`;
+    try {
+      const body = await response.json();
+      if (typeof body?.detail === 'string') detail = body.detail;
+    } catch {
+      // Preserve the status-based message when an intermediary returns HTML.
+    }
+    throw new Error(detail);
+  }
+  if (response.status === 204) return undefined as T;
+  return response.json() as Promise<T>;
+}
+
+const liveCodingApi = {
+  engines: () => requestJson<EngineCapability[]>('/engines'),
+  models: (engineId: string) => requestJson<{ items: string[] }>(`/models?engineId=${encodeURIComponent(engineId)}`),
+  inspect: (path: string) => requestJson<WorkspaceInspection>(`/workspace/inspect?path=${encodeURIComponent(path)}`),
+  sessions: (includeArchived = false) => requestJson<{ items: CodingSession[] }>(`/sessions?includeArchived=${includeArchived}`),
+  session: (id: string) => requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}`),
+  workspaceFiles: (id: string, query = '') => requestJson<{ items: InputReference[] }>(
+    `/sessions/${encodeURIComponent(id)}/workspace/files?query=${encodeURIComponent(query)}`,
+  ),
+  extensions: (id: string) => requestJson<ExtensionInventory>(`/sessions/${encodeURIComponent(id)}/extensions`),
+  platformStatus: (id: string) => requestJson<RuntimePlatformStatus>(`/sessions/${encodeURIComponent(id)}/platform`),
+  setupWindowsSandbox: (id: string) => requestJson<RuntimePlatformStatus>(`/sessions/${encodeURIComponent(id)}/windows-sandbox/setup`, { method: 'POST' }),
+  updateSession: (id: string, body: SessionUpdateBody) => requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}`, {
+    method: 'PATCH', body: JSON.stringify(body),
+  }),
+  deleteSession: (id: string) => requestJson<void>(`/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  renameSession: (id: string, title: string) => requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/rename`, {
+    method: 'POST', body: JSON.stringify({ title }),
+  }),
+  setArchived: (id: string, archived: boolean) => requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/${archived ? 'archive' : 'unarchive'}`, { method: 'POST' }),
+  forkSession: (id: string) => requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/fork`, { method: 'POST' }),
+  events: (id: string, after = 0) => requestJson<{ items: CodingEvent[]; next_seq: number }>(`/sessions/${encodeURIComponent(id)}/events?after=${after}`),
+  create: (body: SessionCreateBody) =>
+    requestJson<CodingSession>('/sessions', { method: 'POST', body: JSON.stringify(body) }),
+  turn: (id: string, prompt: string, attachments: InputReference[] = []) =>
+    requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/turns`, { method: 'POST', body: JSON.stringify({ prompt, attachments }) }),
+  steer: (id: string, prompt: string, attachments: InputReference[] = []) =>
+    requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/steer`, { method: 'POST', body: JSON.stringify({ prompt, attachments }) }),
+  queue: (id: string, prompt: string, attachments: InputReference[] = []) =>
+    requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/queue`, { method: 'POST', body: JSON.stringify({ prompt, attachments }) }),
+  removeQueued: (id: string, instructionId: string) =>
+    requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/queue/${encodeURIComponent(instructionId)}`, { method: 'DELETE' }),
+  runQueued: (id: string) =>
+    requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/queue/run`, { method: 'POST' }),
+  cancel: (id: string) => requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/cancel`, { method: 'POST' }),
+  approve: (id: string, approvalId: string, decision: ApprovalDecision) =>
+    requestJson<CodingSession>(`/sessions/${encodeURIComponent(id)}/approvals/${encodeURIComponent(approvalId)}`, {
+      method: 'POST',
+      body: JSON.stringify({ decision }),
+    }),
+  git: (id: string) => requestJson<GitState>(`/sessions/${encodeURIComponent(id)}/git`),
+  diff: (id: string) => requestJson<{ files: DiffFile[] }>(`/sessions/${encodeURIComponent(id)}/diff`),
+  branch: (id: string, name: string) => requestJson<GitState>(`/sessions/${encodeURIComponent(id)}/branch`, { method: 'POST', body: JSON.stringify({ name }) }),
+  commit: (id: string, message: string) => requestJson<GitState>(`/sessions/${encodeURIComponent(id)}/commit`, { method: 'POST', body: JSON.stringify({ message }) }),
+  apply: (id: string) => requestJson<{ status: string; snapshot?: string | null }>(`/sessions/${encodeURIComponent(id)}/apply`, { method: 'POST' }),
+  terminal: (id: string, after = 0) => requestJson<TerminalPage>(`/sessions/${encodeURIComponent(id)}/terminal?after=${after}`),
+  startTerminal: (id: string, cols: number, rows: number) => requestJson<TerminalPage>(`/sessions/${encodeURIComponent(id)}/terminal/start`, {
+    method: 'POST', body: JSON.stringify({ cols, rows }),
+  }),
+  terminalInput: (id: string, dataBase64: string) => requestJson<TerminalPage>(`/sessions/${encodeURIComponent(id)}/terminal/input`, {
+    method: 'POST', body: JSON.stringify({ data_base64: dataBase64 }),
+  }),
+  resizeTerminal: (id: string, cols: number, rows: number) => requestJson<TerminalPage>(`/sessions/${encodeURIComponent(id)}/terminal/resize`, {
+    method: 'POST', body: JSON.stringify({ cols, rows }),
+  }),
+  stopTerminal: (id: string) => requestJson<TerminalPage>(`/sessions/${encodeURIComponent(id)}/terminal/stop`, { method: 'POST' }),
+};
+
+const fixtureCodingApi = getCodeFixtureApi();
+export const codingApi = fixtureCodingApi || liveCodingApi;
+
+export function openCodingEventStream(
+  sessionId: string,
+  after: number,
+  onEvent: (event: CodingEvent) => void,
+  onError: () => void,
+): () => void {
+  if (fixtureCodingApi) return () => {};
+  const url = `${getApiOrigin()}/api/v1/coding/sessions/${encodeURIComponent(sessionId)}/stream?after=${after}`;
+  const source = new EventSource(url);
+  source.addEventListener('coding-event', (raw) => {
+    try {
+      const parsed: unknown = JSON.parse((raw as MessageEvent).data);
+      if (isCodingEvent(parsed)) onEvent(parsed);
+    } catch {
+      // The sidecar validates its own output, but an OTA renderer may meet an
+      // older/newer schema. Ignore malformed frames rather than crashing UI.
+    }
+  });
+  source.onerror = onError;
+  return () => source.close();
+}
+
+export function openCodingTerminalStream(
+  sessionId: string,
+  after: number,
+  onOutput: (chunk: TerminalChunk) => void,
+  onState: (state: TerminalPage) => void,
+  onError: () => void,
+): () => void {
+  if (fixtureCodingApi) return () => {};
+  const url = `${getApiOrigin()}/api/v1/coding/sessions/${encodeURIComponent(sessionId)}/terminal/stream?after=${after}`;
+  const source = new EventSource(url);
+  source.addEventListener('terminal-output', (raw) => {
+    try {
+      const parsed: unknown = JSON.parse((raw as MessageEvent).data);
+      if (isTerminalChunk(parsed)) onOutput(parsed);
+    } catch {
+      // Ignore malformed sidecar frames; a compatible later frame can still
+      // keep the live terminal usable during mixed-version desktop updates.
+    }
+  });
+  source.addEventListener('terminal-state', (raw) => {
+    try {
+      const parsed: unknown = JSON.parse((raw as MessageEvent).data);
+      if (isTerminalPage(parsed)) {
+        onState(parsed);
+        source.close();
+      }
+    } catch {
+      // See terminal-output handling above.
+    }
+  });
+  source.onerror = onError;
+  return () => source.close();
+}
+
+export function isCodingEvent(value: unknown): value is CodingEvent {
+  if (!value || typeof value !== 'object') return false;
+  const event = value as Partial<CodingEvent>;
+  return event.schema_version === 1
+    && Number.isInteger(event.seq)
+    && (event.seq ?? -1) >= 0
+    && typeof event.timestamp === 'string'
+    && typeof event.type === 'string'
+    && EVENT_TYPES.has(event.type as CodingEvent['type'])
+    && typeof event.title === 'string'
+    && typeof event.text === 'string'
+    && (event.phase == null || EVENT_PHASES.has(event.phase))
+    && (event.item_id == null || typeof event.item_id === 'string')
+    && (event.turn_id == null || typeof event.turn_id === 'string')
+    && !!event.data
+    && typeof event.data === 'object'
+    && !Array.isArray(event.data);
+}
+
+export function isTerminalChunk(value: unknown): value is TerminalChunk {
+  if (!value || typeof value !== 'object') return false;
+  const chunk = value as Partial<TerminalChunk>;
+  return Number.isInteger(chunk.seq)
+    && (chunk.seq ?? -1) > 0
+    && typeof chunk.data_base64 === 'string'
+    && (chunk.stream === 'stdout' || chunk.stream === 'stderr')
+    && typeof chunk.cap_reached === 'boolean'
+    && typeof chunk.timestamp === 'string';
+}
+
+export function isTerminalPage(value: unknown): value is TerminalPage {
+  if (!value || typeof value !== 'object') return false;
+  const page = value as Partial<TerminalPage>;
+  return ['stopped', 'running', 'exited', 'failed'].includes(page.status || '')
+    && Number.isInteger(page.next_seq)
+    && Number.isInteger(page.first_seq)
+    && Array.isArray(page.items)
+    && page.items.every(isTerminalChunk)
+    && (page.process_id == null || typeof page.process_id === 'string')
+    && (page.exit_code == null || Number.isInteger(page.exit_code))
+    && (page.error == null || typeof page.error === 'string');
+}

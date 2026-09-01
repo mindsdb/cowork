@@ -22,7 +22,7 @@
  * disable while a switch is in flight and a refusal gets a written response.
  */
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   ArrowUpRight,
   Building2,
@@ -98,6 +98,8 @@ function Avatar({ user }) {
 
 export function UserMenu({ user, onOpenSettings }) {
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const triggerRef = useRef(null);
   const { loggingOut, logout } = useLogout();
   const { orgs, activeOrg, switching, switchOrg } = useMindsOrgs(user);
   const toastManager = useToastManager();
@@ -214,7 +216,11 @@ export function UserMenu({ user, onOpenSettings }) {
 
   const trigger = (
     <button
+      ref={triggerRef}
       type="button"
+      aria-haspopup="menu"
+      aria-expanded={menuOpen}
+      onClick={() => setMenuOpen((current) => !current)}
       // Hover fill is a 6% ink mix (the .recent-item.is-selected treatment),
       // not a surface token — the light sidebar sits at ~#F4F4F4, which is
       // what --surface-2 and --stone-100 resolve to, so any absolute surface
@@ -242,8 +248,11 @@ export function UserMenu({ user, onOpenSettings }) {
 
   return (
     <>
+      {trigger}
       <Menu
-        trigger={trigger}
+        open={menuOpen}
+        anchor={triggerRef.current}
+        onClose={() => setMenuOpen(false)}
         items={items}
         side="top"
         align="start"

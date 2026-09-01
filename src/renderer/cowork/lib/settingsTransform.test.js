@@ -17,7 +17,22 @@ import {
   toNaturalUnits,
   formatCount,
   routerRoleSubtitle,
+  transformSettingsRows,
 } from './settingsTransform';
+
+describe('coding-agent settings translation', () => {
+  it('round-trips the independent engine and model settings', () => {
+    const transformed = transformSettingsRows([
+      { key: 'coding_agent_engine', value: 'codex' },
+      { key: 'coding_agent_model', value: 'gpt-codex' },
+    ]);
+    expect(transformed).toMatchObject({ codingAgentEngine: 'codex', codingAgentModel: 'gpt-codex' });
+    expect(diffSettingsForWrite(
+      { codingAgentEngine: 'codex', codingAgentModel: 'gpt-codex' },
+      { codingAgentEngine: 'other', codingAgentModel: 'old' },
+    )).toEqual({ coding_agent_engine: 'codex', coding_agent_model: 'gpt-codex' });
+  });
+});
 
 // The minds-cloud recommended list holds bare aliases — never `latest:`-prefixed.
 const MINDS_LIST = ['sonnet', 'opus', 'mindshub_air', 'haiku'];

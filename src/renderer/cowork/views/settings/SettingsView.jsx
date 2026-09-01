@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useContext } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useId } from 'react';
 import Ico from '../../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchRecommendedModels } from '../../api';
@@ -21,7 +21,8 @@ import ChannelsView from '../ChannelsView';
 import UpdatesSection from './UpdatesSection';
 import BackendSection from './BackendSection';
 import AccountSection from './AccountSection';
-import { SettingsLayoutContext, Section, SettingsSectionPanel } from './settingsLayout';
+import { SettingsGroup, SettingsLayoutContext, Section, SettingsSectionPanel } from './settingsLayout';
+import CodingAgentSettingsSection from './CodingAgentSettingsSection';
 
 // Exported for tests. Narrows a `lastSavedJson` snapshot to reflect one
 // freshly auto-saved key, without touching any other field — critical so an
@@ -160,55 +161,6 @@ function BudgetNumberField({ settingKey, value, savedValue, spec, label, setSett
           </label>
         </div>
       )}
-    </div>
-  );
-}
-
-// A titled group of settings sections. Since ENG-1320 these no longer
-// collapse by default: the settings subnav already isolates one section per
-// screen, so a second collapse level inside a section just hid content
-// behind an extra click for no benefit. The group is a static titled card
-// whose content is always visible, UNLESS `collapsible` opts a specific
-// group back in (e.g. Advanced Settings — rarely-touched power-user knobs
-// that read as clutter left expanded by default). The heading is kept as an
-// <h2> either way so groups still surface in SR heading navigation; the
-// collapse toggle lives on a button nested inside it, not the heading itself.
-// Mobile stays flat, as it already was (ENG-990) — collapsible groups behave
-// the same there, just without the card chrome.
-function SettingsGroup({ title, children, collapsible = false, defaultCollapsed = false }) {
-  const { mobile } = useContext(SettingsLayoutContext);
-  const [collapsed, setCollapsed] = useState(collapsible && defaultCollapsed);
-  const headingClass =
-    'm-0 font-[family-name:var(--font-sans)] text-sm font-semibold tracking-[0.04em] uppercase text-ink-3';
-  const heading = collapsible ? (
-    <button
-      type="button"
-      onClick={() => setCollapsed((c) => !c)}
-      aria-expanded={!collapsed}
-      className="inline-flex items-center gap-1 border-0 bg-transparent p-0 cursor-pointer text-inherit"
-    >
-      <span className={`inline-flex shrink-0 text-ink-4 transition-transform ${collapsed ? '' : 'rotate-90'}`} aria-hidden="true">
-        {Ico.chevRight(12)}
-      </span>
-      {title}
-    </button>
-  ) : title;
-  // Mobile (ENG-990): the master-detail screen already isolates one section,
-  // so render the group title as a plain header with its content flowing
-  // below, separated from the next group by spacing.
-  if (mobile) {
-    return (
-      <div className="mb-1.5">
-        <h2 className={`${headingClass} pt-3 px-0.5 pb-2`}>{heading}</h2>
-        {!collapsed && <div className="pt-0 px-0.5 pb-1">{children}</div>}
-      </div>
-    );
-  }
-
-  return (
-    <div className="border border-solid border-line rounded-card bg-surface-glass backdrop-blur-[var(--surface-glass-blur)] mb-[14px] overflow-hidden">
-      <h2 className={`${headingClass} pt-[14px] px-[18px] ${collapsed ? 'pb-[14px]' : 'pb-0'}`}>{heading}</h2>
-      {!collapsed && <div className="pt-2.5 px-[18px] pb-2">{children}</div>}
     </div>
   );
 }
@@ -619,6 +571,7 @@ function CredentialRow({ title, subtitle, status, hasValue, children }) {
 
 const NAV_ITEMS = [
   { id: 'agent', label: 'Agent', icon: 'robot' },
+  { id: 'codingAgent', label: 'Coding agent', icon: 'code' },
   { id: 'codingMode', label: 'Coding Mode', icon: 'code' },
   { id: 'appearance', label: 'Appearance', icon: 'palette' },
   { id: 'channels', label: 'Channels', icon: 'chats' },
@@ -2115,6 +2068,10 @@ export default function SettingsView({
     </SettingsSectionPanel>
   );
 
+  const renderCodingAgentSection = () => (
+    <CodingAgentSettingsSection settings={settings} setSetting={setSetting} footer={renderSaveFooter()} />
+  );
+
   const renderAppearanceSection = () => (
     // No Save footer here — every control on this page auto-saves itself
     // (see autoSaveSetting/AutoSaveTag below); a page-wide Save button would
@@ -2435,6 +2392,7 @@ export default function SettingsView({
   if (mobile) {
     const renderers = {
       agent: renderAgentSection,
+      codingAgent: renderCodingAgentSection,
       codingMode: renderCodingModeSection,
       appearance: renderAppearanceSection,
       channels: renderChannelsSection,
@@ -2519,6 +2477,7 @@ export default function SettingsView({
       <SettingsNav section={effectiveSection} onSectionChange={onSectionChange} serverOnline={serverOnline} />
 
       {effectiveSection === 'agent' && renderAgentSection()}
+      {effectiveSection === 'codingAgent' && renderCodingAgentSection()}
       {effectiveSection === 'codingMode' && renderCodingModeSection()}
       {effectiveSection === 'appearance' && renderAppearanceSection()}
       {effectiveSection === 'channels' && renderChannelsSection()}

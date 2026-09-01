@@ -123,6 +123,19 @@ export function buildKindStrict(): BuildKind | null {
 }
 
 export function coworkHome(): string {
+  // Local desktop QA needs the same isolation guarantees as packaged channels,
+  // without writing into a developer's real ~/.cowork-dev. Keep this override
+  // deliberately unavailable to packaged applications and require an absolute
+  // path so a changed working directory can never redirect credentials/state.
+  if (!app?.isPackaged) {
+    const override = process.env.COWORK_DEV_HOME?.trim();
+    if (override) {
+      if (!path.isAbsolute(override)) {
+        throw new Error('[cowork-home] COWORK_DEV_HOME must be an absolute path.');
+      }
+      return path.normalize(override);
+    }
+  }
   return path.join(os.homedir(), CHANNELS[buildKind()].homeDirName);
 }
 
