@@ -47,7 +47,7 @@ export function ArtifactStatus({ artifact, phase, publishable = true, onRetry, i
   // Transient phases win over the persisted state.
   if (phase === 'failed') {
     return (
-      <span className="inline-flex items-center gap-[8px] min-w-0">
+      <span className="inline-flex items-center gap-2 min-w-0">
         <Badge variant="danger" size="sm">Sharing failed</Badge>
         <span className="font-body text-[12px] text-ink-3 whitespace-nowrap">
           Couldn't share.{onRetry ? ' ' : ''}

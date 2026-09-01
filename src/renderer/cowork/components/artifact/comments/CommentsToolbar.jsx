@@ -77,7 +77,7 @@ export function CommentsToolbar({
     <Toolbar.Root
       aria-label="Comments toolbar"
       className="absolute left-1/2 bottom-[34px] z-40 h-[32px]
-        flex items-center gap-[2px] px-[4px] rounded-[46px]
+        flex items-center gap-[2px] px-1 rounded-[46px]
         motion-reduce:!animate-none"
       style={{
         transform: 'translateX(-50%)',
@@ -102,7 +102,7 @@ export function CommentsToolbar({
       <Divider />
       <Toolbar.Button
         onClick={onToggleMarkers}
-        className="h-[24px] px-[8px] flex items-center bg-transparent border-0 rounded-[12px]
+        className="h-[24px] px-2 flex items-center bg-transparent border-0 rounded-card
           cursor-pointer text-[12px] font-medium text-ink whitespace-nowrap font-[inherit]
           transition-colors hover:bg-surface-2"
       >

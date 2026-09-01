@@ -98,7 +98,7 @@ export function InboxCard({
   return (
     <div
       className={[
-        'group relative flex flex-col gap-[8px] p-[8px] rounded-card-row cursor-pointer shrink-0',
+        'group relative flex flex-col gap-2 p-2 rounded-card-row cursor-pointer shrink-0',
         'transition-colors hover:bg-surface-2 [&:has([data-popup-open])]:bg-surface-2',
         done ? 'opacity-55' : '',
       ].join(' ')}
@@ -108,22 +108,22 @@ export function InboxCard({
     >
       {/* Head: avatar · name · time (+edited) */}
       <div className="flex items-center gap-[6px] min-w-0">
-        <span className="flex items-center gap-[4px] min-w-0">
+        <span className="flex items-center gap-1 min-w-0">
           <Avatar email={email} />
-          <span className="text-[14px] font-medium leading-[20px] text-ink truncate">
+          <span className="text-base font-medium leading-[20px] text-ink truncate">
             {displayName(email)}
           </span>
         </span>
-        <span className="text-[14px] leading-[20px] text-ink-3 whitespace-nowrap">
+        <span className="text-base leading-[20px] text-ink-3 whitespace-nowrap">
           {inboxTimeAgo(thread.created_at || thread.updated_at)}
           {thread.payload?.edited_at && (
-            <span className="text-[11px] text-ink-4"> (edited)</span>
+            <span className="text-xs text-ink-4"> (edited)</span>
           )}
         </span>
       </div>
 
       {/* Text — clamped to 4 lines; the full text lives in the thread popover. */}
-      <div className="text-[14px] leading-[20px] text-ink whitespace-pre-wrap break-words line-clamp-4">
+      <div className="text-base leading-[20px] text-ink whitespace-pre-wrap break-words line-clamp-4">
         {threadText(thread)}
       </div>
 
@@ -133,7 +133,7 @@ export function InboxCard({
           <span className="text-[12px] leading-[16px] text-ink-4">{repliesTxt}</span>
           {hidden ? (
             <Tooltip content={HIDDEN_TIP}>
-              <span className="inline-flex items-center gap-[4px] px-[2px] rounded-[4px]
+              <span className="inline-flex items-center gap-1 px-[2px] rounded-[4px]
                 bg-surface-2 text-ink-3 text-[12px] leading-[16px] cursor-default">
                 <InfoIcon />
                 <span>not visible</span>
@@ -141,7 +141,7 @@ export function InboxCard({
             </Tooltip>
           ) : unanchored ? (
             <Tooltip content={general ? GENERAL_TIP : UNATTACHED_TIP}>
-              <span className="inline-flex items-center gap-[4px] px-[2px] rounded-[4px]
+              <span className="inline-flex items-center gap-1 px-[2px] rounded-[4px]
                 bg-surface-2 text-ink-3 text-[12px] leading-[16px] cursor-default">
                 <InfoIcon />
                 <span>{general ? 'general' : 'not attached'}</span>
