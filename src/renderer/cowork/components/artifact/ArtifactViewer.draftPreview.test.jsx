@@ -33,7 +33,7 @@ vi.mock('../../api', () => ({
   artifactServeUrl: vi.fn(),
 }));
 vi.mock('../../lib/artifactsStore', () => ({ deleteArtifactAndSync: vi.fn() }));
-vi.mock('../../lib/artifactDownload', () => ({ downloadArtifactFile: vi.fn() }));
+vi.mock('../../lib/artifactDownload', () => ({ downloadArtifactFile: vi.fn(async () => true) }));
 vi.mock('../../lib/artifactWorkspaceApi', () => ({
   loadArtifactDraftText: vi.fn(),
   loadArtifactDraftDocument,

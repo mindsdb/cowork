@@ -94,6 +94,9 @@ jobs:
         with:
           image: ${{ needs.build.outputs.image }}
           snyk-token: ${{ secrets.SNYK_TOKEN }}
+          # This workflow builds Dockerfile.frontend, not the action's default
+          # ./Dockerfile — otherwise Snyk attributes findings to the wrong image.
+          dockerfile: Dockerfile.frontend
           # Advisory on a PR, blocking on a deploy branch: an upstream CVE should
           # not stop someone iterating, and should stop a release.
           allow-vulns: ${{ inputs.pr-environment && 'true' || '' }}

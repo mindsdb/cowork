@@ -25,10 +25,28 @@ vi.mock('../api', () => ({
   openArtifactFile: vi.fn(),
 }));
 vi.mock('../../platform/host', () => ({
-  host: { isWeb: false, isMac: () => false, isElectron: true, openExternal: vi.fn() },
+  host: {
+    isWeb: false, isMac: () => false, isElectron: true, openExternal: vi.fn(),
+    // artifactDownload runs UNMOCKED below and resolves relative URLs.
+    getApiOrigin: () => 'https://cowork.example',
+  },
 }));
 vi.mock('../lib/analytics', () => ({ trackArtifactPublished: vi.fn() }));
-vi.mock('../components/ui/Toast', () => ({ useToastManager: () => ({ add: vi.fn() }) }));
+// Shared spy (not a fresh vi.fn() per call) so the failure-reporting tests
+// below can assert the toast actually fired.
+const toastAdd = vi.hoisted(() => vi.fn());
+vi.mock('../components/ui/Toast', () => ({ useToastManager: () => ({ add: toastAdd }) }));
+/*
+ * Transport-level mock: lib/artifactDownload stays REAL, so these tests prove
+ * the wiring row/menu → downloadArtifactFile → authenticated fetch, not a stub
+ * of it. Async matters — the components await the result, and a sync stub
+ * would leave a dropped `await` invisible (review pass 2).
+ */
+const downloadAuthenticatedResource = vi.hoisted(() => vi.fn(async () => true));
+vi.mock('../lib/authenticatedResource', async (importOriginal) => ({
+  ...(await importOriginal()),
+  downloadAuthenticatedResource: (...a) => downloadAuthenticatedResource(...a),
+}));
 vi.mock('../components/artifact', () => ({
   ArtifactViewer: ({ open, artifact }) => (open
     ? <div data-testid="artifact-viewer">Private preview: {artifact.title}</div>
@@ -50,6 +68,20 @@ const cloudDraft = {
   ...published,
   id: '11111111111111111111111111111111',
   draftUrl: '/api/v1/artifacts/drafts/project/id/index.html',
+  publishedUrl: '',
+  capabilities: { role: 'owner', canEdit: true },
+};
+
+/*
+ * The exact ENG-2044 artifact: not previewable in org mode, not publishable
+ * (autopublish is HTML/MD-only), no serve URL — the draft URL is the one route
+ * to the bytes. Grid and List must both reach it; List missed it in pass 1.
+ */
+const cloudXlsx = {
+  id: '55555555555555555555555555555555',
+  path: '/proj/.anton/artifacts/model/model.xlsx',
+  title: 'Quarterly Model', type: 'file', ext: '.xlsx', mtime: 2000,
+  draftUrl: '/api/v1/artifacts/drafts/project/id5/model.xlsx',
   publishedUrl: '',
   capabilities: { role: 'owner', canEdit: true },
 };
@@ -88,6 +120,24 @@ describe.each([
     render(<ArtifactsView artifacts={[published]} />);
     openKebab();
     expect(screen.getByText(/Delete/)).toBeInTheDocument();
+  });
+
+  it('offers Download for an artifact with a draft URL, shared or not (ENG-2044)', () => {
+    /*
+     * The draft URL is the one route to a non-HTML file's bytes on an org
+     * deployment. Both menu sites must offer it: the grid is the default view
+     * and the only one on mobile, so a list-only item leaves phones stuck.
+     */
+    render(<ArtifactsView artifacts={[cloudDraft]} />);
+    openKebab();
+    expect(screen.getByText('Download')).toBeInTheDocument();
+  });
+
+  it('does not offer Download without a draft URL', () => {
+    // Nothing to save yet: the artifact has no primary file the server can stream.
+    render(<ArtifactsView artifacts={[published]} />);
+    openKebab();
+    expect(screen.queryByText('Download')).toBeNull();
   });
 });
 
@@ -466,5 +516,63 @@ describe('delete gives feedback while it runs', () => {
     // The row survives a failure, and must not be left stuck in Deleting….
     await vi.waitFor(() => expect(screen.queryByText('Deleting…')).toBeNull());
     expect(screen.getByText('Weather Dashboard')).toBeInTheDocument();
+  });
+});
+
+
+describe.each([
+  ['grid', 'grid'],
+  ['list', 'list'],
+])('%s view org download of an unshared non-previewable draft (ENG-2044)', (_name, view) => {
+  /*
+   * Review pass 2 on #764: the grid card got the download fallback and the
+   * list row — 250 lines below in the same file — did not, so the identical
+   * .xlsx downloaded in Grid and silently did nothing in List. Same fixture,
+   * both view modes, so they cannot drift again.
+   */
+  beforeEach(() => {
+    localStorage.setItem('anton:artifacts-view', view);
+    setOrgMode(true);
+    downloadAuthenticatedResource.mockClear();
+    downloadAuthenticatedResource.mockImplementation(async () => true);
+    toastAdd.mockClear();
+  });
+
+  it('body click downloads instead of doing nothing', async () => {
+    render(<ArtifactsView artifacts={[cloudXlsx]} />);
+    fireEvent.click(screen.getByText('Quarterly Model'));
+    await vi.waitFor(() => expect(downloadAuthenticatedResource).toHaveBeenCalledTimes(1));
+    expect(downloadAuthenticatedResource.mock.calls[0][0]).toContain('model.xlsx');
+    expect(downloadAuthenticatedResource.mock.calls[0][0]).toContain('download=1');
+    expect(screen.queryByTestId('artifact-viewer')).toBeNull();
+  });
+
+  it('the ↗ Open button downloads too', async () => {
+    render(<ArtifactsView artifacts={[cloudXlsx]} />);
+    fireEvent.click(screen.getByLabelText('Open'));
+    await vi.waitFor(() => expect(downloadAuthenticatedResource).toHaveBeenCalledTimes(1));
+  });
+
+  it('the kebab Download item reports through a toast when the fetch fails', async () => {
+    /*
+     * 401 (expired bearer), 403, a file deleted server-side, offline: the
+     * transport rejects, downloadArtifactFile resolves false, and discarding
+     * that left the click with no feedback of any kind (review pass 2).
+     */
+    downloadAuthenticatedResource.mockRejectedValueOnce(new Error('Could not load file (401)'));
+    render(<ArtifactsView artifacts={[cloudXlsx]} />);
+    openKebab();
+    fireEvent.click(screen.getByText('Download'));
+    await vi.waitFor(() => expect(toastAdd).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Could not download this artifact.', type: 'danger' }),
+    ));
+  });
+
+  it('stays quiet when the download succeeds (mutation guard for the toast)', async () => {
+    render(<ArtifactsView artifacts={[cloudXlsx]} />);
+    openKebab();
+    fireEvent.click(screen.getByText('Download'));
+    await vi.waitFor(() => expect(downloadAuthenticatedResource).toHaveBeenCalledTimes(1));
+    expect(toastAdd).not.toHaveBeenCalled();
   });
 });
