@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { gateMindsResponseCreationRequest } from './minds-response-request-gate';
+import {
+  gateMindsResponseCreationRequest,
+  mindsRuntimeCredentialRequirementFromHealth,
+} from './minds-response-request-gate';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -9,6 +12,16 @@ afterEach(() => {
 
 describe('response-creation resume gate', () => {
   const runtimeCredentialRequired = async () => true;
+
+  it.each([
+    [{ minds_runtime_credential_required: false }, false],
+    [{ minds_runtime_credential_required: true }, true],
+    [{}, null],
+    [{ minds_runtime_credential_required: 'false' }, null],
+    [null, null],
+  ])('maps the sidecar health contract conservatively: %j -> %s', (health, expected) => {
+    expect(mindsRuntimeCredentialRequirementFromHealth(health)).toBe(expected);
+  });
 
   it('waits for readiness before forwarding a new response request', async () => {
     let release!: (ready: boolean) => void;

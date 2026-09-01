@@ -25,7 +25,10 @@ import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefres
 import { refreshTokensOnly, refreshMindsCredentialAfterResume, commitMindsSignIn, selectEntitledOrg, scheduleRefresh, cancelScheduledRefresh, revokeDeviceKeyAndEndSession, getRevokeToken, freshAccessToken, listMindsOrgs, switchMindsOrg, KEYCLOAK_AUTH_URL, KEYCLOAK_REGISTRATION_URL, KEYCLOAK_TOKEN_URL, SIGNUP_CALLBACK_TIMEOUT_MS } from './minds-auth';
 import { clearUserSuppliedMindsKey, establishMindsCredential, forgetMindsCredential, setUserSuppliedMindsKey, syncMindsCredential } from './minds-credential';
 import { isMindsResumeCredentialGateActive, settleMindsResumeCredentialGate, waitForMindsResumeCredential } from './minds-resume-gate';
-import { gateMindsResponseCreationRequest } from './minds-response-request-gate';
+import {
+  gateMindsResponseCreationRequest,
+  mindsRuntimeCredentialRequirementFromHealth,
+} from './minds-response-request-gate';
 import { scrubEnvCredentials } from './logout-env';
 import { MINDS_API_HOST } from './minds-urls';
 import {
@@ -170,10 +173,7 @@ async function serverConfigured(): Promise<{
     return {
       configured: data.config_ready,
       provider: data.provider ?? '',
-      mindsRuntimeCredentialRequired:
-        typeof data.minds_runtime_credential_required === 'boolean'
-          ? data.minds_runtime_credential_required
-          : null,
+      mindsRuntimeCredentialRequired: mindsRuntimeCredentialRequirementFromHealth(data),
     };
   } catch (err) {
     console.warn('[checkConfigured] could not reach server /health; falling back to .env:', err);
