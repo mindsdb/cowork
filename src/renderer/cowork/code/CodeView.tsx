@@ -139,20 +139,22 @@ export default function CodeView({
     session ? supportsTaskCapability(session, capability) : false
   );
   const engineId = session?.engine_id;
-  const taskCapabilities = session?.task_capabilities;
-  const computerIsLocal = session?.computer_is_local;
+  const canSlashCommands = can('slash_commands');
+  const canFork = can('fork');
+  const canControls = can('task_controls');
+  const canTerminal = can('terminal');
+  const canExtensions = can('extensions');
   const commands = useMemo(() => {
     const available = catalog.engines.find((engine) => engine.id === engineId)?.commands || [];
-    const scope = { task_capabilities: taskCapabilities, computer_is_local: computerIsLocal };
     return available.filter((command) => {
-      if (command.action !== 'client') return supportsTaskCapability(scope, 'slash_commands');
-      if (command.client_action === 'fork') return supportsTaskCapability(scope, 'fork');
-      if (command.client_action === 'controls') return supportsTaskCapability(scope, 'task_controls');
-      if (command.client_action === 'terminal') return supportsTaskCapability(scope, 'terminal');
-      if (command.client_action === 'skills' || command.client_action === 'mcp') return supportsTaskCapability(scope, 'extensions');
+      if (command.action !== 'client') return canSlashCommands;
+      if (command.client_action === 'fork') return canFork;
+      if (command.client_action === 'controls') return canControls;
+      if (command.client_action === 'terminal') return canTerminal;
+      if (command.client_action === 'skills' || command.client_action === 'mcp') return canExtensions;
       return false;
     });
-  }, [catalog.engines, engineId, taskCapabilities, computerIsLocal]);
+  }, [catalog.engines, engineId, canSlashCommands, canFork, canControls, canTerminal, canExtensions]);
   const project = useProjectActions(session?.id);
 
   useEffect(() => {

@@ -115,6 +115,10 @@ function session(id: string): CodingSession {
     event_count: 0,
     created_at: '2026-08-21T09:00:00Z',
     updated_at: '2026-08-21T09:05:00Z',
+    task_capabilities: {
+      files: true, review: true, terminal: true, project_actions: true, slash_commands: true,
+      task_controls: true, extensions: true, platform_settings: true, fork: true, open_workspace: true,
+    },
   };
 }
 
@@ -442,7 +446,10 @@ describe('CodeView session-list reconciliation', () => {
     await act(async () => { for (let index = 0; index < 5; index += 1) await Promise.resolve(); });
     const rendersBeforePoll = mocks.composerRender.mock.calls.length;
 
-    mocks.useCodingSession.mockReturnValue({ ...detail, session: { ...streaming, event_count: 5, updated_at: '2026-08-21T09:06:00Z' } });
+    mocks.useCodingSession.mockReturnValue({
+      ...detail,
+      session: { ...streaming, event_count: 5, updated_at: '2026-08-21T09:06:00Z', task_capabilities: { ...streaming.task_capabilities! } },
+    });
     view.rerender(<CodeView {...view.props} />);
 
     expect(mocks.composerRender.mock.calls.length).toBe(rendersBeforePoll);
