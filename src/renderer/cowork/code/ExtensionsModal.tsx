@@ -3,8 +3,8 @@ import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
 import { Modal, ModalBody, ModalHeader } from '../components/ui/Modal';
 import Spinner from '../components/ui/Spinner';
-import { host } from '../../platform/host';
 import { codingApi, type ExtensionEntry, type ExtensionInventory } from './api';
+import { openCodePath } from './shellLinks';
 
 
 export type ExtensionTab = 'skills' | 'mcp_servers' | 'plugins' | 'apps' | 'hooks';
@@ -120,7 +120,7 @@ export function ExtensionsModal({
               <small>This private Codex config is shared by coding tasks. Project .codex/config.toml files are layered automatically.</small>
               <code title={inventory.config_path}>{inventory.config_path}</code>
             </div>
-            <Button variant="subtle" size="sm" onClick={() => void host.openPath(inventory.config_path!)}>Open config</Button>
+            <Button variant="subtle" size="sm" onClick={() => void openCodePath(inventory.config_path!)}>Open config</Button>
           </div>
         )}
       </ModalBody>

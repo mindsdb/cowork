@@ -65,6 +65,15 @@ function activeOrgFromPayload(payload) {
   };
 }
 
+// Cache identity for the Code skills catalogue. Keyed by the organization's id,
+// never its label: labels collide (every personal organization prints as
+// PERSONAL_ORG_LABEL) and a collision would serve one organization's skills to
+// another. The label is only a fallback for a claim that carries no id.
+export function skillScopeKey(user) {
+  if (!user) return 'signed-out';
+  return [user.sub, user.email, user.orgId || user.org].filter(Boolean).join(':');
+}
+
 // Initials for the avatar placeholder when the account has no picture:
 // first letters of the first two name words, else the email's first
 // letter, else "?" — shared by the settings account card and the sidebar

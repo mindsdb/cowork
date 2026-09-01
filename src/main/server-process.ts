@@ -456,20 +456,22 @@ export async function resolveServerPort(): Promise<number> {
     serverPort = preferred;
 
     const probe = await probeHealthOnce(preferred, 700);
-    if (probe.state === 'compatible' && probe.owner && probe.owner === serverOwnerToken()) {
-      _adoptPlanned = true; // our own orphan — startServer will re-verify + adopt
-    } else if (probe.state === 'compatible' && probe.owner) {
-      // Healthy AND owned by a DIFFERENT install (another OS user) — never adopt
-      // or touch it. Move to a free port we can own.
+    if (probe.owner && probe.owner !== serverOwnerToken()) {
+      // Owned by a DIFFERENT install (another OS user) — never adopt or touch
+      // it, compatible or not: reaping it would fail with EPERM and the spawn
+      // with EADDRINUSE. Move to a free port we can own.
       const free = await findFreePort();
       if (free) serverPort = free;
       console.log(`[server] port ${preferred} held by a foreign server; using ${serverPort} instead`);
+    } else if (probe.state === 'compatible' && probe.owner) {
+      _adoptPlanned = true; // our own orphan — startServer will re-verify + adopt
     }
-    // else: not healthy, OR healthy but owner-less (a pre-ENG-439 server — on a
-    // per-user port that's almost certainly our own from before this change).
-    // Keep the preferred port; startServer reaps whatever's there and respawns.
-    // A cross-user kill can't succeed (different OS user → EPERM), so the worst
-    // case there is a safe bind failure, never adopting a foreign server.
+    // else: not healthy, healthy but owner-less (a pre-ENG-439 server — on a
+    // per-user port that's almost certainly our own from before this change),
+    // or our own but too old. Keep the preferred port; startServer reaps
+    // whatever's there and respawns. A cross-user kill can't succeed (different
+    // OS user → EPERM), so the worst case there is a safe bind failure, never
+    // adopting a foreign server.
   } catch (err) {
     console.warn('[server] resolveServerPort failed; falling back to preferred port', err);
   } finally {
@@ -905,6 +907,7 @@ async function stopServerUnlocked(): Promise<void> {
   _portResolved = false;
   const proc = serverProcess;
   if (!proc) {
+    if (_adoptedExternal) await prepareCodingTasksForShutdown();
     serverStarted = false;
     lastStopIntentional = true;
     // If we adopted an external server (no child handle), try to kill

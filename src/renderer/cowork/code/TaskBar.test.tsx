@@ -1,6 +1,13 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
+
+const openExternal = vi.hoisted(() => vi.fn(async () => {}));
+
+vi.mock('../../platform/host', () => ({
+  host: { openExternal, openPath: vi.fn() },
+}));
+
 import type { CodingSession } from './api';
 import { TaskBar } from './TaskBar';
 
@@ -28,6 +35,29 @@ const session: CodingSession = {
   event_count: 1,
   created_at: '2026-08-22T10:00:00Z',
   updated_at: '2026-08-22T10:00:00Z',
+};
+
+const barProps = {
+  session,
+  git: null,
+  files: [],
+  filesOpen: false,
+  reviewOpen: false,
+  terminalOpen: false,
+  previewOpen: false,
+  onToggleReview: vi.fn(),
+  onToggleFiles: vi.fn(),
+  onToggleTerminal: vi.fn(),
+  onTogglePreview: vi.fn(),
+  onRunProjectAction: vi.fn(),
+  onOpenControls: vi.fn(),
+  onOpenExtensions: vi.fn(),
+  onRename: vi.fn(),
+  onFork: vi.fn(),
+  onCompact: vi.fn(),
+  onStatus: vi.fn(),
+  onArchive: vi.fn(),
+  onDelete: vi.fn(),
 };
 
 
@@ -224,6 +254,19 @@ describe('TaskBar', () => {
     expect(screen.getByText('Computer offline')).toBeInTheDocument();
     expect(screen.getByText('Build computer')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Restore' })).not.toBeInTheDocument();
+  });
+
+  it('opens the task origin only when the server-supplied link is a browser URL', async () => {
+    const user = userEvent.setup();
+    const origin = { provider: 'github' as const, kind: 'issue' as const, title: 'Fix login', external_id: '#42', body: '' };
+    const { rerender } = render(<TaskBar {...barProps} session={{ ...session, source_contexts: [{ ...origin, url: 'javascript:alert(1)' }] }} />);
+
+    await user.click(screen.getByRole('button', { name: 'GitHub #42' }));
+    expect(openExternal).not.toHaveBeenCalled();
+
+    rerender(<TaskBar {...barProps} session={{ ...session, source_contexts: [{ ...origin, url: 'https://github.com/mindsdb/cowork/issues/42' }] }} />);
+    await user.click(screen.getByRole('button', { name: 'GitHub #42' }));
+    expect(openExternal).toHaveBeenCalledWith('https://github.com/mindsdb/cowork/issues/42');
   });
 
   it('shows a recovering run without duplicating its recovery action in the header', () => {

@@ -1,10 +1,10 @@
 import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
 import Menu from '../components/ui/Menu';
-import { host } from '../../platform/host';
 import type { CodingSession, DiffFile, GitState, ProjectActionSummary } from './api';
 import { sourceContextLabel, sourceProviderLabel } from './developerTools';
 import { codingSessionStatus, compactPath, diffStats, repositoryLabel } from './presentation';
+import { openCodeExternalUrl, openCodePath } from './shellLinks';
 import { supportsTaskCapability, type TaskCapabilityName } from './taskCapabilities';
 
 
@@ -102,7 +102,7 @@ export function TaskBar({
             <span>{repositoryLabel(session)}</span>
             {origin && <>
               <span aria-hidden="true">·</span>
-              <button type="button" className="code-taskbar__origin" onClick={() => void host.openExternal(origin.url)}>
+              <button type="button" className="code-taskbar__origin" onClick={() => void openCodeExternalUrl(origin.url)}>
                 {sourceProviderLabel(origin.provider)} {sourceContextLabel(origin)}
               </button>
             </>}
@@ -236,7 +236,7 @@ export function TaskBar({
             ...(can('open_workspace') ? [{
               label: usesOriginalFolder ? 'Open original folder' : 'Open isolated copy',
               icon: Ico.openFolder(13),
-              onClick: () => void host.openPath(session.workspace_path),
+              onClick: () => void openCodePath(session.workspace_path),
               title: worktreeLabel,
             }] : []),
             {

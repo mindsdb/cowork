@@ -7,7 +7,6 @@ import Input from '../components/ui/Input';
 import Select from '../components/ui/Select';
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '../components/ui/Modal';
 import { ConfirmModal } from '../components/ConfirmModal';
-import { host } from '../../platform/host';
 import type { ConnectorConnection } from '../api';
 import {
   buildModelPickerOptions,
@@ -33,6 +32,7 @@ import { isPermissionMode, PERMISSION_OPTIONS } from './permissions';
 import { ProjectConnectedTools } from './ProjectConnectedTools';
 import { ProjectResourcesEditor } from './ProjectResourcesEditor';
 import { ProjectSkillSelector } from './ProjectSkillSelector';
+import { openCodePath, openCodeRepository } from './shellLinks';
 import { useCodingCatalog, type CodingCatalog } from './useCodingCatalog';
 
 const supportedProviders = new Set(['github', 'linear']);
@@ -42,17 +42,6 @@ type CommandPhase = ProjectCommand['phase'];
 function command(id: string, phase: CommandPhase): ProjectCommand {
   const labels: Record<CommandPhase, string> = { setup: 'Set up', validate: 'Validate', run: 'Run' };
   return { id, label: labels[phase], argv: [], phase };
-}
-
-function openPlaybookRepository(repository: string): void {
-  const ssh = /^git@([^:]+):(.+?)(?:\.git)?$/.exec(repository);
-  if (ssh) {
-    void host.openExternal(`https://${ssh[1]}/${ssh[2].replace(/\.git$/, '')}`);
-  } else if (/^https?:\/\//i.test(repository)) {
-    void host.openExternal(repository);
-  } else {
-    void host.openPath(repository);
-  }
 }
 
 function repositoryLabel(repository: string): string {
@@ -426,8 +415,8 @@ export function ProjectSettingsModal({
                     <div><dt>Revision</dt><dd>{playbookStatus?.current_revision?.slice(0, 8) || 'Checking…'}</dd></div>
                   </dl>
                   <div>
-                    <Button size="sm" variant="subtle" onClick={() => openPlaybookRepository(project.playbook!.repository)}>Open source</Button>
-                    {project.playbook.cache_path && <Button size="sm" variant="subtle" onClick={() => void host.openPath(project.playbook!.cache_path!)}>Open local copy</Button>}
+                    <Button size="sm" variant="subtle" onClick={() => void openCodeRepository(project.playbook!.repository).catch((reason) => setError(reason instanceof Error ? reason.message : 'Could not open that repository.'))}>Open source</Button>
+                    {project.playbook.cache_path && <Button size="sm" variant="subtle" onClick={() => void openCodePath(project.playbook!.cache_path!)}>Open local copy</Button>}
                   </div>
                 </details>
                 {playbookStatus?.error && <div className="code-project-error">{playbookStatus.error}</div>}

@@ -5,9 +5,9 @@ import Badge from '../components/ui/Badge';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import { ConfirmModal } from '../components/ConfirmModal';
-import { host } from '../../platform/host';
 import type { CodingSession, DeliveryAutomationPolicy, DeliveryPlanItem, DeliveryRecord, DiffFile, GitState, ProjectCommandResult, ProjectConnection, TaskWorkspace } from './api';
 import { compactPath, diffStats, isActiveStatus } from './presentation';
+import { openCodePath } from './shellLinks';
 import { DraftPullRequestSection, type DraftPullRequestInput } from './DraftPullRequestSection';
 import { SourceUpdateSection } from './SourceUpdateSection';
 import type { ReviewFileAction } from './FileReviewControls';
@@ -213,8 +213,8 @@ export function ReviewPanel({
               ))}
             </section>
             <div className="code-git-open-actions">
-              {session.computer_is_local !== false && <Button size="sm" variant="subtle" onClick={() => void host.openPath(session.workspace_path)}>{Ico.openFolder(13)} {session.workspace_kind === 'direct_folder' ? 'Open original folder' : 'Open isolated copy'}</Button>}
-              {session.computer_is_local !== false && session.source_path !== session.workspace_path && <Button size="sm" variant="subtle" onClick={() => void host.openPath(session.source_path)}>Open original</Button>}
+              {session.computer_is_local !== false && <Button size="sm" variant="subtle" onClick={() => void openCodePath(session.workspace_path)}>{Ico.openFolder(13)} {session.workspace_kind === 'direct_folder' ? 'Open original folder' : 'Open isolated copy'}</Button>}
+              {session.computer_is_local !== false && session.source_path !== session.workspace_path && <Button size="sm" variant="subtle" onClick={() => void openCodePath(session.source_path)}>Open original</Button>}
             </div>
             {sourceChanged && <Alert variant="warning" title="Source had local changes when this task began">Those changes stayed in the source folder. Cowork checks for conflicts before applying.</Alert>}
             {handoffConflict && (

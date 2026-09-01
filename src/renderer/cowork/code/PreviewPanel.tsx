@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import Ico from '../components/Icons';
 import Button from '../components/ui/Button';
-import { host } from '../../platform/host';
+import { getApiOrigin } from '../../platform/host';
+import { safeCodeExternalUrl } from './developerTools';
+import { openCodeExternalUrl } from './shellLinks';
 import './preview-panel.css';
 
 
@@ -12,6 +14,13 @@ const viewportWidths: Record<Viewport, string> = {
   tablet: '768px',
   mobile: '390px',
 };
+
+// The frame keeps allow-same-origin (see below), so a page on this app's own
+// origin could reach the parent document and lift its sandbox.
+function framablePreviewUrl(url: string | null): string | null {
+  const safe = safeCodeExternalUrl(url);
+  return safe && new URL(safe).origin !== getApiOrigin() ? safe : null;
+}
 
 
 export function PreviewPanel({
@@ -25,6 +34,7 @@ export function PreviewPanel({
 }) {
   const [generation, setGeneration] = useState(0);
   const [viewport, setViewport] = useState<Viewport>('responsive');
+  const previewUrl = framablePreviewUrl(url);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -47,13 +57,13 @@ export function PreviewPanel({
             <div className="code-preview__title">Preview</div>
           </div>
           <div className="code-preview__actions">
-            <Button icon size="sm" variant="subtle" aria-label="Reload preview" disabled={!url} onClick={() => setGeneration((current) => current + 1)}>{Ico.reload(13)}</Button>
-            <Button icon size="sm" variant="subtle" aria-label="Open preview in browser" disabled={!url} onClick={() => { if (url) void host.openExternal(url); }}>{Ico.arrowUpRight(13)}</Button>
+            <Button icon size="sm" variant="subtle" aria-label="Reload preview" disabled={!previewUrl} onClick={() => setGeneration((current) => current + 1)}>{Ico.reload(13)}</Button>
+            <Button icon size="sm" variant="subtle" aria-label="Open preview in browser" disabled={!previewUrl} onClick={() => void openCodeExternalUrl(previewUrl)}>{Ico.arrowUpRight(13)}</Button>
             <Button icon size="sm" variant="subtle" aria-label="Close preview" onClick={onClose}>{Ico.close(14)}</Button>
           </div>
         </header>
         <div className="code-preview__toolbar">
-          <code title={url || undefined}>{url || 'Preview is not available'}</code>
+          <code title={previewUrl || undefined}>{previewUrl || 'Preview is not available'}</code>
           <div className="code-preview__viewports" aria-label="Preview width">
             {(['responsive', 'tablet', 'mobile'] as const).map((value) => (
               <button
@@ -70,12 +80,15 @@ export function PreviewPanel({
           </div>
         </div>
         <div className="code-preview__stage">
-          {url ? (
+          {previewUrl ? (
             <iframe
-              key={`${url}:${generation}`}
+              key={`${previewUrl}:${generation}`}
               title="Project preview"
-              src={url}
+              src={previewUrl}
               style={{ width: viewportWidths[viewport] }}
+              // allow-same-origin stays: the framed page is the task's own dev
+              // server on a loopback origin distinct from this app's, and module
+              // scripts (Vite) are CORS-fetched, which an opaque origin cannot do.
               sandbox="allow-forms allow-modals allow-popups allow-same-origin allow-scripts"
               referrerPolicy="no-referrer"
             />

@@ -48,9 +48,15 @@ describe('exitCodeLabel', () => {
     expect(exitCodeLabel({ kind: null, exitCode: null, stopIntentional: false })).toBe('unknown');
   });
 
+  it('does not call an incompatible backend "never started" when it answered /health', () => {
+    // The same file defines `incompatible` as a healthy backend that answered
+    // but lacks the Code capability. Any exit code on it is from our reap.
+    expect(exitCodeLabel({ kind: 'incompatible', exitCode: null })).toBe('not applicable');
+    expect(exitCodeLabel({ kind: 'incompatible', exitCode: 1 })).toBe('not applicable');
+  });
+
   it('says "never started" only when nothing ever ran', () => {
     expect(exitCodeLabel({ kind: 'spawn-error', exitCode: null })).toBe('never started');
-    expect(exitCodeLabel({ kind: 'incompatible', exitCode: null })).toBe('never started');
     expect(exitCodeLabel({ kind: 'not-installed', exitCode: null })).toBe('never started');
     expect(exitCodeLabel({ kind: null, exitCode: null })).toBe('never started');
     expect(exitCodeLabel({ kind: null, exitCode: null, stopIntentional: null })).toBe('never started');

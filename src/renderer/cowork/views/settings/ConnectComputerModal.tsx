@@ -17,13 +17,32 @@ function defaultComputerName(platform: string): string {
 }
 
 
-function isLoopbackOrigin(origin: string): boolean {
+export function isLoopbackOrigin(origin: string): boolean {
   try {
-    const hostname = new URL(origin).hostname;
+    const hostname = new URL(origin).hostname.replace(/^\[|\]$/g, '');
     return hostname === '127.0.0.1' || hostname === 'localhost' || hostname === '::1';
   } catch {
     return false;
   }
+}
+
+
+// The command is pasted into whichever shell the other computer has — bash,
+// zsh, PowerShell or cmd.exe — and no escaping rule is shared by all four. A
+// double-quoted string is safe in every one of them only while it contains no
+// character any of them treats specially, so the name is reduced to that
+// alphabet instead of being escaped. argparse would read a leading dash as an
+// option.
+// ComputerRegistrationRequest.name is capped at 120 code points on the server.
+export function shellSafeComputerName(name: string): string {
+  const points = Array.from(name
+    .replace(/[^\p{L}\p{M}\p{N} ._'-]/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^-+/, ''));
+  let end = Math.min(points.length, 120);
+  while (end > 0 && end < points.length && /\p{M}/u.test(points[end])) end -= 1;
+  return points.slice(0, end).join('').trim();
 }
 
 
@@ -70,11 +89,12 @@ export function ConnectComputerModal({ open, onClose }: { open: boolean; onClose
     return () => window.clearInterval(timer);
   }, [open, token]);
 
+  const expired = Boolean(token) && expiresIn === 0;
   const command = useMemo(() => {
-    if (!token || controlPlaneIsLocal) return '';
-    const computerName = name.trim() || defaultComputerName(platform);
+    if (!token || expired || controlPlaneIsLocal) return '';
+    const computerName = shellSafeComputerName(name) || defaultComputerName(platform);
     return `cowork-code-runtime --server "${controlPlaneOrigin}" --code "${token}" --name "${computerName}"`;
-  }, [controlPlaneIsLocal, controlPlaneOrigin, name, platform, token]);
+  }, [controlPlaneIsLocal, controlPlaneOrigin, expired, name, platform, token]);
 
   const minutes = Math.floor(expiresIn / 60);
   const seconds = String(expiresIn % 60).padStart(2, '0');
@@ -116,7 +136,7 @@ export function ConnectComputerModal({ open, onClose }: { open: boolean; onClose
           <div className="rounded-[10px] border border-solid border-line bg-surface-2 p-3.5">
             <div className="mb-2 flex items-center justify-between gap-3">
               <div className="text-sm font-semibold text-ink">Run on the other computer</div>
-              {token && <span className="text-xs tabular-nums text-ink-4">Expires in {minutes}:{seconds}</span>}
+              {command && <span className="text-xs tabular-nums text-ink-4">Expires in {minutes}:{seconds}</span>}
             </div>
             {controlPlaneIsLocal ? (
               <div role="status" className="rounded-lg border border-solid border-line bg-bg p-3 text-sm leading-5 text-ink-3">
@@ -126,7 +146,7 @@ export function ConnectComputerModal({ open, onClose }: { open: boolean; onClose
               <>
                 <p className="m-0 mb-3 text-sm leading-5 text-ink-3">Open its terminal and run this once. The runtime remembers the connection.</p>
                 <div className="flex items-start gap-2 rounded-lg border border-solid border-line bg-bg p-2.5">
-                  <code className="min-w-0 flex-1 select-text break-all text-xs leading-5 text-ink-2">{loading ? 'Creating connection code…' : command}</code>
+                  <code className="min-w-0 flex-1 select-text break-all text-xs leading-5 text-ink-2">{loading ? 'Creating connection code…' : expired ? 'This connection code has expired.' : command}</code>
                   <Button
                     icon
                     size="sm"
@@ -141,7 +161,7 @@ export function ConnectComputerModal({ open, onClose }: { open: boolean; onClose
                     <Copy size={13} strokeWidth={1.5} />
                   </Button>
                 </div>
-                {copied && <div className="mt-2 text-xs text-[var(--ok)]">Copied</div>}
+                {copied && command && <div className="mt-2 text-xs text-[var(--ok)]">Copied</div>}
                 {!loading && expiresIn === 0 && (
                   <Button size="sm" variant="subtle" className="mt-2" onClick={() => void createCode()}>
                     <RotateCw size={12} /> New code
