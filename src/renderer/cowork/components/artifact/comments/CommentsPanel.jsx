@@ -91,11 +91,8 @@ export function CommentsPanel({
   return (
     <div
       className="artifact-comments-panel flex flex-col gap-[10px] bg-surface px-[12px] py-[8px]
-        motion-reduce:!animate-none"
-      style={{
-        fontFamily: 'var(--font-body)',
-        animation: 'cw-comments-panel-in .3s cubic-bezier(.16,1,.3,1)',
-      }}
+        font-[family-name:var(--font-body)] motion-reduce:!animate-none"
+      style={{ animation: 'cw-comments-panel-in .3s cubic-bezier(.16,1,.3,1)' }}
     >
       {/* Header */}
       <div className="flex items-center justify-between shrink-0">
@@ -116,14 +113,12 @@ export function CommentsPanel({
 
       {/* Notices */}
       {expired && (
-        <div className="shrink-0 rounded-[6px] px-[8px] py-[6px] text-[12px] leading-[16px]"
-          style={{ background: '#FEF3C7', color: '#B45309' }}>
+        <div className="shrink-0 rounded-[6px] px-[8px] py-[6px] text-[12px] leading-[16px] bg-[#FEF3C7] text-[#B45309]">
           Session expired — reload to see new comments.
         </div>
       )}
       {error && (
-        <div className="shrink-0 rounded-[6px] px-[8px] py-[6px] text-[12px] leading-[16px]"
-          style={{ background: '#FEE2E2', color: '#8F321A' }}>
+        <div className="shrink-0 rounded-[6px] px-[8px] py-[6px] text-[12px] leading-[16px] bg-[#FEE2E2] text-[#8F321A]">
           {error}
         </div>
       )}
@@ -148,10 +143,9 @@ export function CommentsPanel({
               aria-label={label}
               className="flex-1 h-[24px] rounded-[6px] border-0 cursor-pointer
                 text-[12px] font-medium leading-[16px] transition-[background,color]
-                bg-transparent text-ink-3 hover:text-ink
+                bg-transparent text-ink-3 hover:text-ink font-[inherit]
                 data-[pressed]:bg-surface data-[pressed]:text-ink"
               style={{
-                fontFamily: 'inherit',
                 boxShadow: tab === value
                   ? '0 1px 2px rgba(0,0,0,0.06), 0 0 0 0.5px rgba(39,39,42,0.08)'
                   : 'none',
@@ -166,8 +160,7 @@ export function CommentsPanel({
 
       {/* Card list — scrollbar hugs the panel edge instead of stealing card width. */}
       <div ref={listRef}
-        className="flex-1 overflow-y-auto flex flex-col gap-[10px] -mr-[10px] pr-[4px]"
-        style={{ overscrollBehavior: 'contain' }}>
+        className="flex-1 overflow-y-auto flex flex-col gap-[10px] -mr-[10px] pr-[4px] overscroll-contain">
         {visible.length === 0 && (
           <div className="text-center text-[12px] leading-[16px] text-ink-4 py-[24px]">
             {EMPTY_COPY[tab]}

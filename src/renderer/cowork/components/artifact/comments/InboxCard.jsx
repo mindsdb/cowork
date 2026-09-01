@@ -123,15 +123,7 @@ export function InboxCard({
       </div>
 
       {/* Text — clamped to 4 lines; the full text lives in the thread popover. */}
-      <div
-        className="text-[14px] leading-[20px] text-ink whitespace-pre-wrap break-words"
-        style={{
-          display: '-webkit-box',
-          WebkitLineClamp: 4,
-          WebkitBoxOrient: 'vertical',
-          overflow: 'hidden',
-        }}
-      >
+      <div className="text-[14px] leading-[20px] text-ink whitespace-pre-wrap break-words line-clamp-4">
         {threadText(thread)}
       </div>
 

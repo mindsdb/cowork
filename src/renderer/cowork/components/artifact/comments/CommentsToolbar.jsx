@@ -103,9 +103,8 @@ export function CommentsToolbar({
       <Toolbar.Button
         onClick={onToggleMarkers}
         className="h-[24px] px-[8px] flex items-center bg-transparent border-0 rounded-[12px]
-          cursor-pointer text-[12px] font-medium text-ink whitespace-nowrap
+          cursor-pointer text-[12px] font-medium text-ink whitespace-nowrap font-[inherit]
           transition-colors hover:bg-surface-2"
-        style={{ fontFamily: 'inherit' }}
       >
         {markersShown ? 'Hide comment' : 'Show comment'}
       </Toolbar.Button>
