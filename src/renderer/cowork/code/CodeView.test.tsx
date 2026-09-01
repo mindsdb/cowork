@@ -19,6 +19,7 @@ vi.mock('./api', () => ({
   codingApi: {
     engines: vi.fn(async () => []),
     projectActions: vi.fn(async () => ({ items: [], preview_url: null })),
+    skillLibrary: vi.fn(async () => ({ sources: [], items: [] })),
     sessions: mocks.sessions,
     deleteSession: mocks.deleteSession,
     steer: mocks.steer,
@@ -47,7 +48,11 @@ vi.mock('./TaskBar', () => ({
 }));
 vi.mock('./NewTaskPanel', () => ({ NewTaskPanel: () => <div>New task panel</div> }));
 vi.mock('./EventTimeline', () => ({ EventTimeline: () => <div>Timeline</div> }));
-vi.mock('./CodeComposer', () => ({ CodeComposer: () => <div>Composer</div> }));
+vi.mock('./FilesPanel', () => ({
+  FilesPanel: ({ onReference }: { onReference: (item: { name: string; path: string; kind: 'mention' }) => void }) => (
+    <button type="button" onClick={() => onReference({ name: 'notes.md', path: '/work/first-task/notes.md', kind: 'mention' })}>Reference file</button>
+  ),
+}));
 vi.mock('./ApprovalCard', () => ({
   ApprovalCard: ({ onDecision }: { onDecision: (decision: 'approve_once') => void }) => (
     <button type="button" onClick={() => onDecision('approve_once')}>Approval</button>
@@ -174,8 +179,25 @@ describe('CodeView session-list reconciliation', () => {
     renderCode({ sessions: [cached], selectedId: cached.id });
 
     expect(screen.getByText('Timeline')).toBeInTheDocument();
-    expect(screen.getByText('Composer')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Follow-up instruction' })).toBeInTheDocument();
     expect(screen.queryByText('Restoring task…')).toBeNull();
+  });
+
+  it('does not carry a file referenced in one task into the next task’s composer', async () => {
+    const first = session('first');
+    const second = session('second');
+    mocks.sessions.mockResolvedValue({ items: [first, second] });
+    const view = renderCode({ sessions: [first, second], selectedId: first.id });
+    await waitFor(() => expect(mocks.sessions).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reference file' }));
+    expect(screen.getByLabelText('Attached context')).toHaveTextContent('notes.md');
+
+    view.rerender(<CodeView {...view.props} selectedId={second.id} />);
+
+    expect(screen.queryByLabelText('Attached context')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Reference file' }));
+    expect(screen.getByLabelText('Attached context')).toHaveTextContent('notes.md');
   });
 
   it('dismisses an approval immediately while the server confirms it', () => {

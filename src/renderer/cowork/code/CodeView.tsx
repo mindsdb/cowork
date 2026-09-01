@@ -97,7 +97,7 @@ export default function CodeView({
   const [recoveryPlan, setRecoveryPlan] = useState<RecoveryPlan | null>(null);
   const [recoveryComputerId, setRecoveryComputerId] = useState('');
   const [recoveryError, setRecoveryError] = useState('');
-  const [referenceRequest, setReferenceRequest] = useState<{ id: number; item: InputReference } | null>(null);
+  const [referenceRequest, setReferenceRequest] = useState<{ id: number; sessionId: string; item: InputReference } | null>(null);
   const catalog = useCodingCatalog();
   const detail = useCodingSession(newTask || projectsOpen || connectorsOpen || skillsOpen ? null : selectedId, active);
   const cachedSession = sessions.find((item) => item.id === selectedId) || null;
@@ -444,7 +444,9 @@ export default function CodeView({
                 true,
               )}
               history={promptHistory(detail.events)}
-              referenceRequest={referenceRequest}
+              // The effect that clears this runs after the next task's composer
+              // has already mounted and merged it.
+              referenceRequest={referenceRequest?.sessionId === session.id ? referenceRequest : null}
               onRemoveQueued={(instructionId) => runAction(
                 () => codingApi.removeQueued(session.id, instructionId),
                 true,
@@ -539,7 +541,7 @@ export default function CodeView({
             open={filesOpen}
             sessionId={session.id}
             onClose={() => setFilesOpen(false)}
-            onReference={(item) => setReferenceRequest((current) => ({ id: (current?.id || 0) + 1, item }))}
+            onReference={(item) => setReferenceRequest((current) => ({ id: (current?.id || 0) + 1, sessionId: session.id, item }))}
           />}
           <PreviewPanel
             open={previewOpen}
