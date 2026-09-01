@@ -1,4 +1,5 @@
 import { prepareForOrganizationReload } from './organizationTransition';
+import { decodeBase64UrlJson, recordOf } from './jwtClaims';
 
 export const EXPECTED_ORGANIZATION_HEADER = 'X-Cowork-Expected-Organization-Id';
 export const ORGANIZATION_RELOAD_HEADER = 'X-Cowork-Organization-Reload';
@@ -9,23 +10,6 @@ function nonEmptyString(value) {
   if (typeof value !== 'string') return null;
   const normalized = value.trim();
   return normalized || null;
-}
-
-function recordOf(value) {
-  return value !== null && typeof value === 'object' && !Array.isArray(value) ? value : null;
-}
-
-function decodeBase64UrlJson(value) {
-  try {
-    if (typeof value !== 'string' || !value || value.length % 4 === 1) return null;
-    const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
-    const padded = normalized.padEnd(normalized.length + ((4 - normalized.length % 4) % 4), '=');
-    const binary = globalThis.atob(padded);
-    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
-    return recordOf(JSON.parse(new TextDecoder().decode(bytes)));
-  } catch {
-    return null;
-  }
 }
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

@@ -1,12 +1,5 @@
 import { PERSONAL_ORG_LABEL, personalOrgName } from '../../../shared/minds-orgs';
-
-function decodeJwtPayload(token) {
-  try {
-    let payload = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
-    while (payload.length % 4) payload += '=';
-    return JSON.parse(atob(payload));
-  } catch { return null; }
-}
+import { decodeJwtPayload } from './jwtClaims';
 
 // Pure mapping from an access token to the account card's user object; null
 // means "show the sign-in card" — both for a missing token and for one that
