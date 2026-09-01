@@ -79,9 +79,13 @@ export function useNewTaskDraft({
     () => buildModelPickerOptions(withModelPickerFallback(models, defaultModel), modelMeta),
     [defaultModel, modelMeta, models],
   );
+  const enabledModelOptions = useMemo(
+    () => modelOptions.filter((option) => !option.disabled),
+    [modelOptions],
+  );
 
   useEffect(() => {
-    const ids = modelOptions.map((option) => option.value);
+    const ids = enabledModelOptions.map((option) => option.value);
     setModel((current) => ids.includes(current)
       ? current
       : (ids.includes(defaultModel)
@@ -89,7 +93,7 @@ export function useNewTaskDraft({
           : (ids.includes(DEFAULT_CODING_AGENT_MODEL)
               ? DEFAULT_CODING_AGENT_MODEL
               : (ids.includes('fable') ? 'fable' : ids[0] || ''))));
-  }, [defaultModel, modelOptions]);
+  }, [defaultModel, enabledModelOptions]);
 
   const refreshModels = useCallback((open: boolean) => {
     if (!open || !modelMeta.onRefresh) return;
@@ -139,14 +143,14 @@ export function useNewTaskDraft({
   };
 
   const directFolder = !!inspection?.is_directory && !inspection.is_git;
-  const selectedModelValid = modelOptions.some((option) => option.value === model);
+  const selectedModelValid = enabledModelOptions.some((option) => option.value === model);
   const selectedEngine = engines.find((engine) => engine.id === engineId);
   const selectedEngineAvailable = selectedEngine?.available === true;
   const taskReady = !!prompt.trim()
     && !!inspection?.is_directory
     && selectedEngineAvailable
     && selectedModelValid
-    && modelOptions.length > 0
+    && enabledModelOptions.length > 0
     && !busy
     && !checking
     && !engineLoading;
@@ -155,13 +159,13 @@ export function useNewTaskDraft({
     || engineLoading
     || !selectedEngineAvailable
     || !selectedModelValid
-    || modelOptions.length === 0;
+    || enabledModelOptions.length === 0;
 
   const readinessMessage = (() => {
     if (busy) return 'Starting task…';
     if (engineLoading) return 'Loading coding agent…';
     if (!selectedEngineAvailable) return selectedEngine?.reason || (catalogError ? '' : 'No coding agent is available.');
-    if (!selectedModelValid || modelOptions.length === 0) return '';
+    if (!selectedModelValid || enabledModelOptions.length === 0) return '';
     if (!prompt.trim() && !path) return 'Describe the task and choose a local folder.';
     if (!prompt.trim()) return 'Describe what you want changed.';
     if (!path) return 'Choose a local folder to continue.';

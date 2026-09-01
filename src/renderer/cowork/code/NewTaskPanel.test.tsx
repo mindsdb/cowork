@@ -77,7 +77,7 @@ describe('NewTaskPanel', () => {
     expect(screen.queryByText('Choose an available agent and model.')).not.toBeInTheDocument();
   });
 
-  it('uses the model selected in Coding agent settings for a new task', async () => {
+  it('falls back to an available model when the configured default needs credits', async () => {
     render(
       <NewTaskPanel
         busy={false}
@@ -90,7 +90,7 @@ describe('NewTaskPanel', () => {
       />,
     );
 
-    expect(await screen.findByRole('combobox', { name: 'Choose model' })).toHaveTextContent('Claude Sonnet 5');
+    expect(await screen.findByRole('combobox', { name: 'Choose model' })).toHaveTextContent('GPT-5.6 Sol');
   });
 
   it('uses the shared searchable catalog instead of a coding-only model list', async () => {
@@ -143,7 +143,7 @@ describe('NewTaskPanel', () => {
       prompt: 'Add a safe feature',
       allowDirect: true,
       engineId: 'codex',
-      model: 'fable',
+      model: 'gpt-5.6-sol',
       permissionMode: 'supervised',
       attachments: [],
     }));
@@ -157,7 +157,7 @@ describe('NewTaskPanel', () => {
         busy={false}
         error=""
         defaultEngineId="codex"
-        defaultModel="fable"
+        defaultModel="gpt-5.6-sol"
         models={models}
         modelMeta={modelMeta}
         onCreate={onCreate}
@@ -183,7 +183,7 @@ describe('NewTaskPanel', () => {
         busy={false}
         error=""
         defaultEngineId="codex"
-        defaultModel="fable"
+        defaultModel="gpt-5.6-sol"
         models={models}
         modelMeta={modelMeta}
         onCreate={vi.fn(async () => {})}
