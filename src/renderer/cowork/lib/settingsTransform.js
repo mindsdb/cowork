@@ -229,6 +229,12 @@ export function recommendedModelOptions(recommendedModels, providerType, modelLa
   return ids.map((id) => ({ id, label: displayModelLabel(id, modelLabels) }));
 }
 
+/** `live` in the order of `current`, with ids new to `live` appended. */
+function keepListOrder(current, live) {
+  const held = (current || []).filter((id) => live.includes(id));
+  return [...held, ...live.filter((id) => !held.includes(id))];
+}
+
 /**
  * Merge a `/settings/recommended-models` response into the settings we already
  * hold, returning just the keys it owns. Used by both the mount-time load and
@@ -255,13 +261,13 @@ export function recommendedModelOptions(recommendedModels, providerType, modelLa
  * @returns {object|null} the subset of settings keys to apply, null if nothing
  *   is usable (caller leaves what it has alone)
  */
-export function mergeRecommendedModels(prev, rec) {
+export function mergeRecommendedModels(prev, rec, { keepOrder = false } = {}) {
   if (!rec || typeof rec !== 'object') return null;
   const base = prev || {};
-  const overlayLists = (current, live) => {
+  const overlayLists = (current, live, reorder) => {
     const merged = { ...current };
     for (const [k, v] of Object.entries(live || {})) {
-      if (Array.isArray(v) && v.length) merged[k] = v;
+      if (Array.isArray(v) && v.length) merged[k] = reorder ? reorder(current?.[k], v) : v;
     }
     return merged;
   };
@@ -269,7 +275,12 @@ export function mergeRecommendedModels(prev, rec) {
     live && typeof live === 'object' && Object.keys(live).length ? live : (current || {})
   );
   return {
-    recommendedModels: overlayLists(base.recommendedModels, rec.recommendedModels),
+    // `keepOrder` is for the refresh a picker fires as it opens: the list is on
+    // screen by the time the response lands, so a row that moves is a row that
+    // jumps under the cursor (ENG-1737). Ids we already hold keep their place,
+    // new ids go on the end, ids the server dropped go. The mount-time load
+    // takes the server's order as-is; it is the order the next open starts from.
+    recommendedModels: overlayLists(base.recommendedModels, rec.recommendedModels, keepOrder ? keepListOrder : null),
     recommendedPair: overlayLists(base.recommendedPair, rec.recommendedPair),
     modelEfforts: overlayMap(base.modelEfforts, rec.modelEfforts),
     modelEnabled: overlayMap(base.modelEnabled, rec.modelEnabled),
