@@ -14,6 +14,9 @@ function parseServerPort(): number | null {
 contextBridge.exposeInMainWorld('antontron', {
   // Resolved loopback server port (ENG-439); null if main didn't pass one.
   serverPort: parseServerPort(),
+  // Optional reachable control-plane origin for connecting another physical
+  // computer. The renderer validates this before placing it in setup commands.
+  codeControlPlaneOrigin: process.env.COWORK_CODE_CONTROL_PLANE_URL?.trim() || null,
   // Coding Mode kill switch: the feature (its Settings section, the toggle,
   // the floating corner button) is parked behind this while unfinished.
   // Unset/anything other than 'true' defaults to off.

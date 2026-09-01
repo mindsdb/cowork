@@ -36,6 +36,7 @@ export function ConnectComputerModal({ open, onClose }: { open: boolean; onClose
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
   const controlPlaneOrigin = getCodeControlPlaneOrigin();
+  const controlPlaneIsLocal = isLoopbackOrigin(controlPlaneOrigin);
 
   const createCode = useCallback(async () => {
     setLoading(true);
@@ -57,8 +58,8 @@ export function ConnectComputerModal({ open, onClose }: { open: boolean; onClose
     setName('');
     setToken('');
     setError('');
-    void createCode();
-  }, [createCode, open]);
+    if (!controlPlaneIsLocal) void createCode();
+  }, [controlPlaneIsLocal, createCode, open]);
 
   useEffect(() => {
     if (!open || !token) return undefined;
@@ -70,10 +71,10 @@ export function ConnectComputerModal({ open, onClose }: { open: boolean; onClose
   }, [open, token]);
 
   const command = useMemo(() => {
-    if (!token) return '';
+    if (!token || controlPlaneIsLocal) return '';
     const computerName = name.trim() || defaultComputerName(platform);
     return `cowork-code-runtime --server "${controlPlaneOrigin}" --code "${token}" --name "${computerName}"`;
-  }, [controlPlaneOrigin, name, platform, token]);
+  }, [controlPlaneIsLocal, controlPlaneOrigin, name, platform, token]);
 
   const minutes = Math.floor(expiresIn / 60);
   const seconds = String(expiresIn % 60).padStart(2, '0');
@@ -117,33 +118,36 @@ export function ConnectComputerModal({ open, onClose }: { open: boolean; onClose
               <div className="text-sm font-semibold text-ink">Run on the other computer</div>
               {token && <span className="text-xs tabular-nums text-ink-4">Expires in {minutes}:{seconds}</span>}
             </div>
-            <p className="m-0 mb-3 text-sm leading-5 text-ink-3">Open its terminal and run this once. The runtime remembers the connection.</p>
-            <div className="flex items-start gap-2 rounded-lg border border-solid border-line bg-bg p-2.5">
-              <code className="min-w-0 flex-1 select-text break-all text-xs leading-5 text-ink-2">{loading ? 'Creating connection code…' : command}</code>
-              <Button
-                icon
-                size="sm"
-                variant="subtle"
-                aria-label="Copy connection command"
-                disabled={!command}
-                onClick={async () => {
-                  const ok = await copyText(command);
-                  setCopied(ok);
-                }}
-              >
-                <Copy size={13} strokeWidth={1.5} />
-              </Button>
-            </div>
-            {copied && <div className="mt-2 text-xs text-[var(--ok)]">Copied</div>}
-            {!loading && expiresIn === 0 && (
-              <Button size="sm" variant="subtle" className="mt-2" onClick={() => void createCode()}>
-                <RotateCw size={12} /> New code
-              </Button>
-            )}
-            {isLoopbackOrigin(controlPlaneOrigin) && (
-              <div className="mt-2.5 border-x-0 border-b-0 border-t border-solid border-line pt-2.5 text-xs leading-5 text-ink-3">
-              This development build uses a private local address. A physical second computer needs a reachable Code control-plane URL.
+            {controlPlaneIsLocal ? (
+              <div role="status" className="rounded-lg border border-solid border-line bg-bg p-3 text-sm leading-5 text-ink-3">
+                This desktop currently uses a private local Code service, so another computer cannot reach it. Connect through a hosted control plane or configure a reachable development control-plane URL first.
               </div>
+            ) : (
+              <>
+                <p className="m-0 mb-3 text-sm leading-5 text-ink-3">Open its terminal and run this once. The runtime remembers the connection.</p>
+                <div className="flex items-start gap-2 rounded-lg border border-solid border-line bg-bg p-2.5">
+                  <code className="min-w-0 flex-1 select-text break-all text-xs leading-5 text-ink-2">{loading ? 'Creating connection code…' : command}</code>
+                  <Button
+                    icon
+                    size="sm"
+                    variant="subtle"
+                    aria-label="Copy connection command"
+                    disabled={!command}
+                    onClick={async () => {
+                      const ok = await copyText(command);
+                      setCopied(ok);
+                    }}
+                  >
+                    <Copy size={13} strokeWidth={1.5} />
+                  </Button>
+                </div>
+                {copied && <div className="mt-2 text-xs text-[var(--ok)]">Copied</div>}
+                {!loading && expiresIn === 0 && (
+                  <Button size="sm" variant="subtle" className="mt-2" onClick={() => void createCode()}>
+                    <RotateCw size={12} /> New code
+                  </Button>
+                )}
+              </>
             )}
           </div>
           {error && <div role="alert" className="text-sm text-[var(--danger)]">{error}</div>}

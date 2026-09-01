@@ -158,8 +158,13 @@ export function useNewTaskDraft({
 
   useEffect(() => {
     const ids = enabledModelOptions.map((option) => option.value);
-    setModel((current) => preferredCodingModel(current, ids, selectedProject?.default_model || defaultModel));
-  }, [defaultModel, enabledModelOptions, selectedProject?.default_model]);
+    const configuredProjectModel = selectedProject?.default_model;
+    setModel((current) => (
+      configuredProjectModel && modelOptions.some((option) => option.value === configuredProjectModel)
+        ? configuredProjectModel
+        : preferredCodingModel(current, ids, defaultModel)
+    ));
+  }, [defaultModel, enabledModelOptions, modelOptions, selectedProject?.default_model]);
 
   const refreshModels = useCallback((open: boolean) => {
     if (!open || !modelMeta.onRefresh) return;
@@ -279,8 +284,8 @@ export function useNewTaskDraft({
       permissionMode,
       attachments,
       sourceContexts: selectedProject ? sourceContexts : [],
-      resourceIds: selectedProject && resourceIds.length < projectResources.length ? resourceIds : undefined,
-      computerId: selectedProject ? computerId : undefined,
+      ...(selectedProject && resourceIds.length < projectResources.length ? { resourceIds } : {}),
+      ...(selectedProject ? { computerId } : {}),
     };
     await onCreate(selectedProject
       ? { ...task, projectId: selectedProject.id }

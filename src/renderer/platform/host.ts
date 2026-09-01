@@ -80,6 +80,24 @@ export function getApiOrigin(): string {
 // dev-server address. Hosted Code uses the current HTTPS origin.
 export function getCodeControlPlaneOrigin(): string {
   if (isElectron) {
+    if (typeof bridge.codeControlPlaneOrigin === 'string') {
+      try {
+        const configured = new URL(bridge.codeControlPlaneOrigin);
+        if (
+          (configured.protocol === 'http:' || configured.protocol === 'https:')
+          && !configured.username
+          && !configured.password
+          && (configured.pathname === '/' || configured.pathname === '')
+          && !configured.search
+          && !configured.hash
+        ) {
+          return configured.origin;
+        }
+      } catch {
+        // Fall through to the private local sidecar. The connection UI will
+        // explain that loopback cannot be reached by another computer.
+      }
+    }
     const port = typeof bridge.serverPort === 'number' ? bridge.serverPort : ANTON_SERVER_PORT;
     return `http://127.0.0.1:${port}`;
   }
