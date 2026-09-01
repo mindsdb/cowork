@@ -10,6 +10,7 @@
 // child's pid is not ours to signal.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EventEmitter } from 'events';
+import { randomUUID } from 'crypto';
 import * as cp from 'child_process';
 import * as fs from 'fs';
 import * as http from 'http';
@@ -430,11 +431,13 @@ describe('dev-mode uv resolution', () => {
 
   it('passes the development OAuth clients to the local server only in dev mode', async () => {
     enterDevMode();
+    const githubClientSecret = randomUUID();
+    const linearClientSecret = randomUUID();
     vi.mocked(loadDevOAuthCredentials).mockReturnValue({
       GITHUB_CLIENT_ID: 'github-id',
-      GITHUB_CLIENT_SECRET: 'github-secret',
+      GITHUB_CLIENT_SECRET: githubClientSecret,
       LINEAR_CLIENT_ID: 'linear-id',
-      LINEAR_CLIENT_SECRET: 'linear-secret',
+      LINEAR_CLIENT_SECRET: linearClientSecret,
     });
     const child = makeChild();
     vi.mocked(cp.spawn).mockImplementation((() => {
@@ -448,9 +451,9 @@ describe('dev-mode uv resolution', () => {
     const options = vi.mocked(cp.spawn).mock.calls[0]?.[2] as cp.SpawnOptions;
     expect(options.env).toMatchObject({
       GITHUB_CLIENT_ID: 'github-id',
-      GITHUB_CLIENT_SECRET: 'github-secret',
+      GITHUB_CLIENT_SECRET: githubClientSecret,
       LINEAR_CLIENT_ID: 'linear-id',
-      LINEAR_CLIENT_SECRET: 'linear-secret',
+      LINEAR_CLIENT_SECRET: linearClientSecret,
     });
   });
 
