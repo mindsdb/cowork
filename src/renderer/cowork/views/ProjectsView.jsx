@@ -9,7 +9,7 @@
 // Design source: docs/design-handoff/Anton Projects (D1).
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { projectLabel } from '../lib/projectLabel';
+import { projectLabel, projectMatches } from '../lib/projectLabel';
 import Ico from '../components/Icons';
 import Composer from '../components/Composer';
 import { WorkingFolderBox, ContextBox, ScheduledBox } from '../components/rail';
@@ -1052,7 +1052,9 @@ export default function ProjectsView({
   const visibleProjects = useMemo(() => {
     const q = search.trim().toLowerCase();
     let list = [...projects];
-    if (q) list = list.filter((p) => (p.name || '').toLowerCase().includes(q));
+    // Label OR slug: searching only the slug loses the project the user
+    // can see in the list (ENG-1676).
+    if (q) list = list.filter((p) => projectMatches(p, q));
 
     const ts = (p) => timestampOfProject(p, tasks);
     const taskCountOf = (p) => (tasks || []).filter((t) =>
@@ -1061,7 +1063,9 @@ export default function ProjectsView({
 
     list.sort((a, b) => {
       switch (sort) {
-        case 'name':         return a.name.localeCompare(b.name);
+        // By the label, not the slug: an A-Z sort keyed on `untitled-project-2`
+        // renders as no order at all for a non-Latin project (ENG-1676).
+        case 'name':         return (projectLabel(a) || '').localeCompare(projectLabel(b) || '');
         case 'most-active':  return taskCountOf(b) - taskCountOf(a);
         case 'least-active': return taskCountOf(a) - taskCountOf(b);
         case 'recent':

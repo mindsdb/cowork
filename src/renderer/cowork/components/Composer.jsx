@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { projectLabel, projectMatches, projectNamed } from '../lib/projectLabel';
 import { createPortal } from 'react-dom';
 import Ico from './Icons';
 import { Tooltip } from './ui';
@@ -780,14 +781,14 @@ export default function Composer({
   // menu render can call into them without prop-drilling.
   const _projectSearchTrimmed = projectSearch.trim();
   const _filteredProjects = _projectSearchTrimmed
-    ? projects.filter((p) => p.name.toLowerCase().includes(_projectSearchTrimmed.toLowerCase()))
+    ? projects.filter((p) => projectMatches(p, _projectSearchTrimmed))
     : projects;
   // Case-insensitive exact match short-circuits "create" so Enter on
   // a search term that already names a project selects it rather than
   // POSTing a duplicate (the server would reject anyway, but failing
   // fast on the client keeps the UX snappy).
   const _projectExactMatch = _projectSearchTrimmed
-    ? projects.find((p) => p.name.toLowerCase() === _projectSearchTrimmed.toLowerCase())
+    ? projects.find((p) => projectNamed(p, _projectSearchTrimmed))
     : null;
   const _canCreateFromSearch = !!onCreateProject && !!_projectSearchTrimmed && !_projectExactMatch;
 
@@ -1459,7 +1460,7 @@ export default function Composer({
             <>
               <span className="meta-pill" title="Project is fixed for this task">
                 {Ico.folder(14)}
-                <span>{project ? project.name : 'No project'}</span>
+                <span>{project ? projectLabel(project) : 'No project'}</span>
               </span>
             </>
           ) : (
@@ -1482,7 +1483,7 @@ export default function Composer({
                     onClick={() => setOpenMenu(openMenu === 'project' ? null : 'project')}
                   >
                     {Ico.folder(14)}
-                    <span>{project ? project.name : 'Work in a project'}</span>
+                    <span>{project ? projectLabel(project) : 'Work in a project'}</span>
                     <span className="inline-flex text-ink-4">{Ico.chevDown(13)}</span>
                   </button>
                 </Tooltip>
@@ -1558,7 +1559,7 @@ export default function Composer({
                           onClick={() => { onProjectChange(p); setOpenMenu(null); }}
                         >
                           <span className="inline-flex text-ink-2">{Ico.folder(14)}</span>
-                          <span className="flex-1 truncate">{p.name}</span>
+                          <span className="flex-1 truncate">{projectLabel(p)}</span>
                           {project?.name === p.name && <span className="text-[var(--primary-700)]">{Ico.check(14)}</span>}
                         </button>
                       ))}
