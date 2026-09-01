@@ -39,10 +39,16 @@ describe.each(SURFACES)('%s', (_name, rel) => {
      * long label and, where the token claim is also in play, disagrees with
      * the other reader for as long as the listing takes to resolve.
      *
-     * Matches the property access on an organization only. `user.name` and a
-     * React component's own `Component.displayName` are unrelated.
+     * Any `.displayName` property access at all, not a list of variable names
+     * a surface might happen to use. The first version keyed on `org|activeOrg|
+     * mintedOrg|organization` and missed `orgs.map((o) => o.displayName)`,
+     * `selected.displayName` and destructuring — a guard whose job is catching
+     * the NEXT surface cannot depend on that surface naming its variable `org`.
+     * Verified safe: zero `.displayName` accesses remain in these three files,
+     * and `UserMenu`'s `const displayName = user.name` is a variable rather
+     * than a property read, so it does not match.
      */
-    const direct = [...src.matchAll(/\b(?:org|activeOrg|mintedOrg|organization)\??\.displayName\b/g)];
+    const direct = [...src.matchAll(/\.displayName\b/g)];
     expect(direct.map((m) => m[0])).toEqual([]);
   });
 });

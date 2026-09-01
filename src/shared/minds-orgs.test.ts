@@ -164,6 +164,33 @@ describe('organizationLabel', () => {
       .toBe(PERSONAL_ORG_LABEL);
   });
 
+  /*
+   * Renaming an organization is a shipped feature (auth's
+   * organization_admin.rename, no personal-org guard) and auth's own sync
+   * deliberately leaves a customized name alone. Substituting unconditionally
+   * would discard it at the last hop, which is the same class of bug as
+   * ENG-2109 with the sign flipped.
+   */
+  it("keeps a personal organization's name when the user renamed it", () => {
+    expect(organizationLabel({ ...PERSONAL, displayName: 'Acme Consulting' }))
+      .toBe('Acme Consulting');
+  });
+
+  it.each([
+    ['the full-email rule (current)', "someone@example.com's organization"],
+    ['the local-part rule (legacy)', "someone's organization"],
+    ['the first-name rule (legacy)', "Alejandro's organization"],
+    ["auth's own fallback", 'Personal'],
+    ['a blank display name', ''],
+    ['the raw slug', personalOrgName(USER)],
+  ])('substitutes over %s', (_label, displayName) => {
+    expect(organizationLabel({ ...PERSONAL, displayName })).toBe(PERSONAL_ORG_LABEL);
+  });
+
+  it('substitutes over a generated name with stray whitespace', () => {
+    expect(organizationLabel({ ...PERSONAL, displayName: '   ' })).toBe(PERSONAL_ORG_LABEL);
+  });
+
   it('keeps a company organization on its Keycloak display name', () => {
     expect(organizationLabel({ ...ACME, displayName: 'Acme Corporation' }))
       .toBe('Acme Corporation');

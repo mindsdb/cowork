@@ -73,8 +73,39 @@ export const PERSONAL_ORG_LABEL = 'Personal';
  */
 export function organizationLabel(org: MindsOrg | null | undefined): string | null {
   if (!org) return null;
-  if (org.isPersonal) return PERSONAL_ORG_LABEL;
+  if (org.isPersonal && isGeneratedPersonalOrgName(org)) return PERSONAL_ORG_LABEL;
   return org.displayName || org.name || null;
+}
+
+/**
+ * Whether a personal organization is still wearing the name the system gave it.
+ *
+ * Renaming an organization is a real, audited feature - `rename()` in auth's
+ * `accounts/services/organization_admin.py`, which has no personal-org guard -
+ * and auth deliberately preserves a name the user chose: `personal_org_sync`
+ * skips any display name that `is_default_personal_org_display_name`
+ * (`auth/keycloak/helpers/orgs.py`) does not recognise as system-generated.
+ * Substituting `PERSONAL_ORG_LABEL` unconditionally would throw that choice
+ * away at the last hop, so this mirrors the same test.
+ *
+ * The generated forms are blank, the raw `personal_<uuid>` slug, auth's own
+ * `DEFAULT_PERSONAL_ORG_DISPLAY_NAME` (also the string "Personal"), and every
+ * version of the `<owner>'s organization` rule - the owner has been the full
+ * email, the email local part and the first name across builds, so the suffix
+ * is what identifies the shape.
+ *
+ * Known imprecision, accepted: auth compares against the exact strings it would
+ * generate for *this* user, which needs their email and first name. This has
+ * only the organization, so a user who renames theirs to something ending in
+ * "'s organization" is read as generated and shown "Personal". Threading
+ * identity through four presentation call sites costs more than that case does.
+ */
+function isGeneratedPersonalOrgName(org: MindsOrg): boolean {
+  const current = (org.displayName || '').trim();
+  if (!current) return true;
+  if (current === org.name) return true;
+  if (current === PERSONAL_ORG_LABEL) return true;
+  return current.endsWith("'s organization");
 }
 
 /**
