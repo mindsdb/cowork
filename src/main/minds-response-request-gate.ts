@@ -5,6 +5,13 @@ interface LoopbackRequestDetails {
   url: string;
 }
 
+/** Read the server's exact health-contract field without coercing unknown data. */
+export function mindsRuntimeCredentialRequirementFromHealth(data: unknown): boolean | null {
+  if (!data || typeof data !== 'object') return null;
+  const required = (data as Record<string, unknown>).minds_runtime_credential_required;
+  return typeof required === 'boolean' ? required : null;
+}
+
 /** Only a new turn needs the Minds credential before the request is sent. */
 export function isMindsResponseCreationRequest(
   details: LoopbackRequestDetails,
