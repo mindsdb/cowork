@@ -128,6 +128,20 @@ const ORG_PREFERENCE_KEY = 'mindsOrganization';
 interface OrgPreference {
   sub: string;
   orgId: string;
+  /** Absent on entries written before ENG-2199 — see `readOrgPreference`. */
+  chosenByUser?: boolean;
+}
+
+/** The organization this install last settled on, and who decided it. */
+export interface StoredOrgPick {
+  orgId: string;
+  /**
+   * A person named this organization, rather than something landing on it for
+   * them. It is the difference between a preference that may be automatically
+   * revised and one that may not, so it has to be recorded rather than
+   * inferred from the id.
+   */
+  chosenByUser: boolean;
 }
 
 function preferencesOf(state: unknown): Record<string, unknown> {
@@ -137,22 +151,35 @@ function preferencesOf(state: unknown): Record<string, unknown> {
     : {};
 }
 
-/** The organization this account last picked by hand, or null. */
-export function readOrgPreference(state: unknown, sub: string): string | null {
+/**
+ * The organization this account last settled on, or null.
+ *
+ * An entry with no `chosenByUser` reads as **chosen**. Before ENG-2199 this key
+ * was only ever written on the two paths a person drives — the onboarding
+ * picker and the account-menu switch — so a legacy entry is by construction
+ * somebody's decision, and defaulting it to `false` would hand every existing
+ * install's deliberate choice back to the automatic selection.
+ */
+export function readOrgPreference(state: unknown, sub: string): StoredOrgPick | null {
   const stored = preferencesOf(state)[ORG_PREFERENCE_KEY] as OrgPreference | undefined;
   if (!stored || typeof stored !== 'object') return null;
   if (stored.sub !== sub || !stored.orgId) return null;
-  return stored.orgId;
+  return { orgId: stored.orgId, chosenByUser: stored.chosenByUser !== false };
 }
 
 /** `state` with this account's pick recorded, leaving every other key alone. */
-export function writeOrgPreference(state: unknown, sub: string, orgId: string): Record<string, unknown> {
+export function writeOrgPreference(
+  state: unknown,
+  sub: string,
+  orgId: string,
+  chosenByUser: boolean,
+): Record<string, unknown> {
   const base = (state && typeof state === 'object' ? state : {}) as Record<string, unknown>;
   return {
     ...base,
     preferences: {
       ...preferencesOf(state),
-      [ORG_PREFERENCE_KEY]: { sub, orgId },
+      [ORG_PREFERENCE_KEY]: { sub, orgId, chosenByUser },
     },
   };
 }

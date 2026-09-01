@@ -432,7 +432,9 @@ describe('OnboardingScreen — choosing an organization at sign-in', () => {
     hostMock.mindshubListOrgs = vi.fn(async () => ({ orgs: [PERSONAL], activeOrgId: PERSONAL.id }));
     await signIn();
     await waitFor(() => expect(hostMock.mindshubFinalize).toHaveBeenCalledTimes(1));
-    expect(hostMock.mindshubFinalize).toHaveBeenCalledWith(undefined);
+    // No organization and no claim that anybody chose one: main stays free to
+    // rank, and to move the session to one that can pay (ENG-2199).
+    expect(hostMock.mindshubFinalize).toHaveBeenCalledWith(undefined, undefined);
     expect(screen.queryByText('Choose an organization')).toBeNull();
   });
 
@@ -465,7 +467,20 @@ describe('OnboardingScreen — choosing an organization at sign-in', () => {
     await screen.findByText('Choose an organization');
     fireEvent.click(screen.getByRole('radio', { name: /Beta Labs/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
-    await waitFor(() => expect(hostMock.mindshubFinalize).toHaveBeenCalledWith(BETA.id));
+    // The second argument is the whole point: it is what tells main a person
+    // answered, and main refuses to move the session off an organization
+    // carrying it. Sending the id alone is what shipped the bug (ENG-2199).
+    await waitFor(() => expect(hostMock.mindshubFinalize).toHaveBeenCalledWith(BETA.id, true));
+  });
+
+  it('does not claim a person chose the organization when nobody was asked', async () => {
+    // A picker that never rendered cannot have been answered. Marking this call
+    // as chosen would pin every single-organization install to whatever the
+    // ranking happened to reach, and silence the fallback for all of them.
+    hostMock.mindshubListOrgs = vi.fn(async () => ({ orgs: [ACME, PERSONAL], activeOrgId: PERSONAL.id }));
+    await signIn();
+    await waitFor(() => expect(hostMock.mindshubFinalize).toHaveBeenCalledTimes(1));
+    expect(hostMock.mindshubFinalize.mock.calls[0][1]).toBeFalsy();
   });
 
   it('names the organization the key actually landed in', async () => {

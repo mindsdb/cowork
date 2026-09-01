@@ -62,7 +62,8 @@ contextBridge.exposeInMainWorld('antontron', {
   mindshubLogin: () => ipcRenderer.invoke(IPC.MINDSHUB_LOGIN),
   mindshubSignup: () => ipcRenderer.invoke(IPC.MINDSHUB_SIGNUP),
   mindshubRefresh: () => ipcRenderer.invoke(IPC.MINDSHUB_REFRESH),
-  mindshubFinalize: (organizationId?: string) => ipcRenderer.invoke(IPC.MINDSHUB_FINALIZE, organizationId),
+  mindshubFinalize: (organizationId?: string, chosenByUser?: boolean) =>
+    ipcRenderer.invoke(IPC.MINDSHUB_FINALIZE, organizationId, chosenByUser),
   mindshubGetCachedToken: () => ipcRenderer.invoke(IPC.MINDSHUB_GET_CACHED_TOKEN),
   mindshubSetUserKey: (key: string) => ipcRenderer.invoke(IPC.MINDSHUB_SET_USER_KEY, key),
   mindshubListOrgs: () => ipcRenderer.invoke(IPC.MINDSHUB_LIST_ORGS),

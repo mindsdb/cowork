@@ -51,7 +51,7 @@ vi.mock('./server-auth', () => ({
 
 import * as fs from 'fs';
 import { getAccessToken, getRefreshToken, isAccessTokenExpired, saveTokens } from './token-store';
-import { ensureActiveOrg, listMindsOrgs, switchMindsOrg } from './minds-auth';
+import { ensureActiveOrg, listMindsOrgs, selectEntitledOrg, switchMindsOrg } from './minds-auth';
 
 
 const b64url = (obj: unknown) => Buffer.from(JSON.stringify(obj)).toString('base64url');
@@ -69,6 +69,14 @@ const tokenFor = (org: { id: string; name: string }) =>
 const ENTITLED = {
   permissions: { agents: { use: true }, api_keys: { create: true } },
   allocations: { deploy_agents: 1 },
+};
+// What an organization with no credits answers: a well-formed 200 that simply
+// cannot run turns. Distinct from a transport or auth failure, which
+// `selectEntitledOrg` treats as a hard stop rather than a reason to look
+// elsewhere.
+const UNENTITLED = {
+  permissions: { agents: { use: false }, api_keys: { create: false } },
+  allocations: { deploy_agents: 0 },
 };
 // Entitled to use agents, but not to mint a key — what a member of a shared
 // organization looks like, and what trips the personal-org fallback.
@@ -193,12 +201,14 @@ describe('choosing the organization the presented token names', () => {
     expect(result.activeOrgId).toBe(ACME.id);
   });
 
-  it('honours a pick the person made, over the ranking', async () => {
+  it('honours a stored pick over the ranking', async () => {
     // Someone who deliberately moved to Personal must not be dragged back to
-    // the company organization on the next relaunch.
+    // the company organization on the next relaunch. Whether the ENTITLEMENT
+    // hunt can drag them back is a separate question, decided one layer up in
+    // `selectEntitledOrg` — see the block at the bottom of this file (ENG-2199).
     fs.writeFileSync(
       `${TEST_HOME}/state.json`,
-      JSON.stringify({ preferences: { mindsOrganization: { sub: USER, orgId: PERSONAL.id } } }),
+      JSON.stringify({ preferences: { mindsOrganization: { sub: USER, orgId: PERSONAL.id, chosenByUser: true } } }),
     );
     const calls = installRoutedFetch(keycloakRoutes([PERSONAL, ACME], () => PERSONAL));
 
@@ -208,7 +218,10 @@ describe('choosing the organization the presented token names', () => {
     expect(result.activeOrgId).toBe(PERSONAL.id);
   });
 
-  it('records an organization named by onboarding as this install\'s pick', async () => {
+  it('persists nothing — making an organization active is not deciding to keep it', async () => {
+    // Moved to `selectEntitledOrg`, which is the only layer that knows where the
+    // session finally lands. Writing here is what let `state.json` and the live
+    // session name different organizations (ENG-2199).
     let landed = PERSONAL;
     installRoutedFetch(
       keycloakRoutes([PERSONAL, ACME, BETA], () => landed).map((route) =>
@@ -219,8 +232,7 @@ describe('choosing the organization the presented token names', () => {
 
     await ensureActiveOrg(tokenFor(PERSONAL), { preferOrgId: BETA.id });
 
-    const stored = JSON.parse(fs.readFileSync(`${TEST_HOME}/state.json`, 'utf-8'));
-    expect(stored.preferences.mindsOrganization).toEqual({ sub: USER, orgId: BETA.id });
+    expect(fs.existsSync(`${TEST_HOME}/state.json`)).toBe(false);
   });
 
   it('ignores an organization named by onboarding that the person does not belong to', async () => {
@@ -231,7 +243,6 @@ describe('choosing the organization the presented token names', () => {
     const result = await ensureActiveOrg(tokenFor(PERSONAL), { preferOrgId: 'org-not-mine' });
 
     expect(result.activeOrgId).toBe(PERSONAL.id);
-    expect(fs.existsSync(`${TEST_HOME}/state.json`)).toBe(false);
   });
 
   it('keeps a usable token when Keycloak refuses every switch', async () => {
@@ -320,7 +331,9 @@ describe('switchMindsOrg', () => {
     expect(calls.filter((c) => c.url.includes('/api-keys/'))).toHaveLength(0);
     // And the pick is remembered, so the ranking does not undo it next launch.
     const stored = JSON.parse(fs.readFileSync(`${TEST_HOME}/state.json`, 'utf-8'));
-    expect(stored.preferences.mindsOrganization).toEqual({ sub: USER, orgId: ACME.id });
+    // An account-menu switch is a person acting, so it is recorded as chosen —
+    // which is what stops the entitlement hunt revising it later (ENG-2199).
+    expect(stored.preferences.mindsOrganization).toEqual({ sub: USER, orgId: ACME.id, chosenByUser: true });
   });
 
   it('refuses an organization the person does not belong to', async () => {
@@ -408,5 +421,173 @@ describe('switchMindsOrg', () => {
     expect(done.ok).toBe(true);
     expect(refused.ok).toBe(false);
     expect(refused.error).toMatch(/already running/);
+  });
+});
+
+// ── selectEntitledOrg ──────────────────────────────────────────────
+//
+// The layer the onboarding picker actually reaches, and the one that was
+// untested when it shipped: every test above drives `ensureActiveOrg`, which
+// honours a pick, while the override that discards it lives here. That is why
+// `honours a pick the person made, over the ranking` passed for the whole life
+// of the bug (ENG-2199).
+describe('selectEntitledOrg — who decides which organization pays', () => {
+  beforeEach(() => {
+    fs.mkdirSync(TEST_HOME, { recursive: true });
+    (getRefreshToken as Mock).mockReturnValue('rt-1');
+    (isAccessTokenExpired as Mock).mockReturnValue(false);
+  });
+
+  afterEach(() => {
+    fs.rmSync(TEST_HOME, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  /**
+   * Keycloak + auth-service, with the entitlement answered PER ORGANIZATION.
+   *
+   * The `sidecarRoutes` stub above hardcodes an entitled answer, so nothing in
+   * this file could reach the unentitled branch — which is the entire defect.
+   * `entitled` names the organizations that can run turns; every other one
+   * answers a well-formed 200 saying it cannot.
+   */
+  function entitlementRoutes(
+    memberships: Array<{ id: string; name: string; displayName?: string }>,
+    startIn: { id: string; name: string },
+    entitled: string[],
+  ) {
+    let active = startIn;
+    const calls = installRoutedFetch([
+      { method: 'GET', match: '/orgs', reply: () => ({ status: 200, body: memberships }) },
+      {
+        method: 'PUT',
+        match: 'users/switch-organization',
+        reply: (call) => {
+          const id = JSON.parse(call.body!).id;
+          const found = memberships.find((o) => o.id === id);
+          if (found) active = found;
+          return { status: found ? 204 : 403, body: {} };
+        },
+      },
+      {
+        method: 'POST',
+        match: 'openid-connect/token',
+        reply: () => ({ status: 200, body: { access_token: tokenFor(active), expires_in: 300, refresh_token: 'rt-2' } }),
+      },
+      {
+        method: 'GET',
+        match: '/authenticate/',
+        reply: (call) => ({
+          status: 200,
+          body: { entitlements: entitled.includes(orgOfToken(call.auth!)) ? ENTITLED : UNENTITLED },
+        }),
+      },
+    ]);
+    // main reads the settled token back out of the store, so the store has to
+    // follow the switches the same way the real token-store does.
+    (getAccessToken as Mock).mockImplementation(() => tokenFor(active));
+    return {
+      calls,
+      switches: () => calls.filter((c) => c.url.includes('switch-organization')).map((c) => JSON.parse(c.body!).id),
+      activeOrg: () => active,
+    };
+  }
+
+  const storedPick = () =>
+    JSON.parse(fs.readFileSync(`${TEST_HOME}/state.json`, 'utf-8')).preferences.mindsOrganization;
+
+  it('honours an organization the person picked, even though it cannot pay', async () => {
+    // The reported bug. Picking Personal put the user in Robot.com, because an
+    // organization that cannot run turns was treated as an answer to revise
+    // rather than as the answer. A wallet-empty organization is not a sign-in
+    // blocker: the gateway raises the top-up card on the first turn.
+    const net = entitlementRoutes([PERSONAL, ACME, BETA], PERSONAL, [ACME, BETA].map((o) => o.id));
+
+    const result = await selectEntitledOrg(tokenFor(PERSONAL), {
+      preferOrgId: PERSONAL.id,
+      chosenByUser: true,
+    });
+
+    expect(result.organization?.id).toBe(PERSONAL.id);
+    expect(net.switches()).toEqual([]);
+    expect(storedPick()).toEqual({ sub: USER, orgId: PERSONAL.id, chosenByUser: true });
+  });
+
+  it('still moves an organization nobody chose to one that can pay', async () => {
+    // The behaviour #748 was written for, and the reason the hunt is not simply
+    // deleted: a user who never answered the question should not meet a paywall
+    // when another of their organizations can pay.
+    const net = entitlementRoutes([PERSONAL, ACME], PERSONAL, [ACME.id]);
+
+    const result = await selectEntitledOrg(tokenFor(PERSONAL));
+
+    expect(result.organization?.id).toBe(ACME.id);
+    // Recorded as NOT chosen, so a later run may still revise it. A landing that
+    // dressed itself up as somebody's decision could never be corrected.
+    expect(storedPick()).toEqual({ sub: USER, orgId: ACME.id, chosenByUser: false });
+    expect(net.activeOrg().id).toBe(ACME.id);
+  });
+
+  it('puts the session back where it started when nothing can pay', async () => {
+    // Without this the user is left in whichever organization the loop happened
+    // to try last — an artifact of Keycloak's list order, not a choice. Note the
+    // starting point is where the RANKING left the session (ACME, company-first),
+    // not the personal organization the token arrived naming: ranking is not the
+    // hunt, and only the hunt has to be undone.
+    const net = entitlementRoutes([PERSONAL, ACME], PERSONAL, []);
+
+    const result = await selectEntitledOrg(tokenFor(PERSONAL));
+
+    expect(net.switches().at(-1)).toBe(ACME.id);
+    expect(net.activeOrg().id).toBe(ACME.id);
+    expect(result.organization?.id).toBe(ACME.id);
+    expect(storedPick()).toEqual({ sub: USER, orgId: ACME.id, chosenByUser: false });
+  });
+
+  it('does not re-open a choice the person made on an earlier run', async () => {
+    // The Reconnect card calls finalize with no organization id, so without the
+    // stored provenance the hunt would move a deliberate pick the moment a
+    // session needed re-establishing — the same bug on a delay.
+    fs.writeFileSync(
+      `${TEST_HOME}/state.json`,
+      JSON.stringify({ preferences: { mindsOrganization: { sub: USER, orgId: PERSONAL.id, chosenByUser: true } } }),
+    );
+    const net = entitlementRoutes([PERSONAL, ACME], PERSONAL, [ACME.id]);
+
+    const result = await selectEntitledOrg(tokenFor(PERSONAL));
+
+    expect(net.switches()).toEqual([]);
+    expect(result.organization?.id).toBe(PERSONAL.id);
+    expect(storedPick()).toEqual({ sub: USER, orgId: PERSONAL.id, chosenByUser: true });
+  });
+
+  it('treats an organization it landed on itself as still open to revision', async () => {
+    // The other half of the provenance rule: "stored" must not mean "sacred", or
+    // one automatic landing would pin the install to it permanently.
+    fs.writeFileSync(
+      `${TEST_HOME}/state.json`,
+      JSON.stringify({ preferences: { mindsOrganization: { sub: USER, orgId: ACME.id, chosenByUser: false } } }),
+    );
+    entitlementRoutes([PERSONAL, ACME, BETA], ACME, [BETA.id]);
+
+    const result = await selectEntitledOrg(tokenFor(ACME));
+
+    expect(result.organization?.id).toBe(BETA.id);
+    expect(storedPick()).toEqual({ sub: USER, orgId: BETA.id, chosenByUser: false });
+  });
+
+  it('never records an organization the person does not belong to', async () => {
+    // The renderer supplies the id, so it is the untrusted end of this call. It
+    // reaches a membership check before anything else, and an id that fails it
+    // must not reach the state file either.
+    entitlementRoutes([PERSONAL], PERSONAL, []);
+
+    const result = await selectEntitledOrg(tokenFor(PERSONAL), {
+      preferOrgId: 'org-not-mine',
+      chosenByUser: true,
+    });
+
+    expect(result.organization?.id).toBe(PERSONAL.id);
+    expect(storedPick().orgId).toBe(PERSONAL.id);
   });
 });

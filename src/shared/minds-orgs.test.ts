@@ -111,20 +111,36 @@ describe('needsOrgPick', () => {
 
 describe('the stored pick', () => {
   it('round-trips through the state file shape', () => {
-    const state = writeOrgPreference(null, USER, 'org-acme');
-    expect(readOrgPreference(state, USER)).toBe('org-acme');
+    const state = writeOrgPreference(null, USER, 'org-acme', true);
+    expect(readOrgPreference(state, USER)).toEqual({ orgId: 'org-acme', chosenByUser: true });
+  });
+
+  it('remembers who decided, not just which organization', () => {
+    // The whole point of the flag: an organization something landed on may be
+    // revised automatically later, one a person named may not (ENG-2199).
+    const landed = writeOrgPreference(null, USER, 'org-acme', false);
+    expect(readOrgPreference(landed, USER)).toEqual({ orgId: 'org-acme', chosenByUser: false });
+  });
+
+  it('reads a pre-ENG-2199 entry as chosen, because that is what it was', () => {
+    // Before the flag existed this key was written on exactly two paths, the
+    // onboarding picker and the account-menu switch — both a person acting. A
+    // legacy entry defaulting to `false` would hand every existing install's
+    // deliberate choice back to the automatic selection on their next sign-in.
+    const legacy = { preferences: { mindsOrganization: { sub: USER, orgId: 'org-acme' } } };
+    expect(readOrgPreference(legacy, USER)).toEqual({ orgId: 'org-acme', chosenByUser: true });
   });
 
   it('belongs to one account, so the next person to sign in does not inherit it', () => {
     // One machine, two accounts: inheriting would move where the second
     // person's keys are minted with nothing on screen saying so.
-    const state = writeOrgPreference(null, USER, 'org-acme');
+    const state = writeOrgPreference(null, USER, 'org-acme', true);
     expect(readOrgPreference(state, 'someone-else')).toBeNull();
   });
 
   it('leaves every other preference alone', () => {
     const existing = { preferences: { providers: [{ type: 'minds-cloud' }] }, other: 1 };
-    const next = writeOrgPreference(existing, USER, 'org-acme') as any;
+    const next = writeOrgPreference(existing, USER, 'org-acme', true) as any;
     expect(next.preferences.providers).toEqual([{ type: 'minds-cloud' }]);
     expect(next.other).toBe(1);
   });

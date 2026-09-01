@@ -590,11 +590,15 @@ export default function OnboardingScreen({
     await mintMindsKey();
   };
 
-  const mintMindsKey = async (organizationId?: string) => {
+  // `pick` is present only when a person answered the organization question on
+  // the picker below. Without it the organization is whatever the ranking or the
+  // stored preference resolves to, and main stays free to move the session to
+  // one that can pay; with it, their answer is final (ENG-2199).
+  const mintMindsKey = async (pick?: { organizationId: string; chosenByUser: boolean }) => {
     setPhase('validating');
     let finalizeResult: { ok: boolean; reason?: string; upgradeRequired?: boolean; organization?: MindsOrg };
     try {
-      finalizeResult = await host.mindshubFinalize(organizationId);
+      finalizeResult = await host.mindshubFinalize(pick?.organizationId, pick?.chosenByUser);
     } catch (e: any) {
       setPhase('error');
       setErrorMsg(`MindsHub setup failed: ${e?.message || 'Unexpected error. Please try again.'}`);
@@ -757,7 +761,7 @@ export default function OnboardingScreen({
             type="button"
             className="arc-btn"
             disabled={!pickedOrgId}
-            onClick={() => mintMindsKey(pickedOrgId)}
+            onClick={() => mintMindsKey({ organizationId: pickedOrgId, chosenByUser: true })}
           >
             Continue
           </button>

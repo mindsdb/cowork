@@ -15,6 +15,7 @@ import {
   personalOrgName,
   rankMindsOrgs,
   readOrgPreference,
+  type StoredOrgPick,
   toMindsOrg,
   writeOrgPreference,
 } from '../shared/minds-orgs';
@@ -406,14 +407,14 @@ function readCoworkState(): unknown {
   }
 }
 
-function readStoredOrgPreference(userId: string): string | null {
+function readStoredOrgPreference(userId: string): StoredOrgPick | null {
   return readOrgPreference(readCoworkState(), userId);
 }
 
-function storeOrgPreference(userId: string, orgId: string): void {
+function storeOrgPreference(userId: string, orgId: string, chosenByUser: boolean): void {
   try {
     fs.mkdirSync(coworkHome(), { recursive: true });
-    const next = writeOrgPreference(readCoworkState(), userId, orgId);
+    const next = writeOrgPreference(readCoworkState(), userId, orgId, chosenByUser);
     fs.writeFileSync(coworkStatePath(), JSON.stringify(next, null, 2) + '\n', 'utf-8');
   } catch (error) {
     console.warn('[minds-auth] failed to store the organization pick', error);
@@ -457,7 +458,7 @@ export interface EnsureActiveOrgResult {
 // makes no switch and no refresh — the same number of round-trips as before.
 export async function ensureActiveOrg(
   accessToken: string,
-  options: { preferOrgId?: string; pinOrgId?: string } = {},
+  options: { preferOrgId?: string } = {},
 ): Promise<EnsureActiveOrgResult> {
   const payload = decodeJwtPayload(accessToken);
   const hasClaim = hasActiveOrgClaim(payload);
@@ -484,20 +485,19 @@ export async function ensureActiveOrg(
 
   const orgs = rankMindsOrgs(candidates.map((org) => toMindsOrg(org, userId)));
   const activeOrgId = getActiveOrgFromPayload(payload)?.id ?? null;
-  // A caller can name the organization two ways, and they differ only in what
-  // they leave behind. `preferOrgId` is a person picking one during onboarding,
-  // so it outranks the stored pick and becomes the stored pick. `pinOrgId` is a
-  // switch already in progress: it decides this mint and nothing else, because
-  // a pick is only worth remembering once the new credential has been
-  // committed, and storing it here would survive a rollback and move the next
-  // launch somewhere nobody chose. Either way the id goes through
-  // `chooseMindsOrg` rather than straight to a switch, so it is matched against
-  // a real membership first.
-  const requested = options.pinOrgId ?? options.preferOrgId;
-  const chosen = chooseMindsOrg(orgs, requested ?? readStoredOrgPreference(userId));
-  if (options.preferOrgId && chosen?.id === options.preferOrgId) {
-    storeOrgPreference(userId, chosen.id);
-  }
+  // `preferOrgId` outranks the stored pick: it is somebody naming an
+  // organization now, rather than the one this install last landed on. It goes
+  // through `chooseMindsOrg` rather than straight to a switch, so it is matched
+  // against a real membership first.
+  //
+  // Nothing is persisted here, deliberately. Making an organization active and
+  // remembering it are two decisions, and this function only makes the first:
+  // its caller can still move the session afterwards, and a preference written
+  // before that settled is what left `state.json` and the live session naming
+  // different organizations (ENG-2199). `selectEntitledOrg` records whichever
+  // organization the call actually ends on — the same rule `doSwitchMindsOrg`
+  // already follows, for the same reason.
+  const chosen = chooseMindsOrg(orgs, options.preferOrgId ?? readStoredOrgPreference(userId)?.orgId ?? null);
 
   if (chosen && hasClaim && chosen.id === activeOrgId) {
     return { token: accessToken, candidates, orgs, activeOrgId };
@@ -799,9 +799,18 @@ function entitledToUseAnton(entitlements: any): boolean {
 // entitlement is NOT a sign-in blocker: if no organization qualifies we keep the
 // active one and let the gateway say so at the point of use, which is where the
 // top-up card is raised.
+//
+// `chosenByUser` is the one thing that stops that search. An automatic
+// optimization may pick an organization only when nobody else has: running it
+// over a person's explicit answer moves them out of the organization they just
+// nominated to pay, which is precisely what the picker asked them to decide.
+// It is a separate flag rather than "`preferOrgId` is set" on purpose — that
+// happens to be true of today's only caller, and a future one passing a stored
+// id would silently disable the fallback with nothing failing. This whole
+// function exists because two layers agreed implicitly once already (ENG-2199).
 export async function selectEntitledOrg(
   initialToken: string,
-  options: { preferOrgId?: string } = {},
+  options: { preferOrgId?: string; chosenByUser?: boolean } = {},
 ): Promise<SelectedOrgResult> {
   const orgResult = await ensureActiveOrg(initialToken, { preferOrgId: options.preferOrgId });
   if (!orgResult.token) {
@@ -812,7 +821,19 @@ export async function selectEntitledOrg(
     };
   }
   const accessToken = orgResult.token;
-  const currentOrg = getActiveOrgFromPayload(decodeJwtPayload(accessToken));
+  const startedPayload = decodeJwtPayload(accessToken);
+  // Where the hunt below starts from, and therefore what it has to put back if
+  // it finds nothing.
+  const startedInOrgId = getActiveOrgFromPayload(startedPayload)?.id ?? null;
+  const userId = typeof startedPayload?.sub === 'string' ? startedPayload.sub : null;
+  const stored = userId ? readStoredOrgPreference(userId) : null;
+  // The hunt may only revise an organization nobody chose. "Chose" covers the
+  // picker a moment ago AND a choice made on an earlier run: honouring one only
+  // until the next Reconnect would reproduce the same bug on a delay.
+  const activeWasChosen = Boolean(
+    options.chosenByUser
+    || (stored?.chosenByUser && startedInOrgId && stored.orgId === startedInOrgId),
+  );
   // Which organization a token ends up naming, for the caller to display. The
   // ranking in ensureActiveOrg and the entitlement hunt below can each move it,
   // so it is read back off the token rather than from what was asked for.
@@ -821,9 +842,20 @@ export async function selectEntitledOrg(
     return id ? (orgResult.orgs || []).find((org) => org.id === id) : undefined;
   };
 
+  // Every non-error exit goes through here, so the stored preference and the
+  // live session cannot end up naming different organizations. The id is read
+  // back off the token rather than taken from what was asked for: on the
+  // exhausted path below that is the difference between recording where the
+  // user actually is and recording where we merely tried to put them back.
+  const settleOn = (token: string, chosenByUser: boolean): SelectedOrgResult => {
+    const id = getActiveOrgFromPayload(decodeJwtPayload(token))?.id;
+    if (userId && id) storeOrgPreference(userId, id, chosenByUser);
+    return { token, organization: namedOrg(token) };
+  };
+
   const ctx = await fetchAuthContext(accessToken);
   if (ctx.ok && entitledToUseAnton(ctx.entitlements)) {
-    return { token: accessToken, organization: namedOrg(accessToken) };
+    return settleOn(accessToken, activeWasChosen);
   }
 
   // A genuine auth failure is the only hard stop: the token is not accepted at
@@ -851,25 +883,51 @@ export async function selectEntitledOrg(
     return { error: `Auth-service /authenticate/ returned HTTP ${ctx.status}.` };
   }
 
+  // The organization cannot run turns — and if a person chose it, that is the
+  // end of the selection rather than the start of a search. A wallet-empty
+  // organization is not a sign-in blocker for anybody else either: the gateway
+  // raises the top-up card on the first turn, which is exactly what an
+  // unentitled user meets today when they have nowhere else to be moved to.
+  if (activeWasChosen) {
+    console.warn(
+      '[minds-auth] the chosen organization has no HUB entitlement; honouring the '
+      + 'choice and leaving the quota to the gateway: org=%s',
+      startedInOrgId ?? 'unknown',
+    );
+    return settleOn(accessToken, true);
+  }
+
   const tried = new Set<string>();
-  if (currentOrg?.id) tried.add(currentOrg.id);
+  if (startedInOrgId) tried.add(startedInOrgId);
+  // Whether the loop actually moved the session. A hunt that never switched has
+  // nothing to put back, and restoring regardless would spend a switch and a
+  // token exchange on accounts that previously spent neither.
+  let moved = false;
   for (const candidate of orgResult.candidates || []) {
     if (!candidate?.id || tried.has(candidate.id)) continue;
     tried.add(candidate.id);
     if (!(await switchActiveOrg(accessToken, candidate.id))) continue;
+    moved = true;
     const refreshed = await refreshAfterOrgSwitch();
     if (!refreshed) continue;
     const candidateCtx = await fetchAuthContext(refreshed);
     if (candidateCtx.ok && entitledToUseAnton(candidateCtx.entitlements)) {
-      return { token: refreshed, organization: namedOrg(refreshed) };
+      // Recorded as NOT chosen: the next run may revise it again, and a landing
+      // that dressed itself up as somebody's decision could never be corrected.
+      return settleOn(refreshed, false);
     }
   }
 
   // Nothing qualified, which is not a sign-in blocker: the gateway enforces the
-  // quota at the point of use. Note the switch loop above may have left a
-  // DIFFERENT organization active than the one this started on, and whatever the
-  // store holds now is both what the turn will bill and what a later refresh
-  // re-rolls from — so the organization is read back rather than assumed.
+  // quota at the point of use. Put the session back where the hunt found it —
+  // a search that failed must not relocate anyone, which is the rule
+  // `doSwitchMindsOrg` already follows on every one of its own failure
+  // branches. Left un-restored, the user lands in whichever organization the
+  // loop happened to try last: an artifact of Keycloak's list order rather
+  // than anybody's choice (ENG-2199).
+  if (moved) {
+    await restoreActiveOrg(getAccessToken() ?? accessToken, startedInOrgId);
+  }
   const norm = normalizeHubEntitlements(ctx.entitlements);
   console.warn(
     '[minds-auth] signed in without a HUB entitlement in any organization '
@@ -877,8 +935,13 @@ export async function selectEntitledOrg(
     norm.permissions.agents.use ? 'true' : 'false',
     norm.allocations.deploy_agents,
   );
+  // Read back rather than assumed: a restore Keycloak refused really does leave
+  // the session elsewhere, and recording the organization we wanted would
+  // recreate the divergence `settleOn` is here to prevent.
   const settled = getAccessToken() ?? accessToken;
-  return { token: settled, organization: namedOrg(settled) };
+  // Provenance survives the round trip: if the restore put the person back in an
+  // organization they chose, it is still chosen.
+  return settleOn(settled, activeWasChosen);
 }
 
 // ── Env commit ────────────────────────────────────────────────────
@@ -1298,7 +1361,7 @@ async function doSwitchMindsOrg(targetOrgId: string): Promise<SwitchMindsOrgResu
     return { ok: false, activeOrgId: sourceOrgId, orgs, error: 'That organization is not one you belong to.' };
   }
   if (target.id === sourceOrgId) {
-    storeOrgPreference(userId, target.id);
+    storeOrgPreference(userId, target.id, true);
     return { ok: true, activeOrgId: sourceOrgId, orgs };
   }
 
@@ -1338,6 +1401,6 @@ async function doSwitchMindsOrg(targetOrgId: string): Promise<SwitchMindsOrgResu
     };
   }
 
-  storeOrgPreference(userId, target.id);
+  storeOrgPreference(userId, target.id, true);
   return { ok: true, activeOrgId: target.id, orgs };
 }

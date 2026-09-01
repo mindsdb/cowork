@@ -89,7 +89,10 @@ interface AntonTronAPI {
     expires_in?: number;
   }>;
   mindshubRefresh: () => Promise<{ ok: boolean; reason?: string; access_token?: string }>;
-  mindshubFinalize: () => Promise<{ ok: boolean; reason?: string; upgradeRequired?: boolean }>;
+  mindshubFinalize: (
+    organizationId?: string,
+    chosenByUser?: boolean,
+  ) => Promise<{ ok: boolean; reason?: string; upgradeRequired?: boolean }>;
   mindshubSetUserKey: (key: string) => Promise<{ ok: boolean; reason?: string }>;
   mindshubGetCachedToken: () => Promise<{ access_token: string | null }>;
   onMindsHubAuthChanged: (cb: (payload: { authenticated: boolean }) => void) => () => void;

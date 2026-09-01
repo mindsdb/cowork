@@ -1175,11 +1175,20 @@ export async function mindshubRefresh(): Promise<{ ok: boolean; reason?: string;
   return { ok: false, reason: 'MindsHub refresh bridge is Electron-only.' };
 }
 
+/**
+ * Commit MindsHub as the provider.
+ *
+ * `chosenByUser` says a person answered the organization question, as opposed
+ * to an id coming from anywhere else; main refuses to move the session off an
+ * organization carrying that flag. It is a second argument rather than an
+ * inference from `organizationId` on purpose — see selectEntitledOrg (ENG-2199).
+ */
 export async function mindshubFinalize(
   organizationId?: string,
+  chosenByUser?: boolean,
 ): Promise<{ ok: boolean; reason?: string; upgradeRequired?: boolean; organization?: MindsOrg }> {
   if (isElectron && typeof bridge.mindshubFinalize === 'function') {
-    return bridge.mindshubFinalize(organizationId);
+    return bridge.mindshubFinalize(organizationId, chosenByUser);
   }
   return { ok: false, reason: 'MindsHub finalize bridge is Electron-only.' };
 }
