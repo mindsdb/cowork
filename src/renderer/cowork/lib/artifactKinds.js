@@ -112,3 +112,18 @@ export function canPreviewLocally(a) {
 export function canPreviewOrgDraft(a) {
   return !!a?.draftUrl && !isBackendArtifact(a) && isInlinePreviewable(a);
 }
+
+/**
+ * What an org deployment can hand the user as a FILE through the authenticated
+ * draft URL (`?download=1`, ENG-2044). Every artifact with a primary file has a
+ * draft URL, so this is nearly "has a draft" — except fullstack apps: their
+ * primary is `static/index.html`, which is not the app, so "Download" would
+ * save a useless shell and read as if it were. Those keep their shared page
+ * (autopublish publishes them on the next turn) or, unshared, the honest
+ * "no shared link yet". Same shape as `canPreviewOrgDraft` on purpose: the
+ * callers pass this in as `hasDraft` the way they pass that one as
+ * `canPreviewDraft`.
+ */
+export function canDownloadOrgDraft(a) {
+  return !!a?.draftUrl && !isBackendArtifact(a);
+}

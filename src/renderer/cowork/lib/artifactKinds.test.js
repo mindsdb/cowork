@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  canDownloadOrgDraft,
   canPreviewLocally, canPreviewOrgDraft, isImageArtifact, isInlinePreviewable,
 } from './artifactKinds';
 
@@ -78,5 +79,35 @@ describe('canPreviewOrgDraft', () => {
 
   it('refuses an image, whose bytes come from the serve URL org mode blocks', () => {
     expect(canPreviewOrgDraft({ ...draft, ext: '.png', path: '/a/logo.png' })).toBe(false);
+  });
+});
+
+
+describe('canDownloadOrgDraft', () => {
+  /*
+   * ENG-2044. The draft URL exists for every artifact with a primary file, so
+   * "downloadable" is almost "has a draft" — the one exception is the reason
+   * this is a predicate and not an inline `!!draftUrl`.
+   */
+  const DRAFT = '/api/v1/artifacts/drafts/p/11111111111111111111111111111111/x';
+
+  it('is true for any non-app artifact with a draft URL, previewable or not', () => {
+    expect(canDownloadOrgDraft({ draftUrl: DRAFT, ext: '.xlsx', type: 'file' })).toBe(true);
+    expect(canDownloadOrgDraft({ draftUrl: DRAFT, ext: '.html', type: 'html-app' })).toBe(true);
+    expect(canDownloadOrgDraft({ draftUrl: DRAFT, ext: '.png', type: 'image' })).toBe(true);
+  });
+
+  it('is false for a fullstack app: its primary is a shell index.html, not the app', () => {
+    expect(canDownloadOrgDraft({
+      draftUrl: `${DRAFT}/static/index.html`, ext: '.html', type: 'fullstack-stateless-app',
+    })).toBe(false);
+    expect(canDownloadOrgDraft({
+      draftUrl: `${DRAFT}/static/index.html`, ext: '.html', type: 'fullstack-stateful-app',
+    })).toBe(false);
+  });
+
+  it('is false without a draft URL — there is no primary file to stream', () => {
+    expect(canDownloadOrgDraft({ draftUrl: '', ext: '.xlsx' })).toBe(false);
+    expect(canDownloadOrgDraft(undefined)).toBe(false);
   });
 });

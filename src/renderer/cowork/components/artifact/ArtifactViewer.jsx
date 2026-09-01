@@ -616,11 +616,12 @@ export function ArtifactViewer({
   // the local/served preview.
   const onOpenInBrowser = () => (isPublished ? onOpenPublished() : onOpenOS());
 
-  // Universal "save to disk" — type-agnostic stream through the sidecar's
-  // serve endpoint with Content-Disposition: attachment.
-  const onDownload = () => {
-    if (!downloadArtifactFile(artifact, { actionPath })) {
-      setErr(disabledReason || 'This artifact has no serve URL yet.');
+  // Universal "save to disk" — type-agnostic stream with
+  // Content-Disposition: attachment, through the serve URL on desktop or the
+  // authenticated draft URL on an org deployment (ENG-2044).
+  const onDownload = async () => {
+    if (!(await downloadArtifactFile(artifact, { actionPath }))) {
+      setErr(disabledReason || 'This artifact has no downloadable file yet.');
     }
   };
 
